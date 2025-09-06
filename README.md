@@ -13,14 +13,22 @@ there is a simple timeline.
 Current state
 -------------
 
-Currently has endpoints to receive data from:
+Currently collects data from:
 
 * Android Health Connect from [Nepehai App](https://github.com/fiddur/NephelaiApp)
 * [OwnTracks](https://owntracks.org/) (json http mode)
-* Fetching from Oura API
+* [Oura](https://ouraring.com/) API
+* [RescueTime](https://www.rescuetime.com/) API
 
 ...has many temporary hacks that even circumvent the login and
 security and fixes it to my own user.  It's basically a PoC.
+
+Some hacks to cleanup soon(ish):
+
+* Let user give rescuetime api key for backend to store.
+* Add user handling to OwnTrack endpoint.
+* config sessionSalt
+
 
 Setup and use
 -------------
