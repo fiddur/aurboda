@@ -34,7 +34,7 @@ Setup and use
 -------------
 
 * Setup PostgreSQL
-* Setups .enc
+* Setup .env (see .env.sample)
 * `corepack use && pnpm i`
 
 ### Start web (for user creation and authorization)
