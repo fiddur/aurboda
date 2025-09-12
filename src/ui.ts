@@ -16,6 +16,7 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   const rtData = await rescuetimeClient(process.env.RESCUETIME_KEY).getIntervalData(start, end)
   const ouraToken = await oura.getAccessToken(user)
   const tags = await oura.getTags(start, end, ouraToken)
+  const meditations = await oura.getSessions(start, end, ouraToken)
 
   console.log(tags)
 
@@ -75,6 +76,17 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
       .attr('fill', 'blue')
       .attr('opacity', 0.2)
   })
+  meditations.forEach(({ startTime, endTime }) => {
+    if (isBefore(startTime, start)) return
+    svg
+      .append('rect')
+      .attr('x', xScale(startTime))
+      .attr('y', 0)
+      .attr('width', xScale(endTime) - xScale(startTime))
+      .attr('height', height)
+      .attr('fill', 'purple')
+      .attr('opacity', 0.6)
+  })
 
   rtData.forEach(({ startTime, endTime, mobile }) => {
     if (isBefore(startTime, start)) return
@@ -128,6 +140,7 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   // -- Tags
   tags.forEach(({ startTime, endTime, tag }) => {
     if (endTime) {
+      console.log('=====', tag, startTime, endTime)
       svg
         .append('rect')
         .attr('x', xScale(startTime))
@@ -139,6 +152,7 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
         .attr('stroke-dasharray', '4')
         .attr('opacity', 0.2)
     } else {
+      console.log('-----', startTime, tag)
       svg
         .append('line')
         .attr('x1', xScale(startTime))

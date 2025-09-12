@@ -1,6 +1,7 @@
 import { json } from 'body-parser'
+import cors from 'cors'
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
-import { addDays, subDays } from 'date-fns'
+import { subHours } from 'date-fns'
 import { Client } from 'pg'
 import format from 'pg-format'
 import polka from 'polka'
@@ -23,6 +24,9 @@ const formatValue = (v: unknown): string =>
             : `'${JSON.stringify(v).replaceAll("'", "''")}'`
 
 const main = async () => {
+  const unauthorized = new Error('Unauthorized')
+  unauthorized.status = 401
+
   const config = {
     sessionSalt: 'very very secretvery very secret', //  256-bit encryption key (32 bytes)
   }
@@ -51,14 +55,23 @@ const main = async () => {
   await userDb.connect()
 
   httpd.use(json({ limit: '10mb' }))
+  httpd.use(cors({ origin: true }))
 
   httpd.use((req, res, next) => {
     console.log(req.path, req.body)
     next()
   })
 
+  httpd.post('/api/v2/signup', async (req, res, next) => {
+    const { username: user, password } = req.body
+    if (!user) return next(unauthorized)
+    await makeNewUserDb(userDb, user, password)
+    // TODO FIXME
+  })
+
   httpd.post('/api/v2/login', async (req, res, next) => {
     const { username: user, password } = req.body
+    if (!user) return next(unauthorized)
 
     // Check if user exists as a PSQL user role
     const userRows = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
@@ -67,20 +80,16 @@ const main = async () => {
         await loginToUserDb(user, password)
       } catch (err) {
         console.log(err)
-        const unauthorized = new Error('Unauthorized')
-        unauthorized.status = 401
         return next(unauthorized)
       }
-    } else {
-      await makeNewUserDb(userDb, user, password)
-    }
+    } else return next(unauthorized)
 
     const token =
       cipher.update(user, 'utf8', 'base64') +
       cipher.final('base64') +
       `-${iv}-${cipher.getAuthTag().toString('base64')}`
 
-    res.status = 201
+    res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ token, refresh: token }))
   })
 
@@ -89,10 +98,11 @@ const main = async () => {
     res.end(JSON.stringify({ token: refresh, refresh }))
   })
 
-  httpd.post('/api/v2/sync/:recordType', async (req, res) => {
+  httpd.post('/api/v2/sync/:recordType', async (req, res, next) => {
     const { recordType } = req.params
     const token = req.headers.authorization.slice('bearer '.length)
     console.log({ token })
+    if (!token) return next(unauthorized)
     let { data } = req.body
 
     if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
@@ -174,14 +184,14 @@ const main = async () => {
         INSERT INTO "hcdata"
           (${dataTuples.map(([k]) => `"${k}"`).join(',')})
          VALUES(${dataTuples
-           .map(([, v]) => v)
-           .map(formatValue)
-           .join(',')})
+          .map(([, v]) => v)
+          .map(formatValue)
+          .join(',')})
          ON CONFLICT (id) DO UPDATE SET
             ${dataTuples
-              .filter(([k]) => k !== 'id')
-              .map(([k, v]) => `"${k}" = ${formatValue(v)}`)
-              .join(' , ')}
+          .filter(([k]) => k !== 'id')
+          .map(([k, v]) => `"${k}" = ${formatValue(v)}`)
+          .join(' , ')}
       `,
       ) // TODO use db params
     }
@@ -261,8 +271,8 @@ const main = async () => {
     const { username: user } = req.query
 
     const now = new Date()
-    const start = subDays(now, 8)
-    const end = addDays(now, 1)
+    const start = subHours(now, 26) // TODO: Find yesterday's wakeup time?
+    const end = now // addDays(now, 1)
 
     const { locations, places } = getLocations(start, end, user)
 
@@ -294,6 +304,22 @@ const main = async () => {
   httpd.get('/ui/timeline', async (req, res) => {
     const html = await getTimeline(oura)
     res.end(html)
+  })
+
+  httpd.get('/api/v2/heartrate', async (req, res, next) => {
+    const token = req.headers.authorization.slice('bearer '.length)
+    if (!token) return next(unauthorized)
+    const start = new Date(req.query.start)
+    const end = new Date(req.query.end)
+    const user = getUsernameFromSession(token)
+    console.log({ user, start, end })
+    const hcdata = await getHcData(start, end, user)
+    const { heartRates } = hcdata
+
+    console.log(hcdata)
+
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(heartRates))
   })
 
   httpd.listen(80, () => {

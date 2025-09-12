@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { addSeconds, formatISO, isFuture, isPast } from 'date-fns'
+import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture, isPast } from 'date-fns'
 import format from 'pg-format'
 import { query, tableExists } from './db'
 
@@ -8,7 +8,7 @@ export const ouraClient = (client: string, secret: string) => {
 
   const getGeneric = async (type: string, start: Date, end: Date, token: string) => {
     const response = await axios.get(
-      `https://api.ouraring.com/v2/usercollection/${type}?start_date=${formatISO(start, { representation: 'date' })}&end_date=${formatISO(end, { representation: 'date' })}`,
+      `https://api.ouraring.com/v2/usercollection/${type}?start_date=${formatISO(start, { representation: 'date' })}&end_date=${formatISO(addDays(end, 1), { representation: 'date' })}`,
       { headers: { Authorization: `Bearer ${token}` } },
     )
     console.log(type, start, end, response.data)
@@ -127,29 +127,61 @@ export const ouraClient = (client: string, secret: string) => {
       }
 
       const data = await getGeneric('enhanced_tag', start, end, token)
-      const tags = data.map((tag) => ({
-        tag: tag.tag_type_code in customTags ? customTags[tag.tag_type_code] : tag.tag_type_code,
-        startTime: new Date(tag.start_time),
-        endTime: new Date(tag.end_time),
-      }))
+      const tags = data
+        .map((tag) => ({
+          tag: tag.tag_type_code in customTags ? customTags[tag.tag_type_code] : tag.tag_type_code,
+          startTime: new Date(tag.start_time),
+          endTime: tag.end_time ? new Date(tag.end_time) : undefined,
+        }))
+        .filter(({ startTime, endTime }) => isBefore(startTime, end) && isAfter(endTime, start))
       return tags
     },
 
     async getSessions(start: Date, end: Date, token: string) {
-      return getGeneric('session', start, end, token)
+      // id: 'ab6b5798-2ecf-41cd-a0dc-7974796e49a4',
+      // day: '2025-09-06',
+      // start_datetime: '2025-09-06T15:49:27+02:00',
+      // end_datetime: '2025-09-06T16:18:45+02:00',
+      // type: 'meditation',
+      // heart_rate: {    interval: 5,    items: [...
+      // heart_rate_variability: {    interval: 5,    items: [
+      // mood: 'good',
+      // motion_count: {    interval: 5,    items: [
+      const sessions = (await getGeneric('session', start, end, token))
+        .map((session) => ({
+          id: session.id,
+          startTime: new Date(session.start_datetime),
+          endTime: new Date(session.end_datetime),
+          type: session.type,
+          mood: session.mood,
+          heartRate: session.heart_rate,
+          hrv: session.heart_rate_variability,
+          motion: session.motion_count,
+        }))
+        .filter(({ startTime, endTime }) => isBefore(startTime, end) && isAfter(endTime, start))
+
+      return sessions
     },
 
     async getDailySleep(start: Date, end: Date, token: string) {
-      return getGeneric('daily_sleep', start, end, token)
+      return (await getGeneric('daily_sleep', start, end, token)).filter(
+        ({ timestamp }) => isBefore(timestamp, end) && isAfter(timestamp, start),
+      )
     },
     async getDailyResilience(start: Date, end: Date, token: string) {
-      return getGeneric('daily_resilience', start, end, token)
+      return (await getGeneric('daily_resilience', start, end, token)).filter(
+        ({ timestamp }) => isBefore(timestamp, end) && isAfter(timestamp, start),
+      )
     },
     async getDailyReadiness(start: Date, end: Date, token: string) {
-      return getGeneric('daily_readiness', start, end, token)
+      return (await getGeneric('daily_readiness', start, end, token)).filter(
+        ({ timestamp }) => isBefore(timestamp, end) && isAfter(timestamp, start),
+      )
     },
     async getDailyCardiovascularAge(start: Date, end: Date, token: string) {
-      return getGeneric('daily_cardiovascular_age', start, end, token)
+      return (await getGeneric('daily_cardiovascular_age', start, end, token)).filter(
+        ({ timestamp }) => isBefore(timestamp, end) && isAfter(timestamp, start),
+      )
     },
   }
 }

@@ -96,9 +96,9 @@ export const getHcData = async (start: Date, end: Date, user: string) => {
     user,
     format(
       `
-      SELECT distinct h."recordType", h.data, h.metadata, h.time, h."startTime", h."endTime"
+      SELECT h."recordType", h.data, h.metadata, h.time, h."startTime", h."endTime"
       FROM public.hcdata AS h
-      WHERE (h."startTime" > %L or h."time" > %L) OR (h."startTime" > %L or h."time" > %L)
+      WHERE (h."startTime" > %L or h."time" > %L) AND (h."endTime" < %L or h."time" < %L)
       `,
       start.toISOString(),
       start.toISOString(),
@@ -149,6 +149,7 @@ export const getHcData = async (start: Date, end: Date, user: string) => {
   const heartRates: [Date, number][] = heartrateSamples
     .map<[Date, number]>(({ time, beatsPerMinute }) => [new Date(time), beatsPerMinute])
     .sort(([a], [b]) => a.getTime() - b.getTime())
+  //.filter(([date], i, arr) => isEqual(date, arr[i - 1]?.[0]))
 
   return { heartRates, ...hcData } as {
     heartRates: [Date, number][]
