@@ -1,5 +1,6 @@
 import { Client } from 'pg'
 import format from 'pg-format'
+import { reduceTimeSeries } from './utils'
 
 const dbByUser: Record<string, Client> = {}
 
@@ -146,13 +147,11 @@ export const getHcData = async (start: Date, end: Date, user: string) => {
 
   console.log(Object.keys(hcData))
 
-  const heartRates: [Date, number][] = heartrateSamples
-    .map<[Date, number]>(({ time, beatsPerMinute }) => [new Date(time), beatsPerMinute])
-    .sort(([a], [b]) => a.getTime() - b.getTime())
-  //.filter(([date], i, arr) => isEqual(date, arr[i - 1]?.[0]))
+  const heartRates = reduceTimeSeries(
+    heartrateSamples.map<[Date, number]>(({ time, beatsPerMinute }) => [new Date(time), beatsPerMinute]),
+  )
 
-  return { heartRates, ...hcData } as {
-    heartRates: [Date, number][]
+  return { heartRates, ...hcData } as { heartRates: [Date, number][] } & {
     [k: string]: {
       [k: string]: any
       startTime: Date

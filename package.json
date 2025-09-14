@@ -13,10 +13,12 @@
     "fix": "eslint --fix",
     "start": "tsx src/api.ts",
     "watch": "tsx watch --watch-preserve-output src/api.ts",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
+    "@tsconfig/node22": "^22.0.2",
     "@types/cors": "^2.8.19",
     "@types/d3": "^7.4.3",
     "@types/eslint": "^9.6.1",

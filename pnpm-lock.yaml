@@ -48,6 +48,9 @@ importers:
       '@eslint/js':
         specifier: ^9.13.0
         version: 9.13.0
+      '@tsconfig/node22':
+        specifier: ^22.0.2
+        version: 22.0.2
       '@types/cors':
         specifier: ^2.8.19
         version: 2.8.19
@@ -613,6 +616,9 @@ packages:
     resolution: {integrity: sha512-StxAO/8ts62KZVRAm4JZYq9+NqNsV7RvimNK+YM7ry//zebEH6meuugqW/P5OFUCjyQgui+9fUxT6d5NShvMvA==}
     cpu: [x64]
     os: [win32]
+
+  '@tsconfig/node22@22.0.2':
+    resolution: {integrity: sha512-Kmwj4u8sDRDrMYRoN9FDEcXD8UpBSaPQQ24Gz+Gamqfm7xxn+GBR7ge/Z7pK8OXNGyUzbSwJj+TH6B+DS/epyA==}
 
   '@types/chai@5.2.2':
     resolution: {integrity: sha512-8kB30R7Hwqf40JPiKhVzodJs2Qc1ZJ5zuT3uzw5Hq/dhNCl3G3l83jfpdI1e20BP348+fV7VIL/+FxaXkqBmWg==}
@@ -2414,6 +2420,8 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.50.1':
     optional: true
+
+  '@tsconfig/node22@22.0.2': {}
 
   '@types/chai@5.2.2':
     dependencies:
