@@ -133,7 +133,7 @@ export const ouraClient = (client: string, secret: string) => {
           startTime: new Date(tag.start_time),
           endTime: tag.end_time ? new Date(tag.end_time) : undefined,
         }))
-        .filter(({ startTime, endTime }) => isBefore(startTime, end) && isAfter(endTime, start))
+        .filter(({ startTime, endTime }) => isBefore(startTime, end) && (!endTime || isAfter(endTime, start)))
       return tags
     },
 
