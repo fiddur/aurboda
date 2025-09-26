@@ -1,4 +1,4 @@
-import { Client } from 'pg'
+import { Client, QueryResultRow } from 'pg'
 import format from 'pg-format'
 import { reduceTimeSeries } from './utils'
 
@@ -6,10 +6,14 @@ const dbByUser: Record<string, Client> = {}
 
 const userDbName = (user: string) => `hcg-${user}`
 
-export const query = async (dbOrUser: Client | string, queryStr: string, params?: any[]) => {
+export const query = async <T extends QueryResultRow = any>(
+  dbOrUser: Client | string,
+  queryStr: string,
+  params?: any[],
+) => {
   const db = typeof dbOrUser === 'string' ? await getDbForUser(dbOrUser) : dbOrUser
   console.log(`>>>`, queryStr, params)
-  const result = await db.query(queryStr, params)
+  const result = await db.query<T>(queryStr, params)
   //console.log('<<<', result.rows)
   return result
 }
@@ -90,6 +94,16 @@ export const getLocations = async (start: Date, end: Date, user: string) => {
   )
 
   return { locations, places }
+}
+
+export type HcData = {
+  id: string
+  recordType: string
+  metadata: Record<string, any>
+  time: Date | null
+  startTime: Date | null
+  endTime: Date | null
+  data: Record<string, any>
 }
 
 export const getHcData = async (start: Date, end: Date, user: string) => {

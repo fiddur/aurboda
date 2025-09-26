@@ -1,7 +1,15 @@
 import axios from 'axios'
 import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture, isPast } from 'date-fns'
 import format from 'pg-format'
-import { query, tableExists } from './db'
+import { query, tableExists, Tag } from './db'
+
+type OuraTag = {
+  id: string
+  tag_type_code: string | null
+  start_time: string
+  end_time: string
+  custom_name: string | null
+}
 
 export const ouraClient = (client: string, secret: string) => {
   if (!client || !secret) throw new Error('Oura missing client or secret')
@@ -114,11 +122,7 @@ export const ouraClient = (client: string, secret: string) => {
       return access_token
     },
 
-    async getTags(
-      start: Date,
-      end: Date,
-      token: string,
-    ): Promise<{ tag: string; startTime: Date; endTime?: Date }[]> {
+    async getTags(start: Date, end: Date, token: string): Promise<Tag[]> {
       const customTags = {
         'f830b90b-0689-42a1-bfe7-ea1b4487d0c3': 'Food',
         '067e2862-8cf8-4307-a621-0636dd379cda': 'Hot Chocolate',
@@ -126,13 +130,17 @@ export const ouraClient = (client: string, secret: string) => {
         '662ad09c-0998-4f0c-aad9-867c883dfdaa': 'Electrolytes',
       }
 
-      const data = await getGeneric('enhanced_tag', start, end, token)
+      const data: OuraTag[] = await getGeneric('enhanced_tag', start, end, token)
       const tags = data
-        .map((tag) => ({
-          tag: tag.tag_type_code in customTags ? customTags[tag.tag_type_code] : tag.tag_type_code,
-          startTime: new Date(tag.start_time),
-          endTime: tag.end_time ? new Date(tag.end_time) : undefined,
-        }))
+        .map(
+          (tag): Tag => ({
+            source: 'oura',
+            id: tag.id,
+            tag: tag.tag_type_code in customTags ? customTags[tag.tag_type_code] : tag.tag_type_code,
+            startTime: new Date(tag.start_time),
+            endTime: tag.end_time ? new Date(tag.end_time) : undefined,
+          }),
+        )
         .filter(({ startTime, endTime }) => isBefore(startTime, end) && (!endTime || isAfter(endTime, start)))
       return tags
     },

@@ -2,10 +2,12 @@ import { json } from 'body-parser'
 import cors from 'cors'
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 import { subHours } from 'date-fns'
+import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import format from 'pg-format'
-import polka from 'polka'
-import { getHcData, getLocations, loginToUserDb, makeNewUserDb, query, tableExists } from './db'
+import { getHcData, getLocations, loginToUserDb, query, tableExists } from './db'
+import { getHeartRate } from './models/heartrate'
+import { getTags } from './models/tags'
 import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
 import { getTimeline } from './ui'
@@ -23,6 +25,14 @@ const formatValue = (v: unknown): string =>
             ? `'${(v as string).replaceAll("'", "''")}'`
             : `'${JSON.stringify(v).replaceAll("'", "''")}'`
 
+declare global {
+  namespace Express {
+    interface Request {
+      user?: string
+    }
+  }
+}
+
 const main = async () => {
   const unauthorized = new Error('Unauthorized')
   unauthorized.status = 401
@@ -36,7 +46,7 @@ const main = async () => {
   const iv = randomBytes(12).toString('base64')
   const cipher = createCipheriv('aes-256-gcm', config.sessionSalt, iv)
 
-  const httpd = polka()
+  const httpd = express()
 
   const getUsernameFromSession = (sessid: string) => {
     try {
@@ -62,12 +72,26 @@ const main = async () => {
     next()
   })
 
-  httpd.post('/api/v2/signup', async (req, res, next) => {
-    const { username: user, password } = req.body
-    if (!user) return next(unauthorized)
-    await makeNewUserDb(userDb, user, password)
-    // TODO FIXME
-  })
+  const auth: RequestHandler = (req, res, next) => {
+    try {
+      if (typeof req.headers.authorization === 'string') {
+        const token = req.headers.authorization.slice('bearer '.length)
+        const user = getUsernameFromSession(token)
+        req.user = user
+        return next()
+      }
+    } catch (e) {
+      return next(unauthorized)
+    }
+    return next(unauthorized)
+  }
+
+  // httpd.post('/api/v2/signup', async (req, res, next) => {
+  //   const { username: user, password } = req.body
+  //   if (!user) return next(unauthorized)
+  //   await makeNewUserDb(userDb, user, password)
+  //   // TODO FIXME
+  // })
 
   httpd.post('/api/v2/login', async (req, res, next) => {
     const { username: user, password } = req.body
@@ -98,61 +122,28 @@ const main = async () => {
     res.end(JSON.stringify({ token: refresh, refresh }))
   })
 
-  httpd.post('/api/v2/sync/:recordType', async (req, res, next) => {
-    const { recordType } = req.params
-    const token = req.headers.authorization.slice('bearer '.length)
-    console.log({ token })
-    if (!token) return next(unauthorized)
-    let { data } = req.body
+  httpd.post<{ recordType: string }, { success: boolean }>(
+    '/api/v2/sync/:recordType',
+    auth,
+    async (req, res, next) => {
+      const { recordType } = req.params
+      let { data } = req.body
 
-    if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
-      data = [data]
-    }
+      if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
+        data = [data]
+      }
 
-    if (!data?.length) {
-      console.log('  empty?!')
+      if (!data?.length) {
+        console.log('  empty?!')
+        return res.json({ success: true })
+      }
 
-      const ignore = [
-        'BasalBodyTemperature', ///
-        'BloodGlucose',
-        'BloodPressure',
-        'BasalMetabolicRate',
-        'BodyFat',
-        'BodyTemperature', ///
-        'BoneMass', ///
-        'CyclingPedalingCadence',
-        'CervicalMucus',
-        'ElevationGained',
-        'FloorsClimbed',
-        'Height', //
-        'Hydration',
-        'LeanBodyMass', ///
-        'MenstruationFlow',
-        'MenstruationPeriod',
-        'Nutrition', ////
-        'OvulationTest',
-        'OxygenSaturation',
-        'Power',
-        'RespiratoryRate', ////
-        'RestingHeartRate', ////
-        'StepsCadence', ///
-        'Vo2Max', ///
-        'Weight', //
-        'WheelchairPushes',
-      ]
-      if (ignore.includes(recordType)) return res.end('{"success":true}')
+      const user = req.user!
 
-      res.statusCode = 500
-      //process.exit(1)
-      return res.end('{"success":false}')
-    }
-
-    const user = getUsernameFromSession(token)
-
-    if (!tableExists(user, 'hcdata')) {
-      await query(
-        user,
-        `CREATE TABLE "hcdata" (
+      if (!(await tableExists(user, 'hcdata'))) {
+        await query(
+          user,
+          `CREATE TABLE "hcdata" (
           id           VARCHAR PRIMARY KEY,
           "recordType" VARCHAR,
           metadata     JSONB,
@@ -162,42 +153,43 @@ const main = async () => {
           "endTime"    TIMESTAMPTZ,
           data         JSONB
         )`,
-      )
-    }
+        )
+      }
 
-    for (const item of data) {
-      const id = item.metadata.id
-      const { metadata, time, startTime, endTime, ...dataObj } = item
-      const dataTuples = Object.entries({
-        id,
-        recordType,
-        metadata,
-        time,
-        startTime,
-        endTime,
-        data: dataObj,
-      }).filter(([_, v]) => !!v)
+      for (const item of data) {
+        const id = item.metadata.id
+        const { metadata, time, startTime, endTime, ...dataObj } = item
+        const dataTuples = Object.entries({
+          id,
+          recordType,
+          metadata,
+          time,
+          startTime,
+          endTime,
+          data: dataObj,
+        }).filter(([_, v]) => !!v)
 
-      await query(
-        user,
-        `
+        await query(
+          user,
+          `
         INSERT INTO "hcdata"
           (${dataTuples.map(([k]) => `"${k}"`).join(',')})
          VALUES(${dataTuples
-          .map(([, v]) => v)
-          .map(formatValue)
-          .join(',')})
+            .map(([, v]) => v)
+            .map(formatValue)
+            .join(',')})
          ON CONFLICT (id) DO UPDATE SET
             ${dataTuples
-          .filter(([k]) => k !== 'id')
-          .map(([k, v]) => `"${k}" = ${formatValue(v)}`)
-          .join(' , ')}
+            .filter(([k]) => k !== 'id')
+            .map(([k, v]) => `"${k}" = ${formatValue(v)}`)
+            .join(' , ')}
       `,
-      ) // TODO use db params
-    }
+        ) // TODO use db params
+      }
 
-    res.end('{"success":true}')
-  })
+      res.json({ success: true })
+    },
+  )
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)
@@ -209,7 +201,7 @@ const main = async () => {
 
     if (type === 'status') {
     } else if (type === 'waypoint') {
-      if (!tableExists(user, 'waypoints')) {
+      if (!(await tableExists(user, 'waypoints'))) {
         await query(
           user,
           `CREATE TABLE "waypoints" (
@@ -238,9 +230,9 @@ const main = async () => {
         ),
       )
     } else if (type === 'location') {
-      if (!tableExists(user, 'owntracks')) {
+      if (!(await tableExists(user, 'owntracks'))) {
         await query(
-          db,
+          user,
           `CREATE TABLE "owntracks" (
              id        VARCHAR PRIMARY KEY,
              tst       TIMESTAMPTZ,
@@ -271,7 +263,8 @@ const main = async () => {
     const { username: user } = req.query
 
     const now = new Date()
-    const start = subHours(now, 26) // TODO: Find yesterday's wakeup time?
+    //const start = subHours(now, 26) // TODO: Find yesterday's wakeup time?
+    const start = subHours(now, 26 + 24 * 7) // TODO..
     const end = now // addDays(now, 1)
 
     const { locations, places } = getLocations(start, end, user)
@@ -306,20 +299,24 @@ const main = async () => {
     res.end(html)
   })
 
-  httpd.get('/api/v2/heartrate', async (req, res, next) => {
-    const token = req.headers.authorization.slice('bearer '.length)
-    if (!token) return next(unauthorized)
+  httpd.get('/api/v2/heartrate', auth, async (req, res, next) => {
     const start = new Date(req.query.start)
     const end = new Date(req.query.end)
-    const user = getUsernameFromSession(token)
-    console.log({ user, start, end })
-    const hcdata = await getHcData(start, end, user)
-    const { heartRates } = hcdata
-
-    console.log(hcdata)
+    const hrs = await getHeartRate(req.user, start, end, oura)
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(heartRates))
+    res.end(JSON.stringify(hrs))
+  })
+
+  httpd.get('/api/v2/tags', auth, async (req, res, next) => {
+    const start = new Date(req.query.start)
+    const end = new Date(req.query.end)
+    const user = req.user
+    console.log({ user, start, end })
+
+    const tags = await getTags(user, start, end, oura)
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(tags))
   })
 
   httpd.listen(80, () => {
