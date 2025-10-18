@@ -1,0 +1,47 @@
+{
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "author": "Fredrik Liljegren <fredrik@liljegren.org>",
+  "description": "Visualize some Quantified Self data",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.3.1",
+    "@tanstack/react-query": "^5.90.2",
+    "@tanstack/react-query-devtools": "^5.90.2",
+    "axios": "^1.12.2",
+    "d3": "^7.9.0",
+    "date-fns": "^4.1.0",
+    "preact": "^10.27.2",
+    "preact-iso": "^2.10.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.2",
+    "@types/d3": "^7.4.3",
+    "eslint": "^9.36.0",
+    "eslint-config-preact": "^2.0.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "eslint-plugin-sort-keys": "^2.3.5",
+    "prettier": "^3.6.2",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7"
+  },
+  "eslintConfig": {
+    "extends": "preact"
+  },
+  "prettier": {
+    "plugins": [
+      "prettier-plugin-organize-imports"
+    ],
+    "printWidth": 100,
+    "semi": false,
+    "singleQuote": true,
+    "tabWidth": 2,
+    "trailingComma": "all"
+  },
+  "packageManager": "pnpm@10.15.1+sha512.34e538c329b5553014ca8e8f4535997f96180a1d0f614339357449935350d924e22f8614682191264ec33d1462ac21561aff97f6bb18065351c162c7e8f6de67"
+}

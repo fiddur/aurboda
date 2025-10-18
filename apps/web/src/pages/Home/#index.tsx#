@@ -1,0 +1,84 @@
+import * as d3 from 'd3'
+import preactLogo from '../../assets/preact.svg'
+
+import './style.css'
+
+export function Home() {
+  return (
+    <div class="home">
+      <a href="https://preactjs.com" target="_blank">
+        <img src={preactLogo} alt="Preact logo" height="160" width="160" />
+      </a>
+      <h1>GettyoStarted building Vite-powered Preact Apps </h1>
+
+      <LineChart data={data} />
+
+      <section>
+        <Resource
+          title="Learn Preact"
+          description="If you're new to Preact, try the interactive tutorial to learn important concepts"
+          href="https://preactjs.com/tutorial"
+        />
+        <Resource
+          title="Differences to React"
+          description="If you're coming from React, you may want to check out our docs to see where Preact differs"
+          href="https://preactjs.com/guide/v10/differences-to-react"
+        />
+        <Resource
+          title="Learn Vite"
+          description="To learn more about Vite and how you can customize it to fit your needs, take a look at their excellent documentation"
+          href="https://vitejs.dev"
+        />
+      </section>
+    </div>
+  )
+}
+
+function Resource(props) {
+  return (
+    <a href={props.href} target="_blank" class="resource">
+      <h2>{props.title}</h2>
+      <p>{props.description}</p>
+    </a>
+  )
+}
+
+let data = [
+  { x: 0, y: 10 },
+  { x: 10, y: 40 },
+  { x: 20, y: 30 },
+  { x: 30, y: 70 },
+  { x: 40, y: 0 },
+]
+
+function LineChart({ data }: { data: { x: number; y: number }[] }) {
+  const margin = { top: 10, right: 20, bottom: 20, left: 30 }
+  const width = 500
+  const height = 300
+
+  const x = d3
+    .scaleLinear()
+    .domain([0, d3.max(data, (d) => d.x)])
+    .range([margin.left, width - margin.right])
+
+  const y = d3
+    .scaleLinear()
+    .domain([0, d3.max(data, (d) => d.y)])
+    .range([height - margin.bottom, margin.top])
+
+  return (
+    <svg width={width} height={height}>
+      <path
+        fill="none"
+        stroke="#33C7FF"
+        stroke-width="2"
+        d={d3
+          .line()
+          .x((d) => x(d.x))
+          .y((d) => y(d.y))(data)}
+      />
+      <g transform="translate(${margin.left},0)" ref={(g) => d3.select(g).call(d3.axisLeft(y))} />
+      <g transform="translate(0,{height - margin.bottom})" ref={(g) => d3.select(g).call(d3.axisBottom(x))} />
+    </svg>
+  )
+}
