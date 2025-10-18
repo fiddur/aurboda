@@ -1,14 +1,7 @@
 {
-  "name": "nephelai",
-  "description": "Collect and aggregate your Quantified Self data",
-  "packageManager": "pnpm@10.0.0-alpha.0",
+  "name": "nephelai-backend",
   "version": "1.0.0",
   "main": "src/api.ts",
-  "license": "AGPL-3.0-or-later",
-  "author": "Fredrik Liljegren <fredrik@liljegren.org>",
-  "engines": {
-    "node": "~22"
-  },
   "scripts": {
     "fix": "eslint --fix",
     "start": "tsx src/api.ts",
@@ -34,8 +27,6 @@
     "eslint-plugin-prettier": "^5.2.1",
     "eslint-plugin-sort-keys": "^2.3.5",
     "globals": "^15.11.0",
-    "prettier": "^3.3.3",
-    "prettier-plugin-organize-imports": "^4.1.0",
     "typescript-eslint": "^8.12.2",
     "vitest": "^3.2.4"
   },
@@ -49,8 +40,6 @@
     "express": "^5.1.0",
     "jsdom": "^26.1.0",
     "pg": "^8.13.1",
-    "pg-format": "^1.0.4",
-    "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "pg-format": "^1.0.4"
   }
 }

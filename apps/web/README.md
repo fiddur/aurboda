@@ -1,6 +1,5 @@
-Nephelai UI
-===========
+Nephelai Web
+============
 
-Frontend for [Nepehai](https://github.com/fiddur/nephelai) Quantified Self aggregation.
+Visualizing the collected data.
 
-Simple personal project to visualize some data.

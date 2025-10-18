@@ -1,0 +1,25 @@
+{
+  "name": "nephelai",
+  "version": "1.0.0",
+  "description": "Collect, aggregate, visualize your Quantified Self data",
+  "license": "AGPL-3.0-or-later",
+  "author": "Fredrik Liljegren <fredrik@liljegren.org>",
+  "engines": {
+    "node": "~22"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "eslint": "^9.36.0",
+    "eslint-config-preact": "^2.0.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "eslint-plugin-sort-keys": "^2.3.5",
+    "prettier": "^3.6.2",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "keywords": [],
+  "packageManager": "pnpm@10.15.1"
+}
