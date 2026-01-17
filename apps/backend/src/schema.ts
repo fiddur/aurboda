@@ -1,0 +1,328 @@
+/**
+ * Database schema definitions for Nephelai.
+ *
+ * This module contains all table creation SQL and schema-related utilities.
+ * See docs/data-storage.md for design decisions and data flow documentation.
+ */
+
+export const SCHEMA_VERSION = 1
+
+/**
+ * All table creation statements in dependency order.
+ * Each table is created with proper indexes for query performance.
+ */
+export const createTableStatements: Record<string, string> = {
+  // Raw data sink - stores all incoming data in original form
+  raw_records: `
+    CREATE TABLE IF NOT EXISTS raw_records (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source          VARCHAR(50) NOT NULL,
+      record_type     VARCHAR(100) NOT NULL,
+      external_id     VARCHAR(255),
+      recorded_at     TIMESTAMPTZ NOT NULL,
+      received_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      data            JSONB NOT NULL,
+      CONSTRAINT unique_source_record UNIQUE (source, record_type, external_id)
+    )
+  `,
+
+  raw_records_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_raw_records_source_time ON raw_records (source, recorded_at);
+    CREATE INDEX IF NOT EXISTS idx_raw_records_type_time ON raw_records (record_type, recorded_at);
+    CREATE INDEX IF NOT EXISTS idx_raw_records_data ON raw_records USING GIN (data)
+  `,
+
+  // Normalized time-series metrics for fast charting queries
+  time_series: `
+    CREATE TABLE IF NOT EXISTS time_series (
+      time            TIMESTAMPTZ NOT NULL,
+      metric          VARCHAR(50) NOT NULL,
+      value           DOUBLE PRECISION NOT NULL,
+      unit            VARCHAR(20) NOT NULL,
+      source          VARCHAR(50) NOT NULL,
+      PRIMARY KEY (time, metric, source)
+    )
+  `,
+
+  time_series_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_time_series_metric_time ON time_series (metric, time DESC)
+  `,
+
+  // Time-ranged activities (sleep, exercise, meditation)
+  activities: `
+    CREATE TABLE IF NOT EXISTS activities (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source          VARCHAR(50) NOT NULL,
+      activity_type   VARCHAR(50) NOT NULL,
+      start_time      TIMESTAMPTZ NOT NULL,
+      end_time        TIMESTAMPTZ,
+      title           VARCHAR(255),
+      notes           TEXT,
+      data            JSONB,
+      CONSTRAINT unique_activity UNIQUE (source, activity_type, start_time)
+    )
+  `,
+
+  activities_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_activities_type_time ON activities (activity_type, start_time DESC);
+    CREATE INDEX IF NOT EXISTS idx_activities_time_range ON activities (start_time, end_time)
+  `,
+
+  // GPS location data with PostGIS support
+  locations: `
+    CREATE TABLE IF NOT EXISTS locations (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source          VARCHAR(50) NOT NULL DEFAULT 'owntracks',
+      time            TIMESTAMPTZ NOT NULL,
+      location        GEOGRAPHY(POINT, 4326) NOT NULL,
+      accuracy        DOUBLE PRECISION,
+      altitude        DOUBLE PRECISION,
+      velocity        DOUBLE PRECISION,
+      regions         VARCHAR[] DEFAULT '{}',
+      CONSTRAINT unique_location UNIQUE (source, time)
+    )
+  `,
+
+  locations_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_locations_time ON locations (time DESC);
+    CREATE INDEX IF NOT EXISTS idx_locations_geo ON locations USING GIST (location)
+  `,
+
+  // Named places / geofences
+  places: `
+    CREATE TABLE IF NOT EXISTS places (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source          VARCHAR(50) NOT NULL DEFAULT 'owntracks',
+      external_id     VARCHAR(255),
+      name            VARCHAR(255) NOT NULL,
+      location        GEOGRAPHY(POINT, 4326) NOT NULL,
+      radius          INTEGER NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT unique_place UNIQUE (source, external_id)
+    )
+  `,
+
+  places_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_places_geo ON places USING GIST (location)
+  `,
+
+  // Activity labels/tags
+  tags: `
+    CREATE TABLE IF NOT EXISTS tags (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source          VARCHAR(50) NOT NULL,
+      external_id     VARCHAR(255),
+      tag             VARCHAR(100) NOT NULL,
+      start_time      TIMESTAMPTZ NOT NULL,
+      end_time        TIMESTAMPTZ,
+      CONSTRAINT unique_tag UNIQUE (source, external_id)
+    )
+  `,
+
+  tags_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_tags_time ON tags (start_time DESC);
+    CREATE INDEX IF NOT EXISTS idx_tags_tag_time ON tags (tag, start_time DESC)
+  `,
+
+  // RescueTime productivity data
+  productivity: `
+    CREATE TABLE IF NOT EXISTS productivity (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source          VARCHAR(50) NOT NULL DEFAULT 'rescuetime',
+      start_time      TIMESTAMPTZ NOT NULL,
+      end_time        TIMESTAMPTZ NOT NULL,
+      activity        VARCHAR(255) NOT NULL,
+      category        VARCHAR(100),
+      productivity    SMALLINT,
+      duration_sec    INTEGER NOT NULL,
+      is_mobile       BOOLEAN DEFAULT FALSE,
+      CONSTRAINT unique_productivity UNIQUE (source, start_time, activity)
+    )
+  `,
+
+  productivity_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_productivity_time ON productivity (start_time DESC);
+    CREATE INDEX IF NOT EXISTS idx_productivity_category ON productivity (category, start_time DESC)
+  `,
+
+  // Lab results / blood work
+  lab_results: `
+    CREATE TABLE IF NOT EXISTS lab_results (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      test_date       DATE NOT NULL,
+      test_name       VARCHAR(100) NOT NULL,
+      test_category   VARCHAR(50),
+      value           DOUBLE PRECISION NOT NULL,
+      unit            VARCHAR(30) NOT NULL,
+      reference_low   DOUBLE PRECISION,
+      reference_high  DOUBLE PRECISION,
+      flag            VARCHAR(10),
+      lab_name        VARCHAR(100),
+      notes           TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
+  lab_results_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_lab_results_date ON lab_results (test_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_lab_results_test ON lab_results (test_name, test_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_lab_results_category ON lab_results (test_category, test_date DESC)
+  `,
+
+  // OAuth tokens for third-party APIs
+  oauth_tokens: `
+    CREATE TABLE IF NOT EXISTS oauth_tokens (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      provider        VARCHAR(50) NOT NULL,
+      access_token    TEXT NOT NULL,
+      refresh_token   TEXT,
+      expires_at      TIMESTAMPTZ,
+      scopes          VARCHAR[],
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT unique_provider UNIQUE (provider)
+    )
+  `,
+}
+
+/**
+ * Order in which tables should be created (respecting dependencies).
+ */
+export const tableCreationOrder = [
+  'raw_records',
+  'raw_records_indexes',
+  'time_series',
+  'time_series_indexes',
+  'activities',
+  'activities_indexes',
+  'locations',
+  'locations_indexes',
+  'places',
+  'places_indexes',
+  'tags',
+  'tags_indexes',
+  'productivity',
+  'productivity_indexes',
+  'lab_results',
+  'lab_results_indexes',
+  'oauth_tokens',
+]
+
+/**
+ * Supported data sources.
+ */
+export type DataSource =
+  | 'health_connect'
+  | 'oura'
+  | 'garmin'
+  | 'rescuetime'
+  | 'owntracks'
+  | 'manual'
+
+/**
+ * Metric types for time_series table.
+ */
+export type MetricType =
+  | 'heart_rate'
+  | 'resting_heart_rate'
+  | 'hrv_rmssd'
+  | 'weight'
+  | 'body_fat'
+  | 'bone_mass'
+  | 'lean_body_mass'
+  | 'body_water_mass'
+  | 'height'
+  | 'steps'
+  | 'distance'
+  | 'floors_climbed'
+  | 'calories_active'
+  | 'calories_total'
+  | 'calories_basal'
+  | 'spo2'
+  | 'respiratory_rate'
+  | 'body_temperature'
+  | 'basal_body_temperature'
+  | 'blood_glucose'
+  | 'blood_pressure_systolic'
+  | 'blood_pressure_diastolic'
+  | 'vo2_max'
+  | 'readiness_score'
+  | 'resilience_score'
+  | 'productivity_score'
+
+/**
+ * Activity types for activities table.
+ */
+export type ActivityType =
+  | 'sleep'
+  | 'exercise'
+  | 'meditation'
+  | 'nap'
+
+/**
+ * Unit definitions for metrics.
+ */
+export const metricUnits: Record<MetricType, string> = {
+  heart_rate: 'bpm',
+  resting_heart_rate: 'bpm',
+  hrv_rmssd: 'ms',
+  weight: 'kg',
+  body_fat: 'percent',
+  bone_mass: 'kg',
+  lean_body_mass: 'kg',
+  body_water_mass: 'kg',
+  height: 'm',
+  steps: 'count',
+  distance: 'm',
+  floors_climbed: 'count',
+  calories_active: 'kcal',
+  calories_total: 'kcal',
+  calories_basal: 'kcal',
+  spo2: 'percent',
+  respiratory_rate: 'brpm',
+  body_temperature: 'celsius',
+  basal_body_temperature: 'celsius',
+  blood_glucose: 'mmol/L',
+  blood_pressure_systolic: 'mmHg',
+  blood_pressure_diastolic: 'mmHg',
+  vo2_max: 'mL/kg/min',
+  readiness_score: 'score',
+  resilience_score: 'score',
+  productivity_score: 'score',
+}
+
+/**
+ * Mapping from Health Connect record types to our metric types.
+ */
+export const healthConnectMetricMapping: Record<string, MetricType | null> = {
+  HeartRateRecord: 'heart_rate',
+  RestingHeartRateRecord: 'resting_heart_rate',
+  HeartRateVariabilityRmssdRecord: 'hrv_rmssd',
+  WeightRecord: 'weight',
+  BodyFatRecord: 'body_fat',
+  BoneMassRecord: 'bone_mass',
+  LeanBodyMassRecord: 'lean_body_mass',
+  BodyWaterMassRecord: 'body_water_mass',
+  HeightRecord: 'height',
+  StepsRecord: 'steps',
+  DistanceRecord: 'distance',
+  FloorsClimbedRecord: 'floors_climbed',
+  ActiveCaloriesBurnedRecord: 'calories_active',
+  TotalCaloriesBurnedRecord: 'calories_total',
+  BasalMetabolicRateRecord: 'calories_basal',
+  OxygenSaturationRecord: 'spo2',
+  RespiratoryRateRecord: 'respiratory_rate',
+  BodyTemperatureRecord: 'body_temperature',
+  BasalBodyTemperatureRecord: 'basal_body_temperature',
+  BloodGlucoseRecord: 'blood_glucose',
+  BloodPressureRecord: null, // Handled specially (two metrics)
+  Vo2MaxRecord: 'vo2_max',
+}
+
+/**
+ * Health Connect record types that map to activities.
+ */
+export const healthConnectActivityMapping: Record<string, ActivityType | null> = {
+  SleepSessionRecord: 'sleep',
+  ExerciseSessionRecord: 'exercise',
+}

@@ -4,13 +4,23 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 import { subHours } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
-import format from 'pg-format'
-import { getHcData, getLocations, loginToUserDb, query, tableExists } from './db'
-import { getHeartRate } from './models/heartrate'
-import { getTags } from './models/tags'
+import {
+  getHcData,
+  getLocations,
+  getProductivity,
+  getTimeSeries,
+  getTags,
+  initializeSchema,
+  insertLocation,
+  insertPlace,
+  insertProductivity,
+  loginToUserDb,
+  processHealthConnectData,
+  query,
+  schemaInitialized,
+} from './db'
 import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
-import { formatValue } from './sql'
 import { getTimeline } from './ui'
 
 declare global {
@@ -90,6 +100,10 @@ const main = async () => {
     if (userRows.rowCount === 1) {
       try {
         await loginToUserDb(user, password)
+        // Ensure schema is initialized
+        if (!(await schemaInitialized(user))) {
+          await initializeSchema(user)
+        }
       } catch (err) {
         console.log(err)
         return next(unauthorized)
@@ -128,51 +142,9 @@ const main = async () => {
 
       const user = req.user!
 
-      if (!(await tableExists(user, 'hcdata'))) {
-        await query(
-          user,
-          `CREATE TABLE "hcdata" (
-          id           VARCHAR PRIMARY KEY,
-          "recordType" VARCHAR,
-          metadata     JSONB,
-          app          VARCHAR,
-          time         TIMESTAMPTZ,
-          "startTime"  TIMESTAMPTZ,
-          "endTime"    TIMESTAMPTZ,
-          data         JSONB
-        )`,
-        )
-      }
-
+      // Process each Health Connect record through the new schema
       for (const item of data) {
-        const id = item.metadata.id
-        const { metadata, time, startTime, endTime, ...dataObj } = item
-        const dataTuples = Object.entries({
-          id,
-          recordType,
-          metadata,
-          time,
-          startTime,
-          endTime,
-          data: dataObj,
-        }).filter(([_, v]) => !!v)
-
-        await query(
-          user,
-          `
-        INSERT INTO "hcdata"
-          (${dataTuples.map(([k]) => `"${k}"`).join(',')})
-         VALUES(${dataTuples
-            .map(([, v]) => v)
-            .map(formatValue)
-            .join(',')})
-         ON CONFLICT (id) DO UPDATE SET
-            ${dataTuples
-            .filter(([k]) => k !== 'id')
-            .map(([k, v]) => `"${k}" = ${formatValue(v)}`)
-            .join(' , ')}
-      `,
-        ) // TODO use db params
+        await processHealthConnectData(user, recordType, item)
       }
 
       res.json({ success: true })
@@ -183,84 +155,72 @@ const main = async () => {
   httpd.get('/auth/ouracb', oura.authCb)
 
   httpd.post('/ownTracks', async (req, res) => {
-    const { topic, _id: id, _type: type } = req.body
+    const { topic, _type: type } = req.body
 
     const user = topic.split('/')[1]
 
     if (type === 'status') {
+      // Status messages are informational, no storage needed
     } else if (type === 'waypoint') {
-      if (!(await tableExists(user, 'waypoints'))) {
-        await query(
-          user,
-          `CREATE TABLE "waypoints" (
-          id       VARCHAR PRIMARY KEY,
-          name     VARCHAR,
-          tst      TIMESTAMPTZ,
-          location GEOGRAPHY(POINT, 4326),
-          rad      INTEGER,
-          rid      VARCHAR
-        )`,
-        )
-      }
-
       const { lat, lon, tst, desc, rad, rid } = req.body
-      await query(
-        user,
-        format(
-          'INSERT INTO "waypoints" (id,name,tst,location,rad,rid) VALUES(%L, %L, %L, ST_MakePoint(%L, %L), %L, %L) ON CONFLICT (id) DO NOTHING',
-          id,
-          desc,
-          new Date(tst * 1000).toISOString(),
-          lon,
-          lat,
-          rad,
-          rid,
-        ),
-      )
+      await insertPlace(user, {
+        source: 'owntracks',
+        externalId: rid,
+        name: desc,
+        lat,
+        lon,
+        radius: rad,
+      })
     } else if (type === 'location') {
-      if (!(await tableExists(user, 'owntracks'))) {
-        await query(
-          user,
-          `CREATE TABLE "owntracks" (
-             id        VARCHAR PRIMARY KEY,
-             tst       TIMESTAMPTZ,
-             location  GEOGRAPHY(POINT, 4326),
-             inregions VARCHAR[]
-           )`,
-        )
-      }
-
-      const { lat, lon, tst, inregions } = req.body
-      await query(
-        user,
-        format(
-          'INSERT INTO "owntracks" (id,tst,location,inregions) VALUES(%L, %L, ST_MakePoint(%L, %L), array[%L]) ON CONFLICT (id) DO NOTHING',
-          id,
-          new Date(tst * 1000).toISOString(),
-          lon,
-          lat,
-          inregions,
-        ),
-      )
+      const { lat, lon, tst, inregions, acc, alt, vel } = req.body
+      await insertLocation(user, {
+        source: 'owntracks',
+        time: new Date(tst * 1000),
+        lat,
+        lon,
+        accuracy: acc,
+        altitude: alt,
+        velocity: vel,
+        regions: inregions,
+      })
     }
 
     res.end(`[]`)
   })
 
   httpd.get('/dump', async (req, res) => {
-    const { username: user } = req.query
+    const { username: user } = req.query as { username: string }
 
     const now = new Date()
     //const start = subHours(now, 26) // TODO: Find yesterday's wakeup time?
     const start = subHours(now, 26 + 24 * 7) // TODO..
     const end = now // addDays(now, 1)
 
-    const { locations, places } = getLocations(start, end, user)
+    const { locations, places } = await getLocations(user, start, end)
 
     const access_token = await oura.getAccessToken(user)
 
     const hcData = await getHcData(start, end, user)
-    const rtData = await rescuetimeClient(process.env.RESCUETIME_KEY).getIntervalData(start, end)
+    const tags = await getTags(user, start, end)
+
+    // Get productivity data from storage, falling back to RescueTime API
+    let rtData = await getProductivity(user, start, end)
+    if (rtData.length === 0 && process.env.RESCUETIME_KEY) {
+      const freshData = await rescuetimeClient(process.env.RESCUETIME_KEY).getIntervalData(start, end)
+      // Store fetched data for future use
+      const productivityRecords = freshData.map((r) => ({
+        source: 'rescuetime' as const,
+        startTime: r.startTime,
+        endTime: r.endTime,
+        activity: r.activity,
+        category: r.category,
+        productivity: r.productivity,
+        durationSec: r.duration,
+        isMobile: r.mobile,
+      }))
+      await insertProductivity(user, productivityRecords)
+      rtData = productivityRecords
+    }
 
     res.writeHead(200, {
       'Content-Type': 'application/json',
@@ -272,7 +232,7 @@ const main = async () => {
         locations,
         places,
         rtData,
-        tags: await oura.getTags(start, end, access_token),
+        tags,
         sessions: await oura.getSessions(start, end, access_token),
         dailySleep: await oura.getDailySleep(start, end, access_token),
         dailyResilience: await oura.getDailyResilience(start, end, access_token),
@@ -288,21 +248,23 @@ const main = async () => {
   })
 
   httpd.get('/api/v2/heartrate', auth, async (req, res, next) => {
-    const start = new Date(req.query.start)
-    const end = new Date(req.query.end)
-    const hrs = await getHeartRate(req.user, start, end, oura)
+    const start = new Date(req.query.start as string)
+    const end = new Date(req.query.end as string)
+    const user = req.user!
+
+    const hrs = await getTimeSeries(user, 'heart_rate', start, end)
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(hrs))
   })
 
   httpd.get('/api/v2/tags', auth, async (req, res, next) => {
-    const start = new Date(req.query.start)
-    const end = new Date(req.query.end)
-    const user = req.user
+    const start = new Date(req.query.start as string)
+    const end = new Date(req.query.end as string)
+    const user = req.user!
     console.log({ user, start, end })
 
-    const tags = await getTags(user, start, end, oura)
+    const tags = await getTags(user, start, end)
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(tags))
   })

@@ -1,7 +1,6 @@
 import axios from 'axios'
-import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture, isPast } from 'date-fns'
-import format from 'pg-format'
-import { query, tableExists, Tag } from './db'
+import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture } from 'date-fns'
+import { Tag, upsertOAuthToken, getOAuthToken, schemaInitialized, initializeSchema } from './db'
 
 type OuraTag = {
   id: string
@@ -56,16 +55,9 @@ export const ouraClient = (client: string, secret: string) => {
 
       const user = state
 
-      if (!tableExists(user, 'ouraauth')) {
-        await query(
-          user,
-          `CREATE TABLE "ouraauth" (
-          access_token   VARCHAR,
-          refresh_token  VARCHAR,
-          expires_in     INTEGER,
-          time           TIMESTAMPTZ
-        )`,
-        )
+      // Ensure schema is initialized for this user
+      if (!(await schemaInitialized(user))) {
+        await initializeSchema(user)
       }
 
       const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
@@ -80,50 +72,49 @@ export const ouraClient = (client: string, secret: string) => {
 
       const { access_token, refresh_token, expires_in } = response.data
 
-      await query(
-        user,
-        format(
-          'INSERT INTO "ouraauth" (access_token,refresh_token,expires_in,time) VALUES(%L, %L, %L, CURRENT_TIMESTAMP)',
-          access_token,
-          refresh_token,
-          expires_in,
-        ),
-      )
+      await upsertOAuthToken(user, {
+        provider: 'oura',
+        accessToken: access_token,
+        refreshToken: refresh_token,
+        expiresAt: addSeconds(new Date(), expires_in),
+        scopes: scope ? scope.split(' ') : undefined,
+      })
 
       res.end()
     },
 
     async getAccessToken(user: string) {
-      const { rows } = await query(user, 'SELECT * FROM ouraauth ORDER BY time DESC LIMIT 1')
-      if (!rows) throw new Error('User has no ouraauth')
+      const token = await getOAuthToken(user, 'oura')
+      if (!token) throw new Error('User has no Oura OAuth token')
 
-      console.log(addSeconds(new Date(rows[0].time), rows[0].expires_in - 100))
-      console.log(isPast(addSeconds(new Date(rows[0].time), rows[0].expires_in - 100)))
+      // Return token if not expired (with 100 second buffer)
+      if (token.expiresAt && isFuture(addSeconds(token.expiresAt, -100))) {
+        return token.accessToken
+      }
 
-      if (isFuture(addSeconds(new Date(rows[0].time), rows[0].expires_in - 100))) return rows[0].access_token
+      // Refresh the token
       const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
       tokenUrl.searchParams.append('grant_type', 'refresh_token')
-      tokenUrl.searchParams.append('refresh_token', rows[0].refresh_token)
+      tokenUrl.searchParams.append('refresh_token', token.refreshToken!)
       tokenUrl.searchParams.append('client_id', client)
       tokenUrl.searchParams.append('client_secret', secret)
 
       const response = await axios.post(tokenUrl.toString())
       console.log(response.data)
       const { access_token, refresh_token, expires_in } = response.data
-      await query(
-        user,
-        format(
-          'INSERT INTO "ouraauth" (access_token,refresh_token,expires_in,time) VALUES(%L, %L, %L, CURRENT_TIMESTAMP)',
-          access_token,
-          refresh_token,
-          expires_in,
-        ),
-      )
+
+      await upsertOAuthToken(user, {
+        provider: 'oura',
+        accessToken: access_token,
+        refreshToken: refresh_token,
+        expiresAt: addSeconds(new Date(), expires_in),
+      })
+
       return access_token
     },
 
     async getTags(start: Date, end: Date, token: string): Promise<Tag[]> {
-      const customTags = {
+      const customTags: Record<string, string> = {
         'f830b90b-0689-42a1-bfe7-ea1b4487d0c3': 'Food',
         '067e2862-8cf8-4307-a621-0636dd379cda': 'Hot Chocolate',
         '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a': 'YinYoga',
@@ -135,8 +126,10 @@ export const ouraClient = (client: string, secret: string) => {
         .map(
           (tag): Tag => ({
             source: 'oura',
-            id: tag.id,
-            tag: tag.tag_type_code in customTags ? customTags[tag.tag_type_code] : tag.tag_type_code,
+            externalId: tag.id,
+            tag: tag.tag_type_code && tag.tag_type_code in customTags
+              ? customTags[tag.tag_type_code]
+              : tag.tag_type_code || 'unknown',
             startTime: new Date(tag.start_time),
             endTime: tag.end_time ? new Date(tag.end_time) : undefined,
           }),
