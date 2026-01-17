@@ -7,7 +7,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "lint": "eslint src",
+    "fix": "eslint --fix src",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@preact/signals": "^2.3.1",
@@ -26,7 +30,8 @@
     "eslint-config-preact": "^2.0.0",
     "eslint-plugin-prettier": "^5.5.4",
     "eslint-plugin-sort-keys": "^2.3.5",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "vitest": "^3.2.4"
   },
   "eslintConfig": {
     "extends": "preact"

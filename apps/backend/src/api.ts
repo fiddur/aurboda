@@ -10,20 +10,8 @@ import { getHeartRate } from './models/heartrate'
 import { getTags } from './models/tags'
 import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
+import { formatValue } from './sql'
 import { getTimeline } from './ui'
-
-const formatValue = (v: unknown): string =>
-  Array.isArray(v)
-    ? `'{ "${v.join('","')}" }'`
-    : typeof v === 'number'
-      ? String(v)
-      : typeof v === 'boolean'
-        ? String(v)
-        : v === null
-          ? 'NULL'
-          : typeof v === 'string'
-            ? `'${(v as string).replaceAll("'", "''")}'`
-            : `'${JSON.stringify(v).replaceAll("'", "''")}'`
 
 declare global {
   namespace Express {
