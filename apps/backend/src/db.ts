@@ -10,7 +10,6 @@ import {
   metricUnits,
   tableCreationOrder,
 } from './schema'
-import { reduceTimeSeries } from './utils'
 
 const dbByUser: Record<string, Client> = {}
 
@@ -727,46 +726,4 @@ function extractTimeSeriesPoints(
       source: 'health_connect' as DataSource,
     },
   ]
-}
-
-// ============================================================================
-// Legacy compatibility - to be removed after migration
-// ============================================================================
-
-export type HcData = {
-  id: string
-  recordType: string
-  metadata: Record<string, unknown>
-  time: Date | null
-  startTime: Date | null
-  endTime: Date | null
-  data: Record<string, unknown>
-}
-
-/**
- * @deprecated Use getTimeSeries and getActivities instead
- */
-export const getHcData = async (start: Date, end: Date, user: string) => {
-  // Get heart rate from time_series
-  const heartRates = await getTimeSeries(user, 'heart_rate', start, end)
-
-  // Get activities
-  const sleepSessions = await getActivities(user, 'sleep', start, end)
-  const exerciseSessions = await getActivities(user, 'exercise', start, end)
-
-  return {
-    heartRates: reduceTimeSeries(heartRates),
-    sleepSessions: sleepSessions.map((s) => ({
-      ...s.data,
-      startTime: s.startTime,
-      endTime: s.endTime,
-      metadata: {},
-    })),
-    exerciseSessions: exerciseSessions.map((e) => ({
-      ...e.data,
-      startTime: e.startTime,
-      endTime: e.endTime,
-      metadata: {},
-    })),
-  }
 }

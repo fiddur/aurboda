@@ -5,7 +5,7 @@ import { subHours } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import {
-  getHcData,
+  getActivities,
   getLocations,
   getProductivity,
   getTimeSeries,
@@ -19,6 +19,7 @@ import {
   query,
   schemaInitialized,
 } from './db'
+import { reduceTimeSeries } from './utils'
 import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
 import { getTimeline } from './ui'
@@ -200,7 +201,10 @@ const main = async () => {
 
     const access_token = await oura.getAccessToken(user)
 
-    const hcData = await getHcData(start, end, user)
+    // Get data from new schema
+    const heartRates = reduceTimeSeries(await getTimeSeries(user, 'heart_rate', start, end))
+    const sleepSessions = await getActivities(user, 'sleep', start, end)
+    const exerciseSessions = await getActivities(user, 'exercise', start, end)
     const tags = await getTags(user, start, end)
 
     // Get productivity data from storage, falling back to RescueTime API
@@ -228,7 +232,9 @@ const main = async () => {
     })
     res.end(
       JSON.stringify({
-        ...hcData,
+        heartRates,
+        sleepSessions,
+        exerciseSessions,
         locations,
         places,
         rtData,
