@@ -1,0 +1,31 @@
+{
+  "name": "nephelai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Collect and aggregate your Quantified Self data",
+  "license": "AGPL-3.0-or-later",
+  "author": "Fredrik Liljegren <fredrik@liljegren.org>",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "dev:web": "pnpm --filter @nephelai/web dev",
+    "dev:backend": "pnpm --filter @nephelai/backend watch",
+    "build": "pnpm -r build",
+    "build:web": "pnpm --filter @nephelai/web build",
+    "lint": "pnpm -r lint",
+    "fix": "pnpm -r fix",
+    "test": "pnpm -r test",
+    "clean": "rm -rf node_modules apps/*/node_modules",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "eslint": "^9.36.0",
+    "prettier": "^3.6.2",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,6 +1,6 @@
-module.exports = {
+export default {
   plugins: ['prettier-plugin-organize-imports'],
-  printWidth: 110,
+  printWidth: 100,
   semi: false,
   singleQuote: true,
   tabWidth: 2,
