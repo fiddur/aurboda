@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { fetchHeartRate } from '../../state/api'
+import { preprocessData } from '../../utils/chart'
 
 // Signals to handle user-selected dates
 const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
@@ -87,17 +88,4 @@ function LineChart({ data }: { data: [Date, number][] }) {
       />
     </svg>
   )
-}
-
-const preprocessData = (
-  data: [Date, number][],
-  gapThresholdMinutes: number,
-): ([Date, number] | null)[] => {
-  const thresholdMs = gapThresholdMinutes * 60 * 1000
-  return data.reduce<[Date, number][]>((acc, curr) => {
-    const last = acc.at(-1)
-    return last && curr[0].getTime() - last[0].getTime() > thresholdMs
-      ? [...acc, null, curr]
-      : [...acc, curr]
-  }, [])
 }

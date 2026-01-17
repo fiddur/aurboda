@@ -1,0 +1,105 @@
+import java.util.Properties
+import java.io.FileInputStream
+import java.io.File // Assuming this was added to fix the previous 'Unresolved reference: io'
+
+configurations.all {
+    resolutionStrategy {
+        force("org.jetbrains.kotlin:kotlin-stdlib:1.9.0") // Example version
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0") // If you use jdk8 variant
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0") // If you use jdk7 variant
+    }
+}
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.22"
+}
+
+// Function to load properties from local.properties
+fun getLocalProperty(key: String, projectRootDir: File): String { // Assuming changed to File
+    val properties = Properties()
+    val localPropertiesFile = File(projectRootDir, "local.properties") // Assuming changed to File
+    if (localPropertiesFile.exists()) {
+        FileInputStream(localPropertiesFile).use { stream -> properties.load(stream) } // Changed lambda parameter
+    }
+    return properties.getProperty(key) ?: ""
+}
+
+android {
+    namespace = "se.hokasgard.nephelaiapp"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "se.hokasgard.nephelaiapp"
+        minSdk = 34
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val nepheliaiApiToken = getLocalProperty("nepheliaiApiToken", rootDir)
+        buildConfigField("String", "NEPHELIAI_API_TOKEN", "\"$nepheliaiApiToken\"")
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            val nepheliaiApiToken = getLocalProperty("nepheliaiApiToken", rootDir)
+            buildConfigField("String", "NEPHELIAI_API_TOKEN", "\"$nepheliaiApiToken\"")
+        }
+        debug {
+            // BuildConfig fields are often defined per build type, or in defaultConfig for all
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+    packagingOptions { 
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+dependencies {
+    implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.9.0")) // Example version, use your project's Kotlin version
+    implementation("org.jetbrains.kotlin:kotlin-stdlib")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation("androidx.health.connect:connect-client:1.2.0-alpha01")
+
+    implementation("io.ktor:ktor-client-android:2.3.8")
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.8")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.8")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
