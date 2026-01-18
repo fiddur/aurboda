@@ -19,6 +19,7 @@ import {
   query,
   schemaInitialized,
 } from './db'
+import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
 import { getTimeline } from './ui'
@@ -69,6 +70,9 @@ const main = async () => {
     console.log(req.path, req.body)
     next()
   })
+
+  // Mount MCP server for AI assistant integration
+  httpd.use('/mcp', createMcpRouter({ sessionSalt: config.sessionSalt }))
 
   const auth: RequestHandler = (req, res, next) => {
     try {
