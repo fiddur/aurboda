@@ -8,18 +8,36 @@ importers:
 
   .:
     devDependencies:
+      '@eslint/js':
+        specifier: ^9.13.0
+        version: 9.38.0
+      '@types/eslint':
+        specifier: ^9.6.1
+        version: 9.6.1
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.12.2
+        version: 8.46.1(@typescript-eslint/parser@8.46.1(eslint@9.38.0)(typescript@5.9.3))(eslint@9.38.0)(typescript@5.9.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.12.2
+        version: 8.46.1(eslint@9.38.0)(typescript@5.9.3)
       eslint:
         specifier: ^9.36.0
         version: 9.38.0
       eslint-config-preact:
         specifier: ^2.0.0
         version: 2.0.0(eslint@9.38.0)
+      eslint-config-prettier:
+        specifier: ^10.1.8
+        version: 10.1.8(eslint@9.38.0)
       eslint-plugin-prettier:
         specifier: ^5.5.4
-        version: 5.5.4(@types/eslint@9.6.1)(eslint@9.38.0)(prettier@3.6.2)
+        version: 5.5.4(@types/eslint@9.6.1)(eslint-config-prettier@10.1.8(eslint@9.38.0))(eslint@9.38.0)(prettier@3.6.2)
       eslint-plugin-sort-keys:
         specifier: ^2.3.5
         version: 2.3.5
+      globals:
+        specifier: ^15.11.0
+        version: 15.15.0
       prettier:
         specifier: ^3.6.2
         version: 3.6.2
@@ -32,6 +50,9 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.12.2
+        version: 8.46.1(eslint@9.38.0)(typescript@5.9.3)
 
   apps/backend:
     dependencies:
@@ -66,9 +87,6 @@ importers:
         specifier: ^1.0.4
         version: 1.0.4
     devDependencies:
-      '@eslint/js':
-        specifier: ^9.13.0
-        version: 9.38.0
       '@tsconfig/node22':
         specifier: ^22.0.2
         version: 22.0.2
@@ -81,9 +99,6 @@ importers:
       '@types/d3':
         specifier: ^7.4.3
         version: 7.4.3
-      '@types/eslint':
-        specifier: ^9.6.1
-        version: 9.6.1
       '@types/express':
         specifier: ^5.0.3
         version: 5.0.3
@@ -99,33 +114,6 @@ importers:
       '@types/pg-format':
         specifier: ^1.0.5
         version: 1.0.5
-      '@typescript-eslint/eslint-plugin':
-        specifier: ^8.12.2
-        version: 8.46.1(@typescript-eslint/parser@8.46.1(eslint@9.38.0)(typescript@5.9.3))(eslint@9.38.0)(typescript@5.9.3)
-      '@typescript-eslint/parser':
-        specifier: ^8.12.2
-        version: 8.46.1(eslint@9.38.0)(typescript@5.9.3)
-      eslint:
-        specifier: ^9.13.0
-        version: 9.38.0
-      eslint-plugin-prettier:
-        specifier: ^5.2.1
-        version: 5.5.4(@types/eslint@9.6.1)(eslint@9.38.0)(prettier@3.6.2)
-      eslint-plugin-sort-keys:
-        specifier: ^2.3.5
-        version: 2.3.5
-      globals:
-        specifier: ^15.11.0
-        version: 15.15.0
-      prettier:
-        specifier: ^3.3.3
-        version: 3.6.2
-      prettier-plugin-organize-imports:
-        specifier: ^4.1.0
-        version: 4.3.0(prettier@3.6.2)(typescript@5.9.3)
-      typescript-eslint:
-        specifier: ^8.12.2
-        version: 8.46.1(eslint@9.38.0)(typescript@5.9.3)
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.18.11)(jsdom@26.1.0)(tsx@4.20.6)
@@ -171,13 +159,16 @@ importers:
         version: 2.0.0(eslint@9.38.0)
       eslint-plugin-prettier:
         specifier: ^5.5.4
-        version: 5.5.4(@types/eslint@9.6.1)(eslint@9.38.0)(prettier@3.6.2)
+        version: 5.5.4(@types/eslint@9.6.1)(eslint-config-prettier@10.1.8(eslint@9.38.0))(eslint@9.38.0)(prettier@3.6.2)
       eslint-plugin-sort-keys:
         specifier: ^2.3.5
         version: 2.3.5
       vite:
         specifier: ^7.1.7
         version: 7.1.10(@types/node@22.18.11)(tsx@4.20.6)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.18.11)(jsdom@26.1.0)(tsx@4.20.6)
 
 packages:
 
@@ -1495,6 +1486,12 @@ packages:
     peerDependencies:
       eslint: ^8.57.1 || ^9.0.0
 
+  eslint-config-prettier@10.1.8:
+    resolution: {integrity: sha512-82GZUjRS0p/jganf6q1rEO25VSoHH0hKPCTrgillPjdI/3bgBhAE1QzHrHTizjpRvy6pGAvKjDJtk2pF9NDq8w==}
+    hasBin: true
+    peerDependencies:
+      eslint: '>=7.0.0'
+
   eslint-plugin-compat@6.0.2:
     resolution: {integrity: sha512-1ME+YfJjmOz1blH0nPZpHgjMGK4kjgEeoYqGCqoBPQ/mGu/dJzdoP0f1C8H2jcWZjzhZjAMccbM/VdXhPORIfA==}
     engines: {node: '>=18.x'}
@@ -2767,6 +2764,7 @@ packages:
   whatwg-encoding@3.1.1:
     resolution: {integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==}
     engines: {node: '>=18'}
+    deprecated: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 
   whatwg-mimetype@4.0.0:
     resolution: {integrity: sha512-QaKxh0eNIi2mE9p2vEdzfagOKHCcj1pJ56EEHGQOVxp8r9/iszLUUV7v89x9O1p/T+NlTM5W7jW6+cz4Fq1YVg==}
@@ -4334,6 +4332,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  eslint-config-prettier@10.1.8(eslint@9.38.0):
+    dependencies:
+      eslint: 9.38.0
+
   eslint-plugin-compat@6.0.2(eslint@9.38.0):
     dependencies:
       '@mdn/browser-compat-data': 5.7.6
@@ -4346,7 +4348,7 @@ snapshots:
       lodash.memoize: 4.1.2
       semver: 7.7.3
 
-  eslint-plugin-prettier@5.5.4(@types/eslint@9.6.1)(eslint@9.38.0)(prettier@3.6.2):
+  eslint-plugin-prettier@5.5.4(@types/eslint@9.6.1)(eslint-config-prettier@10.1.8(eslint@9.38.0))(eslint@9.38.0)(prettier@3.6.2):
     dependencies:
       eslint: 9.38.0
       prettier: 3.6.2
@@ -4354,6 +4356,7 @@ snapshots:
       synckit: 0.11.11
     optionalDependencies:
       '@types/eslint': 9.6.1
+      eslint-config-prettier: 10.1.8(eslint@9.38.0)
 
   eslint-plugin-react-hooks@5.2.0(eslint@9.38.0):
     dependencies:

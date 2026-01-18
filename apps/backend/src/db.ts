@@ -227,14 +227,14 @@ export const getActivities = async (
   )
 
   return result.rows.map((row) => ({
-    id: row.id,
-    source: row.source,
     activityType: row.activity_type,
-    startTime: new Date(row.start_time),
-    endTime: row.end_time ? new Date(row.end_time) : undefined,
-    title: row.title,
-    notes: row.notes,
     data: row.data,
+    endTime: row.end_time ? new Date(row.end_time) : undefined,
+    id: row.id,
+    notes: row.notes,
+    source: row.source,
+    startTime: new Date(row.start_time),
+    title: row.title,
   }))
 }
 
@@ -284,25 +284,22 @@ export const getLocations = async (user: string, start: Date, end: Date) => {
   )
 
   const locations = result.rows.map((row) => ({
-    time: new Date(row.time),
     coordinates: JSON.parse(row.location).coordinates as [number, number],
     regions: row.regions,
+    time: new Date(row.time),
   }))
 
   // Aggregate consecutive same-region visits into places
-  const places = locations.reduce<{ region: string; startTime: Date; endTime: Date }[]>(
-    (acc, loc) => {
-      const region = loc.regions?.[0] || 'Somewhere'
+  const places = locations.reduce<{ region: string; startTime: Date; endTime: Date }[]>((acc, loc) => {
+    const region = loc.regions?.[0] || 'Somewhere'
 
-      if (acc.length > 0 && acc[acc.length - 1].region === region) {
-        acc[acc.length - 1].endTime = loc.time
-        return acc
-      }
+    if (acc.length > 0 && acc[acc.length - 1].region === region) {
+      acc[acc.length - 1].endTime = loc.time
+      return acc
+    }
 
-      return [...acc, { region, startTime: loc.time, endTime: loc.time }]
-    },
-    [],
-  )
+    return [...acc, { endTime: loc.time, region, startTime: loc.time }]
+  }, [])
 
   return { locations, places }
 }
@@ -371,12 +368,12 @@ export const getTags = async (user: string, start: Date, end: Date): Promise<Tag
   )
 
   return result.rows.map((row) => ({
+    endTime: row.end_time ? new Date(row.end_time) : undefined,
+    externalId: row.external_id,
     id: row.id,
     source: row.source,
-    externalId: row.external_id,
-    tag: row.tag,
     startTime: new Date(row.start_time),
-    endTime: row.end_time ? new Date(row.end_time) : undefined,
+    tag: row.tag,
   }))
 }
 
@@ -439,14 +436,14 @@ export const getProductivity = async (
   )
 
   return result.rows.map((row) => ({
-    source: row.source,
-    startTime: new Date(row.start_time),
-    endTime: new Date(row.end_time),
     activity: row.activity,
     category: row.category,
-    productivity: row.productivity,
     durationSec: row.duration_sec,
+    endTime: new Date(row.end_time),
     isMobile: row.is_mobile,
+    productivity: row.productivity,
+    source: row.source,
+    startTime: new Date(row.start_time),
   }))
 }
 
@@ -507,17 +504,17 @@ export const getLabResults = async (
   const result = await query(user, sql, params)
 
   return result.rows.map((row) => ({
-    id: row.id,
-    testDate: new Date(row.test_date),
-    testName: row.test_name,
-    testCategory: row.test_category,
-    value: row.value,
-    unit: row.unit,
-    referenceLow: row.reference_low,
-    referenceHigh: row.reference_high,
     flag: row.flag,
+    id: row.id,
     labName: row.lab_name,
     notes: row.notes,
+    referenceHigh: row.reference_high,
+    referenceLow: row.reference_low,
+    testCategory: row.test_category,
+    testDate: new Date(row.test_date),
+    testName: row.test_name,
+    unit: row.unit,
+    value: row.value,
   }))
 }
 
@@ -561,10 +558,10 @@ export const getOAuthToken = async (user: string, provider: string): Promise<OAu
 
   const row = result.rows[0]
   return {
-    provider: row.provider,
     accessToken: row.access_token,
-    refreshToken: row.refresh_token,
     expiresAt: row.expires_at ? new Date(row.expires_at) : undefined,
+    provider: row.provider,
+    refreshToken: row.refresh_token,
     scopes: row.scopes,
   }
 }
@@ -585,11 +582,11 @@ export const processHealthConnectData = async (
 
   // Always store raw record
   await insertRawRecord(user, {
-    source: 'health_connect',
-    recordType,
-    externalId,
-    recordedAt: new Date((data.startTime || data.time) as string),
     data,
+    externalId,
+    recordType,
+    recordedAt: new Date((data.startTime || data.time) as string),
+    source: 'health_connect',
   })
 
   // Normalize to time_series if applicable
@@ -606,16 +603,16 @@ export const processHealthConnectData = async (
     const time = new Date((data.time as string) || (data.startTime as string))
     await insertTimeSeries(user, [
       {
-        time,
         metric: 'blood_pressure_systolic',
-        value: data.systolicInMmHg as number,
         source: 'health_connect',
+        time,
+        value: data.systolicInMmHg as number,
       },
       {
-        time,
         metric: 'blood_pressure_diastolic',
-        value: data.diastolicInMmHg as number,
         source: 'health_connect',
+        time,
+        value: data.diastolicInMmHg as number,
       },
     ])
   }
@@ -624,13 +621,13 @@ export const processHealthConnectData = async (
   const activityType = healthConnectActivityMapping[recordType]
   if (activityType) {
     await insertActivity(user, {
-      source: 'health_connect',
       activityType,
-      startTime: new Date(data.startTime as string),
-      endTime: data.endTime ? new Date(data.endTime as string) : undefined,
-      title: data.title as string | undefined,
-      notes: data.notes as string | undefined,
       data,
+      endTime: data.endTime ? new Date(data.endTime as string) : undefined,
+      notes: data.notes as string | undefined,
+      source: 'health_connect',
+      startTime: new Date(data.startTime as string),
+      title: data.title as string | undefined,
     })
   }
 }
@@ -646,10 +643,10 @@ function extractTimeSeriesPoints(
   // Records with samples (HeartRateRecord, etc.)
   if (data.samples && Array.isArray(data.samples)) {
     return (data.samples as { time: string; beatsPerMinute?: number }[]).map((sample) => ({
-      time: new Date(sample.time),
       metric,
-      value: sample.beatsPerMinute || 0,
       source: 'health_connect' as DataSource,
+      time: new Date(sample.time),
+      value: sample.beatsPerMinute || 0,
     }))
   }
 
@@ -720,10 +717,10 @@ function extractTimeSeriesPoints(
 
   return [
     {
-      time: new Date(time as string),
       metric,
-      value,
       source: 'health_connect' as DataSource,
+      time: new Date(time as string),
+      value,
     },
   ]
 }

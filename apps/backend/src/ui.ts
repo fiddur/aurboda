@@ -21,12 +21,12 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   console.log(tags)
 
   const placeColors = {
+    Genki: 'darkgrey',
     Hökås: 'lightgreen',
     Lönnåsen: 'olive',
-    Genki: 'darkgrey',
   }
 
-  const margin = { top: 40, right: 30, bottom: 100, left: 50 }
+  const margin = { bottom: 100, left: 50, right: 30, top: 40 }
   const width = 1600 - margin.left - margin.right
   const height = 800 - margin.top - margin.bottom
 

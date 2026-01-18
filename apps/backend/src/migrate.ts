@@ -16,34 +16,25 @@
  *   pnpm migrate <username>
  */
 
-import { Client } from 'pg'
 import { addSeconds } from 'date-fns'
+import { Client } from 'pg'
 import {
   initializeSchema,
-  insertRawRecord,
-  insertTimeSeries,
   insertActivity,
   insertLocation,
   insertPlace,
+  insertRawRecord,
   insertTag,
-  upsertOAuthToken,
-  query,
+  insertTimeSeries,
   TimeSeriesPoint,
+  upsertOAuthToken,
 } from './db'
-import {
-  healthConnectMetricMapping,
-  healthConnectActivityMapping,
-  DataSource,
-  MetricType,
-} from './schema'
+import { DataSource, healthConnectActivityMapping, healthConnectMetricMapping, MetricType } from './schema'
 
 const userDbName = (user: string) => `nephelai_${user}`
 
 async function tableExists(db: Client, tableName: string): Promise<boolean> {
-  const result = await db.query(
-    `SELECT 1 FROM information_schema.tables WHERE table_name = $1`,
-    [tableName],
-  )
+  const result = await db.query(`SELECT 1 FROM information_schema.tables WHERE table_name = $1`, [tableName])
   return result.rowCount !== 0
 }
 
@@ -60,15 +51,21 @@ async function migrateHcData(db: Client, user: string) {
     const recordType = row.recordType
     const externalId = row.id
     const recordedAt = new Date(row.time || row.startTime)
-    const fullData = { ...row.data, metadata: row.metadata, time: row.time, startTime: row.startTime, endTime: row.endTime }
+    const fullData = {
+      ...row.data,
+      endTime: row.endTime,
+      metadata: row.metadata,
+      startTime: row.startTime,
+      time: row.time,
+    }
 
     // Insert into raw_records
     await insertRawRecord(user, {
-      source: 'health_connect',
-      recordType,
-      externalId,
-      recordedAt,
       data: fullData,
+      externalId,
+      recordType,
+      recordedAt,
+      source: 'health_connect',
     })
 
     // Normalize to time_series if applicable
@@ -84,8 +81,13 @@ async function migrateHcData(db: Client, user: string) {
     if (recordType === 'BloodPressureRecord') {
       const time = new Date(row.time || row.startTime)
       await insertTimeSeries(user, [
-        { time, metric: 'blood_pressure_systolic', value: row.data.systolicInMmHg, source: 'health_connect' },
-        { time, metric: 'blood_pressure_diastolic', value: row.data.diastolicInMmHg, source: 'health_connect' },
+        { metric: 'blood_pressure_systolic', source: 'health_connect', time, value: row.data.systolicInMmHg },
+        {
+          metric: 'blood_pressure_diastolic',
+          source: 'health_connect',
+          time,
+          value: row.data.diastolicInMmHg,
+        },
       ])
     }
 
@@ -93,13 +95,13 @@ async function migrateHcData(db: Client, user: string) {
     const activityType = healthConnectActivityMapping[recordType]
     if (activityType) {
       await insertActivity(user, {
-        source: 'health_connect',
         activityType,
-        startTime: new Date(row.startTime),
-        endTime: row.endTime ? new Date(row.endTime) : undefined,
-        title: row.data.title,
-        notes: row.data.notes,
         data: fullData,
+        endTime: row.endTime ? new Date(row.endTime) : undefined,
+        notes: row.data.notes,
+        source: 'health_connect',
+        startTime: new Date(row.startTime),
+        title: row.data.title,
       })
     }
   }
@@ -115,10 +117,10 @@ function extractTimeSeriesPoints(
   // Records with samples (HeartRateRecord, etc.)
   if (data.samples && Array.isArray(data.samples)) {
     return (data.samples as { time: string; beatsPerMinute?: number }[]).map((sample) => ({
-      time: new Date(sample.time),
       metric,
-      value: sample.beatsPerMinute || 0,
       source: 'health_connect' as DataSource,
+      time: new Date(sample.time),
+      value: sample.beatsPerMinute || 0,
     }))
   }
 
@@ -188,10 +190,10 @@ function extractTimeSeriesPoints(
 
   return [
     {
-      time: new Date(time as string),
       metric,
-      value,
       source: 'health_connect' as DataSource,
+      time: new Date(time as string),
+      value,
     },
   ]
 }
@@ -208,10 +210,10 @@ async function migrateHeartrates(db: Client, user: string) {
   if (result.rowCount === 0) return
 
   const points: TimeSeriesPoint[] = result.rows.map((row) => ({
-    time: new Date(row.time),
     metric: 'heart_rate' as MetricType,
-    value: row.bpm,
     source: (row.source || 'health_connect') as DataSource,
+    time: new Date(row.time),
+    value: row.bpm,
   }))
 
   // Insert in batches of 1000
@@ -238,11 +240,11 @@ async function migrateOwntracks(db: Client, user: string) {
 
   for (const row of result.rows) {
     await insertLocation(user, {
-      source: 'owntracks',
-      time: new Date(row.tst),
       lat: row.lat,
       lon: row.lon,
       regions: row.inregions,
+      source: 'owntracks',
+      time: new Date(row.tst),
     })
   }
 
@@ -263,12 +265,12 @@ async function migrateWaypoints(db: Client, user: string) {
 
   for (const row of result.rows) {
     await insertPlace(user, {
-      source: 'owntracks',
       externalId: row.rid || row.id,
-      name: row.name,
       lat: row.lat,
       lon: row.lon,
+      name: row.name,
       radius: row.rad,
+      source: 'owntracks',
     })
   }
 
@@ -289,10 +291,10 @@ async function migrateOuraAuth(db: Client, user: string) {
 
   const row = result.rows[0]
   await upsertOAuthToken(user, {
-    provider: 'oura',
     accessToken: row.access_token,
-    refreshToken: row.refresh_token,
     expiresAt: addSeconds(new Date(row.time), row.expires_in),
+    provider: 'oura',
+    refreshToken: row.refresh_token,
   })
 
   console.log(`  Migrated Oura OAuth token`)
@@ -304,16 +306,18 @@ async function migrateTags(db: Client, user: string) {
     return
   }
 
-  const result = await db.query(`SELECT id, tag, "startTime", "endTime", source FROM tags ORDER BY "startTime"`)
+  const result = await db.query(
+    `SELECT id, tag, "startTime", "endTime", source FROM tags ORDER BY "startTime"`,
+  )
   console.log(`  Found ${result.rowCount} tag records`)
 
   for (const row of result.rows) {
     await insertTag(user, {
-      source: (row.source || 'oura') as DataSource,
-      externalId: row.id,
-      tag: row.tag,
-      startTime: new Date(row.startTime),
       endTime: row.endTime ? new Date(row.endTime) : undefined,
+      externalId: row.id,
+      source: (row.source || 'oura') as DataSource,
+      startTime: new Date(row.startTime),
+      tag: row.tag,
     })
   }
 
@@ -375,8 +379,9 @@ async function main() {
     console.log('\nYou can verify by checking the new tables:')
     console.log(`  psql ${database} -c "SELECT COUNT(*) FROM raw_records"`)
     console.log(`  psql ${database} -c "SELECT metric, COUNT(*) FROM time_series GROUP BY metric"`)
-    console.log(`  psql ${database} -c "SELECT activity_type, COUNT(*) FROM activities GROUP BY activity_type"`)
-
+    console.log(
+      `  psql ${database} -c "SELECT activity_type, COUNT(*) FROM activities GROUP BY activity_type"`,
+    )
   } catch (err) {
     console.error('Migration failed:', err)
     process.exit(1)

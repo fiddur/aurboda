@@ -8,8 +8,8 @@ import {
   getActivities,
   getLocations,
   getProductivity,
-  getTimeSeries,
   getTags,
+  getTimeSeries,
   initializeSchema,
   insertLocation,
   insertPlace,
@@ -19,10 +19,10 @@ import {
   query,
   schemaInitialized,
 } from './db'
-import { reduceTimeSeries } from './utils'
 import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
 import { getTimeline } from './ui'
+import { reduceTimeSeries } from './utils'
 
 declare global {
   namespace Express {
@@ -117,12 +117,12 @@ const main = async () => {
       `-${iv}-${cipher.getAuthTag().toString('base64')}`
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ token, refresh: token }))
+    res.end(JSON.stringify({ refresh: token, token }))
   })
 
   httpd.post('/api/v2/refresh', async (req, res, next) => {
     const { refresh } = req.body
-    res.end(JSON.stringify({ token: refresh, refresh }))
+    res.end(JSON.stringify({ refresh, token: refresh }))
   })
 
   httpd.post<{ recordType: string }, { success: boolean }>(
@@ -165,24 +165,24 @@ const main = async () => {
     } else if (type === 'waypoint') {
       const { lat, lon, tst, desc, rad, rid } = req.body
       await insertPlace(user, {
-        source: 'owntracks',
         externalId: rid,
-        name: desc,
         lat,
         lon,
+        name: desc,
         radius: rad,
+        source: 'owntracks',
       })
     } else if (type === 'location') {
       const { lat, lon, tst, inregions, acc, alt, vel } = req.body
       await insertLocation(user, {
-        source: 'owntracks',
-        time: new Date(tst * 1000),
-        lat,
-        lon,
         accuracy: acc,
         altitude: alt,
-        velocity: vel,
+        lat,
+        lon,
         regions: inregions,
+        source: 'owntracks',
+        time: new Date(tst * 1000),
+        velocity: vel,
       })
     }
 
@@ -213,37 +213,37 @@ const main = async () => {
       const freshData = await rescuetimeClient(process.env.RESCUETIME_KEY).getIntervalData(start, end)
       // Store fetched data for future use
       const productivityRecords = freshData.map((r) => ({
-        source: 'rescuetime' as const,
-        startTime: r.startTime,
-        endTime: r.endTime,
         activity: r.activity,
         category: r.category,
-        productivity: r.productivity,
         durationSec: r.duration,
+        endTime: r.endTime,
         isMobile: r.mobile,
+        productivity: r.productivity,
+        source: 'rescuetime' as const,
+        startTime: r.startTime,
       }))
       await insertProductivity(user, productivityRecords)
       rtData = productivityRecords
     }
 
     res.writeHead(200, {
-      'Content-Type': 'application/json',
       'Content-Disposition': `attachment; filename="dump-${now.toISOString()}.json"`,
+      'Content-Type': 'application/json',
     })
     res.end(
       JSON.stringify({
-        heartRates,
-        sleepSessions,
+        dailyCardiovascularAge: await oura.getDailyCardiovascularAge(start, end, access_token),
+        dailyReadiness: await oura.getDailyReadiness(start, end, access_token),
+        dailyResilience: await oura.getDailyResilience(start, end, access_token),
+        dailySleep: await oura.getDailySleep(start, end, access_token),
         exerciseSessions,
+        heartRates,
         locations,
         places,
         rtData,
-        tags,
         sessions: await oura.getSessions(start, end, access_token),
-        dailySleep: await oura.getDailySleep(start, end, access_token),
-        dailyResilience: await oura.getDailyResilience(start, end, access_token),
-        dailyReadiness: await oura.getDailyReadiness(start, end, access_token),
-        dailyCardiovascularAge: await oura.getDailyCardiovascularAge(start, end, access_token),
+        sleepSessions,
+        tags,
       }),
     )
   })
@@ -268,7 +268,7 @@ const main = async () => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
-    console.log({ user, start, end })
+    console.log({ end, start, user })
 
     const tags = await getTags(user, start, end)
     res.writeHead(200, { 'Content-Type': 'application/json' })
