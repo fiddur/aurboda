@@ -337,9 +337,14 @@ async function main() {
     await db.connect()
     console.log(`Connected to database: ${database}`)
 
-    // Create PostGIS extension as PGUSER (before SET ROLE, which lacks permission)
-    console.log('\n1. Creating PostGIS extension...')
-    await db.query('CREATE EXTENSION IF NOT EXISTS postgis')
+    // Ensure PostGIS extension exists (requires superuser to create)
+    console.log('\n1. Checking PostGIS extension...')
+    const extResult = await db.query(`SELECT 1 FROM pg_extension WHERE extname = 'postgis'`)
+    if (extResult.rowCount === 0) {
+      console.error('   PostGIS extension not installed. Run as superuser:')
+      console.error(`   sudo -u postgres psql ${database} -c "CREATE EXTENSION postgis"`)
+      process.exit(1)
+    }
     console.log('   PostGIS ready.')
 
     // Initialize new schema

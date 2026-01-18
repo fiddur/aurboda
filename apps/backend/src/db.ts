@@ -58,8 +58,8 @@ export const getDbForUser = async (user: string) => {
 export const initializeSchema = async (user: string) => {
   const db = await getDbForUser(user)
 
-  // Ensure PostGIS extension is available
-  await query(db, 'CREATE EXTENSION IF NOT EXISTS postgis')
+  // Note: PostGIS extension must be created by superuser before calling this
+  // sudo -u postgres psql <database> -c "CREATE EXTENSION postgis"
 
   for (const key of tableCreationOrder) {
     await query(db, createTableStatements[key])
