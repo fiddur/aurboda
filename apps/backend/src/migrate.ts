@@ -337,28 +337,33 @@ async function main() {
     await db.connect()
     console.log(`Connected to database: ${database}`)
 
-    // Initialize new schema first
-    console.log('\n1. Initializing new schema...')
+    // Create PostGIS extension as PGUSER (before SET ROLE, which lacks permission)
+    console.log('\n1. Creating PostGIS extension...')
+    await db.query('CREATE EXTENSION IF NOT EXISTS postgis')
+    console.log('   PostGIS ready.')
+
+    // Initialize new schema
+    console.log('\n2. Initializing new schema...')
     await initializeSchema(username)
     console.log('   Schema initialized.')
 
     // Migrate each table
-    console.log('\n2. Migrating hcdata...')
+    console.log('\n3. Migrating hcdata...')
     await migrateHcData(db, username)
 
-    console.log('\n3. Migrating heartrates...')
+    console.log('\n4. Migrating heartrates...')
     await migrateHeartrates(db, username)
 
-    console.log('\n4. Migrating owntracks locations...')
+    console.log('\n5. Migrating owntracks locations...')
     await migrateOwntracks(db, username)
 
-    console.log('\n5. Migrating waypoints...')
+    console.log('\n6. Migrating waypoints...')
     await migrateWaypoints(db, username)
 
-    console.log('\n6. Migrating Oura OAuth...')
+    console.log('\n7. Migrating Oura OAuth...')
     await migrateOuraAuth(db, username)
 
-    console.log('\n7. Migrating tags...')
+    console.log('\n8. Migrating tags...')
     await migrateTags(db, username)
 
     console.log('\n✓ Migration complete!')
