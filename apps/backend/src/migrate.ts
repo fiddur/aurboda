@@ -306,17 +306,15 @@ async function migrateTags(db: Client, user: string) {
     return
   }
 
-  const result = await db.query(
-    `SELECT id, tag, "startTime", "endTime", source FROM tags ORDER BY "startTime"`,
-  )
+  const result = await db.query(`SELECT id, tag, start_time, end_time, source FROM tags ORDER BY start_time`)
   console.log(`  Found ${result.rowCount} tag records`)
 
   for (const row of result.rows) {
     await insertTag(user, {
-      endTime: row.endTime ? new Date(row.endTime) : undefined,
+      endTime: row.end_time ? new Date(row.end_time) : undefined,
       externalId: row.id,
       source: (row.source || 'oura') as DataSource,
-      startTime: new Date(row.startTime),
+      startTime: new Date(row.start_time),
       tag: row.tag,
     })
   }
