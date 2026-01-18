@@ -1,0 +1,12 @@
+# Development override - mounts source code for hot reload
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+      target: builder
+    command: pnpm --filter nephelai-backend watch
+    volumes:
+      - ./apps/backend/src:/app/apps/backend/src:ro
+    environment:
+      - NODE_ENV=development
