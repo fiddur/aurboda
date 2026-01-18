@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: ^9.13.0
         version: 9.38.0
+      '@tsconfig/node22':
+        specifier: ^22.0.2
+        version: 22.0.2
       '@types/eslint':
         specifier: ^9.6.1
         version: 9.6.1
@@ -87,9 +90,6 @@ importers:
         specifier: ^1.0.4
         version: 1.0.4
     devDependencies:
-      '@tsconfig/node22':
-        specifier: ^22.0.2
-        version: 22.0.2
       '@types/body-parser':
         specifier: ^1.19.6
         version: 1.19.6
