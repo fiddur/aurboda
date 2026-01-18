@@ -25,6 +25,7 @@ import { getTimeline } from './ui'
 import { reduceTimeSeries } from './utils'
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: string
@@ -33,14 +34,13 @@ declare global {
 }
 
 const main = async () => {
-  const unauthorized = new Error('Unauthorized')
-  unauthorized.status = 401
+  const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
 
   const config = {
     sessionSalt: 'very very secretvery very secret', //  256-bit encryption key (32 bytes)
   }
 
-  const oura = ouraClient(process.env.OURA_CLIENT, process.env.OURA_SECRET)
+  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '')
 
   const iv = randomBytes(12).toString('base64')
   const cipher = createCipheriv('aes-256-gcm', config.sessionSalt, iv)
@@ -50,12 +50,11 @@ const main = async () => {
   const getUsernameFromSession = (sessid: string) => {
     try {
       if (!sessid) throw new Error('unauthenticated')
-      const [encrypted, iv, tag] = sessid.split('-')
-      const decipher = createDecipheriv('aes-256-gcm', config.sessionSalt, iv)
+      const [encrypted, sessionIv, tag] = sessid.split('-')
+      const decipher = createDecipheriv('aes-256-gcm', config.sessionSalt, sessionIv)
       decipher.setAuthTag(Buffer.from(tag, 'base64'))
       return decipher.update(encrypted, 'base64', 'utf8') + decipher.final('utf8')
-    } catch (e) {
-      console.error(e)
+    } catch {
       throw new Error('unauthenticated')
     }
   }
@@ -79,7 +78,7 @@ const main = async () => {
         req.user = user
         return next()
       }
-    } catch (e) {
+    } catch {
       return next(unauthorized)
     }
     return next(unauthorized)
@@ -120,7 +119,7 @@ const main = async () => {
     res.end(JSON.stringify({ refresh: token, token }))
   })
 
-  httpd.post('/api/v2/refresh', async (req, res, next) => {
+  httpd.post('/api/v2/refresh', async (req, res) => {
     const { refresh } = req.body
     res.end(JSON.stringify({ refresh, token: refresh }))
   })
@@ -128,7 +127,7 @@ const main = async () => {
   httpd.post<{ recordType: string }, { success: boolean }>(
     '/api/v2/sync/:recordType',
     auth,
-    async (req, res, next) => {
+    async (req, res) => {
       const { recordType } = req.params
       let { data } = req.body
 
@@ -163,7 +162,7 @@ const main = async () => {
     if (type === 'status') {
       // Status messages are informational, no storage needed
     } else if (type === 'waypoint') {
-      const { lat, lon, tst, desc, rad, rid } = req.body
+      const { lat, lon, desc, rad, rid } = req.body
       await insertPlace(user, {
         externalId: rid,
         lat,
@@ -253,7 +252,7 @@ const main = async () => {
     res.end(html)
   })
 
-  httpd.get('/api/v2/heartrate', auth, async (req, res, next) => {
+  httpd.get('/api/v2/heartrate', auth, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
@@ -264,7 +263,7 @@ const main = async () => {
     res.end(JSON.stringify(hrs))
   })
 
-  httpd.get('/api/v2/tags', auth, async (req, res, next) => {
+  httpd.get('/api/v2/tags', auth, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!

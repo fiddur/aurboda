@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture } from 'date-fns'
+import { Request, Response } from 'express'
 import { getOAuthToken, initializeSchema, schemaInitialized, Tag, upsertOAuthToken } from './db'
 
 type OuraTag = {
@@ -8,6 +9,17 @@ type OuraTag = {
   start_time: string
   end_time: string
   custom_name: string | null
+}
+
+type OuraSession = {
+  id: string
+  end_datetime: string
+  start_datetime: string
+  type: string
+  heart_rate: unknown
+  heart_rate_variability: unknown
+  mood: string
+  motion_count: unknown
 }
 
 export const ouraClient = (client: string, secret: string) => {
@@ -23,16 +35,16 @@ export const ouraClient = (client: string, secret: string) => {
   }
 
   return {
-    async authCb(req, res) {
+    async authCb(req: Request, res: Response) {
       console.log(req.query)
-      const { code, scope, state, error } = req.query
+      const { code, scope, state, error } = req.query as Record<string, string | undefined>
 
       if (error) {
         res.statusCode = 500
         return res.end('{"success":false}')
       }
 
-      const user = state
+      const user = state as string
 
       // Ensure schema is initialized for this user
       if (!(await schemaInitialized(user))) {
@@ -43,7 +55,7 @@ export const ouraClient = (client: string, secret: string) => {
       tokenUrl.searchParams.append('grant_type', 'authorization_code')
       tokenUrl.searchParams.append('client_id', client)
       tokenUrl.searchParams.append('client_secret', secret)
-      tokenUrl.searchParams.append('code', code)
+      tokenUrl.searchParams.append('code', code as string)
       tokenUrl.searchParams.append('redirect_uri', 'http://valhall/auth/ouracb') // TODO config
 
       const response = await axios.post(tokenUrl.toString())
@@ -94,25 +106,25 @@ export const ouraClient = (client: string, secret: string) => {
 
     async getDailyCardiovascularAge(start: Date, end: Date, token: string) {
       return (await getGeneric('daily_cardiovascular_age', start, end, token)).filter(
-        ({ timestamp }) => isBefore(timestamp, end) && isAfter(timestamp, start),
+        ({ timestamp }: { timestamp: string }) => isBefore(timestamp, end) && isAfter(timestamp, start),
       )
     },
 
     async getDailyReadiness(start: Date, end: Date, token: string) {
       return (await getGeneric('daily_readiness', start, end, token)).filter(
-        ({ timestamp }) => isBefore(timestamp, end) && isAfter(timestamp, start),
+        ({ timestamp }: { timestamp: string }) => isBefore(timestamp, end) && isAfter(timestamp, start),
       )
     },
 
     async getDailyResilience(start: Date, end: Date, token: string) {
       return (await getGeneric('daily_resilience', start, end, token)).filter(
-        ({ timestamp }) => isBefore(timestamp, end) && isAfter(timestamp, start),
+        ({ timestamp }: { timestamp: string }) => isBefore(timestamp, end) && isAfter(timestamp, start),
       )
     },
 
     async getDailySleep(start: Date, end: Date, token: string) {
       return (await getGeneric('daily_sleep', start, end, token)).filter(
-        ({ timestamp }) => isBefore(timestamp, end) && isAfter(timestamp, start),
+        ({ timestamp }: { timestamp: string }) => isBefore(timestamp, end) && isAfter(timestamp, start),
       )
     },
     async getSessions(start: Date, end: Date, token: string) {
@@ -125,7 +137,7 @@ export const ouraClient = (client: string, secret: string) => {
       // heart_rate_variability: {    interval: 5,    items: [
       // mood: 'good',
       // motion_count: {    interval: 5,    items: [
-      const sessions = (await getGeneric('session', start, end, token))
+      const sessions = ((await getGeneric('session', start, end, token)) as OuraSession[])
         .map((session) => ({
           endTime: new Date(session.end_datetime),
           heartRate: session.heart_rate,
@@ -165,10 +177,10 @@ export const ouraClient = (client: string, secret: string) => {
         .filter(({ startTime, endTime }) => isBefore(startTime, end) && (!endTime || isAfter(endTime, start)))
       return tags
     },
-    redirectToAuthorize(req, res) {
-      const { username } = req.query
+    redirectToAuthorize(req: Request, res: Response) {
+      const { username } = req.query as Record<string, string | undefined>
       if (!username) {
-        res.status = 400
+        res.statusCode = 400
         res.end('No username')
         return
       }

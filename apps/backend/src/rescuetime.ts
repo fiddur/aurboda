@@ -21,7 +21,7 @@ export const rescuetimeClient = (key: string) => {
       )
       return response.data.rows
         .map(
-          ([time, duration, _people, activity, category, productivity]: [
+          ([time, duration, , activity, category, productivity]: [
             string,
             number,
             number,
@@ -38,7 +38,7 @@ export const rescuetimeClient = (key: string) => {
             startTime: new Date(`${time}+02:00`),
           }),
         )
-        .filter(({ startTime, endTime }) => isBefore(startTime, end) && isAfter(endTime, start))
+        .filter(({ startTime, endTime }: RtData) => isBefore(startTime, end) && isAfter(endTime, start))
     },
   }
 }

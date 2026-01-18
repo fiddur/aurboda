@@ -1,7 +1,7 @@
 import * as d3 from 'd3'
 import { addDays, isBefore, subDays } from 'date-fns'
 import { JSDOM } from 'jsdom'
-import { getHcData, getLocations } from './db'
+import { getActivities, getLocations, getTimeSeries } from './db'
 import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
 
@@ -12,15 +12,15 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
 
   const user = 'fiddur'
 
-  const { locations, places } = await getLocations(start, end, user)
-  const rtData = await rescuetimeClient(process.env.RESCUETIME_KEY).getIntervalData(start, end)
+  const { places } = await getLocations(user, start, end)
+  const rtData = await rescuetimeClient(process.env.RESCUETIME_KEY ?? '').getIntervalData(start, end)
   const ouraToken = await oura.getAccessToken(user)
   const tags = await oura.getTags(start, end, ouraToken)
   const meditations = await oura.getSessions(start, end, ouraToken)
 
   console.log(tags)
 
-  const placeColors = {
+  const placeColors: Record<string, string> = {
     Genki: 'darkgrey',
     Hökås: 'lightgreen',
     Lönnåsen: 'olive',
@@ -57,16 +57,24 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   svg
     .append('g')
     .attr('transform', `translate(0,${height})`)
-    .call(d3.axisBottom(xScale).ticks(d3.timeHour.every(6)).tickFormat(d3.timeFormat('%a %H')))
+    .call(
+      d3
+        .axisBottom(xScale)
+        .ticks(d3.timeHour.every(6))
+        .tickFormat((d) => d3.timeFormat('%a %H')(d as Date)),
+    )
 
   svg.append('g').call(d3.axisLeft(yScale))
 
   // 4. Draw Data Layers
 
-  const { exerciseSessions, sleepSessions, heartRates } = await getHcData(start, end, 'fiddur')
+  const heartRates = await getTimeSeries(user, 'heart_rate', start, end)
+  const sleepSessions = await getActivities(user, 'sleep', start, end)
+  const exerciseSessions = await getActivities(user, 'exercise', start, end)
 
   // -- Sleep spans
   sleepSessions.forEach(({ startTime, endTime }) => {
+    if (!endTime) return
     svg
       .append('rect')
       .attr('x', xScale(startTime))
@@ -101,6 +109,7 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   })
 
   exerciseSessions.forEach(({ startTime, endTime }) => {
+    if (!endTime) return
     svg
       .append('rect')
       .attr('x', xScale(startTime))
