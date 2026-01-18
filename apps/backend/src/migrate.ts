@@ -13,7 +13,7 @@
  * - raw_records, time_series, activities, locations, places, tags, oauth_tokens, etc.
  *
  * Usage:
- *   npx tsx src/migrate.ts <username>
+ *   pnpm migrate <username>
  */
 
 import { Client } from 'pg'
@@ -324,7 +324,7 @@ async function main() {
   const username = process.argv[2]
 
   if (!username) {
-    console.error('Usage: npx tsx src/migrate.ts <username>')
+    console.error('Usage: pnpm migrate <username>')
     process.exit(1)
   }
 
