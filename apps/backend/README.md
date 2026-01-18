@@ -108,3 +108,164 @@ Common issues:
 1. **Permission denied to set role** - Run the GRANT command above to allow PGUSER to act as the user
 2. **Database doesn't exist** - The database must already exist as `nephelai_{username}`
 3. **PostGIS missing** - Install the PostGIS extension package
+
+## MCP Server (Model Context Protocol)
+
+The backend includes an MCP server that enables AI assistants (like Claude) to query health metrics and add manual tracking data.
+
+### Endpoint
+
+The MCP server is available at `/mcp` and uses the Streamable HTTP transport:
+
+- `POST /mcp` - Handle JSON-RPC requests
+- `GET /mcp` - SSE stream for server notifications
+- `DELETE /mcp` - End session
+
+### Authentication
+
+All MCP endpoints require Bearer token authentication using the same tokens from `/api/v2/login`:
+
+```
+Authorization: Bearer <token>
+```
+
+Sessions are managed via the `Mcp-Session-Id` header, which is returned after initialization.
+
+### Available Tools
+
+#### 1. `query_metrics`
+
+Query health metrics for a time range.
+
+**Parameters:**
+- `metric` (string): Metric name (see available metrics below)
+- `start` (string): Start date/time in ISO 8601 format
+- `end` (string): End date/time in ISO 8601 format
+
+**Example:**
+```json
+{
+  "name": "query_metrics",
+  "arguments": {
+    "metric": "heart_rate",
+    "start": "2024-01-15T00:00:00Z",
+    "end": "2024-01-15T23:59:59Z"
+  }
+}
+```
+
+#### 2. `get_daily_summary`
+
+Get a comprehensive summary of health data for a specific day.
+
+**Parameters:**
+- `date` (string): Date in YYYY-MM-DD format
+
+**Returns:** Heart rate stats, steps total, sleep/exercise sessions, tags, and productivity summary.
+
+**Example:**
+```json
+{
+  "name": "get_daily_summary",
+  "arguments": {
+    "date": "2024-01-15"
+  }
+}
+```
+
+#### 3. `add_tag`
+
+Add a manual tag/label to mark an activity or event.
+
+**Parameters:**
+- `tag` (string): The tag/label text (e.g., "coffee", "meditation", "headache")
+- `start_time` (string): Start time in ISO 8601 format
+- `end_time` (string, optional): End time for duration-based tags
+
+**Example:**
+```json
+{
+  "name": "add_tag",
+  "arguments": {
+    "tag": "meditation",
+    "start_time": "2024-01-15T10:00:00Z",
+    "end_time": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+#### 4. `add_metric`
+
+Add a manual health metric measurement.
+
+**Parameters:**
+- `metric` (string): Metric name
+- `value` (number): The metric value
+- `time` (string, optional): Measurement time (defaults to now)
+
+**Example:**
+```json
+{
+  "name": "add_metric",
+  "arguments": {
+    "metric": "weight",
+    "value": 75.5,
+    "time": "2024-01-15T08:00:00Z"
+  }
+}
+```
+
+### Available Metrics
+
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `heart_rate` | bpm | Heart rate |
+| `resting_heart_rate` | bpm | Resting heart rate |
+| `hrv_rmssd` | ms | Heart rate variability (RMSSD) |
+| `weight` | kg | Body weight |
+| `body_fat` | percent | Body fat percentage |
+| `bone_mass` | kg | Bone mass |
+| `lean_body_mass` | kg | Lean body mass |
+| `body_water_mass` | kg | Body water mass |
+| `height` | m | Height |
+| `steps` | count | Step count |
+| `distance` | m | Distance traveled |
+| `floors_climbed` | count | Floors climbed |
+| `calories_active` | kcal | Active calories burned |
+| `calories_total` | kcal | Total calories burned |
+| `calories_basal` | kcal | Basal calories |
+| `spo2` | percent | Blood oxygen saturation |
+| `respiratory_rate` | bpm | Respiratory rate |
+| `body_temperature` | °C | Body temperature |
+| `basal_body_temperature` | °C | Basal body temperature |
+| `blood_glucose` | mmol/L | Blood glucose |
+| `blood_pressure_systolic` | mmHg | Systolic blood pressure |
+| `blood_pressure_diastolic` | mmHg | Diastolic blood pressure |
+| `vo2_max` | mL/kg/min | VO2 max |
+| `readiness_score` | score | Readiness score |
+| `resilience_score` | score | Resilience score |
+| `productivity_score` | score | Productivity score |
+
+### Connecting with Claude Desktop
+
+Add this to your Claude Desktop MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "nephelai": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:3000/mcp"],
+      "env": {
+        "MCP_HEADERS": "Authorization: Bearer <your-token>"
+      }
+    }
+  }
+}
+```
+
+Or use the MCP Inspector for testing:
+
+```bash
+npx @modelcontextprotocol/inspector http://localhost:3000/mcp
+```
