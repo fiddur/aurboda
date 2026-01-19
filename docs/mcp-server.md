@@ -56,7 +56,7 @@ Query health metrics for a time range. Returns time series data with timestamps 
 
 ### get_daily_summary
 
-Get a comprehensive summary of health data for a specific day including heart rate statistics, steps, sleep sessions, exercise sessions, tags, and productivity.
+Get a comprehensive summary of health data for a specific day including heart rate statistics, steps, sleep sessions, exercise sessions, tags, productivity, and visited places.
 
 **Parameters:**
 - `date` (required) - Date in YYYY-MM-DD format (e.g., `2024-01-15`)
@@ -95,6 +95,20 @@ Get a comprehensive summary of health data for a specific day including heart ra
     {
       "tag": "coffee",
       "startTime": "2024-01-15T09:00:00.000Z"
+    }
+  ],
+  "places": [
+    {
+      "region": "Home",
+      "startTime": "2024-01-15T00:00:00.000Z",
+      "endTime": "2024-01-15T08:30:00.000Z",
+      "duration": 510
+    },
+    {
+      "region": "Office",
+      "startTime": "2024-01-15T09:00:00.000Z",
+      "endTime": "2024-01-15T17:30:00.000Z",
+      "duration": 510
     }
   ],
   "productivity": {
@@ -203,6 +217,7 @@ Example Claude Desktop configuration (`claude_desktop_config.json`):
 {
   "mcpServers": {
     "nephelai": {
+      "type": "http",
       "url": "http://localhost:3000/mcp",
       "headers": {
         "Authorization": "Bearer <your-token-here>"

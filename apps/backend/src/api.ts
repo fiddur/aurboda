@@ -41,7 +41,8 @@ const main = async () => {
     sessionSalt: 'very very secretvery very secret', //  256-bit encryption key (32 bytes)
   }
 
-  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '')
+  const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
+  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
 
   const iv = randomBytes(12).toString('base64')
   const cipher = createCipheriv('aes-256-gcm', config.sessionSalt, iv)
@@ -63,16 +64,18 @@ const main = async () => {
   const userDb = new Client({ database: 'postgres' })
   await userDb.connect()
 
-  httpd.use(json({ limit: '10mb' }))
+  // CORS must come first for preflight requests
   httpd.use(cors({ origin: true }))
+
+  // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
+  httpd.use('/mcp', createMcpRouter({ sessionSalt: config.sessionSalt }))
+
+  httpd.use(json({ limit: '10mb' }))
 
   httpd.use((req, res, next) => {
     console.log(req.path, req.body)
     next()
   })
-
-  // Mount MCP server for AI assistant integration
-  httpd.use('/mcp', createMcpRouter({ sessionSalt: config.sessionSalt }))
 
   const auth: RequestHandler = (req, res, next) => {
     try {
@@ -278,8 +281,9 @@ const main = async () => {
     res.end(JSON.stringify(tags))
   })
 
-  httpd.listen(80, () => {
-    console.log(`> Running on localhost:80`)
+  const port = Number(process.env.PORT ?? 80)
+  httpd.listen(port, () => {
+    console.log(`> Running on localhost:${port}`)
   })
 }
 
