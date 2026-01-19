@@ -69,42 +69,6 @@ sudo apt install postgresql-15-postgis-3
 # The extension is enabled per-database automatically when schema is initialized
 ```
 
-## Migration Script
+## MCP Server
 
-To migrate data from the old schema to the new schema:
-
-**Pre-requisite**: Ensure PGUSER can SET ROLE to the target user (see "For Existing Users" above):
-```bash
-sudo -u postgres psql -c "GRANT fiddur TO nephelai_service"
-```
-
-Then run:
-```bash
-pnpm migrate <username>
-```
-
-Example:
-```bash
-pnpm migrate fiddur
-```
-
-### Verifying Migration
-
-```bash
-# Check new tables exist
-psql nephelai_fiddur -c "\dt"
-
-# Check data counts
-psql nephelai_fiddur -c "SELECT COUNT(*) FROM raw_records"
-psql nephelai_fiddur -c "SELECT metric, COUNT(*) FROM time_series GROUP BY metric"
-psql nephelai_fiddur -c "SELECT activity_type, COUNT(*) FROM activities GROUP BY activity_type"
-psql nephelai_fiddur -c "SELECT COUNT(*) FROM locations"
-psql nephelai_fiddur -c "SELECT COUNT(*) FROM oauth_tokens"
-```
-
-### If Migration Fails
-
-Common issues:
-1. **Permission denied to set role** - Run the GRANT command above to allow PGUSER to act as the user
-2. **Database doesn't exist** - The database must already exist as `nephelai_{username}`
-3. **PostGIS missing** - Install the PostGIS extension package
+The backend includes an MCP server for AI assistant integration. See [/docs/mcp-server.md](/docs/mcp-server.md) for full documentation.

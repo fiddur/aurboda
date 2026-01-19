@@ -1,5 +1,6 @@
 import { signal } from '@preact/signals'
 import axios from 'axios'
+import { API_URL } from '../config'
 
 const savedAuth = localStorage.getItem('auth')
 export const auth = signal<{ user?: string; token?: string }>(savedAuth ? JSON.parse(savedAuth) : {})
@@ -7,13 +8,13 @@ auth.subscribe((value) => localStorage.setItem('auth', JSON.stringify(value)))
 
 export const login = async (user: string, pass: string) => {
   try {
-    const response = await axios.post<{ token: string }>('http://valhall/api/v2/login', {
-      username: user,
+    const response = await axios.post<{ token: string }>(`${API_URL}/api/v2/login`, {
       password: pass,
+      username: user,
     })
 
     if (response.data.token) {
-      auth.value = { user, token: response.data.token }
+      auth.value = { token: response.data.token, user }
     }
   } catch (error) {
     console.error('Login error:', error)
