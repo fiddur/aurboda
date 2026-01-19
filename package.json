@@ -8,6 +8,8 @@
     "node": "~22"
   },
   "scripts": {
+    "dev:backend": "pnpm --filter nephelai-backend start",
+    "dev:web": "pnpm --filter nephelai-web dev",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "devDependencies": {

@@ -13,8 +13,8 @@ export const preprocessData = (
   const thresholdMs = gapThresholdMinutes * 60 * 1000
   return data.reduce<([Date, number] | null)[]>((acc, curr) => {
     const last = acc.at(-1)
-    return last && curr[0].getTime() - (last as [Date, number])[0].getTime() > thresholdMs
-      ? [...acc, null, curr]
+    return last && curr[0].getTime() - (last as [Date, number])[0].getTime() > thresholdMs ?
+        [...acc, null, curr]
       : [...acc, curr]
   }, [])
 }

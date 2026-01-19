@@ -12,9 +12,8 @@ const toDate = signal(formatISO(new Date(), { representation: 'date' }))
 export const Timeline = () => {
   // Use TanStack Query to fetch heart rate data
   const { data, isLoading, isError, error, refetch } = useQuery({
+    queryFn: () => fetchHeartRate(startOfDay(new Date(fromDate.value)), endOfDay(new Date(toDate.value))),
     queryKey: ['heartRate', fromDate.value, toDate.value],
-    queryFn: () =>
-      fetchHeartRate(startOfDay(new Date(fromDate.value)), endOfDay(new Date(toDate.value))),
     staleTime: 10 * 60 * 1000,
   })
 
@@ -34,8 +33,7 @@ export const Timeline = () => {
         <h1>Heart Rate Timeline</h1>
         <div>
           <label>
-            From:{' '}
-            <input type="date" name="from" value={fromDate.value} onChange={handleDateChange} />
+            From: <input type="date" name="from" value={fromDate.value} onChange={handleDateChange} />
           </label>
           <label>
             To: <input type="date" name="to" value={toDate.value} onChange={handleDateChange} />
@@ -48,7 +46,7 @@ export const Timeline = () => {
 }
 
 function LineChart({ data }: { data: [Date, number][] }) {
-  const margin = { top: 10, right: 20, bottom: 20, left: 30 }
+  const margin = { bottom: 20, left: 30, right: 20, top: 10 }
   const width = 800
   const height = 400
 

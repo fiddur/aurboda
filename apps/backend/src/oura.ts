@@ -22,8 +22,9 @@ type OuraSession = {
   motion_count: unknown
 }
 
-export const ouraClient = (client: string, secret: string) => {
+export const ouraClient = (client: string, secret: string, webHost: string) => {
   if (!client || !secret) throw new Error('Oura missing client or secret')
+  const redirectUri = `${webHost}/auth/ouracb`
 
   const getGeneric = async (type: string, start: Date, end: Date, token: string) => {
     const response = await axios.get(
@@ -56,7 +57,7 @@ export const ouraClient = (client: string, secret: string) => {
       tokenUrl.searchParams.append('client_id', client)
       tokenUrl.searchParams.append('client_secret', secret)
       tokenUrl.searchParams.append('code', code as string)
-      tokenUrl.searchParams.append('redirect_uri', 'http://valhall/auth/ouracb') // TODO config
+      tokenUrl.searchParams.append('redirect_uri', redirectUri)
 
       const response = await axios.post(tokenUrl.toString())
       console.log(response.data)
@@ -188,7 +189,7 @@ export const ouraClient = (client: string, secret: string) => {
       const location = new URL('https://cloud.ouraring.com/oauth/authorize')
       location.searchParams.append('response_type', 'code')
       location.searchParams.append('client_id', client)
-      location.searchParams.append('redirect_uri', 'http://valhall/auth/ouracb')
+      location.searchParams.append('redirect_uri', redirectUri)
       location.searchParams.append('state', username)
       res.writeHead(302, {
         'Content-Length': 0,

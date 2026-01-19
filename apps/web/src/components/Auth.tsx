@@ -14,20 +14,18 @@ export function Auth() {
     }
   }
 
-  return auth.value.user ? (
-    <div>
-      <span>Welcome, {auth.value.user}!</span>
-      <button onClick={logout}>Logout</button>
-    </div>
-  ) : (
-    <form onSubmit={onSubmit}>
-      <label>
-        Username: <input name="user" required />
-      </label>
-      <label>
-        Password: <input name="pass" type="password" required />
-      </label>
-      <button type="submit">Login</button>
-    </form>
-  )
+  return auth.value.user ?
+      <div>
+        <span>Welcome, {auth.value.user}!</span>
+        <button onClick={logout}>Logout</button>
+      </div>
+    : <form onSubmit={onSubmit}>
+        <label>
+          Username: <input name="user" required />
+        </label>
+        <label>
+          Password: <input name="pass" type="password" required />
+        </label>
+        <button type="submit">Login</button>
+      </form>
 }
