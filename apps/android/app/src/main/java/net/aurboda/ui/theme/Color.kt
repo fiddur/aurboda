@@ -1,4 +1,4 @@
-package se.hokasgard.nephelaiapp.ui.theme
+package net.aurboda.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

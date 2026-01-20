@@ -29,18 +29,15 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
 
-# Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
+# Install dependencies (tsx is in devDependencies but needed at runtime)
+RUN pnpm install --frozen-lockfile
 
 # Copy source (we run TypeScript directly with tsx)
 COPY tsconfig.json ./
 COPY apps/backend/src ./apps/backend/src
 
-# Install tsx for running TypeScript
-RUN pnpm add -w tsx
-
 EXPOSE 3000
 
 ENV NODE_ENV=production
 
-CMD ["pnpm", "--filter", "nephelai-backend", "start"]
+CMD ["pnpm", "--filter", "aurboda-backend", "start"]

@@ -1,4 +1,4 @@
-package se.hokasgard.nephelaiapp
+package net.aurboda
 
 import org.junit.Test
 

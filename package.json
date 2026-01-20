@@ -1,5 +1,5 @@
 {
-  "name": "nephelai",
+  "name": "aurboda",
   "version": "1.0.0",
   "description": "Collect, aggregate, visualize your Quantified Self data",
   "license": "AGPL-3.0-or-later",
@@ -8,6 +8,8 @@
     "node": "~22"
   },
   "scripts": {
+    "dev:backend": "pnpm --filter aurboda-backend start",
+    "dev:web": "pnpm --filter aurboda-web dev",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "devDependencies": {

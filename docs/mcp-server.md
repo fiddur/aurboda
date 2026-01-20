@@ -1,6 +1,6 @@
 # MCP Server
 
-Nephelai includes an MCP (Model Context Protocol) server that enables AI assistants like Claude to query health metrics and add manual tracking data.
+Aurboda includes an MCP (Model Context Protocol) server that enables AI assistants like Claude to query health metrics and add manual tracking data.
 
 ## Overview
 
@@ -56,7 +56,7 @@ Query health metrics for a time range. Returns time series data with timestamps 
 
 ### get_daily_summary
 
-Get a comprehensive summary of health data for a specific day including heart rate statistics, steps, sleep sessions, exercise sessions, tags, and productivity.
+Get a comprehensive summary of health data for a specific day including heart rate statistics, steps, sleep sessions, exercise sessions, tags, productivity, and visited places.
 
 **Parameters:**
 - `date` (required) - Date in YYYY-MM-DD format (e.g., `2024-01-15`)
@@ -95,6 +95,20 @@ Get a comprehensive summary of health data for a specific day including heart ra
     {
       "tag": "coffee",
       "startTime": "2024-01-15T09:00:00.000Z"
+    }
+  ],
+  "places": [
+    {
+      "region": "Home",
+      "startTime": "2024-01-15T00:00:00.000Z",
+      "endTime": "2024-01-15T08:30:00.000Z",
+      "duration": 510
+    },
+    {
+      "region": "Office",
+      "startTime": "2024-01-15T09:00:00.000Z",
+      "endTime": "2024-01-15T17:30:00.000Z",
+      "duration": 510
     }
   ],
   "productivity": {
@@ -191,9 +205,9 @@ The MCP server maintains per-user sessions:
 
 ## Connecting with Claude Desktop
 
-To connect Claude Desktop to your Nephelai MCP server:
+To connect Claude Desktop to your Aurboda MCP server:
 
-1. Start the Nephelai backend server
+1. Start the Aurboda backend server
 2. Obtain an authentication token via the login endpoint
 3. Configure Claude Desktop with the MCP server URL and Bearer token
 
@@ -202,7 +216,8 @@ Example Claude Desktop configuration (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "nephelai": {
+    "aurboda": {
+      "type": "http",
       "url": "http://localhost:3000/mcp",
       "headers": {
         "Authorization": "Bearer <your-token-here>"

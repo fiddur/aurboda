@@ -1,4 +1,4 @@
-package se.hokasgard.nephelaiapp
+package net.aurboda
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +19,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("se.hokasgard.nephelaiapp", appContext.packageName)
+        assertEquals("net.aurboda", appContext.packageName)
     }
 }

@@ -1,6 +1,6 @@
 # Docker Setup
 
-This guide covers running Nephelai using Docker and Docker Compose.
+This guide covers running Aurboda using Docker and Docker Compose.
 
 ## Quick Start
 
@@ -42,8 +42,8 @@ This mounts your source code and watches for changes.
 |----------|-------------|---------|
 | `PGHOST` | PostgreSQL host | `postgres` |
 | `PGPORT` | PostgreSQL port | `5432` |
-| `PGUSER` | PostgreSQL user | `nephelai_service` |
-| `PGPASSWORD` | PostgreSQL password | `nephelai_dev_password` |
+| `PGUSER` | PostgreSQL user | `aurboda_service` |
+| `PGPASSWORD` | PostgreSQL password | `aurboda_dev_password` |
 | `SESSION_SALT` | 32-byte secret for session encryption | (required) |
 
 ### Generating a Session Salt
@@ -61,26 +61,26 @@ SESSION_SALT=your_generated_salt_here
 
 ## Using Pre-built Images
 
-Docker images are automatically built and pushed to GitHub Container Registry on merge to `develop`.
+Docker images are automatically built and pushed to Docker Hub on merge to `develop`.
 
 ### Pull the latest image:
 
 ```bash
-docker pull ghcr.io/fiddur/nephelai/backend:latest
+docker pull fiddur/aurboda:latest
 ```
 
 ### Run with your own PostgreSQL:
 
 ```bash
 docker run -d \
-  --name nephelai-backend \
+  --name aurboda-backend \
   -p 3000:3000 \
   -e PGHOST=your-postgres-host \
   -e PGPORT=5432 \
-  -e PGUSER=nephelai_service \
+  -e PGUSER=aurboda_service \
   -e PGPASSWORD=your-password \
   -e SESSION_SALT=your-32-byte-secret \
-  ghcr.io/fiddur/nephelai/backend:latest
+  fiddur/aurboda:latest
 ```
 
 ## Production Deployment
@@ -92,7 +92,7 @@ For production, create a `docker-compose.prod.yml`:
 ```yaml
 services:
   backend:
-    image: ghcr.io/fiddur/nephelai/backend:latest
+    image: fiddur/aurboda:latest
     ports:
       - "3000:3000"
     environment:
@@ -128,12 +128,12 @@ volumes:
 ```yaml
 services:
   backend:
-    image: ghcr.io/fiddur/nephelai/backend:latest
+    image: fiddur/aurboda:latest
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.nephelai.rule=Host(`health.example.com`)"
-      - "traefik.http.routers.nephelai.tls.certresolver=letsencrypt"
-      - "traefik.http.services.nephelai.loadbalancer.server.port=3000"
+      - "traefik.http.routers.aurboda.rule=Host(`health.example.com`)"
+      - "traefik.http.routers.aurboda.tls.certresolver=letsencrypt"
+      - "traefik.http.services.aurboda.loadbalancer.server.port=3000"
     environment:
       - PGHOST=postgres
       - PGUSER=${PGUSER}
@@ -153,13 +153,13 @@ networks:
 ### Build the Docker image:
 
 ```bash
-docker build -t nephelai-backend -f apps/backend/Dockerfile .
+docker build -t aurboda-backend -f apps/backend/Dockerfile .
 ```
 
 ### Run tests in Docker:
 
 ```bash
-docker run --rm nephelai-backend pnpm --filter nephelai-backend test
+docker run --rm aurboda-backend pnpm --filter aurboda-backend test
 ```
 
 ## Volumes and Data
@@ -170,7 +170,7 @@ The `postgres_data` volume persists your database. To back it up:
 
 ```bash
 docker run --rm \
-  -v nephelai_postgres_data:/data \
+  -v aurboda_postgres_data:/data \
   -v $(pwd):/backup \
   alpine tar czf /backup/postgres-backup.tar.gz /data
 ```
@@ -179,7 +179,7 @@ docker run --rm \
 
 ```bash
 docker run --rm \
-  -v nephelai_postgres_data:/data \
+  -v aurboda_postgres_data:/data \
   -v $(pwd):/backup \
   alpine tar xzf /backup/postgres-backup.tar.gz -C /
 ```
@@ -196,7 +196,7 @@ docker compose logs -f postgres
 ### Connect to PostgreSQL:
 
 ```bash
-docker compose exec postgres psql -U nephelai_service
+docker compose exec postgres psql -U aurboda_service
 ```
 
 ### Reset everything:
@@ -218,7 +218,7 @@ If the backend fails to start, check that:
 Docker images are built automatically by GitHub Actions:
 
 - **Trigger**: Push to `develop` branch
-- **Registry**: `ghcr.io/fiddur/nephelai/backend`
+- **Registry**: `fiddur/aurboda`
 - **Tags**:
   - `develop` - latest from develop branch
   - `<sha>` - specific commit

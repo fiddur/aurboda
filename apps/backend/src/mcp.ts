@@ -3,7 +3,15 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { createDecipheriv, randomUUID } from 'crypto'
 import { Request, Response, Router } from 'express'
 import { z } from 'zod'
-import { getActivities, getProductivity, getTags, getTimeSeries, insertTag, insertTimeSeries } from './db'
+import {
+  getActivities,
+  getLocations,
+  getProductivity,
+  getTags,
+  getTimeSeries,
+  insertTag,
+  insertTimeSeries,
+} from './db'
 import { MetricType, metricUnits } from './schema'
 
 interface McpConfig {
@@ -80,7 +88,7 @@ export function createMcpRouter(config: McpConfig): Router {
 
   const createMcpServer = (user: string): McpServer => {
     const server = new McpServer({
-      name: 'nephelai',
+      name: 'aurboda',
       version: '1.0.0',
     })
 
@@ -140,7 +148,7 @@ export function createMcpRouter(config: McpConfig): Router {
     // Tool 2: get_daily_summary
     server.tool(
       'get_daily_summary',
-      'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, tags, and productivity.',
+      'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, tags, productivity, and visited places.',
       {
         date: z.string().describe('Date in YYYY-MM-DD format (e.g., 2024-01-15)'),
       },
@@ -156,7 +164,7 @@ export function createMcpRouter(config: McpConfig): Router {
         const end = new Date(`${date}T23:59:59.999`)
 
         // Run queries in parallel
-        const [heartRateData, stepsData, sleepSessions, exerciseSessions, tags, productivity] =
+        const [heartRateData, stepsData, sleepSessions, exerciseSessions, tags, productivity, locations] =
           await Promise.all([
             getTimeSeries(user, 'heart_rate', start, end),
             getTimeSeries(user, 'steps', start, end),
@@ -164,6 +172,7 @@ export function createMcpRouter(config: McpConfig): Router {
             getActivities(user, 'exercise', start, end),
             getTags(user, start, end),
             getProductivity(user, start, end),
+            getLocations(user, start, end),
           ])
 
         // Calculate heart rate stats
@@ -206,6 +215,12 @@ export function createMcpRouter(config: McpConfig): Router {
             title: s.title,
           })),
           heartRate: heartRateStats,
+          places: locations.places.map((p) => ({
+            duration: Math.round((p.endTime.getTime() - p.startTime.getTime()) / 1000 / 60),
+            endTime: p.endTime.toISOString(),
+            region: p.region,
+            startTime: p.startTime.toISOString(),
+          })),
           productivity: productivity.length > 0 ? productivitySummary : null,
           sleepSessions: sleepSessions.map((s) => ({
             data: s.data,
@@ -373,18 +388,18 @@ export function createMcpRouter(config: McpConfig): Router {
         return
       }
     } else {
-      // Create new session
+      // Create new session - generate ID first so transport and our map use the same one
+      const newSessionId = randomUUID()
       const server = createMcpServer(user)
       const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
+        sessionIdGenerator: () => newSessionId,
       })
 
       await server.connect(transport)
 
-      const newSessionId = randomUUID()
       session = { server, transport, user }
       sessions.set(newSessionId, session)
-      res.setHeader('Mcp-Session-Id', newSessionId)
+      // Don't set header - transport.handleRequest will set it
     }
 
     await session.transport.handleRequest(req, res)

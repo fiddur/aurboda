@@ -1,11 +1,11 @@
 {
-  "name": "nephelai-web",
+  "name": "aurboda-web",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "author": "Fredrik Liljegren <fredrik@liljegren.org>",
   "description": "Visualize some Quantified Self data",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",

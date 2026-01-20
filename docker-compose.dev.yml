@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: apps/backend/Dockerfile
       target: builder
-    command: pnpm --filter nephelai-backend watch
+    command: pnpm --filter aurboda-backend watch
     volumes:
       - ./apps/backend/src:/app/apps/backend/src:ro
     environment:
