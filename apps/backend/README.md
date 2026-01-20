@@ -1,4 +1,4 @@
-# Nephelai Backend
+# Aurboda Backend
 
 This repo aims to collect a user's self quantification data into a single useful place.
 

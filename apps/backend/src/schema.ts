@@ -1,5 +1,5 @@
 /**
- * Database schema definitions for Nephelai.
+ * Database schema definitions for Aurboda.
  *
  * This module contains all table creation SQL and schema-related utilities.
  * See docs/data-storage.md for design decisions and data flow documentation.
