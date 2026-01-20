@@ -61,12 +61,12 @@ SESSION_SALT=your_generated_salt_here
 
 ## Using Pre-built Images
 
-Docker images are automatically built and pushed to GitHub Container Registry on merge to `develop`.
+Docker images are automatically built and pushed to Docker Hub on merge to `develop`.
 
 ### Pull the latest image:
 
 ```bash
-docker pull ghcr.io/fiddur/aurboda/backend:latest
+docker pull fiddur/aurboda:latest
 ```
 
 ### Run with your own PostgreSQL:
@@ -80,7 +80,7 @@ docker run -d \
   -e PGUSER=aurboda_service \
   -e PGPASSWORD=your-password \
   -e SESSION_SALT=your-32-byte-secret \
-  ghcr.io/fiddur/aurboda/backend:latest
+  fiddur/aurboda:latest
 ```
 
 ## Production Deployment
@@ -92,7 +92,7 @@ For production, create a `docker-compose.prod.yml`:
 ```yaml
 services:
   backend:
-    image: ghcr.io/fiddur/aurboda/backend:latest
+    image: fiddur/aurboda:latest
     ports:
       - "3000:3000"
     environment:
@@ -128,7 +128,7 @@ volumes:
 ```yaml
 services:
   backend:
-    image: ghcr.io/fiddur/aurboda/backend:latest
+    image: fiddur/aurboda:latest
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.aurboda.rule=Host(`health.example.com`)"
@@ -218,7 +218,7 @@ If the backend fails to start, check that:
 Docker images are built automatically by GitHub Actions:
 
 - **Trigger**: Push to `develop` branch
-- **Registry**: `ghcr.io/fiddur/aurboda/backend`
+- **Registry**: `fiddur/aurboda`
 - **Tags**:
   - `develop` - latest from develop branch
   - `<sha>` - specific commit
