@@ -1,7 +1,14 @@
-Nephelai - Self Quantification Aggregator
-=========================================
+Aurboda - Self Quantification Aggregator
+========================================
 
-   The Νεφελαι were the Okeanid-nymphs of clouds and rain.
+In Norse mythology, Aurboða is a mountain jötunn (giantess) associated with
+strength and vitality. Her name, meaning "gravel-offerer" or "gold-offerer",
+reflects her role as a gatherer and provider. As mother of Gerðr, whose name
+relates to growth and gardens, Aurboða represents the foundation from which
+health and flourishing emerge.
+
+This project embodies that spirit: gathering scattered health data from
+multiple sources into a unified foundation for understanding your wellbeing.
 
 **NB: This is a hobby project, not properly tested, nor cleanly implemented.**
 
@@ -16,7 +23,7 @@ Current state
 
 Collect data from:
 
-* Android Health Connect from [Nepehai App](https://github.com/fiddur/NephelaiApp)
+* Android Health Connect from [Aurboda App](https://github.com/fiddur/aurboda) (apps/android)
 * [OwnTracks](https://owntracks.org/) (json http mode)
 * [Oura](https://ouraring.com/) API
 * [RescueTime](https://www.rescuetime.com/) API
