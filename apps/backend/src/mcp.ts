@@ -88,7 +88,7 @@ export function createMcpRouter(config: McpConfig): Router {
 
   const createMcpServer = (user: string): McpServer => {
     const server = new McpServer({
-      name: 'nephelai',
+      name: 'aurboda',
       version: '1.0.0',
     })
 

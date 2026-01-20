@@ -28,11 +28,11 @@ fun getLocalProperty(key: String, projectRootDir: File): String { // Assuming ch
 }
 
 android {
-    namespace = "se.hokasgard.nephelaiapp"
+    namespace = "net.aurboda"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "se.hokasgard.nephelaiapp"
+        applicationId = "net.aurboda"
         minSdk = 34
         targetSdk = 36
         versionCode = 1
@@ -40,8 +40,8 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        val nepheliaiApiToken = getLocalProperty("nepheliaiApiToken", rootDir)
-        buildConfigField("String", "NEPHELIAI_API_TOKEN", "\"$nepheliaiApiToken\"")
+        val aurbodaApiToken = getLocalProperty("aurbodaApiToken", rootDir)
+        buildConfigField("String", "AURBODA_API_TOKEN", "\"$aurbodaApiToken\"")
     }
 
     buildTypes {
@@ -51,8 +51,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            val nepheliaiApiToken = getLocalProperty("nepheliaiApiToken", rootDir)
-            buildConfigField("String", "NEPHELIAI_API_TOKEN", "\"$nepheliaiApiToken\"")
+            val aurbodaApiToken = getLocalProperty("aurbodaApiToken", rootDir)
+            buildConfigField("String", "AURBODA_API_TOKEN", "\"$aurbodaApiToken\"")
         }
         debug {
             // BuildConfig fields are often defined per build type, or in defaultConfig for all

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Nephelai uses PostgreSQL with a **per-user database** architecture for strong data isolation. Each user gets their own database (`nephelai_{username}`) containing all their health and activity data.
+Aurboda uses PostgreSQL with a **per-user database** architecture for strong data isolation. Each user gets their own database (`aurboda_{username}`) containing all their health and activity data.
 
 This document describes the hybrid schema design that balances flexibility for diverse data sources with query performance for time-series analytics.
 
