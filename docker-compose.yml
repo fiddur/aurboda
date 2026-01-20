@@ -8,8 +8,8 @@ services:
     environment:
       - PGHOST=postgres
       - PGPORT=5432
-      - PGUSER=nephelai_service
-      - PGPASSWORD=nephelai_dev_password
+      - PGUSER=aurboda_service
+      - PGPASSWORD=aurboda_dev_password
       - SESSION_SALT=${SESSION_SALT:-change_this_to_32_byte_secret!!}
       - NODE_ENV=production
     depends_on:
@@ -20,15 +20,15 @@ services:
   postgres:
     image: postgis/postgis:16-3.4-alpine
     environment:
-      - POSTGRES_USER=nephelai_service
-      - POSTGRES_PASSWORD=nephelai_dev_password
+      - POSTGRES_USER=aurboda_service
+      - POSTGRES_PASSWORD=aurboda_dev_password
       - POSTGRES_DB=postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nephelai_service"]
+      test: ["CMD-SHELL", "pg_isready -U aurboda_service"]
       interval: 5s
       timeout: 5s
       retries: 5

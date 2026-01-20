@@ -43,4 +43,4 @@ EXPOSE 3000
 
 ENV NODE_ENV=production
 
-CMD ["pnpm", "--filter", "nephelai-backend", "start"]
+CMD ["pnpm", "--filter", "aurboda-backend", "start"]
