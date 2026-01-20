@@ -31,7 +31,7 @@ import {
 } from './db'
 import { DataSource, healthConnectActivityMapping, healthConnectMetricMapping, MetricType } from './schema'
 
-const userDbName = (user: string) => `nephelai_${user}`
+const userDbName = (user: string) => `aurboda_${user}`
 
 async function tableExists(db: Client, tableName: string): Promise<boolean> {
   const result = await db.query(`SELECT 1 FROM information_schema.tables WHERE table_name = $1`, [tableName])

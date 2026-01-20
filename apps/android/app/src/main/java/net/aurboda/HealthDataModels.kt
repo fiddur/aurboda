@@ -1,4 +1,4 @@
-package se.hokasgard.nephelaiapp
+package net.aurboda
 
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.BasalBodyTemperatureRecord

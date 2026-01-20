@@ -23,7 +23,7 @@ The backend requires a PostgreSQL database with PostGIS extension.
 Set these in your `.env` file or environment:
 
 ```bash
-PGUSER=nephelai_service    # Service account username
+PGUSER=aurboda_service    # Service account username
 PGPASSWORD=<password>      # Service account password
 PGHOST=localhost           # Database host
 PGPORT=5432                # Database port (default: 5432)
@@ -34,14 +34,14 @@ PGPORT=5432                # Database port (default: 5432)
 The service account needs `CREATEDB` privilege to create per-user databases:
 
 ```bash
-sudo -u postgres psql -c "CREATE USER nephelai_service WITH ENCRYPTED PASSWORD 'your_password' CREATEDB"
+sudo -u postgres psql -c "CREATE USER aurboda_service WITH ENCRYPTED PASSWORD 'your_password' CREATEDB"
 ```
 
 ### Database Naming Convention
 
-Each user gets their own database named `nephelai_{username}`. For example:
-- User `fiddur` -> Database `nephelai_fiddur`
-- User `alice` -> Database `nephelai_alice`
+Each user gets their own database named `aurboda_{username}`. For example:
+- User `fiddur` -> Database `aurboda_fiddur`
+- User `alice` -> Database `aurboda_alice`
 
 ### For Existing Users (SET ROLE Permission)
 
@@ -55,7 +55,7 @@ sudo -u postgres psql -c "GRANT <username> TO <PGUSER>"
 
 Example:
 ```bash
-sudo -u postgres psql -c "GRANT fiddur TO nephelai_service"
+sudo -u postgres psql -c "GRANT fiddur TO aurboda_service"
 ```
 
 ### PostGIS Extension

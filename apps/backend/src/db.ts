@@ -13,7 +13,7 @@ import {
 
 const dbByUser: Record<string, Client> = {}
 
-const userDbName = (user: string) => `nephelai_${user}`
+const userDbName = (user: string) => `aurboda_${user}`
 
 export const query = async <T extends QueryResultRow = QueryResultRow>(
   dbOrUser: Client | string,

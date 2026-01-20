@@ -1,0 +1,39 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+dist
+build
+*.log
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+coverage
+
+# Documentation (not needed in container)
+*.md
+!README.md
+docs
+
+# Environment files (should be passed via env vars)
+.env
+.env.*
+
+# Android app (not needed for backend)
+apps/android
+
+# OS files
+.DS_Store
+Thumbs.db

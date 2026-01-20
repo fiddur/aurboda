@@ -1,4 +1,4 @@
-package se.hokasgard.nephelaiapp
+package net.aurboda
 
 import android.content.Context
 import android.os.Bundle
@@ -64,9 +64,9 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.KSerializer
-import se.hokasgard.nephelaiapp.ui.theme.NephelaiAppTheme
+import net.aurboda.ui.theme.AurbodaAppTheme
 // Import allRecordTypes from HealthDataModels
-import se.hokasgard.nephelaiapp.allRecordTypes
+import net.aurboda.allRecordTypes
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -75,7 +75,7 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.reflect.KClass
 
-private const val PREFS_NAME = "NephelaiAppPrefs"
+private const val PREFS_NAME = "AurbodaAppPrefs"
 private const val CHANGES_TOKEN_KEY = "healthConnectChangesToken"
 
 fun Record.getPrimaryInstant(): Instant {
@@ -171,7 +171,7 @@ private suspend inline fun <reified T : Any> handlePostData(
     try {
         val response = httpClient.post(apiUrl) {
             contentType(ContentType.Application.Json)
-            headers { append(HttpHeaders.Authorization, "Bearer ${BuildConfig.NEPHELIAI_API_TOKEN}") }
+            headers { append(HttpHeaders.Authorization, "Bearer ${BuildConfig.AURBODA_API_TOKEN}") }
             setBody(postData)
         }
         Log.d("SendData", "$recordTypeSimpleName Server response: ${response.status} - ${response.bodyAsText()}")
@@ -186,7 +186,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            NephelaiAppTheme {
+            AurbodaAppTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -351,7 +351,7 @@ fun HealthConnectScreen() {
     }
 
     suspend fun sendPendingDataToServer(currentActiveContext: Context) {
-        if (BuildConfig.NEPHELIAI_API_TOKEN.isEmpty()) {
+        if (BuildConfig.AURBODA_API_TOKEN.isEmpty()) {
             statusMessage = "API token is missing. Cannot send."
             Log.e("SendData", "API token is missing.")
             return
@@ -602,7 +602,7 @@ fun HealthConnectScreen() {
 @Preview(showBackground = true)
 @Composable
 fun HealthConnectScreenPreview() {
-    NephelaiAppTheme {
+    AurbodaAppTheme {
         HealthConnectScreen()
     }
 }
