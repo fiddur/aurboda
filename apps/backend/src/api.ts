@@ -111,7 +111,7 @@ const main = async () => {
     return next(unauthorized)
   }
 
-  // httpd.post('/api/v2/signup', async (req, res, next) => {
+  // httpd.post('/v2/signup', async (req, res, next) => {
   //   const { username: user, password } = req.body
   //   if (!user) return next(unauthorized)
   //   await makeNewUserDb(userDb, user, password)
@@ -182,7 +182,7 @@ const main = async () => {
   httpd.get('/auth/ouracb', oura.authCb)
 
   // Oura sync endpoints
-  httpd.post('/api/sync/oura', authMiddleware, async (req, res) => {
+  httpd.post('/sync/oura', authMiddleware, async (req, res) => {
     const user = req.user!
     const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
 
@@ -199,7 +199,7 @@ const main = async () => {
     }
   })
 
-  httpd.get('/api/sync/oura/status', authMiddleware, async (req, res) => {
+  httpd.get('/sync/oura/status', authMiddleware, async (req, res) => {
     const user = req.user!
 
     try {
@@ -211,7 +211,7 @@ const main = async () => {
     }
   })
 
-  httpd.delete('/api/sync/oura/state', authMiddleware, async (req, res) => {
+  httpd.delete('/sync/oura/state', authMiddleware, async (req, res) => {
     const user = req.user!
     const { dataType } = req.query as { dataType?: string }
 
@@ -317,7 +317,7 @@ const main = async () => {
     )
   })
 
-  httpd.get('/api/heartrate', authMiddleware, async (req, res) => {
+  httpd.get('/heartrate', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
@@ -328,7 +328,7 @@ const main = async () => {
     res.end(JSON.stringify(hrs))
   })
 
-  httpd.get('/api/tags', authMiddleware, async (req, res) => {
+  httpd.get('/tags', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
@@ -341,7 +341,7 @@ const main = async () => {
     res.end(JSON.stringify(tags))
   })
 
-  httpd.get('/api/activities', authMiddleware, async (req, res) => {
+  httpd.get('/activities', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const types = (req.query.types as string)?.split(',') || ['sleep', 'exercise', 'meditation']
@@ -357,7 +357,7 @@ const main = async () => {
     res.end(JSON.stringify(activities))
   })
 
-  httpd.get('/api/productivity', authMiddleware, async (req, res) => {
+  httpd.get('/productivity', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
@@ -367,7 +367,7 @@ const main = async () => {
     res.end(JSON.stringify(productivity))
   })
 
-  httpd.get('/api/locations', authMiddleware, async (req, res) => {
+  httpd.get('/locations', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!

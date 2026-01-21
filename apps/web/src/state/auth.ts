@@ -8,7 +8,7 @@ auth.subscribe((value) => localStorage.setItem('auth', JSON.stringify(value)))
 
 export const login = async (user: string, pass: string) => {
   try {
-    const response = await axios.post<{ token: string }>(`${API_URL}/api/login`, {
+    const response = await axios.post<{ token: string }>(`${API_URL}/login`, {
       password: pass,
       username: user,
     })
