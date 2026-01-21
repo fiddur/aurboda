@@ -90,6 +90,9 @@ dependencies {
     // Encrypted SharedPreferences for secure credential storage
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // WorkManager for background sync
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
