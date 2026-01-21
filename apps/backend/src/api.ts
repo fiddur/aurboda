@@ -6,6 +6,7 @@ import { Client } from 'pg'
 import { createAuth } from './auth'
 import {
   getActivities,
+  getAllSyncStates,
   getLocations,
   getProductivity,
   getTags,
@@ -15,12 +16,15 @@ import {
   insertPlace,
   insertProductivity,
   loginToUserDb,
+  migrateSchema,
   processHealthConnectData,
   query,
+  resetSyncState,
   schemaInitialized,
 } from './db'
 import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
+import { syncAllOuraData } from './oura-sync'
 import { rescuetimeClient } from './rescuetime'
 import { reduceTimeSeries } from './utils'
 
@@ -88,9 +92,12 @@ const main = async () => {
     if (userRows.rowCount === 1) {
       try {
         await loginToUserDb(user, password)
-        // Ensure schema is initialized
+        // Ensure schema is initialized and migrated
         if (!(await schemaInitialized(user))) {
           await initializeSchema(user)
+        } else {
+          // Run migrations for existing databases
+          await migrateSchema(user)
         }
       } catch (err) {
         console.log(err)
@@ -138,6 +145,49 @@ const main = async () => {
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)
+
+  // Oura sync endpoints
+  httpd.post('/sync/oura', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
+
+    try {
+      const results = await syncAllOuraData(user, oura, {
+        fullResync,
+        startDate: startDate ? new Date(startDate) : undefined,
+      })
+
+      res.json({ results, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  httpd.get('/sync/oura/status', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    try {
+      const states = await getAllSyncStates(user, 'oura')
+      res.json({ states, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  httpd.delete('/sync/oura/state', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { dataType } = req.query as { dataType?: string }
+
+    try {
+      await resetSyncState(user, 'oura', dataType)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
 
   httpd.post('/ownTracks', async (req, res) => {
     const { topic, _type: type } = req.body

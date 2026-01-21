@@ -92,7 +92,6 @@ export const createTableStatements: Record<string, string> = {
   `,
 
   // Named places / geofences
-
   places: `
     CREATE TABLE IF NOT EXISTS places (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -105,12 +104,12 @@ export const createTableStatements: Record<string, string> = {
       CONSTRAINT unique_place UNIQUE (source, external_id)
     )
   `,
+
   places_indexes: `
     CREATE INDEX IF NOT EXISTS idx_places_geo ON places USING GIST (location)
   `,
 
   // RescueTime productivity data
-
   productivity: `
     CREATE TABLE IF NOT EXISTS productivity (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -125,12 +124,12 @@ export const createTableStatements: Record<string, string> = {
       CONSTRAINT unique_productivity UNIQUE (source, start_time, activity)
     )
   `,
+
   productivity_indexes: `
     CREATE INDEX IF NOT EXISTS idx_productivity_time ON productivity (start_time DESC);
     CREATE INDEX IF NOT EXISTS idx_productivity_category ON productivity (category, start_time DESC)
   `,
   // Raw data sink - stores all incoming data in original form
-
   raw_records: `
     CREATE TABLE IF NOT EXISTS raw_records (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -143,10 +142,27 @@ export const createTableStatements: Record<string, string> = {
       CONSTRAINT unique_source_record UNIQUE (source, record_type, external_id)
     )
   `,
+
   raw_records_indexes: `
     CREATE INDEX IF NOT EXISTS idx_raw_records_source_time ON raw_records (source, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_raw_records_type_time ON raw_records (record_type, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_raw_records_data ON raw_records USING GIN (data)
+  `,
+
+  // Sync state tracking for incremental data pulls
+  sync_state: `
+    CREATE TABLE IF NOT EXISTS sync_state (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      provider        VARCHAR(50) NOT NULL,
+      data_type       VARCHAR(100) NOT NULL,
+      last_sync_time  TIMESTAMPTZ,
+      sync_start_date DATE,
+      status          VARCHAR(20) DEFAULT 'idle',
+      error_message   TEXT,
+      retry_after     TIMESTAMPTZ,
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT unique_sync_state UNIQUE (provider, data_type)
+    )
   `,
 
   // Activity labels/tags
@@ -205,6 +221,7 @@ export const tableCreationOrder = [
   'lab_results',
   'lab_results_indexes',
   'oauth_tokens',
+  'sync_state',
 ]
 
 /**
@@ -242,6 +259,8 @@ export type MetricType =
   | 'readiness_score'
   | 'resilience_score'
   | 'productivity_score'
+  | 'cardiovascular_age'
+  | 'sleep_score'
 
 /**
  * Activity types for activities table.
@@ -263,6 +282,7 @@ export const metricUnits: Record<MetricType, string> = {
   calories_active: 'kcal',
   calories_basal: 'kcal',
   calories_total: 'kcal',
+  cardiovascular_age: 'years',
   distance: 'm',
   floors_climbed: 'count',
   heart_rate: 'bpm',
@@ -274,6 +294,7 @@ export const metricUnits: Record<MetricType, string> = {
   resilience_score: 'score',
   respiratory_rate: 'brpm',
   resting_heart_rate: 'bpm',
+  sleep_score: 'score',
   spo2: 'percent',
   steps: 'count',
   vo2_max: 'mL/kg/min',

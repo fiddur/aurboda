@@ -67,6 +67,33 @@ export const initializeSchema = async (user: string) => {
 }
 
 /**
+ * Run database migrations for a user.
+ * Checks which tables exist and creates missing ones.
+ */
+export const migrateSchema = async (user: string) => {
+  const db = await getDbForUser(user)
+  const database = `aurboda_${user}`
+
+  // Check which tables exist
+  const existingTables = await query(
+    db,
+    `SELECT table_name FROM information_schema.tables WHERE table_catalog = $1 AND table_schema = 'public'`,
+    [database],
+  )
+  const existingTableNames = new Set(existingTables.rows.map((r) => r.table_name))
+
+  // Create missing tables
+  for (const key of tableCreationOrder) {
+    const tableName = key.replace('_indexes', '')
+    if (!existingTableNames.has(tableName) || key.endsWith('_indexes')) {
+      // Always run index creation (IF NOT EXISTS handles duplicates)
+      // Create tables only if they don't exist
+      await query(db, createTableStatements[key])
+    }
+  }
+}
+
+/**
  * Check if schema is initialized (has required tables).
  */
 export const schemaInitialized = async (user: string) => {
@@ -563,6 +590,108 @@ export const getOAuthToken = async (user: string, provider: string): Promise<OAu
     provider: row.provider,
     refreshToken: row.refresh_token,
     scopes: row.scopes,
+  }
+}
+
+// ============================================================================
+// Sync State
+// ============================================================================
+
+export type SyncStatus = 'idle' | 'syncing' | 'error' | 'rate_limited'
+
+export interface SyncState {
+  id?: string
+  provider: string
+  dataType: string
+  lastSyncTime?: Date
+  syncStartDate?: Date
+  status: SyncStatus
+  errorMessage?: string
+  retryAfter?: Date
+  updatedAt?: Date
+}
+
+export const getSyncState = async (
+  user: string,
+  provider: string,
+  dataType: string,
+): Promise<SyncState | null> => {
+  const result = await query(
+    user,
+    `SELECT id, provider, data_type, last_sync_time, sync_start_date, status, error_message, retry_after, updated_at
+     FROM sync_state
+     WHERE provider = $1 AND data_type = $2`,
+    [provider, dataType],
+  )
+
+  if (result.rows.length === 0) return null
+
+  const row = result.rows[0]
+  return {
+    dataType: row.data_type,
+    errorMessage: row.error_message,
+    id: row.id,
+    lastSyncTime: row.last_sync_time ? new Date(row.last_sync_time) : undefined,
+    provider: row.provider,
+    retryAfter: row.retry_after ? new Date(row.retry_after) : undefined,
+    status: row.status as SyncStatus,
+    syncStartDate: row.sync_start_date ? new Date(row.sync_start_date) : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
+  }
+}
+
+export const upsertSyncState = async (user: string, state: SyncState) => {
+  await query(
+    user,
+    `INSERT INTO sync_state (provider, data_type, last_sync_time, sync_start_date, status, error_message, retry_after, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+     ON CONFLICT (provider, data_type) DO UPDATE SET
+       last_sync_time = COALESCE(EXCLUDED.last_sync_time, sync_state.last_sync_time),
+       sync_start_date = COALESCE(EXCLUDED.sync_start_date, sync_state.sync_start_date),
+       status = EXCLUDED.status,
+       error_message = EXCLUDED.error_message,
+       retry_after = EXCLUDED.retry_after,
+       updated_at = NOW()`,
+    [
+      state.provider,
+      state.dataType,
+      state.lastSyncTime,
+      state.syncStartDate,
+      state.status,
+      state.errorMessage,
+      state.retryAfter,
+    ],
+  )
+}
+
+export const getAllSyncStates = async (user: string, provider: string): Promise<SyncState[]> => {
+  const result = await query(
+    user,
+    `SELECT id, provider, data_type, last_sync_time, sync_start_date, status, error_message, retry_after, updated_at
+     FROM sync_state
+     WHERE provider = $1
+     ORDER BY data_type`,
+    [provider],
+  )
+
+  return result.rows.map((row) => ({
+    dataType: row.data_type,
+    errorMessage: row.error_message,
+    id: row.id,
+    lastSyncTime: row.last_sync_time ? new Date(row.last_sync_time) : undefined,
+    provider: row.provider,
+    retryAfter: row.retry_after ? new Date(row.retry_after) : undefined,
+    status: row.status as SyncStatus,
+    syncStartDate: row.sync_start_date ? new Date(row.sync_start_date) : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
+  }))
+}
+
+export const resetSyncState = async (user: string, provider: string, dataType?: string) => {
+  if (dataType) {
+    await query(user, `DELETE FROM sync_state WHERE provider = $1 AND data_type = $2`, [provider, dataType])
+  } else {
+    await query(user, `DELETE FROM sync_state WHERE provider = $1`, [provider])
   }
 }
 
