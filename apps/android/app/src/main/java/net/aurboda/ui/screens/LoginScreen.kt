@@ -33,13 +33,14 @@ import net.aurboda.LoginResult
 
 @Composable
 fun LoginScreen(
+    initialServerUrl: String? = null,
     onLoginSuccess: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val authApi = remember { AuthApi.create() }
 
-    var serverUrl by remember { mutableStateOf("https://aurboda.net/api") }
+    var serverUrl by remember { mutableStateOf(initialServerUrl ?: "https://aurboda.net/api") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }

@@ -10,7 +10,12 @@ import androidx.compose.ui.platform.LocalContext
 
 enum class AppScreen {
     Login,
-    HealthConnect
+    Main
+}
+
+enum class MainTab {
+    Sync,
+    Account
 }
 
 class AppState(
@@ -20,16 +25,33 @@ class AppState(
     var currentScreen by mutableStateOf(initialScreen)
         private set
 
+    var currentTab by mutableStateOf(MainTab.Sync)
+        private set
+
+    var pendingServerUrl by mutableStateOf<String?>(null)
+        private set
+
     val credentials: CredentialsManager.Credentials?
         get() = CredentialsManager.getCredentials(context)
 
     fun onLoginSuccess() {
-        currentScreen = AppScreen.HealthConnect
+        pendingServerUrl = null
+        currentScreen = AppScreen.Main
     }
 
     fun logout() {
         CredentialsManager.clearCredentials(context)
+        currentTab = MainTab.Sync
         currentScreen = AppScreen.Login
+    }
+
+    fun changeServerUrl(newUrl: String) {
+        pendingServerUrl = newUrl
+        logout()
+    }
+
+    fun selectTab(tab: MainTab) {
+        currentTab = tab
     }
 }
 
@@ -40,7 +62,7 @@ fun rememberAppState(): AppState {
         val hasCredentials = CredentialsManager.hasCredentials(context)
         AppState(
             context = context,
-            initialScreen = if (hasCredentials) AppScreen.HealthConnect else AppScreen.Login
+            initialScreen = if (hasCredentials) AppScreen.Main else AppScreen.Login
         )
     }
 }
