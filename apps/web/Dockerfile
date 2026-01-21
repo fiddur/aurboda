@@ -3,7 +3,6 @@ RUN corepack enable && corepack prepare pnpm@10.15.1 --activate
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/web/package.json apps/web/
-COPY packages/ packages/
 RUN pnpm install --frozen-lockfile
 COPY apps/web/ apps/web/
 ARG VITE_API_URL
