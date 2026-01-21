@@ -15,7 +15,7 @@
     "test:android": "cd apps/android && ./gradlew test",
     "build": "pnpm --filter aurboda-web build && pnpm build:android",
     "build:android": "cd apps/android && ./gradlew assembleDebug",
-    "check": "pnpm --filter aurboda-backend check && pnpm --filter aurboda-web typecheck",
+    "check": "pnpm --filter aurboda-backend check && pnpm --filter aurboda-web check",
     "fix": "pnpm --filter aurboda-backend fix && pnpm --filter aurboda-web fix"
   },
   "devDependencies": {
