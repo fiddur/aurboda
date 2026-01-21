@@ -148,7 +148,7 @@ const main = async () => {
   httpd.get('/auth/ouracb', oura.authCb)
 
   // Oura sync endpoints
-  httpd.post('/sync/oura', authMiddleware, async (req, res) => {
+  httpd.post('/api/sync/oura', authMiddleware, async (req, res) => {
     const user = req.user!
     const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
 
@@ -165,7 +165,7 @@ const main = async () => {
     }
   })
 
-  httpd.get('/sync/oura/status', authMiddleware, async (req, res) => {
+  httpd.get('/api/sync/oura/status', authMiddleware, async (req, res) => {
     const user = req.user!
 
     try {
@@ -177,7 +177,7 @@ const main = async () => {
     }
   })
 
-  httpd.delete('/sync/oura/state', authMiddleware, async (req, res) => {
+  httpd.delete('/api/sync/oura/state', authMiddleware, async (req, res) => {
     const user = req.user!
     const { dataType } = req.query as { dataType?: string }
 
@@ -283,7 +283,7 @@ const main = async () => {
     )
   })
 
-  httpd.get('/heartrate', authMiddleware, async (req, res) => {
+  httpd.get('/api/heartrate', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
@@ -294,7 +294,7 @@ const main = async () => {
     res.end(JSON.stringify(hrs))
   })
 
-  httpd.get('/tags', authMiddleware, async (req, res) => {
+  httpd.get('/api/tags', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
@@ -305,7 +305,7 @@ const main = async () => {
     res.end(JSON.stringify(tags))
   })
 
-  httpd.get('/activities', authMiddleware, async (req, res) => {
+  httpd.get('/api/activities', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const types = (req.query.types as string)?.split(',') || ['sleep', 'exercise', 'meditation']
@@ -316,7 +316,7 @@ const main = async () => {
     res.end(JSON.stringify(activities))
   })
 
-  httpd.get('/productivity', authMiddleware, async (req, res) => {
+  httpd.get('/api/productivity', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
@@ -326,7 +326,7 @@ const main = async () => {
     res.end(JSON.stringify(productivity))
   })
 
-  httpd.get('/locations', authMiddleware, async (req, res) => {
+  httpd.get('/api/locations', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
