@@ -50,7 +50,7 @@ const main = async () => {
     try {
       if (!sessid) throw new Error('unauthenticated')
       const [encrypted, sessionIv, tag] = sessid.split('-')
-      const decipher = createDecipheriv('aes-256-gcm', sessionSalt, sessionIv)
+      const decipher = createDecipheriv('aes-256-gcm', sessionSalt, Buffer.from(sessionIv, 'base64'))
       decipher.setAuthTag(Buffer.from(tag, 'base64'))
       return decipher.update(encrypted, 'base64', 'utf8') + decipher.final('utf8')
     } catch {
