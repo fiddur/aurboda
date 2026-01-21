@@ -1,6 +1,7 @@
 {
   "name": "aurboda",
   "version": "1.0.0",
+  "type": "module",
   "description": "Collect, aggregate, visualize your Quantified Self data",
   "license": "AGPL-3.0-or-later",
   "author": "Fredrik Liljegren <fredrik@liljegren.org>",
@@ -10,7 +11,12 @@
   "scripts": {
     "dev:backend": "pnpm --filter aurboda-backend start",
     "dev:web": "pnpm --filter aurboda-web dev",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "pnpm --filter aurboda-backend test && pnpm --filter aurboda-web test && pnpm test:android",
+    "test:android": "cd apps/android && ./gradlew test",
+    "build": "pnpm --filter aurboda-web build && pnpm build:android",
+    "build:android": "cd apps/android && ./gradlew assembleDebug",
+    "check": "pnpm --filter aurboda-backend check && pnpm --filter aurboda-web typecheck",
+    "fix": "pnpm --filter aurboda-backend fix && pnpm --filter aurboda-web fix"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
