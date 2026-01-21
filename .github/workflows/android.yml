@@ -58,3 +58,29 @@ jobs:
           name: test-results
           path: apps/android/app/build/reports/tests/
           retention-days: 7
+
+      - name: Prepare APK for release
+        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/aurboda.apk
+
+      - name: Update latest release
+        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd ${{ github.workspace }}
+          # Delete existing latest release if it exists
+          gh release delete latest --yes || true
+          # Delete the tag locally and remotely
+          git tag -d latest || true
+          git push origin :refs/tags/latest || true
+          # Create new release with the APK
+          gh release create latest \
+            --title "Latest Development Build" \
+            --notes "Automatically updated on each push to develop.
+
+          **Download:** [aurboda.apk](https://github.com/${{ github.repository }}/releases/latest/download/aurboda.apk)
+
+          Built from commit: ${{ github.sha }}" \
+            --prerelease \
+            apps/android/app/build/outputs/apk/debug/aurboda.apk
