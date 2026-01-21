@@ -22,6 +22,7 @@ import {
 import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
+import { ActivityType } from './schema'
 import { reduceTimeSeries } from './utils'
 
 declare global {
@@ -252,6 +253,37 @@ const main = async () => {
     const tags = await getTags(user, start, end)
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(tags))
+  })
+
+  httpd.get('/activities', authMiddleware, async (req, res) => {
+    const start = new Date(req.query.start as string)
+    const end = new Date(req.query.end as string)
+    const types = (req.query.types as string)?.split(',') || ['sleep', 'exercise', 'meditation']
+    const user = req.user!
+
+    const activities = await getActivities(user, types as ActivityType[], start, end)
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(activities))
+  })
+
+  httpd.get('/productivity', authMiddleware, async (req, res) => {
+    const start = new Date(req.query.start as string)
+    const end = new Date(req.query.end as string)
+    const user = req.user!
+
+    const productivity = await getProductivity(user, start, end)
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(productivity))
+  })
+
+  httpd.get('/locations', authMiddleware, async (req, res) => {
+    const start = new Date(req.query.start as string)
+    const end = new Date(req.query.end as string)
+    const user = req.user!
+
+    const { places } = await getLocations(user, start, end)
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(places))
   })
 
   const port = Number(process.env.PORT ?? 80)
