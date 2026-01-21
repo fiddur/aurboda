@@ -27,6 +27,11 @@ import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
 import { isRateLimited, OuraDataType, syncAllOuraData, syncOuraDataType } from './oura-sync'
 import { rescuetimeClient } from './rescuetime'
+import {
+  isRateLimited as isRescueTimeRateLimited,
+  needsSync as rescueTimeNeedsSync,
+  syncRescueTimeData,
+} from './rescuetime-sync'
 import { ActivityType } from './schema'
 import { reduceTimeSeries } from './utils'
 
@@ -224,6 +229,53 @@ const main = async () => {
     }
   })
 
+  // RescueTime sync endpoints
+  httpd.post('/sync/rescuetime', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
+    const rescueTimeKey = process.env.RESCUETIME_KEY
+
+    if (!rescueTimeKey) {
+      return res.status(400).json({ error: 'RescueTime API key not configured', success: false })
+    }
+
+    try {
+      const result = await syncRescueTimeData(user, rescueTimeKey, {
+        fullResync,
+        startDate: startDate ? new Date(startDate) : undefined,
+      })
+
+      res.json({ result, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  httpd.get('/sync/rescuetime/status', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    try {
+      const states = await getAllSyncStates(user, 'rescuetime')
+      res.json({ states, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  httpd.delete('/sync/rescuetime/state', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    try {
+      await resetSyncState(user, 'rescuetime')
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
   httpd.post('/ownTracks', async (req, res) => {
     const { topic, _type: type } = req.body
 
@@ -361,6 +413,20 @@ const main = async () => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
+
+    // Auto-sync RescueTime if needed and API key is configured
+    const rescueTimeKey = process.env.RESCUETIME_KEY
+    if (rescueTimeKey) {
+      try {
+        const syncState = await getSyncState(user, 'rescuetime', 'productivity')
+        if (!isRescueTimeRateLimited(syncState) && rescueTimeNeedsSync(syncState, SYNC_THRESHOLD_MINUTES)) {
+          console.log('Auto-syncing RescueTime productivity...')
+          await syncRescueTimeData(user, rescueTimeKey)
+        }
+      } catch (error) {
+        console.error('Failed to auto-sync RescueTime:', error)
+      }
+    }
 
     const productivity = await getProductivity(user, start, end)
     res.writeHead(200, { 'Content-Type': 'application/json' })
