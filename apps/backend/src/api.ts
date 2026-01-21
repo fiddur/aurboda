@@ -1,9 +1,9 @@
 import { json } from 'body-parser'
 import cors from 'cors'
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 import { subHours } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
+import { createToken, getUsernameFromToken, initializeAuth } from './auth'
 import {
   getActivities,
   getLocations,
@@ -36,27 +36,12 @@ declare global {
 const main = async () => {
   const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
 
-  const sessionSalt = process.env.SESSION_SALT
-  if (!sessionSalt || Buffer.from(sessionSalt).length !== 32) {
-    throw new Error('SESSION_SALT must be set and be exactly 32 bytes (256 bits)')
-  }
+  initializeAuth()
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
 
   const httpd = express()
-
-  const getUsernameFromSession = (sessid: string) => {
-    try {
-      if (!sessid) throw new Error('unauthenticated')
-      const [encrypted, sessionIv, tag] = sessid.split('-')
-      const decipher = createDecipheriv('aes-256-gcm', sessionSalt, Buffer.from(sessionIv, 'base64'))
-      decipher.setAuthTag(Buffer.from(tag, 'base64'))
-      return decipher.update(encrypted, 'base64', 'utf8') + decipher.final('utf8')
-    } catch {
-      throw new Error('unauthenticated')
-    }
-  }
 
   const userDb = new Client({ database: 'postgres' })
   await userDb.connect()
@@ -65,7 +50,7 @@ const main = async () => {
   httpd.use(cors({ origin: true }))
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
-  httpd.use('/mcp', createMcpRouter({ sessionSalt }))
+  httpd.use('/mcp', createMcpRouter())
 
   httpd.use(json({ limit: '10mb' }))
 
@@ -78,8 +63,7 @@ const main = async () => {
     try {
       if (typeof req.headers.authorization === 'string') {
         const token = req.headers.authorization.slice('bearer '.length)
-        const user = getUsernameFromSession(token)
-        req.user = user
+        req.user = getUsernameFromToken(token)
         return next()
       }
     } catch {
@@ -114,12 +98,7 @@ const main = async () => {
       }
     } else return next(unauthorized)
 
-    const iv = randomBytes(12)
-    const cipher = createCipheriv('aes-256-gcm', sessionSalt, iv)
-    const token =
-      cipher.update(user, 'utf8', 'base64') +
-      cipher.final('base64') +
-      `-${iv.toString('base64')}-${cipher.getAuthTag().toString('base64')}`
+    const token = createToken(user)
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ refresh: token, token }))
