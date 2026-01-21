@@ -22,7 +22,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -210,16 +209,32 @@ fun AurbodaApp() {
     when (appState.currentScreen) {
         AppScreen.Login -> {
             net.aurboda.ui.screens.LoginScreen(
+                initialServerUrl = appState.pendingServerUrl,
                 onLoginSuccess = { appState.onLoginSuccess() }
             )
         }
-        AppScreen.HealthConnect -> {
+        AppScreen.Main -> {
             val credentials = appState.credentials
             if (credentials != null) {
-                HealthConnectScreen(
-                    serverUrl = credentials.serverUrl,
-                    authToken = credentials.authToken,
-                    onLogout = { appState.logout() }
+                net.aurboda.ui.screens.MainScreen(
+                    currentTab = appState.currentTab,
+                    onTabSelected = { appState.selectTab(it) },
+                    syncContent = { modifier ->
+                        HealthConnectScreen(
+                            serverUrl = credentials.serverUrl,
+                            authToken = credentials.authToken,
+                            modifier = modifier
+                        )
+                    },
+                    accountContent = { modifier ->
+                        net.aurboda.ui.screens.AccountScreen(
+                            username = credentials.username,
+                            serverUrl = credentials.serverUrl,
+                            onServerUrlChange = { newUrl -> appState.changeServerUrl(newUrl) },
+                            onLogout = { appState.logout() },
+                            modifier = modifier
+                        )
+                    }
                 )
             } else {
                 // Should not happen, but handle gracefully
@@ -233,7 +248,7 @@ fun AurbodaApp() {
 fun HealthConnectScreen(
     serverUrl: String,
     authToken: String,
-    onLogout: () -> Unit
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -540,18 +555,10 @@ fun HealthConnectScreen(
     val yesterday = remember { today.minusDays(1) }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            TextButton(onClick = onLogout) {
-                Text("Logout")
-            }
-        }
         Text(statusMessage)
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -647,8 +654,7 @@ fun HealthConnectScreenPreview() {
     AurbodaAppTheme {
         HealthConnectScreen(
             serverUrl = "https://example.com",
-            authToken = "preview-token",
-            onLogout = {}
+            authToken = "preview-token"
         )
     }
 }
