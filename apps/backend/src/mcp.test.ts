@@ -7,12 +7,22 @@ import { createMcpRouter } from './mcp'
 // Mock the db module
 vi.mock('./db', () => ({
   getActivities: vi.fn(),
+  getAllSyncStates: vi.fn(),
   getLocations: vi.fn(),
   getProductivity: vi.fn(),
   getTags: vi.fn(),
   getTimeSeries: vi.fn(),
   insertTag: vi.fn(),
   insertTimeSeries: vi.fn(),
+}))
+
+// Mock the sync modules
+vi.mock('./oura-sync', () => ({
+  syncAllOuraData: vi.fn(),
+}))
+
+vi.mock('./rescuetime-sync', () => ({
+  syncRescueTimeData: vi.fn(),
 }))
 
 const auth = createAuth('very very secretvery very secret') // 32 bytes for AES-256

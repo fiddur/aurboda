@@ -94,7 +94,7 @@ const main = async () => {
   httpd.use(cors({ origin: true }))
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
-  httpd.use('/mcp', createMcpRouter(auth))
+  httpd.use('/mcp', createMcpRouter(auth, oura))
 
   httpd.use(json({ limit: '10mb' }))
 
