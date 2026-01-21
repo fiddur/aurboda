@@ -34,9 +34,14 @@ Visualizations:
 * ...served from backend is a timeline with HR, sleep, exercise and locations, but that is going into the web part...
 
 
+Downloads
+---------
+
+ - [Android APK (latest build artifacts)](https://github.com/fiddur/aurboda/actions/workflows/android.yml?query=branch%3Adevelop)
+
 Parts in apps
 -------------
 
  - Backend (needing PostgreSQL storage configured in .env)
  - Web (for visualizations)
- - Android (to colled Andoid Health Connect data)
+ - Android (to collect Android Health Connect data)
