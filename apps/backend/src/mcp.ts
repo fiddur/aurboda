@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { Auth } from './auth'
 import {
   getActivities,
+  getAllSyncStates,
   getLocations,
   getProductivity,
   getTags,
@@ -13,6 +14,9 @@ import {
   insertTag,
   insertTimeSeries,
 } from './db'
+import { ouraClient } from './oura'
+import { syncAllOuraData } from './oura-sync'
+import { syncRescueTimeData } from './rescuetime-sync'
 import { MetricType, metricUnits } from './schema'
 
 const validMetrics: MetricType[] = [
@@ -42,6 +46,8 @@ const validMetrics: MetricType[] = [
   'readiness_score',
   'resilience_score',
   'productivity_score',
+  'cardiovascular_age',
+  'sleep_score',
 ]
 
 function isValidMetric(metric: string): metric is MetricType {
@@ -54,7 +60,9 @@ interface McpSession {
   user: string
 }
 
-export function createMcpRouter(auth: Auth): Router {
+type OuraClientType = ReturnType<typeof ouraClient>
+
+export function createMcpRouter(auth: Auth, oura?: OuraClientType): Router {
   const router = Router()
   const sessions = new Map<string, McpSession>()
 
@@ -347,6 +355,157 @@ export function createMcpRouter(auth: Auth): Router {
               type: 'text' as const,
             },
           ],
+        }
+      },
+    )
+
+    // Tool 5: sync_oura
+    server.tool(
+      'sync_oura',
+      'Sync data from Oura Ring API. Fetches cardiovascular age, readiness, resilience, sleep scores, meditation sessions, and tags.',
+      {
+        full_resync: z
+          .boolean()
+          .optional()
+          .describe(
+            'If true, fetches all historical data (default 90 days). Otherwise, fetches only since last sync.',
+          ),
+        start_date: z
+          .string()
+          .optional()
+          .describe('Optional start date for sync in YYYY-MM-DD format. Only used with full_resync.'),
+      },
+      async ({ full_resync, start_date }) => {
+        if (!oura) {
+          return {
+            content: [{ text: 'Oura integration is not configured on this server.', type: 'text' as const }],
+          }
+        }
+
+        try {
+          const results = await syncAllOuraData(user, oura, {
+            fullResync: full_resync,
+            startDate: start_date ? new Date(start_date) : undefined,
+          })
+
+          const summary = results.map((r) => ({
+            dataType: r.dataType,
+            error: r.error,
+            recordsProcessed: r.recordsProcessed,
+            status: r.status,
+          }))
+
+          return {
+            content: [
+              {
+                text: JSON.stringify({ results: summary, success: true }, null, 2),
+                type: 'text' as const,
+              },
+            ],
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return {
+            content: [
+              { text: JSON.stringify({ error: message, success: false }, null, 2), type: 'text' as const },
+            ],
+          }
+        }
+      },
+    )
+
+    // Tool 6: sync_rescuetime
+    server.tool(
+      'sync_rescuetime',
+      'Sync productivity data from RescueTime API. Fetches application and website usage with productivity scores.',
+      {
+        full_resync: z
+          .boolean()
+          .optional()
+          .describe(
+            'If true, fetches all historical data (default 30 days). Otherwise, fetches only since last sync.',
+          ),
+        start_date: z
+          .string()
+          .optional()
+          .describe('Optional start date for sync in YYYY-MM-DD format. Only used with full_resync.'),
+      },
+      async ({ full_resync, start_date }) => {
+        const rescueTimeKey = process.env.RESCUETIME_KEY
+        if (!rescueTimeKey) {
+          return {
+            content: [
+              { text: 'RescueTime API key is not configured on this server.', type: 'text' as const },
+            ],
+          }
+        }
+
+        try {
+          const result = await syncRescueTimeData(user, rescueTimeKey, {
+            fullResync: full_resync,
+            startDate: start_date ? new Date(start_date) : undefined,
+          })
+
+          return {
+            content: [
+              {
+                text: JSON.stringify(
+                  {
+                    error: result.error,
+                    recordsProcessed: result.recordsProcessed,
+                    status: result.status,
+                    success: result.status === 'success',
+                  },
+                  null,
+                  2,
+                ),
+                type: 'text' as const,
+              },
+            ],
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return {
+            content: [
+              { text: JSON.stringify({ error: message, success: false }, null, 2), type: 'text' as const },
+            ],
+          }
+        }
+      },
+    )
+
+    // Tool 7: get_sync_status
+    server.tool(
+      'get_sync_status',
+      'Get the current sync status for Oura and RescueTime data sources. Shows last sync time, status, and any errors.',
+      {
+        provider: z
+          .enum(['oura', 'rescuetime', 'all'])
+          .optional()
+          .describe('Which provider to check. Defaults to "all".'),
+      },
+      async ({ provider = 'all' }) => {
+        try {
+          const states: Record<string, unknown[]> = {}
+
+          if (provider === 'all' || provider === 'oura') {
+            states.oura = await getAllSyncStates(user, 'oura')
+          }
+
+          if (provider === 'all' || provider === 'rescuetime') {
+            states.rescuetime = await getAllSyncStates(user, 'rescuetime')
+          }
+
+          return {
+            content: [{ text: JSON.stringify({ states, success: true }, null, 2), type: 'text' as const }],
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return {
+            content: [
+              { text: JSON.stringify({ error: message, success: false }, null, 2), type: 'text' as const },
+            ],
+          }
         }
       },
     )
