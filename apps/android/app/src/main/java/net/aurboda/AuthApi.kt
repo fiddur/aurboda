@@ -34,7 +34,7 @@ sealed class LoginResult {
 class AuthApi(private val httpClient: HttpClient) {
 
     suspend fun login(serverUrl: String, username: String, password: String): LoginResult {
-        val loginUrl = "$serverUrl/api/v2/login"
+        val loginUrl = "$serverUrl/login"
         Log.d(TAG, "Attempting login to: $loginUrl for user: $username")
         return try {
             val response = httpClient.post(loginUrl) {

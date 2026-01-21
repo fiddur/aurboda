@@ -22,7 +22,6 @@ import {
 import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
-import { getTimeline } from './ui'
 import { reduceTimeSeries } from './utils'
 
 declare global {
@@ -98,7 +97,7 @@ const main = async () => {
   //   // TODO FIXME
   // })
 
-  httpd.post('/api/v2/login', async (req, res, next) => {
+  httpd.post('/login', async (req, res, next) => {
     const { username: user, password } = req.body
     if (!user) return next(unauthorized)
 
@@ -126,13 +125,13 @@ const main = async () => {
     res.end(JSON.stringify({ refresh: token, token }))
   })
 
-  httpd.post('/api/v2/refresh', async (req, res) => {
+  httpd.post('/refresh', async (req, res) => {
     const { refresh } = req.body
     res.end(JSON.stringify({ refresh, token: refresh }))
   })
 
   httpd.post<{ recordType: string }, { success: boolean }>(
-    '/api/v2/sync/:recordType',
+    '/sync/:recordType',
     auth,
     async (req, res) => {
       const { recordType } = req.params
@@ -254,12 +253,7 @@ const main = async () => {
     )
   })
 
-  httpd.get('/ui/timeline', async (req, res) => {
-    const html = await getTimeline(oura)
-    res.end(html)
-  })
-
-  httpd.get('/api/v2/heartrate', auth, async (req, res) => {
+  httpd.get('/heartrate', auth, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
@@ -270,7 +264,7 @@ const main = async () => {
     res.end(JSON.stringify(hrs))
   })
 
-  httpd.get('/api/v2/tags', auth, async (req, res) => {
+  httpd.get('/tags', auth, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
