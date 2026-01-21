@@ -1,16 +1,42 @@
-name: Build Android APK
+name: CI
 
 on:
-  push:
+  pull_request:
     branches:
       - develop
-    paths:
-      - 'apps/android/**'
-      - '.github/workflows/android.yml'
-  workflow_dispatch:
 
 jobs:
-  build:
+  node:
+    name: Node (test, check, build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run TypeScript checks
+        run: pnpm check
+
+      - name: Run Node tests
+        run: pnpm --filter aurboda-backend test && pnpm --filter aurboda-web test
+
+      - name: Build web
+        run: pnpm build
+
+  android:
+    name: Android (test, build)
     runs-on: ubuntu-latest
 
     defaults:
@@ -38,23 +64,8 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "aurbodaApiToken=${{ secrets.AURBODA_API_TOKEN }}" >> local.properties
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: aurboda-debug-apk
-          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
-
       - name: Run unit tests
         run: ./gradlew test
 
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results
-          path: apps/android/app/build/reports/tests/
-          retention-days: 7
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
