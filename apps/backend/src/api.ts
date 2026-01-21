@@ -1,6 +1,6 @@
 import { json } from 'body-parser'
 import cors from 'cors'
-import { subHours } from 'date-fns'
+import { isBefore, subHours, subMinutes } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import { createAuth } from './auth'
@@ -9,6 +9,7 @@ import {
   getAllSyncStates,
   getLocations,
   getProductivity,
+  getSyncState,
   getTags,
   getTimeSeries,
   initializeSchema,
@@ -24,7 +25,7 @@ import {
 } from './db'
 import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
-import { syncAllOuraData } from './oura-sync'
+import { isRateLimited, OuraDataType, syncAllOuraData, syncOuraDataType } from './oura-sync'
 import { rescuetimeClient } from './rescuetime'
 import { ActivityType } from './schema'
 import { reduceTimeSeries } from './utils'
@@ -45,6 +46,39 @@ const main = async () => {
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
+
+  /** Sync threshold - sync if last sync was more than 30 minutes ago */
+  const SYNC_THRESHOLD_MINUTES = 30
+
+  /**
+   * Check if Oura data type needs sync and trigger if needed.
+   * Returns true if sync was triggered, false if skipped.
+   */
+  const syncOuraIfNeeded = async (user: string, dataType: OuraDataType): Promise<boolean> => {
+    try {
+      const syncState = await getSyncState(user, 'oura', dataType)
+
+      // Skip if rate limited
+      if (isRateLimited(syncState)) {
+        console.log(`Oura ${dataType} sync skipped - rate limited until ${syncState?.retryAfter}`)
+        return false
+      }
+
+      // Check if sync is needed (never synced or older than threshold)
+      const threshold = subMinutes(new Date(), SYNC_THRESHOLD_MINUTES)
+      if (syncState?.lastSyncTime && isBefore(threshold, syncState.lastSyncTime)) {
+        return false // Recently synced, no need to sync again
+      }
+
+      console.log(`Auto-syncing Oura ${dataType}...`)
+      const accessToken = await oura.getAccessToken(user)
+      await syncOuraDataType(user, oura, dataType, accessToken)
+      return true
+    } catch (error) {
+      console.error(`Failed to auto-sync Oura ${dataType}:`, error)
+      return false
+    }
+  }
 
   const httpd = express()
 
@@ -298,7 +332,9 @@ const main = async () => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
-    console.log({ end, start, user })
+
+    // Auto-sync Oura tags if needed
+    await syncOuraIfNeeded(user, 'tags')
 
     const tags = await getTags(user, start, end)
     res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -310,6 +346,11 @@ const main = async () => {
     const end = new Date(req.query.end as string)
     const types = (req.query.types as string)?.split(',') || ['sleep', 'exercise', 'meditation']
     const user = req.user!
+
+    // Auto-sync Oura sessions if meditation is requested
+    if (types.includes('meditation')) {
+      await syncOuraIfNeeded(user, 'sessions')
+    }
 
     const activities = await getActivities(user, types as ActivityType[], start, end)
     res.writeHead(200, { 'Content-Type': 'application/json' })
