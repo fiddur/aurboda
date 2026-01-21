@@ -3,7 +3,7 @@ import cors from 'cors'
 import { subHours } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
-import { createToken, getUsernameFromToken, initializeAuth } from './auth'
+import { createAuth } from './auth'
 import {
   getActivities,
   getLocations,
@@ -36,7 +36,7 @@ declare global {
 const main = async () => {
   const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
 
-  initializeAuth()
+  const auth = createAuth(process.env.SESSION_SALT ?? '')
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
@@ -50,7 +50,7 @@ const main = async () => {
   httpd.use(cors({ origin: true }))
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
-  httpd.use('/mcp', createMcpRouter())
+  httpd.use('/mcp', createMcpRouter(auth))
 
   httpd.use(json({ limit: '10mb' }))
 
@@ -59,11 +59,11 @@ const main = async () => {
     next()
   })
 
-  const auth: RequestHandler = (req, res, next) => {
+  const authMiddleware: RequestHandler = (req, res, next) => {
     try {
       if (typeof req.headers.authorization === 'string') {
         const token = req.headers.authorization.slice('bearer '.length)
-        req.user = getUsernameFromToken(token)
+        req.user = auth.getUsernameFromToken(token)
         return next()
       }
     } catch {
@@ -98,7 +98,7 @@ const main = async () => {
       }
     } else return next(unauthorized)
 
-    const token = createToken(user)
+    const token = auth.createToken(user)
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ refresh: token, token }))
@@ -109,28 +109,32 @@ const main = async () => {
     res.end(JSON.stringify({ refresh, token: refresh }))
   })
 
-  httpd.post<{ recordType: string }, { success: boolean }>('/sync/:recordType', auth, async (req, res) => {
-    const { recordType } = req.params
-    let { data } = req.body
+  httpd.post<{ recordType: string }, { success: boolean }>(
+    '/sync/:recordType',
+    authMiddleware,
+    async (req, res) => {
+      const { recordType } = req.params
+      let { data } = req.body
 
-    if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
-      data = [data]
-    }
+      if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
+        data = [data]
+      }
 
-    if (!data?.length) {
-      console.log('  empty?!')
-      return res.json({ success: true })
-    }
+      if (!data?.length) {
+        console.log('  empty?!')
+        return res.json({ success: true })
+      }
 
-    const user = req.user!
+      const user = req.user!
 
-    // Process each Health Connect record through the new schema
-    for (const item of data) {
-      await processHealthConnectData(user, recordType, item)
-    }
+      // Process each Health Connect record through the new schema
+      for (const item of data) {
+        await processHealthConnectData(user, recordType, item)
+      }
 
-    res.json({ success: true })
-  })
+      res.json({ success: true })
+    },
+  )
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)
@@ -228,7 +232,7 @@ const main = async () => {
     )
   })
 
-  httpd.get('/heartrate', auth, async (req, res) => {
+  httpd.get('/heartrate', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
@@ -239,7 +243,7 @@ const main = async () => {
     res.end(JSON.stringify(hrs))
   })
 
-  httpd.get('/tags', auth, async (req, res) => {
+  httpd.get('/tags', authMiddleware, async (req, res) => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!

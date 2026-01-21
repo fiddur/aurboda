@@ -1,7 +1,7 @@
 import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createToken, initializeAuth } from './auth'
+import { createAuth } from './auth'
 import { createMcpRouter } from './mcp'
 
 // Mock the db module
@@ -15,14 +15,12 @@ vi.mock('./db', () => ({
   insertTimeSeries: vi.fn(),
 }))
 
-// Set up test SESSION_SALT before initializing auth
-process.env.SESSION_SALT = 'very very secretvery very secret' // 32 bytes for AES-256
-initializeAuth()
+const auth = createAuth('very very secretvery very secret') // 32 bytes for AES-256
 
 function createTestApp() {
   const app = express()
   // MCP router must be mounted BEFORE body-parser, as the MCP SDK handles its own body parsing
-  app.use('/mcp', createMcpRouter())
+  app.use('/mcp', createMcpRouter(auth))
   return app
 }
 
@@ -65,7 +63,7 @@ describe('MCP Server', () => {
 
     test('accepts valid bearer token and returns session ID', async () => {
       const app = createTestApp()
-      const token = createToken('testuser')
+      const token = auth.createToken('testuser')
 
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
@@ -99,7 +97,7 @@ describe('MCP Server', () => {
 
     test('returns 400 for missing session ID', async () => {
       const app = createTestApp()
-      const token = createToken('testuser')
+      const token = auth.createToken('testuser')
 
       const response = await request(app).get('/mcp').set('Authorization', `Bearer ${token}`)
 
@@ -109,7 +107,7 @@ describe('MCP Server', () => {
 
     test('returns 400 for invalid session ID', async () => {
       const app = createTestApp()
-      const token = createToken('testuser')
+      const token = auth.createToken('testuser')
 
       const response = await request(app)
         .get('/mcp')
@@ -132,7 +130,7 @@ describe('MCP Server', () => {
 
     test('returns 400 for missing session ID', async () => {
       const app = createTestApp()
-      const token = createToken('testuser')
+      const token = auth.createToken('testuser')
 
       const response = await mcpDelete(app).set('Authorization', `Bearer ${token}`)
 
@@ -142,7 +140,7 @@ describe('MCP Server', () => {
 
     test('returns 400 for invalid session ID', async () => {
       const app = createTestApp()
-      const token = createToken('testuser')
+      const token = auth.createToken('testuser')
 
       const response = await mcpDelete(app)
         .set('Authorization', `Bearer ${token}`)

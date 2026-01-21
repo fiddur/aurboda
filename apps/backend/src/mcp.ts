@@ -3,7 +3,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { randomUUID } from 'crypto'
 import { Request, Response, Router } from 'express'
 import { z } from 'zod'
-import { getUsernameFromToken } from './auth'
+import { Auth } from './auth'
 import {
   getActivities,
   getLocations,
@@ -54,7 +54,7 @@ interface McpSession {
   user: string
 }
 
-export function createMcpRouter(): Router {
+export function createMcpRouter(auth: Auth): Router {
   const router = Router()
   const sessions = new Map<string, McpSession>()
 
@@ -65,7 +65,7 @@ export function createMcpRouter(): Router {
     }
     try {
       const token = authHeader.slice('Bearer '.length)
-      return getUsernameFromToken(token)
+      return auth.getUsernameFromToken(token)
     } catch {
       return null
     }
