@@ -612,6 +612,46 @@ data class WeightRecordSerializable(
     }
 }
 
+// --- Height Record ---
+@Serializable
+data class HeightRecordSerializable(
+    val time: String,
+    val heightInMeters: Double,
+    val metadata: HealthConnectRecordMetadata
+) {
+    companion object {
+        fun fromRecordsList(classRecords: List<Record>): List<HeightRecordSerializable> {
+            return classRecords.filterIsInstance<HeightRecord>().map { record ->
+                HeightRecordSerializable(
+                    time = record.time.toIsoString(),
+                    heightInMeters = record.height.inMeters,
+                    metadata = record.metadata.toSerializable()
+                )
+            }
+        }
+    }
+}
+
+// --- Resting Heart Rate Record ---
+@Serializable
+data class RestingHeartRateRecordSerializable(
+    val time: String,
+    val beatsPerMinute: Long,
+    val metadata: HealthConnectRecordMetadata
+) {
+    companion object {
+        fun fromRecordsList(classRecords: List<Record>): List<RestingHeartRateRecordSerializable> {
+            return classRecords.filterIsInstance<RestingHeartRateRecord>().map { record ->
+                RestingHeartRateRecordSerializable(
+                    time = record.time.toIsoString(),
+                    beatsPerMinute = record.beatsPerMinute,
+                    metadata = record.metadata.toSerializable()
+                )
+            }
+        }
+    }
+}
+
 // Helper to format Instant to ISO 8601 String
 fun Instant.toIsoString(): String {
     return this.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
