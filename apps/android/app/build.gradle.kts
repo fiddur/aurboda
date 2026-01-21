@@ -39,9 +39,6 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        val aurbodaApiToken = getLocalProperty("aurbodaApiToken", rootDir)
-        buildConfigField("String", "AURBODA_API_TOKEN", "\"$aurbodaApiToken\"")
     }
 
     buildTypes {
@@ -51,11 +48,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            val aurbodaApiToken = getLocalProperty("aurbodaApiToken", rootDir)
-            buildConfigField("String", "AURBODA_API_TOKEN", "\"$aurbodaApiToken\"")
-        }
-        debug {
-            // BuildConfig fields are often defined per build type, or in defaultConfig for all
         }
     }
     compileOptions {
@@ -94,6 +86,9 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.8")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
+    // Encrypted SharedPreferences for secure credential storage
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
