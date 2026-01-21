@@ -1,8 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { createDecipheriv, randomUUID } from 'crypto'
+import { randomUUID } from 'crypto'
 import { Request, Response, Router } from 'express'
 import { z } from 'zod'
+import { Auth } from './auth'
 import {
   getActivities,
   getLocations,
@@ -13,10 +14,6 @@ import {
   insertTimeSeries,
 } from './db'
 import { MetricType, metricUnits } from './schema'
-
-interface McpConfig {
-  sessionSalt: string
-}
 
 const validMetrics: MetricType[] = [
   'heart_rate',
@@ -57,21 +54,9 @@ interface McpSession {
   user: string
 }
 
-export function createMcpRouter(config: McpConfig): Router {
+export function createMcpRouter(auth: Auth): Router {
   const router = Router()
   const sessions = new Map<string, McpSession>()
-
-  const getUsernameFromSession = (sessid: string): string => {
-    try {
-      if (!sessid) throw new Error('unauthenticated')
-      const [encrypted, sessionIv, tag] = sessid.split('-')
-      const decipher = createDecipheriv('aes-256-gcm', config.sessionSalt, sessionIv)
-      decipher.setAuthTag(Buffer.from(tag, 'base64'))
-      return decipher.update(encrypted, 'base64', 'utf8') + decipher.final('utf8')
-    } catch {
-      throw new Error('unauthenticated')
-    }
-  }
 
   const getAuthenticatedUser = (req: Request): string | null => {
     const authHeader = req.headers.authorization
@@ -80,7 +65,7 @@ export function createMcpRouter(config: McpConfig): Router {
     }
     try {
       const token = authHeader.slice('Bearer '.length)
-      return getUsernameFromSession(token)
+      return auth.getUsernameFromToken(token)
     } catch {
       return null
     }

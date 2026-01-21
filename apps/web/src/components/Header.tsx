@@ -1,8 +1,10 @@
 import { useLocation } from 'preact-iso'
+import { auth } from '../state/auth'
 import { Auth } from './Auth'
 
 export function Header() {
   const { url } = useLocation()
+  const isLoggedIn = auth.value.token
 
   return (
     <header>
@@ -11,9 +13,11 @@ export function Header() {
         <a href="/" class={url == '/' && 'active'}>
           Home
         </a>
-        <a href="/404" class={url == '/404' && 'active'}>
-          404
-        </a>
+        {isLoggedIn && (
+          <a href="/timeline" class={url == '/timeline' && 'active'}>
+            Timeline
+          </a>
+        )}
       </nav>
     </header>
   )

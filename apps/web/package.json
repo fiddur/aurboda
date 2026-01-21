@@ -11,7 +11,8 @@
     "test": "vitest",
     "lint": "eslint src",
     "fix": "eslint --fix src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit && eslint src"
   },
   "dependencies": {
     "@preact/signals": "^2.3.1",
