@@ -423,7 +423,7 @@ fun HealthConnectScreen(
         for ((recordClass, classRecords) in groupedRecords) {
             if (classRecords.isEmpty()) continue
             val recordTypeSimpleName = recordClass.simpleName ?: "UnknownRecordType"
-            val apiUrl = "$serverUrl/api/v2/sync/$recordTypeSimpleName"
+            val apiUrl = "$serverUrl/sync/$recordTypeSimpleName"
 
             val postSuccessful = when (recordClass) {
                 HeartRateVariabilityRmssdRecord::class -> handlePostData(HrvRecordSerializable.fromRecordsList(classRecords), HrvRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)

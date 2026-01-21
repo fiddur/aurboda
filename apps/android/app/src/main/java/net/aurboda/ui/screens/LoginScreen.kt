@@ -39,7 +39,7 @@ fun LoginScreen(
     val scope = rememberCoroutineScope()
     val authApi = remember { AuthApi.create() }
 
-    var serverUrl by remember { mutableStateOf("https://") }
+    var serverUrl by remember { mutableStateOf("https://aurboda.net/api") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
@@ -63,7 +63,7 @@ fun LoginScreen(
             value = serverUrl,
             onValueChange = { serverUrl = it },
             label = { Text("Server URL") },
-            placeholder = { Text("https://your-server.com") },
+            placeholder = { Text("https://aurboda.net/api") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
