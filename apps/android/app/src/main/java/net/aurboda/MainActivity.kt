@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -78,6 +79,22 @@ import kotlin.reflect.KClass
 
 private const val PREFS_NAME = "AurbodaAppPrefs"
 private const val CHANGES_TOKEN_KEY = "healthConnectChangesToken"
+private const val BACKGROUND_SYNC_ENABLED_KEY = "backgroundSyncEnabled"
+
+private fun isBackgroundSyncEnabled(context: Context): Boolean {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    return prefs.getBoolean(BACKGROUND_SYNC_ENABLED_KEY, false)
+}
+
+private fun setBackgroundSyncEnabled(context: Context, enabled: Boolean) {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    prefs.edit().putBoolean(BACKGROUND_SYNC_ENABLED_KEY, enabled).apply()
+    if (enabled) {
+        HealthConnectSyncWorker.schedule(context)
+    } else {
+        HealthConnectSyncWorker.cancel(context)
+    }
+}
 
 fun Record.getPrimaryInstant(): Instant {
     return when (this) {
@@ -257,7 +274,8 @@ fun HealthConnectScreen(
     var healthRecords by remember { mutableStateOf<List<Record>>(emptyList()) } 
     var isProcessing by remember { mutableStateOf(false) } 
     var pendingTokenToPersist by remember { mutableStateOf<String?>(null) }
-    var statusMessage by remember { mutableStateOf("Checking permissions...") } 
+    var statusMessage by remember { mutableStateOf("Checking permissions...") }
+    var backgroundSyncEnabled by remember { mutableStateOf(isBackgroundSyncEnabled(context)) }
 
     val scope = rememberCoroutineScope()
     val permissions = remember(allRecordTypes) { allRecordTypes.map { HealthPermission.getReadPermission(it) }.toSet() }
@@ -326,25 +344,42 @@ fun HealthConnectScreen(
                 statusMessage = "Error fetching initial data: ${e.message}"
                 fetchSuccessful = false
             }
-        } else { 
+        } else {
             Log.d("FetchData", "Token found: ${lastTokenFromPrefs.take(10)}... Fetching changes.")
             try {
-                val changesResponse = healthConnectClient.getChanges(lastTokenFromPrefs)
-                val upsertions = changesResponse.changes.mapNotNull { if (it is UpsertionChange) it.record else null }
-                if (upsertions.isNotEmpty()) {
-                    Log.d("FetchData", "Adding ${upsertions.size} upserted records to list.")
-                    localHealthRecords.addAll(upsertions)
+                var currentToken = lastTokenFromPrefs
+                var totalUpsertions = 0
+                var hasMore = true
+
+                // Loop to fetch all changes until hasMore is false
+                while (hasMore) {
+                    val changesResponse = healthConnectClient.getChanges(currentToken)
+                    val upsertions = changesResponse.changes.mapNotNull { if (it is UpsertionChange) it.record else null }
+                    if (upsertions.isNotEmpty()) {
+                        Log.d("FetchData", "Adding ${upsertions.size} upserted records to list.")
+                        localHealthRecords.addAll(upsertions)
+                        totalUpsertions += upsertions.size
+                    }
+                    changesResponse.changes.forEach { if (it is DeletionChange) Log.d("HealthConnect", "Record deleted, ID: ${it.recordId}. Deletion handling for server not implemented.") }
+
+                    currentToken = changesResponse.nextChangesToken
+                    hasMore = changesResponse.hasMore
+
+                    if (hasMore) {
+                        Log.d("FetchData", "More changes available, continuing fetch...")
+                        statusMessage = "Fetching more data... ($totalUpsertions records so far)"
+                    }
                 }
-                changesResponse.changes.forEach { if (it is DeletionChange) Log.d("HealthConnect", "Record deleted, ID: ${it.recordId}. Deletion handling for server not implemented.") }
-                localPendingTokenToPersist = changesResponse.nextChangesToken
-                Log.d("FetchData", "Fetched ${upsertions.size} upsertions. Next token candidate: ${localPendingTokenToPersist?.take(10)}...")
-                if (upsertions.isEmpty()) {
+
+                localPendingTokenToPersist = currentToken
+                Log.d("FetchData", "Fetched $totalUpsertions total upsertions. Next token candidate: ${localPendingTokenToPersist?.take(10)}...")
+                if (totalUpsertions == 0) {
                     statusMessage = "No new changes found."
-                    saveChangesToken(currentActiveContext, localPendingTokenToPersist) 
+                    saveChangesToken(currentActiveContext, localPendingTokenToPersist)
                     Log.d("FetchData", "Saved next changes token as no new data was found: ${localPendingTokenToPersist?.take(10)}...")
-                    localPendingTokenToPersist = null 
+                    localPendingTokenToPersist = null
                 } else {
-                    statusMessage = "Fetched ${upsertions.size} new/updated records. Ready to send."
+                    statusMessage = "Fetched $totalUpsertions new/updated records. Ready to send."
                 }
             } catch (e: Exception) {
                 Log.e("FetchData", "Error fetching changes from Health Connect.", e)
@@ -489,9 +524,13 @@ fun HealthConnectScreen(
         isProcessing = false
     }
     
-    LaunchedEffect(Unit) { 
+    LaunchedEffect(Unit) {
         Log.d("HealthConnectScreen", "LaunchedEffect: Initial check - current status: $statusMessage, isProcessing: $isProcessing")
-        checkPermissionsAndFetchData(this, context) 
+        checkPermissionsAndFetchData(this, context)
+        // Re-schedule background sync if it was previously enabled
+        if (backgroundSyncEnabled) {
+            HealthConnectSyncWorker.schedule(context)
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -592,6 +631,22 @@ fun HealthConnectScreen(
                 ) {
                     Text("Send Pending Data")
                 }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Background Sync")
+                Switch(
+                    checked = backgroundSyncEnabled,
+                    onCheckedChange = { enabled ->
+                        backgroundSyncEnabled = enabled
+                        setBackgroundSyncEnabled(context, enabled)
+                    }
+                )
             }
         }
 
