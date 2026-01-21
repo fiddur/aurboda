@@ -1,0 +1,29 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: auto
+
+flag_management:
+  default_rules:
+    carryforward: true
+
+  individual_flags:
+    - name: backend
+      paths:
+        - apps/backend/
+      carryforward: true
+
+    - name: web
+      paths:
+        - apps/web/
+      carryforward: true
+
+    - name: android
+      paths:
+        - apps/android/
+      carryforward: true

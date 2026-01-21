@@ -1,6 +1,10 @@
 Aurboda - Self Quantification Aggregator
 ========================================
 
+[![Backend Coverage](https://codecov.io/gh/fiddur/aurboda/graph/badge.svg?flag=backend)](https://codecov.io/gh/fiddur/aurboda)
+[![Web Coverage](https://codecov.io/gh/fiddur/aurboda/graph/badge.svg?flag=web)](https://codecov.io/gh/fiddur/aurboda)
+[![Android Coverage](https://codecov.io/gh/fiddur/aurboda/graph/badge.svg?flag=android)](https://codecov.io/gh/fiddur/aurboda)
+
 In Norse mythology, Aurboða is a mountain jötunn (giantess) associated with
 strength and vitality. Her name, meaning "gravel-offerer" or "gold-offerer",
 reflects her role as a gatherer and provider. As mother of Gerðr, whose name
