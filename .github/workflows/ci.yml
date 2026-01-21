@@ -33,7 +33,7 @@ jobs:
         run: pnpm --filter aurboda-backend test && pnpm --filter aurboda-web test
 
       - name: Build web
-        run: pnpm build
+        run: pnpm --filter aurboda-web build
 
   android:
     name: Android (test, build)
