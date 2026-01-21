@@ -1,41 +1,71 @@
-import preactLogo from '../../assets/preact.svg'
+import { auth } from '../../state/auth'
 
 import './style.css'
 
 export function Home() {
+  const isLoggedIn = auth.value.token
+
   return (
     <div class="home">
-      <a href="https://preactjs.com" target="_blank">
-        <img src={preactLogo} alt="Preact logo" height="160" width="160" />
-      </a>
-      <h1>GettyoStarted building Vite-powered Preact Apps </h1>
+      <h1>Aurboda</h1>
+      <p class="subtitle">Self Quantification Aggregator</p>
 
-      <section>
-        <Resource
-          title="Learn Preact"
-          description="If you're new to Preact, try the interactive tutorial to learn important concepts"
-          href="https://preactjs.com/tutorial"
-        />
-        <Resource
-          title="Differences to React"
-          description="If you're coming from React, you may want to check out our docs to see where Preact differs"
-          href="https://preactjs.com/guide/v10/differences-to-react"
-        />
-        <Resource
-          title="Learn Vite"
-          description="To learn more about Vite and how you can customize it to fit your needs, take a look at their excellent documentation"
-          href="https://vitejs.dev"
-        />
+      <section class="intro">
+        <p>
+          In Norse mythology, Aurbo&eth;a is a mountain j&ouml;tunn (giantess) associated with strength and
+          vitality. Her name, meaning "gravel-offerer" or "gold-offerer", reflects her role as a gatherer and
+          provider.
+        </p>
+        <p>
+          This project embodies that spirit: gathering scattered health data from multiple sources into a
+          unified foundation for understanding your wellbeing.
+        </p>
       </section>
-    </div>
-  )
-}
 
-function Resource(props) {
-  return (
-    <a href={props.href} target="_blank" class="resource">
-      <h2>{props.title}</h2>
-      <p>{props.description}</p>
-    </a>
+      <section class="features">
+        <h2>Data Sources</h2>
+        <ul>
+          <li>Android Health Connect (via Aurboda Android app)</li>
+          <li>OwnTracks (location tracking)</li>
+          <li>Oura Ring API</li>
+          <li>RescueTime API</li>
+        </ul>
+      </section>
+
+      <section class="features">
+        <h2>Visualizations</h2>
+        <ul>
+          <li>Heart rate timeline</li>
+          <li>Sleep data</li>
+          <li>Exercise tracking</li>
+          <li>Location history</li>
+        </ul>
+      </section>
+
+      <section class="downloads">
+        <h2>Downloads</h2>
+        <p>
+          <a
+            href="https://github.com/fiddur/aurboda/actions/workflows/android.yml?query=branch%3Adevelop"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Android APK (latest build artifacts)
+          </a>
+        </p>
+        <p class="note">
+          Navigate to a successful workflow run and download the APK from the Artifacts section.
+        </p>
+      </section>
+
+      {isLoggedIn && (
+        <section class="user-actions">
+          <h2>Your Data</h2>
+          <p>
+            <a href="/timeline">View your heart rate timeline</a>
+          </p>
+        </section>
+      )}
+    </div>
   )
 }
