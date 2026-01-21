@@ -347,7 +347,7 @@ fun HealthConnectScreen(
         } else {
             Log.d("FetchData", "Token found: ${lastTokenFromPrefs.take(10)}... Fetching changes.")
             try {
-                var currentToken = lastTokenFromPrefs
+                var currentToken: String = lastTokenFromPrefs
                 var totalUpsertions = 0
                 var hasMore = true
 
@@ -362,12 +362,18 @@ fun HealthConnectScreen(
                     }
                     changesResponse.changes.forEach { if (it is DeletionChange) Log.d("HealthConnect", "Record deleted, ID: ${it.recordId}. Deletion handling for server not implemented.") }
 
-                    currentToken = changesResponse.nextChangesToken
+                    val nextToken = changesResponse.nextChangesToken
                     hasMore = changesResponse.hasMore
 
-                    if (hasMore) {
+                    if (hasMore && nextToken != null) {
+                        currentToken = nextToken
                         Log.d("FetchData", "More changes available, continuing fetch...")
                         statusMessage = "Fetching more data... ($totalUpsertions records so far)"
+                    } else {
+                        hasMore = false
+                        if (nextToken != null) {
+                            currentToken = nextToken
+                        }
                     }
                 }
 

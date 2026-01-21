@@ -92,7 +92,7 @@ class HealthConnectSyncWorker(
             return emptyList()
         }
 
-        var currentToken = lastToken
+        var currentToken: String = lastToken
         var hasMore = true
 
         while (hasMore) {
@@ -112,8 +112,17 @@ class HealthConnectSyncWorker(
                 }
             }
 
-            currentToken = changesResponse.nextChangesToken
+            val nextToken = changesResponse.nextChangesToken
             hasMore = changesResponse.hasMore
+
+            if (hasMore && nextToken != null) {
+                currentToken = nextToken
+            } else {
+                hasMore = false
+                if (nextToken != null) {
+                    currentToken = nextToken
+                }
+            }
         }
 
         // Save the new token if we have records to send (token will be updated after successful send)
