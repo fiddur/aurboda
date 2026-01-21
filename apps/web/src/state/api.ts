@@ -44,7 +44,7 @@ export interface Tag {
 // Fetch heart rate data for the specified date range
 export const fetchHeartRate = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
-  const response = await axios.get<[string, number][]>(`${API_URL}/api/heartrate`, {
+  const response = await axios.get<[string, number][]>(`${API_URL}/heartrate`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       end: end.toISOString(),
@@ -62,7 +62,7 @@ export const fetchActivities = async (
   types?: ActivityType[],
 ): Promise<Activity[]> => {
   const { token } = auth.value
-  const response = await axios.get(`${API_URL}/api/activities`, {
+  const response = await axios.get(`${API_URL}/activities`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       end: end.toISOString(),
@@ -81,7 +81,7 @@ export const fetchActivities = async (
 // Fetch productivity data (RescueTime) for the specified date range
 export const fetchProductivity = async (start: Date, end: Date): Promise<ProductivityRecord[]> => {
   const { token } = auth.value
-  const response = await axios.get(`${API_URL}/api/productivity`, {
+  const response = await axios.get(`${API_URL}/productivity`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       end: end.toISOString(),
@@ -99,7 +99,7 @@ export const fetchProductivity = async (start: Date, end: Date): Promise<Product
 // Fetch location/place data for the specified date range
 export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
   const { token } = auth.value
-  const response = await axios.get(`${API_URL}/api/locations`, {
+  const response = await axios.get(`${API_URL}/locations`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       end: end.toISOString(),
@@ -117,7 +117,7 @@ export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
 // Fetch tags for the specified date range
 export const fetchTags = async (start: Date, end: Date): Promise<Tag[]> => {
   const { token } = auth.value
-  const response = await axios.get(`${API_URL}/api/tags`, {
+  const response = await axios.get(`${API_URL}/tags`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       end: end.toISOString(),

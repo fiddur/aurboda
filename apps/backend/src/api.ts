@@ -1,13 +1,15 @@
 import { json } from 'body-parser'
 import cors from 'cors'
-import { subHours } from 'date-fns'
+import { isBefore, subHours, subMinutes } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import { createAuth } from './auth'
 import {
   getActivities,
+  getAllSyncStates,
   getLocations,
   getProductivity,
+  getSyncState,
   getTags,
   getTimeSeries,
   initializeSchema,
@@ -15,13 +17,21 @@ import {
   insertPlace,
   insertProductivity,
   loginToUserDb,
+  migrateSchema,
   processHealthConnectData,
   query,
+  resetSyncState,
   schemaInitialized,
 } from './db'
 import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
+import { isRateLimited, OuraDataType, syncAllOuraData, syncOuraDataType } from './oura-sync'
 import { rescuetimeClient } from './rescuetime'
+import {
+  isRateLimited as isRescueTimeRateLimited,
+  needsSync as rescueTimeNeedsSync,
+  syncRescueTimeData,
+} from './rescuetime-sync'
 import { ActivityType } from './schema'
 import { reduceTimeSeries } from './utils'
 
@@ -41,6 +51,39 @@ const main = async () => {
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
+
+  /** Sync threshold - sync if last sync was more than 30 minutes ago */
+  const SYNC_THRESHOLD_MINUTES = 30
+
+  /**
+   * Check if Oura data type needs sync and trigger if needed.
+   * Returns true if sync was triggered, false if skipped.
+   */
+  const syncOuraIfNeeded = async (user: string, dataType: OuraDataType): Promise<boolean> => {
+    try {
+      const syncState = await getSyncState(user, 'oura', dataType)
+
+      // Skip if rate limited
+      if (isRateLimited(syncState)) {
+        console.log(`Oura ${dataType} sync skipped - rate limited until ${syncState?.retryAfter}`)
+        return false
+      }
+
+      // Check if sync is needed (never synced or older than threshold)
+      const threshold = subMinutes(new Date(), SYNC_THRESHOLD_MINUTES)
+      if (syncState?.lastSyncTime && isBefore(threshold, syncState.lastSyncTime)) {
+        return false // Recently synced, no need to sync again
+      }
+
+      console.log(`Auto-syncing Oura ${dataType}...`)
+      const accessToken = await oura.getAccessToken(user)
+      await syncOuraDataType(user, oura, dataType, accessToken)
+      return true
+    } catch (error) {
+      console.error(`Failed to auto-sync Oura ${dataType}:`, error)
+      return false
+    }
+  }
 
   const httpd = express()
 
@@ -73,7 +116,7 @@ const main = async () => {
     return next(unauthorized)
   }
 
-  // httpd.post('/api/v2/signup', async (req, res, next) => {
+  // httpd.post('/v2/signup', async (req, res, next) => {
   //   const { username: user, password } = req.body
   //   if (!user) return next(unauthorized)
   //   await makeNewUserDb(userDb, user, password)
@@ -89,9 +132,12 @@ const main = async () => {
     if (userRows.rowCount === 1) {
       try {
         await loginToUserDb(user, password)
-        // Ensure schema is initialized
+        // Ensure schema is initialized and migrated
         if (!(await schemaInitialized(user))) {
           await initializeSchema(user)
+        } else {
+          // Run migrations for existing databases
+          await migrateSchema(user)
         }
       } catch (err) {
         console.log(err)
@@ -139,6 +185,96 @@ const main = async () => {
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)
+
+  // Oura sync endpoints
+  httpd.post('/sync/oura', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
+
+    try {
+      const results = await syncAllOuraData(user, oura, {
+        fullResync,
+        startDate: startDate ? new Date(startDate) : undefined,
+      })
+
+      res.json({ results, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  httpd.get('/sync/oura/status', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    try {
+      const states = await getAllSyncStates(user, 'oura')
+      res.json({ states, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  httpd.delete('/sync/oura/state', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { dataType } = req.query as { dataType?: string }
+
+    try {
+      await resetSyncState(user, 'oura', dataType)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  // RescueTime sync endpoints
+  httpd.post('/sync/rescuetime', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
+    const rescueTimeKey = process.env.RESCUETIME_KEY
+
+    if (!rescueTimeKey) {
+      return res.status(400).json({ error: 'RescueTime API key not configured', success: false })
+    }
+
+    try {
+      const result = await syncRescueTimeData(user, rescueTimeKey, {
+        fullResync,
+        startDate: startDate ? new Date(startDate) : undefined,
+      })
+
+      res.json({ result, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  httpd.get('/sync/rescuetime/status', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    try {
+      const states = await getAllSyncStates(user, 'rescuetime')
+      res.json({ states, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  httpd.delete('/sync/rescuetime/state', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    try {
+      await resetSyncState(user, 'rescuetime')
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
 
   httpd.post('/ownTracks', async (req, res) => {
     const { topic, _type: type } = req.body
@@ -248,7 +384,9 @@ const main = async () => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
-    console.log({ end, start, user })
+
+    // Auto-sync Oura tags if needed
+    await syncOuraIfNeeded(user, 'tags')
 
     const tags = await getTags(user, start, end)
     res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -261,6 +399,11 @@ const main = async () => {
     const types = (req.query.types as string)?.split(',') || ['sleep', 'exercise', 'meditation']
     const user = req.user!
 
+    // Auto-sync Oura sessions if meditation is requested
+    if (types.includes('meditation')) {
+      await syncOuraIfNeeded(user, 'sessions')
+    }
+
     const activities = await getActivities(user, types as ActivityType[], start, end)
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(activities))
@@ -270,6 +413,20 @@ const main = async () => {
     const start = new Date(req.query.start as string)
     const end = new Date(req.query.end as string)
     const user = req.user!
+
+    // Auto-sync RescueTime if needed and API key is configured
+    const rescueTimeKey = process.env.RESCUETIME_KEY
+    if (rescueTimeKey) {
+      try {
+        const syncState = await getSyncState(user, 'rescuetime', 'productivity')
+        if (!isRescueTimeRateLimited(syncState) && rescueTimeNeedsSync(syncState, SYNC_THRESHOLD_MINUTES)) {
+          console.log('Auto-syncing RescueTime productivity...')
+          await syncRescueTimeData(user, rescueTimeKey)
+        }
+      } catch (error) {
+        console.error('Failed to auto-sync RescueTime:', error)
+      }
+    }
 
     const productivity = await getProductivity(user, start, end)
     res.writeHead(200, { 'Content-Type': 'application/json' })
