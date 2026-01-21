@@ -130,32 +130,28 @@ const main = async () => {
     res.end(JSON.stringify({ refresh, token: refresh }))
   })
 
-  httpd.post<{ recordType: string }, { success: boolean }>(
-    '/sync/:recordType',
-    auth,
-    async (req, res) => {
-      const { recordType } = req.params
-      let { data } = req.body
+  httpd.post<{ recordType: string }, { success: boolean }>('/sync/:recordType', auth, async (req, res) => {
+    const { recordType } = req.params
+    let { data } = req.body
 
-      if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
-        data = [data]
-      }
+    if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
+      data = [data]
+    }
 
-      if (!data?.length) {
-        console.log('  empty?!')
-        return res.json({ success: true })
-      }
+    if (!data?.length) {
+      console.log('  empty?!')
+      return res.json({ success: true })
+    }
 
-      const user = req.user!
+    const user = req.user!
 
-      // Process each Health Connect record through the new schema
-      for (const item of data) {
-        await processHealthConnectData(user, recordType, item)
-      }
+    // Process each Health Connect record through the new schema
+    for (const item of data) {
+      await processHealthConnectData(user, recordType, item)
+    }
 
-      res.json({ success: true })
-    },
-  )
+    res.json({ success: true })
+  })
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)

@@ -1,15 +1,15 @@
 services:
-  web:
+  aurboda-web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
     ports:
       - "8080:80"
     depends_on:
-      - backend
+      - aurboda-backend
     restart: unless-stopped
 
-  backend:
+  aurboda-backend:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile

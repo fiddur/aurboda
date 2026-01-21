@@ -19,10 +19,11 @@ docker compose up -d
 ```
 
 This starts:
-- **backend** on port 3000
+- **aurboda-web** (web frontend) on port 8080
+- **aurboda-backend** (API server) on port 3000
 - **postgres** (PostGIS) on port 5432
 
-3. Create your first user by visiting `http://localhost:3000` and registering.
+3. Open the web frontend at `http://localhost:8080` and register your first user.
 
 ### Development Mode
 
@@ -63,13 +64,14 @@ SESSION_SALT=your_generated_salt_here
 
 Docker images are automatically built and pushed to Docker Hub on merge to `develop`.
 
-### Pull the latest image:
+### Pull the latest images:
 
 ```bash
-docker pull fiddur/aurboda:latest
+docker pull fiddur/aurboda-backend:latest
+docker pull fiddur/aurboda-web:latest
 ```
 
-### Run with your own PostgreSQL:
+### Run the backend with your own PostgreSQL:
 
 ```bash
 docker run -d \
@@ -80,7 +82,16 @@ docker run -d \
   -e PGUSER=aurboda_service \
   -e PGPASSWORD=your-password \
   -e SESSION_SALT=your-32-byte-secret \
-  fiddur/aurboda:latest
+  fiddur/aurboda-backend:latest
+```
+
+### Run the web frontend:
+
+```bash
+docker run -d \
+  --name aurboda-web \
+  -p 8080:80 \
+  fiddur/aurboda-web:latest
 ```
 
 ## Production Deployment
@@ -91,8 +102,16 @@ For production, create a `docker-compose.prod.yml`:
 
 ```yaml
 services:
-  backend:
-    image: fiddur/aurboda:latest
+  aurboda-web:
+    image: fiddur/aurboda-web:latest
+    ports:
+      - "8080:80"
+    depends_on:
+      - aurboda-backend
+    restart: unless-stopped
+
+  aurboda-backend:
+    image: fiddur/aurboda-backend:latest
     ports:
       - "3000:3000"
     environment:
@@ -102,6 +121,9 @@ services:
       - PGPASSWORD=${PGPASSWORD}
       - SESSION_SALT=${SESSION_SALT}
       - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   postgres:
@@ -127,13 +149,28 @@ volumes:
 
 ```yaml
 services:
-  backend:
-    image: fiddur/aurboda:latest
+  aurboda-web:
+    image: fiddur/aurboda-web:latest
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.aurboda.rule=Host(`health.example.com`)"
-      - "traefik.http.routers.aurboda.tls.certresolver=letsencrypt"
-      - "traefik.http.services.aurboda.loadbalancer.server.port=3000"
+      - "traefik.http.routers.aurboda-web.rule=Host(`health.example.com`)"
+      - "traefik.http.routers.aurboda-web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.aurboda-web.loadbalancer.server.port=80"
+    depends_on:
+      - aurboda-backend
+    networks:
+      - traefik
+      - default
+
+  aurboda-backend:
+    image: fiddur/aurboda-backend:latest
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.aurboda-api.rule=Host(`health.example.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.aurboda-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.aurboda-api.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.strip-api.stripprefix.prefixes=/api"
+      - "traefik.http.routers.aurboda-api.middlewares=strip-api"
     environment:
       - PGHOST=postgres
       - PGUSER=${PGUSER}
@@ -150,10 +187,14 @@ networks:
 
 ## Building Locally
 
-### Build the Docker image:
+### Build the Docker images:
 
 ```bash
+# Backend
 docker build -t aurboda-backend -f apps/backend/Dockerfile .
+
+# Web frontend
+docker build -t aurboda-web -f apps/web/Dockerfile .
 ```
 
 ### Run tests in Docker:
@@ -189,7 +230,8 @@ docker run --rm \
 ### Check logs:
 
 ```bash
-docker compose logs -f backend
+docker compose logs -f aurboda-web
+docker compose logs -f aurboda-backend
 docker compose logs -f postgres
 ```
 
@@ -218,7 +260,10 @@ If the backend fails to start, check that:
 Docker images are built automatically by GitHub Actions:
 
 - **Trigger**: Push to `develop` branch
-- **Registry**: `fiddur/aurboda`
+- **Registry**: Docker Hub
+- **Images**:
+  - `fiddur/aurboda-backend` - API server
+  - `fiddur/aurboda-web` - Web frontend
 - **Tags**:
   - `develop` - latest from develop branch
   - `<sha>` - specific commit
