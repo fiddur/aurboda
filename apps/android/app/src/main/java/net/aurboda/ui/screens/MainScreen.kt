@@ -3,7 +3,7 @@ package net.aurboda.ui.screens
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -28,7 +28,7 @@ fun MainScreen(
     accountContent: @Composable (Modifier) -> Unit
 ) {
     val navItems = listOf(
-        BottomNavItem(MainTab.Sync, "Sync", Icons.Default.Sync),
+        BottomNavItem(MainTab.Sync, "Sync", Icons.Default.Refresh),
         BottomNavItem(MainTab.Account, "Account", Icons.Default.Person)
     )
 
