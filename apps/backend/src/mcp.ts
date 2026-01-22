@@ -9,7 +9,7 @@ import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
-import { addMetric, addTag } from './services/mutations'
+import { addMetric, addTag, deleteTag } from './services/mutations'
 import { getDailySummary, getPeriodSummary, queryMetrics, SyncProvider } from './services/queries'
 
 interface McpSession {
@@ -149,7 +149,23 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
       },
     )
 
-    // Tool 4: add_metric
+    // Tool 4: delete_tag
+    server.tool(
+      'delete_tag',
+      'Delete a tag by its external ID. Returns success if the tag was found and deleted.',
+      {
+        external_id: z.string().describe('The external ID of the tag to delete'),
+      },
+      async ({ external_id }) => {
+        const result = await deleteTag(user, external_id)
+
+        return {
+          content: [{ text: JSON.stringify(result, null, 2), type: 'text' as const }],
+        }
+      },
+    )
+
+    // Tool 5: add_metric
     server.tool(
       'add_metric',
       'Add a manual health metric measurement. Use this to log data not captured automatically.',

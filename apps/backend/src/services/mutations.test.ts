@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db'
-import { addMetric, addTag } from './mutations'
+import { addMetric, addTag, deleteTag } from './mutations'
 
 // Mock the db module
 vi.mock('../db', () => ({
+  deleteTag: vi.fn(),
   insertTag: vi.fn(),
   insertTimeSeries: vi.fn(),
 }))
@@ -112,5 +113,32 @@ describe('addMetric', () => {
       value: 5000,
     })
     expect(stepsResult.unit).toBe('count')
+  })
+})
+
+describe('deleteTag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('deletes tag and returns success when found', async () => {
+    vi.mocked(db.deleteTag).mockResolvedValue(true)
+
+    const result = await deleteTag('testuser', 'tag-123')
+
+    expect(result.success).toBe(true)
+    expect(result.deleted).toBe(true)
+    expect(result.externalId).toBe('tag-123')
+    expect(db.deleteTag).toHaveBeenCalledWith('testuser', 'tag-123')
+  })
+
+  test('returns success false when tag not found', async () => {
+    vi.mocked(db.deleteTag).mockResolvedValue(false)
+
+    const result = await deleteTag('testuser', 'nonexistent-tag')
+
+    expect(result.success).toBe(false)
+    expect(result.deleted).toBe(false)
+    expect(result.externalId).toBe('nonexistent-tag')
   })
 })

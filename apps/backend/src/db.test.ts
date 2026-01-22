@@ -261,3 +261,36 @@ describe('getSleepSessions', () => {
     expect(result).toEqual([])
   })
 })
+
+describe('deleteTag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
+  })
+
+  test('deletes tag by externalId and returns true when found', async () => {
+    mockQueryFn.mockResolvedValue({ rowCount: 1, rows: [] })
+
+    const { deleteTag } = await import('./db.js')
+    const result = await deleteTag('testuser', 'tag-123')
+
+    expect(result).toBe(true)
+
+    // Find the DELETE call (skip SET ROLE calls)
+    const deleteCall = mockQueryFn.mock.calls.find((call) => call[0].includes('DELETE'))
+    expect(deleteCall).toBeDefined()
+    expect(deleteCall![0]).toContain('DELETE FROM tags')
+    expect(deleteCall![0]).toContain('external_id')
+    expect(deleteCall![1]).toContain('tag-123')
+  })
+
+  test('returns false when tag not found', async () => {
+    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
+
+    const { deleteTag } = await import('./db.js')
+    const result = await deleteTag('testuser', 'nonexistent-tag')
+
+    expect(result).toBe(false)
+  })
+})

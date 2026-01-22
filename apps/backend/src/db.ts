@@ -515,6 +515,12 @@ export const getTags = async (user: string, start: Date, end: Date): Promise<Tag
   }))
 }
 
+export const deleteTag = async (user: string, externalId: string): Promise<boolean> => {
+  const result = await query(user, `DELETE FROM tags WHERE external_id = $1`, [externalId])
+
+  return (result.rowCount ?? 0) > 0
+}
+
 // ============================================================================
 // Productivity (RescueTime)
 // ============================================================================
