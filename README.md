@@ -36,11 +36,8 @@ Visualizations:
 Downloads
 ---------
 
- - [Android APK](https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk)
+ - [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk)
 
-The APK is signed with a release keystore. Upgrading from a previous version
-requires matching signatures - if you installed an older unsigned/debug build,
-you'll need to uninstall it first before installing the signed release.
 
 Parts in apps
 -------------
