@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from 'crypto'
-import { insertTag, insertTimeSeries } from '../db'
+import { deleteTag as dbDeleteTag, insertTag, insertTimeSeries } from '../db'
 import { MetricType, metricUnits } from '../schema'
 
 // ============================================================================
@@ -39,6 +39,12 @@ export interface AddMetricResult {
   value: number
   unit: string
   time: string
+}
+
+export interface DeleteTagResult {
+  success: boolean
+  deleted: boolean
+  externalId: string
 }
 
 // ============================================================================
@@ -89,5 +95,18 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
     time: input.time.toISOString(),
     unit,
     value: input.value,
+  }
+}
+
+/**
+ * Delete a tag by its external ID.
+ */
+export async function deleteTag(user: string, externalId: string): Promise<DeleteTagResult> {
+  const deleted = await dbDeleteTag(user, externalId)
+
+  return {
+    deleted,
+    externalId,
+    success: deleted,
   }
 }
