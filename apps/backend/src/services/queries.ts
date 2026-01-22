@@ -14,11 +14,22 @@ import {
   getTimeSeries,
   getTimeSeriesStats,
 } from '../db'
-import { MetricType, metricUnits } from '../schema'
+import { ActivityType, MetricType, metricUnits } from '../schema'
 
 // ============================================================================
 // Types
 // ============================================================================
+
+/**
+ * Provider for auto-syncing data from external sources before queries.
+ * Pass this to query functions to enable automatic data refresh.
+ */
+export interface SyncProvider {
+  /** Sync Oura data if stale (tags, sessions, etc.) */
+  syncOuraIfNeeded: (user: string, dataType: 'tags' | 'sessions') => Promise<void>
+  /** Sync RescueTime productivity data if stale */
+  syncRescueTimeIfNeeded: (user: string) => Promise<void>
+}
 
 export interface MetricDataPoint {
   time: string
@@ -125,8 +136,22 @@ export async function queryMetrics(
 
 /**
  * Get a comprehensive summary of health data for a specific day.
+ * @param sync Optional sync provider to auto-refresh stale data before querying
  */
-export async function getDailySummary(user: string, date: Date): Promise<DailySummaryResult> {
+export async function getDailySummary(
+  user: string,
+  date: Date,
+  sync?: SyncProvider,
+): Promise<DailySummaryResult> {
+  // Auto-sync data sources if sync provider is available
+  if (sync) {
+    await Promise.all([
+      sync.syncOuraIfNeeded(user, 'tags'),
+      sync.syncOuraIfNeeded(user, 'sessions'),
+      sync.syncRescueTimeIfNeeded(user),
+    ])
+  }
+
   const start = new Date(date)
   start.setHours(0, 0, 0, 0)
   const end = new Date(date)
@@ -316,4 +341,117 @@ export async function getPeriodSummary(
     periodDays: daysInPeriod,
     start: start.toISOString(),
   }
+}
+
+/**
+ * Query tags for a time range.
+ * @param sync Optional sync provider to auto-refresh stale data before querying
+ */
+export async function queryTags(
+  user: string,
+  start: Date,
+  end: Date,
+  sync?: SyncProvider,
+): Promise<TagSummary[]> {
+  if (sync) {
+    await sync.syncOuraIfNeeded(user, 'tags')
+  }
+
+  const tags = await getTags(user, start, end)
+  return tags.map((t) => ({
+    endTime: t.endTime?.toISOString(),
+    startTime: t.startTime.toISOString(),
+    tag: t.tag,
+  }))
+}
+
+/**
+ * Activity query result with formatted timestamps.
+ */
+export interface ActivityResult {
+  startTime: string
+  endTime?: string
+  duration?: number // minutes
+  activityType: string
+  title?: string
+  source: string
+  data?: Record<string, unknown>
+}
+
+/**
+ * Query activities for a time range.
+ * @param sync Optional sync provider to auto-refresh stale data before querying
+ */
+export async function queryActivities(
+  user: string,
+  types: ActivityType[],
+  start: Date,
+  end: Date,
+  sync?: SyncProvider,
+): Promise<ActivityResult[]> {
+  // Auto-sync Oura sessions if meditation is requested
+  if (sync && types.includes('meditation')) {
+    await sync.syncOuraIfNeeded(user, 'sessions')
+  }
+
+  const activities = await getActivities(user, types, start, end)
+  return activities.map((a) => ({
+    activityType: a.activityType,
+    data: a.data,
+    duration: a.endTime ? Math.round((a.endTime.getTime() - a.startTime.getTime()) / 1000 / 60) : undefined,
+    endTime: a.endTime?.toISOString(),
+    source: a.source,
+    startTime: a.startTime.toISOString(),
+    title: a.title,
+  }))
+}
+
+/**
+ * Productivity record with formatted timestamps.
+ */
+export interface ProductivityResult {
+  startTime: string
+  endTime: string
+  activity: string
+  category?: string
+  productivity?: number
+  durationSec: number
+}
+
+/**
+ * Query productivity data for a time range.
+ * @param sync Optional sync provider to auto-refresh stale data before querying
+ */
+export async function queryProductivity(
+  user: string,
+  start: Date,
+  end: Date,
+  sync?: SyncProvider,
+): Promise<ProductivityResult[]> {
+  if (sync) {
+    await sync.syncRescueTimeIfNeeded(user)
+  }
+
+  const productivity = await getProductivity(user, start, end)
+  return productivity.map((p) => ({
+    activity: p.activity,
+    category: p.category,
+    durationSec: p.durationSec,
+    endTime: p.endTime.toISOString(),
+    productivity: p.productivity,
+    startTime: p.startTime.toISOString(),
+  }))
+}
+
+/**
+ * Query locations/places for a time range.
+ */
+export async function queryLocations(user: string, start: Date, end: Date): Promise<PlaceSummary[]> {
+  const { places } = await getLocations(user, start, end)
+  return places.map((p) => ({
+    duration: Math.round((p.endTime.getTime() - p.startTime.getTime()) / 1000 / 60),
+    endTime: p.endTime.toISOString(),
+    region: p.region,
+    startTime: p.startTime.toISOString(),
+  }))
 }

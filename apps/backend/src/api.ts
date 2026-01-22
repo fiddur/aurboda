@@ -1,6 +1,6 @@
 import { json } from 'body-parser'
 import cors from 'cors'
-import { isBefore, subHours, subMinutes } from 'date-fns'
+import { subHours } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import { createAuth } from './auth'
@@ -9,7 +9,6 @@ import {
   getAllSyncStates,
   getLocations,
   getProductivity,
-  getSyncState,
   getTags,
   getTimeSeries,
   initializeSchema,
@@ -25,16 +24,21 @@ import {
 } from './db'
 import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
-import { isRateLimited, OuraDataType, syncAllOuraData, syncOuraDataType } from './oura-sync'
+import { syncAllOuraData } from './oura-sync'
 import { rescuetimeClient } from './rescuetime'
-import {
-  isRateLimited as isRescueTimeRateLimited,
-  needsSync as rescueTimeNeedsSync,
-  syncRescueTimeData,
-} from './rescuetime-sync'
-import { ActivityType, isValidMetric, MetricType, validMetrics } from './schema'
+import { syncRescueTimeData } from './rescuetime-sync'
+import { isValidMetric, MetricType, validMetrics } from './schema'
 import { addMetric, addTag } from './services/mutations'
-import { getDailySummary, getPeriodSummary, queryMetrics } from './services/queries'
+import {
+  getDailySummary,
+  getPeriodSummary,
+  queryActivities,
+  queryLocations,
+  queryMetrics,
+  queryProductivity,
+  queryTags,
+} from './services/queries'
+import { createSyncProvider } from './services/sync-provider'
 import { reduceTimeSeries } from './utils'
 
 declare global {
@@ -54,59 +58,11 @@ const main = async () => {
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
 
-  /** Sync threshold - sync if last sync was more than 30 minutes ago */
-  const SYNC_THRESHOLD_MINUTES = 30
-
-  /**
-   * Check if Oura data type needs sync and trigger if needed.
-   * Returns true if sync was triggered, false if skipped.
-   */
-  const syncOuraIfNeeded = async (user: string, dataType: OuraDataType): Promise<boolean> => {
-    try {
-      const syncState = await getSyncState(user, 'oura', dataType)
-
-      // Skip if rate limited
-      if (isRateLimited(syncState)) {
-        console.log(`Oura ${dataType} sync skipped - rate limited until ${syncState?.retryAfter}`)
-        return false
-      }
-
-      // Check if sync is needed (never synced or older than threshold)
-      const threshold = subMinutes(new Date(), SYNC_THRESHOLD_MINUTES)
-      if (syncState?.lastSyncTime && isBefore(threshold, syncState.lastSyncTime)) {
-        return false // Recently synced, no need to sync again
-      }
-
-      console.log(`Auto-syncing Oura ${dataType}...`)
-      const accessToken = await oura.getAccessToken(user)
-      await syncOuraDataType(user, oura, dataType, accessToken)
-      return true
-    } catch (error) {
-      console.error(`Failed to auto-sync Oura ${dataType}:`, error)
-      return false
-    }
-  }
-
-  /**
-   * Check if RescueTime needs sync and trigger if needed.
-   */
-  const syncRescueTimeIfNeeded = async (user: string): Promise<boolean> => {
-    const rescueTimeKey = process.env.RESCUETIME_KEY
-    if (!rescueTimeKey) return false
-
-    try {
-      const syncState = await getSyncState(user, 'rescuetime', 'productivity')
-      if (isRescueTimeRateLimited(syncState)) return false
-      if (!rescueTimeNeedsSync(syncState, SYNC_THRESHOLD_MINUTES)) return false
-
-      console.log('Auto-syncing RescueTime productivity...')
-      await syncRescueTimeData(user, rescueTimeKey)
-      return true
-    } catch (error) {
-      console.error('Failed to auto-sync RescueTime:', error)
-      return false
-    }
-  }
+  // Create sync provider for auto-syncing data before queries
+  const syncProvider = createSyncProvider({
+    oura,
+    rescueTimeKey: process.env.RESCUETIME_KEY,
+  })
 
   const httpd = express()
 
@@ -117,7 +73,7 @@ const main = async () => {
   httpd.use(cors({ origin: true }))
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
-  httpd.use('/mcp', createMcpRouter(auth, oura))
+  httpd.use('/mcp', createMcpRouter(auth, oura, syncProvider))
 
   httpd.use(json({ limit: '10mb' }))
 
@@ -443,14 +399,7 @@ const main = async () => {
       return res.status(400).json({ error: 'Invalid date.', success: false })
     }
 
-    // Auto-sync data sources before fetching summary
-    await Promise.all([
-      syncOuraIfNeeded(user, 'tags'),
-      syncOuraIfNeeded(user, 'sessions'),
-      syncRescueTimeIfNeeded(user),
-    ])
-
-    const summary = await getDailySummary(user, dateObj)
+    const summary = await getDailySummary(user, dateObj, syncProvider)
     res.json({ ...summary, success: true })
   })
 
@@ -505,10 +454,7 @@ const main = async () => {
       return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
     }
 
-    // Auto-sync Oura tags if needed
-    await syncOuraIfNeeded(user, 'tags')
-
-    const tags = await getTags(user, startDate, endDate)
+    const tags = await queryTags(user, startDate, endDate, syncProvider)
     res.json({ data: tags, success: true })
   })
 
@@ -558,14 +504,14 @@ const main = async () => {
       return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
     }
 
-    const types = typesParam?.split(',') || ['sleep', 'exercise', 'meditation']
+    const types = (typesParam?.split(',') || ['sleep', 'exercise', 'meditation']) as (
+      | 'sleep'
+      | 'exercise'
+      | 'meditation'
+      | 'nap'
+    )[]
 
-    // Auto-sync Oura sessions if meditation is requested
-    if (types.includes('meditation')) {
-      await syncOuraIfNeeded(user, 'sessions')
-    }
-
-    const activities = await getActivities(user, types as ActivityType[], startDate, endDate)
+    const activities = await queryActivities(user, types, startDate, endDate, syncProvider)
     res.json({ data: activities, success: true })
   })
 
@@ -585,10 +531,7 @@ const main = async () => {
       return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
     }
 
-    // Auto-sync RescueTime if needed
-    await syncRescueTimeIfNeeded(user)
-
-    const productivity = await getProductivity(user, startDate, endDate)
+    const productivity = await queryProductivity(user, startDate, endDate, syncProvider)
     res.json({ data: productivity, success: true })
   })
 
@@ -608,7 +551,7 @@ const main = async () => {
       return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
     }
 
-    const { places } = await getLocations(user, startDate, endDate)
+    const places = await queryLocations(user, startDate, endDate)
     res.json({ data: places, success: true })
   })
 

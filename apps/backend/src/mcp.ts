@@ -10,7 +10,7 @@ import { syncAllOuraData } from './oura-sync'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
 import { addMetric, addTag } from './services/mutations'
-import { getDailySummary, getPeriodSummary, queryMetrics } from './services/queries'
+import { getDailySummary, getPeriodSummary, queryMetrics, SyncProvider } from './services/queries'
 
 interface McpSession {
   transport: StreamableHTTPServerTransport
@@ -20,7 +20,7 @@ interface McpSession {
 
 type OuraClientType = ReturnType<typeof ouraClient>
 
-export function createMcpRouter(auth: Auth, oura?: OuraClientType): Router {
+export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncProvider): Router {
   const router = Router()
   const sessions = new Map<string, McpSession>()
 
@@ -103,7 +103,7 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType): Router {
           }
         }
 
-        const summary = await getDailySummary(user, dateObj)
+        const summary = await getDailySummary(user, dateObj, sync)
 
         return {
           content: [{ text: JSON.stringify(summary, null, 2), type: 'text' as const }],
