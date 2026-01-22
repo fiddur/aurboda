@@ -1,6 +1,6 @@
 import { json } from 'body-parser'
 import cors from 'cors'
-import { isBefore, subHours, subMinutes } from 'date-fns'
+import { subHours } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import { createAuth } from './auth'
@@ -9,7 +9,6 @@ import {
   getAllSyncStates,
   getLocations,
   getProductivity,
-  getSyncState,
   getTags,
   getTimeSeries,
   initializeSchema,
@@ -25,14 +24,21 @@ import {
 } from './db'
 import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
-import { isRateLimited, OuraDataType, syncAllOuraData, syncOuraDataType } from './oura-sync'
+import { syncAllOuraData } from './oura-sync'
 import { rescuetimeClient } from './rescuetime'
+import { syncRescueTimeData } from './rescuetime-sync'
+import { isValidMetric, MetricType, validMetrics } from './schema'
+import { addMetric, addTag } from './services/mutations'
 import {
-  isRateLimited as isRescueTimeRateLimited,
-  needsSync as rescueTimeNeedsSync,
-  syncRescueTimeData,
-} from './rescuetime-sync'
-import { ActivityType } from './schema'
+  getDailySummary,
+  getPeriodSummary,
+  queryActivities,
+  queryLocations,
+  queryMetrics,
+  queryProductivity,
+  queryTags,
+} from './services/queries'
+import { createSyncProvider } from './services/sync-provider'
 import { reduceTimeSeries } from './utils'
 
 declare global {
@@ -52,38 +58,11 @@ const main = async () => {
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
 
-  /** Sync threshold - sync if last sync was more than 30 minutes ago */
-  const SYNC_THRESHOLD_MINUTES = 30
-
-  /**
-   * Check if Oura data type needs sync and trigger if needed.
-   * Returns true if sync was triggered, false if skipped.
-   */
-  const syncOuraIfNeeded = async (user: string, dataType: OuraDataType): Promise<boolean> => {
-    try {
-      const syncState = await getSyncState(user, 'oura', dataType)
-
-      // Skip if rate limited
-      if (isRateLimited(syncState)) {
-        console.log(`Oura ${dataType} sync skipped - rate limited until ${syncState?.retryAfter}`)
-        return false
-      }
-
-      // Check if sync is needed (never synced or older than threshold)
-      const threshold = subMinutes(new Date(), SYNC_THRESHOLD_MINUTES)
-      if (syncState?.lastSyncTime && isBefore(threshold, syncState.lastSyncTime)) {
-        return false // Recently synced, no need to sync again
-      }
-
-      console.log(`Auto-syncing Oura ${dataType}...`)
-      const accessToken = await oura.getAccessToken(user)
-      await syncOuraDataType(user, oura, dataType, accessToken)
-      return true
-    } catch (error) {
-      console.error(`Failed to auto-sync Oura ${dataType}:`, error)
-      return false
-    }
-  }
+  // Create sync provider for auto-syncing data before queries
+  const syncProvider = createSyncProvider({
+    oura,
+    rescueTimeKey: process.env.RESCUETIME_KEY,
+  })
 
   const httpd = express()
 
@@ -94,7 +73,7 @@ const main = async () => {
   httpd.use(cors({ origin: true }))
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
-  httpd.use('/mcp', createMcpRouter(auth, oura))
+  httpd.use('/mcp', createMcpRouter(auth, oura, syncProvider))
 
   httpd.use(json({ limit: '10mb' }))
 
@@ -369,78 +348,236 @@ const main = async () => {
     )
   })
 
-  httpd.get('/heartrate', authMiddleware, async (req, res) => {
-    const start = new Date(req.query.start as string)
-    const end = new Date(req.query.end as string)
+  // ==========================================================================
+  // REST API - Uses shared service layer with MCP
+  // ==========================================================================
+
+  // GET /metrics/:metric - Query time series metrics
+  httpd.get('/metrics/:metric', authMiddleware, async (req, res) => {
+    const { metric } = req.params
+    const { start, end } = req.query as { start?: string; end?: string }
     const user = req.user!
 
-    const hrs = await getTimeSeries(user, 'heart_rate', start, end)
-
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(hrs))
-  })
-
-  httpd.get('/tags', authMiddleware, async (req, res) => {
-    const start = new Date(req.query.start as string)
-    const end = new Date(req.query.end as string)
-    const user = req.user!
-
-    // Auto-sync Oura tags if needed
-    await syncOuraIfNeeded(user, 'tags')
-
-    const tags = await getTags(user, start, end)
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(tags))
-  })
-
-  httpd.get('/activities', authMiddleware, async (req, res) => {
-    const start = new Date(req.query.start as string)
-    const end = new Date(req.query.end as string)
-    const types = (req.query.types as string)?.split(',') || ['sleep', 'exercise', 'meditation']
-    const user = req.user!
-
-    // Auto-sync Oura sessions if meditation is requested
-    if (types.includes('meditation')) {
-      await syncOuraIfNeeded(user, 'sessions')
+    if (!isValidMetric(metric)) {
+      return res.status(400).json({
+        error: `Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`,
+        success: false,
+      })
     }
 
-    const activities = await getActivities(user, types as ActivityType[], start, end)
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(activities))
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const result = await queryMetrics(user, metric, startDate, endDate)
+    res.json({ ...result, success: true })
   })
 
-  httpd.get('/productivity', authMiddleware, async (req, res) => {
-    const start = new Date(req.query.start as string)
-    const end = new Date(req.query.end as string)
+  // GET /daily-summary - Get comprehensive summary for a day
+  httpd.get('/daily-summary', authMiddleware, async (req, res) => {
+    const { date } = req.query as { date?: string }
     const user = req.user!
 
-    // Auto-sync RescueTime if needed and API key is configured
-    const rescueTimeKey = process.env.RESCUETIME_KEY
-    if (rescueTimeKey) {
-      try {
-        const syncState = await getSyncState(user, 'rescuetime', 'productivity')
-        if (!isRescueTimeRateLimited(syncState) && rescueTimeNeedsSync(syncState, SYNC_THRESHOLD_MINUTES)) {
-          console.log('Auto-syncing RescueTime productivity...')
-          await syncRescueTimeData(user, rescueTimeKey)
-        }
-      } catch (error) {
-        console.error('Failed to auto-sync RescueTime:', error)
+    if (!date) {
+      return res.status(400).json({ error: 'Missing required query parameter: date', success: false })
+    }
+
+    const dateMatch = date.match(/^\d{4}-\d{2}-\d{2}$/)
+    if (!dateMatch) {
+      return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD format.', success: false })
+    }
+
+    const dateObj = new Date(date)
+    if (isNaN(dateObj.getTime())) {
+      return res.status(400).json({ error: 'Invalid date.', success: false })
+    }
+
+    const summary = await getDailySummary(user, dateObj, syncProvider)
+    res.json({ ...summary, success: true })
+  })
+
+  // GET /period-summary - Get aggregated stats for a period
+  httpd.get('/period-summary', authMiddleware, async (req, res) => {
+    const {
+      start,
+      end,
+      metrics: metricsParam,
+    } = req.query as { start?: string; end?: string; metrics?: string }
+    const user = req.user!
+
+    if (!start || !end || !metricsParam) {
+      return res
+        .status(400)
+        .json({ error: 'Missing required query parameters: start, end, metrics', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const metrics = metricsParam.split(',')
+    const invalidMetrics = metrics.filter((m) => !isValidMetric(m))
+    if (invalidMetrics.length > 0) {
+      return res.status(400).json({
+        error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
+        success: false,
+      })
+    }
+
+    const summary = await getPeriodSummary(user, metrics as MetricType[], startDate, endDate)
+    res.json({ ...summary, success: true })
+  })
+
+  // GET /tags - Query tags for a time range
+  httpd.get('/tags', authMiddleware, async (req, res) => {
+    const { start, end } = req.query as { start?: string; end?: string }
+    const user = req.user!
+
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const tags = await queryTags(user, startDate, endDate, syncProvider)
+    res.json({ data: tags, success: true })
+  })
+
+  // POST /tags - Add a manual tag
+  httpd.post('/tags', authMiddleware, async (req, res) => {
+    const { tag, start_time, end_time } = req.body as { tag?: string; start_time?: string; end_time?: string }
+    const user = req.user!
+
+    if (!tag || !start_time) {
+      return res.status(400).json({ error: 'Missing required fields: tag, start_time', success: false })
+    }
+
+    const startDate = new Date(start_time)
+    if (isNaN(startDate.getTime())) {
+      return res
+        .status(400)
+        .json({ error: 'Invalid start_time format. Use ISO 8601 format.', success: false })
+    }
+
+    let endDate: Date | undefined
+    if (end_time) {
+      endDate = new Date(end_time)
+      if (isNaN(endDate.getTime())) {
+        return res
+          .status(400)
+          .json({ error: 'Invalid end_time format. Use ISO 8601 format.', success: false })
       }
     }
 
-    const productivity = await getProductivity(user, start, end)
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(productivity))
+    const result = await addTag(user, { endTime: endDate, startTime: startDate, tag })
+    res.json(result)
   })
 
-  httpd.get('/locations', authMiddleware, async (req, res) => {
-    const start = new Date(req.query.start as string)
-    const end = new Date(req.query.end as string)
+  // GET /activities - Query activities for a time range
+  httpd.get('/activities', authMiddleware, async (req, res) => {
+    const { start, end, types: typesParam } = req.query as { start?: string; end?: string; types?: string }
     const user = req.user!
 
-    const { places } = await getLocations(user, start, end)
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(places))
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const types = (typesParam?.split(',') || ['sleep', 'exercise', 'meditation']) as (
+      | 'sleep'
+      | 'exercise'
+      | 'meditation'
+      | 'nap'
+    )[]
+
+    const activities = await queryActivities(user, types, startDate, endDate, syncProvider)
+    res.json({ data: activities, success: true })
+  })
+
+  // GET /productivity - Query productivity data for a time range
+  httpd.get('/productivity', authMiddleware, async (req, res) => {
+    const { start, end } = req.query as { start?: string; end?: string }
+    const user = req.user!
+
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const productivity = await queryProductivity(user, startDate, endDate, syncProvider)
+    res.json({ data: productivity, success: true })
+  })
+
+  // GET /locations - Query location data for a time range
+  httpd.get('/locations', authMiddleware, async (req, res) => {
+    const { start, end } = req.query as { start?: string; end?: string }
+    const user = req.user!
+
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const places = await queryLocations(user, startDate, endDate)
+    res.json({ data: places, success: true })
+  })
+
+  // POST /metrics - Add a manual metric measurement
+  httpd.post('/metrics', authMiddleware, async (req, res) => {
+    const { metric, value, time } = req.body as { metric?: string; value?: number; time?: string }
+    const user = req.user!
+
+    if (!metric || value === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: metric, value', success: false })
+    }
+
+    if (!isValidMetric(metric)) {
+      return res.status(400).json({
+        error: `Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`,
+        success: false,
+      })
+    }
+
+    const measurementTime = time ? new Date(time) : new Date()
+    if (isNaN(measurementTime.getTime())) {
+      return res.status(400).json({ error: 'Invalid time format. Use ISO 8601 format.', success: false })
+    }
+
+    const result = await addMetric(user, { metric, time: measurementTime, value })
+    res.json(result)
   })
 
   const port = Number(process.env.PORT ?? 80)

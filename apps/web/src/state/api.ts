@@ -44,7 +44,10 @@ export interface Tag {
 // Fetch heart rate data for the specified date range
 export const fetchHeartRate = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
-  const response = await axios.get<[string, number][]>(`${API_URL}/heartrate`, {
+  const response = await axios.get<{
+    success: boolean
+    data: { time: string; value: number }[]
+  }>(`${API_URL}/metrics/heart_rate`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       end: end.toISOString(),
@@ -52,7 +55,7 @@ export const fetchHeartRate = async (start: Date, end: Date): Promise<[Date, num
     },
   })
 
-  return response.data.map(([time, rate]) => [new Date(time), rate])
+  return response.data.data.map(({ time, value }) => [new Date(time), value])
 }
 
 // Fetch activities (sleep, exercise, meditation) for the specified date range
@@ -62,7 +65,10 @@ export const fetchActivities = async (
   types?: ActivityType[],
 ): Promise<Activity[]> => {
   const { token } = auth.value
-  const response = await axios.get(`${API_URL}/activities`, {
+  const response = await axios.get<{
+    success: boolean
+    data: (Activity & { startTime: string; endTime?: string })[]
+  }>(`${API_URL}/activities`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       end: end.toISOString(),
@@ -71,7 +77,7 @@ export const fetchActivities = async (
     },
   })
 
-  return response.data.map((activity: Activity & { startTime: string; endTime?: string }) => ({
+  return response.data.data.map((activity) => ({
     ...activity,
     endTime: activity.endTime ? new Date(activity.endTime) : undefined,
     startTime: new Date(activity.startTime),
@@ -81,7 +87,10 @@ export const fetchActivities = async (
 // Fetch productivity data (RescueTime) for the specified date range
 export const fetchProductivity = async (start: Date, end: Date): Promise<ProductivityRecord[]> => {
   const { token } = auth.value
-  const response = await axios.get(`${API_URL}/productivity`, {
+  const response = await axios.get<{
+    success: boolean
+    data: (ProductivityRecord & { startTime: string; endTime: string })[]
+  }>(`${API_URL}/productivity`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       end: end.toISOString(),
@@ -89,7 +98,7 @@ export const fetchProductivity = async (start: Date, end: Date): Promise<Product
     },
   })
 
-  return response.data.map((record: ProductivityRecord & { startTime: string; endTime: string }) => ({
+  return response.data.data.map((record) => ({
     ...record,
     endTime: new Date(record.endTime),
     startTime: new Date(record.startTime),
@@ -99,7 +108,10 @@ export const fetchProductivity = async (start: Date, end: Date): Promise<Product
 // Fetch location/place data for the specified date range
 export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
   const { token } = auth.value
-  const response = await axios.get(`${API_URL}/locations`, {
+  const response = await axios.get<{
+    success: boolean
+    data: (Place & { startTime: string; endTime: string })[]
+  }>(`${API_URL}/locations`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       end: end.toISOString(),
@@ -107,7 +119,7 @@ export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
     },
   })
 
-  return response.data.map((place: Place & { startTime: string; endTime: string }) => ({
+  return response.data.data.map((place) => ({
     ...place,
     endTime: new Date(place.endTime),
     startTime: new Date(place.startTime),
@@ -117,7 +129,10 @@ export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
 // Fetch tags for the specified date range
 export const fetchTags = async (start: Date, end: Date): Promise<Tag[]> => {
   const { token } = auth.value
-  const response = await axios.get(`${API_URL}/tags`, {
+  const response = await axios.get<{
+    success: boolean
+    data: (Tag & { startTime: string; endTime?: string })[]
+  }>(`${API_URL}/tags`, {
     headers: { Authorization: `Bearer ${token}` },
     params: {
       end: end.toISOString(),
@@ -125,7 +140,7 @@ export const fetchTags = async (start: Date, end: Date): Promise<Tag[]> => {
     },
   })
 
-  return response.data.map((tag: Tag & { startTime: string; endTime?: string }) => ({
+  return response.data.data.map((tag) => ({
     ...tag,
     endTime: tag.endTime ? new Date(tag.endTime) : undefined,
     startTime: new Date(tag.startTime),
