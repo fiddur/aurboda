@@ -87,6 +87,27 @@ const main = async () => {
     }
   }
 
+  /**
+   * Check if RescueTime needs sync and trigger if needed.
+   */
+  const syncRescueTimeIfNeeded = async (user: string): Promise<boolean> => {
+    const rescueTimeKey = process.env.RESCUETIME_KEY
+    if (!rescueTimeKey) return false
+
+    try {
+      const syncState = await getSyncState(user, 'rescuetime', 'productivity')
+      if (isRescueTimeRateLimited(syncState)) return false
+      if (!rescueTimeNeedsSync(syncState, SYNC_THRESHOLD_MINUTES)) return false
+
+      console.log('Auto-syncing RescueTime productivity...')
+      await syncRescueTimeData(user, rescueTimeKey)
+      return true
+    } catch (error) {
+      console.error('Failed to auto-sync RescueTime:', error)
+      return false
+    }
+  }
+
   const httpd = express()
 
   const userDb = new Client({ database: 'postgres' })
@@ -371,86 +392,12 @@ const main = async () => {
     )
   })
 
-  httpd.get('/heartrate', authMiddleware, async (req, res) => {
-    const start = new Date(req.query.start as string)
-    const end = new Date(req.query.end as string)
-    const user = req.user!
-
-    const hrs = await getTimeSeries(user, 'heart_rate', start, end)
-
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(hrs))
-  })
-
-  httpd.get('/tags', authMiddleware, async (req, res) => {
-    const start = new Date(req.query.start as string)
-    const end = new Date(req.query.end as string)
-    const user = req.user!
-
-    // Auto-sync Oura tags if needed
-    await syncOuraIfNeeded(user, 'tags')
-
-    const tags = await getTags(user, start, end)
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(tags))
-  })
-
-  httpd.get('/activities', authMiddleware, async (req, res) => {
-    const start = new Date(req.query.start as string)
-    const end = new Date(req.query.end as string)
-    const types = (req.query.types as string)?.split(',') || ['sleep', 'exercise', 'meditation']
-    const user = req.user!
-
-    // Auto-sync Oura sessions if meditation is requested
-    if (types.includes('meditation')) {
-      await syncOuraIfNeeded(user, 'sessions')
-    }
-
-    const activities = await getActivities(user, types as ActivityType[], start, end)
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(activities))
-  })
-
-  httpd.get('/productivity', authMiddleware, async (req, res) => {
-    const start = new Date(req.query.start as string)
-    const end = new Date(req.query.end as string)
-    const user = req.user!
-
-    // Auto-sync RescueTime if needed and API key is configured
-    const rescueTimeKey = process.env.RESCUETIME_KEY
-    if (rescueTimeKey) {
-      try {
-        const syncState = await getSyncState(user, 'rescuetime', 'productivity')
-        if (!isRescueTimeRateLimited(syncState) && rescueTimeNeedsSync(syncState, SYNC_THRESHOLD_MINUTES)) {
-          console.log('Auto-syncing RescueTime productivity...')
-          await syncRescueTimeData(user, rescueTimeKey)
-        }
-      } catch (error) {
-        console.error('Failed to auto-sync RescueTime:', error)
-      }
-    }
-
-    const productivity = await getProductivity(user, start, end)
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(productivity))
-  })
-
-  httpd.get('/locations', authMiddleware, async (req, res) => {
-    const start = new Date(req.query.start as string)
-    const end = new Date(req.query.end as string)
-    const user = req.user!
-
-    const { places } = await getLocations(user, start, end)
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(places))
-  })
-
   // ==========================================================================
-  // REST API v1 - Uses shared service layer with MCP
+  // REST API - Uses shared service layer with MCP
   // ==========================================================================
 
-  // GET /api/v1/metrics/:metric - Query time series metrics
-  httpd.get('/api/v1/metrics/:metric', authMiddleware, async (req, res) => {
+  // GET /metrics/:metric - Query time series metrics
+  httpd.get('/metrics/:metric', authMiddleware, async (req, res) => {
     const { metric } = req.params
     const { start, end } = req.query as { start?: string; end?: string }
     const user = req.user!
@@ -477,8 +424,8 @@ const main = async () => {
     res.json({ ...result, success: true })
   })
 
-  // GET /api/v1/daily-summary - Get comprehensive summary for a day
-  httpd.get('/api/v1/daily-summary', authMiddleware, async (req, res) => {
+  // GET /daily-summary - Get comprehensive summary for a day
+  httpd.get('/daily-summary', authMiddleware, async (req, res) => {
     const { date } = req.query as { date?: string }
     const user = req.user!
 
@@ -496,12 +443,19 @@ const main = async () => {
       return res.status(400).json({ error: 'Invalid date.', success: false })
     }
 
+    // Auto-sync data sources before fetching summary
+    await Promise.all([
+      syncOuraIfNeeded(user, 'tags'),
+      syncOuraIfNeeded(user, 'sessions'),
+      syncRescueTimeIfNeeded(user),
+    ])
+
     const summary = await getDailySummary(user, dateObj)
     res.json({ ...summary, success: true })
   })
 
-  // GET /api/v1/period-summary - Get aggregated stats for a period
-  httpd.get('/api/v1/period-summary', authMiddleware, async (req, res) => {
+  // GET /period-summary - Get aggregated stats for a period
+  httpd.get('/period-summary', authMiddleware, async (req, res) => {
     const {
       start,
       end,
@@ -535,8 +489,31 @@ const main = async () => {
     res.json({ ...summary, success: true })
   })
 
-  // POST /api/v1/tags - Add a manual tag
-  httpd.post('/api/v1/tags', authMiddleware, async (req, res) => {
+  // GET /tags - Query tags for a time range
+  httpd.get('/tags', authMiddleware, async (req, res) => {
+    const { start, end } = req.query as { start?: string; end?: string }
+    const user = req.user!
+
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    // Auto-sync Oura tags if needed
+    await syncOuraIfNeeded(user, 'tags')
+
+    const tags = await getTags(user, startDate, endDate)
+    res.json({ data: tags, success: true })
+  })
+
+  // POST /tags - Add a manual tag
+  httpd.post('/tags', authMiddleware, async (req, res) => {
     const { tag, start_time, end_time } = req.body as { tag?: string; start_time?: string; end_time?: string }
     const user = req.user!
 
@@ -565,8 +542,78 @@ const main = async () => {
     res.json(result)
   })
 
-  // POST /api/v1/metrics - Add a manual metric measurement
-  httpd.post('/api/v1/metrics', authMiddleware, async (req, res) => {
+  // GET /activities - Query activities for a time range
+  httpd.get('/activities', authMiddleware, async (req, res) => {
+    const { start, end, types: typesParam } = req.query as { start?: string; end?: string; types?: string }
+    const user = req.user!
+
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const types = typesParam?.split(',') || ['sleep', 'exercise', 'meditation']
+
+    // Auto-sync Oura sessions if meditation is requested
+    if (types.includes('meditation')) {
+      await syncOuraIfNeeded(user, 'sessions')
+    }
+
+    const activities = await getActivities(user, types as ActivityType[], startDate, endDate)
+    res.json({ data: activities, success: true })
+  })
+
+  // GET /productivity - Query productivity data for a time range
+  httpd.get('/productivity', authMiddleware, async (req, res) => {
+    const { start, end } = req.query as { start?: string; end?: string }
+    const user = req.user!
+
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    // Auto-sync RescueTime if needed
+    await syncRescueTimeIfNeeded(user)
+
+    const productivity = await getProductivity(user, startDate, endDate)
+    res.json({ data: productivity, success: true })
+  })
+
+  // GET /locations - Query location data for a time range
+  httpd.get('/locations', authMiddleware, async (req, res) => {
+    const { start, end } = req.query as { start?: string; end?: string }
+    const user = req.user!
+
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const { places } = await getLocations(user, startDate, endDate)
+    res.json({ data: places, success: true })
+  })
+
+  // POST /metrics - Add a manual metric measurement
+  httpd.post('/metrics', authMiddleware, async (req, res) => {
     const { metric, value, time } = req.body as { metric?: string; value?: number; time?: string }
     const user = req.user!
 
