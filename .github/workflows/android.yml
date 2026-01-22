@@ -33,19 +33,26 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Decode keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > app/aurboda-release.keystore
+
       - name: Create local.properties
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "aurbodaApiToken=${{ secrets.AURBODA_API_TOKEN }}" >> local.properties
+          echo "KEYSTORE_FILE=aurboda-release.keystore" >> local.properties
+          echo "KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> local.properties
+          echo "KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> local.properties
+          echo "KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> local.properties
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug
+      - name: Build release APK
+        run: ./gradlew assembleRelease
 
-      - name: Upload debug APK
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: aurboda-debug-apk
-          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          name: aurboda-release-apk
+          path: apps/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
 
       - name: Run unit tests
@@ -61,7 +68,7 @@ jobs:
 
       - name: Prepare APK for release
         if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/aurboda.apk
+        run: cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/aurboda.apk
 
       - name: Update latest release
         if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
@@ -83,4 +90,4 @@ jobs:
 
           Built from commit: ${{ github.sha }}" \
             --prerelease \
-            apps/android/app/build/outputs/apk/debug/aurboda.apk
+            apps/android/app/build/outputs/apk/release/aurboda.apk

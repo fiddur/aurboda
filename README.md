@@ -14,13 +14,9 @@ health and flourishing emerge.
 This project embodies that spirit: gathering scattered health data from
 multiple sources into a unified foundation for understanding your wellbeing.
 
-**NB: This is a hobby project, not properly tested, nor cleanly implemented.**
-
 This repo aims to collect a user's self quantification data into a
 single useful place and do some visualizations.
 
-It has many temporary hacks that even circumvent the login and
-security and fixes it to my own user.  It's basically a PoC.
 
 Current state
 -------------
@@ -34,14 +30,17 @@ Collect data from:
 
 Visualizations:
 
-* Heartrate.
-* ...served from backend is a timeline with HR, sleep, exercise and locations, but that is going into the web part...
+* Timeline with Heartrate, tags, places etc...
 
 
 Downloads
 ---------
 
- - [Android APK (latest build artifacts)](https://github.com/fiddur/aurboda/actions/workflows/android.yml?query=branch%3Adevelop)
+ - [Android APK](https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk)
+
+The APK is signed with a release keystore. Upgrading from a previous version
+requires matching signatures - if you installed an older unsigned/debug build,
+you'll need to uninstall it first before installing the signed release.
 
 Parts in apps
 -------------
