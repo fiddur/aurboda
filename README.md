@@ -28,7 +28,7 @@ Current state
 Collect data from:
 
 * Android Health Connect from [Aurboda App](https://github.com/fiddur/aurboda) (apps/android)
-* [OwnTracks](https://owntracks.org/) (json http mode)
+* [OwnTracks](https://owntracks.org/) (json http mode) - see [OwnTracks setup](docs/owntracks.md)
 * [Oura](https://ouraring.com/) API
 * [RescueTime](https://www.rescuetime.com/) API
 

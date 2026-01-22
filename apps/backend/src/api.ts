@@ -25,6 +25,7 @@ import {
 import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
+import { createOwnTracksRouter } from './owntracks'
 import { rescuetimeClient } from './rescuetime'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
@@ -255,39 +256,15 @@ const main = async () => {
     }
   })
 
-  httpd.post('/ownTracks', async (req, res) => {
-    const { topic, _type: type } = req.body
-
-    const user = topic.split('/')[1]
-
-    if (type === 'status') {
-      // Status messages are informational, no storage needed
-    } else if (type === 'waypoint') {
-      const { lat, lon, desc, rad, rid } = req.body
-      await insertPlace(user, {
-        externalId: rid,
-        lat,
-        lon,
-        name: desc,
-        radius: rad,
-        source: 'owntracks',
-      })
-    } else if (type === 'location') {
-      const { lat, lon, tst, inregions, acc, alt, vel } = req.body
-      await insertLocation(user, {
-        accuracy: acc,
-        altitude: alt,
-        lat,
-        lon,
-        regions: inregions,
-        source: 'owntracks',
-        time: new Date(tst * 1000),
-        velocity: vel,
-      })
-    }
-
-    res.end(`[]`)
-  })
+  // OwnTracks data endpoint (protected by Basic Auth using existing user credentials)
+  httpd.use(
+    '/ownTracks',
+    createOwnTracksRouter({
+      insertLocation,
+      insertPlace,
+      loginToUserDb,
+    }),
+  )
 
   httpd.get('/dump', async (req, res) => {
     const { username: user } = req.query as { username: string }

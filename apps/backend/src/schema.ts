@@ -104,12 +104,12 @@ export const createTableStatements: Record<string, string> = {
       CONSTRAINT unique_place UNIQUE (source, external_id)
     )
   `,
-
   places_indexes: `
     CREATE INDEX IF NOT EXISTS idx_places_geo ON places USING GIST (location)
   `,
 
   // RescueTime productivity data
+
   productivity: `
     CREATE TABLE IF NOT EXISTS productivity (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -124,12 +124,12 @@ export const createTableStatements: Record<string, string> = {
       CONSTRAINT unique_productivity UNIQUE (source, start_time, activity)
     )
   `,
-
   productivity_indexes: `
     CREATE INDEX IF NOT EXISTS idx_productivity_time ON productivity (start_time DESC);
     CREATE INDEX IF NOT EXISTS idx_productivity_category ON productivity (category, start_time DESC)
   `,
   // Raw data sink - stores all incoming data in original form
+
   raw_records: `
     CREATE TABLE IF NOT EXISTS raw_records (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -142,7 +142,6 @@ export const createTableStatements: Record<string, string> = {
       CONSTRAINT unique_source_record UNIQUE (source, record_type, external_id)
     )
   `,
-
   raw_records_indexes: `
     CREATE INDEX IF NOT EXISTS idx_raw_records_source_time ON raw_records (source, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_raw_records_type_time ON raw_records (record_type, recorded_at);
@@ -150,6 +149,7 @@ export const createTableStatements: Record<string, string> = {
   `,
 
   // Sync state tracking for incremental data pulls
+
   sync_state: `
     CREATE TABLE IF NOT EXISTS sync_state (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -166,7 +166,6 @@ export const createTableStatements: Record<string, string> = {
   `,
 
   // Activity labels/tags
-
   tags: `
     CREATE TABLE IF NOT EXISTS tags (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -178,13 +177,13 @@ export const createTableStatements: Record<string, string> = {
       CONSTRAINT unique_tag UNIQUE (source, external_id)
     )
   `,
+
   tags_indexes: `
     CREATE INDEX IF NOT EXISTS idx_tags_time ON tags (start_time DESC);
     CREATE INDEX IF NOT EXISTS idx_tags_tag_time ON tags (tag, start_time DESC)
   `,
 
   // Normalized time-series metrics for fast charting queries
-
   time_series: `
     CREATE TABLE IF NOT EXISTS time_series (
       time            TIMESTAMPTZ NOT NULL,
