@@ -3,9 +3,11 @@ import format from 'pg-format'
 import {
   ActivityType,
   createTableStatements,
+  cumulativeMetrics,
   DataSource,
   healthConnectActivityMapping,
   healthConnectMetricMapping,
+  isValidMetric,
   MetricType,
   metricUnits,
   tableCreationOrder,
@@ -932,4 +934,71 @@ function extractTimeSeriesPoints(
       value,
     },
   ]
+}
+
+// ============================================================================
+// Daily Aggregates (Deduplicated cumulative metrics from Health Connect)
+// ============================================================================
+
+export interface DailyAggregate {
+  date: string // "2024-01-15"
+  metric: string // "steps", "distance", etc.
+  value: number
+  dataOrigins: string[] // Contributing app package names
+}
+
+/**
+ * Process a daily aggregate from Health Connect.
+ * Stores deduplicated daily totals for cumulative metrics.
+ */
+export const processDailyAggregate = async (user: string, aggregate: DailyAggregate) => {
+  if (!isValidMetric(aggregate.metric)) {
+    console.warn(`Invalid metric in daily aggregate: ${aggregate.metric}`)
+    return
+  }
+
+  const metric = aggregate.metric as MetricType
+  if (!cumulativeMetrics.includes(metric)) {
+    console.warn(`Metric ${metric} is not a cumulative metric, skipping aggregate`)
+    return
+  }
+
+  // Parse the date and set to midnight UTC
+  const time = new Date(aggregate.date)
+  time.setUTCHours(0, 0, 0, 0)
+
+  await query(
+    user,
+    `INSERT INTO time_series (time, metric, value, unit, source)
+     VALUES ($1, $2, $3, $4, 'health_connect_aggregate')
+     ON CONFLICT (time, metric, source) DO UPDATE SET value = EXCLUDED.value`,
+    [time, metric, aggregate.value, metricUnits[metric]],
+  )
+}
+
+/**
+ * Get the aggregate value for a cumulative metric on a specific day.
+ * Returns null if no aggregate exists.
+ */
+export const getDailyAggregateValue = async (
+  user: string,
+  metric: MetricType,
+  date: Date,
+): Promise<number | null> => {
+  const start = new Date(date)
+  start.setUTCHours(0, 0, 0, 0)
+  const end = new Date(date)
+  end.setUTCHours(23, 59, 59, 999)
+
+  const result = await query(
+    user,
+    `SELECT value FROM time_series
+     WHERE metric = $1 AND source = 'health_connect_aggregate'
+     AND time >= $2 AND time < $3
+     LIMIT 1`,
+    [metric, start, end],
+  )
+
+  if (result.rows.length === 0) return null
+  return result.rows[0].value
 }

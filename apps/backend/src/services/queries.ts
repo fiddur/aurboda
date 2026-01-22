@@ -8,6 +8,7 @@
 import {
   getActivities,
   getDailyAggregates,
+  getDailyAggregateValue,
   getLocations,
   getProductivity,
   getTags,
@@ -181,8 +182,10 @@ export async function getDailySummary(
       }
     : null
 
-  // Sum steps
-  const totalSteps = stepsData.reduce((sum, [, value]) => sum + value, 0)
+  // Get steps - prefer aggregate (deduplicated) over summing raw records
+  const stepsAggregate = await getDailyAggregateValue(user, 'steps', date)
+  const totalSteps =
+    stepsAggregate !== null ? stepsAggregate : stepsData.reduce((sum, [, value]) => sum + value, 0)
 
   // Calculate productivity summary
   const productivitySummary: ProductivitySummary | null =

@@ -5,6 +5,7 @@ import { getDailySummary, getPeriodSummary, queryMetrics } from './queries'
 // Mock the db module
 vi.mock('../db', () => ({
   getActivities: vi.fn(),
+  getDailyAggregateValue: vi.fn(),
   getDailyAggregates: vi.fn(),
   getLocations: vi.fn(),
   getProductivity: vi.fn(),
@@ -123,6 +124,9 @@ describe('getDailySummary', () => {
       ],
     })
 
+    // No aggregate available, should fall back to summing raw records
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
     expect(result.date).toBe('2024-01-15')
@@ -170,11 +174,57 @@ describe('getDailySummary', () => {
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
     expect(result.heartRate).toBeNull()
     expect(result.productivity).toBeNull()
+  })
+
+  test('prefers aggregate steps over summing raw records', async () => {
+    // Raw records sum to 8000, but aggregate says 5000 (deduplicated)
+    vi.mocked(db.getTimeSeries)
+      .mockResolvedValueOnce([]) // heart_rate
+      .mockResolvedValueOnce([
+        [new Date('2024-01-15T08:00:00Z'), 5000],
+        [new Date('2024-01-15T12:00:00Z'), 3000], // Total raw: 8000
+      ])
+
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+
+    // Aggregate returns 5000 (deduplicated value)
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(5000)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    // Should use aggregate value, not sum of raw records
+    expect(result.steps.total).toBe(5000)
+  })
+
+  test('falls back to summing raw steps when no aggregate exists', async () => {
+    vi.mocked(db.getTimeSeries)
+      .mockResolvedValueOnce([]) // heart_rate
+      .mockResolvedValueOnce([
+        [new Date('2024-01-15T08:00:00Z'), 5000],
+        [new Date('2024-01-15T12:00:00Z'), 3000],
+      ])
+
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+
+    // No aggregate available
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    // Should fall back to summing raw records
+    expect(result.steps.total).toBe(8000)
   })
 })
 

@@ -62,6 +62,15 @@ val appJson = Json {
 @Serializable
 data class PostWrapper<T>(val data: List<T>)
 
+// Daily aggregate for deduplicated cumulative metrics
+@Serializable
+data class DailyAggregate(
+    val date: String,           // "2024-01-15"
+    val metric: String,         // "steps", "distance", etc.
+    val value: Double,
+    val dataOrigins: List<String>  // Contributing app package names
+)
+
 // --- Base Metadata and Device for Serializable Records ---
 @Serializable
 data class DeviceSerializable(
