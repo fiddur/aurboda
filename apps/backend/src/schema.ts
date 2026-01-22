@@ -226,7 +226,14 @@ export const tableCreationOrder = [
 /**
  * Supported data sources.
  */
-export type DataSource = 'health_connect' | 'oura' | 'garmin' | 'rescuetime' | 'owntracks' | 'manual'
+export type DataSource =
+  | 'health_connect'
+  | 'health_connect_aggregate'
+  | 'oura'
+  | 'garmin'
+  | 'rescuetime'
+  | 'owntracks'
+  | 'manual'
 
 /**
  * Metric types for time_series table.
@@ -343,6 +350,18 @@ export const metricUnits: Record<MetricType, string> = {
   vo2_max: 'mL/kg/min',
   weight: 'kg',
 }
+
+/**
+ * Cumulative metrics that are summed over a day and can have duplicate sources.
+ * These should prefer aggregate values from Health Connect's aggregate() API.
+ */
+export const cumulativeMetrics: MetricType[] = [
+  'steps',
+  'distance',
+  'floors_climbed',
+  'calories_active',
+  'calories_total',
+]
 
 /**
  * Mapping from Health Connect record types to our metric types.

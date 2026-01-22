@@ -5,6 +5,7 @@ import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import { createAuth } from './auth'
 import {
+  DailyAggregate,
   getActivities,
   getAllSyncStates,
   getLocations,
@@ -17,6 +18,7 @@ import {
   insertProductivity,
   loginToUserDb,
   migrateSchema,
+  processDailyAggregate,
   processHealthConnectData,
   query,
   resetSyncState,
@@ -162,6 +164,22 @@ const main = async () => {
       res.json({ success: true })
     },
   )
+
+  // Daily aggregates endpoint for deduplicated cumulative metrics from Health Connect
+  httpd.post('/sync/daily-aggregates', authMiddleware, async (req, res) => {
+    const { data } = req.body as { data?: DailyAggregate[] }
+    const user = req.user!
+
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return res.json({ success: true })
+    }
+
+    for (const aggregate of data) {
+      await processDailyAggregate(user, aggregate)
+    }
+
+    res.json({ success: true })
+  })
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)
