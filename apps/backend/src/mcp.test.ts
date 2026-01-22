@@ -2,21 +2,24 @@ import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createAuth } from './auth'
-import * as db from './db'
 import { createMcpRouter } from './mcp'
+import * as queries from './services/queries'
 
-// Mock the db module
+// Mock the services
+vi.mock('./services/queries', () => ({
+  getDailySummary: vi.fn(),
+  getPeriodSummary: vi.fn(),
+  queryMetrics: vi.fn(),
+}))
+
+vi.mock('./services/mutations', () => ({
+  addMetric: vi.fn(),
+  addTag: vi.fn(),
+}))
+
+// Mock db for sync status (not moved to services yet)
 vi.mock('./db', () => ({
-  getActivities: vi.fn(),
   getAllSyncStates: vi.fn(),
-  getDailyAggregates: vi.fn(),
-  getLocations: vi.fn(),
-  getProductivity: vi.fn(),
-  getTags: vi.fn(),
-  getTimeSeries: vi.fn(),
-  getTimeSeriesStats: vi.fn(),
-  insertTag: vi.fn(),
-  insertTimeSeries: vi.fn(),
 }))
 
 // Mock the sync modules
@@ -229,15 +232,26 @@ describe('MCP Server', () => {
       const token = auth.createToken('testuser')
       const sessionId = await initializeSession(app, token)
 
-      // Mock db responses
-      vi.mocked(db.getTimeSeriesStats).mockResolvedValue([
-        { avg: 45.5, count: 30, max: 65, metric: 'hrv_rmssd', min: 25, stddev: 10, unit: 'ms' },
-      ])
-      vi.mocked(db.getDailyAggregates).mockResolvedValue([
-        { avg: 40, date: '2024-01-01', metric: 'hrv_rmssd' },
-        { avg: 45, date: '2024-01-02', metric: 'hrv_rmssd' },
-        { avg: 50, date: '2024-01-03', metric: 'hrv_rmssd' },
-      ])
+      // Mock service response
+      vi.mocked(queries.getPeriodSummary).mockResolvedValue({
+        end: '2024-01-31T23:59:59.000Z',
+        metrics: [
+          {
+            avg: 45.5,
+            changeFromPreviousPeriodPercent: 10,
+            completenessPercent: 90,
+            count: 30,
+            max: 65,
+            metric: 'hrv_rmssd',
+            min: 25,
+            stddev: 10,
+            trendPerDay: 5,
+            unit: 'ms',
+          },
+        ],
+        periodDays: 31,
+        start: '2024-01-01T00:00:00.000Z',
+      })
 
       const response = await callTool(app, token, sessionId, 'query_period_summary', {
         end: '2024-01-31T23:59:59Z',
@@ -254,7 +268,15 @@ describe('MCP Server', () => {
       expect(result.metrics[0].max).toBe(65)
       expect(result.metrics[0].stddev).toBe(10)
       expect(result.metrics[0].unit).toBe('ms')
-      expect(result.metrics[0].trendPerDay).toBe(5) // Linear regression slope
+      expect(result.metrics[0].trendPerDay).toBe(5)
+
+      // Verify service was called with correct arguments
+      expect(queries.getPeriodSummary).toHaveBeenCalledWith(
+        'testuser',
+        ['hrv_rmssd'],
+        expect.any(Date),
+        expect.any(Date),
+      )
     })
 
     test('returns error for invalid date format', async () => {
@@ -317,15 +339,25 @@ describe('MCP Server', () => {
       const token = auth.createToken('testuser')
       const sessionId = await initializeSession(app, token)
 
-      // Current period: avg 50, previous period: avg 40 -> +25% change
-      vi.mocked(db.getTimeSeriesStats)
-        .mockResolvedValueOnce([
-          { avg: 50, count: 30, max: 60, metric: 'hrv_rmssd', min: 40, stddev: 5, unit: 'ms' },
-        ])
-        .mockResolvedValueOnce([
-          { avg: 40, count: 30, max: 50, metric: 'hrv_rmssd', min: 30, stddev: 5, unit: 'ms' },
-        ])
-      vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+      vi.mocked(queries.getPeriodSummary).mockResolvedValue({
+        end: '2024-01-31T23:59:59.000Z',
+        metrics: [
+          {
+            avg: 50,
+            changeFromPreviousPeriodPercent: 25,
+            completenessPercent: 100,
+            count: 30,
+            max: 60,
+            metric: 'hrv_rmssd',
+            min: 40,
+            stddev: 5,
+            trendPerDay: null,
+            unit: 'ms',
+          },
+        ],
+        periodDays: 31,
+        start: '2024-01-01T00:00:00.000Z',
+      })
 
       const response = await callTool(app, token, sessionId, 'query_period_summary', {
         end: '2024-01-31T23:59:59Z',
@@ -342,13 +374,26 @@ describe('MCP Server', () => {
       const token = auth.createToken('testuser')
       const sessionId = await initializeSession(app, token)
 
-      // avg=50, stddev=10 -> outlier threshold is 20
-      // min=20 is exactly at avg-2*stddev (not outlier)
-      // max=85 is beyond avg+2*stddev (outlier)
-      vi.mocked(db.getTimeSeriesStats).mockResolvedValue([
-        { avg: 50, count: 30, max: 85, metric: 'hrv_rmssd', min: 20, stddev: 10, unit: 'ms' },
-      ])
-      vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+      vi.mocked(queries.getPeriodSummary).mockResolvedValue({
+        end: '2024-01-31T23:59:59.000Z',
+        metrics: [
+          {
+            avg: 50,
+            changeFromPreviousPeriodPercent: null,
+            completenessPercent: 100,
+            count: 30,
+            max: 85,
+            metric: 'hrv_rmssd',
+            min: 20,
+            outliers: [{ type: 'high', value: 85 }],
+            stddev: 10,
+            trendPerDay: null,
+            unit: 'ms',
+          },
+        ],
+        periodDays: 31,
+        start: '2024-01-01T00:00:00.000Z',
+      })
 
       const response = await callTool(app, token, sessionId, 'query_period_summary', {
         end: '2024-01-31T23:59:59Z',
@@ -366,8 +411,25 @@ describe('MCP Server', () => {
       const token = auth.createToken('testuser')
       const sessionId = await initializeSession(app, token)
 
-      vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
-      vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+      vi.mocked(queries.getPeriodSummary).mockResolvedValue({
+        end: '2024-01-31T23:59:59.000Z',
+        metrics: [
+          {
+            avg: 0,
+            changeFromPreviousPeriodPercent: null,
+            completenessPercent: 0,
+            count: 0,
+            max: 0,
+            metric: 'hrv_rmssd',
+            min: 0,
+            stddev: 0,
+            trendPerDay: null,
+            unit: 'ms',
+          },
+        ],
+        periodDays: 31,
+        start: '2024-01-01T00:00:00.000Z',
+      })
 
       const response = await callTool(app, token, sessionId, 'query_period_summary', {
         end: '2024-01-31T23:59:59Z',
@@ -386,17 +448,25 @@ describe('MCP Server', () => {
       const token = auth.createToken('testuser')
       const sessionId = await initializeSession(app, token)
 
-      vi.mocked(db.getTimeSeriesStats).mockResolvedValue([
-        { avg: 50, count: 15, max: 60, metric: 'hrv_rmssd', min: 40, stddev: 5, unit: 'ms' },
-      ])
-      // 15 days of data out of 31 days in January
-      vi.mocked(db.getDailyAggregates).mockResolvedValue(
-        Array.from({ length: 15 }, (_, i) => ({
-          avg: 50,
-          date: `2024-01-${String(i + 1).padStart(2, '0')}`,
-          metric: 'hrv_rmssd' as const,
-        })),
-      )
+      vi.mocked(queries.getPeriodSummary).mockResolvedValue({
+        end: '2024-01-31T23:59:59.000Z',
+        metrics: [
+          {
+            avg: 50,
+            changeFromPreviousPeriodPercent: null,
+            completenessPercent: 48,
+            count: 15,
+            max: 60,
+            metric: 'hrv_rmssd',
+            min: 40,
+            stddev: 5,
+            trendPerDay: null,
+            unit: 'ms',
+          },
+        ],
+        periodDays: 31,
+        start: '2024-01-01T00:00:00.000Z',
+      })
 
       const response = await callTool(app, token, sessionId, 'query_period_summary', {
         end: '2024-01-31T23:59:59Z',
@@ -405,7 +475,7 @@ describe('MCP Server', () => {
       })
 
       expect(response.status).toBe(200)
-      expect(response.toolResult.metrics[0].completenessPercent).toBe(48) // 15/31 = 48%
+      expect(response.toolResult.metrics[0].completenessPercent).toBe(48)
     })
   })
 })

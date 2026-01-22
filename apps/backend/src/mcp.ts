@@ -4,22 +4,13 @@ import { randomUUID } from 'crypto'
 import { Request, Response, Router } from 'express'
 import { z } from 'zod'
 import { Auth } from './auth'
-import {
-  getActivities,
-  getAllSyncStates,
-  getDailyAggregates,
-  getLocations,
-  getProductivity,
-  getTags,
-  getTimeSeries,
-  getTimeSeriesStats,
-  insertTag,
-  insertTimeSeries,
-} from './db'
+import { getAllSyncStates } from './db'
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { syncRescueTimeData } from './rescuetime-sync'
-import { MetricType, metricUnits } from './schema'
+import { MetricType } from './schema'
+import { addMetric, addTag } from './services/mutations'
+import { getDailySummary, getPeriodSummary, queryMetrics } from './services/queries'
 
 const validMetrics: MetricType[] = [
   'heart_rate',
@@ -52,7 +43,7 @@ const validMetrics: MetricType[] = [
   'sleep_score',
 ]
 
-function isValidMetric(metric: string): metric is MetricType {
+export function isValidMetric(metric: string): metric is MetricType {
   return validMetrics.includes(metric as MetricType)
 }
 
@@ -117,25 +108,10 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType): Router {
           }
         }
 
-        const data = await getTimeSeries(user, metric, startDate, endDate)
-        const unit = metricUnits[metric]
+        const result = await queryMetrics(user, metric, startDate, endDate)
 
         return {
-          content: [
-            {
-              text: JSON.stringify(
-                {
-                  count: data.length,
-                  data: data.map(([time, value]) => ({ time: time.toISOString(), value })),
-                  metric,
-                  unit,
-                },
-                null,
-                2,
-              ),
-              type: 'text' as const,
-            },
-          ],
+          content: [{ text: JSON.stringify(result, null, 2), type: 'text' as const }],
         }
       },
     )
@@ -155,82 +131,14 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType): Router {
           }
         }
 
-        const start = new Date(`${date}T00:00:00`)
-        const end = new Date(`${date}T23:59:59.999`)
-
-        // Run queries in parallel
-        const [heartRateData, stepsData, sleepSessions, exerciseSessions, tags, productivity, locations] =
-          await Promise.all([
-            getTimeSeries(user, 'heart_rate', start, end),
-            getTimeSeries(user, 'steps', start, end),
-            getActivities(user, 'sleep', start, end),
-            getActivities(user, 'exercise', start, end),
-            getTags(user, start, end),
-            getProductivity(user, start, end),
-            getLocations(user, start, end),
-          ])
-
-        // Calculate heart rate stats
-        const heartRates = heartRateData.map(([, value]) => value)
-        const heartRateStats =
-          heartRates.length > 0 ?
-            {
-              avg: Math.round(heartRates.reduce((a, b) => a + b, 0) / heartRates.length),
-              count: heartRates.length,
-              max: Math.max(...heartRates),
-              min: Math.min(...heartRates),
-            }
-          : null
-
-        // Sum steps
-        const totalSteps = stepsData.reduce((sum, [, value]) => sum + value, 0)
-
-        // Calculate productivity summary
-        const productivitySummary = productivity.reduce(
-          (acc, record) => {
-            acc.totalDurationSec += record.durationSec
-            if (record.productivity !== undefined && record.productivity !== null) {
-              if (record.productivity >= 1) acc.productiveSec += record.durationSec
-              if (record.productivity >= 2) acc.veryProductiveSec += record.durationSec
-              if (record.productivity <= -1) acc.distractingSec += record.durationSec
-            }
-            return acc
-          },
-          { distractingSec: 0, productiveSec: 0, totalDurationSec: 0, veryProductiveSec: 0 },
-        )
-
-        const summary = {
-          date,
-          exerciseSessions: exerciseSessions.map((s) => ({
-            data: s.data,
-            duration:
-              s.endTime ? Math.round((s.endTime.getTime() - s.startTime.getTime()) / 1000 / 60) : null,
-            endTime: s.endTime?.toISOString(),
-            startTime: s.startTime.toISOString(),
-            title: s.title,
-          })),
-          heartRate: heartRateStats,
-          places: locations.places.map((p) => ({
-            duration: Math.round((p.endTime.getTime() - p.startTime.getTime()) / 1000 / 60),
-            endTime: p.endTime.toISOString(),
-            region: p.region,
-            startTime: p.startTime.toISOString(),
-          })),
-          productivity: productivity.length > 0 ? productivitySummary : null,
-          sleepSessions: sleepSessions.map((s) => ({
-            data: s.data,
-            duration:
-              s.endTime ? Math.round((s.endTime.getTime() - s.startTime.getTime()) / 1000 / 60) : null,
-            endTime: s.endTime?.toISOString(),
-            startTime: s.startTime.toISOString(),
-          })),
-          steps: { total: totalSteps },
-          tags: tags.map((t) => ({
-            endTime: t.endTime?.toISOString(),
-            startTime: t.startTime.toISOString(),
-            tag: t.tag,
-          })),
+        const dateObj = new Date(date)
+        if (isNaN(dateObj.getTime())) {
+          return {
+            content: [{ text: 'Invalid date.', type: 'text' as const }],
+          }
         }
+
+        const summary = await getDailySummary(user, dateObj)
 
         return {
           content: [{ text: JSON.stringify(summary, null, 2), type: 'text' as const }],
@@ -268,32 +176,10 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType): Router {
           }
         }
 
-        const externalId = randomUUID()
-        await insertTag(user, {
-          endTime: endDate,
-          externalId,
-          source: 'manual',
-          startTime: startDate,
-          tag,
-        })
+        const result = await addTag(user, { endTime: endDate, startTime: startDate, tag })
 
         return {
-          content: [
-            {
-              text: JSON.stringify(
-                {
-                  endTime: endDate?.toISOString(),
-                  id: externalId,
-                  startTime: startDate.toISOString(),
-                  success: true,
-                  tag,
-                },
-                null,
-                2,
-              ),
-              type: 'text' as const,
-            },
-          ],
+          content: [{ text: JSON.stringify(result, null, 2), type: 'text' as const }],
         }
       },
     )
@@ -329,34 +215,10 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType): Router {
           }
         }
 
-        await insertTimeSeries(user, [
-          {
-            metric,
-            source: 'manual',
-            time: measurementTime,
-            value,
-          },
-        ])
-
-        const unit = metricUnits[metric]
+        const result = await addMetric(user, { metric, time: measurementTime, value })
 
         return {
-          content: [
-            {
-              text: JSON.stringify(
-                {
-                  metric,
-                  success: true,
-                  time: measurementTime.toISOString(),
-                  unit,
-                  value,
-                },
-                null,
-                2,
-              ),
-              type: 'text' as const,
-            },
-          ],
+          content: [{ text: JSON.stringify(result, null, 2), type: 'text' as const }],
         }
       },
     )
@@ -548,106 +410,7 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType): Router {
         }
 
         const validatedMetrics = metrics as MetricType[]
-
-        // Calculate period length for previous period comparison
-        const periodMs = endDate.getTime() - startDate.getTime()
-        const prevStart = new Date(startDate.getTime() - periodMs)
-        const prevEnd = new Date(startDate.getTime() - 1) // Just before current period starts
-
-        // Fetch current and previous period stats in parallel
-        const [currentStats, previousStats, dailyAggregates] = await Promise.all([
-          getTimeSeriesStats(user, validatedMetrics, startDate, endDate),
-          getTimeSeriesStats(user, validatedMetrics, prevStart, prevEnd),
-          getDailyAggregates(user, validatedMetrics, startDate, endDate),
-        ])
-
-        // Calculate days in period for completeness calculation
-        const daysInPeriod = Math.ceil(periodMs / (1000 * 60 * 60 * 24))
-
-        // Build response with trends and completeness
-        const metricsWithTrends = currentStats.map((stat) => {
-          const prevStat = previousStats.find((p) => p.metric === stat.metric)
-          const dailyData = dailyAggregates.filter((d) => d.metric === stat.metric)
-
-          // Calculate trend using linear regression on daily averages
-          let trend: number | null = null
-          if (dailyData.length >= 2) {
-            const n = dailyData.length
-            const xMean = (n - 1) / 2
-            const yMean = dailyData.reduce((sum, d) => sum + d.avg, 0) / n
-            let numerator = 0
-            let denominator = 0
-            for (let i = 0; i < n; i++) {
-              numerator += (i - xMean) * (dailyData[i].avg - yMean)
-              denominator += (i - xMean) ** 2
-            }
-            if (denominator !== 0) {
-              trend = numerator / denominator
-            }
-          }
-
-          // Calculate change from previous period
-          let changeFromPrevious: number | null = null
-          if (prevStat && prevStat.avg !== 0) {
-            changeFromPrevious = ((stat.avg - prevStat.avg) / prevStat.avg) * 100
-          }
-
-          // Calculate data completeness (days with data / total days)
-          const daysWithData = dailyData.length
-          const completeness = Math.round((daysWithData / daysInPeriod) * 100)
-
-          // Identify outliers (values more than 2 stddev from mean)
-          const outlierThreshold = stat.stddev * 2
-          const outliers: { type: 'high' | 'low'; value: number }[] = []
-          if (stat.stddev > 0) {
-            if (stat.max > stat.avg + outlierThreshold) {
-              outliers.push({ type: 'high', value: stat.max })
-            }
-            if (stat.min < stat.avg - outlierThreshold) {
-              outliers.push({ type: 'low', value: stat.min })
-            }
-          }
-
-          return {
-            avg: Math.round(stat.avg * 100) / 100,
-            changeFromPreviousPeriodPercent:
-              changeFromPrevious !== null ? Math.round(changeFromPrevious * 10) / 10 : null,
-            completenessPercent: completeness,
-            count: stat.count,
-            max: Math.round(stat.max * 100) / 100,
-            metric: stat.metric,
-            min: Math.round(stat.min * 100) / 100,
-            outliers: outliers.length > 0 ? outliers : undefined,
-            stddev: Math.round(stat.stddev * 100) / 100,
-            trendPerDay: trend !== null ? Math.round(trend * 1000) / 1000 : null,
-            unit: stat.unit,
-          }
-        })
-
-        // Add metrics with no data in current period
-        const missingMetrics = validatedMetrics.filter((m) => !currentStats.some((s) => s.metric === m))
-        for (const metric of missingMetrics) {
-          metricsWithTrends.push({
-            avg: 0,
-            changeFromPreviousPeriodPercent: null,
-            completenessPercent: 0,
-            count: 0,
-            max: 0,
-            metric,
-            min: 0,
-            outliers: undefined,
-            stddev: 0,
-            trendPerDay: null,
-            unit: metricUnits[metric],
-          })
-        }
-
-        const summary = {
-          end: endDate.toISOString(),
-          metrics: metricsWithTrends,
-          periodDays: daysInPeriod,
-          start: startDate.toISOString(),
-        }
+        const summary = await getPeriodSummary(user, validatedMetrics, startDate, endDate)
 
         return {
           content: [{ text: JSON.stringify(summary, null, 2), type: 'text' as const }],
