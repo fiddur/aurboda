@@ -200,6 +200,86 @@ export const getTimeSeriesMultiMetric = async (
 }
 
 // ============================================================================
+// Aggregated Time Series Statistics
+// ============================================================================
+
+export interface MetricStats {
+  metric: MetricType
+  count: number
+  min: number
+  max: number
+  avg: number
+  stddev: number
+  unit: string
+}
+
+export const getTimeSeriesStats = async (
+  user: string,
+  metrics: MetricType[],
+  start: Date,
+  end: Date,
+): Promise<MetricStats[]> => {
+  const result = await query(
+    user,
+    `SELECT
+       metric,
+       COUNT(*)::integer as count,
+       MIN(value) as min,
+       MAX(value) as max,
+       AVG(value) as avg,
+       STDDEV_POP(value) as stddev,
+       MAX(unit) as unit
+     FROM time_series
+     WHERE metric = ANY($1) AND time >= $2 AND time <= $3
+     GROUP BY metric
+     ORDER BY metric`,
+    [metrics, start, end],
+  )
+
+  return result.rows.map((row) => ({
+    avg: row.avg !== null ? Number(row.avg) : 0,
+    count: row.count,
+    max: row.max !== null ? Number(row.max) : 0,
+    metric: row.metric as MetricType,
+    min: row.min !== null ? Number(row.min) : 0,
+    stddev: row.stddev !== null ? Number(row.stddev) : 0,
+    unit: row.unit,
+  }))
+}
+
+export interface DailyMetricAggregate {
+  date: string
+  metric: MetricType
+  avg: number
+}
+
+export const getDailyAggregates = async (
+  user: string,
+  metrics: MetricType[],
+  start: Date,
+  end: Date,
+): Promise<DailyMetricAggregate[]> => {
+  const result = await query(
+    user,
+    `SELECT
+       DATE(time) as date,
+       metric,
+       AVG(value) as avg
+     FROM time_series
+     WHERE metric = ANY($1) AND time >= $2 AND time <= $3
+     GROUP BY DATE(time), metric
+     ORDER BY metric, date`,
+    [metrics, start, end],
+  )
+
+  return result.rows.map((row) => ({
+    avg: Number(row.avg),
+    date: row.date.toISOString().split('T')[0],
+    metric: row.metric as MetricType,
+  }))
+}
+
+// ============================================================================
 // Activities
 // ============================================================================
 

@@ -8,10 +8,12 @@ import { createMcpRouter } from './mcp'
 vi.mock('./db', () => ({
   getActivities: vi.fn(),
   getAllSyncStates: vi.fn(),
+  getDailyAggregates: vi.fn(),
   getLocations: vi.fn(),
   getProductivity: vi.fn(),
   getTags: vi.fn(),
   getTimeSeries: vi.fn(),
+  getTimeSeriesStats: vi.fn(),
   insertTag: vi.fn(),
   insertTimeSeries: vi.fn(),
 }))

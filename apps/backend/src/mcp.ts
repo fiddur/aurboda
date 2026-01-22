@@ -7,10 +7,12 @@ import { Auth } from './auth'
 import {
   getActivities,
   getAllSyncStates,
+  getDailyAggregates,
   getLocations,
   getProductivity,
   getTags,
   getTimeSeries,
+  getTimeSeriesStats,
   insertTag,
   insertTimeSeries,
 } from './db'
@@ -506,6 +508,149 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType): Router {
               { text: JSON.stringify({ error: message, success: false }, null, 2), type: 'text' as const },
             ],
           }
+        }
+      },
+    )
+
+    // Tool 8: query_period_summary
+    server.tool(
+      'query_period_summary',
+      'Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness.',
+      {
+        end: z.string().describe('End date/time in ISO 8601 format (e.g., 2024-01-31T23:59:59Z)'),
+        metrics: z
+          .array(z.string())
+          .describe(`Metrics to include. Valid metrics: ${validMetrics.join(', ')}`),
+        start: z.string().describe('Start date/time in ISO 8601 format (e.g., 2024-01-01T00:00:00Z)'),
+      },
+      async ({ end, metrics, start }) => {
+        // Validate dates
+        const startDate = new Date(start)
+        const endDate = new Date(end)
+
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+          return {
+            content: [{ text: 'Invalid date format. Use ISO 8601 format.', type: 'text' as const }],
+          }
+        }
+
+        // Validate metrics
+        const invalidMetrics = metrics.filter((m) => !isValidMetric(m))
+        if (invalidMetrics.length > 0) {
+          return {
+            content: [
+              {
+                text: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
+                type: 'text' as const,
+              },
+            ],
+          }
+        }
+
+        const validatedMetrics = metrics as MetricType[]
+
+        // Calculate period length for previous period comparison
+        const periodMs = endDate.getTime() - startDate.getTime()
+        const prevStart = new Date(startDate.getTime() - periodMs)
+        const prevEnd = new Date(startDate.getTime() - 1) // Just before current period starts
+
+        // Fetch current and previous period stats in parallel
+        const [currentStats, previousStats, dailyAggregates] = await Promise.all([
+          getTimeSeriesStats(user, validatedMetrics, startDate, endDate),
+          getTimeSeriesStats(user, validatedMetrics, prevStart, prevEnd),
+          getDailyAggregates(user, validatedMetrics, startDate, endDate),
+        ])
+
+        // Calculate days in period for completeness calculation
+        const daysInPeriod = Math.ceil(periodMs / (1000 * 60 * 60 * 24))
+
+        // Build response with trends and completeness
+        const metricsWithTrends = currentStats.map((stat) => {
+          const prevStat = previousStats.find((p) => p.metric === stat.metric)
+          const dailyData = dailyAggregates.filter((d) => d.metric === stat.metric)
+
+          // Calculate trend using linear regression on daily averages
+          let trend: number | null = null
+          if (dailyData.length >= 2) {
+            const n = dailyData.length
+            const xMean = (n - 1) / 2
+            const yMean = dailyData.reduce((sum, d) => sum + d.avg, 0) / n
+            let numerator = 0
+            let denominator = 0
+            for (let i = 0; i < n; i++) {
+              numerator += (i - xMean) * (dailyData[i].avg - yMean)
+              denominator += (i - xMean) ** 2
+            }
+            if (denominator !== 0) {
+              trend = numerator / denominator
+            }
+          }
+
+          // Calculate change from previous period
+          let changeFromPrevious: number | null = null
+          if (prevStat && prevStat.avg !== 0) {
+            changeFromPrevious = ((stat.avg - prevStat.avg) / prevStat.avg) * 100
+          }
+
+          // Calculate data completeness (days with data / total days)
+          const daysWithData = dailyData.length
+          const completeness = Math.round((daysWithData / daysInPeriod) * 100)
+
+          // Identify outliers (values more than 2 stddev from mean)
+          const outlierThreshold = stat.stddev * 2
+          const outliers: { type: 'high' | 'low'; value: number }[] = []
+          if (stat.stddev > 0) {
+            if (stat.max > stat.avg + outlierThreshold) {
+              outliers.push({ type: 'high', value: stat.max })
+            }
+            if (stat.min < stat.avg - outlierThreshold) {
+              outliers.push({ type: 'low', value: stat.min })
+            }
+          }
+
+          return {
+            avg: Math.round(stat.avg * 100) / 100,
+            changeFromPreviousPeriodPercent:
+              changeFromPrevious !== null ? Math.round(changeFromPrevious * 10) / 10 : null,
+            completenessPercent: completeness,
+            count: stat.count,
+            max: Math.round(stat.max * 100) / 100,
+            metric: stat.metric,
+            min: Math.round(stat.min * 100) / 100,
+            outliers: outliers.length > 0 ? outliers : undefined,
+            stddev: Math.round(stat.stddev * 100) / 100,
+            trendPerDay: trend !== null ? Math.round(trend * 1000) / 1000 : null,
+            unit: stat.unit,
+          }
+        })
+
+        // Add metrics with no data in current period
+        const missingMetrics = validatedMetrics.filter((m) => !currentStats.some((s) => s.metric === m))
+        for (const metric of missingMetrics) {
+          metricsWithTrends.push({
+            avg: 0,
+            changeFromPreviousPeriodPercent: null,
+            completenessPercent: 0,
+            count: 0,
+            max: 0,
+            metric,
+            min: 0,
+            outliers: undefined,
+            stddev: 0,
+            trendPerDay: null,
+            unit: metricUnits[metric],
+          })
+        }
+
+        const summary = {
+          end: endDate.toISOString(),
+          metrics: metricsWithTrends,
+          periodDays: daysInPeriod,
+          start: startDate.toISOString(),
+        }
+
+        return {
+          content: [{ text: JSON.stringify(summary, null, 2), type: 'text' as const }],
         }
       },
     )
