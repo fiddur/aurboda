@@ -136,3 +136,128 @@ describe('Daily Aggregates', () => {
     })
   })
 })
+
+describe('getSleepSessions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
+  })
+
+  test('returns overnight sleep session on wake-up day', async () => {
+    // Sleep starting at 23:00 on Jan 14, ending at 07:00 on Jan 15
+    // Should appear in Jan 15's summary (wake-up day)
+    mockQueryFn.mockResolvedValue({
+      rowCount: 1,
+      rows: [
+        {
+          activity_type: 'sleep',
+          data: { score: 85 },
+          end_time: new Date('2024-01-15T07:00:00Z'),
+          id: 'sleep-1',
+          notes: null,
+          source: 'oura',
+          start_time: new Date('2024-01-14T23:00:00Z'),
+          title: null,
+        },
+      ],
+    })
+
+    const { getSleepSessions } = await import('./db.js')
+
+    // Query for Jan 15's sleep
+    const start = new Date('2024-01-15T00:00:00Z')
+    const end = new Date('2024-01-15T23:59:59Z')
+    const result = await getSleepSessions('testuser', start, end)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].startTime).toEqual(new Date('2024-01-14T23:00:00Z'))
+    expect(result[0].endTime).toEqual(new Date('2024-01-15T07:00:00Z'))
+  })
+
+  test('returns sleep session that starts and ends on same day', async () => {
+    // A nap that starts at 14:00 and ends at 15:30 on Jan 15
+    mockQueryFn.mockResolvedValue({
+      rowCount: 1,
+      rows: [
+        {
+          activity_type: 'sleep',
+          data: null,
+          end_time: new Date('2024-01-15T15:30:00Z'),
+          id: 'sleep-2',
+          notes: null,
+          source: 'health_connect',
+          start_time: new Date('2024-01-15T14:00:00Z'),
+          title: null,
+        },
+      ],
+    })
+
+    const { getSleepSessions } = await import('./db.js')
+    const result = await getSleepSessions(
+      'testuser',
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result).toHaveLength(1)
+    expect(result[0].startTime).toEqual(new Date('2024-01-15T14:00:00Z'))
+  })
+
+  test('returns ongoing sleep session with no end_time', async () => {
+    // Sleep that started at 23:00 but hasn't ended yet (no end_time)
+    mockQueryFn.mockResolvedValue({
+      rowCount: 1,
+      rows: [
+        {
+          activity_type: 'sleep',
+          data: null,
+          end_time: null,
+          id: 'sleep-3',
+          notes: null,
+          source: 'oura',
+          start_time: new Date('2024-01-14T23:00:00Z'),
+          title: null,
+        },
+      ],
+    })
+
+    const { getSleepSessions } = await import('./db.js')
+    const result = await getSleepSessions(
+      'testuser',
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result).toHaveLength(1)
+    expect(result[0].endTime).toBeUndefined()
+  })
+
+  test('uses date overlap query for sleep sessions', async () => {
+    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
+
+    const { getSleepSessions } = await import('./db.js')
+    await getSleepSessions('testuser', new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+
+    // Find the SELECT call (skip SET ROLE calls)
+    const selectCall = mockQueryFn.mock.calls.find((call) => call[0].includes('SELECT'))
+    expect(selectCall).toBeDefined()
+    // Should use overlap logic: start_time < day_end AND (end_time >= day_start OR end_time IS NULL)
+    expect(selectCall![0]).toContain('start_time <')
+    expect(selectCall![0]).toContain('end_time >=')
+    expect(selectCall![0]).toContain('end_time IS NULL')
+  })
+
+  test('returns empty array when no sleep sessions', async () => {
+    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
+
+    const { getSleepSessions } = await import('./db.js')
+    const result = await getSleepSessions(
+      'testuser',
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result).toEqual([])
+  })
+})

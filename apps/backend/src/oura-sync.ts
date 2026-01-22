@@ -17,6 +17,7 @@ import {
   upsertSyncState,
 } from './db'
 import { ouraClient } from './oura'
+import { MetricType } from './schema'
 
 /** Oura data types that can be synced */
 export type OuraDataType =
@@ -61,7 +62,15 @@ interface OuraResilience extends OuraDailyRecord {
 
 interface OuraSleep extends OuraDailyRecord {
   score: number
-  contributors?: Record<string, number>
+  contributors?: {
+    deep_sleep?: number
+    efficiency?: number
+    latency?: number
+    rem_sleep?: number
+    restfulness?: number
+    timing?: number
+    total_sleep?: number
+  }
 }
 
 interface OuraSession {
@@ -208,6 +217,17 @@ const processResilience = async (user: string, data: OuraResilience[]) => {
   }
 }
 
+/** Mapping from Oura sleep contributor names to our metric types */
+const sleepContributorMetricMap: Record<string, MetricType> = {
+  deep_sleep: 'sleep_deep_score',
+  efficiency: 'sleep_efficiency',
+  latency: 'sleep_latency',
+  rem_sleep: 'sleep_rem_score',
+  restfulness: 'sleep_restfulness',
+  timing: 'sleep_timing',
+  total_sleep: 'sleep_total_score',
+}
+
 /**
  * Process Oura daily sleep data.
  */
@@ -232,6 +252,21 @@ const processDailySleep = async (user: string, data: OuraSleep[]) => {
         time,
         value: record.score,
       })
+    }
+
+    // Extract sleep contributors as separate metrics
+    if (record.contributors) {
+      for (const [key, value] of Object.entries(record.contributors)) {
+        const metric = sleepContributorMetricMap[key]
+        if (metric && value !== undefined) {
+          points.push({
+            metric,
+            source: 'oura',
+            time,
+            value,
+          })
+        }
+      }
     }
   }
 

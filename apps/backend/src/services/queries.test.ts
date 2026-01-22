@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db'
+import { MetricType } from '../schema'
 import { getDailySummary, getPeriodSummary, queryMetrics } from './queries'
 
 // Mock the db module
@@ -9,8 +10,10 @@ vi.mock('../db', () => ({
   getDailyAggregates: vi.fn(),
   getLocations: vi.fn(),
   getProductivity: vi.fn(),
+  getSleepSessions: vi.fn(),
   getTags: vi.fn(),
   getTimeSeries: vi.fn(),
+  getTimeSeriesMultiMetric: vi.fn(),
   getTimeSeriesStats: vi.fn(),
 }))
 
@@ -73,24 +76,26 @@ describe('getDailySummary', () => {
         [new Date('2024-01-15T12:00:00Z'), 3000],
       ])
 
-    vi.mocked(db.getActivities)
-      .mockResolvedValueOnce([
-        {
-          activityType: 'sleep',
-          endTime: new Date('2024-01-15T07:00:00Z'),
-          source: 'oura',
-          startTime: new Date('2024-01-14T23:00:00Z'),
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          activityType: 'exercise',
-          endTime: new Date('2024-01-15T10:30:00Z'),
-          source: 'health_connect',
-          startTime: new Date('2024-01-15T10:00:00Z'),
-          title: 'Running',
-        },
-      ])
+    // Sleep sessions now use getSleepSessions with date overlap logic
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activityType: 'sleep',
+        endTime: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        startTime: new Date('2024-01-14T23:00:00Z'),
+      },
+    ])
+
+    // Exercise sessions still use getActivities
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activityType: 'exercise',
+        endTime: new Date('2024-01-15T10:30:00Z'),
+        source: 'health_connect',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+        title: 'Running',
+      },
+    ])
 
     vi.mocked(db.getTags).mockResolvedValue([
       { source: 'manual', startTime: new Date('2024-01-15T08:00:00Z'), tag: 'coffee' },
@@ -126,6 +131,7 @@ describe('getDailySummary', () => {
 
     // No aggregate available, should fall back to summing raw records
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
@@ -170,11 +176,13 @@ describe('getDailySummary', () => {
 
   test('returns null for heartRate when no data', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getActivities).mockResolvedValue([])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
@@ -191,10 +199,12 @@ describe('getDailySummary', () => {
         [new Date('2024-01-15T12:00:00Z'), 3000], // Total raw: 8000
       ])
 
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getActivities).mockResolvedValue([])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
     // Aggregate returns 5000 (deduplicated value)
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(5000)
@@ -213,10 +223,12 @@ describe('getDailySummary', () => {
         [new Date('2024-01-15T12:00:00Z'), 3000],
       ])
 
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getActivities).mockResolvedValue([])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
     // No aggregate available
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
@@ -225,6 +237,73 @@ describe('getDailySummary', () => {
 
     // Should fall back to summing raw records
     expect(result.steps.total).toBe(8000)
+  })
+
+  test('includes Oura scores when data is present', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+
+    // Mock Oura scores data
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({
+      cardiovascular_age: [[new Date('2024-01-15T00:00:00Z'), 35]],
+      readiness_score: [[new Date('2024-01-15T00:00:00Z'), 85]],
+      resilience_score: [[new Date('2024-01-15T00:00:00Z'), 75]],
+      sleep_score: [[new Date('2024-01-15T00:00:00Z'), 92]],
+    } as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.ouraScores).toEqual({
+      cardiovascularAge: 35,
+      readinessScore: 85,
+      resilienceScore: 75,
+      sleepScore: 92,
+    })
+  })
+
+  test('returns null ouraScores when no Oura data', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.ouraScores).toBeNull()
+  })
+
+  test('returns partial ouraScores when some metrics are missing', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+
+    // Only some Oura metrics available
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({
+      readiness_score: [[new Date('2024-01-15T00:00:00Z'), 85]],
+      sleep_score: [[new Date('2024-01-15T00:00:00Z'), 92]],
+    } as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.ouraScores).toEqual({
+      cardiovascularAge: null,
+      readinessScore: 85,
+      resilienceScore: null,
+      sleepScore: 92,
+    })
   })
 })
 

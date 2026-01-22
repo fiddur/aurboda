@@ -267,6 +267,14 @@ export type MetricType =
   | 'productivity_score'
   | 'cardiovascular_age'
   | 'sleep_score'
+  // Oura sleep contributors (0-100 scores)
+  | 'sleep_efficiency'
+  | 'sleep_latency'
+  | 'sleep_restfulness'
+  | 'sleep_timing'
+  | 'sleep_deep_score'
+  | 'sleep_rem_score'
+  | 'sleep_total_score'
 
 /**
  * Activity types for activities table.
@@ -308,6 +316,14 @@ export const validMetrics: MetricType[] = [
   'productivity_score',
   'cardiovascular_age',
   'sleep_score',
+  // Oura sleep contributors
+  'sleep_efficiency',
+  'sleep_latency',
+  'sleep_restfulness',
+  'sleep_timing',
+  'sleep_deep_score',
+  'sleep_rem_score',
+  'sleep_total_score',
 ]
 
 /**
@@ -344,7 +360,14 @@ export const metricUnits: Record<MetricType, string> = {
   resilience_score: 'score',
   respiratory_rate: 'brpm',
   resting_heart_rate: 'bpm',
+  sleep_deep_score: 'score',
+  sleep_efficiency: 'score',
+  sleep_latency: 'score',
+  sleep_rem_score: 'score',
+  sleep_restfulness: 'score',
   sleep_score: 'score',
+  sleep_timing: 'score',
+  sleep_total_score: 'score',
   spo2: 'percent',
   steps: 'count',
   vo2_max: 'mL/kg/min',
