@@ -2,6 +2,7 @@ import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createAuth } from './auth'
+import * as db from './db'
 import { createMcpRouter } from './mcp'
 
 // Mock the db module
@@ -43,6 +44,17 @@ function mcpPost(app: express.Express) {
 
 function mcpDelete(app: express.Express) {
   return request(app).delete('/mcp').set('Accept', 'application/json, text/event-stream')
+}
+
+// Parse SSE response to extract JSON-RPC result
+function parseSSEResponse(text: string): unknown {
+  const lines = text.split('\n')
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      return JSON.parse(line.slice(6))
+    }
+  }
+  throw new Error('No data line found in SSE response')
 }
 
 describe('MCP Server', () => {
@@ -168,4 +180,232 @@ describe('MCP Server', () => {
   // full integration testing of session isolation requires using a real MCP client.
   // The GET and DELETE endpoints' session isolation is tested via the "returns 400
   // for invalid session ID" tests which verify sessions are properly scoped.
+
+  describe('Tool: query_period_summary', () => {
+    async function initializeSession(app: express.Express, token: string) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+      return response.headers['mcp-session-id'] as string
+    }
+
+    async function callTool(
+      app: express.Express,
+      token: string,
+      sessionId: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: args, name: toolName },
+        })
+
+      // Parse SSE response
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return {
+        ...response,
+        parsed,
+        toolResult: JSON.parse(parsed.result.content[0].text),
+      }
+    }
+
+    test('returns aggregated stats for valid metrics', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      // Mock db responses
+      vi.mocked(db.getTimeSeriesStats).mockResolvedValue([
+        { avg: 45.5, count: 30, max: 65, metric: 'hrv_rmssd', min: 25, stddev: 10, unit: 'ms' },
+      ])
+      vi.mocked(db.getDailyAggregates).mockResolvedValue([
+        { avg: 40, date: '2024-01-01', metric: 'hrv_rmssd' },
+        { avg: 45, date: '2024-01-02', metric: 'hrv_rmssd' },
+        { avg: 50, date: '2024-01-03', metric: 'hrv_rmssd' },
+      ])
+
+      const response = await callTool(app, token, sessionId, 'query_period_summary', {
+        end: '2024-01-31T23:59:59Z',
+        metrics: ['hrv_rmssd'],
+        start: '2024-01-01T00:00:00Z',
+      })
+
+      expect(response.status).toBe(200)
+      const result = response.toolResult
+      expect(result.metrics).toHaveLength(1)
+      expect(result.metrics[0].metric).toBe('hrv_rmssd')
+      expect(result.metrics[0].avg).toBe(45.5)
+      expect(result.metrics[0].min).toBe(25)
+      expect(result.metrics[0].max).toBe(65)
+      expect(result.metrics[0].stddev).toBe(10)
+      expect(result.metrics[0].unit).toBe('ms')
+      expect(result.metrics[0].trendPerDay).toBe(5) // Linear regression slope
+    })
+
+    test('returns error for invalid date format', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            arguments: {
+              end: 'not-a-date',
+              metrics: ['hrv_rmssd'],
+              start: '2024-01-01T00:00:00Z',
+            },
+            name: 'query_period_summary',
+          },
+        })
+
+      expect(response.status).toBe(200)
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      expect(parsed.result.content[0].text).toContain('Invalid date format')
+    })
+
+    test('returns error for invalid metrics', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            arguments: {
+              end: '2024-01-31T23:59:59Z',
+              metrics: ['invalid_metric', 'hrv_rmssd'],
+              start: '2024-01-01T00:00:00Z',
+            },
+            name: 'query_period_summary',
+          },
+        })
+
+      expect(response.status).toBe(200)
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      expect(parsed.result.content[0].text).toContain('Invalid metrics')
+      expect(parsed.result.content[0].text).toContain('invalid_metric')
+    })
+
+    test('calculates change from previous period', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      // Current period: avg 50, previous period: avg 40 -> +25% change
+      vi.mocked(db.getTimeSeriesStats)
+        .mockResolvedValueOnce([
+          { avg: 50, count: 30, max: 60, metric: 'hrv_rmssd', min: 40, stddev: 5, unit: 'ms' },
+        ])
+        .mockResolvedValueOnce([
+          { avg: 40, count: 30, max: 50, metric: 'hrv_rmssd', min: 30, stddev: 5, unit: 'ms' },
+        ])
+      vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+
+      const response = await callTool(app, token, sessionId, 'query_period_summary', {
+        end: '2024-01-31T23:59:59Z',
+        metrics: ['hrv_rmssd'],
+        start: '2024-01-01T00:00:00Z',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.metrics[0].changeFromPreviousPeriodPercent).toBe(25)
+    })
+
+    test('identifies outliers beyond 2 stddev', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      // avg=50, stddev=10 -> outlier threshold is 20
+      // min=20 is exactly at avg-2*stddev (not outlier)
+      // max=85 is beyond avg+2*stddev (outlier)
+      vi.mocked(db.getTimeSeriesStats).mockResolvedValue([
+        { avg: 50, count: 30, max: 85, metric: 'hrv_rmssd', min: 20, stddev: 10, unit: 'ms' },
+      ])
+      vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+
+      const response = await callTool(app, token, sessionId, 'query_period_summary', {
+        end: '2024-01-31T23:59:59Z',
+        metrics: ['hrv_rmssd'],
+        start: '2024-01-01T00:00:00Z',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.metrics[0].outliers).toBeDefined()
+      expect(response.toolResult.metrics[0].outliers).toContainEqual({ type: 'high', value: 85 })
+    })
+
+    test('handles metrics with no data', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
+      vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+
+      const response = await callTool(app, token, sessionId, 'query_period_summary', {
+        end: '2024-01-31T23:59:59Z',
+        metrics: ['hrv_rmssd'],
+        start: '2024-01-01T00:00:00Z',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.metrics).toHaveLength(1)
+      expect(response.toolResult.metrics[0].count).toBe(0)
+      expect(response.toolResult.metrics[0].completenessPercent).toBe(0)
+    })
+
+    test('calculates completeness percentage correctly', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      vi.mocked(db.getTimeSeriesStats).mockResolvedValue([
+        { avg: 50, count: 15, max: 60, metric: 'hrv_rmssd', min: 40, stddev: 5, unit: 'ms' },
+      ])
+      // 15 days of data out of 31 days in January
+      vi.mocked(db.getDailyAggregates).mockResolvedValue(
+        Array.from({ length: 15 }, (_, i) => ({
+          avg: 50,
+          date: `2024-01-${String(i + 1).padStart(2, '0')}`,
+          metric: 'hrv_rmssd' as const,
+        })),
+      )
+
+      const response = await callTool(app, token, sessionId, 'query_period_summary', {
+        end: '2024-01-31T23:59:59Z',
+        metrics: ['hrv_rmssd'],
+        start: '2024-01-01T00:00:00Z',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.metrics[0].completenessPercent).toBe(48) // 15/31 = 48%
+    })
+  })
 })
