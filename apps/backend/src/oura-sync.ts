@@ -66,21 +66,21 @@ interface OuraSleep extends OuraDailyRecord {
 
 interface OuraSession {
   id: string
-  start_datetime: string
-  end_datetime: string
+  startTime: Date
+  endTime: Date
   type: string
   mood?: string
-  heart_rate?: unknown
-  heart_rate_variability?: unknown
-  motion_count?: unknown
+  heartRate?: unknown
+  hrv?: unknown
+  motion?: unknown
 }
 
 interface OuraTag {
-  id: string
-  tag_type_code: string | null
-  start_time: string
-  end_time?: string
-  custom_name: string | null
+  startTime: Date
+  endTime?: Date
+  tag: string
+  externalId: string
+  source: string
 }
 
 /**
@@ -245,29 +245,26 @@ const processDailySleep = async (user: string, data: OuraSleep[]) => {
  */
 const processSessions = async (user: string, data: OuraSession[]) => {
   for (const record of data) {
-    const startTime = new Date(record.start_datetime)
-    const endTime = new Date(record.end_datetime)
-
     await insertRawRecord(user, {
       data: record as unknown as Record<string, unknown>,
       externalId: record.id,
       recordType: 'session',
-      recordedAt: startTime,
+      recordedAt: record.startTime,
       source: 'oura',
     })
 
     await insertActivity(user, {
       activityType: 'meditation',
       data: {
-        heartRate: record.heart_rate,
-        hrv: record.heart_rate_variability,
+        heartRate: record.heartRate,
+        hrv: record.hrv,
         mood: record.mood,
-        motion: record.motion_count,
+        motion: record.motion,
         sessionType: record.type,
       },
-      endTime,
+      endTime: record.endTime,
       source: 'oura',
-      startTime,
+      startTime: record.startTime,
       title: record.type,
     })
   }
@@ -278,23 +275,20 @@ const processSessions = async (user: string, data: OuraSession[]) => {
  */
 const processTags = async (user: string, data: OuraTag[]) => {
   for (const record of data) {
-    const startTime = new Date(record.start_time)
-    const endTime = record.end_time ? new Date(record.end_time) : undefined
-
     await insertRawRecord(user, {
       data: record as unknown as Record<string, unknown>,
-      externalId: record.id,
+      externalId: record.externalId,
       recordType: 'enhanced_tag',
-      recordedAt: startTime,
+      recordedAt: record.startTime,
       source: 'oura',
     })
 
     await insertTag(user, {
-      endTime,
-      externalId: record.id,
+      endTime: record.endTime,
+      externalId: record.externalId,
       source: 'oura',
-      startTime,
-      tag: record.custom_name || record.tag_type_code || 'unknown',
+      startTime: record.startTime,
+      tag: record.tag,
     })
   }
 }

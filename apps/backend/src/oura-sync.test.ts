@@ -245,15 +245,16 @@ describe('processOuraData', () => {
 
   describe('sessions', () => {
     test('processes meditation session data', async () => {
+      // Data is pre-transformed by oura.ts getSessions()
       const data = [
         {
-          end_datetime: '2025-01-01T10:30:00Z',
-          heart_rate: { items: [60, 62, 58] },
-          heart_rate_variability: { items: [50, 55] },
+          endTime: new Date('2025-01-01T10:30:00Z'),
+          heartRate: { items: [60, 62, 58] },
+          hrv: { items: [50, 55] },
           id: 'sess-1',
           mood: 'good',
-          motion_count: { items: [1, 0, 2] },
-          start_datetime: '2025-01-01T10:00:00Z',
+          motion: { items: [1, 0, 2] },
+          startTime: new Date('2025-01-01T10:00:00Z'),
           type: 'meditation',
         },
       ]
@@ -271,10 +272,10 @@ describe('processOuraData', () => {
       expect(db.insertActivity).toHaveBeenCalledWith(user, {
         activityType: 'meditation',
         data: {
-          heartRate: data[0].heart_rate,
-          hrv: data[0].heart_rate_variability,
+          heartRate: data[0].heartRate,
+          hrv: data[0].hrv,
           mood: 'good',
-          motion: data[0].motion_count,
+          motion: data[0].motion,
           sessionType: 'meditation',
         },
         endTime: new Date('2025-01-01T10:30:00Z'),
@@ -287,13 +288,14 @@ describe('processOuraData', () => {
 
   describe('tags', () => {
     test('processes tag data with custom name', async () => {
+      // Data is pre-transformed by oura.ts getTags()
       const data = [
         {
-          custom_name: 'Morning Coffee',
-          end_time: '2025-01-01T08:05:00Z',
-          id: 'tag-1',
-          start_time: '2025-01-01T08:00:00Z',
-          tag_type_code: 'caffeine',
+          endTime: new Date('2025-01-01T08:05:00Z'),
+          externalId: 'tag-1',
+          source: 'oura',
+          startTime: new Date('2025-01-01T08:00:00Z'),
+          tag: 'Morning Coffee',
         },
       ]
 
@@ -316,13 +318,15 @@ describe('processOuraData', () => {
       })
     })
 
-    test('processes tag data without custom name (uses tag_type_code)', async () => {
+    test('processes tag data without endTime', async () => {
+      // Data is pre-transformed by oura.ts getTags()
       const data = [
         {
-          custom_name: null,
-          id: 'tag-2',
-          start_time: '2025-01-01T14:00:00Z',
-          tag_type_code: 'stress_high',
+          endTime: undefined,
+          externalId: 'tag-2',
+          source: 'oura',
+          startTime: new Date('2025-01-01T14:00:00Z'),
+          tag: 'stress_high',
         },
       ]
 
@@ -337,13 +341,15 @@ describe('processOuraData', () => {
       })
     })
 
-    test('handles tag with null tag_type_code', async () => {
+    test('handles tag with unknown type', async () => {
+      // Data is pre-transformed by oura.ts getTags() - 'unknown' is set by oura.ts when tag_type_code is null
       const data = [
         {
-          custom_name: null,
-          id: 'tag-3',
-          start_time: '2025-01-01T14:00:00Z',
-          tag_type_code: null,
+          endTime: undefined,
+          externalId: 'tag-3',
+          source: 'oura',
+          startTime: new Date('2025-01-01T14:00:00Z'),
+          tag: 'unknown',
         },
       ]
 
