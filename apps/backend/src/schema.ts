@@ -270,6 +270,50 @@ export type ActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap'
 /**
  * Unit definitions for metrics.
  */
+/**
+ * List of all valid metric types.
+ */
+export const validMetrics: MetricType[] = [
+  'heart_rate',
+  'resting_heart_rate',
+  'hrv_rmssd',
+  'weight',
+  'body_fat',
+  'bone_mass',
+  'lean_body_mass',
+  'body_water_mass',
+  'height',
+  'steps',
+  'distance',
+  'floors_climbed',
+  'calories_active',
+  'calories_total',
+  'calories_basal',
+  'spo2',
+  'respiratory_rate',
+  'body_temperature',
+  'basal_body_temperature',
+  'blood_glucose',
+  'blood_pressure_systolic',
+  'blood_pressure_diastolic',
+  'vo2_max',
+  'readiness_score',
+  'resilience_score',
+  'productivity_score',
+  'cardiovascular_age',
+  'sleep_score',
+]
+
+/**
+ * Check if a string is a valid metric type.
+ */
+export function isValidMetric(metric: string): metric is MetricType {
+  return validMetrics.includes(metric as MetricType)
+}
+
+/**
+ * Unit definitions for metrics.
+ */
 export const metricUnits: Record<MetricType, string> = {
   basal_body_temperature: 'celsius',
   blood_glucose: 'mmol/L',

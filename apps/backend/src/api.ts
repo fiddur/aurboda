@@ -32,7 +32,9 @@ import {
   needsSync as rescueTimeNeedsSync,
   syncRescueTimeData,
 } from './rescuetime-sync'
-import { ActivityType } from './schema'
+import { ActivityType, isValidMetric, MetricType, validMetrics } from './schema'
+import { addMetric, addTag } from './services/mutations'
+import { getDailySummary, getPeriodSummary, queryMetrics } from './services/queries'
 import { reduceTimeSeries } from './utils'
 
 declare global {
@@ -441,6 +443,151 @@ const main = async () => {
     const { places } = await getLocations(user, start, end)
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(places))
+  })
+
+  // ==========================================================================
+  // REST API v1 - Uses shared service layer with MCP
+  // ==========================================================================
+
+  // GET /api/v1/metrics/:metric - Query time series metrics
+  httpd.get('/api/v1/metrics/:metric', authMiddleware, async (req, res) => {
+    const { metric } = req.params
+    const { start, end } = req.query as { start?: string; end?: string }
+    const user = req.user!
+
+    if (!isValidMetric(metric)) {
+      return res.status(400).json({
+        error: `Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`,
+        success: false,
+      })
+    }
+
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const result = await queryMetrics(user, metric, startDate, endDate)
+    res.json({ ...result, success: true })
+  })
+
+  // GET /api/v1/daily-summary - Get comprehensive summary for a day
+  httpd.get('/api/v1/daily-summary', authMiddleware, async (req, res) => {
+    const { date } = req.query as { date?: string }
+    const user = req.user!
+
+    if (!date) {
+      return res.status(400).json({ error: 'Missing required query parameter: date', success: false })
+    }
+
+    const dateMatch = date.match(/^\d{4}-\d{2}-\d{2}$/)
+    if (!dateMatch) {
+      return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD format.', success: false })
+    }
+
+    const dateObj = new Date(date)
+    if (isNaN(dateObj.getTime())) {
+      return res.status(400).json({ error: 'Invalid date.', success: false })
+    }
+
+    const summary = await getDailySummary(user, dateObj)
+    res.json({ ...summary, success: true })
+  })
+
+  // GET /api/v1/period-summary - Get aggregated stats for a period
+  httpd.get('/api/v1/period-summary', authMiddleware, async (req, res) => {
+    const {
+      start,
+      end,
+      metrics: metricsParam,
+    } = req.query as { start?: string; end?: string; metrics?: string }
+    const user = req.user!
+
+    if (!start || !end || !metricsParam) {
+      return res
+        .status(400)
+        .json({ error: 'Missing required query parameters: start, end, metrics', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const metrics = metricsParam.split(',')
+    const invalidMetrics = metrics.filter((m) => !isValidMetric(m))
+    if (invalidMetrics.length > 0) {
+      return res.status(400).json({
+        error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
+        success: false,
+      })
+    }
+
+    const summary = await getPeriodSummary(user, metrics as MetricType[], startDate, endDate)
+    res.json({ ...summary, success: true })
+  })
+
+  // POST /api/v1/tags - Add a manual tag
+  httpd.post('/api/v1/tags', authMiddleware, async (req, res) => {
+    const { tag, start_time, end_time } = req.body as { tag?: string; start_time?: string; end_time?: string }
+    const user = req.user!
+
+    if (!tag || !start_time) {
+      return res.status(400).json({ error: 'Missing required fields: tag, start_time', success: false })
+    }
+
+    const startDate = new Date(start_time)
+    if (isNaN(startDate.getTime())) {
+      return res
+        .status(400)
+        .json({ error: 'Invalid start_time format. Use ISO 8601 format.', success: false })
+    }
+
+    let endDate: Date | undefined
+    if (end_time) {
+      endDate = new Date(end_time)
+      if (isNaN(endDate.getTime())) {
+        return res
+          .status(400)
+          .json({ error: 'Invalid end_time format. Use ISO 8601 format.', success: false })
+      }
+    }
+
+    const result = await addTag(user, { endTime: endDate, startTime: startDate, tag })
+    res.json(result)
+  })
+
+  // POST /api/v1/metrics - Add a manual metric measurement
+  httpd.post('/api/v1/metrics', authMiddleware, async (req, res) => {
+    const { metric, value, time } = req.body as { metric?: string; value?: number; time?: string }
+    const user = req.user!
+
+    if (!metric || value === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: metric, value', success: false })
+    }
+
+    if (!isValidMetric(metric)) {
+      return res.status(400).json({
+        error: `Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`,
+        success: false,
+      })
+    }
+
+    const measurementTime = time ? new Date(time) : new Date()
+    if (isNaN(measurementTime.getTime())) {
+      return res.status(400).json({ error: 'Invalid time format. Use ISO 8601 format.', success: false })
+    }
+
+    const result = await addMetric(user, { metric, time: measurementTime, value })
+    res.json(result)
   })
 
   const port = Number(process.env.PORT ?? 80)

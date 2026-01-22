@@ -8,44 +8,9 @@ import { getAllSyncStates } from './db'
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { syncRescueTimeData } from './rescuetime-sync'
-import { MetricType } from './schema'
+import { isValidMetric, MetricType, validMetrics } from './schema'
 import { addMetric, addTag } from './services/mutations'
 import { getDailySummary, getPeriodSummary, queryMetrics } from './services/queries'
-
-const validMetrics: MetricType[] = [
-  'heart_rate',
-  'resting_heart_rate',
-  'hrv_rmssd',
-  'weight',
-  'body_fat',
-  'bone_mass',
-  'lean_body_mass',
-  'body_water_mass',
-  'height',
-  'steps',
-  'distance',
-  'floors_climbed',
-  'calories_active',
-  'calories_total',
-  'calories_basal',
-  'spo2',
-  'respiratory_rate',
-  'body_temperature',
-  'basal_body_temperature',
-  'blood_glucose',
-  'blood_pressure_systolic',
-  'blood_pressure_diastolic',
-  'vo2_max',
-  'readiness_score',
-  'resilience_score',
-  'productivity_score',
-  'cardiovascular_age',
-  'sleep_score',
-]
-
-export function isValidMetric(metric: string): metric is MetricType {
-  return validMetrics.includes(metric as MetricType)
-}
 
 interface McpSession {
   transport: StreamableHTTPServerTransport
