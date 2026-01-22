@@ -27,13 +27,13 @@
   "devDependencies": {
     "@preact/preset-vite": "^2.10.2",
     "@types/d3": "^7.4.3",
+    "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^9.36.0",
     "eslint-config-preact": "^2.0.0",
     "eslint-plugin-prettier": "^5.5.4",
     "eslint-plugin-sort-keys": "^2.3.5",
     "vite": "^7.1.7",
-    "vitest": "^3.2.4",
-    "@vitest/coverage-v8": "^3.2.4"
+    "vitest": "^3.2.4"
   },
   "eslintConfig": {
     "extends": "preact"
