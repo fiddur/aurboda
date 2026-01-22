@@ -232,12 +232,120 @@ describe('processOuraData', () => {
         source: 'oura',
       })
 
+      // Should include both the main score and contributor
+      expect(db.insertTimeSeries).toHaveBeenCalledWith(
+        user,
+        expect.arrayContaining([
+          {
+            metric: 'sleep_score',
+            source: 'oura',
+            time: new Date('2025-01-01T07:00:00Z'),
+            value: 92,
+          },
+          {
+            metric: 'sleep_deep_score',
+            source: 'oura',
+            time: new Date('2025-01-01T07:00:00Z'),
+            value: 88,
+          },
+        ]),
+      )
+    })
+
+    test('extracts all sleep contributors as metrics', async () => {
+      const data = [
+        {
+          contributors: {
+            deep_sleep: 85,
+            efficiency: 90,
+            latency: 95,
+            rem_sleep: 80,
+            restfulness: 75,
+            timing: 70,
+            total_sleep: 88,
+          },
+          id: 'sl-2',
+          score: 82,
+          timestamp: '2025-01-02T07:00:00Z',
+        },
+      ]
+
+      await processOuraData(user, 'dailySleep', data)
+
+      const insertCall = vi.mocked(db.insertTimeSeries).mock.calls[0]
+      const points = insertCall[1]
+
+      // Should have main score + 7 contributors = 8 points
+      expect(points).toHaveLength(8)
+
+      expect(points).toContainEqual({
+        metric: 'sleep_score',
+        source: 'oura',
+        time: new Date('2025-01-02T07:00:00Z'),
+        value: 82,
+      })
+      expect(points).toContainEqual({
+        metric: 'sleep_efficiency',
+        source: 'oura',
+        time: new Date('2025-01-02T07:00:00Z'),
+        value: 90,
+      })
+      expect(points).toContainEqual({
+        metric: 'sleep_latency',
+        source: 'oura',
+        time: new Date('2025-01-02T07:00:00Z'),
+        value: 95,
+      })
+      expect(points).toContainEqual({
+        metric: 'sleep_restfulness',
+        source: 'oura',
+        time: new Date('2025-01-02T07:00:00Z'),
+        value: 75,
+      })
+      expect(points).toContainEqual({
+        metric: 'sleep_timing',
+        source: 'oura',
+        time: new Date('2025-01-02T07:00:00Z'),
+        value: 70,
+      })
+      expect(points).toContainEqual({
+        metric: 'sleep_deep_score',
+        source: 'oura',
+        time: new Date('2025-01-02T07:00:00Z'),
+        value: 85,
+      })
+      expect(points).toContainEqual({
+        metric: 'sleep_rem_score',
+        source: 'oura',
+        time: new Date('2025-01-02T07:00:00Z'),
+        value: 80,
+      })
+      expect(points).toContainEqual({
+        metric: 'sleep_total_score',
+        source: 'oura',
+        time: new Date('2025-01-02T07:00:00Z'),
+        value: 88,
+      })
+    })
+
+    test('handles missing contributors gracefully', async () => {
+      const data = [
+        {
+          id: 'sl-3',
+          score: 78,
+          timestamp: '2025-01-03T07:00:00Z',
+          // no contributors field
+        },
+      ]
+
+      await processOuraData(user, 'dailySleep', data)
+
       expect(db.insertTimeSeries).toHaveBeenCalledWith(user, [
         {
           metric: 'sleep_score',
           source: 'oura',
-          time: new Date('2025-01-01T07:00:00Z'),
-          value: 92,
+          time: new Date('2025-01-03T07:00:00Z'),
+          value: 78,
         },
       ])
     })

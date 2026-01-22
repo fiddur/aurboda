@@ -11,8 +11,10 @@ import {
   getDailyAggregateValue,
   getLocations,
   getProductivity,
+  getSleepSessions,
   getTags,
   getTimeSeries,
+  getTimeSeriesMultiMetric,
   getTimeSeriesStats,
 } from '../db'
 import { ActivityType, MetricType, metricUnits } from '../schema'
@@ -79,6 +81,13 @@ export interface ProductivitySummary {
   distractingSec: number
 }
 
+export interface OuraScores {
+  sleepScore: number | null
+  readinessScore: number | null
+  resilienceScore: number | null
+  cardiovascularAge: number | null
+}
+
 export interface DailySummaryResult {
   date: string
   heartRate: HeartRateStats | null
@@ -88,6 +97,7 @@ export interface DailySummaryResult {
   tags: TagSummary[]
   productivity: ProductivitySummary | null
   places: PlaceSummary[]
+  ouraScores: OuraScores | null
 }
 
 export interface PeriodMetricStats {
@@ -159,16 +169,30 @@ export async function getDailySummary(
   end.setHours(23, 59, 59, 999)
 
   // Run queries in parallel
-  const [heartRateData, stepsData, sleepSessions, exerciseSessions, tags, productivity, locations] =
-    await Promise.all([
-      getTimeSeries(user, 'heart_rate', start, end),
-      getTimeSeries(user, 'steps', start, end),
-      getActivities(user, 'sleep', start, end),
-      getActivities(user, 'exercise', start, end),
-      getTags(user, start, end),
-      getProductivity(user, start, end),
-      getLocations(user, start, end),
-    ])
+  const [
+    heartRateData,
+    stepsData,
+    sleepSessions,
+    exerciseSessions,
+    tags,
+    productivity,
+    locations,
+    ouraMetrics,
+  ] = await Promise.all([
+    getTimeSeries(user, 'heart_rate', start, end),
+    getTimeSeries(user, 'steps', start, end),
+    getSleepSessions(user, start, end),
+    getActivities(user, 'exercise', start, end),
+    getTags(user, start, end),
+    getProductivity(user, start, end),
+    getLocations(user, start, end),
+    getTimeSeriesMultiMetric(
+      user,
+      ['sleep_score', 'readiness_score', 'resilience_score', 'cardiovascular_age'],
+      start,
+      end,
+    ),
+  ])
 
   // Calculate heart rate stats
   const heartRates = heartRateData.map(([, value]) => value)
@@ -204,6 +228,28 @@ export async function getDailySummary(
       )
     : null
 
+  // Build Oura scores object (get first value for each metric if available)
+  const sleepScoreData = ouraMetrics['sleep_score']
+  const readinessScoreData = ouraMetrics['readiness_score']
+  const resilienceScoreData = ouraMetrics['resilience_score']
+  const cardiovascularAgeData = ouraMetrics['cardiovascular_age']
+
+  const hasAnyOuraData =
+    sleepScoreData?.length ||
+    readinessScoreData?.length ||
+    resilienceScoreData?.length ||
+    cardiovascularAgeData?.length
+
+  const ouraScores: OuraScores | null =
+    hasAnyOuraData ?
+      {
+        cardiovascularAge: cardiovascularAgeData?.[0]?.[1] ?? null,
+        readinessScore: readinessScoreData?.[0]?.[1] ?? null,
+        resilienceScore: resilienceScoreData?.[0]?.[1] ?? null,
+        sleepScore: sleepScoreData?.[0]?.[1] ?? null,
+      }
+    : null
+
   return {
     date: date.toISOString().split('T')[0],
     exerciseSessions: exerciseSessions.map((s) => ({
@@ -214,6 +260,7 @@ export async function getDailySummary(
       title: s.title,
     })),
     heartRate: heartRateStats,
+    ouraScores,
     places: locations.places.map((p) => ({
       duration: Math.round((p.endTime.getTime() - p.startTime.getTime()) / 1000 / 60),
       endTime: p.endTime.toISOString(),

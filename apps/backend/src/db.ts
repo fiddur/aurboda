@@ -347,6 +347,35 @@ export const getActivities = async (
   }))
 }
 
+/**
+ * Get sleep sessions that overlap with a date range.
+ * Uses date overlap logic so overnight sleep (starting 11pm, ending 7am)
+ * appears on the wake-up day rather than the start day.
+ */
+export const getSleepSessions = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
+  const result = await query(
+    user,
+    `SELECT id, source, activity_type, start_time, end_time, title, notes, data
+     FROM activities
+     WHERE activity_type = 'sleep'
+       AND start_time < $2
+       AND (end_time >= $1 OR end_time IS NULL)
+     ORDER BY start_time`,
+    [start, end],
+  )
+
+  return result.rows.map((row) => ({
+    activityType: row.activity_type,
+    data: row.data,
+    endTime: row.end_time ? new Date(row.end_time) : undefined,
+    id: row.id,
+    notes: row.notes,
+    source: row.source,
+    startTime: new Date(row.start_time),
+    title: row.title,
+  }))
+}
+
 // ============================================================================
 // Locations
 // ============================================================================
