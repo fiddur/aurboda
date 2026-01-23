@@ -581,4 +581,126 @@ describe('getPeriodSummary', () => {
 
     expect(result.metrics[0].completenessPercent).toBe(50) // 15/30 = 50%
   })
+
+  test('computes HR zone metrics from heart_rate data', async () => {
+    // HR zone metrics should be computed from heart_rate data, not stored directly
+    vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+    vi.mocked(db.getUserSettings).mockResolvedValue(null) // Use default HR zones
+
+    // Mock heart rate data with samples in different zones
+    // Default zones with age ~40 (max HR 180): 1=90, 2=108, 3=126, 4=144, 5=162
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T10:00:00Z'), 70], // Zone 0 (below 90)
+      [new Date('2024-01-15T10:00:02Z'), 70], // Zone 0
+      [new Date('2024-01-15T10:00:04Z'), 95], // Zone 1 (90-107)
+      [new Date('2024-01-15T10:00:06Z'), 115], // Zone 2 (108-125)
+      [new Date('2024-01-15T10:00:08Z'), 130], // Zone 3 (126-143)
+      [new Date('2024-01-15T10:00:10Z'), 150], // Zone 4 (144-161)
+      [new Date('2024-01-15T10:00:12Z'), 170], // Zone 5 (>=162)
+    ])
+
+    const result = await getPeriodSummary(
+      'testuser',
+      ['hr_zone_1_sec', 'hr_zone_2_sec', 'hr_zone_5_sec'],
+      new Date('2024-01-15'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metrics).toHaveLength(3)
+
+    const zone1 = result.metrics.find((m) => m.metric === 'hr_zone_1_sec')
+    const zone2 = result.metrics.find((m) => m.metric === 'hr_zone_2_sec')
+    const zone5 = result.metrics.find((m) => m.metric === 'hr_zone_5_sec')
+
+    expect(zone1).toBeDefined()
+    expect(zone2).toBeDefined()
+    expect(zone5).toBeDefined()
+
+    // Each zone should have sum as avg (total seconds) and count of 1
+    expect(zone1!.count).toBe(1)
+    expect(zone1!.unit).toBe('sec')
+    expect(zone1!.avg).toBeGreaterThan(0) // Should have some time in zone 1
+    expect(zone5!.avg).toBeGreaterThan(0) // Should have some time in zone 5
+  })
+
+  test('computes HR zone metrics using custom user HR zones', async () => {
+    vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+
+    // Custom zones: zone 1 starts at 70 (lower than default 90)
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      hrZoneStart: { 1: 70, 2: 100, 3: 130, 4: 150, 5: 170 },
+    })
+
+    // HR at 75 - would be zone 0 with defaults (90), but zone 1 with custom (70)
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T10:00:00Z'), 75],
+      [new Date('2024-01-15T10:00:02Z'), 75],
+    ])
+
+    const result = await getPeriodSummary(
+      'testuser',
+      ['hr_zone_0_sec', 'hr_zone_1_sec'],
+      new Date('2024-01-15'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    const zone0 = result.metrics.find((m) => m.metric === 'hr_zone_0_sec')
+    const zone1 = result.metrics.find((m) => m.metric === 'hr_zone_1_sec')
+
+    // With custom zones, HR of 75 is in zone 1, not zone 0
+    expect(zone0!.avg).toBe(0)
+    expect(zone1!.avg).toBeGreaterThan(0)
+  })
+
+  test('returns zero for HR zone metrics when no heart_rate data', async () => {
+    vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+
+    const result = await getPeriodSummary(
+      'testuser',
+      ['hr_zone_1_sec'],
+      new Date('2024-01-15'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    const zone1 = result.metrics.find((m) => m.metric === 'hr_zone_1_sec')
+    expect(zone1!.avg).toBe(0)
+    expect(zone1!.count).toBe(0)
+  })
+
+  test('mixes regular metrics with HR zone metrics', async () => {
+    // Regular metric stats
+    vi.mocked(db.getTimeSeriesStats).mockResolvedValue([
+      { avg: 72, count: 100, max: 150, metric: 'heart_rate', min: 55, stddev: 15, unit: 'bpm' },
+    ])
+    vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+
+    // HR data for zone calculation
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T10:00:00Z'), 95],
+      [new Date('2024-01-15T10:00:02Z'), 95],
+    ])
+
+    const result = await getPeriodSummary(
+      'testuser',
+      ['heart_rate', 'hr_zone_1_sec'],
+      new Date('2024-01-15'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metrics).toHaveLength(2)
+
+    const heartRate = result.metrics.find((m) => m.metric === 'heart_rate')
+    const zone1 = result.metrics.find((m) => m.metric === 'hr_zone_1_sec')
+
+    expect(heartRate).toBeDefined()
+    expect(heartRate!.avg).toBe(72)
+    expect(zone1).toBeDefined()
+    expect(zone1!.avg).toBeGreaterThan(0)
+  })
 })
