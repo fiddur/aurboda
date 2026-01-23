@@ -2,6 +2,7 @@ package net.aurboda.ui.screens
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
@@ -25,10 +26,12 @@ fun MainScreen(
     currentTab: MainTab,
     onTabSelected: (MainTab) -> Unit,
     syncContent: @Composable (Modifier) -> Unit,
+    dataContent: @Composable (Modifier) -> Unit,
     accountContent: @Composable (Modifier) -> Unit
 ) {
     val navItems = listOf(
         BottomNavItem(MainTab.Sync, "Sync", Icons.Default.Refresh),
+        BottomNavItem(MainTab.Data, "Data", Icons.Default.Favorite),
         BottomNavItem(MainTab.Account, "Account", Icons.Default.Person)
     )
 
@@ -48,6 +51,7 @@ fun MainScreen(
     ) { innerPadding ->
         when (currentTab) {
             MainTab.Sync -> syncContent(Modifier.padding(innerPadding))
+            MainTab.Data -> dataContent(Modifier.padding(innerPadding))
             MainTab.Account -> accountContent(Modifier.padding(innerPadding))
         }
     }
