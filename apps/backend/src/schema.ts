@@ -247,65 +247,9 @@ export type DataSource =
   | 'manual'
 
 /**
- * Metric types for time_series table.
- */
-export type MetricType =
-  | 'heart_rate'
-  | 'resting_heart_rate'
-  | 'hrv_rmssd'
-  | 'weight'
-  | 'body_fat'
-  | 'bone_mass'
-  | 'lean_body_mass'
-  | 'body_water_mass'
-  | 'height'
-  | 'steps'
-  | 'distance'
-  | 'floors_climbed'
-  | 'calories_active'
-  | 'calories_total'
-  | 'calories_basal'
-  | 'spo2'
-  | 'respiratory_rate'
-  | 'body_temperature'
-  | 'basal_body_temperature'
-  | 'blood_glucose'
-  | 'blood_pressure_systolic'
-  | 'blood_pressure_diastolic'
-  | 'vo2_max'
-  | 'readiness_score'
-  | 'resilience_score'
-  | 'productivity_score'
-  | 'cardiovascular_age'
-  | 'sleep_score'
-  // Oura sleep contributors (0-100 scores)
-  | 'sleep_efficiency'
-  | 'sleep_latency'
-  | 'sleep_restfulness'
-  | 'sleep_timing'
-  | 'sleep_deep_score'
-  | 'sleep_rem_score'
-  | 'sleep_total_score'
-  // HR zone time (computed from heart_rate data)
-  | 'hr_zone_0_sec'
-  | 'hr_zone_1_sec'
-  | 'hr_zone_2_sec'
-  | 'hr_zone_3_sec'
-  | 'hr_zone_4_sec'
-  | 'hr_zone_5_sec'
-
-/**
- * Activity types for activities table.
- */
-export type ActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap'
-
-/**
- * Unit definitions for metrics.
- */
-/**
  * List of all valid metric types.
  */
-export const validMetrics: MetricType[] = [
+export const validMetrics = [
   'heart_rate',
   'resting_heart_rate',
   'hrv_rmssd',
@@ -334,7 +278,7 @@ export const validMetrics: MetricType[] = [
   'productivity_score',
   'cardiovascular_age',
   'sleep_score',
-  // Oura sleep contributors
+  // Oura sleep contributors (0-100 scores)
   'sleep_efficiency',
   'sleep_latency',
   'sleep_restfulness',
@@ -349,32 +293,42 @@ export const validMetrics: MetricType[] = [
   'hr_zone_3_sec',
   'hr_zone_4_sec',
   'hr_zone_5_sec',
-]
+] as const
+
+/**
+ * Metric types for time_series table, derived from validMetrics.
+ */
+export type MetricType = (typeof validMetrics)[number]
+
+/**
+ * Activity types for activities table.
+ */
+export type ActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap'
 
 /**
  * Check if a string is a valid metric type.
  */
 export function isValidMetric(metric: string): metric is MetricType {
-  return validMetrics.includes(metric as MetricType)
+  return (validMetrics as readonly string[]).includes(metric)
 }
 
 /**
  * HR zone metrics are computed from heart_rate data, not stored directly.
  */
-export const hrZoneMetrics: MetricType[] = [
+export const hrZoneMetrics = [
   'hr_zone_0_sec',
   'hr_zone_1_sec',
   'hr_zone_2_sec',
   'hr_zone_3_sec',
   'hr_zone_4_sec',
   'hr_zone_5_sec',
-]
+] as const
 
 /**
  * Check if a metric is an HR zone metric (computed, not stored).
  */
 export function isHrZoneMetric(metric: MetricType): boolean {
-  return hrZoneMetrics.includes(metric)
+  return (hrZoneMetrics as readonly string[]).includes(metric)
 }
 
 /**
