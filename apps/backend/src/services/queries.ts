@@ -17,7 +17,7 @@ import {
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
 } from '../db'
-import { ActivityType, MetricType, metricUnits } from '../schema'
+import { ActivityType, isHrZoneMetric, MetricType, metricUnits } from '../schema'
 import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs } from './settings'
 
 // ============================================================================
@@ -307,6 +307,54 @@ export async function getDailySummary(
 }
 
 /**
+ * Compute HR zone stats for period summary.
+ * Returns PeriodMetricStats for each requested HR zone metric.
+ */
+async function computeHrZoneStats(
+  user: string,
+  hrZoneMetrics: MetricType[],
+  start: Date,
+  end: Date,
+): Promise<PeriodMetricStats[]> {
+  if (hrZoneMetrics.length === 0) return []
+
+  // Get heart rate data and user's HR zones
+  const [hrData, { zones: hrZones }] = await Promise.all([
+    getTimeSeries(user, 'heart_rate', start, end),
+    getEffectiveHrZones(user),
+  ])
+
+  // Compute total time in each zone
+  const zoneSecs = computeHrZoneSecs(hrData, hrZones)
+
+  // Build stats for each requested HR zone metric
+  return hrZoneMetrics.map((metric) => {
+    const zoneIndex = parseInt(metric.replace('hr_zone_', '').replace('_sec', ''), 10) as
+      | 0
+      | 1
+      | 2
+      | 3
+      | 4
+      | 5
+    const totalSecs = zoneSecs[zoneIndex]
+
+    return {
+      avg: Math.round(totalSecs * 100) / 100,
+      changeFromPreviousPeriodPercent: null, // Could compute if needed
+      completenessPercent: hrData.length > 0 ? 100 : 0,
+      count: hrData.length > 0 ? 1 : 0, // Treat as single aggregated value
+      max: Math.round(totalSecs * 100) / 100,
+      metric,
+      min: Math.round(totalSecs * 100) / 100,
+      outliers: undefined,
+      stddev: 0,
+      trendPerDay: null,
+      unit: metricUnits[metric],
+    }
+  })
+}
+
+/**
  * Get aggregated statistics for a time period.
  */
 export async function getPeriodSummary(
@@ -315,22 +363,29 @@ export async function getPeriodSummary(
   start: Date,
   end: Date,
 ): Promise<PeriodSummaryResult> {
+  // Separate HR zone metrics from regular metrics
+  const regularMetrics = metrics.filter((m) => !isHrZoneMetric(m))
+  const hrZoneMetricsRequested = metrics.filter(isHrZoneMetric)
+
   // Calculate period length for previous period comparison
   const periodMs = end.getTime() - start.getTime()
   const prevStart = new Date(start.getTime() - periodMs)
   const prevEnd = new Date(start.getTime() - 1)
 
-  // Fetch current and previous period stats in parallel
-  const [currentStats, previousStats, dailyAggregates] = await Promise.all([
-    getTimeSeriesStats(user, metrics, start, end),
-    getTimeSeriesStats(user, metrics, prevStart, prevEnd),
-    getDailyAggregates(user, metrics, start, end),
+  // Fetch current and previous period stats in parallel (for regular metrics)
+  const [currentStats, previousStats, dailyAggregates, hrZoneStats] = await Promise.all([
+    regularMetrics.length > 0 ? getTimeSeriesStats(user, regularMetrics, start, end) : Promise.resolve([]),
+    regularMetrics.length > 0 ?
+      getTimeSeriesStats(user, regularMetrics, prevStart, prevEnd)
+    : Promise.resolve([]),
+    regularMetrics.length > 0 ? getDailyAggregates(user, regularMetrics, start, end) : Promise.resolve([]),
+    computeHrZoneStats(user, hrZoneMetricsRequested, start, end),
   ])
 
   // Calculate days in period for completeness calculation
   const daysInPeriod = Math.ceil(periodMs / (1000 * 60 * 60 * 24))
 
-  // Build response with trends and completeness
+  // Build response with trends and completeness for regular metrics
   const metricsWithTrends: PeriodMetricStats[] = currentStats.map((stat) => {
     const prevStat = previousStats.find((p) => p.metric === stat.metric)
     const dailyData = dailyAggregates.filter((d) => d.metric === stat.metric)
@@ -390,9 +445,9 @@ export async function getPeriodSummary(
     }
   })
 
-  // Add metrics with no data in current period
-  const missingMetrics = metrics.filter((m) => !currentStats.some((s) => s.metric === m))
-  for (const metric of missingMetrics) {
+  // Add regular metrics with no data in current period
+  const missingRegularMetrics = regularMetrics.filter((m) => !currentStats.some((s) => s.metric === m))
+  for (const metric of missingRegularMetrics) {
     metricsWithTrends.push({
       avg: 0,
       changeFromPreviousPeriodPercent: null,
@@ -407,6 +462,9 @@ export async function getPeriodSummary(
       unit: metricUnits[metric],
     })
   }
+
+  // Add HR zone stats
+  metricsWithTrends.push(...hrZoneStats)
 
   return {
     end: end.toISOString(),

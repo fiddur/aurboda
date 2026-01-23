@@ -286,6 +286,13 @@ export type MetricType =
   | 'sleep_deep_score'
   | 'sleep_rem_score'
   | 'sleep_total_score'
+  // HR zone time (computed from heart_rate data)
+  | 'hr_zone_0_sec'
+  | 'hr_zone_1_sec'
+  | 'hr_zone_2_sec'
+  | 'hr_zone_3_sec'
+  | 'hr_zone_4_sec'
+  | 'hr_zone_5_sec'
 
 /**
  * Activity types for activities table.
@@ -335,6 +342,13 @@ export const validMetrics: MetricType[] = [
   'sleep_deep_score',
   'sleep_rem_score',
   'sleep_total_score',
+  // HR zone time (computed from heart_rate data)
+  'hr_zone_0_sec',
+  'hr_zone_1_sec',
+  'hr_zone_2_sec',
+  'hr_zone_3_sec',
+  'hr_zone_4_sec',
+  'hr_zone_5_sec',
 ]
 
 /**
@@ -342,6 +356,25 @@ export const validMetrics: MetricType[] = [
  */
 export function isValidMetric(metric: string): metric is MetricType {
   return validMetrics.includes(metric as MetricType)
+}
+
+/**
+ * HR zone metrics are computed from heart_rate data, not stored directly.
+ */
+export const hrZoneMetrics: MetricType[] = [
+  'hr_zone_0_sec',
+  'hr_zone_1_sec',
+  'hr_zone_2_sec',
+  'hr_zone_3_sec',
+  'hr_zone_4_sec',
+  'hr_zone_5_sec',
+]
+
+/**
+ * Check if a metric is an HR zone metric (computed, not stored).
+ */
+export function isHrZoneMetric(metric: MetricType): boolean {
+  return hrZoneMetrics.includes(metric)
 }
 
 /**
@@ -364,6 +397,12 @@ export const metricUnits: Record<MetricType, string> = {
   floors_climbed: 'count',
   heart_rate: 'bpm',
   height: 'm',
+  hr_zone_0_sec: 'sec',
+  hr_zone_1_sec: 'sec',
+  hr_zone_2_sec: 'sec',
+  hr_zone_3_sec: 'sec',
+  hr_zone_4_sec: 'sec',
+  hr_zone_5_sec: 'sec',
   hrv_rmssd: 'ms',
   lean_body_mass: 'kg',
   productivity_score: 'score',
