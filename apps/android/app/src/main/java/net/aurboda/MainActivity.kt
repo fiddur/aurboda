@@ -243,6 +243,13 @@ fun AurbodaApp() {
                             modifier = modifier
                         )
                     },
+                    dataContent = { modifier ->
+                        net.aurboda.ui.screens.DataScreen(
+                            serverUrl = credentials.serverUrl,
+                            authToken = credentials.authToken,
+                            modifier = modifier
+                        )
+                    },
                     accountContent = { modifier ->
                         net.aurboda.ui.screens.AccountScreen(
                             username = credentials.username,
