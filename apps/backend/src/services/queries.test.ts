@@ -15,6 +15,7 @@ vi.mock('../db', () => ({
   getTimeSeries: vi.fn(),
   getTimeSeriesMultiMetric: vi.fn(),
   getTimeSeriesStats: vi.fn(),
+  getUserSettings: vi.fn(),
 }))
 
 describe('queryMetrics', () => {
@@ -62,6 +63,8 @@ describe('queryMetrics', () => {
 describe('getDailySummary', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default mock for getUserSettings - returns null so default HR zones are used
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
   })
 
   test('aggregates all data sources for a day', async () => {
@@ -304,6 +307,138 @@ describe('getDailySummary', () => {
       resilienceScore: null,
       sleepScore: 92,
     })
+  })
+
+  test('computes hrZoneSecs for exercise sessions with HR data', async () => {
+    // First call: daily heart rate, second call: daily steps, third call: exercise session HR
+    vi.mocked(db.getTimeSeries)
+      .mockResolvedValueOnce([]) // daily heart_rate
+      .mockResolvedValueOnce([]) // daily steps
+      .mockResolvedValueOnce([
+        // exercise session HR data - in zone 1 (90-107 with default zones)
+        [new Date('2024-01-15T10:00:00Z'), 95],
+        [new Date('2024-01-15T10:00:02Z'), 100],
+        [new Date('2024-01-15T10:00:04Z'), 98],
+      ])
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activityType: 'exercise',
+        endTime: new Date('2024-01-15T10:30:00Z'),
+        source: 'health_connect',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+        title: 'Running',
+      },
+    ])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.exerciseSessions).toHaveLength(1)
+    expect(result.exerciseSessions[0].hrZoneSecs).toBeDefined()
+    // All HR values (95, 100, 98) are in zone 1 (90-107 with default zones)
+    expect(result.exerciseSessions[0].hrZoneSecs![1]).toBeGreaterThan(0)
+  })
+
+  test('does not include hrZoneSecs when exercise has no HR data', async () => {
+    vi.mocked(db.getTimeSeries)
+      .mockResolvedValueOnce([]) // daily heart_rate
+      .mockResolvedValueOnce([]) // daily steps
+      .mockResolvedValueOnce([]) // exercise session HR data - empty
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activityType: 'exercise',
+        endTime: new Date('2024-01-15T10:30:00Z'),
+        source: 'health_connect',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+        title: 'Running',
+      },
+    ])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.exerciseSessions).toHaveLength(1)
+    expect(result.exerciseSessions[0].hrZoneSecs).toBeUndefined()
+  })
+
+  test('uses custom HR zones from user settings', async () => {
+    // Custom zones: zone 1 starts at 80 (lower than default 90)
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      hrZoneStart: { 1: 80, 2: 100, 3: 120, 4: 140, 5: 160 },
+    })
+
+    vi.mocked(db.getTimeSeries)
+      .mockResolvedValueOnce([]) // daily heart_rate
+      .mockResolvedValueOnce([]) // daily steps
+      .mockResolvedValueOnce([
+        // HR at 85 - would be zone 0 with defaults (90), but zone 1 with custom (80)
+        [new Date('2024-01-15T10:00:00Z'), 85],
+        [new Date('2024-01-15T10:00:02Z'), 85],
+      ])
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activityType: 'exercise',
+        endTime: new Date('2024-01-15T10:30:00Z'),
+        source: 'health_connect',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+        title: 'Walking',
+      },
+    ])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.exerciseSessions[0].hrZoneSecs).toBeDefined()
+    // With custom zones (zone 1 starts at 80), HR of 85 is in zone 1
+    expect(result.exerciseSessions[0].hrZoneSecs![1]).toBeGreaterThan(0)
+    expect(result.exerciseSessions[0].hrZoneSecs![0]).toBe(0)
+  })
+
+  test('does not compute hrZoneSecs for exercise without endTime', async () => {
+    vi.mocked(db.getTimeSeries)
+      .mockResolvedValueOnce([]) // daily heart_rate
+      .mockResolvedValueOnce([]) // daily steps
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activityType: 'exercise',
+        // No endTime - ongoing session
+        source: 'health_connect',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+        title: 'Running',
+      },
+    ])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.exerciseSessions).toHaveLength(1)
+    expect(result.exerciseSessions[0].hrZoneSecs).toBeUndefined()
+    // Should not have called getTimeSeries for the exercise session
+    expect(db.getTimeSeries).toHaveBeenCalledTimes(2) // Only daily HR and steps
   })
 })
 

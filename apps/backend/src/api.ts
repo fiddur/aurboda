@@ -41,6 +41,7 @@ import {
   queryProductivity,
   queryTags,
 } from './services/queries'
+import { getSettingsResponse, validateAndUpdateSettings } from './services/settings'
 import { createSyncProvider } from './services/sync-provider'
 import { reduceTimeSeries } from './utils'
 
@@ -572,6 +573,21 @@ const main = async () => {
     }
 
     const result = await addMetric(user, { metric, time: measurementTime, value })
+    res.json(result)
+  })
+
+  // GET /user/settings - Get user settings with effective HR zones
+  httpd.get('/user/settings', authMiddleware, async (req, res) => {
+    const result = await getSettingsResponse(req.user!)
+    res.json(result)
+  })
+
+  // PATCH /user/settings - Update user settings
+  httpd.patch('/user/settings', authMiddleware, async (req, res) => {
+    const result = await validateAndUpdateSettings(req.user!, req.body)
+    if (!result.success) {
+      return res.status(400).json(result)
+    }
     res.json(result)
   })
 

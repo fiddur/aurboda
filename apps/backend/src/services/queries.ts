@@ -18,6 +18,7 @@ import {
   getTimeSeriesStats,
 } from '../db'
 import { ActivityType, MetricType, metricUnits } from '../schema'
+import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs } from './settings'
 
 // ============================================================================
 // Types
@@ -59,6 +60,7 @@ export interface SessionSummary {
   duration?: number // minutes
   title?: string
   data?: Record<string, unknown>
+  hrZoneSecs?: HrZoneSecs
 }
 
 export interface TagSummary {
@@ -250,15 +252,36 @@ export async function getDailySummary(
       }
     : null
 
+  // Get user's HR zones for exercise session HR zone calculation
+  const { zones: hrZones } = await getEffectiveHrZones(user)
+
+  // Compute HR zones for exercise sessions
+  const exerciseSessionsWithHrZones: SessionSummary[] = await Promise.all(
+    exerciseSessions.map(async (s) => {
+      const sessionSummary: SessionSummary = {
+        data: s.data,
+        duration:
+          s.endTime ? Math.round((s.endTime.getTime() - s.startTime.getTime()) / 1000 / 60) : undefined,
+        endTime: s.endTime?.toISOString(),
+        startTime: s.startTime.toISOString(),
+        title: s.title,
+      }
+
+      // Only compute HR zones for sessions with end time
+      if (s.endTime) {
+        const sessionHrData = await getTimeSeries(user, 'heart_rate', s.startTime, s.endTime)
+        if (sessionHrData.length > 0) {
+          sessionSummary.hrZoneSecs = computeHrZoneSecs(sessionHrData, hrZones)
+        }
+      }
+
+      return sessionSummary
+    }),
+  )
+
   return {
     date: date.toISOString().split('T')[0],
-    exerciseSessions: exerciseSessions.map((s) => ({
-      data: s.data,
-      duration: s.endTime ? Math.round((s.endTime.getTime() - s.startTime.getTime()) / 1000 / 60) : undefined,
-      endTime: s.endTime?.toISOString(),
-      startTime: s.startTime.toISOString(),
-      title: s.title,
-    })),
+    exerciseSessions: exerciseSessionsWithHrZones,
     heartRate: heartRateStats,
     ouraScores,
     places: locations.places.map((p) => ({
@@ -426,6 +449,7 @@ export interface ActivityResult {
   title?: string
   source: string
   data?: Record<string, unknown>
+  hrZoneSecs?: HrZoneSecs
 }
 
 /**
@@ -445,15 +469,35 @@ export async function queryActivities(
   }
 
   const activities = await getActivities(user, types, start, end)
-  return activities.map((a) => ({
-    activityType: a.activityType,
-    data: a.data,
-    duration: a.endTime ? Math.round((a.endTime.getTime() - a.startTime.getTime()) / 1000 / 60) : undefined,
-    endTime: a.endTime?.toISOString(),
-    source: a.source,
-    startTime: a.startTime.toISOString(),
-    title: a.title,
-  }))
+
+  // Get HR zones only if exercise activities are included
+  const includesExercise = types.includes('exercise')
+  const hrZones = includesExercise ? (await getEffectiveHrZones(user)).zones : null
+
+  return Promise.all(
+    activities.map(async (a) => {
+      const result: ActivityResult = {
+        activityType: a.activityType,
+        data: a.data,
+        duration:
+          a.endTime ? Math.round((a.endTime.getTime() - a.startTime.getTime()) / 1000 / 60) : undefined,
+        endTime: a.endTime?.toISOString(),
+        source: a.source,
+        startTime: a.startTime.toISOString(),
+        title: a.title,
+      }
+
+      // Compute HR zones for exercise activities with end time
+      if (hrZones && a.activityType === 'exercise' && a.endTime) {
+        const hrData = await getTimeSeries(user, 'heart_rate', a.startTime, a.endTime)
+        if (hrData.length > 0) {
+          result.hrZoneSecs = computeHrZoneSecs(hrData, hrZones)
+        }
+      }
+
+      return result
+    }),
+  )
 }
 
 /**

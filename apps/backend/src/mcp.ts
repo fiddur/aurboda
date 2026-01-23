@@ -11,6 +11,7 @@ import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
 import { addMetric, addTag, deleteTag } from './services/mutations'
 import { getDailySummary, getPeriodSummary, queryMetrics, SyncProvider } from './services/queries'
+import { getSettingsResponse, validateAndUpdateSettings } from './services/settings'
 
 interface McpSession {
   transport: StreamableHTTPServerTransport
@@ -395,6 +396,53 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
 
         return {
           content: [{ text: JSON.stringify(summary, null, 2), type: 'text' as const }],
+        }
+      },
+    )
+
+    // Tool 9: get_user_settings
+    server.tool(
+      'get_user_settings',
+      'Get user settings including birth date and effective HR zones. HR zones are used to calculate time spent in different heart rate zones during exercise.',
+      {},
+      async () => {
+        const result = await getSettingsResponse(user)
+        return {
+          content: [{ text: JSON.stringify(result, null, 2), type: 'text' as const }],
+        }
+      },
+    )
+
+    // Tool 10: update_user_settings
+    server.tool(
+      'update_user_settings',
+      'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
+      {
+        birth_date: z
+          .string()
+          .nullable()
+          .optional()
+          .describe('Birth date in YYYY-MM-DD format. Set to null to clear.'),
+        hr_zone_start: z
+          .object({
+            1: z.number().describe('Zone 1 threshold (bpm)'),
+            2: z.number().describe('Zone 2 threshold (bpm)'),
+            3: z.number().describe('Zone 3 threshold (bpm)'),
+            4: z.number().describe('Zone 4 threshold (bpm)'),
+            5: z.number().describe('Zone 5 threshold (bpm)'),
+          })
+          .nullable()
+          .optional()
+          .describe('Custom HR zone start thresholds. Values must be ascending. Set to null to clear.'),
+      },
+      async ({ birth_date, hr_zone_start }) => {
+        // Transform snake_case MCP params to camelCase for service
+        const result = await validateAndUpdateSettings(user, {
+          birthDate: birth_date,
+          hrZoneStart: hr_zone_start,
+        })
+        return {
+          content: [{ text: JSON.stringify(result, null, 2), type: 'text' as const }],
         }
       },
     )
