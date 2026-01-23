@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -72,13 +73,13 @@ fun HrZoneBar(
                 trackColor = color.copy(alpha = 0.2f),
                 strokeCap = StrokeCap.Round
             )
-            if (percentText.isNotEmpty()) {
-                Text(
-                    text = percentText,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
-            }
+            Text(
+                text = percentText,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .width(36.dp)
+                    .padding(start = 4.dp)
+            )
         }
     }
 }

@@ -31,6 +31,7 @@ import net.aurboda.appJson
 import net.aurboda.defaultHrZoneThresholds
 import net.aurboda.fetchPeriodSummary
 import net.aurboda.fetchUserSettings
+import net.aurboda.findMetricTimeSeconds
 import net.aurboda.formatBpmRange
 import net.aurboda.hrZoneWeeklyTargetMinutes
 import net.aurboda.ui.components.HrZoneBar
@@ -145,8 +146,7 @@ private fun DataContent(
 
         for (zoneIndex in 0..5) {
             val metricName = "hr_zone_${zoneIndex}_sec"
-            val metricStats = periodSummary.metrics.find { it.metric == metricName }
-            val timeSeconds = metricStats?.sum ?: 0.0
+            val timeSeconds = findMetricTimeSeconds(periodSummary.metrics, metricName)
 
             HrZoneBar(
                 zoneIndex = zoneIndex,
