@@ -41,6 +41,7 @@ import {
   queryProductivity,
   queryTags,
 } from './services/queries'
+import { getEffectiveHrZones, getSettings, HrZoneThresholds, updateSettings } from './services/settings'
 import { createSyncProvider } from './services/sync-provider'
 import { reduceTimeSeries } from './utils'
 
@@ -573,6 +574,93 @@ const main = async () => {
 
     const result = await addMetric(user, { metric, time: measurementTime, value })
     res.json(result)
+  })
+
+  // GET /user/settings - Get user settings with effective HR zones
+  httpd.get('/user/settings', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    const settings = await getSettings(user)
+    const { zones, source } = await getEffectiveHrZones(user)
+
+    res.json({
+      birthDate: settings.birthDate ?? null,
+      hrZoneStart: zones,
+      hrZoneStartSource: source,
+      success: true,
+    })
+  })
+
+  // PATCH /user/settings - Update user settings
+  httpd.patch('/user/settings', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { birthDate, hrZoneStart } = req.body as {
+      birthDate?: string
+      hrZoneStart?: HrZoneThresholds
+    }
+
+    // Validate birthDate format (YYYY-MM-DD) if provided
+    if (birthDate !== undefined) {
+      if (birthDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+        return res.status(400).json({
+          error: 'Invalid birthDate format. Use YYYY-MM-DD format.',
+          success: false,
+        })
+      }
+      // Validate it's a real date
+      if (birthDate !== null) {
+        const dateObj = new Date(birthDate)
+        if (isNaN(dateObj.getTime())) {
+          return res.status(400).json({
+            error: 'Invalid birthDate. Not a valid date.',
+            success: false,
+          })
+        }
+      }
+    }
+
+    // Validate hrZoneStart if provided
+    if (hrZoneStart !== undefined && hrZoneStart !== null) {
+      const zones = [1, 2, 3, 4, 5] as const
+      const missingZones = zones.filter((z) => typeof hrZoneStart[z] !== 'number')
+      if (missingZones.length > 0) {
+        return res.status(400).json({
+          error: `hrZoneStart must have numeric values for zones 1-5. Missing: ${missingZones.join(', ')}`,
+          success: false,
+        })
+      }
+
+      // Check zones are ascending
+      for (let i = 1; i < 5; i++) {
+        const current = hrZoneStart[i as 1 | 2 | 3 | 4]
+        const next = hrZoneStart[(i + 1) as 2 | 3 | 4 | 5]
+        if (current >= next) {
+          return res.status(400).json({
+            error: `hrZoneStart zones must be in ascending order. Zone ${i} (${current}) must be less than zone ${i + 1} (${next}).`,
+            success: false,
+          })
+        }
+      }
+    }
+
+    // Build updates object
+    const updates: { birthDate?: string; hrZoneStart?: HrZoneThresholds } = {}
+    if (birthDate !== undefined) {
+      updates.birthDate = birthDate === null ? undefined : birthDate
+    }
+    if (hrZoneStart !== undefined) {
+      updates.hrZoneStart = hrZoneStart === null ? undefined : hrZoneStart
+    }
+
+    const updated = await updateSettings(user, updates)
+    const { zones, source } = await getEffectiveHrZones(user)
+
+    res.json({
+      birthDate: updated.birthDate ?? null,
+      hrZoneStart: zones,
+      hrZoneStartSource: source,
+      success: true,
+    })
   })
 
   const port = Number(process.env.PORT ?? 80)

@@ -1037,3 +1037,62 @@ export const getDailyAggregateValue = async (
   if (result.rows.length === 0) return null
   return result.rows[0].value
 }
+
+// ============================================================================
+// User Settings
+// ============================================================================
+
+export interface UserSettings {
+  birthDate?: string // YYYY-MM-DD
+  hrZoneStart?: { 1: number; 2: number; 3: number; 4: number; 5: number }
+}
+
+/**
+ * Get user settings from the database.
+ * Returns null if no settings exist.
+ */
+export const getUserSettings = async (user: string): Promise<UserSettings | null> => {
+  const result = await query(user, `SELECT settings FROM user_settings LIMIT 1`)
+
+  if (result.rows.length === 0) return null
+
+  const settings = result.rows[0].settings as Record<string, unknown>
+  return {
+    birthDate: settings.birthDate as string | undefined,
+    hrZoneStart: settings.hrZoneStart as UserSettings['hrZoneStart'],
+  }
+}
+
+/**
+ * Upsert user settings (creates or updates).
+ * Merges the provided updates with existing settings.
+ */
+export const upsertUserSettings = async (
+  user: string,
+  updates: Partial<UserSettings>,
+): Promise<UserSettings> => {
+  // Get existing settings
+  const existing = (await getUserSettings(user)) ?? {}
+
+  // Merge updates
+  const merged: UserSettings = { ...existing }
+  if (updates.birthDate !== undefined) {
+    merged.birthDate = updates.birthDate
+  }
+  if (updates.hrZoneStart !== undefined) {
+    merged.hrZoneStart = updates.hrZoneStart
+  }
+
+  // Check if settings row exists
+  const existingRow = await query(user, `SELECT id FROM user_settings LIMIT 1`)
+
+  if (existingRow.rows.length === 0) {
+    // Insert new row
+    await query(user, `INSERT INTO user_settings (settings) VALUES ($1)`, [merged])
+  } else {
+    // Update existing row
+    await query(user, `UPDATE user_settings SET settings = $1, updated_at = NOW()`, [merged])
+  }
+
+  return merged
+}

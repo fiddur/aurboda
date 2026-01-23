@@ -197,6 +197,16 @@ export const createTableStatements: Record<string, string> = {
   time_series_indexes: `
     CREATE INDEX IF NOT EXISTS idx_time_series_metric_time ON time_series (metric, time DESC)
   `,
+
+  // User settings (HR zones, birth date, etc.)
+  user_settings: `
+    CREATE TABLE IF NOT EXISTS user_settings (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      settings        JSONB NOT NULL DEFAULT '{}',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
 }
 
 /**
@@ -221,6 +231,7 @@ export const tableCreationOrder = [
   'lab_results_indexes',
   'oauth_tokens',
   'sync_state',
+  'user_settings',
 ]
 
 /**

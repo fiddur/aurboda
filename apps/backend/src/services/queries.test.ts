@@ -15,6 +15,7 @@ vi.mock('../db', () => ({
   getTimeSeries: vi.fn(),
   getTimeSeriesMultiMetric: vi.fn(),
   getTimeSeriesStats: vi.fn(),
+  getUserSettings: vi.fn(),
 }))
 
 describe('queryMetrics', () => {
@@ -62,6 +63,8 @@ describe('queryMetrics', () => {
 describe('getDailySummary', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default mock for getUserSettings - returns null so default HR zones are used
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
   })
 
   test('aggregates all data sources for a day', async () => {

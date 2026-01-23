@@ -11,6 +11,7 @@ import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
 import { addMetric, addTag, deleteTag } from './services/mutations'
 import { getDailySummary, getPeriodSummary, queryMetrics, SyncProvider } from './services/queries'
+import { getEffectiveHrZones, getSettings, HrZoneThresholds, updateSettings } from './services/settings'
 
 interface McpSession {
   transport: StreamableHTTPServerTransport
@@ -395,6 +396,124 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
 
         return {
           content: [{ text: JSON.stringify(summary, null, 2), type: 'text' as const }],
+        }
+      },
+    )
+
+    // Tool 9: get_user_settings
+    server.tool(
+      'get_user_settings',
+      'Get user settings including birth date and effective HR zones. HR zones are used to calculate time spent in different heart rate zones during exercise.',
+      {},
+      async () => {
+        const settings = await getSettings(user)
+        const { zones, source } = await getEffectiveHrZones(user)
+
+        return {
+          content: [
+            {
+              text: JSON.stringify(
+                {
+                  birthDate: settings.birthDate ?? null,
+                  hrZoneStart: zones,
+                  hrZoneStartSource: source,
+                  success: true,
+                },
+                null,
+                2,
+              ),
+              type: 'text' as const,
+            },
+          ],
+        }
+      },
+    )
+
+    // Tool 10: update_user_settings
+    server.tool(
+      'update_user_settings',
+      'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
+      {
+        birth_date: z
+          .string()
+          .nullable()
+          .optional()
+          .describe('Birth date in YYYY-MM-DD format. Set to null to clear.'),
+        hr_zone_start: z
+          .object({
+            1: z.number().describe('Zone 1 threshold (bpm)'),
+            2: z.number().describe('Zone 2 threshold (bpm)'),
+            3: z.number().describe('Zone 3 threshold (bpm)'),
+            4: z.number().describe('Zone 4 threshold (bpm)'),
+            5: z.number().describe('Zone 5 threshold (bpm)'),
+          })
+          .nullable()
+          .optional()
+          .describe('Custom HR zone start thresholds. Values must be ascending. Set to null to clear.'),
+      },
+      async ({ birth_date, hr_zone_start }) => {
+        // Validate birthDate format if provided
+        if (birth_date !== undefined && birth_date !== null) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(birth_date)) {
+            return {
+              content: [{ text: 'Invalid birth_date format. Use YYYY-MM-DD format.', type: 'text' as const }],
+            }
+          }
+          const dateObj = new Date(birth_date)
+          if (isNaN(dateObj.getTime())) {
+            return {
+              content: [{ text: 'Invalid birth_date. Not a valid date.', type: 'text' as const }],
+            }
+          }
+        }
+
+        // Validate HR zones are ascending if provided
+        if (hr_zone_start !== undefined && hr_zone_start !== null) {
+          const hrZones = hr_zone_start as HrZoneThresholds
+          for (let i = 1; i < 5; i++) {
+            const current = hrZones[i as 1 | 2 | 3 | 4]
+            const next = hrZones[(i + 1) as 2 | 3 | 4 | 5]
+            if (current >= next) {
+              return {
+                content: [
+                  {
+                    text: `HR zone thresholds must be ascending. Zone ${i} (${current}) must be less than zone ${i + 1} (${next}).`,
+                    type: 'text' as const,
+                  },
+                ],
+              }
+            }
+          }
+        }
+
+        // Build updates
+        const updates: { birthDate?: string; hrZoneStart?: HrZoneThresholds } = {}
+        if (birth_date !== undefined) {
+          updates.birthDate = birth_date === null ? undefined : birth_date
+        }
+        if (hr_zone_start !== undefined) {
+          updates.hrZoneStart = hr_zone_start === null ? undefined : (hr_zone_start as HrZoneThresholds)
+        }
+
+        const updated = await updateSettings(user, updates)
+        const { zones, source } = await getEffectiveHrZones(user)
+
+        return {
+          content: [
+            {
+              text: JSON.stringify(
+                {
+                  birthDate: updated.birthDate ?? null,
+                  hrZoneStart: zones,
+                  hrZoneStartSource: source,
+                  success: true,
+                },
+                null,
+                2,
+              ),
+              type: 'text' as const,
+            },
+          ],
         }
       },
     )
