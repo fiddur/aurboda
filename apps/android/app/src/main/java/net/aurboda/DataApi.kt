@@ -142,3 +142,8 @@ fun formatBpmRange(zoneIndex: Int, thresholds: HrZoneThresholds): String {
         else -> "${zoneStarts[zoneIndex]} - ${zoneStarts[zoneIndex + 1] - 1} bpm"
     }
 }
+
+fun getMetricTimeSeconds(metric: PeriodMetricStats): Double = metric.avg ?: 0.0
+
+fun findMetricTimeSeconds(metrics: List<PeriodMetricStats>, metricName: String): Double =
+    metrics.find { it.metric == metricName }?.let { getMetricTimeSeconds(it) } ?: 0.0
