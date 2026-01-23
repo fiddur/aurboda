@@ -11,7 +11,7 @@ import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
 import { addMetric, addTag, deleteTag } from './services/mutations'
 import { getDailySummary, getPeriodSummary, queryMetrics, SyncProvider } from './services/queries'
-import { getEffectiveHrZones, getSettings, HrZoneThresholds, updateSettings } from './services/settings'
+import { getSettingsResponse, validateAndUpdateSettings } from './services/settings'
 
 interface McpSession {
   transport: StreamableHTTPServerTransport
@@ -406,25 +406,9 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
       'Get user settings including birth date and effective HR zones. HR zones are used to calculate time spent in different heart rate zones during exercise.',
       {},
       async () => {
-        const settings = await getSettings(user)
-        const { zones, source } = await getEffectiveHrZones(user)
-
+        const result = await getSettingsResponse(user)
         return {
-          content: [
-            {
-              text: JSON.stringify(
-                {
-                  birthDate: settings.birthDate ?? null,
-                  hrZoneStart: zones,
-                  hrZoneStartSource: source,
-                  success: true,
-                },
-                null,
-                2,
-              ),
-              type: 'text' as const,
-            },
-          ],
+          content: [{ text: JSON.stringify(result, null, 2), type: 'text' as const }],
         }
       },
     )
@@ -452,68 +436,13 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
           .describe('Custom HR zone start thresholds. Values must be ascending. Set to null to clear.'),
       },
       async ({ birth_date, hr_zone_start }) => {
-        // Validate birthDate format if provided
-        if (birth_date !== undefined && birth_date !== null) {
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(birth_date)) {
-            return {
-              content: [{ text: 'Invalid birth_date format. Use YYYY-MM-DD format.', type: 'text' as const }],
-            }
-          }
-          const dateObj = new Date(birth_date)
-          if (isNaN(dateObj.getTime())) {
-            return {
-              content: [{ text: 'Invalid birth_date. Not a valid date.', type: 'text' as const }],
-            }
-          }
-        }
-
-        // Validate HR zones are ascending if provided
-        if (hr_zone_start !== undefined && hr_zone_start !== null) {
-          const hrZones = hr_zone_start as HrZoneThresholds
-          for (let i = 1; i < 5; i++) {
-            const current = hrZones[i as 1 | 2 | 3 | 4]
-            const next = hrZones[(i + 1) as 2 | 3 | 4 | 5]
-            if (current >= next) {
-              return {
-                content: [
-                  {
-                    text: `HR zone thresholds must be ascending. Zone ${i} (${current}) must be less than zone ${i + 1} (${next}).`,
-                    type: 'text' as const,
-                  },
-                ],
-              }
-            }
-          }
-        }
-
-        // Build updates
-        const updates: { birthDate?: string; hrZoneStart?: HrZoneThresholds } = {}
-        if (birth_date !== undefined) {
-          updates.birthDate = birth_date === null ? undefined : birth_date
-        }
-        if (hr_zone_start !== undefined) {
-          updates.hrZoneStart = hr_zone_start === null ? undefined : (hr_zone_start as HrZoneThresholds)
-        }
-
-        const updated = await updateSettings(user, updates)
-        const { zones, source } = await getEffectiveHrZones(user)
-
+        // Transform snake_case MCP params to camelCase for service
+        const result = await validateAndUpdateSettings(user, {
+          birthDate: birth_date,
+          hrZoneStart: hr_zone_start,
+        })
         return {
-          content: [
-            {
-              text: JSON.stringify(
-                {
-                  birthDate: updated.birthDate ?? null,
-                  hrZoneStart: zones,
-                  hrZoneStartSource: source,
-                  success: true,
-                },
-                null,
-                2,
-              ),
-              type: 'text' as const,
-            },
-          ],
+          content: [{ text: JSON.stringify(result, null, 2), type: 'text' as const }],
         }
       },
     )

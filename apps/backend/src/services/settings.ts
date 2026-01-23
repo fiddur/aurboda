@@ -2,6 +2,7 @@
  * User settings service for HR zones and other user preferences.
  */
 
+import { z } from 'zod'
 import { getUserSettings, upsertUserSettings } from '../db'
 
 // ============================================================================
@@ -25,6 +26,49 @@ export interface HrZoneSecs {
 }
 
 export type HrZoneSource = 'custom' | 'age_based' | 'default'
+
+export interface SettingsResponse {
+  success: boolean
+  birthDate: string | null
+  hrZoneStart: HrZoneThresholds
+  hrZoneStartSource: HrZoneSource
+  error?: string
+}
+
+// ============================================================================
+// Zod Schemas (shared between API and MCP)
+// ============================================================================
+
+export const hrZoneThresholdsSchema = z
+  .object({
+    1: z.number().int().positive(),
+    2: z.number().int().positive(),
+    3: z.number().int().positive(),
+    4: z.number().int().positive(),
+    5: z.number().int().positive(),
+  })
+  .refine(
+    (zones) => zones[1] < zones[2] && zones[2] < zones[3] && zones[3] < zones[4] && zones[4] < zones[5],
+    { message: 'HR zone thresholds must be in ascending order' },
+  )
+
+export const birthDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Birth date must be in YYYY-MM-DD format')
+  .refine(
+    (date) => {
+      const parsed = new Date(date)
+      return !isNaN(parsed.getTime())
+    },
+    { message: 'Invalid date' },
+  )
+
+export const updateSettingsInputSchema = z.object({
+  birthDate: birthDateSchema.nullable().optional(),
+  hrZoneStart: hrZoneThresholdsSchema.nullable().optional(),
+})
+
+export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
 
 // ============================================================================
 // Constants
@@ -86,9 +130,12 @@ export const getSettings = async (user: string): Promise<UserSettings> => {
 }
 
 /**
- * Update user settings (partial update).
+ * Update user settings (partial update) - internal, no validation.
  */
-export const updateSettings = async (user: string, updates: Partial<UserSettings>): Promise<UserSettings> => {
+const updateSettingsInternal = async (
+  user: string,
+  updates: Partial<UserSettings>,
+): Promise<UserSettings> => {
   return await upsertUserSettings(user, updates)
 }
 
@@ -113,6 +160,55 @@ export const getEffectiveHrZones = async (
 
   // Default zones
   return { source: 'default', zones: calculateDefaultHrZones(null) }
+}
+
+/**
+ * Get settings response in the format used by both API and MCP.
+ */
+export const getSettingsResponse = async (user: string): Promise<SettingsResponse> => {
+  const settings = await getSettings(user)
+  const { zones, source } = await getEffectiveHrZones(user)
+
+  return {
+    birthDate: settings.birthDate ?? null,
+    hrZoneStart: zones,
+    hrZoneStartSource: source,
+    success: true,
+  }
+}
+
+/**
+ * Validate and update user settings.
+ * Returns a SettingsResponse with either success or error.
+ */
+export const validateAndUpdateSettings = async (user: string, input: unknown): Promise<SettingsResponse> => {
+  // Validate input
+  const parsed = updateSettingsInputSchema.safeParse(input)
+  if (!parsed.success) {
+    const errorMessage = parsed.error.issues.map((e) => e.message).join('; ')
+    return {
+      birthDate: null,
+      error: errorMessage,
+      hrZoneStart: calculateDefaultHrZones(null),
+      hrZoneStartSource: 'default',
+      success: false,
+    }
+  }
+
+  // Build updates object, converting null to undefined for clearing
+  const updates: Partial<UserSettings> = {}
+  if (parsed.data.birthDate !== undefined) {
+    updates.birthDate = parsed.data.birthDate === null ? undefined : parsed.data.birthDate
+  }
+  if (parsed.data.hrZoneStart !== undefined) {
+    updates.hrZoneStart = parsed.data.hrZoneStart === null ? undefined : parsed.data.hrZoneStart
+  }
+
+  // Apply updates
+  await updateSettingsInternal(user, updates)
+
+  // Return updated settings
+  return getSettingsResponse(user)
 }
 
 /**

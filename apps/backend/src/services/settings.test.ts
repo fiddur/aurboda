@@ -5,8 +5,9 @@ import {
   computeHrZoneSecs,
   getEffectiveHrZones,
   getSettings,
+  getSettingsResponse,
   HrZoneThresholds,
-  updateSettings,
+  validateAndUpdateSettings,
 } from './settings'
 
 // Mock the db module
@@ -91,31 +92,115 @@ describe('getSettings', () => {
   })
 })
 
-describe('updateSettings', () => {
+describe('getSettingsResponse', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  test('updates birth date', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({})
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
+  test('returns formatted response with defaults when no settings', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.success).toBe(true)
+    expect(result.birthDate).toBeNull()
+    expect(result.hrZoneStartSource).toBe('default')
+    expect(result.hrZoneStart).toEqual({ 1: 90, 2: 108, 3: 126, 4: 144, 5: 162 })
+  })
+
+  test('returns formatted response with custom zones', async () => {
+    const customZones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }
+    vi.mocked(db.getUserSettings).mockResolvedValue({
       birthDate: '1985-03-15',
+      hrZoneStart: customZones,
     })
 
-    const result = await updateSettings('testuser', { birthDate: '1985-03-15' })
+    const result = await getSettingsResponse('testuser')
 
+    expect(result.success).toBe(true)
+    expect(result.birthDate).toBe('1985-03-15')
+    expect(result.hrZoneStartSource).toBe('custom')
+    expect(result.hrZoneStart).toEqual(customZones)
+  })
+})
+
+describe('validateAndUpdateSettings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('updates birth date with valid input', async () => {
+    // getSettingsResponse calls getSettings + getEffectiveHrZones, each calls getUserSettings
+    // So we need 2 mock returns for getSettingsResponse
+    vi.mocked(db.getUserSettings)
+      .mockResolvedValueOnce({ birthDate: '1985-03-15' }) // for getSettings in getSettingsResponse
+      .mockResolvedValueOnce({ birthDate: '1985-03-15' }) // for getEffectiveHrZones in getSettingsResponse
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({ birthDate: '1985-03-15' })
+
+    const result = await validateAndUpdateSettings('testuser', { birthDate: '1985-03-15' })
+
+    expect(result.success).toBe(true)
     expect(result.birthDate).toBe('1985-03-15')
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { birthDate: '1985-03-15' })
   })
 
-  test('updates HR zones', async () => {
+  test('updates HR zones with valid input', async () => {
     const hrZones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }
-    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    // After update, getUserSettings returns the new zones
+    vi.mocked(db.getUserSettings).mockResolvedValue({ hrZoneStart: hrZones })
     vi.mocked(db.upsertUserSettings).mockResolvedValue({ hrZoneStart: hrZones })
 
-    const result = await updateSettings('testuser', { hrZoneStart: hrZones })
+    const result = await validateAndUpdateSettings('testuser', { hrZoneStart: hrZones })
 
-    expect(result.hrZoneStart).toEqual(hrZones)
+    expect(result.success).toBe(true)
+    expect(result.hrZoneStartSource).toBe('custom')
+  })
+
+  test('rejects invalid birth date format', async () => {
+    const result = await validateAndUpdateSettings('testuser', { birthDate: '15-03-1985' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('YYYY-MM-DD')
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+  })
+
+  test('rejects invalid date', async () => {
+    const result = await validateAndUpdateSettings('testuser', { birthDate: '2024-13-45' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBeDefined()
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+  })
+
+  test('rejects non-ascending HR zones', async () => {
+    const result = await validateAndUpdateSettings('testuser', {
+      hrZoneStart: { 1: 100, 2: 90, 3: 120, 4: 140, 5: 160 }, // zone 2 < zone 1
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('ascending')
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+  })
+
+  test('clears birth date when set to null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({ birthDate: '1985-03-15' })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+
+    const result = await validateAndUpdateSettings('testuser', { birthDate: null })
+
+    expect(result.success).toBe(true)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { birthDate: undefined })
+  })
+
+  test('clears HR zones when set to null', async () => {
+    const customZones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }
+    vi.mocked(db.getUserSettings).mockResolvedValue({ hrZoneStart: customZones })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+
+    const result = await validateAndUpdateSettings('testuser', { hrZoneStart: null })
+
+    expect(result.success).toBe(true)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { hrZoneStart: undefined })
   })
 })
 
