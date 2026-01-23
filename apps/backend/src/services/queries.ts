@@ -374,11 +374,9 @@ export async function getPeriodSummary(
 
   // Fetch current and previous period stats in parallel (for regular metrics)
   const [currentStats, previousStats, dailyAggregates, hrZoneStats] = await Promise.all([
-    regularMetrics.length > 0 ? getTimeSeriesStats(user, regularMetrics, start, end) : Promise.resolve([]),
-    regularMetrics.length > 0 ?
-      getTimeSeriesStats(user, regularMetrics, prevStart, prevEnd)
-    : Promise.resolve([]),
-    regularMetrics.length > 0 ? getDailyAggregates(user, regularMetrics, start, end) : Promise.resolve([]),
+    getTimeSeriesStats(user, regularMetrics, start, end),
+    getTimeSeriesStats(user, regularMetrics, prevStart, prevEnd),
+    getDailyAggregates(user, regularMetrics, start, end),
     computeHrZoneStats(user, hrZoneMetricsRequested, start, end),
   ])
 

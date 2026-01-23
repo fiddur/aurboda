@@ -221,6 +221,8 @@ export const getTimeSeriesStats = async (
   start: Date,
   end: Date,
 ): Promise<MetricStats[]> => {
+  if (metrics.length === 0) return []
+
   const result = await query(
     user,
     `SELECT
@@ -261,6 +263,8 @@ export const getDailyAggregates = async (
   start: Date,
   end: Date,
 ): Promise<DailyMetricAggregate[]> => {
+  if (metrics.length === 0) return []
+
   const result = await query(
     user,
     `SELECT
