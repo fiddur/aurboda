@@ -19,17 +19,19 @@ class AppStateTest {
     }
 
     @Test
-    fun `MainTab has Sync and Account values`() {
+    fun `MainTab has Sync, Data and Account values`() {
         val tabs = MainTab.entries
-        assertEquals(2, tabs.size)
+        assertEquals(3, tabs.size)
         assertTrue(tabs.contains(MainTab.Sync))
+        assertTrue(tabs.contains(MainTab.Data))
         assertTrue(tabs.contains(MainTab.Account))
     }
 
     @Test
     fun `MainTab ordinal values are correct`() {
         assertEquals(0, MainTab.Sync.ordinal)
-        assertEquals(1, MainTab.Account.ordinal)
+        assertEquals(1, MainTab.Data.ordinal)
+        assertEquals(2, MainTab.Account.ordinal)
     }
 
     @Test
@@ -41,6 +43,7 @@ class AppStateTest {
     @Test
     fun `MainTab names are descriptive`() {
         assertEquals("Sync", MainTab.Sync.name)
+        assertEquals("Data", MainTab.Data.name)
         assertEquals("Account", MainTab.Account.name)
     }
 }
