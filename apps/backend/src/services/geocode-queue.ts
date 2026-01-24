@@ -39,14 +39,35 @@ const JOB_DELAY_MS = 1100 // 1.1 seconds between jobs (Nominatim rate limit)
 let boss: any = null
 
 /**
+ * Build connection string from environment variables.
+ * Uses GEOCODE_DB for database name, with PGHOST, PGPORT, PGUSER, PGPASSWORD.
+ */
+const buildConnectionString = (): string | null => {
+  const db = process.env.GEOCODE_DB
+  if (!db) return null
+
+  const host = process.env.PGHOST || 'localhost'
+  const port = process.env.PGPORT || '5432'
+  const user = process.env.PGUSER
+  const password = process.env.PGPASSWORD
+
+  if (!user || !password) {
+    console.warn('GEOCODE_DB set but PGUSER/PGPASSWORD missing')
+    return null
+  }
+
+  return `postgresql://${user}:${password}@${host}:${port}/${db}`
+}
+
+/**
  * Initialize the geocode queue.
- * Returns null if GEOCODE_DB_URL is not configured.
+ * Returns null if GEOCODE_DB is not configured.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const initGeocodeQueue = async (): Promise<any> => {
-  const connectionString = process.env.GEOCODE_DB_URL
+  const connectionString = buildConnectionString()
   if (!connectionString) {
-    console.log('GEOCODE_DB_URL not set, geocoding queue disabled')
+    console.log('GEOCODE_DB not set, geocoding queue disabled')
     return null
   }
 

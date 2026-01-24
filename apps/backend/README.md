@@ -30,8 +30,8 @@ PGHOST=localhost           # Database host
 PGPORT=5432                # Database port (default: 5432)
 
 # Optional: Location geocoding
-# Set GEOCODE_DB_URL to enable async location detection and geocoding
-GEOCODE_DB_URL=postgresql://user:pass@localhost/postgres  # Shared queue database
+# Set GEOCODE_DB to enable async location detection and geocoding
+GEOCODE_DB=postgres                                       # Shared queue database name
 NOMINATIM_URL=https://nominatim.openstreetmap.org         # Nominatim API URL (default shown)
 ```
 
@@ -88,10 +88,10 @@ The backend can automatically detect frequently visited locations and geocode th
 
 ### Configuration
 
-To enable geocoding, set `GEOCODE_DB_URL` to a PostgreSQL connection string. This database is used for the pg-boss job queue and should be accessible by all backend instances.
+To enable geocoding, set `GEOCODE_DB` to a database name. The connection uses existing `PGHOST`, `PGPORT`, `PGUSER`, and `PGPASSWORD` environment variables. This database is used for the pg-boss job queue and should be accessible by all backend instances.
 
 ```bash
-GEOCODE_DB_URL=postgresql://user:pass@localhost/postgres
+GEOCODE_DB=postgres
 ```
 
 Optionally set `NOMINATIM_URL` to use a different Nominatim server (e.g., self-hosted).
