@@ -81,6 +81,20 @@
             android:exported="true"
             android:targetActivity=".MainActivity"
             tools:replace="android:targetActivity" />
+
+        <!-- HR Zone Widget -->
+        <receiver
+            android:name=".widget.HrZoneWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="net.aurboda.ACTION_UPDATE_HR_ZONE_WIDGETS" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/hr_zone_widget_info" />
+        </receiver>
     </application>
 
     <queries>

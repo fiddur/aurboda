@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Aurboda</string>
+    <string name="widget_description">Weekly HR zone minutes for Zone 2 and Zone 5</string>
+    <string name="widget_name">HR Zones</string>
 </resources>
