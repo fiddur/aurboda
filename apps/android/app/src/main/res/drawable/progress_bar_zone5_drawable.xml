@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background track -->
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <corners android:radius="6dp" />
+            <!-- Zone 5 Red (#F44336) at 20% alpha -->
+            <solid android:color="#33F44336" />
+        </shape>
+    </item>
+    <!-- Progress -->
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <corners android:radius="6dp" />
+                <!-- Zone 5 Red - Max effort -->
+                <solid android:color="#FFF44336" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>

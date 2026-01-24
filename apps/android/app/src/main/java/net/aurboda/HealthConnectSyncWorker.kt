@@ -31,6 +31,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.KSerializer
+import net.aurboda.widget.HrZoneWidgetProvider
 import java.util.concurrent.TimeUnit
 
 private const val TAG = "HealthConnectSyncWorker"
@@ -110,6 +111,7 @@ class HealthConnectSyncWorker(
                     val success = sendDataToServer(filteredRecords, credentials.serverUrl, credentials.authToken)
                     if (success) {
                         Log.d(TAG, "Background sync completed successfully")
+                        HrZoneWidgetProvider.triggerUpdate(applicationContext)
                         Result.success()
                     } else {
                         Log.w(TAG, "Background sync failed to send data")
@@ -119,10 +121,12 @@ class HealthConnectSyncWorker(
                     Log.d(TAG, "No filtered records to sync (all were aggregated types)")
                     // Still save token since we successfully processed the records
                     pendingToken?.let { saveChangesToken(it) }
+                    HrZoneWidgetProvider.triggerUpdate(applicationContext)
                     Result.success()
                 }
             } else {
                 Log.d(TAG, "No new data to sync")
+                HrZoneWidgetProvider.triggerUpdate(applicationContext)
                 Result.success()
             }
         } catch (e: Exception) {
