@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -283,6 +284,18 @@ fun HealthConnectScreen(
     var pendingTokenToPersist by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember { mutableStateOf("Checking permissions...") }
     var backgroundSyncEnabled by remember { mutableStateOf(isBackgroundSyncEnabled(context)) }
+    var showBatteryOptimizationDialog by remember { mutableStateOf(false) }
+
+    val batteryOptimizationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        // Check if exemption was granted after returning from settings
+        if (isIgnoringBatteryOptimizations(context)) {
+            Log.d("BatteryOptimization", "Battery optimization exemption granted")
+        } else {
+            Log.d("BatteryOptimization", "Battery optimization exemption was not granted")
+        }
+    }
 
     val scope = rememberCoroutineScope()
     val permissions = remember(allRecordTypes) { allRecordTypes.map { HealthPermission.getReadPermission(it) }.toSet() }
@@ -658,6 +671,42 @@ fun HealthConnectScreen(
                     onCheckedChange = { enabled ->
                         backgroundSyncEnabled = enabled
                         setBackgroundSyncEnabled(context, enabled)
+                        if (enabled && !isIgnoringBatteryOptimizations(context)) {
+                            showBatteryOptimizationDialog = true
+                        }
+                    }
+                )
+            }
+
+            if (showBatteryOptimizationDialog) {
+                AlertDialog(
+                    onDismissRequest = { showBatteryOptimizationDialog = false },
+                    title = { Text("Battery Optimization") },
+                    text = {
+                        Text(
+                            "For reliable background sync, allow Aurboda to run " +
+                            "without battery restrictions. This helps ensure your " +
+                            "health data syncs even when the app is closed."
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showBatteryOptimizationDialog = false
+                                batteryOptimizationLauncher.launch(
+                                    createBatteryOptimizationIntent(context)
+                                )
+                            }
+                        ) {
+                            Text("Allow")
+                        }
+                    },
+                    dismissButton = {
+                        Button(
+                            onClick = { showBatteryOptimizationDialog = false }
+                        ) {
+                            Text("Not Now")
+                        }
                     }
                 )
             }
