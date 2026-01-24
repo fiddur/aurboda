@@ -5,6 +5,7 @@
  * Enforces 1.1s delay between jobs to respect Nominatim rate limits.
  */
 
+import pg from 'pg'
 import * as PgBossModule from 'pg-boss'
 import { updateDetectedLocation } from '../db'
 import { reverseGeocode } from './geocoding'
@@ -30,6 +31,7 @@ interface GeocodeJob {
 
 const QUEUE_NAME = 'geocode-location'
 const JOB_DELAY_MS = 1100 // 1.1 seconds between jobs (Nominatim rate limit)
+const DEFAULT_GEOCODE_DB = 'aurboda'
 
 // ============================================================================
 // Queue Instance
@@ -39,35 +41,89 @@ const JOB_DELAY_MS = 1100 // 1.1 seconds between jobs (Nominatim rate limit)
 let boss: any = null
 
 /**
- * Build connection string from environment variables.
- * Uses GEOCODE_DB for database name, with PGHOST, PGPORT, PGUSER, PGPASSWORD.
+ * Get database connection parameters from environment.
  */
-const buildConnectionString = (): string | null => {
-  const db = process.env.GEOCODE_DB
-  if (!db) return null
+const getDbParams = () => ({
+  database: process.env.GEOCODE_DB || DEFAULT_GEOCODE_DB,
+  host: process.env.PGHOST || 'localhost',
+  password: process.env.PGPASSWORD,
+  port: parseInt(process.env.PGPORT || '5432', 10),
+  user: process.env.PGUSER,
+})
 
-  const host = process.env.PGHOST || 'localhost'
-  const port = process.env.PGPORT || '5432'
-  const user = process.env.PGUSER
-  const password = process.env.PGPASSWORD
+/**
+ * Build connection string from environment variables.
+ * Uses GEOCODE_DB for database name (defaults to 'aurboda'), with PGHOST, PGPORT, PGUSER, PGPASSWORD.
+ */
+const buildConnectionString = (database?: string): string | null => {
+  const params = getDbParams()
+  const db = database || params.database
 
-  if (!user || !password) {
-    console.warn('GEOCODE_DB set but PGUSER/PGPASSWORD missing')
+  if (!params.user || !params.password) {
+    console.warn('PGUSER/PGPASSWORD not set, geocoding queue disabled')
     return null
   }
 
-  return `postgresql://${user}:${password}@${host}:${port}/${db}`
+  return `postgresql://${params.user}:${params.password}@${params.host}:${params.port}/${db}`
+}
+
+/**
+ * Ensure the geocode database exists, creating it if necessary.
+ */
+const ensureDatabase = async (): Promise<boolean> => {
+  const params = getDbParams()
+
+  if (!params.user || !params.password) {
+    return false
+  }
+
+  // Connect to postgres database to check/create the target database
+  const client = new pg.Client({
+    database: 'postgres',
+    host: params.host,
+    password: params.password,
+    port: params.port,
+    user: params.user,
+  })
+
+  try {
+    await client.connect()
+
+    // Check if database exists
+    const result = await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [params.database])
+
+    if (result.rows.length === 0) {
+      // Database doesn't exist, create it
+      // Note: database names can't be parameterized, but we control GEOCODE_DB
+      await client.query(`CREATE DATABASE "${params.database}"`)
+      console.log(`Created geocode database: ${params.database}`)
+    }
+
+    return true
+  } catch (error) {
+    console.error('Failed to ensure geocode database exists:', error)
+    return false
+  } finally {
+    await client.end()
+  }
 }
 
 /**
  * Initialize the geocode queue.
- * Returns null if GEOCODE_DB is not configured.
+ * Creates the database if it doesn't exist.
+ * Returns null if PGUSER/PGPASSWORD are not configured.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const initGeocodeQueue = async (): Promise<any> => {
+  // Ensure database exists before connecting
+  const dbReady = await ensureDatabase()
+  if (!dbReady) {
+    console.log('Geocoding queue disabled (database not available)')
+    return null
+  }
+
   const connectionString = buildConnectionString()
   if (!connectionString) {
-    console.log('GEOCODE_DB not set, geocoding queue disabled')
     return null
   }
 
@@ -83,7 +139,7 @@ export const initGeocodeQueue = async (): Promise<any> => {
   })
 
   await boss.start()
-  console.log('Geocode queue started')
+  console.log(`Geocode queue started (database: ${getDbParams().database})`)
 
   // Register the job handler
   await boss.work(QUEUE_NAME, { pollingIntervalSeconds: 2 }, handleGeocodeJob)
