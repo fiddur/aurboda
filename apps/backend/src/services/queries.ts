@@ -9,7 +9,6 @@ import {
   getActivities,
   getDailyAggregates,
   getDailyAggregateValue,
-  getLocations,
   getProductivity,
   getSleepSessions,
   getTags,
@@ -18,6 +17,7 @@ import {
   getTimeSeriesStats,
 } from '../db'
 import { ActivityType, isHrZoneMetric, MetricType, metricUnits } from '../schema'
+import { getPlaceVisits } from './locations'
 import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs } from './settings'
 
 // ============================================================================
@@ -70,10 +70,13 @@ export interface TagSummary {
 }
 
 export interface PlaceSummary {
-  region: string
+  name: string
   startTime: string
   endTime: string
   duration: number // minutes
+  source: 'named' | 'owntracks' | 'unknown'
+  lat?: number
+  lon?: number
 }
 
 export interface ProductivitySummary {
@@ -178,7 +181,7 @@ export async function getDailySummary(
     exerciseSessions,
     tags,
     productivity,
-    locations,
+    placeVisits,
     ouraMetrics,
   ] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
@@ -187,7 +190,7 @@ export async function getDailySummary(
     getActivities(user, 'exercise', start, end),
     getTags(user, start, end),
     getProductivity(user, start, end),
-    getLocations(user, start, end),
+    getPlaceVisits(user, start, end),
     getTimeSeriesMultiMetric(
       user,
       ['sleep_score', 'readiness_score', 'resilience_score', 'cardiovascular_age'],
@@ -284,10 +287,13 @@ export async function getDailySummary(
     exerciseSessions: exerciseSessionsWithHrZones,
     heartRate: heartRateStats,
     ouraScores,
-    places: locations.places.map((p) => ({
-      duration: Math.round((p.endTime.getTime() - p.startTime.getTime()) / 1000 / 60),
+    places: placeVisits.map((p) => ({
+      duration: p.durationMinutes,
       endTime: p.endTime.toISOString(),
-      region: p.region,
+      lat: p.lat,
+      lon: p.lon,
+      name: p.name,
+      source: p.source,
       startTime: p.startTime.toISOString(),
     })),
     productivity: productivitySummary,
@@ -597,11 +603,14 @@ export async function queryProductivity(
  * Query locations/places for a time range.
  */
 export async function queryLocations(user: string, start: Date, end: Date): Promise<PlaceSummary[]> {
-  const { places } = await getLocations(user, start, end)
-  return places.map((p) => ({
-    duration: Math.round((p.endTime.getTime() - p.startTime.getTime()) / 1000 / 60),
+  const visits = await getPlaceVisits(user, start, end)
+  return visits.map((p) => ({
+    duration: p.durationMinutes,
     endTime: p.endTime.toISOString(),
-    region: p.region,
+    lat: p.lat,
+    lon: p.lon,
+    name: p.name,
+    source: p.source,
     startTime: p.startTime.toISOString(),
   }))
 }

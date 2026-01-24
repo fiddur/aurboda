@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db'
 import { MetricType } from '../schema'
+import * as locationsService from './locations'
 import { getDailySummary, getPeriodSummary, queryMetrics } from './queries'
 
 // Mock the db module
@@ -16,6 +17,11 @@ vi.mock('../db', () => ({
   getTimeSeriesMultiMetric: vi.fn(),
   getTimeSeriesStats: vi.fn(),
   getUserSettings: vi.fn(),
+}))
+
+// Mock the locations service
+vi.mock('./locations', () => ({
+  getPlaceVisits: vi.fn(),
 }))
 
 describe('queryMetrics', () => {
@@ -121,16 +127,17 @@ describe('getDailySummary', () => {
       },
     ])
 
-    vi.mocked(db.getLocations).mockResolvedValue({
-      locations: [],
-      places: [
-        {
-          endTime: new Date('2024-01-15T18:00:00Z'),
-          region: 'Home',
-          startTime: new Date('2024-01-15T00:00:00Z'),
-        },
-      ],
-    })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([
+      {
+        durationMinutes: 1080,
+        endTime: new Date('2024-01-15T18:00:00Z'),
+        lat: 59.33,
+        lon: 18.07,
+        name: 'Home',
+        source: 'named',
+        startTime: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
 
     // No aggregate available, should fall back to summing raw records
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
@@ -174,7 +181,8 @@ describe('getDailySummary', () => {
 
     // Places
     expect(result.places).toHaveLength(1)
-    expect(result.places[0].region).toBe('Home')
+    expect(result.places[0].name).toBe('Home')
+    expect(result.places[0].source).toBe('named')
   })
 
   test('returns null for heartRate when no data', async () => {
@@ -183,7 +191,7 @@ describe('getDailySummary', () => {
     vi.mocked(db.getActivities).mockResolvedValue([])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
-    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
     vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
@@ -206,7 +214,7 @@ describe('getDailySummary', () => {
     vi.mocked(db.getActivities).mockResolvedValue([])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
-    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
     // Aggregate returns 5000 (deduplicated value)
@@ -230,7 +238,7 @@ describe('getDailySummary', () => {
     vi.mocked(db.getActivities).mockResolvedValue([])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
-    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
     // No aggregate available
@@ -248,7 +256,7 @@ describe('getDailySummary', () => {
     vi.mocked(db.getActivities).mockResolvedValue([])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
-    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
 
     // Mock Oura scores data
@@ -275,7 +283,7 @@ describe('getDailySummary', () => {
     vi.mocked(db.getActivities).mockResolvedValue([])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
-    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
     vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
@@ -290,7 +298,7 @@ describe('getDailySummary', () => {
     vi.mocked(db.getActivities).mockResolvedValue([])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
-    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
 
     // Only some Oura metrics available
@@ -333,7 +341,7 @@ describe('getDailySummary', () => {
     ])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
-    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
     vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
@@ -363,7 +371,7 @@ describe('getDailySummary', () => {
     ])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
-    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
     vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
@@ -400,7 +408,7 @@ describe('getDailySummary', () => {
     ])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
-    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
     vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 
@@ -429,7 +437,7 @@ describe('getDailySummary', () => {
     ])
     vi.mocked(db.getTags).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
-    vi.mocked(db.getLocations).mockResolvedValue({ locations: [], places: [] })
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
     vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
 

@@ -76,6 +76,21 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_locations_geo ON locations USING GIST (location)
   `,
 
+  // User-defined named locations (detected and named via Aurboda)
+  named_locations: `
+    CREATE TABLE IF NOT EXISTS named_locations (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name            VARCHAR(255) NOT NULL,
+      location        GEOGRAPHY(POINT, 4326) NOT NULL,
+      radius          INTEGER NOT NULL DEFAULT 200,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  named_locations_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_named_locations_geo ON named_locations USING GIST (location)
+  `,
+
   // OAuth tokens for third-party APIs
   oauth_tokens: `
     CREATE TABLE IF NOT EXISTS oauth_tokens (
@@ -223,6 +238,8 @@ export const tableCreationOrder = [
   'locations_indexes',
   'places',
   'places_indexes',
+  'named_locations',
+  'named_locations_indexes',
   'tags',
   'tags_indexes',
   'productivity',
