@@ -74,9 +74,11 @@ export interface PlaceSummary {
   startTime: string
   endTime: string
   duration: number // minutes
-  source: 'named' | 'owntracks' | 'unknown'
+  source: 'named' | 'detected' | 'owntracks' | 'unknown'
   lat?: number
   lon?: number
+  address?: string
+  detectedLocationId?: string
 }
 
 export interface ProductivitySummary {
@@ -288,6 +290,8 @@ export async function getDailySummary(
     heartRate: heartRateStats,
     ouraScores,
     places: placeVisits.map((p) => ({
+      address: p.address,
+      detectedLocationId: p.detectedLocationId,
       duration: p.durationMinutes,
       endTime: p.endTime.toISOString(),
       lat: p.lat,
@@ -605,6 +609,8 @@ export async function queryProductivity(
 export async function queryLocations(user: string, start: Date, end: Date): Promise<PlaceSummary[]> {
   const visits = await getPlaceVisits(user, start, end)
   return visits.map((p) => ({
+    address: p.address,
+    detectedLocationId: p.detectedLocationId,
     duration: p.durationMinutes,
     endTime: p.endTime.toISOString(),
     lat: p.lat,

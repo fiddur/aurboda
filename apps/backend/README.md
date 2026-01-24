@@ -23,10 +23,16 @@ The backend requires a PostgreSQL database with PostGIS extension.
 Set these in your `.env` file or environment:
 
 ```bash
+# Required: PostgreSQL connection
 PGUSER=aurboda_service    # Service account username
 PGPASSWORD=<password>      # Service account password
 PGHOST=localhost           # Database host
 PGPORT=5432                # Database port (default: 5432)
+
+# Optional: Location geocoding
+# Set GEOCODE_DB_URL to enable async location detection and geocoding
+GEOCODE_DB_URL=postgresql://user:pass@localhost/postgres  # Shared queue database
+NOMINATIM_URL=https://nominatim.openstreetmap.org         # Nominatim API URL (default shown)
 ```
 
 ### Creating the Service Account
@@ -68,6 +74,27 @@ sudo apt install postgresql-15-postgis-3
 
 # The extension is enabled per-database automatically when schema is initialized
 ```
+
+## Location Detection and Geocoding
+
+The backend can automatically detect frequently visited locations and geocode them using Nominatim.
+
+### How it works
+
+1. When a location is received (via OwnTracks), detection is triggered with a 5-second debounce per user
+2. The detection worker analyzes recent GPS data to find location clusters
+3. New or moved locations are queued for geocoding via pg-boss
+4. The geocoding queue respects Nominatim's rate limit (1 request per 1.1 seconds)
+
+### Configuration
+
+To enable geocoding, set `GEOCODE_DB_URL` to a PostgreSQL connection string. This database is used for the pg-boss job queue and should be accessible by all backend instances.
+
+```bash
+GEOCODE_DB_URL=postgresql://user:pass@localhost/postgres
+```
+
+Optionally set `NOMINATIM_URL` to use a different Nominatim server (e.g., self-hosted).
 
 ## MCP Server
 

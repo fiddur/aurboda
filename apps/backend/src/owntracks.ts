@@ -26,6 +26,7 @@ export interface OwnTracksDeps {
       velocity?: number
     },
   ) => Promise<void>
+  onLocationInserted?: (user: string) => void
 }
 
 /**
@@ -98,6 +99,8 @@ export function createOwnTracksRouter(deps: OwnTracksDeps): Router {
           time: new Date(tst * 1000),
           velocity: vel,
         })
+        // Trigger detection with debounce
+        deps.onLocationInserted?.(user)
       }
 
       res.end(`[]`)
