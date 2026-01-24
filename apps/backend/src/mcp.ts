@@ -9,6 +9,13 @@ import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
+import {
+  deleteNamedLocation,
+  getDetectedLocations,
+  getNamedLocations,
+  insertNamedLocation,
+  updateNamedLocation,
+} from './services/locations'
 import { addMetric, addTag, deleteTag } from './services/mutations'
 import { getDailySummary, getPeriodSummary, queryMetrics, SyncProvider } from './services/queries'
 import { getSettingsResponse, validateAndUpdateSettings } from './services/settings'
@@ -443,6 +450,178 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
         })
         return {
           content: [{ text: JSON.stringify(result, null, 2), type: 'text' as const }],
+        }
+      },
+    )
+
+    // Tool 11: get_named_locations
+    server.tool(
+      'get_named_locations',
+      'List all named locations. These are user-defined places with names and coordinates.',
+      {},
+      async () => {
+        const locations = await getNamedLocations(user)
+        return {
+          content: [
+            { text: JSON.stringify({ data: locations, success: true }, null, 2), type: 'text' as const },
+          ],
+        }
+      },
+    )
+
+    // Tool 12: get_detected_locations
+    server.tool(
+      'get_detected_locations',
+      'Get frequently visited locations that are not yet named. Detects places where user spent 60+ minutes. Returns coordinates, visit count, and total time spent.',
+      {
+        end: z.string().describe('End date/time in ISO 8601 format (e.g., 2024-01-31T23:59:59Z)'),
+        min_duration: z.number().optional().describe('Minimum stay duration in minutes. Defaults to 60.'),
+        start: z.string().describe('Start date/time in ISO 8601 format (e.g., 2024-01-01T00:00:00Z)'),
+      },
+      async ({ end, min_duration, start }) => {
+        const startDate = new Date(start)
+        const endDate = new Date(end)
+
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+          return {
+            content: [{ text: 'Invalid date format. Use ISO 8601 format.', type: 'text' as const }],
+          }
+        }
+
+        const detected = await getDetectedLocations(user, {
+          end: endDate,
+          minDurationMinutes: min_duration,
+          start: startDate,
+        })
+
+        return {
+          content: [
+            { text: JSON.stringify({ data: detected, success: true }, null, 2), type: 'text' as const },
+          ],
+        }
+      },
+    )
+
+    // Tool 13: add_named_location
+    server.tool(
+      'add_named_location',
+      'Create a named location. Use this to save a frequently visited place with a name.',
+      {
+        lat: z.number().describe('Latitude of the location (-90 to 90)'),
+        lon: z.number().describe('Longitude of the location (-180 to 180)'),
+        name: z.string().describe('Name for the location (e.g., "Home", "Office", "Gym")'),
+        radius: z.number().optional().describe('Radius in meters. Defaults to 200.'),
+      },
+      async ({ lat, lon, name, radius }) => {
+        if (lat < -90 || lat > 90) {
+          return {
+            content: [{ text: 'Invalid latitude. Must be between -90 and 90.', type: 'text' as const }],
+          }
+        }
+        if (lon < -180 || lon > 180) {
+          return {
+            content: [{ text: 'Invalid longitude. Must be between -180 and 180.', type: 'text' as const }],
+          }
+        }
+
+        const location = await insertNamedLocation(user, { lat, lon, name, radius })
+        return {
+          content: [
+            { text: JSON.stringify({ data: location, success: true }, null, 2), type: 'text' as const },
+          ],
+        }
+      },
+    )
+
+    // Tool 14: update_named_location
+    server.tool(
+      'update_named_location',
+      'Update an existing named location. Can change name, coordinates, or radius.',
+      {
+        id: z.string().describe('The ID of the named location to update'),
+        lat: z.number().optional().describe('New latitude (-90 to 90). Must be provided with lon.'),
+        lon: z.number().optional().describe('New longitude (-180 to 180). Must be provided with lat.'),
+        name: z.string().optional().describe('New name for the location'),
+        radius: z.number().optional().describe('New radius in meters'),
+      },
+      async ({ id, lat, lon, name, radius }) => {
+        if ((lat !== undefined && lon === undefined) || (lon !== undefined && lat === undefined)) {
+          return {
+            content: [{ text: 'lat and lon must be provided together.', type: 'text' as const }],
+          }
+        }
+
+        if (lat !== undefined && (lat < -90 || lat > 90)) {
+          return {
+            content: [{ text: 'Invalid latitude. Must be between -90 and 90.', type: 'text' as const }],
+          }
+        }
+        if (lon !== undefined && (lon < -180 || lon > 180)) {
+          return {
+            content: [{ text: 'Invalid longitude. Must be between -180 and 180.', type: 'text' as const }],
+          }
+        }
+
+        const location = await updateNamedLocation(user, id, { lat, lon, name, radius })
+        if (!location) {
+          return {
+            content: [
+              {
+                text: JSON.stringify({ error: 'Named location not found', success: false }, null, 2),
+                type: 'text' as const,
+              },
+            ],
+          }
+        }
+        return {
+          content: [
+            { text: JSON.stringify({ data: location, success: true }, null, 2), type: 'text' as const },
+          ],
+        }
+      },
+    )
+
+    // Tool 15: delete_named_location
+    server.tool(
+      'delete_named_location',
+      'Delete a named location by its ID.',
+      {
+        id: z.string().describe('The ID of the named location to delete'),
+      },
+      async ({ id }) => {
+        const deleted = await deleteNamedLocation(user, id)
+        if (!deleted) {
+          return {
+            content: [
+              {
+                text: JSON.stringify({ error: 'Named location not found', success: false }, null, 2),
+                type: 'text' as const,
+              },
+            ],
+          }
+        }
+        return {
+          content: [{ text: JSON.stringify({ success: true }, null, 2), type: 'text' as const }],
+        }
+      },
+    )
+
+    // Tool 16: promote_detected_location
+    server.tool(
+      'promote_detected_location',
+      'Create a named location from detected coordinates. Use after get_detected_locations to save a frequently visited place.',
+      {
+        lat: z.number().describe('Latitude from detected location'),
+        lon: z.number().describe('Longitude from detected location'),
+        name: z.string().describe('Name for the location'),
+        radius: z.number().optional().describe('Radius in meters. Uses suggested radius if not provided.'),
+      },
+      async ({ lat, lon, name, radius }) => {
+        const location = await insertNamedLocation(user, { lat, lon, name, radius })
+        return {
+          content: [
+            { text: JSON.stringify({ data: location, success: true }, null, 2), type: 'text' as const },
+          ],
         }
       },
     )

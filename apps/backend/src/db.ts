@@ -474,6 +474,142 @@ export const insertPlace = async (user: string, place: Place) => {
 }
 
 // ============================================================================
+// Named Locations (user-defined via Aurboda)
+// ============================================================================
+
+export interface NamedLocation {
+  id: string
+  name: string
+  lat: number
+  lon: number
+  radius: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface NamedLocationInput {
+  name: string
+  lat: number
+  lon: number
+  radius?: number
+}
+
+export const insertNamedLocation = async (
+  user: string,
+  location: NamedLocationInput,
+): Promise<NamedLocation> => {
+  const result = await query(
+    user,
+    `INSERT INTO named_locations (name, location, radius)
+     VALUES ($1, ST_MakePoint($2, $3)::geography, $4)
+     RETURNING id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at`,
+    [location.name, location.lon, location.lat, location.radius ?? 200],
+  )
+  const row = result.rows[0]
+  return {
+    createdAt: new Date(row.created_at),
+    id: row.id,
+    lat: row.lat,
+    lon: row.lon,
+    name: row.name,
+    radius: row.radius,
+    updatedAt: new Date(row.updated_at),
+  }
+}
+
+export const getNamedLocations = async (user: string): Promise<NamedLocation[]> => {
+  const result = await query(
+    user,
+    `SELECT id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at
+     FROM named_locations
+     ORDER BY name`,
+    [],
+  )
+  return result.rows.map((row) => ({
+    createdAt: new Date(row.created_at),
+    id: row.id,
+    lat: row.lat,
+    lon: row.lon,
+    name: row.name,
+    radius: row.radius,
+    updatedAt: new Date(row.updated_at),
+  }))
+}
+
+export const getNamedLocationById = async (user: string, id: string): Promise<NamedLocation | null> => {
+  const result = await query(
+    user,
+    `SELECT id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at
+     FROM named_locations
+     WHERE id = $1`,
+    [id],
+  )
+  if (result.rows.length === 0) return null
+  const row = result.rows[0]
+  return {
+    createdAt: new Date(row.created_at),
+    id: row.id,
+    lat: row.lat,
+    lon: row.lon,
+    name: row.name,
+    radius: row.radius,
+    updatedAt: new Date(row.updated_at),
+  }
+}
+
+export const updateNamedLocation = async (
+  user: string,
+  id: string,
+  updates: Partial<NamedLocationInput>,
+): Promise<NamedLocation | null> => {
+  const setClauses: string[] = ['updated_at = NOW()']
+  const values: unknown[] = []
+  let paramIndex = 1
+
+  if (updates.name !== undefined) {
+    setClauses.push(`name = $${paramIndex++}`)
+    values.push(updates.name)
+  }
+  if (updates.lat !== undefined && updates.lon !== undefined) {
+    setClauses.push(`location = ST_MakePoint($${paramIndex}, $${paramIndex + 1})::geography`)
+    values.push(updates.lon, updates.lat)
+    paramIndex += 2
+  }
+  if (updates.radius !== undefined) {
+    setClauses.push(`radius = $${paramIndex++}`)
+    values.push(updates.radius)
+  }
+
+  values.push(id)
+
+  const result = await query(
+    user,
+    `UPDATE named_locations
+     SET ${setClauses.join(', ')}
+     WHERE id = $${paramIndex}
+     RETURNING id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at`,
+    values,
+  )
+
+  if (result.rows.length === 0) return null
+  const row = result.rows[0]
+  return {
+    createdAt: new Date(row.created_at),
+    id: row.id,
+    lat: row.lat,
+    lon: row.lon,
+    name: row.name,
+    radius: row.radius,
+    updatedAt: new Date(row.updated_at),
+  }
+}
+
+export const deleteNamedLocation = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(user, `DELETE FROM named_locations WHERE id = $1`, [id])
+  return (result.rowCount ?? 0) > 0
+}
+
+// ============================================================================
 // Tags
 // ============================================================================
 

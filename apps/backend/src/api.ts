@@ -31,6 +31,13 @@ import { createOwnTracksRouter } from './owntracks'
 import { rescuetimeClient } from './rescuetime'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
+import {
+  deleteNamedLocation,
+  getDetectedLocations,
+  getNamedLocations,
+  insertNamedLocation,
+  updateNamedLocation,
+} from './services/locations'
 import { addMetric, addTag } from './services/mutations'
 import {
   getDailySummary,
@@ -549,6 +556,135 @@ const main = async () => {
 
     const places = await queryLocations(user, startDate, endDate)
     res.json({ data: places, success: true })
+  })
+
+  // ==========================================================================
+  // Named Locations API
+  // ==========================================================================
+
+  // GET /locations/named - List all named locations
+  httpd.get('/locations/named', authMiddleware, async (req, res) => {
+    const locations = await getNamedLocations(req.user!)
+    res.json({ data: locations, success: true })
+  })
+
+  // POST /locations/named - Create a named location
+  httpd.post('/locations/named', authMiddleware, async (req, res) => {
+    const { name, lat, lon, radius } = req.body as {
+      name?: string
+      lat?: number
+      lon?: number
+      radius?: number
+    }
+    const user = req.user!
+
+    if (!name || lat === undefined || lon === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: name, lat, lon', success: false })
+    }
+
+    if (typeof lat !== 'number' || typeof lon !== 'number') {
+      return res.status(400).json({ error: 'lat and lon must be numbers', success: false })
+    }
+
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      return res.status(400).json({ error: 'Invalid coordinates', success: false })
+    }
+
+    const location = await insertNamedLocation(user, { lat, lon, name, radius })
+    res.json({ data: location, success: true })
+  })
+
+  // PATCH /locations/named/:id - Update a named location
+  httpd.patch('/locations/named/:id', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const { name, lat, lon, radius } = req.body as {
+      name?: string
+      lat?: number
+      lon?: number
+      radius?: number
+    }
+    const user = req.user!
+
+    if (lat !== undefined && lon === undefined) {
+      return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
+    }
+    if (lon !== undefined && lat === undefined) {
+      return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
+    }
+
+    if (lat !== undefined && (lat < -90 || lat > 90)) {
+      return res.status(400).json({ error: 'Invalid latitude', success: false })
+    }
+    if (lon !== undefined && (lon < -180 || lon > 180)) {
+      return res.status(400).json({ error: 'Invalid longitude', success: false })
+    }
+
+    const location = await updateNamedLocation(user, id, { lat, lon, name, radius })
+    if (!location) {
+      return res.status(404).json({ error: 'Named location not found', success: false })
+    }
+    res.json({ data: location, success: true })
+  })
+
+  // DELETE /locations/named/:id - Delete a named location
+  httpd.delete('/locations/named/:id', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const deleted = await deleteNamedLocation(req.user!, id)
+    if (!deleted) {
+      return res.status(404).json({ error: 'Named location not found', success: false })
+    }
+    res.json({ success: true })
+  })
+
+  // GET /locations/detected - Get detected location clusters
+  httpd.get('/locations/detected', authMiddleware, async (req, res) => {
+    const { start, end, minDuration } = req.query as { start?: string; end?: string; minDuration?: string }
+    const user = req.user!
+
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+    }
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+    }
+
+    const minDurationMinutes = minDuration ? parseInt(minDuration, 10) : undefined
+    if (minDuration && (isNaN(minDurationMinutes!) || minDurationMinutes! <= 0)) {
+      return res.status(400).json({ error: 'minDuration must be a positive number', success: false })
+    }
+
+    const detected = await getDetectedLocations(user, {
+      end: endDate,
+      minDurationMinutes,
+      start: startDate,
+    })
+    res.json({ data: detected, success: true })
+  })
+
+  // POST /locations/detected/promote - Promote detected location to named
+  httpd.post('/locations/detected/promote', authMiddleware, async (req, res) => {
+    const { lat, lon, name, radius } = req.body as {
+      lat?: number
+      lon?: number
+      name?: string
+      radius?: number
+    }
+    const user = req.user!
+
+    if (!name || lat === undefined || lon === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: name, lat, lon', success: false })
+    }
+
+    if (typeof lat !== 'number' || typeof lon !== 'number') {
+      return res.status(400).json({ error: 'lat and lon must be numbers', success: false })
+    }
+
+    const location = await insertNamedLocation(user, { lat, lon, name, radius })
+    res.json({ data: location, success: true })
   })
 
   // POST /metrics - Add a manual metric measurement
