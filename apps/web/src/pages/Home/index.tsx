@@ -7,8 +7,13 @@ export function Home() {
 
   return (
     <div class="home">
-      <h1>Aurboda</h1>
-      <p class="subtitle">Self Quantification Aggregator</p>
+      <header class="hero">
+        <img src="/logo.svg" alt="Aurboda logo" class="hero-logo" />
+        <div class="hero-text">
+          <h1>Aurboda</h1>
+          <p class="subtitle">Self Quantification Aggregator</p>
+        </div>
+      </header>
 
       <section class="intro">
         <p>
