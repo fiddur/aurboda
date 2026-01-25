@@ -738,8 +738,13 @@ const main = async () => {
     res.json(result)
   })
 
-  // Initialize geocode queue (if GEOCODE_DB_URL is configured)
-  await initGeocodeQueue()
+  // Initialize geocode queue (creates 'aurboda' database if needed)
+  try {
+    await initGeocodeQueue()
+  } catch (error) {
+    console.error('Failed to initialize geocode queue:', error)
+    // Continue without geocoding - it's optional
+  }
 
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {

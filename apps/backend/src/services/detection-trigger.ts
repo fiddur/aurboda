@@ -33,9 +33,16 @@ export const triggerDetectionForUser = (user: string): void => {
   }
 
   // Schedule detection after debounce period
-  const timeout = setTimeout(async () => {
-    pendingDetections.delete(user)
-    await executeDetectionForUser(user)
+  const timeout = setTimeout(() => {
+    // Execute detection and handle errors properly
+    // Delete from pending map only after detection completes (success or failure)
+    executeDetectionForUser(user)
+      .catch((error) => {
+        console.error(`Unhandled error in detection for user ${user}:`, error)
+      })
+      .finally(() => {
+        pendingDetections.delete(user)
+      })
   }, DEBOUNCE_MS)
 
   pendingDetections.set(user, timeout)

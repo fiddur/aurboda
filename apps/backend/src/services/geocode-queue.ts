@@ -21,24 +21,25 @@ export interface GeocodeJobData {
   lon: number
 }
 
-interface GeocodeJob {
-  data: GeocodeJobData
-}
-
 // ============================================================================
 // Configuration
 // ============================================================================
 
 const QUEUE_NAME = 'geocode-location'
-const JOB_DELAY_MS = 1100 // 1.1 seconds between jobs (Nominatim rate limit)
+const RATE_LIMIT_DELAY_MS = 1100 // 1.1 seconds between requests (Nominatim rate limit)
 const DEFAULT_GEOCODE_DB = 'aurboda'
+
+/**
+ * Sleep for a specified duration.
+ */
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 // ============================================================================
 // Queue Instance
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let boss: any = null
+// pg-boss instance - typed as InstanceType of the PgBoss class
+let boss: InstanceType<typeof PgBossModule.PgBoss> | null = null
 
 /**
  * Get database connection parameters from environment.
@@ -113,8 +114,7 @@ const ensureDatabase = async (): Promise<boolean> => {
  * Creates the database if it doesn't exist.
  * Returns null if PGUSER/PGPASSWORD are not configured.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const initGeocodeQueue = async (): Promise<any> => {
+export const initGeocodeQueue = async (): Promise<InstanceType<typeof PgBossModule.PgBoss> | null> => {
   // Ensure database exists before connecting
   const dbReady = await ensureDatabase()
   if (!dbReady) {
@@ -142,7 +142,8 @@ export const initGeocodeQueue = async (): Promise<any> => {
   console.log(`Geocode queue started (database: ${getDbParams().database})`)
 
   // Register the job handler
-  await boss.work(QUEUE_NAME, { pollingIntervalSeconds: 2 }, handleGeocodeJob)
+  // batchSize: 1 ensures only one job processes at a time across all instances
+  await boss.work(QUEUE_NAME, { batchSize: 1, pollingIntervalSeconds: 2 }, handleGeocodeJob)
 
   return boss
 }
@@ -161,8 +162,7 @@ export const stopGeocodeQueue = async (): Promise<void> => {
 /**
  * Get the queue instance.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const getGeocodeQueue = (): any => boss
+export const getGeocodeQueue = (): InstanceType<typeof PgBossModule.PgBoss> | null => boss
 
 // ============================================================================
 // Job Management
@@ -174,58 +174,73 @@ export const getGeocodeQueue = (): any => boss
  */
 export const enqueueGeocodeJob = async (data: GeocodeJobData): Promise<string | null> => {
   if (!boss) {
+    // Queue not available - location stays in 'pending' status for future retry
     console.warn('Geocode queue not initialized, skipping job')
     return null
   }
 
-  // Mark the location as geocoding in progress
-  await updateDetectedLocation(data.user, data.detectedLocationId, {
-    geocodeStatus: 'geocoding',
-  })
+  try {
+    const jobId = await boss.send(QUEUE_NAME, data, {
+      retryBackoff: true,
+      retryDelay: 60, // 60 seconds between retries
+      retryLimit: 3,
+    })
 
-  const jobId = await boss.send(QUEUE_NAME, data, {
-    retryBackoff: true,
-    retryDelay: 60, // 60 seconds between retries
-    // Retry with exponential backoff on failure
-    retryLimit: 3,
-    // Each job should start at least 1.1s after the previous one
-    startAfter: JOB_DELAY_MS,
-  })
+    // Only mark as 'geocoding' after job is successfully enqueued
+    await updateDetectedLocation(data.user, data.detectedLocationId, {
+      geocodeStatus: 'geocoding',
+    })
 
-  console.log(`Enqueued geocode job ${jobId} for location ${data.detectedLocationId}`)
-  return jobId
+    console.log(`Enqueued geocode job ${jobId} for location ${data.detectedLocationId}`)
+    return jobId
+  } catch (error) {
+    // Enqueue failed - location stays in 'pending' status for future retry
+    console.error(`Failed to enqueue geocode job for ${data.detectedLocationId}:`, error)
+    return null
+  }
 }
 
 /**
  * Handle a geocoding job.
  * Fetches address from Nominatim and updates the detected location.
+ * Enforces rate limiting by waiting after each request.
  */
-const handleGeocodeJob = async (job: GeocodeJob): Promise<void> => {
-  const { detectedLocationId, lat, lon, user } = job.data
+const handleGeocodeJob = async (jobs: PgBossModule.Job<GeocodeJobData>[]): Promise<void> => {
+  // Process jobs sequentially with rate limiting
+  for (const job of jobs) {
+    const { detectedLocationId, lat, lon, user } = job.data
 
-  console.log(`Processing geocode job for location ${detectedLocationId} at ${lat}, ${lon}`)
+    console.log(`Processing geocode job for location ${detectedLocationId} at ${lat}, ${lon}`)
 
-  try {
-    const result = await reverseGeocode(lat, lon)
+    try {
+      const result = await reverseGeocode(lat, lon)
 
-    if (result) {
-      await updateDetectedLocation(user, detectedLocationId, {
-        address: result.address,
-        geocodeStatus: 'success',
-      })
-      console.log(`Geocoded location ${detectedLocationId}: ${result.address}`)
-    } else {
+      // Rate limit: wait before allowing next request
+      // This ensures we respect Nominatim's 1 request/second limit
+      await sleep(RATE_LIMIT_DELAY_MS)
+
+      if (result) {
+        await updateDetectedLocation(user, detectedLocationId, {
+          address: result.address,
+          geocodeStatus: 'success',
+        })
+        console.log(`Geocoded location ${detectedLocationId}: ${result.address}`)
+      } else {
+        await updateDetectedLocation(user, detectedLocationId, {
+          geocodeStatus: 'failed',
+        })
+        console.warn(`Failed to geocode location ${detectedLocationId}`)
+      }
+    } catch (error) {
+      // Still enforce rate limit on errors
+      await sleep(RATE_LIMIT_DELAY_MS)
+
+      console.error(`Error geocoding location ${detectedLocationId}:`, error)
       await updateDetectedLocation(user, detectedLocationId, {
         geocodeStatus: 'failed',
       })
-      console.warn(`Failed to geocode location ${detectedLocationId}`)
+      throw error // Re-throw to trigger retry
     }
-  } catch (error) {
-    console.error(`Error geocoding location ${detectedLocationId}:`, error)
-    await updateDetectedLocation(user, detectedLocationId, {
-      geocodeStatus: 'failed',
-    })
-    throw error // Re-throw to trigger retry
   }
 }
 
