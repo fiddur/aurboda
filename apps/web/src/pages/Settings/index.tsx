@@ -1,13 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
-import {
-  fetchUserSettings,
-  HrZoneThresholds,
-  updateUserSettings,
-  UpdateUserSettingsParams,
-} from '../../state/api'
+import { fetchUserSettings, HrZoneThresholds, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
+import { computeSettingsUpdateParams, parseZoneValue, updateZoneThreshold } from '../../utils/settings'
 
 import './style.css'
 
@@ -60,11 +56,10 @@ export function Settings() {
   }
 
   const handleZoneChange = (zone: keyof HrZoneThresholds, value: string) => {
-    const numValue = parseInt(value, 10)
-    if (isNaN(numValue)) return
+    const numValue = parseZoneValue(value)
+    if (numValue === null) return
 
-    const currentZones = hrZones ?? defaultHrZoneThresholds
-    setHrZones({ ...currentZones, [zone]: numValue })
+    setHrZones(updateZoneThreshold(hrZones, zone, numValue))
     setHasChanges(true)
   }
 
@@ -74,21 +69,8 @@ export function Settings() {
   }
 
   const handleSave = () => {
-    const params: UpdateUserSettingsParams = {}
-
-    // Only include birth_date if changed
-    const serverBirthDate = userSettings?.birth_date ?? ''
-    if (birthDate !== serverBirthDate) {
-      params.birth_date = birthDate || null
-    }
-
-    // Only include hr_zone_start if changed
-    const serverZones = userSettings?.hr_zone_start
-    if (JSON.stringify(hrZones) !== JSON.stringify(serverZones)) {
-      params.hr_zone_start = hrZones
-    }
-
-    if (Object.keys(params).length > 0) {
+    const params = computeSettingsUpdateParams(birthDate, hrZones, userSettings)
+    if (params) {
       mutation.mutate(params)
     }
   }
