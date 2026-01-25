@@ -89,17 +89,17 @@ export function Home() {
 
       <section class="features">
         <h2>Visualizations</h2>
-        <h3>Web</h3>
-        <ul>
-          <li>Timeline with Heartrate, tags, places etc...</li>
-          <li>Location timeline with option to name the locations.</li>
-        </ul>
-        <h3>Android app</h3>
+        <h3>Web &amp; Android</h3>
         <ul>
           <li>
             Minutes in HR zones for last 7 days (due to the Galpin/Huberman recommendation to be in zone 2
-            150-200 minutes per week and zone 5 5-10 minutes), with a widget.
+            150-200 minutes per week and zone 5 5-10 minutes). Android also has a widget.
           </li>
+        </ul>
+        <h3>Web only</h3>
+        <ul>
+          <li>Timeline with Heartrate, tags, places etc...</li>
+          <li>Location timeline with option to name the locations.</li>
         </ul>
       </section>
 
@@ -119,9 +119,17 @@ export function Home() {
       {isLoggedIn && (
         <section class="user-actions">
           <h2>Your Data</h2>
-          <p>
-            <a href="/timeline">View your heart rate timeline</a>
-          </p>
+          <ul>
+            <li>
+              <a href="/hr-zones">View HR zone minutes (last 7 days)</a>
+            </li>
+            <li>
+              <a href="/timeline">View your heart rate timeline</a>
+            </li>
+            <li>
+              <a href="/places">View your places</a>
+            </li>
+          </ul>
         </section>
       )}
     </div>

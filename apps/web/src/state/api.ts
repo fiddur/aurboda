@@ -256,3 +256,67 @@ export const promoteDetectedLocation = async (params: {
 
   return response.data.data
 }
+
+// HR Zone types and API functions
+export interface HrZoneThresholds {
+  1: number
+  2: number
+  3: number
+  4: number
+  5: number
+}
+
+export interface PeriodMetricStats {
+  metric: string
+  unit: string
+  avg?: number
+  min?: number
+  max?: number
+  sum?: number
+  count?: number
+  stddev?: number
+  trend?: number
+  data_points?: number
+}
+
+export interface PeriodSummaryResponse {
+  success: boolean
+  metrics: PeriodMetricStats[]
+  period_start?: string
+  period_end?: string
+}
+
+export interface UserSettingsResponse {
+  success: boolean
+  hr_zone_start?: HrZoneThresholds
+  birth_date?: string
+}
+
+// Fetch period summary for specified metrics
+export const fetchPeriodSummary = async (
+  start: Date,
+  end: Date,
+  metrics: string[],
+): Promise<PeriodSummaryResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<PeriodSummaryResponse>(`${API_URL}/period-summary`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: {
+      end: end.toISOString(),
+      metrics: metrics.join(','),
+      start: start.toISOString(),
+    },
+  })
+
+  return response.data
+}
+
+// Fetch user settings (including HR zone thresholds)
+export const fetchUserSettings = async (): Promise<UserSettingsResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<UserSettingsResponse>(`${API_URL}/user/settings`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data
+}
