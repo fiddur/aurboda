@@ -1,8 +1,6 @@
 services:
   aurboda-web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
+    image: ghcr.io/fiddur/aurboda-web:latest
     ports:
       - "8080:80"
     depends_on:
@@ -10,9 +8,7 @@ services:
     restart: unless-stopped
 
   aurboda-backend:
-    build:
-      context: .
-      dockerfile: apps/backend/Dockerfile
+    image: ghcr.io/fiddur/aurboda-backend:latest
     ports:
       - "3000:3000"
     environment:
@@ -42,6 +38,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400
     restart: unless-stopped
 
 volumes:

@@ -33,27 +33,17 @@ export function Home() {
           </li>
           <li>Aurboda web offers timeline visualizations and location timeline naming (very early stage).</li>
         </ul>
+        <p>
+          <a href="https://github.com/fiddur/aurboda" target="_blank" rel="noopener noreferrer">
+            View on GitHub
+          </a>
+        </p>
         <p class="note">
           I currently don't offer any public signup, but contact me through{' '}
           <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
             reddit
           </a>
           .
-        </p>
-      </section>
-
-      <section class="name">
-        <h2>Name</h2>
-        <p>
-          In Norse mythology, Aurbo&eth;a (really pronounced "owr-BO-tha", but using a hard D in aurboda now)
-          is a mountain j&ouml;tunn (giantess) associated with strength and vitality. Her name, meaning
-          "gravel-offerer" or "gold-offerer", reflects her role as a gatherer and provider. As mother of
-          Ger&eth;r, whose name relates to growth and gardens, Aurbo&eth;a represents the foundation from
-          which health and flourishing emerge.
-        </p>
-        <p>
-          This project embodies that spirit: gathering scattered health data from multiple sources into a
-          unified foundation for understanding your wellbeing.
         </p>
       </section>
 
@@ -104,7 +94,8 @@ export function Home() {
       </section>
 
       <section class="downloads">
-        <h2>Downloads</h2>
+        <h2>Downloads &amp; Deployment</h2>
+        <h3>Android</h3>
         <p>
           <a
             href="https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk"
@@ -113,6 +104,54 @@ export function Home() {
           >
             Android APK
           </a>
+        </p>
+        <h3>Self-hosting with Docker</h3>
+        <p>
+          Run your own Aurboda instance using Docker Compose. See the{' '}
+          <a
+            href="https://github.com/fiddur/aurboda/blob/develop/docker-compose.yml"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            docker-compose.yml example
+          </a>{' '}
+          on GitHub.
+        </p>
+        <p>Docker images:</p>
+        <ul>
+          <li>
+            <a
+              href="https://github.com/fiddur/aurboda/pkgs/container/aurboda-backend"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ghcr.io/fiddur/aurboda-backend
+            </a>
+          </li>
+          <li>
+            <a
+              href="https://github.com/fiddur/aurboda/pkgs/container/aurboda-web"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ghcr.io/fiddur/aurboda-web
+            </a>
+          </li>
+        </ul>
+      </section>
+
+      <section class="name">
+        <h2>About the Name</h2>
+        <p>
+          In Norse mythology, Aurbo&eth;a (really pronounced "owr-BO-tha", but using a hard D in aurboda now)
+          is a mountain j&ouml;tunn (giantess) associated with strength and vitality. Her name, meaning
+          "gravel-offerer" or "gold-offerer", reflects her role as a gatherer and provider. As mother of
+          Ger&eth;r, whose name relates to growth and gardens, Aurbo&eth;a represents the foundation from
+          which health and flourishing emerge.
+        </p>
+        <p>
+          This project embodies that spirit: gathering scattered health data from multiple sources into a
+          unified foundation for understanding your wellbeing.
         </p>
       </section>
 
