@@ -205,15 +205,24 @@ private suspend inline fun <reified T : Any> handlePostData(
 }
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val EXTRA_OPEN_TAB = "open_tab"
+        const val TAB_DATA = "data"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val initialTab = when (intent?.getStringExtra(EXTRA_OPEN_TAB)) {
+            TAB_DATA -> MainTab.Data
+            else -> null
+        }
         setContent {
             AurbodaAppTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    AurbodaApp()
+                    AurbodaApp(initialTab = initialTab)
                 }
             }
         }
@@ -221,8 +230,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AurbodaApp() {
-    val appState = rememberAppState()
+fun AurbodaApp(initialTab: MainTab? = null) {
+    val appState = rememberAppState(initialTab = initialTab)
 
     when (appState.currentScreen) {
         AppScreen.Login -> {

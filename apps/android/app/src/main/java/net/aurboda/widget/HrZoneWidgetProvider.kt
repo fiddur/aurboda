@@ -1,5 +1,6 @@
 package net.aurboda.widget
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
@@ -7,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.widget.RemoteViews
+import net.aurboda.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -65,6 +67,19 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
     ) {
         scope.launch {
             val views = RemoteViews(context.packageName, R.layout.widget_hr_zones)
+
+            // Set up click handler to open the app on the Data tab
+            val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_DATA)
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                appWidgetId,
+                openAppIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
 
             val credentials = CredentialsManager.getCredentials(context)
             if (credentials == null) {
