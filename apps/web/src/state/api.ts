@@ -32,6 +32,39 @@ export interface Place {
   endTime: Date
 }
 
+export interface PlaceVisit {
+  name: string
+  lat?: number
+  lon?: number
+  startTime: Date
+  endTime: Date
+  durationMinutes: number
+  source: 'named' | 'detected' | 'owntracks' | 'unknown'
+  address?: string
+  detectedLocationId?: string
+}
+
+export interface StoredDetectedLocation {
+  id: string
+  lat: number
+  lon: number
+  radius: number
+  totalMinutes: number
+  visitCount: number
+  firstVisit: Date
+  lastVisit: Date
+  address: string | null
+  geocodeStatus: 'pending' | 'geocoding' | 'success' | 'failed'
+}
+
+export interface NamedLocation {
+  id: string
+  name: string
+  lat: number
+  lon: number
+  radius: number
+}
+
 export interface Tag {
   id?: string
   source: string
@@ -145,4 +178,81 @@ export const fetchTags = async (start: Date, end: Date): Promise<Tag[]> => {
     endTime: tag.endTime ? new Date(tag.endTime) : undefined,
     startTime: new Date(tag.startTime),
   }))
+}
+
+// Fetch place visits for the specified date range
+export const fetchPlaceVisits = async (start: Date, end: Date): Promise<PlaceVisit[]> => {
+  const { token } = auth.value
+  const response = await axios.get<{
+    success: boolean
+    data: (Omit<PlaceVisit, 'startTime' | 'endTime' | 'durationMinutes'> & {
+      startTime: string
+      endTime: string
+      duration: number
+    })[]
+  }>(`${API_URL}/locations`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: {
+      end: end.toISOString(),
+      start: start.toISOString(),
+    },
+  })
+
+  return response.data.data.map((place) => ({
+    ...place,
+    durationMinutes: place.duration,
+    endTime: new Date(place.endTime),
+    startTime: new Date(place.startTime),
+  }))
+}
+
+// Fetch stored detected locations
+export const fetchStoredDetectedLocations = async (): Promise<StoredDetectedLocation[]> => {
+  const { token } = auth.value
+  const response = await axios.get<{
+    success: boolean
+    data: (Omit<StoredDetectedLocation, 'firstVisit' | 'lastVisit'> & {
+      firstVisit: string
+      lastVisit: string
+    })[]
+  }>(`${API_URL}/locations/detected/stored`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data.map((loc) => ({
+    ...loc,
+    firstVisit: new Date(loc.firstVisit),
+    lastVisit: new Date(loc.lastVisit),
+  }))
+}
+
+// Fetch named locations
+export const fetchNamedLocations = async (): Promise<NamedLocation[]> => {
+  const { token } = auth.value
+  const response = await axios.get<{
+    success: boolean
+    data: NamedLocation[]
+  }>(`${API_URL}/locations/named`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data
+}
+
+// Promote a detected location to a named location
+export const promoteDetectedLocation = async (params: {
+  lat: number
+  lon: number
+  name: string
+  radius?: number
+}): Promise<NamedLocation> => {
+  const { token } = auth.value
+  const response = await axios.post<{
+    success: boolean
+    data: NamedLocation
+  }>(`${API_URL}/locations/detected/promote`, params, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data
 }

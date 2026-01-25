@@ -10,6 +10,7 @@ import {
   getAllSyncStates,
   getLocations,
   getProductivity,
+  getDetectedLocations as getStoredDetectedLocations,
   getTags,
   getTimeSeries,
   initializeSchema,
@@ -31,6 +32,8 @@ import { createOwnTracksRouter } from './owntracks'
 import { rescuetimeClient } from './rescuetime'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
+import { clearPendingDetections, triggerDetectionForUser } from './services/detection-trigger'
+import { initGeocodeQueue, stopGeocodeQueue } from './services/geocode-queue'
 import {
   deleteNamedLocation,
   getDetectedLocations,
@@ -289,6 +292,7 @@ const main = async () => {
       insertLocation,
       insertPlace,
       loginToUserDb,
+      onLocationInserted: triggerDetectionForUser,
     }),
   )
 
@@ -636,7 +640,7 @@ const main = async () => {
     res.json({ success: true })
   })
 
-  // GET /locations/detected - Get detected location clusters
+  // GET /locations/detected - Get computed detected location clusters (on-demand analysis)
   httpd.get('/locations/detected', authMiddleware, async (req, res) => {
     const { start, end, minDuration } = req.query as { start?: string; end?: string; minDuration?: string }
     const user = req.user!
@@ -662,6 +666,13 @@ const main = async () => {
       minDurationMinutes,
       start: startDate,
     })
+    res.json({ data: detected, success: true })
+  })
+
+  // GET /locations/detected/stored - Get stored detected locations with addresses
+  httpd.get('/locations/detected/stored', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const detected = await getStoredDetectedLocations(user)
     res.json({ data: detected, success: true })
   })
 
@@ -727,10 +738,36 @@ const main = async () => {
     res.json(result)
   })
 
+  // Initialize geocode queue (creates 'aurboda' database if needed)
+  try {
+    await initGeocodeQueue()
+  } catch (error) {
+    console.error('Failed to initialize geocode queue:', error)
+    // Continue without geocoding - it's optional
+  }
+
   const port = Number(process.env.PORT ?? 80)
-  httpd.listen(port, () => {
+  const server = httpd.listen(port, () => {
     console.log(`> Running on localhost:${port}`)
   })
+
+  // Graceful shutdown
+  const shutdown = async () => {
+    console.log('Shutting down...')
+    clearPendingDetections()
+    await stopGeocodeQueue()
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => {
+        if (err) reject(err)
+        else resolve()
+      })
+    })
+    console.log('Server closed')
+    process.exit(0)
+  }
+
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
 }
 
 main()

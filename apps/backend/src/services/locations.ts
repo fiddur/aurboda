@@ -9,10 +9,12 @@ import {
   deleteNamedLocation,
   getNamedLocationById,
   getNamedLocations,
+  getDetectedLocations as getStoredDetectedLocations,
   insertNamedLocation,
   NamedLocation,
   NamedLocationInput,
   query,
+  DetectedLocation as StoredDetectedLocation,
   updateNamedLocation,
 } from '../db'
 
@@ -319,7 +321,9 @@ export interface PlaceVisit {
   startTime: Date
   endTime: Date
   durationMinutes: number
-  source: 'named' | 'owntracks' | 'unknown'
+  source: 'named' | 'detected' | 'owntracks' | 'unknown'
+  address?: string
+  detectedLocationId?: string
 }
 
 /**
@@ -341,8 +345,26 @@ export const matchLocationToNamed = (
 }
 
 /**
+ * Match a location point against stored detected locations.
+ * Returns the matching detected location, or null if no match.
+ */
+export const matchLocationToDetected = (
+  lat: number,
+  lon: number,
+  detectedLocations: StoredDetectedLocation[],
+): StoredDetectedLocation | null => {
+  for (const detected of detectedLocations) {
+    const distance = haversineDistance(lat, lon, detected.lat, detected.lon)
+    if (distance <= detected.radius) {
+      return detected
+    }
+  }
+  return null
+}
+
+/**
  * Get place visits for a time range, using named locations when available.
- * Falls back to OwnTracks regions if no named location matches.
+ * Falls back to detected locations, then OwnTracks regions.
  */
 export const getPlaceVisits = async (user: string, start: Date, end: Date): Promise<PlaceVisit[]> => {
   // Get location data from db with regions
@@ -357,7 +379,10 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
 
   if (result.rows.length === 0) return []
 
-  const namedLocations = await getNamedLocations(user)
+  const [namedLocations, detectedLocations] = await Promise.all([
+    getNamedLocations(user),
+    getStoredDetectedLocations(user),
+  ])
 
   interface LocationWithRegion extends LocationPoint {
     regions: string[]
@@ -378,7 +403,9 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     lon: number
     startTime: Date
     endTime: Date
-    source: 'named' | 'owntracks' | 'unknown'
+    source: 'named' | 'detected' | 'owntracks' | 'unknown'
+    address?: string
+    detectedLocationId?: string
   } | null = null
 
   for (const loc of locations) {
@@ -386,22 +413,39 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     const namedMatch = matchLocationToNamed(loc.lat, loc.lon, namedLocations)
 
     let placeName: string
-    let source: 'named' | 'owntracks' | 'unknown'
+    let source: 'named' | 'detected' | 'owntracks' | 'unknown'
+    let address: string | undefined
+    let detectedLocationId: string | undefined
 
     if (namedMatch) {
       placeName = namedMatch.name
       source = 'named'
-    } else if (loc.regions.length > 0) {
-      placeName = loc.regions[0]
-      source = 'owntracks'
     } else {
-      placeName = 'Somewhere'
-      source = 'unknown'
+      // Try to match against detected locations
+      const detectedMatch = matchLocationToDetected(loc.lat, loc.lon, detectedLocations)
+      if (detectedMatch) {
+        placeName = detectedMatch.address || 'Detected location'
+        source = 'detected'
+        address = detectedMatch.address || undefined
+        detectedLocationId = detectedMatch.id
+      } else if (loc.regions.length > 0) {
+        placeName = loc.regions[0]
+        source = 'owntracks'
+      } else {
+        placeName = 'Somewhere'
+        source = 'unknown'
+      }
     }
 
-    if (currentVisit && currentVisit.name === placeName) {
+    // Check if this is a continuation of the same visit
+    const samePlace =
+      currentVisit &&
+      currentVisit.name === placeName &&
+      currentVisit.detectedLocationId === detectedLocationId
+
+    if (samePlace) {
       // Extend current visit
-      currentVisit.endTime = loc.time
+      currentVisit!.endTime = loc.time
     } else {
       // Finalize previous visit if exists
       if (currentVisit) {
@@ -414,6 +458,8 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
 
       // Start new visit
       currentVisit = {
+        address,
+        detectedLocationId,
         endTime: loc.time,
         lat: loc.lat,
         lon: loc.lon,

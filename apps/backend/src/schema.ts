@@ -32,6 +32,30 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_activities_time_range ON activities (start_time, end_time)
   `,
 
+  // Detected locations (clusters detected from GPS data with geocoded addresses)
+  detected_locations: `
+    CREATE TABLE IF NOT EXISTS detected_locations (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      location        GEOGRAPHY(POINT, 4326) NOT NULL,
+      radius          INTEGER NOT NULL DEFAULT 200,
+      total_minutes   INTEGER NOT NULL DEFAULT 0,
+      visit_count     INTEGER NOT NULL DEFAULT 0,
+      first_visit     TIMESTAMPTZ NOT NULL,
+      last_visit      TIMESTAMPTZ NOT NULL,
+      address         TEXT,
+      geocode_status  VARCHAR(20) DEFAULT 'pending',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
+  detected_locations_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_detected_locations_geo
+      ON detected_locations USING GIST (location);
+    CREATE INDEX IF NOT EXISTS idx_detected_locations_geocode_status
+      ON detected_locations (geocode_status) WHERE geocode_status = 'pending'
+  `,
+
   // Lab results / blood work
   lab_results: `
     CREATE TABLE IF NOT EXISTS lab_results (
@@ -70,7 +94,6 @@ export const createTableStatements: Record<string, string> = {
       CONSTRAINT unique_location UNIQUE (source, time)
     )
   `,
-
   locations_indexes: `
     CREATE INDEX IF NOT EXISTS idx_locations_time ON locations (time DESC);
     CREATE INDEX IF NOT EXISTS idx_locations_geo ON locations USING GIST (location)
@@ -107,6 +130,7 @@ export const createTableStatements: Record<string, string> = {
   `,
 
   // Named places / geofences
+
   places: `
     CREATE TABLE IF NOT EXISTS places (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -192,7 +216,6 @@ export const createTableStatements: Record<string, string> = {
       CONSTRAINT unique_tag UNIQUE (source, external_id)
     )
   `,
-
   tags_indexes: `
     CREATE INDEX IF NOT EXISTS idx_tags_time ON tags (start_time DESC);
     CREATE INDEX IF NOT EXISTS idx_tags_tag_time ON tags (tag, start_time DESC)
@@ -240,6 +263,8 @@ export const tableCreationOrder = [
   'places_indexes',
   'named_locations',
   'named_locations_indexes',
+  'detected_locations',
+  'detected_locations_indexes',
   'tags',
   'tags_indexes',
   'productivity',

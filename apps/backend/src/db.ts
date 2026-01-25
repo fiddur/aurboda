@@ -610,6 +610,284 @@ export const deleteNamedLocation = async (user: string, id: string): Promise<boo
 }
 
 // ============================================================================
+// Detected Locations (clusters detected from GPS data)
+// ============================================================================
+
+export type GeocodeStatus = 'pending' | 'geocoding' | 'success' | 'failed'
+
+export interface DetectedLocation {
+  id: string
+  lat: number
+  lon: number
+  radius: number
+  totalMinutes: number
+  visitCount: number
+  firstVisit: Date
+  lastVisit: Date
+  address: string | null
+  geocodeStatus: GeocodeStatus
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface DetectedLocationInput {
+  lat: number
+  lon: number
+  radius?: number
+  totalMinutes: number
+  visitCount: number
+  firstVisit: Date
+  lastVisit: Date
+}
+
+export const insertDetectedLocation = async (
+  user: string,
+  location: DetectedLocationInput,
+): Promise<DetectedLocation> => {
+  const result = await query(
+    user,
+    `INSERT INTO detected_locations (location, radius, total_minutes, visit_count, first_visit, last_visit)
+     VALUES (ST_MakePoint($1, $2)::geography, $3, $4, $5, $6, $7)
+     RETURNING id, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius,
+       total_minutes, visit_count, first_visit, last_visit, address, geocode_status, created_at, updated_at`,
+    [
+      location.lon,
+      location.lat,
+      location.radius ?? 200,
+      location.totalMinutes,
+      location.visitCount,
+      location.firstVisit,
+      location.lastVisit,
+    ],
+  )
+  const row = result.rows[0]
+  return {
+    address: row.address,
+    createdAt: new Date(row.created_at),
+    firstVisit: new Date(row.first_visit),
+    geocodeStatus: row.geocode_status as GeocodeStatus,
+    id: row.id,
+    lastVisit: new Date(row.last_visit),
+    lat: row.lat,
+    lon: row.lon,
+    radius: row.radius,
+    totalMinutes: row.total_minutes,
+    updatedAt: new Date(row.updated_at),
+    visitCount: row.visit_count,
+  }
+}
+
+export const getDetectedLocations = async (user: string): Promise<DetectedLocation[]> => {
+  const result = await query(
+    user,
+    `SELECT id, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius,
+       total_minutes, visit_count, first_visit, last_visit, address, geocode_status, created_at, updated_at
+     FROM detected_locations
+     ORDER BY last_visit DESC`,
+    [],
+  )
+  return result.rows.map((row) => ({
+    address: row.address,
+    createdAt: new Date(row.created_at),
+    firstVisit: new Date(row.first_visit),
+    geocodeStatus: row.geocode_status as GeocodeStatus,
+    id: row.id,
+    lastVisit: new Date(row.last_visit),
+    lat: row.lat,
+    lon: row.lon,
+    radius: row.radius,
+    totalMinutes: row.total_minutes,
+    updatedAt: new Date(row.updated_at),
+    visitCount: row.visit_count,
+  }))
+}
+
+export const getDetectedLocationById = async (user: string, id: string): Promise<DetectedLocation | null> => {
+  const result = await query(
+    user,
+    `SELECT id, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius,
+       total_minutes, visit_count, first_visit, last_visit, address, geocode_status, created_at, updated_at
+     FROM detected_locations
+     WHERE id = $1`,
+    [id],
+  )
+  if (result.rows.length === 0) return null
+  const row = result.rows[0]
+  return {
+    address: row.address,
+    createdAt: new Date(row.created_at),
+    firstVisit: new Date(row.first_visit),
+    geocodeStatus: row.geocode_status as GeocodeStatus,
+    id: row.id,
+    lastVisit: new Date(row.last_visit),
+    lat: row.lat,
+    lon: row.lon,
+    radius: row.radius,
+    totalMinutes: row.total_minutes,
+    updatedAt: new Date(row.updated_at),
+    visitCount: row.visit_count,
+  }
+}
+
+/**
+ * Find an existing detected location near the given coordinates.
+ * Returns the nearest location within the given distance threshold (meters).
+ */
+export const findNearbyDetectedLocation = async (
+  user: string,
+  lat: number,
+  lon: number,
+  distanceMeters: number = 50,
+): Promise<DetectedLocation | null> => {
+  const result = await query(
+    user,
+    `SELECT id, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius,
+       total_minutes, visit_count, first_visit, last_visit, address, geocode_status, created_at, updated_at,
+       ST_Distance(location, ST_MakePoint($1, $2)::geography) as distance
+     FROM detected_locations
+     WHERE ST_DWithin(location, ST_MakePoint($1, $2)::geography, $3)
+     ORDER BY distance
+     LIMIT 1`,
+    [lon, lat, distanceMeters],
+  )
+  if (result.rows.length === 0) return null
+  const row = result.rows[0]
+  return {
+    address: row.address,
+    createdAt: new Date(row.created_at),
+    firstVisit: new Date(row.first_visit),
+    geocodeStatus: row.geocode_status as GeocodeStatus,
+    id: row.id,
+    lastVisit: new Date(row.last_visit),
+    lat: row.lat,
+    lon: row.lon,
+    radius: row.radius,
+    totalMinutes: row.total_minutes,
+    updatedAt: new Date(row.updated_at),
+    visitCount: row.visit_count,
+  }
+}
+
+export interface DetectedLocationUpdate {
+  lat?: number
+  lon?: number
+  radius?: number
+  totalMinutes?: number
+  visitCount?: number
+  firstVisit?: Date
+  lastVisit?: Date
+  address?: string | null
+  geocodeStatus?: GeocodeStatus
+}
+
+export const updateDetectedLocation = async (
+  user: string,
+  id: string,
+  updates: DetectedLocationUpdate,
+): Promise<DetectedLocation | null> => {
+  const setClauses: string[] = ['updated_at = NOW()']
+  const values: unknown[] = []
+  let paramIndex = 1
+
+  if (updates.lat !== undefined && updates.lon !== undefined) {
+    setClauses.push(`location = ST_MakePoint($${paramIndex}, $${paramIndex + 1})::geography`)
+    values.push(updates.lon, updates.lat)
+    paramIndex += 2
+  }
+  if (updates.radius !== undefined) {
+    setClauses.push(`radius = $${paramIndex++}`)
+    values.push(updates.radius)
+  }
+  if (updates.totalMinutes !== undefined) {
+    setClauses.push(`total_minutes = $${paramIndex++}`)
+    values.push(updates.totalMinutes)
+  }
+  if (updates.visitCount !== undefined) {
+    setClauses.push(`visit_count = $${paramIndex++}`)
+    values.push(updates.visitCount)
+  }
+  if (updates.firstVisit !== undefined) {
+    setClauses.push(`first_visit = $${paramIndex++}`)
+    values.push(updates.firstVisit)
+  }
+  if (updates.lastVisit !== undefined) {
+    setClauses.push(`last_visit = $${paramIndex++}`)
+    values.push(updates.lastVisit)
+  }
+  if (updates.address !== undefined) {
+    setClauses.push(`address = $${paramIndex++}`)
+    values.push(updates.address)
+  }
+  if (updates.geocodeStatus !== undefined) {
+    setClauses.push(`geocode_status = $${paramIndex++}`)
+    values.push(updates.geocodeStatus)
+  }
+
+  values.push(id)
+
+  const result = await query(
+    user,
+    `UPDATE detected_locations
+     SET ${setClauses.join(', ')}
+     WHERE id = $${paramIndex}
+     RETURNING id, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius,
+       total_minutes, visit_count, first_visit, last_visit, address, geocode_status, created_at, updated_at`,
+    values,
+  )
+
+  if (result.rows.length === 0) return null
+  const row = result.rows[0]
+  return {
+    address: row.address,
+    createdAt: new Date(row.created_at),
+    firstVisit: new Date(row.first_visit),
+    geocodeStatus: row.geocode_status as GeocodeStatus,
+    id: row.id,
+    lastVisit: new Date(row.last_visit),
+    lat: row.lat,
+    lon: row.lon,
+    radius: row.radius,
+    totalMinutes: row.total_minutes,
+    updatedAt: new Date(row.updated_at),
+    visitCount: row.visit_count,
+  }
+}
+
+export const deleteDetectedLocation = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(user, `DELETE FROM detected_locations WHERE id = $1`, [id])
+  return (result.rowCount ?? 0) > 0
+}
+
+/**
+ * Get detected locations that need geocoding.
+ */
+export const getDetectedLocationsNeedingGeocode = async (user: string): Promise<DetectedLocation[]> => {
+  const result = await query(
+    user,
+    `SELECT id, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius,
+       total_minutes, visit_count, first_visit, last_visit, address, geocode_status, created_at, updated_at
+     FROM detected_locations
+     WHERE geocode_status = 'pending'
+     ORDER BY created_at`,
+    [],
+  )
+  return result.rows.map((row) => ({
+    address: row.address,
+    createdAt: new Date(row.created_at),
+    firstVisit: new Date(row.first_visit),
+    geocodeStatus: row.geocode_status as GeocodeStatus,
+    id: row.id,
+    lastVisit: new Date(row.last_visit),
+    lat: row.lat,
+    lon: row.lon,
+    radius: row.radius,
+    totalMinutes: row.total_minutes,
+    updatedAt: new Date(row.updated_at),
+    visitCount: row.visit_count,
+  }))
+}
+
+// ============================================================================
 // Tags
 // ============================================================================
 

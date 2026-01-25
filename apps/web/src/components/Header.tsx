@@ -14,9 +14,14 @@ export function Header() {
           Home
         </a>
         {isLoggedIn && (
-          <a href="/timeline" class={url == '/timeline' && 'active'}>
-            Timeline
-          </a>
+          <>
+            <a href="/timeline" class={url == '/timeline' && 'active'}>
+              Timeline
+            </a>
+            <a href="/places" class={url == '/places' && 'active'}>
+              Places
+            </a>
+          </>
         )}
       </nav>
     </header>
