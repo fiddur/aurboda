@@ -24,6 +24,9 @@ export function Header() {
             <a href="/places" class={url == '/places' && 'active'}>
               Places
             </a>
+            <a href="/settings" class={url == '/settings' && 'active'}>
+              Settings
+            </a>
           </>
         )}
       </nav>
