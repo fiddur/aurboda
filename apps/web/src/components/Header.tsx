@@ -15,6 +15,9 @@ export function Header() {
         </a>
         {isLoggedIn && (
           <>
+            <a href="/hr-zones" class={url == '/hr-zones' && 'active'}>
+              HR Zones
+            </a>
             <a href="/timeline" class={url == '/timeline' && 'active'}>
               Timeline
             </a>
