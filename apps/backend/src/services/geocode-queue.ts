@@ -141,6 +141,9 @@ export const initGeocodeQueue = async (): Promise<InstanceType<typeof PgBossModu
   await boss.start()
   console.log(`Geocode queue started (database: ${getDbParams().database})`)
 
+  // Create the queue if it doesn't exist (required in pg-boss v10+)
+  await boss.createQueue(QUEUE_NAME)
+
   // Register the job handler
   // batchSize: 1 ensures only one job processes at a time across all instances
   await boss.work(QUEUE_NAME, { batchSize: 1, pollingIntervalSeconds: 2 }, handleGeocodeJob)
