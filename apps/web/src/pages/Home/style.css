@@ -39,9 +39,23 @@
   margin-bottom: 2rem;
 }
 
-.home .intro p {
+.home .intro p,
+.home .name p {
   line-height: 1.6;
   margin-bottom: 1rem;
+}
+
+.home .intro ul {
+  margin-bottom: 1rem;
+}
+
+.home a {
+  color: #673ab8;
+  text-decoration: underline;
+}
+
+.home a:hover {
+  color: #8b5cf6;
 }
 
 .home h2 {
@@ -49,6 +63,18 @@
   margin-bottom: 0.75rem;
   border-bottom: 2px solid #673ab8;
   padding-bottom: 0.25rem;
+}
+
+.home h3 {
+  font-size: 1.1rem;
+  margin: 1rem 0 0.5rem 0;
+  color: #555;
+}
+
+@media (prefers-color-scheme: dark) {
+  .home h3 {
+    color: #bbb;
+  }
 }
 
 .home ul {
@@ -61,16 +87,8 @@
   line-height: 1.4;
 }
 
-.home .downloads a {
-  color: #673ab8;
-  text-decoration: underline;
-}
-
-.home .downloads a:hover {
-  color: #8b5cf6;
-}
-
-.home .downloads .note {
+.home .downloads .note,
+.home .intro .note {
   font-size: 0.875rem;
   color: #666;
   margin-top: 0.5rem;
@@ -84,13 +102,7 @@
 }
 
 .home .user-actions a {
-  color: #673ab8;
   font-weight: 500;
-  text-decoration: underline;
-}
-
-.home .user-actions a:hover {
-  color: #8b5cf6;
 }
 
 @media (max-width: 639px) {
