@@ -74,19 +74,9 @@ const buildConnectionString = (database?: string): string | null => {
 const ensureDatabase = async (): Promise<boolean> => {
   const params = getDbParams()
 
-  if (!params.user || !params.password) {
-    console.warn('PGUSER/PGPASSWORD not set, geocoding queue disabled')
-    return false
-  }
-
   // First, try connecting directly to the target database (it might already exist)
-  const targetClient = new pg.Client({
-    database: params.database,
-    host: params.host,
-    password: params.password,
-    port: params.port,
-    user: params.user,
-  })
+  // Use minimal config - pg picks up PGUSER, PGPASSWORD, PGHOST, PGPORT from env
+  const targetClient = new pg.Client({ database: params.database })
 
   try {
     await targetClient.connect()
@@ -99,13 +89,8 @@ const ensureDatabase = async (): Promise<boolean> => {
   }
 
   // Connect to postgres database to create the target database
-  const postgresClient = new pg.Client({
-    database: 'postgres',
-    host: params.host,
-    password: params.password,
-    port: params.port,
-    user: params.user,
-  })
+  // Use same pattern as api.ts - let pg pick up connection params from env
+  const postgresClient = new pg.Client({ database: 'postgres' })
 
   try {
     await postgresClient.connect()
