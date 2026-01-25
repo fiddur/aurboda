@@ -74,38 +74,38 @@ const buildConnectionString = (database?: string): string | null => {
 const ensureDatabase = async (): Promise<boolean> => {
   const params = getDbParams()
 
-  if (!params.user || !params.password) {
-    return false
-  }
-
-  // Connect to postgres database to check/create the target database
-  const client = new pg.Client({
-    database: 'postgres',
-    host: params.host,
-    password: params.password,
-    port: params.port,
-    user: params.user,
-  })
+  // First, try connecting directly to the target database (it might already exist)
+  // Use minimal config - pg picks up PGUSER, PGPASSWORD, PGHOST, PGPORT from env
+  const targetClient = new pg.Client({ database: params.database })
 
   try {
-    await client.connect()
+    await targetClient.connect()
+    await targetClient.end()
+    // Database exists and is accessible
+    return true
+  } catch {
+    // Database doesn't exist or isn't accessible, try to create it
+    await targetClient.end().catch(() => {})
+  }
 
-    // Check if database exists
-    const result = await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [params.database])
+  // Connect to postgres database to create the target database
+  // Use same pattern as api.ts - let pg pick up connection params from env
+  const postgresClient = new pg.Client({ database: 'postgres' })
 
-    if (result.rows.length === 0) {
-      // Database doesn't exist, create it
-      // Note: database names can't be parameterized, but we control GEOCODE_DB
-      await client.query(`CREATE DATABASE "${params.database}"`)
-      console.log(`Created geocode database: ${params.database}`)
-    }
+  try {
+    await postgresClient.connect()
+
+    // Create the database
+    // Note: database names can't be parameterized, but we control GEOCODE_DB
+    await postgresClient.query(`CREATE DATABASE "${params.database}"`)
+    console.log(`Created geocode database: ${params.database}`)
 
     return true
   } catch (error) {
-    console.error('Failed to ensure geocode database exists:', error)
+    console.error(`Failed to create geocode database '${params.database}':`, error)
     return false
   } finally {
-    await client.end()
+    await postgresClient.end()
   }
 }
 
@@ -118,7 +118,7 @@ export const initGeocodeQueue = async (): Promise<InstanceType<typeof PgBossModu
   // Ensure database exists before connecting
   const dbReady = await ensureDatabase()
   if (!dbReady) {
-    console.log('Geocoding queue disabled (database not available)')
+    // Specific error already logged by ensureDatabase
     return null
   }
 
