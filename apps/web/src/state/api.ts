@@ -320,3 +320,18 @@ export const fetchUserSettings = async (): Promise<UserSettingsResponse> => {
 
   return response.data
 }
+
+export interface UpdateUserSettingsParams {
+  birth_date?: string | null
+  hr_zone_start?: HrZoneThresholds | null
+}
+
+// Update user settings
+export const updateUserSettings = async (params: UpdateUserSettingsParams): Promise<UserSettingsResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<UserSettingsResponse>(`${API_URL}/user/settings`, params, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data
+}
