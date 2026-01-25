@@ -21,12 +21,13 @@ enum class MainTab {
 
 class AppState(
     private val context: Context,
-    initialScreen: AppScreen
+    initialScreen: AppScreen,
+    initialTab: MainTab = MainTab.Sync
 ) {
     var currentScreen by mutableStateOf(initialScreen)
         private set
 
-    var currentTab by mutableStateOf(MainTab.Sync)
+    var currentTab by mutableStateOf(initialTab)
         private set
 
     var pendingServerUrl by mutableStateOf<String?>(null)
@@ -57,13 +58,14 @@ class AppState(
 }
 
 @Composable
-fun rememberAppState(): AppState {
+fun rememberAppState(initialTab: MainTab? = null): AppState {
     val context = LocalContext.current
     return remember {
         val hasCredentials = CredentialsManager.hasCredentials(context)
         AppState(
             context = context,
-            initialScreen = if (hasCredentials) AppScreen.Main else AppScreen.Login
+            initialScreen = if (hasCredentials) AppScreen.Main else AppScreen.Login,
+            initialTab = initialTab ?: MainTab.Sync
         )
     }
 }
