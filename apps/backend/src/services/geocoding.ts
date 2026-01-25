@@ -44,6 +44,11 @@ export interface GeocodingResult {
   raw: NominatimAddress
 }
 
+export type GeocodingError =
+  | { type: 'network'; message: string }
+  | { type: 'http'; status: number; statusText: string }
+  | { type: 'no_results' }
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -139,17 +144,27 @@ export interface ReverseGeocodeOptions {
   zoom?: number // 0-18, higher = more detail
 }
 
+export type ReverseGeocodeResult =
+  | { success: true; data: GeocodingResult }
+  | { success: false; error: GeocodingError }
+
 /**
  * Reverse geocode coordinates to an address using Nominatim.
  *
  * Note: Nominatim requires max 1 request per second.
  * This function does not implement rate limiting - use geocode-queue for that.
+ *
+ * Returns a discriminated union to distinguish between:
+ * - Success with data
+ * - Network errors (connection failed, timeout)
+ * - HTTP errors (rate limited, server error)
+ * - No results (valid response but no address found)
  */
 export const reverseGeocode = async (
   lat: number,
   lon: number,
   options: ReverseGeocodeOptions = {},
-): Promise<GeocodingResult | null> => {
+): Promise<ReverseGeocodeResult> => {
   const { nominatimUrl = process.env.NOMINATIM_URL || DEFAULT_NOMINATIM_URL, zoom = 18 } = options
 
   const url = new URL('/reverse', nominatimUrl)
@@ -169,23 +184,30 @@ export const reverseGeocode = async (
 
     if (!response.ok) {
       console.error(`Nominatim request failed: ${response.status} ${response.statusText}`)
-      return null
+      return {
+        error: { status: response.status, statusText: response.statusText, type: 'http' },
+        success: false,
+      }
     }
 
     const data = (await response.json()) as NominatimResponse
 
     if (!data.address) {
       console.warn(`Nominatim returned no address for ${lat}, ${lon}`)
-      return null
+      return { error: { type: 'no_results' }, success: false }
     }
 
     return {
-      address: formatAddress(data.address),
-      displayName: formatDisplayName(data.address),
-      raw: data.address,
+      data: {
+        address: formatAddress(data.address),
+        displayName: formatDisplayName(data.address),
+        raw: data.address,
+      },
+      success: true,
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
     console.error('Nominatim geocoding error:', error)
-    return null
+    return { error: { message, type: 'network' }, success: false }
   }
 }

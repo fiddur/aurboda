@@ -19,6 +19,14 @@ const DEBOUNCE_MS = 5000 // 5 seconds
 // Per-User Debounce State
 // ============================================================================
 
+/**
+ * In-memory map of pending detection timeouts per user.
+ *
+ * NOTE: This state is lost on server restart. This is acceptable because:
+ * - Detection only delays processing by 5 seconds
+ * - Worst case: a detection run is skipped, but next location update triggers new detection
+ * - The geocode queue (pg-boss) persists jobs, so no geocoding work is lost
+ */
 const pendingDetections: Map<string, NodeJS.Timeout> = new Map()
 
 /**

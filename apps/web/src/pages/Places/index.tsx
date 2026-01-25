@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import {
   fetchNamedLocations,
   fetchPlaceVisits,
@@ -92,6 +92,25 @@ export const Places = () => {
       })
     }
   }
+
+  const closeModal = () => {
+    setNamingLocation(null)
+    setNameInput('')
+  }
+
+  // Handle escape key to close modal
+  useEffect(() => {
+    if (!namingLocation) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [namingLocation])
 
   const isLoading = placesQuery.isLoading || detectedQuery.isLoading || namedQuery.isLoading
   const hasError = placesQuery.isError || detectedQuery.isError || namedQuery.isError
@@ -255,7 +274,7 @@ export const Places = () => {
             top: 0,
             zIndex: 1000,
           }}
-          onClick={() => setNamingLocation(null)}
+          onClick={closeModal}
         >
           <div
             style={{
@@ -285,7 +304,7 @@ export const Places = () => {
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => setNamingLocation(null)}>Cancel</button>
+              <button onClick={closeModal}>Cancel</button>
               <button
                 onClick={handlePromote}
                 disabled={!nameInput.trim() || promoteMutation.isPending}

@@ -212,34 +212,43 @@ const handleGeocodeJob = async (jobs: PgBossModule.Job<GeocodeJobData>[]): Promi
 
     console.log(`Processing geocode job for location ${detectedLocationId} at ${lat}, ${lon}`)
 
-    try {
-      const result = await reverseGeocode(lat, lon)
+    const result = await reverseGeocode(lat, lon)
 
-      // Rate limit: wait before allowing next request
-      // This ensures we respect Nominatim's 1 request/second limit
-      await sleep(RATE_LIMIT_DELAY_MS)
+    // Rate limit: wait before allowing next request
+    // This ensures we respect Nominatim's 1 request/second limit
+    await sleep(RATE_LIMIT_DELAY_MS)
 
-      if (result) {
-        await updateDetectedLocation(user, detectedLocationId, {
-          address: result.address,
-          geocodeStatus: 'success',
-        })
-        console.log(`Geocoded location ${detectedLocationId}: ${result.address}`)
-      } else {
+    if (result.success) {
+      await updateDetectedLocation(user, detectedLocationId, {
+        address: result.data.address,
+        geocodeStatus: 'success',
+      })
+      console.log(`Geocoded location ${detectedLocationId}: ${result.data.address}`)
+    } else {
+      // Handle different error types
+      const { error } = result
+      if (error.type === 'network') {
+        // Network error - retry by throwing
+        console.error(`Network error geocoding ${detectedLocationId}: ${error.message}`)
+        throw new Error(`Network error: ${error.message}`)
+      } else if (error.type === 'http') {
+        // HTTP error - retry for server errors (5xx), fail for client errors
+        if (error.status >= 500) {
+          console.error(`Server error geocoding ${detectedLocationId}: ${error.status}`)
+          throw new Error(`HTTP ${error.status}: ${error.statusText}`)
+        }
+        // Client error (4xx) - don't retry
+        console.warn(`HTTP ${error.status} for location ${detectedLocationId}, marking failed`)
         await updateDetectedLocation(user, detectedLocationId, {
           geocodeStatus: 'failed',
         })
-        console.warn(`Failed to geocode location ${detectedLocationId}`)
+      } else {
+        // No results - valid response but location has no address
+        console.warn(`No address found for location ${detectedLocationId}`)
+        await updateDetectedLocation(user, detectedLocationId, {
+          geocodeStatus: 'failed',
+        })
       }
-    } catch (error) {
-      // Still enforce rate limit on errors
-      await sleep(RATE_LIMIT_DELAY_MS)
-
-      console.error(`Error geocoding location ${detectedLocationId}:`, error)
-      await updateDetectedLocation(user, detectedLocationId, {
-        geocodeStatus: 'failed',
-      })
-      throw error // Re-throw to trigger retry
     }
   }
 }

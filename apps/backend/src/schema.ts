@@ -51,7 +51,9 @@ export const createTableStatements: Record<string, string> = {
 
   detected_locations_indexes: `
     CREATE INDEX IF NOT EXISTS idx_detected_locations_geo
-      ON detected_locations USING GIST (location)
+      ON detected_locations USING GIST (location);
+    CREATE INDEX IF NOT EXISTS idx_detected_locations_geocode_status
+      ON detected_locations (geocode_status) WHERE geocode_status = 'pending'
   `,
 
   // Lab results / blood work

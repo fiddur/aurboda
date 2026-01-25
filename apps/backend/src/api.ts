@@ -756,7 +756,13 @@ const main = async () => {
     console.log('Shutting down...')
     clearPendingDetections()
     await stopGeocodeQueue()
-    server.close()
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => {
+        if (err) reject(err)
+        else resolve()
+      })
+    })
+    console.log('Server closed')
     process.exit(0)
   }
 

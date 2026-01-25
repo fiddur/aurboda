@@ -23,9 +23,30 @@ import {
 // Configuration
 // ============================================================================
 
+/**
+ * Default radius for clustering nearby locations.
+ * 200m covers typical GPS accuracy variance and building footprints.
+ */
 const DEFAULT_CLUSTER_RADIUS_METERS = 200
+
+/**
+ * Minimum duration at a location to be considered a "stay".
+ * 60 minutes filters out brief stops like traffic or quick errands.
+ */
 const DEFAULT_MIN_STAY_MINUTES = 60
+
+/**
+ * Distance threshold for detecting if a location has "moved".
+ * 50m accounts for GPS drift while catching genuine location changes.
+ * Triggers re-geocoding when exceeded.
+ */
 const LOCATION_MOVE_THRESHOLD_METERS = 50
+
+/**
+ * Number of days to look back when analyzing location history.
+ * 7 days provides enough data for pattern detection while keeping queries fast.
+ */
+const DEFAULT_LOOKBACK_DAYS = 7
 
 // ============================================================================
 // Pure Helper Functions (testable)
@@ -147,7 +168,7 @@ export interface DetectionResult {
  */
 export const runDetectionForUser = async (
   user: string,
-  lookbackDays: number = 7,
+  lookbackDays: number = DEFAULT_LOOKBACK_DAYS,
 ): Promise<DetectionResult> => {
   const end = new Date()
   const start = new Date(end.getTime() - lookbackDays * 24 * 60 * 60 * 1000)
