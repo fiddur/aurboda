@@ -1,57 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchPeriodSummary, fetchUserSettings, HrZoneThresholds, PeriodMetricStats } from '../../state/api'
+import { useMemo } from 'preact/hooks'
+import { fetchPeriodSummary, fetchUserSettings, HrZoneThresholds } from '../../state/api'
 import { auth } from '../../state/auth'
+import {
+  defaultHrZoneThresholds,
+  findMetricTimeSeconds,
+  formatBpmRange,
+  formatZoneTime,
+  getWeekDateRange,
+  hrZoneColors,
+  hrZoneWeeklyTargetMinutes,
+} from '../../utils/hrZones'
 
 import './style.css'
-
-// Default HR zone thresholds (matching Android app)
-const defaultHrZoneThresholds: HrZoneThresholds = {
-  1: 86,
-  2: 102,
-  3: 118,
-  4: 135,
-  5: 151,
-}
-
-// Weekly target minutes per zone (matching Android app)
-const hrZoneWeeklyTargetMinutes = [0, 60, 200, 60, 30, 10]
-
-// HR Zone colors (matching Android app)
-const hrZoneColors = [
-  '#9E9E9E', // Zone 0: Gray - Below threshold
-  '#64B5F6', // Zone 1: Light Blue - Warm-up
-  '#4CAF50', // Zone 2: Green - Aerobic
-  '#FFC107', // Zone 3: Amber - Tempo
-  '#FF9800', // Zone 4: Orange - Threshold
-  '#F44336', // Zone 5: Red - Max effort
-]
-
-const formatZoneTime = (seconds: number): string => {
-  const totalMinutes = Math.floor(seconds / 60)
-  if (totalMinutes >= 60) {
-    const hours = Math.floor(totalMinutes / 60)
-    const mins = totalMinutes % 60
-    return mins > 0 ? `${hours} h ${mins} min` : `${hours} h`
-  }
-  return `${totalMinutes} min`
-}
-
-const formatBpmRange = (zoneIndex: number, thresholds: HrZoneThresholds): string => {
-  const zoneStarts = [0, thresholds[1], thresholds[2], thresholds[3], thresholds[4], thresholds[5]]
-  switch (zoneIndex) {
-    case 0:
-      return `< ${thresholds[1]} bpm`
-    case 5:
-      return `${thresholds[5]}+ bpm`
-    default:
-      return `${zoneStarts[zoneIndex]} - ${zoneStarts[zoneIndex + 1] - 1} bpm`
-  }
-}
-
-const findMetricTimeSeconds = (metrics: PeriodMetricStats[], metricName: string): number => {
-  const metric = metrics.find((m) => m.metric === metricName)
-  return metric?.avg ?? 0
-}
 
 interface HrZoneBarProps {
   zoneIndex: number
@@ -83,24 +44,20 @@ function HrZoneBar({ zoneIndex, bpmRange, timeSeconds, targetMinutes, color }: H
   )
 }
 
+const hrZoneMetrics = [
+  'hr_zone_0_sec',
+  'hr_zone_1_sec',
+  'hr_zone_2_sec',
+  'hr_zone_3_sec',
+  'hr_zone_4_sec',
+  'hr_zone_5_sec',
+]
+
 export function HrZones() {
   const isLoggedIn = auth.value.token
 
-  // Calculate date range: last 7 days including today
-  const today = new Date()
-  today.setHours(23, 59, 59, 999)
-  const weekAgo = new Date()
-  weekAgo.setDate(weekAgo.getDate() - 6)
-  weekAgo.setHours(0, 0, 0, 0)
-
-  const hrZoneMetrics = [
-    'hr_zone_0_sec',
-    'hr_zone_1_sec',
-    'hr_zone_2_sec',
-    'hr_zone_3_sec',
-    'hr_zone_4_sec',
-    'hr_zone_5_sec',
-  ]
+  // Memoize date range to prevent query key instability
+  const dateRange = useMemo(() => getWeekDateRange(), [])
 
   const {
     data: periodSummary,
@@ -108,8 +65,8 @@ export function HrZones() {
     error: summaryError,
   } = useQuery({
     enabled: !!isLoggedIn,
-    queryFn: () => fetchPeriodSummary(weekAgo, today, hrZoneMetrics),
-    queryKey: ['periodSummary', weekAgo.toISOString(), today.toISOString()],
+    queryFn: () => fetchPeriodSummary(new Date(dateRange.start), new Date(dateRange.end), hrZoneMetrics),
+    queryKey: ['periodSummary', dateRange.start, dateRange.end],
   })
 
   const { data: userSettings } = useQuery({
@@ -137,15 +94,16 @@ export function HrZones() {
   }
 
   if (summaryError) {
+    const errorMessage = summaryError instanceof Error ? summaryError.message : 'Unknown error'
     return (
       <div class="hr-zones-page">
         <h1>HR Zone Minutes</h1>
-        <p class="error">Error loading data: {String(summaryError)}</p>
+        <p class="error">Error loading data: {errorMessage}</p>
       </div>
     )
   }
 
-  const thresholds = userSettings?.hr_zone_start ?? defaultHrZoneThresholds
+  const thresholds: HrZoneThresholds = userSettings?.hr_zone_start ?? defaultHrZoneThresholds
   const metrics = periodSummary?.metrics ?? []
 
   return (
