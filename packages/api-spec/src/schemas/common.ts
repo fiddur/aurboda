@@ -54,9 +54,9 @@ export const validMetrics = [
 ] as const
 
 export const metricTypeSchema = z.enum(validMetrics).meta({
-  id: 'MetricType',
   description: 'Type of health metric',
   example: 'heart_rate',
+  id: 'MetricType',
 })
 
 export type MetricType = z.infer<typeof metricTypeSchema>
@@ -89,9 +89,9 @@ export const isHrZoneMetric = (metric: MetricType): boolean =>
  * Activity types for activities table.
  */
 export const activityTypeSchema = z.enum(['sleep', 'exercise', 'meditation', 'nap']).meta({
-  id: 'ActivityType',
   description: 'Type of activity',
   example: 'exercise',
+  id: 'ActivityType',
 })
 
 export type ActivityType = z.infer<typeof activityTypeSchema>
@@ -100,19 +100,11 @@ export type ActivityType = z.infer<typeof activityTypeSchema>
  * Supported data sources.
  */
 export const dataSourceSchema = z
-  .enum([
-    'health_connect',
-    'health_connect_aggregate',
-    'oura',
-    'garmin',
-    'rescuetime',
-    'owntracks',
-    'manual',
-  ])
+  .enum(['health_connect', 'health_connect_aggregate', 'oura', 'garmin', 'rescuetime', 'owntracks', 'manual'])
   .meta({
-    id: 'DataSource',
     description: 'Source of the data',
     example: 'health_connect',
+    id: 'DataSource',
   })
 
 export type DataSource = z.infer<typeof dataSourceSchema>
@@ -121,18 +113,18 @@ export type DataSource = z.infer<typeof dataSourceSchema>
  * ISO 8601 date-time string schema.
  */
 export const iso8601DateTimeSchema = z.iso.datetime().meta({
-  id: 'ISO8601DateTime',
   description: 'ISO 8601 date-time string',
   example: '2024-01-15T14:30:00Z',
+  id: 'ISO8601DateTime',
 })
 
 /**
  * Date-only string schema (YYYY-MM-DD).
  */
 export const dateOnlySchema = z.iso.date().meta({
-  id: 'DateOnly',
   description: 'Date in YYYY-MM-DD format',
   example: '2024-01-15',
+  id: 'DateOnly',
 })
 
 /**
@@ -197,9 +189,9 @@ export const cumulativeMetrics: MetricType[] = [
  * Place visit source schema.
  */
 export const placeSourceSchema = z.enum(['named', 'detected', 'owntracks', 'unknown']).meta({
-  id: 'PlaceSource',
   description: 'Source of place identification',
   example: 'named',
+  id: 'PlaceSource',
 })
 
 export type PlaceSource = z.infer<typeof placeSourceSchema>
@@ -208,9 +200,9 @@ export type PlaceSource = z.infer<typeof placeSourceSchema>
  * Geocode status schema.
  */
 export const geocodeStatusSchema = z.enum(['pending', 'geocoding', 'success', 'failed']).meta({
-  id: 'GeocodeStatus',
   description: 'Status of geocoding operation',
   example: 'success',
+  id: 'GeocodeStatus',
 })
 
 export type GeocodeStatus = z.infer<typeof geocodeStatusSchema>
@@ -219,9 +211,9 @@ export type GeocodeStatus = z.infer<typeof geocodeStatusSchema>
  * HR zone source schema.
  */
 export const hrZoneSourceSchema = z.enum(['custom', 'age_based', 'default']).meta({
-  id: 'HrZoneSource',
   description: 'Source of HR zone thresholds',
   example: 'age_based',
+  id: 'HrZoneSource',
 })
 
 export type HrZoneSource = z.infer<typeof hrZoneSourceSchema>
@@ -230,9 +222,9 @@ export type HrZoneSource = z.infer<typeof hrZoneSourceSchema>
  * Sync status schema.
  */
 export const syncStatusSchema = z.enum(['idle', 'syncing', 'error']).meta({
-  id: 'SyncStatus',
   description: 'Status of sync operation',
   example: 'idle',
+  id: 'SyncStatus',
 })
 
 export type SyncStatus = z.infer<typeof syncStatusSchema>

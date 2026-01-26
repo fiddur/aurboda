@@ -22,11 +22,12 @@ export type MetricDataPoint = z.infer<typeof metricDataPointSchema>
  */
 export const queryMetricsResponseSchema = z
   .object({
+    count: z.number().int().optional().meta({ description: 'Number of data points' }),
+    data: z.array(metricDataPointSchema).optional(),
+    error: z.string().optional(),
+    metric: metricTypeSchema.optional(),
     success: z.boolean(),
-    metric: metricTypeSchema,
-    unit: z.string().meta({ description: 'Unit of measurement', example: 'bpm' }),
-    count: z.number().int().meta({ description: 'Number of data points' }),
-    data: z.array(metricDataPointSchema),
+    unit: z.string().optional().meta({ description: 'Unit of measurement', example: 'bpm' }),
   })
   .meta({ id: 'QueryMetricsResponse' })
 
@@ -48,8 +49,8 @@ export type QueryMetricsParams = z.infer<typeof queryMetricsParamsSchema>
  */
 export const queryMetricsQuerySchema = z
   .object({
-    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
     end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
   })
   .meta({ id: 'QueryMetricsQuery' })
 
@@ -61,10 +62,10 @@ export type QueryMetricsQuery = z.infer<typeof queryMetricsQuerySchema>
 export const addMetricBodySchema = z
   .object({
     metric: metricTypeSchema,
-    value: z.number().meta({ description: 'Metric value', example: 72 }),
     time: iso8601DateTimeSchema.optional().meta({
       description: 'Measurement time (defaults to current time)',
     }),
+    value: z.number().meta({ description: 'Metric value', example: 72 }),
   })
   .meta({ id: 'AddMetricBody' })
 
@@ -75,8 +76,8 @@ export type AddMetricBody = z.infer<typeof addMetricBodySchema>
  */
 export const addMetricResponseSchema = z
   .object({
-    success: z.boolean(),
     error: z.string().optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'AddMetricResponse' })
 

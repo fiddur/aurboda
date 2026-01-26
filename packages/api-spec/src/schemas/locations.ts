@@ -11,9 +11,9 @@ import { geocodeStatusSchema, iso8601DateTimeSchema, placeSourceSchema } from '.
 export const namedLocationSchema = z
   .object({
     id: z.string().uuid().meta({ description: 'Location ID' }),
-    name: z.string().meta({ description: 'Location name', example: 'Home' }),
     lat: z.number().meta({ description: 'Latitude', example: 59.3293 }),
     lon: z.number().meta({ description: 'Longitude', example: 18.0686 }),
+    name: z.string().meta({ description: 'Location name', example: 'Home' }),
     radius: z.number().int().meta({ description: 'Radius in meters', example: 200 }),
   })
   .meta({ id: 'NamedLocation' })
@@ -25,16 +25,17 @@ export type NamedLocation = z.infer<typeof namedLocationSchema>
  */
 export const detectedLocationSchema = z
   .object({
-    id: z.string().uuid().meta({ description: 'Location ID' }),
+    address: z.string().nullable().optional().meta({ description: 'Geocoded address' }),
+    firstVisit: z.string().meta({ description: 'First visit time' }),
+    geocodeStatus: geocodeStatusSchema.optional(),
+    id: z.string().uuid().optional().meta({ description: 'Location ID' }),
+    lastVisit: z.string().meta({ description: 'Last visit time' }),
     lat: z.number().meta({ description: 'Latitude' }),
     lon: z.number().meta({ description: 'Longitude' }),
-    radius: z.number().int().meta({ description: 'Radius in meters' }),
+    radius: z.number().int().optional().meta({ description: 'Radius in meters' }),
+    suggestedRadius: z.number().int().optional().meta({ description: 'Suggested radius in meters' }),
     totalMinutes: z.number().meta({ description: 'Total time spent at location' }),
     visitCount: z.number().int().meta({ description: 'Number of visits' }),
-    firstVisit: iso8601DateTimeSchema.meta({ description: 'First visit time' }),
-    lastVisit: iso8601DateTimeSchema.meta({ description: 'Last visit time' }),
-    address: z.string().nullable().meta({ description: 'Geocoded address' }),
-    geocodeStatus: geocodeStatusSchema,
   })
   .meta({ id: 'DetectedLocation' })
 
@@ -45,17 +46,17 @@ export type DetectedLocation = z.infer<typeof detectedLocationSchema>
  */
 export const placeVisitSchema = z
   .object({
-    name: z.string().meta({ description: 'Place name' }),
-    lat: z.number().optional().meta({ description: 'Latitude' }),
-    lon: z.number().optional().meta({ description: 'Longitude' }),
-    startTime: iso8601DateTimeSchema,
-    endTime: iso8601DateTimeSchema,
-    duration: z.number().meta({ description: 'Duration in minutes' }),
-    source: placeSourceSchema,
     address: z.string().optional().meta({ description: 'Geocoded address' }),
     detectedLocationId: z.string().uuid().optional().meta({
       description: 'ID of detected location if source is detected',
     }),
+    duration: z.number().meta({ description: 'Duration in minutes' }),
+    endTime: iso8601DateTimeSchema,
+    lat: z.number().optional().meta({ description: 'Latitude' }),
+    lon: z.number().optional().meta({ description: 'Longitude' }),
+    name: z.string().meta({ description: 'Place name' }),
+    source: placeSourceSchema,
+    startTime: iso8601DateTimeSchema,
   })
   .meta({ id: 'PlaceVisit' })
 
@@ -66,8 +67,8 @@ export type PlaceVisit = z.infer<typeof placeVisitSchema>
  */
 export const locationsQuerySchema = z
   .object({
-    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
     end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
   })
   .meta({ id: 'LocationsQuery' })
 
@@ -78,9 +79,9 @@ export type LocationsQuery = z.infer<typeof locationsQuerySchema>
  */
 export const locationsResponseSchema = z
   .object({
-    success: z.boolean(),
     data: z.array(placeVisitSchema).optional(),
     error: z.string().optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'LocationsResponse' })
 
@@ -91,9 +92,9 @@ export type LocationsResponse = z.infer<typeof locationsResponseSchema>
  */
 export const namedLocationsResponseSchema = z
   .object({
-    success: z.boolean(),
     data: z.array(namedLocationSchema).optional(),
     error: z.string().optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'NamedLocationsResponse' })
 
@@ -104,9 +105,9 @@ export type NamedLocationsResponse = z.infer<typeof namedLocationsResponseSchema
  */
 export const detectedLocationsResponseSchema = z
   .object({
-    success: z.boolean(),
     data: z.array(detectedLocationSchema).optional(),
     error: z.string().optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'DetectedLocationsResponse' })
 
@@ -117,12 +118,12 @@ export type DetectedLocationsResponse = z.infer<typeof detectedLocationsResponse
  */
 export const detectedLocationsQuerySchema = z
   .object({
-    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
     end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
     min_duration: z.coerce.number().optional().meta({
       description: 'Minimum stay duration in minutes',
       example: 60,
     }),
+    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
   })
   .meta({ id: 'DetectedLocationsQuery' })
 
@@ -133,9 +134,9 @@ export type DetectedLocationsQuery = z.infer<typeof detectedLocationsQuerySchema
  */
 export const addNamedLocationBodySchema = z
   .object({
-    name: z.string().min(1).meta({ description: 'Location name', example: 'Office' }),
     lat: z.number().min(-90).max(90).meta({ description: 'Latitude' }),
     lon: z.number().min(-180).max(180).meta({ description: 'Longitude' }),
+    name: z.string().min(1).meta({ description: 'Location name', example: 'Office' }),
     radius: z.number().int().positive().optional().meta({
       description: 'Radius in meters (defaults to 200)',
     }),
@@ -149,9 +150,9 @@ export type AddNamedLocationBody = z.infer<typeof addNamedLocationBodySchema>
  */
 export const addNamedLocationResponseSchema = z
   .object({
-    success: z.boolean(),
     data: namedLocationSchema.optional(),
     error: z.string().optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'AddNamedLocationResponse' })
 
@@ -162,9 +163,9 @@ export type AddNamedLocationResponse = z.infer<typeof addNamedLocationResponseSc
  */
 export const updateNamedLocationBodySchema = z
   .object({
-    name: z.string().min(1).optional().meta({ description: 'New location name' }),
     lat: z.number().min(-90).max(90).optional().meta({ description: 'New latitude' }),
     lon: z.number().min(-180).max(180).optional().meta({ description: 'New longitude' }),
+    name: z.string().min(1).optional().meta({ description: 'New location name' }),
     radius: z.number().int().positive().optional().meta({ description: 'New radius in meters' }),
   })
   .meta({ id: 'UpdateNamedLocationBody' })

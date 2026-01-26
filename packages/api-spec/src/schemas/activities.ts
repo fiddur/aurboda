@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod'
-import { activityTypeSchema, dataSourceSchema, iso8601DateTimeSchema } from './common.js'
+import { iso8601DateTimeSchema } from './common.js'
 import { hrZoneSecsSchema } from './settings.js'
 
 /**
@@ -11,18 +11,18 @@ import { hrZoneSecsSchema } from './settings.js'
  */
 export const activitySchema = z
   .object({
-    id: z.string().uuid().optional().meta({ description: 'Activity ID' }),
-    source: dataSourceSchema,
-    activityType: activityTypeSchema,
-    startTime: iso8601DateTimeSchema,
-    endTime: iso8601DateTimeSchema.optional(),
-    duration: z.number().optional().meta({ description: 'Duration in minutes' }),
-    title: z.string().optional().meta({ description: 'Activity title' }),
-    notes: z.string().optional().meta({ description: 'Activity notes' }),
+    activityType: z.string().meta({ description: 'Activity type' }),
     data: z.record(z.string(), z.unknown()).optional(),
+    duration: z.number().optional().meta({ description: 'Duration in minutes' }),
+    endTime: iso8601DateTimeSchema.optional(),
     hrZoneSecs: hrZoneSecsSchema.optional().meta({
       description: 'Time spent in each HR zone (for exercise)',
     }),
+    id: z.string().uuid().optional().meta({ description: 'Activity ID' }),
+    notes: z.string().optional().meta({ description: 'Activity notes' }),
+    source: z.string().optional().meta({ description: 'Data source' }),
+    startTime: iso8601DateTimeSchema,
+    title: z.string().optional().meta({ description: 'Activity title' }),
   })
   .meta({ id: 'Activity' })
 
@@ -33,8 +33,8 @@ export type Activity = z.infer<typeof activitySchema>
  */
 export const activitiesQuerySchema = z
   .object({
-    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
     end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
     types: z.string().optional().meta({
       description: 'Comma-separated activity types',
       example: 'sleep,exercise',
@@ -49,9 +49,9 @@ export type ActivitiesQuery = z.infer<typeof activitiesQuerySchema>
  */
 export const activitiesResponseSchema = z
   .object({
-    success: z.boolean(),
     data: z.array(activitySchema).optional(),
     error: z.string().optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'ActivitiesResponse' })
 

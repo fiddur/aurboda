@@ -16,11 +16,9 @@ export const hrZoneThresholdsSchema = z
     4: z.number().int().positive().meta({ description: 'Zone 4 threshold (bpm)', example: 144 }),
     5: z.number().int().positive().meta({ description: 'Zone 5 threshold (bpm)', example: 162 }),
   })
-  .refine(
-    (data) =>
-      data[1] < data[2] && data[2] < data[3] && data[3] < data[4] && data[4] < data[5],
-    { message: 'HR zone thresholds must be in ascending order' },
-  )
+  .refine((data) => data[1] < data[2] && data[2] < data[3] && data[3] < data[4] && data[4] < data[5], {
+    message: 'HR zone thresholds must be in ascending order',
+  })
   .meta({ id: 'HrZoneThresholds' })
 
 export type HrZoneThresholds = z.infer<typeof hrZoneThresholdsSchema>
@@ -44,12 +42,10 @@ export type HrZoneSecs = z.infer<typeof hrZoneSecsSchema>
 /**
  * Birth date schema (YYYY-MM-DD format).
  */
-export const birthDateSchema = z.iso
-  .date()
-  .meta({
-    description: 'Birth date in YYYY-MM-DD format',
-    example: '1985-06-15',
-  })
+export const birthDateSchema = z.iso.date().meta({
+  description: 'Birth date in YYYY-MM-DD format',
+  example: '1985-06-15',
+})
 
 /**
  * RescueTime API key schema.
@@ -82,16 +78,16 @@ export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
  */
 export const userSettingsResponseSchema = z
   .object({
-    success: z.boolean(),
     birth_date: z.string().nullable().meta({ description: 'Birth date in YYYY-MM-DD format' }),
+    error: z.string().optional().meta({ description: 'Error message if request failed' }),
     hr_zone_start: hrZoneThresholdsSchema.meta({ description: 'Effective HR zone thresholds' }),
     hr_zone_start_source: hrZoneSourceSchema.meta({
       description: 'Source of HR zone thresholds',
     }),
-    rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),
-    oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
     oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),
-    error: z.string().optional().meta({ description: 'Error message if request failed' }),
+    oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
+    rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),
+    success: z.boolean(),
   })
   .meta({ id: 'UserSettingsResponse' })
 

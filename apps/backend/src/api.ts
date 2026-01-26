@@ -1,7 +1,23 @@
+import {
+  type ActivitiesResponse,
+  type AddMetricResponse,
+  type AddNamedLocationResponse,
+  type AddTagResponse,
+  type DailySummaryResponse,
+  type DeleteTagResponse,
+  type DetectedLocationsResponse,
+  type LocationsResponse,
+  type NamedLocationsResponse,
+  type PeriodSummaryResponse,
+  type ProductivityResponse,
+  type QueryMetricsResponse,
+  type TagsResponse,
+  type UserSettingsResponse,
+} from '@aurboda/api-spec'
 import { json } from 'body-parser'
 import cors from 'cors'
 import { subHours } from 'date-fns'
-import express, { RequestHandler } from 'express'
+import express, { RequestHandler, Response } from 'express'
 import { Client } from 'pg'
 import { createAuth } from './auth'
 import {
@@ -384,7 +400,7 @@ const main = async () => {
   // ==========================================================================
 
   // GET /metrics/:metric - Query time series metrics
-  httpd.get('/metrics/:metric', authMiddleware, async (req, res) => {
+  httpd.get('/metrics/:metric', authMiddleware, async (req, res: Response<QueryMetricsResponse>) => {
     const { metric } = req.params
     const { start, end } = req.query as { start?: string; end?: string }
     const user = req.user!
@@ -397,14 +413,20 @@ const main = async () => {
     }
 
     if (!start || !end) {
-      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
+      return res.status(400).json({
+        error: 'Missing required query parameters: start, end',
+        success: false,
+      })
     }
 
     const startDate = new Date(start)
     const endDate = new Date(end)
 
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
+      return res.status(400).json({
+        error: 'Invalid date format. Use ISO 8601 format.',
+        success: false,
+      })
     }
 
     const result = await queryMetrics(user, metric, startDate, endDate)
@@ -412,7 +434,7 @@ const main = async () => {
   })
 
   // GET /daily-summary - Get comprehensive summary for a day
-  httpd.get('/daily-summary', authMiddleware, async (req, res) => {
+  httpd.get('/daily-summary', authMiddleware, async (req, res: Response<DailySummaryResponse>) => {
     const { date } = req.query as { date?: string }
     const user = req.user!
 
@@ -431,11 +453,11 @@ const main = async () => {
     }
 
     const summary = await getDailySummary(user, dateObj, syncProvider)
-    res.json({ ...summary, success: true })
+    res.json({ data: summary, success: true })
   })
 
   // GET /period-summary - Get aggregated stats for a period
-  httpd.get('/period-summary', authMiddleware, async (req, res) => {
+  httpd.get('/period-summary', authMiddleware, async (req, res: Response<PeriodSummaryResponse>) => {
     const {
       start,
       end,
@@ -470,7 +492,7 @@ const main = async () => {
   })
 
   // GET /tags - Query tags for a time range
-  httpd.get('/tags', authMiddleware, async (req, res) => {
+  httpd.get('/tags', authMiddleware, async (req, res: Response<TagsResponse>) => {
     const { start, end } = req.query as { start?: string; end?: string }
     const user = req.user!
 
@@ -490,7 +512,7 @@ const main = async () => {
   })
 
   // POST /tags - Add a manual tag
-  httpd.post('/tags', authMiddleware, async (req, res) => {
+  httpd.post('/tags', authMiddleware, async (req, res: Response<AddTagResponse>) => {
     const { tag, start_time, end_time } = req.body as { tag?: string; start_time?: string; end_time?: string }
     const user = req.user!
 
@@ -520,7 +542,7 @@ const main = async () => {
   })
 
   // GET /activities - Query activities for a time range
-  httpd.get('/activities', authMiddleware, async (req, res) => {
+  httpd.get('/activities', authMiddleware, async (req, res: Response<ActivitiesResponse>) => {
     const { start, end, types: typesParam } = req.query as { start?: string; end?: string; types?: string }
     const user = req.user!
 
@@ -547,7 +569,7 @@ const main = async () => {
   })
 
   // GET /productivity - Query productivity data for a time range
-  httpd.get('/productivity', authMiddleware, async (req, res) => {
+  httpd.get('/productivity', authMiddleware, async (req, res: Response<ProductivityResponse>) => {
     const { start, end } = req.query as { start?: string; end?: string }
     const user = req.user!
 
@@ -567,7 +589,7 @@ const main = async () => {
   })
 
   // GET /locations - Query location data for a time range
-  httpd.get('/locations', authMiddleware, async (req, res) => {
+  httpd.get('/locations', authMiddleware, async (req, res: Response<LocationsResponse>) => {
     const { start, end } = req.query as { start?: string; end?: string }
     const user = req.user!
 
@@ -591,13 +613,13 @@ const main = async () => {
   // ==========================================================================
 
   // GET /locations/named - List all named locations
-  httpd.get('/locations/named', authMiddleware, async (req, res) => {
+  httpd.get('/locations/named', authMiddleware, async (req, res: Response<NamedLocationsResponse>) => {
     const locations = await getNamedLocations(req.user!)
     res.json({ data: locations, success: true })
   })
 
   // POST /locations/named - Create a named location
-  httpd.post('/locations/named', authMiddleware, async (req, res) => {
+  httpd.post('/locations/named', authMiddleware, async (req, res: Response<AddNamedLocationResponse>) => {
     const { name, lat, lon, radius } = req.body as {
       name?: string
       lat?: number
@@ -623,39 +645,43 @@ const main = async () => {
   })
 
   // PATCH /locations/named/:id - Update a named location
-  httpd.patch('/locations/named/:id', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const { name, lat, lon, radius } = req.body as {
-      name?: string
-      lat?: number
-      lon?: number
-      radius?: number
-    }
-    const user = req.user!
+  httpd.patch(
+    '/locations/named/:id',
+    authMiddleware,
+    async (req, res: Response<AddNamedLocationResponse>) => {
+      const { id } = req.params
+      const { name, lat, lon, radius } = req.body as {
+        name?: string
+        lat?: number
+        lon?: number
+        radius?: number
+      }
+      const user = req.user!
 
-    if (lat !== undefined && lon === undefined) {
-      return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
-    }
-    if (lon !== undefined && lat === undefined) {
-      return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
-    }
+      if (lat !== undefined && lon === undefined) {
+        return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
+      }
+      if (lon !== undefined && lat === undefined) {
+        return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
+      }
 
-    if (lat !== undefined && (lat < -90 || lat > 90)) {
-      return res.status(400).json({ error: 'Invalid latitude', success: false })
-    }
-    if (lon !== undefined && (lon < -180 || lon > 180)) {
-      return res.status(400).json({ error: 'Invalid longitude', success: false })
-    }
+      if (lat !== undefined && (lat < -90 || lat > 90)) {
+        return res.status(400).json({ error: 'Invalid latitude', success: false })
+      }
+      if (lon !== undefined && (lon < -180 || lon > 180)) {
+        return res.status(400).json({ error: 'Invalid longitude', success: false })
+      }
 
-    const location = await updateNamedLocation(user, id, { lat, lon, name, radius })
-    if (!location) {
-      return res.status(404).json({ error: 'Named location not found', success: false })
-    }
-    res.json({ data: location, success: true })
-  })
+      const location = await updateNamedLocation(user, id, { lat, lon, name, radius })
+      if (!location) {
+        return res.status(404).json({ error: 'Named location not found', success: false })
+      }
+      res.json({ data: location, success: true })
+    },
+  )
 
   // DELETE /locations/named/:id - Delete a named location
-  httpd.delete('/locations/named/:id', authMiddleware, async (req, res) => {
+  httpd.delete('/locations/named/:id', authMiddleware, async (req, res: Response<DeleteTagResponse>) => {
     const { id } = req.params
     const deleted = await deleteNamedLocation(req.user!, id)
     if (!deleted) {
@@ -665,7 +691,7 @@ const main = async () => {
   })
 
   // GET /locations/detected - Get computed detected location clusters (on-demand analysis)
-  httpd.get('/locations/detected', authMiddleware, async (req, res) => {
+  httpd.get('/locations/detected', authMiddleware, async (req, res: Response<DetectedLocationsResponse>) => {
     const { start, end, minDuration } = req.query as { start?: string; end?: string; minDuration?: string }
     const user = req.user!
 
@@ -694,36 +720,50 @@ const main = async () => {
   })
 
   // GET /locations/detected/stored - Get stored detected locations with addresses
-  httpd.get('/locations/detected/stored', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const detected = await getStoredDetectedLocations(user)
-    res.json({ data: detected, success: true })
-  })
+  httpd.get(
+    '/locations/detected/stored',
+    authMiddleware,
+    async (req, res: Response<DetectedLocationsResponse>) => {
+      const user = req.user!
+      const detected = await getStoredDetectedLocations(user)
+      // Transform Date objects to ISO strings for API response
+      const serialized = detected.map((d) => ({
+        ...d,
+        firstVisit: d.firstVisit.toISOString(),
+        lastVisit: d.lastVisit.toISOString(),
+      }))
+      res.json({ data: serialized, success: true })
+    },
+  )
 
   // POST /locations/detected/promote - Promote detected location to named
-  httpd.post('/locations/detected/promote', authMiddleware, async (req, res) => {
-    const { lat, lon, name, radius } = req.body as {
-      lat?: number
-      lon?: number
-      name?: string
-      radius?: number
-    }
-    const user = req.user!
+  httpd.post(
+    '/locations/detected/promote',
+    authMiddleware,
+    async (req, res: Response<AddNamedLocationResponse>) => {
+      const { lat, lon, name, radius } = req.body as {
+        lat?: number
+        lon?: number
+        name?: string
+        radius?: number
+      }
+      const user = req.user!
 
-    if (!name || lat === undefined || lon === undefined) {
-      return res.status(400).json({ error: 'Missing required fields: name, lat, lon', success: false })
-    }
+      if (!name || lat === undefined || lon === undefined) {
+        return res.status(400).json({ error: 'Missing required fields: name, lat, lon', success: false })
+      }
 
-    if (typeof lat !== 'number' || typeof lon !== 'number') {
-      return res.status(400).json({ error: 'lat and lon must be numbers', success: false })
-    }
+      if (typeof lat !== 'number' || typeof lon !== 'number') {
+        return res.status(400).json({ error: 'lat and lon must be numbers', success: false })
+      }
 
-    const location = await insertNamedLocation(user, { lat, lon, name, radius })
-    res.json({ data: location, success: true })
-  })
+      const location = await insertNamedLocation(user, { lat, lon, name, radius })
+      res.json({ data: location, success: true })
+    },
+  )
 
   // POST /metrics - Add a manual metric measurement
-  httpd.post('/metrics', authMiddleware, async (req, res) => {
+  httpd.post('/metrics', authMiddleware, async (req, res: Response<AddMetricResponse>) => {
     const { metric, value, time } = req.body as { metric?: string; value?: number; time?: string }
     const user = req.user!
 
@@ -748,13 +788,13 @@ const main = async () => {
   })
 
   // GET /user/settings - Get user settings with effective HR zones
-  httpd.get('/user/settings', authMiddleware, async (req, res) => {
+  httpd.get('/user/settings', authMiddleware, async (req, res: Response<UserSettingsResponse>) => {
     const result = await getSettingsResponse(req.user!)
     res.json(result)
   })
 
   // PATCH /user/settings - Update user settings
-  httpd.patch('/user/settings', authMiddleware, async (req, res) => {
+  httpd.patch('/user/settings', authMiddleware, async (req, res: Response<UserSettingsResponse>) => {
     const result = await validateAndUpdateSettings(req.user!, req.body)
     if (!result.success) {
       return res.status(400).json(result)

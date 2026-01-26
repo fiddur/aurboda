@@ -10,15 +10,15 @@ import { dateOnlySchema, iso8601DateTimeSchema, syncStatusSchema } from './commo
  */
 export const providerSyncStatusSchema = z
   .object({
-    provider: z.string().meta({ description: 'Provider name', example: 'oura' }),
-    status: syncStatusSchema,
+    errorMessage: z.string().nullable().meta({ description: 'Error message if status is error' }),
     lastSyncTime: iso8601DateTimeSchema.nullable().meta({
       description: 'Last successful sync time',
     }),
-    errorMessage: z.string().nullable().meta({ description: 'Error message if status is error' }),
+    provider: z.string().meta({ description: 'Provider name', example: 'oura' }),
     retryAfter: iso8601DateTimeSchema.nullable().meta({
       description: 'Time when retry is allowed',
     }),
+    status: syncStatusSchema,
   })
   .meta({ id: 'ProviderSyncStatus' })
 
@@ -29,9 +29,9 @@ export type ProviderSyncStatus = z.infer<typeof providerSyncStatusSchema>
  */
 export const syncStatusResponseSchema = z
   .object({
-    success: z.boolean(),
     data: z.array(providerSyncStatusSchema).optional(),
     error: z.string().optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'SyncStatusResponse' })
 
@@ -87,9 +87,9 @@ export type SyncRescueTimeBody = z.infer<typeof syncRescueTimeBodySchema>
  */
 export const syncResponseSchema = z
   .object({
-    success: z.boolean(),
-    message: z.string().optional().meta({ description: 'Status message' }),
     error: z.string().optional(),
+    message: z.string().optional().meta({ description: 'Status message' }),
+    success: z.boolean(),
   })
   .meta({ id: 'SyncResponse' })
 

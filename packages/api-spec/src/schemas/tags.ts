@@ -10,12 +10,12 @@ import { dataSourceSchema, iso8601DateTimeSchema } from './common.js'
  */
 export const tagSchema = z
   .object({
-    id: z.string().uuid().optional().meta({ description: 'Tag ID' }),
-    source: dataSourceSchema,
-    externalId: z.string().optional().meta({ description: 'External ID from source' }),
-    tag: z.string().meta({ description: 'Tag/label text', example: 'coffee' }),
-    startTime: iso8601DateTimeSchema,
     endTime: iso8601DateTimeSchema.optional(),
+    externalId: z.string().optional().meta({ description: 'External ID from source' }),
+    id: z.string().uuid().optional().meta({ description: 'Tag ID' }),
+    source: dataSourceSchema.optional(),
+    startTime: iso8601DateTimeSchema,
+    tag: z.string().meta({ description: 'Tag/label text', example: 'coffee' }),
   })
   .meta({ id: 'Tag' })
 
@@ -26,8 +26,8 @@ export type Tag = z.infer<typeof tagSchema>
  */
 export const tagsQuerySchema = z
   .object({
-    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
     end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
   })
   .meta({ id: 'TagsQuery' })
 
@@ -38,9 +38,9 @@ export type TagsQuery = z.infer<typeof tagsQuerySchema>
  */
 export const tagsResponseSchema = z
   .object({
-    success: z.boolean(),
     data: z.array(tagSchema).optional(),
     error: z.string().optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'TagsResponse' })
 
@@ -51,11 +51,11 @@ export type TagsResponse = z.infer<typeof tagsResponseSchema>
  */
 export const addTagBodySchema = z
   .object({
-    tag: z.string().min(1).meta({ description: 'Tag/label text', example: 'coffee' }),
-    start_time: iso8601DateTimeSchema.meta({ description: 'Start time of the tag' }),
     end_time: iso8601DateTimeSchema.optional().meta({
       description: 'End time (omit for point-in-time tags)',
     }),
+    start_time: iso8601DateTimeSchema.meta({ description: 'Start time of the tag' }),
+    tag: z.string().min(1).meta({ description: 'Tag/label text', example: 'coffee' }),
   })
   .meta({ id: 'AddTagBody' })
 
@@ -66,16 +66,16 @@ export type AddTagBody = z.infer<typeof addTagBodySchema>
  */
 export const addTagResponseSchema = z
   .object({
-    success: z.boolean(),
     data: z
       .object({
-        id: z.string().uuid(),
-        tag: z.string(),
-        startTime: iso8601DateTimeSchema,
         endTime: iso8601DateTimeSchema.optional(),
+        id: z.string().uuid(),
+        startTime: iso8601DateTimeSchema,
+        tag: z.string(),
       })
       .optional(),
     error: z.string().optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'AddTagResponse' })
 
@@ -97,8 +97,8 @@ export type DeleteTagParams = z.infer<typeof deleteTagParamsSchema>
  */
 export const deleteTagResponseSchema = z
   .object({
-    success: z.boolean(),
     error: z.string().optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'DeleteTagResponse' })
 

@@ -22,25 +22,25 @@ export type Outlier = z.infer<typeof outlierSchema>
  */
 export const periodMetricStatsSchema = z
   .object({
-    metric: metricTypeSchema,
-    unit: z.string().meta({ description: 'Unit of measurement' }),
-    count: z.number().int().meta({ description: 'Number of data points' }),
-    min: z.number().meta({ description: 'Minimum value' }),
-    max: z.number().meta({ description: 'Maximum value' }),
     avg: z.number().meta({ description: 'Average value' }),
-    stddev: z.number().meta({ description: 'Standard deviation' }),
-    trendPerDay: z.number().nullable().meta({
-      description: 'Daily trend (slope of linear regression)',
-    }),
     changeFromPreviousPeriodPercent: z.number().nullable().meta({
       description: 'Percent change from previous period',
     }),
     completenessPercent: z.number().meta({
       description: 'Data completeness (days with data / total days)',
     }),
+    count: z.number().int().meta({ description: 'Number of data points' }),
+    max: z.number().meta({ description: 'Maximum value' }),
+    metric: metricTypeSchema,
+    min: z.number().meta({ description: 'Minimum value' }),
     outliers: z.array(outlierSchema).optional().meta({
       description: 'Values more than 2 stddev from mean',
     }),
+    stddev: z.number().meta({ description: 'Standard deviation' }),
+    trendPerDay: z.number().nullable().meta({
+      description: 'Daily trend (slope of linear regression)',
+    }),
+    unit: z.string().meta({ description: 'Unit of measurement' }),
   })
   .meta({ id: 'PeriodMetricStats' })
 
@@ -51,10 +51,10 @@ export type PeriodMetricStats = z.infer<typeof periodMetricStatsSchema>
  */
 export const periodSummaryResultSchema = z
   .object({
-    start: iso8601DateTimeSchema,
     end: iso8601DateTimeSchema,
-    periodDays: z.number().int().meta({ description: 'Number of days in period' }),
     metrics: z.array(periodMetricStatsSchema),
+    periodDays: z.number().int().meta({ description: 'Number of days in period' }),
+    start: iso8601DateTimeSchema,
   })
   .meta({ id: 'PeriodSummaryResult' })
 
@@ -65,12 +65,12 @@ export type PeriodSummaryResult = z.infer<typeof periodSummaryResultSchema>
  */
 export const periodSummaryResponseSchema = z
   .object({
-    success: z.boolean(),
-    start: iso8601DateTimeSchema.optional(),
     end: iso8601DateTimeSchema.optional(),
-    periodDays: z.number().int().optional(),
-    metrics: z.array(periodMetricStatsSchema).optional(),
     error: z.string().optional(),
+    metrics: z.array(periodMetricStatsSchema).optional(),
+    periodDays: z.number().int().optional(),
+    start: iso8601DateTimeSchema.optional(),
+    success: z.boolean(),
   })
   .meta({ id: 'PeriodSummaryResponse' })
 
@@ -81,12 +81,12 @@ export type PeriodSummaryResponse = z.infer<typeof periodSummaryResponseSchema>
  */
 export const periodSummaryQuerySchema = z
   .object({
-    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
     end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
     metrics: z.string().meta({
       description: 'Comma-separated list of metrics',
       example: 'heart_rate,steps,sleep_score',
     }),
+    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
   })
   .meta({ id: 'PeriodSummaryQuery' })
 
