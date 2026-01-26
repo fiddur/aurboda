@@ -1,0 +1,12 @@
+🚫 client needs to be set to generate SDKs - which HTTP client do you want to use?
+Error: 🚫 client needs to be set to generate SDKs - which HTTP client do you want to use?
+    at Object.pluginByTag (/home/fiddur/src/nephelai/node_modules/.pnpm/@hey-api+openapi-ts@0.64.15_magicast@0.3.5_typescript@5.9.3/node_modules/@hey-api/openapi-ts/dist/index.cjs:15:59226)
+    at Object._infer (/home/fiddur/src/nephelai/node_modules/.pnpm/@hey-api+openapi-ts@0.64.15_magicast@0.3.5_typescript@5.9.3/node_modules/@hey-api/openapi-ts/dist/index.cjs:15:5665)
+    at i (/home/fiddur/src/nephelai/node_modules/.pnpm/@hey-api+openapi-ts@0.64.15_magicast@0.3.5_typescript@5.9.3/node_modules/@hey-api/openapi-ts/dist/index.cjs:15:59305)
+    at td (/home/fiddur/src/nephelai/node_modules/.pnpm/@hey-api+openapi-ts@0.64.15_magicast@0.3.5_typescript@5.9.3/node_modules/@hey-api/openapi-ts/dist/index.cjs:15:59398)
+    at nd (/home/fiddur/src/nephelai/node_modules/.pnpm/@hey-api+openapi-ts@0.64.15_magicast@0.3.5_typescript@5.9.3/node_modules/@hey-api/openapi-ts/dist/index.cjs:15:60016)
+    at /home/fiddur/src/nephelai/node_modules/.pnpm/@hey-api+openapi-ts@0.64.15_magicast@0.3.5_typescript@5.9.3/node_modules/@hey-api/openapi-ts/dist/index.cjs:15:61287
+    at Array.map (<anonymous>)
+    at oc (/home/fiddur/src/nephelai/node_modules/.pnpm/@hey-api+openapi-ts@0.64.15_magicast@0.3.5_typescript@5.9.3/node_modules/@hey-api/openapi-ts/dist/index.cjs:15:60575)
+    at async pj (/home/fiddur/src/nephelai/node_modules/.pnpm/@hey-api+openapi-ts@0.64.15_magicast@0.3.5_typescript@5.9.3/node_modules/@hey-api/openapi-ts/dist/index.cjs:1311:4415)
+    at async start (/home/fiddur/src/nephelai/node_modules/.pnpm/@hey-api+openapi-ts@0.64.15_magicast@0.3.5_typescript@5.9.3/node_modules/@hey-api/openapi-ts/bin/index.cjs:124:21)

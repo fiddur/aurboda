@@ -1,0 +1,19 @@
+generatorName: kotlin
+inputSpec: ./generated/openapi.yaml
+outputDir: ./generated/kotlin
+additionalProperties:
+  library: jvm-okhttp4
+  serializationLibrary: kotlinx_serialization
+  packageName: net.aurboda.api
+  modelPackage: net.aurboda.api.models
+  apiPackage: net.aurboda.api.client
+  sourceFolder: src/main/kotlin
+  dateLibrary: java8
+  enumPropertyNaming: UPPERCASE
+  modelMutable: false
+  generateModelTests: false
+  generateApiTests: false
+  generateApiDocumentation: false
+  generateModelDocumentation: false
+  sortModelPropertiesByRequiredFlag: true
+  sortParamsByRequiredFlag: true
