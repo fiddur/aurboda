@@ -38,12 +38,14 @@ import {
   type TagsResponse,
   type UpdateNamedLocationBody,
   updateNamedLocationBodySchema,
+  type UpdateSettingsInput,
+  updateSettingsInputSchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
 import { json } from 'body-parser'
 import cors from 'cors'
 import { subHours } from 'date-fns'
-import express, { RequestHandler, Response } from 'express'
+import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import { z } from 'zod'
 import { createAuth } from './auth'
@@ -609,10 +611,14 @@ const main = async () => {
   // ==========================================================================
 
   // GET /locations/named - List all named locations
-  httpd.get('/locations/named', authMiddleware, async (req, res: Response<NamedLocationsResponse>) => {
-    const locations = await getNamedLocations(req.user!)
-    res.json({ data: locations, success: true })
-  })
+  httpd.get<Record<string, never>, NamedLocationsResponse>(
+    '/locations/named',
+    authMiddleware,
+    async (req, res) => {
+      const locations = await getNamedLocations(req.user!)
+      res.json({ data: locations, success: true })
+    },
+  )
 
   // POST /locations/named - Create a named location
   httpd.post<Record<string, never>, AddNamedLocationResponse, AddNamedLocationBody>(
@@ -652,14 +658,18 @@ const main = async () => {
   )
 
   // DELETE /locations/named/:id - Delete a named location
-  httpd.delete('/locations/named/:id', authMiddleware, async (req, res: Response<DeleteTagResponse>) => {
-    const { id } = req.params
-    const deleted = await deleteNamedLocation(req.user!, id)
-    if (!deleted) {
-      return res.status(404).json({ error: 'Named location not found', success: false })
-    }
-    res.json({ success: true })
-  })
+  httpd.delete<{ id: string }, DeleteTagResponse>(
+    '/locations/named/:id',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const deleted = await deleteNamedLocation(req.user!, id)
+      if (!deleted) {
+        return res.status(404).json({ error: 'Named location not found', success: false })
+      }
+      res.json({ success: true })
+    },
+  )
 
   // GET /locations/detected - Get computed detected location clusters (on-demand analysis)
   httpd.get<Record<string, never>, DetectedLocationsResponse, unknown, DetectedLocationsQuery>(
@@ -680,10 +690,10 @@ const main = async () => {
   )
 
   // GET /locations/detected/stored - Get stored detected locations with addresses
-  httpd.get(
+  httpd.get<Record<string, never>, DetectedLocationsResponse>(
     '/locations/detected/stored',
     authMiddleware,
-    async (req, res: Response<DetectedLocationsResponse>) => {
+    async (req, res) => {
       const user = req.user!
       const detected = await getStoredDetectedLocations(user)
       // Transform Date objects to ISO strings for API response
@@ -727,19 +737,28 @@ const main = async () => {
   )
 
   // GET /user/settings - Get user settings with effective HR zones
-  httpd.get('/user/settings', authMiddleware, async (req, res: Response<UserSettingsResponse>) => {
-    const result = await getSettingsResponse(req.user!)
-    res.json(result)
-  })
+  httpd.get<Record<string, never>, UserSettingsResponse>(
+    '/user/settings',
+    authMiddleware,
+    async (req, res) => {
+      const result = await getSettingsResponse(req.user!)
+      res.json(result)
+    },
+  )
 
   // PATCH /user/settings - Update user settings
-  httpd.patch('/user/settings', authMiddleware, async (req, res: Response<UserSettingsResponse>) => {
-    const result = await validateAndUpdateSettings(req.user!, req.body)
-    if (!result.success) {
-      return res.status(400).json(result)
-    }
-    res.json(result)
-  })
+  httpd.patch<Record<string, never>, UserSettingsResponse, UpdateSettingsInput>(
+    '/user/settings',
+    authMiddleware,
+    validateBody(updateSettingsInputSchema),
+    async (req, res) => {
+      const result = await validateAndUpdateSettings(req.user!, req.body)
+      if (!result.success) {
+        return res.status(400).json(result)
+      }
+      res.json(result)
+    },
+  )
 
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {
