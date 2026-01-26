@@ -119,7 +119,7 @@ describe('getSettingsResponse', () => {
       hrZoneStart: customZones,
       rescueTimeKey: 'test-key',
     })
-    vi.mocked(db.getOAuthToken).mockResolvedValue({ provider: 'oura', accessToken: 'token' })
+    vi.mocked(db.getOAuthToken).mockResolvedValue({ accessToken: 'token', provider: 'oura' })
 
     const result = await getSettingsResponse('testuser')
 

@@ -35,6 +35,7 @@ export interface SettingsResponse {
   hr_zone_start_source: HrZoneSource
   rescue_time_key: string | null
   oura_connected: boolean
+  oura_configured: boolean // Whether Oura OAuth is configured on the server
   error?: string
 }
 
@@ -175,11 +176,13 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const settings = await getSettings(user)
   const { zones, source } = await getEffectiveHrZones(user)
   const ouraToken = await getOAuthToken(user, 'oura')
+  const ouraConfigured = !!(process.env.OURA_CLIENT && process.env.OURA_SECRET)
 
   return {
     birth_date: settings.birthDate ?? null,
     hr_zone_start: zones,
     hr_zone_start_source: source,
+    oura_configured: ouraConfigured,
     oura_connected: ouraToken !== null,
     rescue_time_key: settings.rescueTimeKey ?? null,
     success: true,
@@ -200,6 +203,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
       error: errorMessage,
       hr_zone_start: calculateDefaultHrZones(null),
       hr_zone_start_source: 'default',
+      oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
       oura_connected: false,
       rescue_time_key: null,
       success: false,

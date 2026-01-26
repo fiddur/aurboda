@@ -81,8 +81,13 @@
   cursor: pointer;
 }
 
-.connect-button:hover {
+.connect-button:hover:not(:disabled) {
   background: #5e35b1;
+}
+
+.connect-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .field-description {
@@ -90,6 +95,10 @@
   font-size: 0.875rem;
   margin-top: 0.5rem;
   line-height: 1.4;
+}
+
+.field-description.warning {
+  color: #f57c00;
 }
 
 .hr-zones-form {

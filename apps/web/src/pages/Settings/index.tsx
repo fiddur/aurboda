@@ -131,11 +131,21 @@ export function Settings() {
           <label>Oura Ring</label>
           {userSettings?.oura_connected ?
             <p class="connected-status">Connected</p>
+          : userSettings?.oura_configured === false ?
+            <button type="button" class="connect-button" disabled>
+              Connect Oura
+            </button>
           : <button type="button" class="connect-button" onClick={handleConnectOura}>
               Connect Oura
             </button>
           }
-          <p class="field-description">Connect your Oura Ring to sync sleep scores, readiness, and more.</p>
+          {userSettings?.oura_configured === false ?
+            <p class="field-description warning">
+              Oura OAuth is not configured on the server. Ask your administrator to set up OURA_CLIENT and
+              OURA_SECRET environment variables.
+            </p>
+          : <p class="field-description">Connect your Oura Ring to sync sleep scores, readiness, and more.</p>
+          }
         </div>
 
         <div class="form-field">

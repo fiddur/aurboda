@@ -293,6 +293,7 @@ export interface UserSettingsResponse {
   birth_date?: string
   rescue_time_key?: string
   oura_connected?: boolean
+  oura_configured?: boolean
 }
 
 // Fetch period summary for specified metrics

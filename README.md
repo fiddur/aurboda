@@ -37,6 +37,23 @@ This starts:
 - **PostgreSQL** with PostGIS
 - **Watchtower** for automatic updates
 
+### Creating Your User
+
+Users are PostgreSQL roles with their own databases. Create your first user:
+
+```bash
+# Connect to the postgres container
+docker compose exec postgres psql -U aurboda_service -d postgres
+
+# Create a user (replace 'myuser' and 'mypassword')
+CREATE USER myuser WITH ENCRYPTED PASSWORD 'mypassword';
+GRANT myuser TO aurboda_service;
+CREATE DATABASE aurboda_myuser OWNER myuser;
+\q
+```
+
+Then log in at http://localhost:8080 with your username and password.
+
 See [docker-compose.yml](docker-compose.yml) for configuration options. Set `SESSION_SALT` to a secure 32-byte secret in production.
 
 
