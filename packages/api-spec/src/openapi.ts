@@ -14,14 +14,14 @@ import { createDocument } from 'zod-openapi'
 import 'zod-openapi'
 
 // Import all schemas
-import { iso8601DateTimeSchema, metricTypeSchema, dateOnlySchema } from './schemas/common.js'
+import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.js'
 
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.js'
 
 import {
-  queryMetricsResponseSchema,
   addMetricBodySchema,
   addMetricResponseSchema,
+  queryMetricsResponseSchema,
 } from './schemas/metrics.js'
 
 import { dailySummaryResponseSchema } from './schemas/daily-summary.js'
@@ -29,29 +29,29 @@ import { dailySummaryResponseSchema } from './schemas/daily-summary.js'
 import { periodSummaryResponseSchema } from './schemas/period-summary.js'
 
 import {
-  tagsResponseSchema,
   addTagBodySchema,
   addTagResponseSchema,
   deleteTagResponseSchema,
+  tagsResponseSchema,
 } from './schemas/tags.js'
 
 import { activitiesResponseSchema } from './schemas/activities.js'
 
 import {
-  locationsResponseSchema,
-  namedLocationsResponseSchema,
-  detectedLocationsResponseSchema,
   addNamedLocationBodySchema,
   addNamedLocationResponseSchema,
-  updateNamedLocationBodySchema,
+  detectedLocationsResponseSchema,
+  locationsResponseSchema,
+  namedLocationsResponseSchema,
   promoteDetectedLocationBodySchema,
+  updateNamedLocationBodySchema,
 } from './schemas/locations.js'
 
 import {
-  syncStatusResponseSchema,
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
   syncResponseSchema,
+  syncStatusResponseSchema,
 } from './schemas/sync.js'
 
 import { productivityResponseSchema } from './schemas/productivity.js'
@@ -59,8 +59,8 @@ import { productivityResponseSchema } from './schemas/productivity.js'
 // Error response
 const errorResponseSchema = z
   .object({
-    success: z.literal(false),
     error: z.string(),
+    success: z.literal(false),
   })
   .meta({ id: 'ErrorResponse' })
 
@@ -76,106 +76,60 @@ const deleteResponseSchema = z
 // ============================================================================
 
 const openApiDocument = createDocument({
-  openapi: '3.1.0',
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        bearerFormat: 'JWT',
+        description: 'Bearer token authentication',
+        scheme: 'bearer',
+        type: 'http',
+      },
+    },
+  },
   info: {
-    title: 'Aurboda Health API',
-    version: '1.0.0',
+    contact: {
+      email: 'fredrik@liljegren.org',
+      name: 'Fredrik Liljegren',
+    },
     description:
       'REST API for the Aurboda health tracking application. Track health metrics, activities, locations, and productivity data from multiple sources including Android Health Connect, Oura Ring, and RescueTime.',
-    contact: {
-      name: 'Fredrik Liljegren',
-      email: 'fredrik@liljegren.org',
-    },
     license: {
       name: 'AGPL-3.0-or-later',
       url: 'https://www.gnu.org/licenses/agpl-3.0.html',
     },
+    title: 'Aurboda Health API',
+    version: '1.0.0',
   },
-  servers: [
-    { url: 'https://aurboda.net/api', description: 'Production' },
-    { url: 'http://localhost:3000', description: 'Development' },
-  ],
-  tags: [
-    { name: 'Metrics', description: 'Time series health metrics' },
-    { name: 'Summary', description: 'Daily and period summaries' },
-    { name: 'Tags', description: 'Activity tags/labels' },
-    { name: 'Activities', description: 'Sleep, exercise, meditation sessions' },
-    { name: 'Locations', description: 'Named and detected locations' },
-    { name: 'Productivity', description: 'RescueTime productivity data' },
-    { name: 'Settings', description: 'User settings and preferences' },
-    { name: 'Sync', description: 'Data synchronization with external services' },
-  ],
-  components: {
-    securitySchemes: {
-      bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        description: 'Bearer token authentication',
-      },
-    },
-  },
+  openapi: '3.1.0',
   paths: {
-    // --- Metrics ---
-    '/metrics/{metric}': {
+    // --- Activities ---
+    '/activities': {
       get: {
-        summary: 'Query time series metrics',
-        description:
-          'Query health metrics for a time range. Returns time series data with timestamps and values.',
-        tags: ['Metrics'],
+        description: 'Get activities (sleep, exercise, meditation, nap) for a time range.',
         requestParams: {
-          path: z.object({ metric: metricTypeSchema }),
           query: z.object({
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+            types: z.string().optional().meta({ description: 'Comma-separated activity types' }),
           }),
         },
         responses: {
           200: {
+            content: { 'application/json': { schema: activitiesResponseSchema } },
             description: 'Successful response',
-            content: { 'application/json': { schema: queryMetricsResponseSchema } },
-          },
-          400: {
-            description: 'Bad request',
-            content: { 'application/json': { schema: errorResponseSchema } },
-          },
-          401: {
-            description: 'Unauthorized',
-            content: { 'application/json': { schema: errorResponseSchema } },
           },
         },
         security: [{ bearerAuth: [] }],
-      },
-    },
-    '/metrics': {
-      post: {
-        summary: 'Add manual metric',
-        description: 'Add a manual health metric measurement.',
-        tags: ['Metrics'],
-        requestBody: {
-          content: { 'application/json': { schema: addMetricBodySchema } },
-        },
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: addMetricResponseSchema } },
-          },
-          400: {
-            description: 'Bad request',
-            content: { 'application/json': { schema: errorResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
+        summary: 'Get activities',
+        tags: ['Activities'],
       },
     },
 
     // --- Daily Summary ---
     '/daily-summary': {
       get: {
-        summary: 'Get daily summary',
         description:
           'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, tags, productivity, and visited places.',
-        tags: ['Summary'],
         requestParams: {
           query: z.object({
             date: dateOnlySchema.meta({ description: 'Date in YYYY-MM-DD format' }),
@@ -183,357 +137,329 @@ const openApiDocument = createDocument({
         },
         responses: {
           200: {
-            description: 'Successful response',
             content: { 'application/json': { schema: dailySummaryResponseSchema } },
+            description: 'Successful response',
           },
           400: {
-            description: 'Bad request',
             content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
           },
         },
         security: [{ bearerAuth: [] }],
-      },
-    },
-
-    // --- Period Summary ---
-    '/period-summary': {
-      get: {
-        summary: 'Get period summary',
-        description:
-          'Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness.',
+        summary: 'Get daily summary',
         tags: ['Summary'],
-        requestParams: {
-          query: z.object({
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
-            end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-            metrics: z.string().meta({ description: 'Comma-separated list of metrics' }),
-          }),
-        },
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: periodSummaryResponseSchema } },
-          },
-          400: {
-            description: 'Bad request',
-            content: { 'application/json': { schema: errorResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
-      },
-    },
-
-    // --- Tags ---
-    '/tags': {
-      get: {
-        summary: 'Get tags',
-        description: 'Get tags/labels for a time range.',
-        tags: ['Tags'],
-        requestParams: {
-          query: z.object({
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
-            end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-          }),
-        },
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: tagsResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
-      },
-      post: {
-        summary: 'Add tag',
-        description: 'Add a manual tag/label to mark an activity or event.',
-        tags: ['Tags'],
-        requestBody: {
-          content: { 'application/json': { schema: addTagBodySchema } },
-        },
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: addTagResponseSchema } },
-          },
-          400: {
-            description: 'Bad request',
-            content: { 'application/json': { schema: errorResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
-      },
-    },
-    '/tags/{externalId}': {
-      delete: {
-        summary: 'Delete tag',
-        description: 'Delete a tag by its external ID.',
-        tags: ['Tags'],
-        requestParams: {
-          path: z.object({
-            externalId: z.string().meta({ description: 'External ID of the tag to delete' }),
-          }),
-        },
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: deleteTagResponseSchema } },
-          },
-          404: {
-            description: 'Tag not found',
-            content: { 'application/json': { schema: errorResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
-      },
-    },
-
-    // --- Activities ---
-    '/activities': {
-      get: {
-        summary: 'Get activities',
-        description: 'Get activities (sleep, exercise, meditation, nap) for a time range.',
-        tags: ['Activities'],
-        requestParams: {
-          query: z.object({
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
-            end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-            types: z.string().optional().meta({ description: 'Comma-separated activity types' }),
-          }),
-        },
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: activitiesResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
       },
     },
 
     // --- Locations ---
     '/locations': {
       get: {
-        summary: 'Get place visits',
         description: 'Get place visits for a time range.',
-        tags: ['Locations'],
         requestParams: {
           query: z.object({
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
           }),
         },
         responses: {
           200: {
-            description: 'Successful response',
             content: { 'application/json': { schema: locationsResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
-      },
-    },
-    '/locations/named': {
-      get: {
-        summary: 'Get named locations',
-        description: 'Get all user-defined named locations.',
-        tags: ['Locations'],
-        responses: {
-          200: {
             description: 'Successful response',
-            content: { 'application/json': { schema: namedLocationsResponseSchema } },
           },
         },
         security: [{ bearerAuth: [] }],
-      },
-      post: {
-        summary: 'Add named location',
-        description: 'Create a named location.',
+        summary: 'Get place visits',
         tags: ['Locations'],
-        requestBody: {
-          content: { 'application/json': { schema: addNamedLocationBodySchema } },
-        },
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: addNamedLocationResponseSchema } },
-          },
-          400: {
-            description: 'Bad request',
-            content: { 'application/json': { schema: errorResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
-      },
-    },
-    '/locations/named/{id}': {
-      patch: {
-        summary: 'Update named location',
-        description: 'Update an existing named location.',
-        tags: ['Locations'],
-        requestParams: {
-          path: z.object({ id: z.string().uuid().meta({ description: 'Location ID' }) }),
-        },
-        requestBody: {
-          content: { 'application/json': { schema: updateNamedLocationBodySchema } },
-        },
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: addNamedLocationResponseSchema } },
-          },
-          404: {
-            description: 'Location not found',
-            content: { 'application/json': { schema: errorResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
-      },
-      delete: {
-        summary: 'Delete named location',
-        description: 'Delete a named location by its ID.',
-        tags: ['Locations'],
-        requestParams: {
-          path: z.object({ id: z.string().uuid().meta({ description: 'Location ID' }) }),
-        },
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: deleteResponseSchema } },
-          },
-          404: {
-            description: 'Location not found',
-            content: { 'application/json': { schema: errorResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
       },
     },
     '/locations/detected': {
       get: {
-        summary: 'Get detected locations',
         description:
           'Get frequently visited locations that are not yet named. Detects places where user spent 60+ minutes.',
-        tags: ['Locations'],
         requestParams: {
           query: z.object({
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
             min_duration: z.coerce
               .number()
               .optional()
               .meta({ description: 'Minimum stay duration in minutes' }),
+            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
           }),
         },
         responses: {
           200: {
-            description: 'Successful response',
             content: { 'application/json': { schema: detectedLocationsResponseSchema } },
+            description: 'Successful response',
           },
         },
         security: [{ bearerAuth: [] }],
-      },
-    },
-    '/locations/detected/stored': {
-      get: {
-        summary: 'Get stored detected locations',
-        description: 'Get all stored detected locations with visit statistics.',
+        summary: 'Get detected locations',
         tags: ['Locations'],
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: detectedLocationsResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
       },
     },
     '/locations/detected/promote': {
       post: {
-        summary: 'Promote detected location',
         description: 'Create a named location from detected coordinates.',
-        tags: ['Locations'],
         requestBody: {
           content: { 'application/json': { schema: promoteDetectedLocationBodySchema } },
         },
         responses: {
           200: {
-            description: 'Successful response',
             content: { 'application/json': { schema: addNamedLocationResponseSchema } },
+            description: 'Successful response',
           },
           400: {
-            description: 'Bad request',
             content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
           },
         },
         security: [{ bearerAuth: [] }],
+        summary: 'Promote detected location',
+        tags: ['Locations'],
+      },
+    },
+    '/locations/detected/stored': {
+      get: {
+        description: 'Get all stored detected locations with visit statistics.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: detectedLocationsResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get stored detected locations',
+        tags: ['Locations'],
+      },
+    },
+    '/locations/named': {
+      get: {
+        description: 'Get all user-defined named locations.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: namedLocationsResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get named locations',
+        tags: ['Locations'],
+      },
+      post: {
+        description: 'Create a named location.',
+        requestBody: {
+          content: { 'application/json': { schema: addNamedLocationBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: addNamedLocationResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add named location',
+        tags: ['Locations'],
+      },
+    },
+    '/locations/named/{id}': {
+      delete: {
+        description: 'Delete a named location by its ID.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Location ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Location not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete named location',
+        tags: ['Locations'],
+      },
+      patch: {
+        description: 'Update an existing named location.',
+        requestBody: {
+          content: { 'application/json': { schema: updateNamedLocationBodySchema } },
+        },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Location ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: addNamedLocationResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Location not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update named location',
+        tags: ['Locations'],
+      },
+    },
+    '/metrics': {
+      post: {
+        description: 'Add a manual health metric measurement.',
+        requestBody: {
+          content: { 'application/json': { schema: addMetricBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: addMetricResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add manual metric',
+        tags: ['Metrics'],
+      },
+    },
+    // --- Metrics ---
+    '/metrics/{metric}': {
+      get: {
+        description:
+          'Query health metrics for a time range. Returns time series data with timestamps and values.',
+        requestParams: {
+          path: z.object({ metric: metricTypeSchema }),
+          query: z.object({
+            end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: queryMetricsResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+          401: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unauthorized',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Query time series metrics',
+        tags: ['Metrics'],
+      },
+    },
+
+    // --- Period Summary ---
+    '/period-summary': {
+      get: {
+        description:
+          'Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness.',
+        requestParams: {
+          query: z.object({
+            end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+            metrics: z.string().meta({ description: 'Comma-separated list of metrics' }),
+            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: periodSummaryResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get period summary',
+        tags: ['Summary'],
       },
     },
 
     // --- Productivity ---
     '/productivity': {
       get: {
-        summary: 'Get productivity data',
         description: 'Get RescueTime productivity data for a time range.',
-        tags: ['Productivity'],
         requestParams: {
           query: z.object({
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
           }),
         },
         responses: {
           200: {
-            description: 'Successful response',
             content: { 'application/json': { schema: productivityResponseSchema } },
+            description: 'Successful response',
           },
         },
         security: [{ bearerAuth: [] }],
+        summary: 'Get productivity data',
+        tags: ['Productivity'],
       },
     },
-
-    // --- User Settings ---
-    '/user/settings': {
-      get: {
-        summary: 'Get user settings',
+    '/sync/oura': {
+      post: {
         description:
-          'Get user settings including birth date and effective HR zones. HR zones are used to calculate time spent in different heart rate zones during exercise.',
-        tags: ['Settings'],
-        responses: {
-          200: {
-            description: 'Successful response',
-            content: { 'application/json': { schema: userSettingsResponseSchema } },
-          },
-        },
-        security: [{ bearerAuth: [] }],
-      },
-      patch: {
-        summary: 'Update user settings',
-        description:
-          'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
-        tags: ['Settings'],
+          'Sync data from Oura Ring API. Fetches cardiovascular age, readiness, resilience, sleep scores, meditation sessions, and tags.',
         requestBody: {
-          content: { 'application/json': { schema: updateSettingsInputSchema } },
+          content: { 'application/json': { schema: syncOuraBodySchema } },
         },
         responses: {
           200: {
+            content: { 'application/json': { schema: syncResponseSchema } },
             description: 'Successful response',
-            content: { 'application/json': { schema: userSettingsResponseSchema } },
           },
           400: {
-            description: 'Bad request',
             content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
           },
         },
         security: [{ bearerAuth: [] }],
+        summary: 'Sync Oura data',
+        tags: ['Sync'],
+      },
+    },
+    '/sync/rescuetime': {
+      post: {
+        description:
+          'Sync productivity data from RescueTime API. Fetches application and website usage with productivity scores.',
+        requestBody: {
+          content: { 'application/json': { schema: syncRescueTimeBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: syncResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Sync RescueTime data',
+        tags: ['Sync'],
       },
     },
 
     // --- Sync ---
     '/sync/status': {
       get: {
-        summary: 'Get sync status',
         description:
           'Get the current sync status for Oura and RescueTime data sources. Shows last sync time, status, and any errors.',
-        tags: ['Sync'],
         requestParams: {
           query: z.object({
             provider: z.enum(['oura', 'rescuetime', 'all']).optional().meta({
@@ -543,58 +469,131 @@ const openApiDocument = createDocument({
         },
         responses: {
           200: {
-            description: 'Successful response',
             content: { 'application/json': { schema: syncStatusResponseSchema } },
+            description: 'Successful response',
           },
         },
         security: [{ bearerAuth: [] }],
+        summary: 'Get sync status',
+        tags: ['Sync'],
       },
     },
-    '/sync/oura': {
-      post: {
-        summary: 'Sync Oura data',
-        description:
-          'Sync data from Oura Ring API. Fetches cardiovascular age, readiness, resilience, sleep scores, meditation sessions, and tags.',
-        tags: ['Sync'],
-        requestBody: {
-          content: { 'application/json': { schema: syncOuraBodySchema } },
+
+    // --- Tags ---
+    '/tags': {
+      get: {
+        description: 'Get tags/labels for a time range.',
+        requestParams: {
+          query: z.object({
+            end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+          }),
         },
         responses: {
           200: {
+            content: { 'application/json': { schema: tagsResponseSchema } },
             description: 'Successful response',
-            content: { 'application/json': { schema: syncResponseSchema } },
-          },
-          400: {
-            description: 'Bad request',
-            content: { 'application/json': { schema: errorResponseSchema } },
           },
         },
         security: [{ bearerAuth: [] }],
+        summary: 'Get tags',
+        tags: ['Tags'],
       },
-    },
-    '/sync/rescuetime': {
       post: {
-        summary: 'Sync RescueTime data',
-        description:
-          'Sync productivity data from RescueTime API. Fetches application and website usage with productivity scores.',
-        tags: ['Sync'],
+        description: 'Add a manual tag/label to mark an activity or event.',
         requestBody: {
-          content: { 'application/json': { schema: syncRescueTimeBodySchema } },
+          content: { 'application/json': { schema: addTagBodySchema } },
         },
         responses: {
           200: {
+            content: { 'application/json': { schema: addTagResponseSchema } },
             description: 'Successful response',
-            content: { 'application/json': { schema: syncResponseSchema } },
           },
           400: {
-            description: 'Bad request',
             content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
           },
         },
         security: [{ bearerAuth: [] }],
+        summary: 'Add tag',
+        tags: ['Tags'],
+      },
+    },
+    '/tags/{externalId}': {
+      delete: {
+        description: 'Delete a tag by its external ID.',
+        requestParams: {
+          path: z.object({
+            externalId: z.string().meta({ description: 'External ID of the tag to delete' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteTagResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Tag not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete tag',
+        tags: ['Tags'],
+      },
+    },
+
+    // --- User Settings ---
+    '/user/settings': {
+      get: {
+        description:
+          'Get user settings including birth date and effective HR zones. HR zones are used to calculate time spent in different heart rate zones during exercise.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: userSettingsResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get user settings',
+        tags: ['Settings'],
+      },
+      patch: {
+        description:
+          'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
+        requestBody: {
+          content: { 'application/json': { schema: updateSettingsInputSchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: userSettingsResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update user settings',
+        tags: ['Settings'],
       },
     },
   },
+  servers: [
+    { description: 'Production', url: 'https://aurboda.net/api' },
+    { description: 'Development', url: 'http://localhost:3000' },
+  ],
+  tags: [
+    { description: 'Time series health metrics', name: 'Metrics' },
+    { description: 'Daily and period summaries', name: 'Summary' },
+    { description: 'Activity tags/labels', name: 'Tags' },
+    { description: 'Sleep, exercise, meditation sessions', name: 'Activities' },
+    { description: 'Named and detected locations', name: 'Locations' },
+    { description: 'RescueTime productivity data', name: 'Productivity' },
+    { description: 'User settings and preferences', name: 'Settings' },
+    { description: 'Data synchronization with external services', name: 'Sync' },
+  ],
 })
 
 // Write to file
