@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom'
 import { getActivities, getLocations, getTimeSeries } from './db'
 import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
+import { getSettings } from './services/settings'
 
 export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   const now = new Date()
@@ -13,7 +14,9 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   const user = 'fiddur'
 
   const { places } = await getLocations(user, start, end)
-  const rtData = await rescuetimeClient(process.env.RESCUETIME_KEY ?? '').getIntervalData(start, end)
+  const settings = await getSettings(user)
+  const rtData =
+    settings.rescueTimeKey ? await rescuetimeClient(settings.rescueTimeKey).getIntervalData(start, end) : []
   const ouraToken = await oura.getAccessToken(user)
   const tags = await oura.getTags(start, end, ouraToken)
   const meditations = await oura.getSessions(start, end, ouraToken)

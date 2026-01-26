@@ -28,20 +28,27 @@ export const updateZoneThreshold = (
 export const computeSettingsUpdateParams = (
   formBirthDate: string,
   formHrZones: HrZoneThresholds | null,
+  formRescueTimeKey: string,
   serverSettings: UserSettingsResponse | undefined,
 ): UpdateUserSettingsParams | null => {
   const params: UpdateUserSettingsParams = {}
 
-  // Check birthDate changes
-  const serverBirthDate = serverSettings?.birthDate ?? ''
+  // Check birth_date changes
+  const serverBirthDate = serverSettings?.birth_date ?? ''
   if (formBirthDate !== serverBirthDate) {
-    params.birthDate = formBirthDate || null
+    params.birth_date = formBirthDate || null
   }
 
-  // Check hrZoneStart changes - treat null and undefined as equivalent
-  const serverZones = serverSettings?.hrZoneStart ?? null
+  // Check hr_zone_start changes - treat null and undefined as equivalent
+  const serverZones = serverSettings?.hr_zone_start ?? null
   if (JSON.stringify(formHrZones) !== JSON.stringify(serverZones)) {
-    params.hrZoneStart = formHrZones
+    params.hr_zone_start = formHrZones
+  }
+
+  // Check rescue_time_key changes
+  const serverRescueTimeKey = serverSettings?.rescue_time_key ?? ''
+  if (formRescueTimeKey !== serverRescueTimeKey) {
+    params.rescue_time_key = formRescueTimeKey || null
   }
 
   return Object.keys(params).length > 0 ? params : null

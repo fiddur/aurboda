@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod'
-import { getUserSettings, upsertUserSettings } from '../db'
+import { getOAuthToken, getUserSettings, upsertUserSettings } from '../db'
 
 // ============================================================================
 // Types
@@ -14,6 +14,7 @@ export type HrZoneThresholds = { 1: number; 2: number; 3: number; 4: number; 5: 
 export interface UserSettings {
   birthDate?: string // YYYY-MM-DD
   hrZoneStart?: HrZoneThresholds
+  rescueTimeKey?: string // RescueTime API key (personal token)
 }
 
 export interface HrZoneSecs {
@@ -29,9 +30,12 @@ export type HrZoneSource = 'custom' | 'age_based' | 'default'
 
 export interface SettingsResponse {
   success: boolean
-  birthDate: string | null
-  hrZoneStart: HrZoneThresholds
-  hrZoneStartSource: HrZoneSource
+  birth_date: string | null
+  hr_zone_start: HrZoneThresholds
+  hr_zone_start_source: HrZoneSource
+  rescue_time_key: string | null
+  oura_connected: boolean
+  oura_configured: boolean // Whether Oura OAuth is configured on the server
   error?: string
 }
 
@@ -63,9 +67,12 @@ export const birthDateSchema = z
     { message: 'Invalid date' },
   )
 
+export const rescueTimeKeySchema = z.string().min(1, 'RescueTime API key cannot be empty')
+
 export const updateSettingsInputSchema = z.object({
   birthDate: birthDateSchema.nullable().optional(),
   hrZoneStart: hrZoneThresholdsSchema.nullable().optional(),
+  rescueTimeKey: rescueTimeKeySchema.nullable().optional(),
 })
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
@@ -168,11 +175,16 @@ export const getEffectiveHrZones = async (
 export const getSettingsResponse = async (user: string): Promise<SettingsResponse> => {
   const settings = await getSettings(user)
   const { zones, source } = await getEffectiveHrZones(user)
+  const ouraToken = await getOAuthToken(user, 'oura')
+  const ouraConfigured = !!(process.env.OURA_CLIENT && process.env.OURA_SECRET)
 
   return {
-    birthDate: settings.birthDate ?? null,
-    hrZoneStart: zones,
-    hrZoneStartSource: source,
+    birth_date: settings.birthDate ?? null,
+    hr_zone_start: zones,
+    hr_zone_start_source: source,
+    oura_configured: ouraConfigured,
+    oura_connected: ouraToken !== null,
+    rescue_time_key: settings.rescueTimeKey ?? null,
     success: true,
   }
 }
@@ -187,10 +199,13 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   if (!parsed.success) {
     const errorMessage = parsed.error.issues.map((e) => e.message).join('; ')
     return {
-      birthDate: null,
+      birth_date: null,
       error: errorMessage,
-      hrZoneStart: calculateDefaultHrZones(null),
-      hrZoneStartSource: 'default',
+      hr_zone_start: calculateDefaultHrZones(null),
+      hr_zone_start_source: 'default',
+      oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
+      oura_connected: false,
+      rescue_time_key: null,
       success: false,
     }
   }
@@ -202,6 +217,9 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   }
   if (parsed.data.hrZoneStart !== undefined) {
     updates.hrZoneStart = parsed.data.hrZoneStart === null ? undefined : parsed.data.hrZoneStart
+  }
+  if (parsed.data.rescueTimeKey !== undefined) {
+    updates.rescueTimeKey = parsed.data.rescueTimeKey === null ? undefined : parsed.data.rescueTimeKey
   }
 
   // Apply updates

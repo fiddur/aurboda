@@ -288,9 +288,12 @@ export interface PeriodSummaryResponse {
 
 export interface UserSettingsResponse {
   success: boolean
-  hrZoneStart?: HrZoneThresholds
-  hrZoneStartSource?: 'custom' | 'age_based' | 'default'
-  birthDate?: string
+  hr_zone_start?: HrZoneThresholds
+  hr_zone_start_source?: 'custom' | 'age_based' | 'default'
+  birth_date?: string
+  rescue_time_key?: string
+  oura_connected?: boolean
+  oura_configured?: boolean
 }
 
 // Fetch period summary for specified metrics
@@ -323,14 +326,15 @@ export const fetchUserSettings = async (): Promise<UserSettingsResponse> => {
 }
 
 export interface UpdateUserSettingsParams {
-  birthDate?: string | null
-  hrZoneStart?: HrZoneThresholds | null
+  birth_date?: string | null
+  hr_zone_start?: HrZoneThresholds | null
+  rescue_time_key?: string | null
 }
 
 // Update user settings
 export const updateUserSettings = async (params: UpdateUserSettingsParams): Promise<UserSettingsResponse> => {
   const { token } = auth.value
-  const response = await axios.post<UserSettingsResponse>(`${API_URL}/user/settings`, params, {
+  const response = await axios.patch<UserSettingsResponse>(`${API_URL}/user/settings`, params, {
     headers: { Authorization: `Bearer ${token}` },
   })
 

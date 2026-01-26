@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
+import { API_URL } from '../../config'
 import { fetchUserSettings, HrZoneThresholds, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
@@ -20,12 +21,14 @@ export function Settings() {
   // Form state
   const [birthDate, setBirthDate] = useState<string>('')
   const [hrZones, setHrZones] = useState<HrZoneThresholds | null>(null)
+  const [rescueTimeKey, setRescueTimeKey] = useState<string>('')
   const [hasChanges, setHasChanges] = useState(false)
 
   // Initialize form when data loads
   const initializeForm = () => {
-    setBirthDate(userSettings?.birthDate ?? '')
-    setHrZones(userSettings?.hrZoneStart ?? null)
+    setBirthDate(userSettings?.birth_date ?? '')
+    setHrZones(userSettings?.hr_zone_start ?? null)
+    setRescueTimeKey(userSettings?.rescue_time_key ?? '')
     setHasChanges(false)
   }
 
@@ -68,11 +71,22 @@ export function Settings() {
     setHasChanges(true)
   }
 
+  const handleRescueTimeKeyChange = (e: Event) => {
+    const value = (e.target as HTMLInputElement).value
+    setRescueTimeKey(value)
+    setHasChanges(true)
+  }
+
   const handleSave = () => {
-    const params = computeSettingsUpdateParams(birthDate, hrZones, userSettings)
+    const params = computeSettingsUpdateParams(birthDate, hrZones, rescueTimeKey, userSettings)
     if (params) {
       mutation.mutate(params)
     }
+  }
+
+  const handleConnectOura = () => {
+    // Redirect to Oura OAuth flow
+    window.location.href = `${API_URL}/auth/connectOura`
   }
 
   if (!isLoggedIn) {
@@ -106,6 +120,49 @@ export function Settings() {
           <input id="birth-date" type="date" value={birthDate} onChange={handleBirthDateChange} />
           <p class="field-description">
             Used to calculate age-based HR zone thresholds if custom zones are not set.
+          </p>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Data Sources</h2>
+
+        <div class="form-field">
+          <label>Oura Ring</label>
+          {userSettings?.oura_connected ?
+            <p class="connected-status">Connected</p>
+          : userSettings?.oura_configured === false ?
+            <button type="button" class="connect-button" disabled>
+              Connect Oura
+            </button>
+          : <button type="button" class="connect-button" onClick={handleConnectOura}>
+              Connect Oura
+            </button>
+          }
+          {userSettings?.oura_configured === false ?
+            <p class="field-description warning">
+              Oura OAuth is not configured on the server. Ask your administrator to set up OURA_CLIENT and
+              OURA_SECRET environment variables.
+            </p>
+          : <p class="field-description">Connect your Oura Ring to sync sleep scores, readiness, and more.</p>
+          }
+        </div>
+
+        <div class="form-field">
+          <label for="rescuetime-key">RescueTime API Key</label>
+          <input
+            id="rescuetime-key"
+            type="password"
+            value={rescueTimeKey}
+            onInput={handleRescueTimeKeyChange}
+            placeholder="Enter your RescueTime API key"
+          />
+          <p class="field-description">
+            Get your API key from{' '}
+            <a href="https://www.rescuetime.com/anapi/manage" target="_blank" rel="noopener noreferrer">
+              RescueTime API settings
+            </a>
+            . Used to sync productivity data.
           </p>
         </div>
       </section>

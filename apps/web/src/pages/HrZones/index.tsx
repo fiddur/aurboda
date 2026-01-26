@@ -103,7 +103,7 @@ export function HrZones() {
     )
   }
 
-  const thresholds: HrZoneThresholds = userSettings?.hrZoneStart ?? defaultHrZoneThresholds
+  const thresholds: HrZoneThresholds = userSettings?.hr_zone_start ?? defaultHrZoneThresholds
   const metrics = periodSummary?.metrics ?? []
 
   return (
