@@ -70,7 +70,7 @@ describe('computeSettingsUpdateParams', () => {
     expect(result).toBe(null)
   })
 
-  test('returns only birth_date when only that changed', () => {
+  test('returns only birthDate when only that changed', () => {
     const result = computeSettingsUpdateParams(
       '1985-06-20',
       baseServerSettings.hr_zone_start!,
@@ -81,7 +81,7 @@ describe('computeSettingsUpdateParams', () => {
     expect(result).toEqual({ birth_date: '1985-06-20' })
   })
 
-  test('returns only hr_zone_start when only that changed', () => {
+  test('returns only hrZoneStart when only that changed', () => {
     const newZones: HrZoneThresholds = { 1: 95, 2: 110, 3: 130, 4: 150, 5: 170 }
     const result = computeSettingsUpdateParams('1990-01-15', newZones, 'test-key-123', baseServerSettings)
 
