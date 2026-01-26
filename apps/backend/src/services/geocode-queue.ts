@@ -131,6 +131,7 @@ export const initGeocodeQueue = async (): Promise<InstanceType<typeof PgBossModu
   const PgBoss = PgBossModule.PgBoss
   boss = new PgBoss({
     connectionString,
+    max: 3, // Limit connection pool to prevent exhausting PostgreSQL connections
     schema: 'pgboss',
   })
 
