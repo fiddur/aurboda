@@ -16,30 +16,45 @@ export function Home() {
       </div>
 
       <section class="intro">
-        <p>Gather all your Self Quantification data into one place.</p>
         <p>
-          The aim is to gather and visualize all relevant data, offer a connection with your AI agent, find
-          correlations. Current state:
+          Your health data is scattered across apps and services. Aurboda brings it all together, letting you
+          visualize trends and discuss your health with AI assistants.
         </p>
+
+        <h3>What it does</h3>
         <ul>
           <li>
-            Aurboda backend offers an API and MCP to fetch and discuss the data with an AI (Claude, or any
-            that uses MCP). It also detects locations and geocodes, offering the user to name visited
-            locations.
+            <strong>Aggregates</strong> health data from Android Health Connect, Oura, OwnTracks, and
+            RescueTime into one place.
           </li>
           <li>
-            Aurboda Android funnels Health Connect data into the backend, and shows minutes in HR zones for
-            last week, also with a widget.
+            <strong>Visualizes</strong> your heart rate zones, sleep patterns, location history, and exercise
+            data.
           </li>
-          <li>Aurboda web offers timeline visualizations and location timeline naming (very early stage).</li>
+          <li>
+            <strong>Connects to AI</strong> via MCP (Model Context Protocol), making your data available to
+            Claude and other AI assistants for analysis and insights.
+          </li>
         </ul>
+
+        <div class="screenshots">
+          <figure>
+            <img src="/screenshots/app.jpg" alt="Aurboda Android app showing HR zone minutes" />
+            <figcaption>Android app: HR zone tracking</figcaption>
+          </figure>
+          <figure>
+            <img src="/screenshots/widget.jpg" alt="Aurboda home screen widget" />
+            <figcaption>Home screen widget</figcaption>
+          </figure>
+        </div>
+
         <p>
           <a href="https://github.com/fiddur/aurboda" target="_blank" rel="noopener noreferrer">
             View on GitHub
           </a>
         </p>
         <p class="note">
-          I currently don't offer any public signup, but contact me through{' '}
+          Currently in early development. No public signup yet, but you can self-host or contact me through{' '}
           <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
             reddit
           </a>
