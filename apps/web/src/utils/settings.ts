@@ -1,4 +1,4 @@
-import type { HrZoneThresholds, UpdateUserSettingsParams, UserSettingsResponse } from '../state/api'
+import type { HrZoneThresholds, UpdateSettingsInput, UserSettingsResponse } from '../state/api'
 import { defaultHrZoneThresholds } from './hrZones'
 
 /**
@@ -30,8 +30,8 @@ export const computeSettingsUpdateParams = (
   formHrZones: HrZoneThresholds | null,
   formRescueTimeKey: string,
   serverSettings: UserSettingsResponse | undefined,
-): UpdateUserSettingsParams | null => {
-  const params: UpdateUserSettingsParams = {}
+): UpdateSettingsInput | null => {
+  const params: UpdateSettingsInput = {}
 
   // Check birth_date changes
   const serverBirthDate = serverSettings?.birth_date ?? ''

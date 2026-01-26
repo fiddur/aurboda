@@ -1,29 +1,45 @@
+import type {
+  ActivitiesQuery,
+  ActivitiesResponse,
+  AddNamedLocationResponse,
+  Activity as ApiActivity,
+  DetectedLocation as ApiDetectedLocation,
+  PlaceVisit as ApiPlaceVisit,
+  ProductivityRecord as ApiProductivityRecord,
+  Tag as ApiTag,
+  HrZoneThresholds,
+  LocationsQuery,
+  LocationsResponse,
+  NamedLocation,
+  NamedLocationsResponse,
+  PeriodMetricStats,
+  PeriodSummaryQuery,
+  PeriodSummaryResponse,
+  ProductivityQuery,
+  ProductivityResponse,
+  PromoteDetectedLocationBody,
+  QueryMetricsQuery,
+  QueryMetricsResponse,
+  TagsQuery,
+  TagsResponse,
+  UpdateSettingsInput,
+  UserSettingsResponse,
+} from '@aurboda/api-spec'
 import axios from 'axios'
 import { API_URL } from '../config'
 import { auth } from './auth'
 
-// Types for timeline data
+// Frontend types with Date objects (converted from API string types)
 export type ActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap'
 
-export interface Activity {
-  id?: string
-  source: string
-  activityType: ActivityType
+export interface Activity extends Omit<ApiActivity, 'startTime' | 'endTime'> {
   startTime: Date
   endTime?: Date
-  title?: string
-  notes?: string
 }
 
-export interface ProductivityRecord {
-  source?: string
+export interface ProductivityRecord extends Omit<ApiProductivityRecord, 'startTime' | 'endTime'> {
   startTime: Date
   endTime: Date
-  activity: string
-  category?: string
-  productivity?: number
-  durationSec: number
-  isMobile?: boolean
 }
 
 export interface Place {
@@ -32,63 +48,38 @@ export interface Place {
   endTime: Date
 }
 
-export interface PlaceVisit {
-  name: string
-  lat?: number
-  lon?: number
+export interface PlaceVisit extends Omit<ApiPlaceVisit, 'startTime' | 'endTime'> {
   startTime: Date
   endTime: Date
   durationMinutes: number
-  source: 'named' | 'detected' | 'owntracks' | 'unknown'
-  address?: string
-  detectedLocationId?: string
 }
 
-export interface StoredDetectedLocation {
-  id: string
-  lat: number
-  lon: number
-  radius: number
-  totalMinutes: number
-  visitCount: number
+export interface StoredDetectedLocation extends Omit<ApiDetectedLocation, 'firstVisit' | 'lastVisit'> {
   firstVisit: Date
   lastVisit: Date
-  address: string | null
-  geocodeStatus: 'pending' | 'geocoding' | 'success' | 'failed'
 }
 
-export interface NamedLocation {
-  id: string
-  name: string
-  lat: number
-  lon: number
-  radius: number
-}
-
-export interface Tag {
-  id?: string
-  source: string
-  externalId?: string
-  tag: string
+export interface Tag extends Omit<ApiTag, 'startTime' | 'endTime'> {
   startTime: Date
   endTime?: Date
 }
 
+// Re-export API types that don't need Date conversion
+export type { HrZoneThresholds, NamedLocation, PeriodMetricStats, UpdateSettingsInput, UserSettingsResponse }
+
 // Fetch heart rate data for the specified date range
 export const fetchHeartRate = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
-  const response = await axios.get<{
-    success: boolean
-    data: { time: string; value: number }[]
-  }>(`${API_URL}/metrics/heart_rate`, {
+  const params: QueryMetricsQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<QueryMetricsResponse>(`${API_URL}/metrics/heart_rate`, {
     headers: { Authorization: `Bearer ${token}` },
-    params: {
-      end: end.toISOString(),
-      start: start.toISOString(),
-    },
+    params,
   })
 
-  return response.data.data.map(({ time, value }) => [new Date(time), value])
+  return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
 // Fetch activities (sleep, exercise, meditation) for the specified date range
@@ -98,19 +89,17 @@ export const fetchActivities = async (
   types?: ActivityType[],
 ): Promise<Activity[]> => {
   const { token } = auth.value
-  const response = await axios.get<{
-    success: boolean
-    data: (Activity & { startTime: string; endTime?: string })[]
-  }>(`${API_URL}/activities`, {
+  const params: ActivitiesQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+    types: types?.join(','),
+  }
+  const response = await axios.get<ActivitiesResponse>(`${API_URL}/activities`, {
     headers: { Authorization: `Bearer ${token}` },
-    params: {
-      end: end.toISOString(),
-      start: start.toISOString(),
-      types: types?.join(','),
-    },
+    params,
   })
 
-  return response.data.data.map((activity) => ({
+  return (response.data.data ?? []).map((activity) => ({
     ...activity,
     endTime: activity.endTime ? new Date(activity.endTime) : undefined,
     startTime: new Date(activity.startTime),
@@ -120,18 +109,16 @@ export const fetchActivities = async (
 // Fetch productivity data (RescueTime) for the specified date range
 export const fetchProductivity = async (start: Date, end: Date): Promise<ProductivityRecord[]> => {
   const { token } = auth.value
-  const response = await axios.get<{
-    success: boolean
-    data: (ProductivityRecord & { startTime: string; endTime: string })[]
-  }>(`${API_URL}/productivity`, {
+  const params: ProductivityQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<ProductivityResponse>(`${API_URL}/productivity`, {
     headers: { Authorization: `Bearer ${token}` },
-    params: {
-      end: end.toISOString(),
-      start: start.toISOString(),
-    },
+    params,
   })
 
-  return response.data.data.map((record) => ({
+  return (response.data.data ?? []).map((record) => ({
     ...record,
     endTime: new Date(record.endTime),
     startTime: new Date(record.startTime),
@@ -141,20 +128,19 @@ export const fetchProductivity = async (start: Date, end: Date): Promise<Product
 // Fetch location/place data for the specified date range
 export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
   const { token } = auth.value
-  const response = await axios.get<{
-    success: boolean
-    data: (Place & { startTime: string; endTime: string })[]
-  }>(`${API_URL}/locations`, {
+  const params: LocationsQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<LocationsResponse>(`${API_URL}/locations`, {
     headers: { Authorization: `Bearer ${token}` },
-    params: {
-      end: end.toISOString(),
-      start: start.toISOString(),
-    },
+    params,
   })
 
-  return response.data.data.map((place) => ({
+  return (response.data.data ?? []).map((place) => ({
     ...place,
     endTime: new Date(place.endTime),
+    region: place.name,
     startTime: new Date(place.startTime),
   }))
 }
@@ -162,18 +148,16 @@ export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
 // Fetch tags for the specified date range
 export const fetchTags = async (start: Date, end: Date): Promise<Tag[]> => {
   const { token } = auth.value
-  const response = await axios.get<{
-    success: boolean
-    data: (Tag & { startTime: string; endTime?: string })[]
-  }>(`${API_URL}/tags`, {
+  const params: TagsQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<TagsResponse>(`${API_URL}/tags`, {
     headers: { Authorization: `Bearer ${token}` },
-    params: {
-      end: end.toISOString(),
-      start: start.toISOString(),
-    },
+    params,
   })
 
-  return response.data.data.map((tag) => ({
+  return (response.data.data ?? []).map((tag) => ({
     ...tag,
     endTime: tag.endTime ? new Date(tag.endTime) : undefined,
     startTime: new Date(tag.startTime),
@@ -183,22 +167,16 @@ export const fetchTags = async (start: Date, end: Date): Promise<Tag[]> => {
 // Fetch place visits for the specified date range
 export const fetchPlaceVisits = async (start: Date, end: Date): Promise<PlaceVisit[]> => {
   const { token } = auth.value
-  const response = await axios.get<{
-    success: boolean
-    data: (Omit<PlaceVisit, 'startTime' | 'endTime' | 'durationMinutes'> & {
-      startTime: string
-      endTime: string
-      duration: number
-    })[]
-  }>(`${API_URL}/locations`, {
+  const params: LocationsQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<LocationsResponse>(`${API_URL}/locations`, {
     headers: { Authorization: `Bearer ${token}` },
-    params: {
-      end: end.toISOString(),
-      start: start.toISOString(),
-    },
+    params,
   })
 
-  return response.data.data.map((place) => ({
+  return (response.data.data ?? []).map((place) => ({
     ...place,
     durationMinutes: place.duration,
     endTime: new Date(place.endTime),
@@ -209,15 +187,12 @@ export const fetchPlaceVisits = async (start: Date, end: Date): Promise<PlaceVis
 // Fetch stored detected locations
 export const fetchStoredDetectedLocations = async (): Promise<StoredDetectedLocation[]> => {
   const { token } = auth.value
-  const response = await axios.get<{
-    success: boolean
-    data: (Omit<StoredDetectedLocation, 'firstVisit' | 'lastVisit'> & {
-      firstVisit: string
-      lastVisit: string
-    })[]
-  }>(`${API_URL}/locations/detected/stored`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  const response = await axios.get<{ success: boolean; data: ApiDetectedLocation[] }>(
+    `${API_URL}/locations/detected/stored`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
 
   return response.data.data.map((loc) => ({
     ...loc,
@@ -229,71 +204,27 @@ export const fetchStoredDetectedLocations = async (): Promise<StoredDetectedLoca
 // Fetch named locations
 export const fetchNamedLocations = async (): Promise<NamedLocation[]> => {
   const { token } = auth.value
-  const response = await axios.get<{
-    success: boolean
-    data: NamedLocation[]
-  }>(`${API_URL}/locations/named`, {
+  const response = await axios.get<NamedLocationsResponse>(`${API_URL}/locations/named`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 
-  return response.data.data
+  return response.data.data ?? []
 }
 
 // Promote a detected location to a named location
-export const promoteDetectedLocation = async (params: {
-  lat: number
-  lon: number
-  name: string
-  radius?: number
-}): Promise<NamedLocation> => {
+export const promoteDetectedLocation = async (
+  params: PromoteDetectedLocationBody,
+): Promise<NamedLocation> => {
   const { token } = auth.value
-  const response = await axios.post<{
-    success: boolean
-    data: NamedLocation
-  }>(`${API_URL}/locations/detected/promote`, params, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  const response = await axios.post<AddNamedLocationResponse>(
+    `${API_URL}/locations/detected/promote`,
+    params,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
 
-  return response.data.data
-}
-
-// HR Zone types and API functions
-export interface HrZoneThresholds {
-  1: number
-  2: number
-  3: number
-  4: number
-  5: number
-}
-
-export interface PeriodMetricStats {
-  metric: string
-  unit: string
-  avg?: number
-  min?: number
-  max?: number
-  sum?: number
-  count?: number
-  stddev?: number
-  trend?: number
-  data_points?: number
-}
-
-export interface PeriodSummaryResponse {
-  success: boolean
-  metrics: PeriodMetricStats[]
-  period_start?: string
-  period_end?: string
-}
-
-export interface UserSettingsResponse {
-  success: boolean
-  hr_zone_start?: HrZoneThresholds
-  hr_zone_start_source?: 'custom' | 'age_based' | 'default'
-  birth_date?: string
-  rescue_time_key?: string
-  oura_connected?: boolean
-  oura_configured?: boolean
+  return response.data.data!
 }
 
 // Fetch period summary for specified metrics
@@ -303,13 +234,14 @@ export const fetchPeriodSummary = async (
   metrics: string[],
 ): Promise<PeriodSummaryResponse> => {
   const { token } = auth.value
+  const params: PeriodSummaryQuery = {
+    end: end.toISOString(),
+    metrics: metrics.join(','),
+    start: start.toISOString(),
+  }
   const response = await axios.get<PeriodSummaryResponse>(`${API_URL}/period-summary`, {
     headers: { Authorization: `Bearer ${token}` },
-    params: {
-      end: end.toISOString(),
-      metrics: metrics.join(','),
-      start: start.toISOString(),
-    },
+    params,
   })
 
   return response.data
@@ -325,14 +257,8 @@ export const fetchUserSettings = async (): Promise<UserSettingsResponse> => {
   return response.data
 }
 
-export interface UpdateUserSettingsParams {
-  birth_date?: string | null
-  hr_zone_start?: HrZoneThresholds | null
-  rescue_time_key?: string | null
-}
-
 // Update user settings
-export const updateUserSettings = async (params: UpdateUserSettingsParams): Promise<UserSettingsResponse> => {
+export const updateUserSettings = async (params: UpdateSettingsInput): Promise<UserSettingsResponse> => {
   const { token } = auth.value
   const response = await axios.patch<UserSettingsResponse>(`${API_URL}/user/settings`, params, {
     headers: { Authorization: `Bearer ${token}` },
