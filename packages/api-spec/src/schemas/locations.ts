@@ -115,13 +115,14 @@ export type DetectedLocationsResponse = z.infer<typeof detectedLocationsResponse
 
 /**
  * Detected locations query schema.
+ * Note: min_duration stays as string for Express ParsedQs compatibility.
  */
 export const detectedLocationsQuerySchema = z
   .object({
     end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-    min_duration: z.coerce.number().optional().meta({
+    min_duration: z.string().regex(/^\d+$/, 'Must be a positive integer').optional().meta({
       description: 'Minimum stay duration in minutes',
-      example: 60,
+      example: '60',
     }),
     start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
   })

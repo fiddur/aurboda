@@ -9,7 +9,7 @@ export default [
   ...ts.configs.recommended,
   eslintPluginPrettierRecommended,
   {
-    ignores: ['**/generated/**'],
+    ignores: ['**/generated/**', '**/dist/**'],
   },
   {
     languageOptions: {

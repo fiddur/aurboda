@@ -1,17 +1,43 @@
 import {
+  type ActivitiesQuery,
+  activitiesQuerySchema,
   type ActivitiesResponse,
+  type AddMetricBody,
+  addMetricBodySchema,
   type AddMetricResponse,
+  type AddNamedLocationBody,
+  addNamedLocationBodySchema,
   type AddNamedLocationResponse,
+  type AddTagBody,
+  addTagBodySchema,
   type AddTagResponse,
+  type DailySummaryQuery,
+  dailySummaryQuerySchema,
   type DailySummaryResponse,
   type DeleteTagResponse,
+  type DetectedLocationsQuery,
+  detectedLocationsQuerySchema,
   type DetectedLocationsResponse,
+  type LocationsQuery,
+  locationsQuerySchema,
   type LocationsResponse,
   type NamedLocationsResponse,
+  type PeriodSummaryQuery,
+  periodSummaryQuerySchema,
   type PeriodSummaryResponse,
+  type ProductivityQuery,
+  productivityQuerySchema,
   type ProductivityResponse,
+  type PromoteDetectedLocationBody,
+  promoteDetectedLocationBodySchema,
+  type QueryMetricsQuery,
+  queryMetricsQuerySchema,
   type QueryMetricsResponse,
+  type TagsQuery,
+  tagsQuerySchema,
   type TagsResponse,
+  type UpdateNamedLocationBody,
+  updateNamedLocationBodySchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
 import { json } from 'body-parser'
@@ -19,6 +45,7 @@ import cors from 'cors'
 import { subHours } from 'date-fns'
 import express, { RequestHandler, Response } from 'express'
 import { Client } from 'pg'
+import { z } from 'zod'
 import { createAuth } from './auth'
 import {
   DailyAggregate,
@@ -126,6 +153,45 @@ const main = async () => {
     }
     return next(unauthorized)
   }
+
+  /**
+   * Create a validation middleware for request body using a Zod schema.
+   * Returns 400 with detailed validation errors on failure.
+   */
+  const validateBody =
+    <T extends z.ZodTypeAny>(schema: T): RequestHandler =>
+    (req, res, next) => {
+      const result = schema.safeParse(req.body)
+      if (!result.success) {
+        res.status(400).json({
+          error: result.error.flatten().fieldErrors,
+          success: false,
+        })
+        return
+      }
+      req.body = result.data
+      next()
+    }
+
+  /**
+   * Create a validation middleware for query parameters using a Zod schema.
+   * Returns 400 with detailed validation errors on failure.
+   * The validated data is assigned back to req.query; route generics provide typing.
+   */
+  const validateQuery =
+    <T extends z.ZodTypeAny>(schema: T): RequestHandler =>
+    (req, res, next) => {
+      const result = schema.safeParse(req.query)
+      if (!result.success) {
+        res.status(400).json({
+          error: result.error.flatten().fieldErrors,
+          success: false,
+        })
+        return
+      }
+      ;(req as unknown as { query: z.infer<T> }).query = result.data
+      next()
+    }
 
   // httpd.post('/v2/signup', async (req, res, next) => {
   //   const { username: user, password } = req.body
@@ -400,213 +466,143 @@ const main = async () => {
   // ==========================================================================
 
   // GET /metrics/:metric - Query time series metrics
-  httpd.get('/metrics/:metric', authMiddleware, async (req, res: Response<QueryMetricsResponse>) => {
-    const { metric } = req.params
-    const { start, end } = req.query as { start?: string; end?: string }
-    const user = req.user!
+  httpd.get<{ metric: string }, QueryMetricsResponse, unknown, QueryMetricsQuery>(
+    '/metrics/:metric',
+    authMiddleware,
+    validateQuery(queryMetricsQuerySchema),
+    async (req, res) => {
+      const { metric } = req.params
+      const { start, end } = req.query
+      const user = req.user!
 
-    if (!isValidMetric(metric)) {
-      return res.status(400).json({
-        error: `Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`,
-        success: false,
-      })
-    }
+      if (!isValidMetric(metric)) {
+        return res.status(400).json({
+          error: `Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`,
+          success: false,
+        })
+      }
 
-    if (!start || !end) {
-      return res.status(400).json({
-        error: 'Missing required query parameters: start, end',
-        success: false,
-      })
-    }
-
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      return res.status(400).json({
-        error: 'Invalid date format. Use ISO 8601 format.',
-        success: false,
-      })
-    }
-
-    const result = await queryMetrics(user, metric, startDate, endDate)
-    res.json({ ...result, success: true })
-  })
+      const result = await queryMetrics(user, metric, new Date(start), new Date(end))
+      res.json({ ...result, success: true })
+    },
+  )
 
   // GET /daily-summary - Get comprehensive summary for a day
-  httpd.get('/daily-summary', authMiddleware, async (req, res: Response<DailySummaryResponse>) => {
-    const { date } = req.query as { date?: string }
-    const user = req.user!
+  httpd.get<Record<string, never>, DailySummaryResponse, unknown, DailySummaryQuery>(
+    '/daily-summary',
+    authMiddleware,
+    validateQuery(dailySummaryQuerySchema),
+    async (req, res) => {
+      const { date } = req.query
+      const user = req.user!
 
-    if (!date) {
-      return res.status(400).json({ error: 'Missing required query parameter: date', success: false })
-    }
-
-    const dateMatch = date.match(/^\d{4}-\d{2}-\d{2}$/)
-    if (!dateMatch) {
-      return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD format.', success: false })
-    }
-
-    const dateObj = new Date(date)
-    if (isNaN(dateObj.getTime())) {
-      return res.status(400).json({ error: 'Invalid date.', success: false })
-    }
-
-    const summary = await getDailySummary(user, dateObj, syncProvider)
-    res.json({ data: summary, success: true })
-  })
+      const summary = await getDailySummary(user, new Date(date), syncProvider)
+      res.json({ data: summary, success: true })
+    },
+  )
 
   // GET /period-summary - Get aggregated stats for a period
-  httpd.get('/period-summary', authMiddleware, async (req, res: Response<PeriodSummaryResponse>) => {
-    const {
-      start,
-      end,
-      metrics: metricsParam,
-    } = req.query as { start?: string; end?: string; metrics?: string }
-    const user = req.user!
+  httpd.get<Record<string, never>, PeriodSummaryResponse, unknown, PeriodSummaryQuery>(
+    '/period-summary',
+    authMiddleware,
+    validateQuery(periodSummaryQuerySchema),
+    async (req, res) => {
+      const { start, end, metrics: metricsParam } = req.query
+      const user = req.user!
 
-    if (!start || !end || !metricsParam) {
-      return res
-        .status(400)
-        .json({ error: 'Missing required query parameters: start, end, metrics', success: false })
-    }
+      const metrics = metricsParam.split(',')
+      const invalidMetrics = metrics.filter((m) => !isValidMetric(m))
+      if (invalidMetrics.length > 0) {
+        return res.status(400).json({
+          error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
+          success: false,
+        })
+      }
 
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
-    }
-
-    const metrics = metricsParam.split(',')
-    const invalidMetrics = metrics.filter((m) => !isValidMetric(m))
-    if (invalidMetrics.length > 0) {
-      return res.status(400).json({
-        error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
-        success: false,
-      })
-    }
-
-    const summary = await getPeriodSummary(user, metrics as MetricType[], startDate, endDate)
-    res.json({ ...summary, success: true })
-  })
+      const summary = await getPeriodSummary(user, metrics as MetricType[], new Date(start), new Date(end))
+      res.json({ ...summary, success: true })
+    },
+  )
 
   // GET /tags - Query tags for a time range
-  httpd.get('/tags', authMiddleware, async (req, res: Response<TagsResponse>) => {
-    const { start, end } = req.query as { start?: string; end?: string }
-    const user = req.user!
+  httpd.get<Record<string, never>, TagsResponse, unknown, TagsQuery>(
+    '/tags',
+    authMiddleware,
+    validateQuery(tagsQuerySchema),
+    async (req, res) => {
+      const { start, end } = req.query
+      const user = req.user!
 
-    if (!start || !end) {
-      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
-    }
-
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
-    }
-
-    const tags = await queryTags(user, startDate, endDate, syncProvider)
-    res.json({ data: tags, success: true })
-  })
+      const tags = await queryTags(user, new Date(start), new Date(end), syncProvider)
+      res.json({ data: tags, success: true })
+    },
+  )
 
   // POST /tags - Add a manual tag
-  httpd.post('/tags', authMiddleware, async (req, res: Response<AddTagResponse>) => {
-    const { tag, start_time, end_time } = req.body as { tag?: string; start_time?: string; end_time?: string }
-    const user = req.user!
+  httpd.post<Record<string, never>, AddTagResponse, AddTagBody>(
+    '/tags',
+    authMiddleware,
+    validateBody(addTagBodySchema),
+    async (req, res) => {
+      const { tag, start_time, end_time } = req.body
+      const user = req.user!
 
-    if (!tag || !start_time) {
-      return res.status(400).json({ error: 'Missing required fields: tag, start_time', success: false })
-    }
+      const startDate = new Date(start_time)
+      const endDate = end_time ? new Date(end_time) : undefined
 
-    const startDate = new Date(start_time)
-    if (isNaN(startDate.getTime())) {
-      return res
-        .status(400)
-        .json({ error: 'Invalid start_time format. Use ISO 8601 format.', success: false })
-    }
-
-    let endDate: Date | undefined
-    if (end_time) {
-      endDate = new Date(end_time)
-      if (isNaN(endDate.getTime())) {
-        return res
-          .status(400)
-          .json({ error: 'Invalid end_time format. Use ISO 8601 format.', success: false })
-      }
-    }
-
-    const result = await addTag(user, { endTime: endDate, startTime: startDate, tag })
-    res.json(result)
-  })
+      const result = await addTag(user, { endTime: endDate, startTime: startDate, tag })
+      res.json(result)
+    },
+  )
 
   // GET /activities - Query activities for a time range
-  httpd.get('/activities', authMiddleware, async (req, res: Response<ActivitiesResponse>) => {
-    const { start, end, types: typesParam } = req.query as { start?: string; end?: string; types?: string }
-    const user = req.user!
+  httpd.get<Record<string, never>, ActivitiesResponse, unknown, ActivitiesQuery>(
+    '/activities',
+    authMiddleware,
+    validateQuery(activitiesQuerySchema),
+    async (req, res) => {
+      const { start, end, types: typesParam } = req.query
+      const user = req.user!
 
-    if (!start || !end) {
-      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
-    }
+      const types = (typesParam?.split(',') || ['sleep', 'exercise', 'meditation']) as (
+        | 'sleep'
+        | 'exercise'
+        | 'meditation'
+        | 'nap'
+      )[]
 
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
-    }
-
-    const types = (typesParam?.split(',') || ['sleep', 'exercise', 'meditation']) as (
-      | 'sleep'
-      | 'exercise'
-      | 'meditation'
-      | 'nap'
-    )[]
-
-    const activities = await queryActivities(user, types, startDate, endDate, syncProvider)
-    res.json({ data: activities, success: true })
-  })
+      const activities = await queryActivities(user, types, new Date(start), new Date(end), syncProvider)
+      res.json({ data: activities, success: true })
+    },
+  )
 
   // GET /productivity - Query productivity data for a time range
-  httpd.get('/productivity', authMiddleware, async (req, res: Response<ProductivityResponse>) => {
-    const { start, end } = req.query as { start?: string; end?: string }
-    const user = req.user!
+  httpd.get<Record<string, never>, ProductivityResponse, unknown, ProductivityQuery>(
+    '/productivity',
+    authMiddleware,
+    validateQuery(productivityQuerySchema),
+    async (req, res) => {
+      const { start, end } = req.query
+      const user = req.user!
 
-    if (!start || !end) {
-      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
-    }
-
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
-    }
-
-    const productivity = await queryProductivity(user, startDate, endDate, syncProvider)
-    res.json({ data: productivity, success: true })
-  })
+      const productivity = await queryProductivity(user, new Date(start), new Date(end), syncProvider)
+      res.json({ data: productivity, success: true })
+    },
+  )
 
   // GET /locations - Query location data for a time range
-  httpd.get('/locations', authMiddleware, async (req, res: Response<LocationsResponse>) => {
-    const { start, end } = req.query as { start?: string; end?: string }
-    const user = req.user!
+  httpd.get<Record<string, never>, LocationsResponse, unknown, LocationsQuery>(
+    '/locations',
+    authMiddleware,
+    validateQuery(locationsQuerySchema),
+    async (req, res) => {
+      const { start, end } = req.query
+      const user = req.user!
 
-    if (!start || !end) {
-      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
-    }
-
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
-    }
-
-    const places = await queryLocations(user, startDate, endDate)
-    res.json({ data: places, success: true })
-  })
+      const places = await queryLocations(user, new Date(start), new Date(end))
+      res.json({ data: places, success: true })
+    },
+  )
 
   // ==========================================================================
   // Named Locations API
@@ -619,57 +615,32 @@ const main = async () => {
   })
 
   // POST /locations/named - Create a named location
-  httpd.post('/locations/named', authMiddleware, async (req, res: Response<AddNamedLocationResponse>) => {
-    const { name, lat, lon, radius } = req.body as {
-      name?: string
-      lat?: number
-      lon?: number
-      radius?: number
-    }
-    const user = req.user!
-
-    if (!name || lat === undefined || lon === undefined) {
-      return res.status(400).json({ error: 'Missing required fields: name, lat, lon', success: false })
-    }
-
-    if (typeof lat !== 'number' || typeof lon !== 'number') {
-      return res.status(400).json({ error: 'lat and lon must be numbers', success: false })
-    }
-
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      return res.status(400).json({ error: 'Invalid coordinates', success: false })
-    }
-
-    const location = await insertNamedLocation(user, { lat, lon, name, radius })
-    res.json({ data: location, success: true })
-  })
-
-  // PATCH /locations/named/:id - Update a named location
-  httpd.patch(
-    '/locations/named/:id',
+  httpd.post<Record<string, never>, AddNamedLocationResponse, AddNamedLocationBody>(
+    '/locations/named',
     authMiddleware,
-    async (req, res: Response<AddNamedLocationResponse>) => {
-      const { id } = req.params
-      const { name, lat, lon, radius } = req.body as {
-        name?: string
-        lat?: number
-        lon?: number
-        radius?: number
-      }
+    validateBody(addNamedLocationBodySchema),
+    async (req, res) => {
+      const { name, lat, lon, radius } = req.body
       const user = req.user!
 
-      if (lat !== undefined && lon === undefined) {
-        return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
-      }
-      if (lon !== undefined && lat === undefined) {
-        return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
-      }
+      const location = await insertNamedLocation(user, { lat, lon, name, radius })
+      res.json({ data: location, success: true })
+    },
+  )
 
-      if (lat !== undefined && (lat < -90 || lat > 90)) {
-        return res.status(400).json({ error: 'Invalid latitude', success: false })
-      }
-      if (lon !== undefined && (lon < -180 || lon > 180)) {
-        return res.status(400).json({ error: 'Invalid longitude', success: false })
+  // PATCH /locations/named/:id - Update a named location
+  httpd.patch<{ id: string }, AddNamedLocationResponse, UpdateNamedLocationBody>(
+    '/locations/named/:id',
+    authMiddleware,
+    validateBody(updateNamedLocationBodySchema),
+    async (req, res) => {
+      const { id } = req.params
+      const { name, lat, lon, radius } = req.body
+      const user = req.user!
+
+      // lat and lon must be updated together
+      if ((lat !== undefined) !== (lon !== undefined)) {
+        return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
       }
 
       const location = await updateNamedLocation(user, id, { lat, lon, name, radius })
@@ -691,33 +662,22 @@ const main = async () => {
   })
 
   // GET /locations/detected - Get computed detected location clusters (on-demand analysis)
-  httpd.get('/locations/detected', authMiddleware, async (req, res: Response<DetectedLocationsResponse>) => {
-    const { start, end, minDuration } = req.query as { start?: string; end?: string; minDuration?: string }
-    const user = req.user!
+  httpd.get<Record<string, never>, DetectedLocationsResponse, unknown, DetectedLocationsQuery>(
+    '/locations/detected',
+    authMiddleware,
+    validateQuery(detectedLocationsQuerySchema),
+    async (req, res) => {
+      const { start, end, min_duration } = req.query
+      const user = req.user!
 
-    if (!start || !end) {
-      return res.status(400).json({ error: 'Missing required query parameters: start, end', success: false })
-    }
-
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format.', success: false })
-    }
-
-    const minDurationMinutes = minDuration ? parseInt(minDuration, 10) : undefined
-    if (minDuration && (isNaN(minDurationMinutes!) || minDurationMinutes! <= 0)) {
-      return res.status(400).json({ error: 'minDuration must be a positive number', success: false })
-    }
-
-    const detected = await getDetectedLocations(user, {
-      end: endDate,
-      minDurationMinutes,
-      start: startDate,
-    })
-    res.json({ data: detected, success: true })
-  })
+      const detected = await getDetectedLocations(user, {
+        end: new Date(end),
+        minDurationMinutes: min_duration ? parseInt(min_duration, 10) : undefined,
+        start: new Date(start),
+      })
+      res.json({ data: detected, success: true })
+    },
+  )
 
   // GET /locations/detected/stored - Get stored detected locations with addresses
   httpd.get(
@@ -737,25 +697,13 @@ const main = async () => {
   )
 
   // POST /locations/detected/promote - Promote detected location to named
-  httpd.post(
+  httpd.post<Record<string, never>, AddNamedLocationResponse, PromoteDetectedLocationBody>(
     '/locations/detected/promote',
     authMiddleware,
-    async (req, res: Response<AddNamedLocationResponse>) => {
-      const { lat, lon, name, radius } = req.body as {
-        lat?: number
-        lon?: number
-        name?: string
-        radius?: number
-      }
+    validateBody(promoteDetectedLocationBodySchema),
+    async (req, res) => {
+      const { lat, lon, name, radius } = req.body
       const user = req.user!
-
-      if (!name || lat === undefined || lon === undefined) {
-        return res.status(400).json({ error: 'Missing required fields: name, lat, lon', success: false })
-      }
-
-      if (typeof lat !== 'number' || typeof lon !== 'number') {
-        return res.status(400).json({ error: 'lat and lon must be numbers', success: false })
-      }
 
       const location = await insertNamedLocation(user, { lat, lon, name, radius })
       res.json({ data: location, success: true })
@@ -763,29 +711,20 @@ const main = async () => {
   )
 
   // POST /metrics - Add a manual metric measurement
-  httpd.post('/metrics', authMiddleware, async (req, res: Response<AddMetricResponse>) => {
-    const { metric, value, time } = req.body as { metric?: string; value?: number; time?: string }
-    const user = req.user!
+  httpd.post<Record<string, never>, AddMetricResponse, AddMetricBody>(
+    '/metrics',
+    authMiddleware,
+    validateBody(addMetricBodySchema),
+    async (req, res) => {
+      const { metric, value, time } = req.body
+      const user = req.user!
 
-    if (!metric || value === undefined) {
-      return res.status(400).json({ error: 'Missing required fields: metric, value', success: false })
-    }
+      const measurementTime = time ? new Date(time) : new Date()
 
-    if (!isValidMetric(metric)) {
-      return res.status(400).json({
-        error: `Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`,
-        success: false,
-      })
-    }
-
-    const measurementTime = time ? new Date(time) : new Date()
-    if (isNaN(measurementTime.getTime())) {
-      return res.status(400).json({ error: 'Invalid time format. Use ISO 8601 format.', success: false })
-    }
-
-    const result = await addMetric(user, { metric, time: measurementTime, value })
-    res.json(result)
-  })
+      const result = await addMetric(user, { metric, time: measurementTime, value })
+      res.json(result)
+    },
+  )
 
   // GET /user/settings - Get user settings with effective HR zones
   httpd.get('/user/settings', authMiddleware, async (req, res: Response<UserSettingsResponse>) => {
