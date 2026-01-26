@@ -25,6 +25,7 @@ services:
 
   postgres:
     image: postgis/postgis:16-3.4-alpine
+    command: postgres -c max_connections=200
     environment:
       - POSTGRES_USER=aurboda_service
       - POSTGRES_PASSWORD=aurboda_dev_password

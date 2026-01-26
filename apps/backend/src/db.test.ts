@@ -3,12 +3,18 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 // Create mock query function that will be used by the mocked module
 const mockQueryFn = vi.fn()
 
+// Mock connect function
+const mockConnectFn = vi.fn()
+
+// Track Client constructor calls
+const mockClientConstructor = vi.fn().mockImplementation(() => ({
+  connect: mockConnectFn,
+  query: mockQueryFn,
+}))
+
 // Mock pg Client
 vi.mock('pg', () => ({
-  Client: vi.fn().mockImplementation(() => ({
-    connect: vi.fn(),
-    query: mockQueryFn,
-  })),
+  Client: mockClientConstructor,
 }))
 
 // Mock pg-format
@@ -292,5 +298,76 @@ describe('deleteTag', () => {
     const result = await deleteTag('testuser', 'nonexistent-tag')
 
     expect(result).toBe(false)
+  })
+})
+
+describe('loginToUserDb', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
+    mockConnectFn.mockResolvedValue(undefined)
+  })
+
+  test('creates new connection on first login', async () => {
+    const { loginToUserDb } = await import('./db.js')
+
+    await loginToUserDb('newuser', 'password123')
+
+    expect(mockClientConstructor).toHaveBeenCalledWith({
+      database: 'aurboda_newuser',
+      password: 'password123',
+      user: 'newuser',
+    })
+    expect(mockConnectFn).toHaveBeenCalledTimes(1)
+  })
+
+  test('reuses existing connection with same password', async () => {
+    const { loginToUserDb } = await import('./db.js')
+
+    // First login
+    await loginToUserDb('existinguser', 'password123')
+    expect(mockClientConstructor).toHaveBeenCalledTimes(1)
+    expect(mockConnectFn).toHaveBeenCalledTimes(1)
+
+    // Clear mocks to track subsequent calls
+    mockClientConstructor.mockClear()
+    mockConnectFn.mockClear()
+
+    // Second login with same password should NOT create a new connection
+    await loginToUserDb('existinguser', 'password123')
+    expect(mockClientConstructor).not.toHaveBeenCalled()
+    expect(mockConnectFn).not.toHaveBeenCalled()
+  })
+
+  test('throws error when password does not match existing connection', async () => {
+    const { loginToUserDb } = await import('./db.js')
+
+    // First login with correct password
+    await loginToUserDb('existinguser', 'password123')
+
+    // Second login with different password should throw
+    await expect(loginToUserDb('existinguser', 'wrongpassword')).rejects.toThrow(
+      'authentication failed for user',
+    )
+  })
+
+  test('creates separate connections for different users', async () => {
+    const { loginToUserDb } = await import('./db.js')
+
+    await loginToUserDb('user1', 'password1')
+    await loginToUserDb('user2', 'password2')
+
+    expect(mockClientConstructor).toHaveBeenCalledTimes(2)
+    expect(mockClientConstructor).toHaveBeenCalledWith({
+      database: 'aurboda_user1',
+      password: 'password1',
+      user: 'user1',
+    })
+    expect(mockClientConstructor).toHaveBeenCalledWith({
+      database: 'aurboda_user2',
+      password: 'password2',
+      user: 'user2',
+    })
   })
 })
