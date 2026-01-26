@@ -3,6 +3,9 @@ node_modules
 dist/
 coverage/
 
+# Generated code from OpenAPI specs
+packages/api-spec/generated/
+
 # Android/IntelliJ
 #
 build/
