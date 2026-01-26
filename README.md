@@ -47,8 +47,8 @@ Data Sources
 |--------|-------|
 | Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), configure backend URL |
 | OwnTracks | [OwnTracks setup guide](docs/owntracks.md) (JSON HTTP mode) |
-| Oura | Configure API token in backend |
-| RescueTime | Configure API token in backend |
+| Oura | Configure API token in user settings (web UI) |
+| RescueTime | Configure API token in user settings (web UI) - *planned* |
 
 
 MCP Integration
