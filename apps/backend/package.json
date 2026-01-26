@@ -26,6 +26,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@aurboda/api-spec": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "axios": "^1.11.0",
     "body-parser": "^1.20.3",

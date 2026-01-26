@@ -1,0 +1,38 @@
+{
+  "name": "@aurboda/api-spec",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./schemas": {
+      "import": "./dist/schemas/index.js",
+      "types": "./dist/schemas/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "generate:openapi": "tsx src/openapi.ts",
+    "generate:ts": "openapi-ts",
+    "generate:kotlin": "npx @openapitools/openapi-generator-cli generate -i ./generated/openapi.yaml -g kotlin -o ./generated/kotlin --additional-properties=serializationLibrary=kotlinx_serialization,packageName=net.aurboda.api,modelPackage=net.aurboda.api.models",
+    "generate": "pnpm generate:openapi && pnpm generate:ts && pnpm generate:kotlin",
+    "fix": "eslint --fix",
+    "check": "tsc --noEmit && eslint"
+  },
+  "dependencies": {
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.64.0",
+    "@openapitools/openapi-generator-cli": "^2.16.0",
+    "@types/node": "^22.18.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "yaml": "^2.7.0",
+    "zod-openapi": "^5.4.3"
+  }
+}

@@ -67,23 +67,23 @@ describe('formatBpmRange', () => {
 
 describe('findMetricTimeSeconds', () => {
   test('returns time for existing metric', () => {
-    const metrics: PeriodMetricStats[] = [
+    const metrics = [
       { avg: 1000, metric: 'hr_zone_0_sec', unit: 'sec' },
       { avg: 2000, metric: 'hr_zone_1_sec', unit: 'sec' },
       { avg: 3000, metric: 'hr_zone_2_sec', unit: 'sec' },
-    ]
+    ] as PeriodMetricStats[]
 
     expect(findMetricTimeSeconds(metrics, 'hr_zone_1_sec')).toBe(2000)
   })
 
   test('returns 0 for missing metric', () => {
-    const metrics: PeriodMetricStats[] = [{ avg: 1000, metric: 'hr_zone_0_sec', unit: 'sec' }]
+    const metrics = [{ avg: 1000, metric: 'hr_zone_0_sec', unit: 'sec' }] as PeriodMetricStats[]
 
     expect(findMetricTimeSeconds(metrics, 'hr_zone_5_sec')).toBe(0)
   })
 
   test('returns 0 when avg is undefined', () => {
-    const metrics: PeriodMetricStats[] = [{ metric: 'hr_zone_0_sec', unit: 'sec' }]
+    const metrics = [{ metric: 'hr_zone_0_sec', unit: 'sec' }] as PeriodMetricStats[]
 
     expect(findMetricTimeSeconds(metrics, 'hr_zone_0_sec')).toBe(0)
   })
@@ -93,7 +93,7 @@ describe('findMetricTimeSeconds', () => {
   })
 
   test('handles decimal values', () => {
-    const metrics: PeriodMetricStats[] = [{ avg: 2498.28, metric: 'hr_zone_1_sec', unit: 'sec' }]
+    const metrics = [{ avg: 2498.28, metric: 'hr_zone_1_sec', unit: 'sec' }] as PeriodMetricStats[]
 
     expect(findMetricTimeSeconds(metrics, 'hr_zone_1_sec')).toBe(2498.28)
   })

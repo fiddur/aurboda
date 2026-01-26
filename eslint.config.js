@@ -9,6 +9,9 @@ export default [
   ...ts.configs.recommended,
   eslintPluginPrettierRecommended,
   {
+    ignores: ['**/generated/**', '**/dist/**'],
+  },
+  {
     languageOptions: {
       globals: {
         ...globals.node,

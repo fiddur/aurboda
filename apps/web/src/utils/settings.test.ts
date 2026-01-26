@@ -52,12 +52,15 @@ describe('updateZoneThreshold', () => {
 })
 
 describe('computeSettingsUpdateParams', () => {
-  const baseServerSettings: UserSettingsResponse = {
+  const baseServerSettings = {
     birth_date: '1990-01-15',
     hr_zone_start: { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 },
+    hr_zone_start_source: 'custom',
+    oura_configured: false,
+    oura_connected: false,
     rescue_time_key: 'test-key-123',
     success: true,
-  }
+  } as UserSettingsResponse
 
   test('returns null when nothing changed', () => {
     const result = computeSettingsUpdateParams(
@@ -145,14 +148,27 @@ describe('computeSettingsUpdateParams', () => {
   })
 
   test('handles server settings with no birth_date', () => {
-    const serverSettings: UserSettingsResponse = { success: true }
+    // Server has no birth_date, form also empty - no changes
+    const serverSettings = {
+      hr_zone_start_source: 'default',
+      oura_configured: false,
+      oura_connected: false,
+      success: true,
+    } as UserSettingsResponse
     const result = computeSettingsUpdateParams('', null, '', serverSettings)
 
     expect(result).toBe(null)
   })
 
   test('handles server settings with no hr_zone_start', () => {
-    const serverSettings: UserSettingsResponse = { birth_date: '1990-01-15', success: true }
+    // Server has no hr_zone_start (undefined -> null), form has zones - change detected
+    const serverSettings = {
+      birth_date: '1990-01-15',
+      hr_zone_start_source: 'default',
+      oura_configured: false,
+      oura_connected: false,
+      success: true,
+    } as UserSettingsResponse
     const zones: HrZoneThresholds = { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 }
     const result = computeSettingsUpdateParams('1990-01-15', zones, '', serverSettings)
 
