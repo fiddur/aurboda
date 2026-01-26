@@ -1463,6 +1463,7 @@ export const getDailyAggregateValue = async (
 export interface UserSettings {
   birthDate?: string // YYYY-MM-DD
   hrZoneStart?: { 1: number; 2: number; 3: number; 4: number; 5: number }
+  rescueTimeKey?: string // RescueTime API key (personal token)
 }
 
 /**
@@ -1478,6 +1479,7 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
   return {
     birthDate: settings.birthDate as string | undefined,
     hrZoneStart: settings.hrZoneStart as UserSettings['hrZoneStart'],
+    rescueTimeKey: settings.rescueTimeKey as string | undefined,
   }
 }
 
@@ -1499,6 +1501,9 @@ export const upsertUserSettings = async (
   }
   if (updates.hrZoneStart !== undefined) {
     merged.hrZoneStart = updates.hrZoneStart
+  }
+  if (updates.rescueTimeKey !== undefined) {
+    merged.rescueTimeKey = updates.rescueTimeKey
   }
 
   // Check if settings row exists

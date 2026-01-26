@@ -12,6 +12,7 @@ import {
 
 // Mock the db module
 vi.mock('../db', () => ({
+  getOAuthToken: vi.fn(),
   getUserSettings: vi.fn(),
   upsertUserSettings: vi.fn(),
 }))
@@ -99,13 +100,16 @@ describe('getSettingsResponse', () => {
 
   test('returns formatted response with defaults when no settings', async () => {
     vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
 
     const result = await getSettingsResponse('testuser')
 
     expect(result.success).toBe(true)
-    expect(result.birthDate).toBeNull()
-    expect(result.hrZoneStartSource).toBe('default')
-    expect(result.hrZoneStart).toEqual({ 1: 90, 2: 108, 3: 126, 4: 144, 5: 162 })
+    expect(result.birth_date).toBeNull()
+    expect(result.hr_zone_start_source).toBe('default')
+    expect(result.hr_zone_start).toEqual({ 1: 90, 2: 108, 3: 126, 4: 144, 5: 162 })
+    expect(result.oura_connected).toBe(false)
+    expect(result.rescue_time_key).toBeNull()
   })
 
   test('returns formatted response with custom zones', async () => {
@@ -113,14 +117,18 @@ describe('getSettingsResponse', () => {
     vi.mocked(db.getUserSettings).mockResolvedValue({
       birthDate: '1985-03-15',
       hrZoneStart: customZones,
+      rescueTimeKey: 'test-key',
     })
+    vi.mocked(db.getOAuthToken).mockResolvedValue({ provider: 'oura', accessToken: 'token' })
 
     const result = await getSettingsResponse('testuser')
 
     expect(result.success).toBe(true)
-    expect(result.birthDate).toBe('1985-03-15')
-    expect(result.hrZoneStartSource).toBe('custom')
-    expect(result.hrZoneStart).toEqual(customZones)
+    expect(result.birth_date).toBe('1985-03-15')
+    expect(result.hr_zone_start_source).toBe('custom')
+    expect(result.hr_zone_start).toEqual(customZones)
+    expect(result.oura_connected).toBe(true)
+    expect(result.rescue_time_key).toBe('test-key')
   })
 })
 
@@ -136,11 +144,12 @@ describe('validateAndUpdateSettings', () => {
       .mockResolvedValueOnce({ birthDate: '1985-03-15' }) // for getSettings in getSettingsResponse
       .mockResolvedValueOnce({ birthDate: '1985-03-15' }) // for getEffectiveHrZones in getSettingsResponse
     vi.mocked(db.upsertUserSettings).mockResolvedValue({ birthDate: '1985-03-15' })
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
 
     const result = await validateAndUpdateSettings('testuser', { birthDate: '1985-03-15' })
 
     expect(result.success).toBe(true)
-    expect(result.birthDate).toBe('1985-03-15')
+    expect(result.birth_date).toBe('1985-03-15')
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { birthDate: '1985-03-15' })
   })
 
@@ -149,11 +158,12 @@ describe('validateAndUpdateSettings', () => {
     // After update, getUserSettings returns the new zones
     vi.mocked(db.getUserSettings).mockResolvedValue({ hrZoneStart: hrZones })
     vi.mocked(db.upsertUserSettings).mockResolvedValue({ hrZoneStart: hrZones })
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
 
     const result = await validateAndUpdateSettings('testuser', { hrZoneStart: hrZones })
 
     expect(result.success).toBe(true)
-    expect(result.hrZoneStartSource).toBe('custom')
+    expect(result.hr_zone_start_source).toBe('custom')
   })
 
   test('rejects invalid birth date format', async () => {

@@ -51,7 +51,7 @@ import {
   queryProductivity,
   queryTags,
 } from './services/queries'
-import { getSettingsResponse, validateAndUpdateSettings } from './services/settings'
+import { getSettings, getSettingsResponse, validateAndUpdateSettings } from './services/settings'
 import { createSyncProvider } from './services/sync-provider'
 import { reduceTimeSeries } from './utils'
 
@@ -75,7 +75,6 @@ const main = async () => {
   // Create sync provider for auto-syncing data before queries
   const syncProvider = createSyncProvider({
     oura,
-    rescueTimeKey: process.env.RESCUETIME_KEY,
   })
 
   const httpd = express()
@@ -242,10 +241,13 @@ const main = async () => {
   httpd.post('/sync/rescuetime', authMiddleware, async (req, res) => {
     const user = req.user!
     const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
-    const rescueTimeKey = process.env.RESCUETIME_KEY
+    const settings = await getSettings(user)
+    const rescueTimeKey = settings.rescueTimeKey
 
     if (!rescueTimeKey) {
-      return res.status(400).json({ error: 'RescueTime API key not configured', success: false })
+      return res
+        .status(400)
+        .json({ error: 'RescueTime API key not configured in user settings', success: false })
     }
 
     try {
@@ -316,8 +318,9 @@ const main = async () => {
 
     // Get productivity data from storage, falling back to RescueTime API
     let rtData = await getProductivity(user, start, end)
-    if (rtData.length === 0 && process.env.RESCUETIME_KEY) {
-      const freshData = await rescuetimeClient(process.env.RESCUETIME_KEY).getIntervalData(start, end)
+    const userSettings = await getSettings(user)
+    if (rtData.length === 0 && userSettings.rescueTimeKey) {
+      const freshData = await rescuetimeClient(userSettings.rescueTimeKey).getIntervalData(start, end)
       // Store fetched data for future use
       const productivityRecords = freshData.map((r) => ({
         activity: r.activity,

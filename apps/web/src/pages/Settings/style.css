@@ -51,13 +51,38 @@
   margin-bottom: 0.5rem;
 }
 
-.form-field input[type="date"] {
+.form-field input[type="date"],
+.form-field input[type="password"] {
   padding: 0.5rem;
   font-size: 1rem;
   border: 1px solid #ccc;
   border-radius: 4px;
   width: 100%;
+  max-width: 300px;
+}
+
+.form-field input[type="date"] {
   max-width: 200px;
+}
+
+.connected-status {
+  color: #4caf50;
+  font-weight: 500;
+  margin: 0;
+}
+
+.connect-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: #673ab8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.connect-button:hover {
+  background: #5e35b1;
 }
 
 .field-description {
@@ -167,10 +192,15 @@
   }
 
   .form-field input[type="date"],
+  .form-field input[type="password"],
   .zone-input input[type="number"] {
     background: #333;
     border-color: #555;
     color: #fff;
+  }
+
+  .form-field input[type="password"]::placeholder {
+    color: #888;
   }
 
   .reset-zones-button {
