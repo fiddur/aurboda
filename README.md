@@ -11,7 +11,7 @@ Your health data is scattered across apps and services. Aurboda aggregates it in
 
 - **Aggregates** health data from Android Health Connect, Oura, OwnTracks, and RescueTime
 - **Visualizes** heart rate zones, sleep patterns, location history, and exercise data
-- **Connects to AI** via MCP, making your data available to Claude and other AI assistants for analysis
+- **Exposes to AI** via MCP — connect Claude or other AI assistants to your Aurboda instance to query and analyze your data
 
 Currently in early development. No public signup, but self-hosting is straightforward.
 
