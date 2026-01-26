@@ -29,6 +29,11 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
 }
 
 export const loginToUserDb = async (user: string, password: string) => {
+  // Return early if we already have a connection for this user
+  if (dbByUser[user]) {
+    return
+  }
+
   const database = userDbName(user)
   dbByUser[user] = new Client({ database, password, user })
   await dbByUser[user].connect()

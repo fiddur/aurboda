@@ -7,7 +7,7 @@
 
 import pg from 'pg'
 import * as PgBossModule from 'pg-boss'
-import { updateDetectedLocation } from '../db'
+import { DetectedLocationUpdate } from '../db'
 import { reverseGeocode } from './geocoding'
 
 // ============================================================================
@@ -19,6 +19,17 @@ export interface GeocodeJobData {
   detectedLocationId: string
   lat: number
   lon: number
+}
+
+export interface GeocodeQueueDeps {
+  updateDetectedLocation: (user: string, id: string, updates: DetectedLocationUpdate) => Promise<unknown>
+}
+
+export interface GeocodeQueue {
+  getBoss: () => InstanceType<typeof PgBossModule.PgBoss> | null
+  enqueueJob: (data: GeocodeJobData) => Promise<string | null>
+  enqueueJobs: (user: string, locations: Array<{ id: string; lat: number; lon: number }>) => Promise<void>
+  stop: () => Promise<void>
 }
 
 // ============================================================================
@@ -35,11 +46,8 @@ const DEFAULT_GEOCODE_DB = 'aurboda'
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 // ============================================================================
-// Queue Instance
+// Database helpers
 // ============================================================================
-
-// pg-boss instance - typed as InstanceType of the PgBoss class
-let boss: InstanceType<typeof PgBossModule.PgBoss> | null = null
 
 /**
  * Get database connection parameters from environment.
@@ -109,12 +117,75 @@ const ensureDatabase = async (): Promise<boolean> => {
   }
 }
 
+// ============================================================================
+// Job handler factory
+// ============================================================================
+
 /**
- * Initialize the geocode queue.
- * Creates the database if it doesn't exist.
- * Returns null if PGUSER/PGPASSWORD are not configured.
+ * Create a job handler with the given dependencies.
  */
-export const initGeocodeQueue = async (): Promise<InstanceType<typeof PgBossModule.PgBoss> | null> => {
+const createJobHandler = (deps: GeocodeQueueDeps) => {
+  return async (jobs: PgBossModule.Job<GeocodeJobData>[]): Promise<void> => {
+    // Process jobs sequentially with rate limiting
+    for (const job of jobs) {
+      const { detectedLocationId, lat, lon, user } = job.data
+
+      console.log(`Processing geocode job for location ${detectedLocationId} at ${lat}, ${lon}`)
+
+      const result = await reverseGeocode(lat, lon)
+
+      // Rate limit: wait before allowing next request
+      // This ensures we respect Nominatim's 1 request/second limit
+      await sleep(RATE_LIMIT_DELAY_MS)
+
+      if (result.success) {
+        await deps.updateDetectedLocation(user, detectedLocationId, {
+          address: result.data.address,
+          geocodeStatus: 'success',
+        })
+        console.log(`Geocoded location ${detectedLocationId}: ${result.data.address}`)
+      } else {
+        // Handle different error types
+        const { error } = result
+        if (error.type === 'network') {
+          // Network error - retry by throwing
+          console.error(`Network error geocoding ${detectedLocationId}: ${error.message}`)
+          throw new Error(`Network error: ${error.message}`)
+        } else if (error.type === 'http') {
+          // HTTP error - retry for server errors (5xx), fail for client errors
+          if (error.status >= 500) {
+            console.error(`Server error geocoding ${detectedLocationId}: ${error.status}`)
+            throw new Error(`HTTP ${error.status}: ${error.statusText}`)
+          }
+          // Client error (4xx) - don't retry
+          console.warn(`HTTP ${error.status} for location ${detectedLocationId}, marking failed`)
+          await deps.updateDetectedLocation(user, detectedLocationId, {
+            geocodeStatus: 'failed',
+          })
+        } else {
+          // No results - valid response but location has no address
+          console.warn(`No address found for location ${detectedLocationId}`)
+          await deps.updateDetectedLocation(user, detectedLocationId, {
+            geocodeStatus: 'failed',
+          })
+        }
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Queue Factory
+// ============================================================================
+
+/**
+ * Create a geocode queue instance.
+ * Returns an object with queue operations, holding the boss instance internally.
+ *
+ * @param deps - Dependencies for the queue (updateDetectedLocation function)
+ * @returns GeocodeQueue instance or null if initialization fails
+ */
+export const createGeocodeQueue = async (deps: GeocodeQueueDeps): Promise<GeocodeQueue | null> => {
   // Ensure database exists before connecting
   const dbReady = await ensureDatabase()
   if (!dbReady) {
@@ -129,7 +200,7 @@ export const initGeocodeQueue = async (): Promise<InstanceType<typeof PgBossModu
 
   // pg-boss exports the constructor as PgBoss.PgBoss
   const PgBoss = PgBossModule.PgBoss
-  boss = new PgBoss({
+  const boss = new PgBoss({
     connectionString,
     max: 3, // Limit connection pool to prevent exhausting PostgreSQL connections
     schema: 'pgboss',
@@ -147,130 +218,53 @@ export const initGeocodeQueue = async (): Promise<InstanceType<typeof PgBossModu
 
   // Register the job handler
   // batchSize: 1 ensures only one job processes at a time across all instances
-  await boss.work(QUEUE_NAME, { batchSize: 1, pollingIntervalSeconds: 2 }, handleGeocodeJob)
+  await boss.work(QUEUE_NAME, { batchSize: 1, pollingIntervalSeconds: 2 }, createJobHandler(deps))
 
-  return boss
-}
-
-/**
- * Stop the geocode queue gracefully.
- */
-export const stopGeocodeQueue = async (): Promise<void> => {
-  if (boss) {
-    await boss.stop()
-    boss = null
-    console.log('Geocode queue stopped')
-  }
-}
-
-/**
- * Get the queue instance.
- */
-export const getGeocodeQueue = (): InstanceType<typeof PgBossModule.PgBoss> | null => boss
-
-// ============================================================================
-// Job Management
-// ============================================================================
-
-/**
- * Add a geocoding job to the queue.
- * Jobs are processed with a 1.1s delay to respect Nominatim rate limits.
- */
-export const enqueueGeocodeJob = async (data: GeocodeJobData): Promise<string | null> => {
-  if (!boss) {
-    // Queue not available - location stays in 'pending' status for future retry
-    console.warn('Geocode queue not initialized, skipping job')
-    return null
-  }
-
-  try {
-    const jobId = await boss.send(QUEUE_NAME, data, {
-      retryBackoff: true,
-      retryDelay: 60, // 60 seconds between retries
-      retryLimit: 3,
-    })
-
-    // Only mark as 'geocoding' after job is successfully enqueued
-    await updateDetectedLocation(data.user, data.detectedLocationId, {
-      geocodeStatus: 'geocoding',
-    })
-
-    console.log(`Enqueued geocode job ${jobId} for location ${data.detectedLocationId}`)
-    return jobId
-  } catch (error) {
-    // Enqueue failed - location stays in 'pending' status for future retry
-    console.error(`Failed to enqueue geocode job for ${data.detectedLocationId}:`, error)
-    return null
-  }
-}
-
-/**
- * Handle a geocoding job.
- * Fetches address from Nominatim and updates the detected location.
- * Enforces rate limiting by waiting after each request.
- */
-const handleGeocodeJob = async (jobs: PgBossModule.Job<GeocodeJobData>[]): Promise<void> => {
-  // Process jobs sequentially with rate limiting
-  for (const job of jobs) {
-    const { detectedLocationId, lat, lon, user } = job.data
-
-    console.log(`Processing geocode job for location ${detectedLocationId} at ${lat}, ${lon}`)
-
-    const result = await reverseGeocode(lat, lon)
-
-    // Rate limit: wait before allowing next request
-    // This ensures we respect Nominatim's 1 request/second limit
-    await sleep(RATE_LIMIT_DELAY_MS)
-
-    if (result.success) {
-      await updateDetectedLocation(user, detectedLocationId, {
-        address: result.data.address,
-        geocodeStatus: 'success',
-      })
-      console.log(`Geocoded location ${detectedLocationId}: ${result.data.address}`)
-    } else {
-      // Handle different error types
-      const { error } = result
-      if (error.type === 'network') {
-        // Network error - retry by throwing
-        console.error(`Network error geocoding ${detectedLocationId}: ${error.message}`)
-        throw new Error(`Network error: ${error.message}`)
-      } else if (error.type === 'http') {
-        // HTTP error - retry for server errors (5xx), fail for client errors
-        if (error.status >= 500) {
-          console.error(`Server error geocoding ${detectedLocationId}: ${error.status}`)
-          throw new Error(`HTTP ${error.status}: ${error.statusText}`)
-        }
-        // Client error (4xx) - don't retry
-        console.warn(`HTTP ${error.status} for location ${detectedLocationId}, marking failed`)
-        await updateDetectedLocation(user, detectedLocationId, {
-          geocodeStatus: 'failed',
+  // Return the queue interface
+  const queue: GeocodeQueue = {
+    enqueueJob: async (data: GeocodeJobData): Promise<string | null> => {
+      try {
+        const jobId = await boss.send(QUEUE_NAME, data, {
+          retryBackoff: true,
+          retryDelay: 60, // 60 seconds between retries
+          retryLimit: 3,
         })
-      } else {
-        // No results - valid response but location has no address
-        console.warn(`No address found for location ${detectedLocationId}`)
-        await updateDetectedLocation(user, detectedLocationId, {
-          geocodeStatus: 'failed',
+
+        // Only mark as 'geocoding' after job is successfully enqueued
+        await deps.updateDetectedLocation(data.user, data.detectedLocationId, {
+          geocodeStatus: 'geocoding',
+        })
+
+        console.log(`Enqueued geocode job ${jobId} for location ${data.detectedLocationId}`)
+        return jobId
+      } catch (error) {
+        // Enqueue failed - location stays in 'pending' status for future retry
+        console.error(`Failed to enqueue geocode job for ${data.detectedLocationId}:`, error)
+        return null
+      }
+    },
+
+    enqueueJobs: async (
+      user: string,
+      locations: Array<{ id: string; lat: number; lon: number }>,
+    ): Promise<void> => {
+      for (const loc of locations) {
+        await queue.enqueueJob({
+          detectedLocationId: loc.id,
+          lat: loc.lat,
+          lon: loc.lon,
+          user,
         })
       }
-    }
-  }
-}
+    },
 
-/**
- * Enqueue multiple geocoding jobs.
- * Useful after detection runs find new or moved locations.
- */
-export const enqueueGeocodeJobs = async (
-  user: string,
-  locations: Array<{ id: string; lat: number; lon: number }>,
-): Promise<void> => {
-  for (const loc of locations) {
-    await enqueueGeocodeJob({
-      detectedLocationId: loc.id,
-      lat: loc.lat,
-      lon: loc.lon,
-      user,
-    })
+    getBoss: () => boss,
+
+    stop: async (): Promise<void> => {
+      await boss.stop()
+      console.log('Geocode queue stopped')
+    },
   }
+
+  return queue
 }

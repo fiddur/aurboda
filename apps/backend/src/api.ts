@@ -8,6 +8,7 @@ import {
   DailyAggregate,
   getActivities,
   getAllSyncStates,
+  getDetectedLocationById,
   getLocations,
   getProductivity,
   getDetectedLocations as getStoredDetectedLocations,
@@ -24,6 +25,7 @@ import {
   query,
   resetSyncState,
   schemaInitialized,
+  updateDetectedLocation,
 } from './db'
 import { createMcpRouter } from './mcp'
 import { ouraClient } from './oura'
@@ -32,8 +34,9 @@ import { createOwnTracksRouter } from './owntracks'
 import { rescuetimeClient } from './rescuetime'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
-import { clearPendingDetections, triggerDetectionForUser } from './services/detection-trigger'
-import { initGeocodeQueue, stopGeocodeQueue } from './services/geocode-queue'
+import { createDetectionTrigger, DetectionTrigger } from './services/detection-trigger'
+import { runDetectionForUser } from './services/detection-worker'
+import { createGeocodeQueue, GeocodeQueue } from './services/geocode-queue'
 import {
   deleteNamedLocation,
   getDetectedLocations,
@@ -285,6 +288,22 @@ const main = async () => {
     }
   })
 
+  // Initialize geocode queue (creates 'aurboda' database if needed)
+  let geocodeQueue: GeocodeQueue | null = null
+  try {
+    geocodeQueue = await createGeocodeQueue({ updateDetectedLocation })
+  } catch (error) {
+    console.error('Failed to initialize geocode queue:', error)
+    // Continue without geocoding - it's optional
+  }
+
+  // Create detection trigger with geocode queue
+  const detectionTrigger: DetectionTrigger = createDetectionTrigger({
+    geocodeQueue,
+    getDetectedLocationById,
+    runDetectionForUser,
+  })
+
   // OwnTracks data endpoint (protected by Basic Auth using existing user credentials)
   httpd.use(
     '/ownTracks',
@@ -292,7 +311,7 @@ const main = async () => {
       insertLocation,
       insertPlace,
       loginToUserDb,
-      onLocationInserted: triggerDetectionForUser,
+      onLocationInserted: detectionTrigger.triggerDetectionForUser,
     }),
   )
 
@@ -738,14 +757,6 @@ const main = async () => {
     res.json(result)
   })
 
-  // Initialize geocode queue (creates 'aurboda' database if needed)
-  try {
-    await initGeocodeQueue()
-  } catch (error) {
-    console.error('Failed to initialize geocode queue:', error)
-    // Continue without geocoding - it's optional
-  }
-
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {
     console.log(`> Running on localhost:${port}`)
@@ -754,8 +765,10 @@ const main = async () => {
   // Graceful shutdown
   const shutdown = async () => {
     console.log('Shutting down...')
-    clearPendingDetections()
-    await stopGeocodeQueue()
+    detectionTrigger.clearPendingDetections()
+    if (geocodeQueue) {
+      await geocodeQueue.stop()
+    }
     await new Promise<void>((resolve, reject) => {
       server.close((err) => {
         if (err) reject(err)
