@@ -32,8 +32,8 @@ export function Home() {
             data.
           </li>
           <li>
-            <strong>Exposes to AI</strong> via MCP (Model Context Protocol) — connect Claude or other AI
-            assistants to your Aurboda instance and ask questions about your health data.
+            <strong>AI-ready</strong> via MCP (Model Context Protocol) — optionally connect Claude or other AI
+            assistants to your self-hosted instance to ask questions about your health data.
           </li>
         </ul>
 
