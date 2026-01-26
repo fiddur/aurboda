@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Build api-spec package
+        run: pnpm --filter @aurboda/api-spec build
+
       - name: Run TypeScript checks
         run: pnpm check
 
