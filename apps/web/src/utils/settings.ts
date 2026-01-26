@@ -32,16 +32,16 @@ export const computeSettingsUpdateParams = (
 ): UpdateUserSettingsParams | null => {
   const params: UpdateUserSettingsParams = {}
 
-  // Check birth_date changes
-  const serverBirthDate = serverSettings?.birth_date ?? ''
+  // Check birthDate changes
+  const serverBirthDate = serverSettings?.birthDate ?? ''
   if (formBirthDate !== serverBirthDate) {
-    params.birth_date = formBirthDate || null
+    params.birthDate = formBirthDate || null
   }
 
-  // Check hr_zone_start changes - treat null and undefined as equivalent
-  const serverZones = serverSettings?.hr_zone_start ?? null
+  // Check hrZoneStart changes - treat null and undefined as equivalent
+  const serverZones = serverSettings?.hrZoneStart ?? null
   if (JSON.stringify(formHrZones) !== JSON.stringify(serverZones)) {
-    params.hr_zone_start = formHrZones
+    params.hrZoneStart = formHrZones
   }
 
   return Object.keys(params).length > 0 ? params : null

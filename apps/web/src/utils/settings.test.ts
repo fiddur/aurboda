@@ -53,36 +53,36 @@ describe('updateZoneThreshold', () => {
 
 describe('computeSettingsUpdateParams', () => {
   const baseServerSettings: UserSettingsResponse = {
-    birth_date: '1990-01-15',
-    hr_zone_start: { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 },
+    birthDate: '1990-01-15',
+    hrZoneStart: { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 },
     success: true,
   }
 
   test('returns null when nothing changed', () => {
     const result = computeSettingsUpdateParams(
       '1990-01-15',
-      baseServerSettings.hr_zone_start!,
+      baseServerSettings.hrZoneStart!,
       baseServerSettings,
     )
 
     expect(result).toBe(null)
   })
 
-  test('returns only birth_date when only that changed', () => {
+  test('returns only birthDate when only that changed', () => {
     const result = computeSettingsUpdateParams(
       '1985-06-20',
-      baseServerSettings.hr_zone_start!,
+      baseServerSettings.hrZoneStart!,
       baseServerSettings,
     )
 
-    expect(result).toEqual({ birth_date: '1985-06-20' })
+    expect(result).toEqual({ birthDate: '1985-06-20' })
   })
 
-  test('returns only hr_zone_start when only that changed', () => {
+  test('returns only hrZoneStart when only that changed', () => {
     const newZones: HrZoneThresholds = { 1: 95, 2: 110, 3: 130, 4: 150, 5: 170 }
     const result = computeSettingsUpdateParams('1990-01-15', newZones, baseServerSettings)
 
-    expect(result).toEqual({ hr_zone_start: newZones })
+    expect(result).toEqual({ hrZoneStart: newZones })
   })
 
   test('returns both when both changed', () => {
@@ -90,42 +90,42 @@ describe('computeSettingsUpdateParams', () => {
     const result = computeSettingsUpdateParams('2000-12-25', newZones, baseServerSettings)
 
     expect(result).toEqual({
-      birth_date: '2000-12-25',
-      hr_zone_start: newZones,
+      birthDate: '2000-12-25',
+      hrZoneStart: newZones,
     })
   })
 
-  test('handles empty birth_date being set to null', () => {
-    const result = computeSettingsUpdateParams('', baseServerSettings.hr_zone_start!, baseServerSettings)
+  test('handles empty birthDate being set to null', () => {
+    const result = computeSettingsUpdateParams('', baseServerSettings.hrZoneStart!, baseServerSettings)
 
-    expect(result).toEqual({ birth_date: null })
+    expect(result).toEqual({ birthDate: null })
   })
 
-  test('handles clearing hr_zone_start (setting to null)', () => {
+  test('handles clearing hrZoneStart (setting to null)', () => {
     const result = computeSettingsUpdateParams('1990-01-15', null, baseServerSettings)
 
-    expect(result).toEqual({ hr_zone_start: null })
+    expect(result).toEqual({ hrZoneStart: null })
   })
 
   test('handles undefined server settings', () => {
     const result = computeSettingsUpdateParams('1990-01-15', null, undefined)
 
-    expect(result).toEqual({ birth_date: '1990-01-15' })
+    expect(result).toEqual({ birthDate: '1990-01-15' })
   })
 
-  test('handles server settings with no birth_date', () => {
+  test('handles server settings with no birthDate', () => {
     const serverSettings: UserSettingsResponse = { success: true }
     const result = computeSettingsUpdateParams('', null, serverSettings)
 
     expect(result).toBe(null)
   })
 
-  test('handles server settings with no hr_zone_start', () => {
-    const serverSettings: UserSettingsResponse = { birth_date: '1990-01-15', success: true }
+  test('handles server settings with no hrZoneStart', () => {
+    const serverSettings: UserSettingsResponse = { birthDate: '1990-01-15', success: true }
     const zones: HrZoneThresholds = { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 }
     const result = computeSettingsUpdateParams('1990-01-15', zones, serverSettings)
 
-    expect(result).toEqual({ hr_zone_start: zones })
+    expect(result).toEqual({ hrZoneStart: zones })
   })
 })
 

@@ -288,8 +288,9 @@ export interface PeriodSummaryResponse {
 
 export interface UserSettingsResponse {
   success: boolean
-  hr_zone_start?: HrZoneThresholds
-  birth_date?: string
+  hrZoneStart?: HrZoneThresholds
+  hrZoneStartSource?: 'custom' | 'age_based' | 'default'
+  birthDate?: string
 }
 
 // Fetch period summary for specified metrics
@@ -322,8 +323,8 @@ export const fetchUserSettings = async (): Promise<UserSettingsResponse> => {
 }
 
 export interface UpdateUserSettingsParams {
-  birth_date?: string | null
-  hr_zone_start?: HrZoneThresholds | null
+  birthDate?: string | null
+  hrZoneStart?: HrZoneThresholds | null
 }
 
 // Update user settings

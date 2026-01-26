@@ -24,8 +24,8 @@ export function Settings() {
 
   // Initialize form when data loads
   const initializeForm = () => {
-    setBirthDate(userSettings?.birth_date ?? '')
-    setHrZones(userSettings?.hr_zone_start ?? null)
+    setBirthDate(userSettings?.birthDate ?? '')
+    setHrZones(userSettings?.hrZoneStart ?? null)
     setHasChanges(false)
   }
 
