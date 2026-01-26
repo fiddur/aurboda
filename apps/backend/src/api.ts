@@ -294,7 +294,9 @@ const main = async () => {
     geocodeQueue = await createGeocodeQueue({ updateDetectedLocation })
   } catch (error) {
     console.error('Failed to initialize geocode queue:', error)
-    // Continue without geocoding - it's optional
+  }
+  if (!geocodeQueue) {
+    console.warn('Geocoding disabled - detected locations will not be reverse geocoded')
   }
 
   // Create detection trigger with geocode queue

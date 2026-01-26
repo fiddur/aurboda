@@ -13,7 +13,12 @@ import {
   tableCreationOrder,
 } from './schema'
 
-const dbByUser: Record<string, Client> = {}
+interface UserConnection {
+  client: Client
+  password: string
+}
+
+const dbByUser: Record<string, UserConnection> = {}
 
 const userDbName = (user: string) => `aurboda_${user}`
 
@@ -29,14 +34,20 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
 }
 
 export const loginToUserDb = async (user: string, password: string) => {
-  // Return early if we already have a connection for this user
-  if (dbByUser[user]) {
+  // Check if we already have a connection for this user
+  const existing = dbByUser[user]
+  if (existing) {
+    // Verify password matches the one used to establish the connection
+    if (existing.password !== password) {
+      throw new Error('authentication failed for user')
+    }
     return
   }
 
   const database = userDbName(user)
-  dbByUser[user] = new Client({ database, password, user })
-  await dbByUser[user].connect()
+  const client = new Client({ database, password, user })
+  await client.connect()
+  dbByUser[user] = { client, password }
 }
 
 export const makeNewUserDb = async (userDb: Client, user: string, password: string) => {
@@ -45,17 +56,20 @@ export const makeNewUserDb = async (userDb: Client, user: string, password: stri
   await query(userDb, format('CREATE USER %I WITH ENCRYPTED PASSWORD %L', user, password))
   await query(userDb, format('GRANT %I TO %I', user, process.env.PGUSER))
   await query(userDb, format('CREATE DATABASE %I OWNER %I', database, user))
-  dbByUser[user] = new Client({ database, password, user })
-  await dbByUser[user].connect()
+  const client = new Client({ database, password, user })
+  await client.connect()
+  dbByUser[user] = { client, password }
   await initializeSchema(user)
 }
 
 export const getDbForUser = async (user: string) => {
-  if (dbByUser[user]) return dbByUser[user]
-  dbByUser[user] = new Client({ database: userDbName(user) })
-  await dbByUser[user].connect()
-  await query(dbByUser[user], format('SET ROLE %L', user))
-  return dbByUser[user]
+  if (dbByUser[user]) return dbByUser[user].client
+  const client = new Client({ database: userDbName(user) })
+  await client.connect()
+  await query(client, format('SET ROLE %L', user))
+  // Store without password since this is for internal/admin access
+  dbByUser[user] = { client, password: '' }
+  return client
 }
 
 /**

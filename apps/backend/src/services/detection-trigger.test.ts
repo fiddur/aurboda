@@ -106,6 +106,20 @@ describe('createDetectionTrigger', () => {
     expect(deps.getDetectedLocationById).not.toHaveBeenCalled()
   })
 
+  test('skips enqueueing when getDetectedLocationById returns null', async () => {
+    const deps = createMockDeps()
+    vi.mocked(deps.getDetectedLocationById).mockResolvedValue(null)
+    const trigger = createDetectionTrigger(deps)
+
+    trigger.triggerDetectionForUser('testuser')
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(deps.runDetectionForUser).toHaveBeenCalled()
+    expect(deps.getDetectedLocationById).toHaveBeenCalledWith('testuser', 'loc-1')
+    // Should not enqueue job when location is not found
+    expect(deps.geocodeQueue!.enqueueJob).not.toHaveBeenCalled()
+  })
+
   test('clearPendingDetections cancels scheduled detections', async () => {
     const deps = createMockDeps()
     const trigger = createDetectionTrigger(deps)

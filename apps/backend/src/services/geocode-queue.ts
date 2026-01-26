@@ -202,7 +202,9 @@ export const createGeocodeQueue = async (deps: GeocodeQueueDeps): Promise<Geocod
   const PgBoss = PgBossModule.PgBoss
   const boss = new PgBoss({
     connectionString,
-    max: 3, // Limit connection pool to prevent exhausting PostgreSQL connections
+    // Limit connection pool size. pg-boss default is 10, but we use 3 to leave
+    // room for user database connections (PostgreSQL default max_connections is 100)
+    max: 3,
     schema: 'pgboss',
   })
 
@@ -248,14 +250,16 @@ export const createGeocodeQueue = async (deps: GeocodeQueueDeps): Promise<Geocod
       user: string,
       locations: Array<{ id: string; lat: number; lon: number }>,
     ): Promise<void> => {
-      for (const loc of locations) {
-        await queue.enqueueJob({
-          detectedLocationId: loc.id,
-          lat: loc.lat,
-          lon: loc.lon,
-          user,
-        })
-      }
+      await Promise.all(
+        locations.map((loc) =>
+          queue.enqueueJob({
+            detectedLocationId: loc.id,
+            lat: loc.lat,
+            lon: loc.lon,
+            user,
+          }),
+        ),
+      )
     },
 
     getBoss: () => boss,

@@ -85,51 +85,57 @@ export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTri
     }
   }
 
+  /**
+   * Trigger location detection for a user with debouncing.
+   * If called multiple times within the debounce window, only the last call runs detection.
+   */
+  const triggerDetectionForUser = (user: string): void => {
+    // Clear any existing pending detection for this user
+    const existing = pendingDetections.get(user)
+    if (existing) {
+      clearTimeout(existing)
+    }
+
+    // Schedule detection after debounce period
+    const timeout = setTimeout(() => {
+      // Execute detection and handle errors properly
+      // Delete from pending map only after detection completes (success or failure)
+      executeDetectionForUser(user)
+        .catch((error) => {
+          console.error(`Unhandled error in detection for user ${user}:`, error)
+        })
+        .finally(() => {
+          pendingDetections.delete(user)
+        })
+    }, DEBOUNCE_MS)
+
+    pendingDetections.set(user, timeout)
+  }
+
+  /**
+   * Clear all pending detections (used for testing/shutdown).
+   */
+  const clearPendingDetections = (): void => {
+    for (const timeout of pendingDetections.values()) {
+      clearTimeout(timeout)
+    }
+    pendingDetections.clear()
+  }
+
+  /**
+   * Get the number of pending detections (for monitoring).
+   */
+  const getPendingDetectionCount = (): number => pendingDetections.size
+
+  /**
+   * Check if a user has a pending detection.
+   */
+  const hasPendingDetection = (user: string): boolean => pendingDetections.has(user)
+
   return {
-    /**
-     * Clear all pending detections (used for testing/shutdown).
-     */
-    clearPendingDetections: (): void => {
-      for (const timeout of pendingDetections.values()) {
-        clearTimeout(timeout)
-      }
-      pendingDetections.clear()
-    },
-
-    /**
-     * Get the number of pending detections (for monitoring).
-     */
-    getPendingDetectionCount: (): number => pendingDetections.size,
-
-    /**
-     * Check if a user has a pending detection.
-     */
-    hasPendingDetection: (user: string): boolean => pendingDetections.has(user),
-    /**
-     * Trigger location detection for a user with debouncing.
-     * If called multiple times within the debounce window, only the last call runs detection.
-     */
-    triggerDetectionForUser: (user: string): void => {
-      // Clear any existing pending detection for this user
-      const existing = pendingDetections.get(user)
-      if (existing) {
-        clearTimeout(existing)
-      }
-
-      // Schedule detection after debounce period
-      const timeout = setTimeout(() => {
-        // Execute detection and handle errors properly
-        // Delete from pending map only after detection completes (success or failure)
-        executeDetectionForUser(user)
-          .catch((error) => {
-            console.error(`Unhandled error in detection for user ${user}:`, error)
-          })
-          .finally(() => {
-            pendingDetections.delete(user)
-          })
-      }, DEBOUNCE_MS)
-
-      pendingDetections.set(user, timeout)
-    },
+    clearPendingDetections,
+    getPendingDetectionCount,
+    hasPendingDetection,
+    triggerDetectionForUser,
   }
 }
