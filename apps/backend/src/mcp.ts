@@ -18,7 +18,7 @@ import {
 } from './services/locations'
 import { addMetric, addTag, deleteTag } from './services/mutations'
 import { getDailySummary, getPeriodSummary, queryMetrics, SyncProvider } from './services/queries'
-import { getSettingsResponse, validateAndUpdateSettings } from './services/settings'
+import { getSettings, getSettingsResponse, validateAndUpdateSettings } from './services/settings'
 
 interface McpSession {
   transport: StreamableHTTPServerTransport
@@ -284,17 +284,17 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
           .describe('Optional start date for sync in YYYY-MM-DD format. Only used with full_resync.'),
       },
       async ({ full_resync, start_date }) => {
-        const rescueTimeKey = process.env.RESCUETIME_KEY
-        if (!rescueTimeKey) {
+        const settings = await getSettings(user)
+        if (!settings.rescueTimeKey) {
           return {
             content: [
-              { text: 'RescueTime API key is not configured on this server.', type: 'text' as const },
+              { text: 'RescueTime API key is not configured in user settings.', type: 'text' as const },
             ],
           }
         }
 
         try {
-          const result = await syncRescueTimeData(user, rescueTimeKey, {
+          const result = await syncRescueTimeData(user, settings.rescueTimeKey, {
             fullResync: full_resync,
             startDate: start_date ? new Date(start_date) : undefined,
           })

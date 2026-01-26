@@ -50,6 +50,42 @@
   margin-bottom: 1rem;
 }
 
+.home .screenshots {
+  display: flex;
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.home .screenshots figure {
+  margin: 0;
+  text-align: center;
+}
+
+.home .screenshots img {
+  max-width: 280px;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.home .screenshots figcaption {
+  font-size: 0.875rem;
+  color: #666;
+  margin-top: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .home .screenshots figcaption {
+    color: #aaa;
+  }
+
+  .home .screenshots img {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+}
+
 .home a {
   color: #673ab8;
   text-decoration: underline;

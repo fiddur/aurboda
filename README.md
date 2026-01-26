@@ -5,66 +5,130 @@ Backend [![Backend Coverage](https://codecov.io/gh/fiddur/aurboda/graph/badge.sv
 Web [![Web Coverage](https://codecov.io/gh/fiddur/aurboda/graph/badge.svg?flag=web)](https://codecov.io/gh/fiddur/aurboda)
 Android [![Android Coverage](https://codecov.io/gh/fiddur/aurboda/graph/badge.svg?flag=android)](https://codecov.io/gh/fiddur/aurboda)
 
-Gather all your Self Quantification data into one place.
+Your health data is scattered across apps and services. Aurboda aggregates it into one place, provides visualizations, and exposes it to AI assistants via MCP (Model Context Protocol).
 
-The aim is to gather and visualize all relevant data, offer a connection with your AI agent, find correlations.  Current state:
+**What it does:**
 
-* Aurboda backend offers an API and MCP to fetch and discuss the data with an AI (Claude, or any that uses MCP).  It also detects locations and geocodes, offering the user to name visited locations.
-* Aurboda Android funnels Health Connect data into the backend, and show minutes in HR zones for last week, also with a widget.
-* Aurboda web offers timeline visualizations and location timeline naming (very early stage).
+- **Aggregates** health data from Android Health Connect, Oura, OwnTracks, and RescueTime
+- **Visualizes** heart rate zones, sleep patterns, location history, and exercise data
+- **AI-ready** via MCP — optionally connect Claude or other AI assistants to your self-hosted instance to query your data
 
+Currently in early development. No public signup, but self-hosting is straightforward.
 
-I currently don't offer any public signup, but contact me through [reddit](https://www.reddit.com/user/fiddur/).
-
-Name
-----
-
-In Norse mythology, Aurboða (really pronounced "owr-BO-tha", but using
-a hard D in aurboda now) is a mountain jötunn (giantess) associated
-with strength and vitality. Her name, meaning "gravel-offerer" or
-"gold-offerer", reflects her role as a gatherer and provider. As
-mother of Gerðr, whose name relates to growth and gardens, Aurboða
-represents the foundation from which health and flourishing emerge.
-
-This project embodies that spirit: gathering scattered health data from
-multiple sources into a unified foundation for understanding your wellbeing.
-
-This repo aims to collect a user's self quantification data into a
-single useful place and do some visualizations.
+<p align="center">
+  <img src="apps/web/public/screenshots/app.jpg" alt="HR Zone tracking" width="280" />
+  <img src="apps/web/public/screenshots/widget.jpg" alt="Home screen widget" width="280" />
+</p>
 
 
-Data sources
+Quick Start (Docker)
+--------------------
+
+```bash
+# Clone and start
+git clone https://github.com/fiddur/aurboda.git
+cd aurboda
+docker compose up -d
+```
+
+This starts:
+- **aurboda-web** on port 8080
+- **aurboda-backend** on port 3000
+- **PostgreSQL** with PostGIS
+- **Watchtower** for automatic updates
+
+### Creating Your User
+
+Users are PostgreSQL roles with their own databases. Create your first user:
+
+```bash
+# Connect to the postgres container
+docker compose exec postgres psql -U aurboda_service -d postgres
+
+# Create a user (replace 'myuser' and 'mypassword')
+CREATE USER myuser WITH ENCRYPTED PASSWORD 'mypassword';
+GRANT myuser TO aurboda_service;
+CREATE DATABASE aurboda_myuser OWNER myuser;
+\q
+```
+
+Then log in at http://localhost:8080 with your username and password.
+
+See [docker-compose.yml](docker-compose.yml) for configuration options. Set `SESSION_SALT` to a secure 32-byte secret in production.
+
+
+Data Sources
 ------------
 
-* Android Health Connect from [Aurboda App](https://github.com/fiddur/aurboda) (apps/android)
-* [OwnTracks](https://owntracks.org/) (json http mode) - see [OwnTracks setup](docs/owntracks.md)
-* [Oura](https://ouraring.com/) API
-* [RescueTime](https://www.rescuetime.com/) API
+| Source | Setup |
+|--------|-------|
+| Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), configure backend URL |
+| OwnTracks | [OwnTracks setup guide](docs/owntracks.md) (JSON HTTP mode) |
+| Oura | Connect via OAuth in user settings (web UI). Requires `OURA_CLIENT` and `OURA_SECRET` env vars on backend. |
+| RescueTime | Configure API key in user settings (web UI). Get key from [RescueTime API settings](https://www.rescuetime.com/anapi/manage). |
 
-Visualizations
+
+MCP Integration
+---------------
+
+The backend exposes an MCP server, allowing AI assistants to query your health data. Configure your MCP client to connect to the backend endpoint.
+
+Example queries an AI can answer:
+- "How was my sleep quality this week compared to last week?"
+- "What's the correlation between my exercise and sleep scores?"
+- "Show me days where I hit my Zone 2 cardio goals"
+
+
+Architecture
+------------
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Android App    │────▶│    Backend      │◀────│   Web UI        │
+│  (Health Connect)     │  (API + MCP)    │     │  (Preact)       │
+└─────────────────┘     └────────┬────────┘     └─────────────────┘
+                                 │
+┌─────────────────┐     ┌────────▼────────┐
+│  OwnTracks      │────▶│   PostgreSQL    │
+│  Oura, RescueTime     │   (PostGIS)     │
+└─────────────────┘     └─────────────────┘
+```
+
+**Components:**
+
+- `apps/backend` - Node.js API server with MCP support, PostgreSQL/PostGIS for storage
+- `apps/web` - Preact-based visualization dashboard
+- `apps/android` - Health Connect data collector with HR zone widget
+
+
+Development
+-----------
+
+```bash
+pnpm install
+pnpm fix    # Format and lint
+pnpm check  # TypeScript checks
+```
+
+Backend requires PostgreSQL with PostGIS. Configure connection in `.env`:
+```
+PGHOST=localhost
+PGPORT=5432
+PGUSER=aurboda_service
+PGPASSWORD=your_password
+SESSION_SALT=your_32_byte_secret
+```
+
+
+About the Name
 --------------
 
-Web:
+In Norse mythology, Aurboða (pronounced "owr-BO-tha", using a hard D in "aurboda") is a mountain jötunn associated with strength and vitality. Her name means "gravel-offerer" or "gold-offerer", reflecting her role as a gatherer and provider.
 
-* Timeline with Heartrate, tags, places etc...
-* Location timeline with option to name the locations.
-
-Android app:
-
-* Minutes in HR zones for last 7 days (due to the Galpin/Huberman
-  recommendation to be in zone 2 150-200 minutes per week and zone 5
-  5-10 minutes), with a widget.
+This project embodies that spirit: gathering scattered health data into a unified foundation for understanding your wellbeing.
 
 
-Downloads
----------
+Contact
+-------
 
- - [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk)
-
-
-Parts in apps
--------------
-
- - Backend (needing PostgreSQL storage configured in .env)
- - Web (for visualizations)
- - Android (to collect Android Health Connect data)
+Questions or want access? Contact me on [reddit](https://www.reddit.com/user/fiddur/).

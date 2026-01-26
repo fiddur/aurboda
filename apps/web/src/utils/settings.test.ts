@@ -55,6 +55,7 @@ describe('computeSettingsUpdateParams', () => {
   const baseServerSettings: UserSettingsResponse = {
     birth_date: '1990-01-15',
     hr_zone_start: { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 },
+    rescue_time_key: 'test-key-123',
     success: true,
   }
 
@@ -62,6 +63,7 @@ describe('computeSettingsUpdateParams', () => {
     const result = computeSettingsUpdateParams(
       '1990-01-15',
       baseServerSettings.hr_zone_start!,
+      'test-key-123',
       baseServerSettings,
     )
 
@@ -72,6 +74,7 @@ describe('computeSettingsUpdateParams', () => {
     const result = computeSettingsUpdateParams(
       '1985-06-20',
       baseServerSettings.hr_zone_start!,
+      'test-key-123',
       baseServerSettings,
     )
 
@@ -80,42 +83,70 @@ describe('computeSettingsUpdateParams', () => {
 
   test('returns only hr_zone_start when only that changed', () => {
     const newZones: HrZoneThresholds = { 1: 95, 2: 110, 3: 130, 4: 150, 5: 170 }
-    const result = computeSettingsUpdateParams('1990-01-15', newZones, baseServerSettings)
+    const result = computeSettingsUpdateParams('1990-01-15', newZones, 'test-key-123', baseServerSettings)
 
     expect(result).toEqual({ hr_zone_start: newZones })
   })
 
-  test('returns both when both changed', () => {
+  test('returns only rescue_time_key when only that changed', () => {
+    const result = computeSettingsUpdateParams(
+      '1990-01-15',
+      baseServerSettings.hr_zone_start!,
+      'new-key-456',
+      baseServerSettings,
+    )
+
+    expect(result).toEqual({ rescue_time_key: 'new-key-456' })
+  })
+
+  test('returns all when all changed', () => {
     const newZones: HrZoneThresholds = { 1: 95, 2: 115, 3: 135, 4: 155, 5: 175 }
-    const result = computeSettingsUpdateParams('2000-12-25', newZones, baseServerSettings)
+    const result = computeSettingsUpdateParams('2000-12-25', newZones, 'new-key', baseServerSettings)
 
     expect(result).toEqual({
       birth_date: '2000-12-25',
       hr_zone_start: newZones,
+      rescue_time_key: 'new-key',
     })
   })
 
   test('handles empty birth_date being set to null', () => {
-    const result = computeSettingsUpdateParams('', baseServerSettings.hr_zone_start!, baseServerSettings)
+    const result = computeSettingsUpdateParams(
+      '',
+      baseServerSettings.hr_zone_start!,
+      'test-key-123',
+      baseServerSettings,
+    )
 
     expect(result).toEqual({ birth_date: null })
   })
 
   test('handles clearing hr_zone_start (setting to null)', () => {
-    const result = computeSettingsUpdateParams('1990-01-15', null, baseServerSettings)
+    const result = computeSettingsUpdateParams('1990-01-15', null, 'test-key-123', baseServerSettings)
 
     expect(result).toEqual({ hr_zone_start: null })
   })
 
+  test('handles clearing rescue_time_key (setting to null)', () => {
+    const result = computeSettingsUpdateParams(
+      '1990-01-15',
+      baseServerSettings.hr_zone_start!,
+      '',
+      baseServerSettings,
+    )
+
+    expect(result).toEqual({ rescue_time_key: null })
+  })
+
   test('handles undefined server settings', () => {
-    const result = computeSettingsUpdateParams('1990-01-15', null, undefined)
+    const result = computeSettingsUpdateParams('1990-01-15', null, '', undefined)
 
     expect(result).toEqual({ birth_date: '1990-01-15' })
   })
 
   test('handles server settings with no birth_date', () => {
     const serverSettings: UserSettingsResponse = { success: true }
-    const result = computeSettingsUpdateParams('', null, serverSettings)
+    const result = computeSettingsUpdateParams('', null, '', serverSettings)
 
     expect(result).toBe(null)
   })
@@ -123,7 +154,7 @@ describe('computeSettingsUpdateParams', () => {
   test('handles server settings with no hr_zone_start', () => {
     const serverSettings: UserSettingsResponse = { birth_date: '1990-01-15', success: true }
     const zones: HrZoneThresholds = { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 }
-    const result = computeSettingsUpdateParams('1990-01-15', zones, serverSettings)
+    const result = computeSettingsUpdateParams('1990-01-15', zones, '', serverSettings)
 
     expect(result).toEqual({ hr_zone_start: zones })
   })

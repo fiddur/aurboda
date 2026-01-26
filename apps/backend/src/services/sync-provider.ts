@@ -15,6 +15,7 @@ import {
   syncRescueTimeData,
 } from '../rescuetime-sync'
 import { SyncProvider } from './queries'
+import { getSettings } from './settings'
 
 /** Default sync threshold - sync if last sync was more than 30 minutes ago */
 const DEFAULT_SYNC_THRESHOLD_MINUTES = 30
@@ -24,8 +25,6 @@ type OuraClientType = ReturnType<typeof ouraClient>
 export interface SyncProviderConfig {
   /** Oura API client (optional - if not provided, Oura sync is disabled) */
   oura?: OuraClientType
-  /** RescueTime API key (optional - if not provided, RescueTime sync is disabled) */
-  rescueTimeKey?: string
   /** Sync threshold in minutes (default: 30) */
   syncThresholdMinutes?: number
 }
@@ -66,16 +65,17 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
     },
 
     syncRescueTimeIfNeeded: async (user: string): Promise<void> => {
-      if (!config.rescueTimeKey) return
-
       try {
+        const settings = await getSettings(user)
+        if (!settings.rescueTimeKey) return
+
         const syncState = await getSyncState(user, 'rescuetime', 'productivity')
 
         if (isRescueTimeRateLimited(syncState)) return
         if (!rescueTimeNeedsSync(syncState, threshold)) return
 
         console.log('Auto-syncing RescueTime productivity...')
-        await syncRescueTimeData(user, config.rescueTimeKey)
+        await syncRescueTimeData(user, settings.rescueTimeKey)
       } catch (error) {
         console.error('Failed to auto-sync RescueTime:', error)
       }

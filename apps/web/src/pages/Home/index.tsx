@@ -16,44 +16,49 @@ export function Home() {
       </div>
 
       <section class="intro">
-        <p>Gather all your Self Quantification data into one place.</p>
         <p>
-          The aim is to gather and visualize all relevant data, offer a connection with your AI agent, find
-          correlations. Current state:
+          Your health data is scattered across apps and services. Aurboda brings it all together, letting you
+          visualize trends and discuss your health with AI assistants.
         </p>
+
+        <h3>What it does</h3>
         <ul>
           <li>
-            Aurboda backend offers an API and MCP to fetch and discuss the data with an AI (Claude, or any
-            that uses MCP). It also detects locations and geocodes, offering the user to name visited
-            locations.
+            <strong>Aggregates</strong> health data from Android Health Connect, Oura, OwnTracks, and
+            RescueTime into one place.
           </li>
           <li>
-            Aurboda Android funnels Health Connect data into the backend, and shows minutes in HR zones for
-            last week, also with a widget.
+            <strong>Visualizes</strong> your heart rate zones, sleep patterns, location history, and exercise
+            data.
           </li>
-          <li>Aurboda web offers timeline visualizations and location timeline naming (very early stage).</li>
+          <li>
+            <strong>AI-ready</strong> via MCP (Model Context Protocol) — optionally connect Claude or other AI
+            assistants to your self-hosted instance to ask questions about your health data.
+          </li>
         </ul>
+
+        <div class="screenshots">
+          <figure>
+            <img src="/screenshots/app.jpg" alt="Aurboda Android app showing HR zone minutes" />
+            <figcaption>Android app: HR zone tracking</figcaption>
+          </figure>
+          <figure>
+            <img src="/screenshots/widget.jpg" alt="Aurboda home screen widget" />
+            <figcaption>Home screen widget</figcaption>
+          </figure>
+        </div>
+
+        <p>
+          <a href="https://github.com/fiddur/aurboda" target="_blank" rel="noopener noreferrer">
+            View on GitHub
+          </a>
+        </p>
         <p class="note">
-          I currently don't offer any public signup, but contact me through{' '}
+          Currently in early development. No public signup yet, but you can self-host or contact me through{' '}
           <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
             reddit
           </a>
           .
-        </p>
-      </section>
-
-      <section class="name">
-        <h2>Name</h2>
-        <p>
-          In Norse mythology, Aurbo&eth;a (really pronounced "owr-BO-tha", but using a hard D in aurboda now)
-          is a mountain j&ouml;tunn (giantess) associated with strength and vitality. Her name, meaning
-          "gravel-offerer" or "gold-offerer", reflects her role as a gatherer and provider. As mother of
-          Ger&eth;r, whose name relates to growth and gardens, Aurbo&eth;a represents the foundation from
-          which health and flourishing emerge.
-        </p>
-        <p>
-          This project embodies that spirit: gathering scattered health data from multiple sources into a
-          unified foundation for understanding your wellbeing.
         </p>
       </section>
 
@@ -104,7 +109,8 @@ export function Home() {
       </section>
 
       <section class="downloads">
-        <h2>Downloads</h2>
+        <h2>Downloads &amp; Deployment</h2>
+        <h3>Android</h3>
         <p>
           <a
             href="https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk"
@@ -113,6 +119,54 @@ export function Home() {
           >
             Android APK
           </a>
+        </p>
+        <h3>Self-hosting with Docker</h3>
+        <p>
+          Run your own Aurboda instance using Docker Compose. See the{' '}
+          <a
+            href="https://github.com/fiddur/aurboda/blob/develop/docker-compose.yml"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            docker-compose.yml example
+          </a>{' '}
+          on GitHub.
+        </p>
+        <p>Docker images:</p>
+        <ul>
+          <li>
+            <a
+              href="https://github.com/fiddur/aurboda/pkgs/container/aurboda-backend"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ghcr.io/fiddur/aurboda-backend
+            </a>
+          </li>
+          <li>
+            <a
+              href="https://github.com/fiddur/aurboda/pkgs/container/aurboda-web"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ghcr.io/fiddur/aurboda-web
+            </a>
+          </li>
+        </ul>
+      </section>
+
+      <section class="name">
+        <h2>About the Name</h2>
+        <p>
+          In Norse mythology, Aurbo&eth;a (really pronounced "owr-BO-tha", but using a hard D in aurboda now)
+          is a mountain j&ouml;tunn (giantess) associated with strength and vitality. Her name, meaning
+          "gravel-offerer" or "gold-offerer", reflects her role as a gatherer and provider. As mother of
+          Ger&eth;r, whose name relates to growth and gardens, Aurbo&eth;a represents the foundation from
+          which health and flourishing emerge.
+        </p>
+        <p>
+          This project embodies that spirit: gathering scattered health data from multiple sources into a
+          unified foundation for understanding your wellbeing.
         </p>
       </section>
 
