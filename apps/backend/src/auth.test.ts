@@ -6,18 +6,18 @@ const VALID_SALT = 'test-secret-key-32-bytes-long!!!' // exactly 32 bytes
 describe('auth', () => {
   describe('createAuth', () => {
     test('throws if sessionSalt is empty', () => {
-      expect(() => createAuth('')).toThrow('SESSION_SALT must be set and be exactly 32 bytes (256 bits)')
+      expect(() => createAuth('')).toThrow('SESSION_SECRET must be set and be exactly 32 bytes (256 bits)')
     })
 
     test('throws if sessionSalt is too short', () => {
       expect(() => createAuth('too-short')).toThrow(
-        'SESSION_SALT must be set and be exactly 32 bytes (256 bits)',
+        'SESSION_SECRET must be set and be exactly 32 bytes (256 bits)',
       )
     })
 
     test('throws if sessionSalt is too long', () => {
       expect(() => createAuth('this-is-way-too-long-for-a-256-bit-key-it-has-too-many-bytes')).toThrow(
-        'SESSION_SALT must be set and be exactly 32 bytes (256 bits)',
+        'SESSION_SECRET must be set and be exactly 32 bytes (256 bits)',
       )
     })
 

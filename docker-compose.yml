@@ -25,7 +25,7 @@ services:
       - PGPORT=5432
       - PGUSER=aurboda_service
       - PGPASSWORD=REPLACE_DB_PASSWORD
-      - SESSION_SALT=REPLACE_SESSION_SECRET
+      - SESSION_SECRET=REPLACE_SESSION_SECRET
       - ALLOW_SIGNUP=${ALLOW_SIGNUP:-true}
       - NODE_ENV=production
     depends_on:
