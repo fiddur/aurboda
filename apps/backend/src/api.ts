@@ -50,7 +50,6 @@ import { Client } from 'pg'
 import { z } from 'zod'
 import { createAuth } from './auth'
 import {
-  DailyAggregate,
   getActivities,
   getAllSyncStates,
   getDetectedLocationById,
@@ -102,6 +101,7 @@ import {
 } from './services/queries'
 import { getSettings, getSettingsResponse, validateAndUpdateSettings } from './services/settings'
 import { createSyncProvider } from './services/sync-provider'
+import { createSyncRouter } from './sync-router'
 import { reduceTimeSeries } from './utils'
 
 declare global {
@@ -297,146 +297,23 @@ const main = async () => {
     res.end(JSON.stringify({ refresh, token: refresh }))
   })
 
-  // ===========================================================================
-  // Sync endpoints - specific routes must be defined BEFORE /sync/:recordType
-  // to avoid route matching issues with Express parameterized routes
-  // ===========================================================================
-
-  // Daily aggregates endpoint for deduplicated cumulative metrics from Health Connect
-  httpd.post('/sync/daily-aggregates', authMiddleware, async (req, res) => {
-    const { data } = req.body as { data?: DailyAggregate[] }
-    const user = req.user!
-
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      return res.json({ success: true })
-    }
-
-    for (const aggregate of data) {
-      await processDailyAggregate(user, aggregate)
-    }
-
-    res.json({ success: true })
-  })
-
-  // Oura sync endpoints
-  httpd.post('/sync/oura', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
-
-    try {
-      const results = await syncAllOuraData(user, oura, {
-        fullResync,
-        startDate: startDate ? new Date(startDate) : undefined,
-      })
-
-      res.json({ results, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  httpd.get('/sync/oura/status', authMiddleware, async (req, res) => {
-    const user = req.user!
-
-    try {
-      const states = await getAllSyncStates(user, 'oura')
-      res.json({ states, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  httpd.delete('/sync/oura/state', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { dataType } = req.query as { dataType?: string }
-
-    try {
-      await resetSyncState(user, 'oura', dataType)
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  // RescueTime sync endpoints
-  httpd.post('/sync/rescuetime', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
-    const settings = await getSettings(user)
-    const rescueTimeKey = settings.rescueTimeKey
-
-    if (!rescueTimeKey) {
-      return res
-        .status(400)
-        .json({ error: 'RescueTime API key not configured in user settings', success: false })
-    }
-
-    try {
-      const result = await syncRescueTimeData(user, rescueTimeKey, {
-        fullResync,
-        startDate: startDate ? new Date(startDate) : undefined,
-      })
-
-      res.json({ result, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  httpd.get('/sync/rescuetime/status', authMiddleware, async (req, res) => {
-    const user = req.user!
-
-    try {
-      const states = await getAllSyncStates(user, 'rescuetime')
-      res.json({ states, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  httpd.delete('/sync/rescuetime/state', authMiddleware, async (req, res) => {
-    const user = req.user!
-
-    try {
-      await resetSyncState(user, 'rescuetime')
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  // Generic Health Connect sync endpoint - MUST be defined AFTER specific routes
-  httpd.post<{ recordType: string }, { success: boolean }>(
-    '/sync/:recordType',
-    authMiddleware,
-    async (req, res) => {
-      const { recordType } = req.params
-      let { data } = req.body
-
-      if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
-        data = [data]
-      }
-
-      if (!data?.length) {
-        console.log('  empty?!')
-        return res.json({ success: true })
-      }
-
-      const user = req.user!
-
-      // Process each Health Connect record through the new schema
-      for (const item of data) {
-        await processHealthConnectData(user, recordType, item)
-      }
-
-      res.json({ success: true })
-    },
+  // Sync router - handles /sync/* endpoints
+  httpd.use(
+    '/sync',
+    createSyncRouter(
+      {
+        getOuraSyncStates: (user) => getAllSyncStates(user, 'oura'),
+        getRescueTimeSyncStates: (user) => getAllSyncStates(user, 'rescuetime'),
+        getSettings,
+        processDailyAggregate,
+        processHealthConnectData,
+        resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
+        resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
+        syncOura: (user, options) => syncAllOuraData(user, oura, options),
+        syncRescueTime: syncRescueTimeData,
+      },
+      authMiddleware,
+    ),
   )
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
