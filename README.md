@@ -47,20 +47,7 @@ This starts:
 
 Navigate to http://localhost:8080 and create your account through the web interface.
 
-Alternatively, create users directly in PostgreSQL (users are PostgreSQL roles with their own databases):
-
-```bash
-# Connect to the postgres container
-docker compose exec postgres psql -U aurboda_service -d postgres
-
-# Create a user (replace 'myuser' and 'mypassword')
-CREATE USER myuser WITH ENCRYPTED PASSWORD 'mypassword';
-GRANT myuser TO aurboda_service;
-CREATE DATABASE aurboda_myuser OWNER myuser;
-\q
-```
-
-Then log in at http://localhost:8080 with your username and password.
+After creating your user, you can set `ALLOW_SIGNUP=false` in docker-compose.yml to disallow other signups.
 
 ### Environment Variables
 
