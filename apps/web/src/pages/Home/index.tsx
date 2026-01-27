@@ -1,9 +1,15 @@
-import { auth } from '../../state/auth'
+import { useEffect } from 'preact/hooks'
+import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
 
 import './style.css'
 
 export function Home() {
   const isLoggedIn = auth.value.token
+  const canSignup = signupAllowed.value
+
+  useEffect(() => {
+    ensureStatusLoaded()
+  }, [])
 
   return (
     <div class="home">
@@ -54,11 +60,19 @@ export function Home() {
           </a>
         </p>
         <p class="note">
-          Currently in early development. No public signup yet, but you can self-host or contact me through{' '}
-          <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
-            reddit
-          </a>
-          .
+          Currently in early development.{' '}
+          {canSignup ?
+            <>
+              <a href="/signup">Sign up</a> to get started, or self-host your own instance.
+            </>
+          : <>
+              Signup is not available on this server. You can self-host or contact me through{' '}
+              <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
+                reddit
+              </a>
+              .
+            </>
+          }
         </p>
       </section>
 

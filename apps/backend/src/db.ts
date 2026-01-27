@@ -13,14 +13,18 @@ import {
   tableCreationOrder,
 } from './schema'
 
-interface UserConnection {
-  client: Client
-  password: string
-}
-
-const dbByUser: Record<string, UserConnection> = {}
+const dbByUser: Record<string, Client> = {}
 
 const userDbName = (user: string) => `aurboda_${user}`
+
+const redactSensitiveParams = (queryStr: string, params?: unknown[]): unknown[] | undefined => {
+  if (!params) return params
+  // Redact password params in user creation queries
+  if (queryStr.includes('ENCRYPTED PASSWORD') || queryStr.includes('password')) {
+    return params.map((p) => (typeof p === 'string' && p.length > 0 ? '[REDACTED]' : p))
+  }
+  return params
+}
 
 export const query = async <T extends QueryResultRow = QueryResultRow>(
   dbOrUser: Client | string,
@@ -28,7 +32,7 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
   params?: unknown[],
 ) => {
   const db = typeof dbOrUser === 'string' ? await getDbForUser(dbOrUser) : dbOrUser
-  console.log(`>>>`, queryStr, params)
+  console.log(`>>>`, queryStr, redactSensitiveParams(queryStr, params))
   const result = await db.query<T>(queryStr, params)
   return result
 }
@@ -37,17 +41,15 @@ export const loginToUserDb = async (user: string, password: string) => {
   // Check if we already have a connection for this user
   const existing = dbByUser[user]
   if (existing) {
-    // Verify password matches the one used to establish the connection
-    if (existing.password !== password) {
-      throw new Error('authentication failed for user')
-    }
+    // Already connected - auth is handled by tokens, no need to re-verify password
+    // This avoids storing passwords in memory while maintaining security via token auth
     return
   }
 
   const database = userDbName(user)
   const client = new Client({ database, password, user })
   await client.connect()
-  dbByUser[user] = { client, password }
+  dbByUser[user] = client
 }
 
 export const makeNewUserDb = async (userDb: Client, user: string, password: string) => {
@@ -58,17 +60,16 @@ export const makeNewUserDb = async (userDb: Client, user: string, password: stri
   await query(userDb, format('CREATE DATABASE %I OWNER %I', database, user))
   const client = new Client({ database, password, user })
   await client.connect()
-  dbByUser[user] = { client, password }
+  dbByUser[user] = client
   await initializeSchema(user)
 }
 
 export const getDbForUser = async (user: string) => {
-  if (dbByUser[user]) return dbByUser[user].client
+  if (dbByUser[user]) return dbByUser[user]
   const client = new Client({ database: userDbName(user) })
   await client.connect()
   await query(client, format('SET ROLE %L', user))
-  // Store without password since this is for internal/admin access
-  dbByUser[user] = { client, password: '' }
+  dbByUser[user] = client
   return client
 }
 

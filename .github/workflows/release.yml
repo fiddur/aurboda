@@ -1,0 +1,31 @@
+name: Release (Tag as Latest)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  promote-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Promote backend image to latest
+        run: |
+          # Pull the image built from this commit SHA
+          docker pull fiddur/aurboda-backend:${{ github.sha }}
+          # Tag it as latest
+          docker tag fiddur/aurboda-backend:${{ github.sha }} fiddur/aurboda-backend:latest
+          # Push the latest tag
+          docker push fiddur/aurboda-backend:latest
+
+      - name: Promote web image to latest
+        run: |
+          docker pull fiddur/aurboda-web:${{ github.sha }}
+          docker tag fiddur/aurboda-web:${{ github.sha }} fiddur/aurboda-web:latest
+          docker push fiddur/aurboda-web:latest

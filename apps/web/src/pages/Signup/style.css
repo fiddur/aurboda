@@ -1,0 +1,113 @@
+.signup-page {
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.signup-page h1 {
+  font-size: 1.75rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.signup-page .not-available {
+  text-align: center;
+  color: #666;
+}
+
+.signup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.signup-form .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.signup-form .form-field label {
+  font-weight: 500;
+}
+
+.signup-form .form-field input {
+  padding: 0.75rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.signup-form .field-hint {
+  font-size: 0.875rem;
+  color: #666;
+  margin: 0;
+}
+
+.signup-form .error {
+  color: #f44336;
+  margin: 0;
+}
+
+.signup-form button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.signup-form button.primary {
+  background: #673ab8;
+  color: white;
+  border: none;
+}
+
+.signup-form button.primary:hover:not(:disabled) {
+  background: #5e35b1;
+}
+
+.signup-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.login-link {
+  text-align: center;
+  margin-top: 1.5rem;
+}
+
+.login-link a {
+  color: #673ab8;
+}
+
+.login-link a:hover {
+  text-decoration: underline;
+}
+
+@media (prefers-color-scheme: dark) {
+  .signup-page .not-available,
+  .signup-form .field-hint {
+    color: #aaa;
+  }
+
+  .signup-form .form-field input {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+  }
+
+  .login-link a {
+    color: #b39ddb;
+  }
+}
+
+@media (max-width: 639px) {
+  .signup-page {
+    padding: 1rem;
+  }
+
+  .signup-page h1 {
+    font-size: 1.5rem;
+  }
+}

@@ -22,8 +22,15 @@ on:
           - backend
           - web
 
+# Only run on develop branch (prevents manual dispatch from main/other branches)
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   changes:
+    # Only run on develop branch (prevents manual dispatch from main/other branches)
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
@@ -68,9 +75,8 @@ jobs:
         with:
           images: fiddur/aurboda-backend
           tags: |
-            type=ref,event=branch
             type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=develop
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -108,9 +114,8 @@ jobs:
         with:
           images: fiddur/aurboda-web
           tags: |
-            type=ref,event=branch
             type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=develop
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5

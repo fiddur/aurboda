@@ -25,9 +25,15 @@ Quick Start (Docker)
 --------------------
 
 ```bash
-# Clone and start
-git clone https://github.com/fiddur/aurboda.git
-cd aurboda
+# Download docker-compose.yml
+curl -o docker-compose.yml https://raw.githubusercontent.com/fiddur/aurboda/main/docker-compose.yml
+
+# Generate secure secrets (openssl ships with Git on Windows, standard on macOS/Linux)
+sed -i.bak "s/REPLACE_DB_PASSWORD/$(openssl rand -hex 16)/" docker-compose.yml
+sed -i.bak "s/REPLACE_SESSION_SECRET/$(openssl rand -hex 16)/" docker-compose.yml
+rm docker-compose.yml.bak
+
+# Start services
 docker compose up -d
 ```
 
@@ -39,22 +45,27 @@ This starts:
 
 ### Creating Your User
 
-Users are PostgreSQL roles with their own databases. Create your first user:
+Navigate to http://localhost:8080 and create your account through the web interface.
 
-```bash
-# Connect to the postgres container
-docker compose exec postgres psql -U aurboda_service -d postgres
+After creating your user, you can set `ALLOW_SIGNUP=false` in docker-compose.yml to disallow other signups.
 
-# Create a user (replace 'myuser' and 'mypassword')
-CREATE USER myuser WITH ENCRYPTED PASSWORD 'mypassword';
-GRANT myuser TO aurboda_service;
-CREATE DATABASE aurboda_myuser OWNER myuser;
-\q
-```
+### Environment Variables
 
-Then log in at http://localhost:8080 with your username and password.
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SESSION_SALT` | Secret for session tokens (32+ characters) | Required |
+| `PGPASSWORD` | PostgreSQL password | Required |
+| `ALLOW_SIGNUP` | Enable user registration endpoint | `true` |
 
-See [docker-compose.yml](docker-compose.yml) for configuration options. Set `SESSION_SALT` to a secure 32-byte secret in production.
+### Port Configuration
+
+To change default ports, modify your docker-compose.yml:
+- Web UI: Change `"8080:80"` to `"YOUR_PORT:80"`
+- Backend API: Change `"3000:3000"` to `"YOUR_PORT:3000"`
+
+### Development Builds
+
+Replace `:latest` with `:develop` in docker-compose.yml to use development builds.
 
 
 Data Sources
@@ -62,7 +73,7 @@ Data Sources
 
 | Source | Setup |
 |--------|-------|
-| Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), configure backend URL |
+| Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), enter your backend URL (e.g., `http://YOUR_SERVER_IP:3000`), and log in with your credentials |
 | OwnTracks | [OwnTracks setup guide](docs/owntracks.md) (JSON HTTP mode) |
 | Oura | Connect via OAuth in user settings (web UI). Requires `OURA_CLIENT` and `OURA_SECRET` env vars on backend. |
 | RescueTime | Configure API key in user settings (web UI). Get key from [RescueTime API settings](https://www.rescuetime.com/anapi/manage). |

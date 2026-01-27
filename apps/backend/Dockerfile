@@ -9,13 +9,15 @@ WORKDIR /app
 # Copy workspace files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
+COPY packages/api-spec/package.json ./packages/api-spec/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy source files
+# Copy source files and build api-spec
 COPY tsconfig.json ./
-COPY apps/backend ./apps/backend
+COPY packages/api-spec ./packages/api-spec
+RUN pnpm --filter @aurboda/api-spec build
 
 # Production stage
 FROM node:22-alpine
@@ -28,9 +30,13 @@ WORKDIR /app
 # Copy workspace files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
+COPY packages/api-spec/package.json ./packages/api-spec/
 
 # Install dependencies (tsx is in devDependencies but needed at runtime)
 RUN pnpm install --frozen-lockfile
+
+# Copy built api-spec from builder
+COPY --from=builder /app/packages/api-spec/dist ./packages/api-spec/dist
 
 # Copy source (we run TypeScript directly with tsx)
 COPY tsconfig.json ./
