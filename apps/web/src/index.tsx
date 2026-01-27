@@ -2,6 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { render } from 'preact'
 import { LocationProvider, Route, Router } from 'preact-iso'
+import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
 import { Home } from './pages/Home/index.jsx'
 import { HrZones } from './pages/HrZones/index.jsx'
@@ -31,6 +32,7 @@ export function App() {
             <Route default component={NotFound} />
           </Router>
         </main>
+        <Footer />
         <ReactQueryDevtools initialIsOpen={false} />
       </LocationProvider>
     </QueryClientProvider>

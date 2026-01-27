@@ -116,7 +116,7 @@ declare global {
 const main = async () => {
   const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
 
-  const auth = createAuth(process.env.SESSION_SALT ?? '')
+  const auth = createAuth(process.env.SESSION_SECRET ?? '')
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)

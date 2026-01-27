@@ -131,6 +131,32 @@
   margin-top: 0.5rem;
 }
 
+.home .quickstart h3 {
+  margin-top: 1.25rem;
+}
+
+.home .quickstart p {
+  margin: 0.5rem 0;
+}
+
+.home .quickstart code {
+  background: #f0f0f0;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.9rem;
+}
+
+.home .code-block {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin: 0.75rem 0;
+}
+
 .home .user-actions {
   background: #f5f3ff;
   padding: 1.5rem;
@@ -170,8 +196,13 @@
     color: #aaa;
   }
 
-  .home .downloads .note {
+  .home .downloads .note,
+  .home .quickstart .note {
     color: #aaa;
+  }
+
+  .home .quickstart code {
+    background: #2d2d2d;
   }
 
   .home .user-actions {

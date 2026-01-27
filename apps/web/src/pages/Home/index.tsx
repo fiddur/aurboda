@@ -3,24 +3,9 @@ import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
 
 import './style.css'
 
-export function Home() {
-  const isLoggedIn = auth.value.token
-  const canSignup = signupAllowed.value
-
-  useEffect(() => {
-    ensureStatusLoaded()
-  }, [])
-
+function GuestHome({ canSignup }: { canSignup: boolean }) {
   return (
-    <div class="home">
-      <div class="hero">
-        <img src="/logo.svg" alt="Aurboda logo" class="hero-logo" />
-        <div class="hero-text">
-          <h1>Aurboda</h1>
-          <p class="subtitle">Self Quantification Aggregator</p>
-        </div>
-      </div>
-
+    <>
       <section class="intro">
         <p>
           Your health data is scattered across apps and services. Aurboda brings it all together, letting you
@@ -183,23 +168,127 @@ export function Home() {
           unified foundation for understanding your wellbeing.
         </p>
       </section>
+    </>
+  )
+}
 
-      {isLoggedIn && (
-        <section class="user-actions">
-          <h2>Your Data</h2>
-          <ul>
-            <li>
-              <a href="/hr-zones">View HR zone minutes (last 7 days)</a>
-            </li>
-            <li>
-              <a href="/timeline">View your heart rate timeline</a>
-            </li>
-            <li>
-              <a href="/places">View your places</a>
-            </li>
-          </ul>
-        </section>
-      )}
+function LoggedInHome({ apiUrl }: { apiUrl: string }) {
+  return (
+    <>
+      <section class="quickstart">
+        <h2>Getting Started</h2>
+
+        <h3>1. Android App</h3>
+        <p>
+          <a
+            href="https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Download the APK
+          </a>
+          , install it, and set the API URL to: <code>{apiUrl}</code>
+        </p>
+
+        <h3>2. Location Tracking</h3>
+        <p>
+          Install{' '}
+          <a href="https://owntracks.org/" target="_blank" rel="noopener noreferrer">
+            OwnTracks
+          </a>{' '}
+          and configure it in HTTP mode.{' '}
+          <a
+            href="https://github.com/fiddur/aurboda/blob/develop/docs/owntracks.md"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Setup guide
+          </a>
+        </p>
+
+        <h3>3. Additional Data Sources</h3>
+        <p>
+          Connect{' '}
+          <a href="https://ouraring.com/" target="_blank" rel="noopener noreferrer">
+            Oura
+          </a>{' '}
+          or{' '}
+          <a href="https://www.rescuetime.com/" target="_blank" rel="noopener noreferrer">
+            RescueTime
+          </a>{' '}
+          in <a href="/settings">Settings</a>.
+        </p>
+
+        <h3>4. AI Integration (MCP)</h3>
+        <p>
+          Connect{' '}
+          <a href="https://claude.ai/download" target="_blank" rel="noopener noreferrer">
+            Claude Code
+          </a>{' '}
+          to query your health data. Add to <code>~/.claude/settings.json</code>:
+        </p>
+        <pre class="code-block">
+          {`"mcpServers": {
+  "aurboda": {
+    "url": "${apiUrl}/mcp",
+    "headers": { "Cookie": "auth=YOUR_AUTH_TOKEN" }
+  }
+}`}
+        </pre>
+        <p class="note">
+          Tip: Use{' '}
+          <a
+            href="https://github.com/anthropics/claude-code/tree/main/happy-coder"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            happy-coder
+          </a>{' '}
+          to add MCP tools on mobile.
+        </p>
+      </section>
+
+      <section class="user-actions">
+        <h2>Your Data</h2>
+        <ul>
+          <li>
+            <a href="/hr-zones">HR zone minutes (last 7 days)</a>
+          </li>
+          <li>
+            <a href="/timeline">Heart rate timeline</a>
+          </li>
+          <li>
+            <a href="/places">Places</a>
+          </li>
+        </ul>
+      </section>
+    </>
+  )
+}
+
+export function Home() {
+  const isLoggedIn = auth.value.token
+  const canSignup = signupAllowed.value
+
+  useEffect(() => {
+    ensureStatusLoaded()
+  }, [])
+
+  const apiUrl = import.meta.env.VITE_API_URL || `${window.location.origin.replace(':8080', ':3000')}`
+
+  return (
+    <div class="home">
+      <div class="hero">
+        <img src="/logo.svg" alt="Aurboda logo" class="hero-logo" />
+        <div class="hero-text">
+          <h1>Aurboda</h1>
+          <p class="subtitle">Self Quantification Aggregator</p>
+        </div>
+      </div>
+
+      {isLoggedIn ?
+        <LoggedInHome apiUrl={apiUrl} />
+      : <GuestHome canSignup={canSignup} />}
     </div>
   )
 }

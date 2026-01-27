@@ -7,7 +7,7 @@ export interface Auth {
 
 export function createAuth(sessionSalt: string): Auth {
   if (!sessionSalt || Buffer.from(sessionSalt).length !== 32) {
-    throw new Error('SESSION_SALT must be set and be exactly 32 bytes (256 bits)')
+    throw new Error('SESSION_SECRET must be set and be exactly 32 bytes (256 bits)')
   }
 
   return {
