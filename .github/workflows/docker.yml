@@ -22,8 +22,15 @@ on:
           - backend
           - web
 
+# Only run on develop branch (prevents manual dispatch from main/other branches)
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   changes:
+    # Only run on develop branch (prevents manual dispatch from main/other branches)
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}

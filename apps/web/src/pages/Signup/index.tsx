@@ -1,6 +1,6 @@
 import { useLocation } from 'preact-iso'
-import { useState } from 'preact/hooks'
-import { auth, signup, signupAllowed } from '../../state/auth'
+import { useEffect, useState } from 'preact/hooks'
+import { auth, ensureStatusLoaded, signup, signupAllowed } from '../../state/auth'
 
 import './style.css'
 
@@ -8,6 +8,10 @@ export function Signup() {
   const { route } = useLocation()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    ensureStatusLoaded()
+  }, [])
 
   if (auth.value.token) {
     route('/')

@@ -224,6 +224,24 @@ const main = async () => {
       return
     }
 
+    // Block reserved PostgreSQL and system usernames
+    const reservedUsernames = [
+      'postgres',
+      'admin',
+      'root',
+      'administrator',
+      'superuser',
+      'system',
+      'public',
+      'guest',
+      'test',
+      'aurboda',
+    ]
+    if (reservedUsernames.includes(user)) {
+      res.status(400).json({ error: 'This username is reserved', success: false })
+      return
+    }
+
     // Check if user already exists
     const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
     if (existingUser.rowCount && existingUser.rowCount > 0) {
@@ -234,7 +252,7 @@ const main = async () => {
     try {
       await makeNewUserDb(userDb, user, password)
       const token = auth.createToken(user)
-      res.json({ refresh: token, success: true, token })
+      res.json({ success: true, token })
     } catch (err) {
       console.error('Signup error:', err)
       next(err)

@@ -1,10 +1,15 @@
-import { auth, signupAllowed } from '../../state/auth'
+import { useEffect } from 'preact/hooks'
+import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
 
 import './style.css'
 
 export function Home() {
   const isLoggedIn = auth.value.token
   const canSignup = signupAllowed.value
+
+  useEffect(() => {
+    ensureStatusLoaded()
+  }, [])
 
   return (
     <div class="home">

@@ -7,6 +7,24 @@ import { describe, expect, test } from 'vitest'
  */
 const isValidUsername = (username: string): boolean => /^[a-z][a-z0-9_]{2,30}$/.test(username)
 
+/**
+ * Reserved usernames that cannot be used for signup.
+ */
+const reservedUsernames = [
+  'postgres',
+  'admin',
+  'root',
+  'administrator',
+  'superuser',
+  'system',
+  'public',
+  'guest',
+  'test',
+  'aurboda',
+]
+
+const isReservedUsername = (username: string): boolean => reservedUsernames.includes(username)
+
 describe('signup username validation', () => {
   describe('valid usernames', () => {
     test('accepts minimum length username (3 chars)', () => {
@@ -82,6 +100,64 @@ describe('signup username validation', () => {
     test('rejects PostgreSQL reserved words formatted as injection', () => {
       // While 'select' alone would be valid, these injection patterns are not
       expect(isValidUsername('a;SELECT * FROM pg_user')).toBe(false)
+    })
+  })
+})
+
+describe('signup reserved username validation', () => {
+  describe('reserved usernames are blocked', () => {
+    test('blocks postgres', () => {
+      expect(isReservedUsername('postgres')).toBe(true)
+    })
+
+    test('blocks admin', () => {
+      expect(isReservedUsername('admin')).toBe(true)
+    })
+
+    test('blocks root', () => {
+      expect(isReservedUsername('root')).toBe(true)
+    })
+
+    test('blocks administrator', () => {
+      expect(isReservedUsername('administrator')).toBe(true)
+    })
+
+    test('blocks superuser', () => {
+      expect(isReservedUsername('superuser')).toBe(true)
+    })
+
+    test('blocks system', () => {
+      expect(isReservedUsername('system')).toBe(true)
+    })
+
+    test('blocks public', () => {
+      expect(isReservedUsername('public')).toBe(true)
+    })
+
+    test('blocks guest', () => {
+      expect(isReservedUsername('guest')).toBe(true)
+    })
+
+    test('blocks test', () => {
+      expect(isReservedUsername('test')).toBe(true)
+    })
+
+    test('blocks aurboda', () => {
+      expect(isReservedUsername('aurboda')).toBe(true)
+    })
+  })
+
+  describe('non-reserved usernames are allowed', () => {
+    test('allows normal usernames', () => {
+      expect(isReservedUsername('myuser')).toBe(false)
+      expect(isReservedUsername('johndoe')).toBe(false)
+      expect(isReservedUsername('user123')).toBe(false)
+    })
+
+    test('allows usernames that contain reserved words as substrings', () => {
+      expect(isReservedUsername('myadmin')).toBe(false)
+      expect(isReservedUsername('testuser')).toBe(false)
+      expect(isReservedUsername('rootkit')).toBe(false)
     })
   })
 })

@@ -8,18 +8,26 @@ auth.subscribe((value) => localStorage.setItem('auth', JSON.stringify(value)))
 
 export const signupAllowed = signal<boolean | undefined>(undefined)
 
+let statusFetchPromise: Promise<void> | null = null
+
 export const fetchStatus = async () => {
-  try {
-    const response = await axios.get<{ signupAllowed: boolean }>(`${API_URL}/status`)
-    signupAllowed.value = response.data.signupAllowed
-  } catch (error) {
-    console.error('Status fetch error:', error)
-    signupAllowed.value = false
-  }
+  if (signupAllowed.value !== undefined) return
+  if (statusFetchPromise) return statusFetchPromise
+
+  statusFetchPromise = (async () => {
+    try {
+      const response = await axios.get<{ signupAllowed: boolean }>(`${API_URL}/status`)
+      signupAllowed.value = response.data.signupAllowed
+    } catch (error) {
+      console.error('Status fetch error:', error)
+      signupAllowed.value = false
+    }
+  })()
+
+  return statusFetchPromise
 }
 
-// Initialize status on load
-fetchStatus()
+export const ensureStatusLoaded = () => fetchStatus()
 
 export const login = async (user: string, pass: string): Promise<{ success: boolean; error?: string }> => {
   try {

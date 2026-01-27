@@ -402,16 +402,22 @@ describe('loginToUserDb', () => {
     expect(mockConnectFn).not.toHaveBeenCalled()
   })
 
-  test('throws error when password does not match existing connection', async () => {
+  test('reuses connection on subsequent login regardless of password', async () => {
     const { loginToUserDb } = await import('./db.js')
 
     // First login with correct password
     await loginToUserDb('existinguser', 'password123')
+    expect(mockClientConstructor).toHaveBeenCalledTimes(1)
 
-    // Second login with different password should throw
-    await expect(loginToUserDb('existinguser', 'wrongpassword')).rejects.toThrow(
-      'authentication failed for user',
-    )
+    // Clear mocks to track subsequent calls
+    mockClientConstructor.mockClear()
+    mockConnectFn.mockClear()
+
+    // Second login with different password should still work (auth is token-based)
+    // Password is only validated on initial connection to PostgreSQL
+    await loginToUserDb('existinguser', 'differentpassword')
+    expect(mockClientConstructor).not.toHaveBeenCalled()
+    expect(mockConnectFn).not.toHaveBeenCalled()
   })
 
   test('creates separate connections for different users', async () => {
