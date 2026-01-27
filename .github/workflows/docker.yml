@@ -3,7 +3,6 @@ name: Build and Push Docker Images
 on:
   push:
     branches:
-      - main
       - develop
     paths:
       - 'apps/backend/**'
@@ -70,8 +69,7 @@ jobs:
           images: fiddur/aurboda-backend
           tags: |
             type=sha,prefix=
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=develop
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -110,8 +108,7 @@ jobs:
           images: fiddur/aurboda-web
           tags: |
             type=sha,prefix=
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=develop
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
