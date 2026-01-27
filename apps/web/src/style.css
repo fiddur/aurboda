@@ -24,13 +24,15 @@ body {
 }
 
 header {
-	display: flex;
-	justify-content: flex-end;
 	background-color: #673ab8;
 }
 
 header nav {
 	display: flex;
+}
+
+header nav .spacer {
+	flex: 1;
 }
 
 header a {
@@ -62,9 +64,36 @@ main {
 	}
 }
 
+.site-footer {
+	text-align: right;
+	font-size: 0.75rem;
+	padding: 0.5rem 1rem;
+	color: #888;
+}
+
+.site-footer a {
+	color: #888;
+}
+
+.site-footer a:hover {
+	color: #673ab8;
+}
+
 @media (prefers-color-scheme: dark) {
 	:root {
 		color: #ccc;
 		background-color: #1a1a1a;
+	}
+
+	.site-footer {
+		color: #666;
+	}
+
+	.site-footer a {
+		color: #666;
+	}
+
+	.site-footer a:hover {
+		color: #8b5cf6;
 	}
 }

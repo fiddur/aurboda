@@ -9,7 +9,7 @@ This guide covers running Aurboda using Docker and Docker Compose.
 1. Create a `.env` file with your session salt:
 
 ```bash
-echo "SESSION_SALT=$(openssl rand -base64 24)" > .env
+echo "SESSION_SECRET=$(openssl rand -base64 24)" > .env
 ```
 
 2. Start the services:
@@ -45,9 +45,9 @@ This mounts your source code and watches for changes.
 | `PGPORT` | PostgreSQL port | `5432` |
 | `PGUSER` | PostgreSQL user | `aurboda_service` |
 | `PGPASSWORD` | PostgreSQL password | `aurboda_dev_password` |
-| `SESSION_SALT` | 32-byte secret for session encryption | (required) |
+| `SESSION_SECRET` | 32-byte secret for session encryption | (required) |
 
-### Generating a Session Salt
+### Generating a Session Secret
 
 ```bash
 # Generate a random 32-byte base64 string
@@ -57,7 +57,7 @@ openssl rand -base64 24
 Store this in your `.env` file:
 
 ```bash
-SESSION_SALT=your_generated_salt_here
+SESSION_SECRET=your_generated_salt_here
 ```
 
 ## Using Pre-built Images
@@ -81,7 +81,7 @@ docker run -d \
   -e PGPORT=5432 \
   -e PGUSER=aurboda_service \
   -e PGPASSWORD=your-password \
-  -e SESSION_SALT=your-32-byte-secret \
+  -e SESSION_SECRET=your-32-byte-secret \
   fiddur/aurboda-backend:latest
 ```
 
@@ -119,7 +119,7 @@ services:
       - PGPORT=${PGPORT:-5432}
       - PGUSER=${PGUSER}
       - PGPASSWORD=${PGPASSWORD}
-      - SESSION_SALT=${SESSION_SALT}
+      - SESSION_SECRET=${SESSION_SECRET}
       - NODE_ENV=production
     depends_on:
       postgres:
@@ -175,7 +175,7 @@ services:
       - PGHOST=postgres
       - PGUSER=${PGUSER}
       - PGPASSWORD=${PGPASSWORD}
-      - SESSION_SALT=${SESSION_SALT}
+      - SESSION_SECRET=${SESSION_SECRET}
     networks:
       - traefik
       - default
@@ -253,7 +253,7 @@ docker compose up -d
 If the backend fails to start, check that:
 1. PostgreSQL is healthy: `docker compose ps`
 2. Environment variables are set correctly
-3. SESSION_SALT is exactly 32 bytes
+3. SESSION_SECRET is exactly 32 bytes
 
 ## CI/CD
 

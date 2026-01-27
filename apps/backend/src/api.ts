@@ -64,6 +64,7 @@ import {
   insertPlace,
   insertProductivity,
   loginToUserDb,
+  makeNewUserDb,
   migrateSchema,
   processDailyAggregate,
   processHealthConnectData,
@@ -115,7 +116,7 @@ declare global {
 const main = async () => {
   const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
 
-  const auth = createAuth(process.env.SESSION_SALT ?? '')
+  const auth = createAuth(process.env.SESSION_SECRET ?? '')
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
@@ -191,16 +192,77 @@ const main = async () => {
         })
         return
       }
-      ;(req as unknown as { query: z.infer<T> }).query = result.data
+      // Use Object.defineProperty since req.query may be a getter-only property
+      Object.defineProperty(req, 'query', {
+        configurable: true,
+        value: result.data,
+        writable: true,
+      })
       next()
     }
 
-  // httpd.post('/v2/signup', async (req, res, next) => {
-  //   const { username: user, password } = req.body
-  //   if (!user) return next(unauthorized)
-  //   await makeNewUserDb(userDb, user, password)
-  //   // TODO FIXME
-  // })
+  const allowSignup = process.env.ALLOW_SIGNUP === 'true'
+
+  httpd.get('/status', (_req, res) => {
+    res.json({ signupAllowed: allowSignup, success: true })
+  })
+
+  httpd.post('/signup', async (req, res, next) => {
+    if (!allowSignup) {
+      res.status(403).json({ error: 'Signup is disabled', success: false })
+      return
+    }
+
+    const { username: user, password } = req.body
+    if (!user || typeof user !== 'string' || !password || typeof password !== 'string') {
+      res.status(400).json({ error: 'Username and password are required', success: false })
+      return
+    }
+
+    // Validate username format (alphanumeric, lowercase, no special chars for PostgreSQL role)
+    if (!/^[a-z][a-z0-9_]{2,30}$/.test(user)) {
+      res.status(400).json({
+        error:
+          'Username must be 3-31 characters, start with a letter, and contain only lowercase letters, numbers, and underscores',
+        success: false,
+      })
+      return
+    }
+
+    // Block reserved PostgreSQL and system usernames
+    const reservedUsernames = [
+      'postgres',
+      'admin',
+      'root',
+      'administrator',
+      'superuser',
+      'system',
+      'public',
+      'guest',
+      'test',
+      'aurboda',
+    ]
+    if (reservedUsernames.includes(user)) {
+      res.status(400).json({ error: 'This username is reserved', success: false })
+      return
+    }
+
+    // Check if user already exists
+    const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
+    if (existingUser.rowCount && existingUser.rowCount > 0) {
+      res.status(409).json({ error: 'Username already exists', success: false })
+      return
+    }
+
+    try {
+      await makeNewUserDb(userDb, user, password)
+      const token = auth.createToken(user)
+      res.json({ success: true, token })
+    } catch (err) {
+      console.error('Signup error:', err)
+      next(err)
+    }
+  })
 
   httpd.post('/login', async (req, res, next) => {
     const { username: user, password } = req.body

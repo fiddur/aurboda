@@ -1,20 +1,12 @@
-import { auth } from '../../state/auth'
+import { useEffect } from 'preact/hooks'
+import { API_URL } from '../../config'
+import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
 
 import './style.css'
 
-export function Home() {
-  const isLoggedIn = auth.value.token
-
+function GuestHome({ canSignup }: { canSignup: boolean }) {
   return (
-    <div class="home">
-      <div class="hero">
-        <img src="/logo.svg" alt="Aurboda logo" class="hero-logo" />
-        <div class="hero-text">
-          <h1>Aurboda</h1>
-          <p class="subtitle">Self Quantification Aggregator</p>
-        </div>
-      </div>
-
+    <>
       <section class="intro">
         <p>
           Your health data is scattered across apps and services. Aurboda brings it all together, letting you
@@ -54,11 +46,19 @@ export function Home() {
           </a>
         </p>
         <p class="note">
-          Currently in early development. No public signup yet, but you can self-host or contact me through{' '}
-          <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
-            reddit
-          </a>
-          .
+          Currently in early development.{' '}
+          {canSignup ?
+            <>
+              <a href="/signup">Sign up</a> to get started, or self-host your own instance.
+            </>
+          : <>
+              Signup is not available on this server. You can self-host or contact me through{' '}
+              <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
+                reddit
+              </a>
+              .
+            </>
+          }
         </p>
       </section>
 
@@ -169,23 +169,131 @@ export function Home() {
           unified foundation for understanding your wellbeing.
         </p>
       </section>
+    </>
+  )
+}
 
-      {isLoggedIn && (
-        <section class="user-actions">
-          <h2>Your Data</h2>
-          <ul>
-            <li>
-              <a href="/hr-zones">View HR zone minutes (last 7 days)</a>
-            </li>
-            <li>
-              <a href="/timeline">View your heart rate timeline</a>
-            </li>
-            <li>
-              <a href="/places">View your places</a>
-            </li>
-          </ul>
-        </section>
-      )}
+function LoggedInHome() {
+  return (
+    <>
+      <section class="quickstart">
+        <h2>Getting Started</h2>
+
+        <h3>1. Android App (Health Connect)</h3>
+        <p>
+          <a
+            href="https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Download the APK
+          </a>{' '}
+          to sync Android Health Connect data. Set API URL to: <code>{API_URL}</code>
+        </p>
+
+        <h3>2. Location Tracking</h3>
+        <p>
+          Install{' '}
+          <a href="https://owntracks.org/" target="_blank" rel="noopener noreferrer">
+            OwnTracks
+          </a>{' '}
+          and configure it in HTTP mode.{' '}
+          <a
+            href="https://github.com/fiddur/aurboda/blob/develop/docs/owntracks.md"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Setup guide
+          </a>
+        </p>
+
+        <h3>3. Oura Ring</h3>
+        <p>
+          Create an app at{' '}
+          <a href="https://cloud.ouraring.com/v2/docs" target="_blank" rel="noopener noreferrer">
+            Oura Cloud
+          </a>{' '}
+          (My Applications → New Application). Add <code>OURA_CLIENT</code> and <code>OURA_SECRET</code> to
+          your docker-compose.yml, then connect in <a href="/settings">Settings</a>.
+        </p>
+
+        <h3>4. RescueTime</h3>
+        <p>
+          Get your API key from{' '}
+          <a href="https://www.rescuetime.com/anapi/manage" target="_blank" rel="noopener noreferrer">
+            RescueTime API settings
+          </a>
+          , then add it in <a href="/settings">Settings</a>.
+        </p>
+
+        <h3>5. AI Integration (MCP)</h3>
+        <p>
+          Connect{' '}
+          <a href="https://claude.ai/download" target="_blank" rel="noopener noreferrer">
+            Claude Code
+          </a>{' '}
+          to query your health data. Add to <code>~/.claude/settings.json</code>:
+        </p>
+        <pre class="code-block">
+          {`"mcpServers": {
+  "aurboda": {
+    "url": "${API_URL}/mcp",
+    "headers": { "Cookie": "auth=YOUR_AUTH_TOKEN" }
+  }
+}`}
+        </pre>
+        <p class="note">
+          Tip: Use{' '}
+          <a
+            href="https://github.com/anthropics/claude-code/tree/main/happy-coder"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            happy-coder
+          </a>{' '}
+          to access and discuss your health data on mobile.
+        </p>
+      </section>
+
+      <section class="user-actions">
+        <h2>Your Data</h2>
+        <ul>
+          <li>
+            <a href="/hr-zones">HR zone minutes (last 7 days)</a>
+          </li>
+          <li>
+            <a href="/timeline">Heart rate timeline</a>
+          </li>
+          <li>
+            <a href="/places">Places</a>
+          </li>
+        </ul>
+      </section>
+    </>
+  )
+}
+
+export function Home() {
+  const isLoggedIn = auth.value.token
+  const canSignup = signupAllowed.value
+
+  useEffect(() => {
+    ensureStatusLoaded()
+  }, [])
+
+  return (
+    <div class="home">
+      <div class="hero">
+        <img src="/logo.svg" alt="Aurboda logo" class="hero-logo" />
+        <div class="hero-text">
+          <h1>Aurboda</h1>
+          <p class="subtitle">Self Quantification Aggregator</p>
+        </div>
+      </div>
+
+      {isLoggedIn ?
+        <LoggedInHome />
+      : <GuestHome canSignup={canSignup} />}
     </div>
   )
 }

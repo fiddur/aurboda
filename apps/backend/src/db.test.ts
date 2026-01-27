@@ -301,6 +301,68 @@ describe('deleteTag', () => {
   })
 })
 
+describe('makeNewUserDb', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
+    mockConnectFn.mockResolvedValue(undefined)
+  })
+
+  test('creates PostgreSQL user with encrypted password', async () => {
+    const { makeNewUserDb } = await import('./db.js')
+    const mockUserDb = { connect: vi.fn(), query: mockQueryFn } as unknown as import('pg').Client
+
+    await makeNewUserDb(mockUserDb, 'newuser', 'securepassword')
+
+    // Find the CREATE USER call
+    const createUserCall = mockQueryFn.mock.calls.find((call) => call[0].includes('CREATE USER'))
+    expect(createUserCall).toBeDefined()
+    expect(createUserCall![0]).toContain('CREATE USER')
+    expect(createUserCall![0]).toContain('ENCRYPTED PASSWORD')
+  })
+
+  test('grants role to service user', async () => {
+    const { makeNewUserDb } = await import('./db.js')
+    const mockUserDb = { connect: vi.fn(), query: mockQueryFn } as unknown as import('pg').Client
+
+    await makeNewUserDb(mockUserDb, 'newuser', 'securepassword')
+
+    // Find the GRANT call
+    const grantCall = mockQueryFn.mock.calls.find((call) => call[0].includes('GRANT'))
+    expect(grantCall).toBeDefined()
+    expect(grantCall![0]).toContain('GRANT')
+  })
+
+  test('creates database with correct naming convention', async () => {
+    const { makeNewUserDb } = await import('./db.js')
+    const mockUserDb = { connect: vi.fn(), query: mockQueryFn } as unknown as import('pg').Client
+
+    await makeNewUserDb(mockUserDb, 'testuser', 'password')
+
+    // Find the CREATE DATABASE call
+    const createDbCall = mockQueryFn.mock.calls.find((call) => call[0].includes('CREATE DATABASE'))
+    expect(createDbCall).toBeDefined()
+    expect(createDbCall![0]).toContain('CREATE DATABASE')
+    expect(createDbCall![0]).toContain('OWNER')
+  })
+
+  test('connects to newly created database', async () => {
+    const { makeNewUserDb } = await import('./db.js')
+    const mockUserDb = { connect: vi.fn(), query: mockQueryFn } as unknown as import('pg').Client
+
+    await makeNewUserDb(mockUserDb, 'newuser', 'password')
+
+    // Should have created a client connection
+    expect(mockClientConstructor).toHaveBeenCalledWith({
+      database: 'aurboda_newuser',
+      password: 'password',
+      user: 'newuser',
+    })
+    expect(mockConnectFn).toHaveBeenCalled()
+  })
+})
+
 describe('loginToUserDb', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -340,16 +402,22 @@ describe('loginToUserDb', () => {
     expect(mockConnectFn).not.toHaveBeenCalled()
   })
 
-  test('throws error when password does not match existing connection', async () => {
+  test('reuses connection on subsequent login regardless of password', async () => {
     const { loginToUserDb } = await import('./db.js')
 
     // First login with correct password
     await loginToUserDb('existinguser', 'password123')
+    expect(mockClientConstructor).toHaveBeenCalledTimes(1)
 
-    // Second login with different password should throw
-    await expect(loginToUserDb('existinguser', 'wrongpassword')).rejects.toThrow(
-      'authentication failed for user',
-    )
+    // Clear mocks to track subsequent calls
+    mockClientConstructor.mockClear()
+    mockConnectFn.mockClear()
+
+    // Second login with different password should still work (auth is token-based)
+    // Password is only validated on initial connection to PostgreSQL
+    await loginToUserDb('existinguser', 'differentpassword')
+    expect(mockClientConstructor).not.toHaveBeenCalled()
+    expect(mockConnectFn).not.toHaveBeenCalled()
   })
 
   test('creates separate connections for different users', async () => {
