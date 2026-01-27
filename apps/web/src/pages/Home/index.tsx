@@ -1,4 +1,5 @@
 import { useEffect } from 'preact/hooks'
+import { API_URL } from '../../config'
 import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
 
 import './style.css'
@@ -172,13 +173,13 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
   )
 }
 
-function LoggedInHome({ apiUrl }: { apiUrl: string }) {
+function LoggedInHome() {
   return (
     <>
       <section class="quickstart">
         <h2>Getting Started</h2>
 
-        <h3>1. Android App</h3>
+        <h3>1. Android App (Health Connect)</h3>
         <p>
           <a
             href="https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk"
@@ -186,8 +187,8 @@ function LoggedInHome({ apiUrl }: { apiUrl: string }) {
             rel="noopener noreferrer"
           >
             Download the APK
-          </a>
-          , install it, and set the API URL to: <code>{apiUrl}</code>
+          </a>{' '}
+          to sync Android Health Connect data. Set API URL to: <code>{API_URL}</code>
         </p>
 
         <h3>2. Location Tracking</h3>
@@ -206,20 +207,26 @@ function LoggedInHome({ apiUrl }: { apiUrl: string }) {
           </a>
         </p>
 
-        <h3>3. Additional Data Sources</h3>
+        <h3>3. Oura Ring</h3>
         <p>
-          Connect{' '}
-          <a href="https://ouraring.com/" target="_blank" rel="noopener noreferrer">
-            Oura
+          Create an app at{' '}
+          <a href="https://cloud.ouraring.com/v2/docs" target="_blank" rel="noopener noreferrer">
+            Oura Cloud
           </a>{' '}
-          or{' '}
-          <a href="https://www.rescuetime.com/" target="_blank" rel="noopener noreferrer">
-            RescueTime
-          </a>{' '}
-          in <a href="/settings">Settings</a>.
+          (My Applications → New Application). Add <code>OURA_CLIENT</code> and <code>OURA_SECRET</code> to
+          your docker-compose.yml, then connect in <a href="/settings">Settings</a>.
         </p>
 
-        <h3>4. AI Integration (MCP)</h3>
+        <h3>4. RescueTime</h3>
+        <p>
+          Get your API key from{' '}
+          <a href="https://www.rescuetime.com/anapi/manage" target="_blank" rel="noopener noreferrer">
+            RescueTime API settings
+          </a>
+          , then add it in <a href="/settings">Settings</a>.
+        </p>
+
+        <h3>5. AI Integration (MCP)</h3>
         <p>
           Connect{' '}
           <a href="https://claude.ai/download" target="_blank" rel="noopener noreferrer">
@@ -230,7 +237,7 @@ function LoggedInHome({ apiUrl }: { apiUrl: string }) {
         <pre class="code-block">
           {`"mcpServers": {
   "aurboda": {
-    "url": "${apiUrl}/mcp",
+    "url": "${API_URL}/mcp",
     "headers": { "Cookie": "auth=YOUR_AUTH_TOKEN" }
   }
 }`}
@@ -244,7 +251,7 @@ function LoggedInHome({ apiUrl }: { apiUrl: string }) {
           >
             happy-coder
           </a>{' '}
-          to add MCP tools on mobile.
+          to access and discuss your health data on mobile.
         </p>
       </section>
 
@@ -274,8 +281,6 @@ export function Home() {
     ensureStatusLoaded()
   }, [])
 
-  const apiUrl = import.meta.env.VITE_API_URL || `${window.location.origin.replace(':8080', ':3000')}`
-
   return (
     <div class="home">
       <div class="hero">
@@ -287,7 +292,7 @@ export function Home() {
       </div>
 
       {isLoggedIn ?
-        <LoggedInHome apiUrl={apiUrl} />
+        <LoggedInHome />
       : <GuestHome canSignup={canSignup} />}
     </div>
   )

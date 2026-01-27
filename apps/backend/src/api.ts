@@ -192,7 +192,12 @@ const main = async () => {
         })
         return
       }
-      ;(req as unknown as { query: z.infer<T> }).query = result.data
+      // Use Object.defineProperty since req.query may be a getter-only property
+      Object.defineProperty(req, 'query', {
+        configurable: true,
+        value: result.data,
+        writable: true,
+      })
       next()
     }
 
