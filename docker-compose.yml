@@ -26,7 +26,7 @@ services:
       - PGUSER=aurboda_service
       - PGPASSWORD=${PGPASSWORD:-aurboda_dev_password}
       - SESSION_SALT=${SESSION_SALT:-change_this_to_32_byte_secret!!}
-      - ALLOW_SIGNUP=${ALLOW_SIGNUP:-false}
+      - ALLOW_SIGNUP=${ALLOW_SIGNUP:-true}
       - NODE_ENV=production
     depends_on:
       postgres:
