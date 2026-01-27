@@ -228,3 +228,84 @@ export const syncStatusSchema = z.enum(['idle', 'syncing', 'error']).meta({
 })
 
 export type SyncStatus = z.infer<typeof syncStatusSchema>
+
+// ============================================================================
+// Reusable Field Schemas
+// ============================================================================
+
+/**
+ * Geocoded address field.
+ * Use addressNullableSchema when geocoding might have been attempted but returned no result.
+ */
+export const addressSchema = z.string().meta({ description: 'Geocoded address' })
+export const addressNullableSchema = z.string().nullable().meta({ description: 'Geocoded address' })
+
+/**
+ * Latitude field with validation.
+ */
+export const latSchema = z.number().meta({ description: 'Latitude', example: 59.3293 })
+export const latWithValidationSchema = z.number().min(-90).max(90).meta({ description: 'Latitude' })
+
+/**
+ * Longitude field with validation.
+ */
+export const lonSchema = z.number().meta({ description: 'Longitude', example: 18.0686 })
+export const lonWithValidationSchema = z.number().min(-180).max(180).meta({ description: 'Longitude' })
+
+/**
+ * Radius in meters field.
+ */
+export const radiusSchema = z.number().int().meta({ description: 'Radius in meters', example: 200 })
+
+/**
+ * Duration in minutes field.
+ */
+export const durationMinutesSchema = z.number().meta({ description: 'Duration in minutes' })
+
+/**
+ * Common start/end date-time query fields.
+ */
+export const startDateTimeQuerySchema = iso8601DateTimeSchema.meta({ description: 'Start date/time' })
+export const endDateTimeQuerySchema = iso8601DateTimeSchema.meta({ description: 'End date/time' })
+
+/**
+ * Standard time range query schema - reusable for any query that needs start/end.
+ */
+export const timeRangeQuerySchema = z.object({
+  end: endDateTimeQuerySchema,
+  start: startDateTimeQuerySchema,
+})
+
+/**
+ * Success response field.
+ */
+export const successSchema = z.boolean()
+
+/**
+ * Error message field.
+ */
+export const errorSchema = z.string().optional()
+
+/**
+ * Base response schema with success and optional error.
+ */
+export const baseResponseSchema = z.object({
+  error: errorSchema,
+  success: successSchema,
+})
+
+/**
+ * Create a data response schema wrapping an array of items.
+ */
+export const createDataArrayResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
+  baseResponseSchema.extend({
+    data: z.array(itemSchema).optional(),
+  })
+
+/**
+ * Create a data response schema wrapping a single item.
+ */
+export const createDataResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
+  baseResponseSchema.extend({
+    data: itemSchema.optional(),
+  })

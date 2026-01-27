@@ -303,7 +303,8 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
-      expect(parsed.result.content[0].text).toContain('Invalid date format')
+      // Schema validation catches invalid dates before our handler runs
+      expect(parsed.result.content[0].text).toMatch(/Invalid (date|ISO datetime)/i)
     })
 
     test('returns error for invalid metrics', async () => {

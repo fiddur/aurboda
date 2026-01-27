@@ -3,8 +3,25 @@
  */
 
 import { z } from 'zod'
-import { dateOnlySchema, iso8601DateTimeSchema, placeSourceSchema } from './common.js'
+import {
+  addressSchema,
+  createDataResponseSchema,
+  dateOnlySchema,
+  durationMinutesSchema,
+  iso8601DateTimeSchema,
+  latSchema,
+  lonSchema,
+  placeSourceSchema,
+} from './common.js'
 import { hrZoneSecsSchema } from './settings.js'
+
+// Shared tag text field (also defined in tags.ts)
+const tagTextSchema = z.string().meta({ description: 'Tag/label text', example: 'coffee' })
+
+// Shared detected location ID field (also defined in locations.ts)
+const detectedLocationIdSchema = z.string().uuid().meta({
+  description: 'ID of detected location if source is detected',
+})
 
 /**
  * Heart rate stats schema.
@@ -26,7 +43,7 @@ export type HeartRateStats = z.infer<typeof heartRateStatsSchema>
 export const sessionSummarySchema = z
   .object({
     data: z.record(z.string(), z.unknown()).optional(),
-    duration: z.number().optional().meta({ description: 'Duration in minutes' }),
+    duration: durationMinutesSchema.optional(),
     endTime: iso8601DateTimeSchema.optional(),
     hrZoneSecs: hrZoneSecsSchema.optional().meta({
       description: 'Time spent in each HR zone during session',
@@ -45,7 +62,7 @@ export const tagSummarySchema = z
   .object({
     endTime: iso8601DateTimeSchema.optional(),
     startTime: iso8601DateTimeSchema,
-    tag: z.string().meta({ description: 'Tag/label text', example: 'coffee' }),
+    tag: tagTextSchema,
   })
   .meta({ id: 'TagSummary' })
 
@@ -56,14 +73,12 @@ export type TagSummary = z.infer<typeof tagSummarySchema>
  */
 export const placeSummarySchema = z
   .object({
-    address: z.string().optional().meta({ description: 'Geocoded address' }),
-    detectedLocationId: z.string().uuid().optional().meta({
-      description: 'ID of detected location if source is detected',
-    }),
-    duration: z.number().meta({ description: 'Duration in minutes' }),
+    address: addressSchema.optional(),
+    detectedLocationId: detectedLocationIdSchema.optional(),
+    duration: durationMinutesSchema,
     endTime: iso8601DateTimeSchema,
-    lat: z.number().optional().meta({ description: 'Latitude' }),
-    lon: z.number().optional().meta({ description: 'Longitude' }),
+    lat: latSchema.optional(),
+    lon: lonSchema.optional(),
     name: z.string().meta({ description: 'Place name', example: 'Home' }),
     source: placeSourceSchema,
     startTime: iso8601DateTimeSchema,
@@ -124,13 +139,9 @@ export type DailySummaryResult = z.infer<typeof dailySummaryResultSchema>
 /**
  * Daily summary response schema (API wrapper).
  */
-export const dailySummaryResponseSchema = z
-  .object({
-    data: dailySummaryResultSchema.optional(),
-    error: z.string().optional(),
-    success: z.boolean(),
-  })
-  .meta({ id: 'DailySummaryResponse' })
+export const dailySummaryResponseSchema = createDataResponseSchema(dailySummaryResultSchema).meta({
+  id: 'DailySummaryResponse',
+})
 
 export type DailySummaryResponse = z.infer<typeof dailySummaryResponseSchema>
 
