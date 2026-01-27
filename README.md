@@ -25,9 +25,17 @@ Quick Start (Docker)
 --------------------
 
 ```bash
-# Clone and start
-git clone https://github.com/fiddur/aurboda.git
-cd aurboda
+# Download docker-compose.yml
+curl -o docker-compose.yml https://raw.githubusercontent.com/fiddur/aurboda/main/docker-compose.yml
+
+# Create .env file with your settings
+cat > .env << 'EOF'
+SESSION_SALT=your_32_byte_secret_change_this!
+PGPASSWORD=your_secure_db_password
+ALLOW_SIGNUP=true
+EOF
+
+# Start services
 docker compose up -d
 ```
 
@@ -39,7 +47,9 @@ This starts:
 
 ### Creating Your User
 
-Users are PostgreSQL roles with their own databases. Create your first user:
+With `ALLOW_SIGNUP=true`, navigate to http://localhost:8080 and create your account through the web interface.
+
+Alternatively, create users directly in PostgreSQL (users are PostgreSQL roles with their own databases):
 
 ```bash
 # Connect to the postgres container
@@ -54,7 +64,23 @@ CREATE DATABASE aurboda_myuser OWNER myuser;
 
 Then log in at http://localhost:8080 with your username and password.
 
-See [docker-compose.yml](docker-compose.yml) for configuration options. Set `SESSION_SALT` to a secure 32-byte secret in production.
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SESSION_SALT` | Secret for session tokens (32+ characters) | Required |
+| `PGPASSWORD` | PostgreSQL password | `aurboda_dev_password` |
+| `ALLOW_SIGNUP` | Enable user registration endpoint | `false` |
+
+### Port Configuration
+
+To change default ports, modify your docker-compose.yml:
+- Web UI: Change `"8080:80"` to `"YOUR_PORT:80"`
+- Backend API: Change `"3000:3000"` to `"YOUR_PORT:3000"`
+
+### Development Builds
+
+Replace `:latest` with `:develop` in docker-compose.yml to use development builds.
 
 
 Data Sources
@@ -62,7 +88,7 @@ Data Sources
 
 | Source | Setup |
 |--------|-------|
-| Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), configure backend URL |
+| Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), enter your backend URL (e.g., `http://YOUR_SERVER_IP:3000`), and log in with your credentials |
 | OwnTracks | [OwnTracks setup guide](docs/owntracks.md) (JSON HTTP mode) |
 | Oura | Connect via OAuth in user settings (web UI). Requires `OURA_CLIENT` and `OURA_SECRET` env vars on backend. |
 | RescueTime | Configure API key in user settings (web UI). Get key from [RescueTime API settings](https://www.rescuetime.com/anapi/manage). |
