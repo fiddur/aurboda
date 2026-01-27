@@ -198,6 +198,10 @@ const main = async () => {
 
   const allowSignup = process.env.ALLOW_SIGNUP === 'true'
 
+  httpd.get('/status', (_req, res) => {
+    res.json({ signupAllowed: allowSignup, success: true })
+  })
+
   httpd.post('/signup', async (req, res, next) => {
     if (!allowSignup) {
       res.status(403).json({ error: 'Signup is disabled', success: false })

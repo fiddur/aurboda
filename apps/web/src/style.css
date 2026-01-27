@@ -24,13 +24,15 @@ body {
 }
 
 header {
-	display: flex;
-	justify-content: flex-end;
 	background-color: #673ab8;
 }
 
 header nav {
 	display: flex;
+}
+
+header nav .spacer {
+	flex: 1;
 }
 
 header a {
