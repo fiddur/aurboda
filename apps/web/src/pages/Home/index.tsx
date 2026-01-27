@@ -1,4 +1,5 @@
 import { useEffect } from 'preact/hooks'
+import { API_URL } from '../../config'
 import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
 
 import './style.css'
@@ -172,7 +173,7 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
   )
 }
 
-function LoggedInHome({ apiUrl }: { apiUrl: string }) {
+function LoggedInHome() {
   return (
     <>
       <section class="quickstart">
@@ -187,7 +188,7 @@ function LoggedInHome({ apiUrl }: { apiUrl: string }) {
           >
             Download the APK
           </a>{' '}
-          to sync Android Health Connect data. Set API URL to: <code>{apiUrl}</code>
+          to sync Android Health Connect data. Set API URL to: <code>{API_URL}</code>
         </p>
 
         <h3>2. Location Tracking</h3>
@@ -236,7 +237,7 @@ function LoggedInHome({ apiUrl }: { apiUrl: string }) {
         <pre class="code-block">
           {`"mcpServers": {
   "aurboda": {
-    "url": "${apiUrl}/mcp",
+    "url": "${API_URL}/mcp",
     "headers": { "Cookie": "auth=YOUR_AUTH_TOKEN" }
   }
 }`}
@@ -280,13 +281,6 @@ export function Home() {
     ensureStatusLoaded()
   }, [])
 
-  // In dev: replace web port 8080 with backend port 3000
-  // In prod: backend is at /api path on same origin
-  const origin = window.location.origin
-  const apiUrl =
-    import.meta.env.VITE_API_URL ||
-    (origin.includes(':8080') ? origin.replace(':8080', ':3000') : `${origin}/api`)
-
   return (
     <div class="home">
       <div class="hero">
@@ -298,7 +292,7 @@ export function Home() {
       </div>
 
       {isLoggedIn ?
-        <LoggedInHome apiUrl={apiUrl} />
+        <LoggedInHome />
       : <GuestHome canSignup={canSignup} />}
     </div>
   )
