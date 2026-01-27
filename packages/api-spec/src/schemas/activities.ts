@@ -3,7 +3,12 @@
  */
 
 import { z } from 'zod'
-import { iso8601DateTimeSchema } from './common.js'
+import {
+  createDataArrayResponseSchema,
+  durationMinutesSchema,
+  iso8601DateTimeSchema,
+  timeRangeQuerySchema,
+} from './common.js'
 import { hrZoneSecsSchema } from './settings.js'
 
 /**
@@ -13,7 +18,7 @@ export const activitySchema = z
   .object({
     activityType: z.string().meta({ description: 'Activity type' }),
     data: z.record(z.string(), z.unknown()).optional(),
-    duration: z.number().optional().meta({ description: 'Duration in minutes' }),
+    duration: durationMinutesSchema.optional(),
     endTime: iso8601DateTimeSchema.optional(),
     hrZoneSecs: hrZoneSecsSchema.optional().meta({
       description: 'Time spent in each HR zone (for exercise)',
@@ -31,10 +36,8 @@ export type Activity = z.infer<typeof activitySchema>
 /**
  * Activities query schema.
  */
-export const activitiesQuerySchema = z
-  .object({
-    end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+export const activitiesQuerySchema = timeRangeQuerySchema
+  .extend({
     types: z.string().optional().meta({
       description: 'Comma-separated activity types',
       example: 'sleep,exercise',
@@ -47,12 +50,8 @@ export type ActivitiesQuery = z.infer<typeof activitiesQuerySchema>
 /**
  * Activities response schema.
  */
-export const activitiesResponseSchema = z
-  .object({
-    data: z.array(activitySchema).optional(),
-    error: z.string().optional(),
-    success: z.boolean(),
-  })
-  .meta({ id: 'ActivitiesResponse' })
+export const activitiesResponseSchema = createDataArrayResponseSchema(activitySchema).meta({
+  id: 'ActivitiesResponse',
+})
 
 export type ActivitiesResponse = z.infer<typeof activitiesResponseSchema>
