@@ -8,6 +8,7 @@ import {
   addressSchema,
   createDataArrayResponseSchema,
   createDataResponseSchema,
+  detectedLocationIdSchema,
   durationMinutesSchema,
   geocodeStatusSchema,
   iso8601DateTimeSchema,
@@ -22,11 +23,6 @@ import {
 
 // Shared location name field
 const locationNameSchema = z.string().meta({ description: 'Location name', example: 'Home' })
-
-// Shared detected location ID field
-const detectedLocationIdSchema = z.string().uuid().meta({
-  description: 'ID of detected location if source is detected',
-})
 
 /**
  * Named location schema.

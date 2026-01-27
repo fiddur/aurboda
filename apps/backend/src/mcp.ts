@@ -1,4 +1,5 @@
 import {
+  activityTypes,
   activityTypeSchema,
   dateOnlySchema,
   endDateTimeQuerySchema,
@@ -89,8 +90,10 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
     content: [{ text: message, type: 'text' as const }],
   })
 
-  // Helper to parse and validate ISO date string
-  const parseDate = (dateStr: string): Date | null => {
+  // Helper to parse optional ISO date string (for fields using plain z.string())
+  // Note: Fields using startDateTimeQuerySchema/endDateTimeQuerySchema are already
+  // validated by zod, so they can be converted directly with new Date()
+  const parseOptionalDate = (dateStr: string): Date | null => {
     const date = new Date(dateStr)
     return isNaN(date.getTime()) ? null : date
   }
@@ -118,14 +121,8 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
           return errorResponse(`Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`)
         }
 
-        const startDate = parseDate(start)
-        const endDate = parseDate(end)
-
-        if (!startDate || !endDate) {
-          return errorResponse('Invalid date format. Use ISO 8601 format.')
-        }
-
-        const result = await queryMetrics(user, metric, startDate, endDate)
+        // Dates are pre-validated by zod schema (startDateTimeQuerySchema/endDateTimeQuerySchema)
+        const result = await queryMetrics(user, metric, new Date(start), new Date(end))
         return jsonResponse(result)
       },
     )
@@ -164,13 +161,6 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
           .describe(`Metrics to include. Valid metrics: ${validMetrics.join(', ')}`),
       },
       async ({ end, metrics, start }) => {
-        const startDate = parseDate(start)
-        const endDate = parseDate(end)
-
-        if (!startDate || !endDate) {
-          return errorResponse('Invalid date format. Use ISO 8601 format.')
-        }
-
         const invalidMetrics = metrics.filter((m) => !isValidMetric(m))
         if (invalidMetrics.length > 0) {
           return errorResponse(
@@ -178,8 +168,9 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
           )
         }
 
+        // Dates are pre-validated by zod schema
         const validatedMetrics = metrics as MetricType[]
-        const summary = await getPeriodSummary(user, validatedMetrics, startDate, endDate)
+        const summary = await getPeriodSummary(user, validatedMetrics, new Date(start), new Date(end))
         return jsonResponse(summary)
       },
     )
@@ -190,14 +181,8 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
       'Query tags/labels for a time range. Returns all tags with start times, optional end times, and tag text.',
       mcpTimeRangeSchema,
       async ({ end, start }) => {
-        const startDate = parseDate(start)
-        const endDate = parseDate(end)
-
-        if (!startDate || !endDate) {
-          return errorResponse('Invalid date format. Use ISO 8601 format.')
-        }
-
-        const tags = await queryTags(user, startDate, endDate, sync)
+        // Dates are pre-validated by zod schema
+        const tags = await queryTags(user, new Date(start), new Date(end), sync)
         return jsonResponse({ data: tags, success: true })
       },
     )
@@ -214,15 +199,10 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
           .describe('Activity types to include. Defaults to all types (sleep, exercise, meditation, nap).'),
       },
       async ({ end, start, types }) => {
-        const startDate = parseDate(start)
-        const endDate = parseDate(end)
-
-        if (!startDate || !endDate) {
-          return errorResponse('Invalid date format. Use ISO 8601 format.')
-        }
-
-        const activityTypes = types ?? ['sleep', 'exercise', 'meditation', 'nap']
-        const activities = await queryActivities(user, activityTypes, startDate, endDate, sync)
+        // Dates are pre-validated by zod schema
+        // Use activityTypes from api-spec to avoid hardcoded values
+        const requestedTypes = types ?? [...activityTypes]
+        const activities = await queryActivities(user, requestedTypes, new Date(start), new Date(end), sync)
         return jsonResponse({ data: activities, success: true })
       },
     )
@@ -233,14 +213,8 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
       'Query productivity data (from RescueTime) for a time range. Returns application/website usage with productivity scores.',
       mcpTimeRangeSchema,
       async ({ end, start }) => {
-        const startDate = parseDate(start)
-        const endDate = parseDate(end)
-
-        if (!startDate || !endDate) {
-          return errorResponse('Invalid date format. Use ISO 8601 format.')
-        }
-
-        const productivity = await queryProductivity(user, startDate, endDate, sync)
+        // Dates are pre-validated by zod schema
+        const productivity = await queryProductivity(user, new Date(start), new Date(end), sync)
         return jsonResponse({ data: productivity, success: true })
       },
     )
@@ -251,14 +225,8 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
       'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, or owntracks).',
       mcpTimeRangeSchema,
       async ({ end, start }) => {
-        const startDate = parseDate(start)
-        const endDate = parseDate(end)
-
-        if (!startDate || !endDate) {
-          return errorResponse('Invalid date format. Use ISO 8601 format.')
-        }
-
-        const places = await queryLocations(user, startDate, endDate)
+        // Dates are pre-validated by zod schema
+        const places = await queryLocations(user, new Date(start), new Date(end))
         return jsonResponse({ data: places, success: true })
       },
     )
@@ -282,14 +250,13 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
         tag: z.string().describe('The tag/label text (e.g., "coffee", "meditation", "headache")'),
       },
       async ({ end_time, start_time, tag }) => {
-        const startDate = parseDate(start_time)
-        if (!startDate) {
-          return errorResponse('Invalid start_time format. Use ISO 8601 format.')
-        }
+        // start_time is pre-validated by zod schema
+        const startDate = new Date(start_time)
 
+        // end_time uses plain z.string() so needs manual validation
         let endDate: Date | undefined
         if (end_time) {
-          const parsed = parseDate(end_time)
+          const parsed = parseOptionalDate(end_time)
           if (!parsed) {
             return errorResponse('Invalid end_time format. Use ISO 8601 format.')
           }
@@ -335,7 +302,8 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
           return errorResponse(`Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`)
         }
 
-        const measurementTime = time ? parseDate(time) : new Date()
+        // time uses plain z.string() so needs manual validation
+        const measurementTime = time ? parseOptionalDate(time) : new Date()
         if (!measurementTime) {
           return errorResponse('Invalid time format. Use ISO 8601 format.')
         }
@@ -522,17 +490,11 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
         min_duration: z.number().optional().describe('Minimum stay duration in minutes. Defaults to 60.'),
       },
       async ({ end, min_duration, start }) => {
-        const startDate = parseDate(start)
-        const endDate = parseDate(end)
-
-        if (!startDate || !endDate) {
-          return errorResponse('Invalid date format. Use ISO 8601 format.')
-        }
-
+        // Dates are pre-validated by zod schema
         const detected = await getDetectedLocations(user, {
-          end: endDate,
+          end: new Date(end),
           minDurationMinutes: min_duration,
-          start: startDate,
+          start: new Date(start),
         })
 
         return jsonResponse({ data: detected, success: true })
@@ -546,13 +508,8 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
       {},
       async () => {
         const detected = await getStoredDetectedLocations(user)
-        // Transform Date objects to ISO strings for API response
-        const serialized = detected.map((d) => ({
-          ...d,
-          firstVisit: d.firstVisit.toISOString(),
-          lastVisit: d.lastVisit.toISOString(),
-        }))
-        return jsonResponse({ data: serialized, success: true })
+        // JSON.stringify automatically converts Date objects to ISO strings
+        return jsonResponse({ data: detected, success: true })
       },
     )
 
@@ -567,13 +524,7 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
         radius: z.number().optional().describe('Radius in meters. Defaults to 200.'),
       },
       async ({ lat, lon, name, radius }) => {
-        if (lat < -90 || lat > 90) {
-          return errorResponse('Invalid latitude. Must be between -90 and 90.')
-        }
-        if (lon < -180 || lon > 180) {
-          return errorResponse('Invalid longitude. Must be between -180 and 180.')
-        }
-
+        // lat/lon are pre-validated by zod schema (latWithValidationSchema/lonWithValidationSchema)
         const location = await insertNamedLocation(user, { lat, lon, name, radius })
         return jsonResponse({ data: location, success: true })
       },

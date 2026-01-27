@@ -8,11 +8,9 @@ import {
   createDataArrayResponseSchema,
   dataSourceSchema,
   iso8601DateTimeSchema,
+  tagTextSchema,
   timeRangeQuerySchema,
 } from './common.js'
-
-// Shared tag text field
-const tagTextSchema = z.string().meta({ description: 'Tag/label text', example: 'coffee' })
 
 /**
  * Tag schema.

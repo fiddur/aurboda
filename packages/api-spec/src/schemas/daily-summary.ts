@@ -7,21 +7,15 @@ import {
   addressSchema,
   createDataResponseSchema,
   dateOnlySchema,
+  detectedLocationIdSchema,
   durationMinutesSchema,
   iso8601DateTimeSchema,
   latSchema,
   lonSchema,
   placeSourceSchema,
+  tagTextSchema,
 } from './common.js'
 import { hrZoneSecsSchema } from './settings.js'
-
-// Shared tag text field (also defined in tags.ts)
-const tagTextSchema = z.string().meta({ description: 'Tag/label text', example: 'coffee' })
-
-// Shared detected location ID field (also defined in locations.ts)
-const detectedLocationIdSchema = z.string().uuid().meta({
-  description: 'ID of detected location if source is detected',
-})
 
 /**
  * Heart rate stats schema.

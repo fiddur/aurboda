@@ -86,9 +86,14 @@ export const isHrZoneMetric = (metric: MetricType): boolean =>
   (hrZoneMetrics as readonly string[]).includes(metric)
 
 /**
+ * Valid activity types.
+ */
+export const activityTypes = ['sleep', 'exercise', 'meditation', 'nap'] as const
+
+/**
  * Activity types for activities table.
  */
-export const activityTypeSchema = z.enum(['sleep', 'exercise', 'meditation', 'nap']).meta({
+export const activityTypeSchema = z.enum(activityTypes).meta({
   description: 'Type of activity',
   example: 'exercise',
   id: 'ActivityType',
@@ -241,16 +246,44 @@ export const addressSchema = z.string().meta({ description: 'Geocoded address' }
 export const addressNullableSchema = z.string().nullable().meta({ description: 'Geocoded address' })
 
 /**
- * Latitude field with validation.
+ * Latitude field without range validation.
+ * Use for response schemas where data is already validated.
+ * @see latWithValidationSchema for input validation with -90 to 90 range check
  */
 export const latSchema = z.number().meta({ description: 'Latitude', example: 59.3293 })
+
+/**
+ * Latitude field with -90 to 90 range validation.
+ * Use for request/input schemas where user-provided data needs validation.
+ * @see latSchema for response schemas without validation
+ */
 export const latWithValidationSchema = z.number().min(-90).max(90).meta({ description: 'Latitude' })
 
 /**
- * Longitude field with validation.
+ * Longitude field without range validation.
+ * Use for response schemas where data is already validated.
+ * @see lonWithValidationSchema for input validation with -180 to 180 range check
  */
 export const lonSchema = z.number().meta({ description: 'Longitude', example: 18.0686 })
+
+/**
+ * Longitude field with -180 to 180 range validation.
+ * Use for request/input schemas where user-provided data needs validation.
+ * @see lonSchema for response schemas without validation
+ */
 export const lonWithValidationSchema = z.number().min(-180).max(180).meta({ description: 'Longitude' })
+
+/**
+ * Tag/label text field.
+ */
+export const tagTextSchema = z.string().meta({ description: 'Tag/label text', example: 'coffee' })
+
+/**
+ * Detected location ID field (UUID reference to a detected location).
+ */
+export const detectedLocationIdSchema = z.string().uuid().meta({
+  description: 'ID of detected location if source is detected',
+})
 
 /**
  * Radius in meters field.
