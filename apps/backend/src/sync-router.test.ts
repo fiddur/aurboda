@@ -38,7 +38,9 @@ describe('sync router', () => {
       const app = createTestApp()
       const response = await request(app)
         .post('/sync/daily-aggregates')
-        .send({ data: [{ date: '2024-01-15', metric: 'steps', value: 1000 }] })
+        .send({
+          data: [{ dataOrigins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 }],
+        })
 
       expect(response.status).toBe(200)
       expect(mockDeps.processDailyAggregate).toHaveBeenCalledTimes(1)
@@ -47,7 +49,7 @@ describe('sync router', () => {
 
     test('POST /sync/oura calls syncOura, not processHealthConnectData', async () => {
       const app = createTestApp()
-      const response = await request(app).post('/sync/oura').send({ fullResync: true })
+      const response = await request(app).post('/sync/oura').send({ full_resync: true })
 
       expect(response.status).toBe(200)
       expect(mockDeps.syncOura).toHaveBeenCalledWith('testuser', {
@@ -100,31 +102,41 @@ describe('sync router', () => {
   })
 
   describe('daily-aggregates endpoint', () => {
-    test('returns success for empty data array', async () => {
-      const app = createTestApp()
-      const response = await request(app).post('/sync/daily-aggregates').send({ data: [] })
-
-      expect(response.status).toBe(200)
-      expect(response.body).toEqual({ success: true })
-      expect(mockDeps.processDailyAggregate).not.toHaveBeenCalled()
-    })
-
     test('processes multiple aggregates', async () => {
       const app = createTestApp()
       const aggregates = [
-        { date: '2024-01-15', metric: 'steps', value: 1000 },
-        { date: '2024-01-15', metric: 'distance', value: 500 },
+        { dataOrigins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 },
+        { dataOrigins: ['app1', 'app2'], date: '2024-01-15', metric: 'distance', value: 500 },
       ]
       const response = await request(app).post('/sync/daily-aggregates').send({ data: aggregates })
 
       expect(response.status).toBe(200)
       expect(mockDeps.processDailyAggregate).toHaveBeenCalledTimes(2)
     })
+
+    test('returns 400 for invalid data (missing required fields)', async () => {
+      const app = createTestApp()
+      // Missing dataOrigins field
+      const response = await request(app)
+        .post('/sync/daily-aggregates')
+        .send({ data: [{ date: '2024-01-15', metric: 'steps', value: 1000 }] })
+
+      expect(response.status).toBe(400)
+      expect(mockDeps.processDailyAggregate).not.toHaveBeenCalled()
+    })
   })
 
   describe('oura endpoints', () => {
     test('GET /sync/oura/status returns sync states', async () => {
-      const mockStates = [{ provider: 'oura', status: 'idle' }]
+      const mockStates = [
+        {
+          errorMessage: null,
+          lastSyncTime: '2024-01-15T10:00:00Z',
+          provider: 'oura',
+          retryAfter: null,
+          status: 'idle' as const,
+        },
+      ]
       vi.mocked(mockDeps.getOuraSyncStates).mockResolvedValueOnce(mockStates)
 
       const app = createTestApp()
@@ -155,7 +167,15 @@ describe('sync router', () => {
     })
 
     test('GET /sync/rescuetime/status returns sync states', async () => {
-      const mockStates = [{ provider: 'rescuetime', status: 'idle' }]
+      const mockStates = [
+        {
+          errorMessage: null,
+          lastSyncTime: '2024-01-15T10:00:00Z',
+          provider: 'rescuetime',
+          retryAfter: null,
+          status: 'idle' as const,
+        },
+      ]
       vi.mocked(mockDeps.getRescueTimeSyncStates).mockResolvedValueOnce(mockStates)
 
       const app = createTestApp()
@@ -176,12 +196,11 @@ describe('sync router', () => {
       expect(mockDeps.processHealthConnectData).toHaveBeenCalledWith('testuser', 'SomeRecord', singleRecord)
     })
 
-    test('returns success for empty data', async () => {
+    test('returns 400 for missing data field', async () => {
       const app = createTestApp()
       const response = await request(app).post('/sync/SomeRecord').send({})
 
-      expect(response.status).toBe(200)
-      expect(response.body).toEqual({ success: true })
+      expect(response.status).toBe(400)
       expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
     })
   })

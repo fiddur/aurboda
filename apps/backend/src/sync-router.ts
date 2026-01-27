@@ -1,21 +1,42 @@
+import {
+  dailyAggregatesBodySchema,
+  healthConnectSyncBodySchema,
+  syncOuraBodySchema,
+  syncRescueTimeBodySchema,
+  type DailyAggregate,
+  type DailyAggregatesBody,
+  type HealthConnectRecord,
+  type HealthConnectSyncBody,
+  type OuraSyncResponse,
+  type OuraSyncStatusResponse,
+  type ProviderSyncStatus,
+  type RescueTimeSyncResponse,
+  type RescueTimeSyncStatusResponse,
+  type SyncOuraBody,
+  type SyncRescueTimeBody,
+  type SyncResponse,
+} from '@aurboda/api-spec'
 import { RequestHandler, Router } from 'express'
-import { DailyAggregate } from './db'
+import { validateBody } from './validation'
+
+// Using Record<string, string> as Params equivalent
+type Params = Record<string, string>
 
 /**
  * Dependencies for sync router - allows testing with mocks
  */
 export interface SyncRouterDeps {
   processDailyAggregate: (user: string, aggregate: DailyAggregate) => Promise<void>
-  processHealthConnectData: (user: string, recordType: string, data: Record<string, unknown>) => Promise<void>
+  processHealthConnectData: (user: string, recordType: string, data: HealthConnectRecord) => Promise<void>
   syncOura: (user: string, options: { fullResync?: boolean; startDate?: Date }) => Promise<unknown>
-  getOuraSyncStates: (user: string) => Promise<unknown[]>
+  getOuraSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetOuraSyncState: (user: string, dataType?: string) => Promise<void>
   syncRescueTime: (
     user: string,
     apiKey: string,
     options: { fullResync?: boolean; startDate?: Date },
   ) => Promise<unknown>
-  getRescueTimeSyncStates: (user: string) => Promise<unknown[]>
+  getRescueTimeSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetRescueTimeSyncState: (user: string) => Promise<void>
   getSettings: (user: string) => Promise<{ rescueTimeKey?: string }>
 }
@@ -34,40 +55,46 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
   // ===========================================================================
 
   // Daily aggregates endpoint for deduplicated cumulative metrics from Health Connect
-  router.post('/daily-aggregates', authMiddleware, async (req, res) => {
-    const { data } = req.body as { data?: DailyAggregate[] }
-    const user = req.user!
+  router.post<Params, SyncResponse, DailyAggregatesBody>(
+    '/daily-aggregates',
+    authMiddleware,
+    validateBody(dailyAggregatesBodySchema),
+    async (req, res) => {
+      const { data } = req.body
+      const user = req.user!
 
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      return res.json({ success: true })
-    }
+      for (const aggregate of data) {
+        await deps.processDailyAggregate(user, aggregate)
+      }
 
-    for (const aggregate of data) {
-      await deps.processDailyAggregate(user, aggregate)
-    }
-
-    res.json({ success: true })
-  })
+      res.json({ success: true })
+    },
+  )
 
   // Oura sync endpoints
-  router.post('/oura', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
+  router.post<Params, OuraSyncResponse, SyncOuraBody>(
+    '/oura',
+    authMiddleware,
+    validateBody(syncOuraBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { full_resync, start_date } = req.body
 
-    try {
-      const results = await deps.syncOura(user, {
-        fullResync,
-        startDate: startDate ? new Date(startDate) : undefined,
-      })
+      try {
+        const results = await deps.syncOura(user, {
+          fullResync: full_resync,
+          startDate: start_date ? new Date(start_date) : undefined,
+        })
 
-      res.json({ results, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
+        res.json({ results, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
 
-  router.get('/oura/status', authMiddleware, async (req, res) => {
+  router.get<Params, OuraSyncStatusResponse>('/oura/status', authMiddleware, async (req, res) => {
     const user = req.user!
 
     try {
@@ -79,46 +106,55 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     }
   })
 
-  router.delete('/oura/state', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { dataType } = req.query as { dataType?: string }
+  router.delete<Params, SyncResponse, unknown, { dataType?: string }>(
+    '/oura/state',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const { dataType } = req.query
 
-    try {
-      await deps.resetOuraSyncState(user, dataType)
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
+      try {
+        await deps.resetOuraSyncState(user, dataType)
+        res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
 
   // RescueTime sync endpoints
-  router.post('/rescuetime', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
-    const settings = await deps.getSettings(user)
-    const rescueTimeKey = settings.rescueTimeKey
+  router.post<Params, RescueTimeSyncResponse, SyncRescueTimeBody>(
+    '/rescuetime',
+    authMiddleware,
+    validateBody(syncRescueTimeBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { full_resync, start_date } = req.body
+      const settings = await deps.getSettings(user)
+      const rescueTimeKey = settings.rescueTimeKey
 
-    if (!rescueTimeKey) {
-      return res
-        .status(400)
-        .json({ error: 'RescueTime API key not configured in user settings', success: false })
-    }
+      if (!rescueTimeKey) {
+        return res
+          .status(400)
+          .json({ error: 'RescueTime API key not configured in user settings', success: false })
+      }
 
-    try {
-      const result = await deps.syncRescueTime(user, rescueTimeKey, {
-        fullResync,
-        startDate: startDate ? new Date(startDate) : undefined,
-      })
+      try {
+        const result = await deps.syncRescueTime(user, rescueTimeKey, {
+          fullResync: full_resync,
+          startDate: start_date ? new Date(start_date) : undefined,
+        })
 
-      res.json({ result, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
+        res.json({ result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
 
-  router.get('/rescuetime/status', authMiddleware, async (req, res) => {
+  router.get<Params, RescueTimeSyncStatusResponse>('/rescuetime/status', authMiddleware, async (req, res) => {
     const user = req.user!
 
     try {
@@ -130,7 +166,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     }
   })
 
-  router.delete('/rescuetime/state', authMiddleware, async (req, res) => {
+  router.delete<Params, SyncResponse>('/rescuetime/state', authMiddleware, async (req, res) => {
     const user = req.user!
 
     try {
@@ -145,26 +181,19 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
   // ===========================================================================
   // Generic Health Connect sync endpoint - MUST be defined AFTER specific routes
   // ===========================================================================
-  router.post<{ recordType: string }, { success: boolean }>(
+  router.post<{ recordType: string }, SyncResponse, HealthConnectSyncBody>(
     '/:recordType',
     authMiddleware,
+    validateBody(healthConnectSyncBodySchema),
     async (req, res) => {
       const { recordType } = req.params
-      let { data } = req.body
+      const { data } = req.body
 
-      if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
-        data = [data]
-      }
-
-      if (!data?.length) {
-        console.log('  empty?!')
-        return res.json({ success: true })
-      }
-
+      const records = Array.isArray(data) ? data : [data]
       const user = req.user!
 
       // Process each Health Connect record through the new schema
-      for (const item of data) {
+      for (const item of records) {
         await deps.processHealthConnectData(user, recordType, item)
       }
 

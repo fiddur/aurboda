@@ -47,7 +47,6 @@ import cors from 'cors'
 import { subHours } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
-import { z } from 'zod'
 import { createAuth } from './auth'
 import {
   getActivities,
@@ -103,6 +102,7 @@ import { getSettings, getSettingsResponse, validateAndUpdateSettings } from './s
 import { createSyncProvider } from './services/sync-provider'
 import { createSyncRouter } from './sync-router'
 import { reduceTimeSeries } from './utils'
+import { validateBody, validateQuery } from './validation'
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -156,50 +156,6 @@ const main = async () => {
     }
     return next(unauthorized)
   }
-
-  /**
-   * Create a validation middleware for request body using a Zod schema.
-   * Returns 400 with detailed validation errors on failure.
-   */
-  const validateBody =
-    <T extends z.ZodTypeAny>(schema: T): RequestHandler =>
-    (req, res, next) => {
-      const result = schema.safeParse(req.body)
-      if (!result.success) {
-        res.status(400).json({
-          error: result.error.flatten().fieldErrors,
-          success: false,
-        })
-        return
-      }
-      req.body = result.data
-      next()
-    }
-
-  /**
-   * Create a validation middleware for query parameters using a Zod schema.
-   * Returns 400 with detailed validation errors on failure.
-   * The validated data is assigned back to req.query; route generics provide typing.
-   */
-  const validateQuery =
-    <T extends z.ZodTypeAny>(schema: T): RequestHandler =>
-    (req, res, next) => {
-      const result = schema.safeParse(req.query)
-      if (!result.success) {
-        res.status(400).json({
-          error: result.error.flatten().fieldErrors,
-          success: false,
-        })
-        return
-      }
-      // Use Object.defineProperty since req.query may be a getter-only property
-      Object.defineProperty(req, 'query', {
-        configurable: true,
-        value: result.data,
-        writable: true,
-      })
-      next()
-    }
 
   const allowSignup = process.env.ALLOW_SIGNUP === 'true'
 
@@ -297,13 +253,25 @@ const main = async () => {
     res.end(JSON.stringify({ refresh, token: refresh }))
   })
 
+  // Transform SyncState to ProviderSyncStatus format (undefined -> null)
+  const transformSyncStates = async (user: string, provider: 'oura' | 'rescuetime') => {
+    const states = await getAllSyncStates(user, provider)
+    return states.map((s) => ({
+      errorMessage: s.errorMessage ?? null,
+      lastSyncTime: s.lastSyncTime?.toISOString() ?? null,
+      provider: s.provider,
+      retryAfter: s.retryAfter?.toISOString() ?? null,
+      status: s.status === 'rate_limited' ? ('error' as const) : s.status,
+    }))
+  }
+
   // Sync router - handles /sync/* endpoints
   httpd.use(
     '/sync',
     createSyncRouter(
       {
-        getOuraSyncStates: (user) => getAllSyncStates(user, 'oura'),
-        getRescueTimeSyncStates: (user) => getAllSyncStates(user, 'rescuetime'),
+        getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
+        getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),
         getSettings,
         processDailyAggregate,
         processHealthConnectData,
