@@ -297,32 +297,10 @@ const main = async () => {
     res.end(JSON.stringify({ refresh, token: refresh }))
   })
 
-  httpd.post<{ recordType: string }, { success: boolean }>(
-    '/sync/:recordType',
-    authMiddleware,
-    async (req, res) => {
-      const { recordType } = req.params
-      let { data } = req.body
-
-      if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
-        data = [data]
-      }
-
-      if (!data?.length) {
-        console.log('  empty?!')
-        return res.json({ success: true })
-      }
-
-      const user = req.user!
-
-      // Process each Health Connect record through the new schema
-      for (const item of data) {
-        await processHealthConnectData(user, recordType, item)
-      }
-
-      res.json({ success: true })
-    },
-  )
+  // ===========================================================================
+  // Sync endpoints - specific routes must be defined BEFORE /sync/:recordType
+  // to avoid route matching issues with Express parameterized routes
+  // ===========================================================================
 
   // Daily aggregates endpoint for deduplicated cumulative metrics from Health Connect
   httpd.post('/sync/daily-aggregates', authMiddleware, async (req, res) => {
@@ -339,9 +317,6 @@ const main = async () => {
 
     res.json({ success: true })
   })
-
-  httpd.get('/auth/connectOura', oura.redirectToAuthorize)
-  httpd.get('/auth/ouracb', oura.authCb)
 
   // Oura sync endpoints
   httpd.post('/sync/oura', authMiddleware, async (req, res) => {
@@ -435,6 +410,37 @@ const main = async () => {
       res.status(500).json({ error: message, success: false })
     }
   })
+
+  // Generic Health Connect sync endpoint - MUST be defined AFTER specific routes
+  httpd.post<{ recordType: string }, { success: boolean }>(
+    '/sync/:recordType',
+    authMiddleware,
+    async (req, res) => {
+      const { recordType } = req.params
+      let { data } = req.body
+
+      if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
+        data = [data]
+      }
+
+      if (!data?.length) {
+        console.log('  empty?!')
+        return res.json({ success: true })
+      }
+
+      const user = req.user!
+
+      // Process each Health Connect record through the new schema
+      for (const item of data) {
+        await processHealthConnectData(user, recordType, item)
+      }
+
+      res.json({ success: true })
+    },
+  )
+
+  httpd.get('/auth/connectOura', oura.redirectToAuthorize)
+  httpd.get('/auth/ouracb', oura.authCb)
 
   // Initialize geocode queue (creates 'aurboda' database if needed)
   let geocodeQueue: GeocodeQueue | null = null
