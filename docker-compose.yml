@@ -8,6 +8,8 @@ services:
     image: fiddur/aurboda-web:latest
     ports:
       - "8080:80"
+    environment:
+      - VITE_API_URL=http://localhost:3000
     depends_on:
       - aurboda-backend
     restart: unless-stopped
@@ -17,6 +19,8 @@ services:
     ports:
       - "3000:3000"
     environment:
+      - PORT=3000
+      - WEB_HOST=http://localhost:8080
       - PGHOST=postgres
       - PGPORT=5432
       - PGUSER=aurboda_service
