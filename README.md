@@ -28,12 +28,10 @@ Quick Start (Docker)
 # Download docker-compose.yml
 curl -o docker-compose.yml https://raw.githubusercontent.com/fiddur/aurboda/main/docker-compose.yml
 
-# Create .env file with your settings
-cat > .env << 'EOF'
-SESSION_SALT=your_32_byte_secret_change_this!
-PGPASSWORD=your_secure_db_password
-ALLOW_SIGNUP=true
-EOF
+# Generate secure secrets (openssl ships with Git on Windows, standard on macOS/Linux)
+sed -i.bak "s/REPLACE_DB_PASSWORD/$(openssl rand -hex 16)/" docker-compose.yml
+sed -i.bak "s/REPLACE_SESSION_SECRET/$(openssl rand -hex 16)/" docker-compose.yml
+rm docker-compose.yml.bak
 
 # Start services
 docker compose up -d
@@ -47,7 +45,7 @@ This starts:
 
 ### Creating Your User
 
-With `ALLOW_SIGNUP=true`, navigate to http://localhost:8080 and create your account through the web interface.
+Navigate to http://localhost:8080 and create your account through the web interface.
 
 Alternatively, create users directly in PostgreSQL (users are PostgreSQL roles with their own databases):
 
@@ -69,8 +67,8 @@ Then log in at http://localhost:8080 with your username and password.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SESSION_SALT` | Secret for session tokens (32+ characters) | Required |
-| `PGPASSWORD` | PostgreSQL password | `aurboda_dev_password` |
-| `ALLOW_SIGNUP` | Enable user registration endpoint | `false` |
+| `PGPASSWORD` | PostgreSQL password | Required |
+| `ALLOW_SIGNUP` | Enable user registration endpoint | `true` |
 
 ### Port Configuration
 
