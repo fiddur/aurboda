@@ -47,10 +47,8 @@ import cors from 'cors'
 import { subHours } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
-import { z } from 'zod'
 import { createAuth } from './auth'
 import {
-  DailyAggregate,
   getActivities,
   getAllSyncStates,
   getDetectedLocationById,
@@ -102,7 +100,9 @@ import {
 } from './services/queries'
 import { getSettings, getSettingsResponse, validateAndUpdateSettings } from './services/settings'
 import { createSyncProvider } from './services/sync-provider'
+import { createSyncRouter } from './sync-router'
 import { reduceTimeSeries } from './utils'
+import { validateBody, validateQuery } from './validation'
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -156,50 +156,6 @@ const main = async () => {
     }
     return next(unauthorized)
   }
-
-  /**
-   * Create a validation middleware for request body using a Zod schema.
-   * Returns 400 with detailed validation errors on failure.
-   */
-  const validateBody =
-    <T extends z.ZodTypeAny>(schema: T): RequestHandler =>
-    (req, res, next) => {
-      const result = schema.safeParse(req.body)
-      if (!result.success) {
-        res.status(400).json({
-          error: result.error.flatten().fieldErrors,
-          success: false,
-        })
-        return
-      }
-      req.body = result.data
-      next()
-    }
-
-  /**
-   * Create a validation middleware for query parameters using a Zod schema.
-   * Returns 400 with detailed validation errors on failure.
-   * The validated data is assigned back to req.query; route generics provide typing.
-   */
-  const validateQuery =
-    <T extends z.ZodTypeAny>(schema: T): RequestHandler =>
-    (req, res, next) => {
-      const result = schema.safeParse(req.query)
-      if (!result.success) {
-        res.status(400).json({
-          error: result.error.flatten().fieldErrors,
-          success: false,
-        })
-        return
-      }
-      // Use Object.defineProperty since req.query may be a getter-only property
-      Object.defineProperty(req, 'query', {
-        configurable: true,
-        value: result.data,
-        writable: true,
-      })
-      next()
-    }
 
   const allowSignup = process.env.ALLOW_SIGNUP === 'true'
 
@@ -297,144 +253,39 @@ const main = async () => {
     res.end(JSON.stringify({ refresh, token: refresh }))
   })
 
-  httpd.post<{ recordType: string }, { success: boolean }>(
-    '/sync/:recordType',
-    authMiddleware,
-    async (req, res) => {
-      const { recordType } = req.params
-      let { data } = req.body
+  // Transform SyncState to ProviderSyncStatus format (undefined -> null)
+  const transformSyncStates = async (user: string, provider: 'oura' | 'rescuetime') => {
+    const states = await getAllSyncStates(user, provider)
+    return states.map((s) => ({
+      errorMessage: s.errorMessage ?? null,
+      lastSyncTime: s.lastSyncTime?.toISOString() ?? null,
+      provider: s.provider,
+      retryAfter: s.retryAfter?.toISOString() ?? null,
+      status: s.status === 'rate_limited' ? ('error' as const) : s.status,
+    }))
+  }
 
-      if (!Array.isArray(data) && typeof data === 'object' && Object.entries(data).length) {
-        data = [data]
-      }
-
-      if (!data?.length) {
-        console.log('  empty?!')
-        return res.json({ success: true })
-      }
-
-      const user = req.user!
-
-      // Process each Health Connect record through the new schema
-      for (const item of data) {
-        await processHealthConnectData(user, recordType, item)
-      }
-
-      res.json({ success: true })
-    },
+  // Sync router - handles /sync/* endpoints
+  httpd.use(
+    '/sync',
+    createSyncRouter(
+      {
+        getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
+        getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),
+        getSettings,
+        processDailyAggregate,
+        processHealthConnectData,
+        resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
+        resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
+        syncOura: (user, options) => syncAllOuraData(user, oura, options),
+        syncRescueTime: syncRescueTimeData,
+      },
+      authMiddleware,
+    ),
   )
-
-  // Daily aggregates endpoint for deduplicated cumulative metrics from Health Connect
-  httpd.post('/sync/daily-aggregates', authMiddleware, async (req, res) => {
-    const { data } = req.body as { data?: DailyAggregate[] }
-    const user = req.user!
-
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      return res.json({ success: true })
-    }
-
-    for (const aggregate of data) {
-      await processDailyAggregate(user, aggregate)
-    }
-
-    res.json({ success: true })
-  })
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)
-
-  // Oura sync endpoints
-  httpd.post('/sync/oura', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
-
-    try {
-      const results = await syncAllOuraData(user, oura, {
-        fullResync,
-        startDate: startDate ? new Date(startDate) : undefined,
-      })
-
-      res.json({ results, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  httpd.get('/sync/oura/status', authMiddleware, async (req, res) => {
-    const user = req.user!
-
-    try {
-      const states = await getAllSyncStates(user, 'oura')
-      res.json({ states, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  httpd.delete('/sync/oura/state', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { dataType } = req.query as { dataType?: string }
-
-    try {
-      await resetSyncState(user, 'oura', dataType)
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  // RescueTime sync endpoints
-  httpd.post('/sync/rescuetime', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { fullResync, startDate } = req.body as { fullResync?: boolean; startDate?: string }
-    const settings = await getSettings(user)
-    const rescueTimeKey = settings.rescueTimeKey
-
-    if (!rescueTimeKey) {
-      return res
-        .status(400)
-        .json({ error: 'RescueTime API key not configured in user settings', success: false })
-    }
-
-    try {
-      const result = await syncRescueTimeData(user, rescueTimeKey, {
-        fullResync,
-        startDate: startDate ? new Date(startDate) : undefined,
-      })
-
-      res.json({ result, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  httpd.get('/sync/rescuetime/status', authMiddleware, async (req, res) => {
-    const user = req.user!
-
-    try {
-      const states = await getAllSyncStates(user, 'rescuetime')
-      res.json({ states, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  httpd.delete('/sync/rescuetime/state', authMiddleware, async (req, res) => {
-    const user = req.user!
-
-    try {
-      await resetSyncState(user, 'rescuetime')
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
 
   // Initialize geocode queue (creates 'aurboda' database if needed)
   let geocodeQueue: GeocodeQueue | null = null
