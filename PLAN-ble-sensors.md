@@ -240,9 +240,9 @@ app/src/main/java/net/aurboda/
 
 ## Implementation Order
 
-1. **BLE permissions and scanner** - get device discovery working
-2. **Connection manager** - connect and read HR data
-3. **Live screen UI** - display discovered devices and connect
+1. **BLE permissions and scanner** - get device discovery working ✅ DONE
+2. **Connection manager** - connect and read HR data ✅ DONE
+3. **Live screen UI** - display discovered devices and connect ✅ DONE
 4. **Foreground service** - keep connections alive in background
 5. **Backend sync** - send HR data to server
 6. **Health Connect writes** - persist to Health Connect
