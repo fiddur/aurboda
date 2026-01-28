@@ -38,8 +38,7 @@ docker compose up -d
 ```
 
 This starts:
-- **aurboda-web** on port 8080
-- **aurboda-backend** on port 3000
+- **aurboda** (web + API) on port 8080
 - **PostgreSQL** with PostGIS
 - **Watchtower** for automatic updates
 
@@ -59,9 +58,7 @@ After creating your user, you can set `ALLOW_SIGNUP=false` in docker-compose.yml
 
 ### Port Configuration
 
-To change default ports, modify your docker-compose.yml:
-- Web UI: Change `"8080:80"` to `"YOUR_PORT:80"`
-- Backend API: Change `"3000:3000"` to `"YOUR_PORT:3000"`
+To change default port, modify `"8080:80"` to `"YOUR_PORT:80"` in docker-compose.yml.
 
 ### Development Builds
 
@@ -73,7 +70,7 @@ Data Sources
 
 | Source | Setup |
 |--------|-------|
-| Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), enter your backend URL (e.g., `http://YOUR_SERVER_IP:3000`), and log in with your credentials |
+| Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), enter your server URL (e.g., `http://YOUR_SERVER_IP`), and log in with your credentials |
 | OwnTracks | [OwnTracks setup guide](docs/owntracks.md) (JSON HTTP mode) |
 | Oura | Connect via OAuth in user settings (web UI). Requires `OURA_CLIENT` and `OURA_SECRET` env vars on backend. |
 | RescueTime | Configure API key in user settings (web UI). Get key from [RescueTime API settings](https://www.rescuetime.com/anapi/manage). |

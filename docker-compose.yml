@@ -4,29 +4,18 @@
 # Change :latest to :develop below to use development builds.
 
 services:
-  aurboda-web:
-    image: fiddur/aurboda-web:latest
+  aurboda:
+    image: fiddur/aurboda:latest
     ports:
       - "8080:80"
     environment:
-      - VITE_API_URL=http://localhost:3000
-    depends_on:
-      - aurboda-backend
-    restart: unless-stopped
-
-  aurboda-backend:
-    image: fiddur/aurboda-backend:latest
-    ports:
-      - "3000:3000"
-    environment:
-      - PORT=3000
-      - WEB_HOST=http://localhost:8080
       - PGHOST=postgres
       - PGPORT=5432
       - PGUSER=aurboda_service
       - PGPASSWORD=REPLACE_DB_PASSWORD
       - SESSION_SECRET=REPLACE_SESSION_SECRET
       - ALLOW_SIGNUP=${ALLOW_SIGNUP:-true}
+      - WEB_HOST=http://localhost:8080
       - NODE_ENV=production
     depends_on:
       postgres:
@@ -42,8 +31,6 @@ services:
       - POSTGRES_DB=postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aurboda_service"]
       interval: 5s

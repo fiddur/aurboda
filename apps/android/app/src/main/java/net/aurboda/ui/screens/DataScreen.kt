@@ -51,7 +51,7 @@ private sealed class DataScreenState {
 
 @Composable
 fun DataScreen(
-    serverUrl: String,
+    apiUrl: String,
     authToken: String,
     modifier: Modifier = Modifier
 ) {
@@ -82,13 +82,13 @@ fun DataScreen(
         )
 
         // Fetch user settings for HR zone thresholds
-        val thresholds = when (val settingsResult = fetchUserSettings(httpClient, serverUrl, authToken)) {
+        val thresholds = when (val settingsResult = fetchUserSettings(httpClient, apiUrl, authToken)) {
             is DataResult.Success -> settingsResult.data.hrZoneStart ?: defaultHrZoneThresholds
             is DataResult.Error -> defaultHrZoneThresholds
         }
 
         // Fetch period summary
-        when (val result = fetchPeriodSummary(httpClient, serverUrl, authToken, start, end, metrics)) {
+        when (val result = fetchPeriodSummary(httpClient, apiUrl, authToken, start, end, metrics)) {
             is DataResult.Success -> {
                 state = DataScreenState.Loaded(result.data, thresholds)
             }
