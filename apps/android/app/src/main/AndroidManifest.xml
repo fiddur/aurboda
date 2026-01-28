@@ -5,6 +5,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- BLE Permissions for Heart Rate Monitors and Step Sensors -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Location permission required for BLE scanning to return results -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
     <!-- Alphabetically Sorted Health Permissions -->
     <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
     <uses-permission android:name="android.permission.health.READ_BASAL_BODY_TEMPERATURE" />
@@ -97,6 +105,7 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/hr_zone_widget_info" />
         </receiver>
+
     </application>
 
     <queries>

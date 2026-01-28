@@ -260,6 +260,11 @@ fun AurbodaApp(initialTab: MainTab? = null) {
                             modifier = modifier
                         )
                     },
+                    liveContent = { modifier ->
+                        net.aurboda.ui.screens.LiveScreen(
+                            modifier = modifier
+                        )
+                    },
                     accountContent = { modifier ->
                         net.aurboda.ui.screens.AccountScreen(
                             username = credentials.username,

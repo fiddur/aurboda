@@ -16,6 +16,7 @@ enum class AppScreen {
 enum class MainTab {
     Sync,
     Data,
+    Live,
     Account
 }
 
