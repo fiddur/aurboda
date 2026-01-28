@@ -38,13 +38,13 @@ docker compose up -d
 ```
 
 This starts:
-- **aurboda** (web + API) on port 80
+- **aurboda** (web + API) on port 8080
 - **PostgreSQL** with PostGIS
 - **Watchtower** for automatic updates
 
 ### Creating Your User
 
-Navigate to http://localhost and create your account through the web interface.
+Navigate to http://localhost:8080 and create your account through the web interface.
 
 After creating your user, you can set `ALLOW_SIGNUP=false` in docker-compose.yml to disallow other signups.
 
@@ -58,7 +58,7 @@ After creating your user, you can set `ALLOW_SIGNUP=false` in docker-compose.yml
 
 ### Port Configuration
 
-To change default port, modify `"80:80"` to `"YOUR_PORT:80"` in docker-compose.yml.
+To change default port, modify `"8080:80"` to `"YOUR_PORT:80"` in docker-compose.yml.
 
 ### Development Builds
 

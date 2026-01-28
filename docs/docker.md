@@ -19,11 +19,11 @@ docker compose up -d
 ```
 
 This starts:
-- **aurboda** (web frontend + API) on port 80
+- **aurboda** (web frontend + API) on port 8080
 - **postgres** (PostGIS) on port 5432
 - **watchtower** for automatic updates
 
-3. Open the web frontend at `http://localhost` and register your first user.
+3. Open the web frontend at `http://localhost:8080` and register your first user.
 
 ### Development Mode
 
@@ -46,7 +46,7 @@ This mounts your source code and watches for changes.
 | `PGUSER` | PostgreSQL user | `aurboda_service` |
 | `PGPASSWORD` | PostgreSQL password | (required) |
 | `SESSION_SECRET` | 32-byte secret for session encryption | (required) |
-| `WEB_HOST` | Public URL of the web UI (for OAuth redirects) | `http://localhost` |
+| `WEB_HOST` | Public URL of the web UI (for OAuth redirects) | `http://localhost:8080` |
 | `ALLOW_SIGNUP` | Enable user registration | `true` |
 
 ### Generating a Session Secret
@@ -150,7 +150,7 @@ docker build -t aurboda .
 ```bash
 docker run -d \
   --name aurboda \
-  -p 80:80 \
+  -p 8080:80 \
   -e PGHOST=host.docker.internal \
   -e PGPORT=5432 \
   -e PGUSER=aurboda_service \

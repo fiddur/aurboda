@@ -7,7 +7,7 @@ services:
   aurboda:
     image: fiddur/aurboda:latest
     ports:
-      - "80:80"
+      - "8080:80"
     environment:
       - PGHOST=postgres
       - PGPORT=5432
@@ -15,7 +15,7 @@ services:
       - PGPASSWORD=REPLACE_DB_PASSWORD
       - SESSION_SECRET=REPLACE_SESSION_SECRET
       - ALLOW_SIGNUP=${ALLOW_SIGNUP:-true}
-      - WEB_HOST=http://localhost
+      - WEB_HOST=http://localhost:8080
       - NODE_ENV=production
     depends_on:
       postgres:
