@@ -265,6 +265,31 @@ const main = async () => {
     }))
   }
 
+  // Transform Oura sync results (Date -> ISO string)
+  const transformOuraSyncResults = async (
+    user: string,
+    options: { fullResync?: boolean; startDate?: Date },
+  ) => {
+    const results = await syncAllOuraData(user, oura, options)
+    return results.map((r) => ({
+      ...r,
+      retryAfter: r.retryAfter?.toISOString(),
+    }))
+  }
+
+  // Transform RescueTime sync result (Date -> ISO string)
+  const transformRescueTimeSyncResult = async (
+    user: string,
+    apiKey: string,
+    options: { fullResync?: boolean; startDate?: Date },
+  ) => {
+    const result = await syncRescueTimeData(user, apiKey, options)
+    return {
+      ...result,
+      retryAfter: result.retryAfter?.toISOString(),
+    }
+  }
+
   // Sync router - handles /sync/* endpoints
   httpd.use(
     '/sync',
@@ -277,8 +302,8 @@ const main = async () => {
         processHealthConnectData,
         resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
-        syncOura: (user, options) => syncAllOuraData(user, oura, options),
-        syncRescueTime: syncRescueTimeData,
+        syncOura: transformOuraSyncResults,
+        syncRescueTime: transformRescueTimeSyncResult,
       },
       authMiddleware,
     ),
