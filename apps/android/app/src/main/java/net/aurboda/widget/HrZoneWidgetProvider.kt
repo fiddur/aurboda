@@ -126,7 +126,7 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
 
         val result = fetchPeriodSummary(
             httpClient,
-            credentials.serverUrl,
+            credentials.apiUrl,
             credentials.authToken,
             start,
             end,

@@ -70,7 +70,7 @@ Data Sources
 
 | Source | Setup |
 |--------|-------|
-| Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), enter your server URL (e.g., `http://YOUR_SERVER_IP/api`), and log in with your credentials |
+| Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), enter your server URL (e.g., `http://YOUR_SERVER_IP`), and log in with your credentials |
 | OwnTracks | [OwnTracks setup guide](docs/owntracks.md) (JSON HTTP mode) |
 | Oura | Connect via OAuth in user settings (web UI). Requires `OURA_CLIENT` and `OURA_SECRET` env vars on backend. |
 | RescueTime | Configure API key in user settings (web UI). Get key from [RescueTime API settings](https://www.rescuetime.com/anapi/manage). |
