@@ -54,6 +54,33 @@ fun isBleEnabled(context: Context): Boolean {
     return bluetoothManager?.adapter?.isEnabled == true
 }
 
+// Known heart rate monitor name patterns (case-insensitive)
+private val HR_MONITOR_NAME_PATTERNS = listOf(
+    "polar", "h10", "h9", "h7", "oh1", "verity",  // Polar
+    "wahoo", "tickr",                              // Wahoo
+    "garmin", "hrm",                               // Garmin
+    "coospo", "csc",                               // Coospo
+    "magene",                                      // Magene
+    "heart rate", "hr sensor"                      // Generic
+)
+
+// Known step sensor / footpod name patterns (case-insensitive)
+private val STEP_SENSOR_NAME_PATTERNS = listOf(
+    "stryd", "runpod", "zwift", "footpod",
+    "milestone", "runn", "speed", "cadence"
+)
+
+private fun detectSensorTypeFromName(name: String?): SensorType? {
+    if (name == null) return null
+    val lowerName = name.lowercase()
+
+    return when {
+        HR_MONITOR_NAME_PATTERNS.any { lowerName.contains(it) } -> SensorType.HEART_RATE
+        STEP_SENSOR_NAME_PATTERNS.any { lowerName.contains(it) } -> SensorType.RUNNING_SPEED_CADENCE
+        else -> null
+    }
+}
+
 @SuppressLint("MissingPermission")
 fun scanForSensors(context: Context, scanDurationMs: Long = 10000): Flow<BleScanState> = callbackFlow {
     val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -86,24 +113,30 @@ fun scanForSensors(context: Context, scanDurationMs: Long = 10000): Flow<BleScan
             val address = device.address
 
             if (address in discoveredAddresses) return
-            discoveredAddresses.add(address)
 
             val serviceUuids = result.scanRecord?.serviceUuids?.map { it.uuid } ?: emptyList()
+            val deviceName = device.name
+
+            // Determine sensor type from advertised service UUIDs first, then fall back to name
             val sensorType = when {
                 HEART_RATE_SERVICE_UUID in serviceUuids -> SensorType.HEART_RATE
                 RUNNING_SPEED_CADENCE_SERVICE_UUID in serviceUuids -> SensorType.RUNNING_SPEED_CADENCE
-                else -> null
+                else -> detectSensorTypeFromName(deviceName)
             }
 
             if (sensorType != null) {
+                discoveredAddresses.add(address)
                 val discovered = DiscoveredDevice(
                     address = address,
-                    name = device.name,
+                    name = deviceName,
                     rssi = result.rssi,
                     sensorType = sensorType
                 )
-                Log.d(TAG, "Discovered $sensorType device: ${device.name} (${device.address})")
+                Log.d(TAG, "Discovered $sensorType device: ${deviceName ?: "Unknown"} ($address), services: $serviceUuids")
                 trySend(BleScanState.DeviceFound(discovered))
+            } else if (deviceName != null) {
+                // Log devices with names that we're not recognizing, for debugging
+                Log.v(TAG, "Skipping device: $deviceName ($address), services: $serviceUuids")
             }
         }
 
@@ -120,25 +153,17 @@ fun scanForSensors(context: Context, scanDurationMs: Long = 10000): Flow<BleScan
         }
     }
 
-    // Build scan filters for HR and RSC services
-    val filters = listOf(
-        ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(HEART_RATE_SERVICE_UUID))
-            .build(),
-        ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(RUNNING_SPEED_CADENCE_SERVICE_UUID))
-            .build()
-    )
-
+    // Scan without filters to catch devices that don't advertise service UUIDs
+    // We'll filter by name patterns and service UUIDs in onScanResult
     val settings = ScanSettings.Builder()
         .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
         .build()
 
-    Log.d(TAG, "Starting BLE scan for HR and RSC services")
+    Log.d(TAG, "Starting BLE scan for HR and RSC sensors")
     trySend(BleScanState.Scanning)
 
     try {
-        scanner.startScan(filters, settings, scanCallback)
+        scanner.startScan(null, settings, scanCallback)
     } catch (e: SecurityException) {
         Log.e(TAG, "Security exception starting scan", e)
         trySend(BleScanState.Error("Permission denied"))
