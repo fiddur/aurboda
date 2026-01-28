@@ -92,7 +92,7 @@ class HealthConnectSyncWorker(
             // Step 1: Fetch and send daily aggregates for cumulative metrics (deduplicated)
             val aggregates = fetchDailyAggregates(days = 7)
             if (aggregates.isNotEmpty()) {
-                val aggregateSuccess = sendDailyAggregates(aggregates, credentials.serverUrl, credentials.authToken)
+                val aggregateSuccess = sendDailyAggregates(aggregates, credentials.apiUrl, credentials.authToken)
                 if (!aggregateSuccess) {
                     Log.w(TAG, "Failed to send daily aggregates, will retry")
                     return Result.retry()
@@ -110,7 +110,7 @@ class HealthConnectSyncWorker(
                 Log.d(TAG, "Filtered ${records.size} records to ${filteredRecords.size} (excluded aggregated types)")
 
                 if (filteredRecords.isNotEmpty()) {
-                    val success = sendDataToServer(filteredRecords, credentials.serverUrl, credentials.authToken)
+                    val success = sendDataToServer(filteredRecords, credentials.apiUrl, credentials.authToken)
                     if (success) {
                         Log.d(TAG, "Background sync completed successfully")
                         HrZoneWidgetProvider.triggerUpdate(applicationContext)

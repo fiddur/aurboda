@@ -248,14 +248,14 @@ fun AurbodaApp(initialTab: MainTab? = null) {
                     onTabSelected = { appState.selectTab(it) },
                     syncContent = { modifier ->
                         HealthConnectScreen(
-                            serverUrl = credentials.serverUrl,
+                            apiUrl = credentials.apiUrl,
                             authToken = credentials.authToken,
                             modifier = modifier
                         )
                     },
                     dataContent = { modifier ->
                         net.aurboda.ui.screens.DataScreen(
-                            serverUrl = credentials.serverUrl,
+                            apiUrl = credentials.apiUrl,
                             authToken = credentials.authToken,
                             modifier = modifier
                         )
@@ -285,7 +285,7 @@ fun AurbodaApp(initialTab: MainTab? = null) {
 
 @Composable
 fun HealthConnectScreen(
-    serverUrl: String,
+    apiUrl: String,
     authToken: String,
     modifier: Modifier = Modifier
 ) {
@@ -513,26 +513,26 @@ fun HealthConnectScreen(
         for ((recordClass, classRecords) in groupedRecords) {
             if (classRecords.isEmpty()) continue
             val recordTypeSimpleName = recordClass.simpleName ?: "UnknownRecordType"
-            val apiUrl = "$serverUrl/sync/$recordTypeSimpleName"
+            val syncUrl = "$apiUrl/sync/$recordTypeSimpleName"
 
             val postSuccessful = when (recordClass) {
-                HeartRateVariabilityRmssdRecord::class -> handlePostData(HrvRecordSerializable.fromRecordsList(classRecords), HrvRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                WeightRecord::class -> handlePostData(WeightRecordSerializable.fromRecordsList(classRecords), WeightRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                StepsRecord::class -> handlePostData(StepsRecordSerializable.fromRecordsList(classRecords), StepsRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                HeartRateRecord::class -> handlePostData(HeartRateRecordSerializable.fromRecordsList(classRecords), HeartRateRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                ExerciseSessionRecord::class -> handlePostData(ExerciseSessionRecordSerializable.fromRecordsList(classRecords), ExerciseSessionRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                DistanceRecord::class -> handlePostData(DistanceRecordSerializable.fromRecordsList(classRecords), DistanceRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                SpeedRecord::class -> handlePostData(SpeedRecordSerializable.fromRecordsList(classRecords), SpeedRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                ActiveCaloriesBurnedRecord::class -> handlePostData(ActiveCaloriesBurnedRecordSerializable.fromRecordsList(classRecords), ActiveCaloriesBurnedRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                TotalCaloriesBurnedRecord::class -> handlePostData(TotalCaloriesBurnedRecordSerializable.fromRecordsList(classRecords), TotalCaloriesBurnedRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                PowerRecord::class -> handlePostData(PowerRecordSerializable.fromRecordsList(classRecords), PowerRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                NutritionRecord::class -> handlePostData(NutritionRecordSerializable.fromRecordsList(classRecords), NutritionRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                LeanBodyMassRecord::class -> handlePostData(LeanBodyMassRecordSerializable.fromRecordsList(classRecords), LeanBodyMassRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                BodyFatRecord::class -> handlePostData(BodyFatRecordSerializable.fromRecordsList(classRecords), BodyFatRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                SleepSessionRecord::class -> handlePostData(SleepSessionRecordSerializable.fromRecordsList(classRecords), SleepSessionRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                BoneMassRecord::class -> handlePostData(BoneMassRecordSerializable.fromRecordsList(classRecords), BoneMassRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                HeightRecord::class -> handlePostData(HeightRecordSerializable.fromRecordsList(classRecords), HeightRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                RestingHeartRateRecord::class -> handlePostData(RestingHeartRateRecordSerializable.fromRecordsList(classRecords), RestingHeartRateRecordSerializable.serializer(), apiUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                HeartRateVariabilityRmssdRecord::class -> handlePostData(HrvRecordSerializable.fromRecordsList(classRecords), HrvRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                WeightRecord::class -> handlePostData(WeightRecordSerializable.fromRecordsList(classRecords), WeightRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                StepsRecord::class -> handlePostData(StepsRecordSerializable.fromRecordsList(classRecords), StepsRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                HeartRateRecord::class -> handlePostData(HeartRateRecordSerializable.fromRecordsList(classRecords), HeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                ExerciseSessionRecord::class -> handlePostData(ExerciseSessionRecordSerializable.fromRecordsList(classRecords), ExerciseSessionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                DistanceRecord::class -> handlePostData(DistanceRecordSerializable.fromRecordsList(classRecords), DistanceRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                SpeedRecord::class -> handlePostData(SpeedRecordSerializable.fromRecordsList(classRecords), SpeedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                ActiveCaloriesBurnedRecord::class -> handlePostData(ActiveCaloriesBurnedRecordSerializable.fromRecordsList(classRecords), ActiveCaloriesBurnedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                TotalCaloriesBurnedRecord::class -> handlePostData(TotalCaloriesBurnedRecordSerializable.fromRecordsList(classRecords), TotalCaloriesBurnedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                PowerRecord::class -> handlePostData(PowerRecordSerializable.fromRecordsList(classRecords), PowerRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                NutritionRecord::class -> handlePostData(NutritionRecordSerializable.fromRecordsList(classRecords), NutritionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                LeanBodyMassRecord::class -> handlePostData(LeanBodyMassRecordSerializable.fromRecordsList(classRecords), LeanBodyMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                BodyFatRecord::class -> handlePostData(BodyFatRecordSerializable.fromRecordsList(classRecords), BodyFatRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                SleepSessionRecord::class -> handlePostData(SleepSessionRecordSerializable.fromRecordsList(classRecords), SleepSessionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                BoneMassRecord::class -> handlePostData(BoneMassRecordSerializable.fromRecordsList(classRecords), BoneMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                HeightRecord::class -> handlePostData(HeightRecordSerializable.fromRecordsList(classRecords), HeightRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                RestingHeartRateRecord::class -> handlePostData(RestingHeartRateRecordSerializable.fromRecordsList(classRecords), RestingHeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 else -> { Log.w("SendData", "No specific serialization for $recordTypeSimpleName. Skipping."); true }
             }
             if (!postSuccessful) {
@@ -784,7 +784,7 @@ fun HealthConnectScreen(
 fun HealthConnectScreenPreview() {
     AurbodaAppTheme {
         HealthConnectScreen(
-            serverUrl = "https://example.com",
+            apiUrl = "https://example.com/api",
             authToken = "preview-token"
         )
     }
