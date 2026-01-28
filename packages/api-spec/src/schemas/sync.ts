@@ -207,23 +207,78 @@ export const rescueTimeSyncStatusResponseSchema = baseResponseSchema
 
 export type RescueTimeSyncStatusResponse = z.infer<typeof rescueTimeSyncStatusResponseSchema>
 
+// ============================================================================
+// Sync result schemas
+// ============================================================================
+
 /**
- * Oura sync response with results.
+ * Sync result status.
+ */
+export const syncResultStatusSchema = z.enum(['success', 'skipped', 'error', 'rate_limited']).meta({
+  description: 'Status of sync operation',
+  id: 'SyncResultStatus',
+})
+
+export type SyncResultStatus = z.infer<typeof syncResultStatusSchema>
+
+/**
+ * Oura data types that can be synced.
+ */
+export const ouraDataTypeSchema = z
+  .enum(['dailyCardiovascularAge', 'dailyReadiness', 'dailyResilience', 'dailySleep', 'sessions', 'tags'])
+  .meta({
+    description: 'Oura data type',
+    id: 'OuraDataType',
+  })
+
+export type OuraDataType = z.infer<typeof ouraDataTypeSchema>
+
+/**
+ * Oura sync result for a single data type.
+ */
+export const ouraSyncResultSchema = z
+  .object({
+    dataType: ouraDataTypeSchema,
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    recordsProcessed: z.number().int().meta({ description: 'Number of records processed' }),
+    retryAfter: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
+    status: syncResultStatusSchema,
+  })
+  .meta({ id: 'OuraSyncResult' })
+
+export type OuraSyncResult = z.infer<typeof ouraSyncResultSchema>
+
+/**
+ * RescueTime sync result.
+ */
+export const rescueTimeSyncResultSchema = z
+  .object({
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    recordsProcessed: z.number().int().meta({ description: 'Number of records processed' }),
+    retryAfter: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
+    status: syncResultStatusSchema,
+  })
+  .meta({ id: 'RescueTimeSyncResult' })
+
+export type RescueTimeSyncResult = z.infer<typeof rescueTimeSyncResultSchema>
+
+/**
+ * Oura sync response with typed results.
  */
 export const ouraSyncResponseSchema = baseResponseSchema
   .extend({
-    results: z.unknown().optional().meta({ description: 'Sync results' }),
+    results: z.array(ouraSyncResultSchema).optional().meta({ description: 'Sync results per data type' }),
   })
   .meta({ id: 'OuraSyncResponse' })
 
 export type OuraSyncResponse = z.infer<typeof ouraSyncResponseSchema>
 
 /**
- * RescueTime sync response with result.
+ * RescueTime sync response with typed result.
  */
 export const rescueTimeSyncResponseSchema = baseResponseSchema
   .extend({
-    result: z.unknown().optional().meta({ description: 'Sync result' }),
+    result: rescueTimeSyncResultSchema.optional().meta({ description: 'Sync result' }),
   })
   .meta({ id: 'RescueTimeSyncResponse' })
 

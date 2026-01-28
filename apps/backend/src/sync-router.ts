@@ -8,19 +8,19 @@ import {
   type HealthConnectRecord,
   type HealthConnectSyncBody,
   type OuraSyncResponse,
+  type OuraSyncResult,
   type OuraSyncStatusResponse,
   type ProviderSyncStatus,
   type RescueTimeSyncResponse,
+  type RescueTimeSyncResult,
   type RescueTimeSyncStatusResponse,
   type SyncOuraBody,
   type SyncRescueTimeBody,
   type SyncResponse,
 } from '@aurboda/api-spec'
 import { RequestHandler, Router } from 'express'
+import type { ParamsDictionary } from 'express-serve-static-core'
 import { validateBody } from './validation'
-
-// Using Record<string, string> as Params equivalent
-type Params = Record<string, string>
 
 /**
  * Dependencies for sync router - allows testing with mocks
@@ -28,14 +28,14 @@ type Params = Record<string, string>
 export interface SyncRouterDeps {
   processDailyAggregate: (user: string, aggregate: DailyAggregate) => Promise<void>
   processHealthConnectData: (user: string, recordType: string, data: HealthConnectRecord) => Promise<void>
-  syncOura: (user: string, options: { fullResync?: boolean; startDate?: Date }) => Promise<unknown>
+  syncOura: (user: string, options: { fullResync?: boolean; startDate?: Date }) => Promise<OuraSyncResult[]>
   getOuraSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetOuraSyncState: (user: string, dataType?: string) => Promise<void>
   syncRescueTime: (
     user: string,
     apiKey: string,
     options: { fullResync?: boolean; startDate?: Date },
-  ) => Promise<unknown>
+  ) => Promise<RescueTimeSyncResult>
   getRescueTimeSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetRescueTimeSyncState: (user: string) => Promise<void>
   getSettings: (user: string) => Promise<{ rescueTimeKey?: string }>
@@ -55,7 +55,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
   // ===========================================================================
 
   // Daily aggregates endpoint for deduplicated cumulative metrics from Health Connect
-  router.post<Params, SyncResponse, DailyAggregatesBody>(
+  router.post<ParamsDictionary, SyncResponse, DailyAggregatesBody>(
     '/daily-aggregates',
     authMiddleware,
     validateBody(dailyAggregatesBodySchema),
@@ -72,7 +72,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
   )
 
   // Oura sync endpoints
-  router.post<Params, OuraSyncResponse, SyncOuraBody>(
+  router.post<ParamsDictionary, OuraSyncResponse, SyncOuraBody>(
     '/oura',
     authMiddleware,
     validateBody(syncOuraBodySchema),
@@ -94,7 +94,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     },
   )
 
-  router.get<Params, OuraSyncStatusResponse>('/oura/status', authMiddleware, async (req, res) => {
+  router.get<ParamsDictionary, OuraSyncStatusResponse>('/oura/status', authMiddleware, async (req, res) => {
     const user = req.user!
 
     try {
@@ -106,7 +106,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     }
   })
 
-  router.delete<Params, SyncResponse, unknown, { dataType?: string }>(
+  router.delete<ParamsDictionary, SyncResponse, unknown, { dataType?: string }>(
     '/oura/state',
     authMiddleware,
     async (req, res) => {
@@ -124,7 +124,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
   )
 
   // RescueTime sync endpoints
-  router.post<Params, RescueTimeSyncResponse, SyncRescueTimeBody>(
+  router.post<ParamsDictionary, RescueTimeSyncResponse, SyncRescueTimeBody>(
     '/rescuetime',
     authMiddleware,
     validateBody(syncRescueTimeBodySchema),
@@ -154,19 +154,23 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     },
   )
 
-  router.get<Params, RescueTimeSyncStatusResponse>('/rescuetime/status', authMiddleware, async (req, res) => {
-    const user = req.user!
+  router.get<ParamsDictionary, RescueTimeSyncStatusResponse>(
+    '/rescuetime/status',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
 
-    try {
-      const states = await deps.getRescueTimeSyncStates(user)
-      res.json({ states, success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
+      try {
+        const states = await deps.getRescueTimeSyncStates(user)
+        res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
 
-  router.delete<Params, SyncResponse>('/rescuetime/state', authMiddleware, async (req, res) => {
+  router.delete<ParamsDictionary, SyncResponse>('/rescuetime/state', authMiddleware, async (req, res) => {
     const user = req.user!
 
     try {
