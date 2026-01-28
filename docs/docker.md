@@ -87,35 +87,9 @@ rm docker-compose.yml.bak
 docker compose up -d
 ```
 
-### Host Networking (with existing PostgreSQL)
+### Using existing PostgreSQL
 
-If you have PostgreSQL running on your host machine, use host networking for simpler configuration:
-
-```yaml
-services:
-  aurboda:
-    image: fiddur/aurboda:latest
-    network_mode: host
-    environment:
-      - PGHOST=localhost
-      - PGPORT=5432
-      - PGUSER=aurboda_service
-      - PGPASSWORD=your_password
-      - SESSION_SECRET=your_32_byte_secret
-      - WEB_HOST=http://localhost
-      - ALLOW_SIGNUP=true
-    restart: unless-stopped
-```
-
-With host networking:
-- The container shares the host's network stack
-- nginx listens directly on host port 80
-- Backend can connect to `localhost:5432` for PostgreSQL
-- No port mapping needed
-
-### Port Mapping (isolated network)
-
-If you need network isolation but want to reach host PostgreSQL:
+If you have PostgreSQL running on your host machine:
 
 ```yaml
 services:
