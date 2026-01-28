@@ -115,7 +115,14 @@ fun scanForSensors(context: Context, scanDurationMs: Long = 10000): Flow<BleScan
             if (address in discoveredAddresses) return
 
             val serviceUuids = result.scanRecord?.serviceUuids?.map { it.uuid } ?: emptyList()
-            val deviceName = device.name
+            // Try both sources for device name - scan record and device object
+            val scanRecordName = result.scanRecord?.deviceName
+            val deviceName = scanRecordName ?: device.name
+
+            // Log ALL devices with names for debugging
+            if (deviceName != null || serviceUuids.isNotEmpty()) {
+                Log.d(TAG, "BLE device found: name='$deviceName' (scanRecord='$scanRecordName', device='${device.name}'), address=$address, services=$serviceUuids, rssi=${result.rssi}")
+            }
 
             // Determine sensor type from advertised service UUIDs first, then fall back to name
             val sensorType = when {
@@ -132,11 +139,8 @@ fun scanForSensors(context: Context, scanDurationMs: Long = 10000): Flow<BleScan
                     rssi = result.rssi,
                     sensorType = sensorType
                 )
-                Log.d(TAG, "Discovered $sensorType device: ${deviceName ?: "Unknown"} ($address), services: $serviceUuids")
+                Log.i(TAG, "Matched $sensorType device: ${deviceName ?: "Unknown"} ($address)")
                 trySend(BleScanState.DeviceFound(discovered))
-            } else if (deviceName != null) {
-                // Log devices with names that we're not recognizing, for debugging
-                Log.v(TAG, "Skipping device: $deviceName ($address), services: $serviceUuids")
             }
         }
 
