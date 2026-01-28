@@ -19,8 +19,8 @@ window.__RUNTIME_CONFIG__ = {
 };
 EOF
 
-# Start backend (binds to 127.0.0.1:3000, only accessible via nginx proxy)
-cd /app && pnpm --filter aurboda-backend start &
+# Start backend on port 3000 (only accessible via nginx proxy)
+cd /app && PORT=3000 pnpm --filter aurboda-backend start &
 BACKEND_PID=$!
 
 # Give backend a moment to start
