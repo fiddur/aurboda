@@ -10,6 +10,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <!-- Location permission required for BLE scanning to return results -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Foreground service for keeping BLE connections alive -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
@@ -52,6 +56,10 @@
     <uses-permission android:name="android.permission.health.READ_VO2_MAX" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
     <uses-permission android:name="android.permission.health.READ_WHEELCHAIR_PUSHES" />
+
+    <!-- Write permissions for BLE sensor data -->
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.WRITE_STEPS" />
 
     <application
         android:name=".AurbodaApplication"
@@ -105,6 +113,12 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/hr_zone_widget_info" />
         </receiver>
+
+        <!-- BLE Sensor Foreground Service -->
+        <service
+            android:name=".ble.SensorService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
 
     </application>
 

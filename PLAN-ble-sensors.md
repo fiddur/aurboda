@@ -243,9 +243,9 @@ app/src/main/java/net/aurboda/
 1. **BLE permissions and scanner** - get device discovery working ✅ DONE
 2. **Connection manager** - connect and read HR data ✅ DONE
 3. **Live screen UI** - display discovered devices and connect ✅ DONE
-4. **Foreground service** - keep connections alive in background
-5. **Backend sync** - send HR data to server
-6. **Health Connect writes** - persist to Health Connect
+4. **Foreground service** - keep connections alive in background ✅ DONE
+5. **Backend sync** - send HR data to server ✅ DONE
+6. **Health Connect writes** - persist to Health Connect ✅ DONE
 7. **RSC support** - add step/cadence sensor support
 8. **Polish** - reconnection, error handling, UI refinements
 
