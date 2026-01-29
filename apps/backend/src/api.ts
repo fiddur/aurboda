@@ -72,6 +72,7 @@ import {
   updateDetectedLocation,
 } from './db'
 import { createMcpRouter } from './mcp'
+import { createDbSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { createOwnTracksRouter } from './owntracks'
@@ -135,7 +136,8 @@ const main = async () => {
   httpd.use(cors({ origin: true }))
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
-  httpd.use('/mcp', createMcpRouter(auth, oura, syncProvider))
+  // Use database-backed session store for persistence across restarts
+  httpd.use('/mcp', createMcpRouter(auth, oura, syncProvider, { sessionStore: createDbSessionStore() }))
 
   httpd.use(json({ limit: '10mb' }))
 

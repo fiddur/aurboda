@@ -19,6 +19,7 @@ import { Request, Response, Router } from 'express'
 import { z } from 'zod'
 import { Auth } from './auth'
 import { getAllSyncStates, getDetectedLocations as getStoredDetectedLocations } from './db'
+import { DEFAULT_SESSION_INACTIVITY_MS, McpSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { syncRescueTimeData } from './rescuetime-sync'
@@ -63,9 +64,23 @@ const mcpTimeRangeSchema = {
 // Metric name description using validMetrics from api-spec
 const metricDescription = `Metric name. Valid metrics: ${validMetrics.join(', ')}`
 
-export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncProvider): Router {
+/**
+ * Create an MCP router with optional session persistence.
+ *
+ * When a sessionStore is provided, sessions are persisted to the database
+ * and can survive backend restarts. When a client reconnects with a
+ * previously-issued session ID, the session is lazily restored.
+ */
+export function createMcpRouter(
+  auth: Auth,
+  oura?: OuraClientType,
+  sync?: SyncProvider,
+  options?: { sessionStore?: McpSessionStore; cleanupIntervalMs?: number },
+): Router {
   const router = Router()
   const sessions = new Map<string, McpSession>()
+  const sessionStore = options?.sessionStore
+  const cleanupIntervalMs = options?.cleanupIntervalMs ?? 60 * 60 * 1000 // Default: 1 hour
 
   const getAuthenticatedUser = (req: Request): string | null => {
     const authHeader = req.headers.authorization
@@ -596,6 +611,60 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
     return server
   }
 
+  // Helper to restore a session from the store (lazy restoration after restart)
+  const restoreSessionFromStore = async (user: string, sessionId: string): Promise<McpSession | null> => {
+    if (!sessionStore) return null
+
+    const record = await sessionStore.get(user, sessionId)
+    if (!record || record.username !== user) return null
+
+    // Check if session is expired (older than 7 days by default)
+    const maxAge = DEFAULT_SESSION_INACTIVITY_MS
+    const age = Date.now() - record.lastActivity.getTime()
+    if (age > maxAge) {
+      // Session expired - clean it up
+      await sessionStore.delete(user, sessionId)
+      return null
+    }
+
+    // Recreate the McpServer and transport
+    const server = createMcpServer(user)
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => sessionId,
+    })
+
+    await server.connect(transport)
+
+    const session: McpSession = { server, transport, user }
+    sessions.set(sessionId, session)
+
+    return session
+  }
+
+  // Periodic cleanup of in-memory sessions that have no recent activity
+  // This runs on an interval to free memory from abandoned sessions
+  let cleanupTimer: ReturnType<typeof setInterval> | undefined
+  if (sessionStore) {
+    cleanupTimer = setInterval(async () => {
+      const now = Date.now()
+      for (const [sessionId, session] of sessions) {
+        // Check store for last activity
+        const record = await sessionStore.get(session.user, sessionId)
+        if (!record || now - record.lastActivity.getTime() > DEFAULT_SESSION_INACTIVITY_MS) {
+          // Close and remove stale session
+          await session.server.close()
+          sessions.delete(sessionId)
+          if (record) {
+            await sessionStore.delete(session.user, sessionId)
+          }
+        }
+      }
+    }, cleanupIntervalMs)
+
+    // Don't let the timer prevent process exit
+    cleanupTimer.unref()
+  }
+
   // POST /mcp - Handle JSON-RPC requests
   router.post('/', async (req: Request, res: Response) => {
     const user = getAuthenticatedUser(req)
@@ -606,15 +675,24 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
 
     const sessionId = req.headers['mcp-session-id'] as string | undefined
 
-    let session: McpSession
+    let session: McpSession | undefined
 
     if (sessionId && sessions.has(sessionId)) {
+      // Session is in memory
       session = sessions.get(sessionId)!
       if (session.user !== user) {
         res.status(403).json({ error: 'Session belongs to different user' })
         return
       }
-    } else {
+    } else if (sessionId && sessionStore) {
+      // Session not in memory - try to restore from store
+      const restored = await restoreSessionFromStore(user, sessionId)
+      if (restored) {
+        session = restored
+      }
+    }
+
+    if (!session) {
       // Create new session - generate ID first so transport and our map use the same one
       const newSessionId = randomUUID()
       const server = createMcpServer(user)
@@ -626,10 +704,19 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
 
       session = { server, transport, user }
       sessions.set(newSessionId, session)
-      // Don't set header - transport.handleRequest will set it
+
+      // Persist to store if available
+      if (sessionStore) {
+        await sessionStore.save(user, newSessionId)
+      }
     }
 
     await session.transport.handleRequest(req, res)
+
+    // Update last activity in store
+    if (sessionStore && sessionId) {
+      await sessionStore.touch(user, sessionId)
+    }
   })
 
   // GET /mcp - SSE stream for server notifications
@@ -642,18 +729,34 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
 
     const sessionId = req.headers['mcp-session-id'] as string | undefined
 
-    if (!sessionId || !sessions.has(sessionId)) {
+    if (!sessionId) {
       res.status(400).json({ error: 'Invalid or missing session ID' })
       return
     }
 
-    const session = sessions.get(sessionId)!
+    let session = sessions.get(sessionId)
+
+    // Try to restore from store if not in memory
+    if (!session && sessionStore) {
+      session = (await restoreSessionFromStore(user, sessionId)) ?? undefined
+    }
+
+    if (!session) {
+      res.status(400).json({ error: 'Invalid or missing session ID' })
+      return
+    }
+
     if (session.user !== user) {
       res.status(403).json({ error: 'Session belongs to different user' })
       return
     }
 
     await session.transport.handleRequest(req, res)
+
+    // Update last activity in store
+    if (sessionStore) {
+      await sessionStore.touch(user, sessionId)
+    }
   })
 
   // DELETE /mcp - End session
@@ -666,12 +769,23 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
 
     const sessionId = req.headers['mcp-session-id'] as string | undefined
 
-    if (!sessionId || !sessions.has(sessionId)) {
+    if (!sessionId) {
       res.status(400).json({ error: 'Invalid or missing session ID' })
       return
     }
 
-    const session = sessions.get(sessionId)!
+    let session = sessions.get(sessionId)
+
+    // Try to restore from store if not in memory (so we can properly close it)
+    if (!session && sessionStore) {
+      session = (await restoreSessionFromStore(user, sessionId)) ?? undefined
+    }
+
+    if (!session) {
+      res.status(400).json({ error: 'Invalid or missing session ID' })
+      return
+    }
+
     if (session.user !== user) {
       res.status(403).json({ error: 'Session belongs to different user' })
       return
@@ -680,6 +794,11 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
     await session.transport.handleRequest(req, res)
     await session.server.close()
     sessions.delete(sessionId)
+
+    // Also delete from store
+    if (sessionStore) {
+      await sessionStore.delete(user, sessionId)
+    }
   })
 
   return router
