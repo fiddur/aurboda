@@ -82,6 +82,21 @@ export const fetchHeartRate = async (start: Date, end: Date): Promise<[Date, num
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
+// Fetch HRV (RMSSD) data for the specified date range
+export const fetchHrv = async (start: Date, end: Date): Promise<[Date, number][]> => {
+  const { token } = auth.value
+  const params: QueryMetricsQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<QueryMetricsResponse>(`${API_URL}/metrics/hrv_rmssd`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+
+  return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
+}
+
 // Fetch activities (sleep, exercise, meditation) for the specified date range
 export const fetchActivities = async (
   start: Date,

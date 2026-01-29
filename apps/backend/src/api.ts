@@ -44,23 +44,16 @@ import {
 } from '@aurboda/api-spec'
 import { json } from 'body-parser'
 import cors from 'cors'
-import { subHours } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import { createAuth } from './auth'
 import {
-  getActivities,
   getAllSyncStates,
   getDetectedLocationById,
-  getLocations,
-  getProductivity,
   getDetectedLocations as getStoredDetectedLocations,
-  getTags,
-  getTimeSeries,
   initializeSchema,
   insertLocation,
   insertPlace,
-  insertProductivity,
   loginToUserDb,
   makeNewUserDb,
   migrateSchema,
@@ -76,7 +69,6 @@ import { createDbSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { createOwnTracksRouter } from './owntracks'
-import { rescuetimeClient } from './rescuetime'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
 import { createDetectionTrigger, DetectionTrigger } from './services/detection-trigger'
@@ -102,7 +94,6 @@ import {
 import { getSettings, getSettingsResponse, validateAndUpdateSettings } from './services/settings'
 import { createSyncProvider } from './services/sync-provider'
 import { createSyncRouter } from './sync-router'
-import { reduceTimeSeries } from './utils'
 import { validateBody, validateQuery } from './validation'
 
 declare global {
@@ -342,66 +333,6 @@ const main = async () => {
       onLocationInserted: detectionTrigger.triggerDetectionForUser,
     }),
   )
-
-  httpd.get('/dump', async (req, res) => {
-    const { username: user } = req.query as { username: string }
-
-    const now = new Date()
-    //const start = subHours(now, 26) // TODO: Find yesterday's wakeup time?
-    const start = subHours(now, 26 + 24 * 7) // TODO..
-    const end = now // addDays(now, 1)
-
-    const { locations, places } = await getLocations(user, start, end)
-
-    const access_token = await oura.getAccessToken(user)
-
-    // Get data from new schema
-    const heartRates = reduceTimeSeries(await getTimeSeries(user, 'heart_rate', start, end))
-    const sleepSessions = await getActivities(user, 'sleep', start, end)
-    const exerciseSessions = await getActivities(user, 'exercise', start, end)
-    const tags = await getTags(user, start, end)
-
-    // Get productivity data from storage, falling back to RescueTime API
-    let rtData = await getProductivity(user, start, end)
-    const userSettings = await getSettings(user)
-    if (rtData.length === 0 && userSettings.rescueTimeKey) {
-      const freshData = await rescuetimeClient(userSettings.rescueTimeKey).getIntervalData(start, end)
-      // Store fetched data for future use
-      const productivityRecords = freshData.map((r) => ({
-        activity: r.activity,
-        category: r.category,
-        durationSec: r.duration,
-        endTime: r.endTime,
-        isMobile: r.mobile,
-        productivity: r.productivity,
-        source: 'rescuetime' as const,
-        startTime: r.startTime,
-      }))
-      await insertProductivity(user, productivityRecords)
-      rtData = productivityRecords
-    }
-
-    res.writeHead(200, {
-      'Content-Disposition': `attachment; filename="dump-${now.toISOString()}.json"`,
-      'Content-Type': 'application/json',
-    })
-    res.end(
-      JSON.stringify({
-        dailyCardiovascularAge: await oura.getDailyCardiovascularAge(start, end, access_token),
-        dailyReadiness: await oura.getDailyReadiness(start, end, access_token),
-        dailyResilience: await oura.getDailyResilience(start, end, access_token),
-        dailySleep: await oura.getDailySleep(start, end, access_token),
-        exerciseSessions,
-        heartRates,
-        locations,
-        places,
-        rtData,
-        sessions: await oura.getSessions(start, end, access_token),
-        sleepSessions,
-        tags,
-      }),
-    )
-  })
 
   // ==========================================================================
   // REST API - Uses shared service layer with MCP

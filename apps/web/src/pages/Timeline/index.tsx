@@ -1,11 +1,13 @@
 import { signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
-import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+import { addDays, endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+import { useCallback, useEffect, useRef } from 'preact/hooks'
 import {
   Activity,
   fetchActivities,
   fetchHeartRate,
+  fetchHrv,
   fetchPlaces,
   fetchProductivity,
   fetchTags,
@@ -15,12 +17,17 @@ import {
 } from '../../state/api'
 import { preprocessData } from '../../utils/chart'
 
-// Signals to handle user-selected dates
+// Signals to handle user-selected dates (data fetch range)
 const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
 const toDate = signal(formatISO(new Date(), { representation: 'date' }))
 
+// Signals for zoom view (visible range, can be subset of fetched data)
+const viewStart = signal<Date | null>(null)
+const viewEnd = signal<Date | null>(null)
+
 // Signals for toggling data layers
 const showHeartRate = signal(true)
+const showHrv = signal(true)
 const showSleep = signal(true)
 const showExercise = signal(true)
 const showMeditation = signal(true)
@@ -28,16 +35,55 @@ const showProductivity = signal(true)
 const showPlaces = signal(true)
 const showTags = signal(true)
 
-// Legend configuration
-const legendItems = [
-  { color: 'red', label: 'Heart Rate', signal: showHeartRate },
-  { color: 'rgba(0, 0, 255, 0.3)', label: 'Sleep', signal: showSleep },
-  { color: 'rgba(0, 128, 0, 0.4)', label: 'Exercise', signal: showExercise },
-  { color: 'rgba(128, 0, 128, 0.6)', label: 'Meditation', signal: showMeditation },
-  { color: 'darkblue', label: 'Computer', signal: showProductivity },
-  { color: 'darkcyan', label: 'Mobile', signal: showProductivity },
-  { color: 'lightgray', label: 'Places', signal: showPlaces },
-  { color: 'black', label: 'Tags', signal: showTags },
+// Dark mode aware colors
+const colors = {
+  // Text colors for dark mode compatibility
+  axis: 'currentColor',
+
+  // Productivity
+  computer: '#3b82f6', // Blue
+  // Activity backgrounds
+  exercise: 'rgba(34, 197, 94, 0.4)', // Green that works in both modes
+
+  // Line charts
+  heartRate: '#ef4444', // Red
+  hrv: '#22c55e', // Green
+  meditation: 'rgba(168, 85, 247, 0.5)', // Purple
+  mobile: '#06b6d4', // Cyan
+  sleep: 'rgba(59, 130, 246, 0.25)', // Blue
+
+  // Tags - use semi-transparent to work in both modes
+  tags: 'rgba(156, 163, 175, 0.5)', // Gray
+}
+
+// Place colors - using colors that work well in both light and dark modes
+const placeColorPalette = [
+  '#f59e0b', // Amber
+  '#10b981', // Emerald
+  '#8b5cf6', // Violet
+  '#ec4899', // Pink
+  '#06b6d4', // Cyan
+  '#f97316', // Orange
+  '#84cc16', // Lime
+  '#6366f1', // Indigo
+]
+
+// Generate consistent color for a place name
+const getPlaceColor = (placeName: string, allPlaces: string[]): string => {
+  const index = allPlaces.indexOf(placeName)
+  return placeColorPalette[index % placeColorPalette.length]
+}
+
+// Static legend items (places are added dynamically)
+const staticLegendItems = [
+  { color: colors.heartRate, label: 'Heart Rate', signal: showHeartRate },
+  { color: colors.hrv, label: 'HRV', signal: showHrv },
+  { color: colors.sleep, label: 'Sleep', signal: showSleep },
+  { color: colors.exercise, label: 'Exercise', signal: showExercise },
+  { color: colors.meditation, label: 'Meditation', signal: showMeditation },
+  { color: colors.computer, label: 'Computer', signal: showProductivity },
+  { color: colors.mobile, label: 'Mobile', signal: showProductivity },
+  { color: colors.tags, label: 'Tags', signal: showTags },
 ]
 
 export const Timeline = () => {
@@ -48,6 +94,13 @@ export const Timeline = () => {
     enabled: showHeartRate.value,
     queryFn: () => fetchHeartRate(start, end),
     queryKey: ['heartRate', fromDate.value, toDate.value],
+    staleTime: 10 * 60 * 1000,
+  })
+
+  const hrvQuery = useQuery({
+    enabled: showHrv.value,
+    queryFn: () => fetchHrv(start, end),
+    queryKey: ['hrv', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
   })
 
@@ -87,6 +140,7 @@ export const Timeline = () => {
 
   const isLoading =
     heartRateQuery.isLoading ||
+    hrvQuery.isLoading ||
     activitiesQuery.isLoading ||
     productivityQuery.isLoading ||
     placesQuery.isLoading ||
@@ -94,10 +148,52 @@ export const Timeline = () => {
 
   const hasError =
     heartRateQuery.isError ||
+    hrvQuery.isError ||
     activitiesQuery.isError ||
     productivityQuery.isError ||
     placesQuery.isError ||
     tagsQuery.isError
+
+  // Get unique place names for legend
+  const places = placesQuery.data || []
+  const uniquePlaceNames = [...new Set(places.map((p) => p.region))].sort()
+
+  // Calculate effective view range
+  const effectiveViewStart = viewStart.value || start
+  const effectiveViewEnd = viewEnd.value || end
+
+  // Handle zoom - update view range
+  const handleZoom = useCallback(
+    (zoomStart: Date, zoomEnd: Date) => {
+      viewStart.value = zoomStart
+      viewEnd.value = zoomEnd
+    },
+    [start, end],
+  )
+
+  // Handle zoom out - expand date range and fetch more data
+  const handleZoomOut = useCallback(() => {
+    // Expand the data fetch range by 1 day in each direction
+    const newFrom = formatISO(subDays(new Date(fromDate.value), 1), { representation: 'date' })
+    const newTo = formatISO(addDays(new Date(toDate.value), 1), { representation: 'date' })
+
+    // Don't fetch future data
+    const today = formatISO(new Date(), { representation: 'date' })
+    const cappedTo = newTo > today ? today : newTo
+
+    fromDate.value = newFrom
+    toDate.value = cappedTo
+
+    // Reset view to show full range
+    viewStart.value = null
+    viewEnd.value = null
+  }, [])
+
+  // Reset view when date range changes
+  useEffect(() => {
+    viewStart.value = null
+    viewEnd.value = null
+  }, [fromDate.value, toDate.value])
 
   return (
     <>
@@ -122,6 +218,14 @@ export const Timeline = () => {
               onChange={(e) => (showHeartRate.value = (e.target as HTMLInputElement).checked)}
             />
             Heart Rate
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={showHrv.value}
+              onChange={(e) => (showHrv.value = (e.target as HTMLInputElement).checked)}
+            />
+            HRV
           </label>
           <label>
             <input
@@ -173,48 +277,60 @@ export const Timeline = () => {
           </label>
         </div>
 
-        <Legend />
+        <Legend placeNames={showPlaces.value ? uniquePlaceNames : []} />
 
         {isLoading && <div>Loading...</div>}
         {hasError && <div>Error loading data</div>}
 
         <TimelineChart
           heartRates={showHeartRate.value ? heartRateQuery.data || [] : []}
+          hrvData={showHrv.value ? hrvQuery.data || [] : []}
           activities={activitiesQuery.data || []}
           productivity={showProductivity.value ? productivityQuery.data || [] : []}
-          places={showPlaces.value ? placesQuery.data || [] : []}
+          places={showPlaces.value ? places : []}
           tags={showTags.value ? tagsQuery.data || [] : []}
           sleepVisible={showSleep.value}
           exerciseVisible={showExercise.value}
           meditationVisible={showMeditation.value}
-          start={start}
-          end={end}
+          dataStart={start}
+          dataEnd={end}
+          visibleStart={effectiveViewStart}
+          visibleEnd={effectiveViewEnd}
+          onZoom={handleZoom}
+          onZoomOut={handleZoomOut}
         />
       </div>
     </>
   )
 }
 
-function Legend() {
+function Legend({ placeNames }: { placeNames: string[] }) {
+  // Build dynamic legend items for places
+  const placeLegendItems = placeNames.map((name) => ({
+    color: getPlaceColor(name, placeNames),
+    label: name,
+  }))
+
   return (
     <div
       style={{
-        border: '1px solid #ccc',
+        border: '1px solid currentColor',
         borderRadius: '4px',
         display: 'flex',
         flexWrap: 'wrap',
         gap: '1rem',
         marginBottom: '1rem',
+        opacity: 0.7,
         padding: '0.5rem 1rem',
       }}
     >
       <strong>Legend:</strong>
-      {legendItems.map((item) => (
+      {staticLegendItems.map((item) => (
         <div key={item.label} style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
           <div
             style={{
               backgroundColor: item.color,
-              border: item.label === 'Tags' ? '1px dashed black' : 'none',
+              border: item.label === 'Tags' ? '1px dashed currentColor' : 'none',
               height: '12px',
               width: '20px',
             }}
@@ -222,12 +338,31 @@ function Legend() {
           <span>{item.label}</span>
         </div>
       ))}
+      {placeLegendItems.length > 0 && (
+        <>
+          <span style={{ opacity: 0.5 }}>|</span>
+          <span style={{ fontStyle: 'italic' }}>Places:</span>
+          {placeLegendItems.map((item) => (
+            <div key={item.label} style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
+              <div
+                style={{
+                  backgroundColor: item.color,
+                  height: '12px',
+                  width: '20px',
+                }}
+              />
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   )
 }
 
 interface TimelineChartProps {
   heartRates: [Date, number][]
+  hrvData: [Date, number][]
   activities: Activity[]
   productivity: ProductivityRecord[]
   places: Place[]
@@ -235,12 +370,17 @@ interface TimelineChartProps {
   sleepVisible: boolean
   exerciseVisible: boolean
   meditationVisible: boolean
-  start: Date
-  end: Date
+  dataStart: Date
+  dataEnd: Date
+  visibleStart: Date
+  visibleEnd: Date
+  onZoom: (start: Date, end: Date) => void
+  onZoomOut: () => void
 }
 
 function TimelineChart({
   heartRates,
+  hrvData,
   activities,
   productivity,
   places,
@@ -248,10 +388,17 @@ function TimelineChart({
   sleepVisible,
   exerciseVisible,
   meditationVisible,
-  start,
-  end,
+  dataStart,
+  dataEnd,
+  visibleStart,
+  visibleEnd,
+  onZoom,
+  onZoomOut,
 }: TimelineChartProps) {
-  const margin = { bottom: 30, left: 40, right: 20, top: 10 }
+  const svgRef = useRef<SVGSVGElement>(null)
+  const brushRef = useRef<SVGGElement>(null)
+
+  const margin = { bottom: 30, left: 40, right: 50, top: 10 }
   const width = 1000
   const height = 500
 
@@ -265,18 +412,17 @@ function TimelineChart({
   const trackExercise = 2 * trackHeight
   const trackPlaces = 3 * trackHeight
 
-  // Time scale
-  const x = d3.scaleTime().domain([start, end]).range([0, chartWidth])
+  // Time scale based on view range
+  const x = d3.scaleTime().domain([visibleStart, visibleEnd]).range([0, chartWidth])
 
-  // Heart rate y scale
-  const y = d3.scaleLinear().domain([40, 200]).range([chartHeight, 0])
+  // Heart rate y scale (left axis)
+  const yHr = d3.scaleLinear().domain([40, 200]).range([chartHeight, 0])
 
-  // Place colors
-  const placeColors: Record<string, string> = {
-    Genki: 'darkgrey',
-    Hökås: 'lightgreen',
-    Lönnåsen: 'olive',
-  }
+  // HRV y scale (right axis) - typical RMSSD values range from 10-100ms
+  const yHrv = d3.scaleLinear().domain([0, 150]).range([chartHeight, 0])
+
+  // Get unique place names for consistent coloring
+  const uniquePlaceNames = [...new Set(places.map((p) => p.region))].sort()
 
   // Filter activities by type
   const sleepSessions = sleepVisible ? activities.filter((a) => a.activityType === 'sleep') : []
@@ -284,8 +430,88 @@ function TimelineChart({
   const meditationSessions =
     meditationVisible ? activities.filter((a) => a.activityType === 'meditation') : []
 
+  // Setup brush for selection zoom
+  useEffect(() => {
+    if (!brushRef.current) return
+
+    const brush = d3
+      .brushX<unknown>()
+      .extent([
+        [0, 0],
+        [chartWidth, chartHeight],
+      ])
+      .on('end', (event: d3.D3BrushEvent<unknown>) => {
+        if (!event.selection) return
+        const [x0, x1] = event.selection as [number, number]
+        const newStart = x.invert(x0)
+        const newEnd = x.invert(x1)
+
+        // Clear brush selection
+        d3.select(brushRef.current).call(brush.move, null)
+
+        // Only zoom if selection is meaningful (at least 1 minute)
+        if (newEnd.getTime() - newStart.getTime() > 60000) {
+          onZoom(newStart, newEnd)
+        }
+      })
+
+    d3.select(brushRef.current).call(brush)
+  }, [chartWidth, chartHeight, visibleStart, visibleEnd, onZoom])
+
+  // Setup wheel zoom
+  useEffect(() => {
+    if (!svgRef.current) return
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault()
+
+      const rect = svgRef.current!.getBoundingClientRect()
+      const mouseX = event.clientX - rect.left - margin.left
+
+      // Get current view range
+      const currentStart = visibleStart.getTime()
+      const currentEnd = visibleEnd.getTime()
+      const currentRange = currentEnd - currentStart
+
+      // Calculate zoom factor (positive delta = zoom out, negative = zoom in)
+      const zoomFactor = event.deltaY > 0 ? 1.2 : 0.8
+
+      // Calculate new range
+      const newRange = currentRange * zoomFactor
+
+      // Calculate where in the view the mouse is (0-1)
+      const mouseRatio = Math.max(0, Math.min(1, mouseX / chartWidth))
+
+      // Calculate new start/end centered on mouse position
+      const mouseTime = currentStart + mouseRatio * currentRange
+      const newStart = new Date(mouseTime - mouseRatio * newRange)
+      const newEnd = new Date(mouseTime + (1 - mouseRatio) * newRange)
+
+      // Check if we're zooming out beyond the data range
+      if (newStart.getTime() < dataStart.getTime() || newEnd.getTime() > dataEnd.getTime()) {
+        onZoomOut()
+      } else {
+        onZoom(newStart, newEnd)
+      }
+    }
+
+    svgRef.current.addEventListener('wheel', handleWheel, { passive: false })
+    return () => svgRef.current?.removeEventListener('wheel', handleWheel)
+  }, [visibleStart, visibleEnd, dataStart, dataEnd, chartWidth, margin.left, onZoom, onZoomOut])
+
+  // Double-click to reset zoom
+  const handleDoubleClick = useCallback(() => {
+    onZoom(dataStart, dataEnd)
+  }, [dataStart, dataEnd, onZoom])
+
   return (
-    <svg width={width} height={height}>
+    <svg
+      ref={svgRef}
+      width={width}
+      height={height}
+      style={{ color: 'currentColor', cursor: 'crosshair' }}
+      onDblClick={handleDoubleClick}
+    >
       <g transform={`translate(${margin.left},${margin.top})`}>
         {/* Sleep sessions - full height blue background */}
         {sleepSessions.map((session, i) =>
@@ -296,8 +522,7 @@ function TimelineChart({
               y={0}
               width={Math.max(0, x(session.endTime) - x(session.startTime))}
               height={chartHeight}
-              fill="blue"
-              opacity={0.2}
+              fill={colors.sleep}
             />
           : null,
         )}
@@ -311,8 +536,7 @@ function TimelineChart({
               y={0}
               width={Math.max(0, x(session.endTime) - x(session.startTime))}
               height={chartHeight}
-              fill="purple"
-              opacity={0.6}
+              fill={colors.meditation}
             />
           : null,
         )}
@@ -327,7 +551,7 @@ function TimelineChart({
               y={trackComputer}
               width={Math.max(0, x(p.endTime) - x(p.startTime))}
               height={trackHeight}
-              fill="darkblue"
+              fill={colors.computer}
               opacity={0.8}
             />
           ))}
@@ -342,7 +566,7 @@ function TimelineChart({
               y={trackMobile}
               width={Math.max(0, x(p.endTime) - x(p.startTime))}
               height={trackHeight}
-              fill="darkcyan"
+              fill={colors.mobile}
               opacity={0.8}
             />
           ))}
@@ -356,8 +580,7 @@ function TimelineChart({
               y={trackExercise}
               width={Math.max(0, x(session.endTime) - x(session.startTime))}
               height={trackHeight}
-              fill="green"
-              opacity={0.4}
+              fill={colors.exercise}
             />
           : null,
         )}
@@ -370,7 +593,7 @@ function TimelineChart({
             y={trackPlaces}
             width={Math.max(0, x(place.endTime) - x(place.startTime))}
             height={trackHeight}
-            fill={placeColors[place.region] || 'lightgray'}
+            fill={getPlaceColor(place.region, uniquePlaceNames)}
           />
         ))}
 
@@ -384,9 +607,8 @@ function TimelineChart({
               width={Math.max(0, x(tag.endTime) - x(tag.startTime))}
               height={chartHeight}
               fill="none"
-              stroke="black"
+              stroke={colors.tags}
               strokeDasharray="4"
-              opacity={0.3}
             />
           : <line
               key={`tag-${i}`}
@@ -394,32 +616,55 @@ function TimelineChart({
               y1={0}
               x2={x(tag.startTime)}
               y2={chartHeight}
-              stroke="black"
+              stroke={colors.tags}
               strokeDasharray="4"
-              opacity={0.3}
             />,
         )}
 
-        {/* Heart Rate Line */}
-        {heartRates.length > 0 && (
+        {/* HRV Line */}
+        {hrvData.length > 0 && (
           <path
             fill="none"
-            stroke="red"
+            stroke={colors.hrv}
             strokeWidth="1.5"
             d={
               d3
                 .line<[Date, number] | null>()
                 .defined(Boolean)
                 .x(([time]) => x(time))
-                .y(([, rate]) => y(rate))(preprocessData(heartRates, 10)) || ''
+                .y(([, value]) => yHrv(value))(preprocessData(hrvData, 10)) || ''
             }
           />
         )}
 
-        {/* Y-axis for heart rate */}
+        {/* Heart Rate Line */}
+        {heartRates.length > 0 && (
+          <path
+            fill="none"
+            stroke={colors.heartRate}
+            strokeWidth="1.5"
+            d={
+              d3
+                .line<[Date, number] | null>()
+                .defined(Boolean)
+                .x(([time]) => x(time))
+                .y(([, rate]) => yHr(rate))(preprocessData(heartRates, 10)) || ''
+            }
+          />
+        )}
+
+        {/* Y-axis for heart rate (left) */}
         <g
           ref={(g) => {
-            if (g) d3.select(g).call(d3.axisLeft(y))
+            if (g) d3.select(g).call(d3.axisLeft(yHr)).selectAll('text').style('fill', colors.heartRate)
+          }}
+        />
+
+        {/* Y-axis for HRV (right) */}
+        <g
+          transform={`translate(${chartWidth},0)`}
+          ref={(g) => {
+            if (g) d3.select(g).call(d3.axisRight(yHrv)).selectAll('text').style('fill', colors.hrv)
           }}
         />
 
@@ -436,6 +681,9 @@ function TimelineChart({
               )
           }}
         />
+
+        {/* Brush for selection zoom */}
+        <g ref={brushRef} class="brush" />
       </g>
     </svg>
   )
