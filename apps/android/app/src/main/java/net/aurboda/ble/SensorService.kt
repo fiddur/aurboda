@@ -80,7 +80,10 @@ data class SensorServiceState(
     val connectingDevices: Set<String> = emptySet(),  // addresses of devices currently connecting
     val lastSyncTime: Instant? = null,
     val pendingSamples: Int = 0,
-    val pendingCadenceSamples: Int = 0
+    val pendingCadenceSamples: Int = 0,
+    val currentHrv: Double? = null,           // Latest RMSSD in ms
+    val hrvReliable: Boolean = false,         // Whether HRV measurement is reliable
+    val rrIntervalCount: Int = 0              // Number of RR intervals in buffer
 ) {
     // Convenience accessors for backward compatibility and easy access
     val hrDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.HEART_RATE }
@@ -411,13 +414,14 @@ class SensorService : Service() {
     private fun handleDeviceDisconnected(deviceAddress: String) {
         Log.d(TAG, "Device disconnected: $deviceAddress")
 
-        // Check if this was an HR device and clear RR buffer
+        // Check if this was an HR device and clear RR buffer + HRV state
         val wasHrDevice = _serviceState.value.connectedDevices[deviceAddress]?.device?.type == SensorType.HEART_RATE
         if (wasHrDevice) {
             synchronized(bufferLock) {
                 rrIntervalBuffer.clear()
                 Log.d(TAG, "Cleared RR interval buffer due to HR device disconnect")
             }
+            updateState { it.copy(currentHrv = null, hrvReliable = false, rrIntervalCount = 0) }
         }
 
         // Cancel jobs for this device
@@ -539,13 +543,28 @@ class SensorService : Service() {
                     "artifacts=${hrvResult.artifactCount} (${String.format("%.1f", hrvResult.artifactPercentage)}%), " +
                     "reliable=${hrvResult.isReliable}")
 
+            // Update state for UI display
+            updateState { it.copy(
+                currentHrv = hrvResult.rmssd,
+                hrvReliable = hrvResult.isReliable,
+                rrIntervalCount = rrIntervalsForHrv.size
+            ) }
+
             if (hrvResult.isReliable && hrvResult.rmssd != null) {
                 val timestamp = Instant.now()
                 syncHrvToBackend(hrvResult.rmssd, timestamp)
                 writeHrvToHealthConnect(hrvResult.rmssd, timestamp)
             }
-        } else if (rrIntervalsForHrv.isNotEmpty()) {
-            Log.d(TAG, "HRV: Collecting RR intervals (${rrIntervalsForHrv.size}/$RR_BUFFER_MIN_SIZE)")
+        } else {
+            // Update state to show collecting progress
+            updateState { it.copy(
+                currentHrv = null,
+                hrvReliable = false,
+                rrIntervalCount = rrIntervalsForHrv.size
+            ) }
+            if (rrIntervalsForHrv.isNotEmpty()) {
+                Log.d(TAG, "HRV: Collecting RR intervals (${rrIntervalsForHrv.size}/$RR_BUFFER_MIN_SIZE)")
+            }
         }
 
         updateState { it.copy(lastSyncTime = Instant.now()) }
