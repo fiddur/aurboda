@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.metadata.Device
 import androidx.health.connect.client.records.metadata.Metadata
 import io.ktor.client.HttpClient
@@ -59,9 +60,13 @@ data class SensorServiceState(
     val connectionState: BleConnectionState = BleConnectionState.Disconnected,
     val connectedDevice: ConnectedDevice? = null,
     val currentHeartRate: Int? = null,
+    val currentCadence: Int? = null,
+    val currentSpeed: Float? = null,
+    val stepsSinceStart: Int = 0,
     val batteryLevel: Int? = null,
     val lastSyncTime: Instant? = null,
-    val pendingSamples: Int = 0
+    val pendingSamples: Int = 0,
+    val pendingCadenceSamples: Int = 0
 )
 
 /**
@@ -105,6 +110,20 @@ data class LiveDeviceInfo(
 private data class HeartRateSyncBody(val data: List<LiveHeartRateRecord>)
 
 /**
+ * Steps record in Health Connect format for backend sync.
+ */
+@Serializable
+data class LiveStepsRecord(
+    val startTime: String,
+    val endTime: String,
+    val count: Long,
+    val metadata: LiveRecordMetadata
+)
+
+@Serializable
+private data class StepsSyncBody(val data: List<LiveStepsRecord>)
+
+/**
  * Foreground service that manages BLE sensor connections.
  * Keeps connections alive in the background, buffers HR samples,
  * syncs to backend every 5 seconds, and writes to Health Connect.
@@ -115,8 +134,10 @@ class SensorService : Service() {
     private var connectionManager: BleConnectionManager? = null
     private var syncJob: Job? = null
     private var hrCollectionJob: Job? = null
+    private var cadenceCollectionJob: Job? = null
 
     private val sampleBuffer = mutableListOf<HeartRateSample>()
+    private val cadenceSampleBuffer = mutableListOf<CadenceSample>()
     private val bufferLock = Any()
 
     private val httpClient by lazy {
@@ -183,12 +204,12 @@ class SensorService : Service() {
 
     @SuppressLint("ForegroundServiceType")
     private fun startForegroundWithNotification() {
-        val notification = buildNotification(null)
+        val notification = buildNotification(_serviceState.value)
         startForeground(NOTIFICATION_ID, notification)
         updateState { it.copy(isRunning = true) }
     }
 
-    private fun buildNotification(heartRate: Int?): Notification {
+    private fun buildNotification(state: SensorServiceState): Notification {
         val openIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -205,10 +226,15 @@ class SensorService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val contentText = if (heartRate != null) {
-            "Heart rate: $heartRate BPM"
-        } else {
-            "Connecting to sensor..."
+        val contentText = when {
+            state.connectedDevice?.type == SensorType.HEART_RATE && state.currentHeartRate != null ->
+                "Heart rate: ${state.currentHeartRate} BPM"
+            state.connectedDevice?.type == SensorType.RUNNING_SPEED_CADENCE && state.currentCadence != null ->
+                "Cadence: ${state.currentCadence} spm • ${state.stepsSinceStart} steps"
+            state.connectionState is BleConnectionState.Connected ->
+                "Connected"
+            else ->
+                "Connecting to sensor..."
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -222,8 +248,8 @@ class SensorService : Service() {
             .build()
     }
 
-    private fun updateNotification(heartRate: Int?) {
-        val notification = buildNotification(heartRate)
+    private fun updateNotification() {
+        val notification = buildNotification(_serviceState.value)
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
@@ -266,7 +292,7 @@ class SensorService : Service() {
             serviceScope.launch {
                 manager.currentHeartRate.collect { hr ->
                     updateState { it.copy(currentHeartRate = hr) }
-                    updateNotification(hr)
+                    updateNotification()
                 }
             }
 
@@ -274,6 +300,28 @@ class SensorService : Service() {
             serviceScope.launch {
                 manager.batteryLevel.collect { level ->
                     updateState { it.copy(batteryLevel = level) }
+                }
+            }
+
+            // Observe current cadence and speed
+            serviceScope.launch {
+                manager.currentCadence.collect { cadence ->
+                    updateState { it.copy(currentCadence = cadence) }
+                    updateNotification()
+                }
+            }
+
+            serviceScope.launch {
+                manager.currentSpeed.collect { speed ->
+                    updateState { it.copy(currentSpeed = speed) }
+                }
+            }
+
+            // Observe cumulative steps
+            serviceScope.launch {
+                manager.stepsSinceStart.collect { steps ->
+                    updateState { it.copy(stepsSinceStart = steps) }
+                    updateNotification()
                 }
             }
 
@@ -291,11 +339,23 @@ class SensorService : Service() {
                 }
             }
         }
+
+        cadenceCollectionJob?.cancel()
+        cadenceCollectionJob = serviceScope.launch {
+            manager.cadenceSamples.collect { sample ->
+                synchronized(bufferLock) {
+                    cadenceSampleBuffer.add(sample)
+                    updateState { it.copy(pendingCadenceSamples = cadenceSampleBuffer.size) }
+                }
+            }
+        }
     }
 
     private fun stopDataCollection() {
         hrCollectionJob?.cancel()
         hrCollectionJob = null
+        cadenceCollectionJob?.cancel()
+        cadenceCollectionJob = null
     }
 
     private fun startSyncLoop() {
@@ -309,34 +369,50 @@ class SensorService : Service() {
     }
 
     private suspend fun syncPendingSamples() {
-        val samplesToSync: List<HeartRateSample>
+        val hrSamplesToSync: List<HeartRateSample>
+        val cadenceSamplesToSync: List<CadenceSample>
+
         synchronized(bufferLock) {
-            if (sampleBuffer.isEmpty()) return
-            samplesToSync = sampleBuffer.toList()
+            hrSamplesToSync = sampleBuffer.toList()
+            cadenceSamplesToSync = cadenceSampleBuffer.toList()
+            if (hrSamplesToSync.isEmpty() && cadenceSamplesToSync.isEmpty()) return
             sampleBuffer.clear()
-            updateState { it.copy(pendingSamples = 0) }
+            cadenceSampleBuffer.clear()
+            updateState { it.copy(pendingSamples = 0, pendingCadenceSamples = 0) }
         }
 
-        Log.d(TAG, "Syncing ${samplesToSync.size} HR samples")
-
-        // Sync to backend
-        val backendSuccess = syncToBackend(samplesToSync)
-        if (!backendSuccess) {
-            // Re-add samples to buffer on failure
-            synchronized(bufferLock) {
-                sampleBuffer.addAll(0, samplesToSync)
-                updateState { it.copy(pendingSamples = sampleBuffer.size) }
+        // Sync HR samples if any
+        if (hrSamplesToSync.isNotEmpty()) {
+            Log.d(TAG, "Syncing ${hrSamplesToSync.size} HR samples")
+            val backendSuccess = syncHeartRateToBackend(hrSamplesToSync)
+            if (!backendSuccess) {
+                synchronized(bufferLock) {
+                    sampleBuffer.addAll(0, hrSamplesToSync)
+                    updateState { it.copy(pendingSamples = sampleBuffer.size) }
+                }
+            } else {
+                writeHeartRateToHealthConnect(hrSamplesToSync)
             }
-            return
         }
 
-        // Write to Health Connect
-        writeToHealthConnect(samplesToSync)
+        // Sync cadence/steps samples if any
+        if (cadenceSamplesToSync.isNotEmpty()) {
+            Log.d(TAG, "Syncing ${cadenceSamplesToSync.size} cadence samples")
+            val backendSuccess = syncStepsToBackend(cadenceSamplesToSync)
+            if (!backendSuccess) {
+                synchronized(bufferLock) {
+                    cadenceSampleBuffer.addAll(0, cadenceSamplesToSync)
+                    updateState { it.copy(pendingCadenceSamples = cadenceSampleBuffer.size) }
+                }
+            } else {
+                writeStepsToHealthConnect(cadenceSamplesToSync)
+            }
+        }
 
         updateState { it.copy(lastSyncTime = Instant.now()) }
     }
 
-    private suspend fun syncToBackend(samples: List<HeartRateSample>): Boolean {
+    private suspend fun syncHeartRateToBackend(samples: List<HeartRateSample>): Boolean {
         val credentials = CredentialsManager.getCredentials(this) ?: run {
             Log.w(TAG, "No credentials, skipping backend sync")
             return true // Don't block on missing credentials
@@ -390,7 +466,7 @@ class SensorService : Service() {
         }
     }
 
-    private suspend fun writeToHealthConnect(samples: List<HeartRateSample>) {
+    private suspend fun writeHeartRateToHealthConnect(samples: List<HeartRateSample>) {
         if (samples.isEmpty()) return
 
         try {
@@ -433,6 +509,126 @@ class SensorService : Service() {
         }
     }
 
+    private suspend fun syncStepsToBackend(samples: List<CadenceSample>): Boolean {
+        val credentials = CredentialsManager.getCredentials(this) ?: run {
+            Log.w(TAG, "No credentials, skipping backend sync")
+            return true // Don't block on missing credentials
+        }
+
+        if (samples.isEmpty()) return true
+
+        // Calculate total steps from cadence samples by integrating over time intervals
+        val sortedSamples = samples.sortedBy { it.timestamp }
+        val startTime = sortedSamples.first().timestamp
+        val endTime = sortedSamples.last().timestamp.plusSeconds(1)
+
+        // Calculate total steps - integrate cadence over time
+        var totalSteps = 0L
+        for (i in 0 until sortedSamples.size - 1) {
+            val current = sortedSamples[i]
+            val next = sortedSamples[i + 1]
+            val elapsedSeconds = java.time.Duration.between(current.timestamp, next.timestamp).toMillis() / 1000.0
+            // cadence is steps/minute, convert to steps in elapsed time
+            val stepsInInterval = current.cadence * elapsedSeconds / 60.0
+            totalSteps += stepsInInterval.toLong()
+        }
+        // Add steps for last sample (assume 1 second interval)
+        if (sortedSamples.isNotEmpty()) {
+            totalSteps += (sortedSamples.last().cadence / 60.0).toLong()
+        }
+
+        if (totalSteps <= 0) {
+            Log.d(TAG, "No steps to sync (cadence was 0)")
+            return true
+        }
+
+        val recordId = "live-steps-${startTime.epochSecond}-${startTime.nano}"
+
+        val deviceInfo = connectionManager?.connectedDeviceInfo?.value?.let { device ->
+            LiveDeviceInfo(
+                type = 4, // TYPE_WATCH or foot pod
+                model = device.name
+            )
+        }
+
+        val record = LiveStepsRecord(
+            startTime = startTime.toString(),
+            endTime = endTime.toString(),
+            count = totalSteps,
+            metadata = LiveRecordMetadata(
+                id = recordId,
+                device = deviceInfo
+            )
+        )
+
+        return try {
+            val response = httpClient.post("${credentials.apiUrl}/sync/StepsRecord") {
+                contentType(ContentType.Application.Json)
+                headers { append(HttpHeaders.Authorization, "Bearer ${credentials.authToken}") }
+                setBody(StepsSyncBody(listOf(record)))
+            }
+            val success = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
+            Log.d(TAG, "Steps backend sync ${if (success) "succeeded" else "failed"}: ${response.status}")
+            success
+        } catch (e: Exception) {
+            Log.e(TAG, "Steps backend sync error", e)
+            false
+        }
+    }
+
+    private suspend fun writeStepsToHealthConnect(samples: List<CadenceSample>) {
+        if (samples.isEmpty()) return
+
+        try {
+            // Check write permission
+            val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
+            val writePermission = HealthPermission.getWritePermission(StepsRecord::class)
+            if (writePermission !in grantedPermissions) {
+                Log.w(TAG, "No Health Connect write permission for StepsRecord")
+                return
+            }
+
+            // Calculate total steps from cadence samples
+            val sortedSamples = samples.sortedBy { it.timestamp }
+            val startTime = sortedSamples.first().timestamp
+            val endTime = sortedSamples.last().timestamp.plusSeconds(1)
+
+            // Calculate total steps - integrate cadence over time
+            var totalSteps = 0L
+            for (i in 0 until sortedSamples.size - 1) {
+                val current = sortedSamples[i]
+                val next = sortedSamples[i + 1]
+                val elapsedSeconds = java.time.Duration.between(current.timestamp, next.timestamp).toMillis() / 1000.0
+                val stepsInInterval = current.cadence * elapsedSeconds / 60.0
+                totalSteps += stepsInInterval.toLong()
+            }
+            if (sortedSamples.isNotEmpty()) {
+                totalSteps += (sortedSamples.last().cadence / 60.0).toLong()
+            }
+
+            if (totalSteps <= 0) {
+                Log.d(TAG, "No steps to write to Health Connect (cadence was 0)")
+                return
+            }
+
+            val record = StepsRecord(
+                startTime = startTime,
+                startZoneOffset = ZoneOffset.systemDefault().rules.getOffset(startTime),
+                endTime = endTime,
+                endZoneOffset = ZoneOffset.systemDefault().rules.getOffset(endTime),
+                count = totalSteps,
+                metadata = Metadata.autoRecorded(
+                    device = Device(type = Device.TYPE_WATCH)
+                )
+            )
+
+            healthConnectClient.insertRecords(listOf(record))
+            Log.d(TAG, "Wrote $totalSteps steps to Health Connect")
+        } catch (e: Exception) {
+            Log.e(TAG, "Health Connect steps write error", e)
+        }
+    }
+
     private fun disconnect() {
         Log.d(TAG, "Disconnecting...")
         connectionManager?.disconnect()
@@ -449,6 +645,7 @@ class SensorService : Service() {
     private fun cleanup() {
         syncJob?.cancel()
         hrCollectionJob?.cancel()
+        cadenceCollectionJob?.cancel()
         connectionManager?.close()
         connectionManager = null
     }

@@ -38,6 +38,24 @@ class BleConnectionManager(private val context: Context) {
     private val _batteryLevel = MutableStateFlow<Int?>(null)
     val batteryLevel: StateFlow<Int?> = _batteryLevel.asStateFlow()
 
+    // RSC (Running Speed and Cadence) data
+    private val _cadenceSamples = MutableSharedFlow<CadenceSample>(extraBufferCapacity = 64)
+    val cadenceSamples: SharedFlow<CadenceSample> = _cadenceSamples.asSharedFlow()
+
+    private val _currentCadence = MutableStateFlow<Int?>(null)
+    val currentCadence: StateFlow<Int?> = _currentCadence.asStateFlow()
+
+    private val _currentSpeed = MutableStateFlow<Float?>(null)
+    val currentSpeed: StateFlow<Float?> = _currentSpeed.asStateFlow()
+
+    // Step tracking - cumulative steps since connection started
+    private var stepTrackingStartTime: java.time.Instant? = null
+    private var lastCadenceTime: java.time.Instant? = null
+    private var accumulatedSteps: Double = 0.0
+
+    private val _stepsSinceStart = MutableStateFlow<Int>(0)
+    val stepsSinceStart: StateFlow<Int> = _stepsSinceStart.asStateFlow()
+
     // Queue for characteristics to read after notifications are set up
     private val pendingReads = mutableListOf<BluetoothGattCharacteristic>()
 
@@ -56,6 +74,12 @@ class BleConnectionManager(private val context: Context) {
                     _connectedDeviceInfo.value = null
                     _currentHeartRate.value = null
                     _batteryLevel.value = null
+                    _currentCadence.value = null
+                    _currentSpeed.value = null
+                    _stepsSinceStart.value = 0
+                    stepTrackingStartTime = null
+                    lastCadenceTime = null
+                    accumulatedSteps = 0.0
                     bluetoothGatt?.close()
                     bluetoothGatt = null
                     connectedDevice = null
@@ -105,7 +129,12 @@ class BleConnectionManager(private val context: Context) {
                             name = gatt.device.name,
                             type = SensorType.RUNNING_SPEED_CADENCE
                         )
-                        Log.d(TAG, "RSC service found and notifications enabled")
+                        // Reset step tracking for new RSC connection
+                        stepTrackingStartTime = java.time.Instant.now()
+                        lastCadenceTime = null
+                        accumulatedSteps = 0.0
+                        _stepsSinceStart.value = 0
+                        Log.d(TAG, "RSC service found and notifications enabled, step tracking started")
                         return
                     }
                 }
@@ -135,8 +164,25 @@ class BleConnectionManager(private val context: Context) {
                     }
                 }
                 RSC_MEASUREMENT_UUID -> {
-                    // TODO: Implement RSC parsing in future PR
-                    Log.d(TAG, "RSC measurement received")
+                    val sample = parseRscMeasurement(value)
+                    if (sample != null) {
+                        Log.d(TAG, "RSC: cadence=${sample.cadence} spm, speed=${sample.speed} m/s")
+                        _currentCadence.value = sample.cadence
+                        _currentSpeed.value = sample.speed
+                        _cadenceSamples.tryEmit(sample)
+
+                        // Track cumulative steps by integrating cadence over time
+                        val now = java.time.Instant.now()
+                        val lastTime = lastCadenceTime
+                        if (lastTime != null && sample.cadence > 0) {
+                            val elapsedSeconds = java.time.Duration.between(lastTime, now).toMillis() / 1000.0
+                            // cadence is steps per minute, convert to steps in elapsed time
+                            val stepsInInterval = sample.cadence * elapsedSeconds / 60.0
+                            accumulatedSteps += stepsInInterval
+                            _stepsSinceStart.value = accumulatedSteps.toInt()
+                        }
+                        lastCadenceTime = now
+                    }
                 }
             }
         }
@@ -246,6 +292,8 @@ class BleConnectionManager(private val context: Context) {
         }
         _currentHeartRate.value = null
         _batteryLevel.value = null
+        _currentCadence.value = null
+        _currentSpeed.value = null
     }
 
     @SuppressLint("MissingPermission")
@@ -263,5 +311,11 @@ class BleConnectionManager(private val context: Context) {
         _connectedDeviceInfo.value = null
         _currentHeartRate.value = null
         _batteryLevel.value = null
+        _currentCadence.value = null
+        _currentSpeed.value = null
+        _stepsSinceStart.value = 0
+        stepTrackingStartTime = null
+        lastCadenceTime = null
+        accumulatedSteps = 0.0
     }
 }

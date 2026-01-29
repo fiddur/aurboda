@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -53,6 +54,7 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.StepsRecord
 import net.aurboda.ble.BleConnectionState
 import net.aurboda.ble.BleScanState
 import net.aurboda.ble.DiscoveredDevice
@@ -74,20 +76,26 @@ fun LiveScreen(
 
     // Health Connect client and write permission state
     val healthConnectClient = remember { HealthConnectClient.getOrCreate(context) }
-    var hasHealthConnectWritePermission by remember { mutableStateOf<Boolean?>(null) }
+    var hasHrWritePermission by remember { mutableStateOf<Boolean?>(null) }
+    var hasStepsWritePermission by remember { mutableStateOf<Boolean?>(null) }
     var pendingDeviceToConnect by remember { mutableStateOf<DiscoveredDevice?>(null) }
 
-    val healthConnectWritePermission = remember {
+    val hrWritePermission = remember {
         HealthPermission.getWritePermission(HeartRateRecord::class)
+    }
+    val stepsWritePermission = remember {
+        HealthPermission.getWritePermission(StepsRecord::class)
     }
 
     // Health Connect permission launcher
     val healthConnectPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
     ) { granted: Set<String> ->
-        val hasWritePermission = granted.contains(healthConnectWritePermission)
-        hasHealthConnectWritePermission = hasWritePermission
-        Log.d("LiveScreen", "Health Connect permission result: write=$hasWritePermission")
+        val hasHrPermission = granted.contains(hrWritePermission)
+        val hasStepsPermission = granted.contains(stepsWritePermission)
+        hasHrWritePermission = hasHrPermission
+        hasStepsWritePermission = hasStepsPermission
+        Log.d("LiveScreen", "Health Connect permission result: hr=$hasHrPermission, steps=$hasStepsPermission")
 
         // Connect to device regardless of permission result - data still syncs to backend,
         // and SensorService gracefully handles missing Health Connect write permission
@@ -101,12 +109,11 @@ fun LiveScreen(
     // Only set to true if granted; leave as null if not granted (so we ask on first connect)
     LaunchedEffect(Unit) {
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        val isGranted = granted.contains(healthConnectWritePermission)
-        if (isGranted) {
-            hasHealthConnectWritePermission = true
-        }
-        // If not granted, leave as null - we'll ask when user tries to connect
-        Log.d("LiveScreen", "Initial Health Connect write permission: granted=$isGranted, state=$hasHealthConnectWritePermission")
+        val hrGranted = granted.contains(hrWritePermission)
+        val stepsGranted = granted.contains(stepsWritePermission)
+        if (hrGranted) hasHrWritePermission = true
+        if (stepsGranted) hasStepsWritePermission = true
+        Log.d("LiveScreen", "Initial Health Connect permissions: hr=$hrGranted, steps=$stepsGranted")
     }
 
     // Observe service state
@@ -227,15 +234,27 @@ fun LiveScreen(
         // Connected Device Section
         when (val state = connectionState) {
             is BleConnectionState.Connected -> {
+                val healthConnectEnabled = when (connectedDevice?.type) {
+                    SensorType.HEART_RATE -> hasHrWritePermission == true
+                    SensorType.RUNNING_SPEED_CADENCE -> hasStepsWritePermission == true
+                    null -> false
+                }
+                val requiredPermissions = when (connectedDevice?.type) {
+                    SensorType.HEART_RATE -> setOf(hrWritePermission)
+                    SensorType.RUNNING_SPEED_CADENCE -> setOf(stepsWritePermission)
+                    null -> emptySet()
+                }
                 ConnectedDeviceCard(
                     device = connectedDevice,
                     heartRate = currentHeartRate,
+                    cadence = serviceState.currentCadence,
+                    stepsSinceStart = serviceState.stepsSinceStart,
                     batteryLevel = serviceState.batteryLevel,
                     serviceRunning = serviceState.isRunning,
-                    pendingSamples = serviceState.pendingSamples,
-                    healthConnectEnabled = hasHealthConnectWritePermission == true,
+                    pendingSamples = serviceState.pendingSamples + serviceState.pendingCadenceSamples,
+                    healthConnectEnabled = healthConnectEnabled,
                     onEnableHealthConnect = {
-                        healthConnectPermissionLauncher.launch(setOf(healthConnectWritePermission))
+                        healthConnectPermissionLauncher.launch(requiredPermissions)
                     },
                     onDisconnect = { SensorService.stop(context) }
                 )
@@ -306,8 +325,17 @@ fun LiveScreen(
                     isScanning = false
                 },
                 onConnectDevice = { device ->
-                    // Check Health Connect write permission before connecting
-                    when (hasHealthConnectWritePermission) {
+                    // Check Health Connect write permission based on device type
+                    val hasPermission = when (device.sensorType) {
+                        SensorType.HEART_RATE -> hasHrWritePermission
+                        SensorType.RUNNING_SPEED_CADENCE -> hasStepsWritePermission
+                    }
+                    val requiredPermissions = when (device.sensorType) {
+                        SensorType.HEART_RATE -> setOf(hrWritePermission)
+                        SensorType.RUNNING_SPEED_CADENCE -> setOf(stepsWritePermission)
+                    }
+
+                    when (hasPermission) {
                         true -> {
                             // Permission already granted, connect directly
                             SensorService.connect(context, device.address)
@@ -320,7 +348,7 @@ fun LiveScreen(
                         null -> {
                             // Haven't asked yet, request permission first
                             pendingDeviceToConnect = device
-                            healthConnectPermissionLauncher.launch(setOf(healthConnectWritePermission))
+                            healthConnectPermissionLauncher.launch(requiredPermissions)
                         }
                     }
                 }
@@ -333,6 +361,8 @@ fun LiveScreen(
 private fun ConnectedDeviceCard(
     device: net.aurboda.ble.ConnectedDevice?,
     heartRate: Int?,
+    cadence: Int?,
+    stepsSinceStart: Int,
     batteryLevel: Int?,
     serviceRunning: Boolean,
     pendingSamples: Int,
@@ -375,31 +405,72 @@ private fun ConnectedDeviceCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (device?.type == SensorType.HEART_RATE) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = "Heart Rate",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = heartRate?.toString() ?: "--",
-                        fontSize = 64.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "BPM",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    )
+            when (device?.type) {
+                SensorType.HEART_RATE -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = "Heart Rate",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = heartRate?.toString() ?: "--",
+                            fontSize = 64.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "BPM",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
                 }
+                SensorType.RUNNING_SPEED_CADENCE -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Cadence row
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Cadence",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = cadence?.toString() ?: "--",
+                                fontSize = 64.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "SPM",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // Steps since start
+                        Text(
+                            text = "$stepsSinceStart steps since start",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+                null -> { /* Unknown device type */ }
             }
 
             // Service status
@@ -532,7 +603,7 @@ private fun DiscoveredDeviceItem(
             Icon(
                 imageVector = when (device.sensorType) {
                     SensorType.HEART_RATE -> Icons.Default.Favorite
-                    SensorType.RUNNING_SPEED_CADENCE -> Icons.Default.Favorite // TODO: Use different icon
+                    SensorType.RUNNING_SPEED_CADENCE -> Icons.Default.PlayArrow
                 },
                 contentDescription = null,
                 tint = when (device.sensorType) {

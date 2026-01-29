@@ -16,7 +16,10 @@ data class HeartRateSample(
 data class CadenceSample(
     val timestamp: Instant,
     val cadence: Int,  // steps per minute
-    val speed: Float?  // m/s
+    val speed: Float?,  // m/s
+    val strideLengthCm: Int? = null,
+    val totalDistanceMeters: Float? = null,
+    val isRunning: Boolean = false
 )
 
 data class DiscoveredDevice(
