@@ -235,8 +235,12 @@ fun AurbodaApp(initialTab: MainTab? = null) {
 
     when (appState.currentScreen) {
         AppScreen.Login -> {
+            val context = LocalContext.current
             net.aurboda.ui.screens.LoginScreen(
                 initialServerUrl = appState.pendingServerUrl,
+                onSaveCredentials = { serverUrl, username, token ->
+                    CredentialsManager.saveCredentials(context, serverUrl, username, token)
+                },
                 onLoginSuccess = { appState.onLoginSuccess() }
             )
         }

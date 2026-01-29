@@ -30,24 +30,24 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalAutofill
 import androidx.compose.ui.platform.LocalAutofillTree
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.aurboda.AuthApi
-import net.aurboda.CredentialsManager
 import net.aurboda.LoginResult
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LoginScreen(
     initialServerUrl: String? = null,
+    authApi: AuthApi = remember { AuthApi.create() },
+    onSaveCredentials: (serverUrl: String, username: String, token: String) -> Unit = { serverUrl, username, token ->
+        throw IllegalStateException("onSaveCredentials must be provided")
+    },
     onLoginSuccess: () -> Unit
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val authApi = remember { AuthApi.create() }
     val autofill = LocalAutofill.current
     val autofillTree = LocalAutofillTree.current
 
@@ -165,12 +165,7 @@ fun LoginScreen(
 
                     when (val result = authApi.login(normalizedUrl, username, password)) {
                         is LoginResult.Success -> {
-                            CredentialsManager.saveCredentials(
-                                context,
-                                normalizedUrl,
-                                username,
-                                result.token
-                            )
+                            onSaveCredentials(normalizedUrl, username, result.token)
                             onLoginSuccess()
                         }
                         is LoginResult.Error -> {
