@@ -439,3 +439,40 @@ describe('loginToUserDb', () => {
     })
   })
 })
+
+describe('insertTimeSeries', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
+  })
+
+  test('does nothing when points array is empty', async () => {
+    const { insertTimeSeries } = await import('./db.js')
+
+    await insertTimeSeries('testuser', [])
+
+    // Should not have any INSERT calls
+    const insertCall = mockQueryFn.mock.calls.find((call) => call[0]?.includes?.('INSERT'))
+    expect(insertCall).toBeUndefined()
+  })
+
+  test('makes INSERT call with ON CONFLICT for non-empty points', async () => {
+    const { insertTimeSeries } = await import('./db.js')
+
+    const points = [
+      {
+        metric: 'heart_rate' as const,
+        source: 'health_connect' as const,
+        time: new Date('2024-01-15T10:00:00Z'),
+        value: 72,
+      },
+    ]
+
+    await insertTimeSeries('testuser', points)
+
+    const insertCall = mockQueryFn.mock.calls.find((call) => call[0]?.includes?.('INSERT INTO time_series'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall![0]).toContain('ON CONFLICT')
+  })
+})

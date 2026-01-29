@@ -168,7 +168,21 @@ export interface TimeSeriesPoint {
 export const insertTimeSeries = async (user: string, points: TimeSeriesPoint[]) => {
   if (points.length === 0) return
 
-  const values = points.map((p) => [p.time, p.metric, p.value, metricUnits[p.metric], p.source])
+  // Deduplicate points by (time, metric, source) to avoid PostgreSQL ON CONFLICT error
+  // when the same key appears multiple times in a single INSERT
+  const deduped = new Map<string, TimeSeriesPoint>()
+  for (const p of points) {
+    const key = `${p.time.toISOString()}|${p.metric}|${p.source}`
+    deduped.set(key, p) // Last value wins
+  }
+
+  const values = Array.from(deduped.values()).map((p) => [
+    p.time,
+    p.metric,
+    p.value,
+    metricUnits[p.metric],
+    p.source,
+  ])
 
   await query(
     user,
