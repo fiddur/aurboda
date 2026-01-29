@@ -59,6 +59,7 @@ data class SensorServiceState(
     val connectionState: BleConnectionState = BleConnectionState.Disconnected,
     val connectedDevice: ConnectedDevice? = null,
     val currentHeartRate: Int? = null,
+    val batteryLevel: Int? = null,
     val lastSyncTime: Instant? = null,
     val pendingSamples: Int = 0
 )
@@ -266,6 +267,13 @@ class SensorService : Service() {
                 manager.currentHeartRate.collect { hr ->
                     updateState { it.copy(currentHeartRate = hr) }
                     updateNotification(hr)
+                }
+            }
+
+            // Observe battery level
+            serviceScope.launch {
+                manager.batteryLevel.collect { level ->
+                    updateState { it.copy(batteryLevel = level) }
                 }
             }
 

@@ -35,6 +35,12 @@ class BleConnectionManager(private val context: Context) {
     private val _currentHeartRate = MutableStateFlow<Int?>(null)
     val currentHeartRate: StateFlow<Int?> = _currentHeartRate.asStateFlow()
 
+    private val _batteryLevel = MutableStateFlow<Int?>(null)
+    val batteryLevel: StateFlow<Int?> = _batteryLevel.asStateFlow()
+
+    // Queue for characteristics to read after notifications are set up
+    private val pendingReads = mutableListOf<BluetoothGattCharacteristic>()
+
     private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -49,6 +55,7 @@ class BleConnectionManager(private val context: Context) {
                     _connectionState.value = BleConnectionState.Disconnected
                     _connectedDeviceInfo.value = null
                     _currentHeartRate.value = null
+                    _batteryLevel.value = null
                     bluetoothGatt?.close()
                     bluetoothGatt = null
                     connectedDevice = null
@@ -60,6 +67,14 @@ class BleConnectionManager(private val context: Context) {
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 Log.d(TAG, "Services discovered successfully")
+
+                // Check for Battery Service (common across devices)
+                val batteryService = gatt.getService(BATTERY_SERVICE_UUID)
+                val batteryCharacteristic = batteryService?.getCharacteristic(BATTERY_LEVEL_UUID)
+                if (batteryCharacteristic != null) {
+                    pendingReads.add(batteryCharacteristic)
+                    Log.d(TAG, "Battery service found, will read after setup")
+                }
 
                 // Look for Heart Rate Service
                 val hrService = gatt.getService(HEART_RATE_SERVICE_UUID)
@@ -133,9 +148,44 @@ class BleConnectionManager(private val context: Context) {
         ) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 Log.d(TAG, "Descriptor write successful")
+                // Process pending reads after notifications are set up
+                processPendingReads(gatt)
             } else {
                 Log.e(TAG, "Descriptor write failed: $status")
             }
+        }
+
+        @Suppress("DEPRECATION")
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                when (characteristic.uuid) {
+                    BATTERY_LEVEL_UUID -> {
+                        val batteryLevel = characteristic.value?.firstOrNull()?.toInt()?.and(0xFF)
+                        if (batteryLevel != null) {
+                            Log.d(TAG, "Battery level: $batteryLevel%")
+                            _batteryLevel.value = batteryLevel
+                        }
+                    }
+                }
+            } else {
+                Log.e(TAG, "Characteristic read failed: $status")
+            }
+            // Continue processing any remaining pending reads
+            processPendingReads(gatt)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun processPendingReads(gatt: BluetoothGatt) {
+        if (pendingReads.isNotEmpty()) {
+            val characteristic = pendingReads.removeAt(0)
+            Log.d(TAG, "Reading characteristic: ${characteristic.uuid}")
+            @Suppress("DEPRECATION")
+            gatt.readCharacteristic(characteristic)
         }
     }
 
@@ -195,6 +245,7 @@ class BleConnectionManager(private val context: Context) {
             Log.e(TAG, "Security exception disconnecting", e)
         }
         _currentHeartRate.value = null
+        _batteryLevel.value = null
     }
 
     @SuppressLint("MissingPermission")
@@ -207,8 +258,10 @@ class BleConnectionManager(private val context: Context) {
         }
         bluetoothGatt = null
         connectedDevice = null
+        pendingReads.clear()
         _connectionState.value = BleConnectionState.Disconnected
         _connectedDeviceInfo.value = null
         _currentHeartRate.value = null
+        _batteryLevel.value = null
     }
 }

@@ -6,11 +6,14 @@ import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -222,6 +225,7 @@ fun LiveScreen(
                 ConnectedDeviceCard(
                     device = connectedDevice,
                     heartRate = currentHeartRate,
+                    batteryLevel = serviceState.batteryLevel,
                     serviceRunning = serviceState.isRunning,
                     pendingSamples = serviceState.pendingSamples,
                     onDisconnect = { SensorService.stop(context) }
@@ -320,6 +324,7 @@ fun LiveScreen(
 private fun ConnectedDeviceCard(
     device: net.aurboda.ble.ConnectedDevice?,
     heartRate: Int?,
+    batteryLevel: Int?,
     serviceRunning: Boolean,
     pendingSamples: Int,
     onDisconnect: () -> Unit
@@ -350,6 +355,11 @@ private fun ConnectedDeviceCard(
                     text = device?.name ?: "Unknown Device",
                     style = MaterialTheme.typography.titleMedium
                 )
+                // Battery indicator
+                if (batteryLevel != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    BatteryIndicator(level = batteryLevel)
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -529,5 +539,47 @@ private fun DiscoveredDeviceItem(
                 Text("Connect")
             }
         }
+    }
+}
+
+@Composable
+private fun BatteryIndicator(level: Int) {
+    val color = when {
+        level <= 20 -> MaterialTheme.colorScheme.error
+        level <= 50 -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 4.dp)
+    ) {
+        // Battery body
+        Box(
+            modifier = Modifier
+                .size(width = 20.dp, height = 10.dp)
+                .border(1.dp, color, shape = MaterialTheme.shapes.extraSmall)
+                .padding(1.dp)
+        ) {
+            // Battery fill level
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(level / 100f)
+                    .background(color, shape = MaterialTheme.shapes.extraSmall)
+            )
+        }
+        // Battery tip
+        Box(
+            modifier = Modifier
+                .size(width = 2.dp, height = 5.dp)
+                .background(color, shape = MaterialTheme.shapes.extraSmall)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = "$level%",
+            style = MaterialTheme.typography.bodySmall,
+            color = color
+        )
     }
 }
