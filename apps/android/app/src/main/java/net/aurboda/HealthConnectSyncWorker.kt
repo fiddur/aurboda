@@ -228,7 +228,7 @@ class HealthConnectSyncWorker(
                     WeightRecordSerializable.serializer(),
                     apiUrl, recordTypeSimpleName, authToken
                 )
-                HeartRateRecord::class -> postData(
+                HeartRateRecord::class -> postDataChunked(
                     HeartRateRecordSerializable.fromRecordsList(classRecords),
                     HeartRateRecordSerializable.serializer(),
                     apiUrl, recordTypeSimpleName, authToken
@@ -320,21 +320,30 @@ class HealthConnectSyncWorker(
             Log.d(TAG, "No data to send for $recordTypeSimpleName")
             return true
         }
-
-        val postData = PostWrapper(dataList)
-        return try {
-            val response = httpClient.post(apiUrl) {
-                contentType(ContentType.Application.Json)
-                headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
-                setBody(postData)
-            }
-            Log.d(TAG, "$recordTypeSimpleName Server response: ${response.status}")
-            response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
-        } catch (e: Exception) {
-            Log.e(TAG, "Error posting $recordTypeSimpleName data to $apiUrl", e)
-            false
-        }
+        Log.d(TAG, "Posting $recordTypeSimpleName: ${dataList.size} records")
+        return postChunk(PostWrapper(dataList), apiUrl, authToken, httpClient, TAG).isSuccess
     }
+
+    /**
+     * Post data in chunks to avoid 413 Request Entity Too Large errors.
+     * HeartRateRecord can be very large (thousands of samples per record).
+     */
+    private suspend fun <T : Any> postDataChunked(
+        dataList: List<T>,
+        itemSerializer: KSerializer<T>,
+        apiUrl: String,
+        recordTypeSimpleName: String,
+        authToken: String,
+        chunkSize: Int = 10
+    ): Boolean = postDataChunked(
+        dataList = dataList,
+        apiUrl = apiUrl,
+        authToken = authToken,
+        httpClient = httpClient,
+        chunkSize = chunkSize,
+        recordTypeName = recordTypeSimpleName,
+        logTag = TAG
+    ).isSuccess
 
     private fun saveChangesToken(token: String?) {
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

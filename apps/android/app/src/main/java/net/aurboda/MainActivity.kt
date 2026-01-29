@@ -177,6 +177,8 @@ private fun loadChangesToken(context: Context): String? {
     return token
 }
 
+private const val SEND_DATA_TAG = "SendData"
+
 private suspend inline fun <reified T : Any> handlePostData(
     dataList: List<T>,
     itemSerializer: KSerializer<T>,
@@ -184,26 +186,37 @@ private suspend inline fun <reified T : Any> handlePostData(
     recordTypeSimpleName: String,
     httpClient: HttpClient,
     authToken: String
-): Boolean {
+): PostResult {
     if (dataList.isEmpty()) {
-        Log.d("SendData", "No data to send for $recordTypeSimpleName")
-        return true
+        Log.d(SEND_DATA_TAG, "No data to send for $recordTypeSimpleName")
+        return PostResult.Success
     }
     val postData = PostWrapper(dataList)
-    Log.d("SendData", "JSON Body for $recordTypeSimpleName: ${appJson.encodeToString(PostWrapper.serializer(itemSerializer), postData)}")
-    try {
-        val response = httpClient.post(apiUrl) {
-            contentType(ContentType.Application.Json)
-            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
-            setBody(postData)
-        }
-        Log.d("SendData", "$recordTypeSimpleName Server response: ${response.status} - ${response.bodyAsText()}")
-        return response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
-    } catch (e: Exception) {
-        Log.e("SendData", "Error posting $recordTypeSimpleName data to $apiUrl", e)
-        return false
-    }
+    Log.d(SEND_DATA_TAG, "Posting $recordTypeSimpleName: ${dataList.size} records")
+    return postChunk(postData, apiUrl, authToken, httpClient, SEND_DATA_TAG)
 }
+
+/**
+ * Post data in chunks to avoid 413 Request Entity Too Large errors.
+ * HeartRateRecord can be very large (thousands of samples per record).
+ */
+private suspend inline fun <reified T : Any> handlePostDataChunked(
+    dataList: List<T>,
+    itemSerializer: KSerializer<T>,
+    apiUrl: String,
+    recordTypeSimpleName: String,
+    httpClient: HttpClient,
+    authToken: String,
+    chunkSize: Int = 10
+): PostResult = postDataChunked(
+    dataList = dataList,
+    apiUrl = apiUrl,
+    authToken = authToken,
+    httpClient = httpClient,
+    chunkSize = chunkSize,
+    recordTypeName = recordTypeSimpleName,
+    logTag = SEND_DATA_TAG
+)
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -514,11 +527,11 @@ fun HealthConnectScreen(
             val recordTypeSimpleName = recordClass.simpleName ?: "UnknownRecordType"
             val syncUrl = "$apiUrl/sync/$recordTypeSimpleName"
 
-            val postSuccessful = when (recordClass) {
+            val postResult = when (recordClass) {
                 HeartRateVariabilityRmssdRecord::class -> handlePostData(HrvRecordSerializable.fromRecordsList(classRecords), HrvRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 WeightRecord::class -> handlePostData(WeightRecordSerializable.fromRecordsList(classRecords), WeightRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 StepsRecord::class -> handlePostData(StepsRecordSerializable.fromRecordsList(classRecords), StepsRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                HeartRateRecord::class -> handlePostData(HeartRateRecordSerializable.fromRecordsList(classRecords), HeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                HeartRateRecord::class -> handlePostDataChunked(HeartRateRecordSerializable.fromRecordsList(classRecords), HeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 ExerciseSessionRecord::class -> handlePostData(ExerciseSessionRecordSerializable.fromRecordsList(classRecords), ExerciseSessionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 DistanceRecord::class -> handlePostData(DistanceRecordSerializable.fromRecordsList(classRecords), DistanceRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 SpeedRecord::class -> handlePostData(SpeedRecordSerializable.fromRecordsList(classRecords), SpeedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
@@ -533,12 +546,13 @@ fun HealthConnectScreen(
                 BodyWaterMassRecord::class -> handlePostData(BodyWaterMassRecordSerializable.fromRecordsList(classRecords), BodyWaterMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 HeightRecord::class -> handlePostData(HeightRecordSerializable.fromRecordsList(classRecords), HeightRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 RestingHeartRateRecord::class -> handlePostData(RestingHeartRateRecordSerializable.fromRecordsList(classRecords), RestingHeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                else -> { Log.w("SendData", "No specific serialization for $recordTypeSimpleName. Skipping."); true }
+                else -> { Log.w("SendData", "No specific serialization for $recordTypeSimpleName. Skipping."); PostResult.Success }
             }
-            if (!postSuccessful) {
+            if (!postResult.isSuccess) {
                 allPostsSuccessful = false
-                statusMessage = "Failed to send $recordTypeSimpleName. Pending records remain."
-                Log.w("SendData", "Post failed for $recordTypeSimpleName.")
+                val errorDetail = postResult.errorMessage() ?: "Unknown error"
+                statusMessage = "Failed to send $recordTypeSimpleName: $errorDetail"
+                Log.w("SendData", "Post failed for $recordTypeSimpleName: $errorDetail")
                 break
             }
         }
