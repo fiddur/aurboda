@@ -3,7 +3,15 @@
  */
 
 import { z } from 'zod'
-import { iso8601DateTimeSchema, metricTypeSchema } from './common.js'
+import {
+  baseResponseSchema,
+  iso8601DateTimeSchema,
+  metricTypeSchema,
+  timeRangeQuerySchema,
+} from './common.js'
+
+// Shared metric value field
+const metricValueSchema = z.number().meta({ description: 'Metric value' })
 
 /**
  * Metric data point schema.
@@ -11,7 +19,7 @@ import { iso8601DateTimeSchema, metricTypeSchema } from './common.js'
 export const metricDataPointSchema = z
   .object({
     time: iso8601DateTimeSchema,
-    value: z.number().meta({ description: 'Metric value' }),
+    value: metricValueSchema,
   })
   .meta({ id: 'MetricDataPoint' })
 
@@ -20,13 +28,11 @@ export type MetricDataPoint = z.infer<typeof metricDataPointSchema>
 /**
  * Query metrics response schema.
  */
-export const queryMetricsResponseSchema = z
-  .object({
+export const queryMetricsResponseSchema = baseResponseSchema
+  .extend({
     count: z.number().int().optional().meta({ description: 'Number of data points' }),
     data: z.array(metricDataPointSchema).optional(),
-    error: z.string().optional(),
     metric: metricTypeSchema.optional(),
-    success: z.boolean(),
     unit: z.string().optional().meta({ description: 'Unit of measurement', example: 'bpm' }),
   })
   .meta({ id: 'QueryMetricsResponse' })
@@ -47,12 +53,7 @@ export type QueryMetricsParams = z.infer<typeof queryMetricsParamsSchema>
 /**
  * Query metrics request query.
  */
-export const queryMetricsQuerySchema = z
-  .object({
-    end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
-  })
-  .meta({ id: 'QueryMetricsQuery' })
+export const queryMetricsQuerySchema = timeRangeQuerySchema.meta({ id: 'QueryMetricsQuery' })
 
 export type QueryMetricsQuery = z.infer<typeof queryMetricsQuerySchema>
 
@@ -65,7 +66,7 @@ export const addMetricBodySchema = z
     time: iso8601DateTimeSchema.optional().meta({
       description: 'Measurement time (defaults to current time)',
     }),
-    value: z.number().meta({ description: 'Metric value', example: 72 }),
+    value: metricValueSchema.meta({ example: 72 }),
   })
   .meta({ id: 'AddMetricBody' })
 
@@ -74,11 +75,6 @@ export type AddMetricBody = z.infer<typeof addMetricBodySchema>
 /**
  * Add metric response.
  */
-export const addMetricResponseSchema = z
-  .object({
-    error: z.string().optional(),
-    success: z.boolean(),
-  })
-  .meta({ id: 'AddMetricResponse' })
+export const addMetricResponseSchema = baseResponseSchema.meta({ id: 'AddMetricResponse' })
 
 export type AddMetricResponse = z.infer<typeof addMetricResponseSchema>

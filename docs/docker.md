@@ -19,9 +19,9 @@ docker compose up -d
 ```
 
 This starts:
-- **aurboda-web** (web frontend) on port 8080
-- **aurboda-backend** (API server) on port 3000
+- **aurboda** (web frontend + API) on port 8080
 - **postgres** (PostGIS) on port 5432
+- **watchtower** for automatic updates
 
 3. Open the web frontend at `http://localhost:8080` and register your first user.
 
@@ -44,8 +44,10 @@ This mounts your source code and watches for changes.
 | `PGHOST` | PostgreSQL host | `postgres` |
 | `PGPORT` | PostgreSQL port | `5432` |
 | `PGUSER` | PostgreSQL user | `aurboda_service` |
-| `PGPASSWORD` | PostgreSQL password | `aurboda_dev_password` |
+| `PGPASSWORD` | PostgreSQL password | (required) |
 | `SESSION_SECRET` | 32-byte secret for session encryption | (required) |
+| `WEB_HOST` | Public URL of the web UI (for OAuth redirects) | `http://localhost:8080` |
+| `ALLOW_SIGNUP` | Enable user registration | `true` |
 
 ### Generating a Session Secret
 
@@ -64,118 +66,68 @@ SESSION_SECRET=your_generated_salt_here
 
 Docker images are automatically built and pushed to Docker Hub on merge to `develop`.
 
-### Pull the latest images:
+### Pull the latest image:
 
 ```bash
-docker pull fiddur/aurboda-backend:latest
-docker pull fiddur/aurboda-web:latest
+docker pull fiddur/aurboda:latest
 ```
 
-### Run the backend with your own PostgreSQL:
+### Run with Docker Compose (includes PostgreSQL):
 
 ```bash
-docker run -d \
-  --name aurboda-backend \
-  -p 3000:3000 \
-  -e PGHOST=your-postgres-host \
-  -e PGPORT=5432 \
-  -e PGUSER=aurboda_service \
-  -e PGPASSWORD=your-password \
-  -e SESSION_SECRET=your-32-byte-secret \
-  fiddur/aurboda-backend:latest
+# Download docker-compose.yml
+curl -o docker-compose.yml https://raw.githubusercontent.com/fiddur/aurboda/main/docker-compose.yml
+
+# Generate secure secrets
+sed -i.bak "s/REPLACE_DB_PASSWORD/$(openssl rand -hex 16)/" docker-compose.yml
+sed -i.bak "s/REPLACE_SESSION_SECRET/$(openssl rand -hex 16)/" docker-compose.yml
+rm docker-compose.yml.bak
+
+# Start services
+docker compose up -d
 ```
 
-### Run the web frontend:
+### Using existing PostgreSQL
 
-```bash
-docker run -d \
-  --name aurboda-web \
-  -p 8080:80 \
-  fiddur/aurboda-web:latest
-```
-
-## Production Deployment
-
-### docker-compose.prod.yml
-
-For production, create a `docker-compose.prod.yml`:
+If you have PostgreSQL running on your host machine:
 
 ```yaml
 services:
-  aurboda-web:
-    image: fiddur/aurboda-web:latest
+  aurboda:
+    image: fiddur/aurboda:latest
     ports:
       - "8080:80"
-    depends_on:
-      - aurboda-backend
-    restart: unless-stopped
-
-  aurboda-backend:
-    image: fiddur/aurboda-backend:latest
-    ports:
-      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Linux needs this
     environment:
-      - PGHOST=${PGHOST}
-      - PGPORT=${PGPORT:-5432}
-      - PGUSER=${PGUSER}
-      - PGPASSWORD=${PGPASSWORD}
-      - SESSION_SECRET=${SESSION_SECRET}
-      - NODE_ENV=production
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - PGHOST=host.docker.internal
+      - PGPORT=5432
+      - PGUSER=aurboda_service
+      - PGPASSWORD=your_password
+      - SESSION_SECRET=your_32_byte_secret
+      - WEB_HOST=http://localhost:8080
     restart: unless-stopped
-
-  postgres:
-    image: postgis/postgis:16-3.4-alpine
-    environment:
-      - POSTGRES_USER=${PGUSER}
-      - POSTGRES_PASSWORD=${PGPASSWORD}
-      - POSTGRES_DB=postgres
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PGUSER}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
 ```
+
+## Production Deployment
 
 ### With Traefik (HTTPS)
 
 ```yaml
 services:
-  aurboda-web:
-    image: fiddur/aurboda-web:latest
+  aurboda:
+    image: fiddur/aurboda:latest
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.aurboda-web.rule=Host(`health.example.com`)"
-      - "traefik.http.routers.aurboda-web.tls.certresolver=letsencrypt"
-      - "traefik.http.services.aurboda-web.loadbalancer.server.port=80"
-    depends_on:
-      - aurboda-backend
-    networks:
-      - traefik
-      - default
-
-  aurboda-backend:
-    image: fiddur/aurboda-backend:latest
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.aurboda-api.rule=Host(`health.example.com`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.aurboda-api.tls.certresolver=letsencrypt"
-      - "traefik.http.services.aurboda-api.loadbalancer.server.port=3000"
-      - "traefik.http.middlewares.strip-api.stripprefix.prefixes=/api"
-      - "traefik.http.routers.aurboda-api.middlewares=strip-api"
+      - "traefik.http.routers.aurboda.rule=Host(`health.example.com`)"
+      - "traefik.http.routers.aurboda.tls.certresolver=letsencrypt"
+      - "traefik.http.services.aurboda.loadbalancer.server.port=80"
     environment:
       - PGHOST=postgres
       - PGUSER=${PGUSER}
       - PGPASSWORD=${PGPASSWORD}
       - SESSION_SECRET=${SESSION_SECRET}
+      - WEB_HOST=https://health.example.com
     networks:
       - traefik
       - default
@@ -187,20 +139,25 @@ networks:
 
 ## Building Locally
 
-### Build the Docker images:
+### Build the Docker image:
 
 ```bash
-# Backend
-docker build -t aurboda-backend -f apps/backend/Dockerfile .
-
-# Web frontend
-docker build -t aurboda-web -f apps/web/Dockerfile .
+docker build -t aurboda .
 ```
 
-### Run tests in Docker:
+### Run locally:
 
 ```bash
-docker run --rm aurboda-backend pnpm --filter aurboda-backend test
+docker run -d \
+  --name aurboda \
+  -p 8080:80 \
+  -e PGHOST=host.docker.internal \
+  -e PGPORT=5432 \
+  -e PGUSER=aurboda_service \
+  -e PGPASSWORD=your_password \
+  -e SESSION_SECRET=your_32_byte_secret \
+  --add-host=host.docker.internal:host-gateway \
+  aurboda
 ```
 
 ## Volumes and Data
@@ -230,8 +187,7 @@ docker run --rm \
 ### Check logs:
 
 ```bash
-docker compose logs -f aurboda-web
-docker compose logs -f aurboda-backend
+docker compose logs -f aurboda
 docker compose logs -f postgres
 ```
 
@@ -250,10 +206,14 @@ docker compose up -d
 
 ### Health check failed:
 
-If the backend fails to start, check that:
+If the service fails to start, check that:
 1. PostgreSQL is healthy: `docker compose ps`
 2. Environment variables are set correctly
-3. SESSION_SECRET is exactly 32 bytes
+3. SESSION_SECRET is at least 32 characters
+
+### Process crashes:
+
+The container monitors both nginx and the backend. If either process crashes, the container exits and will be restarted by Docker's restart policy.
 
 ## CI/CD
 
@@ -261,10 +221,19 @@ Docker images are built automatically by GitHub Actions:
 
 - **Trigger**: Push to `develop` branch
 - **Registry**: Docker Hub
-- **Images**:
-  - `fiddur/aurboda-backend` - API server
-  - `fiddur/aurboda-web` - Web frontend
+- **Image**: `fiddur/aurboda`
 - **Tags**:
   - `develop` - latest from develop branch
   - `<sha>` - specific commit
-  - `latest` - latest from default branch
+  - `latest` - latest from main branch
+
+## Architecture
+
+The combined Docker image runs:
+- **nginx** on port 80 - serves static web files and proxies `/api` to backend
+- **Node.js backend** on 127.0.0.1:3000 - API server (only accessible via nginx)
+
+This architecture:
+- Simplifies deployment to a single container
+- API is not directly exposed, only through nginx proxy
+- Static assets benefit from nginx's caching and compression

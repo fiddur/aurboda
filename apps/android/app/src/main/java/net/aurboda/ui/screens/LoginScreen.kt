@@ -21,30 +21,56 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.autofill.AutofillNode
+import androidx.compose.ui.autofill.AutofillType
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalAutofill
+import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.aurboda.AuthApi
-import net.aurboda.CredentialsManager
 import net.aurboda.LoginResult
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LoginScreen(
     initialServerUrl: String? = null,
+    authApi: AuthApi = remember { AuthApi.create() },
+    onSaveCredentials: (serverUrl: String, username: String, token: String) -> Unit = { serverUrl, username, token ->
+        throw IllegalStateException("onSaveCredentials must be provided")
+    },
     onLoginSuccess: () -> Unit
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val authApi = remember { AuthApi.create() }
+    val autofill = LocalAutofill.current
+    val autofillTree = LocalAutofillTree.current
 
-    var serverUrl by remember { mutableStateOf(initialServerUrl ?: "https://aurboda.net/api") }
+    var serverUrl by remember { mutableStateOf(initialServerUrl ?: "https://aurboda.net") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val usernameAutofillNode = remember {
+        AutofillNode(
+            autofillTypes = listOf(AutofillType.Username),
+            onFill = { username = it }
+        )
+    }
+    val passwordAutofillNode = remember {
+        AutofillNode(
+            autofillTypes = listOf(AutofillType.Password),
+            onFill = { password = it }
+        )
+    }
+    autofillTree += usernameAutofillNode
+    autofillTree += passwordAutofillNode
 
     Column(
         modifier = Modifier
@@ -64,7 +90,7 @@ fun LoginScreen(
             value = serverUrl,
             onValueChange = { serverUrl = it },
             label = { Text("Server URL") },
-            placeholder = { Text("https://aurboda.net/api") },
+            placeholder = { Text("https://aurboda.net") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -77,7 +103,18 @@ fun LoginScreen(
             value = username,
             onValueChange = { username = it },
             label = { Text("Username") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onGloballyPositioned { coordinates ->
+                    usernameAutofillNode.boundingBox = coordinates.boundsInWindow()
+                }
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        autofill?.requestAutofillForNode(usernameAutofillNode)
+                    } else {
+                        autofill?.cancelAutofillForNode(usernameAutofillNode)
+                    }
+                },
             singleLine = true,
             enabled = !isLoading
         )
@@ -88,7 +125,18 @@ fun LoginScreen(
             value = password,
             onValueChange = { password = it },
             label = { Text("Password") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onGloballyPositioned { coordinates ->
+                    passwordAutofillNode.boundingBox = coordinates.boundsInWindow()
+                }
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        autofill?.requestAutofillForNode(passwordAutofillNode)
+                    } else {
+                        autofill?.cancelAutofillForNode(passwordAutofillNode)
+                    }
+                },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -117,12 +165,7 @@ fun LoginScreen(
 
                     when (val result = authApi.login(normalizedUrl, username, password)) {
                         is LoginResult.Success -> {
-                            CredentialsManager.saveCredentials(
-                                context,
-                                normalizedUrl,
-                                username,
-                                result.token
-                            )
+                            onSaveCredentials(normalizedUrl, username, result.token)
                             onLoginSuccess()
                         }
                         is LoginResult.Error -> {

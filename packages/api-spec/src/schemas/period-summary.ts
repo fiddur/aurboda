@@ -3,7 +3,12 @@
  */
 
 import { z } from 'zod'
-import { iso8601DateTimeSchema, metricTypeSchema } from './common.js'
+import {
+  baseResponseSchema,
+  iso8601DateTimeSchema,
+  metricTypeSchema,
+  timeRangeQuerySchema,
+} from './common.js'
 
 /**
  * Outlier schema.
@@ -63,14 +68,12 @@ export type PeriodSummaryResult = z.infer<typeof periodSummaryResultSchema>
 /**
  * Period summary response schema (API wrapper).
  */
-export const periodSummaryResponseSchema = z
-  .object({
+export const periodSummaryResponseSchema = baseResponseSchema
+  .extend({
     end: iso8601DateTimeSchema.optional(),
-    error: z.string().optional(),
     metrics: z.array(periodMetricStatsSchema).optional(),
     periodDays: z.number().int().optional(),
     start: iso8601DateTimeSchema.optional(),
-    success: z.boolean(),
   })
   .meta({ id: 'PeriodSummaryResponse' })
 
@@ -79,14 +82,12 @@ export type PeriodSummaryResponse = z.infer<typeof periodSummaryResponseSchema>
 /**
  * Period summary query schema.
  */
-export const periodSummaryQuerySchema = z
-  .object({
-    end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+export const periodSummaryQuerySchema = timeRangeQuerySchema
+  .extend({
     metrics: z.string().meta({
       description: 'Comma-separated list of metrics',
       example: 'heart_rate,steps,sleep_score',
     }),
-    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
   })
   .meta({ id: 'PeriodSummaryQuery' })
 

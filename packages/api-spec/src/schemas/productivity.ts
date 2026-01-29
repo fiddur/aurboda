@@ -3,7 +3,12 @@
  */
 
 import { z } from 'zod'
-import { dataSourceSchema, iso8601DateTimeSchema } from './common.js'
+import {
+  createDataArrayResponseSchema,
+  dataSourceSchema,
+  iso8601DateTimeSchema,
+  timeRangeQuerySchema,
+} from './common.js'
 
 /**
  * Productivity record schema.
@@ -29,24 +34,15 @@ export type ProductivityRecord = z.infer<typeof productivityRecordSchema>
 /**
  * Productivity query schema.
  */
-export const productivityQuerySchema = z
-  .object({
-    end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
-  })
-  .meta({ id: 'ProductivityQuery' })
+export const productivityQuerySchema = timeRangeQuerySchema.meta({ id: 'ProductivityQuery' })
 
 export type ProductivityQuery = z.infer<typeof productivityQuerySchema>
 
 /**
  * Productivity response schema.
  */
-export const productivityResponseSchema = z
-  .object({
-    data: z.array(productivityRecordSchema).optional(),
-    error: z.string().optional(),
-    success: z.boolean(),
-  })
-  .meta({ id: 'ProductivityResponse' })
+export const productivityResponseSchema = createDataArrayResponseSchema(productivityRecordSchema).meta({
+  id: 'ProductivityResponse',
+})
 
 export type ProductivityResponse = z.infer<typeof productivityResponseSchema>

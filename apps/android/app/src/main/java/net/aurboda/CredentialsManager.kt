@@ -31,7 +31,10 @@ object CredentialsManager {
         val serverUrl: String,
         val username: String,
         val authToken: String
-    )
+    ) {
+        /** API URL with /api prefix for all backend requests */
+        val apiUrl: String get() = "${serverUrl.trimEnd('/')}/api"
+    }
 
     fun saveCredentials(context: Context, serverUrl: String, username: String, token: String) {
         Log.d(TAG, "Saving credentials for user: $username, server: $serverUrl")

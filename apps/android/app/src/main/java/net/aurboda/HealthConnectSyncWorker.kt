@@ -13,8 +13,10 @@ import androidx.health.connect.client.request.ChangesTokenRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import java.time.LocalDate
 import java.time.ZoneId
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -90,7 +92,7 @@ class HealthConnectSyncWorker(
             // Step 1: Fetch and send daily aggregates for cumulative metrics (deduplicated)
             val aggregates = fetchDailyAggregates(days = 7)
             if (aggregates.isNotEmpty()) {
-                val aggregateSuccess = sendDailyAggregates(aggregates, credentials.serverUrl, credentials.authToken)
+                val aggregateSuccess = sendDailyAggregates(aggregates, credentials.apiUrl, credentials.authToken)
                 if (!aggregateSuccess) {
                     Log.w(TAG, "Failed to send daily aggregates, will retry")
                     return Result.retry()
@@ -108,7 +110,7 @@ class HealthConnectSyncWorker(
                 Log.d(TAG, "Filtered ${records.size} records to ${filteredRecords.size} (excluded aggregated types)")
 
                 if (filteredRecords.isNotEmpty()) {
-                    val success = sendDataToServer(filteredRecords, credentials.serverUrl, credentials.authToken)
+                    val success = sendDataToServer(filteredRecords, credentials.apiUrl, credentials.authToken)
                     if (success) {
                         Log.d(TAG, "Background sync completed successfully")
                         HrZoneWidgetProvider.triggerUpdate(applicationContext)
@@ -164,17 +166,8 @@ class HealthConnectSyncWorker(
                 }
             }
 
-            val nextToken = changesResponse.nextChangesToken
             hasMore = changesResponse.hasMore
-
-            if (hasMore && nextToken != null) {
-                currentToken = nextToken
-            } else {
-                hasMore = false
-                if (nextToken != null) {
-                    currentToken = nextToken
-                }
-            }
+            currentToken = changesResponse.nextChangesToken
         }
 
         // Save the new token if we have records to send (token will be updated after successful send)
@@ -203,7 +196,7 @@ class HealthConnectSyncWorker(
                 is HeartRateVariabilityRmssdRecord, is WeightRecord, is HeartRateRecord,
                 is ExerciseSessionRecord, is SpeedRecord, is PowerRecord, is NutritionRecord,
                 is LeanBodyMassRecord, is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord,
-                is HeightRecord, is RestingHeartRateRecord -> true
+                is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord -> true
                 else -> false
             }
         }
@@ -235,7 +228,7 @@ class HealthConnectSyncWorker(
                     WeightRecordSerializable.serializer(),
                     apiUrl, recordTypeSimpleName, authToken
                 )
-                HeartRateRecord::class -> postData(
+                HeartRateRecord::class -> postDataChunked(
                     HeartRateRecordSerializable.fromRecordsList(classRecords),
                     HeartRateRecordSerializable.serializer(),
                     apiUrl, recordTypeSimpleName, authToken
@@ -280,6 +273,11 @@ class HealthConnectSyncWorker(
                     BoneMassRecordSerializable.serializer(),
                     apiUrl, recordTypeSimpleName, authToken
                 )
+                BodyWaterMassRecord::class -> postData(
+                    BodyWaterMassRecordSerializable.fromRecordsList(classRecords),
+                    BodyWaterMassRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
                 HeightRecord::class -> postData(
                     HeightRecordSerializable.fromRecordsList(classRecords),
                     HeightRecordSerializable.serializer(),
@@ -311,7 +309,7 @@ class HealthConnectSyncWorker(
         return allPostsSuccessful
     }
 
-    private suspend fun <T : Any> postData(
+    private suspend inline fun <reified T : Any> postData(
         dataList: List<T>,
         itemSerializer: KSerializer<T>,
         apiUrl: String,
@@ -322,21 +320,30 @@ class HealthConnectSyncWorker(
             Log.d(TAG, "No data to send for $recordTypeSimpleName")
             return true
         }
-
-        val postData = PostWrapper(dataList)
-        return try {
-            val response = httpClient.post(apiUrl) {
-                contentType(ContentType.Application.Json)
-                headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
-                setBody(postData)
-            }
-            Log.d(TAG, "$recordTypeSimpleName Server response: ${response.status}")
-            response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
-        } catch (e: Exception) {
-            Log.e(TAG, "Error posting $recordTypeSimpleName data to $apiUrl", e)
-            false
-        }
+        Log.d(TAG, "Posting $recordTypeSimpleName: ${dataList.size} records")
+        return postChunk(PostWrapper(dataList), apiUrl, authToken, httpClient, TAG).isSuccess
     }
+
+    /**
+     * Post data in chunks to avoid 413 Request Entity Too Large errors.
+     * HeartRateRecord can be very large (thousands of samples per record).
+     */
+    private suspend inline fun <reified T : Any> postDataChunked(
+        dataList: List<T>,
+        itemSerializer: KSerializer<T>,
+        apiUrl: String,
+        recordTypeSimpleName: String,
+        authToken: String,
+        chunkSize: Int = 10
+    ): Boolean = postDataChunked(
+        dataList = dataList,
+        apiUrl = apiUrl,
+        authToken = authToken,
+        httpClient = httpClient,
+        chunkSize = chunkSize,
+        recordTypeName = recordTypeSimpleName,
+        logTag = TAG
+    ).isSuccess
 
     private fun saveChangesToken(token: String?) {
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -439,16 +446,22 @@ class HealthConnectSyncWorker(
          * Sync runs every 15 minutes (minimum interval for periodic work).
          */
         fun schedule(context: Context) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
             val workRequest = PeriodicWorkRequestBuilder<HealthConnectSyncWorker>(
                 15, TimeUnit.MINUTES
-            ).build()
+            )
+                .setConstraints(constraints)
+                .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 workRequest
             )
-            Log.d(TAG, "Background sync scheduled")
+            Log.d(TAG, "Background sync scheduled with network constraint")
         }
 
         /**
