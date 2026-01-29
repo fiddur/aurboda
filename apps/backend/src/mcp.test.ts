@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createAuth } from './auth'
 import * as db from './db'
 import { createMcpRouter } from './mcp'
+import { createInMemorySessionStore, McpSessionStore } from './mcp-session-store'
 import * as queries from './services/queries'
 
 // Mock the services
@@ -981,6 +982,180 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.data).toHaveLength(0)
+    })
+  })
+
+  describe('Session Persistence', () => {
+    function createTestAppWithStore(sessionStore: McpSessionStore) {
+      const app = express()
+      app.use('/mcp', createMcpRouter(auth, undefined, undefined, { sessionStore }))
+      return app
+    }
+
+    test('session can be restored after simulated restart', async () => {
+      const sessionStore = createInMemorySessionStore()
+      const app1 = createTestAppWithStore(sessionStore)
+      const token = auth.createToken('testuser')
+
+      // Create session on first "instance"
+      const initResponse = await mcpPost(app1)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      expect(initResponse.status).toBe(200)
+      const sessionId = initResponse.headers['mcp-session-id'] as string
+      expect(sessionId).toBeDefined()
+
+      // Simulate restart by creating a new app instance (fresh in-memory sessions)
+      // but using the same session store
+      const app2 = createTestAppWithStore(sessionStore)
+
+      // Use the same session ID - it should be restored from store
+      // Note: The McpServer instance is recreated, so we need to re-initialize
+      // but the session ID is preserved (the key benefit of persistence)
+      const response = await mcpPost(app2)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      expect(response.status).toBe(200)
+      // The session ID should be preserved (same as before)
+      expect(response.headers['mcp-session-id']).toBe(sessionId)
+    })
+
+    test('session store saves new sessions', async () => {
+      const sessionStore = createInMemorySessionStore()
+      const app = createTestAppWithStore(sessionStore)
+      const token = auth.createToken('testuser')
+
+      const initResponse = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      expect(initResponse.status).toBe(200)
+      const sessionId = initResponse.headers['mcp-session-id'] as string
+
+      // Verify session was saved to store
+      const record = await sessionStore.get('testuser', sessionId)
+      expect(record).not.toBeNull()
+      expect(record!.username).toBe('testuser')
+      expect(record!.sessionId).toBe(sessionId)
+    })
+
+    test('session is deleted from store on DELETE', async () => {
+      const sessionStore = createInMemorySessionStore()
+      const app = createTestAppWithStore(sessionStore)
+      const token = auth.createToken('testuser')
+
+      // Create session
+      const initResponse = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      const sessionId = initResponse.headers['mcp-session-id'] as string
+
+      // Delete session
+      await mcpDelete(app).set('Authorization', `Bearer ${token}`).set('Mcp-Session-Id', sessionId)
+
+      // Verify session was removed from store
+      const record = await sessionStore.get('testuser', sessionId)
+      expect(record).toBeNull()
+    })
+
+    test('expired sessions are not restored', async () => {
+      vi.useFakeTimers()
+      const sessionStore = createInMemorySessionStore()
+
+      // Create session at "time zero"
+      const day1 = new Date('2024-01-01T10:00:00Z')
+      vi.setSystemTime(day1)
+
+      const app1 = createTestAppWithStore(sessionStore)
+      const token = auth.createToken('testuser')
+
+      const initResponse = await mcpPost(app1)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      expect(initResponse.status).toBe(200)
+      const sessionId = initResponse.headers['mcp-session-id'] as string
+
+      // Jump forward 8 days (past the 7-day expiry)
+      const day9 = new Date('2024-01-09T10:00:00Z')
+      vi.setSystemTime(day9)
+
+      // Simulate restart with fresh app
+      const app2 = createTestAppWithStore(sessionStore)
+
+      // Try to use the old session - should fail because it's expired
+      // Since the session can't be restored, the system will create a new one
+      // So the response will succeed but with a DIFFERENT session ID
+      const response = await mcpPost(app2)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      expect(response.status).toBe(200)
+      // A new session should have been created
+      const newSessionId = response.headers['mcp-session-id'] as string
+      expect(newSessionId).toBeDefined()
+      expect(newSessionId).not.toBe(sessionId)
+
+      vi.useRealTimers()
     })
   })
 })

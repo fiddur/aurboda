@@ -115,6 +115,20 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_locations_geo ON locations USING GIST (location)
   `,
 
+  // MCP session persistence for surviving backend restarts
+  mcp_sessions: `
+    CREATE TABLE IF NOT EXISTS mcp_sessions (
+      session_id      UUID PRIMARY KEY,
+      username        VARCHAR(255) NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_activity   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  mcp_sessions_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_mcp_sessions_username ON mcp_sessions (username);
+    CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_activity ON mcp_sessions (last_activity)
+  `,
+
   // User-defined named locations (detected and named via Aurboda)
   named_locations: `
     CREATE TABLE IF NOT EXISTS named_locations (
@@ -126,6 +140,7 @@ export const createTableStatements: Record<string, string> = {
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
+
   named_locations_indexes: `
     CREATE INDEX IF NOT EXISTS idx_named_locations_geo ON named_locations USING GIST (location)
   `,
@@ -204,7 +219,6 @@ export const createTableStatements: Record<string, string> = {
   `,
 
   // Sync state tracking for incremental data pulls
-
   sync_state: `
     CREATE TABLE IF NOT EXISTS sync_state (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -290,6 +304,8 @@ export const tableCreationOrder = [
   'oauth_tokens',
   'sync_state',
   'user_settings',
+  'mcp_sessions',
+  'mcp_sessions_indexes',
 ]
 
 /**
