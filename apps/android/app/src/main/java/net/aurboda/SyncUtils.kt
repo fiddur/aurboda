@@ -11,7 +11,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 
-private const val TAG = "SyncUtils"
+const val SYNC_UTILS_TAG = "SyncUtils"
 
 /** Result of a POST operation with error details for display */
 sealed class PostResult {
@@ -31,13 +31,15 @@ sealed class PostResult {
 /**
  * Post a single chunk of data to the server.
  * This is the core posting logic used by both regular and chunked posting.
+ *
+ * Note: Must be inline with reified T to preserve type information for serialization.
  */
-suspend fun <T : Any> postChunk(
+suspend inline fun <reified T : Any> postChunk(
     data: PostWrapper<T>,
     apiUrl: String,
     authToken: String,
     httpClient: HttpClient,
-    logTag: String = TAG
+    logTag: String = SYNC_UTILS_TAG
 ): PostResult {
     return try {
         val response = httpClient.post(apiUrl) {
@@ -70,15 +72,17 @@ suspend fun <T : Any> postChunk(
  * @param recordTypeName Name of the record type for logging
  * @param logTag Tag for log messages
  * @return PostResult.Success if all chunks succeed, or the first error encountered
+ *
+ * Note: Must be inline with reified T to preserve type information for serialization.
  */
-suspend fun <T : Any> postDataChunked(
+suspend inline fun <reified T : Any> postDataChunked(
     dataList: List<T>,
     apiUrl: String,
     authToken: String,
     httpClient: HttpClient,
     chunkSize: Int = 10,
     recordTypeName: String = "data",
-    logTag: String = TAG
+    logTag: String = SYNC_UTILS_TAG
 ): PostResult {
     if (dataList.isEmpty()) {
         Log.d(logTag, "No $recordTypeName to send")
