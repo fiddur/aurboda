@@ -56,7 +56,7 @@ fun isBleEnabled(context: Context): Boolean {
 }
 
 // Known heart rate monitor name patterns (case-insensitive)
-private val HR_MONITOR_NAME_PATTERNS = listOf(
+internal val HR_MONITOR_NAME_PATTERNS = listOf(
     "polar", "h10", "h9", "h7", "oh1", "verity",  // Polar
     "wahoo", "tickr",                              // Wahoo
     "garmin", "hrm",                               // Garmin
@@ -66,12 +66,16 @@ private val HR_MONITOR_NAME_PATTERNS = listOf(
 )
 
 // Known step sensor / footpod name patterns (case-insensitive)
-private val STEP_SENSOR_NAME_PATTERNS = listOf(
+internal val STEP_SENSOR_NAME_PATTERNS = listOf(
     "stryd", "runpod", "zwift", "footpod",
     "milestone", "runn", "speed", "cadence"
 )
 
-private fun detectSensorTypeFromName(name: String?): SensorType? {
+/**
+ * Detect sensor type from device name using known patterns.
+ * Returns null if the name doesn't match any known sensor pattern.
+ */
+internal fun detectSensorTypeFromName(name: String?): SensorType? {
     if (name == null) return null
     val lowerName = name.lowercase()
 

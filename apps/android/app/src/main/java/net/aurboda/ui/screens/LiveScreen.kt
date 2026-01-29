@@ -31,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -46,10 +45,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import net.aurboda.ble.BleConnectionManager
 import net.aurboda.ble.BleConnectionState
 import net.aurboda.ble.BleScanState
 import net.aurboda.ble.DiscoveredDevice
+import net.aurboda.ble.SensorService
 import net.aurboda.ble.SensorType
 import net.aurboda.ble.hasBlePermissions
 import net.aurboda.ble.isBleEnabled
@@ -65,10 +64,11 @@ fun LiveScreen(
     var bleEnabled by remember { mutableStateOf(isBleEnabled(context)) }
     val bleSupported = remember { isBleSupported(context) }
 
-    val connectionManager = remember { BleConnectionManager(context) }
-    val connectionState by connectionManager.connectionState.collectAsState()
-    val connectedDevice by connectionManager.connectedDeviceInfo.collectAsState()
-    val currentHeartRate by connectionManager.currentHeartRate.collectAsState()
+    // Observe service state
+    val serviceState by SensorService.serviceState.collectAsState()
+    val connectionState = serviceState.connectionState
+    val connectedDevice = serviceState.connectedDevice
+    val currentHeartRate = serviceState.currentHeartRate
 
     var isScanning by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
@@ -79,13 +79,6 @@ fun LiveScreen(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         hasPermissions = permissions.values.all { it }
-    }
-
-    // Clean up connection manager when leaving screen
-    DisposableEffect(Unit) {
-        onDispose {
-            // Don't close here - let the service manage the connection
-        }
     }
 
     // Scan for devices
@@ -192,7 +185,9 @@ fun LiveScreen(
                 ConnectedDeviceCard(
                     device = connectedDevice,
                     heartRate = currentHeartRate,
-                    onDisconnect = { connectionManager.disconnect() }
+                    serviceRunning = serviceState.isRunning,
+                    pendingSamples = serviceState.pendingSamples,
+                    onDisconnect = { SensorService.stop(context) }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -261,7 +256,7 @@ fun LiveScreen(
                     isScanning = false
                 },
                 onConnectDevice = { device ->
-                    connectionManager.connect(device.address)
+                    SensorService.connect(context, device.address)
                 }
             )
         }
@@ -272,6 +267,8 @@ fun LiveScreen(
 private fun ConnectedDeviceCard(
     device: net.aurboda.ble.ConnectedDevice?,
     heartRate: Int?,
+    serviceRunning: Boolean,
+    pendingSamples: Int,
     onDisconnect: () -> Unit
 ) {
     Card(
@@ -331,10 +328,20 @@ private fun ConnectedDeviceCard(
                 }
             }
 
+            // Service status
+            if (serviceRunning) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (pendingSamples > 0) "Syncing ($pendingSamples pending)" else "Syncing to cloud",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedButton(onClick = onDisconnect) {
-                Text("Disconnect")
+                Text("Stop")
             }
         }
     }
