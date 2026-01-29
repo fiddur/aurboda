@@ -151,6 +151,7 @@ private data class StepsSyncBody(val data: List<LiveStepsRecord>)
 
 /**
  * HRV record in Health Connect format for backend sync.
+ * Uses heartRateVariabilityMillis to match the Health Connect API field name.
  */
 @Serializable
 data class LiveHrvRecord(
