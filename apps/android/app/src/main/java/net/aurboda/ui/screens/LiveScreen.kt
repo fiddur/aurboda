@@ -55,8 +55,8 @@ import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.StepsRecord
-import net.aurboda.ble.BleConnectionState
 import net.aurboda.ble.BleScanState
+import net.aurboda.ble.DeviceState
 import net.aurboda.ble.DiscoveredDevice
 import net.aurboda.ble.SensorService
 import net.aurboda.ble.SensorType
@@ -91,11 +91,15 @@ fun LiveScreen(
     val healthConnectPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
     ) { granted: Set<String> ->
-        val hasHrPermission = granted.contains(hrWritePermission)
-        val hasStepsPermission = granted.contains(stepsWritePermission)
-        hasHrWritePermission = hasHrPermission
-        hasStepsWritePermission = hasStepsPermission
-        Log.d("LiveScreen", "Health Connect permission result: hr=$hasHrPermission, steps=$hasStepsPermission")
+        // Only update permission state if we actually asked for that permission
+        // (don't set to false if we didn't ask for it)
+        if (granted.contains(hrWritePermission)) {
+            hasHrWritePermission = true
+        }
+        if (granted.contains(stepsWritePermission)) {
+            hasStepsWritePermission = true
+        }
+        Log.d("LiveScreen", "Health Connect permission granted: $granted")
 
         // Connect to device regardless of permission result - data still syncs to backend,
         // and SensorService gracefully handles missing Health Connect write permission
@@ -118,13 +122,17 @@ fun LiveScreen(
 
     // Observe service state
     val serviceState by SensorService.serviceState.collectAsState()
-    val connectionState = serviceState.connectionState
-    val connectedDevice = serviceState.connectedDevice
-    val currentHeartRate = serviceState.currentHeartRate
+    val connectedDevices = serviceState.connectedDevices
+    val connectingDevices = serviceState.connectingDevices
 
     var isScanning by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
     val discoveredDevices = remember { mutableStateListOf<DiscoveredDevice>() }
+
+    // Filter out already connected devices from discovered list
+    val availableDevices = discoveredDevices.filter { device ->
+        !connectedDevices.containsKey(device.address) && !connectingDevices.contains(device.address)
+    }
 
     // Permission launcher
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -231,145 +239,123 @@ fun LiveScreen(
             return@Column
         }
 
-        // Connected Device Section
-        when (val state = connectionState) {
-            is BleConnectionState.Connected -> {
-                val healthConnectEnabled = when (connectedDevice?.type) {
+        // Connected Devices Section
+        if (connectedDevices.isNotEmpty()) {
+            connectedDevices.forEach { (address, deviceState) ->
+                val healthConnectEnabled = when (deviceState.device.type) {
                     SensorType.HEART_RATE -> hasHrWritePermission == true
                     SensorType.RUNNING_SPEED_CADENCE -> hasStepsWritePermission == true
-                    null -> false
                 }
-                val requiredPermissions = when (connectedDevice?.type) {
+                val requiredPermissions = when (deviceState.device.type) {
                     SensorType.HEART_RATE -> setOf(hrWritePermission)
                     SensorType.RUNNING_SPEED_CADENCE -> setOf(stepsWritePermission)
-                    null -> emptySet()
                 }
                 ConnectedDeviceCard(
-                    device = connectedDevice,
-                    heartRate = currentHeartRate,
-                    cadence = serviceState.currentCadence,
-                    stepsSinceStart = serviceState.stepsSinceStart,
-                    batteryLevel = serviceState.batteryLevel,
+                    deviceState = deviceState,
                     serviceRunning = serviceState.isRunning,
                     pendingSamples = serviceState.pendingSamples + serviceState.pendingCadenceSamples,
                     healthConnectEnabled = healthConnectEnabled,
                     onEnableHealthConnect = {
                         healthConnectPermissionLauncher.launch(requiredPermissions)
                     },
-                    onDisconnect = { SensorService.stop(context) }
+                    onDisconnect = { SensorService.disconnect(context, address) }
                 )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-            is BleConnectionState.Connecting -> {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Connecting...")
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-            is BleConnectionState.Error -> {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Connection Error",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                        Text(
-                            text = state.message,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-            is BleConnectionState.Disconnected -> {
-                // Show nothing when disconnected, scan section will be visible
+                Spacer(modifier = Modifier.height(12.dp))
             }
         }
 
-        // Scanner Section
-        if (connectionState is BleConnectionState.Disconnected || connectionState is BleConnectionState.Error) {
-            ScannerSection(
-                isScanning = isScanning,
-                discoveredDevices = discoveredDevices,
-                scanError = scanError,
-                onStartScan = {
-                    isScanning = true
-                },
-                onStopScan = {
-                    isScanning = false
-                },
-                onConnectDevice = { device ->
-                    // Check Health Connect write permission based on device type
-                    val hasPermission = when (device.sensorType) {
-                        SensorType.HEART_RATE -> hasHrWritePermission
-                        SensorType.RUNNING_SPEED_CADENCE -> hasStepsWritePermission
-                    }
-                    val requiredPermissions = when (device.sensorType) {
-                        SensorType.HEART_RATE -> setOf(hrWritePermission)
-                        SensorType.RUNNING_SPEED_CADENCE -> setOf(stepsWritePermission)
-                    }
+        // Connecting indicator
+        if (connectingDevices.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Connecting to ${connectingDevices.size} device(s)...")
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
 
-                    when (hasPermission) {
-                        true -> {
-                            // Permission already granted, connect directly
-                            SensorService.connect(context, device.address)
-                        }
-                        false -> {
-                            // Permission was denied previously, connect anyway
-                            // (data still syncs to backend, just not to Health Connect)
-                            SensorService.connect(context, device.address)
-                        }
-                        null -> {
-                            // Haven't asked yet, request permission first
-                            pendingDeviceToConnect = device
-                            healthConnectPermissionLauncher.launch(requiredPermissions)
-                        }
+        // Stop All button when multiple devices connected
+        if (connectedDevices.size > 1) {
+            OutlinedButton(
+                onClick = { SensorService.stop(context) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Stop All Sensors")
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Scanner Section - always visible to allow adding more devices
+        ScannerSection(
+            isScanning = isScanning,
+            discoveredDevices = availableDevices,
+            scanError = scanError,
+            onStartScan = {
+                isScanning = true
+            },
+            onStopScan = {
+                isScanning = false
+            },
+            onConnectDevice = { device ->
+                // Check Health Connect write permission based on device type
+                val hasPermission = when (device.sensorType) {
+                    SensorType.HEART_RATE -> hasHrWritePermission
+                    SensorType.RUNNING_SPEED_CADENCE -> hasStepsWritePermission
+                }
+                val requiredPermissions = when (device.sensorType) {
+                    SensorType.HEART_RATE -> setOf(hrWritePermission)
+                    SensorType.RUNNING_SPEED_CADENCE -> setOf(stepsWritePermission)
+                }
+
+                when (hasPermission) {
+                    true -> {
+                        // Permission already granted, connect directly
+                        SensorService.connect(context, device.address)
+                    }
+                    false -> {
+                        // Permission was denied previously, connect anyway
+                        // (data still syncs to backend, just not to Health Connect)
+                        SensorService.connect(context, device.address)
+                    }
+                    null -> {
+                        // Haven't asked yet, request permission first
+                        pendingDeviceToConnect = device
+                        healthConnectPermissionLauncher.launch(requiredPermissions)
                     }
                 }
-            )
-        }
+            }
+        )
     }
 }
 
 @Composable
 private fun ConnectedDeviceCard(
-    device: net.aurboda.ble.ConnectedDevice?,
-    heartRate: Int?,
-    cadence: Int?,
-    stepsSinceStart: Int,
-    batteryLevel: Int?,
+    deviceState: DeviceState,
     serviceRunning: Boolean,
     pendingSamples: Int,
     healthConnectEnabled: Boolean,
     onEnableHealthConnect: () -> Unit,
     onDisconnect: () -> Unit
 ) {
+    val device = deviceState.device
+    val heartRate = deviceState.currentHeartRate
+    val cadence = deviceState.currentCadence
+    val stepsSinceStart = deviceState.stepsSinceStart
+    val batteryLevel = deviceState.batteryLevel
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -387,13 +373,19 @@ private fun ConnectedDeviceCard(
                 horizontalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.Info,
+                    imageVector = when (device.type) {
+                        SensorType.HEART_RATE -> Icons.Default.Favorite
+                        SensorType.RUNNING_SPEED_CADENCE -> Icons.Default.PlayArrow
+                    },
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = when (device.type) {
+                        SensorType.HEART_RATE -> MaterialTheme.colorScheme.error
+                        SensorType.RUNNING_SPEED_CADENCE -> MaterialTheme.colorScheme.primary
+                    }
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = device?.name ?: "Unknown Device",
+                    text = device.name ?: "Unknown Device",
                     style = MaterialTheme.typography.titleMedium
                 )
                 // Battery indicator
@@ -403,83 +395,71 @@ private fun ConnectedDeviceCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            when (device?.type) {
+            when (device.type) {
                 SensorType.HEART_RATE -> {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "Heart Rate",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = heartRate?.toString() ?: "--",
-                            fontSize = 64.sp,
+                            fontSize = 48.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "BPM",
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                         )
                     }
                 }
                 SensorType.RUNNING_SPEED_CADENCE -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        // Cadence row
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = "Cadence",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(48.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 text = cadence?.toString() ?: "--",
-                                fontSize = 64.sp,
+                                fontSize = 48.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "SPM",
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                             )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        // Steps since start
-                        Text(
-                            text = "$stepsSinceStart steps since start",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                        )
+                        Spacer(modifier = Modifier.width(24.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = stepsSinceStart.toString(),
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "steps",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 }
-                null -> { /* Unknown device type */ }
             }
 
             // Service status
             if (serviceRunning) {
                 Spacer(modifier = Modifier.height(8.dp))
                 val statusText = buildString {
-                    append(if (pendingSamples > 0) "Syncing ($pendingSamples pending)" else "Syncing to cloud")
+                    append(if (pendingSamples > 0) "Syncing ($pendingSamples pending)" else "Syncing")
                     if (!healthConnectEnabled) {
-                        append(" • Health Connect disabled")
+                        append(" • HC off")
                     }
                 }
                 Text(
@@ -492,17 +472,17 @@ private fun ConnectedDeviceCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedButton(onClick = onDisconnect) {
-                    Text("Stop")
+                    Text("Disconnect")
                 }
                 if (!healthConnectEnabled) {
                     Button(onClick = onEnableHealthConnect) {
-                        Text("Enable Health Connect")
+                        Text("Enable HC")
                     }
                 }
             }
@@ -576,9 +556,9 @@ private fun ScannerSection(
                     )
                 }
             }
-        } else if (!isScanning) {
+        } else if (!isScanning && discoveredDevices.isEmpty()) {
             Text(
-                text = "No devices found. Make sure your heart rate monitor is turned on and in pairing mode.",
+                text = "Tap 'Scan for Devices' to find heart rate monitors and step sensors.",
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

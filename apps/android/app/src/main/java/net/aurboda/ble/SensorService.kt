@@ -53,21 +53,41 @@ private const val CHANNEL_ID = "sensor_service_channel"
 private const val SYNC_INTERVAL_MS = 5000L
 
 /**
+ * State for an individual connected device.
+ */
+data class DeviceState(
+    val device: ConnectedDevice,
+    val connectionState: BleConnectionState = BleConnectionState.Connected,
+    val batteryLevel: Int? = null,
+    // HR device specific
+    val currentHeartRate: Int? = null,
+    // RSC device specific
+    val currentCadence: Int? = null,
+    val currentSpeed: Float? = null,
+    val stepsSinceStart: Int = 0
+)
+
+/**
  * State exposed by SensorService to the UI.
+ * Supports multiple simultaneously connected devices.
  */
 data class SensorServiceState(
     val isRunning: Boolean = false,
-    val connectionState: BleConnectionState = BleConnectionState.Disconnected,
-    val connectedDevice: ConnectedDevice? = null,
-    val currentHeartRate: Int? = null,
-    val currentCadence: Int? = null,
-    val currentSpeed: Float? = null,
-    val stepsSinceStart: Int = 0,
-    val batteryLevel: Int? = null,
+    val connectedDevices: Map<String, DeviceState> = emptyMap(),  // keyed by device address
+    val connectingDevices: Set<String> = emptySet(),  // addresses of devices currently connecting
     val lastSyncTime: Instant? = null,
     val pendingSamples: Int = 0,
     val pendingCadenceSamples: Int = 0
-)
+) {
+    // Convenience accessors for backward compatibility and easy access
+    val hrDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.HEART_RATE }
+    val rscDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.RUNNING_SPEED_CADENCE }
+    val currentHeartRate: Int? get() = hrDevice?.currentHeartRate
+    val currentCadence: Int? get() = rscDevice?.currentCadence
+    val stepsSinceStart: Int get() = rscDevice?.stepsSinceStart ?: 0
+    val hasConnectedDevices: Boolean get() = connectedDevices.isNotEmpty()
+    val isConnecting: Boolean get() = connectingDevices.isNotEmpty()
+}
 
 /**
  * Heart rate sample in Health Connect format for backend sync.
@@ -131,10 +151,9 @@ private data class StepsSyncBody(val data: List<LiveStepsRecord>)
 class SensorService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var connectionManager: BleConnectionManager? = null
+    private val connectionManagers = mutableMapOf<String, BleConnectionManager>()
+    private val deviceJobs = mutableMapOf<String, List<Job>>()  // Jobs per device address
     private var syncJob: Job? = null
-    private var hrCollectionJob: Job? = null
-    private var cadenceCollectionJob: Job? = null
 
     private val sampleBuffer = mutableListOf<HeartRateSample>()
     private val cadenceSampleBuffer = mutableListOf<CadenceSample>()
@@ -161,15 +180,25 @@ class SensorService : Service() {
             ACTION_CONNECT -> {
                 val deviceAddress = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
                 if (deviceAddress != null) {
-                    startForegroundWithNotification()
+                    // Start foreground if not already running
+                    if (!_serviceState.value.isRunning) {
+                        startForegroundWithNotification()
+                    }
                     connectToDevice(deviceAddress)
                 } else {
                     Log.w(TAG, "No device address provided")
-                    stopSelf()
+                    if (!_serviceState.value.hasConnectedDevices) {
+                        stopSelf()
+                    }
                 }
             }
             ACTION_DISCONNECT -> {
-                disconnect()
+                val deviceAddress = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
+                if (deviceAddress != null) {
+                    disconnectDevice(deviceAddress)
+                } else {
+                    disconnectAll()
+                }
             }
             ACTION_STOP -> {
                 stopSensorService()
@@ -226,15 +255,18 @@ class SensorService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val contentText = when {
-            state.connectedDevice?.type == SensorType.HEART_RATE && state.currentHeartRate != null ->
-                "Heart rate: ${state.currentHeartRate} BPM"
-            state.connectedDevice?.type == SensorType.RUNNING_SPEED_CADENCE && state.currentCadence != null ->
-                "Cadence: ${state.currentCadence} spm • ${state.stepsSinceStart} steps"
-            state.connectionState is BleConnectionState.Connected ->
-                "Connected"
-            else ->
-                "Connecting to sensor..."
+        val contentText = buildString {
+            val hrText = state.currentHeartRate?.let { "HR: $it BPM" }
+            val cadenceText = state.currentCadence?.let { "Cadence: $it spm • ${state.stepsSinceStart} steps" }
+
+            when {
+                hrText != null && cadenceText != null -> append("$hrText • $cadenceText")
+                hrText != null -> append(hrText)
+                cadenceText != null -> append(cadenceText)
+                state.hasConnectedDevices -> append("${state.connectedDevices.size} sensor(s) connected")
+                state.isConnecting -> append("Connecting...")
+                else -> append("Ready")
+            }
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -255,83 +287,142 @@ class SensorService : Service() {
     }
 
     private fun connectToDevice(deviceAddress: String) {
+        // Don't connect if already connected or connecting to this device
+        if (connectionManagers.containsKey(deviceAddress)) {
+            Log.w(TAG, "Already connected to device: $deviceAddress")
+            return
+        }
+        if (_serviceState.value.connectingDevices.contains(deviceAddress)) {
+            Log.w(TAG, "Already connecting to device: $deviceAddress")
+            return
+        }
+
         Log.d(TAG, "Connecting to device: $deviceAddress")
+        updateState { it.copy(connectingDevices = it.connectingDevices + deviceAddress) }
 
-        connectionManager = BleConnectionManager(this).also { manager ->
-            // Observe connection state
-            serviceScope.launch {
-                manager.connectionState.collect { state ->
-                    Log.d(TAG, "Connection state: $state")
-                    updateState { it.copy(connectionState = state) }
+        val manager = BleConnectionManager(this)
+        val jobs = mutableListOf<Job>()
 
-                    when (state) {
-                        is BleConnectionState.Connected -> {
-                            startDataCollection(manager)
-                            startSyncLoop()
-                        }
-                        is BleConnectionState.Disconnected -> {
-                            stopDataCollection()
-                            // Auto-reconnect could be added here
-                        }
-                        is BleConnectionState.Error -> {
-                            Log.e(TAG, "Connection error: ${state.message}")
-                        }
-                        else -> {}
+        // Observe connection state
+        jobs += serviceScope.launch {
+            manager.connectionState.collect { state ->
+                Log.d(TAG, "Connection state for $deviceAddress: $state")
+
+                when (state) {
+                    is BleConnectionState.Connected -> {
+                        updateState { it.copy(connectingDevices = it.connectingDevices - deviceAddress) }
+                        startDataCollection(manager, deviceAddress)
+                        startSyncLoop()
                     }
+                    is BleConnectionState.Disconnected -> {
+                        handleDeviceDisconnected(deviceAddress)
+                    }
+                    is BleConnectionState.Error -> {
+                        Log.e(TAG, "Connection error for $deviceAddress: ${state.message}")
+                        updateState { it.copy(connectingDevices = it.connectingDevices - deviceAddress) }
+                    }
+                    else -> {}
                 }
             }
+        }
 
-            // Observe connected device info
-            serviceScope.launch {
-                manager.connectedDeviceInfo.collect { device ->
-                    updateState { it.copy(connectedDevice = device) }
-                }
-            }
-
-            // Observe current heart rate for notification
-            serviceScope.launch {
-                manager.currentHeartRate.collect { hr ->
-                    updateState { it.copy(currentHeartRate = hr) }
+        // Observe connected device info
+        jobs += serviceScope.launch {
+            manager.connectedDeviceInfo.collect { device ->
+                if (device != null) {
+                    updateState { state ->
+                        val deviceState = state.connectedDevices[deviceAddress]?.copy(device = device)
+                            ?: DeviceState(device = device)
+                        state.copy(connectedDevices = state.connectedDevices + (deviceAddress to deviceState))
+                    }
                     updateNotification()
                 }
             }
+        }
 
-            // Observe battery level
-            serviceScope.launch {
-                manager.batteryLevel.collect { level ->
-                    updateState { it.copy(batteryLevel = level) }
-                }
+        // Observe battery level
+        jobs += serviceScope.launch {
+            manager.batteryLevel.collect { level ->
+                updateDeviceState(deviceAddress) { it.copy(batteryLevel = level) }
             }
+        }
 
-            // Observe current cadence and speed
-            serviceScope.launch {
-                manager.currentCadence.collect { cadence ->
-                    updateState { it.copy(currentCadence = cadence) }
-                    updateNotification()
-                }
+        // Observe current heart rate
+        jobs += serviceScope.launch {
+            manager.currentHeartRate.collect { hr ->
+                updateDeviceState(deviceAddress) { it.copy(currentHeartRate = hr) }
+                updateNotification()
             }
+        }
 
-            serviceScope.launch {
-                manager.currentSpeed.collect { speed ->
-                    updateState { it.copy(currentSpeed = speed) }
-                }
+        // Observe current cadence
+        jobs += serviceScope.launch {
+            manager.currentCadence.collect { cadence ->
+                updateDeviceState(deviceAddress) { it.copy(currentCadence = cadence) }
+                updateNotification()
             }
+        }
 
-            // Observe cumulative steps
-            serviceScope.launch {
-                manager.stepsSinceStart.collect { steps ->
-                    updateState { it.copy(stepsSinceStart = steps) }
-                    updateNotification()
-                }
+        // Observe current speed
+        jobs += serviceScope.launch {
+            manager.currentSpeed.collect { speed ->
+                updateDeviceState(deviceAddress) { it.copy(currentSpeed = speed) }
             }
+        }
 
-            manager.connect(deviceAddress)
+        // Observe cumulative steps
+        jobs += serviceScope.launch {
+            manager.stepsSinceStart.collect { steps ->
+                updateDeviceState(deviceAddress) { it.copy(stepsSinceStart = steps) }
+                updateNotification()
+            }
+        }
+
+        connectionManagers[deviceAddress] = manager
+        deviceJobs[deviceAddress] = jobs
+
+        manager.connect(deviceAddress)
+    }
+
+    private fun updateDeviceState(deviceAddress: String, update: (DeviceState) -> DeviceState) {
+        updateState { state ->
+            val deviceState = state.connectedDevices[deviceAddress] ?: return@updateState state
+            state.copy(connectedDevices = state.connectedDevices + (deviceAddress to update(deviceState)))
         }
     }
 
-    private fun startDataCollection(manager: BleConnectionManager) {
-        hrCollectionJob?.cancel()
-        hrCollectionJob = serviceScope.launch {
+    private fun handleDeviceDisconnected(deviceAddress: String) {
+        Log.d(TAG, "Device disconnected: $deviceAddress")
+
+        // Cancel jobs for this device
+        deviceJobs[deviceAddress]?.forEach { it.cancel() }
+        deviceJobs.remove(deviceAddress)
+
+        // Close and remove connection manager
+        connectionManagers[deviceAddress]?.close()
+        connectionManagers.remove(deviceAddress)
+
+        // Update state
+        updateState { state ->
+            state.copy(
+                connectedDevices = state.connectedDevices - deviceAddress,
+                connectingDevices = state.connectingDevices - deviceAddress
+            )
+        }
+        updateNotification()
+
+        // Stop service if no devices connected
+        if (connectionManagers.isEmpty() && _serviceState.value.connectingDevices.isEmpty()) {
+            Log.d(TAG, "No devices connected, stopping service")
+            stopSensorService()
+        }
+    }
+
+    private fun startDataCollection(manager: BleConnectionManager, deviceAddress: String) {
+        // Add collection jobs to the device's job list
+        val existingJobs = deviceJobs[deviceAddress]?.toMutableList() ?: mutableListOf()
+
+        existingJobs += serviceScope.launch {
             manager.heartRateSamples.collect { sample ->
                 synchronized(bufferLock) {
                     sampleBuffer.add(sample)
@@ -340,8 +431,7 @@ class SensorService : Service() {
             }
         }
 
-        cadenceCollectionJob?.cancel()
-        cadenceCollectionJob = serviceScope.launch {
+        existingJobs += serviceScope.launch {
             manager.cadenceSamples.collect { sample ->
                 synchronized(bufferLock) {
                     cadenceSampleBuffer.add(sample)
@@ -349,13 +439,8 @@ class SensorService : Service() {
                 }
             }
         }
-    }
 
-    private fun stopDataCollection() {
-        hrCollectionJob?.cancel()
-        hrCollectionJob = null
-        cadenceCollectionJob?.cancel()
-        cadenceCollectionJob = null
+        deviceJobs[deviceAddress] = existingJobs
     }
 
     private fun startSyncLoop() {
@@ -428,8 +513,11 @@ class SensorService : Service() {
         // Generate unique ID for this batch based on start time
         val recordId = "live-hr-${startTime.epochSecond}-${startTime.nano}"
 
-        // Get device info if available
-        val deviceInfo = connectionManager?.connectedDeviceInfo?.value?.let { device ->
+        // Get device info from HR device if available
+        val hrManager = connectionManagers.values.find {
+            it.connectedDeviceInfo.value?.type == SensorType.HEART_RATE
+        }
+        val deviceInfo = hrManager?.connectedDeviceInfo?.value?.let { device ->
             LiveDeviceInfo(
                 type = 2, // TYPE_CHEST_STRAP
                 model = device.name
@@ -544,7 +632,11 @@ class SensorService : Service() {
 
         val recordId = "live-steps-${startTime.epochSecond}-${startTime.nano}"
 
-        val deviceInfo = connectionManager?.connectedDeviceInfo?.value?.let { device ->
+        // Get device info from RSC device if available
+        val rscManager = connectionManagers.values.find {
+            it.connectedDeviceInfo.value?.type == SensorType.RUNNING_SPEED_CADENCE
+        }
+        val deviceInfo = rscManager?.connectedDeviceInfo?.value?.let { device ->
             LiveDeviceInfo(
                 type = 4, // TYPE_WATCH or foot pod
                 model = device.name
@@ -629,9 +721,16 @@ class SensorService : Service() {
         }
     }
 
-    private fun disconnect() {
-        Log.d(TAG, "Disconnecting...")
-        connectionManager?.disconnect()
+    private fun disconnectDevice(deviceAddress: String) {
+        Log.d(TAG, "Disconnecting device: $deviceAddress")
+        connectionManagers[deviceAddress]?.disconnect()
+    }
+
+    private fun disconnectAll() {
+        Log.d(TAG, "Disconnecting all devices...")
+        connectionManagers.keys.toList().forEach { address ->
+            connectionManagers[address]?.disconnect()
+        }
     }
 
     private fun stopSensorService() {
@@ -644,10 +743,16 @@ class SensorService : Service() {
 
     private fun cleanup() {
         syncJob?.cancel()
-        hrCollectionJob?.cancel()
-        cadenceCollectionJob?.cancel()
-        connectionManager?.close()
-        connectionManager = null
+
+        // Cancel all device jobs
+        deviceJobs.values.forEach { jobs ->
+            jobs.forEach { it.cancel() }
+        }
+        deviceJobs.clear()
+
+        // Close all connection managers
+        connectionManagers.values.forEach { it.close() }
+        connectionManagers.clear()
     }
 
     private fun updateState(update: (SensorServiceState) -> SensorServiceState) {
@@ -671,7 +776,15 @@ class SensorService : Service() {
             context.startForegroundService(intent)
         }
 
-        fun disconnect(context: Context) {
+        fun disconnect(context: Context, deviceAddress: String) {
+            val intent = Intent(context, SensorService::class.java).apply {
+                action = ACTION_DISCONNECT
+                putExtra(EXTRA_DEVICE_ADDRESS, deviceAddress)
+            }
+            context.startService(intent)
+        }
+
+        fun disconnectAll(context: Context) {
             val intent = Intent(context, SensorService::class.java).apply {
                 action = ACTION_DISCONNECT
             }

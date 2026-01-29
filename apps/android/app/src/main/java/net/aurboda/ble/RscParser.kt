@@ -13,9 +13,13 @@ import java.time.Instant
  *
  * Data fields:
  *   - Instantaneous Speed: 2 bytes, uint16, unit 1/256 m/s (mandatory)
- *   - Instantaneous Cadence: 1 byte, uint8, unit steps/minute (mandatory)
+ *   - Instantaneous Cadence: 1 byte, uint8, unit 1/minute (mandatory)
  *   - Instantaneous Stride Length: 2 bytes, uint16, unit cm (optional)
  *   - Total Distance: 4 bytes, uint32, unit 1/10 m (optional)
+ *
+ * Note: The BLE spec is ambiguous about whether cadence is steps or strides per minute.
+ * Many foot pods (including Zwift RunPod) report stride rate (cycles/min), not step rate.
+ * We multiply by 2 to convert to steps per minute (each foot strike = 1 step).
  */
 fun parseRscMeasurement(data: ByteArray): CadenceSample? {
     if (data.size < 4) return null // Minimum: flags (1) + speed (2) + cadence (1)
@@ -32,8 +36,11 @@ fun parseRscMeasurement(data: ByteArray): CadenceSample? {
     val speedMs = speedRaw / 256f
     offset += 2
 
-    // Parse instantaneous cadence (steps/minute)
-    val cadence = data[offset].toInt() and 0xFF
+    // Parse instantaneous cadence
+    // Raw value is in 1/minute - many sensors report stride rate (cycles/min)
+    // We multiply by 2 to convert to steps per minute (left + right = 2 steps)
+    val rawCadence = data[offset].toInt() and 0xFF
+    val cadence = rawCadence * 2  // Convert stride rate to step rate
     offset += 1
 
     // Parse optional stride length (cm)
