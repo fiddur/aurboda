@@ -309,7 +309,7 @@ class HealthConnectSyncWorker(
         return allPostsSuccessful
     }
 
-    private suspend fun <T : Any> postData(
+    private suspend inline fun <reified T : Any> postData(
         dataList: List<T>,
         itemSerializer: KSerializer<T>,
         apiUrl: String,
@@ -328,7 +328,7 @@ class HealthConnectSyncWorker(
      * Post data in chunks to avoid 413 Request Entity Too Large errors.
      * HeartRateRecord can be very large (thousands of samples per record).
      */
-    private suspend fun <T : Any> postDataChunked(
+    private suspend inline fun <reified T : Any> postDataChunked(
         dataList: List<T>,
         itemSerializer: KSerializer<T>,
         apiUrl: String,
