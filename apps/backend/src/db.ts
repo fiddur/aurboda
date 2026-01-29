@@ -1405,7 +1405,8 @@ function extractTimeSeriesPoints(
       value = data.beatsPerMinute as number
       break
     case 'HeartRateVariabilityRmssdRecord':
-      value = data.hrvInMilliseconds as number
+      // Accept both field names for backwards compatibility with stored raw_records
+      value = (data.heartRateVariabilityMillis ?? data.hrvInMilliseconds) as number
       break
     default:
       return []

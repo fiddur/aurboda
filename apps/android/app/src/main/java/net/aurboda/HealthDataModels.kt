@@ -325,7 +325,7 @@ data class HeartRateRecordSerializable(
 @Serializable
 data class HrvRecordSerializable(
     val time: String,
-    val hrvInMilliseconds: Double,
+    val heartRateVariabilityMillis: Double,
     val metadata: HealthConnectRecordMetadata
 ) {
     companion object {
@@ -333,7 +333,7 @@ data class HrvRecordSerializable(
             return classRecords.filterIsInstance<HeartRateVariabilityRmssdRecord>().map { record ->
                 HrvRecordSerializable(
                     time = record.time.toIsoString(),
-                    hrvInMilliseconds = record.heartRateVariabilityMillis,
+                    heartRateVariabilityMillis = record.heartRateVariabilityMillis,
                     metadata = record.metadata.toSerializable()
                 )
             }
