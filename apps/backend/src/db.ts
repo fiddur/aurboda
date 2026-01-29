@@ -1405,7 +1405,7 @@ function extractTimeSeriesPoints(
       value = data.beatsPerMinute as number
       break
     case 'HeartRateVariabilityRmssdRecord':
-      value = data.hrvInMilliseconds as number
+      value = data.heartRateVariabilityMillis as number
       break
     default:
       return []
