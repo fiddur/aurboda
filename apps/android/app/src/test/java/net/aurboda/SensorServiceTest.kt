@@ -2,7 +2,7 @@ package net.aurboda
 
 import net.aurboda.ble.BleConnectionState
 import net.aurboda.ble.ConnectedDevice
-import net.aurboda.ble.HeartRateSyncSample
+import net.aurboda.ble.LiveHeartRateSample
 import net.aurboda.ble.SensorServiceState
 import net.aurboda.ble.SensorType
 import org.junit.Assert.assertEquals
@@ -118,111 +118,69 @@ class SensorServiceTest {
     }
 
     // ========================================================================
-    // HeartRateSyncSample Tests
+    // LiveHeartRateSample Tests (Health Connect format)
     // ========================================================================
 
     @Test
-    fun `HeartRateSyncSample stores time as ISO string`() {
-        val sample = HeartRateSyncSample(
+    fun `LiveHeartRateSample stores time and beatsPerMinute`() {
+        val sample = LiveHeartRateSample(
             time = "2024-01-15T10:30:00Z",
-            bpm = 72
+            beatsPerMinute = 72L
         )
 
         assertEquals("2024-01-15T10:30:00Z", sample.time)
-        assertEquals(72, sample.bpm)
-        assertNull(sample.rrIntervals)
+        assertEquals(72L, sample.beatsPerMinute)
     }
 
     @Test
-    fun `HeartRateSyncSample with RR intervals`() {
-        val sample = HeartRateSyncSample(
+    fun `LiveHeartRateSample serializes to Health Connect JSON format`() {
+        val sample = LiveHeartRateSample(
             time = "2024-01-15T10:30:00Z",
-            bpm = 85,
-            rrIntervals = listOf(700, 710, 695)
+            beatsPerMinute = 72L
         )
 
-        assertEquals(85, sample.bpm)
-        assertEquals(listOf(700, 710, 695), sample.rrIntervals)
-    }
+        val json = appJson.encodeToString(LiveHeartRateSample.serializer(), sample)
 
-    @Test
-    fun `HeartRateSyncSample serializes to correct JSON format`() {
-        val sample = HeartRateSyncSample(
-            time = "2024-01-15T10:30:00Z",
-            bpm = 72,
-            rrIntervals = null
-        )
-
-        val json = appJson.encodeToString(HeartRateSyncSample.serializer(), sample)
-
-        // Verify JSON contains expected fields
+        // Verify JSON contains expected fields (Health Connect format)
         assertTrue(json.contains("\"time\""))
-        assertTrue(json.contains("\"bpm\""))
+        assertTrue(json.contains("\"beatsPerMinute\""))
         assertTrue(json.contains("2024-01-15T10:30:00Z"))
         assertTrue(json.contains("72"))
     }
 
     @Test
-    fun `HeartRateSyncSample serializes rr_intervals with correct key`() {
-        val sample = HeartRateSyncSample(
-            time = "2024-01-15T10:30:00Z",
-            bpm = 85,
-            rrIntervals = listOf(700, 710)
-        )
+    fun `LiveHeartRateSample deserializes from JSON`() {
+        val json = """{"time":"2024-01-15T10:30:00Z","beatsPerMinute":72}"""
 
-        val json = appJson.encodeToString(HeartRateSyncSample.serializer(), sample)
-
-        // The @SerialName annotation should serialize as "rr_intervals"
-        assertTrue("JSON should contain rr_intervals key: $json", json.contains("\"rr_intervals\""))
-        assertTrue(json.contains("700"))
-        assertTrue(json.contains("710"))
-    }
-
-    @Test
-    fun `HeartRateSyncSample deserializes from JSON`() {
-        val json = """{"time":"2024-01-15T10:30:00Z","bpm":72}"""
-
-        val sample = appJson.decodeFromString(HeartRateSyncSample.serializer(), json)
+        val sample = appJson.decodeFromString(LiveHeartRateSample.serializer(), json)
 
         assertEquals("2024-01-15T10:30:00Z", sample.time)
-        assertEquals(72, sample.bpm)
-        assertNull(sample.rrIntervals)
+        assertEquals(72L, sample.beatsPerMinute)
     }
 
     @Test
-    fun `HeartRateSyncSample deserializes with rr_intervals`() {
-        val json = """{"time":"2024-01-15T10:30:00Z","bpm":85,"rr_intervals":[700,710,695]}"""
-
-        val sample = appJson.decodeFromString(HeartRateSyncSample.serializer(), json)
-
-        assertEquals(85, sample.bpm)
-        assertEquals(listOf(700, 710, 695), sample.rrIntervals)
-    }
-
-    @Test
-    fun `HeartRateSyncSample roundtrip serialization`() {
-        val original = HeartRateSyncSample(
+    fun `LiveHeartRateSample roundtrip serialization`() {
+        val original = LiveHeartRateSample(
             time = "2024-01-15T10:30:00.123Z",
-            bpm = 142,
-            rrIntervals = listOf(423, 425, 420)
+            beatsPerMinute = 142L
         )
 
-        val json = appJson.encodeToString(HeartRateSyncSample.serializer(), original)
-        val restored = appJson.decodeFromString(HeartRateSyncSample.serializer(), json)
+        val json = appJson.encodeToString(LiveHeartRateSample.serializer(), original)
+        val restored = appJson.decodeFromString(LiveHeartRateSample.serializer(), json)
 
         assertEquals(original, restored)
     }
 
     @Test
-    fun `HeartRateSyncSample list serialization for batch sync`() {
+    fun `LiveHeartRateSample list serialization for batch sync`() {
         val samples = listOf(
-            HeartRateSyncSample("2024-01-15T10:30:00Z", 72),
-            HeartRateSyncSample("2024-01-15T10:30:01Z", 73),
-            HeartRateSyncSample("2024-01-15T10:30:02Z", 74)
+            LiveHeartRateSample("2024-01-15T10:30:00Z", 72L),
+            LiveHeartRateSample("2024-01-15T10:30:01Z", 73L),
+            LiveHeartRateSample("2024-01-15T10:30:02Z", 74L)
         )
 
         val json = appJson.encodeToString(
-            kotlinx.serialization.builtins.ListSerializer(HeartRateSyncSample.serializer()),
+            kotlinx.serialization.builtins.ListSerializer(LiveHeartRateSample.serializer()),
             samples
         )
 
