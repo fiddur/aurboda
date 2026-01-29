@@ -36,7 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -157,6 +157,7 @@ fun getRecordSummary(record: Record): String {
         is BodyFatRecord -> "Body Fat: ${String.format("%.1f", record.percentage.value)}%%"
         is SleepSessionRecord -> "Sleep: ${record.title ?: "Session"} (Stages: ${record.stages.size})"
         is BoneMassRecord -> "Bone Mass: ${String.format("%.2f", record.mass.inKilograms)} kg"
+        is BodyWaterMassRecord -> "Body Water: ${String.format("%.2f", record.mass.inKilograms)} kg"
         is HeightRecord -> "Height: ${String.format("%.2f", record.height.inMeters)} m"
         is RestingHeartRateRecord -> "Resting HR: ${record.beatsPerMinute} bpm"
         else -> record::class.simpleName ?: "Record" 
@@ -400,18 +401,12 @@ fun HealthConnectScreen(
                     }
                     changesResponse.changes.forEach { if (it is DeletionChange) Log.d("HealthConnect", "Record deleted, ID: ${it.recordId}. Deletion handling for server not implemented.") }
 
-                    val nextToken = changesResponse.nextChangesToken
                     hasMore = changesResponse.hasMore
+                    currentToken = changesResponse.nextChangesToken
 
-                    if (hasMore && nextToken != null) {
-                        currentToken = nextToken
+                    if (hasMore) {
                         Log.d("FetchData", "More changes available, continuing fetch...")
                         statusMessage = "Fetching more data... ($totalUpsertions records so far)"
-                    } else {
-                        hasMore = false
-                        if (nextToken != null) {
-                            currentToken = nextToken
-                        }
                     }
                 }
 
@@ -498,8 +493,8 @@ fun HealthConnectScreen(
                 is HeartRateVariabilityRmssdRecord, is WeightRecord, is StepsRecord, is HeartRateRecord,
                 is ExerciseSessionRecord, is DistanceRecord, is SpeedRecord, is ActiveCaloriesBurnedRecord,
                 is TotalCaloriesBurnedRecord, is PowerRecord, is NutritionRecord, is LeanBodyMassRecord,
-                is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord, is HeightRecord,
-                is RestingHeartRateRecord -> true
+                is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord, is BodyWaterMassRecord,
+                is HeightRecord, is RestingHeartRateRecord -> true
                 else -> false
             }
         }
@@ -535,6 +530,7 @@ fun HealthConnectScreen(
                 BodyFatRecord::class -> handlePostData(BodyFatRecordSerializable.fromRecordsList(classRecords), BodyFatRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 SleepSessionRecord::class -> handlePostData(SleepSessionRecordSerializable.fromRecordsList(classRecords), SleepSessionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 BoneMassRecord::class -> handlePostData(BoneMassRecordSerializable.fromRecordsList(classRecords), BoneMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                BodyWaterMassRecord::class -> handlePostData(BodyWaterMassRecordSerializable.fromRecordsList(classRecords), BodyWaterMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 HeightRecord::class -> handlePostData(HeightRecordSerializable.fromRecordsList(classRecords), HeightRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 RestingHeartRateRecord::class -> handlePostData(RestingHeartRateRecordSerializable.fromRecordsList(classRecords), RestingHeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                 else -> { Log.w("SendData", "No specific serialization for $recordTypeSimpleName. Skipping."); true }
@@ -667,8 +663,8 @@ fun HealthConnectScreen(
                             is HeartRateVariabilityRmssdRecord, is WeightRecord, is StepsRecord, is HeartRateRecord,
                             is ExerciseSessionRecord, is DistanceRecord, is SpeedRecord, is ActiveCaloriesBurnedRecord,
                             is TotalCaloriesBurnedRecord, is PowerRecord, is NutritionRecord, is LeanBodyMassRecord,
-                            is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord, is HeightRecord,
-                            is RestingHeartRateRecord -> true
+                            is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord, is BodyWaterMassRecord,
+                            is HeightRecord, is RestingHeartRateRecord -> true
                             else -> false
                         }
                     } && !isProcessing
