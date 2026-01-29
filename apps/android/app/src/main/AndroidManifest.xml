@@ -59,6 +59,7 @@
 
     <!-- Write permissions for BLE sensor data -->
     <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE_VARIABILITY" />
     <uses-permission android:name="android.permission.health.WRITE_STEPS" />
 
     <application

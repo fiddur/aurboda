@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.metadata.Device
 import androidx.health.connect.client.records.metadata.Metadata
@@ -51,6 +52,8 @@ private const val TAG = "SensorService"
 private const val NOTIFICATION_ID = 1001
 private const val CHANNEL_ID = "sensor_service_channel"
 private const val SYNC_INTERVAL_MS = 5000L
+private const val RR_BUFFER_MIN_SIZE = 30   // Minimum intervals for HRV calculation
+private const val RR_BUFFER_MAX_SIZE = 300  // Maximum intervals (~5 minutes at 60bpm)
 
 /**
  * State for an individual connected device.
@@ -77,7 +80,10 @@ data class SensorServiceState(
     val connectingDevices: Set<String> = emptySet(),  // addresses of devices currently connecting
     val lastSyncTime: Instant? = null,
     val pendingSamples: Int = 0,
-    val pendingCadenceSamples: Int = 0
+    val pendingCadenceSamples: Int = 0,
+    val currentHrv: Double? = null,           // Latest RMSSD in ms
+    val hrvReliable: Boolean = false,         // Whether HRV measurement is reliable
+    val rrIntervalCount: Int = 0              // Number of RR intervals in buffer
 ) {
     // Convenience accessors for backward compatibility and easy access
     val hrDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.HEART_RATE }
@@ -144,6 +150,19 @@ data class LiveStepsRecord(
 private data class StepsSyncBody(val data: List<LiveStepsRecord>)
 
 /**
+ * HRV record in Health Connect format for backend sync.
+ */
+@Serializable
+data class LiveHrvRecord(
+    val time: String,
+    val heartRateVariabilityMillis: Double,
+    val metadata: LiveRecordMetadata
+)
+
+@Serializable
+private data class HrvSyncBody(val data: List<LiveHrvRecord>)
+
+/**
  * Foreground service that manages BLE sensor connections.
  * Keeps connections alive in the background, buffers HR samples,
  * syncs to backend every 5 seconds, and writes to Health Connect.
@@ -157,6 +176,7 @@ class SensorService : Service() {
 
     private val sampleBuffer = mutableListOf<HeartRateSample>()
     private val cadenceSampleBuffer = mutableListOf<CadenceSample>()
+    private val rrIntervalBuffer = ArrayDeque<Int>(RR_BUFFER_MAX_SIZE)
     private val bufferLock = Any()
 
     private val httpClient by lazy {
@@ -394,6 +414,16 @@ class SensorService : Service() {
     private fun handleDeviceDisconnected(deviceAddress: String) {
         Log.d(TAG, "Device disconnected: $deviceAddress")
 
+        // Check if this was an HR device and clear RR buffer + HRV state
+        val wasHrDevice = _serviceState.value.connectedDevices[deviceAddress]?.device?.type == SensorType.HEART_RATE
+        if (wasHrDevice) {
+            synchronized(bufferLock) {
+                rrIntervalBuffer.clear()
+                Log.d(TAG, "Cleared RR interval buffer due to HR device disconnect")
+            }
+            updateState { it.copy(currentHrv = null, hrvReliable = false, rrIntervalCount = 0) }
+        }
+
         // Cancel jobs for this device
         deviceJobs[deviceAddress]?.forEach { it.cancel() }
         deviceJobs.remove(deviceAddress)
@@ -427,6 +457,14 @@ class SensorService : Service() {
                 synchronized(bufferLock) {
                     sampleBuffer.add(sample)
                     updateState { it.copy(pendingSamples = sampleBuffer.size) }
+
+                    // Collect RR intervals for HRV calculation (rolling window)
+                    sample.rrIntervals?.forEach { rr ->
+                        if (rrIntervalBuffer.size >= RR_BUFFER_MAX_SIZE) {
+                            rrIntervalBuffer.removeFirst()
+                        }
+                        rrIntervalBuffer.addLast(rr)
+                    }
                 }
             }
         }
@@ -456,10 +494,14 @@ class SensorService : Service() {
     private suspend fun syncPendingSamples() {
         val hrSamplesToSync: List<HeartRateSample>
         val cadenceSamplesToSync: List<CadenceSample>
+        val rrIntervalsForHrv: List<Int>
 
         synchronized(bufferLock) {
             hrSamplesToSync = sampleBuffer.toList()
             cadenceSamplesToSync = cadenceSampleBuffer.toList()
+            // Copy RR intervals for HRV calculation (don't clear - rolling window)
+            rrIntervalsForHrv = rrIntervalBuffer.toList()
+
             if (hrSamplesToSync.isEmpty() && cadenceSamplesToSync.isEmpty()) return
             sampleBuffer.clear()
             cadenceSampleBuffer.clear()
@@ -491,6 +533,37 @@ class SensorService : Service() {
                 }
             } else {
                 writeStepsToHealthConnect(cadenceSamplesToSync)
+            }
+        }
+
+        // Calculate and sync HRV if we have enough RR intervals
+        if (rrIntervalsForHrv.size >= RR_BUFFER_MIN_SIZE) {
+            val hrvResult = calculateHrv(rrIntervalsForHrv)
+            Log.d(TAG, "HRV calculation: rmssd=${hrvResult.rmssd}, valid=${hrvResult.validIntervals}, " +
+                    "artifacts=${hrvResult.artifactCount} (${String.format("%.1f", hrvResult.artifactPercentage)}%), " +
+                    "reliable=${hrvResult.isReliable}")
+
+            // Update state for UI display
+            updateState { it.copy(
+                currentHrv = hrvResult.rmssd,
+                hrvReliable = hrvResult.isReliable,
+                rrIntervalCount = rrIntervalsForHrv.size
+            ) }
+
+            if (hrvResult.isReliable && hrvResult.rmssd != null) {
+                val timestamp = Instant.now()
+                syncHrvToBackend(hrvResult.rmssd, timestamp)
+                writeHrvToHealthConnect(hrvResult.rmssd, timestamp)
+            }
+        } else {
+            // Update state to show collecting progress
+            updateState { it.copy(
+                currentHrv = null,
+                hrvReliable = false,
+                rrIntervalCount = rrIntervalsForHrv.size
+            ) }
+            if (rrIntervalsForHrv.isNotEmpty()) {
+                Log.d(TAG, "HRV: Collecting RR intervals (${rrIntervalsForHrv.size}/$RR_BUFFER_MIN_SIZE)")
             }
         }
 
@@ -718,6 +791,73 @@ class SensorService : Service() {
             Log.d(TAG, "Wrote $totalSteps steps to Health Connect")
         } catch (e: Exception) {
             Log.e(TAG, "Health Connect steps write error", e)
+        }
+    }
+
+    private suspend fun syncHrvToBackend(rmssd: Double, timestamp: Instant) {
+        val credentials = CredentialsManager.getCredentials(this) ?: run {
+            Log.w(TAG, "No credentials, skipping HRV backend sync")
+            return
+        }
+
+        val recordId = "live-hrv-${timestamp.epochSecond}-${timestamp.nano}"
+
+        // Get device info from HR device if available
+        val hrManager = connectionManagers.values.find {
+            it.connectedDeviceInfo.value?.type == SensorType.HEART_RATE
+        }
+        val deviceInfo = hrManager?.connectedDeviceInfo?.value?.let { device ->
+            LiveDeviceInfo(
+                type = 2, // TYPE_CHEST_STRAP
+                model = device.name
+            )
+        }
+
+        val record = LiveHrvRecord(
+            time = timestamp.toString(),
+            heartRateVariabilityMillis = rmssd,
+            metadata = LiveRecordMetadata(
+                id = recordId,
+                device = deviceInfo
+            )
+        )
+
+        try {
+            val response = httpClient.post("${credentials.apiUrl}/sync/HeartRateVariabilityRmssdRecord") {
+                contentType(ContentType.Application.Json)
+                headers { append(HttpHeaders.Authorization, "Bearer ${credentials.authToken}") }
+                setBody(HrvSyncBody(listOf(record)))
+            }
+            val success = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
+            Log.d(TAG, "HRV backend sync ${if (success) "succeeded" else "failed"}: ${response.status}")
+        } catch (e: Exception) {
+            Log.e(TAG, "HRV backend sync error", e)
+        }
+    }
+
+    private suspend fun writeHrvToHealthConnect(rmssd: Double, timestamp: Instant) {
+        try {
+            // Check write permission
+            val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
+            val writePermission = HealthPermission.getWritePermission(HeartRateVariabilityRmssdRecord::class)
+            if (writePermission !in grantedPermissions) {
+                Log.w(TAG, "No Health Connect write permission for HeartRateVariabilityRmssdRecord")
+                return
+            }
+
+            val record = HeartRateVariabilityRmssdRecord(
+                time = timestamp,
+                zoneOffset = ZoneOffset.systemDefault().rules.getOffset(timestamp),
+                heartRateVariabilityMillis = rmssd,
+                metadata = Metadata.autoRecorded(
+                    device = Device(type = Device.TYPE_CHEST_STRAP)
+                )
+            )
+
+            healthConnectClient.insertRecords(listOf(record))
+            Log.d(TAG, "Wrote HRV (RMSSD=${String.format("%.1f", rmssd)}ms) to Health Connect")
+        } catch (e: Exception) {
+            Log.e(TAG, "Health Connect HRV write error", e)
         }
     }
 

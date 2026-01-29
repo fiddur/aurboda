@@ -255,6 +255,9 @@ fun LiveScreen(
                     serviceRunning = serviceState.isRunning,
                     pendingSamples = serviceState.pendingSamples + serviceState.pendingCadenceSamples,
                     healthConnectEnabled = healthConnectEnabled,
+                    currentHrv = serviceState.currentHrv,
+                    hrvReliable = serviceState.hrvReliable,
+                    rrIntervalCount = serviceState.rrIntervalCount,
                     onEnableHealthConnect = {
                         healthConnectPermissionLauncher.launch(requiredPermissions)
                     },
@@ -347,6 +350,9 @@ private fun ConnectedDeviceCard(
     serviceRunning: Boolean,
     pendingSamples: Int,
     healthConnectEnabled: Boolean,
+    currentHrv: Double?,
+    hrvReliable: Boolean,
+    rrIntervalCount: Int,
     onEnableHealthConnect: () -> Unit,
     onDisconnect: () -> Unit
 ) {
@@ -403,18 +409,36 @@ private fun ConnectedDeviceCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Text(
-                            text = heartRate?.toString() ?: "--",
-                            fontSize = 48.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "BPM",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = heartRate?.toString() ?: "--",
+                                fontSize = 48.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "BPM",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(24.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = currentHrv?.let { String.format("%.0f", it) } ?: "--",
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (hrvReliable)
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                else
+                                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
+                            )
+                            Text(
+                                text = if (rrIntervalCount < 30) "HRV ($rrIntervalCount/30)" else "HRV",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 }
                 SensorType.RUNNING_SPEED_CADENCE -> {
