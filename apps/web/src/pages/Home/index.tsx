@@ -38,6 +38,17 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
             <img src="/screenshots/widget.jpg" alt="Aurboda home screen widget" />
             <figcaption>Home screen widget</figcaption>
           </figure>
+          <figure>
+            <img src="/screenshots/app-live.png" alt="Live BLE sensor data" />
+            <figcaption>Live BLE sensors: HR, HRV, and steps</figcaption>
+          </figure>
+        </div>
+
+        <div class="screenshots">
+          <figure class="wide">
+            <img src="/screenshots/ai-chat.png" alt="AI analyzing health data" />
+            <figcaption>AI health insights via MCP</figcaption>
+          </figure>
         </div>
 
         <p>
@@ -70,6 +81,13 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
             <a href="https://github.com/fiddur/aurboda" target="_blank" rel="noopener noreferrer">
               Aurboda App
             </a>
+          </li>
+          <li>
+            Bluetooth heart rate monitors (e.g., Polar H10) — real-time HR and HRV via the app's Live screen
+          </li>
+          <li>
+            Bluetooth step sensors (e.g., Zwift RunPod) — real-time cadence and step counting via the app's
+            Live screen
           </li>
           <li>
             <a href="https://owntracks.org/" target="_blank" rel="noopener noreferrer">
