@@ -3,6 +3,7 @@ package net.aurboda.ui.screens
 import android.Manifest
 import android.content.Intent
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +46,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.HeartRateRecord
 import net.aurboda.ble.BleConnectionState
 import net.aurboda.ble.BleScanState
 import net.aurboda.ble.DiscoveredDevice
@@ -63,6 +68,38 @@ fun LiveScreen(
     var hasPermissions by remember { mutableStateOf(hasBlePermissions(context)) }
     var bleEnabled by remember { mutableStateOf(isBleEnabled(context)) }
     val bleSupported = remember { isBleSupported(context) }
+
+    // Health Connect client and write permission state
+    val healthConnectClient = remember { HealthConnectClient.getOrCreate(context) }
+    var hasHealthConnectWritePermission by remember { mutableStateOf<Boolean?>(null) }
+    var pendingDeviceToConnect by remember { mutableStateOf<DiscoveredDevice?>(null) }
+
+    val healthConnectWritePermission = remember {
+        HealthPermission.getWritePermission(HeartRateRecord::class)
+    }
+
+    // Health Connect permission launcher
+    val healthConnectPermissionLauncher = rememberLauncherForActivityResult(
+        contract = PermissionController.createRequestPermissionResultContract()
+    ) { granted: Set<String> ->
+        val hasWritePermission = granted.contains(healthConnectWritePermission)
+        hasHealthConnectWritePermission = hasWritePermission
+        Log.d("LiveScreen", "Health Connect permission result: write=$hasWritePermission")
+
+        // Connect to device regardless of permission result - data still syncs to backend,
+        // and SensorService gracefully handles missing Health Connect write permission
+        pendingDeviceToConnect?.let { device ->
+            SensorService.connect(context, device.address)
+            pendingDeviceToConnect = null
+        }
+    }
+
+    // Check Health Connect permission on launch
+    LaunchedEffect(Unit) {
+        val granted = healthConnectClient.permissionController.getGrantedPermissions()
+        hasHealthConnectWritePermission = granted.contains(healthConnectWritePermission)
+        Log.d("LiveScreen", "Initial Health Connect write permission: $hasHealthConnectWritePermission")
+    }
 
     // Observe service state
     val serviceState by SensorService.serviceState.collectAsState()
@@ -256,7 +293,23 @@ fun LiveScreen(
                     isScanning = false
                 },
                 onConnectDevice = { device ->
-                    SensorService.connect(context, device.address)
+                    // Check Health Connect write permission before connecting
+                    when (hasHealthConnectWritePermission) {
+                        true -> {
+                            // Permission already granted, connect directly
+                            SensorService.connect(context, device.address)
+                        }
+                        false -> {
+                            // Permission was denied previously, connect anyway
+                            // (data still syncs to backend, just not to Health Connect)
+                            SensorService.connect(context, device.address)
+                        }
+                        null -> {
+                            // Haven't asked yet, request permission first
+                            pendingDeviceToConnect = device
+                            healthConnectPermissionLauncher.launch(setOf(healthConnectWritePermission))
+                        }
+                    }
                 }
             )
         }
