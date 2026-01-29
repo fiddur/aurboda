@@ -98,10 +98,15 @@ fun LiveScreen(
     }
 
     // Check Health Connect permission on launch
+    // Only set to true if granted; leave as null if not granted (so we ask on first connect)
     LaunchedEffect(Unit) {
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        hasHealthConnectWritePermission = granted.contains(healthConnectWritePermission)
-        Log.d("LiveScreen", "Initial Health Connect write permission: $hasHealthConnectWritePermission")
+        val isGranted = granted.contains(healthConnectWritePermission)
+        if (isGranted) {
+            hasHealthConnectWritePermission = true
+        }
+        // If not granted, leave as null - we'll ask when user tries to connect
+        Log.d("LiveScreen", "Initial Health Connect write permission: granted=$isGranted, state=$hasHealthConnectWritePermission")
     }
 
     // Observe service state
@@ -228,6 +233,10 @@ fun LiveScreen(
                     batteryLevel = serviceState.batteryLevel,
                     serviceRunning = serviceState.isRunning,
                     pendingSamples = serviceState.pendingSamples,
+                    healthConnectEnabled = hasHealthConnectWritePermission == true,
+                    onEnableHealthConnect = {
+                        healthConnectPermissionLauncher.launch(setOf(healthConnectWritePermission))
+                    },
                     onDisconnect = { SensorService.stop(context) }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -327,6 +336,8 @@ private fun ConnectedDeviceCard(
     batteryLevel: Int?,
     serviceRunning: Boolean,
     pendingSamples: Int,
+    healthConnectEnabled: Boolean,
+    onEnableHealthConnect: () -> Unit,
     onDisconnect: () -> Unit
 ) {
     Card(
@@ -394,17 +405,35 @@ private fun ConnectedDeviceCard(
             // Service status
             if (serviceRunning) {
                 Spacer(modifier = Modifier.height(8.dp))
+                val statusText = buildString {
+                    append(if (pendingSamples > 0) "Syncing ($pendingSamples pending)" else "Syncing to cloud")
+                    if (!healthConnectEnabled) {
+                        append(" • Health Connect disabled")
+                    }
+                }
                 Text(
-                    text = if (pendingSamples > 0) "Syncing ($pendingSamples pending)" else "Syncing to cloud",
+                    text = statusText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    color = if (healthConnectEnabled)
+                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    else
+                        MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            OutlinedButton(onClick = onDisconnect) {
-                Text("Stop")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(onClick = onDisconnect) {
+                    Text("Stop")
+                }
+                if (!healthConnectEnabled) {
+                    Button(onClick = onEnableHealthConnect) {
+                        Text("Enable Health Connect")
+                    }
+                }
             }
         }
     }
