@@ -17,9 +17,11 @@ vi.mock('pg', () => ({
   Client: mockClientConstructor,
 }))
 
-// Mock pg-format
+// Mock pg-format - capture the mock for later access
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockFormat = vi.fn((...args: any[]) => args[0] as string)
 vi.mock('pg-format', () => ({
-  default: vi.fn((str) => str),
+  default: mockFormat,
 }))
 
 describe('Daily Aggregates', () => {
@@ -445,7 +447,20 @@ describe('insertTimeSeries', () => {
     vi.clearAllMocks()
     vi.resetModules()
     mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
+    mockFormat.mockClear()
   })
+
+  // Helper to get the values array from the last format call
+  const getLastFormatValues = (): unknown[][] | undefined => {
+    const calls = mockFormat.mock.calls
+    // Find the call that has a values array (the INSERT call)
+    for (let i = calls.length - 1; i >= 0; i--) {
+      if (Array.isArray(calls[i][1])) {
+        return calls[i][1] as unknown[][]
+      }
+    }
+    return undefined
+  }
 
   test('does nothing when points array is empty', async () => {
     const { insertTimeSeries } = await import('./db.js')
@@ -474,5 +489,83 @@ describe('insertTimeSeries', () => {
     const insertCall = mockQueryFn.mock.calls.find((call) => call[0]?.includes?.('INSERT INTO time_series'))
     expect(insertCall).toBeDefined()
     expect(insertCall![0]).toContain('ON CONFLICT')
+  })
+
+  test('deduplicates points with same time, metric, and source - keeps last value', async () => {
+    const { insertTimeSeries } = await import('./db.js')
+
+    const duplicateTime = new Date('2024-01-15T10:00:00Z')
+    const points = [
+      { metric: 'heart_rate' as const, source: 'health_connect' as const, time: duplicateTime, value: 72 },
+      { metric: 'heart_rate' as const, source: 'health_connect' as const, time: duplicateTime, value: 75 },
+      { metric: 'heart_rate' as const, source: 'health_connect' as const, time: duplicateTime, value: 78 },
+    ]
+
+    await insertTimeSeries('testuser', points)
+
+    const values = getLastFormatValues()
+    // Should only have one row after deduplication
+    expect(values).toBeDefined()
+    expect(values).toHaveLength(1)
+    // Last value (78) should win
+    expect(values![0][2]).toBe(78)
+  })
+
+  test('preserves points with different timestamps', async () => {
+    const { insertTimeSeries } = await import('./db.js')
+
+    const points = [
+      {
+        metric: 'heart_rate' as const,
+        source: 'health_connect' as const,
+        time: new Date('2024-01-15T10:00:00Z'),
+        value: 72,
+      },
+      {
+        metric: 'heart_rate' as const,
+        source: 'health_connect' as const,
+        time: new Date('2024-01-15T10:00:01Z'),
+        value: 75,
+      },
+      {
+        metric: 'heart_rate' as const,
+        source: 'health_connect' as const,
+        time: new Date('2024-01-15T10:00:02Z'),
+        value: 78,
+      },
+    ]
+
+    await insertTimeSeries('testuser', points)
+
+    const values = getLastFormatValues()
+    // Should have all three rows (different timestamps)
+    expect(values).toBeDefined()
+    expect(values).toHaveLength(3)
+  })
+
+  test('deduplicates only matching time+metric+source combinations', async () => {
+    const { insertTimeSeries } = await import('./db.js')
+
+    const sameTime = new Date('2024-01-15T10:00:00Z')
+    const points = [
+      // Two with same time but different metrics - both should be kept
+      { metric: 'heart_rate' as const, source: 'health_connect' as const, time: sameTime, value: 72 },
+      { metric: 'resting_heart_rate' as const, source: 'health_connect' as const, time: sameTime, value: 65 },
+      // Duplicate of first - should replace it
+      { metric: 'heart_rate' as const, source: 'health_connect' as const, time: sameTime, value: 80 },
+    ]
+
+    await insertTimeSeries('testuser', points)
+
+    const values = getLastFormatValues()
+    // Should have two rows (heart_rate deduplicated, resting_heart_rate kept)
+    expect(values).toBeDefined()
+    expect(values).toHaveLength(2)
+    // Find the heart_rate entry - should have last value (80)
+    const hrEntry = values!.find((row) => row[1] === 'heart_rate')
+    expect(hrEntry![2]).toBe(80)
+    // Find the resting_heart_rate entry - should have value 65
+    const restingHrEntry = values!.find((row) => row[1] === 'resting_heart_rate')
+    expect(restingHrEntry![2]).toBe(65)
   })
 })
