@@ -38,7 +38,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.aurboda.CredentialsManager
 import net.aurboda.MainActivity
@@ -65,17 +64,44 @@ data class SensorServiceState(
 )
 
 /**
- * Heart rate sample for backend sync.
+ * Heart rate sample in Health Connect format for backend sync.
  */
 @Serializable
-data class HeartRateSyncSample(
+data class LiveHeartRateSample(
     val time: String,
-    val bpm: Int,
-    @SerialName("rr_intervals") val rrIntervals: List<Int>? = null
+    val beatsPerMinute: Long
+)
+
+/**
+ * Heart rate record in Health Connect format for backend sync.
+ * Uses simplified metadata suitable for live BLE data.
+ */
+@Serializable
+data class LiveHeartRateRecord(
+    val startTime: String,
+    val endTime: String,
+    val samples: List<LiveHeartRateSample>,
+    val metadata: LiveRecordMetadata
+)
+
+/**
+ * Simplified metadata for live sensor records.
+ */
+@Serializable
+data class LiveRecordMetadata(
+    val id: String,
+    val dataOrigin: String = "net.aurboda",
+    val device: LiveDeviceInfo? = null
 )
 
 @Serializable
-private data class HeartRateSyncBody(val data: List<HeartRateSyncSample>)
+data class LiveDeviceInfo(
+    val type: Int = 2, // TYPE_CHEST_STRAP
+    val model: String? = null
+)
+
+@Serializable
+private data class HeartRateSyncBody(val data: List<LiveHeartRateRecord>)
 
 /**
  * Foreground service that manages BLE sensor connections.
@@ -308,19 +334,44 @@ class SensorService : Service() {
             return true // Don't block on missing credentials
         }
 
-        val syncSamples = samples.map { sample ->
-            HeartRateSyncSample(
-                time = sample.timestamp.toString(),
-                bpm = sample.bpm,
-                rrIntervals = sample.rrIntervals
+        if (samples.isEmpty()) return true
+
+        // Sort samples and create a single HeartRateRecord in Health Connect format
+        val sortedSamples = samples.sortedBy { it.timestamp }
+        val startTime = sortedSamples.first().timestamp
+        val endTime = sortedSamples.last().timestamp.plusSeconds(1)
+
+        // Generate unique ID for this batch based on start time
+        val recordId = "live-hr-${startTime.epochSecond}-${startTime.nano}"
+
+        // Get device info if available
+        val deviceInfo = connectionManager?.connectedDeviceInfo?.value?.let { device ->
+            LiveDeviceInfo(
+                type = 2, // TYPE_CHEST_STRAP
+                model = device.name
             )
         }
+
+        val record = LiveHeartRateRecord(
+            startTime = startTime.toString(),
+            endTime = endTime.toString(),
+            samples = sortedSamples.map { sample ->
+                LiveHeartRateSample(
+                    time = sample.timestamp.toString(),
+                    beatsPerMinute = sample.bpm.toLong()
+                )
+            },
+            metadata = LiveRecordMetadata(
+                id = recordId,
+                device = deviceInfo
+            )
+        )
 
         return try {
             val response = httpClient.post("${credentials.apiUrl}/sync/HeartRateRecord") {
                 contentType(ContentType.Application.Json)
                 headers { append(HttpHeaders.Authorization, "Bearer ${credentials.authToken}") }
-                setBody(HeartRateSyncBody(syncSamples))
+                setBody(HeartRateSyncBody(listOf(record)))
             }
             val success = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
             Log.d(TAG, "Backend sync ${if (success) "succeeded" else "failed"}: ${response.status}")
