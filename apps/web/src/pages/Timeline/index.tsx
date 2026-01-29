@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals'
+import { Signal, signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { addDays, endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
@@ -28,9 +28,8 @@ const viewEnd = signal<Date | null>(null)
 // Signals for toggling data layers
 const showHeartRate = signal(true)
 const showHrv = signal(true)
-const showSleep = signal(true)
+const showSleepMeditation = signal(true)
 const showExercise = signal(true)
-const showMeditation = signal(true)
 const showProductivity = signal(true)
 const showPlaces = signal(true)
 const showTags = signal(true)
@@ -42,18 +41,22 @@ const colors = {
 
   // Productivity
   computer: '#3b82f6', // Blue
+
   // Activity backgrounds
-  exercise: 'rgba(34, 197, 94, 0.4)', // Green that works in both modes
+  exercise: '#22c55e', // Green
 
   // Line charts
   heartRate: '#ef4444', // Red
-  hrv: '#22c55e', // Green
-  meditation: 'rgba(168, 85, 247, 0.5)', // Purple
+  hrv: '#10b981', // Emerald
+  meditation: '#a855f7', // Purple
   mobile: '#06b6d4', // Cyan
-  sleep: 'rgba(59, 130, 246, 0.25)', // Blue
+  sleep: '#3b82f6', // Blue
 
   // Tags - use semi-transparent to work in both modes
   tags: 'rgba(156, 163, 175, 0.5)', // Gray
+
+  // Travel indicator
+  travel: '#9ca3af', // Gray for unknown/travel
 }
 
 // Place colors - using colors that work well in both light and dark modes
@@ -68,23 +71,48 @@ const placeColorPalette = [
   '#6366f1', // Indigo
 ]
 
+// Exercise type colors
+const exerciseColorPalette = [
+  '#22c55e', // Green - default/first
+  '#f97316', // Orange
+  '#3b82f6', // Blue
+  '#ec4899', // Pink
+  '#8b5cf6', // Violet
+  '#14b8a6', // Teal
+  '#eab308', // Yellow
+  '#ef4444', // Red
+]
+
 // Generate consistent color for a place name
 const getPlaceColor = (placeName: string, allPlaces: string[]): string => {
+  if (!placeName || placeName === 'Travel' || placeName === 'Unknown') {
+    return colors.travel
+  }
   const index = allPlaces.indexOf(placeName)
   return placeColorPalette[index % placeColorPalette.length]
 }
 
-// Static legend items (places are added dynamically)
-const staticLegendItems = [
-  { color: colors.heartRate, label: 'Heart Rate', signal: showHeartRate },
-  { color: colors.hrv, label: 'HRV', signal: showHrv },
-  { color: colors.sleep, label: 'Sleep', signal: showSleep },
-  { color: colors.exercise, label: 'Exercise', signal: showExercise },
-  { color: colors.meditation, label: 'Meditation', signal: showMeditation },
-  { color: colors.computer, label: 'Computer', signal: showProductivity },
-  { color: colors.mobile, label: 'Mobile', signal: showProductivity },
-  { color: colors.tags, label: 'Tags', signal: showTags },
-]
+// Generate consistent color for exercise type
+const getExerciseColor = (exerciseTitle: string | undefined, allTypes: string[]): string => {
+  if (!exerciseTitle) {
+    return exerciseColorPalette[0]
+  }
+  const index = allTypes.indexOf(exerciseTitle)
+  return exerciseColorPalette[index % exerciseColorPalette.length]
+}
+
+// Chart dimensions
+const margin = { bottom: 30, left: 140, right: 50, top: 10 }
+const width = 1000
+const height = 500
+const chartWidth = width - margin.left - margin.right
+const chartHeight = height - margin.top - margin.bottom
+
+// Track layout
+const trackHeight = chartHeight / 4
+const trackSleepMeditation = 0
+const trackExercise = trackHeight
+const trackPlaces = 2 * trackHeight
 
 export const Timeline = () => {
   const start = startOfDay(new Date(fromDate.value))
@@ -105,7 +133,7 @@ export const Timeline = () => {
   })
 
   const activitiesQuery = useQuery({
-    enabled: showSleep.value || showExercise.value || showMeditation.value,
+    enabled: showSleepMeditation.value || showExercise.value,
     queryFn: () => fetchActivities(start, end),
     queryKey: ['activities', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
@@ -156,20 +184,27 @@ export const Timeline = () => {
 
   // Get unique place names for legend
   const places = placesQuery.data || []
-  const uniquePlaceNames = [...new Set(places.map((p) => p.region))].sort()
+  const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
+
+  // Get unique exercise types for legend
+  const activities = activitiesQuery.data || []
+  const exerciseSessions = activities.filter((a) => a.activityType === 'exercise')
+  const uniqueExerciseTypes = [...new Set(exerciseSessions.map((a) => a.title))]
+    .filter(Boolean)
+    .sort() as string[]
 
   // Calculate effective view range
   const effectiveViewStart = viewStart.value || start
   const effectiveViewEnd = viewEnd.value || end
 
+  // Check if zoomed
+  const isZoomed = viewStart.value !== null || viewEnd.value !== null
+
   // Handle zoom - update view range
-  const handleZoom = useCallback(
-    (zoomStart: Date, zoomEnd: Date) => {
-      viewStart.value = zoomStart
-      viewEnd.value = zoomEnd
-    },
-    [start, end],
-  )
+  const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
+    viewStart.value = zoomStart
+    viewEnd.value = zoomEnd
+  }, [])
 
   // Handle zoom out - expand date range and fetch more data
   const handleZoomOut = useCallback(() => {
@@ -189,6 +224,12 @@ export const Timeline = () => {
     viewEnd.value = null
   }, [])
 
+  // Reset zoom to full data range
+  const handleResetZoom = useCallback(() => {
+    viewStart.value = null
+    viewEnd.value = null
+  }, [])
+
   // Reset view when date range changes
   useEffect(() => {
     viewStart.value = null
@@ -199,7 +240,9 @@ export const Timeline = () => {
     <>
       <div class="timeline">
         <h1>Timeline</h1>
-        <div style={{ display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
+
+        {/* Date range and top controls */}
+        <div style={{ alignItems: 'center', display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
           <div>
             <label>
               From: <input type="date" name="from" value={fromDate.value} onChange={handleDateChange} />
@@ -208,76 +251,134 @@ export const Timeline = () => {
               To: <input type="date" name="to" value={toDate.value} onChange={handleDateChange} />
             </label>
           </div>
+          {isZoomed && (
+            <button
+              onClick={handleResetZoom}
+              style={{
+                background: '#3b82f6',
+                border: 'none',
+                borderRadius: '4px',
+                color: 'white',
+                cursor: 'pointer',
+                padding: '0.5rem 1rem',
+              }}
+            >
+              Reset Zoom
+            </button>
+          )}
         </div>
 
+        {/* Top checkboxes for overlay data */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
-          <label>
+          <label style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
             <input
               type="checkbox"
               checked={showHeartRate.value}
               onChange={(e) => (showHeartRate.value = (e.target as HTMLInputElement).checked)}
             />
-            Heart Rate
+            <span style={{ color: colors.heartRate }}>Heart Rate</span>
           </label>
-          <label>
+          <label style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
             <input
               type="checkbox"
               checked={showHrv.value}
               onChange={(e) => (showHrv.value = (e.target as HTMLInputElement).checked)}
             />
-            HRV
+            <span style={{ color: colors.hrv }}>HRV</span>
           </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={showSleep.value}
-              onChange={(e) => (showSleep.value = (e.target as HTMLInputElement).checked)}
-            />
-            Sleep
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={showExercise.value}
-              onChange={(e) => (showExercise.value = (e.target as HTMLInputElement).checked)}
-            />
-            Exercise
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={showMeditation.value}
-              onChange={(e) => (showMeditation.value = (e.target as HTMLInputElement).checked)}
-            />
-            Meditation
-          </label>
-          <label>
+          <label style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
             <input
               type="checkbox"
               checked={showProductivity.value}
               onChange={(e) => (showProductivity.value = (e.target as HTMLInputElement).checked)}
             />
-            Productivity
+            <span>
+              Productivity <span style={{ color: colors.computer }}>●</span>
+              <span style={{ color: colors.mobile }}>●</span>
+            </span>
           </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={showPlaces.value}
-              onChange={(e) => (showPlaces.value = (e.target as HTMLInputElement).checked)}
-            />
-            Places
-          </label>
-          <label>
+          <label style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
             <input
               type="checkbox"
               checked={showTags.value}
               onChange={(e) => (showTags.value = (e.target as HTMLInputElement).checked)}
             />
-            Tags
+            <span style={{ opacity: 0.6 }}>Tags</span>
           </label>
         </div>
 
-        <Legend placeNames={showPlaces.value ? uniquePlaceNames : []} />
+        {/* Places legend */}
+        {showPlaces.value && uniquePlaceNames.length > 0 && (
+          <div
+            style={{
+              border: '1px solid currentColor',
+              borderRadius: '4px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              marginBottom: '1rem',
+              opacity: 0.7,
+              padding: '0.5rem 1rem',
+            }}
+          >
+            <strong>Places:</strong>
+            {uniquePlaceNames.map((name) => (
+              <div key={name} style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
+                <div
+                  style={{
+                    backgroundColor: getPlaceColor(name, uniquePlaceNames),
+                    borderRadius: '50%',
+                    height: '12px',
+                    width: '12px',
+                  }}
+                />
+                <span>{name}</span>
+              </div>
+            ))}
+            <div style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
+              <div
+                style={{
+                  backgroundColor: colors.travel,
+                  borderRadius: '50%',
+                  height: '12px',
+                  width: '12px',
+                }}
+              />
+              <span>Travel</span>
+            </div>
+          </div>
+        )}
+
+        {/* Exercise types legend */}
+        {showExercise.value && uniqueExerciseTypes.length > 0 && (
+          <div
+            style={{
+              border: '1px solid currentColor',
+              borderRadius: '4px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              marginBottom: '1rem',
+              opacity: 0.7,
+              padding: '0.5rem 1rem',
+            }}
+          >
+            <strong>Exercise:</strong>
+            {uniqueExerciseTypes.map((name) => (
+              <div key={name} style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
+                <div
+                  style={{
+                    backgroundColor: getExerciseColor(name, uniqueExerciseTypes),
+                    borderRadius: '50%',
+                    height: '12px',
+                    width: '12px',
+                  }}
+                />
+                <span>{name}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {isLoading && <div>Loading...</div>}
         {hasError && <div>Error loading data</div>}
@@ -285,78 +386,24 @@ export const Timeline = () => {
         <TimelineChart
           heartRates={showHeartRate.value ? heartRateQuery.data || [] : []}
           hrvData={showHrv.value ? hrvQuery.data || [] : []}
-          activities={activitiesQuery.data || []}
+          activities={activities}
           productivity={showProductivity.value ? productivityQuery.data || [] : []}
           places={showPlaces.value ? places : []}
           tags={showTags.value ? tagsQuery.data || [] : []}
-          sleepVisible={showSleep.value}
-          exerciseVisible={showExercise.value}
-          meditationVisible={showMeditation.value}
+          showSleepMeditation={showSleepMeditation}
+          showExercise={showExercise}
+          showPlaces={showPlaces}
           dataStart={start}
           dataEnd={end}
           visibleStart={effectiveViewStart}
           visibleEnd={effectiveViewEnd}
+          uniquePlaceNames={uniquePlaceNames}
+          uniqueExerciseTypes={uniqueExerciseTypes}
           onZoom={handleZoom}
           onZoomOut={handleZoomOut}
         />
       </div>
     </>
-  )
-}
-
-function Legend({ placeNames }: { placeNames: string[] }) {
-  // Build dynamic legend items for places
-  const placeLegendItems = placeNames.map((name) => ({
-    color: getPlaceColor(name, placeNames),
-    label: name,
-  }))
-
-  return (
-    <div
-      style={{
-        border: '1px solid currentColor',
-        borderRadius: '4px',
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '1rem',
-        marginBottom: '1rem',
-        opacity: 0.7,
-        padding: '0.5rem 1rem',
-      }}
-    >
-      <strong>Legend:</strong>
-      {staticLegendItems.map((item) => (
-        <div key={item.label} style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
-          <div
-            style={{
-              backgroundColor: item.color,
-              border: item.label === 'Tags' ? '1px dashed currentColor' : 'none',
-              height: '12px',
-              width: '20px',
-            }}
-          />
-          <span>{item.label}</span>
-        </div>
-      ))}
-      {placeLegendItems.length > 0 && (
-        <>
-          <span style={{ opacity: 0.5 }}>|</span>
-          <span style={{ fontStyle: 'italic' }}>Places:</span>
-          {placeLegendItems.map((item) => (
-            <div key={item.label} style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
-              <div
-                style={{
-                  backgroundColor: item.color,
-                  height: '12px',
-                  width: '20px',
-                }}
-              />
-              <span>{item.label}</span>
-            </div>
-          ))}
-        </>
-      )}
-    </div>
   )
 }
 
@@ -367,13 +414,15 @@ interface TimelineChartProps {
   productivity: ProductivityRecord[]
   places: Place[]
   tags: Tag[]
-  sleepVisible: boolean
-  exerciseVisible: boolean
-  meditationVisible: boolean
+  showSleepMeditation: Signal<boolean>
+  showExercise: Signal<boolean>
+  showPlaces: Signal<boolean>
   dataStart: Date
   dataEnd: Date
   visibleStart: Date
   visibleEnd: Date
+  uniquePlaceNames: string[]
+  uniqueExerciseTypes: string[]
   onZoom: (start: Date, end: Date) => void
   onZoomOut: () => void
 }
@@ -385,32 +434,20 @@ function TimelineChart({
   productivity,
   places,
   tags,
-  sleepVisible,
-  exerciseVisible,
-  meditationVisible,
+  showSleepMeditation,
+  showExercise,
+  showPlaces,
   dataStart,
   dataEnd,
   visibleStart,
   visibleEnd,
+  uniquePlaceNames,
+  uniqueExerciseTypes,
   onZoom,
-  onZoomOut,
 }: TimelineChartProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const brushRef = useRef<SVGGElement>(null)
-
-  const margin = { bottom: 30, left: 40, right: 50, top: 10 }
-  const width = 1000
-  const height = 500
-
-  const chartWidth = width - margin.left - margin.right
-  const chartHeight = height - margin.top - margin.bottom
-
-  // Track heights for different data layers
-  const trackHeight = chartHeight / 8
-  const trackComputer = 0
-  const trackMobile = trackHeight
-  const trackExercise = 2 * trackHeight
-  const trackPlaces = 3 * trackHeight
+  const xAxisRef = useRef<SVGGElement>(null)
 
   // Time scale based on view range
   const x = d3.scaleTime().domain([visibleStart, visibleEnd]).range([0, chartWidth])
@@ -421,14 +458,11 @@ function TimelineChart({
   // HRV y scale (right axis) - typical RMSSD values range from 10-100ms
   const yHrv = d3.scaleLinear().domain([0, 150]).range([chartHeight, 0])
 
-  // Get unique place names for consistent coloring
-  const uniquePlaceNames = [...new Set(places.map((p) => p.region))].sort()
-
   // Filter activities by type
-  const sleepSessions = sleepVisible ? activities.filter((a) => a.activityType === 'sleep') : []
-  const exerciseSessions = exerciseVisible ? activities.filter((a) => a.activityType === 'exercise') : []
+  const sleepSessions = showSleepMeditation.value ? activities.filter((a) => a.activityType === 'sleep') : []
   const meditationSessions =
-    meditationVisible ? activities.filter((a) => a.activityType === 'meditation') : []
+    showSleepMeditation.value ? activities.filter((a) => a.activityType === 'meditation') : []
+  const exerciseSessions = showExercise.value ? activities.filter((a) => a.activityType === 'exercise') : []
 
   // Setup brush for selection zoom
   useEffect(() => {
@@ -458,46 +492,72 @@ function TimelineChart({
     d3.select(brushRef.current).call(brush)
   }, [chartWidth, chartHeight, visibleStart, visibleEnd, onZoom])
 
-  // Setup wheel zoom
+  // Update x-axis with appropriate ticks based on zoom level
   useEffect(() => {
-    if (!svgRef.current) return
+    if (!xAxisRef.current) return
 
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault()
+    const rangeMs = visibleEnd.getTime() - visibleStart.getTime()
+    const rangeHours = rangeMs / (1000 * 60 * 60)
 
-      const rect = svgRef.current!.getBoundingClientRect()
-      const mouseX = event.clientX - rect.left - margin.left
+    // Choose appropriate tick interval based on visible range
+    let tickInterval: d3.TimeInterval
+    let tickFormat: string
 
-      // Get current view range
-      const currentStart = visibleStart.getTime()
-      const currentEnd = visibleEnd.getTime()
-      const currentRange = currentEnd - currentStart
+    const rangeDays = rangeHours / 24
 
-      // Calculate zoom factor (positive delta = zoom out, negative = zoom in)
-      const zoomFactor = event.deltaY > 0 ? 1.2 : 0.8
-
-      // Calculate new range
-      const newRange = currentRange * zoomFactor
-
-      // Calculate where in the view the mouse is (0-1)
-      const mouseRatio = Math.max(0, Math.min(1, mouseX / chartWidth))
-
-      // Calculate new start/end centered on mouse position
-      const mouseTime = currentStart + mouseRatio * currentRange
-      const newStart = new Date(mouseTime - mouseRatio * newRange)
-      const newEnd = new Date(mouseTime + (1 - mouseRatio) * newRange)
-
-      // Check if we're zooming out beyond the data range
-      if (newStart.getTime() < dataStart.getTime() || newEnd.getTime() > dataEnd.getTime()) {
-        onZoomOut()
-      } else {
-        onZoom(newStart, newEnd)
-      }
+    if (rangeHours <= 1) {
+      // Less than 1 hour: show every 5 minutes
+      tickInterval = d3.timeMinute.every(5)!
+      tickFormat = '%H:%M'
+    } else if (rangeHours <= 3) {
+      // 1-3 hours: show every 15 minutes
+      tickInterval = d3.timeMinute.every(15)!
+      tickFormat = '%H:%M'
+    } else if (rangeHours <= 6) {
+      // 3-6 hours: show every 30 minutes
+      tickInterval = d3.timeMinute.every(30)!
+      tickFormat = '%H:%M'
+    } else if (rangeHours <= 12) {
+      // 6-12 hours: show every hour
+      tickInterval = d3.timeHour.every(1)!
+      tickFormat = '%H:%M'
+    } else if (rangeHours <= 24) {
+      // 12-24 hours: show every 2 hours
+      tickInterval = d3.timeHour.every(2)!
+      tickFormat = '%H:%M'
+    } else if (rangeHours <= 48) {
+      // 1-2 days: show every 4 hours
+      tickInterval = d3.timeHour.every(4)!
+      tickFormat = '%a %H'
+    } else if (rangeDays <= 7) {
+      // 2-7 days: show every 12 hours
+      tickInterval = d3.timeHour.every(12)!
+      tickFormat = '%a %H'
+    } else if (rangeDays <= 14) {
+      // 1-2 weeks: show every day
+      tickInterval = d3.timeDay.every(1)!
+      tickFormat = '%b %d'
+    } else if (rangeDays <= 31) {
+      // 2 weeks - 1 month: show every 2 days
+      tickInterval = d3.timeDay.every(2)!
+      tickFormat = '%b %d'
+    } else if (rangeDays <= 90) {
+      // 1-3 months: show every week
+      tickInterval = d3.timeWeek.every(1)!
+      tickFormat = '%b %d'
+    } else {
+      // More than 3 months: show every 2 weeks
+      tickInterval = d3.timeWeek.every(2)!
+      tickFormat = '%b %d'
     }
 
-    svgRef.current.addEventListener('wheel', handleWheel, { passive: false })
-    return () => svgRef.current?.removeEventListener('wheel', handleWheel)
-  }, [visibleStart, visibleEnd, dataStart, dataEnd, chartWidth, margin.left, onZoom, onZoomOut])
+    d3.select(xAxisRef.current).call(
+      d3
+        .axisBottom(x)
+        .ticks(tickInterval)
+        .tickFormat((d) => d3.timeFormat(tickFormat)(d as Date)),
+    )
+  }, [visibleStart, visibleEnd])
 
   // Double-click to reset zoom
   const handleDoubleClick = useCallback(() => {
@@ -512,66 +572,156 @@ function TimelineChart({
       style={{ color: 'currentColor', cursor: 'crosshair' }}
       onDblClick={handleDoubleClick}
     >
+      {/* Lane labels on the left */}
+      <g transform={`translate(0,${margin.top})`}>
+        {/* Sleep/Meditation lane label */}
+        <foreignObject x={5} y={trackSleepMeditation} width={margin.left - 10} height={trackHeight}>
+          <label
+            style={{
+              alignItems: 'center',
+              cursor: 'pointer',
+              display: 'flex',
+              fontSize: '12px',
+              gap: '4px',
+              height: '100%',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showSleepMeditation.value}
+              onChange={(e) => (showSleepMeditation.value = (e.target as HTMLInputElement).checked)}
+            />
+            <span>
+              Sleep <span style={{ color: colors.sleep }}>●</span> / Meditation{' '}
+              <span style={{ color: colors.meditation }}>●</span>
+            </span>
+          </label>
+        </foreignObject>
+
+        {/* Exercise lane label */}
+        <foreignObject x={5} y={trackExercise} width={margin.left - 10} height={trackHeight}>
+          <label
+            style={{
+              alignItems: 'center',
+              cursor: 'pointer',
+              display: 'flex',
+              fontSize: '12px',
+              gap: '4px',
+              height: '100%',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showExercise.value}
+              onChange={(e) => (showExercise.value = (e.target as HTMLInputElement).checked)}
+            />
+            <span>
+              Exercise <span style={{ color: colors.exercise }}>●</span>
+            </span>
+          </label>
+        </foreignObject>
+
+        {/* Places lane label */}
+        <foreignObject x={5} y={trackPlaces} width={margin.left - 10} height={trackHeight}>
+          <label
+            style={{
+              alignItems: 'center',
+              cursor: 'pointer',
+              display: 'flex',
+              fontSize: '12px',
+              gap: '4px',
+              height: '100%',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showPlaces.value}
+              onChange={(e) => (showPlaces.value = (e.target as HTMLInputElement).checked)}
+            />
+            <span>Location</span>
+          </label>
+        </foreignObject>
+      </g>
+
       <g transform={`translate(${margin.left},${margin.top})`}>
-        {/* Sleep sessions - full height blue background */}
+        {/* Lane separator lines */}
+        <line x1={0} y1={trackHeight} x2={chartWidth} y2={trackHeight} stroke="currentColor" opacity={0.2} />
+        <line
+          x1={0}
+          y1={trackHeight * 2}
+          x2={chartWidth}
+          y2={trackHeight * 2}
+          stroke="currentColor"
+          opacity={0.2}
+        />
+        <line
+          x1={0}
+          y1={trackHeight * 3}
+          x2={chartWidth}
+          y2={trackHeight * 3}
+          stroke="currentColor"
+          opacity={0.2}
+        />
+
+        {/* Sleep sessions - in sleep/meditation lane */}
         {sleepSessions.map((session, i) =>
           session.endTime ?
             <rect
               key={`sleep-${i}`}
               x={x(session.startTime)}
-              y={0}
+              y={trackSleepMeditation}
               width={Math.max(0, x(session.endTime) - x(session.startTime))}
-              height={chartHeight}
+              height={trackHeight}
               fill={colors.sleep}
+              opacity={0.4}
             />
           : null,
         )}
 
-        {/* Meditation sessions - full height purple background */}
+        {/* Meditation sessions - in sleep/meditation lane */}
         {meditationSessions.map((session, i) =>
           session.endTime ?
             <rect
               key={`meditation-${i}`}
               x={x(session.startTime)}
-              y={0}
+              y={trackSleepMeditation}
               width={Math.max(0, x(session.endTime) - x(session.startTime))}
-              height={chartHeight}
+              height={trackHeight}
               fill={colors.meditation}
+              opacity={0.6}
             />
           : null,
         )}
 
-        {/* Productivity (Computer) - track 0 */}
+        {/* Productivity (Computer) - overlaid on top */}
         {productivity
           .filter((p) => !p.isMobile)
           .map((p, i) => (
             <rect
               key={`computer-${i}`}
               x={x(p.startTime)}
-              y={trackComputer}
+              y={0}
               width={Math.max(0, x(p.endTime) - x(p.startTime))}
-              height={trackHeight}
+              height={4}
               fill={colors.computer}
-              opacity={0.8}
             />
           ))}
 
-        {/* Productivity (Mobile) - track 1 */}
+        {/* Productivity (Mobile) - overlaid on top */}
         {productivity
           .filter((p) => p.isMobile)
           .map((p, i) => (
             <rect
               key={`mobile-${i}`}
               x={x(p.startTime)}
-              y={trackMobile}
+              y={4}
               width={Math.max(0, x(p.endTime) - x(p.startTime))}
-              height={trackHeight}
+              height={4}
               fill={colors.mobile}
-              opacity={0.8}
             />
           ))}
 
-        {/* Exercise sessions - track 2 */}
+        {/* Exercise sessions - in exercise lane */}
         {exerciseSessions.map((session, i) =>
           session.endTime ?
             <rect
@@ -580,22 +730,25 @@ function TimelineChart({
               y={trackExercise}
               width={Math.max(0, x(session.endTime) - x(session.startTime))}
               height={trackHeight}
-              fill={colors.exercise}
+              fill={getExerciseColor(session.title, uniqueExerciseTypes)}
+              opacity={0.6}
             />
           : null,
         )}
 
-        {/* Places - track 3 */}
-        {places.map((place, i) => (
-          <rect
-            key={`place-${i}`}
-            x={x(place.startTime)}
-            y={trackPlaces}
-            width={Math.max(0, x(place.endTime) - x(place.startTime))}
-            height={trackHeight}
-            fill={getPlaceColor(place.region, uniquePlaceNames)}
-          />
-        ))}
+        {/* Places - in places lane */}
+        {showPlaces.value &&
+          places.map((place, i) => (
+            <rect
+              key={`place-${i}`}
+              x={x(place.startTime)}
+              y={trackPlaces}
+              width={Math.max(0, x(place.endTime) - x(place.startTime))}
+              height={trackHeight}
+              fill={getPlaceColor(place.region, uniquePlaceNames)}
+              opacity={0.7}
+            />
+          ))}
 
         {/* Tags - dashed lines or rectangles */}
         {tags.map((tag, i) =>
@@ -669,18 +822,7 @@ function TimelineChart({
         />
 
         {/* X-axis */}
-        <g
-          transform={`translate(0,${chartHeight})`}
-          ref={(g) => {
-            if (g)
-              d3.select(g).call(
-                d3
-                  .axisBottom(x)
-                  .ticks(d3.timeHour.every(6))
-                  .tickFormat((d) => d3.timeFormat('%a %H')(d as Date)),
-              )
-          }}
-        />
+        <g ref={xAxisRef} transform={`translate(0,${chartHeight})`} />
 
         {/* Brush for selection zoom */}
         <g ref={brushRef} class="brush" />
