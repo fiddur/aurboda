@@ -132,6 +132,26 @@ data class BodyFatRecordSerializable(
     }
 }
 
+// --- Body Water Mass Record ---
+@Serializable
+data class BodyWaterMassRecordSerializable(
+    val time: String,
+    val massInKilograms: Double,
+    val metadata: HealthConnectRecordMetadata
+) {
+    companion object {
+        fun fromRecordsList(classRecords: List<Record>): List<BodyWaterMassRecordSerializable> {
+            return classRecords.filterIsInstance<BodyWaterMassRecord>().map { record ->
+                BodyWaterMassRecordSerializable(
+                    time = record.time.toIsoString(),
+                    massInKilograms = record.mass.inKilograms,
+                    metadata = record.metadata.toSerializable()
+                )
+            }
+        }
+    }
+}
+
 // --- Bone Mass Record ---
 @Serializable
 data class BoneMassRecordSerializable(

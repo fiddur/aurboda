@@ -105,14 +105,14 @@ class BleConnectionManager(private val context: Context) {
             }
         }
 
-        @Deprecated("Deprecated in Java")
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray
         ) {
             when (characteristic.uuid) {
                 HEART_RATE_MEASUREMENT_UUID -> {
-                    val sample = parseHeartRateMeasurement(characteristic.value)
+                    val sample = parseHeartRateMeasurement(value)
                     if (sample != null) {
                         Log.d(TAG, "Heart rate: ${sample.bpm} bpm")
                         _currentHeartRate.value = sample.bpm

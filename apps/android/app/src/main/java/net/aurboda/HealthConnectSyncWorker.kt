@@ -166,17 +166,8 @@ class HealthConnectSyncWorker(
                 }
             }
 
-            val nextToken = changesResponse.nextChangesToken
             hasMore = changesResponse.hasMore
-
-            if (hasMore && nextToken != null) {
-                currentToken = nextToken
-            } else {
-                hasMore = false
-                if (nextToken != null) {
-                    currentToken = nextToken
-                }
-            }
+            currentToken = changesResponse.nextChangesToken
         }
 
         // Save the new token if we have records to send (token will be updated after successful send)
@@ -205,7 +196,7 @@ class HealthConnectSyncWorker(
                 is HeartRateVariabilityRmssdRecord, is WeightRecord, is HeartRateRecord,
                 is ExerciseSessionRecord, is SpeedRecord, is PowerRecord, is NutritionRecord,
                 is LeanBodyMassRecord, is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord,
-                is HeightRecord, is RestingHeartRateRecord -> true
+                is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord -> true
                 else -> false
             }
         }
@@ -280,6 +271,11 @@ class HealthConnectSyncWorker(
                 BoneMassRecord::class -> postData(
                     BoneMassRecordSerializable.fromRecordsList(classRecords),
                     BoneMassRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                BodyWaterMassRecord::class -> postData(
+                    BodyWaterMassRecordSerializable.fromRecordsList(classRecords),
+                    BodyWaterMassRecordSerializable.serializer(),
                     apiUrl, recordTypeSimpleName, authToken
                 )
                 HeightRecord::class -> postData(
