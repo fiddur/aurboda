@@ -18,6 +18,11 @@ Currently in early development. No public signup, but self-hosting is straightfo
 <p align="center">
   <img src="apps/web/public/screenshots/app.jpg" alt="HR Zone tracking" width="280" />
   <img src="apps/web/public/screenshots/widget.jpg" alt="Home screen widget" width="280" />
+  <img src="apps/web/public/screenshots/app-live.png" alt="Live BLE sensors" width="280" />
+</p>
+
+<p align="center">
+  <img src="apps/web/public/screenshots/ai-chat.png" alt="AI health insights" width="500" />
 </p>
 
 
@@ -71,6 +76,8 @@ Data Sources
 | Source | Setup |
 |--------|-------|
 | Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), enter your server URL (e.g., `http://YOUR_SERVER_IP`), and log in with your credentials |
+| BLE Heart Rate Sensors | Pair Bluetooth heart rate monitors (e.g., Polar H10) via the app's Live screen for real-time HR and HRV tracking |
+| BLE Step Sensors | Pair Bluetooth running pods (e.g., Zwift RunPod) via the app's Live screen for real-time cadence and step counting |
 | OwnTracks | [OwnTracks setup guide](docs/owntracks.md) (JSON HTTP mode) |
 | Oura | Connect via OAuth in user settings (web UI). Requires `OURA_CLIENT` and `OURA_SECRET` env vars on backend. |
 | RescueTime | Configure API key in user settings (web UI). Get key from [RescueTime API settings](https://www.rescuetime.com/anapi/manage). |
