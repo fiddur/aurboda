@@ -86,9 +86,10 @@ fun LiveScreen(
         hasHealthConnectWritePermission = hasWritePermission
         Log.d("LiveScreen", "Health Connect permission result: write=$hasWritePermission")
 
-        // If permission was granted and we have a pending device, connect to it
-        if (hasWritePermission && pendingDeviceToConnect != null) {
-            SensorService.connect(context, pendingDeviceToConnect!!.address)
+        // Connect to device regardless of permission result - data still syncs to backend,
+        // and SensorService gracefully handles missing Health Connect write permission
+        pendingDeviceToConnect?.let { device ->
+            SensorService.connect(context, device.address)
             pendingDeviceToConnect = null
         }
     }
@@ -293,12 +294,21 @@ fun LiveScreen(
                 },
                 onConnectDevice = { device ->
                     // Check Health Connect write permission before connecting
-                    if (hasHealthConnectWritePermission == true) {
-                        SensorService.connect(context, device.address)
-                    } else {
-                        // Store device and request permission
-                        pendingDeviceToConnect = device
-                        healthConnectPermissionLauncher.launch(setOf(healthConnectWritePermission))
+                    when (hasHealthConnectWritePermission) {
+                        true -> {
+                            // Permission already granted, connect directly
+                            SensorService.connect(context, device.address)
+                        }
+                        false -> {
+                            // Permission was denied previously, connect anyway
+                            // (data still syncs to backend, just not to Health Connect)
+                            SensorService.connect(context, device.address)
+                        }
+                        null -> {
+                            // Haven't asked yet, request permission first
+                            pendingDeviceToConnect = device
+                            healthConnectPermissionLauncher.launch(setOf(healthConnectWritePermission))
+                        }
                     }
                 }
             )
