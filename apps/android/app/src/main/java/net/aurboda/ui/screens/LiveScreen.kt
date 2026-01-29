@@ -91,11 +91,15 @@ fun LiveScreen(
     val healthConnectPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
     ) { granted: Set<String> ->
-        val hasHrPermission = granted.contains(hrWritePermission)
-        val hasStepsPermission = granted.contains(stepsWritePermission)
-        hasHrWritePermission = hasHrPermission
-        hasStepsWritePermission = hasStepsPermission
-        Log.d("LiveScreen", "Health Connect permission result: hr=$hasHrPermission, steps=$hasStepsPermission")
+        // Only update permission state if we actually asked for that permission
+        // (don't set to false if we didn't ask for it)
+        if (granted.contains(hrWritePermission)) {
+            hasHrWritePermission = true
+        }
+        if (granted.contains(stepsWritePermission)) {
+            hasStepsWritePermission = true
+        }
+        Log.d("LiveScreen", "Health Connect permission granted: $granted")
 
         // Connect to device regardless of permission result - data still syncs to backend,
         // and SensorService gracefully handles missing Health Connect write permission
