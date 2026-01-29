@@ -2,6 +2,7 @@ package net.aurboda
 
 import net.aurboda.ble.BleConnectionState
 import net.aurboda.ble.ConnectedDevice
+import net.aurboda.ble.DeviceState
 import net.aurboda.ble.LiveHeartRateSample
 import net.aurboda.ble.SensorServiceState
 import net.aurboda.ble.SensorType
@@ -28,11 +29,13 @@ class SensorServiceTest {
         val state = SensorServiceState()
 
         assertFalse(state.isRunning)
-        assertTrue(state.connectionState is BleConnectionState.Disconnected)
-        assertNull(state.connectedDevice)
+        assertTrue(state.connectedDevices.isEmpty())
+        assertTrue(state.connectingDevices.isEmpty())
         assertNull(state.currentHeartRate)
         assertNull(state.lastSyncTime)
         assertEquals(0, state.pendingSamples)
+        assertFalse(state.hasConnectedDevices)
+        assertFalse(state.isConnecting)
     }
 
     @Test
@@ -45,35 +48,48 @@ class SensorServiceTest {
     }
 
     @Test
-    fun `SensorServiceState copy updates connectionState`() {
+    fun `SensorServiceState copy updates connectingDevices`() {
         val initial = SensorServiceState()
-        val updated = initial.copy(connectionState = BleConnectionState.Connected)
+        val updated = initial.copy(connectingDevices = setOf("AA:BB:CC:DD:EE:FF"))
 
-        assertTrue(updated.connectionState is BleConnectionState.Connected)
-        assertTrue(initial.connectionState is BleConnectionState.Disconnected)
+        assertTrue(updated.isConnecting)
+        assertEquals(1, updated.connectingDevices.size)
+        assertFalse(initial.isConnecting)
     }
 
     @Test
-    fun `SensorServiceState copy updates connectedDevice`() {
+    fun `SensorServiceState copy updates connectedDevices`() {
         val device = ConnectedDevice(
             address = "AA:BB:CC:DD:EE:FF",
             name = "Polar H10",
             type = SensorType.HEART_RATE
         )
+        val deviceState = DeviceState(device = device, currentHeartRate = 72)
         val initial = SensorServiceState()
-        val updated = initial.copy(connectedDevice = device)
+        val updated = initial.copy(connectedDevices = mapOf(device.address to deviceState))
 
-        assertEquals(device, updated.connectedDevice)
-        assertNull(initial.connectedDevice)
+        assertEquals(1, updated.connectedDevices.size)
+        assertTrue(updated.hasConnectedDevices)
+        assertEquals(deviceState, updated.connectedDevices[device.address])
+        assertTrue(initial.connectedDevices.isEmpty())
     }
 
     @Test
-    fun `SensorServiceState copy updates currentHeartRate`() {
-        val initial = SensorServiceState()
-        val updated = initial.copy(currentHeartRate = 72)
+    fun `SensorServiceState convenience accessor for HR device`() {
+        val hrDevice = ConnectedDevice(
+            address = "AA:BB:CC:DD:EE:FF",
+            name = "Polar H10",
+            type = SensorType.HEART_RATE
+        )
+        val hrState = DeviceState(device = hrDevice, currentHeartRate = 72)
 
-        assertEquals(72, updated.currentHeartRate)
-        assertNull(initial.currentHeartRate)
+        val state = SensorServiceState(
+            connectedDevices = mapOf(hrDevice.address to hrState)
+        )
+
+        assertEquals(hrState, state.hrDevice)
+        assertEquals(72, state.currentHeartRate)
+        assertNull(state.rscDevice)
     }
 
     @Test
@@ -96,24 +112,36 @@ class SensorServiceTest {
     }
 
     @Test
-    fun `SensorServiceState supports chained updates`() {
-        val device = ConnectedDevice(
+    fun `SensorServiceState supports multiple connected devices`() {
+        val hrDevice = ConnectedDevice(
             address = "AA:BB:CC:DD:EE:FF",
             name = "Polar H10",
             type = SensorType.HEART_RATE
         )
+        val rscDevice = ConnectedDevice(
+            address = "11:22:33:44:55:66",
+            name = "Stryd",
+            type = SensorType.RUNNING_SPEED_CADENCE
+        )
+        val hrState = DeviceState(device = hrDevice, currentHeartRate = 85)
+        val rscState = DeviceState(device = rscDevice, currentCadence = 180, stepsSinceStart = 500)
 
-        val state = SensorServiceState()
-            .copy(isRunning = true)
-            .copy(connectionState = BleConnectionState.Connected)
-            .copy(connectedDevice = device)
-            .copy(currentHeartRate = 85)
-            .copy(pendingSamples = 3)
+        val state = SensorServiceState(
+            isRunning = true,
+            connectedDevices = mapOf(
+                hrDevice.address to hrState,
+                rscDevice.address to rscState
+            ),
+            pendingSamples = 3
+        )
 
         assertTrue(state.isRunning)
-        assertTrue(state.connectionState is BleConnectionState.Connected)
-        assertEquals(device, state.connectedDevice)
+        assertEquals(2, state.connectedDevices.size)
+        assertEquals(hrState, state.hrDevice)
+        assertEquals(rscState, state.rscDevice)
         assertEquals(85, state.currentHeartRate)
+        assertEquals(180, state.currentCadence)
+        assertEquals(500, state.stepsSinceStart)
         assertEquals(3, state.pendingSamples)
     }
 
