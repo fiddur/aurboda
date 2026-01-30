@@ -385,9 +385,8 @@ private fun ConnectedDeviceCard(
                     hrData = hrChartData,
                     hrvData = hrvChartData,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .padding(horizontal = 8.dp, vertical = 40.dp)  // Leave space for title and buttons
+                        .matchParentSize()
+                        .padding(start = 8.dp, end = 8.dp, top = 32.dp, bottom = 48.dp)
                 )
             }
 
@@ -710,7 +709,7 @@ private fun LiveDataChart(
             data.forEachIndexed { index, point ->
                 val x = ((point.timestamp - startTime).toFloat() / CHART_DURATION_MS) * width
                 val normalizedY = (point.value - minValue) / valueRange
-                val y = height - (normalizedY * height * 0.8f + height * 0.1f)  // 10% padding top/bottom
+                val y = height - (normalizedY * height)  // Use full height, scale to exact min/max
 
                 if (!started) {
                     path.moveTo(x, y)
@@ -727,20 +726,20 @@ private fun LiveDataChart(
             )
         }
 
-        // Calculate ranges for HR data (typical HR: 40-200 BPM)
+        // Calculate ranges for HR data - use exact min/max from data
         if (hrData.isNotEmpty()) {
             val hrValues = hrData.map { it.value }
-            val hrMin = (hrValues.minOrNull() ?: 60f) - 10f
-            val hrMax = (hrValues.maxOrNull() ?: 100f) + 10f
-            drawDataLine(hrData, hrColor, hrMin.coerceAtLeast(30f), hrMax.coerceAtMost(220f))
+            val hrMin = hrValues.minOrNull() ?: 60f
+            val hrMax = hrValues.maxOrNull() ?: 100f
+            drawDataLine(hrData, hrColor, hrMin, hrMax)
         }
 
-        // Calculate ranges for HRV data (typical HRV: 10-150 ms)
+        // Calculate ranges for HRV data - use exact min/max from data
         if (hrvData.isNotEmpty()) {
             val hrvValues = hrvData.map { it.value }
-            val hrvMin = (hrvValues.minOrNull() ?: 20f) - 10f
-            val hrvMax = (hrvValues.maxOrNull() ?: 80f) + 10f
-            drawDataLine(hrvData, hrvColor, hrvMin.coerceAtLeast(0f), hrvMax.coerceAtMost(200f))
+            val hrvMin = hrvValues.minOrNull() ?: 20f
+            val hrvMax = hrvValues.maxOrNull() ?: 80f
+            drawDataLine(hrvData, hrvColor, hrvMin, hrvMax)
         }
     }
 }
