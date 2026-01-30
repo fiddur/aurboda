@@ -20,6 +20,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate version code
+        id: version
+        run: |
+          VERSION_CODE=$(git rev-list --count HEAD)
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Calculated version code: $VERSION_CODE"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -46,6 +55,8 @@ jobs:
           echo "KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> local.properties
 
       - name: Build release APK
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.VERSION_CODE }}
         run: ./gradlew assembleRelease
 
       - name: Upload release APK
@@ -70,6 +81,18 @@ jobs:
         if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
         run: cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/aurboda.apk
 
+      - name: Generate version.json
+        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        run: |
+          cat > app/build/outputs/apk/release/version.json << EOF
+          {
+            "versionCode": ${{ steps.version.outputs.VERSION_CODE }},
+            "versionName": "1.0.${{ steps.version.outputs.VERSION_CODE }}",
+            "downloadUrl": "https://github.com/${{ github.repository }}/releases/latest/download/aurboda.apk",
+            "releaseNotes": "Built from commit ${{ github.sha }}"
+          }
+          EOF
+
       - name: Update latest release
         if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
         env:
@@ -81,13 +104,15 @@ jobs:
           # Delete the tag locally and remotely
           git tag -d latest || true
           git push origin :refs/tags/latest || true
-          # Create new release with the APK
+          # Create new release with the APK and version.json
           gh release create latest \
             --title "Latest Development Build" \
             --notes "Automatically updated on each push to develop.
 
           **Download:** [aurboda.apk](https://github.com/${{ github.repository }}/releases/latest/download/aurboda.apk)
 
-          Built from commit: ${{ github.sha }}" \
+          Built from commit: ${{ github.sha }}
+          Version code: ${{ steps.version.outputs.VERSION_CODE }}" \
             --prerelease \
-            apps/android/app/build/outputs/apk/release/aurboda.apk
+            apps/android/app/build/outputs/apk/release/aurboda.apk \
+            apps/android/app/build/outputs/apk/release/version.json
