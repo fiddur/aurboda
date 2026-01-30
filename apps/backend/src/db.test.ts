@@ -1,3 +1,14 @@
+/**
+ * Database unit tests (mock-based).
+ *
+ * These tests use mocks to verify:
+ * - Business logic and validation (e.g., metric validation, deduplication)
+ * - Connection management behavior
+ * - Module isolation
+ *
+ * For SQL correctness, see db.integration.test.ts which runs against real PostgreSQL.
+ */
+
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 // Create mock query function that will be used by the mocked module
@@ -267,170 +278,6 @@ describe('getSleepSessions', () => {
     )
 
     expect(result).toEqual([])
-  })
-})
-
-describe('deleteTag', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.resetModules()
-    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
-  })
-
-  test('deletes tag by externalId and returns true when found', async () => {
-    mockQueryFn.mockResolvedValue({ rowCount: 1, rows: [] })
-
-    const { deleteTag } = await import('./db.js')
-    const result = await deleteTag('testuser', 'tag-123')
-
-    expect(result).toBe(true)
-
-    // Find the DELETE call (skip SET ROLE calls)
-    const deleteCall = mockQueryFn.mock.calls.find((call) => call[0].includes('DELETE'))
-    expect(deleteCall).toBeDefined()
-    expect(deleteCall![0]).toContain('DELETE FROM tags')
-    expect(deleteCall![0]).toContain('external_id')
-    expect(deleteCall![1]).toContain('tag-123')
-  })
-
-  test('returns false when tag not found', async () => {
-    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
-
-    const { deleteTag } = await import('./db.js')
-    const result = await deleteTag('testuser', 'nonexistent-tag')
-
-    expect(result).toBe(false)
-  })
-})
-
-describe('findMergeableTag', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.resetModules()
-    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
-  })
-
-  test('returns undefined when no mergeable tag found', async () => {
-    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
-
-    const { findMergeableTag } = await import('./db.js')
-    const result = await findMergeableTag(
-      'testuser',
-      'computer:dharma',
-      new Date('2024-01-15T10:00:00Z'),
-      180,
-    )
-
-    expect(result).toBeUndefined()
-  })
-
-  test('finds tag with end_time within merge span', async () => {
-    mockQueryFn.mockResolvedValue({
-      rowCount: 1,
-      rows: [
-        {
-          end_time: new Date('2024-01-15T09:59:00Z'),
-          external_id: 'tag-123',
-          id: 'db-id',
-          source: 'manual',
-          start_time: new Date('2024-01-15T09:00:00Z'),
-          tag: 'computer:dharma',
-        },
-      ],
-    })
-
-    const { findMergeableTag } = await import('./db.js')
-    const result = await findMergeableTag(
-      'testuser',
-      'computer:dharma',
-      new Date('2024-01-15T10:00:00Z'),
-      180,
-    )
-
-    expect(result).toBeDefined()
-    expect(result!.externalId).toBe('tag-123')
-    expect(result!.tag).toBe('computer:dharma')
-    expect(result!.startTime).toEqual(new Date('2024-01-15T09:00:00Z'))
-    expect(result!.endTime).toEqual(new Date('2024-01-15T09:59:00Z'))
-
-    // Verify query params
-    const selectCall = mockQueryFn.mock.calls.find((call) => call[0].includes('SELECT'))
-    expect(selectCall).toBeDefined()
-    expect(selectCall![0]).toContain("source = 'manual'")
-    expect(selectCall![1]).toContain('computer:dharma')
-  })
-
-  test('finds point-in-time tag (no end_time) within merge span', async () => {
-    mockQueryFn.mockResolvedValue({
-      rowCount: 1,
-      rows: [
-        {
-          end_time: null,
-          external_id: 'tag-456',
-          id: 'db-id',
-          source: 'manual',
-          start_time: new Date('2024-01-15T09:58:00Z'),
-          tag: 'coffee',
-        },
-      ],
-    })
-
-    const { findMergeableTag } = await import('./db.js')
-    const result = await findMergeableTag('testuser', 'coffee', new Date('2024-01-15T10:00:00Z'), 180)
-
-    expect(result).toBeDefined()
-    expect(result!.externalId).toBe('tag-456')
-    expect(result!.endTime).toBeUndefined()
-  })
-
-  test('uses correct time window based on merge span', async () => {
-    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
-
-    const { findMergeableTag } = await import('./db.js')
-    const newStartTime = new Date('2024-01-15T10:00:00Z')
-    await findMergeableTag('testuser', 'test-tag', newStartTime, 300)
-
-    const selectCall = mockQueryFn.mock.calls.find((call) => call[0].includes('SELECT'))
-    expect(selectCall).toBeDefined()
-
-    // earliestMergeTime should be 300 seconds before newStartTime
-    const expectedEarliestTime = new Date('2024-01-15T09:55:00Z')
-    expect(selectCall![1][1]).toEqual(expectedEarliestTime)
-    expect(selectCall![1][2]).toEqual(newStartTime)
-  })
-})
-
-describe('updateTagEndTime', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.resetModules()
-    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
-  })
-
-  test('updates tag end_time and returns true when found', async () => {
-    mockQueryFn.mockResolvedValue({ rowCount: 1, rows: [] })
-
-    const { updateTagEndTime } = await import('./db.js')
-    const result = await updateTagEndTime('testuser', 'tag-123', new Date('2024-01-15T10:30:00Z'))
-
-    expect(result).toBe(true)
-
-    const updateCall = mockQueryFn.mock.calls.find((call) => call[0].includes('UPDATE'))
-    expect(updateCall).toBeDefined()
-    expect(updateCall![0]).toContain('UPDATE tags')
-    expect(updateCall![0]).toContain('SET end_time')
-    // Check parameters: [endTime, externalId]
-    expect(updateCall![1][0]).toEqual(new Date('2024-01-15T10:30:00Z'))
-    expect(updateCall![1][1]).toBe('tag-123')
-  })
-
-  test('returns false when tag not found', async () => {
-    mockQueryFn.mockResolvedValue({ rowCount: 0, rows: [] })
-
-    const { updateTagEndTime } = await import('./db.js')
-    const result = await updateTagEndTime('testuser', 'nonexistent-tag', new Date('2024-01-15T10:30:00Z'))
-
-    expect(result).toBe(false)
   })
 })
 
