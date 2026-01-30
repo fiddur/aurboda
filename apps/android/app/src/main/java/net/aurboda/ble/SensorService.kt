@@ -72,6 +72,8 @@ data class DeviceState(
     val device: ConnectedDevice,
     val connectionState: BleConnectionState = BleConnectionState.Connected,
     val batteryLevel: Int? = null,
+    val rssi: Int? = null,
+    val lastDataReceivedTime: Instant? = null,
     // HR device specific
     val currentHeartRate: Int? = null,
     // RSC device specific
@@ -421,6 +423,20 @@ class SensorService : Service() {
             manager.stepsSinceStart.collect { steps ->
                 updateDeviceState(deviceAddress) { it.copy(stepsSinceStart = steps) }
                 updateNotification()
+            }
+        }
+
+        // Observe RSSI (signal strength)
+        jobs += serviceScope.launch {
+            manager.rssi.collect { rssi ->
+                updateDeviceState(deviceAddress) { it.copy(rssi = rssi) }
+            }
+        }
+
+        // Observe last data received time
+        jobs += serviceScope.launch {
+            manager.lastDataReceivedTime.collect { time ->
+                updateDeviceState(deviceAddress) { it.copy(lastDataReceivedTime = time) }
             }
         }
 
