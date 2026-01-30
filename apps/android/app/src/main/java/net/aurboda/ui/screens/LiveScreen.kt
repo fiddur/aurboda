@@ -6,6 +6,7 @@ import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +46,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -56,6 +61,7 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.StepsRecord
 import net.aurboda.ble.BleScanState
+import net.aurboda.ble.ChartDataPoint
 import net.aurboda.ble.DeviceState
 import net.aurboda.ble.DiscoveredDevice
 import net.aurboda.ble.SensorService
@@ -258,6 +264,8 @@ fun LiveScreen(
                     currentHrv = serviceState.currentHrv,
                     hrvReliable = serviceState.hrvReliable,
                     rrIntervalCount = serviceState.rrIntervalCount,
+                    hrChartData = serviceState.hrChartHistory,
+                    hrvChartData = serviceState.hrvChartHistory,
                     onEnableHealthConnect = {
                         healthConnectPermissionLauncher.launch(requiredPermissions)
                     },
@@ -353,6 +361,8 @@ private fun ConnectedDeviceCard(
     currentHrv: Double?,
     hrvReliable: Boolean,
     rrIntervalCount: Int,
+    hrChartData: List<ChartDataPoint>,
+    hrvChartData: List<ChartDataPoint>,
     onEnableHealthConnect: () -> Unit,
     onDisconnect: () -> Unit
 ) {
@@ -368,40 +378,54 @@ private fun ConnectedDeviceCard(
             containerColor = MaterialTheme.colorScheme.primaryContainer
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = when (device.type) {
-                        SensorType.HEART_RATE -> Icons.Default.Favorite
-                        SensorType.RUNNING_SPEED_CADENCE -> Icons.Default.PlayArrow
-                    },
-                    contentDescription = null,
-                    tint = when (device.type) {
-                        SensorType.HEART_RATE -> MaterialTheme.colorScheme.error
-                        SensorType.RUNNING_SPEED_CADENCE -> MaterialTheme.colorScheme.primary
-                    }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // Chart background layer - only show for HR devices with data
+            if (device.type == SensorType.HEART_RATE && (hrChartData.isNotEmpty() || hrvChartData.isNotEmpty())) {
+                LiveDataChart(
+                    hrData = hrChartData,
+                    hrvData = hrvChartData,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .padding(horizontal = 8.dp, vertical = 40.dp)  // Leave space for title and buttons
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = device.name ?: "Unknown Device",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                // Battery indicator
-                if (batteryLevel != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    BatteryIndicator(level = batteryLevel)
-                }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            // Foreground content
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = when (device.type) {
+                            SensorType.HEART_RATE -> Icons.Default.Favorite
+                            SensorType.RUNNING_SPEED_CADENCE -> Icons.Default.PlayArrow
+                        },
+                        contentDescription = null,
+                        tint = when (device.type) {
+                            SensorType.HEART_RATE -> MaterialTheme.colorScheme.error
+                            SensorType.RUNNING_SPEED_CADENCE -> MaterialTheme.colorScheme.primary
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = device.name ?: "Unknown Device",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    // Battery indicator
+                    if (batteryLevel != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        BatteryIndicator(level = batteryLevel)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
             when (device.type) {
                 SensorType.HEART_RATE -> {
@@ -510,7 +534,8 @@ private fun ConnectedDeviceCard(
                     }
                 }
             }
-        }
+        }  // Column
+        }  // Box
     }
 }
 
@@ -642,6 +667,80 @@ private fun DiscoveredDeviceItem(
             Button(onClick = onConnect) {
                 Text("Connect")
             }
+        }
+    }
+}
+
+private const val CHART_DURATION_MS = 5 * 60 * 1000L  // 5 minutes
+
+/**
+ * Draws a line chart with HR (red) and HRV (green) data as a background.
+ * The chart auto-scales vertically to fit the data with some padding.
+ */
+@Composable
+private fun LiveDataChart(
+    hrData: List<ChartDataPoint>,
+    hrvData: List<ChartDataPoint>,
+    modifier: Modifier = Modifier
+) {
+    val hrColor = Color(0xFFE57373)  // Light red
+    val hrvColor = Color(0xFF81C784)  // Light green
+
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        val now = System.currentTimeMillis()
+        val startTime = now - CHART_DURATION_MS
+
+        // Helper function to draw a line for a dataset
+        fun drawDataLine(
+            data: List<ChartDataPoint>,
+            color: Color,
+            minValue: Float,
+            maxValue: Float
+        ) {
+            if (data.size < 2) return
+
+            val valueRange = maxValue - minValue
+            if (valueRange <= 0) return
+
+            val path = Path()
+            var started = false
+
+            data.forEachIndexed { index, point ->
+                val x = ((point.timestamp - startTime).toFloat() / CHART_DURATION_MS) * width
+                val normalizedY = (point.value - minValue) / valueRange
+                val y = height - (normalizedY * height * 0.8f + height * 0.1f)  // 10% padding top/bottom
+
+                if (!started) {
+                    path.moveTo(x, y)
+                    started = true
+                } else {
+                    path.lineTo(x, y)
+                }
+            }
+
+            drawPath(
+                path = path,
+                color = color,
+                style = Stroke(width = 2f)
+            )
+        }
+
+        // Calculate ranges for HR data (typical HR: 40-200 BPM)
+        if (hrData.isNotEmpty()) {
+            val hrValues = hrData.map { it.value }
+            val hrMin = (hrValues.minOrNull() ?: 60f) - 10f
+            val hrMax = (hrValues.maxOrNull() ?: 100f) + 10f
+            drawDataLine(hrData, hrColor, hrMin.coerceAtLeast(30f), hrMax.coerceAtMost(220f))
+        }
+
+        // Calculate ranges for HRV data (typical HRV: 10-150 ms)
+        if (hrvData.isNotEmpty()) {
+            val hrvValues = hrvData.map { it.value }
+            val hrvMin = (hrvValues.minOrNull() ?: 20f) - 10f
+            val hrvMax = (hrvValues.maxOrNull() ?: 80f) + 10f
+            drawDataLine(hrvData, hrvColor, hrvMin.coerceAtLeast(0f), hrvMax.coerceAtMost(200f))
         }
     }
 }
