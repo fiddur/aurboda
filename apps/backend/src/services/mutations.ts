@@ -92,29 +92,9 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
         tag: existingTag.tag,
       }
     }
-
-    // No mergeable tag found - create a new one but include merged: false in response
-    const externalId = randomUUID()
-
-    await insertTag(user, {
-      endTime: input.endTime,
-      externalId,
-      source: 'manual',
-      startTime: input.startTime,
-      tag: input.tag,
-    })
-
-    return {
-      endTime: input.endTime?.toISOString(),
-      id: externalId,
-      merged: false,
-      startTime: input.startTime.toISOString(),
-      success: true,
-      tag: input.tag,
-    }
   }
 
-  // No mergeSpan - create a new tag without merge fields in response
+  // Create a new tag
   const externalId = randomUUID()
 
   await insertTag(user, {
@@ -131,6 +111,7 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
     startTime: input.startTime.toISOString(),
     success: true,
     tag: input.tag,
+    ...(input.mergeSpan !== undefined ? { merged: false } : {}),
   }
 }
 
