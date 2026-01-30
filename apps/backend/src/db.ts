@@ -25,22 +25,12 @@ export const _setClientForUser = (user: string, client: Client) => {
   dbByUser[user] = client
 }
 
-const redactSensitiveParams = (queryStr: string, params?: unknown[]): unknown[] | undefined => {
-  if (!params) return params
-  // Redact password params in user creation queries
-  if (queryStr.includes('ENCRYPTED PASSWORD') || queryStr.includes('password')) {
-    return params.map((p) => (typeof p === 'string' && p.length > 0 ? '[REDACTED]' : p))
-  }
-  return params
-}
-
 export const query = async <T extends QueryResultRow = QueryResultRow>(
   dbOrUser: Client | string,
   queryStr: string,
   params?: unknown[],
 ) => {
   const db = typeof dbOrUser === 'string' ? await getDbForUser(dbOrUser) : dbOrUser
-  console.log(`>>>`, queryStr, redactSensitiveParams(queryStr, params))
   const result = await db.query<T>(queryStr, params)
   return result
 }

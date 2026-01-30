@@ -71,18 +71,6 @@ const placeColorPalette = [
   '#6366f1', // Indigo
 ]
 
-// Exercise type colors
-const exerciseColorPalette = [
-  '#22c55e', // Green - default/first
-  '#f97316', // Orange
-  '#3b82f6', // Blue
-  '#ec4899', // Pink
-  '#8b5cf6', // Violet
-  '#14b8a6', // Teal
-  '#eab308', // Yellow
-  '#ef4444', // Red
-]
-
 // Generate consistent color for a place name
 const getPlaceColor = (placeName: string, allPlaces: string[]): string => {
   if (!placeName || placeName === 'Travel' || placeName === 'Unknown') {
@@ -90,15 +78,6 @@ const getPlaceColor = (placeName: string, allPlaces: string[]): string => {
   }
   const index = allPlaces.indexOf(placeName)
   return placeColorPalette[index % placeColorPalette.length]
-}
-
-// Generate consistent color for exercise type
-const getExerciseColor = (exerciseTitle: string | undefined, allTypes: string[]): string => {
-  if (!exerciseTitle) {
-    return exerciseColorPalette[0]
-  }
-  const index = allTypes.indexOf(exerciseTitle)
-  return exerciseColorPalette[index % exerciseColorPalette.length]
 }
 
 // Chart dimensions
@@ -186,12 +165,7 @@ export const Timeline = () => {
   const places = placesQuery.data || []
   const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
 
-  // Get unique exercise types for legend
   const activities = activitiesQuery.data || []
-  const exerciseSessions = activities.filter((a) => a.activityType === 'exercise')
-  const uniqueExerciseTypes = [...new Set(exerciseSessions.map((a) => a.title))]
-    .filter(Boolean)
-    .sort() as string[]
 
   // Calculate effective view range
   const effectiveViewStart = viewStart.value || start
@@ -349,37 +323,6 @@ export const Timeline = () => {
           </div>
         )}
 
-        {/* Exercise types legend */}
-        {showExercise.value && uniqueExerciseTypes.length > 0 && (
-          <div
-            style={{
-              border: '1px solid currentColor',
-              borderRadius: '4px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              marginBottom: '1rem',
-              opacity: 0.7,
-              padding: '0.5rem 1rem',
-            }}
-          >
-            <strong>Exercise:</strong>
-            {uniqueExerciseTypes.map((name) => (
-              <div key={name} style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
-                <div
-                  style={{
-                    backgroundColor: getExerciseColor(name, uniqueExerciseTypes),
-                    borderRadius: '50%',
-                    height: '12px',
-                    width: '12px',
-                  }}
-                />
-                <span>{name}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
         {isLoading && <div>Loading...</div>}
         {hasError && <div>Error loading data</div>}
 
@@ -398,7 +341,6 @@ export const Timeline = () => {
           visibleStart={effectiveViewStart}
           visibleEnd={effectiveViewEnd}
           uniquePlaceNames={uniquePlaceNames}
-          uniqueExerciseTypes={uniqueExerciseTypes}
           onZoom={handleZoom}
           onZoomOut={handleZoomOut}
         />
@@ -422,7 +364,6 @@ interface TimelineChartProps {
   visibleStart: Date
   visibleEnd: Date
   uniquePlaceNames: string[]
-  uniqueExerciseTypes: string[]
   onZoom: (start: Date, end: Date) => void
   onZoomOut: () => void
 }
@@ -442,7 +383,6 @@ function TimelineChart({
   visibleStart,
   visibleEnd,
   uniquePlaceNames,
-  uniqueExerciseTypes,
   onZoom,
 }: TimelineChartProps) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -730,7 +670,7 @@ function TimelineChart({
               y={trackExercise}
               width={Math.max(0, x(session.endTime) - x(session.startTime))}
               height={trackHeight}
-              fill={getExerciseColor(session.title, uniqueExerciseTypes)}
+              fill={colors.exercise}
               opacity={0.6}
             />
           : null,
