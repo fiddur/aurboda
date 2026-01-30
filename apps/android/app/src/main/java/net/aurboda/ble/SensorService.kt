@@ -97,7 +97,12 @@ data class SensorServiceState(
     val hrvReliable: Boolean = false,         // Whether HRV measurement is reliable
     val rrIntervalCount: Int = 0,             // Number of RR intervals in buffer
     val hrChartHistory: List<ChartDataPoint> = emptyList(),   // 5 min HR history for chart
-    val hrvChartHistory: List<ChartDataPoint> = emptyList()   // 5 min HRV history for chart
+    val hrvChartHistory: List<ChartDataPoint> = emptyList(),  // 5 min HRV history for chart
+    // Phone step counter
+    val phoneStepCounterAvailable: Boolean = false,
+    val phoneStepCounterActive: Boolean = false,
+    val phoneStepsSinceStart: Int = 0,
+    val phoneStepLastUpdateTime: Instant? = null
 ) {
     // Convenience accessors for backward compatibility and easy access
     val hrDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.HEART_RATE }
@@ -197,6 +202,10 @@ class SensorService : Service() {
     private val connectionManagers = mutableMapOf<String, BleConnectionManager>()
     private val deviceJobs = mutableMapOf<String, List<Job>>()  // Jobs per device address
     private var syncJob: Job? = null
+    private var phoneStepJob: Job? = null
+
+    // Phone step counter
+    private var phoneStepCounter: PhoneStepCounter? = null
 
     private val sampleBuffer = mutableListOf<HeartRateSample>()
     private val cadenceSampleBuffer = mutableListOf<CadenceSample>()
@@ -204,7 +213,9 @@ class SensorService : Service() {
     private val hrChartBuffer = mutableListOf<ChartDataPoint>()
     private val hrvChartBuffer = mutableListOf<ChartDataPoint>()
     // Step buckets keyed by minute start time (epoch millis truncated to minute)
+    // Also used for phone step counter data
     private val stepBuckets = mutableMapOf<Long, MinuteStepBucket>()
+    private val phoneStepBuckets = mutableMapOf<Long, MinuteStepBucket>()
     private val bufferLock = Any()
 
     private val httpClient by lazy {
@@ -250,6 +261,12 @@ class SensorService : Service() {
             }
             ACTION_STOP -> {
                 stopSensorService()
+            }
+            ACTION_START_PHONE_STEPS -> {
+                startPhoneStepCounter()
+            }
+            ACTION_STOP_PHONE_STEPS -> {
+                stopPhoneStepCounter()
             }
         }
         return START_NOT_STICKY
@@ -306,11 +323,14 @@ class SensorService : Service() {
         val contentText = buildString {
             val hrText = state.currentHeartRate?.let { "HR: $it BPM" }
             val cadenceText = state.currentCadence?.let { "Cadence: $it spm • ${state.stepsSinceStart} steps" }
+            val phoneStepsText = if (state.phoneStepCounterActive) "Phone: ${state.phoneStepsSinceStart} steps" else null
 
             when {
                 hrText != null && cadenceText != null -> append("$hrText • $cadenceText")
+                hrText != null && phoneStepsText != null -> append("$hrText • $phoneStepsText")
                 hrText != null -> append(hrText)
                 cadenceText != null -> append(cadenceText)
+                phoneStepsText != null -> append(phoneStepsText)
                 state.hasConnectedDevices -> append("${state.connectedDevices.size} sensor(s) connected")
                 state.isConnecting -> append("Connecting...")
                 else -> append("Ready")
@@ -577,6 +597,7 @@ class SensorService : Service() {
         val hrSamplesToSync: List<HeartRateSample>
         val rrIntervalsForHrv: List<Int>
         val completedStepBuckets: List<MinuteStepBucket>
+        val completedPhoneStepBuckets: List<MinuteStepBucket>
 
         synchronized(bufferLock) {
             hrSamplesToSync = sampleBuffer.toList()
@@ -587,6 +608,7 @@ class SensorService : Service() {
             val nowMs = System.currentTimeMillis()
             val currentMinuteStartMs = nowMs - (nowMs % ONE_MINUTE_MS)
 
+            // BLE foot pod step buckets
             completedStepBuckets = stepBuckets.entries
                 .filter { it.key < currentMinuteStartMs && it.value.totalSteps > 0 }
                 .map { it.value }
@@ -597,10 +619,21 @@ class SensorService : Service() {
                 stepBuckets.remove(bucket.minuteStart.toEpochMilli())
             }
 
+            // Phone step counter buckets
+            completedPhoneStepBuckets = phoneStepBuckets.entries
+                .filter { it.key < currentMinuteStartMs && it.value.totalSteps > 0 }
+                .map { it.value }
+                .sortedBy { it.minuteStart }
+
+            // Remove completed phone step buckets
+            completedPhoneStepBuckets.forEach { bucket ->
+                phoneStepBuckets.remove(bucket.minuteStart.toEpochMilli())
+            }
+
             // Clear raw cadence samples (they've been accumulated into buckets)
             cadenceSampleBuffer.clear()
 
-            if (hrSamplesToSync.isEmpty() && completedStepBuckets.isEmpty()) return
+            if (hrSamplesToSync.isEmpty() && completedStepBuckets.isEmpty() && completedPhoneStepBuckets.isEmpty()) return
             sampleBuffer.clear()
             updateState { it.copy(pendingSamples = 0, pendingCadenceSamples = 0) }
         }
@@ -619,11 +652,11 @@ class SensorService : Service() {
             }
         }
 
-        // Sync completed minute step buckets if any
+        // Sync completed minute step buckets if any (from BLE foot pod)
         if (completedStepBuckets.isNotEmpty()) {
             val totalSteps = completedStepBuckets.sumOf { it.totalSteps }
-            Log.d(TAG, "Syncing ${completedStepBuckets.size} minute bucket(s) with $totalSteps total steps")
-            val backendSuccess = syncStepBucketsToBackend(completedStepBuckets)
+            Log.d(TAG, "Syncing ${completedStepBuckets.size} BLE step bucket(s) with $totalSteps total steps")
+            val backendSuccess = syncStepBucketsToBackend(completedStepBuckets, "ble-footpod")
             if (!backendSuccess) {
                 // Re-add buckets on failure
                 synchronized(bufferLock) {
@@ -633,6 +666,23 @@ class SensorService : Service() {
                 }
             } else {
                 writeStepBucketsToHealthConnect(completedStepBuckets)
+            }
+        }
+
+        // Sync completed phone step buckets if any
+        if (completedPhoneStepBuckets.isNotEmpty()) {
+            val totalSteps = completedPhoneStepBuckets.sumOf { it.totalSteps }
+            Log.d(TAG, "Syncing ${completedPhoneStepBuckets.size} phone step bucket(s) with $totalSteps total steps")
+            val backendSuccess = syncStepBucketsToBackend(completedPhoneStepBuckets, "phone")
+            if (!backendSuccess) {
+                // Re-add buckets on failure
+                synchronized(bufferLock) {
+                    completedPhoneStepBuckets.forEach { bucket ->
+                        phoneStepBuckets[bucket.minuteStart.toEpochMilli()] = bucket
+                    }
+                }
+            } else {
+                writeStepBucketsToHealthConnect(completedPhoneStepBuckets)
             }
         }
 
@@ -785,7 +835,7 @@ class SensorService : Service() {
      * Sync step buckets to backend. Each bucket represents one clock minute with
      * timestamps aligned to minute boundaries (e.g., 11:46:00.000 - 11:46:59.999).
      */
-    private suspend fun syncStepBucketsToBackend(buckets: List<MinuteStepBucket>): Boolean {
+    private suspend fun syncStepBucketsToBackend(buckets: List<MinuteStepBucket>, source: String = "ble-footpod"): Boolean {
         val credentials = CredentialsManager.getCredentials(this) ?: run {
             Log.w(TAG, "No credentials, skipping backend sync")
             return true // Don't block on missing credentials
@@ -793,21 +843,30 @@ class SensorService : Service() {
 
         if (buckets.isEmpty()) return true
 
-        // Get device info from RSC device if available
-        val rscManager = connectionManagers.values.find {
-            it.connectedDeviceInfo.value?.type == SensorType.RUNNING_SPEED_CADENCE
-        }
-        val deviceInfo = rscManager?.connectedDeviceInfo?.value?.let { device ->
-            LiveDeviceInfo(
-                type = 4, // TYPE_WATCH or foot pod
-                model = device.name
+        // Get device info based on source
+        val deviceInfo = when (source) {
+            "phone" -> LiveDeviceInfo(
+                type = 1, // TYPE_PHONE
+                model = android.os.Build.MODEL
             )
+            else -> {
+                // BLE foot pod - get device info from RSC device if available
+                val rscManager = connectionManagers.values.find {
+                    it.connectedDeviceInfo.value?.type == SensorType.RUNNING_SPEED_CADENCE
+                }
+                rscManager?.connectedDeviceInfo?.value?.let { device ->
+                    LiveDeviceInfo(
+                        type = 4, // TYPE_WATCH or foot pod
+                        model = device.name
+                    )
+                }
+            }
         }
 
         // Create one record per minute bucket with clock-minute-aligned timestamps
         val records = buckets.map { bucket ->
             val minuteEnd = bucket.minuteStart.plusMillis(ONE_MINUTE_MS - 1) // 11:46:59.999
-            val recordId = "live-steps-${bucket.minuteStart.epochSecond}"
+            val recordId = "live-steps-$source-${bucket.minuteStart.epochSecond}"
 
             LiveStepsRecord(
                 startTime = bucket.minuteStart.toString(),
@@ -955,6 +1014,111 @@ class SensorService : Service() {
         }
     }
 
+    private fun startPhoneStepCounter() {
+        Log.d(TAG, "Starting phone step counter")
+
+        // Create counter if needed
+        if (phoneStepCounter == null) {
+            phoneStepCounter = PhoneStepCounter(applicationContext)
+        }
+
+        val counter = phoneStepCounter!!
+
+        // Update availability state
+        updateState { it.copy(phoneStepCounterAvailable = counter.isAvailable.value) }
+
+        if (!counter.isAvailable.value) {
+            Log.w(TAG, "Phone step counter not available on this device")
+            return
+        }
+
+        // Start foreground if not already running
+        if (!_serviceState.value.isRunning) {
+            startForegroundWithNotification()
+        }
+
+        // Start monitoring
+        if (counter.startMonitoring()) {
+            updateState { it.copy(phoneStepCounterActive = true) }
+
+            // Start sync loop if not already running
+            if (syncJob == null || syncJob?.isActive != true) {
+                startSyncLoop()
+            }
+
+            // Collect step updates
+            phoneStepJob?.cancel()
+            phoneStepJob = serviceScope.launch {
+                var lastStepCount = 0
+                var lastMinuteStartMs = 0L
+
+                counter.stepsSinceStart.collect { steps ->
+                    updateState { it.copy(phoneStepsSinceStart = steps) }
+
+                    // Accumulate into minute buckets for syncing
+                    val now = Instant.now()
+                    val minuteStartMs = now.toEpochMilli() - (now.toEpochMilli() % ONE_MINUTE_MS)
+
+                    synchronized(bufferLock) {
+                        // Calculate delta since last update
+                        val stepsDelta = steps - lastStepCount
+
+                        if (stepsDelta > 0) {
+                            val bucket = phoneStepBuckets.getOrPut(minuteStartMs) {
+                                MinuteStepBucket(minuteStart = Instant.ofEpochMilli(minuteStartMs))
+                            }
+
+                            // If we're in a new minute, add the delta to the new bucket
+                            // If same minute, add to existing bucket
+                            bucket.totalSteps += stepsDelta
+                            Log.d(TAG, "Phone steps: +$stepsDelta in bucket ${bucket.minuteStart}, total in bucket: ${bucket.totalSteps}")
+                        }
+
+                        lastStepCount = steps
+                        lastMinuteStartMs = minuteStartMs
+                    }
+
+                    updateNotification()
+                }
+            }
+
+            // Also collect last update time
+            serviceScope.launch {
+                counter.lastUpdateTime.collect { time ->
+                    updateState { it.copy(phoneStepLastUpdateTime = time) }
+                }
+            }
+
+            Log.d(TAG, "Phone step counter started")
+        } else {
+            Log.e(TAG, "Failed to start phone step counter")
+        }
+    }
+
+    private fun stopPhoneStepCounter() {
+        Log.d(TAG, "Stopping phone step counter")
+        phoneStepJob?.cancel()
+        phoneStepJob = null
+        phoneStepCounter?.stopMonitoring()
+        updateState {
+            it.copy(
+                phoneStepCounterActive = false,
+                phoneStepsSinceStart = 0,
+                phoneStepLastUpdateTime = null
+            )
+        }
+        synchronized(bufferLock) {
+            phoneStepBuckets.clear()
+        }
+
+        // Stop service if nothing else is running
+        if (!_serviceState.value.hasConnectedDevices && !_serviceState.value.isConnecting) {
+            stopSensorService()
+        } else {
+            updateNotification()
+        }
+    }
+
     private fun stopSensorService() {
         Log.d(TAG, "Stopping service...")
         cleanup()
@@ -965,6 +1129,11 @@ class SensorService : Service() {
 
     private fun cleanup() {
         syncJob?.cancel()
+        phoneStepJob?.cancel()
+
+        // Stop phone step counter
+        phoneStepCounter?.stopMonitoring()
+        phoneStepCounter = null
 
         // Cancel all device jobs
         deviceJobs.values.forEach { jobs ->
@@ -984,6 +1153,7 @@ class SensorService : Service() {
             hrChartBuffer.clear()
             hrvChartBuffer.clear()
             stepBuckets.clear()
+            phoneStepBuckets.clear()
         }
     }
 
@@ -995,6 +1165,8 @@ class SensorService : Service() {
         const val ACTION_CONNECT = "net.aurboda.action.CONNECT_SENSOR"
         const val ACTION_DISCONNECT = "net.aurboda.action.DISCONNECT_SENSOR"
         const val ACTION_STOP = "net.aurboda.action.STOP_SENSOR_SERVICE"
+        const val ACTION_START_PHONE_STEPS = "net.aurboda.action.START_PHONE_STEPS"
+        const val ACTION_STOP_PHONE_STEPS = "net.aurboda.action.STOP_PHONE_STEPS"
         const val EXTRA_DEVICE_ADDRESS = "device_address"
 
         private val _serviceState = MutableStateFlow(SensorServiceState())
@@ -1019,6 +1191,20 @@ class SensorService : Service() {
         fun disconnectAll(context: Context) {
             val intent = Intent(context, SensorService::class.java).apply {
                 action = ACTION_DISCONNECT
+            }
+            context.startService(intent)
+        }
+
+        fun startPhoneStepCounter(context: Context) {
+            val intent = Intent(context, SensorService::class.java).apply {
+                action = ACTION_START_PHONE_STEPS
+            }
+            context.startForegroundService(intent)
+        }
+
+        fun stopPhoneStepCounter(context: Context) {
+            val intent = Intent(context, SensorService::class.java).apply {
+                action = ACTION_STOP_PHONE_STEPS
             }
             context.startService(intent)
         }
