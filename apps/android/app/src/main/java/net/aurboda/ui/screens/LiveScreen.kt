@@ -82,6 +82,24 @@ fun LiveScreen(
     var bleEnabled by remember { mutableStateOf(isBleEnabled(context)) }
     val bleSupported = remember { isBleSupported(context) }
 
+    // Activity recognition permission for phone step counter (Android 10+)
+    var hasActivityRecognitionPermission by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACTIVITY_RECOGNITION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val activityRecognitionPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasActivityRecognitionPermission = granted
+        if (granted) {
+            SensorService.startPhoneStepCounter(context)
+        }
+    }
+
     // Health Connect client and write permission state
     val healthConnectClient = remember { HealthConnectClient.getOrCreate(context) }
     var hasHrWritePermission by remember { mutableStateOf<Boolean?>(null) }
@@ -310,6 +328,22 @@ fun LiveScreen(
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
+
+        // Phone Step Counter Section
+        PhoneStepCounterCard(
+            isActive = serviceState.phoneStepCounterActive,
+            stepCount = serviceState.phoneStepsSinceStart,
+            lastUpdateTime = serviceState.phoneStepLastUpdateTime,
+            onStart = {
+                if (hasActivityRecognitionPermission) {
+                    SensorService.startPhoneStepCounter(context)
+                } else {
+                    activityRecognitionPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                }
+            },
+            onStop = { SensorService.stopPhoneStepCounter(context) }
+        )
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Scanner Section - always visible to allow adding more devices
         ScannerSection(
@@ -543,6 +577,103 @@ private fun ConnectedDeviceCard(
             }
         }  // Column
         }  // Box
+    }
+}
+
+@Composable
+private fun PhoneStepCounterCard(
+    isActive: Boolean,
+    stepCount: Int,
+    lastUpdateTime: Instant?,
+    onStart: () -> Unit,
+    onStop: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive)
+                MaterialTheme.colorScheme.tertiaryContainer
+            else
+                MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Phone Step Counter",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+
+            if (isActive) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = stepCount.toString(),
+                    fontSize = 48.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Text(
+                    text = "steps",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                )
+
+                // Data freshness indicator
+                if (lastUpdateTime != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val now = remember { mutableStateOf(Instant.now()) }
+                    LaunchedEffect(Unit) {
+                        while (true) {
+                            now.value = Instant.now()
+                            kotlinx.coroutines.delay(1000)
+                        }
+                    }
+                    val staleness = Duration.between(lastUpdateTime, now.value).toMillis() / 1000.0
+                    val stalenessText = when {
+                        staleness < 1 -> "updating now"
+                        staleness < 60 -> "${staleness.toInt()}s ago"
+                        else -> "${(staleness / 60).toInt()}m ago"
+                    }
+                    Text(
+                        text = "Last update: $stalenessText",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = onStop) {
+                    Text("Stop Counting")
+                }
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Use your phone's built-in step sensor",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = onStart) {
+                    Text("Start Counting")
+                }
+            }
+        }
     }
 }
 

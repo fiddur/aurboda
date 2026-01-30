@@ -97,7 +97,12 @@ data class SensorServiceState(
     val hrvReliable: Boolean = false,         // Whether HRV measurement is reliable
     val rrIntervalCount: Int = 0,             // Number of RR intervals in buffer
     val hrChartHistory: List<ChartDataPoint> = emptyList(),   // 5 min HR history for chart
-    val hrvChartHistory: List<ChartDataPoint> = emptyList()   // 5 min HRV history for chart
+    val hrvChartHistory: List<ChartDataPoint> = emptyList(),  // 5 min HRV history for chart
+    // Phone step counter
+    val phoneStepCounterAvailable: Boolean = false,
+    val phoneStepCounterActive: Boolean = false,
+    val phoneStepsSinceStart: Int = 0,
+    val phoneStepLastUpdateTime: Instant? = null
 ) {
     // Convenience accessors for backward compatibility and easy access
     val hrDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.HEART_RATE }
@@ -197,6 +202,10 @@ class SensorService : Service() {
     private val connectionManagers = mutableMapOf<String, BleConnectionManager>()
     private val deviceJobs = mutableMapOf<String, List<Job>>()  // Jobs per device address
     private var syncJob: Job? = null
+    private var phoneStepJob: Job? = null
+
+    // Phone step counter
+    private var phoneStepCounter: PhoneStepCounter? = null
 
     private val sampleBuffer = mutableListOf<HeartRateSample>()
     private val cadenceSampleBuffer = mutableListOf<CadenceSample>()
@@ -204,7 +213,9 @@ class SensorService : Service() {
     private val hrChartBuffer = mutableListOf<ChartDataPoint>()
     private val hrvChartBuffer = mutableListOf<ChartDataPoint>()
     // Step buckets keyed by minute start time (epoch millis truncated to minute)
+    // Also used for phone step counter data
     private val stepBuckets = mutableMapOf<Long, MinuteStepBucket>()
+    private val phoneStepBuckets = mutableMapOf<Long, MinuteStepBucket>()
     private val bufferLock = Any()
 
     private val httpClient by lazy {
@@ -250,6 +261,12 @@ class SensorService : Service() {
             }
             ACTION_STOP -> {
                 stopSensorService()
+            }
+            ACTION_START_PHONE_STEPS -> {
+                startPhoneStepCounter()
+            }
+            ACTION_STOP_PHONE_STEPS -> {
+                stopPhoneStepCounter()
             }
         }
         return START_NOT_STICKY
@@ -306,11 +323,14 @@ class SensorService : Service() {
         val contentText = buildString {
             val hrText = state.currentHeartRate?.let { "HR: $it BPM" }
             val cadenceText = state.currentCadence?.let { "Cadence: $it spm • ${state.stepsSinceStart} steps" }
+            val phoneStepsText = if (state.phoneStepCounterActive) "Phone: ${state.phoneStepsSinceStart} steps" else null
 
             when {
                 hrText != null && cadenceText != null -> append("$hrText • $cadenceText")
+                hrText != null && phoneStepsText != null -> append("$hrText • $phoneStepsText")
                 hrText != null -> append(hrText)
                 cadenceText != null -> append(cadenceText)
+                phoneStepsText != null -> append(phoneStepsText)
                 state.hasConnectedDevices -> append("${state.connectedDevices.size} sensor(s) connected")
                 state.isConnecting -> append("Connecting...")
                 else -> append("Ready")
@@ -955,6 +975,93 @@ class SensorService : Service() {
         }
     }
 
+    private fun startPhoneStepCounter() {
+        Log.d(TAG, "Starting phone step counter")
+
+        // Create counter if needed
+        if (phoneStepCounter == null) {
+            phoneStepCounter = PhoneStepCounter(applicationContext)
+        }
+
+        val counter = phoneStepCounter!!
+
+        // Update availability state
+        updateState { it.copy(phoneStepCounterAvailable = counter.isAvailable.value) }
+
+        if (!counter.isAvailable.value) {
+            Log.w(TAG, "Phone step counter not available on this device")
+            return
+        }
+
+        // Start foreground if not already running
+        if (!_serviceState.value.isRunning) {
+            startForegroundWithNotification()
+        }
+
+        // Start monitoring
+        if (counter.startMonitoring()) {
+            updateState { it.copy(phoneStepCounterActive = true) }
+
+            // Collect step updates
+            phoneStepJob?.cancel()
+            phoneStepJob = serviceScope.launch {
+                counter.stepsSinceStart.collect { steps ->
+                    updateState { it.copy(phoneStepsSinceStart = steps) }
+
+                    // Accumulate into minute buckets for syncing
+                    val now = Instant.now()
+                    val minuteStartMs = now.toEpochMilli() - (now.toEpochMilli() % ONE_MINUTE_MS)
+
+                    synchronized(bufferLock) {
+                        val bucket = phoneStepBuckets.getOrPut(minuteStartMs) {
+                            MinuteStepBucket(minuteStart = Instant.ofEpochMilli(minuteStartMs))
+                        }
+                        // Phone step counter gives cumulative steps, so just store the latest value
+                        // The bucket will track the steps accumulated during this minute
+                        bucket.totalSteps = steps.toLong()
+                    }
+
+                    updateNotification()
+                }
+            }
+
+            // Also collect last update time
+            serviceScope.launch {
+                counter.lastUpdateTime.collect { time ->
+                    updateState { it.copy(phoneStepLastUpdateTime = time) }
+                }
+            }
+
+            Log.d(TAG, "Phone step counter started")
+        } else {
+            Log.e(TAG, "Failed to start phone step counter")
+        }
+    }
+
+    private fun stopPhoneStepCounter() {
+        Log.d(TAG, "Stopping phone step counter")
+        phoneStepJob?.cancel()
+        phoneStepJob = null
+        phoneStepCounter?.stopMonitoring()
+        updateState {
+            it.copy(
+                phoneStepCounterActive = false,
+                phoneStepsSinceStart = 0,
+                phoneStepLastUpdateTime = null
+            )
+        }
+        synchronized(bufferLock) {
+            phoneStepBuckets.clear()
+        }
+
+        // Stop service if nothing else is running
+        if (!_serviceState.value.hasConnectedDevices && !_serviceState.value.isConnecting) {
+            stopSensorService()
+        } else {
+            updateNotification()
+        }
+    }
+
     private fun stopSensorService() {
         Log.d(TAG, "Stopping service...")
         cleanup()
@@ -965,6 +1072,11 @@ class SensorService : Service() {
 
     private fun cleanup() {
         syncJob?.cancel()
+        phoneStepJob?.cancel()
+
+        // Stop phone step counter
+        phoneStepCounter?.stopMonitoring()
+        phoneStepCounter = null
 
         // Cancel all device jobs
         deviceJobs.values.forEach { jobs ->
@@ -984,6 +1096,7 @@ class SensorService : Service() {
             hrChartBuffer.clear()
             hrvChartBuffer.clear()
             stepBuckets.clear()
+            phoneStepBuckets.clear()
         }
     }
 
@@ -995,6 +1108,8 @@ class SensorService : Service() {
         const val ACTION_CONNECT = "net.aurboda.action.CONNECT_SENSOR"
         const val ACTION_DISCONNECT = "net.aurboda.action.DISCONNECT_SENSOR"
         const val ACTION_STOP = "net.aurboda.action.STOP_SENSOR_SERVICE"
+        const val ACTION_START_PHONE_STEPS = "net.aurboda.action.START_PHONE_STEPS"
+        const val ACTION_STOP_PHONE_STEPS = "net.aurboda.action.STOP_PHONE_STEPS"
         const val EXTRA_DEVICE_ADDRESS = "device_address"
 
         private val _serviceState = MutableStateFlow(SensorServiceState())
@@ -1019,6 +1134,20 @@ class SensorService : Service() {
         fun disconnectAll(context: Context) {
             val intent = Intent(context, SensorService::class.java).apply {
                 action = ACTION_DISCONNECT
+            }
+            context.startService(intent)
+        }
+
+        fun startPhoneStepCounter(context: Context) {
+            val intent = Intent(context, SensorService::class.java).apply {
+                action = ACTION_START_PHONE_STEPS
+            }
+            context.startForegroundService(intent)
+        }
+
+        fun stopPhoneStepCounter(context: Context) {
+            val intent = Intent(context, SensorService::class.java).apply {
+                action = ACTION_STOP_PHONE_STEPS
             }
             context.startService(intent)
         }
