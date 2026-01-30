@@ -259,12 +259,21 @@ export function createMcpRouter(
           .string()
           .optional()
           .describe('Optional end time in ISO 8601 format. Omit for point-in-time tags.'),
+        merge_span: z
+          .number()
+          .int()
+          .positive()
+          .max(3600)
+          .optional()
+          .describe(
+            'If provided, merge with existing tag of same name if its end_time (or start_time for point-in-time tags) is within this many seconds of new start_time. Max 3600.',
+          ),
         start_time: startDateTimeQuerySchema.describe(
           'Start time in ISO 8601 format (e.g., 2024-01-15T14:30:00Z)',
         ),
         tag: z.string().describe('The tag/label text (e.g., "coffee", "meditation", "headache")'),
       },
-      async ({ end_time, start_time, tag }) => {
+      async ({ end_time, merge_span, start_time, tag }) => {
         // start_time is pre-validated by zod schema
         const startDate = new Date(start_time)
 
@@ -278,7 +287,12 @@ export function createMcpRouter(
           endDate = parsed
         }
 
-        const result = await addTag(user, { endTime: endDate, startTime: startDate, tag })
+        const result = await addTag(user, {
+          endTime: endDate,
+          mergeSpan: merge_span,
+          startTime: startDate,
+          tag,
+        })
         return jsonResponse(result)
       },
     )

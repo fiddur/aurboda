@@ -50,6 +50,16 @@ export const addTagBodySchema = z
     end_time: iso8601DateTimeSchema.optional().meta({
       description: 'End time (omit for point-in-time tags)',
     }),
+    merge_span: z
+      .number()
+      .int()
+      .positive()
+      .max(3600)
+      .optional()
+      .meta({
+        description:
+          'If provided, merge with existing tag of same name if its end_time (or start_time for point-in-time tags) is within this many seconds of new start_time. Max 3600.',
+      }),
     start_time: iso8601DateTimeSchema.meta({ description: 'Start time of the tag' }),
     tag: tagTextSchema.min(1),
   })
@@ -73,6 +83,12 @@ const addedTagSchema = z.object({
 export const addTagResponseSchema = baseResponseSchema
   .extend({
     data: addedTagSchema.optional(),
+    extendedBySeconds: z.number().int().optional().meta({
+      description: 'Number of seconds the tag was extended by (only present if merged)',
+    }),
+    merged: z.boolean().optional().meta({
+      description: 'Whether the tag was merged with an existing tag (only present if merge_span was specified)',
+    }),
   })
   .meta({ id: 'AddTagResponse' })
 

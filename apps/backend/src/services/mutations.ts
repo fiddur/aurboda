@@ -6,7 +6,13 @@
  */
 
 import { randomUUID } from 'crypto'
-import { deleteTag as dbDeleteTag, insertTag, insertTimeSeries } from '../db'
+import {
+  deleteTag as dbDeleteTag,
+  findMergeableTag,
+  insertTag,
+  insertTimeSeries,
+  updateTagEndTime,
+} from '../db'
 import { MetricType, metricUnits } from '../schema'
 
 // ============================================================================
@@ -17,6 +23,7 @@ export interface AddTagInput {
   tag: string
   startTime: Date
   endTime?: Date
+  mergeSpan?: number
 }
 
 export interface AddTagResult {
@@ -25,6 +32,8 @@ export interface AddTagResult {
   tag: string
   startTime: string
   endTime?: string
+  merged?: boolean
+  extendedBySeconds?: number
 }
 
 export interface AddMetricInput {
@@ -53,8 +62,59 @@ export interface DeleteTagResult {
 
 /**
  * Add a manual tag/label to mark an activity or event.
+ *
+ * If mergeSpan is provided, attempts to merge with an existing tag of the same
+ * name if its end_time (or start_time for point-in-time tags) is within
+ * mergeSpan seconds of the new start_time.
  */
 export async function addTag(user: string, input: AddTagInput): Promise<AddTagResult> {
+  // If mergeSpan is specified, check for a mergeable tag
+  if (input.mergeSpan !== undefined) {
+    const existingTag = await findMergeableTag(user, input.tag, input.startTime, input.mergeSpan)
+
+    if (existingTag && existingTag.externalId) {
+      // Calculate the new end time - use new end_time if provided, otherwise use new start_time
+      const newEndTime = input.endTime ?? input.startTime
+
+      // Calculate the time extension
+      const previousEnd = existingTag.endTime ?? existingTag.startTime
+      const extendedBySeconds = Math.round((newEndTime.getTime() - previousEnd.getTime()) / 1000)
+
+      await updateTagEndTime(user, existingTag.externalId, newEndTime)
+
+      return {
+        endTime: newEndTime.toISOString(),
+        extendedBySeconds,
+        id: existingTag.externalId,
+        merged: true,
+        startTime: existingTag.startTime.toISOString(),
+        success: true,
+        tag: existingTag.tag,
+      }
+    }
+
+    // No mergeable tag found - create a new one but include merged: false in response
+    const externalId = randomUUID()
+
+    await insertTag(user, {
+      endTime: input.endTime,
+      externalId,
+      source: 'manual',
+      startTime: input.startTime,
+      tag: input.tag,
+    })
+
+    return {
+      endTime: input.endTime?.toISOString(),
+      id: externalId,
+      merged: false,
+      startTime: input.startTime.toISOString(),
+      success: true,
+      tag: input.tag,
+    }
+  }
+
+  // No mergeSpan - create a new tag without merge fields in response
   const externalId = randomUUID()
 
   await insertTag(user, {
