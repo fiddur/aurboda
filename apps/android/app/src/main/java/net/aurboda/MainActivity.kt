@@ -65,6 +65,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.KSerializer
 import net.aurboda.ui.theme.AurbodaAppTheme
@@ -670,11 +671,16 @@ fun HealthConnectScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                Log.d("HealthConnectScreen", "App resumed. HasPermissions: $hasPermissions, IsProcessing: $isProcessing")
+                Log.d("HealthConnectScreen", "App resumed. HasPermissions: $hasPermissions, IsProcessing: $isProcessing, BackgroundSyncEnabled: $backgroundSyncEnabled")
                 if (hasPermissions && !isProcessing) {
                     Log.d("HealthConnectScreen", "Permissions granted and not processing, fetching data on resume.")
                     scope.launch {
                         fetchHealthData(context)
+                        // Auto-send when background sync is enabled
+                        if (backgroundSyncEnabled && healthRecords.isNotEmpty()) {
+                            Log.d("HealthConnectScreen", "Background sync enabled, auto-sending ${healthRecords.size} records.")
+                            sendPendingDataToServer(context)
+                        }
                     }
                 }
             }
@@ -682,6 +688,23 @@ fun HealthConnectScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Periodic sync while app is open (when background sync is enabled)
+    LaunchedEffect(backgroundSyncEnabled, hasPermissions) {
+        if (backgroundSyncEnabled && hasPermissions) {
+            Log.d("HealthConnectScreen", "Starting periodic sync loop (60s interval)")
+            while (true) {
+                delay(60_000L) // Wait 60 seconds
+                if (!isProcessing) {
+                    Log.d("HealthConnectScreen", "Periodic sync: fetching and sending data")
+                    fetchHealthData(context)
+                    if (healthRecords.isNotEmpty()) {
+                        sendPendingDataToServer(context)
+                    }
+                }
+            }
         }
     }
 
