@@ -83,6 +83,85 @@ const exerciseColorPalette = [
   '#ef4444', // Red
 ]
 
+// HealthConnect exercise type mapping (subset of common types)
+const exerciseTypeNames: Record<number, string> = {
+  0: 'Workout',
+  2: 'Badminton',
+  4: 'Baseball',
+  5: 'Basketball',
+  8: 'Biking',
+  9: 'Biking (Stationary)',
+  10: 'Boot Camp',
+  11: 'Boxing',
+  13: 'Calisthenics',
+  14: 'Cricket',
+  16: 'Dancing',
+  25: 'Elliptical',
+  26: 'Fencing',
+  27: 'Football (American)',
+  28: 'Football (Australian)',
+  29: 'Frisbee',
+  30: 'Golf',
+  31: 'Guided Breathing',
+  32: 'Gymnastics',
+  33: 'Handball',
+  34: 'HIIT',
+  35: 'Hiking',
+  36: 'Ice Hockey',
+  37: 'Ice Skating',
+  44: 'Martial Arts',
+  46: 'Paddling',
+  47: 'Paragliding',
+  48: 'Pilates',
+  50: 'Racquetball',
+  51: 'Rock Climbing',
+  52: 'Roller Hockey',
+  53: 'Rowing',
+  54: 'Rowing Machine',
+  55: 'Rugby',
+  56: 'Running',
+  57: 'Running (Treadmill)',
+  58: 'Sailing',
+  59: 'Scuba Diving',
+  60: 'Skating',
+  61: 'Skiing',
+  62: 'Skiing (Cross Country)',
+  63: 'Skiing (Downhill)',
+  64: 'Snowboarding',
+  65: 'Snowshoeing',
+  66: 'Soccer',
+  67: 'Softball',
+  68: 'Squash',
+  69: 'Stair Climbing',
+  70: 'Stair Climbing (Machine)',
+  71: 'Strength Training',
+  72: 'Stretching',
+  73: 'Surfing',
+  74: 'Swimming (Open Water)',
+  75: 'Swimming (Pool)',
+  76: 'Table Tennis',
+  77: 'Tennis',
+  78: 'Volleyball',
+  79: 'Walking',
+  80: 'Water Polo',
+  81: 'Weightlifting',
+  82: 'Wheelchair',
+  83: 'Yoga',
+}
+
+// Get exercise type name from activity data
+const getExerciseTypeName = (activity: Activity): string => {
+  // HealthConnect exercises have exerciseType in data
+  const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseType as
+    | number
+    | undefined
+  if (exerciseType !== undefined && exerciseTypeNames[exerciseType]) {
+    return exerciseTypeNames[exerciseType]
+  }
+  // Fall back to title for Oura or other sources
+  return activity.title || 'Workout'
+}
+
 // Generate consistent color for a place name
 const getPlaceColor = (placeName: string, allPlaces: string[]): string => {
   if (!placeName || placeName === 'Travel' || placeName === 'Unknown') {
@@ -93,11 +172,9 @@ const getPlaceColor = (placeName: string, allPlaces: string[]): string => {
 }
 
 // Generate consistent color for exercise type
-const getExerciseColor = (exerciseTitle: string | undefined, allTypes: string[]): string => {
-  if (!exerciseTitle) {
-    return exerciseColorPalette[0]
-  }
-  const index = allTypes.indexOf(exerciseTitle)
+const getExerciseColor = (exerciseTypeName: string, allTypes: string[]): string => {
+  const index = allTypes.indexOf(exerciseTypeName)
+  if (index === -1) return exerciseColorPalette[0]
   return exerciseColorPalette[index % exerciseColorPalette.length]
 }
 
@@ -186,12 +263,13 @@ export const Timeline = () => {
   const places = placesQuery.data || []
   const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
 
-  // Get unique exercise types for legend
   const activities = activitiesQuery.data || []
+
+  // Get unique exercise types for legend (by activity type, not title)
   const exerciseSessions = activities.filter((a) => a.activityType === 'exercise')
-  const uniqueExerciseTypes = [...new Set(exerciseSessions.map((a) => a.title))]
+  const uniqueExerciseTypes = [...new Set(exerciseSessions.map((a) => getExerciseTypeName(a)))]
     .filter(Boolean)
-    .sort() as string[]
+    .sort()
 
   // Calculate effective view range
   const effectiveViewStart = viewStart.value || start
@@ -730,7 +808,7 @@ function TimelineChart({
               y={trackExercise}
               width={Math.max(0, x(session.endTime) - x(session.startTime))}
               height={trackHeight}
-              fill={getExerciseColor(session.title, uniqueExerciseTypes)}
+              fill={getExerciseColor(getExerciseTypeName(session), uniqueExerciseTypes)}
               opacity={0.6}
             />
           : null,
