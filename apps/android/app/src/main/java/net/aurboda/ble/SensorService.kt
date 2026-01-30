@@ -55,6 +55,7 @@ private const val SYNC_INTERVAL_MS = 5000L
 private const val RR_BUFFER_MIN_SIZE = 30   // Minimum intervals for HRV calculation
 private const val RR_BUFFER_MAX_SIZE = 300  // Maximum intervals (~5 minutes at 60bpm)
 private const val CHART_HISTORY_DURATION_MS = 5 * 60 * 1000L  // 5 minutes of chart history
+private const val ONE_MINUTE_MS = 60_000L
 
 /**
  * Data point for chart display with timestamp.
@@ -161,6 +162,16 @@ data class LiveStepsRecord(
 private data class StepsSyncBody(val data: List<LiveStepsRecord>)
 
 /**
+ * Accumulates steps for a specific clock minute.
+ * The minute is identified by its start time (truncated to minute boundary).
+ */
+data class MinuteStepBucket(
+    val minuteStart: Instant,  // Start of the clock minute (e.g., 11:46:00.000)
+    var totalSteps: Long = 0,
+    var lastCadence: Int = 0   // Last known cadence for ongoing calculation
+)
+
+/**
  * HRV record in Health Connect format for backend sync.
  */
 @Serializable
@@ -190,6 +201,8 @@ class SensorService : Service() {
     private val rrIntervalBuffer = ArrayDeque<Int>(RR_BUFFER_MAX_SIZE)
     private val hrChartBuffer = mutableListOf<ChartDataPoint>()
     private val hrvChartBuffer = mutableListOf<ChartDataPoint>()
+    // Step buckets keyed by minute start time (epoch millis truncated to minute)
+    private val stepBuckets = mutableMapOf<Long, MinuteStepBucket>()
     private val bufferLock = Any()
 
     private val httpClient by lazy {
@@ -501,9 +514,31 @@ class SensorService : Service() {
         }
 
         existingJobs += serviceScope.launch {
+            var lastSampleTime: Instant? = null
             manager.cadenceSamples.collect { sample ->
                 synchronized(bufferLock) {
                     cadenceSampleBuffer.add(sample)
+
+                    // Accumulate steps into minute buckets
+                    val sampleTimeMs = sample.timestamp.toEpochMilli()
+                    val minuteStartMs = sampleTimeMs - (sampleTimeMs % ONE_MINUTE_MS)
+                    val minuteStart = Instant.ofEpochMilli(minuteStartMs)
+
+                    val bucket = stepBuckets.getOrPut(minuteStartMs) {
+                        MinuteStepBucket(minuteStart = minuteStart)
+                    }
+
+                    // Calculate steps since last sample using cadence
+                    lastSampleTime?.let { lastTime ->
+                        val elapsedSeconds = java.time.Duration.between(lastTime, sample.timestamp).toMillis() / 1000.0
+                        if (elapsedSeconds > 0 && elapsedSeconds < 30) { // Sanity check
+                            val stepsInInterval = (sample.cadence * elapsedSeconds / 60.0).toLong()
+                            bucket.totalSteps += stepsInInterval
+                        }
+                    }
+                    bucket.lastCadence = sample.cadence
+                    lastSampleTime = sample.timestamp
+
                     updateState { it.copy(pendingCadenceSamples = cadenceSampleBuffer.size) }
                 }
             }
@@ -524,18 +559,33 @@ class SensorService : Service() {
 
     private suspend fun syncPendingSamples() {
         val hrSamplesToSync: List<HeartRateSample>
-        val cadenceSamplesToSync: List<CadenceSample>
         val rrIntervalsForHrv: List<Int>
+        val completedStepBuckets: List<MinuteStepBucket>
 
         synchronized(bufferLock) {
             hrSamplesToSync = sampleBuffer.toList()
-            cadenceSamplesToSync = cadenceSampleBuffer.toList()
             // Copy RR intervals for HRV calculation (don't clear - rolling window)
             rrIntervalsForHrv = rrIntervalBuffer.toList()
 
-            if (hrSamplesToSync.isEmpty() && cadenceSamplesToSync.isEmpty()) return
-            sampleBuffer.clear()
+            // Extract completed minute buckets (all minutes except the current one)
+            val nowMs = System.currentTimeMillis()
+            val currentMinuteStartMs = nowMs - (nowMs % ONE_MINUTE_MS)
+
+            completedStepBuckets = stepBuckets.entries
+                .filter { it.key < currentMinuteStartMs && it.value.totalSteps > 0 }
+                .map { it.value }
+                .sortedBy { it.minuteStart }
+
+            // Remove completed buckets from the map
+            completedStepBuckets.forEach { bucket ->
+                stepBuckets.remove(bucket.minuteStart.toEpochMilli())
+            }
+
+            // Clear raw cadence samples (they've been accumulated into buckets)
             cadenceSampleBuffer.clear()
+
+            if (hrSamplesToSync.isEmpty() && completedStepBuckets.isEmpty()) return
+            sampleBuffer.clear()
             updateState { it.copy(pendingSamples = 0, pendingCadenceSamples = 0) }
         }
 
@@ -553,17 +603,20 @@ class SensorService : Service() {
             }
         }
 
-        // Sync cadence/steps samples if any
-        if (cadenceSamplesToSync.isNotEmpty()) {
-            Log.d(TAG, "Syncing ${cadenceSamplesToSync.size} cadence samples")
-            val backendSuccess = syncStepsToBackend(cadenceSamplesToSync)
+        // Sync completed minute step buckets if any
+        if (completedStepBuckets.isNotEmpty()) {
+            val totalSteps = completedStepBuckets.sumOf { it.totalSteps }
+            Log.d(TAG, "Syncing ${completedStepBuckets.size} minute bucket(s) with $totalSteps total steps")
+            val backendSuccess = syncStepBucketsToBackend(completedStepBuckets)
             if (!backendSuccess) {
+                // Re-add buckets on failure
                 synchronized(bufferLock) {
-                    cadenceSampleBuffer.addAll(0, cadenceSamplesToSync)
-                    updateState { it.copy(pendingCadenceSamples = cadenceSampleBuffer.size) }
+                    completedStepBuckets.forEach { bucket ->
+                        stepBuckets[bucket.minuteStart.toEpochMilli()] = bucket
+                    }
                 }
             } else {
-                writeStepsToHealthConnect(cadenceSamplesToSync)
+                writeStepBucketsToHealthConnect(completedStepBuckets)
             }
         }
 
@@ -712,40 +765,17 @@ class SensorService : Service() {
         }
     }
 
-    private suspend fun syncStepsToBackend(samples: List<CadenceSample>): Boolean {
+    /**
+     * Sync step buckets to backend. Each bucket represents one clock minute with
+     * timestamps aligned to minute boundaries (e.g., 11:46:00.000 - 11:46:59.999).
+     */
+    private suspend fun syncStepBucketsToBackend(buckets: List<MinuteStepBucket>): Boolean {
         val credentials = CredentialsManager.getCredentials(this) ?: run {
             Log.w(TAG, "No credentials, skipping backend sync")
             return true // Don't block on missing credentials
         }
 
-        if (samples.isEmpty()) return true
-
-        // Calculate total steps from cadence samples by integrating over time intervals
-        val sortedSamples = samples.sortedBy { it.timestamp }
-        val startTime = sortedSamples.first().timestamp
-        val endTime = sortedSamples.last().timestamp.plusSeconds(1)
-
-        // Calculate total steps - integrate cadence over time
-        var totalSteps = 0L
-        for (i in 0 until sortedSamples.size - 1) {
-            val current = sortedSamples[i]
-            val next = sortedSamples[i + 1]
-            val elapsedSeconds = java.time.Duration.between(current.timestamp, next.timestamp).toMillis() / 1000.0
-            // cadence is steps/minute, convert to steps in elapsed time
-            val stepsInInterval = current.cadence * elapsedSeconds / 60.0
-            totalSteps += stepsInInterval.toLong()
-        }
-        // Add steps for last sample (assume 1 second interval)
-        if (sortedSamples.isNotEmpty()) {
-            totalSteps += (sortedSamples.last().cadence / 60.0).toLong()
-        }
-
-        if (totalSteps <= 0) {
-            Log.d(TAG, "No steps to sync (cadence was 0)")
-            return true
-        }
-
-        val recordId = "live-steps-${startTime.epochSecond}-${startTime.nano}"
+        if (buckets.isEmpty()) return true
 
         // Get device info from RSC device if available
         val rscManager = connectionManagers.values.find {
@@ -758,24 +788,31 @@ class SensorService : Service() {
             )
         }
 
-        val record = LiveStepsRecord(
-            startTime = startTime.toString(),
-            endTime = endTime.toString(),
-            count = totalSteps,
-            metadata = LiveRecordMetadata(
-                id = recordId,
-                device = deviceInfo
+        // Create one record per minute bucket with clock-minute-aligned timestamps
+        val records = buckets.map { bucket ->
+            val minuteEnd = bucket.minuteStart.plusMillis(ONE_MINUTE_MS - 1) // 11:46:59.999
+            val recordId = "live-steps-${bucket.minuteStart.epochSecond}"
+
+            LiveStepsRecord(
+                startTime = bucket.minuteStart.toString(),
+                endTime = minuteEnd.toString(),
+                count = bucket.totalSteps,
+                metadata = LiveRecordMetadata(
+                    id = recordId,
+                    device = deviceInfo
+                )
             )
-        )
+        }
 
         return try {
             val response = httpClient.post("${credentials.apiUrl}/sync/StepsRecord") {
                 contentType(ContentType.Application.Json)
                 headers { append(HttpHeaders.Authorization, "Bearer ${credentials.authToken}") }
-                setBody(StepsSyncBody(listOf(record)))
+                setBody(StepsSyncBody(records))
             }
             val success = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
-            Log.d(TAG, "Steps backend sync ${if (success) "succeeded" else "failed"}: ${response.status}")
+            val totalSteps = buckets.sumOf { it.totalSteps }
+            Log.d(TAG, "Steps backend sync (${buckets.size} minutes, $totalSteps steps) ${if (success) "succeeded" else "failed"}: ${response.status}")
             success
         } catch (e: Exception) {
             Log.e(TAG, "Steps backend sync error", e)
@@ -783,8 +820,12 @@ class SensorService : Service() {
         }
     }
 
-    private suspend fun writeStepsToHealthConnect(samples: List<CadenceSample>) {
-        if (samples.isEmpty()) return
+    /**
+     * Write step buckets to Health Connect. Each bucket becomes one StepsRecord with
+     * timestamps aligned to minute boundaries for proper aggregation/deduplication.
+     */
+    private suspend fun writeStepBucketsToHealthConnect(buckets: List<MinuteStepBucket>) {
+        if (buckets.isEmpty()) return
 
         try {
             // Check write permission
@@ -795,42 +836,25 @@ class SensorService : Service() {
                 return
             }
 
-            // Calculate total steps from cadence samples
-            val sortedSamples = samples.sortedBy { it.timestamp }
-            val startTime = sortedSamples.first().timestamp
-            val endTime = sortedSamples.last().timestamp.plusSeconds(1)
+            // Create one record per minute bucket with clock-minute-aligned timestamps
+            val records = buckets.map { bucket ->
+                val minuteEnd = bucket.minuteStart.plusMillis(ONE_MINUTE_MS - 1) // 11:46:59.999
 
-            // Calculate total steps - integrate cadence over time
-            var totalSteps = 0L
-            for (i in 0 until sortedSamples.size - 1) {
-                val current = sortedSamples[i]
-                val next = sortedSamples[i + 1]
-                val elapsedSeconds = java.time.Duration.between(current.timestamp, next.timestamp).toMillis() / 1000.0
-                val stepsInInterval = current.cadence * elapsedSeconds / 60.0
-                totalSteps += stepsInInterval.toLong()
-            }
-            if (sortedSamples.isNotEmpty()) {
-                totalSteps += (sortedSamples.last().cadence / 60.0).toLong()
-            }
-
-            if (totalSteps <= 0) {
-                Log.d(TAG, "No steps to write to Health Connect (cadence was 0)")
-                return
-            }
-
-            val record = StepsRecord(
-                startTime = startTime,
-                startZoneOffset = ZoneOffset.systemDefault().rules.getOffset(startTime),
-                endTime = endTime,
-                endZoneOffset = ZoneOffset.systemDefault().rules.getOffset(endTime),
-                count = totalSteps,
-                metadata = Metadata.autoRecorded(
-                    device = Device(type = Device.TYPE_WATCH)
+                StepsRecord(
+                    startTime = bucket.minuteStart,
+                    startZoneOffset = ZoneOffset.systemDefault().rules.getOffset(bucket.minuteStart),
+                    endTime = minuteEnd,
+                    endZoneOffset = ZoneOffset.systemDefault().rules.getOffset(minuteEnd),
+                    count = bucket.totalSteps,
+                    metadata = Metadata.autoRecorded(
+                        device = Device(type = Device.TYPE_WATCH)
+                    )
                 )
-            )
+            }
 
-            healthConnectClient.insertRecords(listOf(record))
-            Log.d(TAG, "Wrote $totalSteps steps to Health Connect")
+            healthConnectClient.insertRecords(records)
+            val totalSteps = buckets.sumOf { it.totalSteps }
+            Log.d(TAG, "Wrote ${buckets.size} minute bucket(s) with $totalSteps total steps to Health Connect")
         } catch (e: Exception) {
             Log.e(TAG, "Health Connect steps write error", e)
         }
@@ -943,6 +967,7 @@ class SensorService : Service() {
             rrIntervalBuffer.clear()
             hrChartBuffer.clear()
             hrvChartBuffer.clear()
+            stepBuckets.clear()
         }
     }
 
