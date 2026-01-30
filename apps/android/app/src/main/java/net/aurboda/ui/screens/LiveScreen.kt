@@ -70,6 +70,8 @@ import net.aurboda.ble.hasBlePermissions
 import net.aurboda.ble.isBleEnabled
 import net.aurboda.ble.isBleSupported
 import net.aurboda.ble.scanForSensors
+import java.time.Duration
+import java.time.Instant
 
 @Composable
 fun LiveScreen(
@@ -423,6 +425,12 @@ private fun ConnectedDeviceCard(
                         BatteryIndicator(level = batteryLevel)
                     }
                 }
+
+                // Connection health indicator (RSSI + data freshness)
+                ConnectionHealthIndicator(
+                    rssi = deviceState.rssi,
+                    lastDataReceivedTime = deviceState.lastDataReceivedTime
+                )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -782,6 +790,115 @@ private fun BatteryIndicator(level: Int) {
             text = "$level%",
             style = MaterialTheme.typography.bodySmall,
             color = color
+        )
+    }
+}
+
+@Composable
+private fun ConnectionHealthIndicator(
+    rssi: Int?,
+    lastDataReceivedTime: Instant?
+) {
+    val now = remember { mutableStateOf(Instant.now()) }
+
+    // Update "now" every second to keep staleness indicator current
+    LaunchedEffect(Unit) {
+        while (true) {
+            now.value = Instant.now()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
+    val staleness = lastDataReceivedTime?.let {
+        Duration.between(it, now.value).toMillis() / 1000.0
+    }
+
+    // RSSI signal strength interpretation:
+    // > -50 dBm: Excellent
+    // -50 to -70 dBm: Good
+    // -70 to -80 dBm: Fair
+    // < -80 dBm: Weak
+    val signalStrength = rssi?.let {
+        when {
+            it > -50 -> "excellent"
+            it > -70 -> "good"
+            it > -80 -> "fair"
+            else -> "weak"
+        }
+    }
+
+    val signalColor = when (signalStrength) {
+        "excellent" -> Color(0xFF4CAF50) // Green
+        "good" -> Color(0xFF8BC34A) // Light green
+        "fair" -> Color(0xFFFF9800) // Orange
+        "weak" -> Color(0xFFF44336) // Red
+        else -> Color.Gray
+    }
+
+    // Staleness color: green if fresh, yellow if getting stale, red if very stale
+    val stalenessColor = staleness?.let {
+        when {
+            it < 3 -> Color(0xFF4CAF50) // Green - fresh
+            it < 10 -> Color(0xFFFF9800) // Orange - getting stale
+            else -> Color(0xFFF44336) // Red - stale
+        }
+    } ?: Color.Gray
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+        modifier = Modifier.padding(vertical = 4.dp)
+    ) {
+        // Signal strength indicator (4 bars)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(1.dp),
+            verticalAlignment = Alignment.Bottom,
+            modifier = Modifier.height(14.dp)
+        ) {
+            val bars = when (signalStrength) {
+                "excellent" -> 4
+                "good" -> 3
+                "fair" -> 2
+                "weak" -> 1
+                else -> 0
+            }
+            for (i in 1..4) {
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height((4 + i * 2).dp)
+                        .background(
+                            if (i <= bars) signalColor else signalColor.copy(alpha = 0.3f),
+                            shape = MaterialTheme.shapes.extraSmall
+                        )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(4.dp))
+
+        // RSSI value
+        Text(
+            text = rssi?.let { "${it}dBm" } ?: "--",
+            style = MaterialTheme.typography.labelSmall,
+            color = signalColor
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Data freshness indicator
+        val stalenessText = staleness?.let {
+            when {
+                it < 1 -> "now"
+                it < 60 -> "${it.toInt()}s ago"
+                else -> "${(it / 60).toInt()}m ago"
+            }
+        } ?: "no data"
+
+        Text(
+            text = stalenessText,
+            style = MaterialTheme.typography.labelSmall,
+            color = stalenessColor
         )
     }
 }

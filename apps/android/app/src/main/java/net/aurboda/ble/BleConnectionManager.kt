@@ -10,14 +10,22 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 private const val TAG = "BleConnectionManager"
+private const val MAX_STEP_CALCULATION_GAP_SECONDS = 5.0
+private const val RSSI_POLL_INTERVAL_MS = 2000L
 
 class BleConnectionManager(private val context: Context) {
     private var bluetoothGatt: BluetoothGatt? = null
@@ -56,6 +64,18 @@ class BleConnectionManager(private val context: Context) {
     private val _stepsSinceStart = MutableStateFlow<Int>(0)
     val stepsSinceStart: StateFlow<Int> = _stepsSinceStart.asStateFlow()
 
+    // RSSI (signal strength) monitoring
+    private val _rssi = MutableStateFlow<Int?>(null)
+    val rssi: StateFlow<Int?> = _rssi.asStateFlow()
+
+    // Last time we received data from the device
+    private val _lastDataReceivedTime = MutableStateFlow<java.time.Instant?>(null)
+    val lastDataReceivedTime: StateFlow<java.time.Instant?> = _lastDataReceivedTime.asStateFlow()
+
+    // Coroutine scope for RSSI polling
+    private val scope = CoroutineScope(Dispatchers.Main)
+    private var rssiPollingJob: Job? = null
+
     // Queue for characteristics to read after notifications are set up
     private val pendingReads = mutableListOf<BluetoothGattCharacteristic>()
 
@@ -70,6 +90,7 @@ class BleConnectionManager(private val context: Context) {
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.d(TAG, "Disconnected from GATT server")
+                    stopRssiPolling()
                     _connectionState.value = BleConnectionState.Disconnected
                     _connectedDeviceInfo.value = null
                     _currentHeartRate.value = null
@@ -77,6 +98,7 @@ class BleConnectionManager(private val context: Context) {
                     _currentCadence.value = null
                     _currentSpeed.value = null
                     _stepsSinceStart.value = 0
+                    _lastDataReceivedTime.value = null
                     stepTrackingStartTime = null
                     lastCadenceTime = null
                     accumulatedSteps = 0.0
@@ -112,6 +134,7 @@ class BleConnectionManager(private val context: Context) {
                             name = gatt.device.name,
                             type = SensorType.HEART_RATE
                         )
+                        startRssiPolling()
                         Log.d(TAG, "Heart Rate service found and notifications enabled")
                         return
                     }
@@ -134,6 +157,7 @@ class BleConnectionManager(private val context: Context) {
                         lastCadenceTime = null
                         accumulatedSteps = 0.0
                         _stepsSinceStart.value = 0
+                        startRssiPolling()
                         Log.d(TAG, "RSC service found and notifications enabled, step tracking started")
                         return
                     }
@@ -161,27 +185,40 @@ class BleConnectionManager(private val context: Context) {
                         Log.d(TAG, "Heart rate: ${sample.bpm} bpm")
                         _currentHeartRate.value = sample.bpm
                         _heartRateSamples.tryEmit(sample)
+                        _lastDataReceivedTime.value = java.time.Instant.now()
                     }
                 }
                 RSC_MEASUREMENT_UUID -> {
+                    val now = java.time.Instant.now()
+                    val lastTime = lastCadenceTime
+                    val gapMs = if (lastTime != null) java.time.Duration.between(lastTime, now).toMillis() else null
+
                     val sample = parseRscMeasurement(value)
                     if (sample != null) {
-                        Log.d(TAG, "RSC: cadence=${sample.cadence} spm, speed=${sample.speed} m/s")
+                        Log.d(TAG, "RSC: cadence=${sample.cadence} spm, speed=${sample.speed} m/s, gap=${gapMs}ms, steps=${accumulatedSteps.toInt()}")
                         _currentCadence.value = sample.cadence
                         _currentSpeed.value = sample.speed
                         _cadenceSamples.tryEmit(sample)
+                        _lastDataReceivedTime.value = now
 
                         // Track cumulative steps by integrating cadence over time
-                        val now = java.time.Instant.now()
-                        val lastTime = lastCadenceTime
                         if (lastTime != null && sample.cadence > 0) {
-                            val elapsedSeconds = java.time.Duration.between(lastTime, now).toMillis() / 1000.0
-                            // cadence is steps per minute, convert to steps in elapsed time
-                            val stepsInInterval = sample.cadence * elapsedSeconds / 60.0
-                            accumulatedSteps += stepsInInterval
-                            _stepsSinceStart.value = accumulatedSteps.toInt()
+                            val elapsedSeconds = gapMs!! / 1000.0
+                            // Sanity check: ignore gaps larger than threshold to prevent
+                            // huge step jumps when the device stops sending data temporarily
+                            if (elapsedSeconds <= MAX_STEP_CALCULATION_GAP_SECONDS) {
+                                // cadence is steps per minute, convert to steps in elapsed time
+                                val stepsInInterval = sample.cadence * elapsedSeconds / 60.0
+                                accumulatedSteps += stepsInInterval
+                                _stepsSinceStart.value = accumulatedSteps.toInt()
+                                Log.d(TAG, "RSC step calc: +${String.format("%.1f", stepsInInterval)} steps (${elapsedSeconds}s * ${sample.cadence} spm / 60)")
+                            } else {
+                                Log.w(TAG, "RSC: Ignoring step calculation - gap of ${elapsedSeconds}s exceeds ${MAX_STEP_CALCULATION_GAP_SECONDS}s threshold")
+                            }
                         }
                         lastCadenceTime = now
+                    } else {
+                        Log.w(TAG, "RSC: Failed to parse data (${value.size} bytes), gap=${gapMs}ms")
                     }
                 }
             }
@@ -223,6 +260,12 @@ class BleConnectionManager(private val context: Context) {
             // Continue processing any remaining pending reads
             processPendingReads(gatt)
         }
+
+        override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                _rssi.value = rssi
+            }
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -233,6 +276,23 @@ class BleConnectionManager(private val context: Context) {
             @Suppress("DEPRECATION")
             gatt.readCharacteristic(characteristic)
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startRssiPolling() {
+        rssiPollingJob?.cancel()
+        rssiPollingJob = scope.launch {
+            while (isActive) {
+                bluetoothGatt?.readRemoteRssi()
+                delay(RSSI_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun stopRssiPolling() {
+        rssiPollingJob?.cancel()
+        rssiPollingJob = null
+        _rssi.value = null
     }
 
     @SuppressLint("MissingPermission")
@@ -299,6 +359,7 @@ class BleConnectionManager(private val context: Context) {
     @SuppressLint("MissingPermission")
     fun close() {
         Log.d(TAG, "Closing connection manager...")
+        stopRssiPolling()
         try {
             bluetoothGatt?.close()
         } catch (e: SecurityException) {
@@ -314,6 +375,8 @@ class BleConnectionManager(private val context: Context) {
         _currentCadence.value = null
         _currentSpeed.value = null
         _stepsSinceStart.value = 0
+        _rssi.value = null
+        _lastDataReceivedTime.value = null
         stepTrackingStartTime = null
         lastCadenceTime = null
         accumulatedSteps = 0.0
