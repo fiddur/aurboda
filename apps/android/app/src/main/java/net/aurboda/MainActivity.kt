@@ -68,6 +68,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.KSerializer
 import net.aurboda.ui.theme.AurbodaAppTheme
+import net.aurboda.update.UpdateAvailableDialog
+import net.aurboda.update.UpdateCheckResult
+import net.aurboda.update.UpdateDownloadingDialog
+import net.aurboda.update.UpdateErrorDialog
+import net.aurboda.update.VersionInfo
+import net.aurboda.update.checkForUpdate
+import net.aurboda.update.downloadUpdate
+import net.aurboda.update.installApk
 // Import allRecordTypes from HealthDataModels
 import net.aurboda.allRecordTypes
 import java.time.Instant
@@ -243,9 +251,81 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private const val VERSION_JSON_URL = "https://github.com/fiddur/aurboda/releases/latest/download/version.json"
+
 @Composable
 fun AurbodaApp(initialTab: MainTab? = null) {
     val appState = rememberAppState(initialTab = initialTab)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val ktorHttpClient = remember { HttpClient(Android) { install(ContentNegotiation) { json(appJson) } } }
+
+    // Update check state
+    var updateAvailable by remember { mutableStateOf<VersionInfo?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var showDownloadingDialog by remember { mutableStateOf(false) }
+    var updateError by remember { mutableStateOf<String?>(null) }
+
+    // Check for updates on app launch
+    LaunchedEffect(Unit) {
+        val currentVersionCode = BuildConfig.VERSION_CODE_INT
+        Log.d("UpdateChecker", "Checking for updates. Current version code: $currentVersionCode")
+        when (val result = checkForUpdate(ktorHttpClient, VERSION_JSON_URL, currentVersionCode)) {
+            is UpdateCheckResult.UpdateAvailable -> {
+                Log.d("UpdateChecker", "Update available: ${result.versionInfo.versionName}")
+                updateAvailable = result.versionInfo
+                showUpdateDialog = true
+            }
+            is UpdateCheckResult.NoUpdate -> {
+                Log.d("UpdateChecker", "No update available")
+            }
+            is UpdateCheckResult.Error -> {
+                Log.w("UpdateChecker", "Error checking for updates: ${result.message}")
+            }
+        }
+    }
+
+    // Update dialogs
+    if (showUpdateDialog && updateAvailable != null) {
+        UpdateAvailableDialog(
+            versionInfo = updateAvailable!!,
+            onUpdate = {
+                showUpdateDialog = false
+                showDownloadingDialog = true
+                downloadUpdate(
+                    context = context,
+                    downloadUrl = updateAvailable!!.downloadUrl,
+                    versionName = updateAvailable!!.versionName,
+                    onDownloadComplete = { apkFile ->
+                        scope.launch {
+                            showDownloadingDialog = false
+                            installApk(context, apkFile)
+                        }
+                    },
+                    onDownloadFailed = { error ->
+                        scope.launch {
+                            showDownloadingDialog = false
+                            updateError = error
+                        }
+                    }
+                )
+            },
+            onDismiss = { showUpdateDialog = false }
+        )
+    }
+
+    if (showDownloadingDialog) {
+        UpdateDownloadingDialog(
+            onDismiss = { showDownloadingDialog = false }
+        )
+    }
+
+    updateError?.let { error ->
+        UpdateErrorDialog(
+            errorMessage = error,
+            onDismiss = { updateError = null }
+        )
+    }
 
     when (appState.currentScreen) {
         AppScreen.Login -> {
