@@ -71,6 +71,97 @@ const placeColorPalette = [
   '#6366f1', // Indigo
 ]
 
+// Exercise type colors
+const exerciseColorPalette = [
+  '#22c55e', // Green - default/first
+  '#f97316', // Orange
+  '#3b82f6', // Blue
+  '#ec4899', // Pink
+  '#8b5cf6', // Violet
+  '#14b8a6', // Teal
+  '#eab308', // Yellow
+  '#ef4444', // Red
+]
+
+// HealthConnect exercise type mapping (subset of common types)
+const exerciseTypeNames: Record<number, string> = {
+  0: 'Workout',
+  2: 'Badminton',
+  4: 'Baseball',
+  5: 'Basketball',
+  8: 'Biking',
+  9: 'Biking (Stationary)',
+  10: 'Boot Camp',
+  11: 'Boxing',
+  13: 'Calisthenics',
+  14: 'Cricket',
+  16: 'Dancing',
+  25: 'Elliptical',
+  26: 'Fencing',
+  27: 'Football (American)',
+  28: 'Football (Australian)',
+  29: 'Frisbee',
+  30: 'Golf',
+  31: 'Guided Breathing',
+  32: 'Gymnastics',
+  33: 'Handball',
+  34: 'HIIT',
+  35: 'Hiking',
+  36: 'Ice Hockey',
+  37: 'Ice Skating',
+  44: 'Martial Arts',
+  46: 'Paddling',
+  47: 'Paragliding',
+  48: 'Pilates',
+  50: 'Racquetball',
+  51: 'Rock Climbing',
+  52: 'Roller Hockey',
+  53: 'Rowing',
+  54: 'Rowing Machine',
+  55: 'Rugby',
+  56: 'Running',
+  57: 'Running (Treadmill)',
+  58: 'Sailing',
+  59: 'Scuba Diving',
+  60: 'Skating',
+  61: 'Skiing',
+  62: 'Skiing (Cross Country)',
+  63: 'Skiing (Downhill)',
+  64: 'Snowboarding',
+  65: 'Snowshoeing',
+  66: 'Soccer',
+  67: 'Softball',
+  68: 'Squash',
+  69: 'Stair Climbing',
+  70: 'Stair Climbing (Machine)',
+  71: 'Strength Training',
+  72: 'Stretching',
+  73: 'Surfing',
+  74: 'Swimming (Open Water)',
+  75: 'Swimming (Pool)',
+  76: 'Table Tennis',
+  77: 'Tennis',
+  78: 'Volleyball',
+  79: 'Walking',
+  80: 'Water Polo',
+  81: 'Weightlifting',
+  82: 'Wheelchair',
+  83: 'Yoga',
+}
+
+// Get exercise type name from activity data
+const getExerciseTypeName = (activity: Activity): string => {
+  // HealthConnect exercises have exerciseType in data
+  const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseType as
+    | number
+    | undefined
+  if (exerciseType !== undefined && exerciseTypeNames[exerciseType]) {
+    return exerciseTypeNames[exerciseType]
+  }
+  // Fall back to title for Oura or other sources
+  return activity.title || 'Workout'
+}
+
 // Generate consistent color for a place name
 const getPlaceColor = (placeName: string, allPlaces: string[]): string => {
   if (!placeName || placeName === 'Travel' || placeName === 'Unknown') {
@@ -78,6 +169,13 @@ const getPlaceColor = (placeName: string, allPlaces: string[]): string => {
   }
   const index = allPlaces.indexOf(placeName)
   return placeColorPalette[index % placeColorPalette.length]
+}
+
+// Generate consistent color for exercise type
+const getExerciseColor = (exerciseTypeName: string, allTypes: string[]): string => {
+  const index = allTypes.indexOf(exerciseTypeName)
+  if (index === -1) return exerciseColorPalette[0]
+  return exerciseColorPalette[index % exerciseColorPalette.length]
 }
 
 // Chart dimensions
@@ -166,6 +264,12 @@ export const Timeline = () => {
   const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
 
   const activities = activitiesQuery.data || []
+
+  // Get unique exercise types for legend (by activity type, not title)
+  const exerciseSessions = activities.filter((a) => a.activityType === 'exercise')
+  const uniqueExerciseTypes = [...new Set(exerciseSessions.map((a) => getExerciseTypeName(a)))]
+    .filter(Boolean)
+    .sort()
 
   // Calculate effective view range
   const effectiveViewStart = viewStart.value || start
@@ -323,6 +427,37 @@ export const Timeline = () => {
           </div>
         )}
 
+        {/* Exercise types legend */}
+        {showExercise.value && uniqueExerciseTypes.length > 0 && (
+          <div
+            style={{
+              border: '1px solid currentColor',
+              borderRadius: '4px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              marginBottom: '1rem',
+              opacity: 0.7,
+              padding: '0.5rem 1rem',
+            }}
+          >
+            <strong>Exercise:</strong>
+            {uniqueExerciseTypes.map((name) => (
+              <div key={name} style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
+                <div
+                  style={{
+                    backgroundColor: getExerciseColor(name, uniqueExerciseTypes),
+                    borderRadius: '50%',
+                    height: '12px',
+                    width: '12px',
+                  }}
+                />
+                <span>{name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {isLoading && <div>Loading...</div>}
         {hasError && <div>Error loading data</div>}
 
@@ -341,6 +476,7 @@ export const Timeline = () => {
           visibleStart={effectiveViewStart}
           visibleEnd={effectiveViewEnd}
           uniquePlaceNames={uniquePlaceNames}
+          uniqueExerciseTypes={uniqueExerciseTypes}
           onZoom={handleZoom}
           onZoomOut={handleZoomOut}
         />
@@ -364,6 +500,7 @@ interface TimelineChartProps {
   visibleStart: Date
   visibleEnd: Date
   uniquePlaceNames: string[]
+  uniqueExerciseTypes: string[]
   onZoom: (start: Date, end: Date) => void
   onZoomOut: () => void
 }
@@ -383,6 +520,7 @@ function TimelineChart({
   visibleStart,
   visibleEnd,
   uniquePlaceNames,
+  uniqueExerciseTypes,
   onZoom,
 }: TimelineChartProps) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -670,7 +808,7 @@ function TimelineChart({
               y={trackExercise}
               width={Math.max(0, x(session.endTime) - x(session.startTime))}
               height={trackHeight}
-              fill={colors.exercise}
+              fill={getExerciseColor(getExerciseTypeName(session), uniqueExerciseTypes)}
               opacity={0.6}
             />
           : null,
