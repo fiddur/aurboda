@@ -17,6 +17,14 @@ const dbByUser: Record<string, Client> = {}
 
 const userDbName = (user: string) => `aurboda_${user}`
 
+/**
+ * Inject a database client for a user. Used for testing with testcontainers.
+ * @internal
+ */
+export const _setClientForUser = (user: string, client: Client) => {
+  dbByUser[user] = client
+}
+
 const redactSensitiveParams = (queryStr: string, params?: unknown[]): unknown[] | undefined => {
   if (!params) return params
   // Redact password params in user creation queries

@@ -1,22 +1,25 @@
 /**
  * Database test helper using testcontainers.
  *
- * Provides a real PostgreSQL instance for integration testing.
+ * Provides a real PostgreSQL instance for integration testing of db.ts functions.
  * Uses PostGIS image to match production environment.
  */
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import { Client } from 'pg'
+import { _setClientForUser } from '../db'
 import { createTableStatements, tableCreationOrder } from '../schema'
 
 let container: StartedPostgreSqlContainer | null = null
 let client: Client | null = null
 
+const TEST_USER = 'testuser'
+
 /**
- * Start a PostgreSQL container for testing.
+ * Start a PostgreSQL container and set up the test user's client.
  * Call this in beforeAll().
  */
-export const startTestDb = async (): Promise<Client> => {
+export const startTestDb = async (): Promise<void> => {
   // Use PostGIS image to match production
   container = await new PostgreSqlContainer('postgis/postgis:16-3.4-alpine')
     .withDatabase('test_db')
@@ -37,7 +40,8 @@ export const startTestDb = async (): Promise<Client> => {
     }
   }
 
-  return client
+  // Inject the client so db.ts functions use this connection
+  _setClientForUser(TEST_USER, client)
 }
 
 /**
@@ -56,15 +60,9 @@ export const stopTestDb = async (): Promise<void> => {
 }
 
 /**
- * Get the test database client.
- * Must call startTestDb() first.
+ * Get the test user name to pass to db.ts functions.
  */
-export const getTestClient = (): Client => {
-  if (!client) {
-    throw new Error('Test database not started. Call startTestDb() first.')
-  }
-  return client
-}
+export const getTestUser = (): string => TEST_USER
 
 /**
  * Clean all data from tables (but keep schema).
@@ -98,16 +96,4 @@ export const cleanTestDb = async (): Promise<void> => {
       // Table might not exist, ignore
     }
   }
-}
-
-/**
- * Execute a query on the test database.
- */
-export const testQuery = async <T = unknown>(
-  sql: string,
-  params?: unknown[],
-): Promise<{ rows: T[]; rowCount: number }> => {
-  const c = getTestClient()
-  const result = await c.query(sql, params)
-  return { rowCount: result.rowCount ?? 0, rows: result.rows as T[] }
 }
