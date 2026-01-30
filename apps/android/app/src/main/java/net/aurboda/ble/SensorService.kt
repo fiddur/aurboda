@@ -54,6 +54,15 @@ private const val CHANNEL_ID = "sensor_service_channel"
 private const val SYNC_INTERVAL_MS = 5000L
 private const val RR_BUFFER_MIN_SIZE = 30   // Minimum intervals for HRV calculation
 private const val RR_BUFFER_MAX_SIZE = 300  // Maximum intervals (~5 minutes at 60bpm)
+private const val CHART_HISTORY_DURATION_MS = 5 * 60 * 1000L  // 5 minutes of chart history
+
+/**
+ * Data point for chart display with timestamp.
+ */
+data class ChartDataPoint(
+    val timestamp: Long,  // epoch millis
+    val value: Float
+)
 
 /**
  * State for an individual connected device.
@@ -83,7 +92,9 @@ data class SensorServiceState(
     val pendingCadenceSamples: Int = 0,
     val currentHrv: Double? = null,           // Latest RMSSD in ms
     val hrvReliable: Boolean = false,         // Whether HRV measurement is reliable
-    val rrIntervalCount: Int = 0              // Number of RR intervals in buffer
+    val rrIntervalCount: Int = 0,             // Number of RR intervals in buffer
+    val hrChartHistory: List<ChartDataPoint> = emptyList(),   // 5 min HR history for chart
+    val hrvChartHistory: List<ChartDataPoint> = emptyList()   // 5 min HRV history for chart
 ) {
     // Convenience accessors for backward compatibility and easy access
     val hrDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.HEART_RATE }
@@ -177,6 +188,8 @@ class SensorService : Service() {
     private val sampleBuffer = mutableListOf<HeartRateSample>()
     private val cadenceSampleBuffer = mutableListOf<CadenceSample>()
     private val rrIntervalBuffer = ArrayDeque<Int>(RR_BUFFER_MAX_SIZE)
+    private val hrChartBuffer = mutableListOf<ChartDataPoint>()
+    private val hrvChartBuffer = mutableListOf<ChartDataPoint>()
     private val bufferLock = Any()
 
     private val httpClient by lazy {
@@ -414,14 +427,22 @@ class SensorService : Service() {
     private fun handleDeviceDisconnected(deviceAddress: String) {
         Log.d(TAG, "Device disconnected: $deviceAddress")
 
-        // Check if this was an HR device and clear RR buffer + HRV state
+        // Check if this was an HR device and clear RR buffer + HRV state + chart history
         val wasHrDevice = _serviceState.value.connectedDevices[deviceAddress]?.device?.type == SensorType.HEART_RATE
         if (wasHrDevice) {
             synchronized(bufferLock) {
                 rrIntervalBuffer.clear()
-                Log.d(TAG, "Cleared RR interval buffer due to HR device disconnect")
+                hrChartBuffer.clear()
+                hrvChartBuffer.clear()
+                Log.d(TAG, "Cleared RR interval buffer and chart history due to HR device disconnect")
             }
-            updateState { it.copy(currentHrv = null, hrvReliable = false, rrIntervalCount = 0) }
+            updateState { it.copy(
+                currentHrv = null,
+                hrvReliable = false,
+                rrIntervalCount = 0,
+                hrChartHistory = emptyList(),
+                hrvChartHistory = emptyList()
+            ) }
         }
 
         // Cancel jobs for this device
@@ -456,7 +477,17 @@ class SensorService : Service() {
             manager.heartRateSamples.collect { sample ->
                 synchronized(bufferLock) {
                     sampleBuffer.add(sample)
-                    updateState { it.copy(pendingSamples = sampleBuffer.size) }
+
+                    // Add to chart history and prune old data
+                    val now = System.currentTimeMillis()
+                    val cutoff = now - CHART_HISTORY_DURATION_MS
+                    hrChartBuffer.add(ChartDataPoint(now, sample.bpm.toFloat()))
+                    hrChartBuffer.removeAll { it.timestamp < cutoff }
+
+                    updateState { it.copy(
+                        pendingSamples = sampleBuffer.size,
+                        hrChartHistory = hrChartBuffer.toList()
+                    ) }
 
                     // Collect RR intervals for HRV calculation (rolling window)
                     sample.rrIntervals?.forEach { rr ->
@@ -543,11 +574,22 @@ class SensorService : Service() {
                     "artifacts=${hrvResult.artifactCount} (${String.format("%.1f", hrvResult.artifactPercentage)}%), " +
                     "reliable=${hrvResult.isReliable}")
 
+            // Add to HRV chart history if we have a valid value
+            if (hrvResult.rmssd != null) {
+                synchronized(bufferLock) {
+                    val now = System.currentTimeMillis()
+                    val cutoff = now - CHART_HISTORY_DURATION_MS
+                    hrvChartBuffer.add(ChartDataPoint(now, hrvResult.rmssd.toFloat()))
+                    hrvChartBuffer.removeAll { it.timestamp < cutoff }
+                }
+            }
+
             // Update state for UI display
             updateState { it.copy(
                 currentHrv = hrvResult.rmssd,
                 hrvReliable = hrvResult.isReliable,
-                rrIntervalCount = rrIntervalsForHrv.size
+                rrIntervalCount = rrIntervalsForHrv.size,
+                hrvChartHistory = hrvChartBuffer.toList()
             ) }
 
             if (hrvResult.isReliable && hrvResult.rmssd != null) {
@@ -893,6 +935,15 @@ class SensorService : Service() {
         // Close all connection managers
         connectionManagers.values.forEach { it.close() }
         connectionManagers.clear()
+
+        // Clear all buffers
+        synchronized(bufferLock) {
+            sampleBuffer.clear()
+            cadenceSampleBuffer.clear()
+            rrIntervalBuffer.clear()
+            hrChartBuffer.clear()
+            hrvChartBuffer.clear()
+        }
     }
 
     private fun updateState(update: (SensorServiceState) -> SensorServiceState) {
