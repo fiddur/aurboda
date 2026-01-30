@@ -5,8 +5,10 @@ import { addMetric, addTag, deleteTag } from './mutations'
 // Mock the db module
 vi.mock('../db', () => ({
   deleteTag: vi.fn(),
+  findMergeableTag: vi.fn(),
   insertTag: vi.fn(),
   insertTimeSeries: vi.fn(),
+  updateTagEndTime: vi.fn(),
 }))
 
 describe('addTag', () => {
@@ -57,6 +59,138 @@ describe('addTag', () => {
       startTime: new Date('2024-01-15T10:00:00Z'),
       tag: 'meditation',
     })
+  })
+
+  test('does not include merged field when mergeSpan not specified', async () => {
+    vi.mocked(db.insertTag).mockResolvedValue(undefined)
+
+    const result = await addTag('testuser', {
+      startTime: new Date('2024-01-15T10:00:00Z'),
+      tag: 'coffee',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.merged).toBeUndefined()
+    expect(result.extendedBySeconds).toBeUndefined()
+    expect(db.findMergeableTag).not.toHaveBeenCalled()
+  })
+
+  test('creates new tag with merged: false when no mergeable tag found', async () => {
+    vi.mocked(db.findMergeableTag).mockResolvedValue(undefined)
+    vi.mocked(db.insertTag).mockResolvedValue(undefined)
+
+    const result = await addTag('testuser', {
+      mergeSpan: 180,
+      startTime: new Date('2024-01-15T10:00:00Z'),
+      tag: 'computer:dharma',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.merged).toBe(false)
+    expect(result.extendedBySeconds).toBeUndefined()
+    expect(result.id).toBeDefined()
+
+    expect(db.findMergeableTag).toHaveBeenCalledWith(
+      'testuser',
+      'computer:dharma',
+      new Date('2024-01-15T10:00:00Z'),
+      180,
+    )
+    expect(db.insertTag).toHaveBeenCalled()
+    expect(db.updateTagEndTime).not.toHaveBeenCalled()
+  })
+
+  test('extends existing tag when mergeable tag found', async () => {
+    vi.mocked(db.findMergeableTag).mockResolvedValue({
+      endTime: new Date('2024-01-15T09:59:00Z'),
+      externalId: 'existing-tag-id',
+      id: 'db-id',
+      source: 'manual',
+      startTime: new Date('2024-01-15T09:00:00Z'),
+      tag: 'computer:dharma',
+    })
+    vi.mocked(db.updateTagEndTime).mockResolvedValue(true)
+
+    const result = await addTag('testuser', {
+      mergeSpan: 180,
+      startTime: new Date('2024-01-15T10:00:00Z'),
+      tag: 'computer:dharma',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.merged).toBe(true)
+    expect(result.extendedBySeconds).toBe(60) // From 09:59:00 to 10:00:00
+    expect(result.id).toBe('existing-tag-id')
+    expect(result.startTime).toBe('2024-01-15T09:00:00.000Z') // Original start
+    expect(result.endTime).toBe('2024-01-15T10:00:00.000Z') // New end
+
+    expect(db.updateTagEndTime).toHaveBeenCalledWith(
+      'testuser',
+      'existing-tag-id',
+      new Date('2024-01-15T10:00:00Z'),
+    )
+    expect(db.insertTag).not.toHaveBeenCalled()
+  })
+
+  test('extends tag with new end_time when both are provided', async () => {
+    vi.mocked(db.findMergeableTag).mockResolvedValue({
+      endTime: new Date('2024-01-15T09:59:00Z'),
+      externalId: 'existing-tag-id',
+      id: 'db-id',
+      source: 'manual',
+      startTime: new Date('2024-01-15T09:00:00Z'),
+      tag: 'computer:dharma',
+    })
+    vi.mocked(db.updateTagEndTime).mockResolvedValue(true)
+
+    const result = await addTag('testuser', {
+      endTime: new Date('2024-01-15T10:01:00Z'),
+      mergeSpan: 180,
+      startTime: new Date('2024-01-15T10:00:00Z'),
+      tag: 'computer:dharma',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.merged).toBe(true)
+    expect(result.extendedBySeconds).toBe(120) // From 09:59:00 to 10:01:00
+    expect(result.endTime).toBe('2024-01-15T10:01:00.000Z')
+
+    expect(db.updateTagEndTime).toHaveBeenCalledWith(
+      'testuser',
+      'existing-tag-id',
+      new Date('2024-01-15T10:01:00Z'),
+    )
+  })
+
+  test('merges with point-in-time tag (no end_time)', async () => {
+    // Existing tag has no end_time - it's a point-in-time tag
+    vi.mocked(db.findMergeableTag).mockResolvedValue({
+      endTime: undefined,
+      externalId: 'existing-tag-id',
+      id: 'db-id',
+      source: 'manual',
+      startTime: new Date('2024-01-15T09:59:00Z'),
+      tag: 'computer:dharma',
+    })
+    vi.mocked(db.updateTagEndTime).mockResolvedValue(true)
+
+    const result = await addTag('testuser', {
+      mergeSpan: 180,
+      startTime: new Date('2024-01-15T10:00:00Z'),
+      tag: 'computer:dharma',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.merged).toBe(true)
+    expect(result.extendedBySeconds).toBe(60) // From 09:59:00 (start) to 10:00:00 (new end)
+    expect(result.startTime).toBe('2024-01-15T09:59:00.000Z')
+    expect(result.endTime).toBe('2024-01-15T10:00:00.000Z')
+
+    expect(db.updateTagEndTime).toHaveBeenCalledWith(
+      'testuser',
+      'existing-tag-id',
+      new Date('2024-01-15T10:00:00Z'),
+    )
   })
 })
 

@@ -417,13 +417,18 @@ const main = async () => {
     authMiddleware,
     validateBody(addTagBodySchema),
     async (req, res) => {
-      const { tag, start_time, end_time } = req.body
+      const { tag, start_time, end_time, merge_span } = req.body
       const user = req.user!
 
       const startDate = new Date(start_time)
       const endDate = end_time ? new Date(end_time) : undefined
 
-      const result = await addTag(user, { endTime: endDate, startTime: startDate, tag })
+      const result = await addTag(user, {
+        endTime: endDate,
+        mergeSpan: merge_span,
+        startTime: startDate,
+        tag,
+      })
       res.json(result)
     },
   )

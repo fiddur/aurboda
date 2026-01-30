@@ -1,0 +1,99 @@
+/**
+ * Database test helper using testcontainers.
+ *
+ * Provides a real PostgreSQL instance for integration testing of db.ts functions.
+ * Uses PostGIS image to match production environment.
+ */
+
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { Client } from 'pg'
+import { _setClientForUser } from '../db'
+import { createTableStatements, tableCreationOrder } from '../schema'
+
+let container: StartedPostgreSqlContainer | null = null
+let client: Client | null = null
+
+const TEST_USER = 'testuser'
+
+/**
+ * Start a PostgreSQL container and set up the test user's client.
+ * Call this in beforeAll().
+ */
+export const startTestDb = async (): Promise<void> => {
+  // Use PostGIS image to match production
+  container = await new PostgreSqlContainer('postgis/postgis:16-3.4-alpine')
+    .withDatabase('test_db')
+    .withUsername('test_user')
+    .withPassword('test_pass')
+    .start()
+
+  client = new Client({
+    connectionString: container.getConnectionUri(),
+  })
+  await client.connect()
+
+  // Create all tables
+  for (const tableName of tableCreationOrder) {
+    const statement = createTableStatements[tableName]
+    if (statement) {
+      await client.query(statement)
+    }
+  }
+
+  // Inject the client so db.ts functions use this connection
+  _setClientForUser(TEST_USER, client)
+}
+
+/**
+ * Stop the PostgreSQL container.
+ * Call this in afterAll().
+ */
+export const stopTestDb = async (): Promise<void> => {
+  if (client) {
+    await client.end()
+    client = null
+  }
+  if (container) {
+    await container.stop()
+    container = null
+  }
+}
+
+/**
+ * Get the test user name to pass to db.ts functions.
+ */
+export const getTestUser = (): string => TEST_USER
+
+/**
+ * Clean all data from tables (but keep schema).
+ * Call this in beforeEach() for test isolation.
+ */
+export const cleanTestDb = async (): Promise<void> => {
+  if (!client) return
+
+  // Truncate tables in reverse order to handle foreign keys
+  const tables = [
+    'tags',
+    'time_series',
+    'activities',
+    'productivity',
+    'places',
+    'locations',
+    'named_locations',
+    'detected_locations',
+    'raw_records',
+    'lab_results',
+    'oauth_tokens',
+    'sync_state',
+    'user_settings',
+    'mcp_sessions',
+  ]
+
+  for (const table of tables) {
+    try {
+      await client.query(`TRUNCATE TABLE ${table} CASCADE`)
+    } catch {
+      // Table might not exist, ignore
+    }
+  }
+}
