@@ -73,14 +73,20 @@ interface OuraSleep extends OuraDailyRecord {
   }
 }
 
+/** Oura interval-based time series data (HR, HRV, motion) */
+interface OuraIntervalData {
+  interval: number // interval in seconds
+  items: (number | null)[]
+}
+
 interface OuraSession {
   id: string
   startTime: Date
   endTime: Date
   type: string
   mood?: string
-  heartRate?: unknown
-  hrv?: unknown
+  heartRate?: OuraIntervalData
+  hrv?: OuraIntervalData
   motion?: unknown
 }
 
@@ -276,6 +282,34 @@ const processDailySleep = async (user: string, data: OuraSleep[]) => {
 }
 
 /**
+ * Extract time series points from Oura interval-based data.
+ */
+const extractIntervalPoints = (
+  startTime: Date,
+  intervalData: OuraIntervalData | undefined,
+  metric: MetricType,
+): TimeSeriesPoint[] => {
+  if (!intervalData?.items) return []
+
+  const points: TimeSeriesPoint[] = []
+  const intervalMs = intervalData.interval * 1000
+
+  for (let i = 0; i < intervalData.items.length; i++) {
+    const value = intervalData.items[i]
+    if (value !== null) {
+      points.push({
+        metric,
+        source: 'oura',
+        time: new Date(startTime.getTime() + i * intervalMs),
+        value,
+      })
+    }
+  }
+
+  return points
+}
+
+/**
  * Process Oura session data (meditation).
  */
 const processSessions = async (user: string, data: OuraSession[]) => {
@@ -302,6 +336,15 @@ const processSessions = async (user: string, data: OuraSession[]) => {
       startTime: record.startTime,
       title: record.type,
     })
+
+    // Extract HR and HRV samples to time series
+    const hrPoints = extractIntervalPoints(record.startTime, record.heartRate, 'heart_rate')
+    const hrvPoints = extractIntervalPoints(record.startTime, record.hrv, 'hrv_rmssd')
+    const timeSeriesPoints = [...hrPoints, ...hrvPoints]
+
+    if (timeSeriesPoints.length > 0) {
+      await insertTimeSeries(user, timeSeriesPoints)
+    }
   }
 }
 

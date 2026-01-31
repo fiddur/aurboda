@@ -357,11 +357,11 @@ describe('processOuraData', () => {
       const data = [
         {
           endTime: new Date('2025-01-01T10:30:00Z'),
-          heartRate: { items: [60, 62, 58] },
-          hrv: { items: [50, 55] },
+          heartRate: { interval: 5, items: [60, 62, 58] },
+          hrv: { interval: 5, items: [50, 55] },
           id: 'sess-1',
           mood: 'good',
-          motion: { items: [1, 0, 2] },
+          motion: { interval: 5, items: [1, 0, 2] },
           startTime: new Date('2025-01-01T10:00:00Z'),
           type: 'meditation',
         },
@@ -391,6 +391,117 @@ describe('processOuraData', () => {
         startTime: new Date('2025-01-01T10:00:00Z'),
         title: 'meditation',
       })
+    })
+
+    test('extracts heart rate samples to time series', async () => {
+      const data = [
+        {
+          endTime: new Date('2025-01-01T10:00:15Z'),
+          heartRate: { interval: 5, items: [60, 62, 58] },
+          hrv: undefined,
+          id: 'sess-hr',
+          mood: 'good',
+          motion: undefined,
+          startTime: new Date('2025-01-01T10:00:00Z'),
+          type: 'meditation',
+        },
+      ]
+
+      await processOuraData(user, 'sessions', data)
+
+      expect(db.insertTimeSeries).toHaveBeenCalledWith(user, [
+        { metric: 'heart_rate', source: 'oura', time: new Date('2025-01-01T10:00:00Z'), value: 60 },
+        { metric: 'heart_rate', source: 'oura', time: new Date('2025-01-01T10:00:05Z'), value: 62 },
+        { metric: 'heart_rate', source: 'oura', time: new Date('2025-01-01T10:00:10Z'), value: 58 },
+      ])
+    })
+
+    test('extracts HRV samples to time series', async () => {
+      const data = [
+        {
+          endTime: new Date('2025-01-01T10:00:10Z'),
+          heartRate: undefined,
+          hrv: { interval: 5, items: [50, 55] },
+          id: 'sess-hrv',
+          mood: 'good',
+          motion: undefined,
+          startTime: new Date('2025-01-01T10:00:00Z'),
+          type: 'meditation',
+        },
+      ]
+
+      await processOuraData(user, 'sessions', data)
+
+      expect(db.insertTimeSeries).toHaveBeenCalledWith(user, [
+        { metric: 'hrv_rmssd', source: 'oura', time: new Date('2025-01-01T10:00:00Z'), value: 50 },
+        { metric: 'hrv_rmssd', source: 'oura', time: new Date('2025-01-01T10:00:05Z'), value: 55 },
+      ])
+    })
+
+    test('extracts both HR and HRV samples together', async () => {
+      const data = [
+        {
+          endTime: new Date('2025-01-01T10:00:10Z'),
+          heartRate: { interval: 5, items: [60, 62] },
+          hrv: { interval: 5, items: [50, 55] },
+          id: 'sess-both',
+          mood: 'good',
+          motion: undefined,
+          startTime: new Date('2025-01-01T10:00:00Z'),
+          type: 'meditation',
+        },
+      ]
+
+      await processOuraData(user, 'sessions', data)
+
+      expect(db.insertTimeSeries).toHaveBeenCalledWith(user, [
+        { metric: 'heart_rate', source: 'oura', time: new Date('2025-01-01T10:00:00Z'), value: 60 },
+        { metric: 'heart_rate', source: 'oura', time: new Date('2025-01-01T10:00:05Z'), value: 62 },
+        { metric: 'hrv_rmssd', source: 'oura', time: new Date('2025-01-01T10:00:00Z'), value: 50 },
+        { metric: 'hrv_rmssd', source: 'oura', time: new Date('2025-01-01T10:00:05Z'), value: 55 },
+      ])
+    })
+
+    test('skips null values in HR and HRV samples', async () => {
+      const data = [
+        {
+          endTime: new Date('2025-01-01T10:00:15Z'),
+          heartRate: { interval: 5, items: [60, null, 58] },
+          hrv: { interval: 5, items: [null, 55, null] },
+          id: 'sess-nulls',
+          mood: 'good',
+          motion: undefined,
+          startTime: new Date('2025-01-01T10:00:00Z'),
+          type: 'meditation',
+        },
+      ]
+
+      await processOuraData(user, 'sessions', data)
+
+      expect(db.insertTimeSeries).toHaveBeenCalledWith(user, [
+        { metric: 'heart_rate', source: 'oura', time: new Date('2025-01-01T10:00:00Z'), value: 60 },
+        { metric: 'heart_rate', source: 'oura', time: new Date('2025-01-01T10:00:10Z'), value: 58 },
+        { metric: 'hrv_rmssd', source: 'oura', time: new Date('2025-01-01T10:00:05Z'), value: 55 },
+      ])
+    })
+
+    test('does not call insertTimeSeries when no HR/HRV data', async () => {
+      const data = [
+        {
+          endTime: new Date('2025-01-01T10:30:00Z'),
+          heartRate: undefined,
+          hrv: undefined,
+          id: 'sess-no-data',
+          mood: 'good',
+          motion: undefined,
+          startTime: new Date('2025-01-01T10:00:00Z'),
+          type: 'meditation',
+        },
+      ]
+
+      await processOuraData(user, 'sessions', data)
+
+      expect(db.insertTimeSeries).not.toHaveBeenCalled()
     })
   })
 
