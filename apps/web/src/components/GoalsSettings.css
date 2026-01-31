@@ -61,6 +61,53 @@
   background: var(--bg-secondary, #f5f5f5);
   border-radius: 8px;
   flex-wrap: wrap;
+  position: relative;
+}
+
+.goal-row.invalid {
+  border: 2px solid #f44336;
+}
+
+.goal-row.new {
+  border: 2px dashed #673ab8;
+}
+
+.goal-reorder {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reorder-button {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.6rem;
+  padding: 2px 6px;
+  line-height: 1;
+  color: #666;
+}
+
+.reorder-button:hover:not(:disabled) {
+  background: #ddd;
+}
+
+.reorder-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.field-error input {
+  border-color: #f44336 !important;
+  background-color: rgba(244, 67, 54, 0.05);
+}
+
+.validation-error {
+  width: 100%;
+  color: #f44336;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
 }
 
 .goal-field {
@@ -218,6 +265,19 @@
 
   .duration-help code {
     background: #444;
+  }
+
+  .reorder-button {
+    border-color: #555;
+    color: #aaa;
+  }
+
+  .reorder-button:hover:not(:disabled) {
+    background: #444;
+  }
+
+  .field-error input {
+    background-color: rgba(244, 67, 54, 0.15);
   }
 }
 
