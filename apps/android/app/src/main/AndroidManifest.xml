@@ -119,6 +119,12 @@
                 android:resource="@xml/hr_zone_widget_info" />
         </receiver>
 
+        <!-- Widget RemoteViews Service for scrollable goals list -->
+        <service
+            android:name=".widget.GoalsWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
         <!-- BLE Sensor Foreground Service -->
         <service
             android:name=".ble.SensorService"
