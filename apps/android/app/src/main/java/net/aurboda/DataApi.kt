@@ -42,10 +42,38 @@ data class HrZoneThresholds(
 )
 
 @Serializable
+data class Goal(
+    val id: String,
+    val metric: String,
+    val min: Double? = null,
+    val max: Double? = null,
+    val window: String = "7d"
+)
+
+@Serializable
+data class GoalProgress(
+    val id: String,
+    val metric: String,
+    val min: Double? = null,
+    val max: Double? = null,
+    val window: String,
+    val current: Double,
+    @SerialName("losingTomorrow") val losingTomorrow: Double,
+    val unit: String
+)
+
+@Serializable
+data class GoalsProgressResponse(
+    val success: Boolean,
+    val goals: List<GoalProgress>
+)
+
+@Serializable
 data class UserSettingsResponse(
     val success: Boolean,
     @SerialName("hr_zone_start") val hrZoneStart: HrZoneThresholds? = null,
-    @SerialName("birth_date") val birthDate: String? = null
+    @SerialName("birth_date") val birthDate: String? = null,
+    val goals: List<Goal>? = null
 )
 
 sealed class DataResult<out T> {
@@ -109,6 +137,34 @@ suspend fun fetchUserSettings(
         }
     } catch (e: Exception) {
         Log.e("DataApi", "Error fetching user settings", e)
+        DataResult.Error(e.message ?: "Unknown error")
+    }
+}
+
+suspend fun fetchGoalsProgress(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String
+): DataResult<GoalsProgressResponse> {
+    return try {
+        val url = "$serverUrl/goals/progress"
+        Log.d("DataApi", "Fetching goals progress from: $url")
+
+        val response = httpClient.get(url) {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+        }
+
+        if (response.status == HttpStatusCode.OK) {
+            val body = response.bodyAsText()
+            Log.d("DataApi", "Goals progress response: $body")
+            val parsed = appJson.decodeFromString<GoalsProgressResponse>(body)
+            DataResult.Success(parsed)
+        } else {
+            Log.e("DataApi", "Goals progress error: ${response.status}")
+            DataResult.Error("Server returned ${response.status}")
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error fetching goals progress", e)
         DataResult.Error(e.message ?: "Unknown error")
     }
 }

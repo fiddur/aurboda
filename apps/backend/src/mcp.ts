@@ -23,6 +23,7 @@ import { DEFAULT_SESSION_INACTIVITY_MS, McpSessionStore } from './mcp-session-st
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { syncRescueTimeData } from './rescuetime-sync'
+import { getGoalsProgress } from './services/goals'
 import {
   deleteNamedLocation,
   getDetectedLocations,
@@ -492,6 +493,17 @@ export function createMcpRouter(
           hrZoneStart: hr_zone_start,
         })
         return jsonResponse(result)
+      },
+    )
+
+    // Tool: get_goal_progress
+    server.tool(
+      'get_goal_progress',
+      'Get progress toward all user goals. Returns current value, min/max targets, and how much will be lost when the oldest day exits the rolling window.',
+      {},
+      async () => {
+        const goals = await getGoalsProgress(user)
+        return jsonResponse({ goals, success: true })
       },
     )
 

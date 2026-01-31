@@ -18,6 +18,9 @@ export function Header() {
         </a>
         {isLoggedIn ?
           <>
+            <a href="/goals" class={url == '/goals' && 'active'}>
+              Goals
+            </a>
             <a href="/hr-zones" class={url == '/hr-zones' && 'active'}>
               HR Zones
             </a>

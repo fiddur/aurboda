@@ -18,6 +18,7 @@ import {
   type DetectedLocationsQuery,
   detectedLocationsQuerySchema,
   type DetectedLocationsResponse,
+  type GoalsProgressResponse,
   type LocationsQuery,
   locationsQuerySchema,
   type LocationsResponse,
@@ -74,6 +75,7 @@ import { isValidMetric, MetricType, validMetrics } from './schema'
 import { createDetectionTrigger, DetectionTrigger } from './services/detection-trigger'
 import { runDetectionForUser } from './services/detection-worker'
 import { createGeocodeQueue, GeocodeQueue } from './services/geocode-queue'
+import { getGoalsProgress } from './services/goals'
 import {
   deleteNamedLocation,
   getDetectedLocations,
@@ -609,6 +611,16 @@ const main = async () => {
 
       const result = await addMetric(user, { metric, time: measurementTime, value })
       res.json(result)
+    },
+  )
+
+  // GET /goals/progress - Get progress toward all user goals
+  httpd.get<Record<string, never>, GoalsProgressResponse>(
+    '/goals/progress',
+    authMiddleware,
+    async (req, res) => {
+      const goals = await getGoalsProgress(req.user!)
+      res.json({ goals, success: true })
     },
   )
 

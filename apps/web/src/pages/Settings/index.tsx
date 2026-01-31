@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
+import { GoalsSettings } from '../../components/GoalsSettings'
 import { API_URL } from '../../config'
 import { fetchUserSettings, HrZoneThresholds, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -150,12 +151,17 @@ export function Settings() {
 
         <div class="form-field">
           <label for="rescuetime-key">RescueTime API Key</label>
+          {userSettings?.rescue_time_key ?
+            <p class="connected-status">Configured</p>
+          : null}
           <input
             id="rescuetime-key"
             type="password"
             value={rescueTimeKey}
             onInput={handleRescueTimeKeyChange}
-            placeholder="Enter your RescueTime API key"
+            placeholder={
+              userSettings?.rescue_time_key ? 'Enter new key to update' : 'Enter your RescueTime API key'
+            }
           />
           <p class="field-description">
             Get your API key from{' '}
@@ -200,6 +206,8 @@ export function Settings() {
           <p class="field-description">Using default thresholds (or age-based if birth date is set).</p>
         )}
       </section>
+
+      <GoalsSettings goals={userSettings?.goals ?? []} />
 
       {mutation.isError && (
         <p class="error">
