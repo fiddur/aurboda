@@ -4,6 +4,7 @@
 
 import { z } from 'zod'
 import { baseResponseSchema, hrZoneSourceSchema } from './common.js'
+import { goalsSchema } from './goals.js'
 
 // Shared HR zone threshold field
 const hrZoneThresholdSchema = z.number().int().positive()
@@ -68,6 +69,9 @@ export const updateSettingsInputSchema = z
     birth_date: birthDateSchema.nullable().optional().meta({
       description: 'Birth date (set to null to clear)',
     }),
+    goals: goalsSchema.nullable().optional().meta({
+      description: 'Goals (set to null to reset to defaults, empty array to clear all)',
+    }),
     hr_zone_start: hrZoneThresholdsSchema.nullable().optional().meta({
       description: 'Custom HR zone thresholds (set to null to clear)',
     }),
@@ -85,6 +89,7 @@ export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
     birth_date: z.string().nullable().meta({ description: 'Birth date in YYYY-MM-DD format' }),
+    goals: goalsSchema.meta({ description: 'User goals for tracking metrics' }),
     hr_zone_start: hrZoneThresholdsSchema.meta({ description: 'Effective HR zone thresholds' }),
     hr_zone_start_source: hrZoneSourceSchema.meta({
       description: 'Source of HR zone thresholds',

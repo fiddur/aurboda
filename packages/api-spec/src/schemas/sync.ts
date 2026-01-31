@@ -198,10 +198,7 @@ export type OuraSyncStatusResponse = z.infer<typeof ouraSyncStatusResponseSchema
  */
 export const rescueTimeSyncStatusResponseSchema = baseResponseSchema
   .extend({
-    states: z
-      .array(providerSyncStatusSchema)
-      .optional()
-      .meta({ description: 'RescueTime sync states' }),
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'RescueTime sync states' }),
   })
   .meta({ id: 'RescueTimeSyncStatusResponse' })
 

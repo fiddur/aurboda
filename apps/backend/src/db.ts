@@ -287,6 +287,7 @@ export interface DailyMetricAggregate {
   date: string
   metric: MetricType
   avg: number
+  sum: number
 }
 
 export const getDailyAggregates = async (
@@ -302,7 +303,8 @@ export const getDailyAggregates = async (
     `SELECT
        DATE(time) as date,
        metric,
-       AVG(value) as avg
+       AVG(value) as avg,
+       SUM(value) as sum
      FROM time_series
      WHERE metric = ANY($1) AND time >= $2 AND time <= $3
      GROUP BY DATE(time), metric
@@ -314,6 +316,7 @@ export const getDailyAggregates = async (
     avg: Number(row.avg),
     date: row.date.toISOString().split('T')[0],
     metric: row.metric as MetricType,
+    sum: Number(row.sum),
   }))
 }
 

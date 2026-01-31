@@ -2,6 +2,7 @@
  * User settings service for HR zones and other user preferences.
  */
 
+import { defaultGoals, goalsSchema, type Goal } from '@aurboda/api-spec'
 import { z } from 'zod'
 import { getOAuthToken, getUserSettings, upsertUserSettings } from '../db'
 
@@ -15,6 +16,7 @@ export interface UserSettings {
   birthDate?: string // YYYY-MM-DD
   hrZoneStart?: HrZoneThresholds
   rescueTimeKey?: string // RescueTime API key (personal token)
+  goals?: Goal[] // User-defined goals for tracking metrics
 }
 
 export interface HrZoneSecs {
@@ -36,6 +38,7 @@ export interface SettingsResponse {
   rescue_time_key: string | null
   oura_connected: boolean
   oura_configured: boolean // Whether Oura OAuth is configured on the server
+  goals: Goal[]
   error?: string
 }
 
@@ -71,6 +74,7 @@ export const rescueTimeKeySchema = z.string().min(1, 'RescueTime API key cannot 
 
 export const updateSettingsInputSchema = z.object({
   birthDate: birthDateSchema.nullable().optional(),
+  goals: goalsSchema.nullable().optional(),
   hrZoneStart: hrZoneThresholdsSchema.nullable().optional(),
   rescueTimeKey: rescueTimeKeySchema.nullable().optional(),
 })
@@ -170,6 +174,14 @@ export const getEffectiveHrZones = async (
 }
 
 /**
+ * Get effective goals for a user (user goals or defaults).
+ */
+export const getEffectiveGoals = (settings: UserSettings): Goal[] => {
+  // If goals is undefined, return defaults. If empty array, return empty.
+  return settings.goals ?? defaultGoals
+}
+
+/**
  * Get settings response in the format used by both API and MCP.
  */
 export const getSettingsResponse = async (user: string): Promise<SettingsResponse> => {
@@ -180,6 +192,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
 
   return {
     birth_date: settings.birthDate ?? null,
+    goals: getEffectiveGoals(settings),
     hr_zone_start: zones,
     hr_zone_start_source: source,
     oura_configured: ouraConfigured,
@@ -201,6 +214,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     return {
       birth_date: null,
       error: errorMessage,
+      goals: defaultGoals,
       hr_zone_start: calculateDefaultHrZones(null),
       hr_zone_start_source: 'default',
       oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
@@ -220,6 +234,10 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   }
   if (parsed.data.rescueTimeKey !== undefined) {
     updates.rescueTimeKey = parsed.data.rescueTimeKey === null ? undefined : parsed.data.rescueTimeKey
+  }
+  if (parsed.data.goals !== undefined) {
+    // null resets to defaults (by removing from storage), empty array clears all goals
+    updates.goals = parsed.data.goals === null ? undefined : parsed.data.goals
   }
 
   // Apply updates

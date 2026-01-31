@@ -7,6 +7,9 @@ import type {
   PlaceVisit as ApiPlaceVisit,
   ProductivityRecord as ApiProductivityRecord,
   Tag as ApiTag,
+  Goal,
+  GoalProgress,
+  GoalsProgressResponse,
   HrZoneThresholds,
   LocationsQuery,
   LocationsResponse,
@@ -65,7 +68,15 @@ export interface Tag extends Omit<ApiTag, 'startTime' | 'endTime'> {
 }
 
 // Re-export API types that don't need Date conversion
-export type { HrZoneThresholds, NamedLocation, PeriodMetricStats, UpdateSettingsInput, UserSettingsResponse }
+export type {
+  Goal,
+  GoalProgress,
+  HrZoneThresholds,
+  NamedLocation,
+  PeriodMetricStats,
+  UpdateSettingsInput,
+  UserSettingsResponse,
+}
 
 // Fetch heart rate data for the specified date range
 export const fetchHeartRate = async (start: Date, end: Date): Promise<[Date, number][]> => {
@@ -280,4 +291,14 @@ export const updateUserSettings = async (params: UpdateSettingsInput): Promise<U
   })
 
   return response.data
+}
+
+// Fetch goal progress
+export const fetchGoalsProgress = async (): Promise<GoalProgress[]> => {
+  const { token } = auth.value
+  const response = await axios.get<GoalsProgressResponse>(`${API_URL}/goals/progress`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.goals
 }

@@ -465,9 +465,9 @@ describe('getPeriodSummary', () => {
       ])
 
     vi.mocked(db.getDailyAggregates).mockResolvedValue([
-      { avg: 40, date: '2024-01-01', metric: 'hrv_rmssd' },
-      { avg: 45, date: '2024-01-02', metric: 'hrv_rmssd' },
-      { avg: 50, date: '2024-01-03', metric: 'hrv_rmssd' },
+      { avg: 40, date: '2024-01-01', metric: 'hrv_rmssd', sum: 40 },
+      { avg: 45, date: '2024-01-02', metric: 'hrv_rmssd', sum: 45 },
+      { avg: 50, date: '2024-01-03', metric: 'hrv_rmssd', sum: 50 },
     ])
 
     const result = await getPeriodSummary(
@@ -493,9 +493,9 @@ describe('getPeriodSummary', () => {
 
     // Linear increase: 40, 45, 50 -> slope = 5
     vi.mocked(db.getDailyAggregates).mockResolvedValue([
-      { avg: 40, date: '2024-01-01', metric: 'hrv_rmssd' },
-      { avg: 45, date: '2024-01-02', metric: 'hrv_rmssd' },
-      { avg: 50, date: '2024-01-03', metric: 'hrv_rmssd' },
+      { avg: 40, date: '2024-01-01', metric: 'hrv_rmssd', sum: 40 },
+      { avg: 45, date: '2024-01-02', metric: 'hrv_rmssd', sum: 45 },
+      { avg: 50, date: '2024-01-03', metric: 'hrv_rmssd', sum: 50 },
     ])
 
     const result = await getPeriodSummary(
@@ -577,6 +577,7 @@ describe('getPeriodSummary', () => {
         avg: 50,
         date: `2024-01-${String(i + 1).padStart(2, '0')}`,
         metric: 'hrv_rmssd' as const,
+        sum: 50,
       })),
     )
 

@@ -16,23 +16,29 @@ import kotlinx.coroutines.launch
 import net.aurboda.CredentialsManager
 import net.aurboda.DataResult
 import net.aurboda.R
-import net.aurboda.fetchPeriodSummary
-import net.aurboda.findMetricTimeSeconds
+import net.aurboda.fetchGoalsProgress
 import net.aurboda.formatZoneTime
+import net.aurboda.GoalProgress
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import net.aurboda.appJson
-import java.time.LocalDate
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 
 private const val TAG = "HrZoneWidgetProvider"
 
-// Widget targets: Zone 2 min 150, max 200; Zone 5 min 5, max 10
-private const val ZONE_2_TARGET_MIN = 150
-private const val ZONE_5_TARGET_MIN = 5
+// Friendly names for metrics
+private val metricLabels = mapOf(
+    "hr_zone_0_sec" to "Zone 0",
+    "hr_zone_1_sec" to "Zone 1",
+    "hr_zone_2_sec" to "Zone 2",
+    "hr_zone_3_sec" to "Zone 3",
+    "hr_zone_4_sec" to "Zone 4",
+    "hr_zone_5_sec" to "Zone 5",
+    "steps" to "Steps",
+    "distance" to "Distance",
+    "calories_active" to "Calories"
+)
 
 class HrZoneWidgetProvider : AppWidgetProvider() {
 
@@ -84,7 +90,7 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
             val credentials = CredentialsManager.getCredentials(context)
             if (credentials == null) {
                 Log.w(TAG, "No credentials, showing empty widget")
-                setWidgetData(views, 0.0, 0.0)
+                setEmptyWidget(views)
                 appWidgetManager.updateAppWidget(appWidgetId, views)
                 return@launch
             }
@@ -94,12 +100,26 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
             }
 
             try {
-                val hrZoneData = fetchHrZoneData(httpClient, credentials)
-                setWidgetData(views, hrZoneData.zone2Seconds, hrZoneData.zone5Seconds)
+                val goalsResult = fetchGoalsProgress(
+                    httpClient,
+                    credentials.apiUrl,
+                    credentials.authToken
+                )
+
+                when (goalsResult) {
+                    is DataResult.Success -> {
+                        val goals = goalsResult.data.goals
+                        Log.d(TAG, "Fetched ${goals.size} goals")
+                        setWidgetData(views, goals)
+                    }
+                    is DataResult.Error -> {
+                        Log.e(TAG, "Error fetching goals: ${goalsResult.message}")
+                        setEmptyWidget(views)
+                    }
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "Error fetching HR zone data", e)
-                // Keep existing data or show zeros
-                setWidgetData(views, 0.0, 0.0)
+                Log.e(TAG, "Error fetching goal data", e)
+                setEmptyWidget(views)
             } finally {
                 httpClient.close()
             }
@@ -108,60 +128,99 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private suspend fun fetchHrZoneData(
-        httpClient: HttpClient,
-        credentials: CredentialsManager.Credentials
-    ): HrZoneData {
-        val today = LocalDate.now()
-        val weekAgo = today.minusDays(6) // 7 days including today
+    private fun setEmptyWidget(views: RemoteViews) {
+        views.setTextViewText(R.id.zone2_label, "Zone 2")
+        views.setTextViewText(R.id.zone2_time, "-- min")
+        views.setTextViewText(R.id.zone2_losing, "")
+        views.setProgressBar(R.id.zone2_progress, 100, 0, false)
 
-        val formatter = DateTimeFormatter.ISO_INSTANT
-        val startInstant = weekAgo.atStartOfDay().toInstant(ZoneOffset.UTC)
-        val endInstant = today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
+        views.setTextViewText(R.id.zone5_label, "Zone 5")
+        views.setTextViewText(R.id.zone5_time, "-- min")
+        views.setTextViewText(R.id.zone5_losing, "")
+        views.setProgressBar(R.id.zone5_progress, 100, 0, false)
+    }
 
-        val start = formatter.format(startInstant)
-        val end = formatter.format(endInstant)
+    private fun setWidgetData(views: RemoteViews, goals: List<GoalProgress>) {
+        // Find Zone 2 and Zone 5 goals, or use first two goals
+        val zone2Goal = goals.find { it.metric == "hr_zone_2_sec" }
+        val zone5Goal = goals.find { it.metric == "hr_zone_5_sec" }
 
-        val metrics = listOf("hr_zone_2_sec", "hr_zone_5_sec")
+        // If specific zones not found, use first two goals
+        val goal1 = zone2Goal ?: goals.getOrNull(0)
+        val goal2 = zone5Goal ?: goals.getOrNull(1)
 
-        val result = fetchPeriodSummary(
-            httpClient,
-            credentials.apiUrl,
-            credentials.authToken,
-            start,
-            end,
-            metrics
-        )
+        // Set Goal 1 (Zone 2 slot)
+        if (goal1 != null) {
+            setGoalView(
+                views,
+                goal1,
+                R.id.zone2_label,
+                R.id.zone2_time,
+                R.id.zone2_losing,
+                R.id.zone2_progress
+            )
+        } else {
+            views.setTextViewText(R.id.zone2_label, "No Goal")
+            views.setTextViewText(R.id.zone2_time, "--")
+            views.setTextViewText(R.id.zone2_losing, "")
+            views.setProgressBar(R.id.zone2_progress, 100, 0, false)
+        }
 
-        return when (result) {
-            is DataResult.Success -> {
-                val zone2Seconds = findMetricTimeSeconds(result.data.metrics, "hr_zone_2_sec")
-                val zone5Seconds = findMetricTimeSeconds(result.data.metrics, "hr_zone_5_sec")
-                Log.d(TAG, "Fetched HR zone data: zone2=$zone2Seconds sec, zone5=$zone5Seconds sec")
-                HrZoneData(zone2Seconds, zone5Seconds)
-            }
-            is DataResult.Error -> {
-                Log.e(TAG, "Error fetching period summary: ${result.message}")
-                HrZoneData(0.0, 0.0)
-            }
+        // Set Goal 2 (Zone 5 slot)
+        if (goal2 != null) {
+            setGoalView(
+                views,
+                goal2,
+                R.id.zone5_label,
+                R.id.zone5_time,
+                R.id.zone5_losing,
+                R.id.zone5_progress
+            )
+        } else {
+            views.setTextViewText(R.id.zone5_label, "No Goal")
+            views.setTextViewText(R.id.zone5_time, "--")
+            views.setTextViewText(R.id.zone5_losing, "")
+            views.setProgressBar(R.id.zone5_progress, 100, 0, false)
         }
     }
 
-    private fun setWidgetData(views: RemoteViews, zone2Seconds: Double, zone5Seconds: Double) {
-        val zone2Minutes = (zone2Seconds / 60.0).toInt()
-        val zone5Minutes = (zone5Seconds / 60.0).toInt()
+    private fun setGoalView(
+        views: RemoteViews,
+        goal: GoalProgress,
+        labelId: Int,
+        timeId: Int,
+        losingId: Int,
+        progressId: Int
+    ) {
+        // Set label
+        val label = metricLabels[goal.metric] ?: goal.metric
+        views.setTextViewText(labelId, label)
 
-        // Calculate progress as percentage (0-100)
-        val zone2Progress = ((zone2Minutes.toFloat() / ZONE_2_TARGET_MIN) * 100).coerceIn(0f, 100f).toInt()
-        val zone5Progress = ((zone5Minutes.toFloat() / ZONE_5_TARGET_MIN) * 100).coerceIn(0f, 100f).toInt()
+        // Set current value
+        val valueText = formatGoalValue(goal.metric, goal.current, goal.unit)
+        views.setTextViewText(timeId, valueText)
 
-        // Set time text
-        views.setTextViewText(R.id.zone2_time, formatZoneTime(zone2Seconds))
-        views.setTextViewText(R.id.zone5_time, formatZoneTime(zone5Seconds))
+        // Set "losing tomorrow" text
+        if (goal.losingTomorrow > 0) {
+            val losingText = "(-${formatGoalValue(goal.metric, goal.losingTomorrow, goal.unit)} tomorrow)"
+            views.setTextViewText(losingId, losingText)
+        } else {
+            views.setTextViewText(losingId, "")
+        }
 
-        // Set progress bar values
-        views.setProgressBar(R.id.zone2_progress, 100, zone2Progress, false)
-        views.setProgressBar(R.id.zone5_progress, 100, zone5Progress, false)
+        // Calculate progress percentage
+        val target = goal.max ?: goal.min ?: 1.0
+        val progress = ((goal.current / target) * 100).coerceIn(0.0, 100.0).toInt()
+        views.setProgressBar(progressId, 100, progress, false)
+    }
+
+    private fun formatGoalValue(metric: String, value: Double, unit: String): String {
+        return when (unit) {
+            "sec", "seconds" -> formatZoneTime(value)
+            "count" -> value.toLong().toString()
+            "m" -> "${(value / 1000).toInt()} km"
+            else -> "${value.toInt()} $unit"
+        }
     }
 
     companion object {
@@ -179,8 +238,3 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
         }
     }
 }
-
-private data class HrZoneData(
-    val zone2Seconds: Double,
-    val zone5Seconds: Double
-)

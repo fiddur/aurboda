@@ -4,6 +4,7 @@ import { render } from 'preact'
 import { LocationProvider, Route, Router } from 'preact-iso'
 import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
+import { Goals } from './pages/Goals/index.jsx'
 import { Home } from './pages/Home/index.jsx'
 import { HrZones } from './pages/HrZones/index.jsx'
 import { Login } from './pages/Login/index.jsx'
@@ -25,6 +26,7 @@ export function App() {
             <Route path="/" component={Home} />
             <Route path="/login" component={Login} />
             <Route path="/signup" component={Signup} />
+            <Route path="/goals" component={Goals} />
             <Route path="/hr-zones" component={HrZones} />
             <Route path="/timeline" component={Timeline} />
             <Route path="/places" component={Places} />
