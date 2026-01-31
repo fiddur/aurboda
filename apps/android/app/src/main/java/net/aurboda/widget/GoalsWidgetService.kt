@@ -3,6 +3,7 @@ package net.aurboda.widget
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import kotlinx.coroutines.runBlocking
@@ -108,8 +109,18 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
 
         // Calculate progress percentage
         val target = goal.max ?: goal.min ?: 1.0
-        val progress = ((goal.current / target) * 100).coerceIn(0.0, 100.0).toInt()
-        views.setProgressBar(R.id.goal_progress, 100, progress, false)
+        val progressPercent = (goal.current / target) * 100
+        val cappedProgress = progressPercent.coerceIn(0.0, 100.0).toInt()
+        views.setProgressBar(R.id.goal_progress, 100, cappedProgress, false)
+
+        // Handle overflow (progress > 100%)
+        if (progressPercent > 100) {
+            val overflow = (progressPercent - 100).coerceIn(0.0, 100.0).toInt()
+            views.setViewVisibility(R.id.goal_overflow, View.VISIBLE)
+            views.setProgressBar(R.id.goal_overflow, 100, overflow, false)
+        } else {
+            views.setViewVisibility(R.id.goal_overflow, View.GONE)
+        }
 
         return views
     }

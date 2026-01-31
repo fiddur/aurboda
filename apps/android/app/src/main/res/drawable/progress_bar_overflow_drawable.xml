@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background track -->
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <corners android:radius="4dp" />
+            <!-- Light gray at 30% alpha -->
+            <solid android:color="#4DFFFFFF" />
+        </shape>
+    </item>
+    <!-- Progress - lighter shade to indicate overflow -->
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <corners android:radius="4dp" />
+                <!-- Lighter teal for overflow -->
+                <solid android:color="#FF80CBC4" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>
