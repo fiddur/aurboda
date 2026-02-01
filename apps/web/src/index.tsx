@@ -4,6 +4,7 @@ import { render } from 'preact'
 import { LocationProvider, Route, Router } from 'preact-iso'
 import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
+import { AdminSettings } from './pages/AdminSettings/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
 import { Home } from './pages/Home/index.jsx'
 import { HrZones } from './pages/HrZones/index.jsx'
@@ -31,6 +32,7 @@ export function App() {
             <Route path="/timeline" component={Timeline} />
             <Route path="/places" component={Places} />
             <Route path="/settings" component={Settings} />
+            <Route path="/admin" component={AdminSettings} />
             <Route default component={NotFound} />
           </Router>
         </main>

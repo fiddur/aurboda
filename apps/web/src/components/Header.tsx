@@ -4,6 +4,7 @@ import { auth, logout } from '../state/auth'
 export function Header() {
   const { url } = useLocation()
   const isLoggedIn = auth.value.token
+  const isAdmin = auth.value.isAdmin
 
   const handleLogout = (e: Event) => {
     e.preventDefault()
@@ -30,6 +31,11 @@ export function Header() {
             <a href="/places" class={url == '/places' && 'active'}>
               Places
             </a>
+            {isAdmin && (
+              <a href="/admin" class={url == '/admin' && 'active'}>
+                Admin
+              </a>
+            )}
             <span class="spacer" />
             <a href="/settings" class={url == '/settings' ? 'active user-link' : 'user-link'}>
               {auth.value.user}

@@ -15,6 +15,16 @@
   color: #666;
 }
 
+.signup-page .invitation-notice {
+  text-align: center;
+  color: #4caf50;
+  font-weight: 500;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: rgba(76, 175, 80, 0.1);
+  border-radius: 4px;
+}
+
 .signup-form {
   display: flex;
   flex-direction: column;
@@ -89,6 +99,10 @@
   .signup-page .not-available,
   .signup-form .field-hint {
     color: #aaa;
+  }
+
+  .signup-page .invitation-notice {
+    background: rgba(76, 175, 80, 0.2);
   }
 
   .signup-form .form-field input {

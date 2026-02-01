@@ -11,6 +11,9 @@ import {
   type AddTagBody,
   addTagBodySchema,
   type AddTagResponse,
+  type AdminSettingsResponse,
+  type CreateInvitationBody,
+  createInvitationBodySchema,
   type DailySummaryQuery,
   dailySummaryQuerySchema,
   type DailySummaryResponse,
@@ -19,9 +22,11 @@ import {
   detectedLocationsQuerySchema,
   type DetectedLocationsResponse,
   type GoalsProgressResponse,
+  type InvitationResponse,
   type LocationsQuery,
   locationsQuerySchema,
   type LocationsResponse,
+  type LoginResponse,
   type NamedLocationsResponse,
   type PeriodSummaryQuery,
   periodSummaryQuerySchema,
@@ -34,9 +39,13 @@ import {
   type QueryMetricsQuery,
   queryMetricsQuerySchema,
   type QueryMetricsResponse,
+  type ServerStatusResponse,
+  type SignupResponse,
   type TagsQuery,
   tagsQuerySchema,
   type TagsResponse,
+  type UpdateAdminSettingsBody,
+  updateAdminSettingsBodySchema,
   type UpdateNamedLocationBody,
   updateNamedLocationBodySchema,
   type UpdateSettingsInput,
@@ -72,10 +81,12 @@ import { syncAllOuraData } from './oura-sync'
 import { createOwnTracksRouter } from './owntracks'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
+import { getCentralDb, initializeCentralDb } from './services/central-db'
 import { createDetectionTrigger, DetectionTrigger } from './services/detection-trigger'
 import { runDetectionForUser } from './services/detection-worker'
 import { createGeocodeQueue, GeocodeQueue } from './services/geocode-queue'
 import { getGoalsProgress } from './services/goals'
+import { createInvitationAuth } from './services/invitation'
 import {
   deleteNamedLocation,
   getDetectedLocations,
@@ -109,11 +120,18 @@ declare global {
 
 const main = async () => {
   const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
+  const forbidden = Object.assign(new Error('Forbidden'), { status: 403 })
 
-  const auth = createAuth(process.env.SESSION_SECRET ?? '')
+  const sessionSecret = process.env.SESSION_SECRET ?? ''
+  const auth = createAuth(sessionSecret)
+  const invitationAuth = createInvitationAuth(sessionSecret)
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
+
+  // Initialize central database (server settings, admins)
+  await initializeCentralDb()
+  const centralDb = getCentralDb()
 
   // Create sync provider for auto-syncing data before queries
   const syncProvider = createSyncProvider({
@@ -152,19 +170,50 @@ const main = async () => {
     return next(unauthorized)
   }
 
-  const allowSignup = process.env.ALLOW_SIGNUP === 'true'
+  const adminMiddleware: RequestHandler = async (req, res, next) => {
+    if (!req.user) {
+      return next(unauthorized)
+    }
+    const isAdmin = await centralDb.isAdmin(req.user)
+    if (!isAdmin) {
+      return next(forbidden)
+    }
+    next()
+  }
 
-  httpd.get('/status', (_req, res) => {
-    res.json({ signupAllowed: allowSignup, success: true })
+  httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
+    const signupMode = await centralDb.getSignupMode()
+    res.json({
+      signupAllowed: signupMode === 'open',
+      signupMode,
+      success: true,
+    })
   })
 
-  httpd.post('/signup', async (req, res, next) => {
-    if (!allowSignup) {
-      res.status(403).json({ error: 'Signup is disabled', success: false })
+  httpd.post<Record<string, never>, SignupResponse>('/signup', async (req, res, next) => {
+    const signupMode = await centralDb.getSignupMode()
+
+    if (signupMode === 'closed') {
+      res.status(403).json({ error: 'Signup is currently closed', success: false })
       return
     }
 
-    const { username: user, password } = req.body
+    const { username: user, password, invitation } = req.body
+
+    // In invite_only mode, require valid invitation token
+    if (signupMode === 'invite_only') {
+      if (!invitation || typeof invitation !== 'string') {
+        res.status(403).json({ error: 'An invitation is required to sign up', success: false })
+        return
+      }
+      const validation = invitationAuth.validateInvitationToken(invitation)
+      if (!validation.valid) {
+        const errorMsg = validation.expired ? 'Invitation has expired' : 'Invalid invitation'
+        res.status(403).json({ error: errorMsg, success: false })
+        return
+      }
+    }
+
     if (!user || typeof user !== 'string' || !password || typeof password !== 'string') {
       res.status(400).json({ error: 'Username and password are required', success: false })
       return
@@ -208,14 +257,24 @@ const main = async () => {
     try {
       await makeNewUserDb(userDb, user, password)
       const token = auth.createToken(user)
-      res.json({ success: true, token })
+
+      // First user becomes admin automatically
+      const adminCount = await centralDb.getAdminCount()
+      let isAdmin = false
+      if (adminCount === 0) {
+        await centralDb.addAdmin(user)
+        isAdmin = true
+        console.log(`First user ${user} automatically made admin`)
+      }
+
+      res.json({ isAdmin, success: true, token })
     } catch (err) {
       console.error('Signup error:', err)
       next(err)
     }
   })
 
-  httpd.post('/login', async (req, res, next) => {
+  httpd.post<Record<string, never>, LoginResponse>('/login', async (req, res, next) => {
     const { username: user, password } = req.body
     if (!user) return next(unauthorized)
 
@@ -238,9 +297,10 @@ const main = async () => {
     } else return next(unauthorized)
 
     const token = auth.createToken(user)
+    const isAdmin = await centralDb.isAdmin(user)
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ refresh: token, token }))
+    res.end(JSON.stringify({ isAdmin, refresh: token, token }))
   })
 
   httpd.post('/refresh', async (req, res) => {
@@ -645,6 +705,67 @@ const main = async () => {
         return res.status(400).json(result)
       }
       res.json(result)
+    },
+  )
+
+  // ==========================================================================
+  // Admin API
+  // ==========================================================================
+
+  // GET /admin/settings - Get admin settings
+  httpd.get<Record<string, never>, AdminSettingsResponse>(
+    '/admin/settings',
+    authMiddleware,
+    adminMiddleware,
+    async (_req, res) => {
+      const signupMode = await centralDb.getSignupMode()
+      const adminCount = await centralDb.getAdminCount()
+      res.json({
+        admin_count: adminCount,
+        signup_mode: signupMode,
+        success: true,
+      })
+    },
+  )
+
+  // PATCH /admin/settings - Update admin settings
+  httpd.patch<Record<string, never>, AdminSettingsResponse, UpdateAdminSettingsBody>(
+    '/admin/settings',
+    authMiddleware,
+    adminMiddleware,
+    validateBody(updateAdminSettingsBodySchema),
+    async (req, res) => {
+      const { signup_mode } = req.body
+      if (signup_mode) {
+        await centralDb.setSignupMode(signup_mode)
+      }
+      const currentMode = await centralDb.getSignupMode()
+      const adminCount = await centralDb.getAdminCount()
+      res.json({
+        admin_count: adminCount,
+        signup_mode: currentMode,
+        success: true,
+      })
+    },
+  )
+
+  // POST /admin/invitations - Create a new invitation
+  httpd.post<Record<string, never>, InvitationResponse, CreateInvitationBody>(
+    '/admin/invitations',
+    authMiddleware,
+    adminMiddleware,
+    validateBody(createInvitationBodySchema),
+    async (req, res) => {
+      const { expiryHours } = req.body
+      const token = invitationAuth.createInvitationToken(expiryHours)
+      const expiresAt = invitationAuth.getTokenExpiry(token)
+
+      res.json({
+        expiresAt: expiresAt!.toISOString(),
+        success: true,
+        token,
+        url: `${webHost}/signup?invite=${encodeURIComponent(token)}`,
+      })
     },
   )
 
