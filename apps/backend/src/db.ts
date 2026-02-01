@@ -57,8 +57,14 @@ export const makeNewUserDb = async (userDb: Client, user: string, password: stri
   await query(userDb, format('GRANT %I TO %I', user, process.env.PGUSER))
   await query(userDb, format('CREATE DATABASE %I OWNER %I', database, user))
 
-  // Connect as admin to create PostGIS extension (requires superuser privileges)
-  const adminClient = new Client({ database })
+  // Connect as service account to create PostGIS extension (requires superuser privileges)
+  const adminClient = new Client({
+    database,
+    host: process.env.PGHOST,
+    password: process.env.PGPASSWORD,
+    port: process.env.PGPORT ? parseInt(process.env.PGPORT) : undefined,
+    user: process.env.PGUSER,
+  })
   await adminClient.connect()
   await query(adminClient, 'CREATE EXTENSION IF NOT EXISTS postgis')
   await adminClient.end()
