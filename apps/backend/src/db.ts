@@ -342,6 +342,83 @@ export interface Activity {
   data?: Record<string, unknown>
 }
 
+/**
+ * Merge overlapping activities of the same type.
+ *
+ * When the same activity is logged in multiple apps (e.g., Polar for HR data
+ * and Gravl for workout details), this function merges them into a single
+ * activity using the earliest start time and latest end time.
+ *
+ * Merge rules:
+ * - Activities are grouped by activityType
+ * - Activities overlap if: a1.endTime >= a2.startTime (or a1 has no endTime and a2 starts during a1's day)
+ * - Merged activity uses: earliest startTime, latest endTime
+ * - First activity's source and id are kept
+ * - First non-empty title is used
+ * - Notes are concatenated with newline
+ * - Data objects are merged (later values override earlier for same keys)
+ */
+export const mergeOverlappingActivities = (activities: Activity[]): Activity[] => {
+  if (activities.length === 0) return []
+
+  // Group by activity type
+  const byType = new Map<string, Activity[]>()
+  for (const a of activities) {
+    const group = byType.get(a.activityType) ?? []
+    group.push(a)
+    byType.set(a.activityType, group)
+  }
+
+  const result: Activity[] = []
+
+  for (const [, typeActivities] of byType) {
+    // Sort by start time
+    const sorted = [...typeActivities].sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+
+    let current = { ...sorted[0] }
+
+    for (let i = 1; i < sorted.length; i++) {
+      const next = sorted[i]
+      const currentEnd = current.endTime?.getTime() ?? current.startTime.getTime()
+      const nextStart = next.startTime.getTime()
+
+      // Check if activities overlap or touch
+      if (currentEnd >= nextStart) {
+        // Merge: extend end time if needed
+        const nextEnd = next.endTime?.getTime()
+        if (nextEnd !== undefined && (current.endTime === undefined || nextEnd > current.endTime.getTime())) {
+          current.endTime = next.endTime
+        }
+
+        // Use first non-empty title
+        if (!current.title && next.title) {
+          current.title = next.title
+        }
+
+        // Concatenate notes
+        if (next.notes) {
+          current.notes = current.notes ? `${current.notes}\n${next.notes}` : next.notes
+        }
+
+        // Merge data objects
+        if (next.data) {
+          current.data = { ...current.data, ...next.data }
+        }
+      } else {
+        // No overlap, save current and start new
+        result.push(current)
+        current = { ...next }
+      }
+    }
+
+    // Don't forget the last one
+    result.push(current)
+  }
+
+  // Sort final result by start time
+  return result.sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+}
+
 export const insertActivity = async (user: string, activity: Activity) => {
   await query(
     user,
@@ -381,16 +458,18 @@ export const getActivities = async (
     [types, start, end],
   )
 
-  return result.rows.map((row) => ({
-    activityType: row.activity_type,
+  const activities = result.rows.map((row) => ({
+    activityType: row.activity_type as ActivityType,
     data: row.data,
     endTime: row.end_time ? new Date(row.end_time) : undefined,
     id: row.id,
     notes: row.notes,
-    source: row.source,
+    source: row.source as DataSource,
     startTime: new Date(row.start_time),
     title: row.title,
   }))
+
+  return mergeOverlappingActivities(activities)
 }
 
 /**
@@ -410,16 +489,18 @@ export const getSleepSessions = async (user: string, start: Date, end: Date): Pr
     [start, end],
   )
 
-  return result.rows.map((row) => ({
-    activityType: row.activity_type,
+  const activities = result.rows.map((row) => ({
+    activityType: row.activity_type as ActivityType,
     data: row.data,
     endTime: row.end_time ? new Date(row.end_time) : undefined,
     id: row.id,
     notes: row.notes,
-    source: row.source,
+    source: row.source as DataSource,
     startTime: new Date(row.start_time),
     title: row.title,
   }))
+
+  return mergeOverlappingActivities(activities)
 }
 
 // ============================================================================
