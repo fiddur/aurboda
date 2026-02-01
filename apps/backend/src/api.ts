@@ -33,6 +33,9 @@ import {
   type EventProbabilityBody,
   eventProbabilityBodySchema,
   type EventProbabilityResponse,
+  type GenericCorrelationBody,
+  genericCorrelationBodySchema,
+  type GenericCorrelationResponse,
   getExerciseTypeValue,
   type GoalsProgressResponse,
   type HrvActivitiesQuery,
@@ -103,6 +106,7 @@ import {
   getActivityImpact,
   getBaseline,
   getEventProbability,
+  getGenericCorrelation,
   getHrvActivitiesCorrelation,
 } from './services/correlations'
 import { createDetectionTrigger, DetectionTrigger } from './services/detection-trigger'
@@ -868,6 +872,27 @@ const main = async () => {
         syncProvider,
       )
       res.json({ data: probability, success: true })
+    },
+  )
+
+  // POST /correlations/generic - Generic correlation analysis
+  httpd.post<Record<string, never>, GenericCorrelationResponse, GenericCorrelationBody>(
+    '/correlations/generic',
+    authMiddleware,
+    validateBody(genericCorrelationBodySchema),
+    async (req, res) => {
+      const { triggers, outcome, lag_windows, period_days } = req.body
+      const user = req.user!
+
+      const result = await getGenericCorrelation(
+        user,
+        triggers,
+        outcome,
+        lag_windows ?? ['24h', '48h', '7d'],
+        period_days ?? 90,
+        syncProvider,
+      )
+      res.json({ data: result, success: true })
     },
   )
 

@@ -5,6 +5,7 @@
  * activity sources (RescueTime, locations, tags, activities).
  */
 
+import { type MetricType } from '@aurboda/api-spec'
 import { getActivities, getProductivity, getTags, getTimeSeries, getTimeSeriesStats } from '../db'
 import { getPlaceVisits } from './locations'
 import { SyncProvider } from './queries'
@@ -154,6 +155,112 @@ export interface EventProbabilityResult {
     outcomeEvents: number
     daysAnalyzed: number
   }
+  statisticalSignificance: {
+    chiSquared: number | null
+    pValue: number | null
+  }
+}
+
+// ============================================================================
+// Generic Correlation Types
+// ============================================================================
+
+/** Trigger condition for generic correlation */
+export interface TriggerCondition {
+  type: 'activity' | 'tag' | 'productivity_category' | 'productivity_app'
+  pattern: string
+  /** Minimum count within the window (default: 1) */
+  minCount?: number
+  /** Rolling window in days for counting (default: 1) */
+  windowDays?: number
+}
+
+/** Tag outcome configuration */
+export interface TagOutcome {
+  type: 'tag'
+  pattern: string
+}
+
+/** Metric outcome configuration */
+export interface MetricOutcome {
+  type: 'metric'
+  /** Metric name (validated at API level) */
+  metric: string
+  /** Aggregation method for multiple values (default: 'mean') */
+  aggregation?: 'mean' | 'min' | 'max' | 'last'
+}
+
+/** Productivity outcome configuration */
+export interface ProductivityOutcome {
+  type: 'productivity'
+  /** Category to measure time in */
+  category?: string
+  /** Specific app to measure time in */
+  app?: string
+}
+
+export type OutcomeConfig = TagOutcome | MetricOutcome | ProductivityOutcome
+
+/** Result for tag outcomes in lag windows */
+export interface TagLagResult {
+  probability: number
+  relativeRisk: number
+  occurrences: number
+}
+
+/** Result for metric outcomes in lag windows */
+export interface MetricLagResult {
+  mean: number | null
+  stddev: number | null
+  sampleCount: number
+  deltaFromBaseline: number | null
+}
+
+/** Result for productivity outcomes in lag windows */
+export interface ProductivityLagResult {
+  totalMinutes: number
+  avgMinutesPerDay: number
+  deltaFromBaseline: number | null
+}
+
+export type LagResult = TagLagResult | MetricLagResult | ProductivityLagResult
+
+/** Baseline stats for metric outcomes */
+export interface MetricBaseline {
+  mean: number | null
+  stddev: number | null
+  sampleCount: number
+}
+
+/** Baseline stats for productivity outcomes */
+export interface ProductivityBaseline {
+  avgMinutesPerDay: number
+  totalMinutes: number
+}
+
+/** Baseline stats for tag outcomes */
+export interface TagBaseline {
+  probability: number
+  description: string
+}
+
+export type BaselineStats = MetricBaseline | ProductivityBaseline | TagBaseline
+
+/** Generic correlation result */
+export interface GenericCorrelationResult {
+  triggers: TriggerCondition[]
+  outcome: OutcomeConfig
+  period: {
+    start: string
+    end: string
+    days: number
+  }
+  /** Number of windows where all trigger conditions were met */
+  windowsMatched: number
+  /** Baseline statistics (periods without triggers) */
+  baseline: BaselineStats
+  /** Results for each lag window */
+  postTrigger: Record<string, LagResult>
   statisticalSignificance: {
     chiSquared: number | null
     pValue: number | null
@@ -882,5 +989,430 @@ export async function getEventProbability(
       type: trigger.type,
       value: trigger.value,
     },
+  }
+}
+
+// ============================================================================
+// Generic Correlation Function
+// ============================================================================
+
+/** Parse lag window string (e.g., "24h", "7d") to milliseconds */
+const parseLagWindow = (lag: string): number | null => {
+  const match = lag.match(/^(\d+)([hd])$/)
+  if (!match) return null
+
+  const value = parseInt(match[1], 10)
+  const unit = match[2]
+  return unit === 'h' ? value * 60 * 60 * 1000 : value * 24 * 60 * 60 * 1000
+}
+
+/** Get the day string (YYYY-MM-DD) for a date */
+const getDayString = (date: Date): string => date.toISOString().split('T')[0]
+
+/** Check if a string matches a pattern (case-insensitive) */
+const matchesPattern = (value: string, pattern: string): boolean => {
+  try {
+    const regex = new RegExp(pattern, 'i')
+    return regex.test(value)
+  } catch {
+    // Fall back to simple includes
+    return value.toLowerCase().includes(pattern.toLowerCase())
+  }
+}
+
+interface EventWithTime {
+  time: Date
+  type: 'activity' | 'tag' | 'productivity_category' | 'productivity_app'
+  value: string
+}
+
+/**
+ * Generic correlation analysis supporting compound triggers and multiple outcome types.
+ *
+ * This function allows correlating multiple trigger conditions (AND logic) with
+ * various outcome types (tags, metrics, productivity time).
+ *
+ * Examples:
+ * - "Does meditation correlate with more productive time?"
+ * - "When I exercise 3x and tag FatCoffee 5x in a week, does my weight change?"
+ */
+export async function getGenericCorrelation(
+  user: string,
+  triggers: TriggerCondition[],
+  outcome: OutcomeConfig,
+  lagWindows: string[] = ['24h', '48h', '7d'],
+  periodDays: number = 90,
+  sync?: SyncProvider,
+): Promise<GenericCorrelationResult> {
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  const start = new Date()
+  start.setDate(start.getDate() - periodDays)
+  start.setHours(0, 0, 0, 0)
+
+  // Auto-sync if provider available
+  if (sync) {
+    await Promise.all([
+      sync.syncOuraIfNeeded(user, 'tags'),
+      sync.syncOuraIfNeeded(user, 'sessions'),
+      sync.syncRescueTimeIfNeeded(user),
+    ])
+  }
+
+  // Determine which data we need based on triggers and outcome
+  const needsActivities = triggers.some((t) => t.type === 'activity') || (outcome.type === 'tag' && false) // activities for triggers
+  const needsTags = triggers.some((t) => t.type === 'tag') || outcome.type === 'tag'
+  const needsProductivity =
+    triggers.some((t) => t.type === 'productivity_category' || t.type === 'productivity_app') ||
+    outcome.type === 'productivity'
+  const needsMetrics = outcome.type === 'metric'
+
+  // Fetch data in parallel
+  const [activities, tags, productivity, metricData] = await Promise.all([
+    needsActivities ?
+      getActivities(user, ['exercise', 'meditation', 'nap', 'sleep'], start, end)
+    : Promise.resolve([]),
+    needsTags ? getTags(user, start, end) : Promise.resolve([]),
+    needsProductivity ? getProductivity(user, start, end) : Promise.resolve([]),
+    needsMetrics && outcome.type === 'metric' ?
+      getTimeSeries(user, outcome.metric as MetricType, start, end)
+    : Promise.resolve([] as [Date, number][]),
+  ])
+
+  // Build a list of all trigger events with timestamps
+  const triggerEvents: EventWithTime[] = []
+
+  for (const trigger of triggers) {
+    if (trigger.type === 'activity') {
+      for (const act of activities) {
+        if (matchesPattern(act.activityType, trigger.pattern)) {
+          triggerEvents.push({
+            time: act.startTime,
+            type: 'activity',
+            value: act.activityType,
+          })
+        }
+      }
+    } else if (trigger.type === 'tag') {
+      for (const tag of tags) {
+        if (matchesPattern(tag.tag, trigger.pattern)) {
+          triggerEvents.push({
+            time: tag.startTime,
+            type: 'tag',
+            value: tag.tag,
+          })
+        }
+      }
+    } else if (trigger.type === 'productivity_category') {
+      for (const prod of productivity) {
+        if (prod.category && matchesPattern(prod.category, trigger.pattern)) {
+          triggerEvents.push({
+            time: prod.startTime,
+            type: 'productivity_category',
+            value: prod.category,
+          })
+        }
+      }
+    } else if (trigger.type === 'productivity_app') {
+      for (const prod of productivity) {
+        if (matchesPattern(prod.activity, trigger.pattern)) {
+          triggerEvents.push({
+            time: prod.startTime,
+            type: 'productivity_app',
+            value: prod.activity,
+          })
+        }
+      }
+    }
+  }
+
+  // Check if this is a "simple" trigger setup (single trigger with default counts)
+  // For simple triggers, we use actual event times; for compound, we use day-based windows
+  const isSimpleTrigger =
+    triggers.length === 1 && (triggers[0].minCount ?? 1) === 1 && (triggers[0].windowDays ?? 1) === 1
+
+  // Find windows where ALL trigger conditions are met
+  const matchedWindowEnds: Date[] = []
+  const unmatchedDays: string[] = []
+
+  if (isSimpleTrigger) {
+    // Simple case: use actual trigger event times
+    const trigger = triggers[0]
+    const matchingEvents = triggerEvents.filter(
+      (e) => e.type === trigger.type && matchesPattern(e.value, trigger.pattern),
+    )
+
+    // Use each trigger event time as a matched window
+    for (const event of matchingEvents) {
+      if (event.time >= start && event.time <= end) {
+        matchedWindowEnds.push(event.time)
+      }
+    }
+
+    // Track days without triggers for baseline
+    const daysWithTriggers = new Set(matchingEvents.map((e) => getDayString(e.time)))
+    for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+      const day = new Date(start)
+      day.setDate(day.getDate() + dayOffset)
+      const dayStr = getDayString(day)
+      if (!daysWithTriggers.has(dayStr)) {
+        unmatchedDays.push(dayStr)
+      }
+    }
+  } else {
+    // Compound case: iterate through each day and check if all conditions are met
+    for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+      const windowEnd = new Date(start)
+      windowEnd.setDate(windowEnd.getDate() + dayOffset)
+      windowEnd.setHours(23, 59, 59, 999)
+
+      let allConditionsMet = true
+
+      for (const trigger of triggers) {
+        const windowDays = trigger.windowDays ?? 1
+        const minCount = trigger.minCount ?? 1
+
+        const windowStart = new Date(windowEnd)
+        windowStart.setDate(windowStart.getDate() - windowDays + 1)
+        windowStart.setHours(0, 0, 0, 0)
+
+        // Count events matching this trigger in the window
+        const count = triggerEvents.filter((e) => {
+          if (e.type !== trigger.type) return false
+          if (!matchesPattern(e.value, trigger.pattern)) return false
+          return e.time >= windowStart && e.time <= windowEnd
+        }).length
+
+        if (count < minCount) {
+          allConditionsMet = false
+          break
+        }
+      }
+
+      if (allConditionsMet && triggers.length > 0) {
+        matchedWindowEnds.push(windowEnd)
+      } else {
+        unmatchedDays.push(getDayString(windowEnd))
+      }
+    }
+  }
+
+  // Calculate outcomes for each lag window
+  const postTrigger: Record<string, LagResult> = {}
+
+  // Get outcome events/data for tag outcomes
+  const outcomeTagEvents =
+    outcome.type === 'tag' ?
+      tags.filter((t) => matchesPattern(t.tag, outcome.pattern)).map((t) => t.startTime)
+    : []
+
+  for (const lag of lagWindows) {
+    const lagMs = parseLagWindow(lag)
+    if (lagMs === null) continue
+
+    if (outcome.type === 'tag') {
+      // Count how many matched windows had the outcome tag within the lag window
+      let windowsWithOutcome = 0
+
+      for (const windowEnd of matchedWindowEnds) {
+        const lagEnd = new Date(windowEnd.getTime() + lagMs)
+
+        const hasOutcome = outcomeTagEvents.some((t) => t > windowEnd && t <= lagEnd)
+        if (hasOutcome) windowsWithOutcome++
+      }
+
+      const probability = matchedWindowEnds.length > 0 ? windowsWithOutcome / matchedWindowEnds.length : 0
+
+      // Calculate baseline probability (outcome on days without triggers)
+      const daysWithOutcome = new Set(outcomeTagEvents.map(getDayString))
+      const baselineDaysWithOutcome = unmatchedDays.filter((d) => daysWithOutcome.has(d)).length
+      const baselineProbability =
+        unmatchedDays.length > 0 ? baselineDaysWithOutcome / unmatchedDays.length : 0
+      const relativeRisk = baselineProbability > 0 ? probability / baselineProbability : 0
+
+      postTrigger[lag] = {
+        occurrences: windowsWithOutcome,
+        probability: Math.round(probability * 100) / 100,
+        relativeRisk: Math.round(relativeRisk * 100) / 100,
+      }
+    } else if (outcome.type === 'metric') {
+      // Collect metric values within the lag window after each matched window
+      const valuesAfterTrigger: number[] = []
+
+      for (const windowEnd of matchedWindowEnds) {
+        const lagEnd = new Date(windowEnd.getTime() + lagMs)
+
+        const valuesInWindow = metricData
+          .filter(([time]) => time > windowEnd && time <= lagEnd)
+          .map(([, value]) => value)
+
+        valuesAfterTrigger.push(...valuesInWindow)
+      }
+
+      const meanAfter = mean(valuesAfterTrigger)
+      const stddevAfter = stddev(valuesAfterTrigger)
+
+      // Calculate baseline (values on days without triggers)
+      const unmatchedDaysSet = new Set(unmatchedDays)
+      const baselineValues = metricData
+        .filter(([time]) => unmatchedDaysSet.has(getDayString(time)))
+        .map(([, value]) => value)
+
+      const baselineMean = mean(baselineValues)
+      const delta =
+        meanAfter !== null && baselineMean !== null ?
+          Math.round((meanAfter - baselineMean) * 100) / 100
+        : null
+
+      postTrigger[lag] = {
+        deltaFromBaseline: delta,
+        mean: meanAfter !== null ? Math.round(meanAfter * 100) / 100 : null,
+        sampleCount: valuesAfterTrigger.length,
+        stddev: stddevAfter !== null ? Math.round(stddevAfter * 100) / 100 : null,
+      }
+    } else if (outcome.type === 'productivity') {
+      // Sum time in the specified category/app within the lag window
+      let totalMinutes = 0
+      let daysCounted = 0
+
+      for (const windowEnd of matchedWindowEnds) {
+        const lagEnd = new Date(windowEnd.getTime() + lagMs)
+        daysCounted++
+
+        for (const prod of productivity) {
+          if (prod.startTime <= windowEnd || prod.startTime > lagEnd) continue
+
+          const matchesCategory =
+            !outcome.category || (prod.category && matchesPattern(prod.category, outcome.category))
+          const matchesApp = !outcome.app || matchesPattern(prod.activity, outcome.app)
+
+          if (matchesCategory && matchesApp) {
+            totalMinutes += prod.durationSec / 60
+          }
+        }
+      }
+
+      // Calculate baseline
+      const lagDays = lagMs / (24 * 60 * 60 * 1000)
+      let baselineTotalMinutes = 0
+      let baselineDays = 0
+      const unmatchedDaysSet = new Set(unmatchedDays)
+
+      for (const prod of productivity) {
+        const dayStr = getDayString(prod.startTime)
+        if (!unmatchedDaysSet.has(dayStr)) continue
+
+        const matchesCategory =
+          !outcome.category || (prod.category && matchesPattern(prod.category, outcome.category))
+        const matchesApp = !outcome.app || matchesPattern(prod.activity, outcome.app)
+
+        if (matchesCategory && matchesApp) {
+          baselineTotalMinutes += prod.durationSec / 60
+        }
+      }
+      baselineDays = unmatchedDays.length
+
+      const avgMinutesPerDay = daysCounted > 0 ? totalMinutes / (daysCounted * lagDays) : 0
+      const baselineAvgMinutes = baselineDays > 0 ? baselineTotalMinutes / baselineDays : 0
+      const delta =
+        avgMinutesPerDay > 0 && baselineAvgMinutes > 0 ?
+          Math.round((avgMinutesPerDay - baselineAvgMinutes) * 100) / 100
+        : null
+
+      postTrigger[lag] = {
+        avgMinutesPerDay: Math.round(avgMinutesPerDay * 100) / 100,
+        deltaFromBaseline: delta,
+        totalMinutes: Math.round(totalMinutes * 100) / 100,
+      }
+    }
+  }
+
+  // Calculate baseline stats
+  let baseline: BaselineStats
+
+  if (outcome.type === 'tag') {
+    const daysWithOutcome = new Set(outcomeTagEvents.map(getDayString))
+    const probability = periodDays > 0 ? daysWithOutcome.size / periodDays : 0
+
+    baseline = {
+      description: 'P(outcome on any given day)',
+      probability: Math.round(probability * 100) / 100,
+    }
+  } else if (outcome.type === 'metric') {
+    const unmatchedDaysSet = new Set(unmatchedDays)
+    const baselineValues = metricData
+      .filter(([time]) => unmatchedDaysSet.has(getDayString(time)))
+      .map(([, value]) => value)
+
+    baseline = {
+      mean: mean(baselineValues) !== null ? Math.round(mean(baselineValues)! * 100) / 100 : null,
+      sampleCount: baselineValues.length,
+      stddev: stddev(baselineValues) !== null ? Math.round(stddev(baselineValues)! * 100) / 100 : null,
+    }
+  } else {
+    // productivity
+    let baselineTotalMinutes = 0
+    const unmatchedDaysSet = new Set(unmatchedDays)
+
+    for (const prod of productivity) {
+      const dayStr = getDayString(prod.startTime)
+      if (!unmatchedDaysSet.has(dayStr)) continue
+
+      const matchesCategory =
+        !outcome.category || (prod.category && matchesPattern(prod.category, outcome.category))
+      const matchesApp = !outcome.app || matchesPattern(prod.activity, outcome.app)
+
+      if (matchesCategory && matchesApp) {
+        baselineTotalMinutes += prod.durationSec / 60
+      }
+    }
+
+    const avgMinutesPerDay = unmatchedDays.length > 0 ? baselineTotalMinutes / unmatchedDays.length : 0
+
+    baseline = {
+      avgMinutesPerDay: Math.round(avgMinutesPerDay * 100) / 100,
+      totalMinutes: Math.round(baselineTotalMinutes * 100) / 100,
+    }
+  }
+
+  // Calculate chi-squared for tag outcomes (using first lag window)
+  let chiSquaredResult: { chiSquared: number; pValue: number } | null = null
+
+  if (outcome.type === 'tag' && matchedWindowEnds.length > 0) {
+    const primaryLag = postTrigger[lagWindows[0]] as TagLagResult | undefined
+    if (primaryLag) {
+      const triggersWithOutcome = Math.round(primaryLag.probability * matchedWindowEnds.length)
+      const triggersWithoutOutcome = matchedWindowEnds.length - triggersWithOutcome
+
+      const daysWithOutcome = new Set(outcomeTagEvents.map(getDayString))
+      const nonTriggersWithOutcome = unmatchedDays.filter((d) => daysWithOutcome.has(d)).length
+      const nonTriggersWithoutOutcome = unmatchedDays.length - nonTriggersWithOutcome
+
+      chiSquaredResult = chiSquaredTest([
+        [triggersWithOutcome, triggersWithoutOutcome],
+        [Math.max(0, nonTriggersWithOutcome), Math.max(0, nonTriggersWithoutOutcome)],
+      ])
+    }
+  }
+
+  return {
+    baseline,
+    outcome,
+    period: {
+      days: periodDays,
+      end: end.toISOString(),
+      start: start.toISOString(),
+    },
+    postTrigger,
+    statisticalSignificance: {
+      chiSquared:
+        chiSquaredResult?.chiSquared !== undefined ?
+          Math.round(chiSquaredResult.chiSquared * 100) / 100
+        : null,
+      pValue:
+        chiSquaredResult?.pValue !== undefined ? Math.round(chiSquaredResult.pValue * 1000) / 1000 : null,
+    },
+    triggers,
+    windowsMatched: matchedWindowEnds.length,
   }
 }

@@ -325,3 +325,203 @@ export const eventProbabilityResponseSchema = createDataResponseSchema(eventProb
 })
 
 export type EventProbabilityResponse = z.infer<typeof eventProbabilityResponseSchema>
+
+// ============================================================================
+// Generic Correlation endpoint
+// ============================================================================
+
+/** Trigger condition type */
+export const triggerConditionTypeSchema = z
+  .enum(['activity', 'tag', 'productivity_category', 'productivity_app'])
+  .meta({
+    description: 'Type of trigger event',
+    example: 'tag',
+    id: 'TriggerConditionType',
+  })
+
+export type TriggerConditionType = z.infer<typeof triggerConditionTypeSchema>
+
+/** Trigger condition schema */
+export const triggerConditionSchema = z
+  .object({
+    minCount: z.number().int().optional().meta({
+      description: 'Minimum occurrences within the window (default: 1)',
+      example: 3,
+    }),
+    pattern: z.string().meta({
+      description: 'Pattern to match (regex for tags, exact match for activity types)',
+      example: 'meditation',
+    }),
+    type: triggerConditionTypeSchema,
+    windowDays: z.number().int().optional().meta({
+      description: 'Rolling window in days for counting occurrences (default: 1)',
+      example: 7,
+    }),
+  })
+  .meta({ id: 'TriggerCondition' })
+
+export type TriggerCondition = z.infer<typeof triggerConditionSchema>
+
+/** Tag outcome schema */
+export const tagOutcomeSchema = z
+  .object({
+    pattern: z.string().meta({ description: 'Regex pattern for outcome tag', example: 'headache|migraine' }),
+    type: z.literal('tag'),
+  })
+  .meta({ id: 'TagOutcome' })
+
+export type TagOutcome = z.infer<typeof tagOutcomeSchema>
+
+/** Metric outcome schema */
+export const metricOutcomeSchema = z
+  .object({
+    aggregation: z
+      .enum(['mean', 'min', 'max', 'last'])
+      .optional()
+      .meta({ description: 'Aggregation method (default: mean)' }),
+    metric: z.string().meta({ description: 'Metric name (e.g., weight, body_fat, hrv_rmssd)', example: 'weight' }),
+    type: z.literal('metric'),
+  })
+  .meta({ id: 'MetricOutcome' })
+
+export type MetricOutcome = z.infer<typeof metricOutcomeSchema>
+
+/** Productivity outcome schema */
+export const productivityOutcomeSchema = z
+  .object({
+    app: z.string().optional().meta({ description: 'Specific app to measure time in', example: 'vscode' }),
+    category: z.string().optional().meta({
+      description: 'Category to measure time in',
+      example: 'Software Development',
+    }),
+    type: z.literal('productivity'),
+  })
+  .meta({ id: 'ProductivityOutcome' })
+
+export type ProductivityOutcome = z.infer<typeof productivityOutcomeSchema>
+
+/** Outcome configuration (discriminated union) */
+export const outcomeConfigSchema = z.discriminatedUnion('type', [
+  tagOutcomeSchema,
+  metricOutcomeSchema,
+  productivityOutcomeSchema,
+])
+
+export type OutcomeConfig = z.infer<typeof outcomeConfigSchema>
+
+/** Generic correlation request body */
+export const genericCorrelationBodySchema = z
+  .object({
+    lag_windows: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description: 'Time windows to analyze (e.g., ["12h", "24h", "7d"])',
+        example: ['24h', '48h', '7d'],
+      }),
+    outcome: outcomeConfigSchema.meta({ description: 'Outcome to measure' }),
+    period_days: z.number().int().optional().meta({
+      description: 'Days to analyze (default: 90)',
+      example: 90,
+    }),
+    triggers: z.array(triggerConditionSchema).min(1).meta({
+      description: 'Trigger conditions (all must be satisfied for a match)',
+    }),
+  })
+  .meta({ id: 'GenericCorrelationBody' })
+
+export type GenericCorrelationBody = z.infer<typeof genericCorrelationBodySchema>
+
+/** Tag lag result */
+export const tagLagResultSchema = z
+  .object({
+    occurrences: z.number().int(),
+    probability: z.number().meta({ description: 'P(outcome | trigger)' }),
+    relativeRisk: z.number().meta({ description: 'Risk ratio compared to baseline' }),
+  })
+  .meta({ id: 'GenericTagLagResult' })
+
+/** Metric lag result */
+export const metricLagResultSchema = z
+  .object({
+    deltaFromBaseline: z.number().nullable().meta({ description: 'Difference from baseline mean' }),
+    mean: z.number().nullable().meta({ description: 'Mean value in the lag window' }),
+    sampleCount: z.number().int(),
+    stddev: z.number().nullable().meta({ description: 'Standard deviation' }),
+  })
+  .meta({ id: 'MetricLagResult' })
+
+/** Productivity lag result */
+export const productivityLagResultSchema = z
+  .object({
+    avgMinutesPerDay: z.number().meta({ description: 'Average minutes per day' }),
+    deltaFromBaseline: z.number().nullable().meta({ description: 'Difference from baseline' }),
+    totalMinutes: z.number().meta({ description: 'Total minutes in the lag window' }),
+  })
+  .meta({ id: 'ProductivityLagResult' })
+
+/** Generic lag result (union) */
+export const genericLagResultSchema = z.union([tagLagResultSchema, metricLagResultSchema, productivityLagResultSchema])
+
+export type GenericLagResult = z.infer<typeof genericLagResultSchema>
+
+/** Tag baseline stats */
+export const tagBaselineSchema = z
+  .object({
+    description: z.string(),
+    probability: z.number(),
+  })
+  .meta({ id: 'TagBaseline' })
+
+/** Metric baseline stats */
+export const metricBaselineSchema = z
+  .object({
+    mean: z.number().nullable(),
+    sampleCount: z.number().int(),
+    stddev: z.number().nullable(),
+  })
+  .meta({ id: 'MetricBaseline' })
+
+/** Productivity baseline stats */
+export const productivityBaselineSchema = z
+  .object({
+    avgMinutesPerDay: z.number(),
+    totalMinutes: z.number(),
+  })
+  .meta({ id: 'ProductivityBaseline' })
+
+/** Generic baseline stats (union) */
+export const genericBaselineSchema = z.union([tagBaselineSchema, metricBaselineSchema, productivityBaselineSchema])
+
+export type GenericBaseline = z.infer<typeof genericBaselineSchema>
+
+/** Generic correlation result data */
+export const genericCorrelationDataSchema = z
+  .object({
+    baseline: genericBaselineSchema.meta({ description: 'Baseline statistics (periods without triggers)' }),
+    outcome: outcomeConfigSchema.meta({ description: 'Outcome configuration' }),
+    period: z.object({
+      days: z.number().int(),
+      end: z.string(),
+      start: z.string(),
+    }),
+    postTrigger: z.record(z.string(), genericLagResultSchema).meta({
+      description: 'Results for each lag window',
+    }),
+    statisticalSignificance: z.object({
+      chiSquared: z.number().nullable(),
+      pValue: z.number().nullable(),
+    }),
+    triggers: z.array(triggerConditionSchema).meta({ description: 'Trigger conditions used' }),
+    windowsMatched: z.number().int().meta({ description: 'Number of windows where all conditions were met' }),
+  })
+  .meta({ id: 'GenericCorrelationData' })
+
+export type GenericCorrelationData = z.infer<typeof genericCorrelationDataSchema>
+
+/** Generic correlation response */
+export const genericCorrelationResponseSchema = createDataResponseSchema(genericCorrelationDataSchema).meta({
+  id: 'GenericCorrelationResponse',
+})
+
+export type GenericCorrelationResponse = z.infer<typeof genericCorrelationResponseSchema>
