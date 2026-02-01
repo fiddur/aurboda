@@ -3,7 +3,10 @@ import {
   activityTypeSchema,
   dateOnlySchema,
   endDateTimeQuerySchema,
+  exerciseTypeNames,
+  getExerciseTypeValue,
   hrZoneThresholdsSchema,
+  isValidExerciseType,
   isValidMetric,
   latWithValidationSchema,
   lonWithValidationSchema,
@@ -357,11 +360,10 @@ export function createMcpRouter(
         ),
         end_time: endDateTimeQuerySchema.describe('End time in ISO 8601 format (e.g., 2024-03-15T11:45:00Z)'),
         exercise_type: z
-          .number()
-          .int()
+          .string()
           .optional()
           .describe(
-            'Health Connect exercise type enum (e.g., 79 for weightlifting). Only for exercise activities.',
+            `Exercise type name (e.g., "weightlifting", "running"). Only for exercise activities. Valid types: ${exerciseTypeNames.slice(0, 10).join(', ')}...`,
           ),
         notes: z
           .string()
@@ -379,9 +381,19 @@ export function createMcpRouter(
         const startDate = new Date(start_time)
         const endDate = new Date(end_time)
 
-        // Build data object for exercise-specific fields
-        const data: Record<string, unknown> | undefined =
-          exercise_type !== undefined ? { exerciseType: exercise_type } : undefined
+        // Validate and convert exercise_type name to value
+        let data: Record<string, unknown> | undefined
+        if (exercise_type !== undefined) {
+          if (!isValidExerciseType(exercise_type)) {
+            return errorResponse(
+              `Invalid exercise_type "${exercise_type}". Valid types include: ${exerciseTypeNames.slice(0, 15).join(', ')}...`,
+            )
+          }
+          data = {
+            exerciseType: getExerciseTypeValue(exercise_type),
+            exerciseTypeName: exercise_type,
+          }
+        }
 
         const result = await addActivity(user, {
           activityType: activity_type,
