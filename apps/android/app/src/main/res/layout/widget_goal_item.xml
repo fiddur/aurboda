@@ -36,15 +36,31 @@
             android:textColor="#FFFFFFFF" />
     </LinearLayout>
 
-    <ProgressBar
-        android:id="@+id/goal_progress"
-        style="?android:attr/progressBarStyleHorizontal"
+    <!-- Progress bar container with min-marker overlay -->
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="12dp"
-        android:layout_marginTop="4dp"
-        android:max="100"
-        android:progress="0"
-        android:progressDrawable="@drawable/progress_bar_widget_drawable" />
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp">
+
+        <ProgressBar
+            android:id="@+id/goal_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="12dp"
+            android:max="100"
+            android:progress="0"
+            android:progressDrawable="@drawable/progress_bar_widget_drawable" />
+
+        <!-- Min marker line (positioned dynamically) -->
+        <View
+            android:id="@+id/min_marker"
+            android:layout_width="2dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="start"
+            android:background="#CCFFFFFF"
+            android:visibility="gone" />
+
+    </FrameLayout>
 
     <!-- Overflow progress bar (shown when > 100%) -->
     <ProgressBar

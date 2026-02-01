@@ -2,7 +2,10 @@ package net.aurboda.widget
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.util.Log
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
@@ -18,6 +21,11 @@ import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import net.aurboda.appJson
+
+// Progress bar colors matching web UI
+private const val COLOR_BELOW_MIN = 0xFF757575.toInt()  // Gray
+private const val COLOR_MET = 0xFF4CAF50.toInt()        // Green
+private const val COLOR_OVER_MAX = 0xFFF44336.toInt()   // Red
 
 private const val TAG = "GoalsWidgetService"
 
@@ -117,16 +125,69 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
         val cappedProgress = progressPercent.coerceIn(0.0, 100.0).toInt()
         views.setProgressBar(R.id.goal_progress, 100, cappedProgress, false)
 
+        // Determine progress bar color based on goal status
+        val progressColor = getProgressColor(goal)
+        views.setColorStateList(
+            R.id.goal_progress,
+            "setProgressTintList",
+            ColorStateList.valueOf(progressColor)
+        )
+
+        // Show min-marker when both min and max are set
+        if (goal.min != null && goal.max != null && goal.max > 0) {
+            val minPercent = (goal.min / goal.max).toFloat()
+            views.setViewVisibility(R.id.min_marker, View.VISIBLE)
+            views.setViewLayoutMargin(
+                R.id.min_marker,
+                RemoteViews.MARGIN_START,
+                minPercent,
+                TypedValue.COMPLEX_UNIT_FRACTION_PARENT
+            )
+        } else {
+            views.setViewVisibility(R.id.min_marker, View.GONE)
+        }
+
         // Handle overflow (progress > 100%)
         if (progressPercent > 100) {
             val overflow = (progressPercent - 100).coerceIn(0.0, 100.0).toInt()
             views.setViewVisibility(R.id.goal_overflow, View.VISIBLE)
             views.setProgressBar(R.id.goal_overflow, 100, overflow, false)
+            // Overflow bar uses same color
+            views.setColorStateList(
+                R.id.goal_overflow,
+                "setProgressTintList",
+                ColorStateList.valueOf(progressColor)
+            )
         } else {
             views.setViewVisibility(R.id.goal_overflow, View.GONE)
         }
 
         return views
+    }
+
+    /**
+     * Determine progress bar color based on goal status.
+     * Matches the web UI color scheme.
+     */
+    private fun getProgressColor(goal: GoalProgress): Int {
+        val min = goal.min
+        val max = goal.max
+        val current = goal.current
+
+        return when {
+            // Min-max goal
+            min != null && max != null -> when {
+                current >= max -> COLOR_OVER_MAX
+                current >= min -> COLOR_MET
+                else -> COLOR_BELOW_MIN
+            }
+            // Min-only goal
+            min != null -> if (current >= min) COLOR_MET else COLOR_BELOW_MIN
+            // Max-only goal
+            max != null -> if (current > max) COLOR_OVER_MAX else COLOR_MET
+            // No targets (shouldn't happen)
+            else -> COLOR_MET
+        }
     }
 
     private fun formatGoalValue(metric: String, value: Double, unit: String): String {
