@@ -2,6 +2,9 @@ import {
   type ActivitiesQuery,
   activitiesQuerySchema,
   type ActivitiesResponse,
+  type AddActivityBody,
+  addActivityBodySchema,
+  type AddActivityResponse,
   type AddMetricBody,
   addMetricBodySchema,
   type AddMetricResponse,
@@ -21,8 +24,10 @@ import {
   type DetectedLocationsQuery,
   detectedLocationsQuerySchema,
   type DetectedLocationsResponse,
+  getExerciseTypeValue,
   type GoalsProgressResponse,
   type InvitationResponse,
+  isValidExerciseType,
   type LocationsQuery,
   locationsQuerySchema,
   type LocationsResponse,
@@ -94,7 +99,7 @@ import {
   insertNamedLocation,
   updateNamedLocation,
 } from './services/locations'
-import { addMetric, addTag } from './services/mutations'
+import { addActivity, addMetric, addTag } from './services/mutations'
 import {
   getDailySummary,
   getPeriodSummary,
@@ -519,6 +524,60 @@ const main = async () => {
 
       const activities = await queryActivities(user, types, new Date(start), new Date(end), syncProvider)
       res.json({ data: activities, success: true })
+    },
+  )
+
+  // POST /activities - Add a manual activity
+  httpd.post<Record<string, never>, AddActivityResponse, AddActivityBody>(
+    '/activities',
+    authMiddleware,
+    validateBody(addActivityBodySchema),
+    async (req, res) => {
+      const { activity_type, start_time, end_time, title, notes, exercise_type } = req.body
+      const user = req.user!
+
+      const startDate = new Date(start_time)
+      const endDate = new Date(end_time)
+
+      // Validate and convert exercise_type name to value if provided
+      let data: Record<string, unknown> | undefined
+      if (exercise_type !== undefined) {
+        if (!isValidExerciseType(exercise_type)) {
+          return res.status(400).json({
+            error: `Invalid exercise_type "${exercise_type}"`,
+            success: false,
+          })
+        }
+        data = {
+          exerciseType: getExerciseTypeValue(exercise_type),
+          exerciseTypeName: exercise_type,
+        }
+      }
+
+      const result = await addActivity(user, {
+        activityType: activity_type,
+        data,
+        endTime: endDate,
+        notes,
+        startTime: startDate,
+        title,
+      })
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error, success: false })
+      }
+
+      res.json({
+        data: {
+          activityType: result.activityType!,
+          endTime: result.endTime!,
+          id: result.id!,
+          notes: result.notes,
+          startTime: result.startTime!,
+          title: result.title,
+        },
+        success: true,
+      })
     },
   )
 

@@ -4,6 +4,8 @@
 
 import { z } from 'zod'
 import {
+  activityTypeSchema,
+  baseResponseSchema,
   createDataArrayResponseSchema,
   durationMinutesSchema,
   iso8601DateTimeSchema,
@@ -164,3 +166,46 @@ export const activitiesResponseSchema = createDataArrayResponseSchema(activitySc
 })
 
 export type ActivitiesResponse = z.infer<typeof activitiesResponseSchema>
+
+/**
+ * Add activity request body schema.
+ */
+export const addActivityBodySchema = z
+  .object({
+    activity_type: activityTypeSchema.meta({ description: 'Type of activity' }),
+    end_time: iso8601DateTimeSchema.meta({ description: 'End time of the activity' }),
+    exercise_type: exerciseTypeSchema.optional().meta({
+      description: 'Exercise type name (only for exercise activities)',
+    }),
+    notes: z.string().optional().meta({
+      description: 'Activity notes. For workouts, use format: "Exercise Name: reps×weight, reps×weight" per line.',
+    }),
+    start_time: iso8601DateTimeSchema.meta({ description: 'Start time of the activity' }),
+    title: z.string().optional().meta({ description: 'Activity title (e.g., "Upper body", "Morning meditation")' }),
+  })
+  .meta({ id: 'AddActivityBody' })
+
+export type AddActivityBody = z.infer<typeof addActivityBodySchema>
+
+/**
+ * Added activity data schema.
+ */
+const addedActivitySchema = z.object({
+  activityType: activityTypeSchema,
+  endTime: iso8601DateTimeSchema,
+  id: z.string().uuid(),
+  notes: z.string().optional(),
+  startTime: iso8601DateTimeSchema,
+  title: z.string().optional(),
+})
+
+/**
+ * Add activity response schema.
+ */
+export const addActivityResponseSchema = baseResponseSchema
+  .extend({
+    data: addedActivitySchema.optional(),
+  })
+  .meta({ id: 'AddActivityResponse' })
+
+export type AddActivityResponse = z.infer<typeof addActivityResponseSchema>
