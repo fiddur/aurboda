@@ -639,21 +639,39 @@ export function createMcpRouter(
 
   // Helper to restore a session from the store (lazy restoration after restart)
   const restoreSessionFromStore = async (user: string, sessionId: string): Promise<McpSession | null> => {
-    if (!sessionStore) return null
+    if (!sessionStore) {
+      console.log('[MCP] restoreSessionFromStore: no sessionStore configured')
+      return null
+    }
 
+    console.log(`[MCP] restoreSessionFromStore: attempting to restore session ${sessionId} for user ${user}`)
     const record = await sessionStore.get(user, sessionId)
-    if (!record || record.username !== user) return null
+    if (!record) {
+      console.log(`[MCP] restoreSessionFromStore: session ${sessionId} not found in store`)
+      return null
+    }
+    if (record.username !== user) {
+      console.log(
+        `[MCP] restoreSessionFromStore: session ${sessionId} belongs to ${record.username}, not ${user}`,
+      )
+      return null
+    }
 
     // Check if session is expired (older than 7 days by default)
     const maxAge = DEFAULT_SESSION_INACTIVITY_MS
     const age = Date.now() - record.lastActivity.getTime()
+    console.log(
+      `[MCP] restoreSessionFromStore: session ${sessionId} age=${age}ms, maxAge=${maxAge}ms, lastActivity=${record.lastActivity.toISOString()}`,
+    )
     if (age > maxAge) {
       // Session expired - clean it up
+      console.log(`[MCP] restoreSessionFromStore: session ${sessionId} expired, deleting`)
       await sessionStore.delete(user, sessionId)
       return null
     }
 
     // Recreate the McpServer and transport
+    console.log(`[MCP] restoreSessionFromStore: recreating McpServer for session ${sessionId}`)
     const server = createMcpServer(user)
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => sessionId,
@@ -664,6 +682,7 @@ export function createMcpRouter(
     const session: McpSession = { server, transport, user }
     sessions.set(sessionId, session)
 
+    console.log(`[MCP] restoreSessionFromStore: session ${sessionId} restored successfully`)
     return session
   }
 
@@ -700,11 +719,15 @@ export function createMcpRouter(
     }
 
     const sessionId = req.headers['mcp-session-id'] as string | undefined
+    console.log(
+      `[MCP] POST request: user=${user}, sessionId=${sessionId ?? 'none'}, hasStore=${!!sessionStore}`,
+    )
 
     let session: McpSession | undefined
 
     if (sessionId && sessions.has(sessionId)) {
       // Session is in memory
+      console.log(`[MCP] POST: session ${sessionId} found in memory`)
       session = sessions.get(sessionId)!
       if (session.user !== user) {
         res.status(403).json({ error: 'Session belongs to different user' })
@@ -712,15 +735,22 @@ export function createMcpRouter(
       }
     } else if (sessionId && sessionStore) {
       // Session not in memory - try to restore from store
-      const restored = await restoreSessionFromStore(user, sessionId)
-      if (restored) {
-        session = restored
+      console.log(`[MCP] POST: session ${sessionId} not in memory, attempting restore from store`)
+      try {
+        const restored = await restoreSessionFromStore(user, sessionId)
+        if (restored) {
+          session = restored
+        }
+      } catch (err) {
+        console.error(`[MCP] POST: error restoring session ${sessionId}:`, err)
+        // Continue to create new session
       }
     }
 
     if (!session) {
       // Create new session - generate ID first so transport and our map use the same one
       const newSessionId = randomUUID()
+      console.log(`[MCP] POST: creating new session ${newSessionId} for user ${user}`)
       const server = createMcpServer(user)
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => newSessionId,
@@ -733,7 +763,13 @@ export function createMcpRouter(
 
       // Persist to store if available
       if (sessionStore) {
-        await sessionStore.save(user, newSessionId)
+        console.log(`[MCP] POST: saving new session ${newSessionId} to store`)
+        try {
+          await sessionStore.save(user, newSessionId)
+        } catch (err) {
+          console.error(`[MCP] POST: error saving session ${newSessionId}:`, err)
+          // Continue without persistence
+        }
       }
     }
 
@@ -741,7 +777,11 @@ export function createMcpRouter(
 
     // Update last activity in store
     if (sessionStore && sessionId) {
-      await sessionStore.touch(user, sessionId)
+      try {
+        await sessionStore.touch(user, sessionId)
+      } catch (err) {
+        console.error(`[MCP] POST: error touching session ${sessionId}:`, err)
+      }
     }
   })
 
