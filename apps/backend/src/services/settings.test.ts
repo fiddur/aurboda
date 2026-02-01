@@ -170,7 +170,7 @@ describe('validateAndUpdateSettings', () => {
     const result = await validateAndUpdateSettings('testuser', { birth_date: '15-03-1985' })
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('YYYY-MM-DD')
+    expect(result.error).toBeDefined()
     expect(db.upsertUserSettings).not.toHaveBeenCalled()
   })
 

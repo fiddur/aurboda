@@ -2,15 +2,23 @@
  * User settings service for HR zones and other user preferences.
  */
 
-import { defaultGoals, goalsSchema, type Goal } from '@aurboda/api-spec'
-import { z } from 'zod'
+import {
+  defaultGoals,
+  type Goal,
+  type HrZoneSecs,
+  type HrZoneSource,
+  type HrZoneThresholds,
+  updateSettingsInputSchema,
+  type UserSettingsResponse,
+} from '@aurboda/api-spec'
 import { getOAuthToken, getUserSettings, upsertUserSettings } from '../db'
+
+// Re-export types from api-spec for use by other modules
+export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
 
 // ============================================================================
 // Types
 // ============================================================================
-
-export type HrZoneThresholds = { 1: number; 2: number; 3: number; 4: number; 5: number }
 
 export interface UserSettings {
   birthDate?: string // YYYY-MM-DD
@@ -19,67 +27,8 @@ export interface UserSettings {
   goals?: Goal[] // User-defined goals for tracking metrics
 }
 
-export interface HrZoneSecs {
-  0: number
-  1: number
-  2: number
-  3: number
-  4: number
-  5: number
-}
-
-export type HrZoneSource = 'custom' | 'age_based' | 'default'
-
-export interface SettingsResponse {
-  success: boolean
-  birth_date: string | null
-  hr_zone_start: HrZoneThresholds
-  hr_zone_start_source: HrZoneSource
-  rescue_time_key: string | null
-  oura_connected: boolean
-  oura_configured: boolean // Whether Oura OAuth is configured on the server
-  goals: Goal[]
-  error?: string
-}
-
-// ============================================================================
-// Zod Schemas (shared between API and MCP)
-// ============================================================================
-
-export const hrZoneThresholdsSchema = z
-  .object({
-    1: z.number().int().positive(),
-    2: z.number().int().positive(),
-    3: z.number().int().positive(),
-    4: z.number().int().positive(),
-    5: z.number().int().positive(),
-  })
-  .refine(
-    (zones) => zones[1] < zones[2] && zones[2] < zones[3] && zones[3] < zones[4] && zones[4] < zones[5],
-    { message: 'HR zone thresholds must be in ascending order' },
-  )
-
-export const birthDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Birth date must be in YYYY-MM-DD format')
-  .refine(
-    (date) => {
-      const parsed = new Date(date)
-      return !isNaN(parsed.getTime())
-    },
-    { message: 'Invalid date' },
-  )
-
-export const rescueTimeKeySchema = z.string().min(1, 'RescueTime API key cannot be empty')
-
-export const updateSettingsInputSchema = z.object({
-  birth_date: birthDateSchema.nullable().optional(),
-  goals: goalsSchema.nullable().optional(),
-  hr_zone_start: hrZoneThresholdsSchema.nullable().optional(),
-  rescue_time_key: rescueTimeKeySchema.nullable().optional(),
-})
-
-export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
+// Use UserSettingsResponse from api-spec but allow error field for validation failures
+export type SettingsResponse = UserSettingsResponse & { error?: string }
 
 // ============================================================================
 // Constants
