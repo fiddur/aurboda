@@ -2,6 +2,9 @@ import {
   type ActivitiesQuery,
   activitiesQuerySchema,
   type ActivitiesResponse,
+  type ActivityImpactQuery,
+  activityImpactQuerySchema,
+  type ActivityImpactResponse,
   type AddActivityBody,
   addActivityBodySchema,
   type AddActivityResponse,
@@ -15,6 +18,9 @@ import {
   addTagBodySchema,
   type AddTagResponse,
   type AdminSettingsResponse,
+  type BaselineQuery,
+  baselineQuerySchema,
+  type BaselineResponse,
   type CreateInvitationBody,
   createInvitationBodySchema,
   type DailySummaryQuery,
@@ -24,8 +30,17 @@ import {
   type DetectedLocationsQuery,
   detectedLocationsQuerySchema,
   type DetectedLocationsResponse,
+  type EventProbabilityBody,
+  eventProbabilityBodySchema,
+  type EventProbabilityResponse,
+  type GenericCorrelationBody,
+  genericCorrelationBodySchema,
+  type GenericCorrelationResponse,
   getExerciseTypeValue,
   type GoalsProgressResponse,
+  type HrvActivitiesQuery,
+  hrvActivitiesQuerySchema,
+  type HrvActivitiesResponse,
   type InvitationResponse,
   isValidExerciseType,
   type LocationsQuery,
@@ -87,6 +102,13 @@ import { createOwnTracksRouter } from './owntracks'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { isValidMetric, MetricType, validMetrics } from './schema'
 import { getCentralDb, initializeCentralDb } from './services/central-db'
+import {
+  getActivityImpact,
+  getBaseline,
+  getEventProbability,
+  getGenericCorrelation,
+  getHrvActivitiesCorrelation,
+} from './services/correlations'
 import { createDetectionTrigger, DetectionTrigger } from './services/detection-trigger'
 import { runDetectionForUser } from './services/detection-worker'
 import { createGeocodeQueue, GeocodeQueue } from './services/geocode-queue'
@@ -770,6 +792,107 @@ const main = async () => {
         return res.status(400).json(result)
       }
       res.json(result)
+    },
+  )
+
+  // ==========================================================================
+  // Correlations API
+  // ==========================================================================
+
+  // GET /correlations/baseline - Get HRV baseline statistics
+  httpd.get<Record<string, never>, BaselineResponse, unknown, BaselineQuery>(
+    '/correlations/baseline',
+    authMiddleware,
+    validateQuery(baselineQuerySchema),
+    async (req, res) => {
+      const { reference_date } = req.query
+      const user = req.user!
+
+      const referenceDate = reference_date ? new Date(reference_date) : undefined
+      const baseline = await getBaseline(user, referenceDate)
+      res.json({ data: baseline, success: true })
+    },
+  )
+
+  // GET /correlations/hrv-activities - Get HRV correlations with activities
+  httpd.get<Record<string, never>, HrvActivitiesResponse, unknown, HrvActivitiesQuery>(
+    '/correlations/hrv-activities',
+    authMiddleware,
+    validateQuery(hrvActivitiesQuerySchema),
+    async (req, res) => {
+      const { period_days } = req.query
+      const user = req.user!
+
+      const periodDays = period_days ? parseInt(period_days, 10) : 30
+      const correlations = await getHrvActivitiesCorrelation(user, periodDays, syncProvider)
+      res.json({ data: correlations, success: true })
+    },
+  )
+
+  // GET /correlations/activity-impact/:activity - Get activity impact on metrics
+  httpd.get<{ activity: string }, ActivityImpactResponse, unknown, ActivityImpactQuery>(
+    '/correlations/activity-impact/:activity',
+    authMiddleware,
+    validateQuery(activityImpactQuerySchema),
+    async (req, res) => {
+      const { activity } = req.params
+      const { activity_type, period_days, window_minutes } = req.query
+      const user = req.user!
+
+      const periodDays = period_days ? parseInt(period_days, 10) : 90
+      const windowMinutes = window_minutes ? parseInt(window_minutes, 10) : 30
+
+      const impact = await getActivityImpact(
+        user,
+        activity,
+        activity_type,
+        windowMinutes,
+        periodDays,
+        syncProvider,
+      )
+      res.json({ data: impact, success: true })
+    },
+  )
+
+  // POST /correlations/event-probability - Get event probability correlation
+  httpd.post<Record<string, never>, EventProbabilityResponse, EventProbabilityBody>(
+    '/correlations/event-probability',
+    authMiddleware,
+    validateBody(eventProbabilityBodySchema),
+    async (req, res) => {
+      const { trigger_type, trigger_value, outcome_pattern, lag_windows, period_days } = req.body
+      const user = req.user!
+
+      const probability = await getEventProbability(
+        user,
+        { type: trigger_type, value: trigger_value },
+        { pattern: outcome_pattern, type: 'tag' },
+        lag_windows ?? ['12h', '24h', '36h', '48h'],
+        period_days ?? 365,
+        syncProvider,
+      )
+      res.json({ data: probability, success: true })
+    },
+  )
+
+  // POST /correlations/generic - Generic correlation analysis
+  httpd.post<Record<string, never>, GenericCorrelationResponse, GenericCorrelationBody>(
+    '/correlations/generic',
+    authMiddleware,
+    validateBody(genericCorrelationBodySchema),
+    async (req, res) => {
+      const { triggers, outcome, lag_windows, period_days } = req.body
+      const user = req.user!
+
+      const result = await getGenericCorrelation(
+        user,
+        triggers,
+        outcome,
+        lag_windows ?? ['24h', '48h', '7d'],
+        period_days ?? 90,
+        syncProvider,
+      )
+      res.json({ data: result, success: true })
     },
   )
 

@@ -58,8 +58,8 @@ export const exerciseTypes = {
   hiking: 37,
   ice_hockey: 38,
   ice_skating: 39,
-  jumping_jack: 40,
   jump_rope: 41,
+  jumping_jack: 40,
   lat_pull_down: 42,
   lunge: 43,
   martial_arts: 44,
@@ -116,11 +116,9 @@ export const exerciseTypeSchema = z
     id: 'ExerciseTypeName',
   })
 
-export const isValidExerciseType = (name: string): name is ExerciseTypeName =>
-  name in exerciseTypes
+export const isValidExerciseType = (name: string): name is ExerciseTypeName => name in exerciseTypes
 
-export const getExerciseTypeValue = (name: ExerciseTypeName): number =>
-  exerciseTypes[name]
+export const getExerciseTypeValue = (name: ExerciseTypeName): number => exerciseTypes[name]
 
 /**
  * Activity schema.
@@ -178,10 +176,14 @@ export const addActivityBodySchema = z
       description: 'Exercise type name (only for exercise activities)',
     }),
     notes: z.string().optional().meta({
-      description: 'Activity notes. For workouts, use format: "Exercise Name: reps×weight, reps×weight" per line.',
+      description:
+        'Activity notes. For workouts, use format: "Exercise Name: reps×weight, reps×weight" per line.',
     }),
     start_time: iso8601DateTimeSchema.meta({ description: 'Start time of the activity' }),
-    title: z.string().optional().meta({ description: 'Activity title (e.g., "Upper body", "Morning meditation")' }),
+    title: z
+      .string()
+      .optional()
+      .meta({ description: 'Activity title (e.g., "Upper body", "Morning meditation")' }),
   })
   .meta({ id: 'AddActivityBody' })
 
