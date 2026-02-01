@@ -3,7 +3,10 @@ import {
   activityTypeSchema,
   dateOnlySchema,
   endDateTimeQuerySchema,
+  exerciseTypeNames,
+  getExerciseTypeValue,
   hrZoneThresholdsSchema,
+  isValidExerciseType,
   isValidMetric,
   latWithValidationSchema,
   lonWithValidationSchema,
@@ -31,7 +34,7 @@ import {
   insertNamedLocation,
   updateNamedLocation,
 } from './services/locations'
-import { addMetric, addTag, deleteTag } from './services/mutations'
+import { addActivity, addMetric, addTag, deleteTag } from './services/mutations'
 import {
   getDailySummary,
   getPeriodSummary,
@@ -339,6 +342,72 @@ export function createMcpRouter(
         }
 
         const result = await addMetric(user, { metric, time: measurementTime, value })
+        return jsonResponse(result)
+      },
+    )
+
+    // ========================================================================
+    // Activity Management Tools
+    // ========================================================================
+
+    // Tool: add_activity
+    server.tool(
+      'add_activity',
+      'Add an activity session (exercise, meditation, nap). Use this to log workouts or other activities.',
+      {
+        activity_type: activityTypeSchema.describe(
+          `Type of activity. Valid types: ${activityTypes.join(', ')}`,
+        ),
+        end_time: endDateTimeQuerySchema.describe('End time in ISO 8601 format (e.g., 2024-03-15T11:45:00Z)'),
+        exercise_type: z
+          .string()
+          .optional()
+          .describe(
+            `Exercise type name (e.g., "weightlifting", "running"). Only for exercise activities. Valid types: ${exerciseTypeNames.slice(0, 10).join(', ')}...`,
+          ),
+        notes: z
+          .string()
+          .optional()
+          .describe(
+            'Activity notes. For workouts, use format: "Exercise Name: reps×weight, reps×weight" per line.',
+          ),
+        start_time: startDateTimeQuerySchema.describe(
+          'Start time in ISO 8601 format (e.g., 2024-03-15T10:30:00Z)',
+        ),
+        title: z.string().optional().describe('Activity title (e.g., "Upper body", "Morning meditation")'),
+      },
+      async ({ activity_type, end_time, exercise_type, notes, start_time, title }) => {
+        // Dates are pre-validated by zod schema
+        const startDate = new Date(start_time)
+        const endDate = new Date(end_time)
+
+        // Validate and convert exercise_type name to value
+        let data: Record<string, unknown> | undefined
+        if (exercise_type !== undefined) {
+          if (!isValidExerciseType(exercise_type)) {
+            return errorResponse(
+              `Invalid exercise_type "${exercise_type}". Valid types include: ${exerciseTypeNames.slice(0, 15).join(', ')}...`,
+            )
+          }
+          data = {
+            exerciseType: getExerciseTypeValue(exercise_type),
+            exerciseTypeName: exercise_type,
+          }
+        }
+
+        const result = await addActivity(user, {
+          activityType: activity_type,
+          data,
+          endTime: endDate,
+          notes,
+          startTime: startDate,
+          title,
+        })
+
+        if (!result.success) {
+          return errorResponse(result.error ?? 'Failed to add activity')
+        }
+
         return jsonResponse(result)
       },
     )

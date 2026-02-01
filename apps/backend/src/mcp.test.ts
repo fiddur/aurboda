@@ -5,6 +5,7 @@ import { createAuth } from './auth'
 import * as db from './db'
 import { createMcpRouter } from './mcp'
 import { createInMemorySessionStore, McpSessionStore } from './mcp-session-store'
+import * as mutations from './services/mutations'
 import * as queries from './services/queries'
 
 // Mock the services
@@ -19,6 +20,7 @@ vi.mock('./services/queries', () => ({
 }))
 
 vi.mock('./services/mutations', () => ({
+  addActivity: vi.fn(),
   addMetric: vi.fn(),
   addTag: vi.fn(),
 }))
@@ -982,6 +984,181 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.data).toHaveLength(0)
+    })
+  })
+
+  describe('Tool: add_activity', () => {
+    async function initializeSession(app: express.Express, token: string) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+      return response.headers['mcp-session-id'] as string
+    }
+
+    async function callTool(
+      app: express.Express,
+      token: string,
+      sessionId: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: args, name: toolName },
+        })
+
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return {
+        ...response,
+        parsed,
+        toolResult: JSON.parse(parsed.result.content[0].text),
+      }
+    }
+
+    test('creates exercise activity with exercise_type name', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      vi.mocked(mutations.addActivity).mockResolvedValue({
+        activityType: 'exercise',
+        endTime: '2024-03-15T11:45:00.000Z',
+        id: 'test-uuid',
+        startTime: '2024-03-15T10:30:00.000Z',
+        success: true,
+        title: 'Upper body',
+      })
+
+      const response = await callTool(app, token, sessionId, 'add_activity', {
+        activity_type: 'exercise',
+        end_time: '2024-03-15T11:45:00Z',
+        exercise_type: 'weightlifting',
+        start_time: '2024-03-15T10:30:00Z',
+        title: 'Upper body',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(response.toolResult.id).toBe('test-uuid')
+      expect(mutations.addActivity).toHaveBeenCalledWith('testuser', {
+        activityType: 'exercise',
+        data: {
+          exerciseType: 81,
+          exerciseTypeName: 'weightlifting',
+        },
+        endTime: expect.any(Date),
+        notes: undefined,
+        startTime: expect.any(Date),
+        title: 'Upper body',
+      })
+    })
+
+    test('creates activity without exercise_type', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      vi.mocked(mutations.addActivity).mockResolvedValue({
+        activityType: 'meditation',
+        endTime: '2024-03-15T07:30:00.000Z',
+        id: 'test-uuid-2',
+        startTime: '2024-03-15T07:00:00.000Z',
+        success: true,
+        title: 'Morning meditation',
+      })
+
+      const response = await callTool(app, token, sessionId, 'add_activity', {
+        activity_type: 'meditation',
+        end_time: '2024-03-15T07:30:00Z',
+        start_time: '2024-03-15T07:00:00Z',
+        title: 'Morning meditation',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(mutations.addActivity).toHaveBeenCalledWith('testuser', {
+        activityType: 'meditation',
+        data: undefined,
+        endTime: expect.any(Date),
+        notes: undefined,
+        startTime: expect.any(Date),
+        title: 'Morning meditation',
+      })
+    })
+
+    test('returns error for invalid exercise_type name', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            arguments: {
+              activity_type: 'exercise',
+              end_time: '2024-03-15T11:45:00Z',
+              exercise_type: 'invalid_exercise_type',
+              start_time: '2024-03-15T10:30:00Z',
+            },
+            name: 'add_activity',
+          },
+        })
+
+      expect(response.status).toBe(200)
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      expect(parsed.result.content[0].text).toContain('Invalid exercise_type')
+      expect(mutations.addActivity).not.toHaveBeenCalled()
+    })
+
+    test('returns error when end_time is before start_time', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      vi.mocked(mutations.addActivity).mockResolvedValue({
+        error: 'end_time must be after start_time',
+        success: false,
+      })
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            arguments: {
+              activity_type: 'exercise',
+              end_time: '2024-03-15T09:00:00Z',
+              start_time: '2024-03-15T10:30:00Z',
+            },
+            name: 'add_activity',
+          },
+        })
+
+      expect(response.status).toBe(200)
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      expect(parsed.result.content[0].text).toContain('end_time must be after start_time')
     })
   })
 
