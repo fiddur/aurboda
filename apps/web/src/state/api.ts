@@ -302,3 +302,73 @@ export const fetchGoalsProgress = async (): Promise<GoalProgress[]> => {
 
   return response.data.goals
 }
+
+// ==========================================================================
+// Admin API
+// ==========================================================================
+
+export type SignupMode = 'open' | 'invite_only' | 'closed'
+
+export interface AdminSettings {
+  signup_mode: SignupMode
+  admin_count: number
+}
+
+export interface InvitationResult {
+  token: string
+  url: string
+  expiresAt: Date
+}
+
+// Fetch admin settings
+export const fetchAdminSettings = async (): Promise<AdminSettings> => {
+  const { token } = auth.value
+  const response = await axios.get<{ success: boolean } & AdminSettings>(`${API_URL}/admin/settings`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return {
+    admin_count: response.data.admin_count,
+    signup_mode: response.data.signup_mode,
+  }
+}
+
+// Update admin settings
+export const updateAdminSettings = async (params: { signup_mode?: SignupMode }): Promise<AdminSettings> => {
+  const { token } = auth.value
+  const response = await axios.patch<{ success: boolean } & AdminSettings>(
+    `${API_URL}/admin/settings`,
+    params,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+
+  return {
+    admin_count: response.data.admin_count,
+    signup_mode: response.data.signup_mode,
+  }
+}
+
+// Generate invitation
+export const generateInvitation = async (expiryHours?: number): Promise<InvitationResult> => {
+  const { token } = auth.value
+  const response = await axios.post<{
+    success: boolean
+    token: string
+    url: string
+    expiresAt: string
+  }>(
+    `${API_URL}/admin/invitations`,
+    { expiryHours },
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+
+  return {
+    expiresAt: new Date(response.data.expiresAt),
+    token: response.data.token,
+    url: response.data.url,
+  }
+}
