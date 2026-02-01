@@ -1,3 +1,4 @@
+import { type Goal } from '@aurboda/api-spec'
 import { Client, QueryResultRow } from 'pg'
 import format from 'pg-format'
 import {
@@ -1561,6 +1562,7 @@ export const getDailyAggregateValue = async (
 
 export interface UserSettings {
   birthDate?: string // YYYY-MM-DD
+  goals?: Goal[] // User-defined goals for tracking metrics
   hrZoneStart?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   rescueTimeKey?: string // RescueTime API key (personal token)
 }
@@ -1577,6 +1579,7 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
   const settings = result.rows[0].settings as Record<string, unknown>
   return {
     birthDate: settings.birthDate as string | undefined,
+    goals: settings.goals as Goal[] | undefined,
     hrZoneStart: settings.hrZoneStart as UserSettings['hrZoneStart'],
     rescueTimeKey: settings.rescueTimeKey as string | undefined,
   }
@@ -1597,6 +1600,9 @@ export const upsertUserSettings = async (
   const merged: UserSettings = { ...existing }
   if (updates.birthDate !== undefined) {
     merged.birthDate = updates.birthDate
+  }
+  if (updates.goals !== undefined) {
+    merged.goals = updates.goals
   }
   if (updates.hrZoneStart !== undefined) {
     merged.hrZoneStart = updates.hrZoneStart
