@@ -36,10 +36,10 @@ NOMINATIM_URL=https://nominatim.openstreetmap.org         # Nominatim API URL (d
 
 ### Creating the Service Account
 
-The service account needs `CREATEDB` privilege to create per-user databases:
+The service account needs `CREATEDB` privilege to create per-user databases, and `SUPERUSER` to enable the PostGIS extension in each user database:
 
 ```bash
-sudo -u postgres psql -c "CREATE USER aurboda_service WITH ENCRYPTED PASSWORD 'your_password' CREATEDB"
+sudo -u postgres psql -c "CREATE USER aurboda_service WITH ENCRYPTED PASSWORD 'your_password' CREATEDB SUPERUSER"
 ```
 
 ### Database Naming Convention
@@ -70,8 +70,14 @@ Install PostGIS for your PostgreSQL version:
 ```bash
 # Debian/Ubuntu (adjust version number)
 sudo apt install postgresql-15-postgis-3
+```
 
-# The extension is enabled per-database automatically when schema is initialized
+The PostGIS extension is automatically enabled in each user database when created via signup. This requires the service account to have `SUPERUSER` privilege (see above).
+
+For existing users whose databases were created before this automation, manually enable PostGIS:
+
+```bash
+sudo -u postgres psql aurboda_<username> -c "CREATE EXTENSION IF NOT EXISTS postgis"
 ```
 
 ## Location Detection and Geocoding
