@@ -56,6 +56,13 @@ export const makeNewUserDb = async (userDb: Client, user: string, password: stri
   await query(userDb, format('CREATE USER %I WITH ENCRYPTED PASSWORD %L', user, password))
   await query(userDb, format('GRANT %I TO %I', user, process.env.PGUSER))
   await query(userDb, format('CREATE DATABASE %I OWNER %I', database, user))
+
+  // Connect as admin to create PostGIS extension (requires superuser privileges)
+  const adminClient = new Client({ database })
+  await adminClient.connect()
+  await query(adminClient, 'CREATE EXTENSION IF NOT EXISTS postgis')
+  await adminClient.end()
+
   const client = new Client({ database, password, user })
   await client.connect()
   dbByUser[user] = client
@@ -74,12 +81,10 @@ export const getDbForUser = async (user: string) => {
 /**
  * Initialize the database schema for a user.
  * Creates all tables and indexes if they don't exist.
+ * Note: PostGIS extension is created in makeNewUserDb before this is called.
  */
 export const initializeSchema = async (user: string) => {
   const db = await getDbForUser(user)
-
-  // Note: PostGIS extension must be created by superuser before calling this
-  // sudo -u postgres psql <database> -c "CREATE EXTENSION postgis"
 
   for (const key of tableCreationOrder) {
     await query(db, createTableStatements[key])

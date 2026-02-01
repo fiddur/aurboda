@@ -153,7 +153,13 @@ const main = async () => {
   httpd.use(json({ limit: '10mb' }))
 
   httpd.use((req, res, next) => {
-    console.log(req.path, req.body)
+    const sanitizedBody =
+      req.body && typeof req.body === 'object' ?
+        Object.fromEntries(
+          Object.entries(req.body).map(([k, v]) => (k === 'password' ? [k, '[REDACTED]'] : [k, v])),
+        )
+      : req.body
+    console.log(req.path, sanitizedBody)
     next()
   })
 
