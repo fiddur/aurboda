@@ -50,6 +50,12 @@
   font-size: 1rem;
 }
 
+.goal-window {
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: #888;
+}
+
 .losing-tomorrow {
   color: #888;
   font-size: 0.85rem;
@@ -142,6 +148,10 @@
 @media (prefers-color-scheme: dark) {
   .goal-progress {
     background: var(--bg-secondary, #2a2a2a);
+  }
+
+  .goal-window {
+    color: #aaa;
   }
 
   .losing-tomorrow {

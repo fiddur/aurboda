@@ -72,30 +72,31 @@
   border: 2px dashed #673ab8;
 }
 
-.goal-reorder {
+.goal-row.dragging {
+  opacity: 0.5;
+}
+
+.goal-row.drag-over {
+  border-top: 2px solid #673ab8;
+}
+
+.drag-handle {
+  cursor: grab;
+  padding: 0.5rem 0.25rem;
+  color: #888;
+  font-size: 1rem;
+  letter-spacing: -2px;
+  user-select: none;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
 }
 
-.reorder-button {
-  background: transparent;
-  border: 1px solid #ccc;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 0.6rem;
-  padding: 2px 6px;
-  line-height: 1;
-  color: #666;
+.drag-handle:active {
+  cursor: grabbing;
 }
 
-.reorder-button:hover:not(:disabled) {
-  background: #ddd;
-}
-
-.reorder-button:disabled {
-  opacity: 0.3;
-  cursor: default;
+.goal-row.new .drag-handle {
+  visibility: hidden;
 }
 
 .field-error input {
@@ -267,13 +268,12 @@
     background: #444;
   }
 
-  .reorder-button {
-    border-color: #555;
-    color: #aaa;
+  .drag-handle {
+    color: #666;
   }
 
-  .reorder-button:hover:not(:disabled) {
-    background: #444;
+  .goal-row.drag-over {
+    border-top-color: #9c77db;
   }
 
   .field-error input {

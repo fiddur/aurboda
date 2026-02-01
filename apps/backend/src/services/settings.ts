@@ -73,10 +73,10 @@ export const birthDateSchema = z
 export const rescueTimeKeySchema = z.string().min(1, 'RescueTime API key cannot be empty')
 
 export const updateSettingsInputSchema = z.object({
-  birthDate: birthDateSchema.nullable().optional(),
+  birth_date: birthDateSchema.nullable().optional(),
   goals: goalsSchema.nullable().optional(),
-  hrZoneStart: hrZoneThresholdsSchema.nullable().optional(),
-  rescueTimeKey: rescueTimeKeySchema.nullable().optional(),
+  hr_zone_start: hrZoneThresholdsSchema.nullable().optional(),
+  rescue_time_key: rescueTimeKeySchema.nullable().optional(),
 })
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
@@ -226,14 +226,14 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
 
   // Build updates object, converting null to undefined for clearing
   const updates: Partial<UserSettings> = {}
-  if (parsed.data.birthDate !== undefined) {
-    updates.birthDate = parsed.data.birthDate === null ? undefined : parsed.data.birthDate
+  if (parsed.data.birth_date !== undefined) {
+    updates.birthDate = parsed.data.birth_date === null ? undefined : parsed.data.birth_date
   }
-  if (parsed.data.hrZoneStart !== undefined) {
-    updates.hrZoneStart = parsed.data.hrZoneStart === null ? undefined : parsed.data.hrZoneStart
+  if (parsed.data.hr_zone_start !== undefined) {
+    updates.hrZoneStart = parsed.data.hr_zone_start === null ? undefined : parsed.data.hr_zone_start
   }
-  if (parsed.data.rescueTimeKey !== undefined) {
-    updates.rescueTimeKey = parsed.data.rescueTimeKey === null ? undefined : parsed.data.rescueTimeKey
+  if (parsed.data.rescue_time_key !== undefined) {
+    updates.rescueTimeKey = parsed.data.rescue_time_key === null ? undefined : parsed.data.rescue_time_key
   }
   if (parsed.data.goals !== undefined) {
     // null resets to defaults (by removing from storage), empty array clears all goals

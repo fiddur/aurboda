@@ -109,6 +109,8 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
     status: 'idle',
   })
   const [showDurationHelp, setShowDurationHelp] = useState(false)
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
 
   // Local state for goals being edited (includes unsaved new goals)
   const [localGoals, setLocalGoals] = useState<LocalGoal[]>(() => goals.map((g) => ({ ...g, isNew: false })))
@@ -241,23 +243,16 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
     saveGoals(updatedGoals)
   }
 
-  const handleMoveGoal = (goalId: string, direction: 'up' | 'down') => {
+  const reorderGoals = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+
     setLocalGoals((local) => {
-      const index = local.findIndex((g) => g.id === goalId)
-      if (index === -1) return local
-      if (direction === 'up' && index === 0) return local
-      if (direction === 'down' && index === local.length - 1) return local
-
-      const newIndex = direction === 'up' ? index - 1 : index + 1
       const newGoals = [...local]
-      const [removed] = newGoals.splice(index, 1)
-      newGoals.splice(newIndex, 0, removed)
-      return newGoals
-    })
+      const [removed] = newGoals.splice(fromIndex, 1)
+      newGoals.splice(toIndex, 0, removed)
 
-    // Save the new order (only valid goals)
-    setTimeout(() => {
-      const goalsToSave: Goal[] = localGoals
+      // Save the new order (only valid saved goals)
+      const goalsToSave: Goal[] = newGoals
         .filter((g) => !g.isNew && validateGoal({ ...g, window: g.window || '7d' } as Goal) === null)
         .map((g) => ({
           id: g.id,
@@ -267,16 +262,59 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
           window: g.window || '7d',
         }))
 
-      // Reorder based on current local state
-      const reordered = localGoals
-        .filter((g) => !g.isNew)
-        .map((lg) => goalsToSave.find((g) => g.id === lg.id))
-        .filter((g): g is Goal => g !== undefined)
-
-      if (reordered.length > 0) {
-        saveGoals(reordered)
+      if (goalsToSave.length > 0) {
+        // Use setTimeout to avoid calling mutation during render
+        setTimeout(() => saveGoals(goalsToSave), 0)
       }
-    }, 0)
+
+      return newGoals
+    })
+  }
+
+  const handleDragStart = (e: DragEvent, goalId: string) => {
+    setDraggedId(goalId)
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', goalId)
+    }
+  }
+
+  const handleDragOver = (e: DragEvent, goalId: string) => {
+    e.preventDefault()
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move'
+    }
+    if (draggedId && goalId !== draggedId) {
+      setDragOverId(goalId)
+    }
+  }
+
+  const handleDragLeave = () => {
+    setDragOverId(null)
+  }
+
+  const handleDrop = (e: DragEvent, targetId: string) => {
+    e.preventDefault()
+    setDragOverId(null)
+
+    if (!draggedId || draggedId === targetId) {
+      setDraggedId(null)
+      return
+    }
+
+    const fromIndex = localGoals.findIndex((g) => g.id === draggedId)
+    const toIndex = localGoals.findIndex((g) => g.id === targetId)
+
+    if (fromIndex !== -1 && toIndex !== -1) {
+      reorderGoals(fromIndex, toIndex)
+    }
+
+    setDraggedId(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedId(null)
+    setDragOverId(null)
   }
 
   const formatSavedTime = (time: Date): string => {
@@ -299,8 +337,8 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       </div>
 
       <p class="section-description">
-        Set targets for metrics over a rolling time window. Goals are saved automatically when valid. Use
-        arrows to reorder goals for the widget.
+        Set targets for metrics over a rolling time window. Goals are saved automatically when valid. Drag
+        goals to reorder them for the widget.
       </p>
 
       {saveStatus.status === 'saving' && <p class="save-status saving">Saving...</p>}
@@ -316,7 +354,7 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       {localGoals.length === 0 ?
         <p class="no-goals">No goals set. Click "+ Add Goal" to create one.</p>
       : <div class="goals-list">
-          {localGoals.map((goal, index) => {
+          {localGoals.map((goal) => {
             const validationError = validateGoal({
               ...goal,
               window: goal.window || '7d',
@@ -324,26 +362,18 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
             const isInvalid = validationError !== null
 
             return (
-              <div class={`goal-row ${isInvalid ? 'invalid' : ''} ${goal.isNew ? 'new' : ''}`} key={goal.id}>
-                <div class="goal-reorder">
-                  <button
-                    type="button"
-                    class="reorder-button"
-                    onClick={() => handleMoveGoal(goal.id, 'up')}
-                    disabled={index === 0}
-                    aria-label="Move up"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    class="reorder-button"
-                    onClick={() => handleMoveGoal(goal.id, 'down')}
-                    disabled={index === localGoals.length - 1}
-                    aria-label="Move down"
-                  >
-                    ▼
-                  </button>
+              <div
+                class={`goal-row ${isInvalid ? 'invalid' : ''} ${goal.isNew ? 'new' : ''} ${draggedId === goal.id ? 'dragging' : ''} ${dragOverId === goal.id ? 'drag-over' : ''}`}
+                key={goal.id}
+                draggable={!goal.isNew}
+                onDragStart={(e) => handleDragStart(e, goal.id)}
+                onDragOver={(e) => handleDragOver(e, goal.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, goal.id)}
+                onDragEnd={handleDragEnd}
+              >
+                <div class="drag-handle" title="Drag to reorder">
+                  ⋮⋮
                 </div>
 
                 <div class="goal-field metric-field">

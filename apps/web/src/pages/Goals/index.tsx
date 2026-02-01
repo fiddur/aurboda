@@ -71,10 +71,11 @@ const formatLosingTomorrow = (metric: string, value: number): string => {
 
 interface GoalProgressBarProps {
   goal: GoalProgress
+  showWindow?: boolean
 }
 
-function GoalProgressBar({ goal }: GoalProgressBarProps) {
-  const { current, losingTomorrow, max, metric, min } = goal
+function GoalProgressBar({ goal, showWindow }: GoalProgressBarProps) {
+  const { current, losingTomorrow, max, metric, min, window } = goal
 
   // Calculate progress percentages
   const target = max ?? min ?? 1
@@ -108,7 +109,10 @@ function GoalProgressBar({ goal }: GoalProgressBarProps) {
   return (
     <div class="goal-progress">
       <div class="goal-header">
-        <span class="goal-label">{metricLabels[metric] ?? metric}</span>
+        <span class="goal-label">
+          {metricLabels[metric] ?? metric}
+          {showWindow && <span class="goal-window"> ({window})</span>}
+        </span>
         {losingText && <span class="losing-tomorrow">({losingText} tomorrow)</span>}
         <span class="goal-value">{formatValue(metric, current)}</span>
       </div>
@@ -182,6 +186,9 @@ export function Goals() {
   // Match progress data with goals
   const progressMap = new Map(goalsProgress?.map((p) => [p.id, p]) ?? [])
 
+  // Check if all goals have the same window
+  const allSameWindow = goals.every((g) => g.window === goals[0]?.window)
+
   return (
     <div class="goals-page">
       <h1>Goals</h1>
@@ -202,12 +209,15 @@ export function Goals() {
               </div>
             )
           }
-          return <GoalProgressBar key={goal.id} goal={progress} />
+          return <GoalProgressBar key={goal.id} goal={progress} showWindow={!allSameWindow} />
         })}
       </div>
 
       <p class="goals-footer">
-        Rolling {goals[0]?.window ?? '7d'} window from today. <a href="/settings">Edit goals</a>
+        {allSameWindow ?
+          <>Rolling {goals[0]?.window ?? '7d'} window from today.</>
+        : <>Rolling windows from today.</>}{' '}
+        <a href="/settings">Edit goals</a>
       </p>
     </div>
   )
