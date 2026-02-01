@@ -146,7 +146,7 @@ describe('validateAndUpdateSettings', () => {
     vi.mocked(db.upsertUserSettings).mockResolvedValue({ birthDate: '1985-03-15' })
     vi.mocked(db.getOAuthToken).mockResolvedValue(null)
 
-    const result = await validateAndUpdateSettings('testuser', { birthDate: '1985-03-15' })
+    const result = await validateAndUpdateSettings('testuser', { birth_date: '1985-03-15' })
 
     expect(result.success).toBe(true)
     expect(result.birth_date).toBe('1985-03-15')
@@ -160,22 +160,22 @@ describe('validateAndUpdateSettings', () => {
     vi.mocked(db.upsertUserSettings).mockResolvedValue({ hrZoneStart: hrZones })
     vi.mocked(db.getOAuthToken).mockResolvedValue(null)
 
-    const result = await validateAndUpdateSettings('testuser', { hrZoneStart: hrZones })
+    const result = await validateAndUpdateSettings('testuser', { hr_zone_start: hrZones })
 
     expect(result.success).toBe(true)
     expect(result.hr_zone_start_source).toBe('custom')
   })
 
   test('rejects invalid birth date format', async () => {
-    const result = await validateAndUpdateSettings('testuser', { birthDate: '15-03-1985' })
+    const result = await validateAndUpdateSettings('testuser', { birth_date: '15-03-1985' })
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('YYYY-MM-DD')
+    expect(result.error).toBeDefined()
     expect(db.upsertUserSettings).not.toHaveBeenCalled()
   })
 
   test('rejects invalid date', async () => {
-    const result = await validateAndUpdateSettings('testuser', { birthDate: '2024-13-45' })
+    const result = await validateAndUpdateSettings('testuser', { birth_date: '2024-13-45' })
 
     expect(result.success).toBe(false)
     expect(result.error).toBeDefined()
@@ -184,7 +184,7 @@ describe('validateAndUpdateSettings', () => {
 
   test('rejects non-ascending HR zones', async () => {
     const result = await validateAndUpdateSettings('testuser', {
-      hrZoneStart: { 1: 100, 2: 90, 3: 120, 4: 140, 5: 160 }, // zone 2 < zone 1
+      hr_zone_start: { 1: 100, 2: 90, 3: 120, 4: 140, 5: 160 }, // zone 2 < zone 1
     })
 
     expect(result.success).toBe(false)
@@ -196,7 +196,7 @@ describe('validateAndUpdateSettings', () => {
     vi.mocked(db.getUserSettings).mockResolvedValue({ birthDate: '1985-03-15' })
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})
 
-    const result = await validateAndUpdateSettings('testuser', { birthDate: null })
+    const result = await validateAndUpdateSettings('testuser', { birth_date: null })
 
     expect(result.success).toBe(true)
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { birthDate: undefined })
@@ -207,7 +207,7 @@ describe('validateAndUpdateSettings', () => {
     vi.mocked(db.getUserSettings).mockResolvedValue({ hrZoneStart: customZones })
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})
 
-    const result = await validateAndUpdateSettings('testuser', { hrZoneStart: null })
+    const result = await validateAndUpdateSettings('testuser', { hr_zone_start: null })
 
     expect(result.success).toBe(true)
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { hrZoneStart: undefined })

@@ -91,6 +91,10 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
 
         val views = RemoteViews(context.packageName, R.layout.widget_goal_item)
 
+        // Set fill-in intent for click handling
+        val fillInIntent = Intent()
+        views.setOnClickFillInIntent(R.id.goal_item_container, fillInIntent)
+
         // Set label
         val label = metricLabels[goal.metric] ?: goal.metric
         views.setTextViewText(R.id.goal_label, label)

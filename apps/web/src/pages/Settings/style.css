@@ -35,6 +35,33 @@
   margin-bottom: 0.5rem;
 }
 
+.section-header-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.section-header-row h2 {
+  margin-bottom: 0;
+}
+
+.save-indicator {
+  font-size: 0.85rem;
+}
+
+.save-indicator.saving {
+  color: #888;
+}
+
+.save-indicator.saved {
+  color: #4caf50;
+}
+
+.save-indicator.error {
+  color: #f44336;
+}
+
 .section-description {
   color: #666;
   margin-bottom: 1rem;
@@ -151,44 +178,6 @@
   background: #f5f5f5;
 }
 
-.button-group {
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-end;
-  margin-top: 1.5rem;
-}
-
-.button-group button {
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.button-group button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.button-group button.primary {
-  background: #673ab8;
-  color: white;
-  border: none;
-}
-
-.button-group button.primary:hover:not(:disabled) {
-  background: #5e35b1;
-}
-
-.button-group button:not(.primary) {
-  background: transparent;
-  border: 1px solid #ccc;
-}
-
-.button-group button:not(.primary):hover:not(:disabled) {
-  background: #f5f5f5;
-}
-
 @media (prefers-color-scheme: dark) {
   .settings-section {
     border-bottom-color: #444;
@@ -218,15 +207,6 @@
   }
 
   .reset-zones-button:hover {
-    background: #444;
-  }
-
-  .button-group button:not(.primary) {
-    border-color: #555;
-    color: #fff;
-  }
-
-  .button-group button:not(.primary):hover:not(:disabled) {
     background: #444;
   }
 }
