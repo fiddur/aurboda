@@ -26,6 +26,12 @@ import { DEFAULT_SESSION_INACTIVITY_MS, McpSessionStore } from './mcp-session-st
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { syncRescueTimeData } from './rescuetime-sync'
+import {
+  getActivityImpact,
+  getBaseline,
+  getEventProbability,
+  getHrvActivitiesCorrelation,
+} from './services/correlations'
 import { getGoalsProgress } from './services/goals'
 import {
   deleteNamedLocation,
@@ -700,6 +706,100 @@ export function createMcpRouter(
       async ({ lat, lon, name, radius }) => {
         const location = await insertNamedLocation(user, { lat, lon, name, radius })
         return jsonResponse({ data: location, success: true })
+      },
+    )
+
+    // ========================================================================
+    // Correlation Analysis Tools
+    // ========================================================================
+
+    // Tool: get_baseline
+    server.tool(
+      'get_baseline',
+      'Get HRV baseline statistics (7-day and 30-day averages). Returns mean HRV (rmssd) and resting heart rate with trend percentage.',
+      {
+        reference_date: dateOnlySchema
+          .optional()
+          .describe('Reference date for baseline calculation in YYYY-MM-DD format. Defaults to today.'),
+      },
+      async ({ reference_date }) => {
+        const referenceDate = reference_date ? new Date(reference_date) : undefined
+        const baseline = await getBaseline(user, referenceDate)
+        return jsonResponse({ data: baseline, success: true })
+      },
+    )
+
+    // Tool: get_hrv_activities_correlation
+    server.tool(
+      'get_hrv_activities_correlation',
+      'Get HRV correlations with various activities. Returns Pearson correlation coefficients between HRV and productivity, locations, activities, and tags.',
+      {
+        period_days: z.number().int().optional().describe('Number of days to analyze. Defaults to 30.'),
+      },
+      async ({ period_days }) => {
+        const periodDays = period_days ?? 30
+        const correlations = await getHrvActivitiesCorrelation(user, periodDays, sync)
+        return jsonResponse({ data: correlations, success: true })
+      },
+    )
+
+    // Tool: get_activity_impact
+    server.tool(
+      'get_activity_impact',
+      'Get the impact of a specific activity/tag on HRV and heart rate. Compares metric values before, during, and after the activity using time windows.',
+      {
+        activity: z
+          .string()
+          .describe('The activity or tag name to analyze (e.g., "gym", "coffee", "meditation")'),
+        activity_type: z
+          .enum(['productivity_category', 'productivity_app', 'location', 'tag', 'activity_type'])
+          .describe('Type of activity to search for'),
+        period_days: z.number().int().optional().describe('Number of days to analyze. Defaults to 90.'),
+        window_minutes: z
+          .number()
+          .int()
+          .optional()
+          .describe('Minutes to analyze before/after the activity. Defaults to 30.'),
+      },
+      async ({ activity, activity_type, period_days, window_minutes }) => {
+        const periodDays = period_days ?? 90
+        const windowMinutes = window_minutes ?? 30
+
+        const impact = await getActivityImpact(user, activity, activity_type, windowMinutes, periodDays, sync)
+        return jsonResponse({ data: impact, success: true })
+      },
+    )
+
+    // Tool: get_event_probability
+    server.tool(
+      'get_event_probability',
+      'Get the probability correlation between two events. Analyzes whether one event (trigger) increases or decreases the probability of another event (outcome) occurring within specified time windows. Uses chi-squared test for statistical significance.',
+      {
+        lag_windows: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'Time windows to analyze (e.g., ["12h", "24h", "36h", "48h"]). Uses hours (h) or days (d).',
+          ),
+        outcome_pattern: z
+          .string()
+          .describe('Regex pattern for outcome tags (e.g., "headache|migraine", "good_sleep")'),
+        period_days: z.number().int().optional().describe('Number of days to analyze. Defaults to 365.'),
+        trigger_type: z.enum(['activity', 'tag']).describe('Type of trigger event'),
+        trigger_value: z
+          .string()
+          .describe('Trigger activity type or tag pattern (e.g., "exercise", "gym", "coffee")'),
+      },
+      async ({ lag_windows, outcome_pattern, period_days, trigger_type, trigger_value }) => {
+        const probability = await getEventProbability(
+          user,
+          { type: trigger_type, value: trigger_value },
+          { pattern: outcome_pattern, type: 'tag' },
+          lag_windows ?? ['12h', '24h', '36h', '48h'],
+          period_days ?? 365,
+          sync,
+        )
+        return jsonResponse({ data: probability, success: true })
       },
     )
 

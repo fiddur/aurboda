@@ -5,6 +5,7 @@
 export * from './activities.js'
 export * from './admin.js'
 export * from './common.js'
+export * from './correlations.js'
 export * from './daily-summary.js'
 export * from './goals.js'
 export * from './locations.js'

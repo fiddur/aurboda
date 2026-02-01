@@ -30,7 +30,9 @@ export type SignupMode = z.infer<typeof signupModeSchema>
 export const serverStatusResponseSchema = baseResponseSchema
   .extend({
     // For backwards compatibility
-    signupAllowed: z.boolean().meta({ description: 'Whether signup is allowed (deprecated, use signupMode)' }),
+    signupAllowed: z
+      .boolean()
+      .meta({ description: 'Whether signup is allowed (deprecated, use signupMode)' }),
     signupMode: signupModeSchema.meta({ description: 'Current signup mode' }),
   })
   .meta({ id: 'ServerStatusResponse' })
@@ -46,7 +48,10 @@ export type ServerStatusResponse = z.infer<typeof serverStatusResponseSchema>
  */
 export const signupBodySchema = z
   .object({
-    invitation: z.string().optional().meta({ description: 'Invitation token (required in invite_only mode)' }),
+    invitation: z
+      .string()
+      .optional()
+      .meta({ description: 'Invitation token (required in invite_only mode)' }),
     password: z.string().min(1).meta({ description: 'User password' }),
     username: z.string().min(1).meta({ description: 'Username' }),
   })
