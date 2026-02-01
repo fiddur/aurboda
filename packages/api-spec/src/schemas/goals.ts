@@ -76,20 +76,20 @@ export type Goals = z.infer<typeof goalsSchema>
  */
 export const defaultGoals: Goal[] = [
   {
-    id: '00000000-0000-0000-0000-000000000001',
+    id: 'a0000001-0000-4000-8000-000000000001',
     metric: 'hr_zone_2_sec',
     min: 9000, // 150 minutes in seconds
     window: '7d',
   },
   {
-    id: '00000000-0000-0000-0000-000000000002',
+    id: 'a0000002-0000-4000-8000-000000000002',
     max: 600, // 10 minutes in seconds
     metric: 'hr_zone_5_sec',
     min: 300, // 5 minutes in seconds
     window: '7d',
   },
   {
-    id: '00000000-0000-0000-0000-000000000003',
+    id: 'a0000003-0000-4000-8000-000000000003',
     metric: 'steps',
     min: 70000,
     window: '7d',
