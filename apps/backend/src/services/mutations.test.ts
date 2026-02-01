@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db'
-import { addMetric, addTag, deleteTag } from './mutations'
+import { addActivity, addMetric, addTag, deleteTag } from './mutations'
 
 // Mock the db module
 vi.mock('../db', () => ({
   deleteTag: vi.fn(),
   findMergeableTag: vi.fn(),
+  insertActivity: vi.fn(),
   insertTag: vi.fn(),
   insertTimeSeries: vi.fn(),
   updateTagEndTime: vi.fn(),
@@ -274,5 +275,129 @@ describe('deleteTag', () => {
     expect(result.success).toBe(false)
     expect(result.deleted).toBe(false)
     expect(result.externalId).toBe('nonexistent-tag')
+  })
+})
+
+describe('addActivity', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('creates an exercise activity with required fields', async () => {
+    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+
+    const result = await addActivity('testuser', {
+      activityType: 'exercise',
+      endTime: new Date('2024-03-15T11:45:00Z'),
+      startTime: new Date('2024-03-15T10:30:00Z'),
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.activityType).toBe('exercise')
+    expect(result.startTime).toBe('2024-03-15T10:30:00.000Z')
+    expect(result.endTime).toBe('2024-03-15T11:45:00.000Z')
+    expect(result.id).toBeDefined()
+
+    expect(db.insertActivity).toHaveBeenCalledWith('testuser', {
+      activityType: 'exercise',
+      data: undefined,
+      endTime: new Date('2024-03-15T11:45:00Z'),
+      id: expect.any(String),
+      notes: undefined,
+      source: 'manual',
+      startTime: new Date('2024-03-15T10:30:00Z'),
+      title: undefined,
+    })
+  })
+
+  test('creates an activity with all fields', async () => {
+    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+
+    const result = await addActivity('testuser', {
+      activityType: 'exercise',
+      data: { exerciseType: 79 },
+      endTime: new Date('2024-03-15T11:45:00Z'),
+      notes: 'Dumbbell Bench Press: 12×30kg, 8×35kg',
+      startTime: new Date('2024-03-15T10:30:00Z'),
+      title: 'Upper body',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.title).toBe('Upper body')
+    expect(result.notes).toBe('Dumbbell Bench Press: 12×30kg, 8×35kg')
+    expect(result.id).toBeDefined()
+
+    expect(db.insertActivity).toHaveBeenCalledWith('testuser', {
+      activityType: 'exercise',
+      data: { exerciseType: 79 },
+      endTime: new Date('2024-03-15T11:45:00Z'),
+      id: expect.any(String),
+      notes: 'Dumbbell Bench Press: 12×30kg, 8×35kg',
+      source: 'manual',
+      startTime: new Date('2024-03-15T10:30:00Z'),
+      title: 'Upper body',
+    })
+  })
+
+  test('returns error when endTime is before startTime', async () => {
+    const result = await addActivity('testuser', {
+      activityType: 'exercise',
+      endTime: new Date('2024-03-15T09:00:00Z'),
+      startTime: new Date('2024-03-15T10:30:00Z'),
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('end_time must be after start_time')
+    expect(db.insertActivity).not.toHaveBeenCalled()
+  })
+
+  test('returns error when endTime equals startTime', async () => {
+    const result = await addActivity('testuser', {
+      activityType: 'exercise',
+      endTime: new Date('2024-03-15T10:30:00Z'),
+      startTime: new Date('2024-03-15T10:30:00Z'),
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('end_time must be after start_time')
+    expect(db.insertActivity).not.toHaveBeenCalled()
+  })
+
+  test('creates meditation activity', async () => {
+    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+
+    const result = await addActivity('testuser', {
+      activityType: 'meditation',
+      endTime: new Date('2024-03-15T07:30:00Z'),
+      startTime: new Date('2024-03-15T07:00:00Z'),
+      title: 'Morning meditation',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.activityType).toBe('meditation')
+
+    expect(db.insertActivity).toHaveBeenCalledWith('testuser', {
+      activityType: 'meditation',
+      data: undefined,
+      endTime: new Date('2024-03-15T07:30:00Z'),
+      id: expect.any(String),
+      notes: undefined,
+      source: 'manual',
+      startTime: new Date('2024-03-15T07:00:00Z'),
+      title: 'Morning meditation',
+    })
+  })
+
+  test('creates nap activity', async () => {
+    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+
+    const result = await addActivity('testuser', {
+      activityType: 'nap',
+      endTime: new Date('2024-03-15T14:30:00Z'),
+      startTime: new Date('2024-03-15T14:00:00Z'),
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.activityType).toBe('nap')
   })
 })

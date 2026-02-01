@@ -5,9 +5,11 @@
  * They are used by both the MCP tools and the REST API.
  */
 
+import type { ActivityType } from '@aurboda/api-spec'
 import { randomUUID } from 'crypto'
 import {
   deleteTag as dbDeleteTag,
+  insertActivity as dbInsertActivity,
   findMergeableTag,
   insertTag,
   insertTimeSeries,
@@ -54,6 +56,26 @@ export interface DeleteTagResult {
   success: boolean
   deleted: boolean
   externalId: string
+}
+
+export interface AddActivityInput {
+  activityType: ActivityType
+  startTime: Date
+  endTime: Date
+  title?: string
+  notes?: string
+  data?: Record<string, unknown>
+}
+
+export interface AddActivityResult {
+  success: boolean
+  id?: string
+  activityType?: ActivityType
+  startTime?: string
+  endTime?: string
+  title?: string
+  notes?: string
+  error?: string
 }
 
 // ============================================================================
@@ -149,5 +171,43 @@ export async function deleteTag(user: string, externalId: string): Promise<Delet
     deleted,
     externalId,
     success: deleted,
+  }
+}
+
+/**
+ * Add an activity (exercise, meditation, nap, etc.).
+ *
+ * Validates that end_time is after start_time.
+ */
+export async function addActivity(user: string, input: AddActivityInput): Promise<AddActivityResult> {
+  // Validate that endTime is after startTime
+  if (input.endTime <= input.startTime) {
+    return {
+      error: 'end_time must be after start_time',
+      success: false,
+    }
+  }
+
+  const id = randomUUID()
+
+  await dbInsertActivity(user, {
+    activityType: input.activityType,
+    data: input.data,
+    endTime: input.endTime,
+    id,
+    notes: input.notes,
+    source: 'manual',
+    startTime: input.startTime,
+    title: input.title,
+  })
+
+  return {
+    activityType: input.activityType,
+    endTime: input.endTime.toISOString(),
+    id,
+    notes: input.notes,
+    startTime: input.startTime.toISOString(),
+    success: true,
+    title: input.title,
   }
 }
