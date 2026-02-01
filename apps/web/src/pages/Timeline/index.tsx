@@ -468,9 +468,9 @@ export const Timeline = () => {
           productivity={showProductivity.value ? productivityQuery.data || [] : []}
           places={showPlaces.value ? places : []}
           tags={showTags.value ? tagsQuery.data || [] : []}
-          showSleepMeditation={showSleepMeditation}
-          showExercise={showExercise}
-          showPlaces={showPlaces}
+          showSleepMeditationSignal={showSleepMeditation}
+          showExerciseSignal={showExercise}
+          showPlacesSignal={showPlaces}
           dataStart={start}
           dataEnd={end}
           visibleStart={effectiveViewStart}
@@ -492,9 +492,9 @@ interface TimelineChartProps {
   productivity: ProductivityRecord[]
   places: Place[]
   tags: Tag[]
-  showSleepMeditation: Signal<boolean>
-  showExercise: Signal<boolean>
-  showPlaces: Signal<boolean>
+  showSleepMeditationSignal: Signal<boolean>
+  showExerciseSignal: Signal<boolean>
+  showPlacesSignal: Signal<boolean>
   dataStart: Date
   dataEnd: Date
   visibleStart: Date
@@ -512,9 +512,9 @@ function TimelineChart({
   productivity,
   places,
   tags,
-  showSleepMeditation,
-  showExercise,
-  showPlaces,
+  showSleepMeditationSignal,
+  showExerciseSignal,
+  showPlacesSignal,
   dataStart,
   dataEnd,
   visibleStart,
@@ -537,10 +537,12 @@ function TimelineChart({
   const yHrv = d3.scaleLinear().domain([0, 150]).range([chartHeight, 0])
 
   // Filter activities by type
-  const sleepSessions = showSleepMeditation.value ? activities.filter((a) => a.activityType === 'sleep') : []
+  const sleepSessions =
+    showSleepMeditationSignal.value ? activities.filter((a) => a.activityType === 'sleep') : []
   const meditationSessions =
-    showSleepMeditation.value ? activities.filter((a) => a.activityType === 'meditation') : []
-  const exerciseSessions = showExercise.value ? activities.filter((a) => a.activityType === 'exercise') : []
+    showSleepMeditationSignal.value ? activities.filter((a) => a.activityType === 'meditation') : []
+  const exerciseSessions =
+    showExerciseSignal.value ? activities.filter((a) => a.activityType === 'exercise') : []
 
   // Setup brush for selection zoom
   useEffect(() => {
@@ -666,8 +668,8 @@ function TimelineChart({
           >
             <input
               type="checkbox"
-              checked={showSleepMeditation.value}
-              onChange={(e) => (showSleepMeditation.value = (e.target as HTMLInputElement).checked)}
+              checked={showSleepMeditationSignal.value}
+              onChange={(e) => (showSleepMeditationSignal.value = (e.target as HTMLInputElement).checked)}
             />
             <span>
               Sleep <span style={{ color: colors.sleep }}>●</span> / Meditation{' '}
@@ -690,8 +692,8 @@ function TimelineChart({
           >
             <input
               type="checkbox"
-              checked={showExercise.value}
-              onChange={(e) => (showExercise.value = (e.target as HTMLInputElement).checked)}
+              checked={showExerciseSignal.value}
+              onChange={(e) => (showExerciseSignal.value = (e.target as HTMLInputElement).checked)}
             />
             <span>
               Exercise <span style={{ color: colors.exercise }}>●</span>
@@ -713,8 +715,8 @@ function TimelineChart({
           >
             <input
               type="checkbox"
-              checked={showPlaces.value}
-              onChange={(e) => (showPlaces.value = (e.target as HTMLInputElement).checked)}
+              checked={showPlacesSignal.value}
+              onChange={(e) => (showPlacesSignal.value = (e.target as HTMLInputElement).checked)}
             />
             <span>Location</span>
           </label>
@@ -815,7 +817,7 @@ function TimelineChart({
         )}
 
         {/* Places - in places lane */}
-        {showPlaces.value &&
+        {showPlacesSignal.value &&
           places.map((place, i) => (
             <rect
               key={`place-${i}`}
