@@ -48,7 +48,7 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
     ) {
         val views = RemoteViews(context.packageName, R.layout.widget_hr_zones)
 
-        // Set up click handler to open the app on the Goals tab
+        // Set up click handler to open the app on the Data tab
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_DATA)
