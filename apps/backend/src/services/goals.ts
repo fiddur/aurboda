@@ -2,13 +2,39 @@
  * Goals service for calculating progress toward user-defined goals.
  */
 
-import { metricUnits, parseDuration, type GoalProgress, type MetricType } from '@aurboda/api-spec'
-import { getDailyAggregates, getTimeSeries } from '../db'
+import {
+  cumulativeMetrics,
+  metricUnits,
+  parseDuration,
+  type GoalProgress,
+  type MetricType,
+} from '@aurboda/api-spec'
+import { getDailyAggregates, getDailyAggregateValue, getTimeSeries } from '../db'
 import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones, getSettings } from './settings'
+
+/**
+ * Get all dates in a range (inclusive).
+ */
+const getDatesInRange = (start: Date, end: Date): Date[] => {
+  const dates: Date[] = []
+  const current = new Date(start)
+  current.setUTCHours(0, 0, 0, 0)
+
+  const endDay = new Date(end)
+  endDay.setUTCHours(23, 59, 59, 999)
+
+  while (current <= endDay) {
+    dates.push(new Date(current))
+    current.setUTCDate(current.getUTCDate() + 1)
+  }
+
+  return dates
+}
 
 /**
  * Calculate the sum of a metric over a time range.
  * Handles HR zone metrics specially (computed from heart_rate).
+ * Uses deduplicated aggregates for cumulative metrics (steps, distance, etc.).
  */
 const getMetricSum = async (user: string, metric: MetricType, start: Date, end: Date): Promise<number> => {
   // HR zone metrics need to be computed from heart rate data
@@ -28,7 +54,21 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
     return zoneSecs[zoneIndex]
   }
 
-  // For regular metrics, use daily aggregates and sum them
+  // For cumulative metrics (steps, distance, etc.), use deduplicated daily aggregates
+  if (cumulativeMetrics.includes(metric)) {
+    const dates = getDatesInRange(start, end)
+    const values = await Promise.all(dates.map((date) => getDailyAggregateValue(user, metric, date)))
+
+    // If we have any aggregate values, use them
+    const hasAggregates = values.some((v) => v !== null)
+    if (hasAggregates) {
+      return values.reduce<number>((sum, v) => sum + (v ?? 0), 0)
+    }
+
+    // Fall back to raw data if no aggregates exist
+  }
+
+  // For non-cumulative metrics or fallback, use daily aggregates and sum them
   const dailyData = await getDailyAggregates(user, [metric], start, end)
   return dailyData.reduce((sum, day) => sum + day.sum, 0)
 }
