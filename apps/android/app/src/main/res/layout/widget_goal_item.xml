@@ -52,13 +52,15 @@
             android:progressDrawable="@drawable/progress_bar_widget_drawable" />
 
         <!-- Min marker line (positioned dynamically) -->
-        <View
+        <!-- Note: Using ImageView instead of View because RemoteViews doesn't support plain View -->
+        <ImageView
             android:id="@+id/min_marker"
             android:layout_width="2dp"
             android:layout_height="match_parent"
             android:layout_gravity="start"
             android:background="#CCFFFFFF"
-            android:visibility="gone" />
+            android:visibility="gone"
+            android:importantForAccessibility="no" />
 
     </FrameLayout>
 
