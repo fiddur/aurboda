@@ -1,0 +1,362 @@
+.correlations-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.correlations-page .correlations-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.correlations-page h1 {
+  font-size: 2rem;
+  margin: 0;
+  color: #1f2937;
+}
+
+.correlations-page h2 {
+  font-size: 1.25rem;
+  margin: 0 0 1rem 0;
+  color: #374151;
+  border-bottom: 2px solid #673ab8;
+  padding-bottom: 0.5rem;
+}
+
+.correlations-page h3 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem 0;
+  color: #6b7280;
+}
+
+.correlations-page .intro-text {
+  color: #6b7280;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
+.correlations-page .period-select {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+  color: #374151;
+  cursor: pointer;
+}
+
+.correlations-page .period-select:hover {
+  border-color: #673ab8;
+}
+
+.correlations-page .loading {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+}
+
+/* Baseline section */
+.correlations-page .baseline-section {
+  margin-bottom: 2rem;
+}
+
+.correlations-page .baseline-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.correlations-page .baseline-card {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.correlations-page .baseline-label {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.correlations-page .baseline-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.correlations-page .baseline-value.hrv {
+  color: #10b981;
+}
+
+.correlations-page .baseline-value.hr {
+  color: #ef4444;
+}
+
+/* Impact section */
+.correlations-page .impact-section {
+  margin-bottom: 2rem;
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+}
+
+.correlations-page .impact-section h2 {
+  border: none;
+  padding: 0;
+  margin-bottom: 0.5rem;
+}
+
+.correlations-page .impact-meta {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #6b7280;
+  margin-left: 0.75rem;
+}
+
+.correlations-page .impact-chart-container {
+  width: 100%;
+  overflow: hidden;
+}
+
+.correlations-page .impact-legend {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.correlations-page .impact-legend .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 0.25rem;
+}
+
+.correlations-page .impact-legend .dot.hrv {
+  background: #10b981;
+}
+
+.correlations-page .impact-legend .dot.hr {
+  background: #ef4444;
+}
+
+.correlations-page .impact-legend .zone {
+  display: inline-block;
+  width: 20px;
+  height: 10px;
+  background: rgba(59, 130, 246, 0.2);
+  margin-right: 0.25rem;
+}
+
+/* Table section */
+.correlations-page .table-section {
+  margin-bottom: 2rem;
+}
+
+.correlations-page .table-container {
+  overflow-x: auto;
+}
+
+.correlations-page .correlations-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.correlations-page .correlations-table th {
+  background: #f3f4f6;
+  padding: 0.75rem 0.5rem;
+  text-align: left;
+  font-weight: 500;
+  color: #374151;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.correlations-page .correlations-table td {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.correlations-page .correlations-table tbody tr {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.correlations-page .correlations-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.correlations-page .correlations-table tbody tr.selected {
+  background: #ede9fe;
+}
+
+.correlations-page .name-cell {
+  font-weight: 500;
+}
+
+.correlations-page .name-cell .name {
+  display: block;
+}
+
+.correlations-page .name-cell .extra {
+  display: block;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.correlations-page .type-cell {
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
+.correlations-page .value-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+.correlations-page .delta-cell {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.correlations-page .delta-cell.positive {
+  color: #059669;
+}
+
+.correlations-page .delta-cell.negative {
+  color: #dc2626;
+}
+
+.correlations-page .samples-cell {
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
+/* Info section */
+.correlations-page .info-section {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+}
+
+.correlations-page .info-section ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.correlations-page .info-section li {
+  margin-bottom: 0.5rem;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .correlations-page h1 {
+    color: #f3f4f6;
+  }
+
+  .correlations-page h2 {
+    color: #d1d5db;
+    border-color: #8b5cf6;
+  }
+
+  .correlations-page .intro-text {
+    color: #9ca3af;
+  }
+
+  .correlations-page .period-select {
+    background: #1f2937;
+    border-color: #374151;
+    color: #d1d5db;
+  }
+
+  .correlations-page .period-select:hover {
+    border-color: #8b5cf6;
+  }
+
+  .correlations-page .baseline-card,
+  .correlations-page .impact-section,
+  .correlations-page .info-section {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .correlations-page .baseline-label {
+    color: #9ca3af;
+  }
+
+  .correlations-page .correlations-table th {
+    background: #111827;
+    color: #d1d5db;
+    border-color: #374151;
+  }
+
+  .correlations-page .correlations-table td {
+    border-color: #374151;
+  }
+
+  .correlations-page .correlations-table tbody tr:hover {
+    background: #1f2937;
+  }
+
+  .correlations-page .correlations-table tbody tr.selected {
+    background: #312e81;
+  }
+
+  .correlations-page .type-cell,
+  .correlations-page .samples-cell {
+    color: #9ca3af;
+  }
+
+  .correlations-page .name-cell .extra {
+    color: #6b7280;
+  }
+
+  .correlations-page .delta-cell.positive {
+    color: #34d399;
+  }
+
+  .correlations-page .delta-cell.negative {
+    color: #f87171;
+  }
+
+  .correlations-page .info-section ul {
+    color: #9ca3af;
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .correlations-page {
+    padding: 1rem;
+  }
+
+  .correlations-page .correlations-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .correlations-page h1 {
+    font-size: 1.5rem;
+  }
+
+  .correlations-page .correlations-table {
+    font-size: 0.8rem;
+  }
+
+  .correlations-page .correlations-table th,
+  .correlations-page .correlations-table td {
+    padding: 0.5rem 0.25rem;
+  }
+}

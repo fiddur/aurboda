@@ -1,8 +1,8 @@
 import { Signal, signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
-import { addDays, endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
-import { useCallback, useEffect, useRef } from 'preact/hooks'
+import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import {
   Activity,
   fetchActivities,
@@ -16,6 +16,20 @@ import {
   Tag,
 } from '../../state/api'
 import { preprocessData } from '../../utils/chart'
+
+import './style.css'
+
+// Tooltip state type
+interface TooltipState {
+  visible: boolean
+  x: number
+  y: number
+  content: {
+    title: string
+    time: string
+    value?: string
+  }
+}
 
 // Signals to handle user-selected dates (data fetch range)
 const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
@@ -315,173 +329,123 @@ export const Timeline = () => {
   }, [fromDate.value, toDate.value])
 
   return (
-    <>
-      <div class="timeline">
-        <h1>Timeline</h1>
+    <div class="timeline">
+      <h1>Timeline</h1>
 
-        {/* Date range and top controls */}
-        <div style={{ alignItems: 'center', display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
-          <div>
-            <label>
-              From: <input type="date" name="from" value={fromDate.value} onChange={handleDateChange} />
-            </label>
-            <label style={{ marginLeft: '1rem' }}>
-              To: <input type="date" name="to" value={toDate.value} onChange={handleDateChange} />
-            </label>
-          </div>
-          {isZoomed && (
-            <button
-              onClick={handleResetZoom}
-              style={{
-                background: '#3b82f6',
-                border: 'none',
-                borderRadius: '4px',
-                color: 'white',
-                cursor: 'pointer',
-                padding: '0.5rem 1rem',
-              }}
-            >
-              Reset Zoom
-            </button>
-          )}
-        </div>
-
-        {/* Top checkboxes for overlay data */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
-          <label style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
-            <input
-              type="checkbox"
-              checked={showHeartRate.value}
-              onChange={(e) => (showHeartRate.value = (e.target as HTMLInputElement).checked)}
-            />
-            <span style={{ color: colors.heartRate }}>Heart Rate</span>
+      {/* Date range and controls */}
+      <div class="timeline-controls">
+        <div class="date-range">
+          <label>
+            From: <input type="date" name="from" value={fromDate.value} onChange={handleDateChange} />
           </label>
-          <label style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
-            <input
-              type="checkbox"
-              checked={showHrv.value}
-              onChange={(e) => (showHrv.value = (e.target as HTMLInputElement).checked)}
-            />
-            <span style={{ color: colors.hrv }}>HRV</span>
-          </label>
-          <label style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
-            <input
-              type="checkbox"
-              checked={showProductivity.value}
-              onChange={(e) => (showProductivity.value = (e.target as HTMLInputElement).checked)}
-            />
-            <span>
-              Productivity <span style={{ color: colors.computer }}>●</span>
-              <span style={{ color: colors.mobile }}>●</span>
-            </span>
-          </label>
-          <label style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
-            <input
-              type="checkbox"
-              checked={showTags.value}
-              onChange={(e) => (showTags.value = (e.target as HTMLInputElement).checked)}
-            />
-            <span style={{ opacity: 0.6 }}>Tags</span>
+          <label>
+            To: <input type="date" name="to" value={toDate.value} onChange={handleDateChange} />
           </label>
         </div>
-
-        {/* Places legend */}
-        {showPlaces.value && uniquePlaceNames.length > 0 && (
-          <div
-            style={{
-              border: '1px solid currentColor',
-              borderRadius: '4px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              marginBottom: '1rem',
-              opacity: 0.7,
-              padding: '0.5rem 1rem',
-            }}
-          >
-            <strong>Places:</strong>
-            {uniquePlaceNames.map((name) => (
-              <div key={name} style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
-                <div
-                  style={{
-                    backgroundColor: getPlaceColor(name, uniquePlaceNames),
-                    borderRadius: '50%',
-                    height: '12px',
-                    width: '12px',
-                  }}
-                />
-                <span>{name}</span>
-              </div>
-            ))}
-            <div style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
-              <div
-                style={{
-                  backgroundColor: colors.travel,
-                  borderRadius: '50%',
-                  height: '12px',
-                  width: '12px',
-                }}
-              />
-              <span>Travel</span>
-            </div>
-          </div>
+        {isZoomed && (
+          <button onClick={handleResetZoom} class="reset-btn">
+            Reset Zoom
+          </button>
         )}
-
-        {/* Exercise types legend */}
-        {showExercise.value && uniqueExerciseTypes.length > 0 && (
-          <div
-            style={{
-              border: '1px solid currentColor',
-              borderRadius: '4px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              marginBottom: '1rem',
-              opacity: 0.7,
-              padding: '0.5rem 1rem',
-            }}
-          >
-            <strong>Exercise:</strong>
-            {uniqueExerciseTypes.map((name) => (
-              <div key={name} style={{ alignItems: 'center', display: 'flex', gap: '0.25rem' }}>
-                <div
-                  style={{
-                    backgroundColor: getExerciseColor(name, uniqueExerciseTypes),
-                    borderRadius: '50%',
-                    height: '12px',
-                    width: '12px',
-                  }}
-                />
-                <span>{name}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {isLoading && <div>Loading...</div>}
-        {hasError && <div>Error loading data</div>}
-
-        <TimelineChart
-          heartRates={showHeartRate.value ? heartRateQuery.data || [] : []}
-          hrvData={showHrv.value ? hrvQuery.data || [] : []}
-          activities={activities}
-          productivity={showProductivity.value ? productivityQuery.data || [] : []}
-          places={showPlaces.value ? places : []}
-          tags={showTags.value ? tagsQuery.data || [] : []}
-          showSleepMeditationSignal={showSleepMeditation}
-          showExerciseSignal={showExercise}
-          showPlacesSignal={showPlaces}
-          dataStart={start}
-          dataEnd={end}
-          visibleStart={effectiveViewStart}
-          visibleEnd={effectiveViewEnd}
-          uniquePlaceNames={uniquePlaceNames}
-          uniqueExerciseTypes={uniqueExerciseTypes}
-          onZoom={handleZoom}
-          onZoomOut={handleZoomOut}
-        />
       </div>
-    </>
+
+      {/* Layer toggles */}
+      <div class="timeline-layers">
+        <label>
+          <input
+            type="checkbox"
+            checked={showHeartRate.value}
+            onChange={(e) => (showHeartRate.value = (e.target as HTMLInputElement).checked)}
+          />
+          <span style={{ color: colors.heartRate }}>Heart Rate</span>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={showHrv.value}
+            onChange={(e) => (showHrv.value = (e.target as HTMLInputElement).checked)}
+          />
+          <span style={{ color: colors.hrv }}>HRV</span>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={showProductivity.value}
+            onChange={(e) => (showProductivity.value = (e.target as HTMLInputElement).checked)}
+          />
+          <span>
+            Productivity <span style={{ color: colors.computer }}>●</span>
+            <span style={{ color: colors.mobile }}>●</span>
+          </span>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={showTags.value}
+            onChange={(e) => (showTags.value = (e.target as HTMLInputElement).checked)}
+          />
+          <span style={{ opacity: 0.6 }}>Tags</span>
+        </label>
+      </div>
+
+      {/* Places legend */}
+      {showPlaces.value && uniquePlaceNames.length > 0 && (
+        <div class="timeline-legend">
+          <strong>Places:</strong>
+          {uniquePlaceNames.map((name) => (
+            <span key={name} class="legend-item">
+              <span class="legend-dot" style={{ backgroundColor: getPlaceColor(name, uniquePlaceNames) }} />
+              {name}
+            </span>
+          ))}
+          <span class="legend-item">
+            <span class="legend-dot" style={{ backgroundColor: colors.travel }} />
+            Travel
+          </span>
+        </div>
+      )}
+
+      {/* Exercise types legend */}
+      {showExercise.value && uniqueExerciseTypes.length > 0 && (
+        <div class="timeline-legend">
+          <strong>Exercise:</strong>
+          {uniqueExerciseTypes.map((name) => (
+            <span key={name} class="legend-item">
+              <span
+                class="legend-dot"
+                style={{ backgroundColor: getExerciseColor(name, uniqueExerciseTypes) }}
+              />
+              {name}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {isLoading && <div class="loading">Loading...</div>}
+      {hasError && <div class="error">Error loading data</div>}
+
+      <TimelineChart
+        heartRates={showHeartRate.value ? heartRateQuery.data || [] : []}
+        hrvData={showHrv.value ? hrvQuery.data || [] : []}
+        activities={activities}
+        productivity={showProductivity.value ? productivityQuery.data || [] : []}
+        places={showPlaces.value ? places : []}
+        tags={showTags.value ? tagsQuery.data || [] : []}
+        showSleepMeditationSignal={showSleepMeditation}
+        showExerciseSignal={showExercise}
+        showPlacesSignal={showPlaces}
+        dataStart={start}
+        dataEnd={end}
+        visibleStart={effectiveViewStart}
+        visibleEnd={effectiveViewEnd}
+        uniquePlaceNames={uniquePlaceNames}
+        uniqueExerciseTypes={uniqueExerciseTypes}
+        onZoom={handleZoom}
+        onZoomOut={handleZoomOut}
+      />
+
+      <p class="timeline-help">Drag to select a region to zoom. Double-click to reset.</p>
+    </div>
   )
 }
 
@@ -523,9 +487,45 @@ function TimelineChart({
   uniqueExerciseTypes,
   onZoom,
 }: TimelineChartProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const brushRef = useRef<SVGGElement>(null)
   const xAxisRef = useRef<SVGGElement>(null)
+
+  const [tooltip, setTooltip] = useState<TooltipState>({
+    content: { time: '', title: '' },
+    visible: false,
+    x: 0,
+    y: 0,
+  })
+
+  // Format duration in hours and minutes
+  const formatDuration = (startTime: Date, endTime: Date): string => {
+    const ms = endTime.getTime() - startTime.getTime()
+    const hours = Math.floor(ms / 3600000)
+    const minutes = Math.floor((ms % 3600000) / 60000)
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`
+    }
+    return `${minutes}m`
+  }
+
+  // Show tooltip
+  const showTooltip = (event: MouseEvent, title: string, time: string, value?: string) => {
+    if (!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    setTooltip({
+      content: { time, title, value },
+      visible: true,
+      x: event.clientX - rect.left + 10,
+      y: event.clientY - rect.top - 10,
+    })
+  }
+
+  // Hide tooltip
+  const hideTooltip = () => {
+    setTooltip((prev) => ({ ...prev, visible: false }))
+  }
 
   // Time scale based on view range
   const x = d3.scaleTime().domain([visibleStart, visibleEnd]).range([0, chartWidth])
@@ -645,268 +645,341 @@ function TimelineChart({
   }, [dataStart, dataEnd, onZoom])
 
   return (
-    <svg
-      ref={svgRef}
-      width={width}
-      height={height}
-      style={{ color: 'currentColor', cursor: 'crosshair' }}
-      onDblClick={handleDoubleClick}
-    >
-      {/* Lane labels on the left */}
-      <g transform={`translate(0,${margin.top})`}>
-        {/* Sleep/Meditation lane label */}
-        <foreignObject x={5} y={trackSleepMeditation} width={margin.left - 10} height={trackHeight}>
-          <label
-            style={{
-              alignItems: 'center',
-              cursor: 'pointer',
-              display: 'flex',
-              fontSize: '12px',
-              gap: '4px',
-              height: '100%',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={showSleepMeditationSignal.value}
-              onChange={(e) => (showSleepMeditationSignal.value = (e.target as HTMLInputElement).checked)}
-            />
-            <span>
-              Sleep <span style={{ color: colors.sleep }}>●</span> / Meditation{' '}
-              <span style={{ color: colors.meditation }}>●</span>
-            </span>
-          </label>
-        </foreignObject>
+    <div ref={containerRef} class="timeline-chart-container">
+      {/* Tooltip */}
+      {tooltip.visible && (
+        <div class="timeline-tooltip" style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}>
+          <div class="tooltip-title">{tooltip.content.title}</div>
+          <div class="tooltip-time">{tooltip.content.time}</div>
+          {tooltip.content.value && <div class="tooltip-value">{tooltip.content.value}</div>}
+        </div>
+      )}
 
-        {/* Exercise lane label */}
-        <foreignObject x={5} y={trackExercise} width={margin.left - 10} height={trackHeight}>
-          <label
-            style={{
-              alignItems: 'center',
-              cursor: 'pointer',
-              display: 'flex',
-              fontSize: '12px',
-              gap: '4px',
-              height: '100%',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={showExerciseSignal.value}
-              onChange={(e) => (showExerciseSignal.value = (e.target as HTMLInputElement).checked)}
-            />
-            <span>
-              Exercise <span style={{ color: colors.exercise }}>●</span>
-            </span>
-          </label>
-        </foreignObject>
+      <svg
+        ref={svgRef}
+        width={width}
+        height={height}
+        style={{ color: 'currentColor', cursor: 'crosshair' }}
+        onDblClick={handleDoubleClick}
+      >
+        {/* Lane labels on the left */}
+        <g transform={`translate(0,${margin.top})`}>
+          {/* Sleep/Meditation lane label */}
+          <foreignObject x={5} y={trackSleepMeditation} width={margin.left - 10} height={trackHeight}>
+            <label
+              style={{
+                alignItems: 'center',
+                cursor: 'pointer',
+                display: 'flex',
+                fontSize: '12px',
+                gap: '4px',
+                height: '100%',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={showSleepMeditationSignal.value}
+                onChange={(e) => (showSleepMeditationSignal.value = (e.target as HTMLInputElement).checked)}
+              />
+              <span>
+                Sleep <span style={{ color: colors.sleep }}>●</span> / Meditation{' '}
+                <span style={{ color: colors.meditation }}>●</span>
+              </span>
+            </label>
+          </foreignObject>
 
-        {/* Places lane label */}
-        <foreignObject x={5} y={trackPlaces} width={margin.left - 10} height={trackHeight}>
-          <label
-            style={{
-              alignItems: 'center',
-              cursor: 'pointer',
-              display: 'flex',
-              fontSize: '12px',
-              gap: '4px',
-              height: '100%',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={showPlacesSignal.value}
-              onChange={(e) => (showPlacesSignal.value = (e.target as HTMLInputElement).checked)}
-            />
-            <span>Location</span>
-          </label>
-        </foreignObject>
-      </g>
+          {/* Exercise lane label */}
+          <foreignObject x={5} y={trackExercise} width={margin.left - 10} height={trackHeight}>
+            <label
+              style={{
+                alignItems: 'center',
+                cursor: 'pointer',
+                display: 'flex',
+                fontSize: '12px',
+                gap: '4px',
+                height: '100%',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={showExerciseSignal.value}
+                onChange={(e) => (showExerciseSignal.value = (e.target as HTMLInputElement).checked)}
+              />
+              <span>
+                Exercise <span style={{ color: colors.exercise }}>●</span>
+              </span>
+            </label>
+          </foreignObject>
 
-      <g transform={`translate(${margin.left},${margin.top})`}>
-        {/* Lane separator lines */}
-        <line x1={0} y1={trackHeight} x2={chartWidth} y2={trackHeight} stroke="currentColor" opacity={0.2} />
-        <line
-          x1={0}
-          y1={trackHeight * 2}
-          x2={chartWidth}
-          y2={trackHeight * 2}
-          stroke="currentColor"
-          opacity={0.2}
-        />
-        <line
-          x1={0}
-          y1={trackHeight * 3}
-          x2={chartWidth}
-          y2={trackHeight * 3}
-          stroke="currentColor"
-          opacity={0.2}
-        />
+          {/* Places lane label */}
+          <foreignObject x={5} y={trackPlaces} width={margin.left - 10} height={trackHeight}>
+            <label
+              style={{
+                alignItems: 'center',
+                cursor: 'pointer',
+                display: 'flex',
+                fontSize: '12px',
+                gap: '4px',
+                height: '100%',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={showPlacesSignal.value}
+                onChange={(e) => (showPlacesSignal.value = (e.target as HTMLInputElement).checked)}
+              />
+              <span>Location</span>
+            </label>
+          </foreignObject>
+        </g>
 
-        {/* Sleep sessions - in sleep/meditation lane */}
-        {sleepSessions.map((session, i) =>
-          session.endTime ?
-            <rect
-              key={`sleep-${i}`}
-              x={x(session.startTime)}
-              y={trackSleepMeditation}
-              width={Math.max(0, x(session.endTime) - x(session.startTime))}
-              height={trackHeight}
-              fill={colors.sleep}
-              opacity={0.4}
-            />
-          : null,
-        )}
+        <g transform={`translate(${margin.left},${margin.top})`}>
+          {/* Lane separator lines */}
+          <line
+            x1={0}
+            y1={trackHeight}
+            x2={chartWidth}
+            y2={trackHeight}
+            stroke="currentColor"
+            opacity={0.2}
+          />
+          <line
+            x1={0}
+            y1={trackHeight * 2}
+            x2={chartWidth}
+            y2={trackHeight * 2}
+            stroke="currentColor"
+            opacity={0.2}
+          />
+          <line
+            x1={0}
+            y1={trackHeight * 3}
+            x2={chartWidth}
+            y2={trackHeight * 3}
+            stroke="currentColor"
+            opacity={0.2}
+          />
 
-        {/* Meditation sessions - in sleep/meditation lane */}
-        {meditationSessions.map((session, i) =>
-          session.endTime ?
-            <rect
-              key={`meditation-${i}`}
-              x={x(session.startTime)}
-              y={trackSleepMeditation}
-              width={Math.max(0, x(session.endTime) - x(session.startTime))}
-              height={trackHeight}
-              fill={colors.meditation}
-              opacity={0.6}
-            />
-          : null,
-        )}
+          {/* Sleep sessions - in sleep/meditation lane */}
+          {sleepSessions.map((session, i) =>
+            session.endTime ?
+              <rect
+                key={`sleep-${i}`}
+                x={x(session.startTime)}
+                y={trackSleepMeditation}
+                width={Math.max(0, x(session.endTime) - x(session.startTime))}
+                height={trackHeight}
+                fill={colors.sleep}
+                opacity={0.4}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) =>
+                  showTooltip(
+                    e as unknown as MouseEvent,
+                    'Sleep',
+                    `${format(session.startTime, 'HH:mm')} - ${format(session.endTime!, 'HH:mm')}`,
+                    formatDuration(session.startTime, session.endTime!),
+                  )
+                }
+                onMouseLeave={hideTooltip}
+              />
+            : null,
+          )}
 
-        {/* Productivity (Computer) - overlaid on top */}
-        {productivity
-          .filter((p) => !p.isMobile)
-          .map((p, i) => (
-            <rect
-              key={`computer-${i}`}
-              x={x(p.startTime)}
-              y={0}
-              width={Math.max(0, x(p.endTime) - x(p.startTime))}
-              height={4}
-              fill={colors.computer}
-            />
-          ))}
+          {/* Meditation sessions - in sleep/meditation lane */}
+          {meditationSessions.map((session, i) =>
+            session.endTime ?
+              <rect
+                key={`meditation-${i}`}
+                x={x(session.startTime)}
+                y={trackSleepMeditation}
+                width={Math.max(0, x(session.endTime) - x(session.startTime))}
+                height={trackHeight}
+                fill={colors.meditation}
+                opacity={0.6}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) =>
+                  showTooltip(
+                    e as unknown as MouseEvent,
+                    session.title || 'Meditation',
+                    `${format(session.startTime, 'HH:mm')} - ${format(session.endTime!, 'HH:mm')}`,
+                    formatDuration(session.startTime, session.endTime!),
+                  )
+                }
+                onMouseLeave={hideTooltip}
+              />
+            : null,
+          )}
 
-        {/* Productivity (Mobile) - overlaid on top */}
-        {productivity
-          .filter((p) => p.isMobile)
-          .map((p, i) => (
-            <rect
-              key={`mobile-${i}`}
-              x={x(p.startTime)}
-              y={4}
-              width={Math.max(0, x(p.endTime) - x(p.startTime))}
-              height={4}
-              fill={colors.mobile}
-            />
-          ))}
+          {/* Productivity (Computer) - overlaid on top */}
+          {productivity
+            .filter((p) => !p.isMobile)
+            .map((p, i) => (
+              <rect
+                key={`computer-${i}`}
+                x={x(p.startTime)}
+                y={0}
+                width={Math.max(0, x(p.endTime) - x(p.startTime))}
+                height={4}
+                fill={colors.computer}
+              />
+            ))}
 
-        {/* Exercise sessions - in exercise lane */}
-        {exerciseSessions.map((session, i) =>
-          session.endTime ?
-            <rect
-              key={`exercise-${i}`}
-              x={x(session.startTime)}
-              y={trackExercise}
-              width={Math.max(0, x(session.endTime) - x(session.startTime))}
-              height={trackHeight}
-              fill={getExerciseColor(getExerciseTypeName(session), uniqueExerciseTypes)}
-              opacity={0.6}
-            />
-          : null,
-        )}
+          {/* Productivity (Mobile) - overlaid on top */}
+          {productivity
+            .filter((p) => p.isMobile)
+            .map((p, i) => (
+              <rect
+                key={`mobile-${i}`}
+                x={x(p.startTime)}
+                y={4}
+                width={Math.max(0, x(p.endTime) - x(p.startTime))}
+                height={4}
+                fill={colors.mobile}
+              />
+            ))}
 
-        {/* Places - in places lane */}
-        {showPlacesSignal.value &&
-          places.map((place, i) => (
-            <rect
-              key={`place-${i}`}
-              x={x(place.startTime)}
-              y={trackPlaces}
-              width={Math.max(0, x(place.endTime) - x(place.startTime))}
-              height={trackHeight}
-              fill={getPlaceColor(place.region, uniquePlaceNames)}
-              opacity={0.7}
-            />
-          ))}
+          {/* Exercise sessions - in exercise lane */}
+          {exerciseSessions.map((session, i) =>
+            session.endTime ?
+              <rect
+                key={`exercise-${i}`}
+                x={x(session.startTime)}
+                y={trackExercise}
+                width={Math.max(0, x(session.endTime) - x(session.startTime))}
+                height={trackHeight}
+                fill={getExerciseColor(getExerciseTypeName(session), uniqueExerciseTypes)}
+                opacity={0.6}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) =>
+                  showTooltip(
+                    e as unknown as MouseEvent,
+                    getExerciseTypeName(session),
+                    `${format(session.startTime, 'HH:mm')} - ${format(session.endTime!, 'HH:mm')}`,
+                    formatDuration(session.startTime, session.endTime!),
+                  )
+                }
+                onMouseLeave={hideTooltip}
+              />
+            : null,
+          )}
 
-        {/* Tags - dashed lines or rectangles */}
-        {tags.map((tag, i) =>
-          tag.endTime ?
-            <rect
-              key={`tag-${i}`}
-              x={x(tag.startTime)}
-              y={0}
-              width={Math.max(0, x(tag.endTime) - x(tag.startTime))}
-              height={chartHeight}
+          {/* Places - in places lane */}
+          {showPlacesSignal.value &&
+            places.map((place, i) => (
+              <rect
+                key={`place-${i}`}
+                x={x(place.startTime)}
+                y={trackPlaces}
+                width={Math.max(0, x(place.endTime) - x(place.startTime))}
+                height={trackHeight}
+                fill={getPlaceColor(place.region, uniquePlaceNames)}
+                opacity={0.7}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) =>
+                  showTooltip(
+                    e as unknown as MouseEvent,
+                    place.region || 'Unknown Location',
+                    `${format(place.startTime, 'HH:mm')} - ${format(place.endTime, 'HH:mm')}`,
+                    formatDuration(place.startTime, place.endTime),
+                  )
+                }
+                onMouseLeave={hideTooltip}
+              />
+            ))}
+
+          {/* Tags - dashed lines or rectangles */}
+          {tags.map((tag, i) =>
+            tag.endTime ?
+              <rect
+                key={`tag-${i}`}
+                x={x(tag.startTime)}
+                y={0}
+                width={Math.max(0, x(tag.endTime) - x(tag.startTime))}
+                height={chartHeight}
+                fill="none"
+                stroke={colors.tags}
+                strokeDasharray="4"
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) =>
+                  showTooltip(
+                    e as unknown as MouseEvent,
+                    tag.tag,
+                    `${format(tag.startTime, 'HH:mm')} - ${format(tag.endTime!, 'HH:mm')}`,
+                    formatDuration(tag.startTime, tag.endTime!),
+                  )
+                }
+                onMouseLeave={hideTooltip}
+              />
+            : <line
+                key={`tag-${i}`}
+                x1={x(tag.startTime)}
+                y1={0}
+                x2={x(tag.startTime)}
+                y2={chartHeight}
+                stroke={colors.tags}
+                strokeDasharray="4"
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) =>
+                  showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.startTime, 'HH:mm'))
+                }
+                onMouseLeave={hideTooltip}
+              />,
+          )}
+
+          {/* HRV Line */}
+          {hrvData.length > 0 && (
+            <path
               fill="none"
-              stroke={colors.tags}
-              strokeDasharray="4"
+              stroke={colors.hrv}
+              strokeWidth="1.5"
+              d={
+                d3
+                  .line<[Date, number] | null>()
+                  .defined(Boolean)
+                  .x(([time]) => x(time))
+                  .y(([, value]) => yHrv(value))(preprocessData(hrvData, 10)) || ''
+              }
             />
-          : <line
-              key={`tag-${i}`}
-              x1={x(tag.startTime)}
-              y1={0}
-              x2={x(tag.startTime)}
-              y2={chartHeight}
-              stroke={colors.tags}
-              strokeDasharray="4"
-            />,
-        )}
+          )}
 
-        {/* HRV Line */}
-        {hrvData.length > 0 && (
-          <path
-            fill="none"
-            stroke={colors.hrv}
-            strokeWidth="1.5"
-            d={
-              d3
-                .line<[Date, number] | null>()
-                .defined(Boolean)
-                .x(([time]) => x(time))
-                .y(([, value]) => yHrv(value))(preprocessData(hrvData, 10)) || ''
-            }
+          {/* Heart Rate Line */}
+          {heartRates.length > 0 && (
+            <path
+              fill="none"
+              stroke={colors.heartRate}
+              strokeWidth="1.5"
+              d={
+                d3
+                  .line<[Date, number] | null>()
+                  .defined(Boolean)
+                  .x(([time]) => x(time))
+                  .y(([, rate]) => yHr(rate))(preprocessData(heartRates, 10)) || ''
+              }
+            />
+          )}
+
+          {/* Y-axis for heart rate (left) */}
+          <g
+            ref={(g) => {
+              if (g) d3.select(g).call(d3.axisLeft(yHr)).selectAll('text').style('fill', colors.heartRate)
+            }}
           />
-        )}
 
-        {/* Heart Rate Line */}
-        {heartRates.length > 0 && (
-          <path
-            fill="none"
-            stroke={colors.heartRate}
-            strokeWidth="1.5"
-            d={
-              d3
-                .line<[Date, number] | null>()
-                .defined(Boolean)
-                .x(([time]) => x(time))
-                .y(([, rate]) => yHr(rate))(preprocessData(heartRates, 10)) || ''
-            }
+          {/* Y-axis for HRV (right) */}
+          <g
+            transform={`translate(${chartWidth},0)`}
+            ref={(g) => {
+              if (g) d3.select(g).call(d3.axisRight(yHrv)).selectAll('text').style('fill', colors.hrv)
+            }}
           />
-        )}
 
-        {/* Y-axis for heart rate (left) */}
-        <g
-          ref={(g) => {
-            if (g) d3.select(g).call(d3.axisLeft(yHr)).selectAll('text').style('fill', colors.heartRate)
-          }}
-        />
+          {/* X-axis */}
+          <g ref={xAxisRef} transform={`translate(0,${chartHeight})`} />
 
-        {/* Y-axis for HRV (right) */}
-        <g
-          transform={`translate(${chartWidth},0)`}
-          ref={(g) => {
-            if (g) d3.select(g).call(d3.axisRight(yHrv)).selectAll('text').style('fill', colors.hrv)
-          }}
-        />
-
-        {/* X-axis */}
-        <g ref={xAxisRef} transform={`translate(0,${chartHeight})`} />
-
-        {/* Brush for selection zoom */}
-        <g ref={brushRef} class="brush" />
-      </g>
-    </svg>
+          {/* Brush for selection zoom */}
+          <g ref={brushRef} class="brush" />
+        </g>
+      </svg>
+    </div>
   )
 }
