@@ -1,0 +1,382 @@
+.dashboard {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.dashboard h1 {
+  font-size: 2rem;
+  margin: 0 0 1.5rem 0;
+  color: #333;
+}
+
+.dashboard h2 {
+  font-size: 1.25rem;
+  margin: 0 0 1rem 0;
+  color: #555;
+  border-bottom: 2px solid #673ab8;
+  padding-bottom: 0.5rem;
+}
+
+.dashboard h3 {
+  font-size: 1.1rem;
+  margin: 0 0 1rem 0;
+  color: #666;
+}
+
+.dashboard .loading {
+  text-align: center;
+  padding: 2rem;
+  color: #888;
+}
+
+.dashboard .metrics-section {
+  margin-bottom: 2rem;
+}
+
+/* Metrics grid */
+.dashboard .metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+/* Metric card */
+.dashboard .metric-card {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  transition: box-shadow 0.2s;
+}
+
+.dashboard .metric-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard .metric-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.dashboard .metric-title {
+  font-size: 0.85rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.dashboard .metric-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 0.25rem;
+}
+
+.dashboard .metric-value .unit {
+  font-size: 1rem;
+  font-weight: 400;
+  color: #6b7280;
+  margin-left: 0.25rem;
+}
+
+.dashboard .metric-value .no-data {
+  font-size: 1rem;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.dashboard .metric-subtitle {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.dashboard .metric-sparkline {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+}
+
+.dashboard .sparkline-placeholder {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  text-align: center;
+  padding: 0.5rem;
+}
+
+/* Trend indicator */
+.dashboard .trend-indicator {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+}
+
+.dashboard .trend-positive {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.dashboard .trend-negative {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.dashboard .trend-neutral {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* Activity summary */
+.dashboard .activity-summary {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+}
+
+.dashboard .activity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.dashboard .activity-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.dashboard .activity-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+}
+
+.dashboard .exercise-icon {
+  background: #dcfce7;
+  color: #22c55e;
+}
+
+.dashboard .sleep-icon {
+  background: #dbeafe;
+  color: #3b82f6;
+}
+
+.dashboard .meditation-icon {
+  background: #f3e8ff;
+  color: #a855f7;
+}
+
+.dashboard .activity-details {
+  text-align: center;
+}
+
+.dashboard .activity-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #111827;
+  display: block;
+}
+
+.dashboard .activity-label {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.dashboard .activity-sub {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.25rem;
+}
+
+/* Quick links */
+.dashboard .quick-links {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+}
+
+.dashboard .links-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+.dashboard .quick-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  text-decoration: none;
+  color: #374151;
+  transition: all 0.2s;
+}
+
+.dashboard .quick-link:hover {
+  border-color: #673ab8;
+  background: #faf5ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(103, 58, 184, 0.15);
+}
+
+.dashboard .link-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #f3e8ff;
+  color: #673ab8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+.dashboard .quick-link:hover .link-icon {
+  background: #673ab8;
+  color: white;
+}
+
+.dashboard .link-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .dashboard h1 {
+    color: #f3f4f6;
+  }
+
+  .dashboard h2 {
+    color: #d1d5db;
+    border-color: #8b5cf6;
+  }
+
+  .dashboard h3 {
+    color: #9ca3af;
+  }
+
+  .dashboard .metric-card {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .dashboard .metric-title {
+    color: #9ca3af;
+  }
+
+  .dashboard .metric-value {
+    color: #f9fafb;
+  }
+
+  .dashboard .metric-value .unit {
+    color: #9ca3af;
+  }
+
+  .dashboard .activity-summary,
+  .dashboard .quick-links {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .dashboard .activity-item {
+    background: #111827;
+    border-color: #374151;
+  }
+
+  .dashboard .activity-value {
+    color: #f9fafb;
+  }
+
+  .dashboard .activity-label {
+    color: #9ca3af;
+  }
+
+  .dashboard .exercise-icon {
+    background: #064e3b;
+    color: #34d399;
+  }
+
+  .dashboard .sleep-icon {
+    background: #1e3a5f;
+    color: #60a5fa;
+  }
+
+  .dashboard .meditation-icon {
+    background: #3b0764;
+    color: #c084fc;
+  }
+
+  .dashboard .quick-link {
+    background: #111827;
+    border-color: #374151;
+    color: #d1d5db;
+  }
+
+  .dashboard .quick-link:hover {
+    border-color: #8b5cf6;
+    background: #1e1b4b;
+  }
+
+  .dashboard .link-icon {
+    background: #3b0764;
+    color: #a855f7;
+  }
+
+  .dashboard .quick-link:hover .link-icon {
+    background: #8b5cf6;
+    color: white;
+  }
+
+  .dashboard .trend-positive {
+    background: #064e3b;
+    color: #34d399;
+  }
+
+  .dashboard .trend-negative {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+
+  .dashboard .trend-neutral {
+    background: #374151;
+    color: #9ca3af;
+  }
+}
+
+/* Responsive */
+@media (max-width: 639px) {
+  .dashboard {
+    padding: 1rem;
+  }
+
+  .dashboard h1 {
+    font-size: 1.5rem;
+  }
+
+  .dashboard .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dashboard .activity-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard .links-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
