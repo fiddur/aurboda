@@ -1,0 +1,251 @@
+.sleep-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.sleep-page .sleep-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.sleep-page h1 {
+  font-size: 2rem;
+  margin: 0;
+  color: #1f2937;
+}
+
+.sleep-page h2 {
+  font-size: 1.25rem;
+  margin: 0 0 1rem 0;
+  color: #374151;
+  border-bottom: 2px solid #3b82f6;
+  padding-bottom: 0.5rem;
+}
+
+.sleep-page .days-select {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+  color: #374151;
+  cursor: pointer;
+}
+
+.sleep-page .days-select:hover {
+  border-color: #3b82f6;
+}
+
+.sleep-page .loading {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+}
+
+/* Stats section */
+.sleep-page .stats-section {
+  margin-bottom: 2rem;
+}
+
+.sleep-page .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.sleep-page .stat-card {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+}
+
+.sleep-page .stat-label {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+.sleep-page .stat-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.sleep-page .stat-value .stat-unit {
+  font-size: 1rem;
+  font-weight: 400;
+  color: #6b7280;
+  margin-left: 0.125rem;
+}
+
+.sleep-page .stat-value .no-data {
+  color: #9ca3af;
+  font-size: 1.25rem;
+}
+
+.sleep-page .stat-trend {
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-top: 0.25rem;
+}
+
+.sleep-page .stat-trend.trend-positive {
+  color: #059669;
+}
+
+.sleep-page .stat-trend.trend-negative {
+  color: #dc2626;
+}
+
+.sleep-page .stat-trend.trend-neutral {
+  color: #6b7280;
+}
+
+.sleep-page .stat-description {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.25rem;
+}
+
+/* Chart section */
+.sleep-page .chart-section {
+  margin-bottom: 2rem;
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+}
+
+.sleep-page .chart-container {
+  width: 100%;
+  overflow: hidden;
+}
+
+.sleep-page .chart-container svg {
+  display: block;
+}
+
+.sleep-page .chart-placeholder {
+  text-align: center;
+  padding: 2rem;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.sleep-page .duration-legend {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.sleep-page .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.sleep-page .legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.sleep-page .legend-color.green {
+  background: #22c55e;
+}
+
+.sleep-page .legend-color.yellow {
+  background: #f59e0b;
+}
+
+.sleep-page .legend-color.red {
+  background: #ef4444;
+}
+
+/* Info section */
+.sleep-page .info-section {
+  text-align: center;
+  padding: 1rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .sleep-page h1 {
+    color: #f3f4f6;
+  }
+
+  .sleep-page h2 {
+    color: #d1d5db;
+    border-color: #60a5fa;
+  }
+
+  .sleep-page .days-select {
+    background: #1f2937;
+    border-color: #374151;
+    color: #d1d5db;
+  }
+
+  .sleep-page .days-select:hover {
+    border-color: #60a5fa;
+  }
+
+  .sleep-page .stat-card,
+  .sleep-page .chart-section {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .sleep-page .stat-label {
+    color: #9ca3af;
+  }
+
+  .sleep-page .stat-value {
+    color: #f9fafb;
+  }
+
+  .sleep-page .stat-trend.trend-positive {
+    color: #34d399;
+  }
+
+  .sleep-page .stat-trend.trend-negative {
+    color: #f87171;
+  }
+
+  .sleep-page .legend-item {
+    color: #9ca3af;
+  }
+}
+
+/* Responsive */
+@media (max-width: 639px) {
+  .sleep-page {
+    padding: 1rem;
+  }
+
+  .sleep-page .sleep-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .sleep-page h1 {
+    font-size: 1.5rem;
+  }
+
+  .sleep-page .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .sleep-page .stat-value {
+    font-size: 1.5rem;
+  }
+}

@@ -1,6 +1,6 @@
 import { useEffect } from 'preact/hooks'
-import { API_URL } from '../../config'
 import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
+import { Dashboard } from '../Dashboard'
 
 import './style.css'
 
@@ -192,103 +192,7 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
 }
 
 function LoggedInHome() {
-  return (
-    <>
-      <section class="quickstart">
-        <h2>Getting Started</h2>
-
-        <h3>1. Android App (Health Connect)</h3>
-        <p>
-          <a
-            href="https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Download the APK
-          </a>{' '}
-          to sync Android Health Connect data. Set API URL to: <code>{API_URL}</code>
-        </p>
-
-        <h3>2. Location Tracking</h3>
-        <p>
-          Install{' '}
-          <a href="https://owntracks.org/" target="_blank" rel="noopener noreferrer">
-            OwnTracks
-          </a>{' '}
-          and configure it in HTTP mode.{' '}
-          <a
-            href="https://github.com/fiddur/aurboda/blob/develop/docs/owntracks.md"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Setup guide
-          </a>
-        </p>
-
-        <h3>3. Oura Ring</h3>
-        <p>
-          Create an app at{' '}
-          <a href="https://cloud.ouraring.com/v2/docs" target="_blank" rel="noopener noreferrer">
-            Oura Cloud
-          </a>{' '}
-          (My Applications → New Application). Add <code>OURA_CLIENT</code> and <code>OURA_SECRET</code> to
-          your docker-compose.yml, then connect in <a href="/settings">Settings</a>.
-        </p>
-
-        <h3>4. RescueTime</h3>
-        <p>
-          Get your API key from{' '}
-          <a href="https://www.rescuetime.com/anapi/manage" target="_blank" rel="noopener noreferrer">
-            RescueTime API settings
-          </a>
-          , then add it in <a href="/settings">Settings</a>.
-        </p>
-
-        <h3>5. AI Integration (MCP)</h3>
-        <p>
-          Connect{' '}
-          <a href="https://claude.ai/download" target="_blank" rel="noopener noreferrer">
-            Claude Code
-          </a>{' '}
-          to query your health data. Add to <code>~/.claude/settings.json</code>:
-        </p>
-        <pre class="code-block">
-          {`"mcpServers": {
-  "aurboda": {
-    "url": "${API_URL}/mcp",
-    "headers": { "Cookie": "auth=YOUR_AUTH_TOKEN" }
-  }
-}`}
-        </pre>
-        <p class="note">
-          Tip: Use{' '}
-          <a
-            href="https://github.com/anthropics/claude-code/tree/main/happy-coder"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            happy-coder
-          </a>{' '}
-          to access and discuss your health data on mobile.
-        </p>
-      </section>
-
-      <section class="user-actions">
-        <h2>Your Data</h2>
-        <ul>
-          <li>
-            <a href="/hr-zones">HR zone minutes (last 7 days)</a>
-          </li>
-          <li>
-            <a href="/timeline">Heart rate timeline</a>
-          </li>
-          <li>
-            <a href="/places">Places</a>
-          </li>
-        </ul>
-      </section>
-    </>
-  )
+  return <Dashboard />
 }
 
 export function Home() {
