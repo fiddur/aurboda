@@ -533,14 +533,16 @@ export interface FetchTrendParams {
 // Fetch trend data with EMA calculation
 export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult> => {
   const { token } = auth.value
-  const query: TrendQuery = {
-    aggregation: params.aggregation,
-    display_period: params.displayPeriod,
-    half_life_days: params.halfLifeDays?.toString(),
-    lookback_days: params.lookbackDays?.toString(),
+  // Only include defined values to avoid sending empty strings
+  const query: Partial<TrendQuery> = {
     pattern: params.pattern,
     source_type: params.sourceType,
   }
+  if (params.aggregation) query.aggregation = params.aggregation
+  if (params.displayPeriod) query.display_period = params.displayPeriod
+  if (params.halfLifeDays) query.half_life_days = params.halfLifeDays.toString()
+  if (params.lookbackDays) query.lookback_days = params.lookbackDays.toString()
+
   const response = await axios.get<TrendResponse>(`${API_URL}/trends`, {
     headers: { Authorization: `Bearer ${token}` },
     params: query,
