@@ -55,6 +55,7 @@ import {
   SyncProvider,
 } from './services/queries'
 import { getSettings, getSettingsResponse, validateAndUpdateSettings } from './services/settings'
+import { getTrend } from './services/trends'
 
 interface McpSession {
   transport: StreamableHTTPServerTransport
@@ -856,6 +857,71 @@ Examples:
           sync,
         )
         return jsonResponse({ data: result, success: true })
+      },
+    )
+
+    // ========================================================================
+    // Trend Analysis Tools
+    // ========================================================================
+
+    // Tool: get_trend
+    server.tool(
+      'get_trend',
+      `Calculate time-weighted trend for tags or metrics using Exponential Moving Average (EMA).
+EMA gives more weight to recent data while smoothing over a configurable period.
+The half-life parameter controls decay: after half-life days, an event's weight drops to 50%.
+
+Examples:
+- Tag trend: "How many painkillers per month?" -> pattern: "pain_killer", sourceType: "tag"
+- Metric trend: "What's my average weight trend?" -> pattern: "weight", sourceType: "metric"
+
+Common half-life values:
+- 7 days (quick): Responds to changes within a week
+- 15 days (responsive): Balanced, good default
+- 30 days (stable): Smooths out short-term variation`,
+      {
+        aggregation: z
+          .enum(['count', 'sum', 'mean'])
+          .optional()
+          .describe('Aggregation method. For tags: "count" (default). For metrics: "mean" or "sum".'),
+        display_period: z
+          .enum(['daily', 'weekly', 'monthly'])
+          .optional()
+          .describe('Period to normalize rate to. Default: "monthly".'),
+        half_life_days: z
+          .number()
+          .positive()
+          .optional()
+          .describe(
+            'EMA half-life in days. Default: 15. Common values: 7 (quick), 15 (responsive), 30 (stable).',
+          ),
+        lookback_days: z
+          .number()
+          .positive()
+          .optional()
+          .describe('Days of historical data to include. Default: 90.'),
+        pattern: z
+          .string()
+          .describe(
+            'For tags: regex pattern to match (e.g., "pain_killer|headache"). For metrics: metric name.',
+          ),
+        source_type: z.enum(['tag', 'metric']).describe('Type of data source: "tag" or "metric".'),
+      },
+      async ({ aggregation, display_period, half_life_days, lookback_days, pattern, source_type }) => {
+        try {
+          const result = await getTrend(user, {
+            aggregation,
+            displayPeriod: display_period,
+            halfLifeDays: half_life_days,
+            lookbackDays: lookback_days,
+            pattern,
+            sourceType: source_type,
+          })
+          return jsonResponse({ data: result, success: true })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return jsonResponse({ error: message, success: false })
+        }
       },
     )
 

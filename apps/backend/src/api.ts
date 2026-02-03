@@ -64,6 +64,9 @@ import {
   type TagsQuery,
   tagsQuerySchema,
   type TagsResponse,
+  type TrendQuery,
+  trendQuerySchema,
+  type TrendResponse,
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
   type UpdateNamedLocationBody,
@@ -133,6 +136,7 @@ import {
 } from './services/queries'
 import { getSettings, getSettingsResponse, validateAndUpdateSettings } from './services/settings'
 import { createSyncProvider } from './services/sync-provider'
+import { getTrend } from './services/trends'
 import { createSyncRouter } from './sync-router'
 import { validateBody, validateQuery } from './validation'
 
@@ -893,6 +897,39 @@ const main = async () => {
         syncProvider,
       )
       res.json({ data: result, success: true })
+    },
+  )
+
+  // ==========================================================================
+  // Trends API
+  // ==========================================================================
+
+  // GET /trends - Get time-weighted trend for tags or metrics
+  httpd.get<Record<string, never>, TrendResponse, unknown, TrendQuery>(
+    '/trends',
+    authMiddleware,
+    validateQuery(trendQuerySchema),
+    async (req, res) => {
+      const { aggregation, display_period, half_life_days, lookback_days, pattern, source_type } = req.query
+      const user = req.user!
+
+      const halfLifeDays = half_life_days ? parseInt(half_life_days, 10) : undefined
+      const lookbackDays = lookback_days ? parseInt(lookback_days, 10) : undefined
+
+      try {
+        const result = await getTrend(user, {
+          aggregation,
+          displayPeriod: display_period,
+          halfLifeDays,
+          lookbackDays,
+          pattern,
+          sourceType: source_type,
+        })
+        res.json({ data: result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(400).json({ error: message, success: false })
+      }
     },
   )
 

@@ -15,6 +15,7 @@ import { Settings } from './pages/Settings/index.jsx'
 import { Signup } from './pages/Signup/index.jsx'
 import { Sleep } from './pages/Sleep/index.jsx'
 import { Timeline } from './pages/Timeline/index.jsx'
+import { Trends } from './pages/Trends/index.jsx'
 import { NotFound } from './pages/_404.jsx'
 import { queryClient } from './state/queryClient.js'
 import './style.css'
@@ -34,6 +35,7 @@ export function App() {
             <Route path="/timeline" component={Timeline} />
             <Route path="/sleep" component={Sleep} />
             <Route path="/correlations" component={Correlations} />
+            <Route path="/trends" component={Trends} />
             <Route path="/places" component={Places} />
             <Route path="/settings" component={Settings} />
             <Route path="/admin" component={AdminSettings} />

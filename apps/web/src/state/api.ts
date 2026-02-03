@@ -39,6 +39,11 @@ import type {
   TagCorrelation,
   TagsQuery,
   TagsResponse,
+  TrendDisplayPeriod,
+  TrendQuery,
+  TrendResponse,
+  TrendResult,
+  TrendSourceType,
   UpdateSettingsInput,
   UserSettingsResponse,
 } from '@aurboda/api-spec'
@@ -98,6 +103,9 @@ export type {
   PeriodMetricStats,
   ProductivityCorrelation,
   TagCorrelation,
+  TrendDisplayPeriod,
+  TrendResult,
+  TrendSourceType,
   UpdateSettingsInput,
   UserSettingsResponse,
 }
@@ -507,4 +515,36 @@ export const fetchSteps = async (start: Date, end: Date): Promise<[Date, number]
   })
 
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
+}
+
+// ==========================================================================
+// Trends API
+// ==========================================================================
+
+export interface FetchTrendParams {
+  sourceType: TrendSourceType
+  pattern: string
+  halfLifeDays?: number
+  lookbackDays?: number
+  displayPeriod?: TrendDisplayPeriod
+  aggregation?: 'count' | 'sum' | 'mean'
+}
+
+// Fetch trend data with EMA calculation
+export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult> => {
+  const { token } = auth.value
+  const query: TrendQuery = {
+    aggregation: params.aggregation,
+    display_period: params.displayPeriod,
+    half_life_days: params.halfLifeDays?.toString(),
+    lookback_days: params.lookbackDays?.toString(),
+    pattern: params.pattern,
+    source_type: params.sourceType,
+  }
+  const response = await axios.get<TrendResponse>(`${API_URL}/trends`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: query,
+  })
+
+  return response.data.data!
 }
