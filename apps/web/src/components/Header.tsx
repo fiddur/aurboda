@@ -28,6 +28,9 @@ export function Header() {
             <a href="/timeline" class={url == '/timeline' && 'active'}>
               Timeline
             </a>
+            <a href="/trends" class={url == '/trends' && 'active'}>
+              Trends
+            </a>
             <a href="/places" class={url == '/places' && 'active'}>
               Places
             </a>
