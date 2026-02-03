@@ -18,15 +18,23 @@ export const durationStringSchema = z
     id: 'DurationString',
   })
 
+export type DurationUnit = 'd' | 'h' | 'M' | 'm' | 's' | 'w'
+
+export interface ParsedDuration {
+  ms: number
+  unit: DurationUnit
+  value: number
+}
+
 /**
- * Parse duration string to milliseconds.
+ * Parse duration string to milliseconds and components.
  */
-export const parseDuration = (duration: string): number => {
+export const parseDuration = (duration: string): ParsedDuration => {
   const match = duration.match(/^(\d+)([smhdwM])$/)
   if (!match) throw new Error(`Invalid duration: ${duration}`)
 
   const value = parseInt(match[1], 10)
-  const unit = match[2]
+  const unit = match[2] as DurationUnit
 
   const multipliers: Record<string, number> = {
     M: 30 * 24 * 60 * 60 * 1000, // Approximate month
@@ -37,8 +45,15 @@ export const parseDuration = (duration: string): number => {
     w: 7 * 24 * 60 * 60 * 1000,
   }
 
-  return value * multipliers[unit]
+  return { ms: value * multipliers[unit], unit, value }
 }
+
+/**
+ * Check if a duration unit is calendar-based (days, weeks, months).
+ * Calendar-based windows align to day boundaries.
+ * Rolling windows (hours, minutes, seconds) use exact time offsets.
+ */
+export const isCalendarBasedUnit = (unit: DurationUnit): boolean => unit === 'd' || unit === 'w' || unit === 'M'
 
 /**
  * Goal schema for a single metric target.

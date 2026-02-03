@@ -4,6 +4,7 @@
 
 import {
   cumulativeMetrics,
+  isCalendarBasedUnit,
   metricUnits,
   parseDuration,
   type GoalProgress,
@@ -89,8 +90,23 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
   const results: GoalProgress[] = []
 
   for (const goal of goals) {
-    const windowMs = parseDuration(goal.window)
-    const windowStart = new Date(now.getTime() - windowMs)
+    const { ms: windowMs, unit, value } = parseDuration(goal.window)
+    let windowStart: Date
+
+    if (isCalendarBasedUnit(unit)) {
+      // Calendar-based: "1d" = today only, "7d" = today + 6 previous days
+      // Calculate days based on unit: d=days, w=weeks (7 days each), M=months (30 days each)
+      const daysInWindow =
+        unit === 'd' ? value
+        : unit === 'w' ? value * 7
+        : value * 30
+      windowStart = new Date(now)
+      windowStart.setUTCHours(0, 0, 0, 0)
+      windowStart.setUTCDate(windowStart.getUTCDate() - (daysInWindow - 1))
+    } else {
+      // Rolling time-based: "24h" = exactly 24 hours ago from now
+      windowStart = new Date(now.getTime() - windowMs)
+    }
 
     // Calculate "losing tomorrow" - the oldest day's contribution
     // For a 7-day window, this is the first day that will drop off tomorrow

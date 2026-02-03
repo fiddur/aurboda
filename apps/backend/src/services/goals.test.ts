@@ -44,19 +44,18 @@ describe('getGoalsProgress', () => {
       { id: 'goal-1', metric: 'steps', min: 10000, window: '1d' },
     ])
 
-    // For a 1d window at noon, we span 2 calendar days (yesterday and today)
-    // Mock aggregate values: yesterday had 5000, today has 4672 so far
-    // losingTomorrow queries yesterday separately
+    // For a 1d window with day-based duration, we only include today (1 calendar day)
+    // Mock aggregate value: today has 4672 so far
+    // losingTomorrow queries today separately (same day for 1d window)
     vi.mocked(db.getDailyAggregateValue)
-      .mockResolvedValueOnce(5000) // yesterday for current
       .mockResolvedValueOnce(4672) // today for current
-      .mockResolvedValueOnce(5000) // yesterday for losingTomorrow
+      .mockResolvedValueOnce(4672) // today for losingTomorrow
 
     const result = await getGoalsProgress('testuser')
 
     expect(result).toHaveLength(1)
-    expect(result[0].current).toBe(9672) // 5000 + 4672
-    expect(result[0].losingTomorrow).toBe(5000)
+    expect(result[0].current).toBe(4672) // only today
+    expect(result[0].losingTomorrow).toBe(4672) // tomorrow we lose today's steps
     expect(result[0].metric).toBe('steps')
 
     // Should use getDailyAggregateValue, not getDailyAggregates
@@ -88,26 +87,49 @@ describe('getGoalsProgress', () => {
       { id: 'goal-1', metric: 'steps', min: 70000, window: '7d' },
     ])
 
-    // For a 7d window at noon, we span 8 calendar days
-    // Mock aggregate values for current sum (8 days)
+    // For a 7d window with day-based duration, we include exactly 7 calendar days
+    // (today + 6 previous days)
+    // At 2026-02-02T12:00:00Z, this is Jan 27 through Feb 2
     vi.mocked(db.getDailyAggregateValue)
-      .mockResolvedValueOnce(10000) // Day 1 (oldest, partial)
-      .mockResolvedValueOnce(12000) // Day 2
-      .mockResolvedValueOnce(11000) // Day 3
-      .mockResolvedValueOnce(9000) // Day 4
-      .mockResolvedValueOnce(13000) // Day 5
-      .mockResolvedValueOnce(8000) // Day 6
-      .mockResolvedValueOnce(7000) // Day 7
-      .mockResolvedValueOnce(5000) // Day 8 (today, partial)
-      // losingTomorrow query for oldest day
+      .mockResolvedValueOnce(10000) // Jan 27 (oldest)
+      .mockResolvedValueOnce(12000) // Jan 28
+      .mockResolvedValueOnce(11000) // Jan 29
+      .mockResolvedValueOnce(9000) // Jan 30
+      .mockResolvedValueOnce(13000) // Jan 31
+      .mockResolvedValueOnce(8000) // Feb 1
+      .mockResolvedValueOnce(5000) // Feb 2 (today)
+      // losingTomorrow query for oldest day (Jan 27)
       .mockResolvedValueOnce(10000)
 
     const result = await getGoalsProgress('testuser')
 
     expect(result).toHaveLength(1)
-    // Total should be sum of all 8 days = 75000
-    expect(result[0].current).toBe(75000)
+    // Total should be sum of all 7 days = 68000
+    expect(result[0].current).toBe(68000)
     expect(result[0].losingTomorrow).toBe(10000)
+  })
+
+  test('uses rolling time for hour-based windows (24h spans 2 calendar days at noon)', async () => {
+    vi.mocked(settings.getSettings).mockResolvedValue({})
+    vi.mocked(settings.getEffectiveGoals).mockReturnValue([
+      { id: 'goal-1', metric: 'steps', min: 10000, window: '24h' },
+    ])
+
+    // For a 24h window at noon, we use rolling hours (not calendar days)
+    // At 2026-02-02T12:00:00Z, this is yesterday 12:00 through now
+    // This spans 2 calendar days: Feb 1 (partial) and Feb 2 (partial)
+    vi.mocked(db.getDailyAggregateValue)
+      .mockResolvedValueOnce(5000) // Feb 1 (partial)
+      .mockResolvedValueOnce(4672) // Feb 2 (partial)
+      // losingTomorrow query for Feb 1
+      .mockResolvedValueOnce(5000)
+
+    const result = await getGoalsProgress('testuser')
+
+    expect(result).toHaveLength(1)
+    // 24h rolling window spans 2 days
+    expect(result[0].current).toBe(9672) // 5000 + 4672
+    expect(result[0].losingTomorrow).toBe(5000)
   })
 
   test('uses getTimeSeries for HR zone metrics', async () => {
