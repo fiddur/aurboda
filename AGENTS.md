@@ -1,9 +1,29 @@
-Testing:
+## Repository structure
 
-* Make unit test first (when reasonable), prompting a more testable code with clear dependency injection.
+See README.md for general setup.  Specific docs in docs/ directory.  Each a
+
+* Backend API and MCP: apps/backend (typescript)
+* Frontend Web: apps/web (typescript)
+* Android App: apps/android (kotlin)
+* Shared typing and OpenAPI spec: packages/api-spec (typescript and generated yaml/kotlin)
+* Database: PostgreSQL
+
+
+## Work flow
+
+* NEVER alter already pushed commits.  No amend if the commit is pushed.  No force push.
+* Always make a PR of suggested changes.
+
+
+## Code style
+
 * Prefer code that is testable without heavy mocking.
 * Prefer functional style, no classes.
-* NEVER alter already pushed commits.  No amend if the commit is pushed.  No force push.
+
+
+## Testing
+
+* Make unit test first (when reasonable), prompting a more testable code with clear dependency injection.
 
 
 For typescript:
