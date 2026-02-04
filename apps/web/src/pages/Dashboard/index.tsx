@@ -416,79 +416,86 @@ export function Dashboard() {
 
       {isLoading && <div class="loading">Loading your health data...</div>}
 
-      {/* Baseline metrics */}
-      <section class="metrics-section">
-        <h2>Your Baseline</h2>
-        <div class="metrics-grid">
-          <MetricCard
-            title="HRV (7-day)"
-            value={baseline?.hrv.avg7day ?? null}
-            unit="ms"
-            trend={baseline?.hrv.trendPercent}
-            subtitle="Heart Rate Variability"
-          />
-          <MetricCard
-            title="HRV (30-day)"
-            value={baseline?.hrv.avg30day ?? null}
-            unit="ms"
-            subtitle="Long-term average"
-          />
-          <MetricCard
-            title="Resting HR (7-day)"
-            value={baseline?.restingHr.avg7day ?? null}
-            unit="bpm"
-            trend={baseline?.restingHr.trendPercent}
-            trendInverse={true}
-            subtitle="Lower is generally better"
-          />
-          <MetricCard
-            title="Resting HR (30-day)"
-            value={baseline?.restingHr.avg30day ?? null}
-            unit="bpm"
-            subtitle="Long-term average"
-          />
-        </div>
-      </section>
+      {/* Two-column layout for baseline and summary on wide screens */}
+      <div class="metrics-columns">
+        {/* Baseline metrics */}
+        <section class="metrics-section">
+          <h2>Your Baseline</h2>
+          <div class="metrics-grid">
+            <MetricCard
+              title="HRV (7-day)"
+              value={baseline?.hrv.avg7day ?? null}
+              unit="ms"
+              trend={baseline?.hrv.trendPercent}
+              subtitle="Heart Rate Variability"
+            />
+            <MetricCard
+              title="HRV (30-day)"
+              value={baseline?.hrv.avg30day ?? null}
+              unit="ms"
+              subtitle="Long-term average"
+            />
+            <MetricCard
+              title="Resting HR (7-day)"
+              value={baseline?.restingHr.avg7day ?? null}
+              unit="bpm"
+              trend={baseline?.restingHr.trendPercent}
+              trendInverse={true}
+              subtitle="Lower is generally better"
+            />
+            <MetricCard
+              title="Resting HR (30-day)"
+              value={baseline?.restingHr.avg30day ?? null}
+              unit="bpm"
+              subtitle="Long-term average"
+            />
+          </div>
+        </section>
 
-      {/* Period summary metrics */}
-      <section class="metrics-section">
-        <h2>30-Day Summary</h2>
-        <div class="metrics-grid">
-          <MetricCard
-            title="Sleep Score"
-            value={periodSummary.sleep_score?.avg ?? null}
-            trend={periodSummary.sleep_score?.changeFromPreviousPeriodPercent}
-            sparklineData={sleepScores}
-            sparklineColor="#3b82f6"
-            subtitle={periodSummary.sleep_score ? `${periodSummary.sleep_score.count} nights` : undefined}
-          />
-          <MetricCard
-            title="Readiness Score"
-            value={periodSummary.readiness_score?.avg ?? null}
-            trend={periodSummary.readiness_score?.changeFromPreviousPeriodPercent}
-            subtitle={
-              periodSummary.readiness_score ? `${periodSummary.readiness_score.count} days` : undefined
-            }
-          />
-          <MetricCard
-            title="Daily Steps"
-            value={periodSummary.steps?.avg ? Math.round(periodSummary.steps.avg).toLocaleString() : null}
-            trend={periodSummary.steps?.changeFromPreviousPeriodPercent}
-            subtitle={
-              periodSummary.steps ? `Max: ${Math.round(periodSummary.steps.max).toLocaleString()}` : undefined
-            }
-          />
-          <MetricCard
-            title="Zone 2 (Weekly)"
-            value={
-              periodSummary.hr_zone_2_sec?.avg ? Math.round((periodSummary.hr_zone_2_sec.avg * 7) / 60) : null
-            }
-            unit="min"
-            trend={periodSummary.hr_zone_2_sec?.changeFromPreviousPeriodPercent}
-            subtitle="Target: 150-200 min/week"
-          />
-        </div>
-      </section>
+        {/* Period summary metrics */}
+        <section class="metrics-section">
+          <h2>30-Day Summary</h2>
+          <div class="metrics-grid">
+            <MetricCard
+              title="Sleep Score"
+              value={periodSummary.sleep_score?.avg ?? null}
+              trend={periodSummary.sleep_score?.changeFromPreviousPeriodPercent}
+              sparklineData={sleepScores}
+              sparklineColor="#3b82f6"
+              subtitle={periodSummary.sleep_score ? `${periodSummary.sleep_score.count} nights` : undefined}
+            />
+            <MetricCard
+              title="Readiness Score"
+              value={periodSummary.readiness_score?.avg ?? null}
+              trend={periodSummary.readiness_score?.changeFromPreviousPeriodPercent}
+              subtitle={
+                periodSummary.readiness_score ? `${periodSummary.readiness_score.count} days` : undefined
+              }
+            />
+            <MetricCard
+              title="Daily Steps"
+              value={periodSummary.steps?.avg ? Math.round(periodSummary.steps.avg).toLocaleString() : null}
+              trend={periodSummary.steps?.changeFromPreviousPeriodPercent}
+              subtitle={
+                periodSummary.steps ?
+                  `Max: ${Math.round(periodSummary.steps.max).toLocaleString()}`
+                : undefined
+              }
+            />
+            <MetricCard
+              title="Zone 2 (Weekly)"
+              value={
+                periodSummary.hr_zone_2_sec?.avg ?
+                  Math.round((periodSummary.hr_zone_2_sec.avg * 7) / 60)
+                : null
+              }
+              unit="min"
+              trend={periodSummary.hr_zone_2_sec?.changeFromPreviousPeriodPercent}
+              subtitle="Target: 150-200 min/week"
+            />
+          </div>
+        </section>
+      </div>
 
       {/* Activity summary */}
       <section class="metrics-section">
