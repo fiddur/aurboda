@@ -497,15 +497,16 @@ export function Dashboard() {
         </section>
       </div>
 
-      {/* Activity summary */}
-      <section class="metrics-section">
-        <ActivitySummary activities={activities} />
-      </section>
+      {/* Activity summary and Quick links in columns */}
+      <div class="bottom-columns">
+        <section class="metrics-section">
+          <ActivitySummary activities={activities} />
+        </section>
 
-      {/* Quick links */}
-      <section class="metrics-section">
-        <QuickLinks />
-      </section>
+        <section class="metrics-section">
+          <QuickLinks />
+        </section>
+      </div>
     </div>
   )
 }

@@ -83,6 +83,12 @@ Data Sources
 | RescueTime | Configure API key in user settings (web UI). Get key from [RescueTime API settings](https://www.rescuetime.com/anapi/manage). |
 
 
+API Documentation
+-----------------
+
+Interactive API documentation is available at https://aurboda.net/apispec (develop branch version).
+
+
 MCP Integration
 ---------------
 
