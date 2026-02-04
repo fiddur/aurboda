@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod'
-import { baseResponseSchema, metricTypeSchema } from './common.js'
+import { baseResponseSchema } from './common.js'
 
 /**
  * Source type for trend calculation.
@@ -73,9 +73,7 @@ export const getTrendQuerySchema = z
       .positive()
       .default(90)
       .meta({ description: 'How many days of historical data to include' }),
-    pattern: z
-      .string()
-      .meta({ description: 'For tags: regex pattern to match. For metrics: metric name.' }),
+    pattern: z.string().meta({ description: 'For tags: regex pattern to match. For metrics: metric name.' }),
     sourceType: trendSourceTypeSchema.meta({ description: 'Type of source: tag or metric' }),
   })
   .meta({ id: 'GetTrendQuery' })

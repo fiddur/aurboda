@@ -21,6 +21,7 @@
     "generate:openapi": "tsx src/openapi.ts",
     "generate:ts": "openapi-ts",
     "generate:kotlin": "npx @openapitools/openapi-generator-cli generate -i ./generated/openapi.yaml -g kotlin -o ./generated/kotlin --additional-properties=serializationLibrary=kotlinx_serialization,packageName=net.aurboda.api,modelPackage=net.aurboda.api.models",
+    "generate:html": "tsx src/generate-html.ts",
     "generate": "pnpm generate:openapi && pnpm generate:ts && pnpm generate:kotlin",
     "fix": "eslint --fix",
     "check": "tsc --noEmit && eslint"

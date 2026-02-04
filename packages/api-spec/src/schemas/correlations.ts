@@ -379,7 +379,9 @@ export const metricOutcomeSchema = z
       .enum(['mean', 'min', 'max', 'last'])
       .optional()
       .meta({ description: 'Aggregation method (default: mean)' }),
-    metric: z.string().meta({ description: 'Metric name (e.g., weight, body_fat, hrv_rmssd)', example: 'weight' }),
+    metric: z
+      .string()
+      .meta({ description: 'Metric name (e.g., weight, body_fat, hrv_rmssd)', example: 'weight' }),
     type: z.literal('metric'),
   })
   .meta({ id: 'MetricOutcome' })
@@ -461,7 +463,11 @@ export const productivityLagResultSchema = z
   .meta({ id: 'ProductivityLagResult' })
 
 /** Generic lag result (union) */
-export const genericLagResultSchema = z.union([tagLagResultSchema, metricLagResultSchema, productivityLagResultSchema])
+export const genericLagResultSchema = z.union([
+  tagLagResultSchema,
+  metricLagResultSchema,
+  productivityLagResultSchema,
+])
 
 export type GenericLagResult = z.infer<typeof genericLagResultSchema>
 
@@ -491,7 +497,11 @@ export const productivityBaselineSchema = z
   .meta({ id: 'ProductivityBaseline' })
 
 /** Generic baseline stats (union) */
-export const genericBaselineSchema = z.union([tagBaselineSchema, metricBaselineSchema, productivityBaselineSchema])
+export const genericBaselineSchema = z.union([
+  tagBaselineSchema,
+  metricBaselineSchema,
+  productivityBaselineSchema,
+])
 
 export type GenericBaseline = z.infer<typeof genericBaselineSchema>
 

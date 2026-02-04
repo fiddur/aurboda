@@ -53,7 +53,8 @@ export const parseDuration = (duration: string): ParsedDuration => {
  * Calendar-based windows align to day boundaries.
  * Rolling windows (hours, minutes, seconds) use exact time offsets.
  */
-export const isCalendarBasedUnit = (unit: DurationUnit): boolean => unit === 'd' || unit === 'w' || unit === 'M'
+export const isCalendarBasedUnit = (unit: DurationUnit): boolean =>
+  unit === 'd' || unit === 'w' || unit === 'M'
 
 /**
  * Goal schema for a single metric target.
