@@ -3,43 +3,16 @@ import * as d3 from 'd3'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { fetchTrend, type FetchTrendParams, type TrendDisplayPeriod, type TrendResult } from '../../state/api'
 import { auth } from '../../state/auth'
+import {
+  addSavedTrend,
+  removeSavedTrend,
+  resetToDefaults,
+  savedTrends,
+  updateSavedTrend,
+  type SavedTrend,
+} from '../../state/savedTrends'
 
 import './style.css'
-
-// Preset trend configurations for common use cases
-const PRESET_TRENDS: Array<{ name: string; params: FetchTrendParams }> = [
-  {
-    name: 'Painkillers',
-    params: {
-      displayPeriod: 'monthly',
-      halfLifeDays: 15,
-      lookbackDays: 180,
-      pattern: 'pain_killer|painkiller|ibuprofen',
-      sourceType: 'tag',
-    },
-  },
-  {
-    name: 'Coffee',
-    params: {
-      displayPeriod: 'daily',
-      halfLifeDays: 7,
-      lookbackDays: 90,
-      pattern: 'coffee',
-      sourceType: 'tag',
-    },
-  },
-  {
-    name: 'Weight',
-    params: {
-      aggregation: 'mean',
-      displayPeriod: 'daily',
-      halfLifeDays: 14,
-      lookbackDays: 180,
-      pattern: 'weight',
-      sourceType: 'metric',
-    },
-  },
-]
 
 // Chart component for trend history
 function TrendChart({ data, color }: { data: { date: string; value: number }[]; color: string }) {
@@ -176,26 +149,50 @@ function TrendValueCard({ result }: { result: TrendResult }) {
   )
 }
 
-// Form for configuring a custom trend query
+// Lookback options with extended range
+const LOOKBACK_OPTIONS = [
+  { label: '30 days', value: 30 },
+  { label: '90 days', value: 90 },
+  { label: '180 days', value: 180 },
+  { label: '1 year', value: 365 },
+  { label: '2 years', value: 730 },
+  { label: '3 years', value: 1095 },
+  { label: '5 years', value: 1825 },
+  { label: 'All time', value: 3650 }, // 10 years as "all time"
+]
+
+// Form for configuring a trend
 function TrendConfigForm({
+  initialValues,
   onSubmit,
+  onCancel,
   isLoading,
+  submitLabel = 'Calculate Trend',
 }: {
-  onSubmit: (params: FetchTrendParams) => void
+  initialValues?: { name?: string; params: FetchTrendParams }
+  onSubmit: (name: string, params: FetchTrendParams) => void
+  onCancel?: () => void
   isLoading: boolean
+  submitLabel?: string
 }) {
-  const [sourceType, setSourceType] = useState<'tag' | 'metric'>('tag')
-  const [pattern, setPattern] = useState('')
-  const [halfLifeDays, setHalfLifeDays] = useState(15)
-  const [lookbackDays, setLookbackDays] = useState(90)
-  const [displayPeriod, setDisplayPeriod] = useState<TrendDisplayPeriod>('monthly')
-  const [aggregation, setAggregation] = useState<'count' | 'mean' | 'sum'>('count')
+  const [name, setName] = useState(initialValues?.name ?? '')
+  const [sourceType, setSourceType] = useState<'tag' | 'metric'>(initialValues?.params.sourceType ?? 'tag')
+  const [pattern, setPattern] = useState(initialValues?.params.pattern ?? '')
+  const [halfLifeDays, setHalfLifeDays] = useState(initialValues?.params.halfLifeDays ?? 15)
+  const [lookbackDays, setLookbackDays] = useState(initialValues?.params.lookbackDays ?? 90)
+  const [displayPeriod, setDisplayPeriod] = useState<TrendDisplayPeriod>(
+    initialValues?.params.displayPeriod ?? 'monthly',
+  )
+  const [aggregation, setAggregation] = useState<'count' | 'mean' | 'sum'>(
+    initialValues?.params.aggregation ?? 'count',
+  )
 
   const handleSubmit = (e: Event) => {
     e.preventDefault()
     if (!pattern.trim()) return
 
-    onSubmit({
+    const trendName = name.trim() || pattern.trim()
+    onSubmit(trendName, {
       aggregation: sourceType === 'metric' ? aggregation : 'count',
       displayPeriod,
       halfLifeDays,
@@ -207,6 +204,18 @@ function TrendConfigForm({
 
   return (
     <form class="trend-config-form" onSubmit={handleSubmit}>
+      <div class="form-row">
+        <label class="name-input">
+          Name
+          <input
+            type="text"
+            value={name}
+            onInput={(e) => setName((e.target as HTMLInputElement).value)}
+            placeholder="e.g., My Coffee Trend"
+          />
+        </label>
+      </div>
+
       <div class="form-row">
         <label>
           Source Type
@@ -242,15 +251,16 @@ function TrendConfigForm({
           </select>
         </label>
         <label>
-          Lookback (days)
+          Lookback
           <select
             value={lookbackDays}
             onChange={(e) => setLookbackDays(Number((e.target as HTMLSelectElement).value))}
           >
-            <option value="30">30 days</option>
-            <option value="90">90 days</option>
-            <option value="180">180 days</option>
-            <option value="365">1 year</option>
+            {LOOKBACK_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </label>
         <label>
@@ -280,33 +290,54 @@ function TrendConfigForm({
         )}
       </div>
 
-      <button type="submit" disabled={isLoading || !pattern.trim()}>
-        {isLoading ? 'Loading...' : 'Calculate Trend'}
-      </button>
+      <div class="form-actions">
+        <button type="submit" disabled={isLoading || !pattern.trim()}>
+          {isLoading ? 'Loading...' : submitLabel}
+        </button>
+        {onCancel && (
+          <button type="button" class="cancel-btn" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   )
 }
 
-// Single trend widget that displays a preset or custom trend
-function TrendWidget({ name, params }: { name: string; params: FetchTrendParams }) {
-  const query = useQuery({
-    queryFn: () => fetchTrend(params),
-    queryKey: ['trend', params],
-    staleTime: 5 * 60 * 1000,
-  })
-
+// Widget color mapping
+const getColor = (name: string): string => {
   const colors: Record<string, string> = {
     Coffee: '#78350f',
     Painkillers: '#dc2626',
     Weight: '#2563eb',
-    default: '#8b5cf6',
   }
-  const color = colors[name] || colors.default
+  return colors[name] || '#8b5cf6'
+}
+
+// Single trend widget that displays a saved trend
+function TrendWidget({
+  trend,
+  onEdit,
+  onRemove,
+}: {
+  trend: SavedTrend
+  onEdit: (trend: SavedTrend) => void
+  onRemove: (id: string) => void
+}) {
+  const query = useQuery({
+    queryFn: () => fetchTrend(trend.params),
+    queryKey: ['trend', trend.params],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const color = getColor(trend.name)
 
   if (query.isLoading) {
     return (
       <div class="trend-widget loading">
-        <h3>{name}</h3>
+        <div class="trend-widget-header">
+          <h3>{trend.name}</h3>
+        </div>
         <div class="loading-spinner">Loading...</div>
       </div>
     )
@@ -315,7 +346,17 @@ function TrendWidget({ name, params }: { name: string; params: FetchTrendParams 
   if (query.error || !query.data) {
     return (
       <div class="trend-widget error">
-        <h3>{name}</h3>
+        <div class="trend-widget-header">
+          <h3>{trend.name}</h3>
+          <div class="trend-widget-actions">
+            <button class="edit-btn" onClick={() => onEdit(trend)} title="Edit">
+              Edit
+            </button>
+            <button class="remove-btn" onClick={() => onRemove(trend.id)} title="Remove">
+              ×
+            </button>
+          </div>
+        </div>
         <div class="error-message">Failed to load trend data</div>
       </div>
     )
@@ -323,7 +364,17 @@ function TrendWidget({ name, params }: { name: string; params: FetchTrendParams 
 
   return (
     <div class="trend-widget">
-      <h3>{name}</h3>
+      <div class="trend-widget-header">
+        <h3>{trend.name}</h3>
+        <div class="trend-widget-actions">
+          <button class="edit-btn" onClick={() => onEdit(trend)} title="Edit">
+            Edit
+          </button>
+          <button class="remove-btn" onClick={() => onRemove(trend.id)} title="Remove">
+            ×
+          </button>
+        </div>
+      </div>
       <TrendValueCard result={query.data} />
       <TrendChart data={query.data.history} color={color} />
     </div>
@@ -333,14 +384,34 @@ function TrendWidget({ name, params }: { name: string; params: FetchTrendParams 
 // Main Trends page component
 export function Trends() {
   const isLoggedIn = auth.value.token
-  const [customParams, setCustomParams] = useState<FetchTrendParams | null>(null)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [editingTrend, setEditingTrend] = useState<SavedTrend | null>(null)
 
-  const customQuery = useQuery({
-    enabled: !!customParams,
-    queryFn: () => (customParams ? fetchTrend(customParams) : Promise.reject('No params')),
-    queryKey: ['trend', 'custom', customParams],
-    staleTime: 5 * 60 * 1000,
-  })
+  const trends = savedTrends.value
+
+  const handleAddTrend = (name: string, params: FetchTrendParams) => {
+    addSavedTrend(name, params)
+    setShowAddForm(false)
+  }
+
+  const handleEditTrend = (name: string, params: FetchTrendParams) => {
+    if (editingTrend) {
+      updateSavedTrend(editingTrend.id, name, params)
+      setEditingTrend(null)
+    }
+  }
+
+  const handleRemoveTrend = (id: string) => {
+    if (confirm('Remove this trend from your dashboard?')) {
+      removeSavedTrend(id)
+    }
+  }
+
+  const handleResetToDefaults = () => {
+    if (confirm('Reset all trends to the default presets? Your custom trends will be lost.')) {
+      resetToDefaults()
+    }
+  }
 
   if (!isLoggedIn) {
     return (
@@ -363,28 +434,54 @@ export function Trends() {
         </p>
       </header>
 
-      <section class="preset-trends">
-        <h2>Preset Trends</h2>
-        <div class="trends-grid">
-          {PRESET_TRENDS.map((preset) => (
-            <TrendWidget key={preset.name} name={preset.name} params={preset.params} />
-          ))}
+      <section class="saved-trends">
+        <div class="section-header">
+          <h2>Your Trends</h2>
+          <div class="section-actions">
+            <button class="add-trend-btn" onClick={() => setShowAddForm(true)}>
+              + Add Trend
+            </button>
+            <button class="reset-btn" onClick={handleResetToDefaults} title="Reset to defaults">
+              Reset
+            </button>
+          </div>
         </div>
-      </section>
 
-      <section class="custom-trend">
-        <h2>Custom Trend</h2>
-        <TrendConfigForm onSubmit={setCustomParams} isLoading={customQuery.isLoading} />
-
-        {customParams && customQuery.data && (
-          <div class="custom-result">
-            <TrendWidget name={`Custom: ${customParams.pattern}`} params={customParams} />
+        {showAddForm && (
+          <div class="add-trend-form-container">
+            <h3>Add New Trend</h3>
+            <TrendConfigForm
+              onSubmit={handleAddTrend}
+              onCancel={() => setShowAddForm(false)}
+              isLoading={false}
+              submitLabel="Add Trend"
+            />
           </div>
         )}
 
-        {customParams && customQuery.error && (
-          <div class="custom-error">
-            <p>Error loading custom trend. Check your pattern and try again.</p>
+        {editingTrend && (
+          <div class="edit-trend-form-container">
+            <h3>Edit Trend: {editingTrend.name}</h3>
+            <TrendConfigForm
+              initialValues={{ name: editingTrend.name, params: editingTrend.params }}
+              onSubmit={handleEditTrend}
+              onCancel={() => setEditingTrend(null)}
+              isLoading={false}
+              submitLabel="Save Changes"
+            />
+          </div>
+        )}
+
+        <div class="trends-grid">
+          {trends.map((trend) => (
+            <TrendWidget key={trend.id} trend={trend} onEdit={setEditingTrend} onRemove={handleRemoveTrend} />
+          ))}
+        </div>
+
+        {trends.length === 0 && !showAddForm && (
+          <div class="no-trends">
+            <p>No trends configured. Add one to get started!</p>
+            <button onClick={() => setShowAddForm(true)}>+ Add Your First Trend</button>
           </div>
         )}
       </section>
