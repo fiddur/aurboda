@@ -54,7 +54,7 @@ const calculateTagTrend = async (
     `
     WITH date_range AS (
       SELECT generate_series(
-        CURRENT_DATE - INTERVAL '1 day' * $2,
+        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
         CURRENT_DATE,
         '1 day'
       )::date AS day
@@ -70,7 +70,7 @@ const calculateTagTrend = async (
           count(*) as cnt
         FROM tags
         WHERE tag ~ $1
-          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2 + 1)
+          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -78,13 +78,13 @@ const calculateTagTrend = async (
       SELECT
         dc.day,
         -- Calculate EMA as weighted average for this point in time
-        $4 * SUM(dc2.cnt * EXP(-$3 * (dc.day - dc2.day) / $5)) /
-        NULLIF(SUM(EXP(-$3 * (dc.day - dc2.day) / $5)), 0) as ema_value
+        $4::float * SUM(dc2.cnt::float * EXP(-$3::float * (dc.day - dc2.day)::float / $5::float)) /
+        NULLIF(SUM(EXP(-$3::float * (dc.day - dc2.day)::float / $5::float)), 0) as ema_value
       FROM daily_counts dc
       CROSS JOIN LATERAL (
         SELECT day, cnt
         FROM daily_counts
-        WHERE day <= dc.day AND day > dc.day - INTERVAL '1 day' * LEAST($2, 90)
+        WHERE day <= dc.day AND day > dc.day - INTERVAL '1 day' * LEAST($2::integer, 90)
       ) dc2
       GROUP BY dc.day
     )
@@ -125,7 +125,7 @@ const calculateMetricTrend = async (
     `
     WITH date_range AS (
       SELECT generate_series(
-        CURRENT_DATE - INTERVAL '1 day' * $2,
+        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
         CURRENT_DATE,
         '1 day'
       )::date AS day
@@ -141,7 +141,7 @@ const calculateMetricTrend = async (
           ${aggregation === 'sum' ? 'SUM(value)' : 'AVG(value)'} as daily_value
         FROM time_series
         WHERE metric = $1
-          AND time > CURRENT_DATE - INTERVAL '1 day' * ($2 + 1)
+          AND time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -149,13 +149,13 @@ const calculateMetricTrend = async (
       SELECT
         dv.day,
         -- Calculate EMA as weighted average, excluding days with no data
-        $4 * SUM(dv2.daily_value * EXP(-$3 * (dv.day - dv2.day) / $5)) /
-        NULLIF(SUM(CASE WHEN dv2.daily_value IS NOT NULL THEN EXP(-$3 * (dv.day - dv2.day) / $5) ELSE 0 END), 0) as ema_value
+        $4::float * SUM(dv2.daily_value * EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)) /
+        NULLIF(SUM(CASE WHEN dv2.daily_value IS NOT NULL THEN EXP(-$3::float * (dv.day - dv2.day)::float / $5::float) ELSE 0 END), 0) as ema_value
       FROM daily_values dv
       CROSS JOIN LATERAL (
         SELECT day, daily_value
         FROM daily_values
-        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * LEAST($2, 90)
+        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * LEAST($2::integer, 90)
       ) dv2
       GROUP BY dv.day
     )
