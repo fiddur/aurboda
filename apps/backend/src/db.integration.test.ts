@@ -15,16 +15,21 @@ import {
   getDailyAggregateValue,
   getMcpSession,
   getMcpSessionsForUser,
+  getOuraTagTypeCodes,
   getSleepSessions,
   getTags,
   getTimeSeries,
+  getUniqueTags,
+  getUserSettings,
   insertActivity,
+  insertRawRecord,
   insertTag,
   insertTimeSeries,
   processDailyAggregate,
   saveMcpSession,
   touchMcpSession,
   updateTagEndTime,
+  upsertUserSettings,
 } from './db'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from './test/db-test-helper'
 
@@ -876,6 +881,194 @@ describe('Database Integration Tests', () => {
 
       expect(sessions[0].sessionId).toBe(newSessionId)
       expect(sessions[1].sessionId).toBe(oldSessionId)
+    })
+  })
+
+  // ==========================================================================
+  // Tag Mappings
+  // ==========================================================================
+
+  describe('getUniqueTags', () => {
+    test('returns empty array when no tags exist', async () => {
+      const user = getTestUser()
+
+      const tags = await getUniqueTags(user)
+
+      expect(tags).toEqual([])
+    })
+
+    test('returns unique tag names sorted alphabetically', async () => {
+      const user = getTestUser()
+
+      await insertTag(user, {
+        externalId: 'tag-1',
+        source: 'manual',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+        tag: 'coffee',
+      })
+      await insertTag(user, {
+        externalId: 'tag-2',
+        source: 'manual',
+        startTime: new Date('2024-01-15T11:00:00Z'),
+        tag: 'meditation',
+      })
+      await insertTag(user, {
+        externalId: 'tag-3',
+        source: 'manual',
+        startTime: new Date('2024-01-15T12:00:00Z'),
+        tag: 'coffee', // duplicate
+      })
+      await insertTag(user, {
+        externalId: 'tag-4',
+        source: 'oura',
+        startTime: new Date('2024-01-15T13:00:00Z'),
+        tag: 'apple',
+      })
+
+      const tags = await getUniqueTags(user)
+
+      expect(tags).toEqual(['apple', 'coffee', 'meditation'])
+    })
+  })
+
+  describe('getOuraTagTypeCodes', () => {
+    test('returns empty array when no oura tags exist', async () => {
+      const user = getTestUser()
+
+      const codes = await getOuraTagTypeCodes(user)
+
+      expect(codes).toEqual([])
+    })
+
+    test('returns tag type codes with counts from raw_records', async () => {
+      const user = getTestUser()
+      const uuid1 = '067e2862-8cf8-4307-a621-0636dd379cda'
+      const uuid2 = '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a'
+
+      // Insert raw records for enhanced_tag type
+      await insertRawRecord(user, {
+        data: { tag_type_code: uuid1 },
+        externalId: 'rec-1',
+        recordType: 'enhanced_tag',
+        recordedAt: new Date('2024-01-15T10:00:00Z'),
+        source: 'oura',
+      })
+      await insertRawRecord(user, {
+        data: { tag_type_code: uuid1 },
+        externalId: 'rec-2',
+        recordType: 'enhanced_tag',
+        recordedAt: new Date('2024-01-15T11:00:00Z'),
+        source: 'oura',
+      })
+      await insertRawRecord(user, {
+        data: { tag_type_code: uuid2 },
+        externalId: 'rec-3',
+        recordType: 'enhanced_tag',
+        recordedAt: new Date('2024-01-15T12:00:00Z'),
+        source: 'oura',
+      })
+
+      const codes = await getOuraTagTypeCodes(user)
+
+      expect(codes).toHaveLength(2)
+      // Sorted by latest time descending
+      expect(codes[0].tagTypeCode).toBe(uuid2)
+      expect(codes[0].count).toBe(1)
+      expect(codes[1].tagTypeCode).toBe(uuid1)
+      expect(codes[1].count).toBe(2)
+    })
+
+    test('excludes records with null or empty tag_type_code', async () => {
+      const user = getTestUser()
+      const validUuid = '067e2862-8cf8-4307-a621-0636dd379cda'
+
+      await insertRawRecord(user, {
+        data: { tag_type_code: validUuid },
+        externalId: 'rec-1',
+        recordType: 'enhanced_tag',
+        recordedAt: new Date('2024-01-15T10:00:00Z'),
+        source: 'oura',
+      })
+      await insertRawRecord(user, {
+        data: { tag_type_code: null },
+        externalId: 'rec-2',
+        recordType: 'enhanced_tag',
+        recordedAt: new Date('2024-01-15T11:00:00Z'),
+        source: 'oura',
+      })
+      await insertRawRecord(user, {
+        data: { tag_type_code: '' },
+        externalId: 'rec-3',
+        recordType: 'enhanced_tag',
+        recordedAt: new Date('2024-01-15T12:00:00Z'),
+        source: 'oura',
+      })
+      await insertRawRecord(user, {
+        data: {}, // no tag_type_code at all
+        externalId: 'rec-4',
+        recordType: 'enhanced_tag',
+        recordedAt: new Date('2024-01-15T13:00:00Z'),
+        source: 'oura',
+      })
+
+      const codes = await getOuraTagTypeCodes(user)
+
+      expect(codes).toHaveLength(1)
+      expect(codes[0].tagTypeCode).toBe(validUuid)
+    })
+  })
+
+  describe('User Settings with tagMappings', () => {
+    test('stores and retrieves tagMappings', async () => {
+      const user = getTestUser()
+      const mappings = {
+        '067e2862-8cf8-4307-a621-0636dd379cda': 'Hot Chocolate',
+        '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a': 'YinYoga',
+      }
+
+      await upsertUserSettings(user, { tagMappings: mappings })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.tagMappings).toEqual(mappings)
+    })
+
+    test('updates tagMappings while preserving other settings', async () => {
+      const user = getTestUser()
+
+      // Set initial settings
+      await upsertUserSettings(user, { birthDate: '1990-01-15' })
+
+      // Add tag mappings
+      const mappings = { 'test-uuid': 'Test Tag' }
+      await upsertUserSettings(user, { tagMappings: mappings })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.birthDate).toBe('1990-01-15')
+      expect(settings?.tagMappings).toEqual(mappings)
+    })
+
+    test('replaces tagMappings with empty object to clear', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { tagMappings: { 'test-uuid': 'Test' } })
+      // Setting to empty object effectively clears the mappings
+      await upsertUserSettings(user, { tagMappings: {} })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.tagMappings).toEqual({})
+    })
+
+    test('preserves tagMappings when update does not include tagMappings', async () => {
+      const user = getTestUser()
+      const mappings = { 'test-uuid': 'Test' }
+
+      await upsertUserSettings(user, { tagMappings: mappings })
+      // Updating other fields should not affect tagMappings
+      await upsertUserSettings(user, { birthDate: '2000-01-01' })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.tagMappings).toEqual(mappings)
+      expect(settings?.birthDate).toBe('2000-01-01')
     })
   })
 })
