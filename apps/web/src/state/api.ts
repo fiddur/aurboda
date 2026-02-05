@@ -27,6 +27,8 @@ import type {
   LocationsResponse,
   NamedLocation,
   NamedLocationsResponse,
+  OuraTagCodesResponse,
+  OuraTagTypeCode,
   PeriodMetricStats,
   PeriodSummaryQuery,
   PeriodSummaryResponse,
@@ -36,7 +38,9 @@ import type {
   PromoteDetectedLocationBody,
   QueryMetricsQuery,
   QueryMetricsResponse,
+  SetTagMappingResponse,
   TagCorrelation,
+  TagMappings,
   TagsQuery,
   TagsResponse,
   TrendDisplayPeriod,
@@ -44,6 +48,7 @@ import type {
   TrendResponse,
   TrendResult,
   TrendSourceType,
+  UniqueTagsResponse,
   UpdateSettingsInput,
   UserSettingsResponse,
 } from '@aurboda/api-spec'
@@ -100,9 +105,11 @@ export type {
   HrZoneThresholds,
   LocationCorrelation,
   NamedLocation,
+  OuraTagTypeCode,
   PeriodMetricStats,
   ProductivityCorrelation,
   TagCorrelation,
+  TagMappings,
   TrendDisplayPeriod,
   TrendResult,
   TrendSourceType,
@@ -323,6 +330,42 @@ export const updateUserSettings = async (params: UpdateSettingsInput): Promise<U
   })
 
   return response.data
+}
+
+// ==========================================================================
+// Tag Mappings API
+// ==========================================================================
+
+// Fetch all unique tag names
+export const fetchUniqueTags = async (): Promise<string[]> => {
+  const { token } = auth.value
+  const response = await axios.get<UniqueTagsResponse>(`${API_URL}/tags/unique`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data ?? []
+}
+
+// Fetch Oura tag type codes with their current mappings
+export const fetchOuraTagCodes = async (): Promise<OuraTagTypeCode[]> => {
+  const { token } = auth.value
+  const response = await axios.get<OuraTagCodesResponse>(`${API_URL}/tags/oura-codes`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data ?? []
+}
+
+// Set a tag mapping
+export const setTagMapping = async (tagTypeCode: string, name: string): Promise<TagMappings> => {
+  const { token } = auth.value
+  const response = await axios.post<SetTagMappingResponse>(
+    `${API_URL}/tags/mapping`,
+    { name, tagTypeCode },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+
+  return response.data.mapping ?? {}
 }
 
 // Fetch goal progress
