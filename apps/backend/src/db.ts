@@ -1119,6 +1119,42 @@ export const updateTagEndTime = async (user: string, externalId: string, endTime
   return (result.rowCount ?? 0) > 0
 }
 
+/**
+ * Get unique tags from the database (all stored tag names).
+ */
+export const getUniqueTags = async (user: string): Promise<string[]> => {
+  const result = await query(user, `SELECT DISTINCT tag FROM tags ORDER BY tag`)
+  return result.rows.map((row) => row.tag)
+}
+
+/**
+ * Get unique Oura tag type codes from raw_records.
+ * Returns UUIDs for tags that came from Oura, which can be used to set up tag mappings.
+ * Includes the count of occurrences for each tag type code.
+ */
+export const getOuraTagTypeCodes = async (
+  user: string,
+): Promise<{ tagTypeCode: string; count: number; latestTime: Date }[]> => {
+  const result = await query(
+    user,
+    `SELECT
+       data->>'tag_type_code' as tag_type_code,
+       COUNT(*) as count,
+       MAX(recorded_at) as latest_time
+     FROM raw_records
+     WHERE record_type = 'enhanced_tag'
+       AND data->>'tag_type_code' IS NOT NULL
+       AND data->>'tag_type_code' != ''
+     GROUP BY data->>'tag_type_code'
+     ORDER BY MAX(recorded_at) DESC`,
+  )
+  return result.rows.map((row) => ({
+    count: parseInt(row.count, 10),
+    latestTime: new Date(row.latest_time),
+    tagTypeCode: row.tag_type_code,
+  }))
+}
+
 // ============================================================================
 // Productivity (RescueTime)
 // ============================================================================
@@ -1646,6 +1682,7 @@ export interface UserSettings {
   goals?: Goal[] // User-defined goals for tracking metrics
   hrZoneStart?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   rescueTimeKey?: string // RescueTime API key (personal token)
+  tagMappings?: Record<string, string> // Tag name mappings from UUIDs to display names
 }
 
 /**
@@ -1663,6 +1700,7 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
     goals: settings.goals as Goal[] | undefined,
     hrZoneStart: settings.hrZoneStart as UserSettings['hrZoneStart'],
     rescueTimeKey: settings.rescueTimeKey as string | undefined,
+    tagMappings: settings.tagMappings as UserSettings['tagMappings'],
   }
 }
 
@@ -1690,6 +1728,9 @@ export const upsertUserSettings = async (
   }
   if (updates.rescueTimeKey !== undefined) {
     merged.rescueTimeKey = updates.rescueTimeKey
+  }
+  if (updates.tagMappings !== undefined) {
+    merged.tagMappings = updates.tagMappings
   }
 
   // Check if settings row exists

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 import { GoalsSettings } from '../../components/GoalsSettings'
+import { TagMappingsSettings } from '../../components/TagMappingsSettings'
 import { API_URL } from '../../config'
 import { fetchUserSettings, HrZoneThresholds, UpdateSettingsInput, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -282,6 +283,8 @@ export function Settings() {
       </section>
 
       <GoalsSettings goals={userSettings?.goals ?? []} />
+
+      <TagMappingsSettings />
     </div>
   )
 }

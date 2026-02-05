@@ -153,14 +153,12 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
 
       return sessions
     },
-    async getTags(start: Date, end: Date, token: string): Promise<Tag[]> {
-      const customTags: Record<string, string> = {
-        '067e2862-8cf8-4307-a621-0636dd379cda': 'Hot Chocolate',
-        '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a': 'YinYoga',
-        '662ad09c-0998-4f0c-aad9-867c883dfdaa': 'Electrolytes',
-        'f830b90b-0689-42a1-bfe7-ea1b4487d0c3': 'Food',
-      }
-
+    async getTags(
+      start: Date,
+      end: Date,
+      token: string,
+      tagMappings?: Record<string, string>,
+    ): Promise<Tag[]> {
       const data: OuraTag[] = await getGeneric('enhanced_tag', start, end, token)
       const tags = data
         .map(
@@ -170,8 +168,8 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
             source: 'oura',
             startTime: new Date(tag.start_time),
             tag:
-              tag.tag_type_code && tag.tag_type_code in customTags ?
-                customTags[tag.tag_type_code]
+              tag.tag_type_code && tagMappings && tag.tag_type_code in tagMappings ?
+                tagMappings[tag.tag_type_code]
               : tag.tag_type_code || 'unknown',
           }),
         )

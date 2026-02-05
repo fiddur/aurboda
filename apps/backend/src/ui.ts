@@ -18,7 +18,7 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   const rtData =
     settings.rescueTimeKey ? await rescuetimeClient(settings.rescueTimeKey).getIntervalData(start, end) : []
   const ouraToken = await oura.getAccessToken(user)
-  const tags = await oura.getTags(start, end, ouraToken)
+  const tags = await oura.getTags(start, end, ouraToken, settings.tagMappings)
   const meditations = await oura.getSessions(start, end, ouraToken)
 
   console.log(tags)

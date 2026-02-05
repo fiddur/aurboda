@@ -132,6 +132,36 @@ describe('getSettingsResponse', () => {
   })
 })
 
+describe('getSettingsResponse with tagMappings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns empty tagMappings when none exist', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.success).toBe(true)
+    expect(result.tag_mappings).toEqual({})
+  })
+
+  test('returns stored tagMappings', async () => {
+    const mappings = {
+      '067e2862-8cf8-4307-a621-0636dd379cda': 'Hot Chocolate',
+      '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a': 'YinYoga',
+    }
+    vi.mocked(db.getUserSettings).mockResolvedValue({ tagMappings: mappings })
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.success).toBe(true)
+    expect(result.tag_mappings).toEqual(mappings)
+  })
+})
+
 describe('validateAndUpdateSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -211,6 +241,34 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { hrZoneStart: undefined })
+  })
+
+  test('updates tag mappings with valid input', async () => {
+    const tagMappings = {
+      '067e2862-8cf8-4307-a621-0636dd379cda': 'Hot Chocolate',
+      '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a': 'YinYoga',
+    }
+    vi.mocked(db.getUserSettings).mockResolvedValue({ tagMappings })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({ tagMappings })
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { tag_mappings: tagMappings })
+
+    expect(result.success).toBe(true)
+    expect(result.tag_mappings).toEqual(tagMappings)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { tagMappings })
+  })
+
+  test('clears tag mappings when set to null', async () => {
+    const tagMappings = { 'test-uuid': 'Test Tag' }
+    vi.mocked(db.getUserSettings).mockResolvedValue({ tagMappings })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { tag_mappings: null })
+
+    expect(result.success).toBe(true)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { tagMappings: undefined })
   })
 })
 

@@ -8,6 +8,7 @@
 import { addMinutes, isFuture, subDays } from 'date-fns'
 import {
   getSyncState,
+  getUserSettings,
   insertActivity,
   insertRawRecord,
   insertTag,
@@ -476,9 +477,11 @@ export const syncOuraDataType = async (
       case 'sessions':
         data = await oura.getSessions(start, end, accessToken)
         break
-      case 'tags':
-        data = await oura.getTags(start, end, accessToken)
+      case 'tags': {
+        const settings = await getUserSettings(user)
+        data = await oura.getTags(start, end, accessToken, settings?.tagMappings)
         break
+      }
     }
 
     await processOuraData(user, dataType, data)

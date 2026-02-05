@@ -8,6 +8,7 @@ import {
   type HrZoneSecs,
   type HrZoneSource,
   type HrZoneThresholds,
+  type TagMappings,
   updateSettingsInputSchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
@@ -25,6 +26,7 @@ export interface UserSettings {
   hrZoneStart?: HrZoneThresholds
   rescueTimeKey?: string // RescueTime API key (personal token)
   goals?: Goal[] // User-defined goals for tracking metrics
+  tagMappings?: TagMappings // Tag name mappings from UUIDs to display names
 }
 
 // Use UserSettingsResponse from api-spec but allow error field for validation failures
@@ -148,6 +150,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     oura_connected: ouraToken !== null,
     rescue_time_key: settings.rescueTimeKey ?? null,
     success: true,
+    tag_mappings: settings.tagMappings ?? {},
   }
 }
 
@@ -170,6 +173,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
       oura_connected: false,
       rescue_time_key: null,
       success: false,
+      tag_mappings: {},
     }
   }
 
@@ -187,6 +191,9 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   if (parsed.data.goals !== undefined) {
     // null resets to defaults (by removing from storage), empty array clears all goals
     updates.goals = parsed.data.goals === null ? undefined : parsed.data.goals
+  }
+  if (parsed.data.tag_mappings !== undefined) {
+    updates.tagMappings = parsed.data.tag_mappings === null ? undefined : parsed.data.tag_mappings
   }
 
   // Apply updates

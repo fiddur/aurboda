@@ -48,6 +48,7 @@ import {
   type LocationsResponse,
   type LoginResponse,
   type NamedLocationsResponse,
+  type OuraTagCodesResponse,
   type PeriodSummaryQuery,
   periodSummaryQuerySchema,
   type PeriodSummaryResponse,
@@ -60,6 +61,9 @@ import {
   queryMetricsQuerySchema,
   type QueryMetricsResponse,
   type ServerStatusResponse,
+  type SetTagMappingBody,
+  setTagMappingBodySchema,
+  type SetTagMappingResponse,
   type SignupResponse,
   type TagsQuery,
   tagsQuerySchema,
@@ -67,6 +71,7 @@ import {
   type TrendQuery,
   trendQuerySchema,
   type TrendResponse,
+  type UniqueTagsResponse,
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
   type UpdateNamedLocationBody,
@@ -83,7 +88,10 @@ import { createAuth } from './auth'
 import {
   getAllSyncStates,
   getDetectedLocationById,
+  getOuraTagTypeCodes,
   getDetectedLocations as getStoredDetectedLocations,
+  getUniqueTags,
+  getUserSettings,
   initializeSchema,
   insertLocation,
   insertPlace,
@@ -96,6 +104,7 @@ import {
   resetSyncState,
   schemaInitialized,
   updateDetectedLocation,
+  upsertUserSettings,
 } from './db'
 import { createMcpRouter } from './mcp'
 import { createDbSessionStore } from './mcp-session-store'
@@ -529,6 +538,53 @@ const main = async () => {
         tag,
       })
       res.json(result)
+    },
+  )
+
+  // GET /tags/unique - Get all unique tag names
+  httpd.get<Record<string, never>, UniqueTagsResponse>('/tags/unique', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const tags = await getUniqueTags(user)
+    res.json({ data: tags, success: true })
+  })
+
+  // GET /tags/oura-codes - Get all Oura tag type codes with their current mappings
+  httpd.get<Record<string, never>, OuraTagCodesResponse>(
+    '/tags/oura-codes',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const codes = await getOuraTagTypeCodes(user)
+      const settings = await getUserSettings(user)
+      const mappings = settings?.tagMappings ?? {}
+
+      const data = codes.map((code) => ({
+        count: code.count,
+        currentName: mappings[code.tagTypeCode] ?? null,
+        latestTime: code.latestTime.toISOString(),
+        tagTypeCode: code.tagTypeCode,
+      }))
+
+      res.json({ data, success: true })
+    },
+  )
+
+  // POST /tags/mapping - Set a tag mapping
+  httpd.post<Record<string, never>, SetTagMappingResponse, SetTagMappingBody>(
+    '/tags/mapping',
+    authMiddleware,
+    validateBody(setTagMappingBodySchema),
+    async (req, res) => {
+      const { tagTypeCode, name } = req.body
+      const user = req.user!
+
+      const settings = await getUserSettings(user)
+      const currentMappings = settings?.tagMappings ?? {}
+      const newMappings = { ...currentMappings, [tagTypeCode]: name }
+
+      await upsertUserSettings(user, { tagMappings: newMappings })
+
+      res.json({ mapping: newMappings, success: true })
     },
   )
 

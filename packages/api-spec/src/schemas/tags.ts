@@ -106,3 +106,62 @@ export type DeleteTagParams = z.infer<typeof deleteTagParamsSchema>
 export const deleteTagResponseSchema = baseResponseSchema.meta({ id: 'DeleteTagResponse' })
 
 export type DeleteTagResponse = z.infer<typeof deleteTagResponseSchema>
+
+/**
+ * Unique tags response schema.
+ */
+export const uniqueTagsResponseSchema = baseResponseSchema
+  .extend({
+    data: z.array(z.string()).meta({ description: 'List of unique tag names' }),
+  })
+  .meta({ id: 'UniqueTagsResponse' })
+
+export type UniqueTagsResponse = z.infer<typeof uniqueTagsResponseSchema>
+
+/**
+ * Oura tag type code info.
+ */
+export const ouraTagTypeCodeSchema = z
+  .object({
+    count: z.number().int().meta({ description: 'Number of occurrences' }),
+    currentName: z.string().nullable().meta({ description: 'Current mapped name (null if unmapped)' }),
+    latestTime: iso8601DateTimeSchema.meta({ description: 'Most recent occurrence' }),
+    tagTypeCode: z.string().uuid().meta({ description: 'Oura tag type code UUID' }),
+  })
+  .meta({ id: 'OuraTagTypeCode' })
+
+export type OuraTagTypeCode = z.infer<typeof ouraTagTypeCodeSchema>
+
+/**
+ * Oura tag codes response schema.
+ */
+export const ouraTagCodesResponseSchema = baseResponseSchema
+  .extend({
+    data: z.array(ouraTagTypeCodeSchema).meta({ description: 'List of Oura tag type codes' }),
+  })
+  .meta({ id: 'OuraTagCodesResponse' })
+
+export type OuraTagCodesResponse = z.infer<typeof ouraTagCodesResponseSchema>
+
+/**
+ * Set tag mapping body schema.
+ */
+export const setTagMappingBodySchema = z
+  .object({
+    name: z.string().min(1).meta({ description: 'Display name for the tag' }),
+    tagTypeCode: z.string().uuid().meta({ description: 'Oura tag type code UUID' }),
+  })
+  .meta({ id: 'SetTagMappingBody' })
+
+export type SetTagMappingBody = z.infer<typeof setTagMappingBodySchema>
+
+/**
+ * Set tag mapping response schema.
+ */
+export const setTagMappingResponseSchema = baseResponseSchema
+  .extend({
+    mapping: z.record(z.string(), z.string()).meta({ description: 'Updated tag mappings' }),
+  })
+  .meta({ id: 'SetTagMappingResponse' })
+
+export type SetTagMappingResponse = z.infer<typeof setTagMappingResponseSchema>
