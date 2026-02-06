@@ -119,7 +119,36 @@ export const uniqueTagsResponseSchema = baseResponseSchema
 export type UniqueTagsResponse = z.infer<typeof uniqueTagsResponseSchema>
 
 /**
- * Oura tag type code info.
+ * Programmatic tag info - tags that look like they need human-readable names.
+ * Includes UUIDs (Oura custom tags), tag_* prefixes (Oura presets), etc.
+ */
+export const programmaticTagSchema = z
+  .object({
+    count: z.number().int().meta({ description: 'Number of occurrences' }),
+    currentName: z.string().nullable().meta({ description: 'Current mapped name (null if unmapped)' }),
+    latestTime: iso8601DateTimeSchema.meta({ description: 'Most recent occurrence' }),
+    tagKey: z.string().meta({ description: 'The programmatic tag identifier (UUID, tag_* prefix, etc.)' }),
+  })
+  .meta({ id: 'ProgrammaticTag' })
+
+export type ProgrammaticTag = z.infer<typeof programmaticTagSchema>
+
+/**
+ * Programmatic tags response schema.
+ */
+export const programmaticTagsResponseSchema = baseResponseSchema
+  .extend({
+    data: z
+      .array(programmaticTagSchema)
+      .meta({ description: 'List of programmatic tags that can be mapped' }),
+  })
+  .meta({ id: 'ProgrammaticTagsResponse' })
+
+export type ProgrammaticTagsResponse = z.infer<typeof programmaticTagsResponseSchema>
+
+/**
+ * @deprecated Use programmaticTagSchema instead
+ * Oura tag type code info - kept for backward compatibility.
  */
 export const ouraTagTypeCodeSchema = z
   .object({
@@ -133,7 +162,8 @@ export const ouraTagTypeCodeSchema = z
 export type OuraTagTypeCode = z.infer<typeof ouraTagTypeCodeSchema>
 
 /**
- * Oura tag codes response schema.
+ * @deprecated Use programmaticTagsResponseSchema instead
+ * Oura tag codes response schema - kept for backward compatibility.
  */
 export const ouraTagCodesResponseSchema = baseResponseSchema
   .extend({
@@ -145,11 +175,20 @@ export type OuraTagCodesResponse = z.infer<typeof ouraTagCodesResponseSchema>
 
 /**
  * Set tag mapping body schema.
+ * Supports both UUID tag type codes and other programmatic tag keys.
  */
 export const setTagMappingBodySchema = z
   .object({
     name: z.string().min(1).meta({ description: 'Display name for the tag' }),
-    tagTypeCode: z.string().uuid().meta({ description: 'Oura tag type code UUID' }),
+    tagKey: z.string().min(1).optional().meta({ description: 'The programmatic tag identifier to map' }),
+    tagTypeCode: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: '@deprecated Use tagKey. Oura tag type code UUID' }),
+  })
+  .refine((data) => data.tagKey || data.tagTypeCode, {
+    message: 'Either tagKey or tagTypeCode must be provided',
   })
   .meta({ id: 'SetTagMappingBody' })
 

@@ -1128,31 +1128,68 @@ export const getUniqueTags = async (user: string): Promise<string[]> => {
 }
 
 /**
- * Get unique Oura tag type codes from raw_records.
- * Returns UUIDs for tags that came from Oura, which can be used to set up tag mappings.
- * Includes the count of occurrences for each tag type code.
+ * UUID regex pattern for matching programmatic tag identifiers.
+ */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Patterns for identifying programmatic tags that might need human-readable names.
+ * - UUID pattern: Oura custom tags
+ * - tag_* prefix: Oura preset tags
+ */
+const PROGRAMMATIC_TAG_PATTERNS = [UUID_PATTERN, /^tag_/]
+
+/**
+ * Check if a tag name looks programmatic (UUID or known prefix pattern).
+ */
+export const isProgrammaticTag = (tag: string): boolean =>
+  PROGRAMMATIC_TAG_PATTERNS.some((pattern) => pattern.test(tag))
+
+/**
+ * Get programmatic tags from the tags table.
+ * Returns tags that look like they need human-readable names (UUIDs, tag_* prefixes, etc.)
+ * along with usage counts and last seen times.
+ */
+export const getProgrammaticTags = async (
+  user: string,
+): Promise<{ tagKey: string; count: number; latestTime: Date }[]> => {
+  // Query all unique tags with counts - we filter in JS for pattern matching flexibility
+  const result = await query(
+    user,
+    `SELECT
+       tag,
+       COUNT(*) as count,
+       MAX(start_time) as latest_time
+     FROM tags
+     GROUP BY tag
+     ORDER BY MAX(start_time) DESC`,
+  )
+
+  return result.rows
+    .filter((row) => isProgrammaticTag(row.tag))
+    .map((row) => ({
+      count: parseInt(row.count, 10),
+      latestTime: new Date(row.latest_time),
+      tagKey: row.tag,
+    }))
+}
+
+/**
+ * @deprecated Use getProgrammaticTags instead. This function is kept for backward compatibility
+ * but now queries the tags table instead of raw_records.
  */
 export const getOuraTagTypeCodes = async (
   user: string,
 ): Promise<{ tagTypeCode: string; count: number; latestTime: Date }[]> => {
-  const result = await query(
-    user,
-    `SELECT
-       data->>'tag_type_code' as tag_type_code,
-       COUNT(*) as count,
-       MAX(recorded_at) as latest_time
-     FROM raw_records
-     WHERE record_type = 'enhanced_tag'
-       AND data->>'tag_type_code' IS NOT NULL
-       AND data->>'tag_type_code' != ''
-     GROUP BY data->>'tag_type_code'
-     ORDER BY MAX(recorded_at) DESC`,
-  )
-  return result.rows.map((row) => ({
-    count: parseInt(row.count, 10),
-    latestTime: new Date(row.latest_time),
-    tagTypeCode: row.tag_type_code,
-  }))
+  const programmaticTags = await getProgrammaticTags(user)
+  // For backward compatibility, only return UUID-formatted tags
+  return programmaticTags
+    .filter((t) => UUID_PATTERN.test(t.tagKey))
+    .map((t) => ({
+      count: t.count,
+      latestTime: t.latestTime,
+      tagTypeCode: t.tagKey,
+    }))
 }
 
 // ============================================================================
