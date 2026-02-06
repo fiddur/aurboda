@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { useEffect, useRef, useState } from 'preact/hooks'
+import { TagPicker } from '../../components/TagPicker'
 import { fetchTrend, type FetchTrendParams, type TrendDisplayPeriod, type TrendResult } from '../../state/api'
 import { auth } from '../../state/auth'
 import {
@@ -231,15 +232,24 @@ function TrendConfigForm({
             <option value="metric">Metric</option>
           </select>
         </label>
-        <label class="pattern-input">
-          {sourceType === 'tag' ? 'Tag Pattern (regex)' : 'Metric Name'}
-          <input
-            type="text"
-            value={pattern}
-            onInput={(e) => setPattern((e.target as HTMLInputElement).value)}
-            placeholder={sourceType === 'tag' ? 'e.g., coffee|caffeine' : 'e.g., weight'}
-          />
-        </label>
+        {sourceType === 'tag' ?
+          <label class="pattern-input">
+            Tags
+            <TagPicker
+              selectedTags={pattern ? pattern.split('|').filter(Boolean) : []}
+              onChange={(tags) => setPattern(tags.join('|'))}
+            />
+          </label>
+        : <label class="pattern-input">
+            Metric Name
+            <input
+              type="text"
+              value={pattern}
+              onInput={(e) => setPattern((e.target as HTMLInputElement).value)}
+              placeholder="e.g., weight"
+            />
+          </label>
+        }
       </div>
 
       <div class="form-row">
