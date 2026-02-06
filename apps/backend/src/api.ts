@@ -48,7 +48,6 @@ import {
   type LocationsResponse,
   type LoginResponse,
   type NamedLocationsResponse,
-  type OuraTagCodesResponse,
   type PeriodSummaryQuery,
   periodSummaryQuerySchema,
   type PeriodSummaryResponse,
@@ -89,7 +88,6 @@ import { createAuth } from './auth'
 import {
   getAllSyncStates,
   getDetectedLocationById,
-  getOuraTagTypeCodes,
   getProgrammaticTags,
   getDetectedLocations as getStoredDetectedLocations,
   getUniqueTags,
@@ -550,28 +548,6 @@ const main = async () => {
     res.json({ data: tags, success: true })
   })
 
-  // GET /tags/oura-codes - Get all Oura tag type codes with their current mappings
-  // NOTE: This endpoint now uses getProgrammaticTags but filters to UUIDs for backward compatibility
-  httpd.get<Record<string, never>, OuraTagCodesResponse>(
-    '/tags/oura-codes',
-    authMiddleware,
-    async (req, res) => {
-      const user = req.user!
-      const codes = await getOuraTagTypeCodes(user)
-      const settings = await getUserSettings(user)
-      const mappings = settings?.tagMappings ?? {}
-
-      const data = codes.map((code) => ({
-        count: code.count,
-        currentName: mappings[code.tagTypeCode] ?? null,
-        latestTime: code.latestTime.toISOString(),
-        tagTypeCode: code.tagTypeCode,
-      }))
-
-      res.json({ data, success: true })
-    },
-  )
-
   // GET /tags/programmatic - Get all programmatic tags (UUIDs, tag_* prefixes) with their current mappings
   httpd.get<Record<string, never>, ProgrammaticTagsResponse>(
     '/tags/programmatic',
@@ -594,26 +570,17 @@ const main = async () => {
   )
 
   // POST /tags/mapping - Set a tag mapping
-  // Supports both tagKey (new) and tagTypeCode (backward compatible)
   httpd.post<Record<string, never>, SetTagMappingResponse, SetTagMappingBody>(
     '/tags/mapping',
     authMiddleware,
     validateBody(setTagMappingBodySchema),
     async (req, res) => {
-      const { tagTypeCode, tagKey, name } = req.body
-      const key = tagKey ?? tagTypeCode
-      if (!key) {
-        // This should never be reached due to Zod refine validation, but kept for safety
-        res
-          .status(400)
-          .json({ error: 'Either tagKey or tagTypeCode must be provided', mapping: {}, success: false })
-        return
-      }
+      const { tagKey, name } = req.body
       const user = req.user!
 
       const settings = await getUserSettings(user)
       const currentMappings = settings?.tagMappings ?? {}
-      const newMappings = { ...currentMappings, [key]: name }
+      const newMappings = { ...currentMappings, [tagKey]: name }
 
       await upsertUserSettings(user, { tagMappings: newMappings })
 

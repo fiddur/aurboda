@@ -27,8 +27,6 @@ import type {
   LocationsResponse,
   NamedLocation,
   NamedLocationsResponse,
-  OuraTagCodesResponse,
-  OuraTagTypeCode,
   PeriodMetricStats,
   PeriodSummaryQuery,
   PeriodSummaryResponse,
@@ -107,7 +105,6 @@ export type {
   HrZoneThresholds,
   LocationCorrelation,
   NamedLocation,
-  OuraTagTypeCode,
   PeriodMetricStats,
   ProductivityCorrelation,
   TagCorrelation,
@@ -342,17 +339,6 @@ export const updateUserSettings = async (params: UpdateSettingsInput): Promise<U
 export const fetchUniqueTags = async (): Promise<string[]> => {
   const { token } = auth.value
   const response = await axios.get<UniqueTagsResponse>(`${API_URL}/tags/unique`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-
-  return response.data.data ?? []
-}
-
-// Fetch Oura tag type codes with their current mappings
-// @deprecated Use fetchProgrammaticTags instead
-export const fetchOuraTagCodes = async (): Promise<OuraTagTypeCode[]> => {
-  const { token } = auth.value
-  const response = await axios.get<OuraTagCodesResponse>(`${API_URL}/tags/oura-codes`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 

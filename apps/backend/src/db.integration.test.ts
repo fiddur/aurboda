@@ -15,7 +15,6 @@ import {
   getDailyAggregateValue,
   getMcpSession,
   getMcpSessionsForUser,
-  getOuraTagTypeCodes,
   getProgrammaticTags,
   getSleepSessions,
   getTags,
@@ -1045,31 +1044,6 @@ describe('Database Integration Tests', () => {
 
       expect(tags).toHaveLength(1)
       expect(tags[0].tagKey).toBe(uuid)
-    })
-  })
-
-  describe('getOuraTagTypeCodes (backward compatibility)', () => {
-    test('returns only UUID tags from tags table', async () => {
-      const user = getTestUser()
-      const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
-
-      await insertTag(user, {
-        externalId: 'tag-1',
-        source: 'oura',
-        startTime: new Date('2024-01-15T10:00:00Z'),
-        tag: uuid,
-      })
-      await insertTag(user, {
-        externalId: 'tag-2',
-        source: 'oura',
-        startTime: new Date('2024-01-15T11:00:00Z'),
-        tag: 'tag_generic_coffee', // tag_* prefix, not UUID
-      })
-
-      const codes = await getOuraTagTypeCodes(user)
-
-      expect(codes).toHaveLength(1)
-      expect(codes[0].tagTypeCode).toBe(uuid)
     })
   })
 

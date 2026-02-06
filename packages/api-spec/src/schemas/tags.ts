@@ -147,48 +147,12 @@ export const programmaticTagsResponseSchema = baseResponseSchema
 export type ProgrammaticTagsResponse = z.infer<typeof programmaticTagsResponseSchema>
 
 /**
- * @deprecated Use programmaticTagSchema instead
- * Oura tag type code info - kept for backward compatibility.
- */
-export const ouraTagTypeCodeSchema = z
-  .object({
-    count: z.number().int().meta({ description: 'Number of occurrences' }),
-    currentName: z.string().nullable().meta({ description: 'Current mapped name (null if unmapped)' }),
-    latestTime: iso8601DateTimeSchema.meta({ description: 'Most recent occurrence' }),
-    tagTypeCode: z.string().uuid().meta({ description: 'Oura tag type code UUID' }),
-  })
-  .meta({ id: 'OuraTagTypeCode' })
-
-export type OuraTagTypeCode = z.infer<typeof ouraTagTypeCodeSchema>
-
-/**
- * @deprecated Use programmaticTagsResponseSchema instead
- * Oura tag codes response schema - kept for backward compatibility.
- */
-export const ouraTagCodesResponseSchema = baseResponseSchema
-  .extend({
-    data: z.array(ouraTagTypeCodeSchema).meta({ description: 'List of Oura tag type codes' }),
-  })
-  .meta({ id: 'OuraTagCodesResponse' })
-
-export type OuraTagCodesResponse = z.infer<typeof ouraTagCodesResponseSchema>
-
-/**
  * Set tag mapping body schema.
- * Supports both UUID tag type codes and other programmatic tag keys.
  */
 export const setTagMappingBodySchema = z
   .object({
     name: z.string().min(1).meta({ description: 'Display name for the tag' }),
-    tagKey: z.string().min(1).optional().meta({ description: 'The programmatic tag identifier to map' }),
-    tagTypeCode: z
-      .string()
-      .uuid()
-      .optional()
-      .meta({ description: '@deprecated Use tagKey. Oura tag type code UUID' }),
-  })
-  .refine((data) => data.tagKey || data.tagTypeCode, {
-    message: 'Either tagKey or tagTypeCode must be provided',
+    tagKey: z.string().min(1).meta({ description: 'The programmatic tag identifier to map' }),
   })
   .meta({ id: 'SetTagMappingBody' })
 

@@ -1174,24 +1174,6 @@ export const getProgrammaticTags = async (
     }))
 }
 
-/**
- * @deprecated Use getProgrammaticTags instead. This function is kept for backward compatibility
- * but now queries the tags table instead of raw_records.
- */
-export const getOuraTagTypeCodes = async (
-  user: string,
-): Promise<{ tagTypeCode: string; count: number; latestTime: Date }[]> => {
-  const programmaticTags = await getProgrammaticTags(user)
-  // For backward compatibility, only return UUID-formatted tags
-  return programmaticTags
-    .filter((t) => UUID_PATTERN.test(t.tagKey))
-    .map((t) => ({
-      count: t.count,
-      latestTime: t.latestTime,
-      tagTypeCode: t.tagKey,
-    }))
-}
-
 // ============================================================================
 // Productivity (RescueTime)
 // ============================================================================

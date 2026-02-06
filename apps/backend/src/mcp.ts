@@ -23,7 +23,6 @@ import { z } from 'zod'
 import { Auth } from './auth'
 import {
   getAllSyncStates,
-  getOuraTagTypeCodes,
   getProgrammaticTags,
   getDetectedLocations as getStoredDetectedLocations,
   getUniqueTags,
@@ -594,53 +593,6 @@ export function createMcpRouter(
       },
     )
 
-    // Tool: get_oura_tag_codes
-    // Note: This now uses getProgrammaticTags but filters to UUIDs for backward compatibility
-    server.tool(
-      'get_oura_tag_codes',
-      'Get all Oura tag type codes (UUIDs) with their current mapped names. Use this to identify tags that need naming. Tags without a currentName are unmapped and will show as their UUID.',
-      {},
-      async () => {
-        const codes = await getOuraTagTypeCodes(user)
-        const settings = await getUserSettings(user)
-        const mappings = settings?.tagMappings ?? {}
-
-        const data = codes.map((code) => ({
-          count: code.count,
-          currentName: mappings[code.tagTypeCode] ?? null,
-          latestTime: code.latestTime.toISOString(),
-          tagTypeCode: code.tagTypeCode,
-        }))
-
-        return jsonResponse({ data, success: true })
-      },
-    )
-
-    // Tool: set_tag_mapping
-    server.tool(
-      'set_tag_mapping',
-      'Set a display name for an Oura tag type code (UUID). Use this after get_oura_tag_codes to name unmapped tags.',
-      {
-        name: z.string().min(1).describe('Display name for the tag'),
-        tag_type_code: z.string().uuid().describe('Oura tag type code UUID'),
-      },
-      async ({ name, tag_type_code }) => {
-        const settings = await getUserSettings(user)
-        const currentMappings = settings?.tagMappings ?? {}
-        const newMappings = { ...currentMappings, [tag_type_code]: name }
-
-        await upsertUserSettings(user, { tagMappings: newMappings })
-
-        return jsonResponse({ mapping: newMappings, success: true })
-      },
-    )
-
-    // Tool: get_tag_mappings
-    server.tool('get_tag_mappings', 'Get all current tag mappings (UUID -> display name).', {}, async () => {
-      const settings = await getUserSettings(user)
-      return jsonResponse({ mappings: settings?.tagMappings ?? {}, success: true })
-    })
-
     // Tool: get_programmatic_tags
     server.tool(
       'get_programmatic_tags',
@@ -662,9 +614,9 @@ export function createMcpRouter(
       },
     )
 
-    // Tool: set_programmatic_tag_mapping
+    // Tool: set_tag_mapping
     server.tool(
-      'set_programmatic_tag_mapping',
+      'set_tag_mapping',
       'Set a display name for a programmatic tag (UUID, tag_* prefix, etc.). Use after get_programmatic_tags to name unmapped tags.',
       {
         name: z.string().min(1).describe('Display name for the tag'),
@@ -678,6 +630,17 @@ export function createMcpRouter(
         await upsertUserSettings(user, { tagMappings: newMappings })
 
         return jsonResponse({ mapping: newMappings, success: true })
+      },
+    )
+
+    // Tool: get_tag_mappings
+    server.tool(
+      'get_tag_mappings',
+      'Get all current tag mappings (tag key -> display name).',
+      {},
+      async () => {
+        const settings = await getUserSettings(user)
+        return jsonResponse({ mappings: settings?.tagMappings ?? {}, success: true })
       },
     )
 
