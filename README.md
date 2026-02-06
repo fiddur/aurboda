@@ -1,9 +1,7 @@
 Aurboda - Self Quantification Aggregator
 ========================================
 
-Backend [![Backend Coverage](https://codecov.io/gh/fiddur/aurboda/graph/badge.svg?flag=backend)](https://codecov.io/gh/fiddur/aurboda)
-Web [![Web Coverage](https://codecov.io/gh/fiddur/aurboda/graph/badge.svg?flag=web)](https://codecov.io/gh/fiddur/aurboda)
-Android [![Android Coverage](https://codecov.io/gh/fiddur/aurboda/graph/badge.svg?flag=android)](https://codecov.io/gh/fiddur/aurboda)
+[![Backend Coverage](https://codecov.io/gh/fiddur/aurboda/graph/badge.svg?flag=backend)](https://codecov.io/gh/fiddur/aurboda)
 
 Your health data is scattered across apps and services. Aurboda aggregates it into one place, provides visualizations, and exposes it to AI assistants via MCP (Model Context Protocol).
 

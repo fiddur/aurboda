@@ -40,6 +40,9 @@ export function Header() {
               </a>
             )}
             <span class="spacer" />
+            <a href="/help" class={url == '/help' ? 'active help-link' : 'help-link'}>
+              Help
+            </a>
             <a href="/settings" class={url == '/settings' ? 'active user-link' : 'user-link'}>
               {auth.value.user}
             </a>

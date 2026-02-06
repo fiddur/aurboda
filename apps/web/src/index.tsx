@@ -7,6 +7,7 @@ import { Header } from './components/Header.jsx'
 import { AdminSettings } from './pages/AdminSettings/index.jsx'
 import { Correlations } from './pages/Correlations/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
+import { Help } from './pages/Help/index.jsx'
 import { Home } from './pages/Home/index.jsx'
 import { HrZones } from './pages/HrZones/index.jsx'
 import { Login } from './pages/Login/index.jsx'
@@ -39,6 +40,7 @@ export function App() {
             <Route path="/places" component={Places} />
             <Route path="/settings" component={Settings} />
             <Route path="/admin" component={AdminSettings} />
+            <Route path="/help" component={Help} />
             <Route default component={NotFound} />
           </Router>
         </main>
