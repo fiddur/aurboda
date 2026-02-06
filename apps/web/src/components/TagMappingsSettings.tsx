@@ -1,8 +1,21 @@
+import type { ProgrammaticTag } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
-import { fetchOuraTagCodes, setTagMapping, type OuraTagTypeCode } from '../state/api'
+import { fetchProgrammaticTags, setTagMapping } from '../state/api'
 
 import './TagMappingsSettings.css'
+
+// Helper to check if a string is a UUID
+const isUuid = (str: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
+
+// Format tag key for display - show truncated UUID or the key itself
+const formatTagKey = (tagKey: string): string => {
+  if (isUuid(tagKey)) {
+    return `${tagKey.slice(0, 8)}...`
+  }
+  return tagKey
+}
 
 export function TagMappingsSettings() {
   const queryClient = useQueryClient()
@@ -10,17 +23,16 @@ export function TagMappingsSettings() {
     status: 'idle',
   })
 
-  const { data: tagCodes, isLoading } = useQuery({
-    queryFn: fetchOuraTagCodes,
-    queryKey: ['ouraTagCodes'],
+  const { data: tags, isLoading } = useQuery({
+    queryFn: fetchProgrammaticTags,
+    queryKey: ['programmaticTags'],
   })
 
   // Local state for editing
   const [localMappings, setLocalMappings] = useState<Map<string, string>>(new Map())
 
   const mutation = useMutation({
-    mutationFn: ({ tagTypeCode, name }: { tagTypeCode: string; name: string }) =>
-      setTagMapping(tagTypeCode, name),
+    mutationFn: ({ tagKey, name }: { tagKey: string; name: string }) => setTagMapping(tagKey, name),
     onError: () => {
       setSaveStatus({ status: 'idle' })
     },
@@ -28,23 +40,23 @@ export function TagMappingsSettings() {
       setSaveStatus({ status: 'saving' })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ouraTagCodes'] })
+      queryClient.invalidateQueries({ queryKey: ['programmaticTags'] })
       queryClient.invalidateQueries({ queryKey: ['userSettings'] })
       setSaveStatus({ status: 'saved', time: new Date() })
     },
   })
 
-  const handleNameChange = (tagTypeCode: string, value: string) => {
+  const handleNameChange = (tagKey: string, value: string) => {
     setLocalMappings((prev) => {
       const next = new Map(prev)
-      next.set(tagTypeCode, value)
+      next.set(tagKey, value)
       return next
     })
   }
 
-  const handleNameBlur = (tagCode: OuraTagTypeCode) => {
-    const localValue = localMappings.get(tagCode.tagTypeCode)
-    const serverValue = tagCode.currentName ?? ''
+  const handleNameBlur = (tag: ProgrammaticTag) => {
+    const localValue = localMappings.get(tag.tagKey)
+    const serverValue = tag.currentName ?? ''
 
     // If no local changes or value is the same, skip
     if (localValue === undefined || localValue === serverValue) {
@@ -56,18 +68,18 @@ export function TagMappingsSettings() {
       return
     }
 
-    mutation.mutate({ name: localValue.trim(), tagTypeCode: tagCode.tagTypeCode })
+    mutation.mutate({ name: localValue.trim(), tagKey: tag.tagKey })
 
     // Clear local state after save
     setLocalMappings((prev) => {
       const next = new Map(prev)
-      next.delete(tagCode.tagTypeCode)
+      next.delete(tag.tagKey)
       return next
     })
   }
 
-  const getValue = (tagCode: OuraTagTypeCode): string => {
-    return localMappings.get(tagCode.tagTypeCode) ?? tagCode.currentName ?? ''
+  const getValue = (tag: ProgrammaticTag): string => {
+    return localMappings.get(tag.tagKey) ?? tag.currentName ?? ''
   }
 
   const formatLatestTime = (isoTime: string): string => {
@@ -101,7 +113,7 @@ export function TagMappingsSettings() {
     )
   }
 
-  const unmappedCount = tagCodes?.filter((t) => !t.currentName).length ?? 0
+  const unmappedCount = tags?.filter((t) => !t.currentName).length ?? 0
 
   return (
     <section class="settings-section tag-mappings-section">
@@ -111,8 +123,8 @@ export function TagMappingsSettings() {
       </div>
 
       <p class="section-description">
-        Set display names for Oura tags. Tags without names will show as their UUID. Changes save
-        automatically.
+        Set display names for programmatic tags (UUIDs, tag_* prefixes). Tags without names will show their
+        raw identifier. Changes save automatically.
       </p>
 
       {saveStatus.status === 'saving' && <p class="save-status saving">Saving...</p>}
@@ -125,45 +137,35 @@ export function TagMappingsSettings() {
         </p>
       )}
 
-      {!tagCodes || tagCodes.length === 0 ?
-        <p class="no-tags">
-          No Oura tags found. Tags will appear here after you sync data from your Oura ring.
-        </p>
+      {!tags || tags.length === 0 ?
+        <p class="no-tags">No programmatic tags found. Tags will appear here after syncing data.</p>
       : <div class="tag-mappings-list">
-          {tagCodes.map((tagCode) => {
-            const isUnmapped = !tagCode.currentName
+          {tags.map((tag) => {
+            const isUnmapped = !tag.currentName
             return (
-              <div class={`tag-mapping-row ${isUnmapped ? 'unmapped' : ''}`} key={tagCode.tagTypeCode}>
+              <div class={`tag-mapping-row ${isUnmapped ? 'unmapped' : ''}`} key={tag.tagKey}>
                 <div class="tag-info">
-                  <span
-                    class="tag-count"
-                    title={`Used ${tagCode.count} time${tagCode.count !== 1 ? 's' : ''}`}
-                  >
-                    {tagCode.count}x
+                  <span class="tag-count" title={`Used ${tag.count} time${tag.count !== 1 ? 's' : ''}`}>
+                    {tag.count}x
                   </span>
-                  <span
-                    class="tag-latest"
-                    title={`Last used: ${new Date(tagCode.latestTime).toLocaleString()}`}
-                  >
-                    {formatLatestTime(tagCode.latestTime)}
+                  <span class="tag-latest" title={`Last used: ${new Date(tag.latestTime).toLocaleString()}`}>
+                    {formatLatestTime(tag.latestTime)}
                   </span>
                 </div>
 
                 <div class="tag-name-field">
                   <input
                     type="text"
-                    value={getValue(tagCode)}
-                    onInput={(e) =>
-                      handleNameChange(tagCode.tagTypeCode, (e.target as HTMLInputElement).value)
-                    }
-                    onBlur={() => handleNameBlur(tagCode)}
+                    value={getValue(tag)}
+                    onInput={(e) => handleNameChange(tag.tagKey, (e.target as HTMLInputElement).value)}
+                    onBlur={() => handleNameBlur(tag)}
                     placeholder="Enter tag name..."
                     class={isUnmapped ? 'unmapped' : ''}
                   />
                 </div>
 
-                <div class="tag-uuid" title={tagCode.tagTypeCode}>
-                  {tagCode.tagTypeCode.slice(0, 8)}...
+                <div class="tag-uuid" title={tag.tagKey}>
+                  {formatTagKey(tag.tagKey)}
                 </div>
               </div>
             )

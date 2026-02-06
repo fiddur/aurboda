@@ -48,13 +48,13 @@ import {
   type LocationsResponse,
   type LoginResponse,
   type NamedLocationsResponse,
-  type OuraTagCodesResponse,
   type PeriodSummaryQuery,
   periodSummaryQuerySchema,
   type PeriodSummaryResponse,
   type ProductivityQuery,
   productivityQuerySchema,
   type ProductivityResponse,
+  type ProgrammaticTagsResponse,
   type PromoteDetectedLocationBody,
   promoteDetectedLocationBodySchema,
   type QueryMetricsQuery,
@@ -88,7 +88,7 @@ import { createAuth } from './auth'
 import {
   getAllSyncStates,
   getDetectedLocationById,
-  getOuraTagTypeCodes,
+  getProgrammaticTags,
   getDetectedLocations as getStoredDetectedLocations,
   getUniqueTags,
   getUserSettings,
@@ -548,21 +548,21 @@ const main = async () => {
     res.json({ data: tags, success: true })
   })
 
-  // GET /tags/oura-codes - Get all Oura tag type codes with their current mappings
-  httpd.get<Record<string, never>, OuraTagCodesResponse>(
-    '/tags/oura-codes',
+  // GET /tags/programmatic - Get all programmatic tags (UUIDs, tag_* prefixes) with their current mappings
+  httpd.get<Record<string, never>, ProgrammaticTagsResponse>(
+    '/tags/programmatic',
     authMiddleware,
     async (req, res) => {
       const user = req.user!
-      const codes = await getOuraTagTypeCodes(user)
+      const tags = await getProgrammaticTags(user)
       const settings = await getUserSettings(user)
       const mappings = settings?.tagMappings ?? {}
 
-      const data = codes.map((code) => ({
-        count: code.count,
-        currentName: mappings[code.tagTypeCode] ?? null,
-        latestTime: code.latestTime.toISOString(),
-        tagTypeCode: code.tagTypeCode,
+      const data = tags.map((tag) => ({
+        count: tag.count,
+        currentName: mappings[tag.tagKey] ?? null,
+        latestTime: tag.latestTime.toISOString(),
+        tagKey: tag.tagKey,
       }))
 
       res.json({ data, success: true })
@@ -575,12 +575,12 @@ const main = async () => {
     authMiddleware,
     validateBody(setTagMappingBodySchema),
     async (req, res) => {
-      const { tagTypeCode, name } = req.body
+      const { tagKey, name } = req.body
       const user = req.user!
 
       const settings = await getUserSettings(user)
       const currentMappings = settings?.tagMappings ?? {}
-      const newMappings = { ...currentMappings, [tagTypeCode]: name }
+      const newMappings = { ...currentMappings, [tagKey]: name }
 
       await upsertUserSettings(user, { tagMappings: newMappings })
 

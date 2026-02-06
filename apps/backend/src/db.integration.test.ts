@@ -15,16 +15,16 @@ import {
   getDailyAggregateValue,
   getMcpSession,
   getMcpSessionsForUser,
-  getOuraTagTypeCodes,
+  getProgrammaticTags,
   getSleepSessions,
   getTags,
   getTimeSeries,
   getUniqueTags,
   getUserSettings,
   insertActivity,
-  insertRawRecord,
   insertTag,
   insertTimeSeries,
+  isProgrammaticTag,
   processDailyAggregate,
   saveMcpSession,
   touchMcpSession,
@@ -931,90 +931,119 @@ describe('Database Integration Tests', () => {
     })
   })
 
-  describe('getOuraTagTypeCodes', () => {
-    test('returns empty array when no oura tags exist', async () => {
-      const user = getTestUser()
-
-      const codes = await getOuraTagTypeCodes(user)
-
-      expect(codes).toEqual([])
+  describe('isProgrammaticTag', () => {
+    test('returns true for UUID tags', () => {
+      expect(isProgrammaticTag('067e2862-8cf8-4307-a621-0636dd379cda')).toBe(true)
+      expect(isProgrammaticTag('BD6D2689-103B-4AD8-9576-458E0C5325DF')).toBe(true) // uppercase
     })
 
-    test('returns tag type codes with counts from raw_records', async () => {
+    test('returns true for tag_* prefixed tags', () => {
+      expect(isProgrammaticTag('tag_generic_coffee')).toBe(true)
+      expect(isProgrammaticTag('tag_sleep_sauna')).toBe(true)
+      expect(isProgrammaticTag('tag_generic_pain_killer')).toBe(true)
+    })
+
+    test('returns false for regular human-readable tags', () => {
+      expect(isProgrammaticTag('coffee')).toBe(false)
+      expect(isProgrammaticTag('Food')).toBe(false)
+      expect(isProgrammaticTag('Hot Chocolate')).toBe(false)
+      expect(isProgrammaticTag('meditation')).toBe(false)
+    })
+  })
+
+  describe('getProgrammaticTags', () => {
+    test('returns empty array when no tags exist', async () => {
+      const user = getTestUser()
+
+      const tags = await getProgrammaticTags(user)
+
+      expect(tags).toEqual([])
+    })
+
+    test('returns UUID tags with counts from tags table', async () => {
       const user = getTestUser()
       const uuid1 = '067e2862-8cf8-4307-a621-0636dd379cda'
       const uuid2 = '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a'
 
-      // Insert raw records for enhanced_tag type
-      await insertRawRecord(user, {
-        data: { tag_type_code: uuid1 },
-        externalId: 'rec-1',
-        recordType: 'enhanced_tag',
-        recordedAt: new Date('2024-01-15T10:00:00Z'),
+      // Insert tags directly to tags table (simulating how Oura sync stores them)
+      await insertTag(user, {
+        externalId: 'tag-1',
         source: 'oura',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+        tag: uuid1,
       })
-      await insertRawRecord(user, {
-        data: { tag_type_code: uuid1 },
-        externalId: 'rec-2',
-        recordType: 'enhanced_tag',
-        recordedAt: new Date('2024-01-15T11:00:00Z'),
+      await insertTag(user, {
+        externalId: 'tag-2',
         source: 'oura',
+        startTime: new Date('2024-01-15T11:00:00Z'),
+        tag: uuid1, // same tag, counted twice
       })
-      await insertRawRecord(user, {
-        data: { tag_type_code: uuid2 },
-        externalId: 'rec-3',
-        recordType: 'enhanced_tag',
-        recordedAt: new Date('2024-01-15T12:00:00Z'),
+      await insertTag(user, {
+        externalId: 'tag-3',
         source: 'oura',
+        startTime: new Date('2024-01-15T12:00:00Z'),
+        tag: uuid2,
       })
 
-      const codes = await getOuraTagTypeCodes(user)
+      const tags = await getProgrammaticTags(user)
 
-      expect(codes).toHaveLength(2)
+      expect(tags).toHaveLength(2)
       // Sorted by latest time descending
-      expect(codes[0].tagTypeCode).toBe(uuid2)
-      expect(codes[0].count).toBe(1)
-      expect(codes[1].tagTypeCode).toBe(uuid1)
-      expect(codes[1].count).toBe(2)
+      expect(tags[0].tagKey).toBe(uuid2)
+      expect(tags[0].count).toBe(1)
+      expect(tags[1].tagKey).toBe(uuid1)
+      expect(tags[1].count).toBe(2)
     })
 
-    test('excludes records with null or empty tag_type_code', async () => {
+    test('returns tag_* prefixed tags', async () => {
       const user = getTestUser()
-      const validUuid = '067e2862-8cf8-4307-a621-0636dd379cda'
 
-      await insertRawRecord(user, {
-        data: { tag_type_code: validUuid },
-        externalId: 'rec-1',
-        recordType: 'enhanced_tag',
-        recordedAt: new Date('2024-01-15T10:00:00Z'),
+      await insertTag(user, {
+        externalId: 'tag-1',
         source: 'oura',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+        tag: 'tag_generic_coffee',
       })
-      await insertRawRecord(user, {
-        data: { tag_type_code: null },
-        externalId: 'rec-2',
-        recordType: 'enhanced_tag',
-        recordedAt: new Date('2024-01-15T11:00:00Z'),
+      await insertTag(user, {
+        externalId: 'tag-2',
         source: 'oura',
-      })
-      await insertRawRecord(user, {
-        data: { tag_type_code: '' },
-        externalId: 'rec-3',
-        recordType: 'enhanced_tag',
-        recordedAt: new Date('2024-01-15T12:00:00Z'),
-        source: 'oura',
-      })
-      await insertRawRecord(user, {
-        data: {}, // no tag_type_code at all
-        externalId: 'rec-4',
-        recordType: 'enhanced_tag',
-        recordedAt: new Date('2024-01-15T13:00:00Z'),
-        source: 'oura',
+        startTime: new Date('2024-01-15T11:00:00Z'),
+        tag: 'tag_sleep_sauna',
       })
 
-      const codes = await getOuraTagTypeCodes(user)
+      const tags = await getProgrammaticTags(user)
 
-      expect(codes).toHaveLength(1)
-      expect(codes[0].tagTypeCode).toBe(validUuid)
+      expect(tags).toHaveLength(2)
+      expect(tags.map((t) => t.tagKey).sort()).toEqual(['tag_generic_coffee', 'tag_sleep_sauna'])
+    })
+
+    test('excludes regular human-readable tags', async () => {
+      const user = getTestUser()
+      const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
+
+      await insertTag(user, {
+        externalId: 'tag-1',
+        source: 'oura',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+        tag: uuid, // should be included
+      })
+      await insertTag(user, {
+        externalId: 'tag-2',
+        source: 'manual',
+        startTime: new Date('2024-01-15T11:00:00Z'),
+        tag: 'coffee', // should be excluded
+      })
+      await insertTag(user, {
+        externalId: 'tag-3',
+        source: 'manual',
+        startTime: new Date('2024-01-15T12:00:00Z'),
+        tag: 'Food', // should be excluded
+      })
+
+      const tags = await getProgrammaticTags(user)
+
+      expect(tags).toHaveLength(1)
+      expect(tags[0].tagKey).toBe(uuid)
     })
   })
 

@@ -119,29 +119,32 @@ export const uniqueTagsResponseSchema = baseResponseSchema
 export type UniqueTagsResponse = z.infer<typeof uniqueTagsResponseSchema>
 
 /**
- * Oura tag type code info.
+ * Programmatic tag info - tags that look like they need human-readable names.
+ * Includes UUIDs (Oura custom tags), tag_* prefixes (Oura presets), etc.
  */
-export const ouraTagTypeCodeSchema = z
+export const programmaticTagSchema = z
   .object({
     count: z.number().int().meta({ description: 'Number of occurrences' }),
     currentName: z.string().nullable().meta({ description: 'Current mapped name (null if unmapped)' }),
     latestTime: iso8601DateTimeSchema.meta({ description: 'Most recent occurrence' }),
-    tagTypeCode: z.string().uuid().meta({ description: 'Oura tag type code UUID' }),
+    tagKey: z.string().meta({ description: 'The programmatic tag identifier (UUID, tag_* prefix, etc.)' }),
   })
-  .meta({ id: 'OuraTagTypeCode' })
+  .meta({ id: 'ProgrammaticTag' })
 
-export type OuraTagTypeCode = z.infer<typeof ouraTagTypeCodeSchema>
+export type ProgrammaticTag = z.infer<typeof programmaticTagSchema>
 
 /**
- * Oura tag codes response schema.
+ * Programmatic tags response schema.
  */
-export const ouraTagCodesResponseSchema = baseResponseSchema
+export const programmaticTagsResponseSchema = baseResponseSchema
   .extend({
-    data: z.array(ouraTagTypeCodeSchema).meta({ description: 'List of Oura tag type codes' }),
+    data: z
+      .array(programmaticTagSchema)
+      .meta({ description: 'List of programmatic tags that can be mapped' }),
   })
-  .meta({ id: 'OuraTagCodesResponse' })
+  .meta({ id: 'ProgrammaticTagsResponse' })
 
-export type OuraTagCodesResponse = z.infer<typeof ouraTagCodesResponseSchema>
+export type ProgrammaticTagsResponse = z.infer<typeof programmaticTagsResponseSchema>
 
 /**
  * Set tag mapping body schema.
@@ -149,7 +152,7 @@ export type OuraTagCodesResponse = z.infer<typeof ouraTagCodesResponseSchema>
 export const setTagMappingBodySchema = z
   .object({
     name: z.string().min(1).meta({ description: 'Display name for the tag' }),
-    tagTypeCode: z.string().uuid().meta({ description: 'Oura tag type code UUID' }),
+    tagKey: z.string().min(1).meta({ description: 'The programmatic tag identifier to map' }),
   })
   .meta({ id: 'SetTagMappingBody' })
 

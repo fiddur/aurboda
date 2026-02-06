@@ -27,14 +27,14 @@ import type {
   LocationsResponse,
   NamedLocation,
   NamedLocationsResponse,
-  OuraTagCodesResponse,
-  OuraTagTypeCode,
   PeriodMetricStats,
   PeriodSummaryQuery,
   PeriodSummaryResponse,
   ProductivityCorrelation,
   ProductivityQuery,
   ProductivityResponse,
+  ProgrammaticTag,
+  ProgrammaticTagsResponse,
   PromoteDetectedLocationBody,
   QueryMetricsQuery,
   QueryMetricsResponse,
@@ -105,7 +105,6 @@ export type {
   HrZoneThresholds,
   LocationCorrelation,
   NamedLocation,
-  OuraTagTypeCode,
   PeriodMetricStats,
   ProductivityCorrelation,
   TagCorrelation,
@@ -346,10 +345,10 @@ export const fetchUniqueTags = async (): Promise<string[]> => {
   return response.data.data ?? []
 }
 
-// Fetch Oura tag type codes with their current mappings
-export const fetchOuraTagCodes = async (): Promise<OuraTagTypeCode[]> => {
+// Fetch programmatic tags (UUIDs, tag_* prefixes) with their current mappings
+export const fetchProgrammaticTags = async (): Promise<ProgrammaticTag[]> => {
   const { token } = auth.value
-  const response = await axios.get<OuraTagCodesResponse>(`${API_URL}/tags/oura-codes`, {
+  const response = await axios.get<ProgrammaticTagsResponse>(`${API_URL}/tags/programmatic`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 
@@ -357,11 +356,11 @@ export const fetchOuraTagCodes = async (): Promise<OuraTagTypeCode[]> => {
 }
 
 // Set a tag mapping
-export const setTagMapping = async (tagTypeCode: string, name: string): Promise<TagMappings> => {
+export const setTagMapping = async (tagKey: string, name: string): Promise<TagMappings> => {
   const { token } = auth.value
   const response = await axios.post<SetTagMappingResponse>(
     `${API_URL}/tags/mapping`,
-    { name, tagTypeCode },
+    { name, tagKey },
     { headers: { Authorization: `Bearer ${token}` } },
   )
 
