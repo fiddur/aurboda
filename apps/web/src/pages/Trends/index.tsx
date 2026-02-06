@@ -102,14 +102,18 @@ function TrendChart({ data, color }: { data: { date: string; value: number }[]; 
       .attr('r', 3)
       .attr('fill', color)
 
-    // X axis
+    // X axis - show year when date range spans multiple years
+    const dateExtent = d3.extent(parsedData, (d) => d.date) as [Date, Date]
+    const spanYears = dateExtent[1].getFullYear() - dateExtent[0].getFullYear()
+    const dateFormat = spanYears >= 1 ? d3.timeFormat("%b '%y") : d3.timeFormat('%b %d')
+
     g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
       .call(
         d3
           .axisBottom(x)
           .ticks(6)
-          .tickFormat((d) => d3.timeFormat('%b %d')(d as Date)),
+          .tickFormat((d) => dateFormat(d as Date)),
       )
       .selectAll('text')
       .attr('font-size', '11px')
