@@ -479,7 +479,44 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     })
   }
 
-  return visits
+  // Filter out short "unknown" visits (GPS jumps) and merge into adjacent visits
+  return mergeShortUnknownVisits(visits)
+}
+
+/**
+ * Merge short "unknown" (Somewhere) visits into adjacent visits.
+ * Short visits (<5 min) at unknown locations are typically GPS jumps.
+ * They are removed and the previous/next visit is extended to cover the gap.
+ */
+export const mergeShortUnknownVisits = (visits: PlaceVisit[], minDurationMinutes = 5): PlaceVisit[] => {
+  if (visits.length === 0) return visits
+
+  const result: PlaceVisit[] = []
+
+  for (let i = 0; i < visits.length; i++) {
+    const visit = visits[i]
+
+    // Keep non-unknown visits and unknown visits >= minDuration
+    if (visit.source !== 'unknown' || visit.durationMinutes >= minDurationMinutes) {
+      result.push(visit)
+    } else {
+      // Short unknown visit - merge into adjacent visits
+      if (result.length > 0) {
+        // Extend previous visit to cover this gap
+        const prev = result[result.length - 1]
+        prev.endTime = visit.endTime
+        prev.durationMinutes = Math.round((prev.endTime.getTime() - prev.startTime.getTime()) / (1000 * 60))
+      } else if (i + 1 < visits.length) {
+        // No previous visit, extend next visit backwards
+        const next = visits[i + 1]
+        next.startTime = visit.startTime
+        next.durationMinutes = Math.round((next.endTime.getTime() - next.startTime.getTime()) / (1000 * 60))
+      }
+      // If it's the only visit and it's short unknown, we drop it entirely
+    }
+  }
+
+  return result
 }
 
 // Re-export CRUD operations from db
