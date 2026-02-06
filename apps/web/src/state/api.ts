@@ -6,6 +6,7 @@ import type {
   ActivityImpactQuery,
   ActivityImpactResponse,
   ActivityImpactType,
+  AddNamedLocationBody,
   AddNamedLocationResponse,
   Activity as ApiActivity,
   DetectedLocation as ApiDetectedLocation,
@@ -287,6 +288,16 @@ export const promoteDetectedLocation = async (
       headers: { Authorization: `Bearer ${token}` },
     },
   )
+
+  return response.data.data!
+}
+
+// Add a new named location directly
+export const addNamedLocation = async (params: AddNamedLocationBody): Promise<NamedLocation> => {
+  const { token } = auth.value
+  const response = await axios.post<AddNamedLocationResponse>(`${API_URL}/locations/named`, params, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 
   return response.data.data!
 }
