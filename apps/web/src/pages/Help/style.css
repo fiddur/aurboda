@@ -1,0 +1,323 @@
+.help-page {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.help-page .page-header {
+  margin-bottom: 2rem;
+}
+
+.help-page h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.help-page .page-subtitle {
+  color: #4b5563;
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 700px;
+}
+
+.help-page h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 1.5rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #673ab8;
+}
+
+.help-page .loading {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+}
+
+.help-page .login-prompt {
+  color: #6b7280;
+  margin-bottom: 1rem;
+}
+
+.help-page .login-link {
+  display: inline-block;
+  padding: 0.625rem 1.5rem;
+  background: #673ab8;
+  color: #fff;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.help-page .login-link:hover {
+  background: #5b32a3;
+}
+
+/* Data sources section */
+.help-page .data-sources {
+  margin-bottom: 3rem;
+}
+
+.help-page .sources-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+/* Data source card */
+.help-page .data-source-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  transition: box-shadow 0.2s;
+}
+
+.help-page .data-source-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.help-page .data-source-card.has-data {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.help-page .data-source-card.no-data {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.help-page .card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.help-page .card-header h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.help-page .status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
+.help-page .status-icon.connected {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.help-page .status-icon.missing {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.help-page .card-description {
+  font-size: 0.9rem;
+  color: #4b5563;
+  margin: 0 0 1rem 0;
+  line-height: 1.5;
+}
+
+.help-page .setup-section {
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.help-page .setup-section h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 0.75rem 0;
+}
+
+.help-page .setup-steps {
+  margin: 0 0 1rem 0;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+.help-page .setup-steps li {
+  margin-bottom: 0.5rem;
+}
+
+.help-page .links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.help-page .links a {
+  display: inline-block;
+  padding: 0.375rem 0.75rem;
+  background: #673ab8;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.help-page .links a:hover {
+  background: #5b32a3;
+}
+
+/* Quick tips section */
+.help-page .quick-tips {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.help-page .quick-tips h2 {
+  border-bottom: none;
+  margin-bottom: 1rem;
+  padding-bottom: 0;
+}
+
+.help-page .quick-tips ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #4b5563;
+  line-height: 1.7;
+}
+
+.help-page .quick-tips li {
+  margin-bottom: 0.75rem;
+}
+
+.help-page .quick-tips li:last-child {
+  margin-bottom: 0;
+}
+
+.help-page .quick-tips strong {
+  color: #1f2937;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .help-page h1 {
+    color: #f9fafb;
+  }
+
+  .help-page .page-subtitle {
+    color: #9ca3af;
+  }
+
+  .help-page h2 {
+    color: #e5e7eb;
+    border-color: #8b5cf6;
+  }
+
+  .help-page .data-source-card {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .help-page .data-source-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .help-page .data-source-card.has-data {
+    border-color: #166534;
+    background: #052e16;
+  }
+
+  .help-page .data-source-card.no-data {
+    border-color: #854d0e;
+    background: #422006;
+  }
+
+  .help-page .card-header h3 {
+    color: #f9fafb;
+  }
+
+  .help-page .status-icon.connected {
+    background: #166534;
+    color: #4ade80;
+  }
+
+  .help-page .status-icon.missing {
+    background: #854d0e;
+    color: #fbbf24;
+  }
+
+  .help-page .card-description {
+    color: #9ca3af;
+  }
+
+  .help-page .setup-section {
+    border-color: #374151;
+  }
+
+  .help-page .setup-section h4 {
+    color: #e5e7eb;
+  }
+
+  .help-page .setup-steps {
+    color: #9ca3af;
+  }
+
+  .help-page .links a {
+    background: #7c3aed;
+  }
+
+  .help-page .links a:hover {
+    background: #6d28d9;
+  }
+
+  .help-page .quick-tips {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .help-page .quick-tips ul {
+    color: #9ca3af;
+  }
+
+  .help-page .quick-tips strong {
+    color: #f9fafb;
+  }
+
+  .help-page .login-prompt {
+    color: #9ca3af;
+  }
+}
+
+/* Responsive */
+@media (max-width: 800px) {
+  .help-page .sources-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 639px) {
+  .help-page {
+    padding: 1rem;
+  }
+
+  .help-page h1 {
+    font-size: 1.5rem;
+  }
+
+  .help-page .page-subtitle {
+    font-size: 0.9rem;
+  }
+}

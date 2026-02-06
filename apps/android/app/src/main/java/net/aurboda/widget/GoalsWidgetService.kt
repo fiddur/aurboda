@@ -137,11 +137,16 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
         if (goal.min != null && goal.max != null && goal.max > 0) {
             val minPercent = (goal.min / goal.max).toFloat()
             views.setViewVisibility(R.id.min_marker, View.VISIBLE)
+            // COMPLEX_UNIT_FRACTION_PARENT doesn't work correctly in RemoteViews
+            // Calculate an approximate dp position based on typical widget width
+            // (widget width ~280dp minus padding, progress bar takes full width)
+            val estimatedProgressBarWidthDp = 260f
+            val markerPositionDp = minPercent * estimatedProgressBarWidthDp
             views.setViewLayoutMargin(
                 R.id.min_marker,
                 RemoteViews.MARGIN_START,
-                minPercent,
-                TypedValue.COMPLEX_UNIT_FRACTION_PARENT
+                markerPositionDp,
+                TypedValue.COMPLEX_UNIT_DIP
             )
         } else {
             views.setViewVisibility(R.id.min_marker, View.GONE)

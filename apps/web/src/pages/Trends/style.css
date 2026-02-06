@@ -17,9 +17,13 @@
 }
 
 .page-description {
-  color: #6b7280;
+  color: #4b5563;
   font-size: 0.9rem;
-  line-height: 1.5;
+  line-height: 1.6;
+  background: #f9fafb;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border-left: 3px solid #673ab8;
 }
 
 .saved-trends {
@@ -410,7 +414,9 @@
   }
 
   .page-description {
-    color: #9ca3af;
+    color: #d1d5db;
+    background: #1f2937;
+    border-color: #7c3aed;
   }
 
   .section-header h2 {
