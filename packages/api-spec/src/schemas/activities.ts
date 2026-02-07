@@ -211,3 +211,58 @@ export const addActivityResponseSchema = baseResponseSchema
   .meta({ id: 'AddActivityResponse' })
 
 export type AddActivityResponse = z.infer<typeof addActivityResponseSchema>
+
+/**
+ * Delete activity params.
+ */
+export const deleteActivityParamsSchema = z
+  .object({
+    id: z.string().uuid().meta({ description: 'ID of the activity to delete' }),
+  })
+  .meta({ id: 'DeleteActivityParams' })
+
+export type DeleteActivityParams = z.infer<typeof deleteActivityParamsSchema>
+
+/**
+ * Delete activity response.
+ */
+export const deleteActivityResponseSchema = baseResponseSchema.meta({ id: 'DeleteActivityResponse' })
+
+export type DeleteActivityResponse = z.infer<typeof deleteActivityResponseSchema>
+
+/**
+ * Update activity request body schema.
+ * All fields are optional - only provided fields will be updated.
+ */
+export const updateActivityBodySchema = z
+  .object({
+    end_time: iso8601DateTimeSchema.optional().meta({ description: 'New end time of the activity' }),
+    notes: z.string().optional().meta({ description: 'New activity notes' }),
+    start_time: iso8601DateTimeSchema.optional().meta({ description: 'New start time of the activity' }),
+    title: z.string().optional().meta({ description: 'New activity title' }),
+  })
+  .meta({ id: 'UpdateActivityBody' })
+
+export type UpdateActivityBody = z.infer<typeof updateActivityBodySchema>
+
+/**
+ * Update activity params.
+ */
+export const updateActivityParamsSchema = z
+  .object({
+    id: z.string().uuid().meta({ description: 'ID of the activity to update' }),
+  })
+  .meta({ id: 'UpdateActivityParams' })
+
+export type UpdateActivityParams = z.infer<typeof updateActivityParamsSchema>
+
+/**
+ * Update activity response schema.
+ */
+export const updateActivityResponseSchema = baseResponseSchema
+  .extend({
+    data: addedActivitySchema.optional(),
+  })
+  .meta({ id: 'UpdateActivityResponse' })
+
+export type UpdateActivityResponse = z.infer<typeof updateActivityResponseSchema>

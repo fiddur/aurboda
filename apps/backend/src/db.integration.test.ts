@@ -8,10 +8,12 @@
 import { randomUUID } from 'crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
+  deleteActivity,
   deleteMcpSession,
   deleteTag,
   findMergeableTag,
   getActivities,
+  getActivityById,
   getDailyAggregateValue,
   getMcpSession,
   getMcpSessionsForUser,
@@ -29,6 +31,7 @@ import {
   processDailyAggregate,
   saveMcpSession,
   touchMcpSession,
+  updateActivity,
   updateTagEndTime,
   upsertUserSettings,
 } from './db'
@@ -995,6 +998,143 @@ describe('Database Integration Tests', () => {
 
       expect(sessions).toHaveLength(1)
       expect(sessions[0].activityType).toBe('sleep')
+    })
+  })
+
+  describe('getActivityById', () => {
+    test('retrieves activity by ID', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activityType: 'exercise',
+        endTime: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'manual',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+        title: 'Morning run',
+      })
+
+      const activity = await getActivityById(user, activityId)
+
+      expect(activity).not.toBeNull()
+      expect(activity?.id).toBe(activityId)
+      expect(activity?.activityType).toBe('exercise')
+      expect(activity?.title).toBe('Morning run')
+    })
+
+    test('returns null for non-existent activity', async () => {
+      const user = getTestUser()
+      const nonExistentId = randomUUID()
+
+      const activity = await getActivityById(user, nonExistentId)
+
+      expect(activity).toBeNull()
+    })
+  })
+
+  describe('deleteActivity', () => {
+    test('deletes activity and returns true when found', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activityType: 'exercise',
+        endTime: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'manual',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const result = await deleteActivity(user, activityId)
+      expect(result).toBe(true)
+
+      const activity = await getActivityById(user, activityId)
+      expect(activity).toBeNull()
+    })
+
+    test('returns false when activity not found', async () => {
+      const user = getTestUser()
+      const nonExistentId = randomUUID()
+
+      const result = await deleteActivity(user, nonExistentId)
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('updateActivity', () => {
+    test('updates activity times', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activityType: 'exercise',
+        endTime: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'manual',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const updated = await updateActivity(user, activityId, {
+        endTime: new Date('2024-01-15T12:00:00Z'),
+        startTime: new Date('2024-01-15T09:00:00Z'),
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated?.startTime).toEqual(new Date('2024-01-15T09:00:00Z'))
+      expect(updated?.endTime).toEqual(new Date('2024-01-15T12:00:00Z'))
+    })
+
+    test('updates activity title and notes', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activityType: 'exercise',
+        endTime: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'manual',
+        startTime: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const updated = await updateActivity(user, activityId, {
+        notes: 'Felt great!',
+        title: 'Morning workout',
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated?.title).toBe('Morning workout')
+      expect(updated?.notes).toBe('Felt great!')
+    })
+
+    test('returns null when activity not found', async () => {
+      const user = getTestUser()
+      const nonExistentId = randomUUID()
+
+      const updated = await updateActivity(user, nonExistentId, {
+        title: 'New title',
+      })
+
+      expect(updated).toBeNull()
+    })
+
+    test('returns existing activity when no updates provided', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activityType: 'meditation',
+        endTime: new Date('2024-01-15T08:00:00Z'),
+        id: activityId,
+        source: 'manual',
+        startTime: new Date('2024-01-15T07:30:00Z'),
+        title: 'Morning meditation',
+      })
+
+      const updated = await updateActivity(user, activityId, {})
+
+      expect(updated).not.toBeNull()
+      expect(updated?.title).toBe('Morning meditation')
     })
   })
 

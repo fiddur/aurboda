@@ -51,7 +51,14 @@ import {
   insertNamedLocation,
   updateNamedLocation,
 } from './services/locations'
-import { addActivity, addMetric, addTag, deleteTag } from './services/mutations'
+import {
+  addActivity,
+  addMetric,
+  addTag,
+  deleteActivity,
+  deleteTag,
+  updateActivity,
+} from './services/mutations'
 import {
   BucketSize,
   getDailySummary,
@@ -468,6 +475,46 @@ Use cases:
 
         if (!result.success) {
           return errorResponse(result.error ?? 'Failed to add activity')
+        }
+
+        return jsonResponse(result)
+      },
+    )
+
+    // Tool: delete_activity
+    server.tool(
+      'delete_activity',
+      'Delete an activity by its ID. Returns success if the activity was found and deleted.',
+      {
+        id: z.string().uuid().describe('The ID of the activity to delete'),
+      },
+      async ({ id }) => {
+        const result = await deleteActivity(user, id)
+        return jsonResponse(result)
+      },
+    )
+
+    // Tool: update_activity
+    server.tool(
+      'update_activity',
+      'Update an existing activity. Can modify start_time, end_time, title, and notes. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
+      {
+        end_time: endDateTimeQuerySchema.optional().describe('New end time in ISO 8601 format'),
+        id: z.string().uuid().describe('The ID of the activity to update'),
+        notes: z.string().optional().describe('New activity notes'),
+        start_time: startDateTimeQuerySchema.optional().describe('New start time in ISO 8601 format'),
+        title: z.string().optional().describe('New activity title'),
+      },
+      async ({ id, start_time, end_time, title, notes }) => {
+        const result = await updateActivity(user, id, {
+          endTime: end_time ? new Date(end_time) : undefined,
+          notes,
+          startTime: start_time ? new Date(start_time) : undefined,
+          title,
+        })
+
+        if (!result.success) {
+          return errorResponse(result.error ?? 'Failed to update activity')
         }
 
         return jsonResponse(result)
