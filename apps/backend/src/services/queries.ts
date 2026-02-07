@@ -13,6 +13,7 @@ import {
   getSleepSessions,
   getTags,
   getTimeSeries,
+  getTimeSeriesBucketed,
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
 } from '../db'
@@ -45,6 +46,40 @@ export interface QueryMetricsResult {
   unit: string
   count: number
   data: MetricDataPoint[]
+}
+
+/**
+ * Valid bucket sizes for bucketed metrics queries.
+ */
+export type BucketSize = '5m' | '15m' | '30m' | '1h' | '1d'
+
+/**
+ * Bucket statistics for a single metric.
+ */
+export interface BucketMetricStats {
+  avg: number
+  min: number
+  max: number
+  count: number
+}
+
+/**
+ * A single time bucket with aggregated metrics.
+ */
+export interface MetricBucket {
+  start: string
+  end: string
+  metrics: Partial<Record<MetricType, BucketMetricStats>>
+}
+
+/**
+ * Result of a bucketed metrics query.
+ */
+export interface QueryMetricsBucketedResult {
+  start: string
+  end: string
+  bucket: BucketSize
+  buckets: MetricBucket[]
 }
 
 export interface HeartRateStats {
@@ -149,6 +184,77 @@ export async function queryMetrics(
     data: data.map(([time, value]) => ({ time: time.toISOString(), value })),
     metric,
     unit,
+  }
+}
+
+/**
+ * Convert bucket size string to minutes.
+ */
+const bucketSizeToMinutes: Record<BucketSize, number> = {
+  '1d': 1440,
+  '1h': 60,
+  '5m': 5,
+  '15m': 15,
+  '30m': 30,
+}
+
+/**
+ * Query bucketed/aggregated time series data for multiple metrics.
+ *
+ * Returns pre-aggregated buckets with min/max/avg/count for each metric,
+ * significantly reducing data size compared to raw time series queries.
+ *
+ * @param user - The username
+ * @param metrics - Array of metric types to query
+ * @param start - Start of time range
+ * @param end - End of time range
+ * @param bucket - Bucket size: '5m', '15m', '30m', '1h', or '1d'
+ */
+export async function queryMetricsBucketed(
+  user: string,
+  metrics: MetricType[],
+  start: Date,
+  end: Date,
+  bucket: BucketSize,
+): Promise<QueryMetricsBucketedResult> {
+  const bucketMinutes = bucketSizeToMinutes[bucket]
+  const data = await getTimeSeriesBucketed(user, metrics, start, end, bucketMinutes)
+
+  // Group data by bucket start time
+  const bucketMap = new Map<string, MetricBucket>()
+
+  for (const row of data) {
+    const bucketKey = row.bucketStart.toISOString()
+    const bucketEndMs = row.bucketStart.getTime() + bucketMinutes * 60 * 1000
+    const bucketEnd = new Date(bucketEndMs).toISOString()
+
+    if (!bucketMap.has(bucketKey)) {
+      bucketMap.set(bucketKey, {
+        end: bucketEnd,
+        metrics: {},
+        start: bucketKey,
+      })
+    }
+
+    const bucketEntry = bucketMap.get(bucketKey)!
+    bucketEntry.metrics[row.metric] = {
+      avg: row.avg,
+      count: row.count,
+      max: row.max,
+      min: row.min,
+    }
+  }
+
+  // Convert map to sorted array
+  const buckets = Array.from(bucketMap.values()).sort(
+    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+  )
+
+  return {
+    bucket,
+    buckets,
+    end: end.toISOString(),
+    start: start.toISOString(),
   }
 }
 

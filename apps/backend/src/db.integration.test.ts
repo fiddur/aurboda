@@ -19,6 +19,7 @@ import {
   getSleepSessions,
   getTags,
   getTimeSeries,
+  getTimeSeriesBucketed,
   getUniqueTags,
   getUserSettings,
   insertActivity,
@@ -426,6 +427,248 @@ describe('Database Integration Tests', () => {
       expect(hrData[0][1]).toBe(80) // Last heart_rate value
       expect(restingHrData).toHaveLength(1)
       expect(restingHrData[0][1]).toBe(65) // resting_heart_rate unchanged
+    })
+  })
+
+  // ==========================================================================
+  // Bucketed Time Series
+  // ==========================================================================
+
+  describe('getTimeSeriesBucketed', () => {
+    test('returns aggregated buckets for a single metric', async () => {
+      const user = getTestUser()
+
+      // Insert heart rate data spread across two 15-minute buckets
+      await insertTimeSeries(user, [
+        // Bucket 1: 10:00-10:15 (values: 70, 72, 74)
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 70 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:05:00Z'), value: 72 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:10:00Z'), value: 74 },
+        // Bucket 2: 10:15-10:30 (values: 80, 85, 90)
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:15:00Z'), value: 80 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:20:00Z'), value: 85 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:25:00Z'), value: 90 },
+      ])
+
+      const buckets = await getTimeSeriesBucketed(
+        user,
+        ['heart_rate'],
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T10:30:00Z'),
+        15, // 15-minute buckets
+      )
+
+      expect(buckets).toHaveLength(2)
+
+      // First bucket: 10:00-10:15
+      expect(buckets[0].bucketStart).toEqual(new Date('2024-01-15T10:00:00Z'))
+      expect(buckets[0].metric).toBe('heart_rate')
+      expect(buckets[0].count).toBe(3)
+      expect(buckets[0].min).toBe(70)
+      expect(buckets[0].max).toBe(74)
+      expect(buckets[0].avg).toBeCloseTo(72, 1) // (70+72+74)/3 = 72
+
+      // Second bucket: 10:15-10:30
+      expect(buckets[1].bucketStart).toEqual(new Date('2024-01-15T10:15:00Z'))
+      expect(buckets[1].metric).toBe('heart_rate')
+      expect(buckets[1].count).toBe(3)
+      expect(buckets[1].min).toBe(80)
+      expect(buckets[1].max).toBe(90)
+      expect(buckets[1].avg).toBeCloseTo(85, 1) // (80+85+90)/3 = 85
+    })
+
+    test('returns buckets for multiple metrics', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        // Heart rate data
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:05:00Z'), value: 75 },
+        // HRV data
+        { metric: 'hrv_rmssd', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 45 },
+        { metric: 'hrv_rmssd', source: 'health_connect', time: new Date('2024-01-15T10:05:00Z'), value: 50 },
+      ])
+
+      const buckets = await getTimeSeriesBucketed(
+        user,
+        ['heart_rate', 'hrv_rmssd'],
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T10:15:00Z'),
+        15,
+      )
+
+      expect(buckets).toHaveLength(2) // One bucket per metric
+
+      const hrBucket = buckets.find((b) => b.metric === 'heart_rate')
+      const hrvBucket = buckets.find((b) => b.metric === 'hrv_rmssd')
+
+      expect(hrBucket).toBeDefined()
+      expect(hrBucket!.count).toBe(2)
+      expect(hrBucket!.avg).toBeCloseTo(73.5, 1)
+
+      expect(hrvBucket).toBeDefined()
+      expect(hrvBucket!.count).toBe(2)
+      expect(hrvBucket!.avg).toBeCloseTo(47.5, 1)
+    })
+
+    test('returns empty array when no data in range', async () => {
+      const user = getTestUser()
+
+      const buckets = await getTimeSeriesBucketed(
+        user,
+        ['heart_rate'],
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T11:00:00Z'),
+        15,
+      )
+
+      expect(buckets).toHaveLength(0)
+    })
+
+    test('returns empty array for empty metrics array', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+      ])
+
+      const buckets = await getTimeSeriesBucketed(
+        user,
+        [],
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T11:00:00Z'),
+        15,
+      )
+
+      expect(buckets).toHaveLength(0)
+    })
+
+    test('handles 5-minute bucket size', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 70 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:02:00Z'), value: 72 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:05:00Z'), value: 80 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:07:00Z'), value: 82 },
+      ])
+
+      const buckets = await getTimeSeriesBucketed(
+        user,
+        ['heart_rate'],
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T10:10:00Z'),
+        5, // 5-minute buckets
+      )
+
+      expect(buckets).toHaveLength(2)
+      expect(buckets[0].bucketStart).toEqual(new Date('2024-01-15T10:00:00Z'))
+      expect(buckets[0].count).toBe(2)
+      expect(buckets[1].bucketStart).toEqual(new Date('2024-01-15T10:05:00Z'))
+      expect(buckets[1].count).toBe(2)
+    })
+
+    test('handles 1-hour bucket size', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 70 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:30:00Z'), value: 75 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T11:00:00Z'), value: 80 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T11:30:00Z'), value: 85 },
+      ])
+
+      const buckets = await getTimeSeriesBucketed(
+        user,
+        ['heart_rate'],
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T12:00:00Z'),
+        60, // 1-hour buckets
+      )
+
+      expect(buckets).toHaveLength(2)
+      expect(buckets[0].bucketStart).toEqual(new Date('2024-01-15T10:00:00Z'))
+      expect(buckets[0].count).toBe(2)
+      expect(buckets[0].avg).toBeCloseTo(72.5, 1)
+      expect(buckets[1].bucketStart).toEqual(new Date('2024-01-15T11:00:00Z'))
+      expect(buckets[1].count).toBe(2)
+      expect(buckets[1].avg).toBeCloseTo(82.5, 1)
+    })
+
+    test('handles 1-day bucket size', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        // Day 1
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 70 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T20:00:00Z'), value: 80 },
+        // Day 2
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-16T10:00:00Z'), value: 75 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-16T20:00:00Z'), value: 85 },
+      ])
+
+      const buckets = await getTimeSeriesBucketed(
+        user,
+        ['heart_rate'],
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-17T00:00:00Z'),
+        1440, // 1-day buckets (24*60 minutes)
+      )
+
+      expect(buckets).toHaveLength(2)
+      expect(buckets[0].bucketStart).toEqual(new Date('2024-01-15T00:00:00Z'))
+      expect(buckets[0].count).toBe(2)
+      expect(buckets[0].avg).toBeCloseTo(75, 1)
+      expect(buckets[1].bucketStart).toEqual(new Date('2024-01-16T00:00:00Z'))
+      expect(buckets[1].count).toBe(2)
+      expect(buckets[1].avg).toBeCloseTo(80, 1)
+    })
+
+    test('only returns buckets with data (no empty buckets)', async () => {
+      const user = getTestUser()
+
+      // Only data in first and third 15-minute buckets
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 70 },
+        // Gap: 10:15-10:30 has no data
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:30:00Z'), value: 80 },
+      ])
+
+      const buckets = await getTimeSeriesBucketed(
+        user,
+        ['heart_rate'],
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T10:45:00Z'),
+        15,
+      )
+
+      expect(buckets).toHaveLength(2)
+      expect(buckets[0].bucketStart).toEqual(new Date('2024-01-15T10:00:00Z'))
+      expect(buckets[1].bucketStart).toEqual(new Date('2024-01-15T10:30:00Z'))
+    })
+
+    test('excludes data outside the time range', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T09:59:00Z'), value: 60 }, // Before range
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 70 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:14:00Z'), value: 75 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:15:00Z'), value: 80 }, // At end boundary (excluded)
+      ])
+
+      const buckets = await getTimeSeriesBucketed(
+        user,
+        ['heart_rate'],
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T10:15:00Z'),
+        15,
+      )
+
+      expect(buckets).toHaveLength(1)
+      expect(buckets[0].count).toBe(2) // Only 70 and 75, not 60 (before) or 80 (at/after end)
+      expect(buckets[0].min).toBe(70)
+      expect(buckets[0].max).toBe(75)
     })
   })
 

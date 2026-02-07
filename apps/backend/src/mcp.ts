@@ -52,11 +52,13 @@ import {
 } from './services/locations'
 import { addActivity, addMetric, addTag, deleteTag } from './services/mutations'
 import {
+  BucketSize,
   getDailySummary,
   getPeriodSummary,
   queryActivities,
   queryLocations,
   queryMetrics,
+  queryMetricsBucketed,
   queryProductivity,
   queryTags,
   SyncProvider,
@@ -159,6 +161,48 @@ export function createMcpRouter(
 
         // Dates are pre-validated by zod schema (startDateTimeQuerySchema/endDateTimeQuerySchema)
         const result = await queryMetrics(user, metric, new Date(start), new Date(end))
+        return jsonResponse(result)
+      },
+    )
+
+    // Valid bucket sizes for bucketed metrics queries
+    const validBucketSizes = ['5m', '15m', '30m', '1h', '1d'] as const
+
+    // Tool: query_metrics_bucketed
+    server.tool(
+      'query_metrics_bucketed',
+      `Query pre-aggregated health metrics in time buckets. Returns buckets with min/max/avg/count for each metric.
+Much more efficient than query_metrics for analysis - returns ~96 buckets for a day (15m intervals) instead of 30,000+ individual samples.
+
+Use cases:
+- Daily timeline analysis: "Show me HR/HRV patterns across the day"
+- Sleep quality analysis: "How did my HRV change during sleep?"
+- Exercise response: "Compare pre/during/post exercise HR"
+- Multi-day trends: "What's my average resting HR this week?" (use 1d bucket)`,
+      {
+        ...mcpTimeRangeSchema,
+        bucket: z.enum(validBucketSizes).describe('Bucket size: "5m", "15m", "30m", "1h", or "1d"'),
+        metrics: z
+          .array(z.string())
+          .describe(`Metrics to include. Valid metrics: ${validMetrics.join(', ')}`),
+      },
+      async ({ bucket, end, metrics, start }) => {
+        const invalidMetrics = metrics.filter((m) => !isValidMetric(m))
+        if (invalidMetrics.length > 0) {
+          return errorResponse(
+            `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
+          )
+        }
+
+        // Dates are pre-validated by zod schema
+        const validatedMetrics = metrics as MetricType[]
+        const result = await queryMetricsBucketed(
+          user,
+          validatedMetrics,
+          new Date(start),
+          new Date(end),
+          bucket as BucketSize,
+        )
         return jsonResponse(result)
       },
     )
