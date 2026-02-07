@@ -8,12 +8,15 @@
 // Re-export common types from shared api-spec package
 export {
   cumulativeMetrics,
+  getMetricUnit,
   hrZoneMetrics,
   isHrZoneMetric,
   isValidMetric,
+  isValidMetricOrCustom,
   metricUnits,
   validMetrics,
   type ActivityType,
+  type CustomMetricDefinition,
   type DataSource,
   type MetricType,
 } from '@aurboda/api-spec'

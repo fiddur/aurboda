@@ -5,17 +5,19 @@
  * They are used by both the MCP tools and the REST API.
  */
 
-import type { ActivityType } from '@aurboda/api-spec'
+import type { ActivityType, CustomMetricDefinition } from '@aurboda/api-spec'
 import { randomUUID } from 'crypto'
 import {
   deleteTag as dbDeleteTag,
   insertActivity as dbInsertActivity,
   findMergeableTag,
+  getUserSettings,
   insertTag,
   insertTimeSeries,
   updateTagEndTime,
+  upsertUserSettings,
 } from '../db'
-import { MetricType, metricUnits } from '../schema'
+import { getMetricUnit, isValidMetric, isValidMetricOrCustom } from '../schema'
 
 // ============================================================================
 // Types
@@ -39,14 +41,15 @@ export interface AddTagResult {
 }
 
 export interface AddMetricInput {
-  metric: MetricType
+  metric: string
   value: number
   time: Date
 }
 
 export interface AddMetricResult {
   success: boolean
-  metric: MetricType
+  error?: string
+  metric: string
   value: number
   unit: string
   time: string
@@ -76,6 +79,18 @@ export interface AddActivityResult {
   title?: string
   notes?: string
   error?: string
+}
+
+export interface CustomMetricResult {
+  success: boolean
+  error?: string
+  data?: CustomMetricDefinition
+}
+
+export interface DeleteCustomMetricResult {
+  success: boolean
+  deleted: boolean
+  name: string
 }
 
 // ============================================================================
@@ -139,24 +154,67 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
 
 /**
  * Add a manual health metric measurement.
+ * Supports both built-in and custom metrics.
  */
 export async function addMetric(user: string, input: AddMetricInput): Promise<AddMetricResult> {
+  const settings = await getUserSettings(user)
+  const customMetrics = settings?.customMetrics ?? []
+
+  if (!isValidMetricOrCustom(input.metric, customMetrics)) {
+    return {
+      error: `Invalid metric "${input.metric}". Not a built-in or registered custom metric.`,
+      metric: input.metric,
+      success: false,
+      time: input.time.toISOString(),
+      unit: '',
+      value: input.value,
+    }
+  }
+
+  const unit = getMetricUnit(input.metric, customMetrics)
+
+  // Validate value range for custom metrics
+  if (!isValidMetric(input.metric)) {
+    const customDef = customMetrics.find((m) => m.name === input.metric)
+    if (customDef) {
+      if (customDef.minValue !== undefined && input.value < customDef.minValue) {
+        return {
+          error: `Value ${input.value} is below minimum ${customDef.minValue} for metric "${input.metric}".`,
+          metric: input.metric,
+          success: false,
+          time: input.time.toISOString(),
+          unit: unit ?? '',
+          value: input.value,
+        }
+      }
+      if (customDef.maxValue !== undefined && input.value > customDef.maxValue) {
+        return {
+          error: `Value ${input.value} exceeds maximum ${customDef.maxValue} for metric "${input.metric}".`,
+          metric: input.metric,
+          success: false,
+          time: input.time.toISOString(),
+          unit: unit ?? '',
+          value: input.value,
+        }
+      }
+    }
+  }
+
   await insertTimeSeries(user, [
     {
       metric: input.metric,
       source: 'manual',
       time: input.time,
+      unit,
       value: input.value,
     },
   ])
-
-  const unit = metricUnits[input.metric]
 
   return {
     metric: input.metric,
     success: true,
     time: input.time.toISOString(),
-    unit,
+    unit: unit ?? '',
     value: input.value,
   }
 }
@@ -210,4 +268,70 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
     success: true,
     title: input.title,
   }
+}
+
+// ============================================================================
+// Custom Metric Management
+// ============================================================================
+
+/**
+ * Register a new custom metric type.
+ */
+export async function addCustomMetric(
+  user: string,
+  definition: CustomMetricDefinition,
+): Promise<CustomMetricResult> {
+  // Check name doesn't conflict with built-in metrics
+  if (isValidMetric(definition.name)) {
+    return {
+      error: `Metric name "${definition.name}" conflicts with a built-in metric.`,
+      success: false,
+    }
+  }
+
+  const settings = await getUserSettings(user)
+  const existing = settings?.customMetrics ?? []
+
+  // Check for duplicate
+  if (existing.some((m) => m.name === definition.name)) {
+    return {
+      error: `Custom metric "${definition.name}" already exists.`,
+      success: false,
+    }
+  }
+
+  await upsertUserSettings(user, {
+    customMetrics: [...existing, definition],
+  })
+
+  return {
+    data: definition,
+    success: true,
+  }
+}
+
+/**
+ * Delete a custom metric definition.
+ * Note: Existing time_series data for the metric is preserved.
+ */
+export async function deleteCustomMetric(user: string, name: string): Promise<DeleteCustomMetricResult> {
+  const settings = await getUserSettings(user)
+  const existing = settings?.customMetrics ?? []
+
+  const filtered = existing.filter((m) => m.name !== name)
+  if (filtered.length === existing.length) {
+    return { deleted: false, name, success: false }
+  }
+
+  await upsertUserSettings(user, { customMetrics: filtered })
+
+  return { deleted: true, name, success: true }
+}
+
+/**
+ * Get all custom metric definitions for a user.
+ */
+export async function getCustomMetrics(user: string): Promise<CustomMetricDefinition[]> {
+  const settings = await getUserSettings(user)
+  return settings?.customMetrics ?? []
 }

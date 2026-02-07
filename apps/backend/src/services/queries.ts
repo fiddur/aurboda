@@ -5,6 +5,7 @@
  * They are used by both the MCP tools and the REST API.
  */
 
+import type { CustomMetricDefinition } from '@aurboda/api-spec'
 import {
   getActivities,
   getDailyAggregates,
@@ -16,7 +17,7 @@ import {
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
 } from '../db'
-import { ActivityType, isHrZoneMetric, MetricType, metricUnits } from '../schema'
+import { ActivityType, getMetricUnit, isHrZoneMetric, MetricType, metricUnits } from '../schema'
 import { getPlaceVisits } from './locations'
 import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs } from './settings'
 
@@ -41,7 +42,7 @@ export interface MetricDataPoint {
 }
 
 export interface QueryMetricsResult {
-  metric: MetricType
+  metric: string
   unit: string
   count: number
   data: MetricDataPoint[]
@@ -108,7 +109,7 @@ export interface DailySummaryResult {
 }
 
 export interface PeriodMetricStats {
-  metric: MetricType
+  metric: string
   unit: string
   count: number
   min: number
@@ -134,15 +135,17 @@ export interface PeriodSummaryResult {
 
 /**
  * Query time series data for a single metric.
+ * Supports both built-in and custom metrics via the customMetrics parameter.
  */
 export async function queryMetrics(
   user: string,
-  metric: MetricType,
+  metric: string,
   start: Date,
   end: Date,
+  customMetrics: CustomMetricDefinition[] = [],
 ): Promise<QueryMetricsResult> {
   const data = await getTimeSeries(user, metric, start, end)
-  const unit = metricUnits[metric]
+  const unit = getMetricUnit(metric, customMetrics) ?? metricUnits[metric as MetricType] ?? ''
 
   return {
     count: data.length,
@@ -369,13 +372,13 @@ async function computeHrZoneStats(
  */
 export async function getPeriodSummary(
   user: string,
-  metrics: MetricType[],
+  metrics: string[],
   start: Date,
   end: Date,
 ): Promise<PeriodSummaryResult> {
   // Separate HR zone metrics from regular metrics
-  const regularMetrics = metrics.filter((m) => !isHrZoneMetric(m))
-  const hrZoneMetricsRequested = metrics.filter(isHrZoneMetric)
+  const regularMetrics = metrics.filter((m) => !isHrZoneMetric(m as MetricType))
+  const hrZoneMetricsRequested = metrics.filter((m) => isHrZoneMetric(m as MetricType)) as MetricType[]
 
   // Calculate period length for previous period comparison
   const periodMs = end.getTime() - start.getTime()
@@ -467,7 +470,7 @@ export async function getPeriodSummary(
       outliers: undefined,
       stddev: 0,
       trendPerDay: null,
-      unit: metricUnits[metric],
+      unit: metricUnits[metric as MetricType] ?? '',
     })
   }
 

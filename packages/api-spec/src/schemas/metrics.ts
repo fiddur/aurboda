@@ -5,6 +5,7 @@
 import { z } from 'zod'
 import {
   baseResponseSchema,
+  customMetricDefinitionSchema,
   iso8601DateTimeSchema,
   metricTypeSchema,
   timeRangeQuerySchema,
@@ -12,6 +13,15 @@ import {
 
 // Shared metric value field
 const metricValueSchema = z.number().meta({ description: 'Metric value' })
+
+/**
+ * Metric name field that accepts both built-in and custom metric names.
+ * Validation against the user's custom metrics is done at the service layer.
+ */
+const metricNameSchema = z.string().min(1).max(50).meta({
+  description: 'Metric name (built-in or custom)',
+  example: 'heart_rate',
+})
 
 /**
  * Metric data point schema.
@@ -32,7 +42,7 @@ export const queryMetricsResponseSchema = baseResponseSchema
   .extend({
     count: z.number().int().optional().meta({ description: 'Number of data points' }),
     data: z.array(metricDataPointSchema).optional(),
-    metric: metricTypeSchema.optional(),
+    metric: metricNameSchema.optional(),
     unit: z.string().optional().meta({ description: 'Unit of measurement', example: 'bpm' }),
   })
   .meta({ id: 'QueryMetricsResponse' })
@@ -59,10 +69,11 @@ export type QueryMetricsQuery = z.infer<typeof queryMetricsQuerySchema>
 
 /**
  * Add metric request body.
+ * Accepts both built-in and custom metric names (validated at service layer).
  */
 export const addMetricBodySchema = z
   .object({
-    metric: metricTypeSchema,
+    metric: metricNameSchema,
     time: iso8601DateTimeSchema.optional().meta({
       description: 'Measurement time (defaults to current time)',
     }),
@@ -78,3 +89,36 @@ export type AddMetricBody = z.infer<typeof addMetricBodySchema>
 export const addMetricResponseSchema = baseResponseSchema.meta({ id: 'AddMetricResponse' })
 
 export type AddMetricResponse = z.infer<typeof addMetricResponseSchema>
+
+// ============================================================================
+// Custom Metric Management
+// ============================================================================
+
+/**
+ * Add custom metric request body.
+ */
+export const addCustomMetricBodySchema = customMetricDefinitionSchema.meta({ id: 'AddCustomMetricBody' })
+
+export type AddCustomMetricBody = z.infer<typeof addCustomMetricBodySchema>
+
+/**
+ * Custom metric response.
+ */
+export const customMetricResponseSchema = baseResponseSchema
+  .extend({
+    data: customMetricDefinitionSchema.optional(),
+  })
+  .meta({ id: 'CustomMetricResponse' })
+
+export type CustomMetricResponse = z.infer<typeof customMetricResponseSchema>
+
+/**
+ * List custom metrics response.
+ */
+export const customMetricsListResponseSchema = baseResponseSchema
+  .extend({
+    data: z.array(customMetricDefinitionSchema).optional(),
+  })
+  .meta({ id: 'CustomMetricsListResponse' })
+
+export type CustomMetricsListResponse = z.infer<typeof customMetricsListResponseSchema>
