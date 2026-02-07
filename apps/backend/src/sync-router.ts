@@ -1,8 +1,13 @@
 import {
   dailyAggregatesBodySchema,
   healthConnectSyncBodySchema,
+  syncCalendarsBodySchema,
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
+  type CalendarConfig,
+  type CalendarSyncResponse,
+  type CalendarSyncResult,
+  type CalendarSyncStatusResponse,
   type DailyAggregate,
   type DailyAggregatesBody,
   type HealthConnectRecord,
@@ -14,6 +19,7 @@ import {
   type RescueTimeSyncResponse,
   type RescueTimeSyncResult,
   type RescueTimeSyncStatusResponse,
+  type SyncCalendarsBody,
   type SyncOuraBody,
   type SyncRescueTimeBody,
   type SyncResponse,
@@ -38,7 +44,14 @@ export interface SyncRouterDeps {
   ) => Promise<RescueTimeSyncResult>
   getRescueTimeSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetRescueTimeSyncState: (user: string) => Promise<void>
-  getSettings: (user: string) => Promise<{ rescueTimeKey?: string }>
+  syncCalendars: (
+    user: string,
+    calendars: CalendarConfig[],
+    options: { fullResync?: boolean },
+  ) => Promise<CalendarSyncResult[]>
+  getCalendarSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
+  resetCalendarSyncState: (user: string) => Promise<void>
+  getSettings: (user: string) => Promise<{ rescueTimeKey?: string; calendars?: CalendarConfig[] }>
 }
 
 /**
@@ -175,6 +188,59 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
 
     try {
       await deps.resetRescueTimeSyncState(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  // Calendar sync endpoints
+  router.post<ParamsDictionary, CalendarSyncResponse, SyncCalendarsBody>(
+    '/calendars',
+    authMiddleware,
+    validateBody(syncCalendarsBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { full_resync } = req.body
+      const settings = await deps.getSettings(user)
+      const calendars = settings.calendars
+
+      if (!calendars || calendars.length === 0) {
+        return res.status(400).json({ error: 'No calendars configured in user settings', success: false })
+      }
+
+      try {
+        const results = await deps.syncCalendars(user, calendars, { fullResync: full_resync })
+        res.json({ results, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.get<ParamsDictionary, CalendarSyncStatusResponse>(
+    '/calendars/status',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+
+      try {
+        const states = await deps.getCalendarSyncStates(user)
+        res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.delete<ParamsDictionary, SyncResponse>('/calendars/state', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    try {
+      await deps.resetCalendarSyncState(user)
       res.json({ success: true })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'

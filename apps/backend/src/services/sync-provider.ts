@@ -7,6 +7,7 @@
 
 import { isBefore, subMinutes } from 'date-fns'
 import { getSyncState } from '../db'
+import { syncAllCalendars } from '../ical-sync'
 import { ouraClient } from '../oura'
 import { isRateLimited as isOuraRateLimited, OuraDataType, syncOuraDataType } from '../oura-sync'
 import {
@@ -37,6 +38,26 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
   const threshold = config.syncThresholdMinutes ?? DEFAULT_SYNC_THRESHOLD_MINUTES
 
   return {
+    syncCalendarsIfNeeded: async (user: string): Promise<void> => {
+      try {
+        const settings = await getSettings(user)
+        if (!settings.calendars || settings.calendars.length === 0) return
+
+        // Check if any calendar needs sync by checking the first one
+        // (they all get synced together)
+        const syncState = await getSyncState(user, 'calendar', settings.calendars[0].name)
+        const thresholdTime = subMinutes(new Date(), threshold)
+        if (syncState?.lastSyncTime && isBefore(thresholdTime, syncState.lastSyncTime)) {
+          return
+        }
+
+        console.log('Auto-syncing calendars...')
+        await syncAllCalendars(user, settings.calendars)
+      } catch (error) {
+        console.error('Failed to auto-sync calendars:', error)
+      }
+    },
+
     syncOuraIfNeeded: async (user: string, dataType: 'tags' | 'sessions'): Promise<void> => {
       if (!config.oura) return
 

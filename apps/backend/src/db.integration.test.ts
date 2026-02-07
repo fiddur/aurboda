@@ -1343,4 +1343,56 @@ describe('Database Integration Tests', () => {
       expect(settings?.birthDate).toBe('2000-01-01')
     })
   })
+
+  describe('User Settings with calendars', () => {
+    test('stores and retrieves calendars', async () => {
+      const user = getTestUser()
+      const calendars = [
+        { name: 'Work', url: 'https://example.com/work.ics' },
+        { name: 'Personal', url: 'https://example.com/personal.ics' },
+      ]
+
+      await upsertUserSettings(user, { calendars })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.calendars).toEqual(calendars)
+    })
+
+    test('updates calendars while preserving other settings', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { birthDate: '1990-01-15' })
+
+      const calendars = [{ name: 'Work', url: 'https://example.com/work.ics' }]
+      await upsertUserSettings(user, { calendars })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.birthDate).toBe('1990-01-15')
+      expect(settings?.calendars).toEqual(calendars)
+    })
+
+    test('replaces calendars with empty array to clear', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, {
+        calendars: [{ name: 'Work', url: 'https://example.com/work.ics' }],
+      })
+      await upsertUserSettings(user, { calendars: [] })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.calendars).toEqual([])
+    })
+
+    test('preserves calendars when update does not include calendars', async () => {
+      const user = getTestUser()
+      const calendars = [{ name: 'Work', url: 'https://example.com/work.ics' }]
+
+      await upsertUserSettings(user, { calendars })
+      await upsertUserSettings(user, { birthDate: '2000-01-01' })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.calendars).toEqual(calendars)
+      expect(settings?.birthDate).toBe('2000-01-01')
+    })
+  })
 })

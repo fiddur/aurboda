@@ -478,6 +478,7 @@ export async function getHrvActivitiesCorrelation(
       sync.syncOuraIfNeeded(user, 'tags'),
       sync.syncOuraIfNeeded(user, 'sessions'),
       sync.syncRescueTimeIfNeeded(user),
+      sync.syncCalendarsIfNeeded(user),
     ])
   }
 
@@ -706,6 +707,7 @@ export async function getActivityImpact(
       sync.syncOuraIfNeeded(user, 'tags'),
       sync.syncOuraIfNeeded(user, 'sessions'),
       sync.syncRescueTimeIfNeeded(user),
+      sync.syncCalendarsIfNeeded(user),
     ])
   }
 
@@ -867,7 +869,11 @@ export async function getEventProbability(
 
   // Auto-sync if provider available
   if (sync) {
-    await Promise.all([sync.syncOuraIfNeeded(user, 'tags'), sync.syncOuraIfNeeded(user, 'sessions')])
+    await Promise.all([
+      sync.syncOuraIfNeeded(user, 'tags'),
+      sync.syncOuraIfNeeded(user, 'sessions'),
+      sync.syncCalendarsIfNeeded(user),
+    ])
   }
 
   // Parse outcome pattern as regex
@@ -1056,6 +1062,7 @@ export async function getGenericCorrelation(
       sync.syncOuraIfNeeded(user, 'tags'),
       sync.syncOuraIfNeeded(user, 'sessions'),
       sync.syncRescueTimeIfNeeded(user),
+      sync.syncCalendarsIfNeeded(user),
     ])
   }
 

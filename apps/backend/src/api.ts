@@ -111,6 +111,7 @@ import {
   updateDetectedLocation,
   upsertUserSettings,
 } from './db'
+import { syncAllCalendars } from './ical-sync'
 import { createMcpRouter } from './mcp'
 import { createDbSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
@@ -361,7 +362,7 @@ const main = async () => {
   })
 
   // Transform SyncState to ProviderSyncStatus format (undefined -> null)
-  const transformSyncStates = async (user: string, provider: 'oura' | 'rescuetime') => {
+  const transformSyncStates = async (user: string, provider: string) => {
     const states = await getAllSyncStates(user, provider)
     return states.map((s) => ({
       errorMessage: s.errorMessage ?? null,
@@ -402,13 +403,16 @@ const main = async () => {
     '/sync',
     createSyncRouter(
       {
+        getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
         getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
         getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),
         getSettings,
         processDailyAggregate,
         processHealthConnectData,
+        resetCalendarSyncState: (user) => resetSyncState(user, 'calendar'),
         resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
+        syncCalendars: (user, calendars) => syncAllCalendars(user, calendars),
         syncOura: transformOuraSyncResults,
         syncRescueTime: transformRescueTimeSyncResult,
       },
