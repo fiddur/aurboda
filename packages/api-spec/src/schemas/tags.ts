@@ -168,3 +168,14 @@ export const setTagMappingResponseSchema = baseResponseSchema
   .meta({ id: 'SetTagMappingResponse' })
 
 export type SetTagMappingResponse = z.infer<typeof setTagMappingResponseSchema>
+
+/**
+ * Get tag mappings response schema.
+ */
+export const tagMappingsResponseSchema = baseResponseSchema
+  .extend({
+    mappings: z.record(z.string(), z.string()).meta({ description: 'All tag mappings (tag key -> display name)' }),
+  })
+  .meta({ id: 'TagMappingsResponse' })
+
+export type TagMappingsResponse = z.infer<typeof tagMappingsResponseSchema>

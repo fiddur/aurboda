@@ -328,6 +328,66 @@ export const getDailyAggregates = async (
 }
 
 // ============================================================================
+// Bucketed Time Series Aggregation
+// ============================================================================
+
+export interface BucketedMetricData {
+  bucketStart: Date
+  metric: MetricType
+  avg: number
+  min: number
+  max: number
+  count: number
+}
+
+/**
+ * Get bucketed/aggregated time series data for multiple metrics.
+ *
+ * Uses PostgreSQL's date_bin function to efficiently bucket data by time intervals.
+ * Returns pre-aggregated statistics (avg, min, max, count) for each bucket.
+ *
+ * @param user - The username
+ * @param metrics - Array of metric types to query
+ * @param start - Start of time range
+ * @param end - End of time range
+ * @param bucketMinutes - Bucket size in minutes (e.g., 5, 15, 30, 60, 1440 for 1 day)
+ */
+export const getTimeSeriesBucketed = async (
+  user: string,
+  metrics: MetricType[],
+  start: Date,
+  end: Date,
+  bucketMinutes: number,
+): Promise<BucketedMetricData[]> => {
+  if (metrics.length === 0) return []
+
+  const result = await query(
+    user,
+    `SELECT
+       date_bin($4::interval, time, $2) as bucket_start,
+       metric,
+       AVG(value) as avg,
+       MIN(value) as min,
+       MAX(value) as max,
+       COUNT(*)::integer as count
+     FROM time_series
+     WHERE metric = ANY($1) AND time >= $2 AND time < $3
+     GROUP BY bucket_start, metric
+     ORDER BY bucket_start, metric`,
+    [metrics, start, end, `${bucketMinutes} minutes`],
+  )
+
+  return result.rows.map((row) => ({
+    avg: row.avg !== null ? Number(row.avg) : 0,
+    bucketStart: new Date(row.bucket_start),
+    count: row.count,
+    max: row.max !== null ? Number(row.max) : 0,
+    metric: row.metric as MetricType,
+    min: row.min !== null ? Number(row.min) : 0,
+  }))
+}
+
+// ============================================================================
 // Activities
 // ============================================================================
 
