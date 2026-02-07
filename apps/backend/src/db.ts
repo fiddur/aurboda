@@ -482,14 +482,15 @@ export const mergeOverlappingActivities = (activities: Activity[]): Activity[] =
 export const insertActivity = async (user: string, activity: Activity) => {
   await query(
     user,
-    `INSERT INTO activities (source, activity_type, start_time, end_time, title, notes, data)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
+     VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (source, activity_type, start_time) DO UPDATE SET
        end_time = EXCLUDED.end_time,
        title = EXCLUDED.title,
        notes = EXCLUDED.notes,
        data = EXCLUDED.data`,
     [
+      activity.id,
       activity.source,
       activity.activityType,
       activity.startTime,
@@ -499,6 +500,105 @@ export const insertActivity = async (user: string, activity: Activity) => {
       activity.data,
     ],
   )
+}
+
+export const getActivityById = async (user: string, id: string): Promise<Activity | null> => {
+  const result = await query(
+    user,
+    `SELECT id, source, activity_type, start_time, end_time, title, notes, data
+     FROM activities
+     WHERE id = $1`,
+    [id],
+  )
+
+  if (result.rows.length === 0) {
+    return null
+  }
+
+  const row = result.rows[0]
+  return {
+    activityType: row.activity_type as ActivityType,
+    data: row.data,
+    endTime: row.end_time ? new Date(row.end_time) : undefined,
+    id: row.id,
+    notes: row.notes,
+    source: row.source as DataSource,
+    startTime: new Date(row.start_time),
+    title: row.title,
+  }
+}
+
+export const deleteActivity = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(user, `DELETE FROM activities WHERE id = $1`, [id])
+
+  return (result.rowCount ?? 0) > 0
+}
+
+export interface ActivityUpdate {
+  startTime?: Date
+  endTime?: Date
+  title?: string
+  notes?: string
+}
+
+export const updateActivity = async (
+  user: string,
+  id: string,
+  updates: ActivityUpdate,
+): Promise<Activity | null> => {
+  // Build SET clause dynamically based on provided updates
+  const setClauses: string[] = []
+  const values: unknown[] = []
+  let paramIndex = 1
+
+  if (updates.startTime !== undefined) {
+    setClauses.push(`start_time = $${paramIndex++}`)
+    values.push(updates.startTime)
+  }
+  if (updates.endTime !== undefined) {
+    setClauses.push(`end_time = $${paramIndex++}`)
+    values.push(updates.endTime)
+  }
+  if (updates.title !== undefined) {
+    setClauses.push(`title = $${paramIndex++}`)
+    values.push(updates.title)
+  }
+  if (updates.notes !== undefined) {
+    setClauses.push(`notes = $${paramIndex++}`)
+    values.push(updates.notes)
+  }
+
+  if (setClauses.length === 0) {
+    // No updates provided, just return existing activity
+    return getActivityById(user, id)
+  }
+
+  values.push(id)
+
+  const result = await query(
+    user,
+    `UPDATE activities
+     SET ${setClauses.join(', ')}
+     WHERE id = $${paramIndex}
+     RETURNING id, source, activity_type, start_time, end_time, title, notes, data`,
+    values,
+  )
+
+  if (result.rows.length === 0) {
+    return null
+  }
+
+  const row = result.rows[0]
+  return {
+    activityType: row.activity_type as ActivityType,
+    data: row.data,
+    endTime: row.end_time ? new Date(row.end_time) : undefined,
+    id: row.id,
+    notes: row.notes,
+    source: row.source as DataSource,
+    startTime: new Date(row.start_time),
+    title: row.title,
+  }
 }
 
 export const getActivities = async (

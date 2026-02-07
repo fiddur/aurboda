@@ -27,6 +27,7 @@ import {
   type DailySummaryQuery,
   dailySummaryQuerySchema,
   type DailySummaryResponse,
+  type DeleteActivityResponse,
   type DeleteTagResponse,
   type DetectedLocationsQuery,
   detectedLocationsQuerySchema,
@@ -77,6 +78,9 @@ import {
   trendQuerySchema,
   type TrendResponse,
   type UniqueTagsResponse,
+  type UpdateActivityBody,
+  updateActivityBodySchema,
+  type UpdateActivityResponse,
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
   type UpdateNamedLocationBody,
@@ -138,7 +142,14 @@ import {
   insertNamedLocation,
   updateNamedLocation,
 } from './services/locations'
-import { addActivity, addMetric, addTag, deleteTag } from './services/mutations'
+import {
+  addActivity,
+  addMetric,
+  addTag,
+  deleteActivity,
+  deleteTag,
+  updateActivity,
+} from './services/mutations'
 import {
   getDailySummary,
   getPeriodSummary,
@@ -716,6 +727,60 @@ const main = async () => {
 
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })
+      }
+
+      res.json({
+        data: {
+          activityType: result.activityType!,
+          endTime: result.endTime!,
+          id: result.id!,
+          notes: result.notes,
+          startTime: result.startTime!,
+          title: result.title,
+        },
+        success: true,
+      })
+    },
+  )
+
+  // DELETE /activities/:id - Delete an activity by ID
+  httpd.delete<{ id: string }, DeleteActivityResponse>(
+    '/activities/:id',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
+
+      const result = await deleteActivity(user, id)
+
+      if (!result.success) {
+        return res.status(404).json({ error: 'Activity not found', success: false })
+      }
+
+      res.json({ success: true })
+    },
+  )
+
+  // PATCH /activities/:id - Update an activity by ID
+  httpd.patch<{ id: string }, UpdateActivityResponse, UpdateActivityBody>(
+    '/activities/:id',
+    authMiddleware,
+    validateBody(updateActivityBodySchema),
+    async (req, res) => {
+      const { id } = req.params
+      const { start_time, end_time, title, notes } = req.body
+      const user = req.user!
+
+      const result = await updateActivity(user, id, {
+        endTime: end_time ? new Date(end_time) : undefined,
+        notes,
+        startTime: start_time ? new Date(start_time) : undefined,
+        title,
+      })
+
+      if (!result.success) {
+        const status = result.error === 'Activity not found' ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
       }
 
       res.json({

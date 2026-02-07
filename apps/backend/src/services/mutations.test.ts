@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db'
-import { addActivity, addMetric, addTag, deleteTag } from './mutations'
+import { addActivity, addMetric, addTag, deleteActivity, deleteTag, updateActivity } from './mutations'
 
 // Mock the db module
 vi.mock('../db', () => ({
+  deleteActivity: vi.fn(),
   deleteTag: vi.fn(),
   findMergeableTag: vi.fn(),
+  getActivityById: vi.fn(),
   insertActivity: vi.fn(),
   insertTag: vi.fn(),
   insertTimeSeries: vi.fn(),
+  updateActivity: vi.fn(),
   updateTagEndTime: vi.fn(),
 }))
 
@@ -399,5 +402,166 @@ describe('addActivity', () => {
 
     expect(result.success).toBe(true)
     expect(result.activityType).toBe('nap')
+  })
+})
+
+describe('deleteActivity', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('deletes activity and returns success when found', async () => {
+    vi.mocked(db.deleteActivity).mockResolvedValue(true)
+
+    const result = await deleteActivity('testuser', 'activity-123')
+
+    expect(result.success).toBe(true)
+    expect(result.deleted).toBe(true)
+    expect(result.id).toBe('activity-123')
+    expect(db.deleteActivity).toHaveBeenCalledWith('testuser', 'activity-123')
+  })
+
+  test('returns success false when activity not found', async () => {
+    vi.mocked(db.deleteActivity).mockResolvedValue(false)
+
+    const result = await deleteActivity('testuser', 'nonexistent-activity')
+
+    expect(result.success).toBe(false)
+    expect(result.deleted).toBe(false)
+    expect(result.id).toBe('nonexistent-activity')
+  })
+})
+
+describe('updateActivity', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('updates activity times successfully', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activityType: 'exercise',
+      endTime: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      startTime: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activityType: 'exercise',
+      endTime: new Date('2024-03-15T12:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      startTime: new Date('2024-03-15T09:00:00Z'),
+    })
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      endTime: new Date('2024-03-15T12:00:00Z'),
+      startTime: new Date('2024-03-15T09:00:00Z'),
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.startTime).toBe('2024-03-15T09:00:00.000Z')
+    expect(result.endTime).toBe('2024-03-15T12:00:00.000Z')
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      endTime: new Date('2024-03-15T12:00:00Z'),
+      notes: undefined,
+      startTime: new Date('2024-03-15T09:00:00Z'),
+      title: undefined,
+    })
+  })
+
+  test('updates activity title and notes', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activityType: 'exercise',
+      endTime: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      startTime: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activityType: 'exercise',
+      endTime: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      notes: 'Felt great!',
+      source: 'manual',
+      startTime: new Date('2024-03-15T10:00:00Z'),
+      title: 'Morning workout',
+    })
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      notes: 'Felt great!',
+      title: 'Morning workout',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.title).toBe('Morning workout')
+    expect(result.notes).toBe('Felt great!')
+  })
+
+  test('returns error when activity not found', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue(null)
+
+    const result = await updateActivity('testuser', 'nonexistent-activity', {
+      title: 'New title',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Activity not found')
+    expect(result.id).toBe('nonexistent-activity')
+    expect(db.updateActivity).not.toHaveBeenCalled()
+  })
+
+  test('returns error when new end_time is before existing start_time', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activityType: 'exercise',
+      endTime: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      startTime: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      endTime: new Date('2024-03-15T09:00:00Z'), // Before existing start_time
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('end_time must be after start_time')
+    expect(db.updateActivity).not.toHaveBeenCalled()
+  })
+
+  test('returns error when new start_time is after existing end_time', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activityType: 'exercise',
+      endTime: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      startTime: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      startTime: new Date('2024-03-15T12:00:00Z'), // After existing end_time
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('end_time must be after start_time')
+    expect(db.updateActivity).not.toHaveBeenCalled()
+  })
+
+  test('validates both new start and end times together', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activityType: 'exercise',
+      endTime: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      startTime: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      endTime: new Date('2024-03-15T08:00:00Z'),
+      startTime: new Date('2024-03-15T09:00:00Z'), // end_time before start_time
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('end_time must be after start_time')
+    expect(db.updateActivity).not.toHaveBeenCalled()
   })
 })
