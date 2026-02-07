@@ -980,4 +980,229 @@ describe('queryMetricsBucketed', () => {
     expect(result.buckets[1].metrics.heart_rate).toBeDefined()
     expect(result.buckets[1].metrics.hrv_rmssd).toBeUndefined()
   })
+
+  test('returns bucketed data for contextual HRV metric (hrv_sleep)', async () => {
+    // Raw HRV data during sleep
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T02:00:00Z'), 45],
+      [new Date('2024-01-15T03:00:00Z'), 48],
+      [new Date('2024-01-15T04:00:00Z'), 50],
+    ])
+
+    // Sleep session covering the HRV data
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activityType: 'sleep',
+        endTime: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        startTime: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    // No exercise
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['hrv_sleep'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T08:00:00Z'),
+      '1h',
+    )
+
+    // Should have buckets for the hours with HRV data during sleep
+    expect(result.buckets.length).toBeGreaterThan(0)
+
+    // All returned data should be hrv_sleep
+    for (const bucket of result.buckets) {
+      if (bucket.metrics.hrv_sleep) {
+        expect(bucket.metrics.hrv_sleep.avg).toBeGreaterThan(0)
+        expect(bucket.metrics.hrv_sleep.count).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  test('returns bucketed data for mixed regular and contextual HRV metrics', async () => {
+    // Mock regular bucketed data for heart_rate
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
+      {
+        avg: 72,
+        bucketStart: new Date('2024-01-15T02:00:00Z'),
+        count: 100,
+        max: 80,
+        metric: 'heart_rate' as MetricType,
+        min: 65,
+      },
+    ])
+
+    // Raw HRV data for contextual processing
+    vi.mocked(db.getTimeSeries).mockResolvedValue([[new Date('2024-01-15T02:30:00Z'), 45]])
+
+    // Sleep session
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activityType: 'sleep',
+        endTime: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        startTime: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    // No exercise
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate', 'hrv_sleep'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T08:00:00Z'),
+      '1h',
+    )
+
+    // Should have bucket with heart_rate from regular query
+    const bucketWithHr = result.buckets.find((b) => b.metrics.heart_rate)
+    expect(bucketWithHr).toBeDefined()
+    expect(bucketWithHr!.metrics.heart_rate?.avg).toBe(72)
+
+    // Should have bucket with hrv_sleep from contextual query
+    const bucketWithHrvSleep = result.buckets.find((b) => b.metrics.hrv_sleep)
+    expect(bucketWithHrvSleep).toBeDefined()
+  })
+
+  test('returns empty contextual HRV when no HRV data during context', async () => {
+    // HRV data only during awake hours
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T12:00:00Z'), 30],
+      [new Date('2024-01-15T14:00:00Z'), 28],
+    ])
+
+    // Sleep session doesn't overlap with HRV data
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activityType: 'sleep',
+        endTime: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        startTime: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    // No exercise
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['hrv_sleep'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+      '1h',
+    )
+
+    // Should have no hrv_sleep buckets since HRV data is during awake hours
+    const hrvSleepBuckets = result.buckets.filter((b) => b.metrics.hrv_sleep)
+    expect(hrvSleepBuckets).toHaveLength(0)
+  })
+})
+
+describe('queryMetrics with contextual HRV', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns filtered HRV data for hrv_sleep', async () => {
+    // Raw HRV data - some during sleep, some during awake
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T02:00:00Z'), 45],
+      [new Date('2024-01-15T03:00:00Z'), 48],
+      [new Date('2024-01-15T12:00:00Z'), 30], // This is during awake
+    ])
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activityType: 'sleep',
+        endTime: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        startTime: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await queryMetrics(
+      'testuser',
+      'hrv_sleep',
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metric).toBe('hrv_sleep')
+    expect(result.unit).toBe('ms')
+    // Only samples during sleep should be included
+    expect(result.count).toBe(2)
+    expect(result.data.map((d) => d.value)).toEqual([45, 48])
+  })
+
+  test('returns filtered HRV data for hrv_awake', async () => {
+    // Raw HRV data
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T02:00:00Z'), 45], // During sleep
+      [new Date('2024-01-15T12:00:00Z'), 30], // During awake
+      [new Date('2024-01-15T14:00:00Z'), 28], // During awake
+    ])
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activityType: 'sleep',
+        endTime: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        startTime: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await queryMetrics(
+      'testuser',
+      'hrv_awake',
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metric).toBe('hrv_awake')
+    // Only samples during awake (not sleep, not activity) should be included
+    expect(result.count).toBe(2)
+    expect(result.data.map((d) => d.value)).toEqual([30, 28])
+  })
+
+  test('returns filtered HRV data for hrv_activity', async () => {
+    // Raw HRV data
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T10:00:00Z'), 22], // During exercise
+      [new Date('2024-01-15T10:30:00Z'), 18], // During exercise
+      [new Date('2024-01-15T14:00:00Z'), 30], // After exercise (awake)
+    ])
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activityType: 'exercise',
+        endTime: new Date('2024-01-15T11:00:00Z'),
+        source: 'health_connect',
+        startTime: new Date('2024-01-15T09:30:00Z'),
+        title: 'Morning Run',
+      },
+    ])
+
+    const result = await queryMetrics(
+      'testuser',
+      'hrv_activity',
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metric).toBe('hrv_activity')
+    // Only samples during exercise should be included
+    expect(result.count).toBe(2)
+    expect(result.data.map((d) => d.value)).toEqual([22, 18])
+  })
 })
