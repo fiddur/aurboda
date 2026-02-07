@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db'
 import { MetricType } from '../schema'
 import * as locationsService from './locations'
-import { getDailySummary, getPeriodSummary, queryMetrics } from './queries'
+import { getDailySummary, getPeriodSummary, queryMetrics, queryMetricsBucketed } from './queries'
 
 // Mock the db module
 vi.mock('../db', () => ({
@@ -14,6 +14,7 @@ vi.mock('../db', () => ({
   getSleepSessions: vi.fn(),
   getTags: vi.fn(),
   getTimeSeries: vi.fn(),
+  getTimeSeriesBucketed: vi.fn(),
   getTimeSeriesMultiMetric: vi.fn(),
   getTimeSeriesStats: vi.fn(),
   getUserSettings: vi.fn(),
@@ -711,5 +712,272 @@ describe('getPeriodSummary', () => {
     expect(heartRate!.avg).toBe(72)
     expect(zone1).toBeDefined()
     expect(zone1!.avg).toBeGreaterThan(0)
+  })
+})
+
+describe('queryMetricsBucketed', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns bucketed data for a single metric', async () => {
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucketStart: new Date('2024-01-15T06:00:00Z'),
+        count: 300,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+      },
+      {
+        avg: 78,
+        bucketStart: new Date('2024-01-15T06:15:00Z'),
+        count: 280,
+        max: 85,
+        metric: 'heart_rate',
+        min: 70,
+      },
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:30:00Z'),
+      '15m',
+    )
+
+    expect(result.buckets).toHaveLength(2)
+    expect(result.bucket).toBe('15m')
+    expect(result.buckets[0]).toEqual({
+      end: '2024-01-15T06:15:00.000Z',
+      metrics: {
+        heart_rate: { avg: 72, count: 300, max: 80, min: 65 },
+      },
+      start: '2024-01-15T06:00:00.000Z',
+    })
+    expect(result.buckets[1]).toEqual({
+      end: '2024-01-15T06:30:00.000Z',
+      metrics: {
+        heart_rate: { avg: 78, count: 280, max: 85, min: 70 },
+      },
+      start: '2024-01-15T06:15:00.000Z',
+    })
+  })
+
+  test('returns bucketed data for multiple metrics', async () => {
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucketStart: new Date('2024-01-15T06:00:00Z'),
+        count: 300,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+      },
+      {
+        avg: 45,
+        bucketStart: new Date('2024-01-15T06:00:00Z'),
+        count: 100,
+        max: 60,
+        metric: 'hrv_rmssd',
+        min: 30,
+      },
+      {
+        avg: 78,
+        bucketStart: new Date('2024-01-15T06:15:00Z'),
+        count: 280,
+        max: 85,
+        metric: 'heart_rate',
+        min: 70,
+      },
+      {
+        avg: 42,
+        bucketStart: new Date('2024-01-15T06:15:00Z'),
+        count: 90,
+        max: 55,
+        metric: 'hrv_rmssd',
+        min: 28,
+      },
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate', 'hrv_rmssd'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:30:00Z'),
+      '15m',
+    )
+
+    expect(result.buckets).toHaveLength(2)
+    expect(result.buckets[0].metrics).toEqual({
+      heart_rate: { avg: 72, count: 300, max: 80, min: 65 },
+      hrv_rmssd: { avg: 45, count: 100, max: 60, min: 30 },
+    })
+    expect(result.buckets[1].metrics).toEqual({
+      heart_rate: { avg: 78, count: 280, max: 85, min: 70 },
+      hrv_rmssd: { avg: 42, count: 90, max: 55, min: 28 },
+    })
+  })
+
+  test('returns empty buckets array when no data', async () => {
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:30:00Z'),
+      '15m',
+    )
+
+    expect(result.buckets).toHaveLength(0)
+  })
+
+  test('handles 5m bucket interval', async () => {
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucketStart: new Date('2024-01-15T06:00:00Z'),
+        count: 100,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+      },
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:05:00Z'),
+      '5m',
+    )
+
+    expect(result.bucket).toBe('5m')
+    expect(result.buckets[0].end).toBe('2024-01-15T06:05:00.000Z')
+    expect(db.getTimeSeriesBucketed).toHaveBeenCalledWith(
+      'testuser',
+      ['heart_rate'],
+      expect.any(Date),
+      expect.any(Date),
+      5,
+    )
+  })
+
+  test('handles 1h bucket interval', async () => {
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucketStart: new Date('2024-01-15T06:00:00Z'),
+        count: 1200,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+      },
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T07:00:00Z'),
+      '1h',
+    )
+
+    expect(result.bucket).toBe('1h')
+    expect(result.buckets[0].end).toBe('2024-01-15T07:00:00.000Z')
+    expect(db.getTimeSeriesBucketed).toHaveBeenCalledWith(
+      'testuser',
+      ['heart_rate'],
+      expect.any(Date),
+      expect.any(Date),
+      60,
+    )
+  })
+
+  test('handles 1d bucket interval', async () => {
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucketStart: new Date('2024-01-15T00:00:00Z'),
+        count: 28800,
+        max: 120,
+        metric: 'heart_rate',
+        min: 55,
+      },
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-16T00:00:00Z'),
+      '1d',
+    )
+
+    expect(result.bucket).toBe('1d')
+    expect(result.buckets[0].end).toBe('2024-01-16T00:00:00.000Z')
+    expect(db.getTimeSeriesBucketed).toHaveBeenCalledWith(
+      'testuser',
+      ['heart_rate'],
+      expect.any(Date),
+      expect.any(Date),
+      1440,
+    )
+  })
+
+  test('handles buckets with partial metric coverage', async () => {
+    // Only heart_rate has data in second bucket, not hrv_rmssd
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucketStart: new Date('2024-01-15T06:00:00Z'),
+        count: 300,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+      },
+      {
+        avg: 45,
+        bucketStart: new Date('2024-01-15T06:00:00Z'),
+        count: 100,
+        max: 60,
+        metric: 'hrv_rmssd',
+        min: 30,
+      },
+      {
+        avg: 78,
+        bucketStart: new Date('2024-01-15T06:15:00Z'),
+        count: 280,
+        max: 85,
+        metric: 'heart_rate',
+        min: 70,
+      },
+      // No hrv_rmssd data for 06:15 bucket
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate', 'hrv_rmssd'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:30:00Z'),
+      '15m',
+    )
+
+    expect(result.buckets).toHaveLength(2)
+    // First bucket has both metrics
+    expect(result.buckets[0].metrics.heart_rate).toBeDefined()
+    expect(result.buckets[0].metrics.hrv_rmssd).toBeDefined()
+    // Second bucket only has heart_rate
+    expect(result.buckets[1].metrics.heart_rate).toBeDefined()
+    expect(result.buckets[1].metrics.hrv_rmssd).toBeUndefined()
   })
 })
