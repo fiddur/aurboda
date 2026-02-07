@@ -29,6 +29,7 @@ import {
   getUserSettings,
   upsertUserSettings,
 } from './db'
+import { syncAllCalendars } from './ical-sync'
 import { DEFAULT_SESSION_INACTIVITY_MS, McpSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
@@ -516,10 +517,44 @@ export function createMcpRouter(
       },
     )
 
+    // Tool: sync_calendars
+    server.tool(
+      'sync_calendars',
+      'Sync events from configured calendar ICS URLs. Fetches ICS data and stores events as tags for correlation analysis.',
+      {
+        full_resync: z
+          .boolean()
+          .optional()
+          .describe('If true, re-fetches all events. Otherwise, performs a normal sync.'),
+      },
+      async () => {
+        const settings = await getSettings(user)
+        if (!settings.calendars || settings.calendars.length === 0) {
+          return errorResponse('No calendars configured in user settings. Add calendars in Settings first.')
+        }
+
+        try {
+          const results = await syncAllCalendars(user, settings.calendars)
+
+          const summary = results.map((r) => ({
+            calendar: r.calendar,
+            error: r.error,
+            eventsProcessed: r.eventsProcessed,
+            status: r.status,
+          }))
+
+          return jsonResponse({ results: summary, success: true })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return jsonResponse({ error: message, success: false })
+        }
+      },
+    )
+
     // Tool: get_sync_status
     server.tool(
       'get_sync_status',
-      'Get the current sync status for Oura and RescueTime data sources. Shows last sync time, status, and any errors.',
+      'Get the current sync status for Oura, RescueTime, and Calendar data sources. Shows last sync time, status, and any errors.',
       {
         provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
       },
@@ -533,6 +568,10 @@ export function createMcpRouter(
 
           if (provider === 'all' || provider === 'rescuetime') {
             states.rescuetime = await getAllSyncStates(user, 'rescuetime')
+          }
+
+          if (provider === 'all' || provider === 'calendar') {
+            states.calendar = await getAllSyncStates(user, 'calendar')
           }
 
           return jsonResponse({ states, success: true })

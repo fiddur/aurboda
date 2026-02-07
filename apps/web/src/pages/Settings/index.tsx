@@ -1,3 +1,4 @@
+import type { CalendarConfig } from '@aurboda/api-spec'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 import { GoalsSettings } from '../../components/GoalsSettings'
@@ -48,10 +49,15 @@ export function Settings() {
   const [hrZones, setHrZones] = useState<HrZoneThresholds | null>(null)
   const [rescueTimeKey, setRescueTimeKey] = useState<string>('')
 
+  // Calendar form state
+  const [newCalendarName, setNewCalendarName] = useState('')
+  const [newCalendarUrl, setNewCalendarUrl] = useState('')
+
   // Save status for each section
   const [birthDateStatus, setBirthDateStatus] = useState<SaveStatus>({ status: 'idle' })
   const [rescueTimeStatus, setRescueTimeStatus] = useState<SaveStatus>({ status: 'idle' })
   const [hrZonesStatus, setHrZonesStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [calendarsStatus, setCalendarsStatus] = useState<SaveStatus>({ status: 'idle' })
 
   // Initialize form when data loads
   const initializeForm = () => {
@@ -141,6 +147,25 @@ export function Settings() {
 
     saveSection({ rescue_time_key: rescueTimeKey }, setRescueTimeStatus)
     setRescueTimeKey('')
+  }
+
+  const handleAddCalendar = () => {
+    if (!newCalendarName.trim() || !newCalendarUrl.trim()) return
+
+    const currentCalendars: CalendarConfig[] = userSettings?.calendars ?? []
+    const updatedCalendars = [
+      ...currentCalendars,
+      { name: newCalendarName.trim(), url: newCalendarUrl.trim() },
+    ]
+    saveSection({ calendars: updatedCalendars }, setCalendarsStatus)
+    setNewCalendarName('')
+    setNewCalendarUrl('')
+  }
+
+  const handleRemoveCalendar = (index: number) => {
+    const currentCalendars: CalendarConfig[] = userSettings?.calendars ?? []
+    const updatedCalendars = currentCalendars.filter((_, i) => i !== index)
+    saveSection({ calendars: updatedCalendars }, setCalendarsStatus)
   }
 
   const handleConnectOura = () => {
@@ -242,6 +267,73 @@ export function Settings() {
             . Used to sync productivity data. Saves automatically when you leave the field.
           </p>
         </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="section-header-row">
+          <h2>Calendars</h2>
+          <SaveStatusIndicator saveStatus={calendarsStatus} />
+        </div>
+        <p class="section-description">
+          Add calendar ICS URLs to correlate calendar events with your health data. Events will appear as tags
+          in trends and correlation analysis.
+        </p>
+
+        {(userSettings?.calendars ?? []).length > 0 && (
+          <div class="calendars-list">
+            {(userSettings?.calendars ?? []).map((cal, index) => (
+              <div class="calendar-item" key={`${cal.name}-${index}`}>
+                <div class="calendar-info">
+                  <span class="calendar-name">{cal.name}</span>
+                  <span class="calendar-url">{cal.url}</span>
+                </div>
+                <button
+                  type="button"
+                  class="remove-calendar-button"
+                  onClick={() => handleRemoveCalendar(index)}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div class="add-calendar-form">
+          <div class="form-field">
+            <label for="calendar-name">Calendar Name</label>
+            <input
+              id="calendar-name"
+              type="text"
+              value={newCalendarName}
+              onInput={(e) => setNewCalendarName((e.target as HTMLInputElement).value)}
+              placeholder="e.g., Work, Personal"
+            />
+          </div>
+          <div class="form-field">
+            <label for="calendar-url">ICS URL</label>
+            <input
+              id="calendar-url"
+              type="url"
+              value={newCalendarUrl}
+              onInput={(e) => setNewCalendarUrl((e.target as HTMLInputElement).value)}
+              placeholder="https://calendar.google.com/calendar/ical/..."
+            />
+          </div>
+          <button
+            type="button"
+            class="connect-button"
+            onClick={handleAddCalendar}
+            disabled={!newCalendarName.trim() || !newCalendarUrl.trim()}
+          >
+            Add Calendar
+          </button>
+        </div>
+
+        <p class="field-description">
+          For Google Calendar: Go to Settings &gt; calendar &gt; Integrate calendar &gt; copy the "Secret
+          address in iCal format" URL.
+        </p>
       </section>
 
       <section class="settings-section">

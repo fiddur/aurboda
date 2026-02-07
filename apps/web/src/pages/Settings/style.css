@@ -128,6 +128,70 @@
   color: #f57c00;
 }
 
+.calendars-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.calendar-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  gap: 1rem;
+}
+
+.calendar-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.calendar-name {
+  font-weight: 500;
+}
+
+.calendar-url {
+  font-size: 0.8rem;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remove-calendar-button {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  background: transparent;
+  border: 1px solid #f44336;
+  color: #f44336;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.remove-calendar-button:hover {
+  background: #f44336;
+  color: white;
+}
+
+.add-calendar-form {
+  margin-bottom: 0.5rem;
+}
+
+.add-calendar-form .form-field input[type="text"],
+.add-calendar-form .form-field input[type="url"] {
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 100%;
+}
+
 .hr-zones-form {
   display: flex;
   flex-direction: column;
@@ -187,6 +251,21 @@
   .field-description,
   .zone-input .unit {
     color: #aaa;
+  }
+
+  .calendar-item {
+    border-color: #444;
+  }
+
+  .calendar-url {
+    color: #aaa;
+  }
+
+  .add-calendar-form .form-field input[type="text"],
+  .add-calendar-form .form-field input[type="url"] {
+    background: #333;
+    border-color: #555;
+    color: #fff;
   }
 
   .form-field input[type="date"],

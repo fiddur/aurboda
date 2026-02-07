@@ -33,6 +33,8 @@ export interface SyncProvider {
   syncOuraIfNeeded: (user: string, dataType: 'tags' | 'sessions') => Promise<void>
   /** Sync RescueTime productivity data if stale */
   syncRescueTimeIfNeeded: (user: string) => Promise<void>
+  /** Sync calendar data if stale */
+  syncCalendarsIfNeeded: (user: string) => Promise<void>
 }
 
 export interface MetricDataPoint {
@@ -167,6 +169,7 @@ export async function getDailySummary(
       sync.syncOuraIfNeeded(user, 'tags'),
       sync.syncOuraIfNeeded(user, 'sessions'),
       sync.syncRescueTimeIfNeeded(user),
+      sync.syncCalendarsIfNeeded(user),
     ])
   }
 
@@ -493,7 +496,7 @@ export async function queryTags(
   sync?: SyncProvider,
 ): Promise<TagSummary[]> {
   if (sync) {
-    await sync.syncOuraIfNeeded(user, 'tags')
+    await Promise.all([sync.syncOuraIfNeeded(user, 'tags'), sync.syncCalendarsIfNeeded(user)])
   }
 
   const tags = await getTags(user, start, end)

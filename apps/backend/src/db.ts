@@ -1696,8 +1696,14 @@ export const getDailyAggregateValue = async (
 // User Settings
 // ============================================================================
 
+export interface CalendarConfig {
+  name: string
+  url: string
+}
+
 export interface UserSettings {
   birthDate?: string // YYYY-MM-DD
+  calendars?: CalendarConfig[] // Calendar ICS URL configurations
   goals?: Goal[] // User-defined goals for tracking metrics
   hrZoneStart?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   rescueTimeKey?: string // RescueTime API key (personal token)
@@ -1716,6 +1722,7 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
   const settings = result.rows[0].settings as Record<string, unknown>
   return {
     birthDate: settings.birthDate as string | undefined,
+    calendars: settings.calendars as CalendarConfig[] | undefined,
     goals: settings.goals as Goal[] | undefined,
     hrZoneStart: settings.hrZoneStart as UserSettings['hrZoneStart'],
     rescueTimeKey: settings.rescueTimeKey as string | undefined,
@@ -1738,6 +1745,9 @@ export const upsertUserSettings = async (
   const merged: UserSettings = { ...existing }
   if (updates.birthDate !== undefined) {
     merged.birthDate = updates.birthDate
+  }
+  if (updates.calendars !== undefined) {
+    merged.calendars = updates.calendars
   }
   if (updates.goals !== undefined) {
     merged.goals = updates.goals

@@ -53,7 +53,7 @@ export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
  */
 export const syncStatusQuerySchema = z
   .object({
-    provider: z.enum(['oura', 'rescuetime', 'all']).optional().meta({
+    provider: z.enum(['oura', 'rescuetime', 'calendar', 'all']).optional().meta({
       description: 'Provider to check (defaults to all)',
     }),
   })
@@ -64,7 +64,7 @@ export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
 /**
  * Sync provider schema (for MCP).
  */
-export const syncProviderSchema = z.enum(['oura', 'rescuetime', 'all']).meta({
+export const syncProviderSchema = z.enum(['oura', 'rescuetime', 'calendar', 'all']).meta({
   description: 'Which provider to check',
 })
 
@@ -93,6 +93,17 @@ export const syncRescueTimeBodySchema = z
   .meta({ id: 'SyncRescueTimeBody' })
 
 export type SyncRescueTimeBody = z.infer<typeof syncRescueTimeBodySchema>
+
+/**
+ * Sync Calendars body schema.
+ */
+export const syncCalendarsBodySchema = z
+  .object({
+    full_resync: fullResyncSchema,
+  })
+  .meta({ id: 'SyncCalendarsBody' })
+
+export type SyncCalendarsBody = z.infer<typeof syncCalendarsBodySchema>
 
 /**
  * Sync response schema.
@@ -280,3 +291,43 @@ export const rescueTimeSyncResponseSchema = baseResponseSchema
   .meta({ id: 'RescueTimeSyncResponse' })
 
 export type RescueTimeSyncResponse = z.infer<typeof rescueTimeSyncResponseSchema>
+
+// ============================================================================
+// Calendar sync schemas
+// ============================================================================
+
+/**
+ * Calendar sync status response.
+ */
+export const calendarSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Calendar sync states' }),
+  })
+  .meta({ id: 'CalendarSyncStatusResponse' })
+
+export type CalendarSyncStatusResponse = z.infer<typeof calendarSyncStatusResponseSchema>
+
+/**
+ * Calendar sync result.
+ */
+export const calendarSyncResultSchema = z
+  .object({
+    calendar: z.string().meta({ description: 'Calendar name' }),
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    eventsProcessed: z.number().int().meta({ description: 'Number of events processed' }),
+    status: syncResultStatusSchema,
+  })
+  .meta({ id: 'CalendarSyncResult' })
+
+export type CalendarSyncResult = z.infer<typeof calendarSyncResultSchema>
+
+/**
+ * Calendar sync response.
+ */
+export const calendarSyncResponseSchema = baseResponseSchema
+  .extend({
+    results: z.array(calendarSyncResultSchema).optional().meta({ description: 'Sync results per calendar' }),
+  })
+  .meta({ id: 'CalendarSyncResponse' })
+
+export type CalendarSyncResponse = z.infer<typeof calendarSyncResponseSchema>
