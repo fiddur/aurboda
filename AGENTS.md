@@ -36,6 +36,9 @@ When adding new features, implement both the MCP tool and REST API endpoint.
 ## Testing
 
 * Make unit test first (when reasonable), prompting a more testable code with clear dependency injection.
+* Backend should be well covered with tests.
+* All database functions in `apps/backend/src/db.ts` must have integration tests in `db.integration.test.ts`.
+* Integration tests use testcontainers to run against a real PostgreSQL instance.
 
 
 For typescript:
