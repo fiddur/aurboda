@@ -1,4 +1,4 @@
-import { type CustomMetricDefinition, type Goal } from '@aurboda/api-spec'
+import { type CustomMetricDefinition, type DashboardConfig, type Goal } from '@aurboda/api-spec'
 import { Client, QueryResultRow } from 'pg'
 import format from 'pg-format'
 import {
@@ -1866,6 +1866,7 @@ export interface UserSettings {
   birthDate?: string // YYYY-MM-DD
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
   customMetrics?: CustomMetricDefinition[] // User-defined custom metric types
+  dashboard?: DashboardConfig // Custom dashboard configuration
   goals?: Goal[] // User-defined goals for tracking metrics
   hrZoneStart?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   rescueTimeKey?: string // RescueTime API key (personal token)
@@ -1886,6 +1887,7 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
     birthDate: settings.birthDate as string | undefined,
     calendars: settings.calendars as CalendarConfig[] | undefined,
     customMetrics: settings.customMetrics as CustomMetricDefinition[] | undefined,
+    dashboard: settings.dashboard as DashboardConfig | undefined,
     goals: settings.goals as Goal[] | undefined,
     hrZoneStart: settings.hrZoneStart as UserSettings['hrZoneStart'],
     rescueTimeKey: settings.rescueTimeKey as string | undefined,
@@ -1914,6 +1916,9 @@ export const upsertUserSettings = async (
   }
   if (updates.customMetrics !== undefined) {
     merged.customMetrics = updates.customMetrics
+  }
+  if (updates.dashboard !== undefined) {
+    merged.dashboard = updates.dashboard
   }
   if (updates.goals !== undefined) {
     merged.goals = updates.goals

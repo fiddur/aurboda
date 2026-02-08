@@ -4,6 +4,7 @@
 
 import { z } from 'zod'
 import { baseResponseSchema, hrZoneSourceSchema } from './common.js'
+import { dashboardConfigSchema } from './dashboard.js'
 import { goalsSchema } from './goals.js'
 
 // Shared HR zone threshold field
@@ -99,6 +100,12 @@ export const updateSettingsInputSchema = z
     birth_date: birthDateSchema.nullable().optional().meta({
       description: 'Birth date (set to null to clear)',
     }),
+    calendars: calendarsSchema.nullable().optional().meta({
+      description: 'Calendar ICS URL configurations (set to null to clear all)',
+    }),
+    dashboard: dashboardConfigSchema.nullable().optional().meta({
+      description: 'Dashboard configuration (set to null to reset to defaults)',
+    }),
     goals: goalsSchema.nullable().optional().meta({
       description: 'Goals (set to null to reset to defaults, empty array to clear all)',
     }),
@@ -107,9 +114,6 @@ export const updateSettingsInputSchema = z
     }),
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
-    }),
-    calendars: calendarsSchema.nullable().optional().meta({
-      description: 'Calendar ICS URL configurations (set to null to clear all)',
     }),
     tag_mappings: tagMappingsSchema.nullable().optional().meta({
       description: 'Tag name mappings (set to null to clear all)',
@@ -126,6 +130,7 @@ export const userSettingsResponseSchema = baseResponseSchema
   .extend({
     birth_date: z.string().nullable().meta({ description: 'Birth date in YYYY-MM-DD format' }),
     calendars: calendarsSchema.meta({ description: 'Calendar ICS URL configurations' }),
+    dashboard: dashboardConfigSchema.nullable().meta({ description: 'Custom dashboard configuration (null = use default)' }),
     goals: goalsSchema.meta({ description: 'User goals for tracking metrics' }),
     hr_zone_start: hrZoneThresholdsSchema.meta({ description: 'Effective HR zone thresholds' }),
     hr_zone_start_source: hrZoneSourceSchema.meta({
