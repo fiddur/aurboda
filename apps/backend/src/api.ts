@@ -23,6 +23,7 @@ import {
   type BaselineQuery,
   baselineQuerySchema,
   type BaselineResponse,
+  type BucketSize,
   type CreateInvitationBody,
   createInvitationBodySchema,
   type CustomMetricResponse,
@@ -30,6 +31,7 @@ import {
   type DailySummaryQuery,
   dailySummaryQuerySchema,
   type DailySummaryResponse,
+  type DeleteActivityResponse,
   type DeleteTagResponse,
   type DetectedLocationsQuery,
   detectedLocationsQuerySchema,
@@ -61,6 +63,9 @@ import {
   type ProgrammaticTagsResponse,
   type PromoteDetectedLocationBody,
   promoteDetectedLocationBodySchema,
+  type QueryMetricsBucketedQuery,
+  queryMetricsBucketedQuerySchema,
+  type QueryMetricsBucketedResponse,
   type QueryMetricsQuery,
   queryMetricsQuerySchema,
   type QueryMetricsResponse,
@@ -69,6 +74,7 @@ import {
   setTagMappingBodySchema,
   type SetTagMappingResponse,
   type SignupResponse,
+  type TagMappingsResponse,
   type TagsQuery,
   tagsQuerySchema,
   type TagsResponse,
@@ -76,6 +82,9 @@ import {
   trendQuerySchema,
   type TrendResponse,
   type UniqueTagsResponse,
+  type UpdateActivityBody,
+  updateActivityBodySchema,
+  type UpdateActivityResponse,
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
   type UpdateNamedLocationBody,
@@ -110,13 +119,14 @@ import {
   updateDetectedLocation,
   upsertUserSettings,
 } from './db'
+import { syncAllCalendars } from './ical-sync'
 import { createMcpRouter } from './mcp'
 import { createDbSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { createOwnTracksRouter } from './owntracks'
 import { syncRescueTimeData } from './rescuetime-sync'
-import { isValidMetricOrCustom, validMetrics } from './schema'
+import { isValidMetricOrCustom, type MetricType, validMetrics } from './schema'
 import { getCentralDb, initializeCentralDb } from './services/central-db'
 import {
   getActivityImpact,
@@ -142,8 +152,11 @@ import {
   addCustomMetric,
   addMetric,
   addTag,
+  deleteActivity,
   deleteCustomMetric,
+  deleteTag,
   getCustomMetrics,
+  updateActivity,
 } from './services/mutations'
 import {
   getDailySummary,
@@ -151,6 +164,7 @@ import {
   queryActivities,
   queryLocations,
   queryMetrics,
+  queryMetricsBucketed,
   queryProductivity,
   queryTags,
 } from './services/queries'
@@ -366,7 +380,7 @@ const main = async () => {
   })
 
   // Transform SyncState to ProviderSyncStatus format (undefined -> null)
-  const transformSyncStates = async (user: string, provider: 'oura' | 'rescuetime') => {
+  const transformSyncStates = async (user: string, provider: string) => {
     const states = await getAllSyncStates(user, provider)
     return states.map((s) => ({
       errorMessage: s.errorMessage ?? null,
@@ -407,13 +421,16 @@ const main = async () => {
     '/sync',
     createSyncRouter(
       {
+        getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
         getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
         getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),
         getSettings,
         processDailyAggregate,
         processHealthConnectData,
+        resetCalendarSyncState: (user) => resetSyncState(user, 'calendar'),
         resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
+        syncCalendars: (user, calendars) => syncAllCalendars(user, calendars),
         syncOura: transformOuraSyncResults,
         syncRescueTime: transformRescueTimeSyncResult,
       },
@@ -478,6 +495,48 @@ const main = async () => {
       }
 
       const result = await queryMetrics(user, metric, new Date(start), new Date(end), customMetrics)
+      res.json({ ...result, success: true })
+    },
+  )
+
+  // Valid bucket sizes for bucketed metrics queries
+  const validBucketSizes = ['5m', '15m', '30m', '1h', '1d'] as const
+
+  // GET /metrics/bucketed - Query pre-aggregated metrics in time buckets
+  httpd.get<Record<string, never>, QueryMetricsBucketedResponse, unknown, QueryMetricsBucketedQuery>(
+    '/metrics/bucketed',
+    authMiddleware,
+    validateQuery(queryMetricsBucketedQuerySchema),
+    async (req, res) => {
+      const { start, end, bucket, metrics: metricsParam } = req.query
+      const user = req.user!
+
+      const settings = await getUserSettings(user)
+      const customMetrics = settings?.customMetrics ?? []
+
+      const metrics = metricsParam.split(',')
+      const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
+      if (invalidMetrics.length > 0) {
+        return res.status(400).json({
+          error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
+          success: false,
+        })
+      }
+
+      if (!validBucketSizes.includes(bucket)) {
+        return res.status(400).json({
+          error: `Invalid bucket size "${bucket}". Valid sizes are: ${validBucketSizes.join(', ')}`,
+          success: false,
+        })
+      }
+
+      const result = await queryMetricsBucketed(
+        user,
+        metrics as MetricType[],
+        new Date(start),
+        new Date(end),
+        bucket as BucketSize,
+      )
       res.json({ ...result, success: true })
     },
   )
@@ -558,6 +617,19 @@ const main = async () => {
     },
   )
 
+  // DELETE /tags/:externalId - Delete a tag by external ID
+  httpd.delete<{ externalId: string }, DeleteTagResponse>(
+    '/tags/:externalId',
+    authMiddleware,
+    async (req, res) => {
+      const { externalId } = req.params
+      const user = req.user!
+
+      const result = await deleteTag(user, externalId)
+      res.json(result)
+    },
+  )
+
   // GET /tags/unique - Get all unique tag names
   httpd.get<Record<string, never>, UniqueTagsResponse>('/tags/unique', authMiddleware, async (req, res) => {
     const user = req.user!
@@ -602,6 +674,17 @@ const main = async () => {
       await upsertUserSettings(user, { tagMappings: newMappings })
 
       res.json({ mapping: newMappings, success: true })
+    },
+  )
+
+  // GET /tags/mappings - Get all tag mappings
+  httpd.get<Record<string, never>, TagMappingsResponse>(
+    '/tags/mappings',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const settings = await getUserSettings(user)
+      res.json({ mappings: settings?.tagMappings ?? {}, success: true })
     },
   )
 
@@ -664,6 +747,60 @@ const main = async () => {
 
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })
+      }
+
+      res.json({
+        data: {
+          activityType: result.activityType!,
+          endTime: result.endTime!,
+          id: result.id!,
+          notes: result.notes,
+          startTime: result.startTime!,
+          title: result.title,
+        },
+        success: true,
+      })
+    },
+  )
+
+  // DELETE /activities/:id - Delete an activity by ID
+  httpd.delete<{ id: string }, DeleteActivityResponse>(
+    '/activities/:id',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
+
+      const result = await deleteActivity(user, id)
+
+      if (!result.success) {
+        return res.status(404).json({ error: 'Activity not found', success: false })
+      }
+
+      res.json({ success: true })
+    },
+  )
+
+  // PATCH /activities/:id - Update an activity by ID
+  httpd.patch<{ id: string }, UpdateActivityResponse, UpdateActivityBody>(
+    '/activities/:id',
+    authMiddleware,
+    validateBody(updateActivityBodySchema),
+    async (req, res) => {
+      const { id } = req.params
+      const { start_time, end_time, title, notes } = req.body
+      const user = req.user!
+
+      const result = await updateActivity(user, id, {
+        endTime: end_time ? new Date(end_time) : undefined,
+        notes,
+        startTime: start_time ? new Date(start_time) : undefined,
+        title,
+      })
+
+      if (!result.success) {
+        const status = result.error === 'Activity not found' ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
       }
 
       res.json({

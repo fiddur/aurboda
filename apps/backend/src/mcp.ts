@@ -14,6 +14,7 @@ import {
   startDateTimeQuerySchema,
   syncProviderSchema,
   validMetrics,
+  type MetricType,
 } from '@aurboda/api-spec'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -29,6 +30,7 @@ import {
   getUserSettings,
   upsertUserSettings,
 } from './db'
+import { syncAllCalendars } from './ical-sync'
 import { DEFAULT_SESSION_INACTIVITY_MS, McpSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
@@ -55,16 +57,20 @@ import {
   addCustomMetric,
   addMetric,
   addTag,
+  deleteActivity,
   deleteCustomMetric,
   deleteTag,
   getCustomMetrics,
+  updateActivity,
 } from './services/mutations'
 import {
+  BucketSize,
   getDailySummary,
   getPeriodSummary,
   queryActivities,
   queryLocations,
   queryMetrics,
+  queryMetricsBucketed,
   queryProductivity,
   queryTags,
   SyncProvider,
@@ -170,6 +176,51 @@ export function createMcpRouter(
 
         // Dates are pre-validated by zod schema (startDateTimeQuerySchema/endDateTimeQuerySchema)
         const result = await queryMetrics(user, metric, new Date(start), new Date(end), customMetrics)
+        return jsonResponse(result)
+      },
+    )
+
+    // Valid bucket sizes for bucketed metrics queries
+    const validBucketSizes = ['5m', '15m', '30m', '1h', '1d'] as const
+
+    // Tool: query_metrics_bucketed
+    server.tool(
+      'query_metrics_bucketed',
+      `Query pre-aggregated health metrics in time buckets. Returns buckets with min/max/avg/count for each metric.
+Much more efficient than query_metrics for analysis - returns ~96 buckets for a day (15m intervals) instead of 30,000+ individual samples.
+
+Use cases:
+- Daily timeline analysis: "Show me HR/HRV patterns across the day"
+- Sleep quality analysis: "How did my HRV change during sleep?"
+- Exercise response: "Compare pre/during/post exercise HR"
+- Multi-day trends: "What's my average resting HR this week?" (use 1d bucket)`,
+      {
+        ...mcpTimeRangeSchema,
+        bucket: z.enum(validBucketSizes).describe('Bucket size: "5m", "15m", "30m", "1h", or "1d"'),
+        metrics: z
+          .array(z.string())
+          .describe(`Metrics to include. Valid metrics: ${validMetrics.join(', ')}`),
+      },
+      async ({ bucket, end, metrics, start }) => {
+        const customMetrics = await getCustomMetrics(user)
+        const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
+        if (invalidMetrics.length > 0) {
+          const customNames = customMetrics.map((m) => m.name)
+          const allMetrics = [...validMetrics, ...customNames]
+          return errorResponse(
+            `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${allMetrics.join(', ')}`,
+          )
+        }
+
+        // Dates are pre-validated by zod schema
+        const validatedMetrics = metrics as MetricType[]
+        const result = await queryMetricsBucketed(
+          user,
+          validatedMetrics,
+          new Date(start),
+          new Date(end),
+          bucket as BucketSize,
+        )
         return jsonResponse(result)
       },
     )
@@ -510,6 +561,46 @@ export function createMcpRouter(
       },
     )
 
+    // Tool: delete_activity
+    server.tool(
+      'delete_activity',
+      'Delete an activity by its ID. Returns success if the activity was found and deleted.',
+      {
+        id: z.string().uuid().describe('The ID of the activity to delete'),
+      },
+      async ({ id }) => {
+        const result = await deleteActivity(user, id)
+        return jsonResponse(result)
+      },
+    )
+
+    // Tool: update_activity
+    server.tool(
+      'update_activity',
+      'Update an existing activity. Can modify start_time, end_time, title, and notes. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
+      {
+        end_time: endDateTimeQuerySchema.optional().describe('New end time in ISO 8601 format'),
+        id: z.string().uuid().describe('The ID of the activity to update'),
+        notes: z.string().optional().describe('New activity notes'),
+        start_time: startDateTimeQuerySchema.optional().describe('New start time in ISO 8601 format'),
+        title: z.string().optional().describe('New activity title'),
+      },
+      async ({ id, start_time, end_time, title, notes }) => {
+        const result = await updateActivity(user, id, {
+          endTime: end_time ? new Date(end_time) : undefined,
+          notes,
+          startTime: start_time ? new Date(start_time) : undefined,
+          title,
+        })
+
+        if (!result.success) {
+          return errorResponse(result.error ?? 'Failed to update activity')
+        }
+
+        return jsonResponse(result)
+      },
+    )
+
     // ========================================================================
     // Sync Tools
     // ========================================================================
@@ -597,10 +688,44 @@ export function createMcpRouter(
       },
     )
 
+    // Tool: sync_calendars
+    server.tool(
+      'sync_calendars',
+      'Sync events from configured calendar ICS URLs. Fetches ICS data and stores events as tags for correlation analysis.',
+      {
+        full_resync: z
+          .boolean()
+          .optional()
+          .describe('If true, re-fetches all events. Otherwise, performs a normal sync.'),
+      },
+      async () => {
+        const settings = await getSettings(user)
+        if (!settings.calendars || settings.calendars.length === 0) {
+          return errorResponse('No calendars configured in user settings. Add calendars in Settings first.')
+        }
+
+        try {
+          const results = await syncAllCalendars(user, settings.calendars)
+
+          const summary = results.map((r) => ({
+            calendar: r.calendar,
+            error: r.error,
+            eventsProcessed: r.eventsProcessed,
+            status: r.status,
+          }))
+
+          return jsonResponse({ results: summary, success: true })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return jsonResponse({ error: message, success: false })
+        }
+      },
+    )
+
     // Tool: get_sync_status
     server.tool(
       'get_sync_status',
-      'Get the current sync status for Oura and RescueTime data sources. Shows last sync time, status, and any errors.',
+      'Get the current sync status for Oura, RescueTime, and Calendar data sources. Shows last sync time, status, and any errors.',
       {
         provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
       },
@@ -614,6 +739,10 @@ export function createMcpRouter(
 
           if (provider === 'all' || provider === 'rescuetime') {
             states.rescuetime = await getAllSyncStates(user, 'rescuetime')
+          }
+
+          if (provider === 'all' || provider === 'calendar') {
+            states.calendar = await getAllSyncStates(user, 'calendar')
           }
 
           return jsonResponse({ states, success: true })

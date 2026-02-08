@@ -8,8 +8,11 @@
 import type { ActivityType, CustomMetricDefinition } from '@aurboda/api-spec'
 import { randomUUID } from 'crypto'
 import {
+  deleteActivity as dbDeleteActivity,
   deleteTag as dbDeleteTag,
+  getActivityById as dbGetActivityById,
   insertActivity as dbInsertActivity,
+  updateActivity as dbUpdateActivity,
   findMergeableTag,
   getUserSettings,
   insertTag,
@@ -91,6 +94,30 @@ export interface DeleteCustomMetricResult {
   success: boolean
   deleted: boolean
   name: string
+}
+
+export interface DeleteActivityResult {
+  success: boolean
+  deleted: boolean
+  id: string
+}
+
+export interface UpdateActivityInput {
+  startTime?: Date
+  endTime?: Date
+  title?: string
+  notes?: string
+}
+
+export interface UpdateActivityResult {
+  success: boolean
+  id?: string
+  activityType?: ActivityType
+  startTime?: string
+  endTime?: string
+  title?: string
+  notes?: string
+  error?: string
 }
 
 // ============================================================================
@@ -334,4 +361,77 @@ export async function deleteCustomMetric(user: string, name: string): Promise<De
 export async function getCustomMetrics(user: string): Promise<CustomMetricDefinition[]> {
   const settings = await getUserSettings(user)
   return settings?.customMetrics ?? []
+}
+
+/**
+ * Delete an activity by its ID.
+ */
+export async function deleteActivity(user: string, id: string): Promise<DeleteActivityResult> {
+  const deleted = await dbDeleteActivity(user, id)
+
+  return {
+    deleted,
+    id,
+    success: deleted,
+  }
+}
+
+/**
+ * Update an existing activity.
+ *
+ * Validates that if both start_time and end_time are provided, end_time is after start_time.
+ * Also validates against existing values if only one is provided.
+ */
+export async function updateActivity(
+  user: string,
+  id: string,
+  input: UpdateActivityInput,
+): Promise<UpdateActivityResult> {
+  // First, get the existing activity to validate times
+  const existing = await dbGetActivityById(user, id)
+  if (!existing) {
+    return {
+      error: 'Activity not found',
+      id,
+      success: false,
+    }
+  }
+
+  // Determine final start and end times
+  const finalStartTime = input.startTime ?? existing.startTime
+  const finalEndTime = input.endTime ?? existing.endTime
+
+  // Validate that endTime is after startTime
+  if (finalEndTime && finalEndTime <= finalStartTime) {
+    return {
+      error: 'end_time must be after start_time',
+      id,
+      success: false,
+    }
+  }
+
+  const updated = await dbUpdateActivity(user, id, {
+    endTime: input.endTime,
+    notes: input.notes,
+    startTime: input.startTime,
+    title: input.title,
+  })
+
+  if (!updated) {
+    return {
+      error: 'Failed to update activity',
+      id,
+      success: false,
+    }
+  }
+
+  return {
+    activityType: updated.activityType,
+    endTime: updated.endTime?.toISOString(),
+    id: updated.id,
+    notes: updated.notes,
+    startTime: updated.startTime.toISOString(),
+    success: true,
+    title: updated.title,
+  }
 }

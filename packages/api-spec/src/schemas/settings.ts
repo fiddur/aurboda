@@ -69,6 +69,26 @@ export const tagMappingsSchema = z.record(z.string(), z.string()).meta({
   id: 'TagMappings',
 })
 
+/**
+ * Calendar config schema (name + ICS URL pair).
+ */
+export const calendarConfigSchema = z
+  .object({
+    name: z.string().min(1).meta({ description: 'Display name for the calendar' }),
+    url: z.string().url().meta({ description: 'ICS URL for the calendar' }),
+  })
+  .meta({ id: 'CalendarConfig' })
+
+export type CalendarConfig = z.infer<typeof calendarConfigSchema>
+
+/**
+ * Calendars schema (array of calendar configs).
+ */
+export const calendarsSchema = z.array(calendarConfigSchema).meta({
+  description: 'Calendar ICS URL configurations',
+  id: 'Calendars',
+})
+
 export type TagMappings = z.infer<typeof tagMappingsSchema>
 
 /**
@@ -88,6 +108,9 @@ export const updateSettingsInputSchema = z
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
     }),
+    calendars: calendarsSchema.nullable().optional().meta({
+      description: 'Calendar ICS URL configurations (set to null to clear all)',
+    }),
     tag_mappings: tagMappingsSchema.nullable().optional().meta({
       description: 'Tag name mappings (set to null to clear all)',
     }),
@@ -102,6 +125,7 @@ export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
     birth_date: z.string().nullable().meta({ description: 'Birth date in YYYY-MM-DD format' }),
+    calendars: calendarsSchema.meta({ description: 'Calendar ICS URL configurations' }),
     goals: goalsSchema.meta({ description: 'User goals for tracking metrics' }),
     hr_zone_start: hrZoneThresholdsSchema.meta({ description: 'Effective HR zone thresholds' }),
     hr_zone_start_source: hrZoneSourceSchema.meta({

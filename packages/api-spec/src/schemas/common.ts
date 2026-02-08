@@ -105,7 +105,7 @@ export type ActivityType = z.infer<typeof activityTypeSchema>
  * Supported data sources.
  */
 export const dataSourceSchema = z
-  .enum(['health_connect', 'health_connect_aggregate', 'oura', 'garmin', 'rescuetime', 'owntracks', 'manual'])
+  .enum(['health_connect', 'health_connect_aggregate', 'oura', 'garmin', 'rescuetime', 'owntracks', 'calendar', 'manual'])
   .meta({
     description: 'Source of the data',
     example: 'health_connect',

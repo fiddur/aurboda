@@ -5,13 +5,16 @@ import { createSyncRouter, SyncRouterDeps } from './sync-router'
 
 describe('sync router', () => {
   const mockDeps: SyncRouterDeps = {
+    getCalendarSyncStates: vi.fn().mockResolvedValue([]),
     getOuraSyncStates: vi.fn().mockResolvedValue([]),
     getRescueTimeSyncStates: vi.fn().mockResolvedValue([]),
     getSettings: vi.fn().mockResolvedValue({ rescueTimeKey: 'test-key' }),
     processDailyAggregate: vi.fn().mockResolvedValue(undefined),
     processHealthConnectData: vi.fn().mockResolvedValue(undefined),
+    resetCalendarSyncState: vi.fn().mockResolvedValue(undefined),
     resetOuraSyncState: vi.fn().mockResolvedValue(undefined),
     resetRescueTimeSyncState: vi.fn().mockResolvedValue(undefined),
+    syncCalendars: vi.fn().mockResolvedValue([]),
     syncOura: vi.fn().mockResolvedValue({ success: true }),
     syncRescueTime: vi.fn().mockResolvedValue({ success: true }),
   }

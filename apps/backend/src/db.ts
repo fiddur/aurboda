@@ -329,6 +329,66 @@ export const getDailyAggregates = async (
 }
 
 // ============================================================================
+// Bucketed Time Series Aggregation
+// ============================================================================
+
+export interface BucketedMetricData {
+  bucketStart: Date
+  metric: MetricType
+  avg: number
+  min: number
+  max: number
+  count: number
+}
+
+/**
+ * Get bucketed/aggregated time series data for multiple metrics.
+ *
+ * Uses PostgreSQL's date_bin function to efficiently bucket data by time intervals.
+ * Returns pre-aggregated statistics (avg, min, max, count) for each bucket.
+ *
+ * @param user - The username
+ * @param metrics - Array of metric types to query
+ * @param start - Start of time range
+ * @param end - End of time range
+ * @param bucketMinutes - Bucket size in minutes (e.g., 5, 15, 30, 60, 1440 for 1 day)
+ */
+export const getTimeSeriesBucketed = async (
+  user: string,
+  metrics: MetricType[],
+  start: Date,
+  end: Date,
+  bucketMinutes: number,
+): Promise<BucketedMetricData[]> => {
+  if (metrics.length === 0) return []
+
+  const result = await query(
+    user,
+    `SELECT
+       date_bin($4::interval, time, $2) as bucket_start,
+       metric,
+       AVG(value) as avg,
+       MIN(value) as min,
+       MAX(value) as max,
+       COUNT(*)::integer as count
+     FROM time_series
+     WHERE metric = ANY($1) AND time >= $2 AND time < $3
+     GROUP BY bucket_start, metric
+     ORDER BY bucket_start, metric`,
+    [metrics, start, end, `${bucketMinutes} minutes`],
+  )
+
+  return result.rows.map((row) => ({
+    avg: row.avg !== null ? Number(row.avg) : 0,
+    bucketStart: new Date(row.bucket_start),
+    count: row.count,
+    max: row.max !== null ? Number(row.max) : 0,
+    metric: row.metric as MetricType,
+    min: row.min !== null ? Number(row.min) : 0,
+  }))
+}
+
+// ============================================================================
 // Activities
 // ============================================================================
 
@@ -423,14 +483,15 @@ export const mergeOverlappingActivities = (activities: Activity[]): Activity[] =
 export const insertActivity = async (user: string, activity: Activity) => {
   await query(
     user,
-    `INSERT INTO activities (source, activity_type, start_time, end_time, title, notes, data)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
+     VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (source, activity_type, start_time) DO UPDATE SET
        end_time = EXCLUDED.end_time,
        title = EXCLUDED.title,
        notes = EXCLUDED.notes,
        data = EXCLUDED.data`,
     [
+      activity.id,
       activity.source,
       activity.activityType,
       activity.startTime,
@@ -440,6 +501,105 @@ export const insertActivity = async (user: string, activity: Activity) => {
       activity.data,
     ],
   )
+}
+
+export const getActivityById = async (user: string, id: string): Promise<Activity | null> => {
+  const result = await query(
+    user,
+    `SELECT id, source, activity_type, start_time, end_time, title, notes, data
+     FROM activities
+     WHERE id = $1`,
+    [id],
+  )
+
+  if (result.rows.length === 0) {
+    return null
+  }
+
+  const row = result.rows[0]
+  return {
+    activityType: row.activity_type as ActivityType,
+    data: row.data,
+    endTime: row.end_time ? new Date(row.end_time) : undefined,
+    id: row.id,
+    notes: row.notes,
+    source: row.source as DataSource,
+    startTime: new Date(row.start_time),
+    title: row.title,
+  }
+}
+
+export const deleteActivity = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(user, `DELETE FROM activities WHERE id = $1`, [id])
+
+  return (result.rowCount ?? 0) > 0
+}
+
+export interface ActivityUpdate {
+  startTime?: Date
+  endTime?: Date
+  title?: string
+  notes?: string
+}
+
+export const updateActivity = async (
+  user: string,
+  id: string,
+  updates: ActivityUpdate,
+): Promise<Activity | null> => {
+  // Build SET clause dynamically based on provided updates
+  const setClauses: string[] = []
+  const values: unknown[] = []
+  let paramIndex = 1
+
+  if (updates.startTime !== undefined) {
+    setClauses.push(`start_time = $${paramIndex++}`)
+    values.push(updates.startTime)
+  }
+  if (updates.endTime !== undefined) {
+    setClauses.push(`end_time = $${paramIndex++}`)
+    values.push(updates.endTime)
+  }
+  if (updates.title !== undefined) {
+    setClauses.push(`title = $${paramIndex++}`)
+    values.push(updates.title)
+  }
+  if (updates.notes !== undefined) {
+    setClauses.push(`notes = $${paramIndex++}`)
+    values.push(updates.notes)
+  }
+
+  if (setClauses.length === 0) {
+    // No updates provided, just return existing activity
+    return getActivityById(user, id)
+  }
+
+  values.push(id)
+
+  const result = await query(
+    user,
+    `UPDATE activities
+     SET ${setClauses.join(', ')}
+     WHERE id = $${paramIndex}
+     RETURNING id, source, activity_type, start_time, end_time, title, notes, data`,
+    values,
+  )
+
+  if (result.rows.length === 0) {
+    return null
+  }
+
+  const row = result.rows[0]
+  return {
+    activityType: row.activity_type as ActivityType,
+    data: row.data,
+    endTime: row.end_time ? new Date(row.end_time) : undefined,
+    id: row.id,
+    notes: row.notes,
+    source: row.source as DataSource,
+    startTime: new Date(row.start_time),
+    title: row.title,
+  }
 }
 
 export const getActivities = async (
@@ -1697,8 +1857,14 @@ export const getDailyAggregateValue = async (
 // User Settings
 // ============================================================================
 
+export interface CalendarConfig {
+  name: string
+  url: string
+}
+
 export interface UserSettings {
   birthDate?: string // YYYY-MM-DD
+  calendars?: CalendarConfig[] // Calendar ICS URL configurations
   customMetrics?: CustomMetricDefinition[] // User-defined custom metric types
   goals?: Goal[] // User-defined goals for tracking metrics
   hrZoneStart?: { 1: number; 2: number; 3: number; 4: number; 5: number }
@@ -1718,6 +1884,7 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
   const settings = result.rows[0].settings as Record<string, unknown>
   return {
     birthDate: settings.birthDate as string | undefined,
+    calendars: settings.calendars as CalendarConfig[] | undefined,
     customMetrics: settings.customMetrics as CustomMetricDefinition[] | undefined,
     goals: settings.goals as Goal[] | undefined,
     hrZoneStart: settings.hrZoneStart as UserSettings['hrZoneStart'],
@@ -1741,6 +1908,9 @@ export const upsertUserSettings = async (
   const merged: UserSettings = { ...existing }
   if (updates.birthDate !== undefined) {
     merged.birthDate = updates.birthDate
+  }
+  if (updates.calendars !== undefined) {
+    merged.calendars = updates.calendars
   }
   if (updates.customMetrics !== undefined) {
     merged.customMetrics = updates.customMetrics

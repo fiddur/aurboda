@@ -156,6 +156,7 @@ describe('correlations service', () => {
       vi.mocked(db.getTags).mockResolvedValue([])
 
       const syncProvider = {
+        syncCalendarsIfNeeded: vi.fn().mockResolvedValue(undefined),
         syncOuraIfNeeded: vi.fn().mockResolvedValue(undefined),
         syncRescueTimeIfNeeded: vi.fn().mockResolvedValue(undefined),
       }
