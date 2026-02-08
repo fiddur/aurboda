@@ -191,10 +191,6 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
   )
 }
 
-function LoggedInHome() {
-  return <Dashboard />
-}
-
 export function Home() {
   const isLoggedIn = auth.value.token
   const canSignup = signupAllowed.value
@@ -202,6 +198,11 @@ export function Home() {
   useEffect(() => {
     ensureStatusLoaded()
   }, [])
+
+  // When logged in, show Dashboard without the .home wrapper (which has max-width: 800px)
+  if (isLoggedIn) {
+    return <Dashboard />
+  }
 
   return (
     <div class="home">
@@ -213,9 +214,7 @@ export function Home() {
         </div>
       </div>
 
-      {isLoggedIn ?
-        <LoggedInHome />
-      : <GuestHome canSignup={canSignup} />}
+      <GuestHome canSignup={canSignup} />
     </div>
   )
 }
