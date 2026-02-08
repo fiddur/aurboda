@@ -1,4 +1,4 @@
-import type { DashboardConfig, DashboardSection, DashboardWidget } from '@aurboda/api-spec'
+import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } from '@aurboda/api-spec'
 import { defaultDashboardConfig } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
@@ -8,6 +8,9 @@ import { fetchDashboard, resetDashboard, saveDashboard } from '../../state/api'
 
 import './style.css'
 
+// Generate unique section ID
+const generateSectionId = () => `section-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+
 // Section renderer - renders a section with its widgets
 function DashboardSectionComponent({
   section,
@@ -15,12 +18,14 @@ function DashboardSectionComponent({
   onRemoveWidget,
   onMoveWidget,
   onAddWidgetClick,
+  onDeleteSection,
 }: {
   section: DashboardSection
   isEditing: boolean
   onRemoveWidget?: (widgetId: string) => void
   onMoveWidget?: (widgetId: string, direction: 'up' | 'down') => void
   onAddWidgetClick?: () => void
+  onDeleteSection?: () => void
 }) {
   const [collapsed, setCollapsed] = useState(section.collapsed ?? false)
 
@@ -39,6 +44,22 @@ function DashboardSectionComponent({
             <span class="collapse-indicator">{collapsed ? '\u25B6' : '\u25BC'}</span>
           )}
         </h2>
+        {isEditing && (
+          <div class="section-edit-controls">
+            <button class="section-delete-btn" onClick={onDeleteSection} title="Delete section">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
       {!collapsed && (
         <div class={gridClass}>
@@ -116,10 +137,88 @@ function DashboardSectionComponent({
   )
 }
 
+// Add Section form component
+function AddSectionForm({
+  onAdd,
+  onCancel,
+}: {
+  onAdd: (title: string, type: SectionType) => void
+  onCancel: () => void
+}) {
+  const [title, setTitle] = useState('')
+  const [type, setType] = useState<SectionType>('metrics')
+
+  const handleSubmit = (e: Event) => {
+    e.preventDefault()
+    if (title.trim()) {
+      onAdd(title.trim(), type)
+    }
+  }
+
+  return (
+    <div class="add-section-placeholder">
+      <form onSubmit={handleSubmit} style={{ maxWidth: '300px', width: '100%' }}>
+        <div class="form-group" style={{ marginBottom: '0.75rem' }}>
+          <input
+            type="text"
+            value={title}
+            onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
+            placeholder="Section title"
+            style={{
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              padding: '0.5rem',
+              width: '100%',
+            }}
+            autoFocus
+          />
+        </div>
+        <div class="form-group" style={{ marginBottom: '0.75rem' }}>
+          <select
+            value={type}
+            onChange={(e) => setType((e.target as HTMLSelectElement).value as SectionType)}
+            style={{
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              padding: '0.5rem',
+              width: '100%',
+            }}
+          >
+            <option value="metrics">Metrics (cards)</option>
+            <option value="charts">Charts (full width)</option>
+            <option value="links">Links (navigation)</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            class="btn-secondary"
+            style={{ fontSize: '0.875rem', padding: '0.375rem 0.75rem' }}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="btn-primary"
+            style={{ fontSize: '0.875rem', padding: '0.375rem 0.75rem' }}
+            disabled={!title.trim()}
+          >
+            Add Section
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 export function Dashboard() {
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
   const [showWidgetPicker, setShowWidgetPicker] = useState<string | null>(null) // section id or null
+  const [showAddSection, setShowAddSection] = useState(false)
 
   // Fetch dashboard configuration
   const dashboardQuery = useQuery({
@@ -192,17 +291,46 @@ export function Dashboard() {
     setShowWidgetPicker(null)
   }
 
+  const handleAddSection = (title: string, type: SectionType) => {
+    const newSection: DashboardSection = {
+      id: generateSectionId(),
+      title,
+      type,
+      widgets: [],
+    }
+    const newDashboard: DashboardConfig = {
+      ...dashboard,
+      sections: [...dashboard.sections, newSection],
+    }
+    saveMutation.mutate(newDashboard)
+    setShowAddSection(false)
+  }
+
+  const handleDeleteSection = (sectionId: string) => {
+    const section = dashboard.sections.find((s) => s.id === sectionId)
+    if (!section) return
+
+    const widgetCount = section.widgets.length
+    const message =
+      widgetCount > 0 ?
+        `Delete section "${section.title}" and its ${widgetCount} widget${widgetCount > 1 ? 's' : ''}?`
+      : `Delete section "${section.title}"?`
+
+    if (confirm(message)) {
+      const newDashboard: DashboardConfig = {
+        ...dashboard,
+        sections: dashboard.sections.filter((s) => s.id !== sectionId),
+      }
+      saveMutation.mutate(newDashboard)
+    }
+  }
+
   const handleReset = () => {
     if (confirm('Reset dashboard to default configuration? Your customizations will be lost.')) {
       resetMutation.mutate()
       setIsEditing(false)
     }
   }
-
-  // Organize sections into columns for layout
-  const metricsSections = dashboard.sections.filter((s) => s.type === 'metrics')
-  const chartsSections = dashboard.sections.filter((s) => s.type === 'charts')
-  const linksSections = dashboard.sections.filter((s) => s.type === 'links')
 
   return (
     <div class="dashboard">
@@ -237,47 +365,40 @@ export function Dashboard() {
 
       {isLoading && <div class="loading">Loading your dashboard...</div>}
 
-      {/* Metrics sections in two columns */}
-      {metricsSections.length > 0 && (
-        <div class="metrics-columns">
-          {metricsSections.map((section) => (
-            <DashboardSectionComponent
-              key={section.id}
-              section={section}
-              isEditing={isEditing}
-              onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
-              onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
-              onAddWidgetClick={() => setShowWidgetPicker(section.id)}
-            />
-          ))}
-        </div>
-      )}
+      {/* All sections in responsive grid */}
+      <div class="sections-grid">
+        {dashboard.sections.map((section) => (
+          <DashboardSectionComponent
+            key={section.id}
+            section={section}
+            isEditing={isEditing}
+            onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
+            onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
+            onAddWidgetClick={() => setShowWidgetPicker(section.id)}
+            onDeleteSection={() => handleDeleteSection(section.id)}
+          />
+        ))}
 
-      {/* Charts and links sections in two columns */}
-      {(chartsSections.length > 0 || linksSections.length > 0) && (
-        <div class="bottom-columns">
-          {chartsSections.map((section) => (
-            <DashboardSectionComponent
-              key={section.id}
-              section={section}
-              isEditing={isEditing}
-              onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
-              onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
-              onAddWidgetClick={() => setShowWidgetPicker(section.id)}
-            />
-          ))}
-          {linksSections.map((section) => (
-            <DashboardSectionComponent
-              key={section.id}
-              section={section}
-              isEditing={isEditing}
-              onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
-              onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
-              onAddWidgetClick={() => setShowWidgetPicker(section.id)}
-            />
-          ))}
-        </div>
-      )}
+        {/* Add Section button/form in edit mode */}
+        {isEditing &&
+          (showAddSection ?
+            <AddSectionForm onAdd={handleAddSection} onCancel={() => setShowAddSection(false)} />
+          : <div class="add-section-placeholder">
+              <button class="add-section-btn" onClick={() => setShowAddSection(true)}>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Add Section
+              </button>
+            </div>)}
+      </div>
 
       {/* Widget picker modal */}
       {showWidgetPicker && (
