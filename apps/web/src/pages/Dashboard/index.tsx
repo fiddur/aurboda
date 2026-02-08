@@ -14,11 +14,13 @@ function DashboardSectionComponent({
   isEditing,
   onRemoveWidget,
   onMoveWidget,
+  onAddWidgetClick,
 }: {
   section: DashboardSection
   isEditing: boolean
   onRemoveWidget?: (widgetId: string) => void
   onMoveWidget?: (widgetId: string, direction: 'up' | 'down') => void
+  onAddWidgetClick?: () => void
 }) {
   const [collapsed, setCollapsed] = useState(section.collapsed ?? false)
 
@@ -103,7 +105,7 @@ function DashboardSectionComponent({
           ))}
           {isEditing && (
             <div class="add-widget-placeholder">
-              <button class="add-widget-btn" data-section-id={section.id}>
+              <button class="add-widget-btn" onClick={onAddWidgetClick}>
                 + Add Widget
               </button>
             </div>
@@ -245,6 +247,7 @@ export function Dashboard() {
               isEditing={isEditing}
               onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
               onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
+              onAddWidgetClick={() => setShowWidgetPicker(section.id)}
             />
           ))}
         </div>
@@ -260,6 +263,7 @@ export function Dashboard() {
               isEditing={isEditing}
               onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
               onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
+              onAddWidgetClick={() => setShowWidgetPicker(section.id)}
             />
           ))}
           {linksSections.map((section) => (
@@ -269,6 +273,7 @@ export function Dashboard() {
               isEditing={isEditing}
               onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
               onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
+              onAddWidgetClick={() => setShowWidgetPicker(section.id)}
             />
           ))}
         </div>
