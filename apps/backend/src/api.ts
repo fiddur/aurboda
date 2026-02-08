@@ -31,6 +31,8 @@ import {
   type DailySummaryQuery,
   dailySummaryQuerySchema,
   type DailySummaryResponse,
+  type DashboardResponse,
+  defaultDashboardConfig,
   type DeleteActivityResponse,
   type DeleteTagResponse,
   type DetectedLocationsQuery,
@@ -87,6 +89,8 @@ import {
   type UpdateActivityResponse,
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
+  type UpdateDashboardInput,
+  updateDashboardInputSchema,
   type UpdateNamedLocationBody,
   updateNamedLocationBodySchema,
   type UpdateSettingsInput,
@@ -1047,6 +1051,40 @@ const main = async () => {
         return res.status(400).json(result)
       }
       res.json(result)
+    },
+  )
+
+  // ==========================================================================
+  // Dashboard API
+  // ==========================================================================
+
+  // GET /dashboard - Get user's dashboard configuration
+  httpd.get<Record<string, never>, DashboardResponse>('/dashboard', authMiddleware, async (req, res) => {
+    const settings = await getSettings(req.user!)
+    const dashboard = settings.dashboard ?? defaultDashboardConfig
+    res.json({ dashboard, success: true })
+  })
+
+  // PUT /dashboard - Replace entire dashboard configuration
+  httpd.put<Record<string, never>, DashboardResponse, UpdateDashboardInput>(
+    '/dashboard',
+    authMiddleware,
+    validateBody(updateDashboardInputSchema),
+    async (req, res) => {
+      const user = req.user!
+      await upsertUserSettings(user, { dashboard: req.body })
+      res.json({ dashboard: req.body, success: true })
+    },
+  )
+
+  // POST /dashboard/reset - Reset dashboard to default configuration
+  httpd.post<Record<string, never>, DashboardResponse>(
+    '/dashboard/reset',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      await upsertUserSettings(user, { dashboard: undefined })
+      res.json({ dashboard: defaultDashboardConfig, success: true })
     },
   )
 

@@ -1535,4 +1535,127 @@ describe('Database Integration Tests', () => {
       expect(settings?.birthDate).toBe('2000-01-01')
     })
   })
+
+  describe('User Settings with dashboard', () => {
+    const sampleDashboard = {
+      sections: [
+        {
+          id: 'test-section',
+          title: 'Test Section',
+          type: 'metrics' as const,
+          widgets: [
+            {
+              config: { metric: 'hrv_7day' as const, title: 'Test HRV' },
+              id: 'test-widget',
+              type: 'metric_card' as const,
+            },
+          ],
+        },
+      ],
+      version: 1 as const,
+    }
+
+    test('stores and retrieves dashboard config', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { dashboard: sampleDashboard })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.dashboard).toEqual(sampleDashboard)
+    })
+
+    test('updates dashboard while preserving other settings', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { birthDate: '1990-01-15' })
+      await upsertUserSettings(user, { dashboard: sampleDashboard })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.birthDate).toBe('1990-01-15')
+      expect(settings?.dashboard).toEqual(sampleDashboard)
+    })
+
+    test('preserves dashboard when explicitly set to undefined (undefined means no change)', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { dashboard: sampleDashboard })
+      // Note: undefined at db level means "don't update", not "clear"
+      // Clearing is handled at the service layer by omitting the key from merged object
+      await upsertUserSettings(user, { dashboard: undefined })
+
+      const settings = await getUserSettings(user)
+      // Dashboard should be preserved since undefined means "no change"
+      expect(settings?.dashboard).toEqual(sampleDashboard)
+    })
+
+    test('preserves dashboard when update does not include dashboard', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { dashboard: sampleDashboard })
+      await upsertUserSettings(user, { birthDate: '2000-01-01' })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.dashboard).toEqual(sampleDashboard)
+      expect(settings?.birthDate).toBe('2000-01-01')
+    })
+
+    test('stores complex dashboard with multiple sections and widget types', async () => {
+      const user = getTestUser()
+      const complexDashboard = {
+        sections: [
+          {
+            id: 'metrics-section',
+            title: 'Health Metrics',
+            type: 'metrics' as const,
+            widgets: [
+              {
+                config: { metric: 'hrv_7day' as const, title: 'HRV', unit: 'ms' },
+                id: 'hrv-card',
+                type: 'metric_card' as const,
+              },
+              {
+                config: { color: '#3b82f6', lookbackDays: 30, metric: 'sleep_score' as const },
+                id: 'sleep-sparkline',
+                type: 'sparkline_card' as const,
+              },
+            ],
+          },
+          {
+            collapsed: true,
+            id: 'charts-section',
+            title: 'Trends',
+            type: 'charts' as const,
+            widgets: [
+              {
+                config: { halfLifeDays: 15, pattern: 'coffee', sourceType: 'tag' as const },
+                id: 'coffee-trend',
+                type: 'trend_chart' as const,
+              },
+            ],
+          },
+          {
+            id: 'links-section',
+            title: 'Quick Links',
+            type: 'links' as const,
+            widgets: [
+              {
+                config: { href: '/sleep', icon: 'sleep' as const, label: 'Sleep' },
+                id: 'link-sleep',
+                type: 'quick_link' as const,
+              },
+            ],
+          },
+        ],
+        version: 1 as const,
+      }
+
+      await upsertUserSettings(user, { dashboard: complexDashboard })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.dashboard).toEqual(complexDashboard)
+      expect(settings?.dashboard?.sections).toHaveLength(3)
+      expect(settings?.dashboard?.sections[0].widgets).toHaveLength(2)
+      expect(settings?.dashboard?.sections[1].collapsed).toBe(true)
+    })
+  })
 })

@@ -15,6 +15,8 @@ import type {
   Tag as ApiTag,
   BaselineData,
   BaselineResponse,
+  DashboardConfig,
+  DashboardResponse,
   Goal,
   GoalProgress,
   GoalsProgressResponse,
@@ -98,6 +100,7 @@ export type {
   ActivityImpactData,
   ActivityImpactType,
   BaselineData,
+  DashboardConfig,
   Goal,
   GoalProgress,
   HrvActivitiesData,
@@ -602,4 +605,38 @@ export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult>
   })
 
   return response.data.data!
+}
+
+// ==========================================================================
+// Dashboard API
+// ==========================================================================
+
+// Fetch user's dashboard configuration
+export const fetchDashboard = async (): Promise<DashboardConfig> => {
+  const { token } = auth.value
+  const response = await axios.get<DashboardResponse>(`${API_URL}/dashboard`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.dashboard
+}
+
+// Save dashboard configuration
+export const saveDashboard = async (dashboard: DashboardConfig): Promise<DashboardConfig> => {
+  const { token } = auth.value
+  const response = await axios.put<DashboardResponse>(`${API_URL}/dashboard`, dashboard, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.dashboard
+}
+
+// Reset dashboard to default configuration
+export const resetDashboard = async (): Promise<DashboardConfig> => {
+  const { token } = auth.value
+  const response = await axios.post<DashboardResponse>(`${API_URL}/dashboard/reset`, null, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.dashboard
 }

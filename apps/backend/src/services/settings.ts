@@ -4,6 +4,7 @@
 
 import {
   type CalendarConfig,
+  type DashboardConfig,
   defaultGoals,
   type Goal,
   type HrZoneSecs,
@@ -25,6 +26,7 @@ export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
 export interface UserSettings {
   birthDate?: string // YYYY-MM-DD
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
+  dashboard?: DashboardConfig // Custom dashboard configuration
   hrZoneStart?: HrZoneThresholds
   rescueTimeKey?: string // RescueTime API key (personal token)
   goals?: Goal[] // User-defined goals for tracking metrics
@@ -146,6 +148,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   return {
     birth_date: settings.birthDate ?? null,
     calendars: settings.calendars ?? [],
+    dashboard: settings.dashboard ?? null,
     goals: getEffectiveGoals(settings),
     hr_zone_start: zones,
     hr_zone_start_source: source,
@@ -169,6 +172,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     return {
       birth_date: null,
       calendars: [],
+      dashboard: null,
       error: errorMessage,
       goals: defaultGoals,
       hr_zone_start: calculateDefaultHrZones(null),
@@ -188,6 +192,10 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   }
   if (parsed.data.calendars !== undefined) {
     updates.calendars = parsed.data.calendars === null ? undefined : parsed.data.calendars
+  }
+  if (parsed.data.dashboard !== undefined) {
+    // null resets to defaults (by removing from storage)
+    updates.dashboard = parsed.data.dashboard === null ? undefined : parsed.data.dashboard
   }
   if (parsed.data.hr_zone_start !== undefined) {
     updates.hrZoneStart = parsed.data.hr_zone_start === null ? undefined : parsed.data.hr_zone_start
