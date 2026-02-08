@@ -13,6 +13,9 @@ export const validMetrics = [
   'heart_rate',
   'resting_heart_rate',
   'hrv_rmssd',
+  'hrv_sleep',
+  'hrv_activity',
+  'hrv_awake',
   'weight',
   'body_fat',
   'bone_mass',
@@ -84,6 +87,20 @@ export const hrZoneMetrics = [
  */
 export const isHrZoneMetric = (metric: MetricType): boolean =>
   (hrZoneMetrics as readonly string[]).includes(metric)
+
+/**
+ * Contextual HRV metrics are computed by filtering hrv_rmssd data by context.
+ * - hrv_sleep: HRV during sleep windows
+ * - hrv_activity: HRV during exercise sessions
+ * - hrv_awake: HRV when not sleeping or exercising
+ */
+export const contextualHrvMetrics = ['hrv_sleep', 'hrv_activity', 'hrv_awake'] as const
+
+/**
+ * Check if a metric is a contextual HRV metric (computed from hrv_rmssd).
+ */
+export const isContextualHrvMetric = (metric: MetricType): boolean =>
+  (contextualHrvMetrics as readonly string[]).includes(metric)
 
 /**
  * Valid activity types.
@@ -158,7 +175,10 @@ export const metricUnits: Record<MetricType, string> = {
   hr_zone_3_sec: 'sec',
   hr_zone_4_sec: 'sec',
   hr_zone_5_sec: 'sec',
+  hrv_activity: 'ms',
+  hrv_awake: 'ms',
   hrv_rmssd: 'ms',
+  hrv_sleep: 'ms',
   lean_body_mass: 'kg',
   productivity_score: 'score',
   readiness_score: 'score',
