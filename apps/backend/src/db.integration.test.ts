@@ -325,23 +325,25 @@ describe('Database Integration Tests', () => {
     test('upserts on conflict (same time + metric + source)', async () => {
       const user = getTestUser()
 
+      // Use a non-cumulative metric since cumulative metrics (steps, distance, etc.)
+      // filter by aggregate source in getTimeSeries
       await insertTimeSeries(user, [
-        { metric: 'steps', source: 'health_connect', time: new Date('2024-01-15T00:00:00Z'), value: 5000 },
+        { metric: 'weight', source: 'health_connect', time: new Date('2024-01-15T00:00:00Z'), value: 75.5 },
       ])
 
       await insertTimeSeries(user, [
-        { metric: 'steps', source: 'health_connect', time: new Date('2024-01-15T00:00:00Z'), value: 10000 },
+        { metric: 'weight', source: 'health_connect', time: new Date('2024-01-15T00:00:00Z'), value: 76.0 },
       ])
 
       const data = await getTimeSeries(
         user,
-        'steps',
+        'weight',
         new Date('2024-01-15T00:00:00Z'),
         new Date('2024-01-15T23:59:59Z'),
       )
 
       expect(data).toHaveLength(1)
-      expect(data[0][1]).toBe(10000)
+      expect(data[0][1]).toBe(76.0)
     })
 
     test('handles empty array gracefully', async () => {
@@ -430,6 +432,58 @@ describe('Database Integration Tests', () => {
       expect(hrData[0][1]).toBe(80) // Last heart_rate value
       expect(restingHrData).toHaveLength(1)
       expect(restingHrData[0][1]).toBe(65) // resting_heart_rate unchanged
+    })
+
+    test('cumulative metrics (steps) only return aggregate source data', async () => {
+      const user = getTestUser()
+
+      // Insert raw health_connect data (individual readings throughout the day)
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 500 },
+        { metric: 'steps', source: 'health_connect', time: new Date('2024-01-15T12:00:00Z'), value: 1200 },
+        { metric: 'steps', source: 'health_connect', time: new Date('2024-01-15T14:00:00Z'), value: 800 },
+      ])
+
+      // Insert aggregate data (deduplicated daily totals)
+      await insertTimeSeries(user, [
+        {
+          metric: 'steps',
+          source: 'health_connect_aggregate',
+          time: new Date('2024-01-15T00:00:00Z'),
+          value: 8500,
+        },
+      ])
+
+      // getTimeSeries should only return the aggregate, not the raw readings
+      const data = await getTimeSeries(
+        user,
+        'steps',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+
+      expect(data).toHaveLength(1)
+      expect(data[0][1]).toBe(8500) // Only the aggregate, not sum of raw readings
+    })
+
+    test('non-cumulative metrics (heart_rate) return all source data', async () => {
+      const user = getTestUser()
+
+      // Insert data from multiple sources
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+        { metric: 'heart_rate', source: 'oura', time: new Date('2024-01-15T10:05:00Z'), value: 74 },
+      ])
+
+      // getTimeSeries should return all sources for non-cumulative metrics
+      const data = await getTimeSeries(
+        user,
+        'heart_rate',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+
+      expect(data).toHaveLength(2)
     })
   })
 
