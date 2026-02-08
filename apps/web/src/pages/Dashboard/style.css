@@ -102,27 +102,16 @@
   color: #888;
 }
 
-/* Two-column layout for baseline and summary on wide screens */
-.dashboard .metrics-columns {
+/* Responsive sections grid - flows naturally based on available width */
+.dashboard .sections-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
   gap: 2rem;
   margin-bottom: 2rem;
-}
-
-/* Two-column layout for activity summary and quick links */
-.dashboard .bottom-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
 }
 
 .dashboard .metrics-section {
-  margin-bottom: 2rem;
-}
-
-.dashboard .metrics-columns .metrics-section {
-  margin-bottom: 0;
+  min-width: 0; /* Prevent grid blowout */
 }
 
 /* Metrics grid */
@@ -449,23 +438,7 @@
   }
 }
 
-/* Responsive */
-@media (max-width: 1100px) {
-  .dashboard .metrics-columns,
-  .dashboard .bottom-columns {
-    grid-template-columns: 1fr;
-  }
-
-  .dashboard .metrics-columns .metrics-section,
-  .dashboard .bottom-columns .metrics-section {
-    margin-bottom: 2rem;
-  }
-
-  .dashboard .metrics-columns .metrics-section:last-child,
-  .dashboard .bottom-columns .metrics-section:last-child {
-    margin-bottom: 0;
-  }
-}
+/* Responsive - sections grid handles this automatically via auto-fit */
 
 @media (max-width: 639px) {
   .dashboard {
@@ -611,6 +584,61 @@
   color: #9ca3af;
 }
 
+/* Add Section placeholder */
+.dashboard .add-section-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  background: #f9fafb;
+  padding: 2rem;
+}
+
+.dashboard .add-section-btn {
+  background: none;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  color: #6b7280;
+  font-size: 0.875rem;
+  cursor: pointer;
+  padding: 1rem 1.5rem;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dashboard .add-section-btn:hover {
+  border-color: #673ab8;
+  color: #673ab8;
+  background: #faf5ff;
+}
+
+/* Section editing controls */
+.dashboard .section-edit-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.dashboard .section-delete-btn {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.dashboard .section-delete-btn:hover {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
 /* Dark mode additions for editing */
 @media (prefers-color-scheme: dark) {
   .dashboard .btn-edit {
@@ -672,5 +700,26 @@
   .dashboard .trend-chart-widget h4,
   .dashboard .correlation-widget h4 {
     color: #d1d5db;
+  }
+
+  .dashboard .add-section-placeholder {
+    background: #111827;
+    border-color: #4b5563;
+  }
+
+  .dashboard .add-section-btn {
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+
+  .dashboard .add-section-btn:hover {
+    border-color: #8b5cf6;
+    color: #a855f7;
+    background: #1e1b4b;
+  }
+
+  .dashboard .section-delete-btn:hover {
+    color: #f87171;
+    background: #7f1d1d;
   }
 }
