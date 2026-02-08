@@ -9,13 +9,16 @@
 export {
   contextualHrvMetrics,
   cumulativeMetrics,
+  getMetricUnit,
   hrZoneMetrics,
   isContextualHrvMetric,
   isHrZoneMetric,
   isValidMetric,
+  isValidMetricOrCustom,
   metricUnits,
   validMetrics,
   type ActivityType,
+  type CustomMetricDefinition,
   type DataSource,
   type MetricType,
 } from '@aurboda/api-spec'

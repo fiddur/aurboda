@@ -3,12 +3,7 @@
  */
 
 import { z } from 'zod'
-import {
-  baseResponseSchema,
-  iso8601DateTimeSchema,
-  metricTypeSchema,
-  timeRangeQuerySchema,
-} from './common.js'
+import { baseResponseSchema, iso8601DateTimeSchema, timeRangeQuerySchema } from './common.js'
 
 /**
  * Outlier schema.
@@ -36,7 +31,7 @@ export const periodMetricStatsSchema = z
     }),
     count: z.number().int().meta({ description: 'Number of data points' }),
     max: z.number().meta({ description: 'Maximum value' }),
-    metric: metricTypeSchema,
+    metric: z.string().min(1).max(50).meta({ description: 'Metric name (built-in or custom)' }),
     min: z.number().meta({ description: 'Minimum value' }),
     outliers: z.array(outlierSchema).optional().meta({
       description: 'Values more than 2 stddev from mean',

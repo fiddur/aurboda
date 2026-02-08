@@ -8,6 +8,8 @@ import {
   type AddActivityBody,
   addActivityBodySchema,
   type AddActivityResponse,
+  type AddCustomMetricBody,
+  addCustomMetricBodySchema,
   type AddMetricBody,
   addMetricBodySchema,
   type AddMetricResponse,
@@ -24,6 +26,8 @@ import {
   type BucketSize,
   type CreateInvitationBody,
   createInvitationBodySchema,
+  type CustomMetricResponse,
+  type CustomMetricsListResponse,
   type DailySummaryQuery,
   dailySummaryQuerySchema,
   type DailySummaryResponse,
@@ -122,7 +126,7 @@ import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
 import { createOwnTracksRouter } from './owntracks'
 import { syncRescueTimeData } from './rescuetime-sync'
-import { isValidMetric, MetricType, validMetrics } from './schema'
+import { isValidMetricOrCustom, type MetricType, validMetrics } from './schema'
 import { getCentralDb, initializeCentralDb } from './services/central-db'
 import {
   getActivityImpact,
@@ -145,10 +149,13 @@ import {
 } from './services/locations'
 import {
   addActivity,
+  addCustomMetric,
   addMetric,
   addTag,
   deleteActivity,
+  deleteCustomMetric,
   deleteTag,
+  getCustomMetrics,
   updateActivity,
 } from './services/mutations'
 import {
@@ -477,14 +484,17 @@ const main = async () => {
       const { start, end } = req.query
       const user = req.user!
 
-      if (!isValidMetric(metric)) {
+      const settings = await getUserSettings(user)
+      const customMetrics = settings?.customMetrics ?? []
+
+      if (!isValidMetricOrCustom(metric, customMetrics)) {
         return res.status(400).json({
           error: `Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`,
           success: false,
         })
       }
 
-      const result = await queryMetrics(user, metric, new Date(start), new Date(end))
+      const result = await queryMetrics(user, metric, new Date(start), new Date(end), customMetrics)
       res.json({ ...result, success: true })
     },
   )
@@ -501,8 +511,11 @@ const main = async () => {
       const { start, end, bucket, metrics: metricsParam } = req.query
       const user = req.user!
 
+      const settings = await getUserSettings(user)
+      const customMetrics = settings?.customMetrics ?? []
+
       const metrics = metricsParam.split(',')
-      const invalidMetrics = metrics.filter((m) => !isValidMetric(m))
+      const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
       if (invalidMetrics.length > 0) {
         return res.status(400).json({
           error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
@@ -551,8 +564,11 @@ const main = async () => {
       const { start, end, metrics: metricsParam } = req.query
       const user = req.user!
 
+      const settings = await getUserSettings(user)
+      const customMetrics = settings?.customMetrics ?? []
+
       const metrics = metricsParam.split(',')
-      const invalidMetrics = metrics.filter((m) => !isValidMetric(m))
+      const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
       if (invalidMetrics.length > 0) {
         return res.status(400).json({
           error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
@@ -560,7 +576,7 @@ const main = async () => {
         })
       }
 
-      const summary = await getPeriodSummary(user, metrics as MetricType[], new Date(start), new Date(end))
+      const summary = await getPeriodSummary(user, metrics, new Date(start), new Date(end))
       res.json({ ...summary, success: true })
     },
   )
@@ -940,6 +956,47 @@ const main = async () => {
 
       const location = await insertNamedLocation(user, { lat, lon, name, radius })
       res.json({ data: location, success: true })
+    },
+  )
+
+  // GET /metrics/custom - List all custom metric types
+  httpd.get<Record<string, never>, CustomMetricsListResponse>(
+    '/metrics/custom',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const metrics = await getCustomMetrics(user)
+      res.json({ data: metrics, success: true })
+    },
+  )
+
+  // POST /metrics/custom - Register a new custom metric type
+  httpd.post<Record<string, never>, CustomMetricResponse, AddCustomMetricBody>(
+    '/metrics/custom',
+    authMiddleware,
+    validateBody(addCustomMetricBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const result = await addCustomMetric(user, req.body)
+      if (!result.success) {
+        return res.status(400).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  // DELETE /metrics/custom/:name - Delete a custom metric type
+  httpd.delete<{ name: string }, CustomMetricResponse>(
+    '/metrics/custom/:name',
+    authMiddleware,
+    async (req, res) => {
+      const { name } = req.params
+      const user = req.user!
+      const result = await deleteCustomMetric(user, name)
+      if (!result.deleted) {
+        return res.status(404).json({ error: `Custom metric "${name}" not found`, success: false })
+      }
+      res.json({ success: true })
     },
   )
 

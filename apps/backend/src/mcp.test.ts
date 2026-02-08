@@ -21,14 +21,22 @@ vi.mock('./services/queries', () => ({
 
 vi.mock('./services/mutations', () => ({
   addActivity: vi.fn(),
+  addCustomMetric: vi.fn(),
   addMetric: vi.fn(),
   addTag: vi.fn(),
+  deleteCustomMetric: vi.fn(),
+  deleteTag: vi.fn(),
+  getCustomMetrics: vi.fn().mockResolvedValue([]),
 }))
 
 // Mock db for sync status and stored detected locations
 vi.mock('./db', () => ({
   getAllSyncStates: vi.fn(),
   getDetectedLocations: vi.fn(),
+  getProgrammaticTags: vi.fn().mockResolvedValue([]),
+  getUniqueTags: vi.fn().mockResolvedValue([]),
+  getUserSettings: vi.fn().mockResolvedValue(null),
+  upsertUserSettings: vi.fn(),
 }))
 
 // Mock the sync modules
@@ -72,6 +80,11 @@ function parseSSEResponse(text: string): unknown {
 describe('MCP Server', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Restore default mock implementations cleared by resetAllMocks
+    vi.mocked(mutations.getCustomMetrics).mockResolvedValue([])
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getUniqueTags).mockResolvedValue([])
+    vi.mocked(db.getProgrammaticTags).mockResolvedValue([])
   })
 
   afterEach(() => {

@@ -200,6 +200,53 @@ export const metricUnits: Record<MetricType, string> = {
 }
 
 /**
+ * Custom metric definition.
+ * Users can define their own metric types with custom names and units.
+ */
+export const customMetricDefinitionSchema = z
+  .object({
+    description: z.string().optional().meta({ description: 'Human-readable description' }),
+    maxValue: z.number().optional().meta({ description: 'Maximum allowed value' }),
+    minValue: z.number().optional().meta({ description: 'Minimum allowed value' }),
+    name: z
+      .string()
+      .min(1)
+      .max(50)
+      .regex(/^[a-z][a-z0-9_]*$/, 'Must be lowercase letters, numbers, and underscores, starting with a letter')
+      .meta({ description: 'Metric name (e.g., "mood", "caffeine_mg")', example: 'mood' }),
+    unit: z.string().min(1).max(20).meta({ description: 'Unit of measurement (e.g., "score", "mg")', example: 'score' }),
+  })
+  .meta({ id: 'CustomMetricDefinition' })
+
+export type CustomMetricDefinition = z.infer<typeof customMetricDefinitionSchema>
+
+/**
+ * Validate a custom metric name doesn't conflict with built-in metrics.
+ */
+export const isValidCustomMetricName = (name: string): boolean =>
+  /^[a-z][a-z0-9_]*$/.test(name) && name.length <= 50 && !isValidMetric(name)
+
+/**
+ * Get the unit for a metric, checking both built-in and custom metrics.
+ * Returns undefined if the metric is not found in either.
+ */
+export const getMetricUnit = (
+  metric: string,
+  customMetrics: CustomMetricDefinition[] = [],
+): string | undefined => {
+  if (isValidMetric(metric)) return metricUnits[metric]
+  return customMetrics.find((m) => m.name === metric)?.unit
+}
+
+/**
+ * Check if a string is a valid metric (built-in or custom).
+ */
+export const isValidMetricOrCustom = (
+  metric: string,
+  customMetrics: CustomMetricDefinition[] = [],
+): boolean => isValidMetric(metric) || customMetrics.some((m) => m.name === metric)
+
+/**
  * Cumulative metrics that are summed over a day and can have duplicate sources.
  */
 export const cumulativeMetrics: MetricType[] = [

@@ -1,4 +1,4 @@
-import { type Goal } from '@aurboda/api-spec'
+import { type CustomMetricDefinition, type Goal } from '@aurboda/api-spec'
 import { Client, QueryResultRow } from 'pg'
 import format from 'pg-format'
 import {
@@ -165,8 +165,9 @@ export const insertRawRecord = async (user: string, record: RawRecord) => {
 
 export interface TimeSeriesPoint {
   time: Date
-  metric: MetricType
+  metric: string
   value: number
+  unit?: string
   source: DataSource
 }
 
@@ -185,7 +186,7 @@ export const insertTimeSeries = async (user: string, points: TimeSeriesPoint[]) 
     p.time,
     p.metric,
     p.value,
-    metricUnits[p.metric],
+    p.unit ?? metricUnits[p.metric as MetricType],
     p.source,
   ])
 
@@ -202,7 +203,7 @@ export const insertTimeSeries = async (user: string, points: TimeSeriesPoint[]) 
 
 export const getTimeSeries = async (
   user: string,
-  metric: MetricType,
+  metric: string,
   start: Date,
   end: Date,
 ): Promise<[Date, number][]> => {
@@ -245,7 +246,7 @@ export const getTimeSeriesMultiMetric = async (
 // ============================================================================
 
 export interface MetricStats {
-  metric: MetricType
+  metric: string
   count: number
   min: number
   max: number
@@ -256,7 +257,7 @@ export interface MetricStats {
 
 export const getTimeSeriesStats = async (
   user: string,
-  metrics: MetricType[],
+  metrics: string[],
   start: Date,
   end: Date,
 ): Promise<MetricStats[]> => {
@@ -283,7 +284,7 @@ export const getTimeSeriesStats = async (
     avg: row.avg !== null ? Number(row.avg) : 0,
     count: row.count,
     max: row.max !== null ? Number(row.max) : 0,
-    metric: row.metric as MetricType,
+    metric: row.metric as string,
     min: row.min !== null ? Number(row.min) : 0,
     stddev: row.stddev !== null ? Number(row.stddev) : 0,
     unit: row.unit,
@@ -292,14 +293,14 @@ export const getTimeSeriesStats = async (
 
 export interface DailyMetricAggregate {
   date: string
-  metric: MetricType
+  metric: string
   avg: number
   sum: number
 }
 
 export const getDailyAggregates = async (
   user: string,
-  metrics: MetricType[],
+  metrics: string[],
   start: Date,
   end: Date,
 ): Promise<DailyMetricAggregate[]> => {
@@ -322,7 +323,7 @@ export const getDailyAggregates = async (
   return result.rows.map((row) => ({
     avg: Number(row.avg),
     date: row.date.toISOString().split('T')[0],
-    metric: row.metric as MetricType,
+    metric: row.metric as string,
     sum: Number(row.sum),
   }))
 }
@@ -1864,6 +1865,7 @@ export interface CalendarConfig {
 export interface UserSettings {
   birthDate?: string // YYYY-MM-DD
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
+  customMetrics?: CustomMetricDefinition[] // User-defined custom metric types
   goals?: Goal[] // User-defined goals for tracking metrics
   hrZoneStart?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   rescueTimeKey?: string // RescueTime API key (personal token)
@@ -1883,6 +1885,7 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
   return {
     birthDate: settings.birthDate as string | undefined,
     calendars: settings.calendars as CalendarConfig[] | undefined,
+    customMetrics: settings.customMetrics as CustomMetricDefinition[] | undefined,
     goals: settings.goals as Goal[] | undefined,
     hrZoneStart: settings.hrZoneStart as UserSettings['hrZoneStart'],
     rescueTimeKey: settings.rescueTimeKey as string | undefined,
@@ -1908,6 +1911,9 @@ export const upsertUserSettings = async (
   }
   if (updates.calendars !== undefined) {
     merged.calendars = updates.calendars
+  }
+  if (updates.customMetrics !== undefined) {
+    merged.customMetrics = updates.customMetrics
   }
   if (updates.goals !== undefined) {
     merged.goals = updates.goals
