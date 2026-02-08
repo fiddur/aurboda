@@ -207,11 +207,20 @@ export const getTimeSeries = async (
   start: Date,
   end: Date,
 ): Promise<[Date, number][]> => {
+  // For cumulative metrics (steps, distance, etc.), only use aggregate source
+  // to avoid mixing raw readings with deduplicated daily totals
+  const isCumulative = cumulativeMetrics.includes(metric as MetricType)
+
   const result = await query(
     user,
-    `SELECT time, value FROM time_series
-     WHERE metric = $1 AND time >= $2 AND time <= $3
-     ORDER BY time`,
+    isCumulative ?
+      `SELECT time, value FROM time_series
+       WHERE metric = $1 AND time >= $2 AND time <= $3
+         AND source = 'health_connect_aggregate'
+       ORDER BY time`
+    : `SELECT time, value FROM time_series
+       WHERE metric = $1 AND time >= $2 AND time <= $3
+       ORDER BY time`,
     [metric, start, end],
   )
 
@@ -224,18 +233,43 @@ export const getTimeSeriesMultiMetric = async (
   start: Date,
   end: Date,
 ): Promise<Record<MetricType, [Date, number][]>> => {
-  const result = await query(
-    user,
-    `SELECT time, metric, value FROM time_series
-     WHERE metric = ANY($1) AND time >= $2 AND time <= $3
-     ORDER BY metric, time`,
-    [metrics, start, end],
-  )
+  if (metrics.length === 0) return {} as Record<MetricType, [Date, number][]>
+
+  // Split metrics into cumulative (steps, distance, etc.) and non-cumulative
+  const cumulativeRequested = metrics.filter((m) => cumulativeMetrics.includes(m))
+  const nonCumulativeRequested = metrics.filter((m) => !cumulativeMetrics.includes(m))
 
   const data: Record<string, [Date, number][]> = {}
-  for (const row of result.rows) {
-    if (!data[row.metric]) data[row.metric] = []
-    data[row.metric].push([new Date(row.time), row.value])
+
+  // Query cumulative metrics using only aggregate source (deduplicated daily totals)
+  if (cumulativeRequested.length > 0) {
+    const cumulativeResult = await query(
+      user,
+      `SELECT time, metric, value FROM time_series
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
+         AND source = 'health_connect_aggregate'
+       ORDER BY metric, time`,
+      [cumulativeRequested, start, end],
+    )
+    for (const row of cumulativeResult.rows) {
+      if (!data[row.metric]) data[row.metric] = []
+      data[row.metric].push([new Date(row.time), row.value])
+    }
+  }
+
+  // Query non-cumulative metrics (all sources)
+  if (nonCumulativeRequested.length > 0) {
+    const nonCumulativeResult = await query(
+      user,
+      `SELECT time, metric, value FROM time_series
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
+       ORDER BY metric, time`,
+      [nonCumulativeRequested, start, end],
+    )
+    for (const row of nonCumulativeResult.rows) {
+      if (!data[row.metric]) data[row.metric] = []
+      data[row.metric].push([new Date(row.time), row.value])
+    }
   }
 
   return data as Record<MetricType, [Date, number][]>
@@ -263,32 +297,77 @@ export const getTimeSeriesStats = async (
 ): Promise<MetricStats[]> => {
   if (metrics.length === 0) return []
 
-  const result = await query(
-    user,
-    `SELECT
-       metric,
-       COUNT(*)::integer as count,
-       MIN(value) as min,
-       MAX(value) as max,
-       AVG(value) as avg,
-       STDDEV_POP(value) as stddev,
-       MAX(unit) as unit
-     FROM time_series
-     WHERE metric = ANY($1) AND time >= $2 AND time <= $3
-     GROUP BY metric
-     ORDER BY metric`,
-    [metrics, start, end],
-  )
+  // Split metrics into cumulative (steps, distance, etc.) and non-cumulative
+  const cumulativeRequested = metrics.filter((m) => cumulativeMetrics.includes(m as MetricType))
+  const nonCumulativeRequested = metrics.filter((m) => !cumulativeMetrics.includes(m as MetricType))
 
-  return result.rows.map((row) => ({
-    avg: row.avg !== null ? Number(row.avg) : 0,
-    count: row.count,
-    max: row.max !== null ? Number(row.max) : 0,
-    metric: row.metric as string,
-    min: row.min !== null ? Number(row.min) : 0,
-    stddev: row.stddev !== null ? Number(row.stddev) : 0,
-    unit: row.unit,
-  }))
+  const results: MetricStats[] = []
+
+  // Query cumulative metrics using only aggregate source (deduplicated daily totals)
+  if (cumulativeRequested.length > 0) {
+    const cumulativeResult = await query(
+      user,
+      `SELECT
+         metric,
+         COUNT(*)::integer as count,
+         MIN(value) as min,
+         MAX(value) as max,
+         AVG(value) as avg,
+         STDDEV_POP(value) as stddev,
+         MAX(unit) as unit
+       FROM time_series
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
+         AND source = 'health_connect_aggregate'
+       GROUP BY metric
+       ORDER BY metric`,
+      [cumulativeRequested, start, end],
+    )
+    results.push(
+      ...cumulativeResult.rows.map((row) => ({
+        avg: row.avg !== null ? Number(row.avg) : 0,
+        count: row.count,
+        max: row.max !== null ? Number(row.max) : 0,
+        metric: row.metric as string,
+        min: row.min !== null ? Number(row.min) : 0,
+        stddev: row.stddev !== null ? Number(row.stddev) : 0,
+        unit: row.unit,
+      })),
+    )
+  }
+
+  // Query non-cumulative metrics (all sources)
+  if (nonCumulativeRequested.length > 0) {
+    const nonCumulativeResult = await query(
+      user,
+      `SELECT
+         metric,
+         COUNT(*)::integer as count,
+         MIN(value) as min,
+         MAX(value) as max,
+         AVG(value) as avg,
+         STDDEV_POP(value) as stddev,
+         MAX(unit) as unit
+       FROM time_series
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
+       GROUP BY metric
+       ORDER BY metric`,
+      [nonCumulativeRequested, start, end],
+    )
+    results.push(
+      ...nonCumulativeResult.rows.map((row) => ({
+        avg: row.avg !== null ? Number(row.avg) : 0,
+        count: row.count,
+        max: row.max !== null ? Number(row.max) : 0,
+        metric: row.metric as string,
+        min: row.min !== null ? Number(row.min) : 0,
+        stddev: row.stddev !== null ? Number(row.stddev) : 0,
+        unit: row.unit,
+      })),
+    )
+  }
+
+  // Sort by metric name for consistent ordering
+  return results.sort((a, b) => a.metric.localeCompare(b.metric))
 }
 
 export interface DailyMetricAggregate {
@@ -306,26 +385,70 @@ export const getDailyAggregates = async (
 ): Promise<DailyMetricAggregate[]> => {
   if (metrics.length === 0) return []
 
-  const result = await query(
-    user,
-    `SELECT
-       DATE(time) as date,
-       metric,
-       AVG(value) as avg,
-       SUM(value) as sum
-     FROM time_series
-     WHERE metric = ANY($1) AND time >= $2 AND time <= $3
-     GROUP BY DATE(time), metric
-     ORDER BY metric, date`,
-    [metrics, start, end],
-  )
+  // Split metrics into cumulative (steps, distance, etc.) and non-cumulative
+  const cumulativeRequested = metrics.filter((m) => cumulativeMetrics.includes(m as MetricType))
+  const nonCumulativeRequested = metrics.filter((m) => !cumulativeMetrics.includes(m as MetricType))
 
-  return result.rows.map((row) => ({
-    avg: Number(row.avg),
-    date: row.date.toISOString().split('T')[0],
-    metric: row.metric as string,
-    sum: Number(row.sum),
-  }))
+  const results: DailyMetricAggregate[] = []
+
+  // Query cumulative metrics using only aggregate source (deduplicated daily totals)
+  // For cumulative metrics, avg and sum are the same (one value per day)
+  if (cumulativeRequested.length > 0) {
+    const cumulativeResult = await query(
+      user,
+      `SELECT
+         DATE(time) as date,
+         metric,
+         AVG(value) as avg,
+         SUM(value) as sum
+       FROM time_series
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
+         AND source = 'health_connect_aggregate'
+       GROUP BY DATE(time), metric
+       ORDER BY metric, date`,
+      [cumulativeRequested, start, end],
+    )
+    results.push(
+      ...cumulativeResult.rows.map((row) => ({
+        avg: Number(row.avg),
+        date: row.date.toISOString().split('T')[0],
+        metric: row.metric as string,
+        sum: Number(row.sum),
+      })),
+    )
+  }
+
+  // Query non-cumulative metrics (all sources)
+  if (nonCumulativeRequested.length > 0) {
+    const nonCumulativeResult = await query(
+      user,
+      `SELECT
+         DATE(time) as date,
+         metric,
+         AVG(value) as avg,
+         SUM(value) as sum
+       FROM time_series
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
+       GROUP BY DATE(time), metric
+       ORDER BY metric, date`,
+      [nonCumulativeRequested, start, end],
+    )
+    results.push(
+      ...nonCumulativeResult.rows.map((row) => ({
+        avg: Number(row.avg),
+        date: row.date.toISOString().split('T')[0],
+        metric: row.metric as string,
+        sum: Number(row.sum),
+      })),
+    )
+  }
+
+  // Sort by metric and date for consistent ordering
+  return results.sort((a, b) => {
+    const metricCmp = a.metric.localeCompare(b.metric)
+    if (metricCmp !== 0) return metricCmp
+    return a.date.localeCompare(b.date)
+  })
 }
 
 // ============================================================================
