@@ -17,7 +17,8 @@ import {
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
 } from '../db'
-import { ActivityType, isHrZoneMetric, MetricType, metricUnits } from '../schema'
+import { ActivityType, isContextualHrvMetric, isHrZoneMetric, MetricType, metricUnits } from '../schema'
+import { classifyHrvByContext, getHrvContextWindows, HrvContext } from './hrv-context'
 import { getPlaceVisits } from './locations'
 import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs } from './settings'
 
@@ -171,6 +172,9 @@ export interface PeriodSummaryResult {
 
 /**
  * Query time series data for a single metric.
+ *
+ * Supports contextual HRV metrics (hrv_sleep, hrv_activity, hrv_awake) which
+ * are computed by filtering hrv_rmssd data by overlapping sleep/activity windows.
  */
 export async function queryMetrics(
   user: string,
@@ -178,8 +182,20 @@ export async function queryMetrics(
   start: Date,
   end: Date,
 ): Promise<QueryMetricsResult> {
-  const data = await getTimeSeries(user, metric, start, end)
   const unit = metricUnits[metric]
+
+  // Handle contextual HRV metrics
+  if (isContextualHrvMetric(metric)) {
+    const data = await getContextualHrvData(user, metric, start, end)
+    return {
+      count: data.length,
+      data: data.map(([time, value]) => ({ time: time.toISOString(), value })),
+      metric,
+      unit,
+    }
+  }
+
+  const data = await getTimeSeries(user, metric, start, end)
 
   return {
     count: data.length,
@@ -187,6 +203,36 @@ export async function queryMetrics(
     metric,
     unit,
   }
+}
+
+/**
+ * Get contextual HRV data for a single metric.
+ */
+async function getContextualHrvData(
+  user: string,
+  metric: MetricType,
+  start: Date,
+  end: Date,
+): Promise<[Date, number][]> {
+  const contextMap: Record<string, HrvContext> = {
+    hrv_activity: 'activity',
+    hrv_awake: 'awake',
+    hrv_sleep: 'sleep',
+  }
+  const context = contextMap[metric]
+  if (!context) return []
+
+  // Fetch raw HRV data and context windows in parallel
+  const [hrvData, { sleepWindows, activityWindows }] = await Promise.all([
+    getTimeSeries(user, 'hrv_rmssd', start, end),
+    getHrvContextWindows(user, start, end),
+  ])
+
+  if (hrvData.length === 0) return []
+
+  // Classify and return the requested context
+  const classified = classifyHrvByContext(hrvData, sleepWindows, activityWindows)
+  return classified[context]
 }
 
 /**
@@ -201,10 +247,67 @@ const bucketSizeToMinutes: Record<BucketSize, number> = {
 }
 
 /**
+ * Compute bucket start time for a given timestamp.
+ */
+const getBucketStart = (time: Date, bucketMinutes: number, rangeStart: Date): Date => {
+  const msPerBucket = bucketMinutes * 60 * 1000
+  const startMs = rangeStart.getTime()
+  const timeMs = time.getTime()
+  const bucketIndex = Math.floor((timeMs - startMs) / msPerBucket)
+  return new Date(startMs + bucketIndex * msPerBucket)
+}
+
+/**
+ * Map contextual HRV metric names to their context.
+ */
+const contextualHrvMetricToContext: Record<string, HrvContext> = {
+  hrv_activity: 'activity',
+  hrv_awake: 'awake',
+  hrv_sleep: 'sleep',
+}
+
+/**
+ * Compute bucketed aggregations for contextual HRV data.
+ * Returns buckets with min/max/avg/count for filtered HRV samples.
+ */
+const computeContextualHrvBuckets = (
+  hrvData: [Date, number][],
+  metric: MetricType,
+  bucketMinutes: number,
+  rangeStart: Date,
+): { bucketStart: Date; metric: MetricType; avg: number; min: number; max: number; count: number }[] => {
+  if (hrvData.length === 0) return []
+
+  // Group data by bucket
+  const bucketMap = new Map<string, number[]>()
+  for (const [time, value] of hrvData) {
+    const bucketStart = getBucketStart(time, bucketMinutes, rangeStart)
+    const key = bucketStart.toISOString()
+    if (!bucketMap.has(key)) {
+      bucketMap.set(key, [])
+    }
+    bucketMap.get(key)!.push(value)
+  }
+
+  // Compute aggregations for each bucket
+  return Array.from(bucketMap.entries()).map(([key, values]) => ({
+    avg: values.reduce((a, b) => a + b, 0) / values.length,
+    bucketStart: new Date(key),
+    count: values.length,
+    max: Math.max(...values),
+    metric,
+    min: Math.min(...values),
+  }))
+}
+
+/**
  * Query bucketed/aggregated time series data for multiple metrics.
  *
  * Returns pre-aggregated buckets with min/max/avg/count for each metric,
  * significantly reducing data size compared to raw time series queries.
+ *
+ * Supports contextual HRV metrics (hrv_sleep, hrv_activity, hrv_awake) which
+ * are computed by filtering hrv_rmssd data by overlapping sleep/activity windows.
  *
  * @param user - The username
  * @param metrics - Array of metric types to query
@@ -220,12 +323,27 @@ export async function queryMetricsBucketed(
   bucket: BucketSize,
 ): Promise<QueryMetricsBucketedResult> {
   const bucketMinutes = bucketSizeToMinutes[bucket]
-  const data = await getTimeSeriesBucketed(user, metrics, start, end, bucketMinutes)
+
+  // Separate regular metrics from contextual HRV metrics
+  const regularMetrics = metrics.filter((m) => !isContextualHrvMetric(m))
+  const contextualHrvMetricsRequested = metrics.filter(isContextualHrvMetric)
+
+  // Fetch regular bucketed data and contextual HRV data in parallel
+  const needsContextualHrv = contextualHrvMetricsRequested.length > 0
+  const [regularData, contextualHrvData] = await Promise.all([
+    regularMetrics.length > 0 ? getTimeSeriesBucketed(user, regularMetrics, start, end, bucketMinutes) : [],
+    needsContextualHrv ?
+      computeContextualHrvData(user, contextualHrvMetricsRequested, start, end, bucketMinutes)
+    : [],
+  ])
+
+  // Combine all data
+  const allData = [...regularData, ...contextualHrvData]
 
   // Group data by bucket start time
   const bucketMap = new Map<string, MetricBucket>()
 
-  for (const row of data) {
+  for (const row of allData) {
     const bucketKey = row.bucketStart.toISOString()
     const bucketEndMs = row.bucketStart.getTime() + bucketMinutes * 60 * 1000
     const bucketEnd = new Date(bucketEndMs).toISOString()
@@ -258,6 +376,52 @@ export async function queryMetricsBucketed(
     end: end.toISOString(),
     start: start.toISOString(),
   }
+}
+
+/**
+ * Compute bucketed data for contextual HRV metrics.
+ * Fetches raw hrv_rmssd data, classifies by context, and computes bucket aggregations.
+ */
+async function computeContextualHrvData(
+  user: string,
+  metrics: MetricType[],
+  start: Date,
+  end: Date,
+  bucketMinutes: number,
+): Promise<
+  { bucketStart: Date; metric: MetricType; avg: number; min: number; max: number; count: number }[]
+> {
+  // Fetch raw HRV data and context windows in parallel
+  const [hrvData, { sleepWindows, activityWindows }] = await Promise.all([
+    getTimeSeries(user, 'hrv_rmssd', start, end),
+    getHrvContextWindows(user, start, end),
+  ])
+
+  if (hrvData.length === 0) return []
+
+  // Classify HRV data by context
+  const classified = classifyHrvByContext(hrvData, sleepWindows, activityWindows)
+
+  // Compute buckets for each requested contextual HRV metric
+  const results: {
+    bucketStart: Date
+    metric: MetricType
+    avg: number
+    min: number
+    max: number
+    count: number
+  }[] = []
+
+  for (const metric of metrics) {
+    const context = contextualHrvMetricToContext[metric]
+    if (context) {
+      const contextData = classified[context]
+      const buckets = computeContextualHrvBuckets(contextData, metric, bucketMinutes, start)
+      results.push(...buckets)
+    }
+  }
+
+  return results
 }
 
 /**

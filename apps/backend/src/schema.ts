@@ -7,8 +7,10 @@
 
 // Re-export common types from shared api-spec package
 export {
+  contextualHrvMetrics,
   cumulativeMetrics,
   hrZoneMetrics,
+  isContextualHrvMetric,
   isHrZoneMetric,
   isValidMetric,
   metricUnits,
