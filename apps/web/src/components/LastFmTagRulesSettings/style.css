@@ -1,0 +1,144 @@
+.lastfm-rules-section .loading {
+  color: #666;
+  font-style: italic;
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.rule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  gap: 1rem;
+}
+
+.rule-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rule-name {
+  font-weight: 500;
+}
+
+.rule-details {
+  font-size: 0.875rem;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remove-rule-button {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  background: transparent;
+  border: 1px solid #f44336;
+  color: #f44336;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.remove-rule-button:hover {
+  background: #f44336;
+  color: white;
+}
+
+.add-rule-form {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 1rem;
+  background: #fafafa;
+}
+
+.add-rule-form h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.form-row .form-field {
+  flex: 1;
+}
+
+.add-rule-form .form-field {
+  margin-bottom: 0.75rem;
+}
+
+.add-rule-form .form-field label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.add-rule-form .form-field input,
+.add-rule-form .form-field select {
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 100%;
+}
+
+.add-rule-form .connect-button {
+  margin-top: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .lastfm-rules-section .loading {
+    color: #aaa;
+  }
+
+  .rule-item {
+    border-color: #444;
+  }
+
+  .rule-details {
+    color: #aaa;
+  }
+
+  .add-rule-form {
+    border-color: #444;
+    background: #2a2a2a;
+  }
+
+  .add-rule-form .form-field input,
+  .add-rule-form .form-field select {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+  }
+}
+
+@media (max-width: 639px) {
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .rule-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .remove-rule-button {
+    align-self: flex-end;
+  }
+}

@@ -6,6 +6,8 @@ import type {
   ActivityImpactQuery,
   ActivityImpactResponse,
   ActivityImpactType,
+  AddLastFmTagRuleBody,
+  AddLastFmTagRuleResponse,
   AddNamedLocationBody,
   AddNamedLocationResponse,
   Activity as ApiActivity,
@@ -25,6 +27,10 @@ import type {
   HrvStats,
   HrvStatsWithDelta,
   HrZoneThresholds,
+  LastFmMatchMode,
+  LastFmMatchType,
+  LastFmTagRule,
+  LastFmTagRulesResponse,
   LocationCorrelation,
   LocationsQuery,
   LocationsResponse,
@@ -42,6 +48,7 @@ import type {
   QueryMetricsQuery,
   QueryMetricsResponse,
   SetTagMappingResponse,
+  SyncResponse,
   TagCorrelation,
   TagMappings,
   TagsQuery,
@@ -99,6 +106,7 @@ export type {
   ActivityCorrelation,
   ActivityImpactData,
   ActivityImpactType,
+  AddLastFmTagRuleBody,
   BaselineData,
   DashboardConfig,
   Goal,
@@ -107,6 +115,9 @@ export type {
   HrvStats,
   HrvStatsWithDelta,
   HrZoneThresholds,
+  LastFmMatchMode,
+  LastFmMatchType,
+  LastFmTagRule,
   LocationCorrelation,
   NamedLocation,
   PeriodMetricStats,
@@ -639,4 +650,36 @@ export const resetDashboard = async (): Promise<DashboardConfig> => {
   })
 
   return response.data.dashboard
+}
+
+// ==========================================================================
+// Last.fm Tag Rules API
+// ==========================================================================
+
+// Fetch all Last.fm tag rules
+export const fetchLastFmTagRules = async (): Promise<LastFmTagRule[]> => {
+  const { token } = auth.value
+  const response = await axios.get<LastFmTagRulesResponse>(`${API_URL}/lastfm/tag-rules`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data ?? []
+}
+
+// Create a new Last.fm tag rule
+export const createLastFmTagRule = async (rule: AddLastFmTagRuleBody): Promise<LastFmTagRule> => {
+  const { token } = auth.value
+  const response = await axios.post<AddLastFmTagRuleResponse>(`${API_URL}/lastfm/tag-rules`, rule, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data!
+}
+
+// Delete a Last.fm tag rule
+export const deleteLastFmTagRule = async (ruleId: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete<SyncResponse>(`${API_URL}/lastfm/tag-rules/${ruleId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
