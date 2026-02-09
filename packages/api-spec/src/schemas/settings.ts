@@ -63,6 +63,13 @@ export const rescueTimeKeySchema = z.string().min(1, 'RescueTime API key cannot 
 })
 
 /**
+ * Last.fm username schema.
+ */
+export const lastFmUsernameSchema = z.string().min(1, 'Last.fm username cannot be empty').meta({
+  description: 'Last.fm username for scrobble sync',
+})
+
+/**
  * Tag mappings schema (UUID -> display name).
  */
 export const tagMappingsSchema = z.record(z.string(), z.string()).meta({
@@ -112,6 +119,9 @@ export const updateSettingsInputSchema = z
     hr_zone_start: hrZoneThresholdsSchema.nullable().optional().meta({
       description: 'Custom HR zone thresholds (set to null to clear)',
     }),
+    lastfm_username: lastFmUsernameSchema.nullable().optional().meta({
+      description: 'Last.fm username for scrobble sync (set to null to clear)',
+    }),
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
     }),
@@ -130,12 +140,16 @@ export const userSettingsResponseSchema = baseResponseSchema
   .extend({
     birth_date: z.string().nullable().meta({ description: 'Birth date in YYYY-MM-DD format' }),
     calendars: calendarsSchema.meta({ description: 'Calendar ICS URL configurations' }),
-    dashboard: dashboardConfigSchema.nullable().meta({ description: 'Custom dashboard configuration (null = use default)' }),
+    dashboard: dashboardConfigSchema
+      .nullable()
+      .meta({ description: 'Custom dashboard configuration (null = use default)' }),
     goals: goalsSchema.meta({ description: 'User goals for tracking metrics' }),
     hr_zone_start: hrZoneThresholdsSchema.meta({ description: 'Effective HR zone thresholds' }),
     hr_zone_start_source: hrZoneSourceSchema.meta({
       description: 'Source of HR zone thresholds',
     }),
+    lastfm_configured: z.boolean().meta({ description: 'Whether Last.fm API key is configured on server' }),
+    lastfm_username: z.string().nullable().meta({ description: 'Last.fm username for scrobble sync' }),
     oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
     rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),

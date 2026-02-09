@@ -28,6 +28,7 @@ export interface UserSettings {
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
   dashboard?: DashboardConfig // Custom dashboard configuration
   hrZoneStart?: HrZoneThresholds
+  lastFmUsername?: string // Last.fm username for scrobble sync
   rescueTimeKey?: string // RescueTime API key (personal token)
   goals?: Goal[] // User-defined goals for tracking metrics
   tagMappings?: TagMappings // Tag name mappings from UUIDs to display names
@@ -144,6 +145,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const { zones, source } = await getEffectiveHrZones(user)
   const ouraToken = await getOAuthToken(user, 'oura')
   const ouraConfigured = !!(process.env.OURA_CLIENT && process.env.OURA_SECRET)
+  const lastFmConfigured = !!process.env.LASTFM_API_KEY
 
   return {
     birth_date: settings.birthDate ?? null,
@@ -152,6 +154,8 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     goals: getEffectiveGoals(settings),
     hr_zone_start: zones,
     hr_zone_start_source: source,
+    lastfm_configured: lastFmConfigured,
+    lastfm_username: settings.lastFmUsername ?? null,
     oura_configured: ouraConfigured,
     oura_connected: ouraToken !== null,
     rescue_time_key: settings.rescueTimeKey ?? null,
@@ -177,6 +181,8 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
       goals: defaultGoals,
       hr_zone_start: calculateDefaultHrZones(null),
       hr_zone_start_source: 'default',
+      lastfm_configured: !!process.env.LASTFM_API_KEY,
+      lastfm_username: null,
       oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
       oura_connected: false,
       rescue_time_key: null,
@@ -199,6 +205,9 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   }
   if (parsed.data.hr_zone_start !== undefined) {
     updates.hrZoneStart = parsed.data.hr_zone_start === null ? undefined : parsed.data.hr_zone_start
+  }
+  if (parsed.data.lastfm_username !== undefined) {
+    updates.lastFmUsername = parsed.data.lastfm_username === null ? undefined : parsed.data.lastfm_username
   }
   if (parsed.data.rescue_time_key !== undefined) {
     updates.rescueTimeKey = parsed.data.rescue_time_key === null ? undefined : parsed.data.rescue_time_key

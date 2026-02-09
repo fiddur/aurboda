@@ -124,6 +124,8 @@ import {
   upsertUserSettings,
 } from './db'
 import { syncAllCalendars } from './ical-sync'
+import { createLastFmRouter } from './lastfm-router'
+import { syncLastFmData } from './lastfm-sync'
 import { createMcpRouter } from './mcp'
 import { createDbSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
@@ -420,27 +422,43 @@ const main = async () => {
     }
   }
 
+  // Transform Last.fm sync result
+  const transformLastFmSyncResult = async (
+    user: string,
+    apiKey: string,
+    username: string,
+    options: { fullResync?: boolean; startDate?: Date },
+  ) => {
+    return await syncLastFmData(user, apiKey, username, options)
+  }
+
   // Sync router - handles /sync/* endpoints
   httpd.use(
     '/sync',
     createSyncRouter(
       {
         getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
+        getLastFmSyncStates: (user) => transformSyncStates(user, 'lastfm'),
         getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
         getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),
         getSettings,
         processDailyAggregate,
         processHealthConnectData,
         resetCalendarSyncState: (user) => resetSyncState(user, 'calendar'),
+        resetLastFmSyncState: (user) => resetSyncState(user, 'lastfm'),
         resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
         syncCalendars: (user, calendars) => syncAllCalendars(user, calendars),
+        syncLastFm: transformLastFmSyncResult,
         syncOura: transformOuraSyncResults,
         syncRescueTime: transformRescueTimeSyncResult,
       },
       authMiddleware,
     ),
   )
+
+  // Last.fm router - handles /lastfm/* endpoints
+  httpd.use('/lastfm', createLastFmRouter(authMiddleware))
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)

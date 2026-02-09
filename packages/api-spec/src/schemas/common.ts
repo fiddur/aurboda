@@ -122,7 +122,18 @@ export type ActivityType = z.infer<typeof activityTypeSchema>
  * Supported data sources.
  */
 export const dataSourceSchema = z
-  .enum(['health_connect', 'health_connect_aggregate', 'oura', 'garmin', 'rescuetime', 'owntracks', 'calendar', 'manual'])
+  .enum([
+    'health_connect',
+    'health_connect_aggregate',
+    'oura',
+    'garmin',
+    'rescuetime',
+    'owntracks',
+    'calendar',
+    'manual',
+    'lastfm',
+    'lastfm-auto',
+  ])
   .meta({
     description: 'Source of the data',
     example: 'health_connect',
@@ -212,9 +223,16 @@ export const customMetricDefinitionSchema = z
       .string()
       .min(1)
       .max(50)
-      .regex(/^[a-z][a-z0-9_]*$/, 'Must be lowercase letters, numbers, and underscores, starting with a letter')
+      .regex(
+        /^[a-z][a-z0-9_]*$/,
+        'Must be lowercase letters, numbers, and underscores, starting with a letter',
+      )
       .meta({ description: 'Metric name (e.g., "mood", "caffeine_mg")', example: 'mood' }),
-    unit: z.string().min(1).max(20).meta({ description: 'Unit of measurement (e.g., "score", "mg")', example: 'score' }),
+    unit: z
+      .string()
+      .min(1)
+      .max(20)
+      .meta({ description: 'Unit of measurement (e.g., "score", "mg")', example: 'score' }),
   })
   .meta({ id: 'CustomMetricDefinition' })
 

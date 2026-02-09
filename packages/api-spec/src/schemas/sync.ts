@@ -53,7 +53,7 @@ export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
  */
 export const syncStatusQuerySchema = z
   .object({
-    provider: z.enum(['oura', 'rescuetime', 'calendar', 'all']).optional().meta({
+    provider: z.enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'all']).optional().meta({
       description: 'Provider to check (defaults to all)',
     }),
   })
@@ -64,7 +64,7 @@ export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
 /**
  * Sync provider schema (for MCP).
  */
-export const syncProviderSchema = z.enum(['oura', 'rescuetime', 'calendar', 'all']).meta({
+export const syncProviderSchema = z.enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'all']).meta({
   description: 'Which provider to check',
 })
 
@@ -331,3 +331,155 @@ export const calendarSyncResponseSchema = baseResponseSchema
   .meta({ id: 'CalendarSyncResponse' })
 
 export type CalendarSyncResponse = z.infer<typeof calendarSyncResponseSchema>
+
+// ============================================================================
+// Last.fm sync schemas
+// ============================================================================
+
+/**
+ * Sync Last.fm body schema.
+ */
+export const syncLastFmBodySchema = z
+  .object({
+    full_resync: z.boolean().optional().meta({
+      description: 'If true, fetches all historical data (default 30 days)',
+    }),
+    start_date: dateOnlySchema.optional().meta({
+      description: 'Start date for sync (only used with full_resync)',
+    }),
+  })
+  .meta({ id: 'SyncLastFmBody' })
+
+export type SyncLastFmBody = z.infer<typeof syncLastFmBodySchema>
+
+/**
+ * Last.fm sync result.
+ */
+export const lastFmSyncResultSchema = z
+  .object({
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    scrobblesProcessed: z.number().int().meta({ description: 'Number of scrobbles processed' }),
+    status: syncResultStatusSchema,
+    tagsCreated: z.number().int().meta({ description: 'Number of tags created from rules' }),
+  })
+  .meta({ id: 'LastFmSyncResult' })
+
+export type LastFmSyncResult = z.infer<typeof lastFmSyncResultSchema>
+
+/**
+ * Last.fm sync response.
+ */
+export const lastFmSyncResponseSchema = baseResponseSchema
+  .extend({
+    result: lastFmSyncResultSchema.optional().meta({ description: 'Sync result' }),
+  })
+  .meta({ id: 'LastFmSyncResponse' })
+
+export type LastFmSyncResponse = z.infer<typeof lastFmSyncResponseSchema>
+
+/**
+ * Last.fm sync status response.
+ */
+export const lastFmSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Last.fm sync states' }),
+  })
+  .meta({ id: 'LastFmSyncStatusResponse' })
+
+export type LastFmSyncStatusResponse = z.infer<typeof lastFmSyncStatusResponseSchema>
+
+// ============================================================================
+// Last.fm tag rules schemas
+// ============================================================================
+
+/**
+ * Last.fm match type for tag rules.
+ */
+export const lastFmMatchTypeSchema = z.enum(['track', 'artist', 'track_artist']).meta({
+  description:
+    'Type of match: track (any scrobble with track name), artist (any scrobble by artist), track_artist (exact track + artist)',
+  id: 'LastFmMatchType',
+})
+
+export type LastFmMatchType = z.infer<typeof lastFmMatchTypeSchema>
+
+/**
+ * Last.fm match mode for tag rules.
+ */
+export const lastFmMatchModeSchema = z.enum(['exact', 'contains']).meta({
+  description: 'How to match: exact (case-insensitive exact match) or contains (substring match)',
+  id: 'LastFmMatchMode',
+})
+
+export type LastFmMatchMode = z.infer<typeof lastFmMatchModeSchema>
+
+/**
+ * Last.fm tag rule schema.
+ */
+export const lastFmTagRuleSchema = z
+  .object({
+    artistName: z
+      .string()
+      .optional()
+      .meta({ description: 'Artist name to match (for artist or track_artist match type)' }),
+    createdAt: z.string().meta({ description: 'When the rule was created' }),
+    id: z.string().uuid().meta({ description: 'Unique rule ID' }),
+    matchMode: lastFmMatchModeSchema,
+    matchType: lastFmMatchTypeSchema,
+    ruleName: z.string().meta({ description: 'Human-readable name for the rule' }),
+    tagName: z.string().meta({ description: 'Tag to create when rule matches' }),
+    trackName: z
+      .string()
+      .optional()
+      .meta({ description: 'Track name to match (for track or track_artist match type)' }),
+  })
+  .meta({ id: 'LastFmTagRule' })
+
+export type LastFmTagRule = z.infer<typeof lastFmTagRuleSchema>
+
+/**
+ * Add Last.fm tag rule body schema.
+ */
+export const addLastFmTagRuleBodySchema = z
+  .object({
+    artistName: z
+      .string()
+      .optional()
+      .meta({ description: 'Artist name to match (required for artist or track_artist match type)' }),
+    matchMode: lastFmMatchModeSchema
+      .optional()
+      .default('exact')
+      .meta({ description: 'Match mode (default: exact)' }),
+    matchType: lastFmMatchTypeSchema,
+    ruleName: z.string().min(1).meta({ description: 'Human-readable name for the rule' }),
+    tagName: z.string().min(1).meta({ description: 'Tag to create when rule matches' }),
+    trackName: z
+      .string()
+      .optional()
+      .meta({ description: 'Track name to match (required for track or track_artist match type)' }),
+  })
+  .meta({ id: 'AddLastFmTagRuleBody' })
+
+export type AddLastFmTagRuleBody = z.infer<typeof addLastFmTagRuleBodySchema>
+
+/**
+ * Last.fm tag rules response.
+ */
+export const lastFmTagRulesResponseSchema = baseResponseSchema
+  .extend({
+    data: z.array(lastFmTagRuleSchema).meta({ description: 'List of tag rules' }),
+  })
+  .meta({ id: 'LastFmTagRulesResponse' })
+
+export type LastFmTagRulesResponse = z.infer<typeof lastFmTagRulesResponseSchema>
+
+/**
+ * Add Last.fm tag rule response.
+ */
+export const addLastFmTagRuleResponseSchema = baseResponseSchema
+  .extend({
+    data: lastFmTagRuleSchema.optional().meta({ description: 'Created tag rule' }),
+  })
+  .meta({ id: 'AddLastFmTagRuleResponse' })
+
+export type AddLastFmTagRuleResponse = z.infer<typeof addLastFmTagRuleResponseSchema>

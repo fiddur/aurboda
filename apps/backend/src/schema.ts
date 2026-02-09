@@ -101,6 +101,25 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_lab_results_category ON lab_results (test_category, test_date DESC)
   `,
 
+  // Last.fm auto-tagging rules
+  lastfm_tag_rules: `
+    CREATE TABLE IF NOT EXISTS lastfm_tag_rules (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      rule_name       VARCHAR(100) NOT NULL,
+      match_type      VARCHAR(20) NOT NULL,
+      track_name      VARCHAR(255),
+      artist_name     VARCHAR(255),
+      match_mode      VARCHAR(20) DEFAULT 'exact',
+      tag_name        VARCHAR(100) NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT unique_rule UNIQUE (match_type, track_name, artist_name, tag_name)
+    )
+  `,
+
+  lastfm_tag_rules_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_lastfm_tag_rules_match ON lastfm_tag_rules (match_type, match_mode)
+  `,
+
   // GPS location data with PostGIS support
   locations: `
     CREATE TABLE IF NOT EXISTS locations (
@@ -292,6 +311,8 @@ export const tableCreationOrder = [
   'time_series_indexes',
   'activities',
   'activities_indexes',
+  'lastfm_tag_rules',
+  'lastfm_tag_rules_indexes',
   'locations',
   'locations_indexes',
   'places',

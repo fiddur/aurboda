@@ -1992,6 +1992,7 @@ export interface UserSettings {
   dashboard?: DashboardConfig // Custom dashboard configuration
   goals?: Goal[] // User-defined goals for tracking metrics
   hrZoneStart?: { 1: number; 2: number; 3: number; 4: number; 5: number }
+  lastFmUsername?: string // Last.fm username for scrobble sync
   rescueTimeKey?: string // RescueTime API key (personal token)
   tagMappings?: Record<string, string> // Tag name mappings from UUIDs to display names
 }
@@ -2013,6 +2014,7 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
     dashboard: settings.dashboard as DashboardConfig | undefined,
     goals: settings.goals as Goal[] | undefined,
     hrZoneStart: settings.hrZoneStart as UserSettings['hrZoneStart'],
+    lastFmUsername: settings.lastFmUsername as string | undefined,
     rescueTimeKey: settings.rescueTimeKey as string | undefined,
     tagMappings: settings.tagMappings as UserSettings['tagMappings'],
   }
@@ -2049,6 +2051,9 @@ export const upsertUserSettings = async (
   if (updates.hrZoneStart !== undefined) {
     merged.hrZoneStart = updates.hrZoneStart
   }
+  if (updates.lastFmUsername !== undefined) {
+    merged.lastFmUsername = updates.lastFmUsername
+  }
   if (updates.rescueTimeKey !== undefined) {
     merged.rescueTimeKey = updates.rescueTimeKey
   }
@@ -2068,6 +2073,96 @@ export const upsertUserSettings = async (
   }
 
   return merged
+}
+
+// ============================================================================
+// Last.fm Tag Rules
+// ============================================================================
+
+export type LastFmMatchType = 'track' | 'artist' | 'track_artist'
+export type LastFmMatchMode = 'exact' | 'contains'
+
+export interface LastFmTagRule {
+  id: string
+  ruleName: string
+  matchType: LastFmMatchType
+  trackName?: string
+  artistName?: string
+  matchMode: LastFmMatchMode
+  tagName: string
+  createdAt: Date
+}
+
+export interface LastFmTagRuleInput {
+  ruleName: string
+  matchType: LastFmMatchType
+  trackName?: string
+  artistName?: string
+  matchMode?: LastFmMatchMode
+  tagName: string
+}
+
+/**
+ * Get all Last.fm tag rules for a user.
+ */
+export const getLastFmTagRules = async (user: string): Promise<LastFmTagRule[]> => {
+  const result = await query(
+    user,
+    `SELECT id, rule_name, match_type, track_name, artist_name, match_mode, tag_name, created_at
+     FROM lastfm_tag_rules
+     ORDER BY created_at DESC`,
+  )
+
+  return result.rows.map((row) => ({
+    artistName: row.artist_name ?? undefined,
+    createdAt: new Date(row.created_at),
+    id: row.id,
+    matchMode: row.match_mode as LastFmMatchMode,
+    matchType: row.match_type as LastFmMatchType,
+    ruleName: row.rule_name,
+    tagName: row.tag_name,
+    trackName: row.track_name ?? undefined,
+  }))
+}
+
+/**
+ * Insert a new Last.fm tag rule.
+ */
+export const insertLastFmTagRule = async (user: string, rule: LastFmTagRuleInput): Promise<LastFmTagRule> => {
+  const result = await query(
+    user,
+    `INSERT INTO lastfm_tag_rules (rule_name, match_type, track_name, artist_name, match_mode, tag_name)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, rule_name, match_type, track_name, artist_name, match_mode, tag_name, created_at`,
+    [
+      rule.ruleName,
+      rule.matchType,
+      rule.trackName ?? null,
+      rule.artistName ?? null,
+      rule.matchMode ?? 'exact',
+      rule.tagName,
+    ],
+  )
+
+  const row = result.rows[0]
+  return {
+    artistName: row.artist_name ?? undefined,
+    createdAt: new Date(row.created_at),
+    id: row.id,
+    matchMode: row.match_mode as LastFmMatchMode,
+    matchType: row.match_type as LastFmMatchType,
+    ruleName: row.rule_name,
+    tagName: row.tag_name,
+    trackName: row.track_name ?? undefined,
+  }
+}
+
+/**
+ * Delete a Last.fm tag rule by ID.
+ */
+export const deleteLastFmTagRule = async (user: string, ruleId: string): Promise<boolean> => {
+  const result = await query(user, `DELETE FROM lastfm_tag_rules WHERE id = $1`, [ruleId])
+  return (result.rowCount ?? 0) > 0
 }
 
 // ============================================================================

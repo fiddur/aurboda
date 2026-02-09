@@ -2,6 +2,7 @@ import {
   dailyAggregatesBodySchema,
   healthConnectSyncBodySchema,
   syncCalendarsBodySchema,
+  syncLastFmBodySchema,
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
   type CalendarConfig,
@@ -12,6 +13,9 @@ import {
   type DailyAggregatesBody,
   type HealthConnectRecord,
   type HealthConnectSyncBody,
+  type LastFmSyncResponse,
+  type LastFmSyncResult,
+  type LastFmSyncStatusResponse,
   type OuraSyncResponse,
   type OuraSyncResult,
   type OuraSyncStatusResponse,
@@ -20,6 +24,7 @@ import {
   type RescueTimeSyncResult,
   type RescueTimeSyncStatusResponse,
   type SyncCalendarsBody,
+  type SyncLastFmBody,
   type SyncOuraBody,
   type SyncRescueTimeBody,
   type SyncResponse,
@@ -51,7 +56,17 @@ export interface SyncRouterDeps {
   ) => Promise<CalendarSyncResult[]>
   getCalendarSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetCalendarSyncState: (user: string) => Promise<void>
-  getSettings: (user: string) => Promise<{ rescueTimeKey?: string; calendars?: CalendarConfig[] }>
+  syncLastFm: (
+    user: string,
+    apiKey: string,
+    username: string,
+    options: { fullResync?: boolean; startDate?: Date },
+  ) => Promise<LastFmSyncResult>
+  getLastFmSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
+  resetLastFmSyncState: (user: string) => Promise<void>
+  getSettings: (
+    user: string,
+  ) => Promise<{ rescueTimeKey?: string; calendars?: CalendarConfig[]; lastFmUsername?: string }>
 }
 
 /**
@@ -241,6 +256,71 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
 
     try {
       await deps.resetCalendarSyncState(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  // Last.fm sync endpoints
+  router.post<ParamsDictionary, LastFmSyncResponse, SyncLastFmBody>(
+    '/lastfm',
+    authMiddleware,
+    validateBody(syncLastFmBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { full_resync, start_date } = req.body
+
+      const lastFmApiKey = process.env.LASTFM_API_KEY
+      if (!lastFmApiKey) {
+        return res.status(400).json({ error: 'Last.fm API key not configured on server', success: false })
+      }
+
+      const settings = await deps.getSettings(user)
+      const lastFmUsername = settings.lastFmUsername
+
+      if (!lastFmUsername) {
+        return res
+          .status(400)
+          .json({ error: 'Last.fm username not configured in user settings', success: false })
+      }
+
+      try {
+        const result = await deps.syncLastFm(user, lastFmApiKey, lastFmUsername, {
+          fullResync: full_resync,
+          startDate: start_date ? new Date(start_date) : undefined,
+        })
+
+        res.json({ result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.get<ParamsDictionary, LastFmSyncStatusResponse>(
+    '/lastfm/status',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+
+      try {
+        const states = await deps.getLastFmSyncStates(user)
+        res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.delete<ParamsDictionary, SyncResponse>('/lastfm/state', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    try {
+      await deps.resetLastFmSyncState(user)
       res.json({ success: true })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
