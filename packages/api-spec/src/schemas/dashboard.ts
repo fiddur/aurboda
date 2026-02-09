@@ -39,10 +39,10 @@ export type DashboardMetric = z.infer<typeof dashboardMetricSchema>
 export const metricCardConfigSchema = z
   .object({
     metric: dashboardMetricSchema.meta({ description: 'The metric to display' }),
-    title: z.string().min(1).meta({ description: 'Display title for the metric' }),
     subtitle: z.string().optional().meta({ description: 'Optional subtitle text' }),
-    unit: z.string().optional().meta({ description: 'Unit label (e.g., "ms", "bpm")' }),
+    title: z.string().min(1).meta({ description: 'Display title for the metric' }),
     trendInverse: z.boolean().optional().meta({ description: 'If true, lower values are better' }),
+    unit: z.string().optional().meta({ description: 'Unit label (e.g., "ms", "bpm")' }),
   })
   .meta({ id: 'MetricCardConfig' })
 
@@ -53,10 +53,15 @@ export type MetricCardConfig = z.infer<typeof metricCardConfigSchema>
  */
 export const sparklineCardConfigSchema = z
   .object({
+    color: z.string().optional().meta({ description: 'Chart line color (CSS color)' }),
+    lookbackDays: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .meta({ description: 'Days of data to show in sparkline (default: 30)' }),
     metric: dashboardMetricSchema.meta({ description: 'The metric to display' }),
     title: z.string().optional().meta({ description: 'Display title for the metric' }),
-    lookbackDays: z.number().int().positive().optional().meta({ description: 'Days of data to show in sparkline (default: 30)' }),
-    color: z.string().optional().meta({ description: 'Chart line color (CSS color)' }),
   })
   .meta({ id: 'SparklineCardConfig' })
 
@@ -67,13 +72,16 @@ export type SparklineCardConfig = z.infer<typeof sparklineCardConfigSchema>
  */
 export const trendChartConfigSchema = z
   .object({
-    sourceType: z.enum(['tag', 'metric']).meta({ description: 'Data source type' }),
-    pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
-    title: z.string().optional().meta({ description: 'Chart title' }),
+    aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
+    displayPeriod: z
+      .enum(['daily', 'weekly', 'monthly'])
+      .optional()
+      .meta({ description: 'Display period for rate' }),
     halfLifeDays: z.number().int().positive().optional().meta({ description: 'EMA half-life in days' }),
     lookbackDays: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
-    displayPeriod: z.enum(['daily', 'weekly', 'monthly']).optional().meta({ description: 'Display period for rate' }),
-    aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
+    pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
+    sourceType: z.enum(['tag', 'metric']).meta({ description: 'Data source type' }),
+    title: z.string().optional().meta({ description: 'Chart title' }),
   })
   .meta({ id: 'TrendChartConfig' })
 
@@ -88,9 +96,14 @@ export const correlationConfigSchema = z
     activityType: z
       .enum(['productivity_category', 'productivity_app', 'location', 'tag', 'activity_type'])
       .meta({ description: 'Type of activity' }),
-    title: z.string().optional().meta({ description: 'Widget title' }),
     periodDays: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
-    windowMinutes: z.number().int().positive().optional().meta({ description: 'Minutes before/after to analyze' }),
+    title: z.string().optional().meta({ description: 'Widget title' }),
+    windowMinutes: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .meta({ description: 'Minutes before/after to analyze' }),
   })
   .meta({ id: 'CorrelationConfig' })
 
@@ -101,10 +114,18 @@ export type CorrelationConfig = z.infer<typeof correlationConfigSchema>
  */
 export const activitySummaryConfigSchema = z
   .object({
-    lookbackDays: z.number().int().positive().optional().meta({ description: 'Days of activities to summarize (default: 7)' }),
-    showWorkouts: z.boolean().optional().meta({ description: 'Show workout count and duration (default: true)' }),
-    showSleep: z.boolean().optional().meta({ description: 'Show average sleep hours (default: true)' }),
+    lookbackDays: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .meta({ description: 'Days of activities to summarize (default: 7)' }),
     showMeditation: z.boolean().optional().meta({ description: 'Show meditation count (default: true)' }),
+    showSleep: z.boolean().optional().meta({ description: 'Show average sleep hours (default: true)' }),
+    showWorkouts: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Show workout count and duration (default: true)' }),
   })
   .meta({ id: 'ActivitySummaryConfig' })
 
@@ -116,11 +137,11 @@ export type ActivitySummaryConfig = z.infer<typeof activitySummaryConfigSchema>
 export const quickLinkConfigSchema = z
   .object({
     href: z.string().min(1).meta({ description: 'Target URL path' }),
-    label: z.string().min(1).meta({ description: 'Link text' }),
     icon: z
       .enum(['timeline', 'sleep', 'hr-zones', 'correlations', 'goals', 'places', 'trends', 'settings'])
       .optional()
       .meta({ description: 'Icon name' }),
+    label: z.string().min(1).meta({ description: 'Link text' }),
   })
   .meta({ id: 'QuickLinkConfig' })
 
@@ -149,34 +170,34 @@ export type WidgetType = z.infer<typeof widgetTypeSchema>
  */
 export const dashboardWidgetSchema = z.discriminatedUnion('type', [
   z.object({
+    config: metricCardConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('metric_card'),
-    config: metricCardConfigSchema,
   }),
   z.object({
+    config: sparklineCardConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('sparkline_card'),
-    config: sparklineCardConfigSchema,
   }),
   z.object({
+    config: trendChartConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('trend_chart'),
-    config: trendChartConfigSchema,
   }),
   z.object({
+    config: correlationConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('correlation'),
-    config: correlationConfigSchema,
   }),
   z.object({
+    config: activitySummaryConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('activity_summary'),
-    config: activitySummaryConfigSchema,
   }),
   z.object({
+    config: quickLinkConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('quick_link'),
-    config: quickLinkConfigSchema,
   }),
 ])
 
@@ -198,10 +219,10 @@ export type SectionType = z.infer<typeof sectionTypeSchema>
  */
 export const dashboardSectionSchema = z
   .object({
-    id: z.string().min(1).meta({ description: 'Unique section ID' }),
-    type: sectionTypeSchema.meta({ description: 'Section type for layout' }),
-    title: z.string().min(1).meta({ description: 'Section title' }),
     collapsed: z.boolean().optional().meta({ description: 'Whether section is collapsed' }),
+    id: z.string().min(1).meta({ description: 'Unique section ID' }),
+    title: z.string().min(1).meta({ description: 'Section title' }),
+    type: sectionTypeSchema.meta({ description: 'Section type for layout' }),
     widgets: z.array(dashboardWidgetSchema).meta({ description: 'Widgets in this section' }),
   })
   .meta({ id: 'DashboardSection' })
@@ -213,8 +234,8 @@ export type DashboardSection = z.infer<typeof dashboardSectionSchema>
  */
 export const dashboardConfigSchema = z
   .object({
-    version: z.literal(1).meta({ description: 'Config version for future migrations' }),
     sections: z.array(dashboardSectionSchema).meta({ description: 'Dashboard sections' }),
+    version: z.literal(1).meta({ description: 'Config version for future migrations' }),
   })
   .meta({ id: 'DashboardConfig' })
 
@@ -250,96 +271,123 @@ export type UpdateDashboardInput = z.infer<typeof updateDashboardInputSchema>
  * Default dashboard configuration matching current Dashboard page layout.
  */
 export const defaultDashboardConfig: DashboardConfig = {
-  version: 1,
   sections: [
     {
       id: 'baseline',
-      type: 'metrics',
       title: 'Your Baseline',
+      type: 'metrics',
       widgets: [
         {
+          config: {
+            metric: 'hrv_7day',
+            subtitle: 'Heart Rate Variability',
+            title: 'HRV (7-day)',
+            unit: 'ms',
+          },
           id: 'hrv-7d',
           type: 'metric_card',
-          config: { metric: 'hrv_7day', title: 'HRV (7-day)', unit: 'ms', subtitle: 'Heart Rate Variability' },
         },
         {
+          config: { metric: 'hrv_30day', subtitle: 'Long-term average', title: 'HRV (30-day)', unit: 'ms' },
           id: 'hrv-30d',
           type: 'metric_card',
-          config: { metric: 'hrv_30day', title: 'HRV (30-day)', unit: 'ms', subtitle: 'Long-term average' },
         },
         {
-          id: 'rhr-7d',
-          type: 'metric_card',
           config: {
             metric: 'rhr_7day',
-            title: 'Resting HR (7-day)',
-            unit: 'bpm',
             subtitle: 'Lower is generally better',
+            title: 'Resting HR (7-day)',
             trendInverse: true,
+            unit: 'bpm',
           },
+          id: 'rhr-7d',
+          type: 'metric_card',
         },
         {
+          config: {
+            metric: 'rhr_30day',
+            subtitle: 'Long-term average',
+            title: 'Resting HR (30-day)',
+            unit: 'bpm',
+          },
           id: 'rhr-30d',
           type: 'metric_card',
-          config: { metric: 'rhr_30day', title: 'Resting HR (30-day)', unit: 'bpm', subtitle: 'Long-term average' },
         },
       ],
     },
     {
       id: 'summary',
-      type: 'metrics',
       title: '30-Day Summary',
+      type: 'metrics',
       widgets: [
         {
+          config: { color: '#3b82f6', lookbackDays: 30, metric: 'sleep_score' },
           id: 'sleep',
           type: 'sparkline_card',
-          config: { metric: 'sleep_score', lookbackDays: 30, color: '#3b82f6' },
         },
         {
+          config: { metric: 'readiness_score', title: 'Readiness Score' },
           id: 'readiness',
           type: 'metric_card',
-          config: { metric: 'readiness_score', title: 'Readiness Score' },
         },
         {
+          config: { metric: 'steps', title: 'Daily Steps' },
           id: 'steps',
           type: 'metric_card',
-          config: { metric: 'steps', title: 'Daily Steps' },
         },
         {
+          config: {
+            metric: 'zone2_weekly',
+            subtitle: 'Target: 150-200 min/week',
+            title: 'Zone 2 (Weekly)',
+            unit: 'min',
+          },
           id: 'zone2',
           type: 'metric_card',
-          config: { metric: 'zone2_weekly', title: 'Zone 2 (Weekly)', unit: 'min', subtitle: 'Target: 150-200 min/week' },
         },
       ],
     },
     {
       id: 'activity',
-      type: 'charts',
       title: 'Activity',
+      type: 'charts',
       widgets: [
         {
+          config: { lookbackDays: 7 },
           id: 'activity-summary',
           type: 'activity_summary',
-          config: { lookbackDays: 7 },
         },
       ],
     },
     {
       id: 'links',
-      type: 'links',
       title: 'Explore',
+      type: 'links',
       widgets: [
-        { id: 'link-timeline', type: 'quick_link', config: { href: '/timeline', label: 'Timeline', icon: 'timeline' } },
-        { id: 'link-sleep', type: 'quick_link', config: { href: '/sleep', label: 'Sleep', icon: 'sleep' } },
-        { id: 'link-hr-zones', type: 'quick_link', config: { href: '/hr-zones', label: 'HR Zones', icon: 'hr-zones' } },
         {
+          config: { href: '/timeline', icon: 'timeline', label: 'Timeline' },
+          id: 'link-timeline',
+          type: 'quick_link',
+        },
+        { config: { href: '/sleep', icon: 'sleep', label: 'Sleep' }, id: 'link-sleep', type: 'quick_link' },
+        {
+          config: { href: '/hr-zones', icon: 'hr-zones', label: 'HR Zones' },
+          id: 'link-hr-zones',
+          type: 'quick_link',
+        },
+        {
+          config: { href: '/correlations', icon: 'correlations', label: 'Correlations' },
           id: 'link-correlations',
           type: 'quick_link',
-          config: { href: '/correlations', label: 'Correlations', icon: 'correlations' },
         },
-        { id: 'link-goals', type: 'quick_link', config: { href: '/goals', label: 'Goals', icon: 'goals' } },
-        { id: 'link-places', type: 'quick_link', config: { href: '/places', label: 'Places', icon: 'places' } },
+        { config: { href: '/goals', icon: 'goals', label: 'Goals' }, id: 'link-goals', type: 'quick_link' },
+        {
+          config: { href: '/places', icon: 'places', label: 'Places' },
+          id: 'link-places',
+          type: 'quick_link',
+        },
       ],
     },
   ],
+  version: 1,
 }

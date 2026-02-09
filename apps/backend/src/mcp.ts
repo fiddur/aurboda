@@ -23,14 +23,20 @@ import { Request, Response, Router } from 'express'
 import { z } from 'zod'
 import { Auth } from './auth'
 import {
+  deleteLastFmTagRule,
   getAllSyncStates,
+  getLastFmTagRules,
   getProgrammaticTags,
   getDetectedLocations as getStoredDetectedLocations,
   getUniqueTags,
   getUserSettings,
+  insertLastFmTagRule,
   upsertUserSettings,
+  type LastFmMatchMode,
+  type LastFmMatchType,
 } from './db'
 import { syncAllCalendars } from './ical-sync'
+import { syncLastFmData } from './lastfm-sync'
 import { DEFAULT_SESSION_INACTIVITY_MS, McpSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
 import { syncAllOuraData } from './oura-sync'
@@ -722,10 +728,57 @@ Use cases:
       },
     )
 
+    // Tool: sync_lastfm
+    server.tool(
+      'sync_lastfm',
+      'Sync scrobbles from Last.fm. Fetches recent tracks and applies auto-tagging rules.',
+      {
+        full_resync: z
+          .boolean()
+          .optional()
+          .describe(
+            'If true, fetches all historical data (default 30 days). Otherwise, fetches only since last sync.',
+          ),
+        start_date: z
+          .string()
+          .optional()
+          .describe('Optional start date for sync in YYYY-MM-DD format. Only used with full_resync.'),
+      },
+      async ({ full_resync, start_date }) => {
+        const lastFmApiKey = process.env.LASTFM_API_KEY
+        if (!lastFmApiKey) {
+          return errorResponse('Last.fm API key is not configured on this server.')
+        }
+
+        const settings = await getSettings(user)
+        if (!settings.lastFmUsername) {
+          return errorResponse('Last.fm username is not configured in user settings.')
+        }
+
+        try {
+          const result = await syncLastFmData(user, lastFmApiKey, settings.lastFmUsername, {
+            fullResync: full_resync,
+            startDate: start_date ? new Date(start_date) : undefined,
+          })
+
+          return jsonResponse({
+            error: result.error,
+            scrobblesProcessed: result.scrobblesProcessed,
+            status: result.status,
+            success: result.status === 'success',
+            tagsCreated: result.tagsCreated,
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return jsonResponse({ error: message, success: false })
+        }
+      },
+    )
+
     // Tool: get_sync_status
     server.tool(
       'get_sync_status',
-      'Get the current sync status for Oura, RescueTime, and Calendar data sources. Shows last sync time, status, and any errors.',
+      'Get the current sync status for Oura, RescueTime, Calendar, and Last.fm data sources. Shows last sync time, status, and any errors.',
       {
         provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
       },
@@ -745,11 +798,112 @@ Use cases:
             states.calendar = await getAllSyncStates(user, 'calendar')
           }
 
+          if (provider === 'all' || provider === 'lastfm') {
+            states.lastfm = await getAllSyncStates(user, 'lastfm')
+          }
+
           return jsonResponse({ states, success: true })
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown error'
           return jsonResponse({ error: message, success: false })
         }
+      },
+    )
+
+    // ========================================================================
+    // Last.fm Tag Rules Tools
+    // ========================================================================
+
+    // Tool: get_lastfm_tag_rules
+    server.tool(
+      'get_lastfm_tag_rules',
+      'Get all Last.fm auto-tagging rules. These rules create tags when scrobbles match specified criteria.',
+      {},
+      async () => {
+        const rules = await getLastFmTagRules(user)
+        const serialized = rules.map((r) => ({
+          ...r,
+          createdAt: r.createdAt.toISOString(),
+        }))
+        return jsonResponse({ data: serialized, success: true })
+      },
+    )
+
+    // Tool: add_lastfm_tag_rule
+    server.tool(
+      'add_lastfm_tag_rule',
+      'Add a Last.fm auto-tagging rule. Creates tags when scrobbles match the specified criteria.',
+      {
+        artist_name: z
+          .string()
+          .optional()
+          .describe('Artist name to match (required for artist or track_artist match type)'),
+        match_mode: z
+          .enum(['exact', 'contains'])
+          .optional()
+          .describe('Match mode: exact (case-insensitive) or contains (substring). Default: exact'),
+        match_type: z
+          .enum(['track', 'artist', 'track_artist'])
+          .describe(
+            'Type of match: track (any track with name), artist (any track by artist), track_artist (exact track + artist)',
+          ),
+        rule_name: z.string().min(1).describe('Human-readable name for the rule'),
+        tag_name: z.string().min(1).describe('Tag to create when rule matches'),
+        track_name: z
+          .string()
+          .optional()
+          .describe('Track name to match (required for track or track_artist match type)'),
+      },
+      async ({ artist_name, match_mode, match_type, rule_name, tag_name, track_name }) => {
+        // Validate required fields based on match_type
+        if ((match_type === 'track' || match_type === 'track_artist') && !track_name) {
+          return errorResponse(`track_name is required for match_type "${match_type}"`)
+        }
+        if ((match_type === 'artist' || match_type === 'track_artist') && !artist_name) {
+          return errorResponse(`artist_name is required for match_type "${match_type}"`)
+        }
+
+        try {
+          const rule = await insertLastFmTagRule(user, {
+            artistName: artist_name,
+            matchMode: (match_mode ?? 'exact') as LastFmMatchMode,
+            matchType: match_type as LastFmMatchType,
+            ruleName: rule_name,
+            tagName: tag_name,
+            trackName: track_name,
+          })
+
+          return jsonResponse({
+            data: {
+              ...rule,
+              createdAt: rule.createdAt.toISOString(),
+            },
+            success: true,
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          // Check for unique constraint violation
+          if (message.includes('unique_rule')) {
+            return errorResponse('A rule with the same match criteria and tag already exists')
+          }
+          return jsonResponse({ error: message, success: false })
+        }
+      },
+    )
+
+    // Tool: delete_lastfm_tag_rule
+    server.tool(
+      'delete_lastfm_tag_rule',
+      'Delete a Last.fm auto-tagging rule by its ID.',
+      {
+        rule_id: z.string().uuid().describe('The ID of the rule to delete'),
+      },
+      async ({ rule_id }) => {
+        const deleted = await deleteLastFmTagRule(user, rule_id)
+        if (!deleted) {
+          return jsonResponse({ error: 'Rule not found', success: false })
+        }
+        return jsonResponse({ success: true })
       },
     )
 
