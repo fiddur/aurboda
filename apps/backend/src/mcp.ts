@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- TODO: refactor - split into mcp/ tool modules */
 import {
   activityTypes,
   activityTypeSchema,
@@ -112,6 +113,7 @@ const metricDescription = `Metric name. Valid metrics: ${validMetrics.join(', ')
  * and can survive backend restarts. When a client reconnects with a
  * previously-issued session ID, the session is lazily restored.
  */
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor - split into tool modules
 export function createMcpRouter(
   auth: Auth,
   oura?: OuraClientType,
@@ -154,6 +156,7 @@ export function createMcpRouter(
     return isNaN(date.getTime()) ? null : date
   }
 
+  // eslint-disable-next-line max-lines-per-function -- TODO: refactor - extract tool registration
   const createMcpServer = (user: string): McpServer => {
     const server = new McpServer({
       name: 'aurboda',
@@ -1435,6 +1438,7 @@ Common half-life values:
   }
 
   // POST /mcp - Handle JSON-RPC requests
+  // eslint-disable-next-line complexity -- TODO: refactor
   router.post('/', async (req: Request, res: Response) => {
     const user = getAuthenticatedUser(req)
     if (!user) {

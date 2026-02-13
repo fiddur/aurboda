@@ -25,6 +25,7 @@ import { validateBody } from './validation'
 /**
  * Creates the Last.fm router with tag rules CRUD endpoints.
  */
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()
 

@@ -57,6 +57,7 @@ export const lastfmClient = (apiKey: string) => {
      * @param to - Optional end date (Unix timestamp or Date)
      * @param limit - Number of tracks per page (max 200, default 200)
      */
+    // eslint-disable-next-line complexity -- TODO: refactor
     async getRecentTracks(
       username: string,
       from?: Date,

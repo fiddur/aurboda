@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- TODO: refactor - split into db/ modules */
 import { type CustomMetricDefinition, type DashboardConfig, type Goal } from '@aurboda/api-spec'
 import { Client, QueryResultRow } from 'pg'
 import format from 'pg-format'
@@ -542,6 +543,7 @@ export interface Activity {
  * - Notes are concatenated with newline
  * - Data objects are merged (later values override earlier for same keys)
  */
+// eslint-disable-next-line complexity -- TODO: refactor
 export const mergeOverlappingActivities = (activities: Activity[]): Activity[] => {
   if (activities.length === 0) return []
 
@@ -1818,6 +1820,7 @@ export const processHealthConnectData = async (
 /**
  * Extract time series points from Health Connect record.
  */
+// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
 function extractTimeSeriesPoints(
   recordType: string,
   metric: MetricType,

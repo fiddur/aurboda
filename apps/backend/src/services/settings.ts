@@ -168,6 +168,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
  * Validate and update user settings.
  * Returns a SettingsResponse with either success or error.
  */
+// eslint-disable-next-line complexity -- TODO: refactor
 export const validateAndUpdateSettings = async (user: string, input: unknown): Promise<SettingsResponse> => {
   // Validate input
   const parsed = updateSettingsInputSchema.safeParse(input)
