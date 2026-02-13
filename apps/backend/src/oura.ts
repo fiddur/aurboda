@@ -22,6 +22,7 @@ type OuraSession = {
   motion_count: unknown
 }
 
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export const ouraClient = (client: string, secret: string, webHost: string) => {
   if (!client || !secret) throw new Error('Oura missing client or secret')
   const redirectUri = `${webHost}/auth/ouracb`

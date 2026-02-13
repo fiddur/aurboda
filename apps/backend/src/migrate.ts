@@ -109,6 +109,7 @@ async function migrateHcData(db: Client, user: string) {
   console.log(`  Migrated ${result.rowCount} hcdata records`)
 }
 
+// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
 function extractTimeSeriesPoints(
   recordType: string,
   metric: MetricType,

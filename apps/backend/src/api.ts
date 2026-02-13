@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- TODO: refactor - split into route modules */
 import {
   type ActivitiesQuery,
   activitiesQuerySchema,
@@ -189,6 +190,7 @@ declare global {
   }
 }
 
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor - extract route groups
 const main = async () => {
   const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
   const forbidden = Object.assign(new Error('Forbidden'), { status: 403 })
@@ -267,6 +269,7 @@ const main = async () => {
     })
   })
 
+  // eslint-disable-next-line complexity -- TODO: refactor
   httpd.post<Record<string, never>, SignupResponse>('/signup', async (req, res, next) => {
     const signupMode = await centralDb.getSignupMode()
 

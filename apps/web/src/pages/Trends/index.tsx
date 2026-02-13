@@ -16,6 +16,7 @@ import {
 import './style.css'
 
 // Chart component for trend history
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 function TrendChart({ data, color }: { data: { date: string; value: number }[]; color: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -167,6 +168,7 @@ const LOOKBACK_OPTIONS = [
 ]
 
 // Form for configuring a trend
+// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
 function TrendConfigForm({
   initialValues,
   onSubmit,
@@ -396,6 +398,7 @@ function TrendWidget({
 }
 
 // Main Trends page component
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export function Trends() {
   const isLoggedIn = auth.value.token
   const [showAddForm, setShowAddForm] = useState(false)

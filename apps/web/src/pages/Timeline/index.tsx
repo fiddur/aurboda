@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- TODO: refactor */
 import { Signal, signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
@@ -205,6 +206,7 @@ const trackSleepMeditation = 0
 const trackExercise = trackHeight
 const trackPlaces = 2 * trackHeight
 
+// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
 export const Timeline = () => {
   const start = startOfDay(new Date(fromDate.value))
   const end = endOfDay(new Date(toDate.value))
@@ -469,6 +471,7 @@ interface TimelineChartProps {
   onZoomOut: () => void
 }
 
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 function TimelineChart({
   heartRates,
   hrvData,

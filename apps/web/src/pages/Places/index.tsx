@@ -27,6 +27,7 @@ L.Icon.Default.mergeOptions({
 
 const selectedDate = signal(formatISO(new Date(), { representation: 'date' }))
 
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export const Places = () => {
   const queryClient = useQueryClient()
   const start = startOfDay(new Date(selectedDate.value))

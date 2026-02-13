@@ -420,6 +420,7 @@ export interface SyncResult {
 /**
  * Sync a single Oura data type.
  */
+/* eslint-disable max-lines-per-function, complexity -- TODO: refactor */
 export const syncOuraDataType = async (
   user: string,
   oura: ReturnType<typeof ouraClient>,
@@ -538,6 +539,7 @@ export const syncOuraDataType = async (
     }
   }
 }
+/* eslint-enable max-lines-per-function, complexity */
 
 /**
  * Sync all Oura data types.

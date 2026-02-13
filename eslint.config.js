@@ -29,9 +29,23 @@ export default [
   {
     plugins: { 'sort-keys': sortKeys },
     rules: {
+      complexity: ['warn', 15],
+      'max-depth': ['warn', 4],
+      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
+      'max-lines-per-function': [
+        'warn',
+        { max: 80, skipBlankLines: true, skipComments: true },
+      ],
       'no-shadow': 'warn',
       'object-shorthand': 'warn',
       'sort-keys/sort-keys-fix': ['error', 'asc', { natural: true }],
+    },
+  },
+  {
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.integration.test.ts'],
+    rules: {
+      'max-lines': 'off',
+      'max-lines-per-function': 'off',
     },
   },
 ]
