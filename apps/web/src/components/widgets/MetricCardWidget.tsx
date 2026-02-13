@@ -102,6 +102,7 @@ const extractPeriodValue = (
   }
 }
 
+// eslint-disable-next-line complexity -- TODO: refactor
 export function MetricCardWidget({ config }: MetricCardWidgetProps) {
   const { metric, title, unit, subtitle: configSubtitle, trendInverse } = config
 

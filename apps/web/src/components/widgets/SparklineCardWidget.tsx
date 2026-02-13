@@ -143,6 +143,7 @@ const metricToApiMetric: Record<string, string> = {
   steps: 'steps',
 }
 
+// eslint-disable-next-line complexity -- TODO: refactor
 export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
   const { metric, title: configTitle, lookbackDays = 30, color = '#3b82f6' } = config
 

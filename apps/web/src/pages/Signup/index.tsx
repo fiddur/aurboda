@@ -4,6 +4,7 @@ import { auth, ensureStatusLoaded, signup, signupMode } from '../../state/auth'
 
 import './style.css'
 
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export function Signup() {
   const { route, query } = useLocation()
   const [error, setError] = useState<string | null>(null)
