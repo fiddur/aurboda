@@ -7,7 +7,13 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
-import { getTimeSeries, getTimeSeriesBucketed, insertTimeSeries } from './time-series'
+import {
+  deleteTimeSeriesMetric,
+  deleteTimeSeriesPoint,
+  getTimeSeries,
+  getTimeSeriesBucketed,
+  insertTimeSeries,
+} from './time-series'
 
 // Increase timeout for container startup
 const CONTAINER_TIMEOUT = 60_000
@@ -450,6 +456,115 @@ describe('Time Series Integration Tests', () => {
       expect(buckets[0].count).toBe(2) // Only 70 and 75, not 60 (before) or 80 (at/after end)
       expect(buckets[0].min).toBe(70)
       expect(buckets[0].max).toBe(75)
+    })
+  })
+
+  // ==========================================================================
+  // Time Series Deletion
+  // ==========================================================================
+
+  describe('deleteTimeSeriesPoint', () => {
+    test('deletes a manual measurement and returns true', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'weight', source: 'manual', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+      ])
+
+      const result = await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T08:00:00Z'))
+
+      expect(result).toBe(true)
+
+      const data = await getTimeSeries(
+        user,
+        'weight',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+      expect(data).toHaveLength(0)
+    })
+
+    test('does not delete non-manual source data', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'weight', source: 'health_connect', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+      ])
+
+      const result = await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T08:00:00Z'))
+
+      expect(result).toBe(false)
+
+      const data = await getTimeSeries(
+        user,
+        'weight',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+      expect(data).toHaveLength(1)
+    })
+
+    test('returns false when no matching measurement found', async () => {
+      const user = getTestUser()
+
+      const result = await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T08:00:00Z'))
+
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('deleteTimeSeriesMetric', () => {
+    test('deletes all manual measurements for a metric and returns count', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'weight', source: 'manual', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+        { metric: 'weight', source: 'manual', time: new Date('2024-01-16T08:00:00Z'), value: 75.3 },
+        { metric: 'weight', source: 'manual', time: new Date('2024-01-17T08:00:00Z'), value: 75.1 },
+      ])
+
+      const count = await deleteTimeSeriesMetric(user, 'weight')
+
+      expect(count).toBe(3)
+
+      const data = await getTimeSeries(
+        user,
+        'weight',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-17T23:59:59Z'),
+      )
+      expect(data).toHaveLength(0)
+    })
+
+    test('only deletes manual source, preserves non-manual', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'weight', source: 'manual', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+        { metric: 'weight', source: 'health_connect', time: new Date('2024-01-15T09:00:00Z'), value: 75.4 },
+        { metric: 'weight', source: 'manual', time: new Date('2024-01-16T08:00:00Z'), value: 75.3 },
+      ])
+
+      const count = await deleteTimeSeriesMetric(user, 'weight')
+
+      expect(count).toBe(2)
+
+      const data = await getTimeSeries(
+        user,
+        'weight',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-16T23:59:59Z'),
+      )
+      expect(data).toHaveLength(1)
+      expect(data[0][1]).toBe(75.4) // health_connect data preserved
+    })
+
+    test('returns 0 when no manual data exists', async () => {
+      const user = getTestUser()
+
+      const count = await deleteTimeSeriesMetric(user, 'weight')
+
+      expect(count).toBe(0)
     })
   })
 })

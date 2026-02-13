@@ -54,6 +54,8 @@ export { insertRawRecord } from './raw-records'
 
 // Time series
 export {
+  deleteTimeSeriesMetric,
+  deleteTimeSeriesPoint,
   getDailyAggregates,
   getTimeSeries,
   getTimeSeriesBucketed,

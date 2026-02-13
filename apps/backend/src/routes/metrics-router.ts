@@ -15,6 +15,8 @@ import {
   type DailySummaryQuery,
   dailySummaryQuerySchema,
   type DailySummaryResponse,
+  type DeleteMetricQuery,
+  deleteMetricQuerySchema,
   type PeriodSummaryQuery,
   periodSummaryQuerySchema,
   type PeriodSummaryResponse,
@@ -24,11 +26,21 @@ import {
   type QueryMetricsQuery,
   queryMetricsQuerySchema,
   type QueryMetricsResponse,
+  type UpdateCustomMetricBody,
+  updateCustomMetricBodySchema,
 } from '@aurboda/api-spec'
 import { RequestHandler, Router } from 'express'
 import { getUserSettings } from '../db'
 import { isValidMetricOrCustom, type MetricType, validMetrics } from '../schema'
-import { addCustomMetric, addMetric, deleteCustomMetric, getCustomMetrics } from '../services/mutations'
+import {
+  addCustomMetric,
+  addMetric,
+  deleteCustomMetric,
+  deleteMetric,
+  deleteMetricData,
+  getCustomMetrics,
+  updateCustomMetric,
+} from '../services/mutations'
 import {
   getDailySummary,
   getPeriodSummary,
@@ -121,6 +133,49 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
         return res.status(404).json({ error: `Custom metric "${name}" not found`, success: false })
       }
       res.json({ success: true })
+    },
+  )
+
+  // PATCH /metrics/custom/:name - Update a custom metric definition
+  router.patch<{ name: string }, CustomMetricResponse, UpdateCustomMetricBody>(
+    '/metrics/custom/:name',
+    authMiddleware,
+    validateBody(updateCustomMetricBodySchema),
+    async (req, res) => {
+      const { name } = req.params
+      const user = req.user!
+      const result = await updateCustomMetric(user, name, req.body)
+      if (!result.success) {
+        return res.status(404).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  // DELETE /metrics/:metric/data - Delete all manual measurements for a metric
+  router.delete<{ metric: string }>('/metrics/:metric/data', authMiddleware, async (req, res) => {
+    const { metric } = req.params
+    const user = req.user!
+    const result = await deleteMetricData(user, metric)
+    res.json({ ...result, success: true })
+  })
+
+  // DELETE /metrics/:metric - Delete a single manual measurement
+  router.delete<{ metric: string }, unknown, unknown, DeleteMetricQuery>(
+    '/metrics/:metric',
+    authMiddleware,
+    validateQuery(deleteMetricQuerySchema),
+    async (req, res) => {
+      const { metric } = req.params
+      const { time } = req.query
+      const user = req.user!
+      const result = await deleteMetric(user, metric, new Date(time))
+      if (!result.deleted) {
+        return res
+          .status(404)
+          .json({ error: 'Measurement not found (only manual entries can be deleted)', success: false })
+      }
+      res.json({ ...result, success: true })
     },
   )
 

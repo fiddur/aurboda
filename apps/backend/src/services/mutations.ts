@@ -13,6 +13,8 @@ import {
   getActivityById as dbGetActivityById,
   insertActivity as dbInsertActivity,
   updateActivity as dbUpdateActivity,
+  deleteTimeSeriesMetric,
+  deleteTimeSeriesPoint,
   findMergeableTag,
   getUserSettings,
   insertTag,
@@ -94,6 +96,32 @@ export interface DeleteCustomMetricResult {
   success: boolean
   deleted: boolean
   name: string
+}
+
+export interface UpdateCustomMetricInput {
+  unit?: string
+  description?: string
+  minValue?: number | null
+  maxValue?: number | null
+}
+
+export interface UpdateCustomMetricResult {
+  success: boolean
+  error?: string
+  data?: CustomMetricDefinition
+}
+
+export interface DeleteMetricResult {
+  success: boolean
+  deleted: boolean
+  metric: string
+  time: string
+}
+
+export interface DeleteMetricDataResult {
+  success: boolean
+  metric: string
+  deletedCount: number
 }
 
 export interface DeleteActivityResult {
@@ -353,6 +381,72 @@ export async function deleteCustomMetric(user: string, name: string): Promise<De
   await upsertUserSettings(user, { customMetrics: filtered })
 
   return { deleted: true, name, success: true }
+}
+
+/**
+ * Update a custom metric definition.
+ * - `undefined` in input means "don't change"
+ * - `null` for minValue/maxValue means "clear"
+ */
+export async function updateCustomMetric(
+  user: string,
+  name: string,
+  updates: UpdateCustomMetricInput,
+): Promise<UpdateCustomMetricResult> {
+  const settings = await getUserSettings(user)
+  const existing = settings?.customMetrics ?? []
+
+  const index = existing.findIndex((m) => m.name === name)
+  if (index === -1) {
+    return { error: `Custom metric "${name}" not found.`, success: false }
+  }
+
+  const current = existing[index]
+  const updated: CustomMetricDefinition = {
+    ...current,
+    ...(updates.unit !== undefined && { unit: updates.unit }),
+    ...(updates.description !== undefined && { description: updates.description }),
+    ...(updates.minValue !== undefined && {
+      minValue: updates.minValue === null ? undefined : updates.minValue,
+    }),
+    ...(updates.maxValue !== undefined && {
+      maxValue: updates.maxValue === null ? undefined : updates.maxValue,
+    }),
+  }
+
+  const newMetrics = [...existing]
+  newMetrics[index] = updated
+
+  await upsertUserSettings(user, { customMetrics: newMetrics })
+
+  return { data: updated, success: true }
+}
+
+/**
+ * Delete a single manual metric measurement by metric name and time.
+ */
+export async function deleteMetric(user: string, metric: string, time: Date): Promise<DeleteMetricResult> {
+  const deleted = await deleteTimeSeriesPoint(user, metric, time)
+
+  return {
+    deleted,
+    metric,
+    success: deleted,
+    time: time.toISOString(),
+  }
+}
+
+/**
+ * Delete all manual metric measurements for a given metric.
+ */
+export async function deleteMetricData(user: string, metric: string): Promise<DeleteMetricDataResult> {
+  const deletedCount = await deleteTimeSeriesMetric(user, metric)
+
+  return {
+    deletedCount,
+    metric,
+    success: true,
+  }
 }
 
 /**
