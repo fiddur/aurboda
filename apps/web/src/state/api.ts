@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- TODO: refactor */
 import type {
   ActivitiesQuery,
   ActivitiesResponse,

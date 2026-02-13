@@ -12,6 +12,7 @@ import './style.css'
 const generateSectionId = () => `section-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
 // Section renderer - renders a section with its widgets
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 function DashboardSectionComponent({
   section,
   isEditing,
@@ -214,6 +215,7 @@ function AddSectionForm({
   )
 }
 
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export function Dashboard() {
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)

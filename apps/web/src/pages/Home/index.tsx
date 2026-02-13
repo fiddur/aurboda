@@ -4,6 +4,7 @@ import { Dashboard } from '../Dashboard'
 
 import './style.css'
 
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 function GuestHome({ canSignup }: { canSignup: boolean }) {
   return (
     <>

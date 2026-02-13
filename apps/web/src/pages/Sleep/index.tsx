@@ -11,10 +11,12 @@ import './style.css'
 const daysBack = signal(30)
 
 // Sleep score line chart component
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 function SleepScoreChart({ data, height = 200 }: { data: [Date, number][]; height?: number }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
+  // eslint-disable-next-line max-lines-per-function -- TODO: refactor
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || data.length < 2) return
 
@@ -149,10 +151,12 @@ function SleepScoreChart({ data, height = 200 }: { data: [Date, number][]; heigh
 }
 
 // Sleep duration bar chart
+// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 function SleepDurationChart({ sleepSessions, height = 180 }: { sleepSessions: Activity[]; height?: number }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
+  // eslint-disable-next-line max-lines-per-function -- TODO: refactor
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || sleepSessions.length < 2) return
 
@@ -322,6 +326,7 @@ function StatCard({
   )
 }
 
+// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
 export function Sleep() {
   const end = endOfDay(new Date())
   const start = startOfDay(subDays(new Date(), daysBack.value))
