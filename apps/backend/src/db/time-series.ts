@@ -201,6 +201,26 @@ export const getDailyAggregates = async (
  * @param end - End of time range
  * @param bucketMinutes - Bucket size in minutes (e.g., 5, 15, 30, 60, 1440 for 1 day)
  */
+// ============================================================================
+// Time Series Deletion (manual source only)
+// ============================================================================
+
+export const deleteTimeSeriesPoint = async (user: string, metric: string, time: Date): Promise<boolean> => {
+  const result = await query(
+    user,
+    `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source = 'manual'`,
+    [metric, time],
+  )
+  return (result.rowCount ?? 0) > 0
+}
+
+export const deleteTimeSeriesMetric = async (user: string, metric: string): Promise<number> => {
+  const result = await query(user, `DELETE FROM time_series WHERE metric = $1 AND source = 'manual'`, [
+    metric,
+  ])
+  return result.rowCount ?? 0
+}
+
 export const getTimeSeriesBucketed = async (
   user: string,
   metrics: MetricType[],

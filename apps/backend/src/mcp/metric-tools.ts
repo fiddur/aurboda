@@ -3,9 +3,18 @@
  */
 import { customMetricDefinitionSchema } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { addCustomMetric, addMetric, deleteCustomMetric, getCustomMetrics } from '../services/mutations'
+import {
+  addCustomMetric,
+  addMetric,
+  deleteCustomMetric,
+  deleteMetric,
+  deleteMetricData,
+  getCustomMetrics,
+  updateCustomMetric,
+} from '../services/mutations'
 import { errorResponse, jsonResponse, type McpServer, metricDescription, parseOptionalDate } from './helpers'
 
+// eslint-disable-next-line max-lines-per-function -- tool registrations are inherently long
 export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: add_metric
   server.tool(
@@ -90,6 +99,73 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
     async ({ name }) => {
       const result = await deleteCustomMetric(user, name)
+      return jsonResponse(result)
+    },
+  )
+
+  // Tool: update_custom_metric
+  server.tool(
+    'update_custom_metric',
+    'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them.',
+    {
+      description: z.string().optional().describe('Human-readable description of the metric'),
+      max_value: z
+        .number()
+        .nullable()
+        .optional()
+        .describe('Maximum allowed value for validation (null to clear)'),
+      min_value: z
+        .number()
+        .nullable()
+        .optional()
+        .describe('Minimum allowed value for validation (null to clear)'),
+      name: z.string().describe('The name of the custom metric to update'),
+      unit: z.string().optional().describe('Unit of measurement (e.g., "score", "mg", "count")'),
+    },
+    async ({ description, max_value, min_value, name, unit }) => {
+      const updates = {
+        ...(description !== undefined ? { description } : {}),
+        ...(max_value !== undefined ? { maxValue: max_value } : {}),
+        ...(min_value !== undefined ? { minValue: min_value } : {}),
+        ...(unit !== undefined ? { unit } : {}),
+      }
+
+      const result = await updateCustomMetric(user, name, updates)
+      if (!result.success) {
+        return errorResponse(result.error ?? 'Failed to update custom metric')
+      }
+      return jsonResponse(result)
+    },
+  )
+
+  // Tool: delete_metric
+  server.tool(
+    'delete_metric',
+    'Delete a single manual metric measurement by metric name and time. Only manual entries can be deleted.',
+    {
+      metric: z.string().describe(metricDescription),
+      time: z.string().describe('Measurement time in ISO 8601 format (must match exactly)'),
+    },
+    async ({ metric, time }) => {
+      const measurementTime = parseOptionalDate(time)
+      if (!measurementTime) {
+        return errorResponse('Invalid time format. Use ISO 8601 format.')
+      }
+
+      const result = await deleteMetric(user, metric, measurementTime)
+      return jsonResponse(result)
+    },
+  )
+
+  // Tool: delete_metric_data
+  server.tool(
+    'delete_metric_data',
+    'Delete all manual measurements for a metric. Only manual entries are deleted; synced data is preserved.',
+    {
+      metric: z.string().describe(metricDescription),
+    },
+    async ({ metric }) => {
+      const result = await deleteMetricData(user, metric)
       return jsonResponse(result)
     },
   )

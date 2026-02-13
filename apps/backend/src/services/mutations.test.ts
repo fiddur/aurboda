@@ -7,15 +7,20 @@ import {
   addTag,
   deleteActivity,
   deleteCustomMetric,
+  deleteMetric,
+  deleteMetricData,
   deleteTag,
   getCustomMetrics,
   updateActivity,
+  updateCustomMetric,
 } from './mutations'
 
 // Mock the db module
 vi.mock('../db', () => ({
   deleteActivity: vi.fn(),
   deleteTag: vi.fn(),
+  deleteTimeSeriesMetric: vi.fn(),
+  deleteTimeSeriesPoint: vi.fn(),
   findMergeableTag: vi.fn(),
   getActivityById: vi.fn(),
   getUserSettings: vi.fn(),
@@ -832,5 +837,173 @@ describe('updateActivity', () => {
     expect(result.success).toBe(false)
     expect(result.error).toBe('end_time must be after start_time')
     expect(db.updateActivity).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateCustomMetric', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('updates unit field', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      customMetrics: [{ name: 'mood', unit: 'score' }],
+    })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({
+      customMetrics: [{ name: 'mood', unit: 'points' }],
+    })
+
+    const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
+
+    expect(result.success).toBe(true)
+    expect(result.data?.unit).toBe('points')
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
+      customMetrics: [{ name: 'mood', unit: 'points' }],
+    })
+  })
+
+  test('updates description field', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      customMetrics: [{ name: 'mood', unit: 'score' }],
+    })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({
+      customMetrics: [{ description: 'Daily mood rating', name: 'mood', unit: 'score' }],
+    })
+
+    const result = await updateCustomMetric('testuser', 'mood', { description: 'Daily mood rating' })
+
+    expect(result.success).toBe(true)
+    expect(result.data?.description).toBe('Daily mood rating')
+  })
+
+  test('clears minValue with null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      customMetrics: [{ maxValue: 10, minValue: 1, name: 'mood', unit: 'score' }],
+    })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({
+      customMetrics: [{ maxValue: 10, name: 'mood', unit: 'score' }],
+    })
+
+    const result = await updateCustomMetric('testuser', 'mood', { minValue: null })
+
+    expect(result.success).toBe(true)
+    expect(result.data?.minValue).toBeUndefined()
+    expect(result.data?.maxValue).toBe(10)
+  })
+
+  test('clears maxValue with null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      customMetrics: [{ maxValue: 10, minValue: 1, name: 'mood', unit: 'score' }],
+    })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({
+      customMetrics: [{ minValue: 1, name: 'mood', unit: 'score' }],
+    })
+
+    const result = await updateCustomMetric('testuser', 'mood', { maxValue: null })
+
+    expect(result.success).toBe(true)
+    expect(result.data?.maxValue).toBeUndefined()
+    expect(result.data?.minValue).toBe(1)
+  })
+
+  test('returns error when metric not found', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      customMetrics: [{ name: 'mood', unit: 'score' }],
+    })
+
+    const result = await updateCustomMetric('testuser', 'nonexistent', { unit: 'mg' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not found')
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+  })
+
+  test('partial update preserves other fields', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      customMetrics: [{ description: 'Daily mood', maxValue: 10, minValue: 1, name: 'mood', unit: 'score' }],
+    })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({
+      customMetrics: [{ description: 'Daily mood', maxValue: 10, minValue: 1, name: 'mood', unit: 'points' }],
+    })
+
+    const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
+
+    expect(result.success).toBe(true)
+    expect(result.data).toEqual({
+      description: 'Daily mood',
+      maxValue: 10,
+      minValue: 1,
+      name: 'mood',
+      unit: 'points',
+    })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
+      customMetrics: [{ description: 'Daily mood', maxValue: 10, minValue: 1, name: 'mood', unit: 'points' }],
+    })
+  })
+
+  test('returns error when no settings exist', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+
+    const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not found')
+  })
+})
+
+describe('deleteMetric', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('deletes a manual measurement and returns success', async () => {
+    vi.mocked(db.deleteTimeSeriesPoint).mockResolvedValue(true)
+
+    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'))
+
+    expect(result.success).toBe(true)
+    expect(result.deleted).toBe(true)
+    expect(result.metric).toBe('weight')
+    expect(result.time).toBe('2024-01-15T08:00:00.000Z')
+    expect(db.deleteTimeSeriesPoint).toHaveBeenCalledWith(
+      'testuser',
+      'weight',
+      new Date('2024-01-15T08:00:00Z'),
+    )
+  })
+
+  test('returns false when measurement not found', async () => {
+    vi.mocked(db.deleteTimeSeriesPoint).mockResolvedValue(false)
+
+    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'))
+
+    expect(result.success).toBe(false)
+    expect(result.deleted).toBe(false)
+  })
+})
+
+describe('deleteMetricData', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('deletes all manual measurements and returns count', async () => {
+    vi.mocked(db.deleteTimeSeriesMetric).mockResolvedValue(5)
+
+    const result = await deleteMetricData('testuser', 'weight')
+
+    expect(result.success).toBe(true)
+    expect(result.metric).toBe('weight')
+    expect(result.deletedCount).toBe(5)
+    expect(db.deleteTimeSeriesMetric).toHaveBeenCalledWith('testuser', 'weight')
+  })
+
+  test('returns zero count when no manual data exists', async () => {
+    vi.mocked(db.deleteTimeSeriesMetric).mockResolvedValue(0)
+
+    const result = await deleteMetricData('testuser', 'heart_rate')
+
+    expect(result.success).toBe(true)
+    expect(result.deletedCount).toBe(0)
   })
 })

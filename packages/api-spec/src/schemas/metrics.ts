@@ -102,6 +102,37 @@ export const addCustomMetricBodySchema = customMetricDefinitionSchema.meta({ id:
 export type AddCustomMetricBody = z.infer<typeof addCustomMetricBodySchema>
 
 /**
+ * Update custom metric request body.
+ * All fields are optional; null clears minValue/maxValue.
+ */
+export const updateCustomMetricBodySchema = z
+  .object({
+    description: z.string().optional().meta({ description: 'Human-readable description' }),
+    maxValue: z.number().nullable().optional().meta({ description: 'Maximum allowed value (null to clear)' }),
+    minValue: z.number().nullable().optional().meta({ description: 'Minimum allowed value (null to clear)' }),
+    unit: z
+      .string()
+      .min(1)
+      .max(20)
+      .optional()
+      .meta({ description: 'Unit of measurement (e.g., "score", "mg")' }),
+  })
+  .meta({ id: 'UpdateCustomMetricBody' })
+
+export type UpdateCustomMetricBody = z.infer<typeof updateCustomMetricBodySchema>
+
+/**
+ * Delete metric query schema for single measurement deletion.
+ */
+export const deleteMetricQuerySchema = z
+  .object({
+    time: iso8601DateTimeSchema,
+  })
+  .meta({ id: 'DeleteMetricQuery' })
+
+export type DeleteMetricQuery = z.infer<typeof deleteMetricQuerySchema>
+
+/**
  * Custom metric response.
  */
 export const customMetricResponseSchema = baseResponseSchema
