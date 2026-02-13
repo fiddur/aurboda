@@ -412,6 +412,7 @@ export type SignupMode = 'open' | 'invite_only' | 'closed'
 export interface AdminSettings {
   signup_mode: SignupMode
   admin_count: number
+  lastfm_api_key_set: boolean
 }
 
 export interface InvitationResult {
@@ -429,12 +430,16 @@ export const fetchAdminSettings = async (): Promise<AdminSettings> => {
 
   return {
     admin_count: response.data.admin_count,
+    lastfm_api_key_set: response.data.lastfm_api_key_set,
     signup_mode: response.data.signup_mode,
   }
 }
 
 // Update admin settings
-export const updateAdminSettings = async (params: { signup_mode?: SignupMode }): Promise<AdminSettings> => {
+export const updateAdminSettings = async (params: {
+  signup_mode?: SignupMode
+  lastfm_api_key?: string | null
+}): Promise<AdminSettings> => {
   const { token } = auth.value
   const response = await axios.patch<{ success: boolean } & AdminSettings>(
     `${API_URL}/admin/settings`,
@@ -446,6 +451,7 @@ export const updateAdminSettings = async (params: { signup_mode?: SignupMode }):
 
   return {
     admin_count: response.data.admin_count,
+    lastfm_api_key_set: response.data.lastfm_api_key_set,
     signup_mode: response.data.signup_mode,
   }
 }

@@ -9,6 +9,7 @@ import { syncLastFmData } from '../lastfm-sync'
 import { ouraClient } from '../oura'
 import { syncAllOuraData } from '../oura-sync'
 import { syncRescueTimeData } from '../rescuetime-sync'
+import { getCentralDb } from '../services/central-db'
 import { getSettings } from '../services/settings'
 import { errorResponse, jsonResponse, type McpServer } from './helpers'
 
@@ -150,7 +151,7 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
         .describe('Optional start date for sync in YYYY-MM-DD format. Only used with full_resync.'),
     },
     async ({ full_resync, start_date }) => {
-      const lastFmApiKey = process.env.LASTFM_API_KEY
+      const lastFmApiKey = await getCentralDb().getLastFmApiKey()
       if (!lastFmApiKey) {
         return errorResponse('Last.fm API key is not configured on this server.')
       }

@@ -98,6 +98,7 @@ export type LoginResponse = z.infer<typeof loginResponseSchema>
 export const adminSettingsResponseSchema = baseResponseSchema
   .extend({
     admin_count: z.number().int().meta({ description: 'Number of admin users' }),
+    lastfm_api_key_set: z.boolean().meta({ description: 'Whether a Last.fm API key is configured' }),
     signup_mode: signupModeSchema.meta({ description: 'Current signup mode' }),
   })
   .meta({ id: 'AdminSettingsResponse' })
@@ -109,6 +110,11 @@ export type AdminSettingsResponse = z.infer<typeof adminSettingsResponseSchema>
  */
 export const updateAdminSettingsBodySchema = z
   .object({
+    lastfm_api_key: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Last.fm API key (set to null to clear)' }),
     signup_mode: signupModeSchema.optional().meta({ description: 'New signup mode' }),
   })
   .meta({ id: 'UpdateAdminSettingsBody' })

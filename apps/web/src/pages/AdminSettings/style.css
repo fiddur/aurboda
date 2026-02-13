@@ -92,6 +92,41 @@
   margin: 0;
 }
 
+.connected-status {
+  color: #4caf50;
+  font-weight: 500;
+  margin: 0 0 0.5rem;
+}
+
+.api-key-input-row {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 400px;
+}
+
+.api-key-input-row input {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.clear-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.clear-button:hover {
+  background: #d32f2f;
+}
+
 .generate-button {
   padding: 0.75rem 1.5rem;
   font-size: 1rem;
@@ -166,7 +201,8 @@
     color: #aaa;
   }
 
-  .form-field select {
+  .form-field select,
+  .api-key-input-row input {
     background: #333;
     border-color: #555;
     color: #fff;

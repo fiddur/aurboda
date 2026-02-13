@@ -33,8 +33,10 @@ export const createAdminRouter = (
     async (_req, res) => {
       const signupMode = await centralDb.getSignupMode()
       const adminCount = await centralDb.getAdminCount()
+      const lastFmApiKey = await centralDb.getLastFmApiKey()
       res.json({
         admin_count: adminCount,
+        lastfm_api_key_set: !!lastFmApiKey,
         signup_mode: signupMode,
         success: true,
       })
@@ -48,14 +50,19 @@ export const createAdminRouter = (
     adminMiddleware,
     validateBody(updateAdminSettingsBodySchema),
     async (req, res) => {
-      const { signup_mode } = req.body
+      const { lastfm_api_key, signup_mode } = req.body
       if (signup_mode) {
         await centralDb.setSignupMode(signup_mode)
       }
+      if (lastfm_api_key !== undefined) {
+        await centralDb.setLastFmApiKey(lastfm_api_key)
+      }
       const currentMode = await centralDb.getSignupMode()
       const adminCount = await centralDb.getAdminCount()
+      const lastFmApiKey = await centralDb.getLastFmApiKey()
       res.json({
         admin_count: adminCount,
+        lastfm_api_key_set: !!lastFmApiKey,
         signup_mode: currentMode,
         success: true,
       })
