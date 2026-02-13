@@ -15,7 +15,7 @@ import type {
   SyncState,
   SyncStatus,
   Tag,
-} from '../db'
+} from './types'
 
 // ============================================================================
 // Type Guards
