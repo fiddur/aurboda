@@ -63,6 +63,8 @@ export function AdminSettings() {
   })
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [lastfmSaveStatus, setLastfmSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [lastfmApiKey, setLastfmApiKey] = useState('')
   const [invitation, setInvitation] = useState<InvitationResult | null>(null)
   const [invitationLoading, setInvitationLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -84,6 +86,37 @@ export function AdminSettings() {
     },
     [queryClient],
   )
+
+  const handleLastfmApiKeyBlur = useCallback(async () => {
+    if (!lastfmApiKey) return
+    setLastfmSaveStatus({ status: 'saving' })
+    try {
+      const result = await updateAdminSettings({ lastfm_api_key: lastfmApiKey })
+      queryClient.setQueryData(['adminSettings'], result)
+      setLastfmApiKey('')
+      setLastfmSaveStatus({ status: 'saved', time: new Date() })
+    } catch (err) {
+      setLastfmSaveStatus({
+        error: err instanceof Error ? err.message : 'Failed to save',
+        status: 'error',
+      })
+    }
+  }, [lastfmApiKey, queryClient])
+
+  const handleClearLastfmApiKey = useCallback(async () => {
+    setLastfmSaveStatus({ status: 'saving' })
+    try {
+      const result = await updateAdminSettings({ lastfm_api_key: null })
+      queryClient.setQueryData(['adminSettings'], result)
+      setLastfmApiKey('')
+      setLastfmSaveStatus({ status: 'saved', time: new Date() })
+    } catch (err) {
+      setLastfmSaveStatus({
+        error: err instanceof Error ? err.message : 'Failed to save',
+        status: 'error',
+      })
+    }
+  }, [queryClient])
 
   const handleGenerateInvitation = useCallback(async () => {
     setInvitationLoading(true)
@@ -161,6 +194,42 @@ export function AdminSettings() {
           <label>Admin Count</label>
           <p class="stat-value">{settings?.admin_count ?? 0}</p>
           <p class="field-description">Number of users with admin privileges.</p>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="section-header-row">
+          <h2>Integrations</h2>
+          <SaveStatusIndicator saveStatus={lastfmSaveStatus} />
+        </div>
+
+        <div class="form-field">
+          <label for="lastfm-api-key">Last.fm API Key</label>
+          {settings?.lastfm_api_key_set ?
+            <p class="connected-status">Configured</p>
+          : null}
+          <div class="api-key-input-row">
+            <input
+              id="lastfm-api-key"
+              type="password"
+              value={lastfmApiKey}
+              onInput={(e) => setLastfmApiKey((e.target as HTMLInputElement).value)}
+              onBlur={handleLastfmApiKeyBlur}
+              placeholder={settings?.lastfm_api_key_set ? 'Enter new key to update' : 'Enter Last.fm API key'}
+            />
+            {settings?.lastfm_api_key_set && (
+              <button type="button" class="clear-button" onClick={handleClearLastfmApiKey}>
+                Clear
+              </button>
+            )}
+          </div>
+          <p class="field-description">
+            Server-wide Last.fm API key used for scrobble syncing.{' '}
+            <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer">
+              Register for an API key
+            </a>
+            . Saves automatically when you leave the field.
+          </p>
         </div>
       </section>
 

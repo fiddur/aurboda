@@ -6,6 +6,7 @@ import { createSyncRouter, SyncRouterDeps } from './sync-router'
 describe('sync router', () => {
   const mockDeps: SyncRouterDeps = {
     getCalendarSyncStates: vi.fn().mockResolvedValue([]),
+    getLastFmApiKey: vi.fn().mockResolvedValue('test-lastfm-key'),
     getLastFmSyncStates: vi.fn().mockResolvedValue([]),
     getOuraSyncStates: vi.fn().mockResolvedValue([]),
     getRescueTimeSyncStates: vi.fn().mockResolvedValue([]),

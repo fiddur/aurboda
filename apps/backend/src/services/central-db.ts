@@ -15,6 +15,7 @@ import pg from 'pg'
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
 export interface ServerSettings {
+  lastfm_api_key: string
   signup_mode: SignupMode
 }
 
@@ -26,6 +27,8 @@ export interface CentralDb {
   initializeCentralDb: () => Promise<void>
   getServerSetting: <K extends keyof ServerSettings>(key: K) => Promise<ServerSettings[K] | null>
   setServerSetting: <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => Promise<void>
+  getLastFmApiKey: () => Promise<string | null>
+  setLastFmApiKey: (key: string | null) => Promise<void>
   getSignupMode: () => Promise<SignupMode>
   setSignupMode: (mode: SignupMode) => Promise<void>
   isAdmin: (username: string) => Promise<boolean>
@@ -138,6 +141,15 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       return result.rows.map((row) => row.username)
     },
 
+    getLastFmApiKey: async (): Promise<string | null> => {
+      const client = await getClient()
+      const result = await client.query('SELECT value FROM server_settings WHERE key = $1', [
+        'lastfm_api_key',
+      ])
+      if (result.rows.length === 0) return null
+      return result.rows[0].value as string
+    },
+
     getServerSetting: async <K extends keyof ServerSettings>(key: K): Promise<ServerSettings[K] | null> => {
       const client = await getClient()
       const result = await client.query('SELECT value FROM server_settings WHERE key = $1', [key])
@@ -175,6 +187,20 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       const client = await getClient()
       const result = await client.query('DELETE FROM admins WHERE username = $1', [username])
       return (result.rowCount ?? 0) > 0
+    },
+
+    setLastFmApiKey: async (key: string | null): Promise<void> => {
+      const client = await getClient()
+      if (key === null) {
+        await client.query('DELETE FROM server_settings WHERE key = $1', ['lastfm_api_key'])
+      } else {
+        await client.query(
+          `INSERT INTO server_settings (key, value, updated_at)
+           VALUES ('lastfm_api_key', $1, NOW())
+           ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+          [JSON.stringify(key)],
+        )
+      }
     },
 
     setServerSetting: async <K extends keyof ServerSettings>(

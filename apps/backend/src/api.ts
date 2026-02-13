@@ -317,6 +317,7 @@ const main = async () => {
     createSyncRouter(
       {
         getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
+        getLastFmApiKey: () => centralDb.getLastFmApiKey(),
         getLastFmSyncStates: (user) => transformSyncStates(user, 'lastfm'),
         getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
         getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),

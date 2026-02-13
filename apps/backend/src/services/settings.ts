@@ -15,6 +15,7 @@ import {
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
 import { getOAuthToken, getUserSettings, upsertUserSettings } from '../db'
+import { getCentralDb } from './central-db'
 
 // Re-export types from api-spec for use by other modules
 export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
@@ -145,7 +146,8 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const { zones, source } = await getEffectiveHrZones(user)
   const ouraToken = await getOAuthToken(user, 'oura')
   const ouraConfigured = !!(process.env.OURA_CLIENT && process.env.OURA_SECRET)
-  const lastFmConfigured = !!process.env.LASTFM_API_KEY
+  const lastFmApiKey = await getCentralDb().getLastFmApiKey()
+  const lastFmConfigured = !!lastFmApiKey
 
   return {
     birth_date: settings.birthDate ?? null,
@@ -182,7 +184,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
       goals: defaultGoals,
       hr_zone_start: calculateDefaultHrZones(null),
       hr_zone_start_source: 'default',
-      lastfm_configured: !!process.env.LASTFM_API_KEY,
+      lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
       lastfm_username: null,
       oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
       oura_connected: false,

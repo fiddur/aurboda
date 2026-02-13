@@ -67,6 +67,7 @@ export interface SyncRouterDeps {
   getSettings: (
     user: string,
   ) => Promise<{ rescueTimeKey?: string; calendars?: CalendarConfig[]; lastFmUsername?: string }>
+  getLastFmApiKey: () => Promise<string | null>
 }
 
 /**
@@ -273,7 +274,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       const user = req.user!
       const { full_resync, start_date } = req.body
 
-      const lastFmApiKey = process.env.LASTFM_API_KEY
+      const lastFmApiKey = await deps.getLastFmApiKey()
       if (!lastFmApiKey) {
         return res.status(400).json({ error: 'Last.fm API key not configured on server', success: false })
       }

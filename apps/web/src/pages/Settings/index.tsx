@@ -295,8 +295,8 @@ export function Settings() {
           : null}
           {userSettings?.lastfm_configured === false ?
             <p class="field-description warning">
-              Last.fm API key is not configured on the server. Ask your administrator to set the
-              LASTFM_API_KEY environment variable.
+              Last.fm API key is not configured on the server. Ask your administrator to configure the Last.fm
+              API key in Admin Settings.
             </p>
           : <>
               <input

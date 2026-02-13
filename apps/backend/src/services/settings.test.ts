@@ -17,6 +17,13 @@ vi.mock('../db', () => ({
   upsertUserSettings: vi.fn(),
 }))
 
+// Mock the central-db module
+vi.mock('./central-db', () => ({
+  getCentralDb: () => ({
+    getLastFmApiKey: vi.fn().mockResolvedValue(null),
+  }),
+}))
+
 describe('calculateDefaultHrZones', () => {
   test('returns default zones when no birth date provided', () => {
     const zones = calculateDefaultHrZones(null)

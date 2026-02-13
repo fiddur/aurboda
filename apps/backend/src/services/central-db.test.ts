@@ -50,6 +50,49 @@ describe('central-db', () => {
     })
   })
 
+  describe('getLastFmApiKey', () => {
+    test('returns API key when set', async () => {
+      mockClient.query.mockResolvedValue({ rows: [{ value: 'test-api-key' }] })
+
+      const result = await centralDb.getLastFmApiKey()
+
+      expect(result).toBe('test-api-key')
+      expect(mockClient.query).toHaveBeenCalledWith('SELECT value FROM server_settings WHERE key = $1', [
+        'lastfm_api_key',
+      ])
+    })
+
+    test('returns null when not set', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      const result = await centralDb.getLastFmApiKey()
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('setLastFmApiKey', () => {
+    test('stores API key', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      await centralDb.setLastFmApiKey('my-api-key')
+
+      expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO server_settings'), [
+        JSON.stringify('my-api-key'),
+      ])
+    })
+
+    test('deletes key when set to null', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      await centralDb.setLastFmApiKey(null)
+
+      expect(mockClient.query).toHaveBeenCalledWith('DELETE FROM server_settings WHERE key = $1', [
+        'lastfm_api_key',
+      ])
+    })
+  })
+
   describe('getServerSetting', () => {
     test('returns setting value when found', async () => {
       mockClient.query.mockResolvedValue({ rows: [{ value: 'invite_only' }] })
