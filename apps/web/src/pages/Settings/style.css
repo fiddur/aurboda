@@ -78,8 +78,20 @@
   margin-bottom: 0.5rem;
 }
 
+.field-header-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.field-header-row label {
+  margin-bottom: 0;
+}
+
 .form-field input[type="date"],
-.form-field input[type="password"] {
+.form-field input[type="password"],
+.form-field input[type="text"] {
   padding: 0.5rem;
   font-size: 1rem;
   border: 1px solid #ccc;
@@ -270,13 +282,15 @@
 
   .form-field input[type="date"],
   .form-field input[type="password"],
+  .form-field input[type="text"],
   .zone-input input[type="number"] {
     background: #333;
     border-color: #555;
     color: #fff;
   }
 
-  .form-field input[type="password"]::placeholder {
+  .form-field input[type="password"]::placeholder,
+  .form-field input[type="text"]::placeholder {
     color: #888;
   }
 

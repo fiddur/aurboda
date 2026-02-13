@@ -2,6 +2,7 @@ import type { CalendarConfig } from '@aurboda/api-spec'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 import { GoalsSettings } from '../../components/GoalsSettings'
+import { LastFmTagRulesSettings } from '../../components/LastFmTagRulesSettings'
 import { TagMappingsSettings } from '../../components/TagMappingsSettings'
 import { API_URL } from '../../config'
 import { fetchUserSettings, HrZoneThresholds, UpdateSettingsInput, updateUserSettings } from '../../state/api'
@@ -48,6 +49,7 @@ export function Settings() {
   const [birthDate, setBirthDate] = useState<string>('')
   const [hrZones, setHrZones] = useState<HrZoneThresholds | null>(null)
   const [rescueTimeKey, setRescueTimeKey] = useState<string>('')
+  const [lastfmUsername, setLastfmUsername] = useState<string>('')
 
   // Calendar form state
   const [newCalendarName, setNewCalendarName] = useState('')
@@ -56,6 +58,7 @@ export function Settings() {
   // Save status for each section
   const [birthDateStatus, setBirthDateStatus] = useState<SaveStatus>({ status: 'idle' })
   const [rescueTimeStatus, setRescueTimeStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [lastfmStatus, setLastfmStatus] = useState<SaveStatus>({ status: 'idle' })
   const [hrZonesStatus, setHrZonesStatus] = useState<SaveStatus>({ status: 'idle' })
   const [calendarsStatus, setCalendarsStatus] = useState<SaveStatus>({ status: 'idle' })
 
@@ -64,6 +67,7 @@ export function Settings() {
     setBirthDate(userSettings?.birth_date ?? '')
     setHrZones(userSettings?.hr_zone_start ?? null)
     setRescueTimeKey('')
+    setLastfmUsername(userSettings?.lastfm_username ?? '')
   }
 
   // Track if form has been initialized
@@ -147,6 +151,18 @@ export function Settings() {
 
     saveSection({ rescue_time_key: rescueTimeKey }, setRescueTimeStatus)
     setRescueTimeKey('')
+  }
+
+  const handleLastfmUsernameChange = (e: Event) => {
+    const value = (e.target as HTMLInputElement).value
+    setLastfmUsername(value)
+  }
+
+  const handleLastfmUsernameBlur = () => {
+    const serverValue = userSettings?.lastfm_username ?? ''
+    if (lastfmUsername === serverValue) return
+
+    saveSection({ lastfm_username: lastfmUsername || null }, setLastfmStatus)
   }
 
   const handleAddCalendar = () => {
@@ -267,6 +283,40 @@ export function Settings() {
             . Used to sync productivity data. Saves automatically when you leave the field.
           </p>
         </div>
+
+        <div class="form-field">
+          <div class="field-header-row">
+            <label for="lastfm-username">Last.fm Username</label>
+            <SaveStatusIndicator saveStatus={lastfmStatus} />
+          </div>
+          {userSettings?.lastfm_username ?
+            <p class="connected-status">Configured</p>
+          : null}
+          {userSettings?.lastfm_configured === false ?
+            <p class="field-description warning">
+              Last.fm API key is not configured on the server. Ask your administrator to set the
+              LASTFM_API_KEY environment variable.
+            </p>
+          : <>
+              <input
+                id="lastfm-username"
+                type="text"
+                value={lastfmUsername}
+                onInput={handleLastfmUsernameChange}
+                onBlur={handleLastfmUsernameBlur}
+                placeholder="Enter your Last.fm username"
+              />
+              <p class="field-description">
+                Enter your Last.fm username to sync scrobbles and create auto-tags based on your listening
+                history. Find your username on your{' '}
+                <a href="https://www.last.fm/user/_" target="_blank" rel="noopener noreferrer">
+                  Last.fm profile
+                </a>
+                .
+              </p>
+            </>
+          }
+        </div>
       </section>
 
       <section class="settings-section">
@@ -373,6 +423,8 @@ export function Settings() {
           <p class="field-description">Using default thresholds (or age-based if birth date is set).</p>
         )}
       </section>
+
+      <LastFmTagRulesSettings />
 
       <GoalsSettings goals={userSettings?.goals ?? []} />
 
