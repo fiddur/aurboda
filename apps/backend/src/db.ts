@@ -2,6 +2,18 @@
 import { type CustomMetricDefinition, type DashboardConfig, type Goal } from '@aurboda/api-spec'
 import { Client, QueryResultRow } from 'pg'
 import format from 'pg-format'
+import { querySplitByCumulative } from './db/cumulative-query'
+import { buildDynamicUpdate, type UpdateEntry } from './db/dynamic-update'
+import {
+  mapActivityRow,
+  mapDetectedLocationRow,
+  mapLastFmTagRuleRow,
+  mapMcpSessionRow,
+  mapNamedLocationRow,
+  mapSyncStateRow,
+  mapTagRow,
+  parseMetricType,
+} from './db/row-mappers'
 import {
   ActivityType,
   createTableStatements,
@@ -236,41 +248,24 @@ export const getTimeSeriesMultiMetric = async (
 ): Promise<Record<MetricType, [Date, number][]>> => {
   if (metrics.length === 0) return {} as Record<MetricType, [Date, number][]>
 
-  // Split metrics into cumulative (steps, distance, etc.) and non-cumulative
-  const cumulativeRequested = metrics.filter((m) => cumulativeMetrics.includes(m))
-  const nonCumulativeRequested = metrics.filter((m) => !cumulativeMetrics.includes(m))
-
-  const data: Record<string, [Date, number][]> = {}
-
-  // Query cumulative metrics using only aggregate source (deduplicated daily totals)
-  if (cumulativeRequested.length > 0) {
-    const cumulativeResult = await query(
-      user,
-      `SELECT time, metric, value FROM time_series
+  const rows = await querySplitByCumulative<{ metric: string; time: Date; value: number }>({
+    mapRow: (row) => ({ metric: row.metric as string, time: new Date(row.time), value: row.value as number }),
+    metrics,
+    params: [start, end],
+    queryFn: (sql, params) => query(user, sql, params),
+    sqlCumulative: `SELECT time, metric, value FROM time_series
        WHERE metric = ANY($1) AND time >= $2 AND time <= $3
          AND source = 'health_connect_aggregate'
        ORDER BY metric, time`,
-      [cumulativeRequested, start, end],
-    )
-    for (const row of cumulativeResult.rows) {
-      if (!data[row.metric]) data[row.metric] = []
-      data[row.metric].push([new Date(row.time), row.value])
-    }
-  }
-
-  // Query non-cumulative metrics (all sources)
-  if (nonCumulativeRequested.length > 0) {
-    const nonCumulativeResult = await query(
-      user,
-      `SELECT time, metric, value FROM time_series
+    sqlNonCumulative: `SELECT time, metric, value FROM time_series
        WHERE metric = ANY($1) AND time >= $2 AND time <= $3
        ORDER BY metric, time`,
-      [nonCumulativeRequested, start, end],
-    )
-    for (const row of nonCumulativeResult.rows) {
-      if (!data[row.metric]) data[row.metric] = []
-      data[row.metric].push([new Date(row.time), row.value])
-    }
+  })
+
+  const data: Record<string, [Date, number][]> = {}
+  for (const row of rows) {
+    if (!data[row.metric]) data[row.metric] = []
+    data[row.metric].push([row.time, row.value])
   }
 
   return data as Record<MetricType, [Date, number][]>
@@ -298,17 +293,7 @@ export const getTimeSeriesStats = async (
 ): Promise<MetricStats[]> => {
   if (metrics.length === 0) return []
 
-  // Split metrics into cumulative (steps, distance, etc.) and non-cumulative
-  const cumulativeRequested = metrics.filter((m) => cumulativeMetrics.includes(m as MetricType))
-  const nonCumulativeRequested = metrics.filter((m) => !cumulativeMetrics.includes(m as MetricType))
-
-  const results: MetricStats[] = []
-
-  // Query cumulative metrics using only aggregate source (deduplicated daily totals)
-  if (cumulativeRequested.length > 0) {
-    const cumulativeResult = await query(
-      user,
-      `SELECT
+  const statsSql = (sourceFilter: string) => `SELECT
          metric,
          COUNT(*)::integer as count,
          MIN(value) as min,
@@ -317,55 +302,28 @@ export const getTimeSeriesStats = async (
          STDDEV_POP(value) as stddev,
          MAX(unit) as unit
        FROM time_series
-       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
-         AND source = 'health_connect_aggregate'
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3${sourceFilter}
        GROUP BY metric
-       ORDER BY metric`,
-      [cumulativeRequested, start, end],
-    )
-    results.push(
-      ...cumulativeResult.rows.map((row) => ({
-        avg: row.avg !== null ? Number(row.avg) : 0,
-        count: row.count,
-        max: row.max !== null ? Number(row.max) : 0,
-        metric: row.metric as string,
-        min: row.min !== null ? Number(row.min) : 0,
-        stddev: row.stddev !== null ? Number(row.stddev) : 0,
-        unit: row.unit,
-      })),
-    )
-  }
+       ORDER BY metric`
 
-  // Query non-cumulative metrics (all sources)
-  if (nonCumulativeRequested.length > 0) {
-    const nonCumulativeResult = await query(
-      user,
-      `SELECT
-         metric,
-         COUNT(*)::integer as count,
-         MIN(value) as min,
-         MAX(value) as max,
-         AVG(value) as avg,
-         STDDEV_POP(value) as stddev,
-         MAX(unit) as unit
-       FROM time_series
-       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
-       GROUP BY metric
-       ORDER BY metric`,
-      [nonCumulativeRequested, start, end],
-    )
-    results.push(
-      ...nonCumulativeResult.rows.map((row) => ({
-        avg: row.avg !== null ? Number(row.avg) : 0,
-        count: row.count,
-        max: row.max !== null ? Number(row.max) : 0,
-        metric: row.metric as string,
-        min: row.min !== null ? Number(row.min) : 0,
-        stddev: row.stddev !== null ? Number(row.stddev) : 0,
-        unit: row.unit,
-      })),
-    )
-  }
+  const mapRow = (row: { [key: string]: unknown }): MetricStats => ({
+    avg: row.avg !== null ? Number(row.avg) : 0,
+    count: row.count as number,
+    max: row.max !== null ? Number(row.max) : 0,
+    metric: row.metric as string,
+    min: row.min !== null ? Number(row.min) : 0,
+    stddev: row.stddev !== null ? Number(row.stddev) : 0,
+    unit: row.unit as string,
+  })
+
+  const results = await querySplitByCumulative<MetricStats>({
+    mapRow,
+    metrics,
+    params: [start, end],
+    queryFn: (sql, params) => query(user, sql, params),
+    sqlCumulative: statsSql(`\n         AND source = 'health_connect_aggregate'`),
+    sqlNonCumulative: statsSql(''),
+  })
 
   // Sort by metric name for consistent ordering
   return results.sort((a, b) => a.metric.localeCompare(b.metric))
@@ -386,63 +344,31 @@ export const getDailyAggregates = async (
 ): Promise<DailyMetricAggregate[]> => {
   if (metrics.length === 0) return []
 
-  // Split metrics into cumulative (steps, distance, etc.) and non-cumulative
-  const cumulativeRequested = metrics.filter((m) => cumulativeMetrics.includes(m as MetricType))
-  const nonCumulativeRequested = metrics.filter((m) => !cumulativeMetrics.includes(m as MetricType))
-
-  const results: DailyMetricAggregate[] = []
-
-  // Query cumulative metrics using only aggregate source (deduplicated daily totals)
-  // For cumulative metrics, avg and sum are the same (one value per day)
-  if (cumulativeRequested.length > 0) {
-    const cumulativeResult = await query(
-      user,
-      `SELECT
+  const dailySql = (sourceFilter: string) => `SELECT
          DATE(time) as date,
          metric,
          AVG(value) as avg,
          SUM(value) as sum
        FROM time_series
-       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
-         AND source = 'health_connect_aggregate'
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3${sourceFilter}
        GROUP BY DATE(time), metric
-       ORDER BY metric, date`,
-      [cumulativeRequested, start, end],
-    )
-    results.push(
-      ...cumulativeResult.rows.map((row) => ({
-        avg: Number(row.avg),
-        date: row.date.toISOString().split('T')[0],
-        metric: row.metric as string,
-        sum: Number(row.sum),
-      })),
-    )
-  }
+       ORDER BY metric, date`
 
-  // Query non-cumulative metrics (all sources)
-  if (nonCumulativeRequested.length > 0) {
-    const nonCumulativeResult = await query(
-      user,
-      `SELECT
-         DATE(time) as date,
-         metric,
-         AVG(value) as avg,
-         SUM(value) as sum
-       FROM time_series
-       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
-       GROUP BY DATE(time), metric
-       ORDER BY metric, date`,
-      [nonCumulativeRequested, start, end],
-    )
-    results.push(
-      ...nonCumulativeResult.rows.map((row) => ({
-        avg: Number(row.avg),
-        date: row.date.toISOString().split('T')[0],
-        metric: row.metric as string,
-        sum: Number(row.sum),
-      })),
-    )
-  }
+  const mapRow = (row: { [key: string]: unknown }): DailyMetricAggregate => ({
+    avg: Number(row.avg),
+    date: (row.date as Date).toISOString().split('T')[0],
+    metric: row.metric as string,
+    sum: Number(row.sum),
+  })
+
+  const results = await querySplitByCumulative<DailyMetricAggregate>({
+    mapRow,
+    metrics,
+    params: [start, end],
+    queryFn: (sql, params) => query(user, sql, params),
+    sqlCumulative: dailySql(`\n         AND source = 'health_connect_aggregate'`),
+    sqlNonCumulative: dailySql(''),
+  })
 
   // Sort by metric and date for consistent ordering
   return results.sort((a, b) => {
@@ -507,7 +433,7 @@ export const getTimeSeriesBucketed = async (
     bucketStart: new Date(row.bucket_start),
     count: row.count,
     max: row.max !== null ? Number(row.max) : 0,
-    metric: row.metric as MetricType,
+    metric: parseMetricType(row.metric),
     min: row.min !== null ? Number(row.min) : 0,
   }))
 }
@@ -641,17 +567,7 @@ export const getActivityById = async (user: string, id: string): Promise<Activit
     return null
   }
 
-  const row = result.rows[0]
-  return {
-    activityType: row.activity_type as ActivityType,
-    data: row.data,
-    endTime: row.end_time ? new Date(row.end_time) : undefined,
-    id: row.id,
-    notes: row.notes,
-    source: row.source as DataSource,
-    startTime: new Date(row.start_time),
-    title: row.title,
-  }
+  return mapActivityRow(result.rows[0])
 }
 
 export const deleteActivity = async (user: string, id: string): Promise<boolean> => {
@@ -672,59 +588,22 @@ export const updateActivity = async (
   id: string,
   updates: ActivityUpdate,
 ): Promise<Activity | null> => {
-  // Build SET clause dynamically based on provided updates
-  const setClauses: string[] = []
-  const values: unknown[] = []
-  let paramIndex = 1
+  const fields: UpdateEntry[] = []
+  if (updates.startTime !== undefined) fields.push({ column: 'start_time', value: updates.startTime })
+  if (updates.endTime !== undefined) fields.push({ column: 'end_time', value: updates.endTime })
+  if (updates.title !== undefined) fields.push({ column: 'title', value: updates.title })
+  if (updates.notes !== undefined) fields.push({ column: 'notes', value: updates.notes })
 
-  if (updates.startTime !== undefined) {
-    setClauses.push(`start_time = $${paramIndex++}`)
-    values.push(updates.startTime)
-  }
-  if (updates.endTime !== undefined) {
-    setClauses.push(`end_time = $${paramIndex++}`)
-    values.push(updates.endTime)
-  }
-  if (updates.title !== undefined) {
-    setClauses.push(`title = $${paramIndex++}`)
-    values.push(updates.title)
-  }
-  if (updates.notes !== undefined) {
-    setClauses.push(`notes = $${paramIndex++}`)
-    values.push(updates.notes)
-  }
+  if (fields.length === 0) return getActivityById(user, id)
 
-  if (setClauses.length === 0) {
-    // No updates provided, just return existing activity
-    return getActivityById(user, id)
-  }
+  const update = buildDynamicUpdate('activities', id, fields, {
+    returning: 'id, source, activity_type, start_time, end_time, title, notes, data',
+  })
+  if (!update) return getActivityById(user, id)
 
-  values.push(id)
-
-  const result = await query(
-    user,
-    `UPDATE activities
-     SET ${setClauses.join(', ')}
-     WHERE id = $${paramIndex}
-     RETURNING id, source, activity_type, start_time, end_time, title, notes, data`,
-    values,
-  )
-
-  if (result.rows.length === 0) {
-    return null
-  }
-
-  const row = result.rows[0]
-  return {
-    activityType: row.activity_type as ActivityType,
-    data: row.data,
-    endTime: row.end_time ? new Date(row.end_time) : undefined,
-    id: row.id,
-    notes: row.notes,
-    source: row.source as DataSource,
-    startTime: new Date(row.start_time),
-    title: row.title,
-  }
+  const result = await query(user, update.sql, update.params)
+  if (result.rows.length === 0) return null
+  return mapActivityRow(result.rows[0])
 }
 
 export const getActivities = async (
@@ -744,16 +623,7 @@ export const getActivities = async (
     [types, start, end],
   )
 
-  const activities = result.rows.map((row) => ({
-    activityType: row.activity_type as ActivityType,
-    data: row.data,
-    endTime: row.end_time ? new Date(row.end_time) : undefined,
-    id: row.id,
-    notes: row.notes,
-    source: row.source as DataSource,
-    startTime: new Date(row.start_time),
-    title: row.title,
-  }))
+  const activities = result.rows.map(mapActivityRow)
 
   return mergeOverlappingActivities(activities)
 }
@@ -775,16 +645,7 @@ export const getSleepSessions = async (user: string, start: Date, end: Date): Pr
     [start, end],
   )
 
-  const activities = result.rows.map((row) => ({
-    activityType: row.activity_type as ActivityType,
-    data: row.data,
-    endTime: row.end_time ? new Date(row.end_time) : undefined,
-    id: row.id,
-    notes: row.notes,
-    source: row.source as DataSource,
-    startTime: new Date(row.start_time),
-    title: row.title,
-  }))
+  const activities = result.rows.map(mapActivityRow)
 
   return mergeOverlappingActivities(activities)
 }
@@ -914,16 +775,7 @@ export const insertNamedLocation = async (
      RETURNING id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at`,
     [location.name, location.lon, location.lat, location.radius ?? 200],
   )
-  const row = result.rows[0]
-  return {
-    createdAt: new Date(row.created_at),
-    id: row.id,
-    lat: row.lat,
-    lon: row.lon,
-    name: row.name,
-    radius: row.radius,
-    updatedAt: new Date(row.updated_at),
-  }
+  return mapNamedLocationRow(result.rows[0])
 }
 
 export const getNamedLocations = async (user: string): Promise<NamedLocation[]> => {
@@ -934,15 +786,7 @@ export const getNamedLocations = async (user: string): Promise<NamedLocation[]> 
      ORDER BY name`,
     [],
   )
-  return result.rows.map((row) => ({
-    createdAt: new Date(row.created_at),
-    id: row.id,
-    lat: row.lat,
-    lon: row.lon,
-    name: row.name,
-    radius: row.radius,
-    updatedAt: new Date(row.updated_at),
-  }))
+  return result.rows.map(mapNamedLocationRow)
 }
 
 export const getNamedLocationById = async (user: string, id: string): Promise<NamedLocation | null> => {
@@ -954,16 +798,7 @@ export const getNamedLocationById = async (user: string, id: string): Promise<Na
     [id],
   )
   if (result.rows.length === 0) return null
-  const row = result.rows[0]
-  return {
-    createdAt: new Date(row.created_at),
-    id: row.id,
-    lat: row.lat,
-    lon: row.lon,
-    name: row.name,
-    radius: row.radius,
-    updatedAt: new Date(row.updated_at),
-  }
+  return mapNamedLocationRow(result.rows[0])
 }
 
 export const updateNamedLocation = async (
@@ -971,46 +806,26 @@ export const updateNamedLocation = async (
   id: string,
   updates: Partial<NamedLocationInput>,
 ): Promise<NamedLocation | null> => {
-  const setClauses: string[] = ['updated_at = NOW()']
-  const values: unknown[] = []
-  let paramIndex = 1
-
-  if (updates.name !== undefined) {
-    setClauses.push(`name = $${paramIndex++}`)
-    values.push(updates.name)
-  }
+  const fields: UpdateEntry[] = []
+  if (updates.name !== undefined) fields.push({ column: 'name', value: updates.name })
   if (updates.lat !== undefined && updates.lon !== undefined) {
-    setClauses.push(`location = ST_MakePoint($${paramIndex}, $${paramIndex + 1})::geography`)
-    values.push(updates.lon, updates.lat)
-    paramIndex += 2
+    fields.push({
+      expression: 'location = ST_MakePoint($NEXT, $NEXT)::geography',
+      values: [updates.lon, updates.lat],
+    })
   }
-  if (updates.radius !== undefined) {
-    setClauses.push(`radius = $${paramIndex++}`)
-    values.push(updates.radius)
-  }
+  if (updates.radius !== undefined) fields.push({ column: 'radius', value: updates.radius })
 
-  values.push(id)
+  const update = buildDynamicUpdate('named_locations', id, fields, {
+    defaultClauses: ['updated_at = NOW()'],
+    returning:
+      'id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at',
+  })
+  if (!update) return null
 
-  const result = await query(
-    user,
-    `UPDATE named_locations
-     SET ${setClauses.join(', ')}
-     WHERE id = $${paramIndex}
-     RETURNING id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at`,
-    values,
-  )
-
+  const result = await query(user, update.sql, update.params)
   if (result.rows.length === 0) return null
-  const row = result.rows[0]
-  return {
-    createdAt: new Date(row.created_at),
-    id: row.id,
-    lat: row.lat,
-    lon: row.lon,
-    name: row.name,
-    radius: row.radius,
-    updatedAt: new Date(row.updated_at),
-  }
+  return mapNamedLocationRow(result.rows[0])
 }
 
 export const deleteNamedLocation = async (user: string, id: string): Promise<boolean> => {
@@ -1069,21 +884,7 @@ export const insertDetectedLocation = async (
       location.lastVisit,
     ],
   )
-  const row = result.rows[0]
-  return {
-    address: row.address,
-    createdAt: new Date(row.created_at),
-    firstVisit: new Date(row.first_visit),
-    geocodeStatus: row.geocode_status as GeocodeStatus,
-    id: row.id,
-    lastVisit: new Date(row.last_visit),
-    lat: row.lat,
-    lon: row.lon,
-    radius: row.radius,
-    totalMinutes: row.total_minutes,
-    updatedAt: new Date(row.updated_at),
-    visitCount: row.visit_count,
-  }
+  return mapDetectedLocationRow(result.rows[0])
 }
 
 export const getDetectedLocations = async (user: string): Promise<DetectedLocation[]> => {
@@ -1095,20 +896,7 @@ export const getDetectedLocations = async (user: string): Promise<DetectedLocati
      ORDER BY last_visit DESC`,
     [],
   )
-  return result.rows.map((row) => ({
-    address: row.address,
-    createdAt: new Date(row.created_at),
-    firstVisit: new Date(row.first_visit),
-    geocodeStatus: row.geocode_status as GeocodeStatus,
-    id: row.id,
-    lastVisit: new Date(row.last_visit),
-    lat: row.lat,
-    lon: row.lon,
-    radius: row.radius,
-    totalMinutes: row.total_minutes,
-    updatedAt: new Date(row.updated_at),
-    visitCount: row.visit_count,
-  }))
+  return result.rows.map(mapDetectedLocationRow)
 }
 
 export const getDetectedLocationById = async (user: string, id: string): Promise<DetectedLocation | null> => {
@@ -1121,21 +909,7 @@ export const getDetectedLocationById = async (user: string, id: string): Promise
     [id],
   )
   if (result.rows.length === 0) return null
-  const row = result.rows[0]
-  return {
-    address: row.address,
-    createdAt: new Date(row.created_at),
-    firstVisit: new Date(row.first_visit),
-    geocodeStatus: row.geocode_status as GeocodeStatus,
-    id: row.id,
-    lastVisit: new Date(row.last_visit),
-    lat: row.lat,
-    lon: row.lon,
-    radius: row.radius,
-    totalMinutes: row.total_minutes,
-    updatedAt: new Date(row.updated_at),
-    visitCount: row.visit_count,
-  }
+  return mapDetectedLocationRow(result.rows[0])
 }
 
 /**
@@ -1160,21 +934,7 @@ export const findNearbyDetectedLocation = async (
     [lon, lat, distanceMeters],
   )
   if (result.rows.length === 0) return null
-  const row = result.rows[0]
-  return {
-    address: row.address,
-    createdAt: new Date(row.created_at),
-    firstVisit: new Date(row.first_visit),
-    geocodeStatus: row.geocode_status as GeocodeStatus,
-    id: row.id,
-    lastVisit: new Date(row.last_visit),
-    lat: row.lat,
-    lon: row.lon,
-    radius: row.radius,
-    totalMinutes: row.total_minutes,
-    updatedAt: new Date(row.updated_at),
-    visitCount: row.visit_count,
-  }
+  return mapDetectedLocationRow(result.rows[0])
 }
 
 export interface DetectedLocationUpdate {
@@ -1194,72 +954,33 @@ export const updateDetectedLocation = async (
   id: string,
   updates: DetectedLocationUpdate,
 ): Promise<DetectedLocation | null> => {
-  const setClauses: string[] = ['updated_at = NOW()']
-  const values: unknown[] = []
-  let paramIndex = 1
-
+  const fields: UpdateEntry[] = []
   if (updates.lat !== undefined && updates.lon !== undefined) {
-    setClauses.push(`location = ST_MakePoint($${paramIndex}, $${paramIndex + 1})::geography`)
-    values.push(updates.lon, updates.lat)
-    paramIndex += 2
+    fields.push({
+      expression: 'location = ST_MakePoint($NEXT, $NEXT)::geography',
+      values: [updates.lon, updates.lat],
+    })
   }
-  if (updates.radius !== undefined) {
-    setClauses.push(`radius = $${paramIndex++}`)
-    values.push(updates.radius)
-  }
-  if (updates.totalMinutes !== undefined) {
-    setClauses.push(`total_minutes = $${paramIndex++}`)
-    values.push(updates.totalMinutes)
-  }
-  if (updates.visitCount !== undefined) {
-    setClauses.push(`visit_count = $${paramIndex++}`)
-    values.push(updates.visitCount)
-  }
-  if (updates.firstVisit !== undefined) {
-    setClauses.push(`first_visit = $${paramIndex++}`)
-    values.push(updates.firstVisit)
-  }
-  if (updates.lastVisit !== undefined) {
-    setClauses.push(`last_visit = $${paramIndex++}`)
-    values.push(updates.lastVisit)
-  }
-  if (updates.address !== undefined) {
-    setClauses.push(`address = $${paramIndex++}`)
-    values.push(updates.address)
-  }
-  if (updates.geocodeStatus !== undefined) {
-    setClauses.push(`geocode_status = $${paramIndex++}`)
-    values.push(updates.geocodeStatus)
-  }
+  if (updates.radius !== undefined) fields.push({ column: 'radius', value: updates.radius })
+  if (updates.totalMinutes !== undefined)
+    fields.push({ column: 'total_minutes', value: updates.totalMinutes })
+  if (updates.visitCount !== undefined) fields.push({ column: 'visit_count', value: updates.visitCount })
+  if (updates.firstVisit !== undefined) fields.push({ column: 'first_visit', value: updates.firstVisit })
+  if (updates.lastVisit !== undefined) fields.push({ column: 'last_visit', value: updates.lastVisit })
+  if (updates.address !== undefined) fields.push({ column: 'address', value: updates.address })
+  if (updates.geocodeStatus !== undefined)
+    fields.push({ column: 'geocode_status', value: updates.geocodeStatus })
 
-  values.push(id)
+  const update = buildDynamicUpdate('detected_locations', id, fields, {
+    defaultClauses: ['updated_at = NOW()'],
+    returning:
+      'id, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, total_minutes, visit_count, first_visit, last_visit, address, geocode_status, created_at, updated_at',
+  })
+  if (!update) return null
 
-  const result = await query(
-    user,
-    `UPDATE detected_locations
-     SET ${setClauses.join(', ')}
-     WHERE id = $${paramIndex}
-     RETURNING id, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius,
-       total_minutes, visit_count, first_visit, last_visit, address, geocode_status, created_at, updated_at`,
-    values,
-  )
-
+  const result = await query(user, update.sql, update.params)
   if (result.rows.length === 0) return null
-  const row = result.rows[0]
-  return {
-    address: row.address,
-    createdAt: new Date(row.created_at),
-    firstVisit: new Date(row.first_visit),
-    geocodeStatus: row.geocode_status as GeocodeStatus,
-    id: row.id,
-    lastVisit: new Date(row.last_visit),
-    lat: row.lat,
-    lon: row.lon,
-    radius: row.radius,
-    totalMinutes: row.total_minutes,
-    updatedAt: new Date(row.updated_at),
-    visitCount: row.visit_count,
-  }
+  return mapDetectedLocationRow(result.rows[0])
 }
 
 export const deleteDetectedLocation = async (user: string, id: string): Promise<boolean> => {
@@ -1280,20 +1001,7 @@ export const getDetectedLocationsNeedingGeocode = async (user: string): Promise<
      ORDER BY created_at`,
     [],
   )
-  return result.rows.map((row) => ({
-    address: row.address,
-    createdAt: new Date(row.created_at),
-    firstVisit: new Date(row.first_visit),
-    geocodeStatus: row.geocode_status as GeocodeStatus,
-    id: row.id,
-    lastVisit: new Date(row.last_visit),
-    lat: row.lat,
-    lon: row.lon,
-    radius: row.radius,
-    totalMinutes: row.total_minutes,
-    updatedAt: new Date(row.updated_at),
-    visitCount: row.visit_count,
-  }))
+  return result.rows.map(mapDetectedLocationRow)
 }
 
 // ============================================================================
@@ -1332,14 +1040,7 @@ export const getTags = async (user: string, start: Date, end: Date): Promise<Tag
     [start, end],
   )
 
-  return result.rows.map((row) => ({
-    endTime: row.end_time ? new Date(row.end_time) : undefined,
-    externalId: row.external_id,
-    id: row.id,
-    source: row.source,
-    startTime: new Date(row.start_time),
-    tag: row.tag,
-  }))
+  return result.rows.map(mapTagRow)
 }
 
 export const deleteTag = async (user: string, externalId: string): Promise<boolean> => {
@@ -1382,15 +1083,7 @@ export const findMergeableTag = async (
 
   if (result.rows.length === 0) return undefined
 
-  const row = result.rows[0]
-  return {
-    endTime: row.end_time ? new Date(row.end_time) : undefined,
-    externalId: row.external_id,
-    id: row.id,
-    source: row.source,
-    startTime: new Date(row.start_time),
-    tag: row.tag,
-  }
+  return mapTagRow(result.rows[0])
 }
 
 /**
@@ -1682,18 +1375,7 @@ export const getSyncState = async (
 
   if (result.rows.length === 0) return null
 
-  const row = result.rows[0]
-  return {
-    dataType: row.data_type,
-    errorMessage: row.error_message,
-    id: row.id,
-    lastSyncTime: row.last_sync_time ? new Date(row.last_sync_time) : undefined,
-    provider: row.provider,
-    retryAfter: row.retry_after ? new Date(row.retry_after) : undefined,
-    status: row.status as SyncStatus,
-    syncStartDate: row.sync_start_date ? new Date(row.sync_start_date) : undefined,
-    updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
-  }
+  return mapSyncStateRow(result.rows[0])
 }
 
 export const upsertSyncState = async (user: string, state: SyncState) => {
@@ -1730,17 +1412,7 @@ export const getAllSyncStates = async (user: string, provider: string): Promise<
     [provider],
   )
 
-  return result.rows.map((row) => ({
-    dataType: row.data_type,
-    errorMessage: row.error_message,
-    id: row.id,
-    lastSyncTime: row.last_sync_time ? new Date(row.last_sync_time) : undefined,
-    provider: row.provider,
-    retryAfter: row.retry_after ? new Date(row.retry_after) : undefined,
-    status: row.status as SyncStatus,
-    syncStartDate: row.sync_start_date ? new Date(row.sync_start_date) : undefined,
-    updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
-  }))
+  return result.rows.map(mapSyncStateRow)
 }
 
 export const resetSyncState = async (user: string, provider: string, dataType?: string) => {
@@ -2116,16 +1788,7 @@ export const getLastFmTagRules = async (user: string): Promise<LastFmTagRule[]> 
      ORDER BY created_at DESC`,
   )
 
-  return result.rows.map((row) => ({
-    artistName: row.artist_name ?? undefined,
-    createdAt: new Date(row.created_at),
-    id: row.id,
-    matchMode: row.match_mode as LastFmMatchMode,
-    matchType: row.match_type as LastFmMatchType,
-    ruleName: row.rule_name,
-    tagName: row.tag_name,
-    trackName: row.track_name ?? undefined,
-  }))
+  return result.rows.map(mapLastFmTagRuleRow)
 }
 
 /**
@@ -2147,17 +1810,7 @@ export const insertLastFmTagRule = async (user: string, rule: LastFmTagRuleInput
     ],
   )
 
-  const row = result.rows[0]
-  return {
-    artistName: row.artist_name ?? undefined,
-    createdAt: new Date(row.created_at),
-    id: row.id,
-    matchMode: row.match_mode as LastFmMatchMode,
-    matchType: row.match_type as LastFmMatchType,
-    ruleName: row.rule_name,
-    tagName: row.tag_name,
-    trackName: row.track_name ?? undefined,
-  }
+  return mapLastFmTagRuleRow(result.rows[0])
 }
 
 /**
@@ -2193,14 +1846,8 @@ export const saveMcpSession = async (user: string, sessionId: string): Promise<M
     [sessionId, user],
   )
 
-  const row = result.rows[0]
-  console.log(`[MCP-DB] saveMcpSession: saved session ${sessionId}, result:`, row)
-  return {
-    createdAt: new Date(row.created_at),
-    lastActivity: new Date(row.last_activity),
-    sessionId: row.session_id,
-    username: row.username,
-  }
+  console.log(`[MCP-DB] saveMcpSession: saved session ${sessionId}, result:`, result.rows[0])
+  return mapMcpSessionRow(result.rows[0])
 }
 
 /**
@@ -2221,14 +1868,8 @@ export const getMcpSession = async (user: string, sessionId: string): Promise<Mc
     return null
   }
 
-  const row = result.rows[0]
-  console.log(`[MCP-DB] getMcpSession: found session ${sessionId}:`, row)
-  return {
-    createdAt: new Date(row.created_at),
-    lastActivity: new Date(row.last_activity),
-    sessionId: row.session_id,
-    username: row.username,
-  }
+  console.log(`[MCP-DB] getMcpSession: found session ${sessionId}:`, result.rows[0])
+  return mapMcpSessionRow(result.rows[0])
 }
 
 /**
@@ -2280,10 +1921,5 @@ export const getMcpSessionsForUser = async (user: string): Promise<McpSessionRec
     [user],
   )
 
-  return result.rows.map((row) => ({
-    createdAt: new Date(row.created_at),
-    lastActivity: new Date(row.last_activity),
-    sessionId: row.session_id,
-    username: row.username,
-  }))
+  return result.rows.map(mapMcpSessionRow)
 }
