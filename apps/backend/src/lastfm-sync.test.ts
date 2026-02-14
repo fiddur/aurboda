@@ -9,10 +9,12 @@ import { applyTagRules, matchesRule, syncLastFmData } from './lastfm-sync'
 
 // Mock the db module
 vi.mock('./db', () => ({
+  findMergeableTag: vi.fn(),
   getLastFmTagRules: vi.fn(),
   getSyncState: vi.fn(),
   insertRawRecord: vi.fn(),
   insertTag: vi.fn(),
+  updateTagEndTime: vi.fn(),
   upsertSyncState: vi.fn(),
 }))
 
@@ -23,7 +25,15 @@ vi.mock('./lastfm', () => ({
   })),
 }))
 
-import { getLastFmTagRules, getSyncState, insertRawRecord, insertTag, upsertSyncState } from './db'
+import {
+  findMergeableTag,
+  getLastFmTagRules,
+  getSyncState,
+  insertRawRecord,
+  insertTag,
+  updateTagEndTime,
+  upsertSyncState,
+} from './db'
 import { lastfmClient } from './lastfm'
 
 describe('matchesRule', () => {
@@ -139,6 +149,66 @@ describe('matchesRule', () => {
       expect(matchesRule(baseScrobble, ruleNoArtist)).toBe(false)
     })
   })
+
+  describe('artistNames array matching', () => {
+    it('matches when scrobble artist is in artistNames array (artist type)', () => {
+      const rule = {
+        ...baseRule,
+        artistNames: ['Artist A', 'Test Artist', 'Artist B'],
+        matchType: 'artist' as const,
+      }
+      expect(matchesRule(baseScrobble, rule)).toBe(true)
+    })
+
+    it('does not match when scrobble artist is not in artistNames array', () => {
+      const rule = {
+        ...baseRule,
+        artistNames: ['Artist A', 'Artist B', 'Artist C'],
+        matchType: 'artist' as const,
+      }
+      expect(matchesRule(baseScrobble, rule)).toBe(false)
+    })
+
+    it('artistNames takes precedence over artistName', () => {
+      const rule = {
+        ...baseRule,
+        artistName: 'Test Artist', // would match
+        artistNames: ['Different Artist'], // does not match, takes precedence
+        matchType: 'artist' as const,
+      }
+      expect(matchesRule(baseScrobble, rule)).toBe(false)
+    })
+
+    it('falls back to artistName when artistNames is empty', () => {
+      const rule = {
+        ...baseRule,
+        artistName: 'Test Artist',
+        artistNames: [] as string[],
+        matchType: 'artist' as const,
+      }
+      expect(matchesRule(baseScrobble, rule)).toBe(true)
+    })
+
+    it('matches artistNames with contains mode', () => {
+      const rule = {
+        ...baseRule,
+        artistNames: ['Artist A', 'Test'],
+        matchMode: 'contains' as const,
+        matchType: 'artist' as const,
+      }
+      expect(matchesRule(baseScrobble, rule)).toBe(true)
+    })
+
+    it('matches artistNames in track_artist type', () => {
+      const rule = {
+        ...baseRule,
+        artistNames: ['Test Artist', 'Other Artist'],
+        matchType: 'track_artist' as const,
+        trackName: 'Test Track',
+      }
+      expect(matchesRule(baseScrobble, rule)).toBe(true)
+    })
+  })
 })
 
 describe('applyTagRules', () => {
@@ -217,6 +287,146 @@ describe('applyTagRules', () => {
     // Both rules match, but same tag + timestamp should only create one tag
     expect(tagsCreated).toBe(1)
     expect(insertTag).toHaveBeenCalledTimes(1)
+  })
+
+  it('creates span tags for session rules', async () => {
+    vi.mocked(findMergeableTag).mockResolvedValue(undefined)
+
+    const scrobbles: Scrobble[] = [
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:00:00Z'), track: 'Song 1' },
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:04:00Z'), track: 'Song 2' },
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:08:00Z'), track: 'Song 3' },
+    ]
+
+    const rules: LastFmTagRule[] = [
+      {
+        artistName: 'Warmup Artist',
+        createdAt: new Date(),
+        id: 'rule-1',
+        matchMode: 'exact',
+        matchType: 'artist',
+        mergeGapSeconds: 600,
+        ruleName: 'Vocal Exercises',
+        tagName: 'VocalExercise',
+      },
+    ]
+
+    const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
+
+    expect(tagsCreated).toBe(1)
+    expect(insertTag).toHaveBeenCalledTimes(1)
+    expect(insertTag).toHaveBeenCalledWith('testuser', {
+      endTime: new Date('2024-01-01T10:08:00Z'),
+      externalId: expect.stringMatching(/^lastfm-session-rule-1-/),
+      source: 'lastfm-auto',
+      startTime: new Date('2024-01-01T10:00:00Z'),
+      tag: 'VocalExercise',
+    })
+  })
+
+  it('creates multiple span tags for separate sessions', async () => {
+    vi.mocked(findMergeableTag).mockResolvedValue(undefined)
+
+    const scrobbles: Scrobble[] = [
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:00:00Z'), track: 'Song 1' },
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:04:00Z'), track: 'Song 2' },
+      // Gap > 600s
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T11:00:00Z'), track: 'Song 3' },
+    ]
+
+    const rules: LastFmTagRule[] = [
+      {
+        artistName: 'Warmup Artist',
+        createdAt: new Date(),
+        id: 'rule-1',
+        matchMode: 'exact',
+        matchType: 'artist',
+        mergeGapSeconds: 600,
+        ruleName: 'Vocal Exercises',
+        tagName: 'VocalExercise',
+      },
+    ]
+
+    const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
+
+    expect(tagsCreated).toBe(2)
+    expect(insertTag).toHaveBeenCalledTimes(2)
+  })
+
+  it('extends existing tag via findMergeableTag for cross-sync merging', async () => {
+    const existingTag = {
+      endTime: new Date('2024-01-01T09:58:00Z'),
+      externalId: 'lastfm-session-rule-1-existing',
+      id: 'tag-id-1',
+      source: 'lastfm-auto' as const,
+      startTime: new Date('2024-01-01T09:50:00Z'),
+      tag: 'VocalExercise',
+    }
+    vi.mocked(findMergeableTag).mockResolvedValueOnce(existingTag)
+
+    const scrobbles: Scrobble[] = [
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:02:00Z'), track: 'Song 1' },
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:06:00Z'), track: 'Song 2' },
+    ]
+
+    const rules: LastFmTagRule[] = [
+      {
+        artistName: 'Warmup Artist',
+        createdAt: new Date(),
+        id: 'rule-1',
+        matchMode: 'exact',
+        matchType: 'artist',
+        mergeGapSeconds: 600,
+        ruleName: 'Vocal Exercises',
+        tagName: 'VocalExercise',
+      },
+    ]
+
+    const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
+
+    expect(tagsCreated).toBe(1)
+    expect(updateTagEndTime).toHaveBeenCalledWith(
+      'testuser',
+      'lastfm-session-rule-1-existing',
+      new Date('2024-01-01T10:06:00Z'),
+    )
+    expect(insertTag).not.toHaveBeenCalled()
+  })
+
+  it('handles mix of point-in-time and session rules', async () => {
+    vi.mocked(findMergeableTag).mockResolvedValue(undefined)
+
+    const scrobbles: Scrobble[] = [
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:00:00Z'), track: 'Song 1' },
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:04:00Z'), track: 'Song 2' },
+    ]
+
+    const rules: LastFmTagRule[] = [
+      {
+        artistName: 'Warmup Artist',
+        createdAt: new Date(),
+        id: 'rule-1',
+        matchMode: 'exact',
+        matchType: 'artist',
+        mergeGapSeconds: 600,
+        ruleName: 'Session Rule',
+        tagName: 'SessionTag',
+      },
+      {
+        artistName: 'Warmup Artist',
+        createdAt: new Date(),
+        id: 'rule-2',
+        matchMode: 'exact',
+        matchType: 'artist',
+        ruleName: 'Point Rule',
+        tagName: 'PointTag',
+      },
+    ]
+
+    const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
+
+    // 1 session tag + 2 point-in-time tags
+    expect(tagsCreated).toBe(3)
   })
 
   it('creates multiple tags for different rules with different tag names', async () => {

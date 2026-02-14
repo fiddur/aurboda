@@ -37,6 +37,10 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
         .string()
         .optional()
         .describe('Artist name to match (required for artist or track_artist match type)'),
+      artist_names: z
+        .array(z.string())
+        .optional()
+        .describe('Multiple artist names to match (takes precedence over artist_name when set)'),
       match_mode: z
         .enum(['exact', 'contains'])
         .optional()
@@ -46,6 +50,14 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
         .describe(
           'Type of match: track (any track with name), artist (any track by artist), track_artist (exact track + artist)',
         ),
+      merge_gap_seconds: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
+        ),
       rule_name: z.string().min(1).describe('Human-readable name for the rule'),
       tag_name: z.string().min(1).describe('Tag to create when rule matches'),
       track_name: z
@@ -53,19 +65,31 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
         .optional()
         .describe('Track name to match (required for track or track_artist match type)'),
     },
-    async ({ artist_name, match_mode, match_type, rule_name, tag_name, track_name }) => {
+    async ({
+      artist_name,
+      artist_names,
+      match_mode,
+      match_type,
+      merge_gap_seconds,
+      rule_name,
+      tag_name,
+      track_name,
+    }) => {
       if ((match_type === 'track' || match_type === 'track_artist') && !track_name) {
         return errorResponse(`track_name is required for match_type "${match_type}"`)
       }
-      if ((match_type === 'artist' || match_type === 'track_artist') && !artist_name) {
-        return errorResponse(`artist_name is required for match_type "${match_type}"`)
+      const hasArtist = artist_name || (artist_names && artist_names.length > 0)
+      if ((match_type === 'artist' || match_type === 'track_artist') && !hasArtist) {
+        return errorResponse(`artist_name or artist_names is required for match_type "${match_type}"`)
       }
 
       try {
         const rule = await insertLastFmTagRule(user, {
           artistName: artist_name,
+          artistNames: artist_names,
           matchMode: (match_mode ?? 'exact') as LastFmMatchMode,
           matchType: match_type as LastFmMatchType,
+          mergeGapSeconds: merge_gap_seconds,
           ruleName: rule_name,
           tagName: tag_name,
           trackName: track_name,

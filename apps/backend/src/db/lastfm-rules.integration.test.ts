@@ -183,6 +183,69 @@ describe('Last.fm Tag Rules Integration Tests', () => {
     expect(rules).toHaveLength(2)
   })
 
+  test('insertLastFmTagRule creates rule with mergeGapSeconds', async () => {
+    const user = getTestUser()
+
+    const rule = await insertLastFmTagRule(user, {
+      artistName: 'Warmup Artist',
+      matchMode: 'exact',
+      matchType: 'artist',
+      mergeGapSeconds: 600,
+      ruleName: 'Session Rule',
+      tagName: 'VocalExercise',
+    })
+
+    expect(rule.mergeGapSeconds).toBe(600)
+  })
+
+  test('insertLastFmTagRule creates rule with artistNames array', async () => {
+    const user = getTestUser()
+
+    const rule = await insertLastFmTagRule(user, {
+      artistNames: ['Artist 1', 'Artist 2', 'Artist 3'],
+      matchMode: 'exact',
+      matchType: 'artist',
+      ruleName: 'Multi-Artist Rule',
+      tagName: 'Warmup',
+    })
+
+    expect(rule.artistNames).toEqual(['Artist 1', 'Artist 2', 'Artist 3'])
+  })
+
+  test('getLastFmTagRules returns rules with mergeGapSeconds and artistNames', async () => {
+    const user = getTestUser()
+
+    await insertLastFmTagRule(user, {
+      artistNames: ['Artist A', 'Artist B'],
+      matchMode: 'exact',
+      matchType: 'artist',
+      mergeGapSeconds: 300,
+      ruleName: 'Session Rule',
+      tagName: 'SessionTag',
+    })
+
+    const rules = await getLastFmTagRules(user)
+
+    expect(rules).toHaveLength(1)
+    expect(rules[0].mergeGapSeconds).toBe(300)
+    expect(rules[0].artistNames).toEqual(['Artist A', 'Artist B'])
+  })
+
+  test('insertLastFmTagRule creates rule without mergeGapSeconds and artistNames', async () => {
+    const user = getTestUser()
+
+    const rule = await insertLastFmTagRule(user, {
+      artistName: 'Some Artist',
+      matchMode: 'exact',
+      matchType: 'artist',
+      ruleName: 'Simple Rule',
+      tagName: 'SimpleTag',
+    })
+
+    expect(rule.mergeGapSeconds).toBeUndefined()
+    expect(rule.artistNames).toBeUndefined()
+  })
+
   test('insertLastFmTagRule defaults matchMode to exact', async () => {
     const user = getTestUser()
 

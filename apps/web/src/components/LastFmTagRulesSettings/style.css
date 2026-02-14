@@ -96,6 +96,71 @@
   width: 100%;
 }
 
+.artist-names-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.artist-name-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: #e3f2fd;
+  border-radius: 16px;
+  font-size: 0.875rem;
+}
+
+.remove-artist-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #666;
+  padding: 0 0.15rem;
+  line-height: 1;
+}
+
+.remove-artist-button:hover {
+  color: #f44336;
+}
+
+.artist-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.artist-input-row input {
+  flex: 1;
+}
+
+.add-artist-button {
+  padding: 0.5rem 0.75rem;
+  font-size: 1rem;
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.add-artist-button:hover {
+  background: #e0e0e0;
+}
+
+.field-help {
+  font-size: 0.75rem;
+  color: #888;
+  margin: 0.25rem 0 0 0;
+}
+
+.rule-merge-info {
+  color: #1976d2;
+  font-size: 0.8rem;
+}
+
 .add-rule-form .connect-button {
   margin-top: 0.5rem;
 }
@@ -123,6 +188,32 @@
     background: #333;
     border-color: #555;
     color: #fff;
+  }
+
+  .artist-name-chip {
+    background: #1e3a5f;
+    color: #e0e0e0;
+  }
+
+  .remove-artist-button {
+    color: #aaa;
+  }
+
+  .add-artist-button {
+    border-color: #555;
+    color: #ccc;
+  }
+
+  .add-artist-button:hover {
+    background: #444;
+  }
+
+  .field-help {
+    color: #777;
+  }
+
+  .rule-merge-info {
+    color: #64b5f6;
   }
 }
 

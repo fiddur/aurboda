@@ -37,10 +37,12 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
       const rules = await getLastFmTagRules(user)
       const serialized = rules.map((r) => ({
         artistName: r.artistName,
+        artistNames: r.artistNames,
         createdAt: r.createdAt.toISOString(),
         id: r.id,
         matchMode: r.matchMode,
         matchType: r.matchType,
+        mergeGapSeconds: r.mergeGapSeconds ?? null,
         ruleName: r.ruleName,
         tagName: r.tagName,
         trackName: r.trackName,
@@ -59,7 +61,8 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
     validateBody(addLastFmTagRuleBodySchema),
     async (req, res) => {
       const user = req.user!
-      const { ruleName, matchType, trackName, artistName, matchMode, tagName } = req.body
+      const { ruleName, matchType, trackName, artistName, artistNames, matchMode, tagName, mergeGapSeconds } =
+        req.body
 
       // Validate required fields based on match_type
       if ((matchType === 'track' || matchType === 'track_artist') && !trackName) {
@@ -67,17 +70,21 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
           .status(400)
           .json({ error: `trackName is required for matchType "${matchType}"`, success: false })
       }
-      if ((matchType === 'artist' || matchType === 'track_artist') && !artistName) {
-        return res
-          .status(400)
-          .json({ error: `artistName is required for matchType "${matchType}"`, success: false })
+      const hasArtist = artistName || (artistNames && artistNames.length > 0)
+      if ((matchType === 'artist' || matchType === 'track_artist') && !hasArtist) {
+        return res.status(400).json({
+          error: `artistName or artistNames is required for matchType "${matchType}"`,
+          success: false,
+        })
       }
 
       try {
         const rule = await insertLastFmTagRule(user, {
           artistName,
+          artistNames,
           matchMode: (matchMode ?? 'exact') as LastFmMatchMode,
           matchType: matchType as LastFmMatchType,
+          mergeGapSeconds: mergeGapSeconds ?? undefined,
           ruleName,
           tagName,
           trackName,
@@ -86,10 +93,12 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
         res.json({
           data: {
             artistName: rule.artistName,
+            artistNames: rule.artistNames,
             createdAt: rule.createdAt.toISOString(),
             id: rule.id,
             matchMode: rule.matchMode,
             matchType: rule.matchType,
+            mergeGapSeconds: rule.mergeGapSeconds ?? null,
             ruleName: rule.ruleName,
             tagName: rule.tagName,
             trackName: rule.trackName,

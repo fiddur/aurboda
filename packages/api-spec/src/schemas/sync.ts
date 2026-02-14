@@ -422,10 +422,24 @@ export const lastFmTagRuleSchema = z
       .string()
       .optional()
       .meta({ description: 'Artist name to match (for artist or track_artist match type)' }),
+    artistNames: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Multiple artist names to match (takes precedence over artistName when set)' }),
     createdAt: z.string().meta({ description: 'When the rule was created' }),
     id: z.string().uuid().meta({ description: 'Unique rule ID' }),
     matchMode: lastFmMatchModeSchema,
     matchType: lastFmMatchTypeSchema,
+    mergeGapSeconds: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .optional()
+      .meta({
+        description:
+          'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
+      }),
     ruleName: z.string().meta({ description: 'Human-readable name for the rule' }),
     tagName: z.string().meta({ description: 'Tag to create when rule matches' }),
     trackName: z
@@ -446,11 +460,25 @@ export const addLastFmTagRuleBodySchema = z
       .string()
       .optional()
       .meta({ description: 'Artist name to match (required for artist or track_artist match type)' }),
+    artistNames: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Multiple artist names to match (takes precedence over artistName when set)' }),
     matchMode: lastFmMatchModeSchema
       .optional()
       .default('exact')
       .meta({ description: 'Match mode (default: exact)' }),
     matchType: lastFmMatchTypeSchema,
+    mergeGapSeconds: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .optional()
+      .meta({
+        description:
+          'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
+      }),
     ruleName: z.string().min(1).meta({ description: 'Human-readable name for the rule' }),
     tagName: z.string().min(1).meta({ description: 'Tag to create when rule matches' }),
     trackName: z

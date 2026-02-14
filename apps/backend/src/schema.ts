@@ -104,14 +104,16 @@ export const createTableStatements: Record<string, string> = {
   // Last.fm auto-tagging rules
   lastfm_tag_rules: `
     CREATE TABLE IF NOT EXISTS lastfm_tag_rules (
-      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      rule_name       VARCHAR(100) NOT NULL,
-      match_type      VARCHAR(20) NOT NULL,
-      track_name      VARCHAR(255),
-      artist_name     VARCHAR(255),
-      match_mode      VARCHAR(20) DEFAULT 'exact',
-      tag_name        VARCHAR(100) NOT NULL,
-      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      rule_name         VARCHAR(100) NOT NULL,
+      match_type        VARCHAR(20) NOT NULL,
+      track_name        VARCHAR(255),
+      artist_name       VARCHAR(255),
+      match_mode        VARCHAR(20) DEFAULT 'exact',
+      tag_name          VARCHAR(100) NOT NULL,
+      merge_gap_seconds INTEGER,
+      artist_names      JSONB,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT unique_rule UNIQUE (match_type, track_name, artist_name, tag_name)
     )
   `,

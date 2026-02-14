@@ -226,6 +226,46 @@ describe('Tags Integration Tests', () => {
       expect(result).toBeUndefined()
     })
 
+    test('finds lastfm-auto source tags when source parameter is specified', async () => {
+      const user = getTestUser()
+
+      await insertTag(user, {
+        endTime: new Date('2024-01-15T09:59:00Z'),
+        externalId: 'lastfm-session-1',
+        source: 'lastfm-auto',
+        startTime: new Date('2024-01-15T09:00:00Z'),
+        tag: 'VocalExercise',
+      })
+
+      const result = await findMergeableTag(
+        user,
+        'VocalExercise',
+        new Date('2024-01-15T10:00:00Z'),
+        180,
+        'lastfm-auto',
+      )
+
+      expect(result).toBeDefined()
+      expect(result!.externalId).toBe('lastfm-session-1')
+      expect(result!.source).toBe('lastfm-auto')
+    })
+
+    test('does not find lastfm-auto source tags when searching for manual', async () => {
+      const user = getTestUser()
+
+      await insertTag(user, {
+        endTime: new Date('2024-01-15T09:59:00Z'),
+        externalId: 'lastfm-session-2',
+        source: 'lastfm-auto',
+        startTime: new Date('2024-01-15T09:00:00Z'),
+        tag: 'VocalExercise',
+      })
+
+      const result = await findMergeableTag(user, 'VocalExercise', new Date('2024-01-15T10:00:00Z'), 180)
+
+      expect(result).toBeUndefined()
+    })
+
     test('only finds tags with matching name', async () => {
       const user = getTestUser()
 

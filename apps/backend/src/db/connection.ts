@@ -109,6 +109,12 @@ export const migrateSchema = async (user: string) => {
       await query(db, createTableStatements[key])
     }
   }
+
+  // Column migrations for existing tables
+  if (existingTableNames.has('lastfm_tag_rules')) {
+    await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS merge_gap_seconds INTEGER`)
+    await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS artist_names JSONB`)
+  }
 }
 
 /**
