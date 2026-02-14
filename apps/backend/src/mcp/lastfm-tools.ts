@@ -22,7 +22,7 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
       const rules = await getLastFmTagRules(user)
       const serialized = rules.map((r) => ({
         ...r,
-        createdAt: r.createdAt.toISOString(),
+        created_at: r.created_at.toISOString(),
       }))
       return jsonResponse({ data: serialized, success: true })
     },
@@ -85,20 +85,20 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
 
       try {
         const rule = await insertLastFmTagRule(user, {
-          artistName: artist_name,
-          artistNames: artist_names,
-          matchMode: (match_mode ?? 'exact') as LastFmMatchMode,
-          matchType: match_type as LastFmMatchType,
-          mergeGapSeconds: merge_gap_seconds,
-          ruleName: rule_name,
-          tagName: tag_name,
-          trackName: track_name,
+          artist_name,
+          artist_names,
+          match_mode: (match_mode ?? 'exact') as LastFmMatchMode,
+          match_type: match_type as LastFmMatchType,
+          merge_gap_seconds,
+          rule_name,
+          tag_name,
+          track_name,
         })
 
         return jsonResponse({
           data: {
             ...rule,
-            createdAt: rule.createdAt.toISOString(),
+            created_at: rule.created_at.toISOString(),
           },
           success: true,
         })

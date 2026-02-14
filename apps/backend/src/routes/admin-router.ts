@@ -76,12 +76,12 @@ export const createAdminRouter = (
     adminMiddleware,
     validateBody(createInvitationBodySchema),
     async (req, res) => {
-      const { expiryHours } = req.body
-      const token = invitationAuth.createInvitationToken(expiryHours)
+      const { expiry_hours } = req.body
+      const token = invitationAuth.createInvitationToken(expiry_hours)
       const expiresAt = invitationAuth.getTokenExpiry(token)
 
       res.json({
-        expiresAt: expiresAt!.toISOString(),
+        expires_at: expiresAt!.toISOString(),
         success: true,
         token,
         url: `${webHost}/signup?invite=${encodeURIComponent(token)}`,

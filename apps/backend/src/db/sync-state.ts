@@ -37,12 +37,12 @@ export const upsertSyncState = async (user: string, state: SyncState) => {
        updated_at = NOW()`,
     [
       state.provider,
-      state.dataType,
-      state.lastSyncTime,
-      state.syncStartDate,
+      state.data_type,
+      state.last_sync_time,
+      state.sync_start_date,
       state.status,
-      state.errorMessage,
-      state.retryAfter,
+      state.error_message,
+      state.retry_after,
     ],
   )
 }

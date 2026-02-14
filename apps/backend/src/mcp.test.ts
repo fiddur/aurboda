@@ -260,18 +260,18 @@ describe('MCP Server', () => {
         metrics: [
           {
             avg: 45.5,
-            changeFromPreviousPeriodPercent: 10,
-            completenessPercent: 90,
+            change_from_previous_period_percent: 10,
+            completeness_percent: 90,
             count: 30,
             max: 65,
             metric: 'hrv_rmssd',
             min: 25,
             stddev: 10,
-            trendPerDay: 5,
+            trend_per_day: 5,
             unit: 'ms',
           },
         ],
-        periodDays: 31,
+        period_days: 31,
         start: '2024-01-01T00:00:00.000Z',
       })
 
@@ -290,7 +290,7 @@ describe('MCP Server', () => {
       expect(result.metrics[0].max).toBe(65)
       expect(result.metrics[0].stddev).toBe(10)
       expect(result.metrics[0].unit).toBe('ms')
-      expect(result.metrics[0].trendPerDay).toBe(5)
+      expect(result.metrics[0].trend_per_day).toBe(5)
 
       // Verify service was called with correct arguments
       expect(queries.getPeriodSummary).toHaveBeenCalledWith(
@@ -367,18 +367,18 @@ describe('MCP Server', () => {
         metrics: [
           {
             avg: 50,
-            changeFromPreviousPeriodPercent: 25,
-            completenessPercent: 100,
+            change_from_previous_period_percent: 25,
+            completeness_percent: 100,
             count: 30,
             max: 60,
             metric: 'hrv_rmssd',
             min: 40,
             stddev: 5,
-            trendPerDay: null,
+            trend_per_day: null,
             unit: 'ms',
           },
         ],
-        periodDays: 31,
+        period_days: 31,
         start: '2024-01-01T00:00:00.000Z',
       })
 
@@ -389,7 +389,7 @@ describe('MCP Server', () => {
       })
 
       expect(response.status).toBe(200)
-      expect(response.toolResult.metrics[0].changeFromPreviousPeriodPercent).toBe(25)
+      expect(response.toolResult.metrics[0].change_from_previous_period_percent).toBe(25)
     })
 
     test('identifies outliers beyond 2 stddev', async () => {
@@ -402,19 +402,19 @@ describe('MCP Server', () => {
         metrics: [
           {
             avg: 50,
-            changeFromPreviousPeriodPercent: null,
-            completenessPercent: 100,
+            change_from_previous_period_percent: null,
+            completeness_percent: 100,
             count: 30,
             max: 85,
             metric: 'hrv_rmssd',
             min: 20,
             outliers: [{ type: 'high', value: 85 }],
             stddev: 10,
-            trendPerDay: null,
+            trend_per_day: null,
             unit: 'ms',
           },
         ],
-        periodDays: 31,
+        period_days: 31,
         start: '2024-01-01T00:00:00.000Z',
       })
 
@@ -439,18 +439,18 @@ describe('MCP Server', () => {
         metrics: [
           {
             avg: 0,
-            changeFromPreviousPeriodPercent: null,
-            completenessPercent: 0,
+            change_from_previous_period_percent: null,
+            completeness_percent: 0,
             count: 0,
             max: 0,
             metric: 'hrv_rmssd',
             min: 0,
             stddev: 0,
-            trendPerDay: null,
+            trend_per_day: null,
             unit: 'ms',
           },
         ],
-        periodDays: 31,
+        period_days: 31,
         start: '2024-01-01T00:00:00.000Z',
       })
 
@@ -463,7 +463,7 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.metrics).toHaveLength(1)
       expect(response.toolResult.metrics[0].count).toBe(0)
-      expect(response.toolResult.metrics[0].completenessPercent).toBe(0)
+      expect(response.toolResult.metrics[0].completeness_percent).toBe(0)
     })
 
     test('calculates completeness percentage correctly', async () => {
@@ -476,18 +476,18 @@ describe('MCP Server', () => {
         metrics: [
           {
             avg: 50,
-            changeFromPreviousPeriodPercent: null,
-            completenessPercent: 48,
+            change_from_previous_period_percent: null,
+            completeness_percent: 48,
             count: 15,
             max: 60,
             metric: 'hrv_rmssd',
             min: 40,
             stddev: 5,
-            trendPerDay: null,
+            trend_per_day: null,
             unit: 'ms',
           },
         ],
-        periodDays: 31,
+        period_days: 31,
         start: '2024-01-01T00:00:00.000Z',
       })
 
@@ -498,7 +498,7 @@ describe('MCP Server', () => {
       })
 
       expect(response.status).toBe(200)
-      expect(response.toolResult.metrics[0].completenessPercent).toBe(48)
+      expect(response.toolResult.metrics[0].completeness_percent).toBe(48)
     })
   })
 
@@ -551,12 +551,12 @@ describe('MCP Server', () => {
 
       vi.mocked(queries.queryTags).mockResolvedValue([
         {
-          startTime: '2024-01-15T14:30:00Z',
+          start_time: '2024-01-15T14:30:00Z',
           tag: 'coffee',
         },
         {
-          endTime: '2024-01-15T16:00:00Z',
-          startTime: '2024-01-15T15:00:00Z',
+          end_time: '2024-01-15T16:00:00Z',
+          start_time: '2024-01-15T15:00:00Z',
           tag: 'meeting',
         },
       ])
@@ -646,20 +646,20 @@ describe('MCP Server', () => {
 
       vi.mocked(queries.queryActivities).mockResolvedValue([
         {
-          activityType: 'sleep',
+          activity_type: 'sleep',
           duration: 480,
-          endTime: '2024-01-15T07:00:00Z',
+          end_time: '2024-01-15T07:00:00Z',
           source: 'health_connect',
-          startTime: '2024-01-14T23:00:00Z',
+          start_time: '2024-01-14T23:00:00Z',
           title: 'Sleep',
         },
         {
-          activityType: 'exercise',
+          activity_type: 'exercise',
           duration: 45,
-          endTime: '2024-01-15T09:45:00Z',
-          hrZoneSecs: { 0: 60, 1: 300, 2: 900, 3: 1200, 4: 240, 5: 0 },
+          end_time: '2024-01-15T09:45:00Z',
+          hr_zone_secs: { 0: 60, 1: 300, 2: 900, 3: 1200, 4: 240, 5: 0 },
           source: 'health_connect',
-          startTime: '2024-01-15T09:00:00Z',
+          start_time: '2024-01-15T09:00:00Z',
           title: 'Morning Run',
         },
       ])
@@ -672,9 +672,9 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.data).toHaveLength(2)
-      expect(response.toolResult.data[0].activityType).toBe('sleep')
-      expect(response.toolResult.data[1].activityType).toBe('exercise')
-      expect(response.toolResult.data[1].hrZoneSecs).toBeDefined()
+      expect(response.toolResult.data[0].activity_type).toBe('sleep')
+      expect(response.toolResult.data[1].activity_type).toBe('exercise')
+      expect(response.toolResult.data[1].hr_zone_secs).toBeDefined()
     })
 
     test('filters by activity types when provided', async () => {
@@ -684,11 +684,11 @@ describe('MCP Server', () => {
 
       vi.mocked(queries.queryActivities).mockResolvedValue([
         {
-          activityType: 'exercise',
+          activity_type: 'exercise',
           duration: 45,
-          endTime: '2024-01-15T09:45:00Z',
+          end_time: '2024-01-15T09:45:00Z',
           source: 'health_connect',
-          startTime: '2024-01-15T09:00:00Z',
+          start_time: '2024-01-15T09:00:00Z',
           title: 'Morning Run',
         },
       ])
@@ -762,18 +762,18 @@ describe('MCP Server', () => {
         {
           activity: 'Visual Studio Code',
           category: 'Software Development',
-          durationSec: 7200,
-          endTime: '2024-01-15T17:00:00Z',
+          duration_sec: 7200,
+          end_time: '2024-01-15T17:00:00Z',
           productivity: 2,
-          startTime: '2024-01-15T09:00:00Z',
+          start_time: '2024-01-15T09:00:00Z',
         },
         {
           activity: 'Twitter',
           category: 'Social Networking',
-          durationSec: 1800,
-          endTime: '2024-01-15T18:00:00Z',
+          duration_sec: 1800,
+          end_time: '2024-01-15T18:00:00Z',
           productivity: -2,
-          startTime: '2024-01-15T17:30:00Z',
+          start_time: '2024-01-15T17:30:00Z',
         },
       ])
 
@@ -846,21 +846,21 @@ describe('MCP Server', () => {
       vi.mocked(queries.queryLocations).mockResolvedValue([
         {
           duration: 480,
-          endTime: '2024-01-15T17:00:00Z',
+          end_time: '2024-01-15T17:00:00Z',
           lat: 59.3293,
           lon: 18.0686,
           name: 'Office',
           source: 'named',
-          startTime: '2024-01-15T09:00:00Z',
+          start_time: '2024-01-15T09:00:00Z',
         },
         {
           duration: 120,
-          endTime: '2024-01-15T20:00:00Z',
+          end_time: '2024-01-15T20:00:00Z',
           lat: 59.3351,
           lon: 18.0542,
           name: 'Gym',
           source: 'named',
-          startTime: '2024-01-15T18:00:00Z',
+          start_time: '2024-01-15T18:00:00Z',
         },
       ])
 
@@ -946,31 +946,31 @@ describe('MCP Server', () => {
       vi.mocked(db.getDetectedLocations).mockResolvedValue([
         {
           address: '123 Main St, Stockholm',
-          createdAt: new Date('2024-01-01T00:00:00Z'),
-          firstVisit: new Date('2024-01-01T09:00:00Z'),
-          geocodeStatus: 'success',
+          created_at: new Date('2024-01-01T00:00:00Z'),
+          first_visit: new Date('2024-01-01T09:00:00Z'),
+          geocode_status: 'success',
           id: '123e4567-e89b-12d3-a456-426614174000',
-          lastVisit: new Date('2024-01-15T17:00:00Z'),
+          last_visit: new Date('2024-01-15T17:00:00Z'),
           lat: 59.3293,
           lon: 18.0686,
           radius: 200,
-          totalMinutes: 4800,
-          updatedAt: new Date('2024-01-15T17:00:00Z'),
-          visitCount: 10,
+          total_minutes: 4800,
+          updated_at: new Date('2024-01-15T17:00:00Z'),
+          visit_count: 10,
         },
         {
           address: null,
-          createdAt: new Date('2024-01-02T00:00:00Z'),
-          firstVisit: new Date('2024-01-02T10:00:00Z'),
-          geocodeStatus: 'pending',
+          created_at: new Date('2024-01-02T00:00:00Z'),
+          first_visit: new Date('2024-01-02T10:00:00Z'),
+          geocode_status: 'pending',
           id: '123e4567-e89b-12d3-a456-426614174001',
-          lastVisit: new Date('2024-01-16T18:00:00Z'),
+          last_visit: new Date('2024-01-16T18:00:00Z'),
           lat: 59.3351,
           lon: 18.0542,
           radius: 150,
-          totalMinutes: 600,
-          updatedAt: new Date('2024-01-16T18:00:00Z'),
-          visitCount: 3,
+          total_minutes: 600,
+          updated_at: new Date('2024-01-16T18:00:00Z'),
+          visit_count: 3,
         },
       ])
 
@@ -980,8 +980,8 @@ describe('MCP Server', () => {
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.data).toHaveLength(2)
       expect(response.toolResult.data[0].address).toBe('123 Main St, Stockholm')
-      expect(response.toolResult.data[0].geocodeStatus).toBe('success')
-      expect(response.toolResult.data[1].geocodeStatus).toBe('pending')
+      expect(response.toolResult.data[0].geocode_status).toBe('success')
+      expect(response.toolResult.data[1].geocode_status).toBe('pending')
       expect(db.getDetectedLocations).toHaveBeenCalledWith('testuser')
     })
 
@@ -1048,10 +1048,10 @@ describe('MCP Server', () => {
       const sessionId = await initializeSession(app, token)
 
       vi.mocked(mutations.addActivity).mockResolvedValue({
-        activityType: 'exercise',
-        endTime: '2024-03-15T11:45:00.000Z',
+        activity_type: 'exercise',
+        end_time: '2024-03-15T11:45:00.000Z',
         id: 'test-uuid',
-        startTime: '2024-03-15T10:30:00.000Z',
+        start_time: '2024-03-15T10:30:00.000Z',
         success: true,
         title: 'Upper body',
       })
@@ -1068,14 +1068,14 @@ describe('MCP Server', () => {
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.id).toBe('test-uuid')
       expect(mutations.addActivity).toHaveBeenCalledWith('testuser', {
-        activityType: 'exercise',
+        activity_type: 'exercise',
         data: {
           exerciseType: 81,
           exerciseTypeName: 'weightlifting',
         },
-        endTime: expect.any(Date),
+        end_time: expect.any(Date),
         notes: undefined,
-        startTime: expect.any(Date),
+        start_time: expect.any(Date),
         title: 'Upper body',
       })
     })
@@ -1086,10 +1086,10 @@ describe('MCP Server', () => {
       const sessionId = await initializeSession(app, token)
 
       vi.mocked(mutations.addActivity).mockResolvedValue({
-        activityType: 'meditation',
-        endTime: '2024-03-15T07:30:00.000Z',
+        activity_type: 'meditation',
+        end_time: '2024-03-15T07:30:00.000Z',
         id: 'test-uuid-2',
-        startTime: '2024-03-15T07:00:00.000Z',
+        start_time: '2024-03-15T07:00:00.000Z',
         success: true,
         title: 'Morning meditation',
       })
@@ -1104,11 +1104,11 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
       expect(mutations.addActivity).toHaveBeenCalledWith('testuser', {
-        activityType: 'meditation',
+        activity_type: 'meditation',
         data: undefined,
-        endTime: expect.any(Date),
+        end_time: expect.any(Date),
         notes: undefined,
-        startTime: expect.any(Date),
+        start_time: expect.any(Date),
         title: 'Morning meditation',
       })
     })
@@ -1256,7 +1256,7 @@ describe('MCP Server', () => {
       const record = await sessionStore.get('testuser', sessionId)
       expect(record).not.toBeNull()
       expect(record!.username).toBe('testuser')
-      expect(record!.sessionId).toBe(sessionId)
+      expect(record!.session_id).toBe(sessionId)
     })
 
     test('session is deleted from store on DELETE', async () => {

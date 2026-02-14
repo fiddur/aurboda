@@ -62,9 +62,9 @@ async function migrateHcData(db: Client, user: string) {
     // Insert into raw_records
     await insertRawRecord(user, {
       data: fullData,
-      externalId,
-      recordType,
-      recordedAt,
+      external_id: externalId,
+      record_type: recordType,
+      recorded_at: recordedAt,
       source: 'health_connect',
     })
 
@@ -95,12 +95,12 @@ async function migrateHcData(db: Client, user: string) {
     const activityType = healthConnectActivityMapping[recordType]
     if (activityType) {
       await insertActivity(user, {
-        activityType,
+        activity_type: activityType,
         data: fullData,
-        endTime: row.endTime ? new Date(row.endTime) : undefined,
+        end_time: row.endTime ? new Date(row.endTime) : undefined,
         notes: row.data.notes,
         source: 'health_connect',
-        startTime: new Date(row.startTime),
+        start_time: new Date(row.startTime),
         title: row.data.title,
       })
     }
@@ -267,7 +267,7 @@ async function migrateWaypoints(db: Client, user: string) {
 
   for (const row of result.rows) {
     await insertPlace(user, {
-      externalId: row.rid || row.id,
+      external_id: row.rid || row.id,
       lat: row.lat,
       lon: row.lon,
       name: row.name,
@@ -293,10 +293,10 @@ async function migrateOuraAuth(db: Client, user: string) {
 
   const row = result.rows[0]
   await upsertOAuthToken(user, {
-    accessToken: row.access_token,
-    expiresAt: addSeconds(new Date(row.time), row.expires_in),
+    access_token: row.access_token,
+    expires_at: addSeconds(new Date(row.time), row.expires_in),
     provider: 'oura',
-    refreshToken: row.refresh_token,
+    refresh_token: row.refresh_token,
   })
 
   console.log(`  Migrated Oura OAuth token`)
@@ -313,10 +313,10 @@ async function migrateTags(db: Client, user: string) {
 
   for (const row of result.rows) {
     await insertTag(user, {
-      endTime: row.end_time ? new Date(row.end_time) : undefined,
-      externalId: row.id,
+      end_time: row.end_time ? new Date(row.end_time) : undefined,
+      external_id: row.id,
       source: (row.source || 'oura') as DataSource,
-      startTime: new Date(row.start_time),
+      start_time: new Date(row.start_time),
       tag: row.tag,
     })
   }

@@ -82,11 +82,11 @@ export const createActivitiesRouter = (
       }
 
       const result = await addActivity(user, {
-        activityType: activity_type,
+        activity_type,
         data,
-        endTime: endDate,
+        end_time: endDate,
         notes,
-        startTime: startDate,
+        start_time: startDate,
         title,
       })
 
@@ -96,11 +96,11 @@ export const createActivitiesRouter = (
 
       res.json({
         data: {
-          activityType: result.activityType!,
-          endTime: result.endTime!,
+          activity_type: result.activity_type!,
+          end_time: result.end_time!,
           id: result.id!,
           notes: result.notes,
-          startTime: result.startTime!,
+          start_time: result.start_time!,
           title: result.title,
         },
         success: true,
@@ -137,9 +137,9 @@ export const createActivitiesRouter = (
       const user = req.user!
 
       const result = await updateActivity(user, id, {
-        endTime: end_time ? new Date(end_time) : undefined,
+        end_time: end_time ? new Date(end_time) : undefined,
         notes,
-        startTime: start_time ? new Date(start_time) : undefined,
+        start_time: start_time ? new Date(start_time) : undefined,
         title,
       })
 
@@ -150,11 +150,11 @@ export const createActivitiesRouter = (
 
       res.json({
         data: {
-          activityType: result.activityType!,
-          endTime: result.endTime!,
+          activity_type: result.activity_type!,
+          end_time: result.end_time!,
           id: result.id!,
           notes: result.notes,
-          startTime: result.startTime!,
+          start_time: result.start_time!,
           title: result.title,
         },
         success: true,

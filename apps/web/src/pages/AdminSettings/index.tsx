@@ -53,7 +53,7 @@ function SaveStatusIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
 export function AdminSettings() {
   const { route } = useLocation()
   const isLoggedIn = auth.value.token
-  const isAdmin = auth.value.isAdmin
+  const isAdmin = auth.value.is_admin
   const queryClient = useQueryClient()
 
   const { data: settings, isLoading } = useQuery({
@@ -257,7 +257,7 @@ export function AdminSettings() {
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
-              <p class="invitation-expiry">Expires in: {formatExpiryTime(invitation.expiresAt)}</p>
+              <p class="invitation-expiry">Expires in: {formatExpiryTime(invitation.expires_at)}</p>
             </div>
           )}
         </section>

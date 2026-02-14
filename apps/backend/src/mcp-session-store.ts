@@ -61,7 +61,7 @@ export const createInMemorySessionStore = (): McpSessionStore => {
       const cutoff = Date.now() - maxInactivityMs
       const expired: string[] = []
       for (const [id, record] of sessions) {
-        if (record.lastActivity.getTime() < cutoff) {
+        if (record.last_activity.getTime() < cutoff) {
           expired.push(id)
           sessions.delete(id)
         }
@@ -81,9 +81,9 @@ export const createInMemorySessionStore = (): McpSessionStore => {
       const now = new Date()
       const existing = sessions.get(sessionId)
       const record: McpSessionRecord = {
-        createdAt: existing?.createdAt ?? now,
-        lastActivity: now,
-        sessionId,
+        created_at: existing?.created_at ?? now,
+        last_activity: now,
+        session_id: sessionId,
         username: user,
       }
       sessions.set(sessionId, record)
@@ -93,7 +93,7 @@ export const createInMemorySessionStore = (): McpSessionStore => {
     touch: async (_user, sessionId) => {
       const existing = sessions.get(sessionId)
       if (existing) {
-        existing.lastActivity = new Date()
+        existing.last_activity = new Date()
       }
     },
   }

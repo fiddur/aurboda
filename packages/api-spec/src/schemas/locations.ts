@@ -45,16 +45,16 @@ export type NamedLocation = z.infer<typeof namedLocationSchema>
 export const detectedLocationSchema = z
   .object({
     address: addressNullableSchema.optional(),
-    firstVisit: z.string().meta({ description: 'First visit time' }),
-    geocodeStatus: geocodeStatusSchema.optional(),
+    first_visit: z.string().meta({ description: 'First visit time' }),
+    geocode_status: geocodeStatusSchema.optional(),
     id: z.string().uuid().optional().meta({ description: 'Location ID' }),
-    lastVisit: z.string().meta({ description: 'Last visit time' }),
+    last_visit: z.string().meta({ description: 'Last visit time' }),
     lat: z.number().meta({ description: 'Latitude' }),
     lon: z.number().meta({ description: 'Longitude' }),
     radius: radiusSchema.optional(),
-    suggestedRadius: z.number().int().optional().meta({ description: 'Suggested radius in meters' }),
-    totalMinutes: z.number().meta({ description: 'Total time spent at location' }),
-    visitCount: z.number().int().meta({ description: 'Number of visits' }),
+    suggested_radius: z.number().int().optional().meta({ description: 'Suggested radius in meters' }),
+    total_minutes: z.number().meta({ description: 'Total time spent at location' }),
+    visit_count: z.number().int().meta({ description: 'Number of visits' }),
   })
   .meta({ id: 'DetectedLocation' })
 
@@ -66,14 +66,14 @@ export type DetectedLocation = z.infer<typeof detectedLocationSchema>
 export const placeVisitSchema = z
   .object({
     address: addressSchema.optional(),
-    detectedLocationId: detectedLocationIdSchema.optional(),
+    detected_location_id: detectedLocationIdSchema.optional(),
     duration: durationMinutesSchema,
-    endTime: iso8601DateTimeSchema,
+    end_time: iso8601DateTimeSchema,
     lat: latSchema.optional(),
     lon: lonSchema.optional(),
     name: z.string().meta({ description: 'Place name' }),
     source: placeSourceSchema,
-    startTime: iso8601DateTimeSchema,
+    start_time: iso8601DateTimeSchema,
   })
   .meta({ id: 'PlaceVisit' })
 

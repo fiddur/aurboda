@@ -26,11 +26,11 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
       try {
         const result = await getTrend(user, {
           aggregation,
-          displayPeriod: display_period,
-          halfLifeDays,
-          lookbackDays,
+          display_period,
+          half_life_days: halfLifeDays,
+          lookback_days: lookbackDays,
           pattern,
-          sourceType: source_type,
+          source_type,
         })
         res.json({ data: result, success: true })
       } catch (error) {

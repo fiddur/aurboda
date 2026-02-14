@@ -55,8 +55,8 @@ function ImpactTimelineChart({
     const windows = ['before30min', 'before15min', 'during', 'after15min', 'after30min'] as const
     const labels = ['-30 min', '-15 min', 'During', '+15 min', '+30 min']
 
-    const hrvData = windows.map((w) => data.hrvTimeline[w].mean)
-    const hrData = windows.map((w) => data.hrTimeline[w].mean)
+    const hrvData = windows.map((w) => data.hrv_timeline[w].mean)
+    const hrData = windows.map((w) => data.hr_timeline[w].mean)
 
     const g = svg
       .attr('width', width)
@@ -218,8 +218,8 @@ function CorrelationRow({
   type: string
   extra?: string
 }) {
-  const hrvDelta = stats.hrvDeltaFromBaseline
-  const hrDelta = stats.hrDeltaFromBaseline
+  const hrvDelta = stats.hrv_delta_from_baseline
+  const hrDelta = stats.hr_delta_from_baseline
 
   return (
     <tr class={selected ? 'selected' : ''} onClick={onSelect}>
@@ -228,7 +228,7 @@ function CorrelationRow({
         {extra && <span class="extra">{extra}</span>}
       </td>
       <td class="type-cell">{type}</td>
-      <td class="value-cell">{stats.meanHrv?.toFixed(1) ?? '--'}</td>
+      <td class="value-cell">{stats.mean_hrv?.toFixed(1) ?? '--'}</td>
       <td
         class={`delta-cell ${
           hrvDelta !== null ?
@@ -240,7 +240,7 @@ function CorrelationRow({
       >
         {hrvDelta !== null ? `${hrvDelta > 0 ? '+' : ''}${hrvDelta.toFixed(1)}` : '--'}
       </td>
-      <td class="value-cell">{stats.meanHr?.toFixed(0) ?? '--'}</td>
+      <td class="value-cell">{stats.mean_hr?.toFixed(0) ?? '--'}</td>
       <td
         class={`delta-cell ${
           hrDelta !== null ?
@@ -252,7 +252,7 @@ function CorrelationRow({
       >
         {hrDelta !== null ? `${hrDelta > 0 ? '+' : ''}${hrDelta.toFixed(0)}` : '--'}
       </td>
-      <td class="samples-cell">{stats.sampleMinutes} min</td>
+      <td class="samples-cell">{stats.sample_minutes} min</td>
     </tr>
   )
 }
@@ -332,7 +332,7 @@ export function Correlations() {
             </div>
             <div class="baseline-card">
               <span class="baseline-label">Resting HR (30-day avg)</span>
-              <span class="baseline-value hr">{baseline.restingHr.avg30day?.toFixed(0) ?? '--'} bpm</span>
+              <span class="baseline-value hr">{baseline.resting_hr.avg30day?.toFixed(0) ?? '--'} bpm</span>
             </div>
           </div>
         </section>
@@ -344,7 +344,7 @@ export function Correlations() {
           <h2>
             Impact of "{activityImpact.activity}" on HRV/HR
             <span class="impact-meta">
-              {activityImpact.occurrences} occurrences, avg {activityImpact.avgDurationMin} min
+              {activityImpact.occurrences} occurrences, avg {activityImpact.avg_duration_min} min
             </span>
           </h2>
           <ImpactTimelineChart data={activityImpact} baseline={baseline} />
@@ -385,16 +385,16 @@ export function Correlations() {
                   <tbody>
                     {correlations.correlations.activities.map((a: ActivityCorrelation) => (
                       <CorrelationRow
-                        key={a.activityType}
-                        name={a.activityType}
+                        key={a.activity_type}
+                        name={a.activity_type}
                         stats={a}
-                        onSelect={() => handleSelectActivity(a.activityType, 'activity_type')}
+                        onSelect={() => handleSelectActivity(a.activity_type, 'activity_type')}
                         selected={
-                          selectedActivity.value?.name === a.activityType &&
+                          selectedActivity.value?.name === a.activity_type &&
                           selectedActivity.value?.type === 'activity_type'
                         }
                         type="activity"
-                        extra={`${a.occurrences}× (avg ${a.avgDurationMin} min)`}
+                        extra={`${a.occurrences}× (avg ${a.avg_duration_min} min)`}
                       />
                     ))}
                   </tbody>
@@ -423,16 +423,16 @@ export function Correlations() {
                   <tbody>
                     {correlations.correlations.locations.map((l: LocationCorrelation) => (
                       <CorrelationRow
-                        key={l.locationName}
-                        name={l.locationName}
+                        key={l.location_name}
+                        name={l.location_name}
                         stats={l}
-                        onSelect={() => handleSelectActivity(l.locationName, 'location')}
+                        onSelect={() => handleSelectActivity(l.location_name, 'location')}
                         selected={
-                          selectedActivity.value?.name === l.locationName &&
+                          selectedActivity.value?.name === l.location_name &&
                           selectedActivity.value?.type === 'location'
                         }
                         type="location"
-                        extra={`${l.visitCount} visits`}
+                        extra={`${l.visit_count} visits`}
                       />
                     ))}
                   </tbody>
@@ -471,8 +471,8 @@ export function Correlations() {
                         }
                         type="productivity"
                         extra={
-                          p.correlationCoefficient !== null ?
-                            `r=${p.correlationCoefficient.toFixed(2)}`
+                          p.correlation_coefficient !== null ?
+                            `r=${p.correlation_coefficient.toFixed(2)}`
                           : undefined
                         }
                       />

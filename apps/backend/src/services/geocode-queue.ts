@@ -141,7 +141,7 @@ const createJobHandler = (deps: GeocodeQueueDeps) => {
       if (result.success) {
         await deps.updateDetectedLocation(user, detectedLocationId, {
           address: result.data.address,
-          geocodeStatus: 'success',
+          geocode_status: 'success',
         })
         console.log(`Geocoded location ${detectedLocationId}: ${result.data.address}`)
       } else {
@@ -160,13 +160,13 @@ const createJobHandler = (deps: GeocodeQueueDeps) => {
           // Client error (4xx) - don't retry
           console.warn(`HTTP ${error.status} for location ${detectedLocationId}, marking failed`)
           await deps.updateDetectedLocation(user, detectedLocationId, {
-            geocodeStatus: 'failed',
+            geocode_status: 'failed',
           })
         } else {
           // No results - valid response but location has no address
           console.warn(`No address found for location ${detectedLocationId}`)
           await deps.updateDetectedLocation(user, detectedLocationId, {
-            geocodeStatus: 'failed',
+            geocode_status: 'failed',
           })
         }
       }
@@ -234,7 +234,7 @@ export const createGeocodeQueue = async (deps: GeocodeQueueDeps): Promise<Geocod
 
         // Only mark as 'geocoding' after job is successfully enqueued
         await deps.updateDetectedLocation(data.user, data.detectedLocationId, {
-          geocodeStatus: 'geocoding',
+          geocode_status: 'geocoding',
         })
 
         console.log(`Enqueued geocode job ${jobId} for location ${data.detectedLocationId}`)

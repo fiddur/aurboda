@@ -60,11 +60,11 @@ export const registerActivityTools = (server: McpServer, user: string) => {
       }
 
       const result = await addActivity(user, {
-        activityType: activity_type,
+        activity_type,
         data,
-        endTime: endDate,
+        end_time: endDate,
         notes,
-        startTime: startDate,
+        start_time: startDate,
         title,
       })
 
@@ -102,9 +102,9 @@ export const registerActivityTools = (server: McpServer, user: string) => {
     },
     async ({ id, start_time, end_time, title, notes }) => {
       const result = await updateActivity(user, id, {
-        endTime: end_time ? new Date(end_time) : undefined,
+        end_time: end_time ? new Date(end_time) : undefined,
         notes,
-        startTime: start_time ? new Date(start_time) : undefined,
+        start_time: start_time ? new Date(start_time) : undefined,
         title,
       })
 

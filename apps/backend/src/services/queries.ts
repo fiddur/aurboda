@@ -102,56 +102,56 @@ export interface HeartRateStats {
 }
 
 export interface SessionSummary {
-  startTime: string
-  endTime?: string
+  start_time: string
+  end_time?: string
   duration?: number // minutes
   title?: string
   data?: Record<string, unknown>
-  hrZoneSecs?: HrZoneSecs
+  hr_zone_secs?: HrZoneSecs
 }
 
 export interface TagSummary {
   tag: string
-  startTime: string
-  endTime?: string
+  start_time: string
+  end_time?: string
 }
 
 export interface PlaceSummary {
   name: string
-  startTime: string
-  endTime: string
+  start_time: string
+  end_time: string
   duration: number // minutes
   source: 'named' | 'detected' | 'owntracks' | 'unknown'
   lat?: number
   lon?: number
   address?: string
-  detectedLocationId?: string
+  detected_location_id?: string
 }
 
 export interface ProductivitySummary {
-  totalDurationSec: number
-  productiveSec: number
-  veryProductiveSec: number
-  distractingSec: number
+  total_duration_sec: number
+  productive_sec: number
+  very_productive_sec: number
+  distracting_sec: number
 }
 
 export interface OuraScores {
-  sleepScore: number | null
-  readinessScore: number | null
-  resilienceScore: number | null
-  cardiovascularAge: number | null
+  sleep_score: number | null
+  readiness_score: number | null
+  resilience_score: number | null
+  cardiovascular_age: number | null
 }
 
 export interface DailySummaryResult {
   date: string
-  heartRate: HeartRateStats | null
+  heart_rate: HeartRateStats | null
   steps: { total: number }
-  sleepSessions: SessionSummary[]
-  exerciseSessions: SessionSummary[]
+  sleep_sessions: SessionSummary[]
+  exercise_sessions: SessionSummary[]
   tags: TagSummary[]
   productivity: ProductivitySummary | null
   places: PlaceSummary[]
-  ouraScores: OuraScores | null
+  oura_scores: OuraScores | null
 }
 
 export interface PeriodMetricStats {
@@ -162,16 +162,16 @@ export interface PeriodMetricStats {
   max: number
   avg: number
   stddev: number
-  trendPerDay: number | null
-  changeFromPreviousPeriodPercent: number | null
-  completenessPercent: number
+  trend_per_day: number | null
+  change_from_previous_period_percent: number | null
+  completeness_percent: number
   outliers?: { type: 'high' | 'low'; value: number }[]
 }
 
 export interface PeriodSummaryResult {
   start: string
   end: string
-  periodDays: number
+  period_days: number
   metrics: PeriodMetricStats[]
 }
 
@@ -286,7 +286,7 @@ const computeContextualHrvBuckets = (
   metric: MetricType,
   bucketMinutes: number,
   rangeStart: Date,
-): { bucketStart: Date; metric: MetricType; avg: number; min: number; max: number; count: number }[] => {
+): { bucket_start: Date; metric: MetricType; avg: number; min: number; max: number; count: number }[] => {
   if (hrvData.length === 0) return []
 
   // Group data by bucket
@@ -303,7 +303,7 @@ const computeContextualHrvBuckets = (
   // Compute aggregations for each bucket
   return Array.from(bucketMap.entries()).map(([key, values]) => ({
     avg: values.reduce((a, b) => a + b, 0) / values.length,
-    bucketStart: new Date(key),
+    bucket_start: new Date(key),
     count: values.length,
     max: Math.max(...values),
     metric,
@@ -355,8 +355,8 @@ export async function queryMetricsBucketed(
   const bucketMap = new Map<string, MetricBucket>()
 
   for (const row of allData) {
-    const bucketKey = row.bucketStart.toISOString()
-    const bucketEndMs = row.bucketStart.getTime() + bucketMinutes * 60 * 1000
+    const bucketKey = row.bucket_start.toISOString()
+    const bucketEndMs = row.bucket_start.getTime() + bucketMinutes * 60 * 1000
     const bucketEnd = new Date(bucketEndMs).toISOString()
 
     if (!bucketMap.has(bucketKey)) {
@@ -400,7 +400,7 @@ async function computeContextualHrvData(
   end: Date,
   bucketMinutes: number,
 ): Promise<
-  { bucketStart: Date; metric: MetricType; avg: number; min: number; max: number; count: number }[]
+  { bucket_start: Date; metric: MetricType; avg: number; min: number; max: number; count: number }[]
 > {
   // Fetch raw HRV data and context windows in parallel
   const [hrvData, { sleepWindows, activityWindows }] = await Promise.all([
@@ -415,7 +415,7 @@ async function computeContextualHrvData(
 
   // Compute buckets for each requested contextual HRV metric
   const results: {
-    bucketStart: Date
+    bucket_start: Date
     metric: MetricType
     avg: number
     min: number
@@ -508,15 +508,15 @@ export async function getDailySummary(
     productivity.length > 0 ?
       productivity.reduce(
         (acc, record) => {
-          acc.totalDurationSec += record.durationSec
+          acc.total_duration_sec += record.duration_sec
           if (record.productivity !== undefined && record.productivity !== null) {
-            if (record.productivity >= 1) acc.productiveSec += record.durationSec
-            if (record.productivity >= 2) acc.veryProductiveSec += record.durationSec
-            if (record.productivity <= -1) acc.distractingSec += record.durationSec
+            if (record.productivity >= 1) acc.productive_sec += record.duration_sec
+            if (record.productivity >= 2) acc.very_productive_sec += record.duration_sec
+            if (record.productivity <= -1) acc.distracting_sec += record.duration_sec
           }
           return acc
         },
-        { distractingSec: 0, productiveSec: 0, totalDurationSec: 0, veryProductiveSec: 0 },
+        { distracting_sec: 0, productive_sec: 0, total_duration_sec: 0, very_productive_sec: 0 },
       )
     : null
 
@@ -535,10 +535,10 @@ export async function getDailySummary(
   const ouraScores: OuraScores | null =
     hasAnyOuraData ?
       {
-        cardiovascularAge: cardiovascularAgeData?.[0]?.[1] ?? null,
-        readinessScore: readinessScoreData?.[0]?.[1] ?? null,
-        resilienceScore: resilienceScoreData?.[0]?.[1] ?? null,
-        sleepScore: sleepScoreData?.[0]?.[1] ?? null,
+        cardiovascular_age: cardiovascularAgeData?.[0]?.[1] ?? null,
+        readiness_score: readinessScoreData?.[0]?.[1] ?? null,
+        resilience_score: resilienceScoreData?.[0]?.[1] ?? null,
+        sleep_score: sleepScoreData?.[0]?.[1] ?? null,
       }
     : null
 
@@ -551,17 +551,17 @@ export async function getDailySummary(
       const sessionSummary: SessionSummary = {
         data: s.data,
         duration:
-          s.endTime ? Math.round((s.endTime.getTime() - s.startTime.getTime()) / 1000 / 60) : undefined,
-        endTime: s.endTime?.toISOString(),
-        startTime: s.startTime.toISOString(),
+          s.end_time ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60) : undefined,
+        end_time: s.end_time?.toISOString(),
+        start_time: s.start_time.toISOString(),
         title: s.title,
       }
 
       // Only compute HR zones for sessions with end time
-      if (s.endTime) {
-        const sessionHrData = await getTimeSeries(user, 'heart_rate', s.startTime, s.endTime)
+      if (s.end_time) {
+        const sessionHrData = await getTimeSeries(user, 'heart_rate', s.start_time, s.end_time)
         if (sessionHrData.length > 0) {
-          sessionSummary.hrZoneSecs = computeHrZoneSecs(sessionHrData, hrZones)
+          sessionSummary.hr_zone_secs = computeHrZoneSecs(sessionHrData, hrZones)
         }
       }
 
@@ -571,31 +571,32 @@ export async function getDailySummary(
 
   return {
     date: date.toISOString().split('T')[0],
-    exerciseSessions: exerciseSessionsWithHrZones,
-    heartRate: heartRateStats,
-    ouraScores,
+    exercise_sessions: exerciseSessionsWithHrZones,
+    heart_rate: heartRateStats,
+    oura_scores: ouraScores,
     places: placeVisits.map((p) => ({
       address: p.address,
-      detectedLocationId: p.detectedLocationId,
-      duration: p.durationMinutes,
-      endTime: p.endTime.toISOString(),
+      detected_location_id: p.detected_location_id,
+      duration: p.duration_minutes,
+      end_time: p.end_time.toISOString(),
       lat: p.lat,
       lon: p.lon,
       name: p.name,
       source: p.source,
-      startTime: p.startTime.toISOString(),
+      start_time: p.start_time.toISOString(),
     })),
     productivity: productivitySummary,
-    sleepSessions: sleepSessions.map((s) => ({
+    sleep_sessions: sleepSessions.map((s) => ({
       data: s.data,
-      duration: s.endTime ? Math.round((s.endTime.getTime() - s.startTime.getTime()) / 1000 / 60) : undefined,
-      endTime: s.endTime?.toISOString(),
-      startTime: s.startTime.toISOString(),
+      duration:
+        s.end_time ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60) : undefined,
+      end_time: s.end_time?.toISOString(),
+      start_time: s.start_time.toISOString(),
     })),
     steps: { total: totalSteps },
     tags: tags.map((t) => ({
-      endTime: t.endTime?.toISOString(),
-      startTime: t.startTime.toISOString(),
+      end_time: t.end_time?.toISOString(),
+      start_time: t.start_time.toISOString(),
       tag: t.tag,
     })),
   }
@@ -635,15 +636,15 @@ async function computeHrZoneStats(
 
     return {
       avg: Math.round(totalSecs * 100) / 100,
-      changeFromPreviousPeriodPercent: null, // Could compute if needed
-      completenessPercent: hrData.length > 0 ? 100 : 0,
+      change_from_previous_period_percent: null, // Could compute if needed
+      completeness_percent: hrData.length > 0 ? 100 : 0,
       count: hrData.length > 0 ? 1 : 0, // Treat as single aggregated value
       max: Math.round(totalSecs * 100) / 100,
       metric,
       min: Math.round(totalSecs * 100) / 100,
       outliers: undefined,
       stddev: 0,
-      trendPerDay: null,
+      trend_per_day: null,
       unit: metricUnits[metric],
     }
   })
@@ -725,16 +726,16 @@ export async function getPeriodSummary(
 
     return {
       avg: Math.round(stat.avg * 100) / 100,
-      changeFromPreviousPeriodPercent:
+      change_from_previous_period_percent:
         changeFromPrevious !== null ? Math.round(changeFromPrevious * 10) / 10 : null,
-      completenessPercent: completeness,
+      completeness_percent: completeness,
       count: stat.count,
       max: Math.round(stat.max * 100) / 100,
       metric: stat.metric,
       min: Math.round(stat.min * 100) / 100,
       outliers: outliers.length > 0 ? outliers : undefined,
       stddev: Math.round(stat.stddev * 100) / 100,
-      trendPerDay: trend !== null ? Math.round(trend * 1000) / 1000 : null,
+      trend_per_day: trend !== null ? Math.round(trend * 1000) / 1000 : null,
       unit: stat.unit,
     }
   })
@@ -744,15 +745,15 @@ export async function getPeriodSummary(
   for (const metric of missingRegularMetrics) {
     metricsWithTrends.push({
       avg: 0,
-      changeFromPreviousPeriodPercent: null,
-      completenessPercent: 0,
+      change_from_previous_period_percent: null,
+      completeness_percent: 0,
       count: 0,
       max: 0,
       metric,
       min: 0,
       outliers: undefined,
       stddev: 0,
-      trendPerDay: null,
+      trend_per_day: null,
       unit: metricUnits[metric as MetricType] ?? '',
     })
   }
@@ -763,7 +764,7 @@ export async function getPeriodSummary(
   return {
     end: end.toISOString(),
     metrics: metricsWithTrends,
-    periodDays: daysInPeriod,
+    period_days: daysInPeriod,
     start: start.toISOString(),
   }
 }
@@ -784,8 +785,8 @@ export async function queryTags(
 
   const tags = await getTags(user, start, end)
   return tags.map((t) => ({
-    endTime: t.endTime?.toISOString(),
-    startTime: t.startTime.toISOString(),
+    end_time: t.end_time?.toISOString(),
+    start_time: t.start_time.toISOString(),
     tag: t.tag,
   }))
 }
@@ -794,14 +795,14 @@ export async function queryTags(
  * Activity query result with formatted timestamps.
  */
 export interface ActivityResult {
-  startTime: string
-  endTime?: string
+  start_time: string
+  end_time?: string
   duration?: number // minutes
-  activityType: string
+  activity_type: string
   title?: string
   source: string
   data?: Record<string, unknown>
-  hrZoneSecs?: HrZoneSecs
+  hr_zone_secs?: HrZoneSecs
 }
 
 /**
@@ -829,21 +830,21 @@ export async function queryActivities(
   return Promise.all(
     activities.map(async (a) => {
       const result: ActivityResult = {
-        activityType: a.activityType,
+        activity_type: a.activity_type,
         data: a.data,
         duration:
-          a.endTime ? Math.round((a.endTime.getTime() - a.startTime.getTime()) / 1000 / 60) : undefined,
-        endTime: a.endTime?.toISOString(),
+          a.end_time ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60) : undefined,
+        end_time: a.end_time?.toISOString(),
         source: a.source,
-        startTime: a.startTime.toISOString(),
+        start_time: a.start_time.toISOString(),
         title: a.title,
       }
 
       // Compute HR zones for exercise activities with end time
-      if (hrZones && a.activityType === 'exercise' && a.endTime) {
-        const hrData = await getTimeSeries(user, 'heart_rate', a.startTime, a.endTime)
+      if (hrZones && a.activity_type === 'exercise' && a.end_time) {
+        const hrData = await getTimeSeries(user, 'heart_rate', a.start_time, a.end_time)
         if (hrData.length > 0) {
-          result.hrZoneSecs = computeHrZoneSecs(hrData, hrZones)
+          result.hr_zone_secs = computeHrZoneSecs(hrData, hrZones)
         }
       }
 
@@ -856,12 +857,12 @@ export async function queryActivities(
  * Productivity record with formatted timestamps.
  */
 export interface ProductivityResult {
-  startTime: string
-  endTime: string
+  start_time: string
+  end_time: string
   activity: string
   category?: string
   productivity?: number
-  durationSec: number
+  duration_sec: number
 }
 
 /**
@@ -882,10 +883,10 @@ export async function queryProductivity(
   return productivity.map((p) => ({
     activity: p.activity,
     category: p.category,
-    durationSec: p.durationSec,
-    endTime: p.endTime.toISOString(),
+    duration_sec: p.duration_sec,
+    end_time: p.end_time.toISOString(),
     productivity: p.productivity,
-    startTime: p.startTime.toISOString(),
+    start_time: p.start_time.toISOString(),
   }))
 }
 
@@ -896,13 +897,13 @@ export async function queryLocations(user: string, start: Date, end: Date): Prom
   const visits = await getPlaceVisits(user, start, end)
   return visits.map((p) => ({
     address: p.address,
-    detectedLocationId: p.detectedLocationId,
-    duration: p.durationMinutes,
-    endTime: p.endTime.toISOString(),
+    detected_location_id: p.detected_location_id,
+    duration: p.duration_minutes,
+    end_time: p.end_time.toISOString(),
     lat: p.lat,
     lon: p.lon,
     name: p.name,
     source: p.source,
-    startTime: p.startTime.toISOString(),
+    start_time: p.start_time.toISOString(),
   }))
 }

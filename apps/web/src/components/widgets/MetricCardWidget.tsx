@@ -47,13 +47,13 @@ const extractBaselineValue = (
 
   switch (metric) {
     case 'hrv_7day':
-      return { trend: baseline.hrv.trendPercent, value: baseline.hrv.avg7day }
+      return { trend: baseline.hrv.trend_percent, value: baseline.hrv.avg7day }
     case 'hrv_30day':
       return { trend: null, value: baseline.hrv.avg30day }
     case 'rhr_7day':
-      return { trend: baseline.restingHr.trendPercent, value: baseline.restingHr.avg7day }
+      return { trend: baseline.resting_hr.trend_percent, value: baseline.resting_hr.avg7day }
     case 'rhr_30day':
-      return { trend: null, value: baseline.restingHr.avg30day }
+      return { trend: null, value: baseline.resting_hr.avg30day }
     default:
       return { trend: null, value: null }
   }
@@ -84,19 +84,19 @@ const extractPeriodValue = (
     case 'steps':
       return {
         subtitle: stats.max ? `Max: ${Math.round(stats.max).toLocaleString()}` : undefined,
-        trend: stats.changeFromPreviousPeriodPercent ?? null,
+        trend: stats.change_from_previous_period_percent ?? null,
         value: stats.avg ? Math.round(stats.avg).toLocaleString() : null,
       }
     case 'zone2_weekly':
       return {
         subtitle: undefined,
-        trend: stats.changeFromPreviousPeriodPercent ?? null,
+        trend: stats.change_from_previous_period_percent ?? null,
         value: stats.avg ? Math.round((stats.avg * 7) / 60) : null,
       }
     default:
       return {
         subtitle: stats.count ? `${stats.count} days` : undefined,
-        trend: stats.changeFromPreviousPeriodPercent ?? null,
+        trend: stats.change_from_previous_period_percent ?? null,
         value: stats.avg ?? null,
       }
   }
@@ -104,7 +104,7 @@ const extractPeriodValue = (
 
 // eslint-disable-next-line complexity -- TODO: refactor
 export function MetricCardWidget({ config }: MetricCardWidgetProps) {
-  const { metric, title, unit, subtitle: configSubtitle, trendInverse } = config
+  const { metric, title, unit, subtitle: configSubtitle, trend_inverse } = config
 
   const isBaseline = isBaselineMetric(metric)
 
@@ -155,7 +155,7 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
     <div class="metric-card">
       <div class="metric-header">
         <span class="metric-title">{title}</span>
-        {trend !== null && <TrendIndicator value={trend} inverse={trendInverse} />}
+        {trend !== null && <TrendIndicator value={trend} inverse={trend_inverse} />}
       </div>
       <div class="metric-value">
         {isLoading ?

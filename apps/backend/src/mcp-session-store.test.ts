@@ -20,10 +20,10 @@ describe('createInMemorySessionStore', () => {
 
       const record = await store.save('testuser', 'session-123')
 
-      expect(record.sessionId).toBe('session-123')
+      expect(record.session_id).toBe('session-123')
       expect(record.username).toBe('testuser')
-      expect(record.createdAt).toEqual(now)
-      expect(record.lastActivity).toEqual(now)
+      expect(record.created_at).toEqual(now)
+      expect(record.last_activity).toEqual(now)
     })
 
     test('updates lastActivity but preserves createdAt on re-save', async () => {
@@ -37,8 +37,8 @@ describe('createInMemorySessionStore', () => {
 
       const record = await store.save('testuser', 'session-123')
 
-      expect(record.createdAt).toEqual(createTime)
-      expect(record.lastActivity).toEqual(updateTime)
+      expect(record.created_at).toEqual(createTime)
+      expect(record.last_activity).toEqual(updateTime)
     })
   })
 
@@ -53,7 +53,7 @@ describe('createInMemorySessionStore', () => {
       const record = await store.get('testuser', 'session-123')
 
       expect(record).not.toBeNull()
-      expect(record!.sessionId).toBe('session-123')
+      expect(record!.session_id).toBe('session-123')
       expect(record!.username).toBe('testuser')
     })
   })
@@ -69,8 +69,8 @@ describe('createInMemorySessionStore', () => {
       await store.touch('testuser', 'session-123')
 
       const record = await store.get('testuser', 'session-123')
-      expect(record!.lastActivity).toEqual(touchTime)
-      expect(record!.createdAt).toEqual(createTime)
+      expect(record!.last_activity).toEqual(touchTime)
+      expect(record!.created_at).toEqual(createTime)
     })
 
     test('does nothing for non-existent session', async () => {

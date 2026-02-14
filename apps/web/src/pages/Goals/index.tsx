@@ -75,7 +75,7 @@ interface GoalProgressBarProps {
 }
 
 function GoalProgressBar({ goal, showWindow }: GoalProgressBarProps) {
-  const { current, losingTomorrow, max, metric, min, window } = goal
+  const { current, losing_tomorrow: losingTomorrow, max, metric, min, window } = goal
 
   // Calculate progress percentages
   const target = max ?? min ?? 1

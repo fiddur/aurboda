@@ -17,11 +17,11 @@ import {
  */
 export const tagSchema = z
   .object({
-    endTime: iso8601DateTimeSchema.optional(),
-    externalId: z.string().optional().meta({ description: 'External ID from source' }),
+    end_time: iso8601DateTimeSchema.optional(),
+    external_id: z.string().optional().meta({ description: 'External ID from source' }),
     id: z.string().uuid().optional().meta({ description: 'Tag ID' }),
     source: dataSourceSchema.optional(),
-    startTime: iso8601DateTimeSchema,
+    start_time: iso8601DateTimeSchema,
     tag: tagTextSchema,
   })
   .meta({ id: 'Tag' })
@@ -65,9 +65,9 @@ export type AddTagBody = z.infer<typeof addTagBodySchema>
  * Added tag data schema.
  */
 const addedTagSchema = z.object({
-  endTime: iso8601DateTimeSchema.optional(),
+  end_time: iso8601DateTimeSchema.optional(),
   id: z.string().uuid(),
-  startTime: iso8601DateTimeSchema,
+  start_time: iso8601DateTimeSchema,
   tag: z.string(),
 })
 
@@ -77,7 +77,7 @@ const addedTagSchema = z.object({
 export const addTagResponseSchema = baseResponseSchema
   .extend({
     data: addedTagSchema.optional(),
-    extendedBySeconds: z.number().int().optional().meta({
+    extended_by_seconds: z.number().int().optional().meta({
       description: 'Number of seconds the tag was extended by (only present if merged)',
     }),
     merged: z.boolean().optional().meta({
@@ -94,7 +94,7 @@ export type AddTagResponse = z.infer<typeof addTagResponseSchema>
  */
 export const deleteTagParamsSchema = z
   .object({
-    externalId: z.string().meta({ description: 'External ID of the tag to delete' }),
+    external_id: z.string().meta({ description: 'External ID of the tag to delete' }),
   })
   .meta({ id: 'DeleteTagParams' })
 
@@ -125,9 +125,9 @@ export type UniqueTagsResponse = z.infer<typeof uniqueTagsResponseSchema>
 export const programmaticTagSchema = z
   .object({
     count: z.number().int().meta({ description: 'Number of occurrences' }),
-    currentName: z.string().nullable().meta({ description: 'Current mapped name (null if unmapped)' }),
-    latestTime: iso8601DateTimeSchema.meta({ description: 'Most recent occurrence' }),
-    tagKey: z.string().meta({ description: 'The programmatic tag identifier (UUID, tag_* prefix, etc.)' }),
+    current_name: z.string().nullable().meta({ description: 'Current mapped name (null if unmapped)' }),
+    latest_time: iso8601DateTimeSchema.meta({ description: 'Most recent occurrence' }),
+    tag_key: z.string().meta({ description: 'The programmatic tag identifier (UUID, tag_* prefix, etc.)' }),
   })
   .meta({ id: 'ProgrammaticTag' })
 
@@ -152,7 +152,7 @@ export type ProgrammaticTagsResponse = z.infer<typeof programmaticTagsResponseSc
 export const setTagMappingBodySchema = z
   .object({
     name: z.string().min(1).meta({ description: 'Display name for the tag' }),
-    tagKey: z.string().min(1).meta({ description: 'The programmatic tag identifier to map' }),
+    tag_key: z.string().min(1).meta({ description: 'The programmatic tag identifier to map' }),
   })
   .meta({ id: 'SetTagMappingBody' })
 

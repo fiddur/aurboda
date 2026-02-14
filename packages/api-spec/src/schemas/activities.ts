@@ -125,17 +125,17 @@ export const getExerciseTypeValue = (name: ExerciseTypeName): number => exercise
  */
 export const activitySchema = z
   .object({
-    activityType: z.string().meta({ description: 'Activity type' }),
+    activity_type: z.string().meta({ description: 'Activity type' }),
     data: z.record(z.string(), z.unknown()).optional(),
     duration: durationMinutesSchema.optional(),
-    endTime: iso8601DateTimeSchema.optional(),
-    hrZoneSecs: hrZoneSecsSchema.optional().meta({
+    end_time: iso8601DateTimeSchema.optional(),
+    hr_zone_secs: hrZoneSecsSchema.optional().meta({
       description: 'Time spent in each HR zone (for exercise)',
     }),
     id: z.string().uuid().optional().meta({ description: 'Activity ID' }),
     notes: z.string().optional().meta({ description: 'Activity notes' }),
     source: z.string().optional().meta({ description: 'Data source' }),
-    startTime: iso8601DateTimeSchema,
+    start_time: iso8601DateTimeSchema,
     title: z.string().optional().meta({ description: 'Activity title' }),
   })
   .meta({ id: 'Activity' })
@@ -193,11 +193,11 @@ export type AddActivityBody = z.infer<typeof addActivityBodySchema>
  * Added activity data schema.
  */
 const addedActivitySchema = z.object({
-  activityType: activityTypeSchema,
-  endTime: iso8601DateTimeSchema,
+  activity_type: activityTypeSchema,
+  end_time: iso8601DateTimeSchema,
   id: z.string().uuid(),
   notes: z.string().optional(),
-  startTime: iso8601DateTimeSchema,
+  start_time: iso8601DateTimeSchema,
   title: z.string().optional(),
 })
 

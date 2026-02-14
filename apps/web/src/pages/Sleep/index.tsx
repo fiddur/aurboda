@@ -162,10 +162,10 @@ function SleepDurationChart({ sleepSessions, height = 180 }: { sleepSessions: Ac
 
     // Calculate duration per night
     const durationData = sleepSessions
-      .filter((s) => s.endTime)
+      .filter((s) => s.end_time)
       .map((s) => ({
-        date: s.startTime,
-        hours: (s.endTime!.getTime() - s.startTime.getTime()) / 3600000,
+        date: s.start_time,
+        hours: (s.end_time!.getTime() - s.start_time.getTime()) / 3600000,
       }))
       .sort((a, b) => a.date.getTime() - b.date.getTime())
 
@@ -365,11 +365,12 @@ export function Sleep() {
   const sleepScores = sleepScoresQuery.data ?? []
   const sleepSessions = activitiesQuery.data ?? []
   const metricsArray = periodSummaryQuery.data?.metrics ?? []
-  const metrics: Record<string, { avg: number | null; changeFromPreviousPeriodPercent: number | null }> = {}
+  const metrics: Record<string, { avg: number | null; change_from_previous_period_percent: number | null }> =
+    {}
   for (const m of metricsArray) {
     metrics[m.metric] = {
       avg: m.avg,
-      changeFromPreviousPeriodPercent: m.changeFromPreviousPeriodPercent,
+      change_from_previous_period_percent: m.change_from_previous_period_percent,
     }
   }
 
@@ -379,8 +380,8 @@ export function Sleep() {
   const avgSleepDuration =
     sleepSessions.length > 0 ?
       sleepSessions.reduce((sum, s) => {
-        if (!s.endTime) return sum
-        return sum + (s.endTime.getTime() - s.startTime.getTime()) / 3600000
+        if (!s.end_time) return sum
+        return sum + (s.end_time.getTime() - s.start_time.getTime()) / 3600000
       }, 0) / sleepSessions.length
     : null
 
@@ -411,7 +412,7 @@ export function Sleep() {
           <StatCard
             label="Sleep Score"
             value={metrics.sleep_score?.avg ?? null}
-            trend={metrics.sleep_score?.changeFromPreviousPeriodPercent}
+            trend={metrics.sleep_score?.change_from_previous_period_percent}
             description="Overall sleep quality"
           />
           <StatCard label="Duration" value={avgSleepDuration} unit="h" description="Average per night" />
@@ -419,14 +420,14 @@ export function Sleep() {
             label="Efficiency"
             value={metrics.sleep_efficiency?.avg ?? null}
             unit="%"
-            trend={metrics.sleep_efficiency?.changeFromPreviousPeriodPercent}
+            trend={metrics.sleep_efficiency?.change_from_previous_period_percent}
             description="Time asleep vs. in bed"
           />
           <StatCard
             label="Latency"
             value={metrics.sleep_latency?.avg ?? null}
             unit="min"
-            trend={metrics.sleep_latency?.changeFromPreviousPeriodPercent}
+            trend={metrics.sleep_latency?.change_from_previous_period_percent}
             description="Time to fall asleep"
           />
         </div>
@@ -462,31 +463,31 @@ export function Sleep() {
           <StatCard
             label="Total Score"
             value={metrics.sleep_total_score?.avg ?? null}
-            trend={metrics.sleep_total_score?.changeFromPreviousPeriodPercent}
+            trend={metrics.sleep_total_score?.change_from_previous_period_percent}
             description="Sleep duration component"
           />
           <StatCard
             label="Deep Sleep"
             value={metrics.sleep_deep_score?.avg ?? null}
-            trend={metrics.sleep_deep_score?.changeFromPreviousPeriodPercent}
+            trend={metrics.sleep_deep_score?.change_from_previous_period_percent}
             description="Restorative sleep quality"
           />
           <StatCard
             label="REM Sleep"
             value={metrics.sleep_rem_score?.avg ?? null}
-            trend={metrics.sleep_rem_score?.changeFromPreviousPeriodPercent}
+            trend={metrics.sleep_rem_score?.change_from_previous_period_percent}
             description="Dream sleep quality"
           />
           <StatCard
             label="Restfulness"
             value={metrics.sleep_restfulness?.avg ?? null}
-            trend={metrics.sleep_restfulness?.changeFromPreviousPeriodPercent}
+            trend={metrics.sleep_restfulness?.change_from_previous_period_percent}
             description="Movement during sleep"
           />
           <StatCard
             label="Timing"
             value={metrics.sleep_timing?.avg ?? null}
-            trend={metrics.sleep_timing?.changeFromPreviousPeriodPercent}
+            trend={metrics.sleep_timing?.change_from_previous_period_percent}
             description="Consistency of bedtime"
           />
         </div>

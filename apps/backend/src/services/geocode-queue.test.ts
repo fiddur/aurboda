@@ -164,7 +164,7 @@ describe('createGeocodeQueue', () => {
       }),
     )
     expect(mockUpdateLocation).toHaveBeenCalledWith('testuser', 'loc-1', {
-      geocodeStatus: 'geocoding',
+      geocode_status: 'geocoding',
     })
   })
 

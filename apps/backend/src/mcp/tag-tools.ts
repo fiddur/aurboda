@@ -43,9 +43,9 @@ export const registerTagTools = (server: McpServer, user: string) => {
       }
 
       const result = await addTag(user, {
-        endTime: endDate,
+        end_time: endDate,
         mergeSpan: merge_span,
-        startTime: startDate,
+        start_time: startDate,
         tag,
       })
       return jsonResponse(result)

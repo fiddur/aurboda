@@ -16,15 +16,15 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
 
   const settings = result.rows[0].settings as Record<string, unknown>
   return {
-    birthDate: settings.birthDate as string | undefined,
+    birth_date: settings.birth_date as string | undefined,
     calendars: settings.calendars as CalendarConfig[] | undefined,
-    customMetrics: settings.customMetrics as CustomMetricDefinition[] | undefined,
+    custom_metrics: settings.custom_metrics as CustomMetricDefinition[] | undefined,
     dashboard: settings.dashboard as DashboardConfig | undefined,
     goals: settings.goals as Goal[] | undefined,
-    hrZoneStart: settings.hrZoneStart as UserSettings['hrZoneStart'],
-    lastFmUsername: settings.lastFmUsername as string | undefined,
-    rescueTimeKey: settings.rescueTimeKey as string | undefined,
-    tagMappings: settings.tagMappings as UserSettings['tagMappings'],
+    hr_zone_start: settings.hr_zone_start as UserSettings['hr_zone_start'],
+    lastfm_username: settings.lastfm_username as string | undefined,
+    rescue_time_key: settings.rescue_time_key as string | undefined,
+    tag_mappings: settings.tag_mappings as UserSettings['tag_mappings'],
   }
 }
 
@@ -41,14 +41,14 @@ export const upsertUserSettings = async (
 
   // Merge updates
   const merged: UserSettings = { ...existing }
-  if (updates.birthDate !== undefined) {
-    merged.birthDate = updates.birthDate
+  if (updates.birth_date !== undefined) {
+    merged.birth_date = updates.birth_date
   }
   if (updates.calendars !== undefined) {
     merged.calendars = updates.calendars
   }
-  if (updates.customMetrics !== undefined) {
-    merged.customMetrics = updates.customMetrics
+  if (updates.custom_metrics !== undefined) {
+    merged.custom_metrics = updates.custom_metrics
   }
   if (updates.dashboard !== undefined) {
     merged.dashboard = updates.dashboard
@@ -56,17 +56,17 @@ export const upsertUserSettings = async (
   if (updates.goals !== undefined) {
     merged.goals = updates.goals
   }
-  if (updates.hrZoneStart !== undefined) {
-    merged.hrZoneStart = updates.hrZoneStart
+  if (updates.hr_zone_start !== undefined) {
+    merged.hr_zone_start = updates.hr_zone_start
   }
-  if (updates.lastFmUsername !== undefined) {
-    merged.lastFmUsername = updates.lastFmUsername
+  if (updates.lastfm_username !== undefined) {
+    merged.lastfm_username = updates.lastfm_username
   }
-  if (updates.rescueTimeKey !== undefined) {
-    merged.rescueTimeKey = updates.rescueTimeKey
+  if (updates.rescue_time_key !== undefined) {
+    merged.rescue_time_key = updates.rescue_time_key
   }
-  if (updates.tagMappings !== undefined) {
-    merged.tagMappings = updates.tagMappings
+  if (updates.tag_mappings !== undefined) {
+    merged.tag_mappings = updates.tag_mappings
   }
 
   // Check if settings row exists

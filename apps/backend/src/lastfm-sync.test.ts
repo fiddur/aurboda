@@ -45,67 +45,67 @@ describe('matchesRule', () => {
   }
 
   const baseRule: LastFmTagRule = {
-    createdAt: new Date(),
+    created_at: new Date(),
     id: 'rule-1',
-    matchMode: 'exact',
-    matchType: 'track',
-    ruleName: 'Test Rule',
-    tagName: 'TestTag',
+    match_mode: 'exact',
+    match_type: 'track',
+    rule_name: 'Test Rule',
+    tag_name: 'TestTag',
   }
 
   describe('track match type', () => {
     it('matches exact track name (case insensitive)', () => {
-      const rule = { ...baseRule, matchType: 'track' as const, trackName: 'Test Track' }
+      const rule = { ...baseRule, match_type: 'track' as const, track_name: 'Test Track' }
       expect(matchesRule(baseScrobble, rule)).toBe(true)
 
-      const ruleUpperCase = { ...baseRule, matchType: 'track' as const, trackName: 'TEST TRACK' }
+      const ruleUpperCase = { ...baseRule, match_type: 'track' as const, track_name: 'TEST TRACK' }
       expect(matchesRule(baseScrobble, ruleUpperCase)).toBe(true)
     })
 
     it('does not match different track name with exact mode', () => {
-      const rule = { ...baseRule, matchType: 'track' as const, trackName: 'Different Track' }
+      const rule = { ...baseRule, match_type: 'track' as const, track_name: 'Different Track' }
       expect(matchesRule(baseScrobble, rule)).toBe(false)
     })
 
     it('matches substring with contains mode', () => {
       const rule = {
         ...baseRule,
-        matchMode: 'contains' as const,
-        matchType: 'track' as const,
-        trackName: 'Test',
+        match_mode: 'contains' as const,
+        match_type: 'track' as const,
+        track_name: 'Test',
       }
       expect(matchesRule(baseScrobble, rule)).toBe(true)
     })
 
-    it('returns false when trackName is missing', () => {
-      const rule = { ...baseRule, matchType: 'track' as const }
+    it('returns false when track_name is missing', () => {
+      const rule = { ...baseRule, match_type: 'track' as const }
       expect(matchesRule(baseScrobble, rule)).toBe(false)
     })
   })
 
   describe('artist match type', () => {
     it('matches exact artist name (case insensitive)', () => {
-      const rule = { ...baseRule, artistName: 'Test Artist', matchType: 'artist' as const }
+      const rule = { ...baseRule, artist_name: 'Test Artist', match_type: 'artist' as const }
       expect(matchesRule(baseScrobble, rule)).toBe(true)
     })
 
     it('does not match different artist name with exact mode', () => {
-      const rule = { ...baseRule, artistName: 'Different Artist', matchType: 'artist' as const }
+      const rule = { ...baseRule, artist_name: 'Different Artist', match_type: 'artist' as const }
       expect(matchesRule(baseScrobble, rule)).toBe(false)
     })
 
     it('matches substring with contains mode', () => {
       const rule = {
         ...baseRule,
-        artistName: 'Test',
-        matchMode: 'contains' as const,
-        matchType: 'artist' as const,
+        artist_name: 'Test',
+        match_mode: 'contains' as const,
+        match_type: 'artist' as const,
       }
       expect(matchesRule(baseScrobble, rule)).toBe(true)
     })
 
-    it('returns false when artistName is missing', () => {
-      const rule = { ...baseRule, matchType: 'artist' as const }
+    it('returns false when artist_name is missing', () => {
+      const rule = { ...baseRule, match_type: 'artist' as const }
       expect(matchesRule(baseScrobble, rule)).toBe(false)
     })
   })
@@ -114,9 +114,9 @@ describe('matchesRule', () => {
     it('matches when both track and artist match', () => {
       const rule = {
         ...baseRule,
-        artistName: 'Test Artist',
-        matchType: 'track_artist' as const,
-        trackName: 'Test Track',
+        artist_name: 'Test Artist',
+        match_type: 'track_artist' as const,
+        track_name: 'Test Track',
       }
       expect(matchesRule(baseScrobble, rule)).toBe(true)
     })
@@ -124,9 +124,9 @@ describe('matchesRule', () => {
     it('does not match when only track matches', () => {
       const rule = {
         ...baseRule,
-        artistName: 'Different Artist',
-        matchType: 'track_artist' as const,
-        trackName: 'Test Track',
+        artist_name: 'Different Artist',
+        match_type: 'track_artist' as const,
+        track_name: 'Test Track',
       }
       expect(matchesRule(baseScrobble, rule)).toBe(false)
     })
@@ -134,77 +134,77 @@ describe('matchesRule', () => {
     it('does not match when only artist matches', () => {
       const rule = {
         ...baseRule,
-        artistName: 'Test Artist',
-        matchType: 'track_artist' as const,
-        trackName: 'Different Track',
+        artist_name: 'Test Artist',
+        match_type: 'track_artist' as const,
+        track_name: 'Different Track',
       }
       expect(matchesRule(baseScrobble, rule)).toBe(false)
     })
 
-    it('returns false when trackName or artistName is missing', () => {
-      const ruleNoTrack = { ...baseRule, artistName: 'Test Artist', matchType: 'track_artist' as const }
-      const ruleNoArtist = { ...baseRule, matchType: 'track_artist' as const, trackName: 'Test Track' }
+    it('returns false when track_name or artist_name is missing', () => {
+      const ruleNoTrack = { ...baseRule, artist_name: 'Test Artist', match_type: 'track_artist' as const }
+      const ruleNoArtist = { ...baseRule, match_type: 'track_artist' as const, track_name: 'Test Track' }
 
       expect(matchesRule(baseScrobble, ruleNoTrack)).toBe(false)
       expect(matchesRule(baseScrobble, ruleNoArtist)).toBe(false)
     })
   })
 
-  describe('artistNames array matching', () => {
-    it('matches when scrobble artist is in artistNames array (artist type)', () => {
+  describe('artist_names array matching', () => {
+    it('matches when scrobble artist is in artist_names array (artist type)', () => {
       const rule = {
         ...baseRule,
-        artistNames: ['Artist A', 'Test Artist', 'Artist B'],
-        matchType: 'artist' as const,
+        artist_names: ['Artist A', 'Test Artist', 'Artist B'],
+        match_type: 'artist' as const,
       }
       expect(matchesRule(baseScrobble, rule)).toBe(true)
     })
 
-    it('does not match when scrobble artist is not in artistNames array', () => {
+    it('does not match when scrobble artist is not in artist_names array', () => {
       const rule = {
         ...baseRule,
-        artistNames: ['Artist A', 'Artist B', 'Artist C'],
-        matchType: 'artist' as const,
+        artist_names: ['Artist A', 'Artist B', 'Artist C'],
+        match_type: 'artist' as const,
       }
       expect(matchesRule(baseScrobble, rule)).toBe(false)
     })
 
-    it('artistNames takes precedence over artistName', () => {
+    it('artist_names takes precedence over artist_name', () => {
       const rule = {
         ...baseRule,
-        artistName: 'Test Artist', // would match
-        artistNames: ['Different Artist'], // does not match, takes precedence
-        matchType: 'artist' as const,
+        artist_name: 'Test Artist', // would match
+        artist_names: ['Different Artist'], // does not match, takes precedence
+        match_type: 'artist' as const,
       }
       expect(matchesRule(baseScrobble, rule)).toBe(false)
     })
 
-    it('falls back to artistName when artistNames is empty', () => {
+    it('falls back to artist_name when artist_names is empty', () => {
       const rule = {
         ...baseRule,
-        artistName: 'Test Artist',
-        artistNames: [] as string[],
-        matchType: 'artist' as const,
+        artist_name: 'Test Artist',
+        artist_names: [] as string[],
+        match_type: 'artist' as const,
       }
       expect(matchesRule(baseScrobble, rule)).toBe(true)
     })
 
-    it('matches artistNames with contains mode', () => {
+    it('matches artist_names with contains mode', () => {
       const rule = {
         ...baseRule,
-        artistNames: ['Artist A', 'Test'],
-        matchMode: 'contains' as const,
-        matchType: 'artist' as const,
+        artist_names: ['Artist A', 'Test'],
+        match_mode: 'contains' as const,
+        match_type: 'artist' as const,
       }
       expect(matchesRule(baseScrobble, rule)).toBe(true)
     })
 
-    it('matches artistNames in track_artist type', () => {
+    it('matches artist_names in track_artist type', () => {
       const rule = {
         ...baseRule,
-        artistNames: ['Test Artist', 'Other Artist'],
-        matchType: 'track_artist' as const,
-        trackName: 'Test Track',
+        artist_names: ['Test Artist', 'Other Artist'],
+        match_type: 'track_artist' as const,
+        track_name: 'Test Track',
       }
       expect(matchesRule(baseScrobble, rule)).toBe(true)
     })
@@ -224,13 +224,13 @@ describe('applyTagRules', () => {
 
     const rules: LastFmTagRule[] = [
       {
-        createdAt: new Date(),
+        created_at: new Date(),
         id: 'rule-1',
-        matchMode: 'exact',
-        matchType: 'track',
-        ruleName: 'Vocal Exercises',
-        tagName: 'VocalExercises',
-        trackName: 'Warmup Song',
+        match_mode: 'exact',
+        match_type: 'track',
+        rule_name: 'Vocal Exercises',
+        tag_name: 'VocalExercises',
+        track_name: 'Warmup Song',
       },
     ]
 
@@ -239,9 +239,9 @@ describe('applyTagRules', () => {
     expect(tagsCreated).toBe(1)
     expect(insertTag).toHaveBeenCalledTimes(1)
     expect(insertTag).toHaveBeenCalledWith('testuser', {
-      externalId: expect.stringMatching(/^lastfm-auto-rule-1-/),
+      external_id: expect.stringMatching(/^lastfm-auto-rule-1-/),
       source: 'lastfm-auto',
-      startTime: new Date('2024-01-01T10:00:00Z'),
+      start_time: new Date('2024-01-01T10:00:00Z'),
       tag: 'VocalExercises',
     })
   })
@@ -263,22 +263,22 @@ describe('applyTagRules', () => {
 
     const rules: LastFmTagRule[] = [
       {
-        createdAt: new Date(),
+        created_at: new Date(),
         id: 'rule-1',
-        matchMode: 'exact',
-        matchType: 'track',
-        ruleName: 'Rule 1',
-        tagName: 'SameTag',
-        trackName: 'Test Track',
+        match_mode: 'exact',
+        match_type: 'track',
+        rule_name: 'Rule 1',
+        tag_name: 'SameTag',
+        track_name: 'Test Track',
       },
       {
-        artistName: 'Test Artist',
-        createdAt: new Date(),
+        artist_name: 'Test Artist',
+        created_at: new Date(),
         id: 'rule-2',
-        matchMode: 'exact',
-        matchType: 'artist',
-        ruleName: 'Rule 2',
-        tagName: 'SameTag',
+        match_mode: 'exact',
+        match_type: 'artist',
+        rule_name: 'Rule 2',
+        tag_name: 'SameTag',
       },
     ]
 
@@ -300,14 +300,14 @@ describe('applyTagRules', () => {
 
     const rules: LastFmTagRule[] = [
       {
-        artistName: 'Warmup Artist',
-        createdAt: new Date(),
+        artist_name: 'Warmup Artist',
+        created_at: new Date(),
         id: 'rule-1',
-        matchMode: 'exact',
-        matchType: 'artist',
-        mergeGapSeconds: 600,
-        ruleName: 'Vocal Exercises',
-        tagName: 'VocalExercise',
+        match_mode: 'exact',
+        match_type: 'artist',
+        merge_gap_seconds: 600,
+        rule_name: 'Vocal Exercises',
+        tag_name: 'VocalExercise',
       },
     ]
 
@@ -316,10 +316,10 @@ describe('applyTagRules', () => {
     expect(tagsCreated).toBe(1)
     expect(insertTag).toHaveBeenCalledTimes(1)
     expect(insertTag).toHaveBeenCalledWith('testuser', {
-      endTime: new Date('2024-01-01T10:08:00Z'),
-      externalId: expect.stringMatching(/^lastfm-session-rule-1-/),
+      end_time: new Date('2024-01-01T10:08:00Z'),
+      external_id: expect.stringMatching(/^lastfm-session-rule-1-/),
       source: 'lastfm-auto',
-      startTime: new Date('2024-01-01T10:00:00Z'),
+      start_time: new Date('2024-01-01T10:00:00Z'),
       tag: 'VocalExercise',
     })
   })
@@ -336,14 +336,14 @@ describe('applyTagRules', () => {
 
     const rules: LastFmTagRule[] = [
       {
-        artistName: 'Warmup Artist',
-        createdAt: new Date(),
+        artist_name: 'Warmup Artist',
+        created_at: new Date(),
         id: 'rule-1',
-        matchMode: 'exact',
-        matchType: 'artist',
-        mergeGapSeconds: 600,
-        ruleName: 'Vocal Exercises',
-        tagName: 'VocalExercise',
+        match_mode: 'exact',
+        match_type: 'artist',
+        merge_gap_seconds: 600,
+        rule_name: 'Vocal Exercises',
+        tag_name: 'VocalExercise',
       },
     ]
 
@@ -355,11 +355,11 @@ describe('applyTagRules', () => {
 
   it('extends existing tag via findMergeableTag for cross-sync merging', async () => {
     const existingTag = {
-      endTime: new Date('2024-01-01T09:58:00Z'),
-      externalId: 'lastfm-session-rule-1-existing',
+      end_time: new Date('2024-01-01T09:58:00Z'),
+      external_id: 'lastfm-session-rule-1-existing',
       id: 'tag-id-1',
       source: 'lastfm-auto' as const,
-      startTime: new Date('2024-01-01T09:50:00Z'),
+      start_time: new Date('2024-01-01T09:50:00Z'),
       tag: 'VocalExercise',
     }
     vi.mocked(findMergeableTag).mockResolvedValueOnce(existingTag)
@@ -371,14 +371,14 @@ describe('applyTagRules', () => {
 
     const rules: LastFmTagRule[] = [
       {
-        artistName: 'Warmup Artist',
-        createdAt: new Date(),
+        artist_name: 'Warmup Artist',
+        created_at: new Date(),
         id: 'rule-1',
-        matchMode: 'exact',
-        matchType: 'artist',
-        mergeGapSeconds: 600,
-        ruleName: 'Vocal Exercises',
-        tagName: 'VocalExercise',
+        match_mode: 'exact',
+        match_type: 'artist',
+        merge_gap_seconds: 600,
+        rule_name: 'Vocal Exercises',
+        tag_name: 'VocalExercise',
       },
     ]
 
@@ -403,23 +403,23 @@ describe('applyTagRules', () => {
 
     const rules: LastFmTagRule[] = [
       {
-        artistName: 'Warmup Artist',
-        createdAt: new Date(),
+        artist_name: 'Warmup Artist',
+        created_at: new Date(),
         id: 'rule-1',
-        matchMode: 'exact',
-        matchType: 'artist',
-        mergeGapSeconds: 600,
-        ruleName: 'Session Rule',
-        tagName: 'SessionTag',
+        match_mode: 'exact',
+        match_type: 'artist',
+        merge_gap_seconds: 600,
+        rule_name: 'Session Rule',
+        tag_name: 'SessionTag',
       },
       {
-        artistName: 'Warmup Artist',
-        createdAt: new Date(),
+        artist_name: 'Warmup Artist',
+        created_at: new Date(),
         id: 'rule-2',
-        matchMode: 'exact',
-        matchType: 'artist',
-        ruleName: 'Point Rule',
-        tagName: 'PointTag',
+        match_mode: 'exact',
+        match_type: 'artist',
+        rule_name: 'Point Rule',
+        tag_name: 'PointTag',
       },
     ]
 
@@ -435,22 +435,22 @@ describe('applyTagRules', () => {
 
     const rules: LastFmTagRule[] = [
       {
-        createdAt: new Date(),
+        created_at: new Date(),
         id: 'rule-1',
-        matchMode: 'exact',
-        matchType: 'track',
-        ruleName: 'Rule 1',
-        tagName: 'Tag1',
-        trackName: 'Test Track',
+        match_mode: 'exact',
+        match_type: 'track',
+        rule_name: 'Rule 1',
+        tag_name: 'Tag1',
+        track_name: 'Test Track',
       },
       {
-        artistName: 'Test Artist',
-        createdAt: new Date(),
+        artist_name: 'Test Artist',
+        created_at: new Date(),
         id: 'rule-2',
-        matchMode: 'exact',
-        matchType: 'artist',
-        ruleName: 'Rule 2',
-        tagName: 'Tag2',
+        match_mode: 'exact',
+        match_type: 'artist',
+        rule_name: 'Rule 2',
+        tag_name: 'Tag2',
       },
     ]
 
@@ -473,13 +473,13 @@ describe('syncLastFmData', () => {
 
     const mockRules: LastFmTagRule[] = [
       {
-        createdAt: new Date(),
+        created_at: new Date(),
         id: 'rule-1',
-        matchMode: 'exact',
-        matchType: 'track',
-        ruleName: 'Test Rule',
-        tagName: 'TestTag',
-        trackName: 'Test Track',
+        match_mode: 'exact',
+        match_type: 'track',
+        rule_name: 'Test Rule',
+        tag_name: 'TestTag',
+        track_name: 'Test Track',
       },
     ]
 
@@ -494,15 +494,15 @@ describe('syncLastFmData', () => {
     const result = await syncLastFmData('testuser', 'api-key', 'lastfm-username')
 
     expect(result.status).toBe('success')
-    expect(result.scrobblesProcessed).toBe(1)
-    expect(result.tagsCreated).toBe(1)
+    expect(result.scrobbles_processed).toBe(1)
+    expect(result.tags_created).toBe(1)
 
     expect(insertRawRecord).toHaveBeenCalledTimes(1)
     expect(insertTag).toHaveBeenCalledTimes(1)
     expect(upsertSyncState).toHaveBeenCalledWith(
       'testuser',
       expect.objectContaining({
-        dataType: 'scrobbles',
+        data_type: 'scrobbles',
         provider: 'lastfm',
         status: 'idle',
       }),
@@ -521,13 +521,13 @@ describe('syncLastFmData', () => {
 
     expect(result.status).toBe('error')
     expect(result.error).toBe('API Error')
-    expect(result.scrobblesProcessed).toBe(0)
-    expect(result.tagsCreated).toBe(0)
+    expect(result.scrobbles_processed).toBe(0)
+    expect(result.tags_created).toBe(0)
 
     expect(upsertSyncState).toHaveBeenCalledWith(
       'testuser',
       expect.objectContaining({
-        dataType: 'scrobbles',
+        data_type: 'scrobbles',
         provider: 'lastfm',
         status: 'error',
       }),
@@ -535,11 +535,11 @@ describe('syncLastFmData', () => {
   })
 
   it('uses last sync time for incremental sync', async () => {
-    const lastSyncTime = new Date('2024-01-01T00:00:00Z')
+    const last_sync_time = new Date('2024-01-01T00:00:00Z')
 
     vi.mocked(getSyncState).mockResolvedValue({
-      dataType: 'scrobbles',
-      lastSyncTime,
+      data_type: 'scrobbles',
+      last_sync_time,
       provider: 'lastfm',
       status: 'idle',
     })
@@ -552,15 +552,19 @@ describe('syncLastFmData', () => {
 
     await syncLastFmData('testuser', 'api-key', 'lastfm-username')
 
-    expect(mockClient.getRecentTracks).toHaveBeenCalledWith('lastfm-username', lastSyncTime, expect.any(Date))
+    expect(mockClient.getRecentTracks).toHaveBeenCalledWith(
+      'lastfm-username',
+      last_sync_time,
+      expect.any(Date),
+    )
   })
 
   it('uses start date for full resync', async () => {
     const startDate = new Date('2023-01-01T00:00:00Z')
 
     vi.mocked(getSyncState).mockResolvedValue({
-      dataType: 'scrobbles',
-      lastSyncTime: new Date('2024-01-01T00:00:00Z'),
+      data_type: 'scrobbles',
+      last_sync_time: new Date('2024-01-01T00:00:00Z'),
       provider: 'lastfm',
       status: 'idle',
     })

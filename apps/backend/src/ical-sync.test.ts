@@ -118,16 +118,16 @@ describe('syncCalendar', () => {
     const result = await syncCalendar(user, calendar, { fetchIcs })
 
     expect(result.status).toBe('success')
-    expect(result.eventsProcessed).toBe(2)
+    expect(result.events_processed).toBe(2)
     expect(result.calendar).toBe('Work')
 
     // Should have called insertTag for each event
     expect(db.insertTag).toHaveBeenCalledTimes(2)
     expect(db.insertTag).toHaveBeenCalledWith(user, {
-      endTime: new Date('2025-01-15T11:00:00.000Z'),
-      externalId: 'event-1@example.com',
+      end_time: new Date('2025-01-15T11:00:00.000Z'),
+      external_id: 'event-1@example.com',
       source: 'calendar',
-      startTime: new Date('2025-01-15T10:00:00.000Z'),
+      start_time: new Date('2025-01-15T10:00:00.000Z'),
       tag: '[Work] Team Standup',
     })
 
@@ -136,8 +136,8 @@ describe('syncCalendar', () => {
     expect(db.insertRawRecord).toHaveBeenCalledWith(
       user,
       expect.objectContaining({
-        externalId: 'event-1@example.com',
-        recordType: 'calendar_event',
+        external_id: 'event-1@example.com',
+        record_type: 'calendar_event',
         source: 'calendar',
       }),
     )
@@ -151,7 +151,7 @@ describe('syncCalendar', () => {
     expect(db.upsertSyncState).toHaveBeenCalledWith(
       user,
       expect.objectContaining({
-        dataType: 'Work',
+        data_type: 'Work',
         provider: 'calendar',
         status: 'idle',
       }),
@@ -165,7 +165,7 @@ describe('syncCalendar', () => {
 
     expect(result.status).toBe('error')
     expect(result.error).toBe('Network error')
-    expect(result.eventsProcessed).toBe(0)
+    expect(result.events_processed).toBe(0)
   })
 
   test('handles empty calendar', async () => {
@@ -174,7 +174,7 @@ describe('syncCalendar', () => {
     const result = await syncCalendar(user, calendar, { fetchIcs })
 
     expect(result.status).toBe('success')
-    expect(result.eventsProcessed).toBe(0)
+    expect(result.events_processed).toBe(0)
   })
 })
 

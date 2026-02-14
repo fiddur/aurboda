@@ -62,31 +62,31 @@ describe('isRateLimited', () => {
   test('returns false when status is not rate_limited', () => {
     expect(
       isRateLimited({
-        dataType: 'dailyReadiness',
+        data_type: 'dailyReadiness',
         provider: 'oura',
-        retryAfter: new Date('2025-01-01T13:00:00Z'),
+        retry_after: new Date('2025-01-01T13:00:00Z'),
         status: 'idle',
       }),
     ).toBe(false)
   })
 
-  test('returns false when retryAfter is in the past', () => {
+  test('returns false when retry_after is in the past', () => {
     expect(
       isRateLimited({
-        dataType: 'dailyReadiness',
+        data_type: 'dailyReadiness',
         provider: 'oura',
-        retryAfter: new Date('2025-01-01T11:00:00Z'),
+        retry_after: new Date('2025-01-01T11:00:00Z'),
         status: 'rate_limited',
       }),
     ).toBe(false)
   })
 
-  test('returns true when rate_limited and retryAfter is in the future', () => {
+  test('returns true when rate_limited and retry_after is in the future', () => {
     expect(
       isRateLimited({
-        dataType: 'dailyReadiness',
+        data_type: 'dailyReadiness',
         provider: 'oura',
-        retryAfter: new Date('2025-01-01T13:00:00Z'),
+        retry_after: new Date('2025-01-01T13:00:00Z'),
         status: 'rate_limited',
       }),
     ).toBe(true)
@@ -126,9 +126,9 @@ describe('processOuraData', () => {
       expect(db.insertRawRecord).toHaveBeenCalledTimes(2)
       expect(db.insertRawRecord).toHaveBeenCalledWith(user, {
         data: data[0],
-        externalId: 'cv-1',
-        recordType: 'daily_cardiovascular_age',
-        recordedAt: new Date('2025-01-01T00:00:00Z'),
+        external_id: 'cv-1',
+        record_type: 'daily_cardiovascular_age',
+        recorded_at: new Date('2025-01-01T00:00:00Z'),
         source: 'oura',
       })
 
@@ -164,9 +164,9 @@ describe('processOuraData', () => {
 
       expect(db.insertRawRecord).toHaveBeenCalledWith(user, {
         data: data[0],
-        externalId: 'rd-1',
-        recordType: 'daily_readiness',
-        recordedAt: new Date('2025-01-01T06:00:00Z'),
+        external_id: 'rd-1',
+        record_type: 'daily_readiness',
+        recorded_at: new Date('2025-01-01T06:00:00Z'),
         source: 'oura',
       })
 
@@ -226,9 +226,9 @@ describe('processOuraData', () => {
 
       expect(db.insertRawRecord).toHaveBeenCalledWith(user, {
         data: data[0],
-        externalId: 'sl-1',
-        recordType: 'daily_sleep',
-        recordedAt: new Date('2025-01-01T07:00:00Z'),
+        external_id: 'sl-1',
+        record_type: 'daily_sleep',
+        recorded_at: new Date('2025-01-01T07:00:00Z'),
         source: 'oura',
       })
 
@@ -371,14 +371,14 @@ describe('processOuraData', () => {
 
       expect(db.insertRawRecord).toHaveBeenCalledWith(user, {
         data: data[0],
-        externalId: 'sess-1',
-        recordType: 'session',
-        recordedAt: new Date('2025-01-01T10:00:00Z'),
+        external_id: 'sess-1',
+        record_type: 'session',
+        recorded_at: new Date('2025-01-01T10:00:00Z'),
         source: 'oura',
       })
 
       expect(db.insertActivity).toHaveBeenCalledWith(user, {
-        activityType: 'meditation',
+        activity_type: 'meditation',
         data: {
           heartRate: data[0].heartRate,
           hrv: data[0].hrv,
@@ -386,9 +386,9 @@ describe('processOuraData', () => {
           motion: data[0].motion,
           sessionType: 'meditation',
         },
-        endTime: new Date('2025-01-01T10:30:00Z'),
+        end_time: new Date('2025-01-01T10:30:00Z'),
         source: 'oura',
-        startTime: new Date('2025-01-01T10:00:00Z'),
+        start_time: new Date('2025-01-01T10:00:00Z'),
         title: 'meditation',
       })
     })
@@ -522,17 +522,17 @@ describe('processOuraData', () => {
 
       expect(db.insertRawRecord).toHaveBeenCalledWith(user, {
         data: data[0],
-        externalId: 'tag-1',
-        recordType: 'enhanced_tag',
-        recordedAt: new Date('2025-01-01T08:00:00Z'),
+        external_id: 'tag-1',
+        record_type: 'enhanced_tag',
+        recorded_at: new Date('2025-01-01T08:00:00Z'),
         source: 'oura',
       })
 
       expect(db.insertTag).toHaveBeenCalledWith(user, {
-        endTime: new Date('2025-01-01T08:05:00Z'),
-        externalId: 'tag-1',
+        end_time: new Date('2025-01-01T08:05:00Z'),
+        external_id: 'tag-1',
         source: 'oura',
-        startTime: new Date('2025-01-01T08:00:00Z'),
+        start_time: new Date('2025-01-01T08:00:00Z'),
         tag: 'Morning Coffee',
       })
     })
@@ -552,10 +552,10 @@ describe('processOuraData', () => {
       await processOuraData(user, 'tags', data)
 
       expect(db.insertTag).toHaveBeenCalledWith(user, {
-        endTime: undefined,
-        externalId: 'tag-2',
+        end_time: undefined,
+        external_id: 'tag-2',
         source: 'oura',
-        startTime: new Date('2025-01-01T14:00:00Z'),
+        start_time: new Date('2025-01-01T14:00:00Z'),
         tag: 'stress_high',
       })
     })
@@ -575,10 +575,10 @@ describe('processOuraData', () => {
       await processOuraData(user, 'tags', data)
 
       expect(db.insertTag).toHaveBeenCalledWith(user, {
-        endTime: undefined,
-        externalId: 'tag-3',
+        end_time: undefined,
+        external_id: 'tag-3',
         source: 'oura',
-        startTime: new Date('2025-01-01T14:00:00Z'),
+        start_time: new Date('2025-01-01T14:00:00Z'),
         tag: 'unknown',
       })
     })

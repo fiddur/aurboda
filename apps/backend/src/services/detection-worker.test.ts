@@ -46,17 +46,17 @@ describe('determineClusterAction', () => {
 
   const makeStored = (id: string, lat: number, lon: number): DetectedLocation => ({
     address: null,
-    createdAt: new Date('2024-01-10'),
-    firstVisit: new Date('2024-01-10T10:00:00Z'),
-    geocodeStatus: 'success',
+    created_at: new Date('2024-01-10'),
+    first_visit: new Date('2024-01-10T10:00:00Z'),
+    geocode_status: 'success',
     id,
-    lastVisit: new Date('2024-01-14T12:00:00Z'),
+    last_visit: new Date('2024-01-14T12:00:00Z'),
     lat,
     lon,
     radius: 200,
-    totalMinutes: 500,
-    updatedAt: new Date('2024-01-14'),
-    visitCount: 5,
+    total_minutes: 500,
+    updated_at: new Date('2024-01-14'),
+    visit_count: 5,
   })
 
   test('returns create action when no stored locations exist', () => {
@@ -143,17 +143,17 @@ describe('determineAllActions', () => {
 
   const makeStored = (id: string, lat: number, lon: number): DetectedLocation => ({
     address: null,
-    createdAt: new Date('2024-01-10'),
-    firstVisit: new Date('2024-01-10T10:00:00Z'),
-    geocodeStatus: 'success',
+    created_at: new Date('2024-01-10'),
+    first_visit: new Date('2024-01-10T10:00:00Z'),
+    geocode_status: 'success',
     id,
-    lastVisit: new Date('2024-01-14T12:00:00Z'),
+    last_visit: new Date('2024-01-14T12:00:00Z'),
     lat,
     lon,
     radius: 200,
-    totalMinutes: 500,
-    updatedAt: new Date('2024-01-14'),
-    visitCount: 5,
+    total_minutes: 500,
+    updated_at: new Date('2024-01-14'),
+    visit_count: 5,
   })
 
   test('returns action for each cluster', () => {
@@ -191,17 +191,17 @@ describe('mergeClusterWithStored', () => {
     visitCount: number,
   ): DetectedLocation => ({
     address: null,
-    createdAt: new Date('2024-01-10'),
-    firstVisit,
-    geocodeStatus: 'success',
+    created_at: new Date('2024-01-10'),
+    first_visit: firstVisit,
+    geocode_status: 'success',
     id: '1',
-    lastVisit,
+    last_visit: lastVisit,
     lat: 59.33005,
     lon: 18.07005,
     radius: 200,
-    totalMinutes,
-    updatedAt: new Date('2024-01-14'),
-    visitCount,
+    total_minutes: totalMinutes,
+    updated_at: new Date('2024-01-14'),
+    visit_count: visitCount,
   })
 
   test('adds up total minutes', () => {
@@ -210,7 +210,7 @@ describe('mergeClusterWithStored', () => {
 
     const merged = mergeClusterWithStored(cluster, stored)
 
-    expect(merged.totalMinutes).toBe(620)
+    expect(merged.total_minutes).toBe(620)
   })
 
   test('adds up visit counts', () => {
@@ -219,7 +219,7 @@ describe('mergeClusterWithStored', () => {
 
     const merged = mergeClusterWithStored(cluster, stored)
 
-    expect(merged.visitCount).toBe(7)
+    expect(merged.visit_count).toBe(7)
   })
 
   test('uses earlier firstVisit', () => {
@@ -228,7 +228,7 @@ describe('mergeClusterWithStored', () => {
 
     const merged = mergeClusterWithStored(cluster, stored)
 
-    expect(merged.firstVisit).toEqual(new Date('2024-01-10T10:00:00Z'))
+    expect(merged.first_visit).toEqual(new Date('2024-01-10T10:00:00Z'))
   })
 
   test('uses earlier cluster firstVisit when cluster is earlier', () => {
@@ -237,7 +237,7 @@ describe('mergeClusterWithStored', () => {
 
     const merged = mergeClusterWithStored(cluster, stored)
 
-    expect(merged.firstVisit).toEqual(new Date('2024-01-05T10:00:00Z'))
+    expect(merged.first_visit).toEqual(new Date('2024-01-05T10:00:00Z'))
   })
 
   test('uses later lastVisit', () => {
@@ -246,7 +246,7 @@ describe('mergeClusterWithStored', () => {
 
     const merged = mergeClusterWithStored(cluster, stored)
 
-    expect(merged.lastVisit).toEqual(new Date('2024-01-15T12:00:00Z'))
+    expect(merged.last_visit).toEqual(new Date('2024-01-15T12:00:00Z'))
   })
 
   test('uses stored lastVisit when stored is later', () => {
@@ -255,7 +255,7 @@ describe('mergeClusterWithStored', () => {
 
     const merged = mergeClusterWithStored(cluster, stored)
 
-    expect(merged.lastVisit).toEqual(new Date('2024-01-14T12:00:00Z'))
+    expect(merged.last_visit).toEqual(new Date('2024-01-14T12:00:00Z'))
   })
 
   test('uses cluster coordinates', () => {

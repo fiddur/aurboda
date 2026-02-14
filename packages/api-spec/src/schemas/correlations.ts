@@ -12,12 +12,12 @@ import { createDataResponseSchema } from './common.js'
 /** HRV statistics schema */
 export const hrvStatsSchema = z
   .object({
-    meanHr: z.number().nullable().meta({ description: 'Mean heart rate during period' }),
-    meanHrv: z.number().nullable().meta({ description: 'Mean HRV (RMSSD) during period' }),
-    sampleCount: z.number().int().meta({ description: 'Number of data samples' }),
-    sampleMinutes: z.number().meta({ description: 'Total minutes of data' }),
-    stddevHr: z.number().nullable().meta({ description: 'Standard deviation of HR' }),
-    stddevHrv: z.number().nullable().meta({ description: 'Standard deviation of HRV' }),
+    mean_hr: z.number().nullable().meta({ description: 'Mean heart rate during period' }),
+    mean_hrv: z.number().nullable().meta({ description: 'Mean HRV (RMSSD) during period' }),
+    sample_count: z.number().int().meta({ description: 'Number of data samples' }),
+    sample_minutes: z.number().meta({ description: 'Total minutes of data' }),
+    stddev_hr: z.number().nullable().meta({ description: 'Standard deviation of HR' }),
+    stddev_hrv: z.number().nullable().meta({ description: 'Standard deviation of HRV' }),
   })
   .meta({ id: 'HrvStats' })
 
@@ -26,8 +26,8 @@ export type HrvStats = z.infer<typeof hrvStatsSchema>
 /** HRV stats with baseline delta */
 export const hrvStatsWithDeltaSchema = hrvStatsSchema
   .extend({
-    hrDeltaFromBaseline: z.number().nullable().meta({ description: 'HR change from baseline' }),
-    hrvDeltaFromBaseline: z.number().nullable().meta({ description: 'HRV change from baseline' }),
+    hr_delta_from_baseline: z.number().nullable().meta({ description: 'HR change from baseline' }),
+    hrv_delta_from_baseline: z.number().nullable().meta({ description: 'HRV change from baseline' }),
   })
   .meta({ id: 'HrvStatsWithDelta' })
 
@@ -55,16 +55,16 @@ export const baselineDataSchema = z
     hrv: z.object({
       avg7day: z.number().nullable(),
       avg30day: z.number().nullable(),
-      trendPercent: z.number().nullable().meta({ description: 'Change from previous 30-day period' }),
+      trend_percent: z.number().nullable().meta({ description: 'Change from previous 30-day period' }),
     }),
     period: z.object({
       end: z.string(),
       start: z.string(),
     }),
-    restingHr: z.object({
+    resting_hr: z.object({
       avg7day: z.number().nullable(),
       avg30day: z.number().nullable(),
-      trendPercent: z.number().nullable(),
+      trend_percent: z.number().nullable(),
     }),
   })
   .meta({ id: 'BaselineData' })
@@ -98,7 +98,7 @@ export type HrvActivitiesQuery = z.infer<typeof hrvActivitiesQuerySchema>
 export const productivityCorrelationSchema = hrvStatsWithDeltaSchema
   .extend({
     category: z.string().meta({ description: 'RescueTime category name' }),
-    correlationCoefficient: z.number().nullable().meta({ description: 'Pearson correlation (-1 to 1)' }),
+    correlation_coefficient: z.number().nullable().meta({ description: 'Pearson correlation (-1 to 1)' }),
   })
   .meta({ id: 'ProductivityCorrelation' })
 
@@ -107,8 +107,8 @@ export type ProductivityCorrelation = z.infer<typeof productivityCorrelationSche
 /** Location correlation */
 export const locationCorrelationSchema = hrvStatsWithDeltaSchema
   .extend({
-    locationName: z.string().meta({ description: 'Location name' }),
-    visitCount: z.number().int().meta({ description: 'Number of visits' }),
+    location_name: z.string().meta({ description: 'Location name' }),
+    visit_count: z.number().int().meta({ description: 'Number of visits' }),
   })
   .meta({ id: 'LocationCorrelation' })
 
@@ -117,8 +117,8 @@ export type LocationCorrelation = z.infer<typeof locationCorrelationSchema>
 /** Activity correlation */
 export const activityCorrelationSchema = hrvStatsWithDeltaSchema
   .extend({
-    activityType: z.string().meta({ description: 'Activity type (exercise, meditation, etc.)' }),
-    avgDurationMin: z.number().meta({ description: 'Average duration in minutes' }),
+    activity_type: z.string().meta({ description: 'Activity type (exercise, meditation, etc.)' }),
+    avg_duration_min: z.number().meta({ description: 'Average duration in minutes' }),
     occurrences: z.number().int().meta({ description: 'Number of occurrences' }),
   })
   .meta({ id: 'ActivityCorrelation' })
@@ -195,7 +195,7 @@ export type ActivityImpactQuery = z.infer<typeof activityImpactQuerySchema>
 export const timeWindowStatsSchema = z
   .object({
     mean: z.number().nullable(),
-    sampleCount: z.number().int(),
+    sample_count: z.number().int(),
     stddev: z.number().nullable(),
   })
   .meta({ id: 'TimeWindowStats' })
@@ -206,16 +206,16 @@ export type TimeWindowStats = z.infer<typeof timeWindowStatsSchema>
 export const activityImpactDataSchema = z
   .object({
     activity: z.string().meta({ description: 'Activity name/pattern searched' }),
-    activityType: activityImpactTypeSchema,
-    avgDurationMin: z.number().meta({ description: 'Average duration in minutes' }),
-    hrTimeline: z.object({
+    activity_type: activityImpactTypeSchema,
+    avg_duration_min: z.number().meta({ description: 'Average duration in minutes' }),
+    hr_timeline: z.object({
       after15min: timeWindowStatsSchema,
       after30min: timeWindowStatsSchema,
       before15min: timeWindowStatsSchema,
       before30min: timeWindowStatsSchema,
       during: timeWindowStatsSchema,
     }),
-    hrvTimeline: z.object({
+    hrv_timeline: z.object({
       after15min: timeWindowStatsSchema,
       after30min: timeWindowStatsSchema,
       before15min: timeWindowStatsSchema,
@@ -277,7 +277,7 @@ export const lagWindowResultSchema = z
   .object({
     occurrences: z.number().int(),
     probability: z.number().meta({ description: 'P(outcome | trigger)' }),
-    relativeRisk: z.number().meta({ description: 'Risk ratio compared to baseline' }),
+    relative_risk: z.number().meta({ description: 'Risk ratio compared to baseline' }),
   })
   .meta({ id: 'LagWindowResult' })
 
@@ -298,17 +298,17 @@ export const eventProbabilityDataSchema = z
       end: z.string(),
       start: z.string(),
     }),
-    postTrigger: z.record(z.string(), lagWindowResultSchema).meta({
+    post_trigger: z.record(z.string(), lagWindowResultSchema).meta({
       description: 'Probability for each lag window',
     }),
-    sampleSize: z.object({
-      daysAnalyzed: z.number().int(),
-      outcomeEvents: z.number().int(),
-      triggerEvents: z.number().int(),
+    sample_size: z.object({
+      days_analyzed: z.number().int(),
+      outcome_events: z.number().int(),
+      trigger_events: z.number().int(),
     }),
-    statisticalSignificance: z.object({
-      chiSquared: z.number().nullable(),
-      pValue: z.number().nullable(),
+    statistical_significance: z.object({
+      chi_squared: z.number().nullable(),
+      p_value: z.number().nullable(),
     }),
     trigger: z.object({
       type: eventTriggerTypeSchema,
@@ -344,7 +344,7 @@ export type TriggerConditionType = z.infer<typeof triggerConditionTypeSchema>
 /** Trigger condition schema */
 export const triggerConditionSchema = z
   .object({
-    minCount: z.number().int().optional().meta({
+    min_count: z.number().int().optional().meta({
       description: 'Minimum occurrences within the window (default: 1)',
       example: 3,
     }),
@@ -353,7 +353,7 @@ export const triggerConditionSchema = z
       example: 'meditation',
     }),
     type: triggerConditionTypeSchema,
-    windowDays: z.number().int().optional().meta({
+    window_days: z.number().int().optional().meta({
       description: 'Rolling window in days for counting occurrences (default: 1)',
       example: 7,
     }),
@@ -439,16 +439,16 @@ export const tagLagResultSchema = z
   .object({
     occurrences: z.number().int(),
     probability: z.number().meta({ description: 'P(outcome | trigger)' }),
-    relativeRisk: z.number().meta({ description: 'Risk ratio compared to baseline' }),
+    relative_risk: z.number().meta({ description: 'Risk ratio compared to baseline' }),
   })
   .meta({ id: 'GenericTagLagResult' })
 
 /** Metric lag result */
 export const metricLagResultSchema = z
   .object({
-    deltaFromBaseline: z.number().nullable().meta({ description: 'Difference from baseline mean' }),
+    delta_from_baseline: z.number().nullable().meta({ description: 'Difference from baseline mean' }),
     mean: z.number().nullable().meta({ description: 'Mean value in the lag window' }),
-    sampleCount: z.number().int(),
+    sample_count: z.number().int(),
     stddev: z.number().nullable().meta({ description: 'Standard deviation' }),
   })
   .meta({ id: 'MetricLagResult' })
@@ -456,9 +456,9 @@ export const metricLagResultSchema = z
 /** Productivity lag result */
 export const productivityLagResultSchema = z
   .object({
-    avgMinutesPerDay: z.number().meta({ description: 'Average minutes per day' }),
-    deltaFromBaseline: z.number().nullable().meta({ description: 'Difference from baseline' }),
-    totalMinutes: z.number().meta({ description: 'Total minutes in the lag window' }),
+    avg_minutes_per_day: z.number().meta({ description: 'Average minutes per day' }),
+    delta_from_baseline: z.number().nullable().meta({ description: 'Difference from baseline' }),
+    total_minutes: z.number().meta({ description: 'Total minutes in the lag window' }),
   })
   .meta({ id: 'ProductivityLagResult' })
 
@@ -483,7 +483,7 @@ export const tagBaselineSchema = z
 export const metricBaselineSchema = z
   .object({
     mean: z.number().nullable(),
-    sampleCount: z.number().int(),
+    sample_count: z.number().int(),
     stddev: z.number().nullable(),
   })
   .meta({ id: 'MetricBaseline' })
@@ -491,8 +491,8 @@ export const metricBaselineSchema = z
 /** Productivity baseline stats */
 export const productivityBaselineSchema = z
   .object({
-    avgMinutesPerDay: z.number(),
-    totalMinutes: z.number(),
+    avg_minutes_per_day: z.number(),
+    total_minutes: z.number(),
   })
   .meta({ id: 'ProductivityBaseline' })
 
@@ -515,15 +515,15 @@ export const genericCorrelationDataSchema = z
       end: z.string(),
       start: z.string(),
     }),
-    postTrigger: z.record(z.string(), genericLagResultSchema).meta({
+    post_trigger: z.record(z.string(), genericLagResultSchema).meta({
       description: 'Results for each lag window',
     }),
-    statisticalSignificance: z.object({
-      chiSquared: z.number().nullable(),
-      pValue: z.number().nullable(),
+    statistical_significance: z.object({
+      chi_squared: z.number().nullable(),
+      p_value: z.number().nullable(),
     }),
     triggers: z.array(triggerConditionSchema).meta({ description: 'Trigger conditions used' }),
-    windowsMatched: z.number().int().meta({ description: 'Number of windows where all conditions were met' }),
+    windows_matched: z.number().int().meta({ description: 'Number of windows where all conditions were met' }),
   })
   .meta({ id: 'GenericCorrelationData' })
 

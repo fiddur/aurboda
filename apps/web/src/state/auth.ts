@@ -5,7 +5,7 @@ import { API_URL } from '../config'
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
 const savedAuth = localStorage.getItem('auth')
-export const auth = signal<{ user?: string; token?: string; isAdmin?: boolean }>(
+export const auth = signal<{ user?: string; token?: string; is_admin?: boolean }>(
   savedAuth ? JSON.parse(savedAuth) : {},
 )
 auth.subscribe((value) => localStorage.setItem('auth', JSON.stringify(value)))
@@ -22,11 +22,11 @@ export const fetchStatus = async () => {
 
   statusFetchPromise = (async () => {
     try {
-      const response = await axios.get<{ signupAllowed: boolean; signupMode: SignupMode }>(
+      const response = await axios.get<{ signup_allowed: boolean; signup_mode: SignupMode }>(
         `${API_URL}/status`,
       )
-      signupAllowed.value = response.data.signupAllowed
-      signupMode.value = response.data.signupMode
+      signupAllowed.value = response.data.signup_allowed
+      signupMode.value = response.data.signup_mode
     } catch (error) {
       console.error('Status fetch error:', error)
       signupAllowed.value = false
@@ -41,13 +41,13 @@ export const ensureStatusLoaded = () => fetchStatus()
 
 export const login = async (user: string, pass: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    const response = await axios.post<{ token: string; isAdmin?: boolean }>(`${API_URL}/login`, {
+    const response = await axios.post<{ token: string; is_admin?: boolean }>(`${API_URL}/login`, {
       password: pass,
       username: user,
     })
 
     if (response.data.token) {
-      auth.value = { isAdmin: response.data.isAdmin, token: response.data.token, user }
+      auth.value = { is_admin: response.data.is_admin, token: response.data.token, user }
       return { success: true }
     }
     return { error: 'No token received', success: false }
@@ -65,14 +65,14 @@ export const signup = async (
   invitation?: string,
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    const response = await axios.post<{ token: string; isAdmin?: boolean }>(`${API_URL}/signup`, {
+    const response = await axios.post<{ token: string; is_admin?: boolean }>(`${API_URL}/signup`, {
       invitation,
       password: pass,
       username: user,
     })
 
     if (response.data.token) {
-      auth.value = { isAdmin: response.data.isAdmin, token: response.data.token, user }
+      auth.value = { is_admin: response.data.is_admin, token: response.data.token, user }
       return { success: true }
     }
     return { error: 'No token received', success: false }

@@ -34,10 +34,10 @@ const isInWindow = (time: Date, windows: TimeWindow[]): boolean => {
  */
 const activitiesToWindows = (activities: Activity[]): TimeWindow[] =>
   activities
-    .filter((a) => a.endTime !== undefined)
+    .filter((a) => a.end_time !== undefined)
     .map((a) => ({
-      end: a.endTime!,
-      start: a.startTime,
+      end: a.end_time!,
+      start: a.start_time,
     }))
 
 /**

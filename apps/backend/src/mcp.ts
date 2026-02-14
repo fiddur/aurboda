@@ -104,9 +104,9 @@ export function createMcpRouter(
 
     // Check if session is expired (older than 7 days by default)
     const maxAge = DEFAULT_SESSION_INACTIVITY_MS
-    const age = Date.now() - record.lastActivity.getTime()
+    const age = Date.now() - record.last_activity.getTime()
     console.log(
-      `[MCP] restoreSessionFromStore: session ${sessionId} age=${age}ms, maxAge=${maxAge}ms, lastActivity=${record.lastActivity.toISOString()}`,
+      `[MCP] restoreSessionFromStore: session ${sessionId} age=${age}ms, maxAge=${maxAge}ms, lastActivity=${record.last_activity.toISOString()}`,
     )
     if (age > maxAge) {
       // Session expired - clean it up
@@ -140,7 +140,7 @@ export function createMcpRouter(
       for (const [sessionId, session] of sessions) {
         // Check store for last activity
         const record = await sessionStore.get(session.user, sessionId)
-        if (!record || now - record.lastActivity.getTime() > DEFAULT_SESSION_INACTIVITY_MS) {
+        if (!record || now - record.last_activity.getTime() > DEFAULT_SESSION_INACTIVITY_MS) {
           // Close and remove stale session
           await session.server.close()
           sessions.delete(sessionId)

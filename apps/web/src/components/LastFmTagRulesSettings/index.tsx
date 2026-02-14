@@ -78,25 +78,25 @@ export function LastFmTagRulesSettings() {
     setSaveStatus({ status: 'saving' })
     try {
       const rule: AddLastFmTagRuleBody = {
-        matchMode,
-        matchType,
-        ruleName: ruleName.trim(),
-        tagName: tagName.trim(),
+        match_mode: matchMode,
+        match_type: matchType,
+        rule_name: ruleName.trim(),
+        tag_name: tagName.trim(),
       }
       if (matchType === 'track' || matchType === 'track_artist') {
-        rule.trackName = trackName.trim()
+        rule.track_name = trackName.trim()
       }
       if (matchType === 'artist' || matchType === 'track_artist') {
         if (artistNames.length > 0) {
-          rule.artistNames = artistNames
+          rule.artist_names = artistNames
         } else {
-          rule.artistName = artistName.trim()
+          rule.artist_name = artistName.trim()
         }
       }
 
       const gapMinutes = parseFloat(mergeGapMinutes)
       if (gapMinutes > 0) {
-        rule.mergeGapSeconds = Math.round(gapMinutes * 60)
+        rule.merge_gap_seconds = Math.round(gapMinutes * 60)
       }
 
       await createLastFmTagRule(rule)
@@ -120,7 +120,7 @@ export function LastFmTagRulesSettings() {
   }
 
   const handleDeleteRule = async (rule: LastFmTagRule) => {
-    if (!confirm(`Delete rule "${rule.ruleName}"?`)) return
+    if (!confirm(`Delete rule "${rule.rule_name}"?`)) return
 
     try {
       await deleteLastFmTagRule(rule.id)
@@ -134,10 +134,10 @@ export function LastFmTagRulesSettings() {
   }
 
   const formatRuleArtists = (rule: LastFmTagRule): string => {
-    if (rule.artistNames && rule.artistNames.length > 0) {
-      return rule.artistNames.join(', ')
+    if (rule.artist_names && rule.artist_names.length > 0) {
+      return rule.artist_names.join(', ')
     }
-    return rule.artistName ?? ''
+    return rule.artist_name ?? ''
   }
 
   // Don't show if Last.fm is not configured
@@ -171,19 +171,19 @@ export function LastFmTagRulesSettings() {
               {(rules ?? []).map((rule) => (
                 <div class="rule-item" key={rule.id}>
                   <div class="rule-info">
-                    <span class="rule-name">{rule.ruleName}</span>
+                    <span class="rule-name">{rule.rule_name}</span>
                     <span class="rule-details">
-                      {rule.matchType === 'track' && `Track: "${rule.trackName}"`}
-                      {rule.matchType === 'artist' && `Artist: "${formatRuleArtists(rule)}"`}
-                      {rule.matchType === 'track_artist' &&
-                        `"${rule.trackName}" by "${formatRuleArtists(rule)}"`}
-                      {rule.matchMode === 'contains' && ' (contains)'}
+                      {rule.match_type === 'track' && `Track: "${rule.track_name}"`}
+                      {rule.match_type === 'artist' && `Artist: "${formatRuleArtists(rule)}"`}
+                      {rule.match_type === 'track_artist' &&
+                        `"${rule.track_name}" by "${formatRuleArtists(rule)}"`}
+                      {rule.match_mode === 'contains' && ' (contains)'}
                       {' → '}
-                      <strong>{rule.tagName}</strong>
-                      {rule.mergeGapSeconds && (
+                      <strong>{rule.tag_name}</strong>
+                      {rule.merge_gap_seconds && (
                         <span class="rule-merge-info">
                           {' '}
-                          (session merge: {Math.round(rule.mergeGapSeconds / 60)}min)
+                          (session merge: {Math.round(rule.merge_gap_seconds / 60)}min)
                         </span>
                       )}
                     </span>

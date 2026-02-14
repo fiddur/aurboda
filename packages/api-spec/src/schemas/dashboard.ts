@@ -41,7 +41,7 @@ export const metricCardConfigSchema = z
     metric: dashboardMetricSchema.meta({ description: 'The metric to display' }),
     subtitle: z.string().optional().meta({ description: 'Optional subtitle text' }),
     title: z.string().min(1).meta({ description: 'Display title for the metric' }),
-    trendInverse: z.boolean().optional().meta({ description: 'If true, lower values are better' }),
+    trend_inverse: z.boolean().optional().meta({ description: 'If true, lower values are better' }),
     unit: z.string().optional().meta({ description: 'Unit label (e.g., "ms", "bpm")' }),
   })
   .meta({ id: 'MetricCardConfig' })
@@ -54,7 +54,7 @@ export type MetricCardConfig = z.infer<typeof metricCardConfigSchema>
 export const sparklineCardConfigSchema = z
   .object({
     color: z.string().optional().meta({ description: 'Chart line color (CSS color)' }),
-    lookbackDays: z
+    lookback_days: z
       .number()
       .int()
       .positive()
@@ -73,14 +73,14 @@ export type SparklineCardConfig = z.infer<typeof sparklineCardConfigSchema>
 export const trendChartConfigSchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
-    displayPeriod: z
+    display_period: z
       .enum(['daily', 'weekly', 'monthly'])
       .optional()
       .meta({ description: 'Display period for rate' }),
-    halfLifeDays: z.number().int().positive().optional().meta({ description: 'EMA half-life in days' }),
-    lookbackDays: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
+    half_life_days: z.number().int().positive().optional().meta({ description: 'EMA half-life in days' }),
+    lookback_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
     pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
-    sourceType: z.enum(['tag', 'metric']).meta({ description: 'Data source type' }),
+    source_type: z.enum(['tag', 'metric']).meta({ description: 'Data source type' }),
     title: z.string().optional().meta({ description: 'Chart title' }),
   })
   .meta({ id: 'TrendChartConfig' })
@@ -93,12 +93,12 @@ export type TrendChartConfig = z.infer<typeof trendChartConfigSchema>
 export const correlationConfigSchema = z
   .object({
     activity: z.string().min(1).meta({ description: 'Activity or tag to analyze' }),
-    activityType: z
+    activity_type: z
       .enum(['productivity_category', 'productivity_app', 'location', 'tag', 'activity_type'])
       .meta({ description: 'Type of activity' }),
-    periodDays: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
+    period_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
     title: z.string().optional().meta({ description: 'Widget title' }),
-    windowMinutes: z
+    window_minutes: z
       .number()
       .int()
       .positive()
@@ -114,15 +114,15 @@ export type CorrelationConfig = z.infer<typeof correlationConfigSchema>
  */
 export const activitySummaryConfigSchema = z
   .object({
-    lookbackDays: z
+    lookback_days: z
       .number()
       .int()
       .positive()
       .optional()
       .meta({ description: 'Days of activities to summarize (default: 7)' }),
-    showMeditation: z.boolean().optional().meta({ description: 'Show meditation count (default: true)' }),
-    showSleep: z.boolean().optional().meta({ description: 'Show average sleep hours (default: true)' }),
-    showWorkouts: z
+    show_meditation: z.boolean().optional().meta({ description: 'Show meditation count (default: true)' }),
+    show_sleep: z.boolean().optional().meta({ description: 'Show average sleep hours (default: true)' }),
+    show_workouts: z
       .boolean()
       .optional()
       .meta({ description: 'Show workout count and duration (default: true)' }),
@@ -297,7 +297,7 @@ export const defaultDashboardConfig: DashboardConfig = {
             metric: 'rhr_7day',
             subtitle: 'Lower is generally better',
             title: 'Resting HR (7-day)',
-            trendInverse: true,
+            trend_inverse: true,
             unit: 'bpm',
           },
           id: 'rhr-7d',
@@ -321,7 +321,7 @@ export const defaultDashboardConfig: DashboardConfig = {
       type: 'metrics',
       widgets: [
         {
-          config: { color: '#3b82f6', lookbackDays: 30, metric: 'sleep_score' },
+          config: { color: '#3b82f6', lookback_days: 30, metric: 'sleep_score' },
           id: 'sleep',
           type: 'sparkline_card',
         },
@@ -353,7 +353,7 @@ export const defaultDashboardConfig: DashboardConfig = {
       type: 'charts',
       widgets: [
         {
-          config: { lookbackDays: 7 },
+          config: { lookback_days: 7 },
           id: 'activity-summary',
           type: 'activity_summary',
         },

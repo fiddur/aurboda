@@ -66,7 +66,7 @@ export interface SyncRouterDeps {
   resetLastFmSyncState: (user: string) => Promise<void>
   getSettings: (
     user: string,
-  ) => Promise<{ rescueTimeKey?: string; calendars?: CalendarConfig[]; lastFmUsername?: string }>
+  ) => Promise<{ rescue_time_key?: string; calendars?: CalendarConfig[]; lastfm_username?: string }>
   getLastFmApiKey: () => Promise<string | null>
 }
 
@@ -162,7 +162,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       const user = req.user!
       const { full_resync, start_date } = req.body
       const settings = await deps.getSettings(user)
-      const rescueTimeKey = settings.rescueTimeKey
+      const rescueTimeKey = settings.rescue_time_key
 
       if (!rescueTimeKey) {
         return res
@@ -280,7 +280,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       }
 
       const settings = await deps.getSettings(user)
-      const lastFmUsername = settings.lastFmUsername
+      const lastFmUsername = settings.lastfm_username
 
       if (!lastFmUsername) {
         return res

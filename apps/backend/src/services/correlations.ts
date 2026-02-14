@@ -17,18 +17,18 @@ import { SyncProvider } from './queries'
 
 /** HRV statistics for a context/activity */
 export interface HrvStats {
-  meanHrv: number | null
-  stddevHrv: number | null
-  meanHr: number | null
-  stddevHr: number | null
-  sampleMinutes: number
-  sampleCount: number
+  mean_hrv: number | null
+  stddev_hrv: number | null
+  mean_hr: number | null
+  stddev_hr: number | null
+  sample_minutes: number
+  sample_count: number
 }
 
 /** HRV stats with baseline comparison */
 export interface HrvStatsWithDelta extends HrvStats {
-  hrvDeltaFromBaseline: number | null
-  hrDeltaFromBaseline: number | null
+  hrv_delta_from_baseline: number | null
+  hr_delta_from_baseline: number | null
 }
 
 /** Baseline statistics result */
@@ -36,12 +36,12 @@ export interface BaselineResult {
   hrv: {
     avg7day: number | null
     avg30day: number | null
-    trendPercent: number | null
+    trend_percent: number | null
   }
-  restingHr: {
+  resting_hr: {
     avg7day: number | null
     avg30day: number | null
-    trendPercent: number | null
+    trend_percent: number | null
   }
   period: {
     start: string
@@ -53,20 +53,20 @@ export interface BaselineResult {
 export interface ProductivityCorrelation extends HrvStatsWithDelta {
   category: string
   /** Pearson correlation between productivity score and HRV (-1 to 1) */
-  correlationCoefficient: number | null
+  correlation_coefficient: number | null
 }
 
 /** Correlation by location */
 export interface LocationCorrelation extends HrvStatsWithDelta {
-  locationName: string
-  visitCount: number
+  location_name: string
+  visit_count: number
 }
 
 /** Correlation by activity type */
 export interface ActivityCorrelation extends HrvStatsWithDelta {
-  activityType: string
+  activity_type: string
   occurrences: number
-  avgDurationMin: number
+  avg_duration_min: number
 }
 
 /** Correlation by tag */
@@ -100,23 +100,23 @@ export interface HrvActivitiesResult {
 export interface TimeWindowStats {
   mean: number | null
   stddev: number | null
-  sampleCount: number
+  sample_count: number
 }
 
 /** Activity impact timeline result */
 export interface ActivityImpactResult {
   activity: string
-  activityType: 'productivity_category' | 'productivity_app' | 'location' | 'tag' | 'activity_type'
+  activity_type: 'productivity_category' | 'productivity_app' | 'location' | 'tag' | 'activity_type'
   occurrences: number
-  avgDurationMin: number
-  hrvTimeline: {
+  avg_duration_min: number
+  hrv_timeline: {
     before30min: TimeWindowStats
     before15min: TimeWindowStats
     during: TimeWindowStats
     after15min: TimeWindowStats
     after30min: TimeWindowStats
   }
-  hrTimeline: {
+  hr_timeline: {
     before30min: TimeWindowStats
     before15min: TimeWindowStats
     during: TimeWindowStats
@@ -128,7 +128,7 @@ export interface ActivityImpactResult {
 /** Lag window result for event probability */
 export interface LagWindowResult {
   probability: number
-  relativeRisk: number
+  relative_risk: number
   occurrences: number
 }
 
@@ -150,15 +150,15 @@ export interface EventProbabilityResult {
     probability: number
     description: string
   }
-  postTrigger: Record<string, LagWindowResult>
-  sampleSize: {
-    triggerEvents: number
-    outcomeEvents: number
-    daysAnalyzed: number
+  post_trigger: Record<string, LagWindowResult>
+  sample_size: {
+    trigger_events: number
+    outcome_events: number
+    days_analyzed: number
   }
-  statisticalSignificance: {
-    chiSquared: number | null
-    pValue: number | null
+  statistical_significance: {
+    chi_squared: number | null
+    p_value: number | null
   }
 }
 
@@ -171,9 +171,9 @@ export interface TriggerCondition {
   type: 'activity' | 'tag' | 'productivity_category' | 'productivity_app'
   pattern: string
   /** Minimum count within the window (default: 1) */
-  minCount?: number
+  min_count?: number
   /** Rolling window in days for counting (default: 1) */
-  windowDays?: number
+  window_days?: number
 }
 
 /** Tag outcome configuration */
@@ -205,7 +205,7 @@ export type OutcomeConfig = TagOutcome | MetricOutcome | ProductivityOutcome
 /** Result for tag outcomes in lag windows */
 export interface TagLagResult {
   probability: number
-  relativeRisk: number
+  relative_risk: number
   occurrences: number
 }
 
@@ -213,15 +213,15 @@ export interface TagLagResult {
 export interface MetricLagResult {
   mean: number | null
   stddev: number | null
-  sampleCount: number
-  deltaFromBaseline: number | null
+  sample_count: number
+  delta_from_baseline: number | null
 }
 
 /** Result for productivity outcomes in lag windows */
 export interface ProductivityLagResult {
-  totalMinutes: number
-  avgMinutesPerDay: number
-  deltaFromBaseline: number | null
+  total_minutes: number
+  avg_minutes_per_day: number
+  delta_from_baseline: number | null
 }
 
 export type LagResult = TagLagResult | MetricLagResult | ProductivityLagResult
@@ -230,13 +230,13 @@ export type LagResult = TagLagResult | MetricLagResult | ProductivityLagResult
 export interface MetricBaseline {
   mean: number | null
   stddev: number | null
-  sampleCount: number
+  sample_count: number
 }
 
 /** Baseline stats for productivity outcomes */
 export interface ProductivityBaseline {
-  avgMinutesPerDay: number
-  totalMinutes: number
+  avg_minutes_per_day: number
+  total_minutes: number
 }
 
 /** Baseline stats for tag outcomes */
@@ -257,14 +257,14 @@ export interface GenericCorrelationResult {
     days: number
   }
   /** Number of windows where all trigger conditions were met */
-  windowsMatched: number
+  windows_matched: number
   /** Baseline statistics (periods without triggers) */
   baseline: BaselineStats
   /** Results for each lag window */
-  postTrigger: Record<string, LagResult>
-  statisticalSignificance: {
-    chiSquared: number | null
-    pValue: number | null
+  post_trigger: Record<string, LagResult>
+  statistical_significance: {
+    chi_squared: number | null
+    p_value: number | null
   }
 }
 
@@ -367,12 +367,12 @@ const getDataInRange = (data: [Date, number][], start: Date, end: Date): number[
  * Calculate HRV stats from raw data arrays.
  */
 const calculateHrvStats = (hrvValues: number[], hrValues: number[], durationMinutes: number): HrvStats => ({
-  meanHr: mean(hrValues),
-  meanHrv: mean(hrvValues),
-  sampleCount: hrvValues.length,
-  sampleMinutes: Math.round(durationMinutes),
-  stddevHr: stddev(hrValues),
-  stddevHrv: stddev(hrvValues),
+  mean_hr: mean(hrValues),
+  mean_hrv: mean(hrvValues),
+  sample_count: hrvValues.length,
+  sample_minutes: Math.round(durationMinutes),
+  stddev_hr: stddev(hrValues),
+  stddev_hrv: stddev(hrvValues),
 })
 
 /**
@@ -380,13 +380,13 @@ const calculateHrvStats = (hrvValues: number[], hrValues: number[], durationMinu
  */
 const addBaselineDelta = (stats: HrvStats, baseline: HrvStats): HrvStatsWithDelta => ({
   ...stats,
-  hrDeltaFromBaseline:
-    stats.meanHr !== null && baseline.meanHr !== null ?
-      Math.round((stats.meanHr - baseline.meanHr) * 10) / 10
+  hr_delta_from_baseline:
+    stats.mean_hr !== null && baseline.mean_hr !== null ?
+      Math.round((stats.mean_hr - baseline.mean_hr) * 10) / 10
     : null,
-  hrvDeltaFromBaseline:
-    stats.meanHrv !== null && baseline.meanHrv !== null ?
-      Math.round((stats.meanHrv - baseline.meanHrv) * 10) / 10
+  hrv_delta_from_baseline:
+    stats.mean_hrv !== null && baseline.mean_hrv !== null ?
+      Math.round((stats.mean_hrv - baseline.mean_hrv) * 10) / 10
     : null,
 })
 
@@ -446,16 +446,16 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
     hrv: {
       avg7day: hrvStats7day[0]?.avg ? Math.round(hrvStats7day[0].avg * 10) / 10 : null,
       avg30day: hrvStats30day[0]?.avg ? Math.round(hrvStats30day[0].avg * 10) / 10 : null,
-      trendPercent: hrvTrend !== null ? Math.round(hrvTrend * 10) / 10 : null,
+      trend_percent: hrvTrend !== null ? Math.round(hrvTrend * 10) / 10 : null,
     },
     period: {
       end: end30day.toISOString(),
       start: start30day.toISOString(),
     },
-    restingHr: {
+    resting_hr: {
       avg7day: hrStats7day[0]?.avg ? Math.round(hrStats7day[0].avg * 10) / 10 : null,
       avg30day: hrStats30day[0]?.avg ? Math.round(hrStats30day[0].avg * 10) / 10 : null,
-      trendPercent: hrTrend !== null ? Math.round(hrTrend * 10) / 10 : null,
+      trend_percent: hrTrend !== null ? Math.round(hrTrend * 10) / 10 : null,
     },
   }
 }
@@ -513,11 +513,11 @@ export async function getHrvActivitiesCorrelation(
       productivityByCategory.set(category, { hrValues: [], hrvValues: [], minutes: 0, scores: [] })
     }
     const cat = productivityByCategory.get(category)!
-    cat.minutes += record.durationSec / 60
+    cat.minutes += record.duration_sec / 60
 
     // Get HRV/HR during this productivity window
-    const hrvInWindow = getDataInRange(hrvData, record.startTime, record.endTime)
-    const hrInWindow = getDataInRange(hrData, record.startTime, record.endTime)
+    const hrvInWindow = getDataInRange(hrvData, record.start_time, record.end_time)
+    const hrInWindow = getDataInRange(hrData, record.start_time, record.end_time)
     cat.hrvValues.push(...hrvInWindow)
     cat.hrValues.push(...hrInWindow)
 
@@ -543,12 +543,12 @@ export async function getHrvActivitiesCorrelation(
     productivityCorrelations.push({
       ...statsWithDelta,
       category,
-      correlationCoefficient: correlation !== null ? Math.round(correlation * 100) / 100 : null,
+      correlation_coefficient: correlation !== null ? Math.round(correlation * 100) / 100 : null,
     })
   }
 
   // Sort by sample minutes descending
-  productivityCorrelations.sort((a, b) => b.sampleMinutes - a.sampleMinutes)
+  productivityCorrelations.sort((a, b) => b.sample_minutes - a.sample_minutes)
 
   // === Location correlations ===
   const locationByName = new Map<
@@ -562,11 +562,11 @@ export async function getHrvActivitiesCorrelation(
       locationByName.set(name, { hrValues: [], hrvValues: [], minutes: 0, visits: 0 })
     }
     const loc = locationByName.get(name)!
-    loc.minutes += visit.durationMinutes
+    loc.minutes += visit.duration_minutes
     loc.visits++
 
-    const hrvInWindow = getDataInRange(hrvData, visit.startTime, visit.endTime)
-    const hrInWindow = getDataInRange(hrData, visit.startTime, visit.endTime)
+    const hrvInWindow = getDataInRange(hrvData, visit.start_time, visit.end_time)
+    const hrInWindow = getDataInRange(hrData, visit.start_time, visit.end_time)
     loc.hrvValues.push(...hrvInWindow)
     loc.hrValues.push(...hrInWindow)
   }
@@ -580,12 +580,12 @@ export async function getHrvActivitiesCorrelation(
 
     locationCorrelations.push({
       ...statsWithDelta,
-      locationName: name,
-      visitCount: data.visits,
+      location_name: name,
+      visit_count: data.visits,
     })
   }
 
-  locationCorrelations.sort((a, b) => b.sampleMinutes - a.sampleMinutes)
+  locationCorrelations.sort((a, b) => b.sample_minutes - a.sample_minutes)
 
   // === Activity correlations ===
   const activityByType = new Map<
@@ -594,19 +594,19 @@ export async function getHrvActivitiesCorrelation(
   >()
 
   for (const activity of activities) {
-    const type = activity.activityType
+    const type = activity.activity_type
     if (!activityByType.has(type)) {
       activityByType.set(type, { count: 0, hrValues: [], hrvValues: [], minutes: 0 })
     }
     const act = activityByType.get(type)!
     act.count++
 
-    if (activity.endTime) {
-      const durationMin = (activity.endTime.getTime() - activity.startTime.getTime()) / 1000 / 60
+    if (activity.end_time) {
+      const durationMin = (activity.end_time.getTime() - activity.start_time.getTime()) / 1000 / 60
       act.minutes += durationMin
 
-      const hrvInWindow = getDataInRange(hrvData, activity.startTime, activity.endTime)
-      const hrInWindow = getDataInRange(hrData, activity.startTime, activity.endTime)
+      const hrvInWindow = getDataInRange(hrvData, activity.start_time, activity.end_time)
+      const hrInWindow = getDataInRange(hrData, activity.start_time, activity.end_time)
       act.hrvValues.push(...hrvInWindow)
       act.hrValues.push(...hrInWindow)
     }
@@ -621,8 +621,8 @@ export async function getHrvActivitiesCorrelation(
 
     activityCorrelations.push({
       ...statsWithDelta,
-      activityType: type,
-      avgDurationMin: data.count > 0 ? Math.round(data.minutes / data.count) : 0,
+      activity_type: type,
+      avg_duration_min: data.count > 0 ? Math.round(data.minutes / data.count) : 0,
       occurrences: data.count,
     })
   }
@@ -644,9 +644,9 @@ export async function getHrvActivitiesCorrelation(
     t.count++
 
     // For tags, look at a window around the tag time (30 min before and after)
-    const windowStart = new Date(tag.startTime.getTime() - 30 * 60 * 1000)
-    const windowEnd = tag.endTime ?? new Date(tag.startTime.getTime() + 30 * 60 * 1000)
-    const durationMin = (windowEnd.getTime() - tag.startTime.getTime()) / 1000 / 60
+    const windowStart = new Date(tag.start_time.getTime() - 30 * 60 * 1000)
+    const windowEnd = tag.end_time ?? new Date(tag.start_time.getTime() + 30 * 60 * 1000)
+    const durationMin = (windowEnd.getTime() - tag.start_time.getTime()) / 1000 / 60
     t.minutes += durationMin
 
     const hrvInWindow = getDataInRange(hrvData, windowStart, windowEnd)
@@ -739,9 +739,9 @@ export async function getActivityImpact(
 
       if (matches) {
         occurrences.push({
-          durationMin: record.durationSec / 60,
-          endTime: record.endTime,
-          startTime: record.startTime,
+          durationMin: record.duration_sec / 60,
+          endTime: record.end_time,
+          startTime: record.start_time,
         })
       }
     }
@@ -750,9 +750,9 @@ export async function getActivityImpact(
     for (const visit of locations) {
       if (visit.name.toLowerCase().includes(activity.toLowerCase())) {
         occurrences.push({
-          durationMin: visit.durationMinutes,
-          endTime: visit.endTime,
-          startTime: visit.startTime,
+          durationMin: visit.duration_minutes,
+          endTime: visit.end_time,
+          startTime: visit.start_time,
         })
       }
     }
@@ -760,11 +760,11 @@ export async function getActivityImpact(
     const tags = await getTags(user, start, end)
     for (const tag of tags) {
       if (tag.tag.toLowerCase().includes(activity.toLowerCase())) {
-        const endTime = tag.endTime ?? new Date(tag.startTime.getTime() + 5 * 60 * 1000) // Default 5 min for point tags
+        const endTime = tag.end_time ?? new Date(tag.start_time.getTime() + 5 * 60 * 1000) // Default 5 min for point tags
         occurrences.push({
-          durationMin: (endTime.getTime() - tag.startTime.getTime()) / 1000 / 60,
+          durationMin: (endTime.getTime() - tag.start_time.getTime()) / 1000 / 60,
           endTime,
-          startTime: tag.startTime,
+          startTime: tag.start_time,
         })
       }
     }
@@ -776,11 +776,11 @@ export async function getActivityImpact(
       end,
     )
     for (const act of activities) {
-      if (act.endTime) {
+      if (act.end_time) {
         occurrences.push({
-          durationMin: (act.endTime.getTime() - act.startTime.getTime()) / 1000 / 60,
-          endTime: act.endTime,
-          startTime: act.startTime,
+          durationMin: (act.end_time.getTime() - act.start_time.getTime()) / 1000 / 60,
+          endTime: act.end_time,
+          startTime: act.start_time,
         })
       }
     }
@@ -828,22 +828,22 @@ export async function getActivityImpact(
 
   const calculateWindowStats = (values: number[]): TimeWindowStats => ({
     mean: mean(values) !== null ? Math.round(mean(values)! * 10) / 10 : null,
-    sampleCount: values.length,
+    sample_count: values.length,
     stddev: stddev(values) !== null ? Math.round(stddev(values)! * 10) / 10 : null,
   })
 
   return {
     activity,
-    activityType,
-    avgDurationMin: occurrences.length > 0 ? Math.round(totalDurationMin / occurrences.length) : 0,
-    hrTimeline: {
+    activity_type: activityType,
+    avg_duration_min: occurrences.length > 0 ? Math.round(totalDurationMin / occurrences.length) : 0,
+    hr_timeline: {
       after15min: calculateWindowStats(windows.after15min.hr),
       after30min: calculateWindowStats(windows.after30min.hr),
       before15min: calculateWindowStats(windows.before15min.hr),
       before30min: calculateWindowStats(windows.before30min.hr),
       during: calculateWindowStats(windows.during.hr),
     },
-    hrvTimeline: {
+    hrv_timeline: {
       after15min: calculateWindowStats(windows.after15min.hrv),
       after30min: calculateWindowStats(windows.after30min.hrv),
       before15min: calculateWindowStats(windows.before15min.hrv),
@@ -891,7 +891,7 @@ export async function getEventProbability(
     const tags = await getTags(user, start, end)
     triggerEvents = tags
       .filter((t) => t.tag.toLowerCase().includes(trigger.value.toLowerCase()))
-      .map((t) => t.startTime)
+      .map((t) => t.start_time)
   } else if (trigger.type === 'activity') {
     const activities = await getActivities(
       user,
@@ -899,12 +899,12 @@ export async function getEventProbability(
       start,
       end,
     )
-    triggerEvents = activities.map((a) => a.startTime)
+    triggerEvents = activities.map((a) => a.start_time)
   }
 
   // Get all outcome events (tags matching pattern)
   const allTags = await getTags(user, start, end)
-  const outcomeEvents = allTags.filter((t) => outcomeRegex.test(t.tag)).map((t) => t.startTime)
+  const outcomeEvents = allTags.filter((t) => outcomeRegex.test(t.tag)).map((t) => t.start_time)
 
   // Calculate baseline probability (outcome on any given day)
   const daysWithOutcome = new Set<string>()
@@ -948,7 +948,7 @@ export async function getEventProbability(
     postTrigger[lag] = {
       occurrences: outcomesAfterTrigger,
       probability: Math.round(probability * 100) / 100,
-      relativeRisk: Math.round(relativeRisk * 100) / 100,
+      relative_risk: Math.round(relativeRisk * 100) / 100,
     }
   }
 
@@ -982,18 +982,18 @@ export async function getEventProbability(
       end: end.toISOString(),
       start: start.toISOString(),
     },
-    postTrigger,
-    sampleSize: {
-      daysAnalyzed: periodDays,
-      outcomeEvents: outcomeEvents.length,
-      triggerEvents: triggerEvents.length,
+    post_trigger: postTrigger,
+    sample_size: {
+      days_analyzed: periodDays,
+      outcome_events: outcomeEvents.length,
+      trigger_events: triggerEvents.length,
     },
-    statisticalSignificance: {
-      chiSquared:
+    statistical_significance: {
+      chi_squared:
         chiSquaredResult?.chiSquared !== undefined ?
           Math.round(chiSquaredResult.chiSquared * 100) / 100
         : null,
-      pValue:
+      p_value:
         chiSquaredResult?.pValue !== undefined ? Math.round(chiSquaredResult.pValue * 1000) / 1000 : null,
     },
     trigger: {
@@ -1098,11 +1098,11 @@ export async function getGenericCorrelation(
   for (const trigger of triggers) {
     if (trigger.type === 'activity') {
       for (const act of activities) {
-        if (matchesPattern(act.activityType, trigger.pattern)) {
+        if (matchesPattern(act.activity_type, trigger.pattern)) {
           triggerEvents.push({
-            time: act.startTime,
+            time: act.start_time,
             type: 'activity',
-            value: act.activityType,
+            value: act.activity_type,
           })
         }
       }
@@ -1110,7 +1110,7 @@ export async function getGenericCorrelation(
       for (const tag of tags) {
         if (matchesPattern(tag.tag, trigger.pattern)) {
           triggerEvents.push({
-            time: tag.startTime,
+            time: tag.start_time,
             type: 'tag',
             value: tag.tag,
           })
@@ -1120,7 +1120,7 @@ export async function getGenericCorrelation(
       for (const prod of productivity) {
         if (prod.category && matchesPattern(prod.category, trigger.pattern)) {
           triggerEvents.push({
-            time: prod.startTime,
+            time: prod.start_time,
             type: 'productivity_category',
             value: prod.category,
           })
@@ -1130,7 +1130,7 @@ export async function getGenericCorrelation(
       for (const prod of productivity) {
         if (matchesPattern(prod.activity, trigger.pattern)) {
           triggerEvents.push({
-            time: prod.startTime,
+            time: prod.start_time,
             type: 'productivity_app',
             value: prod.activity,
           })
@@ -1142,7 +1142,7 @@ export async function getGenericCorrelation(
   // Check if this is a "simple" trigger setup (single trigger with default counts)
   // For simple triggers, we use actual event times; for compound, we use day-based windows
   const isSimpleTrigger =
-    triggers.length === 1 && (triggers[0].minCount ?? 1) === 1 && (triggers[0].windowDays ?? 1) === 1
+    triggers.length === 1 && (triggers[0].min_count ?? 1) === 1 && (triggers[0].window_days ?? 1) === 1
 
   // Find windows where ALL trigger conditions are met
   const matchedWindowEnds: Date[] = []
@@ -1182,8 +1182,8 @@ export async function getGenericCorrelation(
       let allConditionsMet = true
 
       for (const trigger of triggers) {
-        const windowDays = trigger.windowDays ?? 1
-        const minCount = trigger.minCount ?? 1
+        const windowDays = trigger.window_days ?? 1
+        const minCount = trigger.min_count ?? 1
 
         const windowStart = new Date(windowEnd)
         windowStart.setDate(windowStart.getDate() - windowDays + 1)
@@ -1216,7 +1216,7 @@ export async function getGenericCorrelation(
   // Get outcome events/data for tag outcomes
   const outcomeTagEvents =
     outcome.type === 'tag' ?
-      tags.filter((t) => matchesPattern(t.tag, outcome.pattern)).map((t) => t.startTime)
+      tags.filter((t) => matchesPattern(t.tag, outcome.pattern)).map((t) => t.start_time)
     : []
 
   for (const lag of lagWindows) {
@@ -1246,7 +1246,7 @@ export async function getGenericCorrelation(
       postTrigger[lag] = {
         occurrences: windowsWithOutcome,
         probability: Math.round(probability * 100) / 100,
-        relativeRisk: Math.round(relativeRisk * 100) / 100,
+        relative_risk: Math.round(relativeRisk * 100) / 100,
       }
     } else if (outcome.type === 'metric') {
       // Collect metric values within the lag window after each matched window
@@ -1278,9 +1278,9 @@ export async function getGenericCorrelation(
         : null
 
       postTrigger[lag] = {
-        deltaFromBaseline: delta,
+        delta_from_baseline: delta,
         mean: meanAfter !== null ? Math.round(meanAfter * 100) / 100 : null,
-        sampleCount: valuesAfterTrigger.length,
+        sample_count: valuesAfterTrigger.length,
         stddev: stddevAfter !== null ? Math.round(stddevAfter * 100) / 100 : null,
       }
     } else if (outcome.type === 'productivity') {
@@ -1293,14 +1293,14 @@ export async function getGenericCorrelation(
         daysCounted++
 
         for (const prod of productivity) {
-          if (prod.startTime <= windowEnd || prod.startTime > lagEnd) continue
+          if (prod.start_time <= windowEnd || prod.start_time > lagEnd) continue
 
           const matchesCategory =
             !outcome.category || (prod.category && matchesPattern(prod.category, outcome.category))
           const matchesApp = !outcome.app || matchesPattern(prod.activity, outcome.app)
 
           if (matchesCategory && matchesApp) {
-            totalMinutes += prod.durationSec / 60
+            totalMinutes += prod.duration_sec / 60
           }
         }
       }
@@ -1312,7 +1312,7 @@ export async function getGenericCorrelation(
       const unmatchedDaysSet = new Set(unmatchedDays)
 
       for (const prod of productivity) {
-        const dayStr = getDayString(prod.startTime)
+        const dayStr = getDayString(prod.start_time)
         if (!unmatchedDaysSet.has(dayStr)) continue
 
         const matchesCategory =
@@ -1320,7 +1320,7 @@ export async function getGenericCorrelation(
         const matchesApp = !outcome.app || matchesPattern(prod.activity, outcome.app)
 
         if (matchesCategory && matchesApp) {
-          baselineTotalMinutes += prod.durationSec / 60
+          baselineTotalMinutes += prod.duration_sec / 60
         }
       }
       baselineDays = unmatchedDays.length
@@ -1333,9 +1333,9 @@ export async function getGenericCorrelation(
         : null
 
       postTrigger[lag] = {
-        avgMinutesPerDay: Math.round(avgMinutesPerDay * 100) / 100,
-        deltaFromBaseline: delta,
-        totalMinutes: Math.round(totalMinutes * 100) / 100,
+        avg_minutes_per_day: Math.round(avgMinutesPerDay * 100) / 100,
+        delta_from_baseline: delta,
+        total_minutes: Math.round(totalMinutes * 100) / 100,
       }
     }
   }
@@ -1359,7 +1359,7 @@ export async function getGenericCorrelation(
 
     baseline = {
       mean: mean(baselineValues) !== null ? Math.round(mean(baselineValues)! * 100) / 100 : null,
-      sampleCount: baselineValues.length,
+      sample_count: baselineValues.length,
       stddev: stddev(baselineValues) !== null ? Math.round(stddev(baselineValues)! * 100) / 100 : null,
     }
   } else {
@@ -1368,7 +1368,7 @@ export async function getGenericCorrelation(
     const unmatchedDaysSet = new Set(unmatchedDays)
 
     for (const prod of productivity) {
-      const dayStr = getDayString(prod.startTime)
+      const dayStr = getDayString(prod.start_time)
       if (!unmatchedDaysSet.has(dayStr)) continue
 
       const matchesCategory =
@@ -1376,15 +1376,15 @@ export async function getGenericCorrelation(
       const matchesApp = !outcome.app || matchesPattern(prod.activity, outcome.app)
 
       if (matchesCategory && matchesApp) {
-        baselineTotalMinutes += prod.durationSec / 60
+        baselineTotalMinutes += prod.duration_sec / 60
       }
     }
 
     const avgMinutesPerDay = unmatchedDays.length > 0 ? baselineTotalMinutes / unmatchedDays.length : 0
 
     baseline = {
-      avgMinutesPerDay: Math.round(avgMinutesPerDay * 100) / 100,
-      totalMinutes: Math.round(baselineTotalMinutes * 100) / 100,
+      avg_minutes_per_day: Math.round(avgMinutesPerDay * 100) / 100,
+      total_minutes: Math.round(baselineTotalMinutes * 100) / 100,
     }
   }
 
@@ -1416,16 +1416,16 @@ export async function getGenericCorrelation(
       end: end.toISOString(),
       start: start.toISOString(),
     },
-    postTrigger,
-    statisticalSignificance: {
-      chiSquared:
+    post_trigger: postTrigger,
+    statistical_significance: {
+      chi_squared:
         chiSquaredResult?.chiSquared !== undefined ?
           Math.round(chiSquaredResult.chiSquared * 100) / 100
         : null,
-      pValue:
+      p_value:
         chiSquaredResult?.pValue !== undefined ? Math.round(chiSquaredResult.pValue * 1000) / 1000 : null,
     },
     triggers,
-    windowsMatched: matchedWindowEnds.length,
+    windows_matched: matchedWindowEnds.length,
   }
 }

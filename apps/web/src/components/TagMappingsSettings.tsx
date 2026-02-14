@@ -36,13 +36,13 @@ function TagMappingRow({
     return () => clearTimeout(timer)
   }, [status])
 
-  const displayValue = localValue ?? tag.currentName ?? ''
-  const isUnmapped = !tag.currentName
+  const displayValue = localValue ?? tag.current_name ?? ''
+  const isUnmapped = !tag.current_name
 
   const handleBlur = async () => {
     if (localValue === undefined) return
 
-    const serverValue = tag.currentName ?? ''
+    const serverValue = tag.current_name ?? ''
     if (localValue === serverValue) {
       setLocalValue(undefined)
       return
@@ -55,7 +55,7 @@ function TagMappingRow({
 
     setStatus('saving')
     try {
-      await onSave(tag.tagKey, localValue.trim())
+      await onSave(tag.tag_key, localValue.trim())
       setLocalValue(undefined)
       setStatus('saved')
     } catch {
@@ -63,7 +63,7 @@ function TagMappingRow({
     }
   }
 
-  const date = new Date(tag.latestTime)
+  const date = new Date(tag.latest_time)
 
   return (
     <div class={`tag-mapping-row ${isUnmapped ? 'unmapped' : ''}`}>
@@ -101,8 +101,8 @@ function TagMappingRow({
         </span>
       </div>
 
-      <div class="tag-uuid" title={tag.tagKey}>
-        {formatTagKey(tag.tagKey)}
+      <div class="tag-uuid" title={tag.tag_key}>
+        {formatTagKey(tag.tag_key)}
       </div>
     </div>
   )
@@ -137,7 +137,7 @@ export function TagMappingsSettings() {
     )
   }
 
-  const unmappedCount = tags?.filter((t) => !t.currentName).length ?? 0
+  const unmappedCount = tags?.filter((t) => !t.current_name).length ?? 0
 
   return (
     <section class="settings-section tag-mappings-section">
@@ -155,7 +155,7 @@ export function TagMappingsSettings() {
         <p class="no-tags">No programmatic tags found. Tags will appear here after syncing data.</p>
       : <div class="tag-mappings-list">
           {tags.map((tag) => (
-            <TagMappingRow key={tag.tagKey} tag={tag} onSave={handleSave} />
+            <TagMappingRow key={tag.tag_key} tag={tag} onSave={handleSave} />
           ))}
         </div>
       }

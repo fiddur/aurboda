@@ -15,7 +15,7 @@ export const upsertOAuthToken = async (user: string, token: OAuthToken) => {
        expires_at = EXCLUDED.expires_at,
        scopes = EXCLUDED.scopes,
        updated_at = NOW()`,
-    [token.provider, token.accessToken, token.refreshToken, token.expiresAt, token.scopes],
+    [token.provider, token.access_token, token.refresh_token, token.expires_at, token.scopes],
   )
 }
 
@@ -32,10 +32,10 @@ export const getOAuthToken = async (user: string, provider: string): Promise<OAu
 
   const row = result.rows[0]
   return {
-    accessToken: row.access_token,
-    expiresAt: row.expires_at ? new Date(row.expires_at) : undefined,
+    access_token: row.access_token,
+    expires_at: row.expires_at ? new Date(row.expires_at) : undefined,
     provider: row.provider,
-    refreshToken: row.refresh_token,
+    refresh_token: row.refresh_token,
     scopes: row.scopes,
   }
 }

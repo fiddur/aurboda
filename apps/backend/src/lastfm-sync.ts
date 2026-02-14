@@ -24,8 +24,8 @@ const DEFAULT_SYNC_HISTORY_DAYS = 30
 
 /** Result of a sync operation */
 export interface LastFmSyncResult {
-  scrobblesProcessed: number
-  tagsCreated: number
+  scrobbles_processed: number
+  tags_created: number
   status: 'success' | 'skipped' | 'error'
   error?: string
 }
@@ -45,8 +45,8 @@ const matchesAnyArtist = (scrobbleArtist: string, names: string[], mode: 'exact'
  * Get the effective artist names for a rule, preferring artistNames over artistName.
  */
 const getEffectiveArtistNames = (rule: LastFmTagRule): string[] | undefined => {
-  if (rule.artistNames && rule.artistNames.length > 0) return rule.artistNames
-  if (rule.artistName) return [rule.artistName]
+  if (rule.artist_names && rule.artist_names.length > 0) return rule.artist_names
+  if (rule.artist_name) return [rule.artist_name]
   return undefined
 }
 
@@ -54,33 +54,33 @@ const getEffectiveArtistNames = (rule: LastFmTagRule): string[] | undefined => {
  * Check if a scrobble matches a tag rule.
  */
 export const matchesRule = (scrobble: Scrobble, rule: LastFmTagRule): boolean => {
-  switch (rule.matchType) {
+  switch (rule.match_type) {
     case 'track': {
-      if (!rule.trackName) return false
+      if (!rule.track_name) return false
       const normalize = (s: string) => s.toLowerCase().trim()
-      if (rule.matchMode === 'exact') {
-        return normalize(scrobble.track) === normalize(rule.trackName)
+      if (rule.match_mode === 'exact') {
+        return normalize(scrobble.track) === normalize(rule.track_name)
       }
-      return normalize(scrobble.track).includes(normalize(rule.trackName))
+      return normalize(scrobble.track).includes(normalize(rule.track_name))
     }
 
     case 'artist': {
       const names = getEffectiveArtistNames(rule)
       if (!names) return false
-      return matchesAnyArtist(scrobble.artist, names, rule.matchMode)
+      return matchesAnyArtist(scrobble.artist, names, rule.match_mode)
     }
 
     case 'track_artist': {
-      if (!rule.trackName) return false
+      if (!rule.track_name) return false
       const names = getEffectiveArtistNames(rule)
       if (!names) return false
 
       const normalize = (s: string) => s.toLowerCase().trim()
       const trackMatch =
-        rule.matchMode === 'exact' ?
-          normalize(scrobble.track) === normalize(rule.trackName)
-        : normalize(scrobble.track).includes(normalize(rule.trackName))
-      const artistMatch = matchesAnyArtist(scrobble.artist, names, rule.matchMode)
+        rule.match_mode === 'exact' ?
+          normalize(scrobble.track) === normalize(rule.track_name)
+        : normalize(scrobble.track).includes(normalize(rule.track_name))
+      const artistMatch = matchesAnyArtist(scrobble.artist, names, rule.match_mode)
       return trackMatch && artistMatch
     }
 
@@ -103,16 +103,16 @@ const applyPointInTimeRules = async (
   for (const scrobble of scrobbles) {
     for (const rule of rules) {
       if (matchesRule(scrobble, rule)) {
-        const tagKey = `${rule.tagName}|${scrobble.timestamp.toISOString()}`
+        const tagKey = `${rule.tag_name}|${scrobble.timestamp.toISOString()}`
         if (createdTags.has(tagKey)) continue
         createdTags.add(tagKey)
 
         const externalId = `lastfm-auto-${rule.id}-${scrobble.timestamp.getTime()}`
         await insertTag(user, {
-          externalId,
+          external_id: externalId,
           source: 'lastfm-auto',
-          startTime: scrobble.timestamp,
-          tag: rule.tagName,
+          start_time: scrobble.timestamp,
+          tag: rule.tag_name,
         })
         tagsCreated++
       }
@@ -138,7 +138,7 @@ const applySessionRules = async (
   let tagsCreated = 0
 
   for (const rule of rules) {
-    const gapMs = rule.mergeGapSeconds! * 1000
+    const gapMs = rule.merge_gap_seconds! * 1000
     const matching: ScrobbleEvent[] = scrobbles
       .filter((s) => matchesRule(s, rule))
       .map((s) => ({ scrobble: s, timestamp: s.timestamp }))
@@ -154,14 +154,14 @@ const applySessionRules = async (
       if (i === 0) {
         const existingTag = await findMergeableTag(
           user,
-          rule.tagName,
+          rule.tag_name,
           session.startTime,
-          rule.mergeGapSeconds!,
+          rule.merge_gap_seconds!,
           'lastfm-auto',
         )
 
         if (existingTag) {
-          await updateTagEndTime(user, existingTag.externalId!, session.endTime)
+          await updateTagEndTime(user, existingTag.external_id!, session.endTime)
           tagsCreated++
           continue
         }
@@ -169,11 +169,11 @@ const applySessionRules = async (
 
       const externalId = `lastfm-session-${rule.id}-${session.startTime.getTime()}`
       await insertTag(user, {
-        endTime: session.endTime,
-        externalId,
+        end_time: session.endTime,
+        external_id: externalId,
         source: 'lastfm-auto',
-        startTime: session.startTime,
-        tag: rule.tagName,
+        start_time: session.startTime,
+        tag: rule.tag_name,
       })
       tagsCreated++
     }
@@ -193,8 +193,8 @@ export const applyTagRules = async (
 ): Promise<number> => {
   if (rules.length === 0) return 0
 
-  const pointInTimeRules = rules.filter((r) => !r.mergeGapSeconds)
-  const sessionRules = rules.filter((r) => r.mergeGapSeconds)
+  const pointInTimeRules = rules.filter((r) => !r.merge_gap_seconds)
+  const sessionRules = rules.filter((r) => r.merge_gap_seconds)
 
   const pointTags = await applyPointInTimeRules(user, scrobbles, pointInTimeRules)
   const sessionTags = await applySessionRules(user, scrobbles, sessionRules)
@@ -220,18 +220,18 @@ export const syncLastFmData = async (
   const end = new Date()
   let start: Date
 
-  if (options.fullResync || !syncState?.lastSyncTime) {
+  if (options.fullResync || !syncState?.last_sync_time) {
     start = options.startDate || subDays(end, DEFAULT_SYNC_HISTORY_DAYS)
   } else {
-    start = syncState.lastSyncTime
+    start = syncState.last_sync_time
   }
 
   // Mark as syncing
   await upsertSyncState(user, {
-    dataType,
+    data_type: dataType,
     provider: 'lastfm',
     status: 'syncing',
-    syncStartDate: start,
+    sync_start_date: start,
   })
 
   try {
@@ -250,9 +250,9 @@ export const syncLastFmData = async (
           mbid: scrobble.mbid,
           track: scrobble.track,
         },
-        externalId,
-        recordType: 'scrobble',
-        recordedAt: scrobble.timestamp,
+        external_id: externalId,
+        record_type: 'scrobble',
+        recorded_at: scrobble.timestamp,
         source: 'lastfm',
       })
     }
@@ -263,16 +263,16 @@ export const syncLastFmData = async (
 
     // Update sync state on success
     await upsertSyncState(user, {
-      dataType,
-      lastSyncTime: end,
+      data_type: dataType,
+      last_sync_time: end,
       provider: 'lastfm',
       status: 'idle',
     })
 
     return {
-      scrobblesProcessed: scrobbles.length,
+      scrobbles_processed: scrobbles.length,
       status: 'success',
-      tagsCreated,
+      tags_created: tagsCreated,
     }
   } catch (error: unknown) {
     const axiosError = error as { response?: { status?: number; data?: unknown } }
@@ -282,17 +282,17 @@ export const syncLastFmData = async (
     const statusCode = axiosError.response?.status
 
     await upsertSyncState(user, {
-      dataType,
-      errorMessage: `${errorMessage}${statusCode ? ` (HTTP ${statusCode})` : ''}`,
+      data_type: dataType,
+      error_message: `${errorMessage}${statusCode ? ` (HTTP ${statusCode})` : ''}`,
       provider: 'lastfm',
       status: 'error',
     })
 
     return {
       error: errorMessage,
-      scrobblesProcessed: 0,
+      scrobbles_processed: 0,
       status: 'error',
-      tagsCreated: 0,
+      tags_created: 0,
     }
   }
 }

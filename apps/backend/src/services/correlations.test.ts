@@ -55,10 +55,10 @@ describe('correlations service', () => {
 
       expect(result.hrv.avg7day).toBe(45.5)
       expect(result.hrv.avg30day).toBe(44.2)
-      expect(result.restingHr.avg7day).toBe(60.3)
-      expect(result.restingHr.avg30day).toBe(61.1)
-      expect(result.hrv.trendPercent).not.toBeNull()
-      expect(result.restingHr.trendPercent).not.toBeNull()
+      expect(result.resting_hr.avg7day).toBe(60.3)
+      expect(result.resting_hr.avg30day).toBe(61.1)
+      expect(result.hrv.trend_percent).not.toBeNull()
+      expect(result.resting_hr.trend_percent).not.toBeNull()
       expect(result.period.start).toBeDefined()
       expect(result.period.end).toBeDefined()
     })
@@ -70,8 +70,8 @@ describe('correlations service', () => {
 
       expect(result.hrv.avg7day).toBeNull()
       expect(result.hrv.avg30day).toBeNull()
-      expect(result.restingHr.avg7day).toBeNull()
-      expect(result.restingHr.avg30day).toBeNull()
+      expect(result.resting_hr.avg7day).toBeNull()
+      expect(result.resting_hr.avg30day).toBeNull()
     })
 
     test('uses reference date when provided', async () => {
@@ -102,38 +102,38 @@ describe('correlations service', () => {
         {
           activity: 'vscode',
           category: 'Software Development',
-          durationSec: 3600,
-          endTime: new Date(yesterday.getTime() + 3600000),
+          duration_sec: 3600,
+          end_time: new Date(yesterday.getTime() + 3600000),
           productivity: 2,
-          startTime: yesterday,
+          start_time: yesterday,
         },
       ])
       vi.mocked(locations.getPlaceVisits).mockResolvedValue([
         {
-          durationMinutes: 60,
-          endTime: new Date(yesterday.getTime() + 3600000),
+          duration_minutes: 60,
+          end_time: new Date(yesterday.getTime() + 3600000),
           lat: 59.33,
           lon: 18.07,
           name: 'Office',
           source: 'named' as const,
-          startTime: yesterday,
+          start_time: yesterday,
         },
       ])
       vi.mocked(db.getActivities).mockResolvedValue([
         {
-          activityType: 'exercise' as const,
-          endTime: new Date(yesterday.getTime() + 3600000),
+          activity_type: 'exercise' as const,
+          end_time: new Date(yesterday.getTime() + 3600000),
           id: 'act1',
           source: 'health_connect' as const,
-          startTime: yesterday,
+          start_time: yesterday,
         },
       ])
       vi.mocked(db.getTags).mockResolvedValue([
         {
-          endTime: new Date(yesterday.getTime() + 300000),
-          externalId: 'tag1',
+          end_time: new Date(yesterday.getTime() + 300000),
+          external_id: 'tag1',
           source: 'manual' as const,
-          startTime: yesterday,
+          start_time: yesterday,
           tag: 'coffee',
         },
       ])
@@ -182,10 +182,10 @@ describe('correlations service', () => {
       ] as [Date, number][])
       vi.mocked(db.getTags).mockResolvedValue([
         {
-          endTime: new Date(baseTime.getTime() + 10 * 60 * 1000),
-          externalId: 'tag1',
+          end_time: new Date(baseTime.getTime() + 10 * 60 * 1000),
+          external_id: 'tag1',
           source: 'manual' as const,
-          startTime: baseTime,
+          start_time: baseTime,
           tag: 'coffee',
         },
       ])
@@ -193,13 +193,13 @@ describe('correlations service', () => {
       const result = await getActivityImpact('testuser', 'coffee', 'tag', 30, 90)
 
       expect(result.activity).toBe('coffee')
-      expect(result.activityType).toBe('tag')
+      expect(result.activity_type).toBe('tag')
       expect(result.occurrences).toBe(1)
-      expect(result.hrvTimeline).toBeDefined()
-      expect(result.hrTimeline).toBeDefined()
-      expect(result.hrvTimeline.before30min).toBeDefined()
-      expect(result.hrvTimeline.during).toBeDefined()
-      expect(result.hrvTimeline.after30min).toBeDefined()
+      expect(result.hrv_timeline).toBeDefined()
+      expect(result.hr_timeline).toBeDefined()
+      expect(result.hrv_timeline.before30min).toBeDefined()
+      expect(result.hrv_timeline.during).toBeDefined()
+      expect(result.hrv_timeline.after30min).toBeDefined()
     })
 
     test('returns zero occurrences when no matching tags', async () => {
@@ -209,7 +209,7 @@ describe('correlations service', () => {
       const result = await getActivityImpact('testuser', 'nonexistent', 'tag', 30, 90)
 
       expect(result.occurrences).toBe(0)
-      expect(result.avgDurationMin).toBe(0)
+      expect(result.avg_duration_min).toBe(0)
     })
 
     test('handles productivity category activity type', async () => {
@@ -220,16 +220,16 @@ describe('correlations service', () => {
         {
           activity: 'vscode',
           category: 'Software Development',
-          durationSec: 3600,
-          endTime: new Date(baseTime.getTime() + 3600000),
+          duration_sec: 3600,
+          end_time: new Date(baseTime.getTime() + 3600000),
           productivity: 2,
-          startTime: baseTime,
+          start_time: baseTime,
         },
       ])
 
       const result = await getActivityImpact('testuser', 'software development', 'productivity_category')
 
-      expect(result.activityType).toBe('productivity_category')
+      expect(result.activity_type).toBe('productivity_category')
       expect(result.occurrences).toBe(1)
     })
   })
@@ -242,10 +242,10 @@ describe('correlations service', () => {
 
       vi.mocked(db.getTags).mockResolvedValue([
         // Trigger events (gym)
-        { externalId: 't1', source: 'manual' as const, startTime: day1, tag: 'gym' },
-        { externalId: 't2', source: 'manual' as const, startTime: day2, tag: 'gym' },
+        { external_id: 't1', source: 'manual' as const, start_time: day1, tag: 'gym' },
+        { external_id: 't2', source: 'manual' as const, start_time: day2, tag: 'gym' },
         // Outcome events (headache)
-        { externalId: 'o1', source: 'manual' as const, startTime: day1Later, tag: 'headache' },
+        { external_id: 'o1', source: 'manual' as const, start_time: day1Later, tag: 'headache' },
       ])
 
       const result = await getEventProbability(
@@ -259,10 +259,10 @@ describe('correlations service', () => {
       expect(result.trigger.type).toBe('tag')
       expect(result.trigger.value).toBe('gym')
       expect(result.outcome.pattern).toBe('headache')
-      expect(result.sampleSize.triggerEvents).toBe(2)
-      expect(result.sampleSize.outcomeEvents).toBe(1)
-      expect(result.postTrigger['12h']).toBeDefined()
-      expect(result.postTrigger['24h']).toBeDefined()
+      expect(result.sample_size.trigger_events).toBe(2)
+      expect(result.sample_size.outcome_events).toBe(1)
+      expect(result.post_trigger['12h']).toBeDefined()
+      expect(result.post_trigger['24h']).toBeDefined()
       expect(result.baseline.probability).toBeGreaterThanOrEqual(0)
     })
 
@@ -273,15 +273,15 @@ describe('correlations service', () => {
 
       vi.mocked(db.getActivities).mockResolvedValue([
         {
-          activityType: 'exercise' as const,
-          endTime: day1End,
+          activity_type: 'exercise' as const,
+          end_time: day1End,
           id: 'a1',
           source: 'health_connect' as const,
-          startTime: day1,
+          start_time: day1,
         },
       ])
       vi.mocked(db.getTags).mockResolvedValue([
-        { externalId: 'o1', source: 'manual' as const, startTime: day1Later, tag: 'headache' },
+        { external_id: 'o1', source: 'manual' as const, start_time: day1Later, tag: 'headache' },
       ])
 
       const result = await getEventProbability(
@@ -293,14 +293,14 @@ describe('correlations service', () => {
       )
 
       expect(result.trigger.type).toBe('activity')
-      expect(result.sampleSize.triggerEvents).toBe(1)
+      expect(result.sample_size.trigger_events).toBe(1)
     })
 
     test('returns zero probability when no outcomes', async () => {
       const day1 = new Date('2024-01-01T10:00:00Z')
 
       vi.mocked(db.getTags).mockResolvedValue([
-        { externalId: 't1', source: 'manual' as const, startTime: day1, tag: 'gym' },
+        { external_id: 't1', source: 'manual' as const, start_time: day1, tag: 'gym' },
       ])
 
       const result = await getEventProbability(
@@ -309,7 +309,7 @@ describe('correlations service', () => {
         { pattern: 'headache', type: 'tag' },
       )
 
-      expect(result.sampleSize.outcomeEvents).toBe(0)
+      expect(result.sample_size.outcome_events).toBe(0)
       expect(result.baseline.probability).toBe(0)
     })
   })
@@ -326,9 +326,9 @@ describe('correlations service', () => {
         day2.setHours(10, 0, 0, 0)
 
         vi.mocked(db.getTags).mockResolvedValue([
-          { externalId: 't1', source: 'manual' as const, startTime: day1, tag: 'meditation' },
-          { externalId: 't2', source: 'manual' as const, startTime: day2, tag: 'meditation' },
-          { externalId: 'o1', source: 'manual' as const, startTime: day1Later, tag: 'fatcoffee' },
+          { external_id: 't1', source: 'manual' as const, start_time: day1, tag: 'meditation' },
+          { external_id: 't2', source: 'manual' as const, start_time: day2, tag: 'meditation' },
+          { external_id: 'o1', source: 'manual' as const, start_time: day1Later, tag: 'fatcoffee' },
         ])
         vi.mocked(db.getActivities).mockResolvedValue([])
         vi.mocked(db.getProductivity).mockResolvedValue([])
@@ -345,8 +345,8 @@ describe('correlations service', () => {
         expect(result.triggers).toHaveLength(1)
         expect(result.triggers[0].type).toBe('tag')
         expect(result.outcome.type).toBe('tag')
-        expect(result.windowsMatched).toBe(2)
-        expect(result.postTrigger['24h']).toBeDefined()
+        expect(result.windows_matched).toBe(2)
+        expect(result.post_trigger['24h']).toBeDefined()
       })
     })
 
@@ -369,25 +369,25 @@ describe('correlations service', () => {
 
         vi.mocked(db.getActivities).mockResolvedValue([
           {
-            activityType: 'exercise' as const,
-            endTime: new Date(week1Day1.getTime() + 3600000),
+            activity_type: 'exercise' as const,
+            end_time: new Date(week1Day1.getTime() + 3600000),
             id: 'e1',
             source: 'health_connect' as const,
-            startTime: week1Day1,
+            start_time: week1Day1,
           },
           {
-            activityType: 'exercise' as const,
-            endTime: new Date(week1Day2.getTime() + 3600000),
+            activity_type: 'exercise' as const,
+            end_time: new Date(week1Day2.getTime() + 3600000),
             id: 'e2',
             source: 'health_connect' as const,
-            startTime: week1Day2,
+            start_time: week1Day2,
           },
           {
-            activityType: 'exercise' as const,
-            endTime: new Date(week1Day3.getTime() + 3600000),
+            activity_type: 'exercise' as const,
+            end_time: new Date(week1Day3.getTime() + 3600000),
             id: 'e3',
             source: 'health_connect' as const,
-            startTime: week1Day3,
+            start_time: week1Day3,
           },
         ])
         vi.mocked(db.getTags).mockResolvedValue([])
@@ -399,7 +399,7 @@ describe('correlations service', () => {
 
         const result = await getGenericCorrelation(
           'testuser',
-          [{ minCount: 3, pattern: 'exercise', type: 'activity', windowDays: 7 }],
+          [{ min_count: 3, pattern: 'exercise', type: 'activity', window_days: 7 }],
           { metric: 'weight', type: 'metric' },
           ['7d'],
           30,
@@ -410,7 +410,7 @@ describe('correlations service', () => {
         if (result.outcome.type === 'metric') {
           expect(result.outcome.metric).toBe('weight')
         }
-        expect(result.postTrigger['7d']).toBeDefined()
+        expect(result.post_trigger['7d']).toBeDefined()
         expect(result.baseline).toBeDefined()
       })
     })
@@ -429,11 +429,11 @@ describe('correlations service', () => {
         for (let i = 0; i < 3; i++) {
           const day = new Date(baseDate.getTime() + i * 24 * 60 * 60 * 1000)
           exercises.push({
-            activityType: 'exercise' as const,
-            endTime: new Date(day.getTime() + 3600000),
+            activity_type: 'exercise' as const,
+            end_time: new Date(day.getTime() + 3600000),
             id: `e${i}`,
             source: 'health_connect' as const,
-            startTime: day,
+            start_time: day,
           })
         }
 
@@ -441,9 +441,9 @@ describe('correlations service', () => {
         for (let i = 0; i < 5; i++) {
           const day = new Date(baseDate.getTime() + i * 24 * 60 * 60 * 1000)
           tags.push({
-            externalId: `fc${i}`,
+            external_id: `fc${i}`,
             source: 'manual' as const,
-            startTime: new Date(day.getTime() + 6 * 60 * 60 * 1000), // Morning coffee
+            start_time: new Date(day.getTime() + 6 * 60 * 60 * 1000), // Morning coffee
             tag: 'fatcoffee',
           })
         }
@@ -459,8 +459,8 @@ describe('correlations service', () => {
         const result = await getGenericCorrelation(
           'testuser',
           [
-            { minCount: 3, pattern: 'exercise', type: 'activity', windowDays: 7 },
-            { minCount: 5, pattern: 'fatcoffee', type: 'tag', windowDays: 7 },
+            { min_count: 3, pattern: 'exercise', type: 'activity', window_days: 7 },
+            { min_count: 5, pattern: 'fatcoffee', type: 'tag', window_days: 7 },
           ],
           { metric: 'weight', type: 'metric' },
           ['7d', '14d'],
@@ -468,9 +468,9 @@ describe('correlations service', () => {
         )
 
         expect(result.triggers).toHaveLength(2)
-        expect(result.windowsMatched).toBeGreaterThanOrEqual(1)
-        expect(result.postTrigger['7d']).toBeDefined()
-        expect(result.postTrigger['14d']).toBeDefined()
+        expect(result.windows_matched).toBeGreaterThanOrEqual(1)
+        expect(result.post_trigger['7d']).toBeDefined()
+        expect(result.post_trigger['14d']).toBeDefined()
       })
 
       test('returns zero windows when compound conditions not all met', async () => {
@@ -482,27 +482,27 @@ describe('correlations service', () => {
         // Only 2 exercise sessions (need 3)
         vi.mocked(db.getActivities).mockResolvedValue([
           {
-            activityType: 'exercise' as const,
-            endTime: new Date(baseDate.getTime() + 3600000),
+            activity_type: 'exercise' as const,
+            end_time: new Date(baseDate.getTime() + 3600000),
             id: 'e1',
             source: 'health_connect' as const,
-            startTime: baseDate,
+            start_time: baseDate,
           },
           {
-            activityType: 'exercise' as const,
-            endTime: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000 + 3600000),
+            activity_type: 'exercise' as const,
+            end_time: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000 + 3600000),
             id: 'e2',
             source: 'health_connect' as const,
-            startTime: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000),
+            start_time: new Date(baseDate.getTime() + 24 * 60 * 60 * 1000),
           },
         ])
         // 5 fatcoffee tags (this condition is met)
         const tags = []
         for (let i = 0; i < 5; i++) {
           tags.push({
-            externalId: `fc${i}`,
+            external_id: `fc${i}`,
             source: 'manual' as const,
-            startTime: new Date(baseDate.getTime() + i * 24 * 60 * 60 * 1000),
+            start_time: new Date(baseDate.getTime() + i * 24 * 60 * 60 * 1000),
             tag: 'fatcoffee',
           })
         }
@@ -513,15 +513,15 @@ describe('correlations service', () => {
         const result = await getGenericCorrelation(
           'testuser',
           [
-            { minCount: 3, pattern: 'exercise', type: 'activity', windowDays: 7 },
-            { minCount: 5, pattern: 'fatcoffee', type: 'tag', windowDays: 7 },
+            { min_count: 3, pattern: 'exercise', type: 'activity', window_days: 7 },
+            { min_count: 5, pattern: 'fatcoffee', type: 'tag', window_days: 7 },
           ],
           { metric: 'weight', type: 'metric' },
           ['7d'],
           30,
         )
 
-        expect(result.windowsMatched).toBe(0)
+        expect(result.windows_matched).toBe(0)
       })
     })
 
@@ -534,17 +534,17 @@ describe('correlations service', () => {
         const day1Work = new Date(day1.getTime() + 2 * 60 * 60 * 1000) // 2 hours later (9am)
 
         vi.mocked(db.getTags).mockResolvedValue([
-          { externalId: 't1', source: 'manual' as const, startTime: day1, tag: 'meditation' },
+          { external_id: 't1', source: 'manual' as const, start_time: day1, tag: 'meditation' },
         ])
         vi.mocked(db.getActivities).mockResolvedValue([])
         vi.mocked(db.getProductivity).mockResolvedValue([
           {
             activity: 'vscode',
             category: 'Software Development',
-            durationSec: 7200, // 2 hours
-            endTime: new Date(day1Work.getTime() + 7200000),
+            duration_sec: 7200, // 2 hours
+            end_time: new Date(day1Work.getTime() + 7200000),
             productivity: 2,
-            startTime: day1Work,
+            start_time: day1Work,
           },
         ])
         vi.mocked(db.getTimeSeries).mockResolvedValue([])
@@ -561,9 +561,9 @@ describe('correlations service', () => {
         if (result.outcome.type === 'productivity') {
           expect(result.outcome.category).toBe('Software Development')
         }
-        expect(result.postTrigger['12h']).toBeDefined()
-        const lag12h = result.postTrigger['12h'] as { totalMinutes: number }
-        expect(lag12h.totalMinutes).toBeGreaterThan(0)
+        expect(result.post_trigger['12h']).toBeDefined()
+        const lag12h = result.post_trigger['12h'] as { total_minutes: number }
+        expect(lag12h.total_minutes).toBeGreaterThan(0)
       })
     })
 
@@ -584,11 +584,11 @@ describe('correlations service', () => {
 
         vi.mocked(db.getActivities).mockResolvedValue([
           {
-            activityType: 'exercise' as const,
-            endTime: new Date(exerciseDay.getTime() + 3600000),
+            activity_type: 'exercise' as const,
+            end_time: new Date(exerciseDay.getTime() + 3600000),
             id: 'e1',
             source: 'health_connect' as const,
-            startTime: exerciseDay,
+            start_time: exerciseDay,
           },
         ])
         vi.mocked(db.getTags).mockResolvedValue([])
@@ -606,11 +606,11 @@ describe('correlations service', () => {
           30,
         )
 
-        const lag7d = result.postTrigger['7d'] as { mean: number | null; deltaFromBaseline: number | null }
+        const lag7d = result.post_trigger['7d'] as { mean: number | null; delta_from_baseline: number | null }
         const baseline = result.baseline as { mean: number | null }
         expect(lag7d.mean).toBeDefined()
         expect(baseline.mean).toBeDefined()
-        expect(lag7d.deltaFromBaseline).toBeDefined()
+        expect(lag7d.delta_from_baseline).toBeDefined()
       })
     })
   })

@@ -282,7 +282,7 @@ export const Timeline = () => {
   const activities = activitiesQuery.data || []
 
   // Get unique exercise types for legend (by activity type, not title)
-  const exerciseSessions = activities.filter((a) => a.activityType === 'exercise')
+  const exerciseSessions = activities.filter((a) => a.activity_type === 'exercise')
   const uniqueExerciseTypes = [...new Set(exerciseSessions.map((a) => getExerciseTypeName(a)))]
     .filter(Boolean)
     .sort()
@@ -503,8 +503,8 @@ function TimelineChart({
   })
 
   // Format duration in hours and minutes
-  const formatDuration = (startTime: Date, endTime: Date): string => {
-    const ms = endTime.getTime() - startTime.getTime()
+  const formatDuration = (start_time: Date, end_time: Date): string => {
+    const ms = end_time.getTime() - start_time.getTime()
     const hours = Math.floor(ms / 3600000)
     const minutes = Math.floor((ms % 3600000) / 60000)
     if (hours > 0) {
@@ -541,11 +541,11 @@ function TimelineChart({
 
   // Filter activities by type
   const sleepSessions =
-    showSleepMeditationSignal.value ? activities.filter((a) => a.activityType === 'sleep') : []
+    showSleepMeditationSignal.value ? activities.filter((a) => a.activity_type === 'sleep') : []
   const meditationSessions =
-    showSleepMeditationSignal.value ? activities.filter((a) => a.activityType === 'meditation') : []
+    showSleepMeditationSignal.value ? activities.filter((a) => a.activity_type === 'meditation') : []
   const exerciseSessions =
-    showExerciseSignal.value ? activities.filter((a) => a.activityType === 'exercise') : []
+    showExerciseSignal.value ? activities.filter((a) => a.activity_type === 'exercise') : []
 
   // Setup brush for selection zoom
   useEffect(() => {
@@ -765,12 +765,12 @@ function TimelineChart({
 
           {/* Sleep sessions - in sleep/meditation lane */}
           {sleepSessions.map((session, i) =>
-            session.endTime ?
+            session.end_time ?
               <rect
                 key={`sleep-${i}`}
-                x={x(session.startTime)}
+                x={x(session.start_time)}
                 y={trackSleepMeditation}
-                width={Math.max(0, x(session.endTime) - x(session.startTime))}
+                width={Math.max(0, x(session.end_time) - x(session.start_time))}
                 height={trackHeight}
                 fill={colors.sleep}
                 opacity={0.4}
@@ -779,8 +779,8 @@ function TimelineChart({
                   showTooltip(
                     e as unknown as MouseEvent,
                     'Sleep',
-                    `${format(session.startTime, 'HH:mm')} - ${format(session.endTime!, 'HH:mm')}`,
-                    formatDuration(session.startTime, session.endTime!),
+                    `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
+                    formatDuration(session.start_time, session.end_time!),
                   )
                 }
                 onMouseLeave={hideTooltip}
@@ -790,12 +790,12 @@ function TimelineChart({
 
           {/* Meditation sessions - in sleep/meditation lane */}
           {meditationSessions.map((session, i) =>
-            session.endTime ?
+            session.end_time ?
               <rect
                 key={`meditation-${i}`}
-                x={x(session.startTime)}
+                x={x(session.start_time)}
                 y={trackSleepMeditation}
-                width={Math.max(0, x(session.endTime) - x(session.startTime))}
+                width={Math.max(0, x(session.end_time) - x(session.start_time))}
                 height={trackHeight}
                 fill={colors.meditation}
                 opacity={0.6}
@@ -804,8 +804,8 @@ function TimelineChart({
                   showTooltip(
                     e as unknown as MouseEvent,
                     session.title || 'Meditation',
-                    `${format(session.startTime, 'HH:mm')} - ${format(session.endTime!, 'HH:mm')}`,
-                    formatDuration(session.startTime, session.endTime!),
+                    `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
+                    formatDuration(session.start_time, session.end_time!),
                   )
                 }
                 onMouseLeave={hideTooltip}
@@ -815,13 +815,13 @@ function TimelineChart({
 
           {/* Productivity (Computer) - overlaid on top */}
           {productivity
-            .filter((p) => !p.isMobile)
+            .filter((p) => !p.is_mobile)
             .map((p, i) => (
               <rect
                 key={`computer-${i}`}
-                x={x(p.startTime)}
+                x={x(p.start_time)}
                 y={0}
-                width={Math.max(0, x(p.endTime) - x(p.startTime))}
+                width={Math.max(0, x(p.end_time) - x(p.start_time))}
                 height={4}
                 fill={colors.computer}
               />
@@ -829,13 +829,13 @@ function TimelineChart({
 
           {/* Productivity (Mobile) - overlaid on top */}
           {productivity
-            .filter((p) => p.isMobile)
+            .filter((p) => p.is_mobile)
             .map((p, i) => (
               <rect
                 key={`mobile-${i}`}
-                x={x(p.startTime)}
+                x={x(p.start_time)}
                 y={4}
-                width={Math.max(0, x(p.endTime) - x(p.startTime))}
+                width={Math.max(0, x(p.end_time) - x(p.start_time))}
                 height={4}
                 fill={colors.mobile}
               />
@@ -843,12 +843,12 @@ function TimelineChart({
 
           {/* Exercise sessions - in exercise lane */}
           {exerciseSessions.map((session, i) =>
-            session.endTime ?
+            session.end_time ?
               <rect
                 key={`exercise-${i}`}
-                x={x(session.startTime)}
+                x={x(session.start_time)}
                 y={trackExercise}
-                width={Math.max(0, x(session.endTime) - x(session.startTime))}
+                width={Math.max(0, x(session.end_time) - x(session.start_time))}
                 height={trackHeight}
                 fill={getExerciseColor(getExerciseTypeName(session), uniqueExerciseTypes)}
                 opacity={0.6}
@@ -857,8 +857,8 @@ function TimelineChart({
                   showTooltip(
                     e as unknown as MouseEvent,
                     getExerciseTypeName(session),
-                    `${format(session.startTime, 'HH:mm')} - ${format(session.endTime!, 'HH:mm')}`,
-                    formatDuration(session.startTime, session.endTime!),
+                    `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
+                    formatDuration(session.start_time, session.end_time!),
                   )
                 }
                 onMouseLeave={hideTooltip}
@@ -871,9 +871,9 @@ function TimelineChart({
             places.map((place, i) => (
               <rect
                 key={`place-${i}`}
-                x={x(place.startTime)}
+                x={x(place.start_time)}
                 y={trackPlaces}
-                width={Math.max(0, x(place.endTime) - x(place.startTime))}
+                width={Math.max(0, x(place.end_time) - x(place.start_time))}
                 height={trackHeight}
                 fill={getPlaceColor(place.region, uniquePlaceNames)}
                 opacity={0.7}
@@ -882,8 +882,8 @@ function TimelineChart({
                   showTooltip(
                     e as unknown as MouseEvent,
                     place.region || 'Unknown Location',
-                    `${format(place.startTime, 'HH:mm')} - ${format(place.endTime, 'HH:mm')}`,
-                    formatDuration(place.startTime, place.endTime),
+                    `${format(place.start_time, 'HH:mm')} - ${format(place.end_time, 'HH:mm')}`,
+                    formatDuration(place.start_time, place.end_time),
                   )
                 }
                 onMouseLeave={hideTooltip}
@@ -892,12 +892,12 @@ function TimelineChart({
 
           {/* Tags - dashed lines or rectangles */}
           {tags.map((tag, i) =>
-            tag.endTime ?
+            tag.end_time ?
               <rect
                 key={`tag-${i}`}
-                x={x(tag.startTime)}
+                x={x(tag.start_time)}
                 y={0}
-                width={Math.max(0, x(tag.endTime) - x(tag.startTime))}
+                width={Math.max(0, x(tag.end_time) - x(tag.start_time))}
                 height={chartHeight}
                 fill="none"
                 stroke={colors.tags}
@@ -907,23 +907,23 @@ function TimelineChart({
                   showTooltip(
                     e as unknown as MouseEvent,
                     tag.tag,
-                    `${format(tag.startTime, 'HH:mm')} - ${format(tag.endTime!, 'HH:mm')}`,
-                    formatDuration(tag.startTime, tag.endTime!),
+                    `${format(tag.start_time, 'HH:mm')} - ${format(tag.end_time!, 'HH:mm')}`,
+                    formatDuration(tag.start_time, tag.end_time!),
                   )
                 }
                 onMouseLeave={hideTooltip}
               />
             : <line
                 key={`tag-${i}`}
-                x1={x(tag.startTime)}
+                x1={x(tag.start_time)}
                 y1={0}
-                x2={x(tag.startTime)}
+                x2={x(tag.start_time)}
                 y2={chartHeight}
                 stroke={colors.tags}
                 strokeDasharray="4"
                 style={{ cursor: 'pointer' }}
                 onMouseEnter={(e) =>
-                  showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.startTime, 'HH:mm'))
+                  showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.start_time, 'HH:mm'))
                 }
                 onMouseLeave={hideTooltip}
               />,

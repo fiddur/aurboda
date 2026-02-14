@@ -25,12 +25,12 @@ const startDateSyncSchema = dateOnlySchema.optional().meta({
  */
 export const providerSyncStatusSchema = z
   .object({
-    errorMessage: z.string().nullable().meta({ description: 'Error message if status is error' }),
-    lastSyncTime: iso8601DateTimeSchema.nullable().meta({
+    error_message: z.string().nullable().meta({ description: 'Error message if status is error' }),
+    last_sync_time: iso8601DateTimeSchema.nullable().meta({
       description: 'Last successful sync time',
     }),
     provider: z.string().meta({ description: 'Provider name', example: 'oura' }),
-    retryAfter: iso8601DateTimeSchema.nullable().meta({
+    retry_after: iso8601DateTimeSchema.nullable().meta({
       description: 'Time when retry is allowed',
     }),
     status: syncStatusSchema,
@@ -126,7 +126,7 @@ export type SyncResponse = z.infer<typeof syncResponseSchema>
  */
 export const dailyAggregateSchema = z
   .object({
-    dataOrigins: z.array(z.string()).meta({ description: 'Contributing app package names' }),
+    data_origins: z.array(z.string()).meta({ description: 'Contributing app package names' }),
     date: dateOnlySchema,
     metric: z.enum(cumulativeMetrics).meta({ description: 'Cumulative metric type' }),
     value: z.number().meta({ description: 'Aggregated value for the day' }),
@@ -166,9 +166,9 @@ export const healthConnectMetadataSchema = z
  */
 export const healthConnectRecordSchema = z
   .object({
-    endTime: iso8601DateTimeSchema.optional().meta({ description: 'End time for interval records' }),
+    end_time: iso8601DateTimeSchema.optional().meta({ description: 'End time for interval records' }),
     metadata: healthConnectMetadataSchema.optional(),
-    startTime: iso8601DateTimeSchema.optional().meta({ description: 'Start time' }),
+    start_time: iso8601DateTimeSchema.optional().meta({ description: 'Start time' }),
     time: iso8601DateTimeSchema.optional().meta({ description: 'Time for instant records' }),
   })
   .passthrough()
@@ -246,10 +246,10 @@ export type OuraDataType = z.infer<typeof ouraDataTypeSchema>
  */
 export const ouraSyncResultSchema = z
   .object({
-    dataType: ouraDataTypeSchema,
+    data_type: ouraDataTypeSchema,
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
-    recordsProcessed: z.number().int().meta({ description: 'Number of records processed' }),
-    retryAfter: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
+    records_processed: z.number().int().meta({ description: 'Number of records processed' }),
+    retry_after: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
     status: syncResultStatusSchema,
   })
   .meta({ id: 'OuraSyncResult' })
@@ -262,8 +262,8 @@ export type OuraSyncResult = z.infer<typeof ouraSyncResultSchema>
 export const rescueTimeSyncResultSchema = z
   .object({
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
-    recordsProcessed: z.number().int().meta({ description: 'Number of records processed' }),
-    retryAfter: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
+    records_processed: z.number().int().meta({ description: 'Number of records processed' }),
+    retry_after: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
     status: syncResultStatusSchema,
   })
   .meta({ id: 'RescueTimeSyncResult' })
@@ -314,7 +314,7 @@ export const calendarSyncResultSchema = z
   .object({
     calendar: z.string().meta({ description: 'Calendar name' }),
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
-    eventsProcessed: z.number().int().meta({ description: 'Number of events processed' }),
+    events_processed: z.number().int().meta({ description: 'Number of events processed' }),
     status: syncResultStatusSchema,
   })
   .meta({ id: 'CalendarSyncResult' })
@@ -358,9 +358,9 @@ export type SyncLastFmBody = z.infer<typeof syncLastFmBodySchema>
 export const lastFmSyncResultSchema = z
   .object({
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
-    scrobblesProcessed: z.number().int().meta({ description: 'Number of scrobbles processed' }),
+    scrobbles_processed: z.number().int().meta({ description: 'Number of scrobbles processed' }),
     status: syncResultStatusSchema,
-    tagsCreated: z.number().int().meta({ description: 'Number of tags created from rules' }),
+    tags_created: z.number().int().meta({ description: 'Number of tags created from rules' }),
   })
   .meta({ id: 'LastFmSyncResult' })
 
@@ -418,19 +418,19 @@ export type LastFmMatchMode = z.infer<typeof lastFmMatchModeSchema>
  */
 export const lastFmTagRuleSchema = z
   .object({
-    artistName: z
+    artist_name: z
       .string()
       .optional()
       .meta({ description: 'Artist name to match (for artist or track_artist match type)' }),
-    artistNames: z
+    artist_names: z
       .array(z.string())
       .optional()
       .meta({ description: 'Multiple artist names to match (takes precedence over artistName when set)' }),
-    createdAt: z.string().meta({ description: 'When the rule was created' }),
+    created_at: z.string().meta({ description: 'When the rule was created' }),
     id: z.string().uuid().meta({ description: 'Unique rule ID' }),
-    matchMode: lastFmMatchModeSchema,
-    matchType: lastFmMatchTypeSchema,
-    mergeGapSeconds: z
+    match_mode: lastFmMatchModeSchema,
+    match_type: lastFmMatchTypeSchema,
+    merge_gap_seconds: z
       .number()
       .int()
       .positive()
@@ -440,9 +440,9 @@ export const lastFmTagRuleSchema = z
         description:
           'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
       }),
-    ruleName: z.string().meta({ description: 'Human-readable name for the rule' }),
-    tagName: z.string().meta({ description: 'Tag to create when rule matches' }),
-    trackName: z
+    rule_name: z.string().meta({ description: 'Human-readable name for the rule' }),
+    tag_name: z.string().meta({ description: 'Tag to create when rule matches' }),
+    track_name: z
       .string()
       .optional()
       .meta({ description: 'Track name to match (for track or track_artist match type)' }),
@@ -456,20 +456,20 @@ export type LastFmTagRule = z.infer<typeof lastFmTagRuleSchema>
  */
 export const addLastFmTagRuleBodySchema = z
   .object({
-    artistName: z
+    artist_name: z
       .string()
       .optional()
       .meta({ description: 'Artist name to match (required for artist or track_artist match type)' }),
-    artistNames: z
+    artist_names: z
       .array(z.string())
       .optional()
       .meta({ description: 'Multiple artist names to match (takes precedence over artistName when set)' }),
-    matchMode: lastFmMatchModeSchema
+    match_mode: lastFmMatchModeSchema
       .optional()
       .default('exact')
       .meta({ description: 'Match mode (default: exact)' }),
-    matchType: lastFmMatchTypeSchema,
-    mergeGapSeconds: z
+    match_type: lastFmMatchTypeSchema,
+    merge_gap_seconds: z
       .number()
       .int()
       .positive()
@@ -479,9 +479,9 @@ export const addLastFmTagRuleBodySchema = z
         description:
           'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
       }),
-    ruleName: z.string().min(1).meta({ description: 'Human-readable name for the rule' }),
-    tagName: z.string().min(1).meta({ description: 'Tag to create when rule matches' }),
-    trackName: z
+    rule_name: z.string().min(1).meta({ description: 'Human-readable name for the rule' }),
+    tag_name: z.string().min(1).meta({ description: 'Tag to create when rule matches' }),
+    track_name: z
       .string()
       .optional()
       .meta({ description: 'Track name to match (required for track or track_artist match type)' }),

@@ -124,7 +124,7 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
     results.push({
       current,
       id: goal.id,
-      losingTomorrow,
+      losing_tomorrow: losingTomorrow,
       max: goal.max,
       metric: goal.metric,
       min: goal.min,

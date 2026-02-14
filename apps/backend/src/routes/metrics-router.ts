@@ -66,7 +66,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const user = req.user!
 
       const settings = await getUserSettings(user)
-      const customMetrics = settings?.customMetrics ?? []
+      const customMetrics = settings?.custom_metrics ?? []
 
       const metrics = metricsParam.split(',')
       const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
@@ -190,7 +190,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const user = req.user!
 
       const settings = await getUserSettings(user)
-      const customMetrics = settings?.customMetrics ?? []
+      const customMetrics = settings?.custom_metrics ?? []
 
       if (!isValidMetricOrCustom(metric, customMetrics)) {
         return res.status(400).json({
@@ -244,7 +244,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const user = req.user!
 
       const settings = await getUserSettings(user)
-      const customMetrics = settings?.customMetrics ?? []
+      const customMetrics = settings?.custom_metrics ?? []
 
       const metrics = metricsParam.split(',')
       const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))

@@ -118,8 +118,8 @@ export const calculateRetryAfter = (retryAfterHeader?: string, attemptCount = 0)
  * Check if a data type is currently rate limited.
  */
 export const isRateLimited = (syncState: SyncState | null): boolean => {
-  if (!syncState?.retryAfter) return false
-  return syncState.status === 'rate_limited' && isFuture(syncState.retryAfter)
+  if (!syncState?.retry_after) return false
+  return syncState.status === 'rate_limited' && isFuture(syncState.retry_after)
 }
 
 /**
@@ -133,9 +133,9 @@ const processCardiovascularAge = async (user: string, data: OuraCardiovascularAg
 
     await insertRawRecord(user, {
       data: record as unknown as Record<string, unknown>,
-      externalId: record.id,
-      recordType: 'daily_cardiovascular_age',
-      recordedAt: time,
+      external_id: record.id,
+      record_type: 'daily_cardiovascular_age',
+      recorded_at: time,
       source: 'oura',
     })
 
@@ -165,9 +165,9 @@ const processReadiness = async (user: string, data: OuraReadiness[]) => {
 
     await insertRawRecord(user, {
       data: record as unknown as Record<string, unknown>,
-      externalId: record.id,
-      recordType: 'daily_readiness',
-      recordedAt: time,
+      external_id: record.id,
+      record_type: 'daily_readiness',
+      recorded_at: time,
       source: 'oura',
     })
 
@@ -203,9 +203,9 @@ const processResilience = async (user: string, data: OuraResilience[]) => {
 
     await insertRawRecord(user, {
       data: record as unknown as Record<string, unknown>,
-      externalId: record.id,
-      recordType: 'daily_resilience',
-      recordedAt: time,
+      external_id: record.id,
+      record_type: 'daily_resilience',
+      recorded_at: time,
       source: 'oura',
     })
 
@@ -246,9 +246,9 @@ const processDailySleep = async (user: string, data: OuraSleep[]) => {
 
     await insertRawRecord(user, {
       data: record as unknown as Record<string, unknown>,
-      externalId: record.id,
-      recordType: 'daily_sleep',
-      recordedAt: time,
+      external_id: record.id,
+      record_type: 'daily_sleep',
+      recorded_at: time,
       source: 'oura',
     })
 
@@ -317,14 +317,14 @@ const processSessions = async (user: string, data: OuraSession[]) => {
   for (const record of data) {
     await insertRawRecord(user, {
       data: record as unknown as Record<string, unknown>,
-      externalId: record.id,
-      recordType: 'session',
-      recordedAt: record.startTime,
+      external_id: record.id,
+      record_type: 'session',
+      recorded_at: record.startTime,
       source: 'oura',
     })
 
     await insertActivity(user, {
-      activityType: 'meditation',
+      activity_type: 'meditation',
       data: {
         heartRate: record.heartRate,
         hrv: record.hrv,
@@ -332,9 +332,9 @@ const processSessions = async (user: string, data: OuraSession[]) => {
         motion: record.motion,
         sessionType: record.type,
       },
-      endTime: record.endTime,
+      end_time: record.endTime,
       source: 'oura',
-      startTime: record.startTime,
+      start_time: record.startTime,
       title: record.type,
     })
 
@@ -356,17 +356,17 @@ const processTags = async (user: string, data: OuraTag[]) => {
   for (const record of data) {
     await insertRawRecord(user, {
       data: record as unknown as Record<string, unknown>,
-      externalId: record.externalId,
-      recordType: 'enhanced_tag',
-      recordedAt: record.startTime,
+      external_id: record.externalId,
+      record_type: 'enhanced_tag',
+      recorded_at: record.startTime,
       source: 'oura',
     })
 
     await insertTag(user, {
-      endTime: record.endTime,
-      externalId: record.externalId,
+      end_time: record.endTime,
+      external_id: record.externalId,
       source: 'oura',
-      startTime: record.startTime,
+      start_time: record.startTime,
       tag: record.tag,
     })
   }
@@ -410,11 +410,11 @@ export const processOuraData = async (
 
 /** Result of a sync operation */
 export interface SyncResult {
-  dataType: OuraDataType
-  recordsProcessed: number
+  data_type: OuraDataType
+  records_processed: number
   status: 'success' | 'skipped' | 'error' | 'rate_limited'
   error?: string
-  retryAfter?: Date
+  retry_after?: Date
 }
 
 /**
@@ -434,9 +434,9 @@ export const syncOuraDataType = async (
   // Skip if rate limited
   if (isRateLimited(syncState)) {
     return {
-      dataType,
-      recordsProcessed: 0,
-      retryAfter: syncState!.retryAfter,
+      data_type: dataType,
+      records_processed: 0,
+      retry_after: syncState!.retry_after,
       status: 'skipped',
     }
   }
@@ -445,18 +445,18 @@ export const syncOuraDataType = async (
   const end = new Date()
   let start: Date
 
-  if (options.fullResync || !syncState?.lastSyncTime) {
+  if (options.fullResync || !syncState?.last_sync_time) {
     start = options.startDate || subDays(end, DEFAULT_SYNC_HISTORY_DAYS)
   } else {
-    start = syncState.lastSyncTime
+    start = syncState.last_sync_time
   }
 
   // Mark as syncing
   await upsertSyncState(user, {
-    dataType,
+    data_type: dataType,
     provider: 'oura',
     status: 'syncing',
-    syncStartDate: start,
+    sync_start_date: start,
   })
 
   try {
@@ -480,7 +480,7 @@ export const syncOuraDataType = async (
         break
       case 'tags': {
         const settings = await getUserSettings(user)
-        data = await oura.getTags(start, end, accessToken, settings?.tagMappings)
+        data = await oura.getTags(start, end, accessToken, settings?.tag_mappings)
         break
       }
     }
@@ -489,15 +489,15 @@ export const syncOuraDataType = async (
 
     // Update sync state on success
     await upsertSyncState(user, {
-      dataType,
-      lastSyncTime: end,
+      data_type: dataType,
+      last_sync_time: end,
       provider: 'oura',
       status: 'idle',
     })
 
     return {
-      dataType,
-      recordsProcessed: data.length,
+      data_type: dataType,
+      records_processed: data.length,
       status: 'success',
     }
   } catch (error: unknown) {
@@ -507,17 +507,17 @@ export const syncOuraDataType = async (
     if (axiosError.response?.status === 429) {
       const retryAfter = calculateRetryAfter(axiosError.response.headers?.['retry-after'])
       await upsertSyncState(user, {
-        dataType,
-        errorMessage: 'Rate limited by Oura API',
+        data_type: dataType,
+        error_message: 'Rate limited by Oura API',
         provider: 'oura',
-        retryAfter,
+        retry_after: retryAfter,
         status: 'rate_limited',
       })
 
       return {
-        dataType,
-        recordsProcessed: 0,
-        retryAfter,
+        data_type: dataType,
+        records_processed: 0,
+        retry_after: retryAfter,
         status: 'rate_limited',
       }
     }
@@ -525,16 +525,16 @@ export const syncOuraDataType = async (
     // Handle other errors
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     await upsertSyncState(user, {
-      dataType,
-      errorMessage,
+      data_type: dataType,
+      error_message: errorMessage,
       provider: 'oura',
       status: 'error',
     })
 
     return {
-      dataType,
+      data_type: dataType,
       error: errorMessage,
-      recordsProcessed: 0,
+      records_processed: 0,
       status: 'error',
     }
   }
@@ -571,9 +571,9 @@ export const syncAllOuraData = async (
       const remaining = dataTypes.slice(dataTypes.indexOf(dataType) + 1)
       for (const remainingType of remaining) {
         results.push({
-          dataType: remainingType,
-          recordsProcessed: 0,
-          retryAfter: result.retryAfter,
+          data_type: remainingType,
+          records_processed: 0,
+          retry_after: result.retry_after,
           status: 'skipped',
         })
       }

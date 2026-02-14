@@ -20,9 +20,9 @@ import type {
 export interface RawRecord {
   id?: string
   source: DataSource
-  recordType: string
-  externalId?: string
-  recordedAt: Date
+  record_type: string
+  external_id?: string
+  recorded_at: Date
   data: Record<string, unknown>
 }
 
@@ -56,7 +56,7 @@ export interface DailyMetricAggregate {
 }
 
 export interface BucketedMetricData {
-  bucketStart: Date
+  bucket_start: Date
   metric: MetricType
   avg: number
   min: number
@@ -71,17 +71,17 @@ export interface BucketedMetricData {
 export interface Activity {
   id?: string
   source: DataSource
-  activityType: ActivityType
-  startTime: Date
-  endTime?: Date
+  activity_type: ActivityType
+  start_time: Date
+  end_time?: Date
   title?: string
   notes?: string
   data?: Record<string, unknown>
 }
 
 export interface ActivityUpdate {
-  startTime?: Date
-  endTime?: Date
+  start_time?: Date
+  end_time?: Date
   title?: string
   notes?: string
 }
@@ -105,7 +105,7 @@ export interface Location {
 export interface Place {
   id?: string
   source?: DataSource
-  externalId?: string
+  external_id?: string
   name: string
   lat: number
   lon: number
@@ -118,8 +118,8 @@ export interface NamedLocation {
   lat: number
   lon: number
   radius: number
-  createdAt: Date
-  updatedAt: Date
+  created_at: Date
+  updated_at: Date
 }
 
 export interface NamedLocationInput {
@@ -136,36 +136,36 @@ export interface DetectedLocation {
   lat: number
   lon: number
   radius: number
-  totalMinutes: number
-  visitCount: number
-  firstVisit: Date
-  lastVisit: Date
+  total_minutes: number
+  visit_count: number
+  first_visit: Date
+  last_visit: Date
   address: string | null
-  geocodeStatus: GeocodeStatus
-  createdAt: Date
-  updatedAt: Date
+  geocode_status: GeocodeStatus
+  created_at: Date
+  updated_at: Date
 }
 
 export interface DetectedLocationInput {
   lat: number
   lon: number
   radius?: number
-  totalMinutes: number
-  visitCount: number
-  firstVisit: Date
-  lastVisit: Date
+  total_minutes: number
+  visit_count: number
+  first_visit: Date
+  last_visit: Date
 }
 
 export interface DetectedLocationUpdate {
   lat?: number
   lon?: number
   radius?: number
-  totalMinutes?: number
-  visitCount?: number
-  firstVisit?: Date
-  lastVisit?: Date
+  total_minutes?: number
+  visit_count?: number
+  first_visit?: Date
+  last_visit?: Date
   address?: string | null
-  geocodeStatus?: GeocodeStatus
+  geocode_status?: GeocodeStatus
 }
 
 // ============================================================================
@@ -175,10 +175,10 @@ export interface DetectedLocationUpdate {
 export interface Tag {
   id?: string
   source: DataSource
-  externalId?: string
+  external_id?: string
   tag: string
-  startTime: Date
-  endTime?: Date
+  start_time: Date
+  end_time?: Date
 }
 
 // ============================================================================
@@ -187,13 +187,13 @@ export interface Tag {
 
 export interface ProductivityRecord {
   source?: DataSource
-  startTime: Date
-  endTime: Date
+  start_time: Date
+  end_time: Date
   activity: string
   category?: string
   productivity?: number
-  durationSec: number
-  isMobile?: boolean
+  duration_sec: number
+  is_mobile?: boolean
 }
 
 // ============================================================================
@@ -202,15 +202,15 @@ export interface ProductivityRecord {
 
 export interface LabResult {
   id?: string
-  testDate: Date
-  testName: string
-  testCategory?: string
+  test_date: Date
+  test_name: string
+  test_category?: string
   value: number
   unit: string
-  referenceLow?: number
-  referenceHigh?: number
+  reference_low?: number
+  reference_high?: number
   flag?: 'normal' | 'high' | 'low' | 'critical'
-  labName?: string
+  lab_name?: string
   notes?: string
 }
 
@@ -220,9 +220,9 @@ export interface LabResult {
 
 export interface OAuthToken {
   provider: string
-  accessToken: string
-  refreshToken?: string
-  expiresAt?: Date
+  access_token: string
+  refresh_token?: string
+  expires_at?: Date
   scopes?: string[]
 }
 
@@ -235,13 +235,13 @@ export type SyncStatus = 'idle' | 'syncing' | 'error' | 'rate_limited'
 export interface SyncState {
   id?: string
   provider: string
-  dataType: string
-  lastSyncTime?: Date
-  syncStartDate?: Date
+  data_type: string
+  last_sync_time?: Date
+  sync_start_date?: Date
   status: SyncStatus
-  errorMessage?: string
-  retryAfter?: Date
-  updatedAt?: Date
+  error_message?: string
+  retry_after?: Date
+  updated_at?: Date
 }
 
 // ============================================================================
@@ -252,7 +252,7 @@ export interface DailyAggregate {
   date: string // "2024-01-15"
   metric: string // "steps", "distance", etc.
   value: number
-  dataOrigins: string[] // Contributing app package names
+  data_origins: string[] // Contributing app package names
 }
 
 // ============================================================================
@@ -265,15 +265,15 @@ export interface CalendarConfig {
 }
 
 export interface UserSettings {
-  birthDate?: string // YYYY-MM-DD
+  birth_date?: string // YYYY-MM-DD
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
-  customMetrics?: CustomMetricDefinition[] // User-defined custom metric types
+  custom_metrics?: CustomMetricDefinition[] // User-defined custom metric types
   dashboard?: DashboardConfig // Custom dashboard configuration
   goals?: Goal[] // User-defined goals for tracking metrics
-  hrZoneStart?: { 1: number; 2: number; 3: number; 4: number; 5: number }
-  lastFmUsername?: string // Last.fm username for scrobble sync
-  rescueTimeKey?: string // RescueTime API key (personal token)
-  tagMappings?: Record<string, string> // Tag name mappings from UUIDs to display names
+  hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
+  lastfm_username?: string // Last.fm username for scrobble sync
+  rescue_time_key?: string // RescueTime API key (personal token)
+  tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names
 }
 
 // ============================================================================
@@ -285,26 +285,26 @@ export type LastFmMatchMode = 'exact' | 'contains'
 
 export interface LastFmTagRule {
   id: string
-  ruleName: string
-  matchType: LastFmMatchType
-  trackName?: string
-  artistName?: string
-  artistNames?: string[]
-  matchMode: LastFmMatchMode
-  tagName: string
-  mergeGapSeconds?: number
-  createdAt: Date
+  rule_name: string
+  match_type: LastFmMatchType
+  track_name?: string
+  artist_name?: string
+  artist_names?: string[]
+  match_mode: LastFmMatchMode
+  tag_name: string
+  merge_gap_seconds?: number
+  created_at: Date
 }
 
 export interface LastFmTagRuleInput {
-  ruleName: string
-  matchType: LastFmMatchType
-  trackName?: string
-  artistName?: string
-  artistNames?: string[]
-  matchMode?: LastFmMatchMode
-  tagName: string
-  mergeGapSeconds?: number
+  rule_name: string
+  match_type: LastFmMatchType
+  track_name?: string
+  artist_name?: string
+  artist_names?: string[]
+  match_mode?: LastFmMatchMode
+  tag_name: string
+  merge_gap_seconds?: number
 }
 
 // ============================================================================
@@ -312,8 +312,8 @@ export interface LastFmTagRuleInput {
 // ============================================================================
 
 export interface McpSessionRecord {
-  sessionId: string
+  session_id: string
   username: string
-  createdAt: Date
-  lastActivity: Date
+  created_at: Date
+  last_activity: Date
 }

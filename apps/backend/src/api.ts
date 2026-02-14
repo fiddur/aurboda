@@ -139,8 +139,8 @@ const main = async () => {
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
     const signupMode = await centralDb.getSignupMode()
     res.json({
-      signupAllowed: signupMode === 'open',
-      signupMode,
+      signup_allowed: signupMode === 'open',
+      signup_mode: signupMode,
       success: true,
     })
   })
@@ -223,7 +223,7 @@ const main = async () => {
         console.log(`First user ${user} automatically made admin`)
       }
 
-      res.json({ isAdmin, success: true, token })
+      res.json({ is_admin: isAdmin, success: true, token })
     } catch (err) {
       console.error('Signup error:', err)
       next(err)
@@ -256,7 +256,7 @@ const main = async () => {
     const isAdmin = await centralDb.isAdmin(user)
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ isAdmin, refresh: token, token }))
+    res.end(JSON.stringify({ is_admin: isAdmin, refresh: token, token }))
   })
 
   httpd.post('/refresh', async (req, res) => {
@@ -272,10 +272,10 @@ const main = async () => {
   const transformSyncStates = async (user: string, provider: string) => {
     const states = await getAllSyncStates(user, provider)
     return states.map((s) => ({
-      errorMessage: s.errorMessage ?? null,
-      lastSyncTime: s.lastSyncTime?.toISOString() ?? null,
+      error_message: s.error_message ?? null,
+      last_sync_time: s.last_sync_time?.toISOString() ?? null,
       provider: s.provider,
-      retryAfter: s.retryAfter?.toISOString() ?? null,
+      retry_after: s.retry_after?.toISOString() ?? null,
       status: s.status === 'rate_limited' ? ('error' as const) : s.status,
     }))
   }
@@ -287,7 +287,7 @@ const main = async () => {
     const results = await syncAllOuraData(user, oura, options)
     return results.map((r) => ({
       ...r,
-      retryAfter: r.retryAfter?.toISOString(),
+      retry_after: r.retry_after?.toISOString(),
     }))
   }
 
@@ -299,7 +299,7 @@ const main = async () => {
     const result = await syncRescueTimeData(user, apiKey, options)
     return {
       ...result,
-      retryAfter: result.retryAfter?.toISOString(),
+      retry_after: result.retry_after?.toISOString(),
     }
   }
 

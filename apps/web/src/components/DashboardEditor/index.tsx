@@ -42,7 +42,7 @@ const widgetTemplates: WidgetTemplate[] = [
     allowedSections: ['metrics'],
     defaultConfig: () => ({
       color: '#3b82f6',
-      lookbackDays: 30,
+      lookback_days: 30,
       metric: 'sleep_score',
     }),
     description: 'Metric value with a mini chart',
@@ -52,7 +52,7 @@ const widgetTemplates: WidgetTemplate[] = [
   {
     allowedSections: ['metrics', 'charts'],
     defaultConfig: () => ({
-      lookbackDays: 7,
+      lookback_days: 7,
     }),
     description: 'Workout, sleep, and meditation stats',
     label: 'Activity Summary',
@@ -61,11 +61,11 @@ const widgetTemplates: WidgetTemplate[] = [
   {
     allowedSections: ['charts'],
     defaultConfig: () => ({
-      displayPeriod: 'monthly',
-      halfLifeDays: 15,
-      lookbackDays: 90,
+      display_period: 'monthly',
+      half_life_days: 15,
+      lookback_days: 90,
       pattern: 'coffee',
-      sourceType: 'tag',
+      source_type: 'tag',
     }),
     description: 'EMA trend visualization for tags or metrics',
     label: 'Trend Chart',
@@ -75,8 +75,8 @@ const widgetTemplates: WidgetTemplate[] = [
     allowedSections: ['charts'],
     defaultConfig: () => ({
       activity: 'exercise',
-      activityType: 'activity_type',
-      periodDays: 90,
+      activity_type: 'activity_type',
+      period_days: 90,
     }),
     description: 'Activity impact on HRV/HR timeline',
     label: 'Correlation Impact',
@@ -217,9 +217,9 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
               <label>Lookback Days</label>
               <input
                 type="number"
-                value={(configValues.lookbackDays as number) ?? 30}
+                value={(configValues.lookback_days as number) ?? 30}
                 onChange={(e) =>
-                  updateConfig('lookbackDays', parseInt((e.target as HTMLInputElement).value, 10))
+                  updateConfig('lookback_days', parseInt((e.target as HTMLInputElement).value, 10))
                 }
                 min={7}
                 max={365}
@@ -243,9 +243,9 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
               <label>Lookback Days</label>
               <input
                 type="number"
-                value={(configValues.lookbackDays as number) ?? 7}
+                value={(configValues.lookback_days as number) ?? 7}
                 onChange={(e) =>
-                  updateConfig('lookbackDays', parseInt((e.target as HTMLInputElement).value, 10))
+                  updateConfig('lookback_days', parseInt((e.target as HTMLInputElement).value, 10))
                 }
                 min={1}
                 max={30}
@@ -260,8 +260,8 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
             <div class="form-group">
               <label>Source Type</label>
               <select
-                value={(configValues.sourceType as string) ?? 'tag'}
-                onChange={(e) => updateConfig('sourceType', (e.target as HTMLSelectElement).value)}
+                value={(configValues.source_type as string) ?? 'tag'}
+                onChange={(e) => updateConfig('source_type', (e.target as HTMLSelectElement).value)}
               >
                 <option value="tag">Tag</option>
                 <option value="metric">Metric</option>
@@ -279,8 +279,8 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
             <div class="form-group">
               <label>Display Period</label>
               <select
-                value={(configValues.displayPeriod as string) ?? 'monthly'}
-                onChange={(e) => updateConfig('displayPeriod', (e.target as HTMLSelectElement).value)}
+                value={(configValues.display_period as string) ?? 'monthly'}
+                onChange={(e) => updateConfig('display_period', (e.target as HTMLSelectElement).value)}
               >
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
@@ -296,8 +296,8 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
             <div class="form-group">
               <label>Activity Type</label>
               <select
-                value={(configValues.activityType as string) ?? 'tag'}
-                onChange={(e) => updateConfig('activityType', (e.target as HTMLSelectElement).value)}
+                value={(configValues.activity_type as string) ?? 'tag'}
+                onChange={(e) => updateConfig('activity_type', (e.target as HTMLSelectElement).value)}
               >
                 <option value="tag">Tag</option>
                 <option value="activity_type">Activity</option>

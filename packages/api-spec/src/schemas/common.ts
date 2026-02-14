@@ -217,8 +217,8 @@ export const metricUnits: Record<MetricType, string> = {
 export const customMetricDefinitionSchema = z
   .object({
     description: z.string().optional().meta({ description: 'Human-readable description' }),
-    maxValue: z.number().optional().meta({ description: 'Maximum allowed value' }),
-    minValue: z.number().optional().meta({ description: 'Minimum allowed value' }),
+    max_value: z.number().optional().meta({ description: 'Maximum allowed value' }),
+    min_value: z.number().optional().meta({ description: 'Minimum allowed value' }),
     name: z
       .string()
       .min(1)

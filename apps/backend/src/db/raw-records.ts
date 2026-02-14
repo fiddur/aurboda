@@ -12,6 +12,6 @@ export const insertRawRecord = async (user: string, record: RawRecord) => {
      ON CONFLICT (source, record_type, external_id) DO UPDATE SET
        data = EXCLUDED.data,
        received_at = NOW()`,
-    [record.source, record.recordType, record.externalId, record.recordedAt, record.data],
+    [record.source, record.record_type, record.external_id, record.recorded_at, record.data],
   )
 }

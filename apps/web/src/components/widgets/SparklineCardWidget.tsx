@@ -145,11 +145,11 @@ const metricToApiMetric: Record<string, string> = {
 
 // eslint-disable-next-line complexity -- TODO: refactor
 export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
-  const { metric, title: configTitle, lookbackDays = 30, color = '#3b82f6' } = config
+  const { metric, title: configTitle, lookback_days = 30, color = '#3b82f6' } = config
 
   const title = configTitle ?? metricTitles[metric] ?? metric
   const end = endOfDay(new Date())
-  const start = startOfDay(subDays(new Date(), lookbackDays))
+  const start = startOfDay(subDays(new Date(), lookback_days))
 
   // Fetch time series data for sparkline
   const fetcher = metricFetchers[metric]
@@ -183,7 +183,7 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
     const stats = apiMetric ? periodSummary[apiMetric] : null
     if (stats) {
       value = stats.avg ?? null
-      trend = stats.changeFromPreviousPeriodPercent ?? null
+      trend = stats.change_from_previous_period_percent ?? null
       subtitle = stats.count ? `${stats.count} days` : undefined
     }
   }

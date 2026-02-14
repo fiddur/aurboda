@@ -86,10 +86,10 @@ export const syncCalendar = async (
 
     for (const event of events) {
       await insertTag(user, {
-        endTime: event.end,
-        externalId: event.uid,
+        end_time: event.end,
+        external_id: event.uid,
         source: 'calendar',
-        startTime: event.start,
+        start_time: event.start,
         tag: `[${calendar.name}] ${event.summary}`,
       })
 
@@ -100,31 +100,31 @@ export const syncCalendar = async (
           location: event.location,
           summary: event.summary,
         },
-        externalId: event.uid,
-        recordType: 'calendar_event',
-        recordedAt: event.start,
+        external_id: event.uid,
+        record_type: 'calendar_event',
+        recorded_at: event.start,
         source: 'calendar',
       })
     }
 
     await upsertSyncState(user, {
-      dataType: calendar.name,
-      lastSyncTime: new Date(),
+      data_type: calendar.name,
+      last_sync_time: new Date(),
       provider: 'calendar',
       status: 'idle',
     })
 
     return {
       calendar: calendar.name,
-      eventsProcessed: events.length,
+      events_processed: events.length,
       status: 'success',
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
 
     await upsertSyncState(user, {
-      dataType: calendar.name,
-      errorMessage: message,
+      data_type: calendar.name,
+      error_message: message,
       provider: 'calendar',
       status: 'error',
     }).catch(() => {}) // Don't fail on sync state update error
@@ -132,7 +132,7 @@ export const syncCalendar = async (
     return {
       calendar: calendar.name,
       error: message,
-      eventsProcessed: 0,
+      events_processed: 0,
       status: 'error',
     }
   }
