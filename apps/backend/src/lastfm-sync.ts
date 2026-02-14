@@ -7,14 +7,17 @@
 
 import { subDays } from 'date-fns'
 import {
+  findMergeableTag,
   getLastFmTagRules,
   getSyncState,
   insertRawRecord,
   insertTag,
   type LastFmTagRule,
+  updateTagEndTime,
   upsertSyncState,
 } from './db'
 import { lastfmClient, type Scrobble } from './lastfm'
+import { groupIntoSessions, type TimestampedEvent } from './session-grouping'
 
 /** Default start date for historical sync (30 days back) */
 const DEFAULT_SYNC_HISTORY_DAYS = 30
@@ -28,14 +31,33 @@ export interface LastFmSyncResult {
 }
 
 /**
+ * Check if a scrobble's artist matches one of the given names using the specified mode.
+ */
+const matchesAnyArtist = (scrobbleArtist: string, names: string[], mode: 'exact' | 'contains'): boolean => {
+  const normalized = scrobbleArtist.toLowerCase().trim()
+  return names.some((name) => {
+    const normalizedName = name.toLowerCase().trim()
+    return mode === 'exact' ? normalized === normalizedName : normalized.includes(normalizedName)
+  })
+}
+
+/**
+ * Get the effective artist names for a rule, preferring artistNames over artistName.
+ */
+const getEffectiveArtistNames = (rule: LastFmTagRule): string[] | undefined => {
+  if (rule.artistNames && rule.artistNames.length > 0) return rule.artistNames
+  if (rule.artistName) return [rule.artistName]
+  return undefined
+}
+
+/**
  * Check if a scrobble matches a tag rule.
  */
 export const matchesRule = (scrobble: Scrobble, rule: LastFmTagRule): boolean => {
-  const normalize = (s: string) => s.toLowerCase().trim()
-
   switch (rule.matchType) {
     case 'track': {
       if (!rule.trackName) return false
+      const normalize = (s: string) => s.toLowerCase().trim()
       if (rule.matchMode === 'exact') {
         return normalize(scrobble.track) === normalize(rule.trackName)
       }
@@ -43,29 +65,121 @@ export const matchesRule = (scrobble: Scrobble, rule: LastFmTagRule): boolean =>
     }
 
     case 'artist': {
-      if (!rule.artistName) return false
-      if (rule.matchMode === 'exact') {
-        return normalize(scrobble.artist) === normalize(rule.artistName)
-      }
-      return normalize(scrobble.artist).includes(normalize(rule.artistName))
+      const names = getEffectiveArtistNames(rule)
+      if (!names) return false
+      return matchesAnyArtist(scrobble.artist, names, rule.matchMode)
     }
 
     case 'track_artist': {
-      if (!rule.trackName || !rule.artistName) return false
+      if (!rule.trackName) return false
+      const names = getEffectiveArtistNames(rule)
+      if (!names) return false
+
+      const normalize = (s: string) => s.toLowerCase().trim()
       const trackMatch =
         rule.matchMode === 'exact' ?
           normalize(scrobble.track) === normalize(rule.trackName)
         : normalize(scrobble.track).includes(normalize(rule.trackName))
-      const artistMatch =
-        rule.matchMode === 'exact' ?
-          normalize(scrobble.artist) === normalize(rule.artistName)
-        : normalize(scrobble.artist).includes(normalize(rule.artistName))
+      const artistMatch = matchesAnyArtist(scrobble.artist, names, rule.matchMode)
       return trackMatch && artistMatch
     }
 
     default:
       return false
   }
+}
+
+/**
+ * Apply point-in-time rules (rules without mergeGapSeconds) to scrobbles.
+ */
+const applyPointInTimeRules = async (
+  user: string,
+  scrobbles: Scrobble[],
+  rules: LastFmTagRule[],
+): Promise<number> => {
+  let tagsCreated = 0
+  const createdTags = new Set<string>()
+
+  for (const scrobble of scrobbles) {
+    for (const rule of rules) {
+      if (matchesRule(scrobble, rule)) {
+        const tagKey = `${rule.tagName}|${scrobble.timestamp.toISOString()}`
+        if (createdTags.has(tagKey)) continue
+        createdTags.add(tagKey)
+
+        const externalId = `lastfm-auto-${rule.id}-${scrobble.timestamp.getTime()}`
+        await insertTag(user, {
+          externalId,
+          source: 'lastfm-auto',
+          startTime: scrobble.timestamp,
+          tag: rule.tagName,
+        })
+        tagsCreated++
+      }
+    }
+  }
+
+  return tagsCreated
+}
+
+interface ScrobbleEvent extends TimestampedEvent {
+  readonly scrobble: Scrobble
+}
+
+/**
+ * Apply session rules (rules with mergeGapSeconds) to scrobbles.
+ * Groups matching scrobbles into sessions and creates span tags.
+ */
+const applySessionRules = async (
+  user: string,
+  scrobbles: Scrobble[],
+  rules: LastFmTagRule[],
+): Promise<number> => {
+  let tagsCreated = 0
+
+  for (const rule of rules) {
+    const gapMs = rule.mergeGapSeconds! * 1000
+    const matching: ScrobbleEvent[] = scrobbles
+      .filter((s) => matchesRule(s, rule))
+      .map((s) => ({ scrobble: s, timestamp: s.timestamp }))
+
+    if (matching.length === 0) continue
+
+    const sessions = groupIntoSessions(matching, gapMs)
+
+    for (let i = 0; i < sessions.length; i++) {
+      const session = sessions[i]
+
+      // For the first session, try cross-sync merging
+      if (i === 0) {
+        const existingTag = await findMergeableTag(
+          user,
+          rule.tagName,
+          session.startTime,
+          rule.mergeGapSeconds!,
+          'lastfm-auto',
+        )
+
+        if (existingTag) {
+          await updateTagEndTime(user, existingTag.externalId!, session.endTime)
+          tagsCreated++
+          continue
+        }
+      }
+
+      const externalId = `lastfm-session-${rule.id}-${session.startTime.getTime()}`
+      await insertTag(user, {
+        endTime: session.endTime,
+        externalId,
+        source: 'lastfm-auto',
+        startTime: session.startTime,
+        tag: rule.tagName,
+      })
+      tagsCreated++
+    }
+  }
+
+  return tagsCreated
 }
 
 /**
@@ -79,34 +193,13 @@ export const applyTagRules = async (
 ): Promise<number> => {
   if (rules.length === 0) return 0
 
-  let tagsCreated = 0
+  const pointInTimeRules = rules.filter((r) => !r.mergeGapSeconds)
+  const sessionRules = rules.filter((r) => r.mergeGapSeconds)
 
-  // Track which tags we've created to avoid duplicates within the same sync
-  const createdTags = new Set<string>()
+  const pointTags = await applyPointInTimeRules(user, scrobbles, pointInTimeRules)
+  const sessionTags = await applySessionRules(user, scrobbles, sessionRules)
 
-  for (const scrobble of scrobbles) {
-    for (const rule of rules) {
-      if (matchesRule(scrobble, rule)) {
-        // Create a unique key for deduplication: tagName + timestamp
-        const tagKey = `${rule.tagName}|${scrobble.timestamp.toISOString()}`
-        if (createdTags.has(tagKey)) continue
-        createdTags.add(tagKey)
-
-        // Create external_id from scrobble details for deduplication
-        const externalId = `lastfm-auto-${rule.id}-${scrobble.timestamp.getTime()}`
-
-        await insertTag(user, {
-          externalId,
-          source: 'lastfm-auto',
-          startTime: scrobble.timestamp,
-          tag: rule.tagName,
-        })
-        tagsCreated++
-      }
-    }
-  }
-
-  return tagsCreated
+  return pointTags + sessionTags
 }
 
 /**

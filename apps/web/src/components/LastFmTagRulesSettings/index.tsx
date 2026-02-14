@@ -38,10 +38,25 @@ export function LastFmTagRulesSettings() {
   const [matchType, setMatchType] = useState<LastFmMatchType>('track')
   const [trackName, setTrackName] = useState('')
   const [artistName, setArtistName] = useState('')
+  const [artistNames, setArtistNames] = useState<string[]>([])
+  const [newArtistInput, setNewArtistInput] = useState('')
   const [matchMode, setMatchMode] = useState<LastFmMatchMode>('exact')
   const [tagName, setTagName] = useState('')
+  const [mergeGapMinutes, setMergeGapMinutes] = useState('')
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+
+  const handleAddArtist = () => {
+    const name = newArtistInput.trim()
+    if (name && !artistNames.includes(name)) {
+      setArtistNames([...artistNames, name])
+      setNewArtistInput('')
+    }
+  }
+
+  const handleRemoveArtist = (index: number) => {
+    setArtistNames(artistNames.filter((_, i) => i !== index))
+  }
 
   const handleAddRule = async () => {
     if (!ruleName.trim() || !tagName.trim()) return
@@ -51,8 +66,12 @@ export function LastFmTagRulesSettings() {
       setSaveStatus({ error: 'Track name is required', status: 'error' })
       return
     }
-    if ((matchType === 'artist' || matchType === 'track_artist') && !artistName.trim()) {
-      setSaveStatus({ error: 'Artist name is required', status: 'error' })
+    const hasArtistInput =
+      matchType === 'artist' || matchType === 'track_artist' ?
+        artistNames.length > 0 || artistName.trim()
+      : true
+    if (!hasArtistInput) {
+      setSaveStatus({ error: 'At least one artist name is required', status: 'error' })
       return
     }
 
@@ -68,7 +87,16 @@ export function LastFmTagRulesSettings() {
         rule.trackName = trackName.trim()
       }
       if (matchType === 'artist' || matchType === 'track_artist') {
-        rule.artistName = artistName.trim()
+        if (artistNames.length > 0) {
+          rule.artistNames = artistNames
+        } else {
+          rule.artistName = artistName.trim()
+        }
+      }
+
+      const gapMinutes = parseFloat(mergeGapMinutes)
+      if (gapMinutes > 0) {
+        rule.mergeGapSeconds = Math.round(gapMinutes * 60)
       }
 
       await createLastFmTagRule(rule)
@@ -78,7 +106,10 @@ export function LastFmTagRulesSettings() {
       setRuleName('')
       setTrackName('')
       setArtistName('')
+      setArtistNames([])
+      setNewArtistInput('')
       setTagName('')
+      setMergeGapMinutes('')
       setSaveStatus({ status: 'saved', time: new Date() })
     } catch (err) {
       setSaveStatus({
@@ -100,6 +131,13 @@ export function LastFmTagRulesSettings() {
         status: 'error',
       })
     }
+  }
+
+  const formatRuleArtists = (rule: LastFmTagRule): string => {
+    if (rule.artistNames && rule.artistNames.length > 0) {
+      return rule.artistNames.join(', ')
+    }
+    return rule.artistName ?? ''
   }
 
   // Don't show if Last.fm is not configured
@@ -136,11 +174,18 @@ export function LastFmTagRulesSettings() {
                     <span class="rule-name">{rule.ruleName}</span>
                     <span class="rule-details">
                       {rule.matchType === 'track' && `Track: "${rule.trackName}"`}
-                      {rule.matchType === 'artist' && `Artist: "${rule.artistName}"`}
-                      {rule.matchType === 'track_artist' && `"${rule.trackName}" by "${rule.artistName}"`}
+                      {rule.matchType === 'artist' && `Artist: "${formatRuleArtists(rule)}"`}
+                      {rule.matchType === 'track_artist' &&
+                        `"${rule.trackName}" by "${formatRuleArtists(rule)}"`}
                       {rule.matchMode === 'contains' && ' (contains)'}
                       {' → '}
                       <strong>{rule.tagName}</strong>
+                      {rule.mergeGapSeconds && (
+                        <span class="rule-merge-info">
+                          {' '}
+                          (session merge: {Math.round(rule.mergeGapSeconds / 60)}min)
+                        </span>
+                      )}
                     </span>
                   </div>
                   <button type="button" class="remove-rule-button" onClick={() => handleDeleteRule(rule)}>
@@ -221,16 +266,81 @@ export function LastFmTagRulesSettings() {
 
             {(matchType === 'artist' || matchType === 'track_artist') && (
               <div class="form-field">
-                <label for="artist-name">Artist Name</label>
-                <input
-                  id="artist-name"
-                  type="text"
-                  value={artistName}
-                  onInput={(e) => setArtistName((e.target as HTMLInputElement).value)}
-                  placeholder="e.g., Meditation Artist"
-                />
+                <label>Artists</label>
+                {artistNames.length > 0 && (
+                  <div class="artist-names-list">
+                    {artistNames.map((name, idx) => (
+                      <span class="artist-name-chip" key={name}>
+                        {name}
+                        <button
+                          type="button"
+                          class="remove-artist-button"
+                          onClick={() => handleRemoveArtist(idx)}
+                        >
+                          x
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div class="artist-input-row">
+                  <input
+                    type="text"
+                    value={artistNames.length > 0 ? newArtistInput : artistName}
+                    onInput={(e) => {
+                      const val = (e.target as HTMLInputElement).value
+                      if (artistNames.length > 0) {
+                        setNewArtistInput(val)
+                      } else {
+                        setArtistName(val)
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && artistNames.length > 0) {
+                        e.preventDefault()
+                        handleAddArtist()
+                      }
+                    }}
+                    placeholder={artistNames.length > 0 ? 'Add another artist...' : 'e.g., Meditation Artist'}
+                  />
+                  <button
+                    type="button"
+                    class="add-artist-button"
+                    onClick={() => {
+                      if (artistNames.length === 0 && artistName.trim()) {
+                        setArtistNames([artistName.trim()])
+                        setArtistName('')
+                      } else {
+                        handleAddArtist()
+                      }
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+                <p class="field-help">
+                  Add multiple artists to match any of them. Use + button or Enter to add.
+                </p>
               </div>
             )}
+
+            <div class="form-field">
+              <label for="merge-gap">Session merge gap (minutes)</label>
+              <input
+                id="merge-gap"
+                type="number"
+                min="1"
+                step="1"
+                value={mergeGapMinutes}
+                onInput={(e) => setMergeGapMinutes((e.target as HTMLInputElement).value)}
+                placeholder="e.g., 10"
+              />
+              <p class="field-help">
+                When set, consecutive matching scrobbles within this gap are grouped into a single span tag.
+                Leave empty for one tag per scrobble. The gap should account for track length + pause between
+                tracks.
+              </p>
+            </div>
 
             <button
               type="button"

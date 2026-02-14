@@ -289,8 +289,10 @@ export interface LastFmTagRule {
   matchType: LastFmMatchType
   trackName?: string
   artistName?: string
+  artistNames?: string[]
   matchMode: LastFmMatchMode
   tagName: string
+  mergeGapSeconds?: number
   createdAt: Date
 }
 
@@ -299,8 +301,10 @@ export interface LastFmTagRuleInput {
   matchType: LastFmMatchType
   trackName?: string
   artistName?: string
+  artistNames?: string[]
   matchMode?: LastFmMatchMode
   tagName: string
+  mergeGapSeconds?: number
 }
 
 // ============================================================================

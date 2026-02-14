@@ -158,10 +158,12 @@ export const mapMcpSessionRow = (row: QueryResultRow): McpSessionRecord => ({
 
 export const mapLastFmTagRuleRow = (row: QueryResultRow): LastFmTagRule => ({
   artistName: row.artist_name ?? undefined,
+  artistNames: row.artist_names ?? undefined,
   createdAt: new Date(row.created_at),
   id: row.id,
   matchMode: parseLastFmMatchMode(row.match_mode),
   matchType: parseLastFmMatchType(row.match_type),
+  mergeGapSeconds: row.merge_gap_seconds ?? undefined,
   ruleName: row.rule_name,
   tagName: row.tag_name,
   trackName: row.track_name ?? undefined,
