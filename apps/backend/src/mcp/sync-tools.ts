@@ -1,8 +1,13 @@
 /**
  * MCP sync tools - data synchronization with external services.
  */
-import { syncProviderSchema } from '@aurboda/api-spec'
-import { z } from 'zod'
+import {
+  syncCalendarsBodySchema,
+  syncLastFmBodySchema,
+  syncOuraBodySchema,
+  syncProviderSchema,
+  syncRescueTimeBodySchema,
+} from '@aurboda/api-spec'
 import { getAllSyncStates } from '../db'
 import { syncAllCalendars } from '../ical-sync'
 import { syncLastFmData } from '../lastfm-sync'
@@ -21,18 +26,7 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
   server.tool(
     'sync_oura',
     'Sync data from Oura Ring API. Fetches cardiovascular age, readiness, resilience, sleep scores, meditation sessions, and tags.',
-    {
-      full_resync: z
-        .boolean()
-        .optional()
-        .describe(
-          'If true, fetches all historical data (default 90 days). Otherwise, fetches only since last sync.',
-        ),
-      start_date: z
-        .string()
-        .optional()
-        .describe('Optional start date for sync in YYYY-MM-DD format. Only used with full_resync.'),
-    },
+    { ...syncOuraBodySchema.shape },
     async ({ full_resync, start_date }) => {
       if (!oura) {
         return errorResponse('Oura integration is not configured on this server.')
@@ -63,18 +57,7 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
   server.tool(
     'sync_rescuetime',
     'Sync productivity data from RescueTime API. Fetches application and website usage with productivity scores.',
-    {
-      full_resync: z
-        .boolean()
-        .optional()
-        .describe(
-          'If true, fetches all historical data (default 30 days). Otherwise, fetches only since last sync.',
-        ),
-      start_date: z
-        .string()
-        .optional()
-        .describe('Optional start date for sync in YYYY-MM-DD format. Only used with full_resync.'),
-    },
+    { ...syncRescueTimeBodySchema.shape },
     async ({ full_resync, start_date }) => {
       const settings = await getSettings(user)
       if (!settings.rescue_time_key) {
@@ -104,12 +87,7 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
   server.tool(
     'sync_calendars',
     'Sync events from configured calendar ICS URLs. Fetches ICS data and stores events as tags for correlation analysis.',
-    {
-      full_resync: z
-        .boolean()
-        .optional()
-        .describe('If true, re-fetches all events. Otherwise, performs a normal sync.'),
-    },
+    { ...syncCalendarsBodySchema.shape },
     async () => {
       const settings = await getSettings(user)
       if (!settings.calendars || settings.calendars.length === 0) {
@@ -138,18 +116,7 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
   server.tool(
     'sync_lastfm',
     'Sync scrobbles from Last.fm. Fetches recent tracks and applies auto-tagging rules.',
-    {
-      full_resync: z
-        .boolean()
-        .optional()
-        .describe(
-          'If true, fetches all historical data (default 30 days). Otherwise, fetches only since last sync.',
-        ),
-      start_date: z
-        .string()
-        .optional()
-        .describe('Optional start date for sync in YYYY-MM-DD format. Only used with full_resync.'),
-    },
+    { ...syncLastFmBodySchema.shape },
     async ({ full_resync, start_date }) => {
       const lastFmApiKey = await getCentralDb().getLastFmApiKey()
       if (!lastFmApiKey) {

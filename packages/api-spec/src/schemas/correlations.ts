@@ -535,3 +535,56 @@ export const genericCorrelationResponseSchema = createDataResponseSchema(generic
 })
 
 export type GenericCorrelationResponse = z.infer<typeof genericCorrelationResponseSchema>
+
+// ============================================================================
+// MCP input schemas (typed params, complementing Express string-based queries)
+// ============================================================================
+
+/** Activity impact MCP input schema (typed numbers instead of query strings) */
+export const activityImpactInputSchema = z
+  .object({
+    activity: z
+      .string()
+      .meta({ description: 'The activity or tag name to analyze (e.g., "gym", "coffee", "meditation")' }),
+    activity_type: activityImpactTypeSchema.meta({ description: 'Type of activity to search for' }),
+    period_days: z.number().int().optional().meta({ description: 'Number of days to analyze. Defaults to 90.' }),
+    window_minutes: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Minutes to analyze before/after the activity. Defaults to 30.' }),
+  })
+  .meta({ id: 'ActivityImpactInput' })
+
+export type ActivityImpactInput = z.infer<typeof activityImpactInputSchema>
+
+/** Event probability MCP input schema (typed numbers instead of query strings) */
+export const eventProbabilityInputSchema = z
+  .object({
+    lag_windows: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description: 'Time windows to analyze (e.g., ["12h", "24h", "36h", "48h"]). Uses hours (h) or days (d).',
+      }),
+    outcome_pattern: z
+      .string()
+      .meta({ description: 'Regex pattern for outcome tags (e.g., "headache|migraine", "good_sleep")' }),
+    period_days: z.number().int().optional().meta({ description: 'Number of days to analyze. Defaults to 365.' }),
+    trigger_type: eventTriggerTypeSchema.meta({ description: 'Type of trigger event' }),
+    trigger_value: z
+      .string()
+      .meta({ description: 'Trigger activity type or tag pattern (e.g., "exercise", "gym", "coffee")' }),
+  })
+  .meta({ id: 'EventProbabilityInput' })
+
+export type EventProbabilityInput = z.infer<typeof eventProbabilityInputSchema>
+
+/** HRV correlation MCP input schema */
+export const hrvCorrelationInputSchema = z
+  .object({
+    period_days: z.number().int().optional().meta({ description: 'Number of days to analyze. Defaults to 30.' }),
+  })
+  .meta({ id: 'HrvCorrelationInput' })
+
+export type HrvCorrelationInput = z.infer<typeof hrvCorrelationInputSchema>

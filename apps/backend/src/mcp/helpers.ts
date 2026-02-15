@@ -1,14 +1,8 @@
 /**
  * Shared helpers and schemas for MCP tool modules.
  */
-import { endDateTimeQuerySchema, startDateTimeQuerySchema, validMetrics } from '@aurboda/api-spec'
+import { validMetrics } from '@aurboda/api-spec'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-
-/** Common time range schema for MCP queries. */
-export const mcpTimeRangeSchema = {
-  end: endDateTimeQuerySchema,
-  start: startDateTimeQuerySchema,
-}
 
 /** Metric name description using validMetrics from api-spec. */
 export const metricDescription = `Metric name. Valid metrics: ${validMetrics.join(', ')}`

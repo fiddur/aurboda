@@ -1,7 +1,7 @@
 /**
  * MCP trend analysis tools.
  */
-import { z } from 'zod'
+import { getTrendQuerySchema } from '@aurboda/api-spec'
 import { getTrend } from '../services/trends'
 import { jsonResponse, type McpServer } from './helpers'
 
@@ -21,34 +21,7 @@ Common half-life values:
 - 7 days (quick): Responds to changes within a week
 - 15 days (responsive): Balanced, good default
 - 30 days (stable): Smooths out short-term variation`,
-    {
-      aggregation: z
-        .enum(['count', 'sum', 'mean'])
-        .optional()
-        .describe('Aggregation method. For tags: "count" (default). For metrics: "mean" or "sum".'),
-      display_period: z
-        .enum(['daily', 'weekly', 'monthly'])
-        .optional()
-        .describe('Period to normalize rate to. Default: "monthly".'),
-      half_life_days: z
-        .number()
-        .positive()
-        .optional()
-        .describe(
-          'EMA half-life in days. Default: 15. Common values: 7 (quick), 15 (responsive), 30 (stable).',
-        ),
-      lookback_days: z
-        .number()
-        .positive()
-        .optional()
-        .describe('Days of historical data to include. Default: 90.'),
-      pattern: z
-        .string()
-        .describe(
-          'For tags: regex pattern to match (e.g., "pain_killer|headache"). For metrics: metric name.',
-        ),
-      source_type: z.enum(['tag', 'metric']).describe('Type of data source: "tag" or "metric".'),
-    },
+    { ...getTrendQuerySchema.shape },
     async ({ aggregation, display_period, half_life_days, lookback_days, pattern, source_type }) => {
       try {
         const result = await getTrend(user, {

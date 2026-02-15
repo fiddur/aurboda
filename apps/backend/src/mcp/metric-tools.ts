@@ -1,7 +1,12 @@
 /**
  * MCP metric management tools.
  */
-import { customMetricDefinitionSchema } from '@aurboda/api-spec'
+import {
+  addCustomMetricBodySchema,
+  addMetricBodySchema,
+  customMetricDefinitionSchema,
+  updateCustomMetricBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
 import {
   addCustomMetric,
@@ -20,14 +25,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   server.tool(
     'add_metric',
     'Add a manual health metric measurement. Use this to log data not captured automatically.',
-    {
-      metric: z.string().describe(metricDescription),
-      time: z
-        .string()
-        .optional()
-        .describe('Measurement time in ISO 8601 format. Defaults to current time if omitted.'),
-      value: z.number().describe('The metric value (e.g., 72 for heart rate, 75.5 for weight)'),
-    },
+    { ...addMetricBodySchema.shape },
     async ({ metric, time, value }) => {
       const measurementTime = time ? parseOptionalDate(time) : new Date()
       if (!measurementTime) {
@@ -46,17 +44,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   server.tool(
     'add_custom_metric',
     'Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics.',
-    {
-      description: z.string().optional().describe('Human-readable description of the metric'),
-      max_value: z.number().optional().describe('Maximum allowed value for validation'),
-      min_value: z.number().optional().describe('Minimum allowed value for validation'),
-      name: z
-        .string()
-        .describe(
-          'Metric name (lowercase letters, numbers, underscores). Must not conflict with built-in metrics.',
-        ),
-      unit: z.string().describe('Unit of measurement (e.g., "score", "mg", "count")'),
-    },
+    { ...addCustomMetricBodySchema.shape },
     async ({ description, max_value, min_value, name, unit }) => {
       const definition = {
         ...(description !== undefined ? { description } : {}),
@@ -108,19 +96,8 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     'update_custom_metric',
     'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them.',
     {
-      description: z.string().optional().describe('Human-readable description of the metric'),
-      max_value: z
-        .number()
-        .nullable()
-        .optional()
-        .describe('Maximum allowed value for validation (null to clear)'),
-      min_value: z
-        .number()
-        .nullable()
-        .optional()
-        .describe('Minimum allowed value for validation (null to clear)'),
       name: z.string().describe('The name of the custom metric to update'),
-      unit: z.string().optional().describe('Unit of measurement (e.g., "score", "mg", "count")'),
+      ...updateCustomMetricBodySchema.shape,
     },
     async ({ description, max_value, min_value, name, unit }) => {
       const updates = {
