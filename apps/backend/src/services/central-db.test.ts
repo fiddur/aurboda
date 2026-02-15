@@ -258,4 +258,139 @@ describe('central-db', () => {
       expect(result).toEqual([])
     })
   })
+
+  describe('upsertOuraUserMapping', () => {
+    test('inserts oura user mapping', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      await centralDb.upsertOuraUserMapping('oura-123', 'testuser')
+
+      expect(mockClient.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO oura_user_mappings'),
+        ['oura-123', 'testuser'],
+      )
+    })
+  })
+
+  describe('getUsernameByOuraUserId', () => {
+    test('returns username when mapping exists', async () => {
+      mockClient.query.mockResolvedValue({ rows: [{ username: 'testuser' }] })
+
+      const result = await centralDb.getUsernameByOuraUserId('oura-123')
+
+      expect(result).toBe('testuser')
+      expect(mockClient.query).toHaveBeenCalledWith(
+        'SELECT username FROM oura_user_mappings WHERE oura_user_id = $1',
+        ['oura-123'],
+      )
+    })
+
+    test('returns null when mapping does not exist', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      const result = await centralDb.getUsernameByOuraUserId('unknown')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('deleteOuraUserMapping', () => {
+    test('returns true when mapping deleted', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 1 })
+
+      const result = await centralDb.deleteOuraUserMapping('oura-123')
+
+      expect(result).toBe(true)
+    })
+
+    test('returns false when mapping not found', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 0 })
+
+      const result = await centralDb.deleteOuraUserMapping('unknown')
+
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('upsertOuraWebhookSubscription', () => {
+    test('inserts webhook subscription', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      await centralDb.upsertOuraWebhookSubscription({
+        callback_url: 'https://example.com/webhooks/oura',
+        data_type: 'daily_sleep',
+        event_type: 'create',
+        expiration_time: new Date('2026-03-01T00:00:00Z'),
+        oura_subscription_id: 'sub-1',
+      })
+
+      expect(mockClient.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO oura_webhook_subscriptions'),
+        [
+          'sub-1',
+          'daily_sleep',
+          'create',
+          'https://example.com/webhooks/oura',
+          new Date('2026-03-01T00:00:00Z'),
+        ],
+      )
+    })
+  })
+
+  describe('getOuraWebhookSubscriptions', () => {
+    test('returns all subscriptions', async () => {
+      const rows = [
+        {
+          callback_url: 'https://example.com/webhooks/oura',
+          created_at: new Date(),
+          data_type: 'daily_sleep',
+          event_type: 'create',
+          expiration_time: new Date(),
+          oura_subscription_id: 'sub-1',
+          updated_at: new Date(),
+        },
+      ]
+      mockClient.query.mockResolvedValue({ rows })
+
+      const result = await centralDb.getOuraWebhookSubscriptions()
+
+      expect(result).toEqual(rows)
+    })
+
+    test('returns empty array when no subscriptions', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      const result = await centralDb.getOuraWebhookSubscriptions()
+
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('deleteOuraWebhookSubscription', () => {
+    test('returns true when subscription deleted', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 1 })
+
+      const result = await centralDb.deleteOuraWebhookSubscription('sub-1')
+
+      expect(result).toBe(true)
+    })
+
+    test('returns false when subscription not found', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 0 })
+
+      const result = await centralDb.deleteOuraWebhookSubscription('unknown')
+
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('deleteAllOuraWebhookSubscriptions', () => {
+    test('returns count of deleted subscriptions', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 5 })
+
+      const result = await centralDb.deleteAllOuraWebhookSubscriptions()
+
+      expect(result).toBe(5)
+    })
+  })
 })

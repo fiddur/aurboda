@@ -17,6 +17,24 @@ export type SignupMode = 'open' | 'invite_only' | 'closed'
 export interface ServerSettings {
   lastfm_api_key: string
   signup_mode: SignupMode
+  oura_webhook_verification_token: string
+}
+
+export interface OuraUserMapping {
+  oura_user_id: string
+  username: string
+  created_at: Date
+  updated_at: Date
+}
+
+export interface OuraWebhookSubscription {
+  oura_subscription_id: string
+  data_type: string
+  event_type: string
+  callback_url: string
+  expiration_time: Date | null
+  created_at: Date
+  updated_at: Date
 }
 
 export interface CentralDbDeps {
@@ -36,6 +54,15 @@ export interface CentralDb {
   removeAdmin: (username: string) => Promise<boolean>
   getAdminCount: () => Promise<number>
   getAdmins: () => Promise<string[]>
+  upsertOuraUserMapping: (ouraUserId: string, username: string) => Promise<void>
+  getUsernameByOuraUserId: (ouraUserId: string) => Promise<string | null>
+  deleteOuraUserMapping: (ouraUserId: string) => Promise<boolean>
+  upsertOuraWebhookSubscription: (
+    sub: Omit<OuraWebhookSubscription, 'created_at' | 'updated_at'>,
+  ) => Promise<void>
+  getOuraWebhookSubscriptions: () => Promise<OuraWebhookSubscription[]>
+  deleteOuraWebhookSubscription: (ouraSubscriptionId: string) => Promise<boolean>
+  deleteAllOuraWebhookSubscriptions: () => Promise<number>
 }
 
 // ============================================================================
@@ -111,6 +138,27 @@ const CREATE_ADMINS_TABLE = `
   )
 `
 
+const CREATE_OURA_USER_MAPPINGS_TABLE = `
+  CREATE TABLE IF NOT EXISTS oura_user_mappings (
+    oura_user_id VARCHAR(255) PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`
+
+const CREATE_OURA_WEBHOOK_SUBSCRIPTIONS_TABLE = `
+  CREATE TABLE IF NOT EXISTS oura_webhook_subscriptions (
+    oura_subscription_id VARCHAR(255) PRIMARY KEY,
+    data_type VARCHAR(100) NOT NULL,
+    event_type VARCHAR(20) NOT NULL,
+    callback_url TEXT NOT NULL,
+    expiration_time TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`
+
 // ============================================================================
 // Factory
 // ============================================================================
@@ -127,6 +175,29 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(`INSERT INTO admins (username) VALUES ($1) ON CONFLICT (username) DO NOTHING`, [
         username,
       ])
+    },
+
+    deleteAllOuraWebhookSubscriptions: async (): Promise<number> => {
+      const client = await getClient()
+      const result = await client.query('DELETE FROM oura_webhook_subscriptions')
+      return result.rowCount ?? 0
+    },
+
+    deleteOuraUserMapping: async (ouraUserId: string): Promise<boolean> => {
+      const client = await getClient()
+      const result = await client.query('DELETE FROM oura_user_mappings WHERE oura_user_id = $1', [
+        ouraUserId,
+      ])
+      return (result.rowCount ?? 0) > 0
+    },
+
+    deleteOuraWebhookSubscription: async (ouraSubscriptionId: string): Promise<boolean> => {
+      const client = await getClient()
+      const result = await client.query(
+        'DELETE FROM oura_webhook_subscriptions WHERE oura_subscription_id = $1',
+        [ouraSubscriptionId],
+      )
+      return (result.rowCount ?? 0) > 0
     },
 
     getAdminCount: async (): Promise<number> => {
@@ -150,6 +221,14 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       return result.rows[0].value as string
     },
 
+    getOuraWebhookSubscriptions: async (): Promise<OuraWebhookSubscription[]> => {
+      const client = await getClient()
+      const result = await client.query(
+        'SELECT oura_subscription_id, data_type, event_type, callback_url, expiration_time, created_at, updated_at FROM oura_webhook_subscriptions ORDER BY created_at',
+      )
+      return result.rows
+    },
+
     getServerSetting: async <K extends keyof ServerSettings>(key: K): Promise<ServerSettings[K] | null> => {
       const client = await getClient()
       const result = await client.query('SELECT value FROM server_settings WHERE key = $1', [key])
@@ -164,10 +243,21 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       return result.rows[0].value as SignupMode
     },
 
+    getUsernameByOuraUserId: async (ouraUserId: string): Promise<string | null> => {
+      const client = await getClient()
+      const result = await client.query('SELECT username FROM oura_user_mappings WHERE oura_user_id = $1', [
+        ouraUserId,
+      ])
+      if (result.rows.length === 0) return null
+      return result.rows[0].username
+    },
+
     initializeCentralDb: async () => {
       const client = await getClient()
       await client.query(CREATE_SERVER_SETTINGS_TABLE)
       await client.query(CREATE_ADMINS_TABLE)
+      await client.query(CREATE_OURA_USER_MAPPINGS_TABLE)
+      await client.query(CREATE_OURA_WEBHOOK_SUBSCRIPTIONS_TABLE)
 
       // Set default signup_mode if not exists
       await client.query(
@@ -223,6 +313,29 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
          VALUES ('signup_mode', $1, NOW())
          ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
         [JSON.stringify(mode)],
+      )
+    },
+
+    upsertOuraUserMapping: async (ouraUserId: string, username: string): Promise<void> => {
+      const client = await getClient()
+      await client.query(
+        `INSERT INTO oura_user_mappings (oura_user_id, username, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (oura_user_id) DO UPDATE SET username = $2, updated_at = NOW()`,
+        [ouraUserId, username],
+      )
+    },
+
+    upsertOuraWebhookSubscription: async (
+      sub: Omit<OuraWebhookSubscription, 'created_at' | 'updated_at'>,
+    ): Promise<void> => {
+      const client = await getClient()
+      await client.query(
+        `INSERT INTO oura_webhook_subscriptions (oura_subscription_id, data_type, event_type, callback_url, expiration_time, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (oura_subscription_id) DO UPDATE SET
+           data_type = $2, event_type = $3, callback_url = $4, expiration_time = $5, updated_at = NOW()`,
+        [sub.oura_subscription_id, sub.data_type, sub.event_type, sub.callback_url, sub.expiration_time],
       )
     },
   }

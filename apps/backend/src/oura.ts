@@ -22,8 +22,12 @@ type OuraSession = {
   motion_count: unknown
 }
 
+export interface OuraClientOptions {
+  onUserAuthenticated?: (ouraUserId: string, username: string) => Promise<void>
+}
+
 // eslint-disable-next-line max-lines-per-function -- TODO: refactor
-export const ouraClient = (client: string, secret: string, webHost: string) => {
+export const ouraClient = (client: string, secret: string, webHost: string, options?: OuraClientOptions) => {
   if (!client || !secret) throw new Error('Oura missing client or secret')
   const redirectUri = `${webHost}/auth/ouracb`
 
@@ -34,6 +38,18 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
     )
     console.log(type, start, end, response.data)
     return response.data.data
+  }
+
+  const getPersonalInfo = async (accessToken: string): Promise<{ id: string } | null> => {
+    try {
+      const response = await axios.get('https://api.ouraring.com/v2/usercollection/personal_info', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      return response.data
+    } catch (error) {
+      console.error('Failed to fetch Oura personal info:', error instanceof Error ? error.message : error)
+      return null
+    }
   }
 
   return {
@@ -72,6 +88,15 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
         refresh_token,
         scopes: scope ? scope.split(' ') : undefined,
       })
+
+      // Store Oura user ID mapping for webhook notifications
+      if (options?.onUserAuthenticated) {
+        const personalInfo = await getPersonalInfo(access_token)
+        if (personalInfo?.id) {
+          await options.onUserAuthenticated(personalInfo.id, user)
+          console.log(`Stored Oura user mapping: ${personalInfo.id} -> ${user}`)
+        }
+      }
 
       res.end()
     },
