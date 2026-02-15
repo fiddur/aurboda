@@ -14,6 +14,7 @@ import {
 import { RequestHandler, Router } from 'express'
 import type { CentralDb } from '../services/central-db'
 import type { InvitationAuth } from '../services/invitation'
+import type { OuraWebhookManager } from '../services/oura-webhook-manager'
 import { validateBody } from '../validation'
 
 export const createAdminRouter = (
@@ -22,6 +23,7 @@ export const createAdminRouter = (
   centralDb: CentralDb,
   invitationAuth: InvitationAuth,
   webHost: string,
+  ouraWebhookManager?: OuraWebhookManager | null,
 ): Router => {
   const router = Router()
 
@@ -34,9 +36,11 @@ export const createAdminRouter = (
       const signupMode = await centralDb.getSignupMode()
       const adminCount = await centralDb.getAdminCount()
       const lastFmApiKey = await centralDb.getLastFmApiKey()
+      const ouraWebhookUrl = await centralDb.getOuraWebhookUrl()
       res.json({
         admin_count: adminCount,
         lastfm_api_key_set: !!lastFmApiKey,
+        oura_webhook_url: ouraWebhookUrl,
         signup_mode: signupMode,
         success: true,
       })
@@ -50,19 +54,31 @@ export const createAdminRouter = (
     adminMiddleware,
     validateBody(updateAdminSettingsBodySchema),
     async (req, res) => {
-      const { lastfm_api_key, signup_mode } = req.body
+      const { lastfm_api_key, oura_webhook_url, signup_mode } = req.body
       if (signup_mode) {
         await centralDb.setSignupMode(signup_mode)
       }
       if (lastfm_api_key !== undefined) {
         await centralDb.setLastFmApiKey(lastfm_api_key)
       }
+      if (oura_webhook_url !== undefined) {
+        await centralDb.setOuraWebhookUrl(oura_webhook_url)
+        if (ouraWebhookManager) {
+          if (oura_webhook_url) {
+            await ouraWebhookManager.enable(oura_webhook_url)
+          } else {
+            await ouraWebhookManager.disable()
+          }
+        }
+      }
       const currentMode = await centralDb.getSignupMode()
       const adminCount = await centralDb.getAdminCount()
       const lastFmApiKey = await centralDb.getLastFmApiKey()
+      const ouraWebhookUrl = await centralDb.getOuraWebhookUrl()
       res.json({
         admin_count: adminCount,
         lastfm_api_key_set: !!lastFmApiKey,
+        oura_webhook_url: ouraWebhookUrl,
         signup_mode: currentMode,
         success: true,
       })

@@ -16,8 +16,9 @@ export type SignupMode = 'open' | 'invite_only' | 'closed'
 
 export interface ServerSettings {
   lastfm_api_key: string
-  signup_mode: SignupMode
+  oura_webhook_url: string
   oura_webhook_verification_token: string
+  signup_mode: SignupMode
 }
 
 export interface OuraUserMapping {
@@ -54,6 +55,8 @@ export interface CentralDb {
   removeAdmin: (username: string) => Promise<boolean>
   getAdminCount: () => Promise<number>
   getAdmins: () => Promise<string[]>
+  getOuraWebhookUrl: () => Promise<string | null>
+  setOuraWebhookUrl: (url: string | null) => Promise<void>
   upsertOuraUserMapping: (ouraUserId: string, username: string) => Promise<void>
   getUsernameByOuraUserId: (ouraUserId: string) => Promise<string | null>
   deleteOuraUserMapping: (ouraUserId: string) => Promise<boolean>
@@ -229,6 +232,15 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       return result.rows
     },
 
+    getOuraWebhookUrl: async (): Promise<string | null> => {
+      const client = await getClient()
+      const result = await client.query('SELECT value FROM server_settings WHERE key = $1', [
+        'oura_webhook_url',
+      ])
+      if (result.rows.length === 0) return null
+      return result.rows[0].value as string
+    },
+
     getServerSetting: async <K extends keyof ServerSettings>(key: K): Promise<ServerSettings[K] | null> => {
       const client = await getClient()
       const result = await client.query('SELECT value FROM server_settings WHERE key = $1', [key])
@@ -289,6 +301,20 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
            VALUES ('lastfm_api_key', $1, NOW())
            ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
           [JSON.stringify(key)],
+        )
+      }
+    },
+
+    setOuraWebhookUrl: async (url: string | null): Promise<void> => {
+      const client = await getClient()
+      if (url === null) {
+        await client.query('DELETE FROM server_settings WHERE key = $1', ['oura_webhook_url'])
+      } else {
+        await client.query(
+          `INSERT INTO server_settings (key, value, updated_at)
+           VALUES ('oura_webhook_url', $1, NOW())
+           ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+          [JSON.stringify(url)],
         )
       }
     },
