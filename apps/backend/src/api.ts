@@ -11,6 +11,7 @@ import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import { createAuth } from './auth'
 import {
+  deleteHealthConnectRecords,
   getAllSyncStates,
   getDetectedLocationById,
   initializeSchema,
@@ -316,6 +317,7 @@ const main = async () => {
     '/sync',
     createSyncRouter(
       {
+        deleteHealthConnectRecords,
         getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
         getLastFmApiKey: () => centralDb.getLastFmApiKey(),
         getLastFmSyncStates: (user) => transformSyncStates(user, 'lastfm'),

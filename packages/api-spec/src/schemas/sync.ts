@@ -190,6 +190,24 @@ export const healthConnectSyncBodySchema = z
 export type HealthConnectSyncBody = z.infer<typeof healthConnectSyncBodySchema>
 
 // ============================================================================
+// Health Connect Deletions
+// ============================================================================
+
+/**
+ * Health Connect deletions request body schema.
+ * Used when Health Connect reports deleted records that should be removed from the backend.
+ */
+export const healthConnectDeletionsBodySchema = z
+  .object({
+    data: z.array(z.string()).min(1).meta({
+      description: 'Array of Health Connect record external IDs to delete',
+    }),
+  })
+  .meta({ id: 'HealthConnectDeletionsBody' })
+
+export type HealthConnectDeletionsBody = z.infer<typeof healthConnectDeletionsBodySchema>
+
+// ============================================================================
 // Provider-specific status responses
 // ============================================================================
 

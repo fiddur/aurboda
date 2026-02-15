@@ -392,8 +392,9 @@ fun HealthConnectScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val healthConnectClient = remember { HealthConnectClient.getOrCreate(context) }
     var hasPermissions by remember { mutableStateOf(false) }
-    var healthRecords by remember { mutableStateOf<List<Record>>(emptyList()) } 
-    var isProcessing by remember { mutableStateOf(false) } 
+    var healthRecords by remember { mutableStateOf<List<Record>>(emptyList()) }
+    var pendingDeletionIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isProcessing by remember { mutableStateOf(false) }
     var pendingTokenToPersist by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember { mutableStateOf("Checking permissions...") }
     var backgroundSyncEnabled by remember { mutableStateOf(isBackgroundSyncEnabled(context)) }
@@ -427,8 +428,9 @@ fun HealthConnectScreen(
         isProcessing = true 
         statusMessage = "Fetching data from Health Connect..."
         Log.d("HealthConnectScreen", "Starting data fetch for ${allRecordTypes.size} types...")
-        val localHealthRecords = mutableListOf<Record>() 
-        var localPendingTokenToPersist: String? = null 
+        val localHealthRecords = mutableListOf<Record>()
+        val localDeletionIds = mutableListOf<String>()
+        var localPendingTokenToPersist: String? = null
         var fetchSuccessful = true
 
         val lastTokenFromPrefs = loadChangesToken(currentActiveContext)
@@ -493,7 +495,12 @@ fun HealthConnectScreen(
                         localHealthRecords.addAll(upsertions)
                         totalUpsertions += upsertions.size
                     }
-                    changesResponse.changes.forEach { if (it is DeletionChange) Log.d("HealthConnect", "Record deleted, ID: ${it.recordId}. Deletion handling for server not implemented.") }
+                    changesResponse.changes.forEach {
+                        if (it is DeletionChange) {
+                            Log.d("HealthConnect", "Record deleted, ID: ${it.recordId}")
+                            localDeletionIds.add(it.recordId)
+                        }
+                    }
 
                     hasMore = changesResponse.hasMore
                     currentToken = changesResponse.nextChangesToken
@@ -505,14 +512,17 @@ fun HealthConnectScreen(
                 }
 
                 localPendingTokenToPersist = currentToken
-                Log.d("FetchData", "Fetched $totalUpsertions total upsertions. Next token candidate: ${localPendingTokenToPersist?.take(10)}...")
-                if (totalUpsertions == 0) {
+                Log.d("FetchData", "Fetched $totalUpsertions total upsertions, ${localDeletionIds.size} deletions. Next token candidate: ${localPendingTokenToPersist?.take(10)}...")
+                if (totalUpsertions == 0 && localDeletionIds.isEmpty()) {
                     statusMessage = "No new changes found."
                     saveChangesToken(currentActiveContext, localPendingTokenToPersist)
                     Log.d("FetchData", "Saved next changes token as no new data was found: ${localPendingTokenToPersist?.take(10)}...")
                     localPendingTokenToPersist = null
                 } else {
-                    statusMessage = "Fetched $totalUpsertions new/updated records. Ready to send."
+                    val parts = mutableListOf<String>()
+                    if (totalUpsertions > 0) parts.add("$totalUpsertions new/updated records")
+                    if (localDeletionIds.isNotEmpty()) parts.add("${localDeletionIds.size} deletions")
+                    statusMessage = "Fetched ${parts.joinToString(", ")}. Ready to send."
                 }
             } catch (e: Exception) {
                 Log.e("FetchData", "Error fetching changes from Health Connect.", e)
@@ -523,9 +533,11 @@ fun HealthConnectScreen(
 
         if (fetchSuccessful) {
             healthRecords = localHealthRecords.sortedByDescending { it.getPrimaryInstant() }
-            pendingTokenToPersist = localPendingTokenToPersist 
+            pendingDeletionIds = localDeletionIds
+            pendingTokenToPersist = localPendingTokenToPersist
         } else {
-            if (lastTokenFromPrefs != null) healthRecords = emptyList() 
+            if (lastTokenFromPrefs != null) healthRecords = emptyList()
+            pendingDeletionIds = emptyList()
             pendingTokenToPersist = null
         }
         Log.d("HealthConnectScreen", "Data fetch processing finished. status: $statusMessage")
@@ -568,93 +580,121 @@ fun HealthConnectScreen(
         }
     }
 
+    // Record types handled by daily aggregates (should not be sent as raw records)
+    val aggregatedRecordTypes = setOf(
+        StepsRecord::class,
+        DistanceRecord::class,
+        ActiveCaloriesBurnedRecord::class,
+        TotalCaloriesBurnedRecord::class,
+        FloorsClimbedRecord::class
+    )
+
     suspend fun sendPendingDataToServer(currentActiveContext: Context) {
-        if (healthRecords.isEmpty()) {
+        if (healthRecords.isEmpty() && pendingDeletionIds.isEmpty()) {
             statusMessage = "No records to send."
-            Log.d("SendData", "No records to send.")
+            Log.d("SendData", "No records or deletions to send.")
             return
         }
-        if(isProcessing){ 
+        if(isProcessing){
              Log.d("SendData", "sendPendingDataToServer called while already processing.")
             return
         }
         isProcessing = true
-        statusMessage = "Sending ${healthRecords.size} records with known serializers to server..."
         var allPostsSuccessful = true
 
-        val recordsWithKnownSerializers = healthRecords.filter {
-            when (it) {
-                is HeartRateVariabilityRmssdRecord, is WeightRecord, is StepsRecord, is HeartRateRecord,
-                is ExerciseSessionRecord, is DistanceRecord, is SpeedRecord, is ActiveCaloriesBurnedRecord,
-                is TotalCaloriesBurnedRecord, is PowerRecord, is NutritionRecord, is LeanBodyMassRecord,
-                is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord, is BodyWaterMassRecord,
-                is HeightRecord, is RestingHeartRateRecord -> true
-                else -> false
+        // Step 1: Send deletions to backend
+        if (pendingDeletionIds.isNotEmpty()) {
+            statusMessage = "Sending ${pendingDeletionIds.size} deletions..."
+            Log.d("SendData", "Sending ${pendingDeletionIds.size} deletion IDs to server")
+            val deletionResult = try {
+                val response = ktorHttpClient.post("$apiUrl/sync/deletions") {
+                    contentType(ContentType.Application.Json)
+                    headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+                    setBody(PostWrapper(pendingDeletionIds))
+                }
+                response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
+            } catch (e: Exception) {
+                Log.e("SendData", "Error posting deletions", e)
+                false
             }
-        }
-
-        if (recordsWithKnownSerializers.isEmpty()) {
-            statusMessage = "No records with known serializers to send."
-            Log.d("SendData", "No records with known serializers to send. Other types might be present but not sent.")
-            isProcessing = false
-            return
-        }
-
-        Log.d("SendData", "Attempting to send ${recordsWithKnownSerializers.size} records with known serializers.")
-
-        val groupedRecords = recordsWithKnownSerializers.groupBy { it::class }
-        for ((recordClass, classRecords) in groupedRecords) {
-            if (classRecords.isEmpty()) continue
-            val recordTypeSimpleName = recordClass.simpleName ?: "UnknownRecordType"
-            val syncUrl = "$apiUrl/sync/$recordTypeSimpleName"
-
-            val postResult = when (recordClass) {
-                HeartRateVariabilityRmssdRecord::class -> handlePostData(HrvRecordSerializable.fromRecordsList(classRecords), HrvRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                WeightRecord::class -> handlePostData(WeightRecordSerializable.fromRecordsList(classRecords), WeightRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                StepsRecord::class -> handlePostData(StepsRecordSerializable.fromRecordsList(classRecords), StepsRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                HeartRateRecord::class -> handlePostDataChunked(HeartRateRecordSerializable.fromRecordsList(classRecords), HeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                ExerciseSessionRecord::class -> handlePostData(ExerciseSessionRecordSerializable.fromRecordsList(classRecords), ExerciseSessionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                DistanceRecord::class -> handlePostData(DistanceRecordSerializable.fromRecordsList(classRecords), DistanceRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                SpeedRecord::class -> handlePostData(SpeedRecordSerializable.fromRecordsList(classRecords), SpeedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                ActiveCaloriesBurnedRecord::class -> handlePostData(ActiveCaloriesBurnedRecordSerializable.fromRecordsList(classRecords), ActiveCaloriesBurnedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                TotalCaloriesBurnedRecord::class -> handlePostData(TotalCaloriesBurnedRecordSerializable.fromRecordsList(classRecords), TotalCaloriesBurnedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                PowerRecord::class -> handlePostData(PowerRecordSerializable.fromRecordsList(classRecords), PowerRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                NutritionRecord::class -> handlePostData(NutritionRecordSerializable.fromRecordsList(classRecords), NutritionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                LeanBodyMassRecord::class -> handlePostData(LeanBodyMassRecordSerializable.fromRecordsList(classRecords), LeanBodyMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                BodyFatRecord::class -> handlePostData(BodyFatRecordSerializable.fromRecordsList(classRecords), BodyFatRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                SleepSessionRecord::class -> handlePostData(SleepSessionRecordSerializable.fromRecordsList(classRecords), SleepSessionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                BoneMassRecord::class -> handlePostData(BoneMassRecordSerializable.fromRecordsList(classRecords), BoneMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                BodyWaterMassRecord::class -> handlePostData(BodyWaterMassRecordSerializable.fromRecordsList(classRecords), BodyWaterMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                HeightRecord::class -> handlePostData(HeightRecordSerializable.fromRecordsList(classRecords), HeightRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                RestingHeartRateRecord::class -> handlePostData(RestingHeartRateRecordSerializable.fromRecordsList(classRecords), RestingHeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
-                else -> { Log.w("SendData", "No specific serialization for $recordTypeSimpleName. Skipping."); PostResult.Success }
-            }
-            if (!postResult.isSuccess) {
+            if (!deletionResult) {
                 allPostsSuccessful = false
-                val errorDetail = postResult.errorMessage() ?: "Unknown error"
-                statusMessage = "Failed to send $recordTypeSimpleName: $errorDetail"
-                Log.w("SendData", "Post failed for $recordTypeSimpleName: $errorDetail")
-                break
+                statusMessage = "Failed to send deletions"
+                Log.w("SendData", "Failed to send deletions")
+            } else {
+                Log.d("SendData", "Deletions sent successfully")
+                pendingDeletionIds = emptyList()
+            }
+        }
+
+        // Step 2: Send raw records (excluding aggregated types handled by daily aggregates)
+        if (allPostsSuccessful && healthRecords.isNotEmpty()) {
+            // Filter out aggregated types (steps, distance, etc.) - these are handled by daily aggregates
+            val recordsWithKnownSerializers = healthRecords.filter {
+                it::class !in aggregatedRecordTypes && when (it) {
+                    is HeartRateVariabilityRmssdRecord, is WeightRecord, is HeartRateRecord,
+                    is ExerciseSessionRecord, is SpeedRecord, is PowerRecord, is NutritionRecord,
+                    is LeanBodyMassRecord, is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord,
+                    is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord -> true
+                    else -> false
+                }
+            }
+
+            statusMessage = "Sending ${recordsWithKnownSerializers.size} records to server..."
+
+            if (recordsWithKnownSerializers.isEmpty()) {
+                Log.d("SendData", "No records with known serializers to send (aggregated types excluded).")
+            } else {
+                Log.d("SendData", "Attempting to send ${recordsWithKnownSerializers.size} records (excluded ${healthRecords.size - recordsWithKnownSerializers.size} aggregated/unsupported types).")
+
+                val groupedRecords = recordsWithKnownSerializers.groupBy { it::class }
+                for ((recordClass, classRecords) in groupedRecords) {
+                    if (classRecords.isEmpty()) continue
+                    val recordTypeSimpleName = recordClass.simpleName ?: "UnknownRecordType"
+                    val syncUrl = "$apiUrl/sync/$recordTypeSimpleName"
+
+                    val postResult = when (recordClass) {
+                        HeartRateVariabilityRmssdRecord::class -> handlePostData(HrvRecordSerializable.fromRecordsList(classRecords), HrvRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        WeightRecord::class -> handlePostData(WeightRecordSerializable.fromRecordsList(classRecords), WeightRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        HeartRateRecord::class -> handlePostDataChunked(HeartRateRecordSerializable.fromRecordsList(classRecords), HeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        ExerciseSessionRecord::class -> handlePostData(ExerciseSessionRecordSerializable.fromRecordsList(classRecords), ExerciseSessionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        SpeedRecord::class -> handlePostData(SpeedRecordSerializable.fromRecordsList(classRecords), SpeedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        PowerRecord::class -> handlePostData(PowerRecordSerializable.fromRecordsList(classRecords), PowerRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        NutritionRecord::class -> handlePostData(NutritionRecordSerializable.fromRecordsList(classRecords), NutritionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        LeanBodyMassRecord::class -> handlePostData(LeanBodyMassRecordSerializable.fromRecordsList(classRecords), LeanBodyMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        BodyFatRecord::class -> handlePostData(BodyFatRecordSerializable.fromRecordsList(classRecords), BodyFatRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        SleepSessionRecord::class -> handlePostData(SleepSessionRecordSerializable.fromRecordsList(classRecords), SleepSessionRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        BoneMassRecord::class -> handlePostData(BoneMassRecordSerializable.fromRecordsList(classRecords), BoneMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        BodyWaterMassRecord::class -> handlePostData(BodyWaterMassRecordSerializable.fromRecordsList(classRecords), BodyWaterMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        HeightRecord::class -> handlePostData(HeightRecordSerializable.fromRecordsList(classRecords), HeightRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        RestingHeartRateRecord::class -> handlePostData(RestingHeartRateRecordSerializable.fromRecordsList(classRecords), RestingHeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        else -> { Log.w("SendData", "No specific serialization for $recordTypeSimpleName. Skipping."); PostResult.Success }
+                    }
+                    if (!postResult.isSuccess) {
+                        allPostsSuccessful = false
+                        val errorDetail = postResult.errorMessage() ?: "Unknown error"
+                        statusMessage = "Failed to send $recordTypeSimpleName: $errorDetail"
+                        Log.w("SendData", "Post failed for $recordTypeSimpleName: $errorDetail")
+                        break
+                    }
+                }
             }
         }
 
         if (allPostsSuccessful) {
             if (pendingTokenToPersist != null) {
                 saveChangesToken(currentActiveContext, pendingTokenToPersist)
-                statusMessage = "Known data sent successfully. Token updated."
-                Log.d("SendData", "All posts for known types successful. Saved token: ${pendingTokenToPersist?.take(10)}...")
+                statusMessage = "Data sent successfully. Token updated."
+                Log.d("SendData", "All posts successful. Saved token: ${pendingTokenToPersist?.take(10)}...")
                 pendingTokenToPersist = null
+            } else {
+                statusMessage = "Data sent successfully, but no new token was pending."
+                Log.d("SendData", "All posts successful. No new token was pending to save.")
             }
-             else {
-                statusMessage = "Known data sent successfully, but no new token was pending."
-                 Log.d("SendData", "All posts for known types successful. No new token was pending to save.")
-            }
-            healthRecords = healthRecords.filterNot { recordsWithKnownSerializers.contains(it) } 
-            if (healthRecords.isEmpty()) statusMessage += " All pending records cleared."
-            else statusMessage += " Unsupported records remain."
-
+            healthRecords = emptyList()
+            pendingDeletionIds = emptyList()
         } else {
-            Log.w("SendData", "Not all posts for known types successful. Pending records and their token candidate remain.")
+            Log.w("SendData", "Not all posts successful. Pending records and their token candidate remain.")
         }
         isProcessing = false
     }
@@ -677,8 +717,8 @@ fun HealthConnectScreen(
                     scope.launch {
                         fetchHealthData(context)
                         // Auto-send when background sync is enabled
-                        if (backgroundSyncEnabled && healthRecords.isNotEmpty()) {
-                            Log.d("HealthConnectScreen", "Background sync enabled, auto-sending ${healthRecords.size} records.")
+                        if (backgroundSyncEnabled && (healthRecords.isNotEmpty() || pendingDeletionIds.isNotEmpty())) {
+                            Log.d("HealthConnectScreen", "Background sync enabled, auto-sending ${healthRecords.size} records and ${pendingDeletionIds.size} deletions.")
                             sendPendingDataToServer(context)
                         }
                     }
@@ -700,7 +740,7 @@ fun HealthConnectScreen(
                 if (!isProcessing) {
                     Log.d("HealthConnectScreen", "Periodic sync: fetching and sending data")
                     fetchHealthData(context)
-                    if (healthRecords.isNotEmpty()) {
+                    if (healthRecords.isNotEmpty() || pendingDeletionIds.isNotEmpty()) {
                         sendPendingDataToServer(context)
                     }
                 }
@@ -775,16 +815,15 @@ fun HealthConnectScreen(
                 }
                 Button(
                     onClick = { scope.launch { sendPendingDataToServer(context) } },
-                    enabled = healthRecords.any { record ->
-                        when (record) {
-                            is HeartRateVariabilityRmssdRecord, is WeightRecord, is StepsRecord, is HeartRateRecord,
-                            is ExerciseSessionRecord, is DistanceRecord, is SpeedRecord, is ActiveCaloriesBurnedRecord,
-                            is TotalCaloriesBurnedRecord, is PowerRecord, is NutritionRecord, is LeanBodyMassRecord,
-                            is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord, is BodyWaterMassRecord,
-                            is HeightRecord, is RestingHeartRateRecord -> true
+                    enabled = (pendingDeletionIds.isNotEmpty() || healthRecords.any { record ->
+                        record::class !in aggregatedRecordTypes && when (record) {
+                            is HeartRateVariabilityRmssdRecord, is WeightRecord, is HeartRateRecord,
+                            is ExerciseSessionRecord, is SpeedRecord, is PowerRecord, is NutritionRecord,
+                            is LeanBodyMassRecord, is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord,
+                            is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord -> true
                             else -> false
                         }
-                    } && !isProcessing
+                    }) && !isProcessing
                 ) {
                     Text("Send Pending Data")
                 }

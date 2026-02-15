@@ -1,5 +1,6 @@
 import {
   dailyAggregatesBodySchema,
+  healthConnectDeletionsBodySchema,
   healthConnectSyncBodySchema,
   syncCalendarsBodySchema,
   syncLastFmBodySchema,
@@ -11,6 +12,7 @@ import {
   type CalendarSyncStatusResponse,
   type DailyAggregate,
   type DailyAggregatesBody,
+  type HealthConnectDeletionsBody,
   type HealthConnectRecord,
   type HealthConnectSyncBody,
   type LastFmSyncResponse,
@@ -37,6 +39,7 @@ import { validateBody } from './validation'
  * Dependencies for sync router - allows testing with mocks
  */
 export interface SyncRouterDeps {
+  deleteHealthConnectRecords: (user: string, externalIds: string[]) => Promise<number>
   processDailyAggregate: (user: string, aggregate: DailyAggregate) => Promise<void>
   processHealthConnectData: (user: string, recordType: string, data: HealthConnectRecord) => Promise<void>
   syncOura: (user: string, options: { fullResync?: boolean; startDate?: Date }) => Promise<OuraSyncResult[]>
@@ -329,6 +332,20 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       res.status(500).json({ error: message, success: false })
     }
   })
+
+  // Health Connect deletions endpoint
+  router.post<ParamsDictionary, SyncResponse, HealthConnectDeletionsBody>(
+    '/deletions',
+    authMiddleware,
+    validateBody(healthConnectDeletionsBodySchema),
+    async (req, res) => {
+      const { data } = req.body
+      const user = req.user!
+
+      const deleted = await deps.deleteHealthConnectRecords(user, data)
+      res.json({ message: `Deleted ${deleted} records`, success: true })
+    },
+  )
 
   // ===========================================================================
   // Generic Health Connect sync endpoint - MUST be defined AFTER specific routes
