@@ -42,9 +42,9 @@ function ImpactChart({
 
     // Convert timeline object to array for chart
     const timelineData: PhaseData[] = [
-      { avgHrv: data.hrvTimeline.before30min.mean, phase: 'before' },
-      { avgHrv: data.hrvTimeline.during.mean, phase: 'during' },
-      { avgHrv: data.hrvTimeline.after30min.mean, phase: 'after' },
+      { avgHrv: data.hrv_timeline.before30min.mean, phase: 'before' },
+      { avgHrv: data.hrv_timeline.during.mean, phase: 'during' },
+      { avgHrv: data.hrv_timeline.after30min.mean, phase: 'after' },
     ]
 
     const phases = timelineData.map((d) => d.phase)
@@ -110,11 +110,11 @@ function ImpactChart({
 }
 
 export function CorrelationWidget({ config }: CorrelationWidgetProps) {
-  const { activity, activityType, title, periodDays = 90, windowMinutes = 30 } = config
+  const { activity, activity_type, title, period_days = 90, window_minutes = 30 } = config
 
   const impactQuery = useQuery({
-    queryFn: () => fetchActivityImpact(activity, activityType, periodDays, windowMinutes),
-    queryKey: ['activityImpact', activity, activityType, periodDays, windowMinutes],
+    queryFn: () => fetchActivityImpact(activity, activity_type, period_days, window_minutes),
+    queryKey: ['activityImpact', activity, activity_type, period_days, window_minutes],
     staleTime: 5 * 60 * 1000,
   })
 

@@ -218,17 +218,17 @@ export const Places = () => {
 
   // Calculate transit periods between stays
   const placesWithTransit = places.reduce<
-    (PlaceVisit | { type: 'transit'; startTime: Date; endTime: Date })[]
+    (PlaceVisit | { type: 'transit'; start_time: Date; end_time: Date })[]
   >((acc, place, index) => {
     if (index > 0) {
       const prevPlace = places[index - 1]
-      const transitStart = prevPlace.endTime
-      const transitEnd = place.startTime
+      const transitStart = prevPlace.end_time
+      const transitEnd = place.start_time
       const transitDuration = (transitEnd.getTime() - transitStart.getTime()) / (1000 * 60)
 
       // Only show transit if there's a gap of more than 1 minute
       if (transitDuration > 1) {
-        acc.push({ endTime: transitEnd, startTime: transitStart, type: 'transit' })
+        acc.push({ end_time: transitEnd, start_time: transitStart, type: 'transit' })
       }
     }
     acc.push(place)
@@ -275,7 +275,7 @@ export const Places = () => {
               if ('type' in item && item.type === 'transit') {
                 return (
                   <div key={`transit-${index}`} class="transit-item">
-                    {format(item.startTime, 'HH:mm')} - {format(item.endTime, 'HH:mm')} Transit
+                    {format(item.start_time, 'HH:mm')} - {format(item.end_time, 'HH:mm')} Transit
                   </div>
                 )
               }
@@ -293,7 +293,7 @@ export const Places = () => {
                 >
                   <div class="place-item-header">
                     <span class="place-time">
-                      {format(place.startTime, 'HH:mm')} - {format(place.endTime, 'HH:mm')}
+                      {format(place.start_time, 'HH:mm')} - {format(place.end_time, 'HH:mm')}
                     </span>
                     <span class={`place-name ${isUnnamed ? 'unnamed' : ''}`}>
                       {place.name}
@@ -303,7 +303,7 @@ export const Places = () => {
                   {place.address && place.source !== 'named' && (
                     <div class="place-address">{place.address}</div>
                   )}
-                  <div class="place-duration">{place.durationMinutes} min</div>
+                  <div class="place-duration">{place.duration} min</div>
                 </div>
               )
             })}

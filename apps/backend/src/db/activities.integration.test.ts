@@ -31,12 +31,12 @@ describe('Activities Integration Tests', () => {
       const user = getTestUser()
 
       await insertActivity(user, {
-        activityType: 'exercise',
+        activity_type: 'exercise',
         data: { calories: 300 },
-        endTime: new Date('2024-01-15T11:00:00Z'),
+        end_time: new Date('2024-01-15T11:00:00Z'),
         notes: 'Morning run',
         source: 'health_connect',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         title: 'Running',
       })
 
@@ -48,7 +48,7 @@ describe('Activities Integration Tests', () => {
       )
 
       expect(activities).toHaveLength(1)
-      expect(activities[0].activityType).toBe('exercise')
+      expect(activities[0].activity_type).toBe('exercise')
       expect(activities[0].title).toBe('Running')
       expect(activities[0].data).toEqual({ calories: 300 })
     })
@@ -57,17 +57,17 @@ describe('Activities Integration Tests', () => {
       const user = getTestUser()
 
       await insertActivity(user, {
-        activityType: 'sleep',
+        activity_type: 'sleep',
         source: 'oura',
-        startTime: new Date('2024-01-15T23:00:00Z'),
+        start_time: new Date('2024-01-15T23:00:00Z'),
         title: 'Sleep v1',
       })
 
       await insertActivity(user, {
-        activityType: 'sleep',
-        endTime: new Date('2024-01-16T07:00:00Z'),
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-16T07:00:00Z'),
         source: 'oura',
-        startTime: new Date('2024-01-15T23:00:00Z'),
+        start_time: new Date('2024-01-15T23:00:00Z'),
         title: 'Sleep v2',
       })
 
@@ -80,7 +80,7 @@ describe('Activities Integration Tests', () => {
 
       expect(activities).toHaveLength(1)
       expect(activities[0].title).toBe('Sleep v2')
-      expect(activities[0].endTime).toEqual(new Date('2024-01-16T07:00:00Z'))
+      expect(activities[0].end_time).toEqual(new Date('2024-01-16T07:00:00Z'))
     })
   })
 
@@ -90,11 +90,11 @@ describe('Activities Integration Tests', () => {
 
       // Sleep starting at 23:00 on Jan 14, ending at 07:00 on Jan 15
       await insertActivity(user, {
-        activityType: 'sleep',
+        activity_type: 'sleep',
         data: { score: 85 },
-        endTime: new Date('2024-01-15T07:00:00Z'),
+        end_time: new Date('2024-01-15T07:00:00Z'),
         source: 'oura',
-        startTime: new Date('2024-01-14T23:00:00Z'),
+        start_time: new Date('2024-01-14T23:00:00Z'),
       })
 
       // Query for Jan 15's sleep - should find the overnight session
@@ -105,8 +105,8 @@ describe('Activities Integration Tests', () => {
       )
 
       expect(sessions).toHaveLength(1)
-      expect(sessions[0].startTime).toEqual(new Date('2024-01-14T23:00:00Z'))
-      expect(sessions[0].endTime).toEqual(new Date('2024-01-15T07:00:00Z'))
+      expect(sessions[0].start_time).toEqual(new Date('2024-01-14T23:00:00Z'))
+      expect(sessions[0].end_time).toEqual(new Date('2024-01-15T07:00:00Z'))
     })
 
     test('returns sleep session that starts and ends on same day', async () => {
@@ -114,10 +114,10 @@ describe('Activities Integration Tests', () => {
 
       // A nap on Jan 15
       await insertActivity(user, {
-        activityType: 'sleep',
-        endTime: new Date('2024-01-15T15:30:00Z'),
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T15:30:00Z'),
         source: 'health_connect',
-        startTime: new Date('2024-01-15T14:00:00Z'),
+        start_time: new Date('2024-01-15T14:00:00Z'),
       })
 
       const sessions = await getSleepSessions(
@@ -127,7 +127,7 @@ describe('Activities Integration Tests', () => {
       )
 
       expect(sessions).toHaveLength(1)
-      expect(sessions[0].startTime).toEqual(new Date('2024-01-15T14:00:00Z'))
+      expect(sessions[0].start_time).toEqual(new Date('2024-01-15T14:00:00Z'))
     })
 
     test('returns ongoing sleep session with no end_time', async () => {
@@ -135,9 +135,9 @@ describe('Activities Integration Tests', () => {
 
       // Sleep that started but hasn't ended yet
       await insertActivity(user, {
-        activityType: 'sleep',
+        activity_type: 'sleep',
         source: 'oura',
-        startTime: new Date('2024-01-14T23:00:00Z'),
+        start_time: new Date('2024-01-14T23:00:00Z'),
       })
 
       const sessions = await getSleepSessions(
@@ -147,7 +147,7 @@ describe('Activities Integration Tests', () => {
       )
 
       expect(sessions).toHaveLength(1)
-      expect(sessions[0].endTime).toBeUndefined()
+      expect(sessions[0].end_time).toBeUndefined()
     })
 
     test('excludes sleep that ended before query range', async () => {
@@ -155,10 +155,10 @@ describe('Activities Integration Tests', () => {
 
       // Sleep that ended before query range
       await insertActivity(user, {
-        activityType: 'sleep',
-        endTime: new Date('2024-01-14T07:00:00Z'),
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-14T07:00:00Z'),
         source: 'oura',
-        startTime: new Date('2024-01-13T23:00:00Z'),
+        start_time: new Date('2024-01-13T23:00:00Z'),
       })
 
       const sessions = await getSleepSessions(
@@ -175,10 +175,10 @@ describe('Activities Integration Tests', () => {
 
       // Sleep that starts after query range
       await insertActivity(user, {
-        activityType: 'sleep',
-        endTime: new Date('2024-01-17T07:00:00Z'),
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-17T07:00:00Z'),
         source: 'oura',
-        startTime: new Date('2024-01-16T23:00:00Z'),
+        start_time: new Date('2024-01-16T23:00:00Z'),
       })
 
       const sessions = await getSleepSessions(
@@ -206,17 +206,17 @@ describe('Activities Integration Tests', () => {
       const user = getTestUser()
 
       await insertActivity(user, {
-        activityType: 'exercise',
-        endTime: new Date('2024-01-15T11:00:00Z'),
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
         source: 'health_connect',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
       await insertActivity(user, {
-        activityType: 'sleep',
-        endTime: new Date('2024-01-15T07:00:00Z'),
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
         source: 'oura',
-        startTime: new Date('2024-01-14T23:00:00Z'),
+        start_time: new Date('2024-01-14T23:00:00Z'),
       })
 
       const sessions = await getSleepSessions(
@@ -226,7 +226,7 @@ describe('Activities Integration Tests', () => {
       )
 
       expect(sessions).toHaveLength(1)
-      expect(sessions[0].activityType).toBe('sleep')
+      expect(sessions[0].activity_type).toBe('sleep')
     })
   })
 
@@ -236,11 +236,11 @@ describe('Activities Integration Tests', () => {
       const activityId = randomUUID()
 
       await insertActivity(user, {
-        activityType: 'exercise',
-        endTime: new Date('2024-01-15T11:00:00Z'),
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         title: 'Morning run',
       })
 
@@ -248,7 +248,7 @@ describe('Activities Integration Tests', () => {
 
       expect(activity).not.toBeNull()
       expect(activity?.id).toBe(activityId)
-      expect(activity?.activityType).toBe('exercise')
+      expect(activity?.activity_type).toBe('exercise')
       expect(activity?.title).toBe('Morning run')
     })
 
@@ -268,11 +268,11 @@ describe('Activities Integration Tests', () => {
       const activityId = randomUUID()
 
       await insertActivity(user, {
-        activityType: 'exercise',
-        endTime: new Date('2024-01-15T11:00:00Z'),
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
       const result = await deleteActivity(user, activityId)
@@ -297,21 +297,21 @@ describe('Activities Integration Tests', () => {
       const activityId = randomUUID()
 
       await insertActivity(user, {
-        activityType: 'exercise',
-        endTime: new Date('2024-01-15T11:00:00Z'),
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
       const updated = await updateActivity(user, activityId, {
-        endTime: new Date('2024-01-15T12:00:00Z'),
-        startTime: new Date('2024-01-15T09:00:00Z'),
+        end_time: new Date('2024-01-15T12:00:00Z'),
+        start_time: new Date('2024-01-15T09:00:00Z'),
       })
 
       expect(updated).not.toBeNull()
-      expect(updated?.startTime).toEqual(new Date('2024-01-15T09:00:00Z'))
-      expect(updated?.endTime).toEqual(new Date('2024-01-15T12:00:00Z'))
+      expect(updated?.start_time).toEqual(new Date('2024-01-15T09:00:00Z'))
+      expect(updated?.end_time).toEqual(new Date('2024-01-15T12:00:00Z'))
     })
 
     test('updates activity title and notes', async () => {
@@ -319,11 +319,11 @@ describe('Activities Integration Tests', () => {
       const activityId = randomUUID()
 
       await insertActivity(user, {
-        activityType: 'exercise',
-        endTime: new Date('2024-01-15T11:00:00Z'),
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
       const updated = await updateActivity(user, activityId, {
@@ -352,11 +352,11 @@ describe('Activities Integration Tests', () => {
       const activityId = randomUUID()
 
       await insertActivity(user, {
-        activityType: 'meditation',
-        endTime: new Date('2024-01-15T08:00:00Z'),
+        activity_type: 'meditation',
+        end_time: new Date('2024-01-15T08:00:00Z'),
         id: activityId,
         source: 'manual',
-        startTime: new Date('2024-01-15T07:30:00Z'),
+        start_time: new Date('2024-01-15T07:30:00Z'),
         title: 'Morning meditation',
       })
 

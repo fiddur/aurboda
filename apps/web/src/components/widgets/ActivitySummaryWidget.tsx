@@ -13,10 +13,10 @@ interface ActivitySummaryWidgetProps {
 
 // eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
-  const { lookbackDays = 7, showWorkouts = true, showSleep = true, showMeditation = true } = config
+  const { lookback_days = 7, show_workouts = true, show_sleep = true, show_meditation = true } = config
 
   const end = endOfDay(new Date())
-  const start = startOfDay(subDays(new Date(), lookbackDays))
+  const start = startOfDay(subDays(new Date(), lookback_days))
 
   const activitiesQuery = useQuery({
     queryFn: () => fetchActivities(start, end),
@@ -26,32 +26,32 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
 
   const activities = activitiesQuery.data ?? []
 
-  const exerciseSessions = activities.filter((a: Activity) => a.activityType === 'exercise')
-  const sleepSessions = activities.filter((a: Activity) => a.activityType === 'sleep')
-  const meditationSessions = activities.filter((a: Activity) => a.activityType === 'meditation')
+  const exerciseSessions = activities.filter((a: Activity) => a.activity_type === 'exercise')
+  const sleepSessions = activities.filter((a: Activity) => a.activity_type === 'sleep')
+  const meditationSessions = activities.filter((a: Activity) => a.activity_type === 'meditation')
 
   const totalExerciseMinutes = exerciseSessions.reduce((sum: number, a: Activity) => {
-    if (!a.endTime) return sum
-    return sum + (a.endTime.getTime() - a.startTime.getTime()) / 60000
+    if (!a.end_time) return sum
+    return sum + (a.end_time.getTime() - a.start_time.getTime()) / 60000
   }, 0)
 
   const avgSleepHours =
     sleepSessions.length > 0 ?
       sleepSessions.reduce((sum: number, a: Activity) => {
-        if (!a.endTime) return sum
-        return sum + (a.endTime.getTime() - a.startTime.getTime()) / 3600000
+        if (!a.end_time) return sum
+        return sum + (a.end_time.getTime() - a.start_time.getTime()) / 3600000
       }, 0) / sleepSessions.length
     : null
 
   const totalMeditationMinutes = meditationSessions.reduce((sum: number, a: Activity) => {
-    if (!a.endTime) return sum
-    return sum + (a.endTime.getTime() - a.startTime.getTime()) / 60000
+    if (!a.end_time) return sum
+    return sum + (a.end_time.getTime() - a.start_time.getTime()) / 60000
   }, 0)
 
   if (activitiesQuery.isLoading) {
     return (
       <div class="activity-summary">
-        <h3>Last {lookbackDays} Days</h3>
+        <h3>Last {lookback_days} Days</h3>
         <div class="activity-grid">
           <div class="activity-item">Loading...</div>
         </div>
@@ -61,9 +61,9 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
 
   return (
     <div class="activity-summary">
-      <h3>Last {lookbackDays} Days</h3>
+      <h3>Last {lookback_days} Days</h3>
       <div class="activity-grid">
-        {showWorkouts && (
+        {show_workouts && (
           <div class="activity-item">
             <span class="activity-icon exercise-icon">
               <svg
@@ -86,7 +86,7 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
           </div>
         )}
 
-        {showSleep && (
+        {show_sleep && (
           <div class="activity-item">
             <span class="activity-icon sleep-icon">
               <svg
@@ -108,7 +108,7 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
           </div>
         )}
 
-        {showMeditation && (
+        {show_meditation && (
           <div class="activity-item">
             <span class="activity-icon meditation-icon">
               <svg

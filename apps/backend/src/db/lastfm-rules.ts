@@ -33,14 +33,14 @@ export const insertLastFmTagRule = async (user: string, rule: LastFmTagRuleInput
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING ${LASTFM_RULE_COLUMNS}`,
     [
-      rule.ruleName,
-      rule.matchType,
-      rule.trackName ?? null,
-      rule.artistName ?? null,
-      rule.matchMode ?? 'exact',
-      rule.tagName,
-      rule.mergeGapSeconds ?? null,
-      rule.artistNames ? JSON.stringify(rule.artistNames) : null,
+      rule.rule_name,
+      rule.match_type,
+      rule.track_name ?? null,
+      rule.artist_name ?? null,
+      rule.match_mode ?? 'exact',
+      rule.tag_name,
+      rule.merge_gap_seconds ?? null,
+      rule.artist_names ? JSON.stringify(rule.artist_names) : null,
     ],
   )
 

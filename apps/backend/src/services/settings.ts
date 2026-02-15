@@ -3,14 +3,11 @@
  */
 
 import {
-  type CalendarConfig,
-  type DashboardConfig,
   defaultGoals,
   type Goal,
   type HrZoneSecs,
   type HrZoneSource,
   type HrZoneThresholds,
-  type TagMappings,
   updateSettingsInputSchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
@@ -24,16 +21,8 @@ export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
 // Types
 // ============================================================================
 
-export interface UserSettings {
-  birthDate?: string // YYYY-MM-DD
-  calendars?: CalendarConfig[] // Calendar ICS URL configurations
-  dashboard?: DashboardConfig // Custom dashboard configuration
-  hrZoneStart?: HrZoneThresholds
-  lastFmUsername?: string // Last.fm username for scrobble sync
-  rescueTimeKey?: string // RescueTime API key (personal token)
-  goals?: Goal[] // User-defined goals for tracking metrics
-  tagMappings?: TagMappings // Tag name mappings from UUIDs to display names
-}
+import type { UserSettings } from '../db/types'
+export type { UserSettings }
 
 // Use UserSettingsResponse from api-spec but allow error field for validation failures
 export type SettingsResponse = UserSettingsResponse & { error?: string }
@@ -117,13 +106,13 @@ export const getEffectiveHrZones = async (
   const settings = await getSettings(user)
 
   // Custom zones take priority
-  if (settings.hrZoneStart) {
-    return { source: 'custom', zones: settings.hrZoneStart }
+  if (settings.hr_zone_start) {
+    return { source: 'custom', zones: settings.hr_zone_start }
   }
 
   // Age-based zones if birth date is set
-  if (settings.birthDate) {
-    return { source: 'age_based', zones: calculateDefaultHrZones(settings.birthDate) }
+  if (settings.birth_date) {
+    return { source: 'age_based', zones: calculateDefaultHrZones(settings.birth_date) }
   }
 
   // Default zones
@@ -150,19 +139,19 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const lastFmConfigured = !!lastFmApiKey
 
   return {
-    birth_date: settings.birthDate ?? null,
+    birth_date: settings.birth_date ?? null,
     calendars: settings.calendars ?? [],
     dashboard: settings.dashboard ?? null,
     goals: getEffectiveGoals(settings),
     hr_zone_start: zones,
     hr_zone_start_source: source,
     lastfm_configured: lastFmConfigured,
-    lastfm_username: settings.lastFmUsername ?? null,
+    lastfm_username: settings.lastfm_username ?? null,
     oura_configured: ouraConfigured,
     oura_connected: ouraToken !== null,
-    rescue_time_key: settings.rescueTimeKey ?? null,
+    rescue_time_key: settings.rescue_time_key ?? null,
     success: true,
-    tag_mappings: settings.tagMappings ?? {},
+    tag_mappings: settings.tag_mappings ?? {},
   }
 }
 
@@ -197,7 +186,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   // Build updates object, converting null to undefined for clearing
   const updates: Partial<UserSettings> = {}
   if (parsed.data.birth_date !== undefined) {
-    updates.birthDate = parsed.data.birth_date === null ? undefined : parsed.data.birth_date
+    updates.birth_date = parsed.data.birth_date === null ? undefined : parsed.data.birth_date
   }
   if (parsed.data.calendars !== undefined) {
     updates.calendars = parsed.data.calendars === null ? undefined : parsed.data.calendars
@@ -207,20 +196,20 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     updates.dashboard = parsed.data.dashboard === null ? undefined : parsed.data.dashboard
   }
   if (parsed.data.hr_zone_start !== undefined) {
-    updates.hrZoneStart = parsed.data.hr_zone_start === null ? undefined : parsed.data.hr_zone_start
+    updates.hr_zone_start = parsed.data.hr_zone_start === null ? undefined : parsed.data.hr_zone_start
   }
   if (parsed.data.lastfm_username !== undefined) {
-    updates.lastFmUsername = parsed.data.lastfm_username === null ? undefined : parsed.data.lastfm_username
+    updates.lastfm_username = parsed.data.lastfm_username === null ? undefined : parsed.data.lastfm_username
   }
   if (parsed.data.rescue_time_key !== undefined) {
-    updates.rescueTimeKey = parsed.data.rescue_time_key === null ? undefined : parsed.data.rescue_time_key
+    updates.rescue_time_key = parsed.data.rescue_time_key === null ? undefined : parsed.data.rescue_time_key
   }
   if (parsed.data.goals !== undefined) {
     // null resets to defaults (by removing from storage), empty array clears all goals
     updates.goals = parsed.data.goals === null ? undefined : parsed.data.goals
   }
   if (parsed.data.tag_mappings !== undefined) {
-    updates.tagMappings = parsed.data.tag_mappings === null ? undefined : parsed.data.tag_mappings
+    updates.tag_mappings = parsed.data.tag_mappings === null ? undefined : parsed.data.tag_mappings
   }
 
   // Apply updates

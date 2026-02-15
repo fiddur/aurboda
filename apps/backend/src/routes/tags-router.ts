@@ -55,9 +55,9 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
       const endDate = end_time ? new Date(end_time) : undefined
 
       const result = await addTag(user, {
-        endTime: endDate,
+        end_time: endDate,
         mergeSpan: merge_span,
-        startTime: startDate,
+        start_time: startDate,
         tag,
       })
       res.json(result)
@@ -92,13 +92,13 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
       const user = req.user!
       const tags = await getProgrammaticTags(user)
       const settings = await getUserSettings(user)
-      const mappings = settings?.tagMappings ?? {}
+      const mappings = settings?.tag_mappings ?? {}
 
       const data = tags.map((tag) => ({
         count: tag.count,
-        currentName: mappings[tag.tagKey] ?? null,
-        latestTime: tag.latestTime.toISOString(),
-        tagKey: tag.tagKey,
+        current_name: mappings[tag.tagKey] ?? null,
+        latest_time: tag.latestTime.toISOString(),
+        tag_key: tag.tagKey,
       }))
 
       res.json({ data, success: true })
@@ -111,14 +111,14 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
     authMiddleware,
     validateBody(setTagMappingBodySchema),
     async (req, res) => {
-      const { tagKey, name } = req.body
+      const { tag_key, name } = req.body
       const user = req.user!
 
       const settings = await getUserSettings(user)
-      const currentMappings = settings?.tagMappings ?? {}
-      const newMappings = { ...currentMappings, [tagKey]: name }
+      const currentMappings = settings?.tag_mappings ?? {}
+      const newMappings = { ...currentMappings, [tag_key]: name }
 
-      await upsertUserSettings(user, { tagMappings: newMappings })
+      await upsertUserSettings(user, { tag_mappings: newMappings })
 
       res.json({ mapping: newMappings, success: true })
     },
@@ -128,7 +128,7 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   router.get<Record<string, never>, TagMappingsResponse>('/mappings', authMiddleware, async (req, res) => {
     const user = req.user!
     const settings = await getUserSettings(user)
-    res.json({ mappings: settings?.tagMappings ?? {}, success: true })
+    res.json({ mappings: settings?.tag_mappings ?? {}, success: true })
   })
 
   return router

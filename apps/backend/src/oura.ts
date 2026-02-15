@@ -66,10 +66,10 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
       const { access_token, refresh_token, expires_in } = response.data
 
       await upsertOAuthToken(user, {
-        accessToken: access_token,
-        expiresAt: addSeconds(new Date(), expires_in),
+        access_token,
+        expires_at: addSeconds(new Date(), expires_in),
         provider: 'oura',
-        refreshToken: refresh_token,
+        refresh_token,
         scopes: scope ? scope.split(' ') : undefined,
       })
 
@@ -81,14 +81,14 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
       if (!token) throw new Error('User has no Oura OAuth token')
 
       // Return token if not expired (with 100 second buffer)
-      if (token.expiresAt && isFuture(addSeconds(token.expiresAt, -100))) {
-        return token.accessToken
+      if (token.expires_at && isFuture(addSeconds(token.expires_at, -100))) {
+        return token.access_token
       }
 
       // Refresh the token
       const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
       tokenUrl.searchParams.append('grant_type', 'refresh_token')
-      tokenUrl.searchParams.append('refresh_token', token.refreshToken!)
+      tokenUrl.searchParams.append('refresh_token', token.refresh_token!)
       tokenUrl.searchParams.append('client_id', client)
       tokenUrl.searchParams.append('client_secret', secret)
 
@@ -97,10 +97,10 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
       const { access_token, refresh_token, expires_in } = response.data
 
       await upsertOAuthToken(user, {
-        accessToken: access_token,
-        expiresAt: addSeconds(new Date(), expires_in),
+        access_token,
+        expires_at: addSeconds(new Date(), expires_in),
         provider: 'oura',
-        refreshToken: refresh_token,
+        refresh_token,
       })
 
       return access_token
@@ -164,17 +164,19 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
       const tags = data
         .map(
           (tag): Tag => ({
-            endTime: tag.end_time ? new Date(tag.end_time) : undefined,
-            externalId: tag.id,
+            end_time: tag.end_time ? new Date(tag.end_time) : undefined,
+            external_id: tag.id,
             source: 'oura',
-            startTime: new Date(tag.start_time),
+            start_time: new Date(tag.start_time),
             tag:
               tag.tag_type_code && tagMappings && tag.tag_type_code in tagMappings ?
                 tagMappings[tag.tag_type_code]
               : tag.tag_type_code || 'unknown',
           }),
         )
-        .filter(({ startTime, endTime }) => isBefore(startTime, end) && (!endTime || isAfter(endTime, start)))
+        .filter(
+          ({ start_time, end_time }) => isBefore(start_time, end) && (!end_time || isAfter(end_time, start)),
+        )
       return tags
     },
     redirectToAuthorize(req: Request, res: Response) {

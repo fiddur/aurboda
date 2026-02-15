@@ -17,15 +17,15 @@ export const productivityRecordSchema = z
   .object({
     activity: z.string().meta({ description: 'Activity/application name' }),
     category: z.string().optional().meta({ description: 'Activity category' }),
-    durationSec: z.number().int().meta({ description: 'Duration in seconds' }),
-    endTime: iso8601DateTimeSchema,
-    isMobile: z.boolean().optional().meta({ description: 'Whether activity was on mobile' }),
+    duration_sec: z.number().int().meta({ description: 'Duration in seconds' }),
+    end_time: iso8601DateTimeSchema,
+    is_mobile: z.boolean().optional().meta({ description: 'Whether activity was on mobile' }),
     productivity: z.number().int().optional().meta({
       description: 'Productivity score (-2 to 2)',
       example: 2,
     }),
     source: dataSourceSchema.optional(),
-    startTime: iso8601DateTimeSchema,
+    start_time: iso8601DateTimeSchema,
   })
   .meta({ id: 'ProductivityRecord' })
 

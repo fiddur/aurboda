@@ -30,10 +30,10 @@ export type SignupMode = z.infer<typeof signupModeSchema>
 export const serverStatusResponseSchema = baseResponseSchema
   .extend({
     // For backwards compatibility
-    signupAllowed: z
+    signup_allowed: z
       .boolean()
       .meta({ description: 'Whether signup is allowed (deprecated, use signupMode)' }),
-    signupMode: signupModeSchema.meta({ description: 'Current signup mode' }),
+    signup_mode: signupModeSchema.meta({ description: 'Current signup mode' }),
   })
   .meta({ id: 'ServerStatusResponse' })
 
@@ -64,7 +64,7 @@ export type SignupBody = z.infer<typeof signupBodySchema>
  */
 export const signupResponseSchema = baseResponseSchema
   .extend({
-    isAdmin: z.boolean().optional().meta({ description: 'Whether the user is an admin' }),
+    is_admin: z.boolean().optional().meta({ description: 'Whether the user is an admin' }),
     token: z.string().optional().meta({ description: 'Authentication token' }),
   })
   .meta({ id: 'SignupResponse' })
@@ -80,7 +80,7 @@ export type SignupResponse = z.infer<typeof signupResponseSchema>
  */
 export const loginResponseSchema = z
   .object({
-    isAdmin: z.boolean().optional().meta({ description: 'Whether the user is an admin' }),
+    is_admin: z.boolean().optional().meta({ description: 'Whether the user is an admin' }),
     refresh: z.string().meta({ description: 'Refresh token' }),
     token: z.string().meta({ description: 'Authentication token' }),
   })
@@ -130,7 +130,7 @@ export type UpdateAdminSettingsBody = z.infer<typeof updateAdminSettingsBodySche
  */
 export const createInvitationBodySchema = z
   .object({
-    expiryHours: z.number().int().positive().optional().meta({
+    expiry_hours: z.number().int().positive().optional().meta({
       description: 'Hours until invitation expires (default: 168 = 7 days)',
       example: 168,
     }),
@@ -144,7 +144,7 @@ export type CreateInvitationBody = z.infer<typeof createInvitationBodySchema>
  */
 export const invitationResponseSchema = baseResponseSchema
   .extend({
-    expiresAt: iso8601DateTimeSchema.meta({ description: 'Expiration timestamp' }),
+    expires_at: iso8601DateTimeSchema.meta({ description: 'Expiration timestamp' }),
     token: z.string().meta({ description: 'Invitation token' }),
     url: z.string().meta({ description: 'Full invitation URL' }),
   })

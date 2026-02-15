@@ -38,7 +38,7 @@ describe('detectStays', () => {
     const stays = detectStays(points, 200, 60)
 
     expect(stays).toHaveLength(1)
-    expect(stays[0].durationMinutes).toBe(90)
+    expect(stays[0].duration_minutes).toBe(90)
     expect(stays[0].lat).toBeCloseTo(59.33, 2)
     expect(stays[0].lon).toBeCloseTo(18.07, 2)
   })
@@ -78,9 +78,9 @@ describe('detectStays', () => {
     const stays = detectStays(points, 200, 60)
 
     expect(stays).toHaveLength(2)
-    expect(stays[0].durationMinutes).toBe(90)
+    expect(stays[0].duration_minutes).toBe(90)
     expect(stays[0].lat).toBeCloseTo(59.33, 2)
-    expect(stays[1].durationMinutes).toBe(90)
+    expect(stays[1].duration_minutes).toBe(90)
     expect(stays[1].lat).toBeCloseTo(59.4, 2)
   })
 
@@ -103,12 +103,12 @@ describe('detectStays', () => {
 
 describe('clusterStays', () => {
   const makeStay = (lat: number, lon: number, durationMinutes: number, dayOffset: number): Stay => ({
-    durationMinutes,
-    endTime: new Date(Date.UTC(2024, 0, 15 + dayOffset, 12, 0, 0)),
+    duration_minutes: durationMinutes,
+    end_time: new Date(Date.UTC(2024, 0, 15 + dayOffset, 12, 0, 0)),
     lat,
     lon,
     points: [{ lat, lon, time: new Date(Date.UTC(2024, 0, 15 + dayOffset, 10, 0, 0)) }],
-    startTime: new Date(Date.UTC(2024, 0, 15 + dayOffset, 10, 0, 0)),
+    start_time: new Date(Date.UTC(2024, 0, 15 + dayOffset, 10, 0, 0)),
   })
 
   test('returns empty array for empty input', () => {
@@ -181,13 +181,13 @@ describe('mergeShortUnknownVisits', () => {
     const startTime = new Date(Date.UTC(2024, 0, 15, 10, startMinutes, 0))
     const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000)
     return {
-      durationMinutes,
-      endTime,
+      duration_minutes: durationMinutes,
+      end_time: endTime,
       lat: 59.33,
       lon: 18.07,
       name,
       source,
-      startTime,
+      start_time: startTime,
     }
   }
 
@@ -229,7 +229,7 @@ describe('mergeShortUnknownVisits', () => {
 
     expect(result).toHaveLength(2)
     expect(result[0].name).toBe('Home')
-    expect(result[0].durationMinutes).toBe(63) // extended to cover the gap
+    expect(result[0].duration_minutes).toBe(63) // extended to cover the gap
     expect(result[1].name).toBe('Office')
   })
 
@@ -243,7 +243,7 @@ describe('mergeShortUnknownVisits', () => {
 
     expect(result).toHaveLength(1)
     expect(result[0].name).toBe('Home')
-    expect(result[0].durationMinutes).toBe(62) // extended backwards
+    expect(result[0].duration_minutes).toBe(62) // extended backwards
   })
 
   test('drops short unknown visit if it is the only visit', () => {
@@ -266,7 +266,7 @@ describe('mergeShortUnknownVisits', () => {
 
     expect(result).toHaveLength(2)
     expect(result[0].name).toBe('Home')
-    expect(result[0].durationMinutes).toBe(63) // extended through both gaps
+    expect(result[0].duration_minutes).toBe(63) // extended through both gaps
     expect(result[1].name).toBe('Office')
   })
 
@@ -281,6 +281,6 @@ describe('mergeShortUnknownVisits', () => {
 
     expect(result).toHaveLength(2)
     expect(result[0].name).toBe('Home')
-    expect(result[0].durationMinutes).toBe(68) // extended
+    expect(result[0].duration_minutes).toBe(68) // extended
   })
 })

@@ -28,9 +28,9 @@ export const processHealthConnectData = async (
   // Always store raw record
   await insertRawRecord(user, {
     data,
-    externalId,
-    recordType,
-    recordedAt: new Date((data.startTime || data.time) as string),
+    external_id: externalId,
+    record_type: recordType,
+    recorded_at: new Date((data.startTime || data.time) as string),
     source: 'health_connect',
   })
 
@@ -66,12 +66,12 @@ export const processHealthConnectData = async (
   const activityType = healthConnectActivityMapping[recordType]
   if (activityType) {
     await insertActivity(user, {
-      activityType,
+      activity_type: activityType,
       data,
-      endTime: data.endTime ? new Date(data.endTime as string) : undefined,
+      end_time: data.endTime ? new Date(data.endTime as string) : undefined,
       notes: data.notes as string | undefined,
       source: 'health_connect',
-      startTime: new Date(data.startTime as string),
+      start_time: new Date(data.startTime as string),
       title: data.title as string | undefined,
     })
   }

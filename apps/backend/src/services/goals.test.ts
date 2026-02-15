@@ -55,7 +55,7 @@ describe('getGoalsProgress', () => {
 
     expect(result).toHaveLength(1)
     expect(result[0].current).toBe(4672) // only today
-    expect(result[0].losingTomorrow).toBe(4672) // tomorrow we lose today's steps
+    expect(result[0].losing_tomorrow).toBe(4672) // tomorrow we lose today's steps
     expect(result[0].metric).toBe('steps')
 
     // Should use getDailyAggregateValue, not getDailyAggregates
@@ -106,7 +106,7 @@ describe('getGoalsProgress', () => {
     expect(result).toHaveLength(1)
     // Total should be sum of all 7 days = 68000
     expect(result[0].current).toBe(68000)
-    expect(result[0].losingTomorrow).toBe(10000)
+    expect(result[0].losing_tomorrow).toBe(10000)
   })
 
   test('uses rolling time for hour-based windows (24h spans 2 calendar days at noon)', async () => {
@@ -129,7 +129,7 @@ describe('getGoalsProgress', () => {
     expect(result).toHaveLength(1)
     // 24h rolling window spans 2 days
     expect(result[0].current).toBe(9672) // 5000 + 4672
-    expect(result[0].losingTomorrow).toBe(5000)
+    expect(result[0].losing_tomorrow).toBe(5000)
   })
 
   test('uses getTimeSeries for HR zone metrics', async () => {

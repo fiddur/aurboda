@@ -30,8 +30,8 @@ import { getMetricUnit, isValidMetric, isValidMetricOrCustom } from '../schema'
 
 export interface AddTagInput {
   tag: string
-  startTime: Date
-  endTime?: Date
+  start_time: Date
+  end_time?: Date
   mergeSpan?: number
 }
 
@@ -39,8 +39,8 @@ export interface AddTagResult {
   success: boolean
   id: string
   tag: string
-  startTime: string
-  endTime?: string
+  start_time: string
+  end_time?: string
   merged?: boolean
   extendedBySeconds?: number
 }
@@ -63,13 +63,13 @@ export interface AddMetricResult {
 export interface DeleteTagResult {
   success: boolean
   deleted: boolean
-  externalId: string
+  external_id: string
 }
 
 export interface AddActivityInput {
-  activityType: ActivityType
-  startTime: Date
-  endTime: Date
+  activity_type: ActivityType
+  start_time: Date
+  end_time: Date
   title?: string
   notes?: string
   data?: Record<string, unknown>
@@ -78,9 +78,9 @@ export interface AddActivityInput {
 export interface AddActivityResult {
   success: boolean
   id?: string
-  activityType?: ActivityType
-  startTime?: string
-  endTime?: string
+  activity_type?: ActivityType
+  start_time?: string
+  end_time?: string
   title?: string
   notes?: string
   error?: string
@@ -131,8 +131,8 @@ export interface DeleteActivityResult {
 }
 
 export interface UpdateActivityInput {
-  startTime?: Date
-  endTime?: Date
+  start_time?: Date
+  end_time?: Date
   title?: string
   notes?: string
 }
@@ -140,9 +140,9 @@ export interface UpdateActivityInput {
 export interface UpdateActivityResult {
   success: boolean
   id?: string
-  activityType?: ActivityType
-  startTime?: string
-  endTime?: string
+  activity_type?: ActivityType
+  start_time?: string
+  end_time?: string
   title?: string
   notes?: string
   error?: string
@@ -162,24 +162,24 @@ export interface UpdateActivityResult {
 export async function addTag(user: string, input: AddTagInput): Promise<AddTagResult> {
   // If mergeSpan is specified, check for a mergeable tag
   if (input.mergeSpan !== undefined) {
-    const existingTag = await findMergeableTag(user, input.tag, input.startTime, input.mergeSpan)
+    const existingTag = await findMergeableTag(user, input.tag, input.start_time, input.mergeSpan)
 
-    if (existingTag && existingTag.externalId) {
+    if (existingTag && existingTag.external_id) {
       // Calculate the new end time - use new end_time if provided, otherwise use new start_time
-      const newEndTime = input.endTime ?? input.startTime
+      const newEndTime = input.end_time ?? input.start_time
 
       // Calculate the time extension
-      const previousEnd = existingTag.endTime ?? existingTag.startTime
+      const previousEnd = existingTag.end_time ?? existingTag.start_time
       const extendedBySeconds = Math.round((newEndTime.getTime() - previousEnd.getTime()) / 1000)
 
-      await updateTagEndTime(user, existingTag.externalId, newEndTime)
+      await updateTagEndTime(user, existingTag.external_id, newEndTime)
 
       return {
-        endTime: newEndTime.toISOString(),
+        end_time: newEndTime.toISOString(),
         extendedBySeconds,
-        id: existingTag.externalId,
+        id: existingTag.external_id,
         merged: true,
-        startTime: existingTag.startTime.toISOString(),
+        start_time: existingTag.start_time.toISOString(),
         success: true,
         tag: existingTag.tag,
       }
@@ -190,17 +190,17 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
   const externalId = randomUUID()
 
   await insertTag(user, {
-    endTime: input.endTime,
-    externalId,
+    end_time: input.end_time,
+    external_id: externalId,
     source: 'manual',
-    startTime: input.startTime,
+    start_time: input.start_time,
     tag: input.tag,
   })
 
   return {
-    endTime: input.endTime?.toISOString(),
+    end_time: input.end_time?.toISOString(),
     id: externalId,
-    startTime: input.startTime.toISOString(),
+    start_time: input.start_time.toISOString(),
     success: true,
     tag: input.tag,
     ...(input.mergeSpan !== undefined ? { merged: false } : {}),
@@ -213,7 +213,7 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
  */
 export async function addMetric(user: string, input: AddMetricInput): Promise<AddMetricResult> {
   const settings = await getUserSettings(user)
-  const customMetrics = settings?.customMetrics ?? []
+  const customMetrics = settings?.custom_metrics ?? []
 
   if (!isValidMetricOrCustom(input.metric, customMetrics)) {
     return {
@@ -232,9 +232,9 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
   if (!isValidMetric(input.metric)) {
     const customDef = customMetrics.find((m) => m.name === input.metric)
     if (customDef) {
-      if (customDef.minValue !== undefined && input.value < customDef.minValue) {
+      if (customDef.min_value !== undefined && input.value < customDef.min_value) {
         return {
-          error: `Value ${input.value} is below minimum ${customDef.minValue} for metric "${input.metric}".`,
+          error: `Value ${input.value} is below minimum ${customDef.min_value} for metric "${input.metric}".`,
           metric: input.metric,
           success: false,
           time: input.time.toISOString(),
@@ -242,9 +242,9 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
           value: input.value,
         }
       }
-      if (customDef.maxValue !== undefined && input.value > customDef.maxValue) {
+      if (customDef.max_value !== undefined && input.value > customDef.max_value) {
         return {
-          error: `Value ${input.value} exceeds maximum ${customDef.maxValue} for metric "${input.metric}".`,
+          error: `Value ${input.value} exceeds maximum ${customDef.max_value} for metric "${input.metric}".`,
           metric: input.metric,
           success: false,
           time: input.time.toISOString(),
@@ -282,7 +282,7 @@ export async function deleteTag(user: string, externalId: string): Promise<Delet
 
   return {
     deleted,
-    externalId,
+    external_id: externalId,
     success: deleted,
   }
 }
@@ -294,7 +294,7 @@ export async function deleteTag(user: string, externalId: string): Promise<Delet
  */
 export async function addActivity(user: string, input: AddActivityInput): Promise<AddActivityResult> {
   // Validate that endTime is after startTime
-  if (input.endTime <= input.startTime) {
+  if (input.end_time <= input.start_time) {
     return {
       error: 'end_time must be after start_time',
       success: false,
@@ -304,22 +304,22 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
   const id = randomUUID()
 
   await dbInsertActivity(user, {
-    activityType: input.activityType,
+    activity_type: input.activity_type,
     data: input.data,
-    endTime: input.endTime,
+    end_time: input.end_time,
     id,
     notes: input.notes,
     source: 'manual',
-    startTime: input.startTime,
+    start_time: input.start_time,
     title: input.title,
   })
 
   return {
-    activityType: input.activityType,
-    endTime: input.endTime.toISOString(),
+    activity_type: input.activity_type,
+    end_time: input.end_time.toISOString(),
     id,
     notes: input.notes,
-    startTime: input.startTime.toISOString(),
+    start_time: input.start_time.toISOString(),
     success: true,
     title: input.title,
   }
@@ -345,7 +345,7 @@ export async function addCustomMetric(
   }
 
   const settings = await getUserSettings(user)
-  const existing = settings?.customMetrics ?? []
+  const existing = settings?.custom_metrics ?? []
 
   // Check for duplicate
   if (existing.some((m) => m.name === definition.name)) {
@@ -356,7 +356,7 @@ export async function addCustomMetric(
   }
 
   await upsertUserSettings(user, {
-    customMetrics: [...existing, definition],
+    custom_metrics: [...existing, definition],
   })
 
   return {
@@ -371,14 +371,14 @@ export async function addCustomMetric(
  */
 export async function deleteCustomMetric(user: string, name: string): Promise<DeleteCustomMetricResult> {
   const settings = await getUserSettings(user)
-  const existing = settings?.customMetrics ?? []
+  const existing = settings?.custom_metrics ?? []
 
   const filtered = existing.filter((m) => m.name !== name)
   if (filtered.length === existing.length) {
     return { deleted: false, name, success: false }
   }
 
-  await upsertUserSettings(user, { customMetrics: filtered })
+  await upsertUserSettings(user, { custom_metrics: filtered })
 
   return { deleted: true, name, success: true }
 }
@@ -394,7 +394,7 @@ export async function updateCustomMetric(
   updates: UpdateCustomMetricInput,
 ): Promise<UpdateCustomMetricResult> {
   const settings = await getUserSettings(user)
-  const existing = settings?.customMetrics ?? []
+  const existing = settings?.custom_metrics ?? []
 
   const index = existing.findIndex((m) => m.name === name)
   if (index === -1) {
@@ -407,17 +407,17 @@ export async function updateCustomMetric(
     ...(updates.unit !== undefined && { unit: updates.unit }),
     ...(updates.description !== undefined && { description: updates.description }),
     ...(updates.minValue !== undefined && {
-      minValue: updates.minValue === null ? undefined : updates.minValue,
+      min_value: updates.minValue === null ? undefined : updates.minValue,
     }),
     ...(updates.maxValue !== undefined && {
-      maxValue: updates.maxValue === null ? undefined : updates.maxValue,
+      max_value: updates.maxValue === null ? undefined : updates.maxValue,
     }),
   }
 
   const newMetrics = [...existing]
   newMetrics[index] = updated
 
-  await upsertUserSettings(user, { customMetrics: newMetrics })
+  await upsertUserSettings(user, { custom_metrics: newMetrics })
 
   return { data: updated, success: true }
 }
@@ -454,7 +454,7 @@ export async function deleteMetricData(user: string, metric: string): Promise<De
  */
 export async function getCustomMetrics(user: string): Promise<CustomMetricDefinition[]> {
   const settings = await getUserSettings(user)
-  return settings?.customMetrics ?? []
+  return settings?.custom_metrics ?? []
 }
 
 /**
@@ -492,8 +492,8 @@ export async function updateActivity(
   }
 
   // Determine final start and end times
-  const finalStartTime = input.startTime ?? existing.startTime
-  const finalEndTime = input.endTime ?? existing.endTime
+  const finalStartTime = input.start_time ?? existing.start_time
+  const finalEndTime = input.end_time ?? existing.end_time
 
   // Validate that endTime is after startTime
   if (finalEndTime && finalEndTime <= finalStartTime) {
@@ -505,9 +505,9 @@ export async function updateActivity(
   }
 
   const updated = await dbUpdateActivity(user, id, {
-    endTime: input.endTime,
+    end_time: input.end_time,
     notes: input.notes,
-    startTime: input.startTime,
+    start_time: input.start_time,
     title: input.title,
   })
 
@@ -520,11 +520,11 @@ export async function updateActivity(
   }
 
   return {
-    activityType: updated.activityType,
-    endTime: updated.endTime?.toISOString(),
+    activity_type: updated.activity_type,
+    end_time: updated.end_time?.toISOString(),
     id: updated.id,
     notes: updated.notes,
-    startTime: updated.startTime.toISOString(),
+    start_time: updated.start_time.toISOString(),
     success: true,
     title: updated.title,
   }

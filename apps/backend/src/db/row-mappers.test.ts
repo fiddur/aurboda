@@ -78,13 +78,13 @@ describe('mapActivityRow', () => {
     const result = mapActivityRow(row)
 
     expect(result).toEqual({
-      activityType: 'exercise',
+      activity_type: 'exercise',
       data: { hr: 150 },
-      endTime: new Date('2024-01-15T11:00:00Z'),
+      end_time: new Date('2024-01-15T11:00:00Z'),
       id: 'abc-123',
       notes: 'Morning run',
       source: 'manual',
-      startTime: new Date('2024-01-15T10:00:00Z'),
+      start_time: new Date('2024-01-15T10:00:00Z'),
       title: 'Run',
     })
   })
@@ -102,7 +102,7 @@ describe('mapActivityRow', () => {
     }
 
     const result = mapActivityRow(row)
-    expect(result.endTime).toBeUndefined()
+    expect(result.end_time).toBeUndefined()
   })
 
   test('throws on invalid activity type', () => {
@@ -136,13 +136,13 @@ describe('mapNamedLocationRow', () => {
     const result = mapNamedLocationRow(row)
 
     expect(result).toEqual({
-      createdAt: new Date('2024-01-15T10:00:00Z'),
+      created_at: new Date('2024-01-15T10:00:00Z'),
       id: 'loc-1',
       lat: 59.3293,
       lon: 18.0686,
       name: 'Home',
       radius: 200,
-      updatedAt: new Date('2024-01-15T10:00:00Z'),
+      updated_at: new Date('2024-01-15T10:00:00Z'),
     })
   })
 })
@@ -168,17 +168,17 @@ describe('mapDetectedLocationRow', () => {
 
     expect(result).toEqual({
       address: '123 Main St',
-      createdAt: new Date('2024-01-15T10:00:00Z'),
-      firstVisit: new Date('2024-01-10T08:00:00Z'),
-      geocodeStatus: 'success',
+      created_at: new Date('2024-01-15T10:00:00Z'),
+      first_visit: new Date('2024-01-10T08:00:00Z'),
+      geocode_status: 'success',
       id: 'det-1',
-      lastVisit: new Date('2024-01-15T08:00:00Z'),
+      last_visit: new Date('2024-01-15T08:00:00Z'),
       lat: 59.3293,
       lon: 18.0686,
       radius: 150,
-      totalMinutes: 480,
-      updatedAt: new Date('2024-01-15T10:00:00Z'),
-      visitCount: 5,
+      total_minutes: 480,
+      updated_at: new Date('2024-01-15T10:00:00Z'),
+      visit_count: 5,
     })
   })
 
@@ -219,15 +219,15 @@ describe('mapSyncStateRow', () => {
     const result = mapSyncStateRow(row)
 
     expect(result).toEqual({
-      dataType: 'sleep',
-      errorMessage: null,
+      data_type: 'sleep',
+      error_message: null,
       id: 'sync-1',
-      lastSyncTime: new Date('2024-01-15T10:00:00Z'),
+      last_sync_time: new Date('2024-01-15T10:00:00Z'),
       provider: 'oura',
-      retryAfter: undefined,
+      retry_after: undefined,
       status: 'idle',
-      syncStartDate: new Date('2024-01-01T00:00:00Z'),
-      updatedAt: new Date('2024-01-15T10:00:00Z'),
+      sync_start_date: new Date('2024-01-01T00:00:00Z'),
+      updated_at: new Date('2024-01-15T10:00:00Z'),
     })
   })
 
@@ -246,7 +246,7 @@ describe('mapSyncStateRow', () => {
 
     const result = mapSyncStateRow(row)
     expect(result.status).toBe('rate_limited')
-    expect(result.retryAfter).toEqual(new Date('2024-01-15T11:00:00Z'))
+    expect(result.retry_after).toEqual(new Date('2024-01-15T11:00:00Z'))
   })
 })
 
@@ -264,11 +264,11 @@ describe('mapTagRow', () => {
     const result = mapTagRow(row)
 
     expect(result).toEqual({
-      endTime: new Date('2024-01-15T11:00:00Z'),
-      externalId: 'ext-1',
+      end_time: new Date('2024-01-15T11:00:00Z'),
+      external_id: 'ext-1',
       id: 'tag-1',
       source: 'manual',
-      startTime: new Date('2024-01-15T10:00:00Z'),
+      start_time: new Date('2024-01-15T10:00:00Z'),
       tag: 'coffee',
     })
   })
@@ -284,7 +284,7 @@ describe('mapTagRow', () => {
     }
 
     const result = mapTagRow(row)
-    expect(result.endTime).toBeUndefined()
+    expect(result.end_time).toBeUndefined()
   })
 })
 
@@ -300,9 +300,9 @@ describe('mapMcpSessionRow', () => {
     const result = mapMcpSessionRow(row)
 
     expect(result).toEqual({
-      createdAt: new Date('2024-01-15T10:00:00Z'),
-      lastActivity: new Date('2024-01-15T12:00:00Z'),
-      sessionId: 'sess-1',
+      created_at: new Date('2024-01-15T10:00:00Z'),
+      last_activity: new Date('2024-01-15T12:00:00Z'),
+      session_id: 'sess-1',
       username: 'testuser',
     })
   })
@@ -324,14 +324,15 @@ describe('mapLastFmTagRuleRow', () => {
     const result = mapLastFmTagRuleRow(row)
 
     expect(result).toEqual({
-      artistName: 'Pink Floyd',
-      createdAt: new Date('2024-01-15T10:00:00Z'),
+      artist_name: 'Pink Floyd',
+      created_at: new Date('2024-01-15T10:00:00Z'),
       id: 'rule-1',
-      matchMode: 'exact',
-      matchType: 'artist',
-      ruleName: 'Pink Floyd tag',
-      tagName: 'psychedelic',
-      trackName: undefined,
+      match_mode: 'exact',
+      match_type: 'artist',
+      merge_gap_seconds: undefined,
+      rule_name: 'Pink Floyd tag',
+      tag_name: 'psychedelic',
+      track_name: undefined,
     })
   })
 })

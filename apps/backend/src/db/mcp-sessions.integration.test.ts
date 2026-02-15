@@ -27,44 +27,44 @@ describe('MCP Sessions Integration Tests', () => {
   describe('saveMcpSession', () => {
     test('saves a new session', async () => {
       const user = getTestUser()
-      const sessionId = randomUUID()
+      const session_id = randomUUID()
 
-      const result = await saveMcpSession(user, sessionId)
+      const result = await saveMcpSession(user, session_id)
 
-      expect(result.sessionId).toBe(sessionId)
+      expect(result.session_id).toBe(session_id)
       expect(result.username).toBe(user)
-      expect(result.createdAt).toBeInstanceOf(Date)
-      expect(result.lastActivity).toBeInstanceOf(Date)
+      expect(result.created_at).toBeInstanceOf(Date)
+      expect(result.last_activity).toBeInstanceOf(Date)
     })
 
-    test('upserts existing session and updates lastActivity', async () => {
+    test('upserts existing session and updates last_activity', async () => {
       const user = getTestUser()
-      const sessionId = randomUUID()
+      const session_id = randomUUID()
 
-      const first = await saveMcpSession(user, sessionId)
+      const first = await saveMcpSession(user, session_id)
 
       // Wait a bit to ensure timestamp changes
       await new Promise((r) => setTimeout(r, 10))
 
-      const second = await saveMcpSession(user, sessionId)
+      const second = await saveMcpSession(user, session_id)
 
-      expect(second.sessionId).toBe(sessionId)
-      expect(second.createdAt.getTime()).toBe(first.createdAt.getTime())
-      expect(second.lastActivity.getTime()).toBeGreaterThanOrEqual(first.lastActivity.getTime())
+      expect(second.session_id).toBe(session_id)
+      expect(second.created_at.getTime()).toBe(first.created_at.getTime())
+      expect(second.last_activity.getTime()).toBeGreaterThanOrEqual(first.last_activity.getTime())
     })
   })
 
   describe('getMcpSession', () => {
     test('retrieves existing session', async () => {
       const user = getTestUser()
-      const sessionId = randomUUID()
+      const session_id = randomUUID()
 
-      await saveMcpSession(user, sessionId)
+      await saveMcpSession(user, session_id)
 
-      const result = await getMcpSession(user, sessionId)
+      const result = await getMcpSession(user, session_id)
 
       expect(result).not.toBeNull()
-      expect(result!.sessionId).toBe(sessionId)
+      expect(result!.session_id).toBe(session_id)
       expect(result!.username).toBe(user)
     })
 
@@ -78,35 +78,35 @@ describe('MCP Sessions Integration Tests', () => {
   })
 
   describe('touchMcpSession', () => {
-    test('updates lastActivity timestamp', async () => {
+    test('updates last_activity timestamp', async () => {
       const user = getTestUser()
-      const sessionId = randomUUID()
+      const session_id = randomUUID()
 
-      await saveMcpSession(user, sessionId)
-      const before = await getMcpSession(user, sessionId)
+      await saveMcpSession(user, session_id)
+      const before = await getMcpSession(user, session_id)
 
       // Wait a bit to ensure timestamp changes
       await new Promise((r) => setTimeout(r, 10))
 
-      await touchMcpSession(user, sessionId)
-      const after = await getMcpSession(user, sessionId)
+      await touchMcpSession(user, session_id)
+      const after = await getMcpSession(user, session_id)
 
-      expect(after!.lastActivity.getTime()).toBeGreaterThanOrEqual(before!.lastActivity.getTime())
+      expect(after!.last_activity.getTime()).toBeGreaterThanOrEqual(before!.last_activity.getTime())
     })
   })
 
   describe('deleteMcpSession', () => {
     test('deletes existing session and returns true', async () => {
       const user = getTestUser()
-      const sessionId = randomUUID()
+      const session_id = randomUUID()
 
-      await saveMcpSession(user, sessionId)
+      await saveMcpSession(user, session_id)
 
-      const result = await deleteMcpSession(user, sessionId)
+      const result = await deleteMcpSession(user, session_id)
 
       expect(result).toBe(true)
 
-      const check = await getMcpSession(user, sessionId)
+      const check = await getMcpSession(user, session_id)
       expect(check).toBeNull()
     })
 
@@ -132,7 +132,7 @@ describe('MCP Sessions Integration Tests', () => {
       expect(sessions).toHaveLength(3)
     })
 
-    test('returns sessions ordered by lastActivity descending', async () => {
+    test('returns sessions ordered by last_activity descending', async () => {
       const user = getTestUser()
 
       const oldSessionId = randomUUID()
@@ -144,8 +144,8 @@ describe('MCP Sessions Integration Tests', () => {
 
       const sessions = await getMcpSessionsForUser(user)
 
-      expect(sessions[0].sessionId).toBe(newSessionId)
-      expect(sessions[1].sessionId).toBe(oldSessionId)
+      expect(sessions[0].session_id).toBe(newSessionId)
+      expect(sessions[1].session_id).toBe(oldSessionId)
     })
   })
 })

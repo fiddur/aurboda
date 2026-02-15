@@ -38,11 +38,11 @@ export const sessionSummarySchema = z
   .object({
     data: z.record(z.string(), z.unknown()).optional(),
     duration: durationMinutesSchema.optional(),
-    endTime: iso8601DateTimeSchema.optional(),
-    hrZoneSecs: hrZoneSecsSchema.optional().meta({
+    end_time: iso8601DateTimeSchema.optional(),
+    hr_zone_secs: hrZoneSecsSchema.optional().meta({
       description: 'Time spent in each HR zone during session',
     }),
-    startTime: iso8601DateTimeSchema,
+    start_time: iso8601DateTimeSchema,
     title: z.string().optional().meta({ description: 'Session title' }),
   })
   .meta({ id: 'SessionSummary' })
@@ -54,8 +54,8 @@ export type SessionSummary = z.infer<typeof sessionSummarySchema>
  */
 export const tagSummarySchema = z
   .object({
-    endTime: iso8601DateTimeSchema.optional(),
-    startTime: iso8601DateTimeSchema,
+    end_time: iso8601DateTimeSchema.optional(),
+    start_time: iso8601DateTimeSchema,
     tag: tagTextSchema,
   })
   .meta({ id: 'TagSummary' })
@@ -68,14 +68,14 @@ export type TagSummary = z.infer<typeof tagSummarySchema>
 export const placeSummarySchema = z
   .object({
     address: addressSchema.optional(),
-    detectedLocationId: detectedLocationIdSchema.optional(),
+    detected_location_id: detectedLocationIdSchema.optional(),
     duration: durationMinutesSchema,
-    endTime: iso8601DateTimeSchema,
+    end_time: iso8601DateTimeSchema,
     lat: latSchema.optional(),
     lon: lonSchema.optional(),
     name: z.string().meta({ description: 'Place name', example: 'Home' }),
     source: placeSourceSchema,
-    startTime: iso8601DateTimeSchema,
+    start_time: iso8601DateTimeSchema,
   })
   .meta({ id: 'PlaceSummary' })
 
@@ -86,10 +86,10 @@ export type PlaceSummary = z.infer<typeof placeSummarySchema>
  */
 export const productivitySummarySchema = z
   .object({
-    distractingSec: z.number().meta({ description: 'Distracting time in seconds' }),
-    productiveSec: z.number().meta({ description: 'Productive time in seconds' }),
-    totalDurationSec: z.number().meta({ description: 'Total tracked time in seconds' }),
-    veryProductiveSec: z.number().meta({ description: 'Very productive time in seconds' }),
+    distracting_sec: z.number().meta({ description: 'Distracting time in seconds' }),
+    productive_sec: z.number().meta({ description: 'Productive time in seconds' }),
+    total_duration_sec: z.number().meta({ description: 'Total tracked time in seconds' }),
+    very_productive_sec: z.number().meta({ description: 'Very productive time in seconds' }),
   })
   .meta({ id: 'ProductivitySummary' })
 
@@ -100,10 +100,10 @@ export type ProductivitySummary = z.infer<typeof productivitySummarySchema>
  */
 export const ouraScoresSchema = z
   .object({
-    cardiovascularAge: z.number().nullable().meta({ description: 'Oura cardiovascular age' }),
-    readinessScore: z.number().nullable().meta({ description: 'Oura readiness score (0-100)' }),
-    resilienceScore: z.number().nullable().meta({ description: 'Oura resilience score (0-100)' }),
-    sleepScore: z.number().nullable().meta({ description: 'Oura sleep score (0-100)' }),
+    cardiovascular_age: z.number().nullable().meta({ description: 'Oura cardiovascular age' }),
+    readiness_score: z.number().nullable().meta({ description: 'Oura readiness score (0-100)' }),
+    resilience_score: z.number().nullable().meta({ description: 'Oura resilience score (0-100)' }),
+    sleep_score: z.number().nullable().meta({ description: 'Oura sleep score (0-100)' }),
   })
   .meta({ id: 'OuraScores' })
 
@@ -115,12 +115,12 @@ export type OuraScores = z.infer<typeof ouraScoresSchema>
 export const dailySummaryResultSchema = z
   .object({
     date: dateOnlySchema,
-    exerciseSessions: z.array(sessionSummarySchema),
-    heartRate: heartRateStatsSchema.nullable(),
-    ouraScores: ouraScoresSchema.nullable(),
+    exercise_sessions: z.array(sessionSummarySchema),
+    heart_rate: heartRateStatsSchema.nullable(),
+    oura_scores: ouraScoresSchema.nullable(),
     places: z.array(placeSummarySchema),
     productivity: productivitySummarySchema.nullable(),
-    sleepSessions: z.array(sessionSummarySchema),
+    sleep_sessions: z.array(sessionSummarySchema),
     steps: z.object({
       total: z.number().meta({ description: 'Total steps for the day' }),
     }),

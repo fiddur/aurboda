@@ -248,7 +248,7 @@ export const getTimeSeriesBucketed = async (
 
   return result.rows.map((row) => ({
     avg: row.avg !== null ? Number(row.avg) : 0,
-    bucketStart: new Date(row.bucket_start),
+    bucket_start: new Date(row.bucket_start),
     count: row.count,
     max: row.max !== null ? Number(row.max) : 0,
     metric: parseMetricType(row.metric),

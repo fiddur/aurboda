@@ -13,8 +13,8 @@ interface TagEntry {
 const buildTagEntries = (uniqueTags: string[], programmaticTags: ProgrammaticTag[]): TagEntry[] => {
   const mappings = new Map<string, string>()
   for (const pt of programmaticTags) {
-    if (pt.currentName) {
-      mappings.set(pt.tagKey, pt.currentName)
+    if (pt.current_name) {
+      mappings.set(pt.tag_key, pt.current_name)
     }
   }
 

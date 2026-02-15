@@ -10,7 +10,7 @@ describe('sync router', () => {
     getLastFmSyncStates: vi.fn().mockResolvedValue([]),
     getOuraSyncStates: vi.fn().mockResolvedValue([]),
     getRescueTimeSyncStates: vi.fn().mockResolvedValue([]),
-    getSettings: vi.fn().mockResolvedValue({ rescueTimeKey: 'test-key' }),
+    getSettings: vi.fn().mockResolvedValue({ rescue_time_key: 'test-key' }),
     processDailyAggregate: vi.fn().mockResolvedValue(undefined),
     processHealthConnectData: vi.fn().mockResolvedValue(undefined),
     resetCalendarSyncState: vi.fn().mockResolvedValue(undefined),
@@ -18,7 +18,7 @@ describe('sync router', () => {
     resetOuraSyncState: vi.fn().mockResolvedValue(undefined),
     resetRescueTimeSyncState: vi.fn().mockResolvedValue(undefined),
     syncCalendars: vi.fn().mockResolvedValue([]),
-    syncLastFm: vi.fn().mockResolvedValue({ scrobblesProcessed: 0, status: 'success', tagsCreated: 0 }),
+    syncLastFm: vi.fn().mockResolvedValue({ scrobbles_processed: 0, status: 'success', tags_created: 0 }),
     syncOura: vi.fn().mockResolvedValue({ success: true }),
     syncRescueTime: vi.fn().mockResolvedValue({ success: true }),
   }
@@ -46,7 +46,7 @@ describe('sync router', () => {
       const response = await request(app)
         .post('/sync/daily-aggregates')
         .send({
-          data: [{ dataOrigins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 }],
+          data: [{ data_origins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 }],
         })
 
       expect(response.status).toBe(200)
@@ -112,8 +112,8 @@ describe('sync router', () => {
     test('processes multiple aggregates', async () => {
       const app = createTestApp()
       const aggregates = [
-        { dataOrigins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 },
-        { dataOrigins: ['app1', 'app2'], date: '2024-01-15', metric: 'distance', value: 500 },
+        { data_origins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 },
+        { data_origins: ['app1', 'app2'], date: '2024-01-15', metric: 'distance', value: 500 },
       ]
       const response = await request(app).post('/sync/daily-aggregates').send({ data: aggregates })
 
@@ -123,7 +123,7 @@ describe('sync router', () => {
 
     test('returns 400 for invalid data (missing required fields)', async () => {
       const app = createTestApp()
-      // Missing dataOrigins field
+      // Missing data_origins field
       const response = await request(app)
         .post('/sync/daily-aggregates')
         .send({ data: [{ date: '2024-01-15', metric: 'steps', value: 1000 }] })
@@ -137,10 +137,10 @@ describe('sync router', () => {
     test('GET /sync/oura/status returns sync states', async () => {
       const mockStates = [
         {
-          errorMessage: null,
-          lastSyncTime: '2024-01-15T10:00:00Z',
+          error_message: null,
+          last_sync_time: '2024-01-15T10:00:00Z',
           provider: 'oura',
-          retryAfter: null,
+          retry_after: null,
           status: 'idle' as const,
         },
       ]
@@ -176,10 +176,10 @@ describe('sync router', () => {
     test('GET /sync/rescuetime/status returns sync states', async () => {
       const mockStates = [
         {
-          errorMessage: null,
-          lastSyncTime: '2024-01-15T10:00:00Z',
+          error_message: null,
+          last_sync_time: '2024-01-15T10:00:00Z',
           provider: 'rescuetime',
-          retryAfter: null,
+          retry_after: null,
           status: 'idle' as const,
         },
       ]

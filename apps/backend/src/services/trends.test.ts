@@ -31,17 +31,17 @@ describe('getTrend', () => {
 
     const result = await getTrend('testuser', {
       pattern: 'pain_killer',
-      sourceType: 'tag',
+      source_type: 'tag',
     })
 
-    expect(result.sourceType).toBe('tag')
+    expect(result.source_type).toBe('tag')
     expect(result.pattern).toBe('pain_killer')
     expect(result.aggregation).toBe('count')
-    expect(result.displayPeriod).toBe('monthly')
-    expect(result.displayUnit).toBe('per month')
-    expect(result.halfLifeDays).toBe(15) // default
-    expect(result.lookbackDays).toBe(90) // default
-    expect(result.currentValue).toBe(3.5) // last value in history
+    expect(result.display_period).toBe('monthly')
+    expect(result.display_unit).toBe('per month')
+    expect(result.half_life_days).toBe(15) // default
+    expect(result.lookback_days).toBe(90) // default
+    expect(result.current_value).toBe(3.5) // last value in history
     expect(result.history).toHaveLength(4)
   })
 
@@ -54,17 +54,17 @@ describe('getTrend', () => {
     } as never)
 
     const result = await getTrend('testuser', {
-      displayPeriod: 'weekly',
-      halfLifeDays: 7,
-      lookbackDays: 30,
+      display_period: 'weekly',
+      half_life_days: 7,
+      lookback_days: 30,
       pattern: 'coffee',
-      sourceType: 'tag',
+      source_type: 'tag',
     })
 
-    expect(result.halfLifeDays).toBe(7)
-    expect(result.lookbackDays).toBe(30)
-    expect(result.displayPeriod).toBe('weekly')
-    expect(result.displayUnit).toBe('per week')
+    expect(result.half_life_days).toBe(7)
+    expect(result.lookback_days).toBe(30)
+    expect(result.display_period).toBe('weekly')
+    expect(result.display_unit).toBe('per week')
   })
 
   test('returns trend data for metrics', async () => {
@@ -79,21 +79,21 @@ describe('getTrend', () => {
     const result = await getTrend('testuser', {
       aggregation: 'mean',
       pattern: 'weight',
-      sourceType: 'metric',
+      source_type: 'metric',
     })
 
-    expect(result.sourceType).toBe('metric')
+    expect(result.source_type).toBe('metric')
     expect(result.pattern).toBe('weight')
     expect(result.aggregation).toBe('mean')
-    expect(result.displayUnit).toBe('') // No unit for mean aggregation
-    expect(result.currentValue).toBe(71.5)
+    expect(result.display_unit).toBe('') // No unit for mean aggregation
+    expect(result.current_value).toBe(71.5)
   })
 
   test('throws error for invalid metric', async () => {
     await expect(
       getTrend('testuser', {
         pattern: 'invalid_metric_name',
-        sourceType: 'metric',
+        source_type: 'metric',
       }),
     ).rejects.toThrow('Invalid metric: invalid_metric_name')
   })
@@ -105,10 +105,10 @@ describe('getTrend', () => {
 
     const result = await getTrend('testuser', {
       pattern: 'nonexistent_tag',
-      sourceType: 'tag',
+      source_type: 'tag',
     })
 
-    expect(result.currentValue).toBe(0)
+    expect(result.current_value).toBe(0)
     expect(result.history).toHaveLength(0)
   })
 
@@ -122,7 +122,7 @@ describe('getTrend', () => {
 
     const result = await getTrend('testuser', {
       pattern: 'test_tag',
-      sourceType: 'tag',
+      source_type: 'tag',
     })
 
     expect(result.history[0].date).toBe('2026-01-15')
@@ -136,12 +136,12 @@ describe('getTrend', () => {
 
     const result = await getTrend('testuser', {
       aggregation: 'sum',
-      displayPeriod: 'daily',
+      display_period: 'daily',
       pattern: 'steps',
-      sourceType: 'metric',
+      source_type: 'metric',
     })
 
     expect(result.aggregation).toBe('sum')
-    expect(result.displayUnit).toBe('per day')
+    expect(result.display_unit).toBe('per day')
   })
 })

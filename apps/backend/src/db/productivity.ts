@@ -10,13 +10,13 @@ export const insertProductivity = async (user: string, records: ProductivityReco
 
   const values = records.map((r) => [
     r.source || 'rescuetime',
-    r.startTime,
-    r.endTime,
+    r.start_time,
+    r.end_time,
     r.activity,
     r.category,
     r.productivity,
-    r.durationSec,
-    r.isMobile || false,
+    r.duration_sec,
+    r.is_mobile || false,
   ])
 
   await query(
@@ -51,11 +51,11 @@ export const getProductivity = async (
   return result.rows.map((row) => ({
     activity: row.activity,
     category: row.category,
-    durationSec: row.duration_sec,
-    endTime: new Date(row.end_time),
-    isMobile: row.is_mobile,
+    duration_sec: row.duration_sec,
+    end_time: new Date(row.end_time),
+    is_mobile: row.is_mobile,
     productivity: row.productivity,
     source: row.source,
-    startTime: new Date(row.start_time),
+    start_time: new Date(row.start_time),
   }))
 }

@@ -137,18 +137,18 @@ function TrendChart({ data, color }: { data: { date: string; value: number }[]; 
 
 // Card showing current trend value
 function TrendValueCard({ result }: { result: TrendResult }) {
-  const { currentValue, displayUnit, pattern, sourceType, halfLifeDays } = result
+  const { current_value, display_unit, pattern, source_type, half_life_days } = result
 
   return (
     <div class="trend-value-card">
       <div class="trend-current">
-        <span class="trend-number">{currentValue.toFixed(1)}</span>
-        <span class="trend-unit">{displayUnit}</span>
+        <span class="trend-number">{current_value.toFixed(1)}</span>
+        <span class="trend-unit">{display_unit}</span>
       </div>
       <div class="trend-meta">
         <span class="trend-pattern">{pattern}</span>
         <span class="trend-config">
-          {sourceType} · {halfLifeDays}d half-life
+          {source_type} · {half_life_days}d half-life
         </span>
       </div>
     </div>
@@ -183,12 +183,12 @@ function TrendConfigForm({
   submitLabel?: string
 }) {
   const [name, setName] = useState(initialValues?.name ?? '')
-  const [sourceType, setSourceType] = useState<'tag' | 'metric'>(initialValues?.params.sourceType ?? 'tag')
+  const [sourceType, setSourceType] = useState<'tag' | 'metric'>(initialValues?.params.source_type ?? 'tag')
   const [pattern, setPattern] = useState(initialValues?.params.pattern ?? '')
-  const [halfLifeDays, setHalfLifeDays] = useState(initialValues?.params.halfLifeDays ?? 15)
-  const [lookbackDays, setLookbackDays] = useState(initialValues?.params.lookbackDays ?? 90)
+  const [halfLifeDays, setHalfLifeDays] = useState(initialValues?.params.half_life_days ?? 15)
+  const [lookbackDays, setLookbackDays] = useState(initialValues?.params.lookback_days ?? 90)
   const [displayPeriod, setDisplayPeriod] = useState<TrendDisplayPeriod>(
-    initialValues?.params.displayPeriod ?? 'monthly',
+    initialValues?.params.display_period ?? 'monthly',
   )
   const [aggregation, setAggregation] = useState<'count' | 'mean' | 'sum'>(
     initialValues?.params.aggregation ?? 'count',
@@ -201,11 +201,11 @@ function TrendConfigForm({
     const trendName = name.trim() || pattern.trim()
     onSubmit(trendName, {
       aggregation: sourceType === 'metric' ? aggregation : 'count',
-      displayPeriod,
-      halfLifeDays,
-      lookbackDays,
+      display_period: displayPeriod,
+      half_life_days: halfLifeDays,
+      lookback_days: lookbackDays,
       pattern: pattern.trim(),
-      sourceType,
+      source_type: sourceType,
     })
   }
 

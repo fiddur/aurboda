@@ -22,7 +22,7 @@ describe('Health Connect Integration Tests', () => {
       const user = getTestUser()
 
       await processDailyAggregate(user, {
-        dataOrigins: ['com.oura.ring'],
+        data_origins: ['com.oura.ring'],
         date: '2024-01-15',
         metric: 'steps',
         value: 10000,
@@ -37,7 +37,7 @@ describe('Health Connect Integration Tests', () => {
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       await processDailyAggregate(user, {
-        dataOrigins: [],
+        data_origins: [],
         date: '2024-01-15',
         metric: 'invalid_metric',
         value: 100,
@@ -56,7 +56,7 @@ describe('Health Connect Integration Tests', () => {
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       await processDailyAggregate(user, {
-        dataOrigins: [],
+        data_origins: [],
         date: '2024-01-15',
         metric: 'heart_rate', // Valid but not cumulative
         value: 72,
@@ -72,7 +72,7 @@ describe('Health Connect Integration Tests', () => {
 
       for (const metric of cumulativeMetrics) {
         await processDailyAggregate(user, {
-          dataOrigins: [],
+          data_origins: [],
           date: '2024-01-15',
           metric,
           value: 100,
@@ -90,14 +90,14 @@ describe('Health Connect Integration Tests', () => {
       const user = getTestUser()
 
       await processDailyAggregate(user, {
-        dataOrigins: [],
+        data_origins: [],
         date: '2024-01-15',
         metric: 'steps',
         value: 5000,
       })
 
       await processDailyAggregate(user, {
-        dataOrigins: [],
+        data_origins: [],
         date: '2024-01-15',
         metric: 'steps',
         value: 10000,
@@ -113,7 +113,7 @@ describe('Health Connect Integration Tests', () => {
       const user = getTestUser()
 
       await processDailyAggregate(user, {
-        dataOrigins: [],
+        data_origins: [],
         date: '2024-01-15',
         metric: 'steps',
         value: 12500,

@@ -27,16 +27,16 @@ export const calculateRetryAfter = (attemptCount = 0): Date => {
  * Check if RescueTime is currently rate limited.
  */
 export const isRateLimited = (syncState: SyncState | null): boolean => {
-  if (!syncState?.retryAfter) return false
-  return syncState.status === 'rate_limited' && isFuture(syncState.retryAfter)
+  if (!syncState?.retry_after) return false
+  return syncState.status === 'rate_limited' && isFuture(syncState.retry_after)
 }
 
 /** Result of a sync operation */
 export interface SyncResult {
-  recordsProcessed: number
+  records_processed: number
   status: 'success' | 'skipped' | 'error' | 'rate_limited'
   error?: string
-  retryAfter?: Date
+  retry_after?: Date
 }
 
 /**
@@ -56,8 +56,8 @@ export const syncRescueTimeData = async (
   // Skip if rate limited
   if (isRateLimited(syncState)) {
     return {
-      recordsProcessed: 0,
-      retryAfter: syncState!.retryAfter,
+      records_processed: 0,
+      retry_after: syncState!.retry_after,
       status: 'skipped',
     }
   }
@@ -66,18 +66,18 @@ export const syncRescueTimeData = async (
   const end = new Date()
   let start: Date
 
-  if (options.fullResync || !syncState?.lastSyncTime) {
+  if (options.fullResync || !syncState?.last_sync_time) {
     start = options.startDate || subDays(end, DEFAULT_SYNC_HISTORY_DAYS)
   } else {
-    start = syncState.lastSyncTime
+    start = syncState.last_sync_time
   }
 
   // Mark as syncing
   await upsertSyncState(user, {
-    dataType,
+    data_type: dataType,
     provider: 'rescuetime',
     status: 'syncing',
-    syncStartDate: start,
+    sync_start_date: start,
   })
 
   try {
@@ -88,12 +88,12 @@ export const syncRescueTimeData = async (
     const productivityRecords = data.map((r) => ({
       activity: r.activity,
       category: r.category,
-      durationSec: r.duration,
-      endTime: r.endTime,
-      isMobile: r.mobile,
+      duration_sec: r.duration,
+      end_time: r.endTime,
+      is_mobile: r.mobile,
       productivity: r.productivity,
       source: 'rescuetime' as const,
-      startTime: r.startTime,
+      start_time: r.startTime,
     }))
 
     if (productivityRecords.length > 0) {
@@ -102,14 +102,14 @@ export const syncRescueTimeData = async (
 
     // Update sync state on success
     await upsertSyncState(user, {
-      dataType,
-      lastSyncTime: end,
+      data_type: dataType,
+      last_sync_time: end,
       provider: 'rescuetime',
       status: 'idle',
     })
 
     return {
-      recordsProcessed: productivityRecords.length,
+      records_processed: productivityRecords.length,
       status: 'success',
     }
   } catch (error: unknown) {
@@ -119,16 +119,16 @@ export const syncRescueTimeData = async (
     if (axiosError.response?.status === 429) {
       const retryAfter = calculateRetryAfter()
       await upsertSyncState(user, {
-        dataType,
-        errorMessage: 'Rate limited by RescueTime API',
+        data_type: dataType,
+        error_message: 'Rate limited by RescueTime API',
         provider: 'rescuetime',
-        retryAfter,
+        retry_after: retryAfter,
         status: 'rate_limited',
       })
 
       return {
-        recordsProcessed: 0,
-        retryAfter,
+        records_processed: 0,
+        retry_after: retryAfter,
         status: 'rate_limited',
       }
     }
@@ -136,15 +136,15 @@ export const syncRescueTimeData = async (
     // Handle other errors
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     await upsertSyncState(user, {
-      dataType,
-      errorMessage,
+      data_type: dataType,
+      error_message: errorMessage,
       provider: 'rescuetime',
       status: 'error',
     })
 
     return {
       error: errorMessage,
-      recordsProcessed: 0,
+      records_processed: 0,
       status: 'error',
     }
   }
@@ -154,7 +154,7 @@ export const syncRescueTimeData = async (
  * Check if RescueTime sync is needed based on last sync time.
  */
 export const needsSync = (syncState: SyncState | null, thresholdMinutes: number): boolean => {
-  if (!syncState?.lastSyncTime) return true
-  const threshold = addMinutes(syncState.lastSyncTime, thresholdMinutes)
+  if (!syncState?.last_sync_time) return true
+  const threshold = addMinutes(syncState.last_sync_time, thresholdMinutes)
   return isBefore(threshold, new Date())
 }

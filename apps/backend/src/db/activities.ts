@@ -30,30 +30,33 @@ export const mergeOverlappingActivities = (activities: Activity[]): Activity[] =
   // Group by activity type
   const byType = new Map<string, Activity[]>()
   for (const a of activities) {
-    const group = byType.get(a.activityType) ?? []
+    const group = byType.get(a.activity_type) ?? []
     group.push(a)
-    byType.set(a.activityType, group)
+    byType.set(a.activity_type, group)
   }
 
   const result: Activity[] = []
 
   for (const [, typeActivities] of byType) {
     // Sort by start time
-    const sorted = [...typeActivities].sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+    const sorted = [...typeActivities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 
     let current = { ...sorted[0] }
 
     for (let i = 1; i < sorted.length; i++) {
       const next = sorted[i]
-      const currentEnd = current.endTime?.getTime() ?? current.startTime.getTime()
-      const nextStart = next.startTime.getTime()
+      const currentEnd = current.end_time?.getTime() ?? current.start_time.getTime()
+      const nextStart = next.start_time.getTime()
 
       // Check if activities overlap or touch
       if (currentEnd >= nextStart) {
         // Merge: extend end time if needed
-        const nextEnd = next.endTime?.getTime()
-        if (nextEnd !== undefined && (current.endTime === undefined || nextEnd > current.endTime.getTime())) {
-          current.endTime = next.endTime
+        const nextEnd = next.end_time?.getTime()
+        if (
+          nextEnd !== undefined &&
+          (current.end_time === undefined || nextEnd > current.end_time.getTime())
+        ) {
+          current.end_time = next.end_time
         }
 
         // Use first non-empty title
@@ -82,7 +85,7 @@ export const mergeOverlappingActivities = (activities: Activity[]): Activity[] =
   }
 
   // Sort final result by start time
-  return result.sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+  return result.sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 }
 
 export const insertActivity = async (user: string, activity: Activity) => {
@@ -98,9 +101,9 @@ export const insertActivity = async (user: string, activity: Activity) => {
     [
       activity.id,
       activity.source,
-      activity.activityType,
-      activity.startTime,
-      activity.endTime,
+      activity.activity_type,
+      activity.start_time,
+      activity.end_time,
       activity.title,
       activity.notes,
       activity.data,
@@ -136,8 +139,8 @@ export const updateActivity = async (
   updates: ActivityUpdate,
 ): Promise<Activity | null> => {
   const fields: UpdateEntry[] = []
-  if (updates.startTime !== undefined) fields.push({ column: 'start_time', value: updates.startTime })
-  if (updates.endTime !== undefined) fields.push({ column: 'end_time', value: updates.endTime })
+  if (updates.start_time !== undefined) fields.push({ column: 'start_time', value: updates.start_time })
+  if (updates.end_time !== undefined) fields.push({ column: 'end_time', value: updates.end_time })
   if (updates.title !== undefined) fields.push({ column: 'title', value: updates.title })
   if (updates.notes !== undefined) fields.push({ column: 'notes', value: updates.notes })
 

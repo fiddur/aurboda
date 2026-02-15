@@ -23,12 +23,12 @@ function TrendChart({
   data,
   width = 300,
   height = 150,
-  displayPeriod,
+  display_period,
 }: {
   data: TrendResult
   width?: number
   height?: number
-  displayPeriod: string
+  display_period: string
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
 
@@ -107,20 +107,20 @@ function TrendChart({
       .attr('fill', '#673ab8')
       .style('font-size', '12px')
       .style('font-weight', '600')
-      .text(`${data.currentValue.toFixed(1)} / ${displayPeriod}`)
-  }, [data, width, height, displayPeriod])
+      .text(`${data.current_value.toFixed(1)} / ${display_period}`)
+  }, [data, width, height, display_period])
 
   return <svg ref={svgRef} width={width} height={height} />
 }
 
 export function TrendChartWidget({ config }: TrendChartWidgetProps) {
   const {
-    sourceType,
+    source_type,
     pattern,
     title,
-    halfLifeDays = 15,
-    lookbackDays = 90,
-    displayPeriod = 'monthly',
+    half_life_days = 15,
+    lookback_days = 90,
+    display_period = 'monthly',
     aggregation = 'count',
   } = config
 
@@ -128,13 +128,13 @@ export function TrendChartWidget({ config }: TrendChartWidgetProps) {
     queryFn: () =>
       fetchTrend({
         aggregation,
-        displayPeriod,
-        halfLifeDays,
-        lookbackDays,
+        display_period,
+        half_life_days,
+        lookback_days,
         pattern,
-        sourceType,
+        source_type,
       }),
-    queryKey: ['trend', sourceType, pattern, halfLifeDays, lookbackDays, displayPeriod, aggregation],
+    queryKey: ['trend', source_type, pattern, half_life_days, lookback_days, display_period, aggregation],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -161,7 +161,7 @@ export function TrendChartWidget({ config }: TrendChartWidgetProps) {
   return (
     <div class="trend-chart-widget">
       <h4>{displayTitle}</h4>
-      <TrendChart data={trendQuery.data} displayPeriod={displayPeriod} />
+      <TrendChart data={trendQuery.data} display_period={display_period} />
     </div>
   )
 }

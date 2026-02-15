@@ -60,21 +60,21 @@ export const getTrendQuerySchema = z
       .enum(['count', 'sum', 'mean'])
       .default('count')
       .meta({ description: 'Aggregation method: count for tags, mean for metrics' }),
-    displayPeriod: trendDisplayPeriodSchema
+    display_period: trendDisplayPeriodSchema
       .default('monthly')
       .meta({ description: 'Period to normalize the rate to (daily, weekly, monthly)' }),
-    halfLifeDays: z
+    half_life_days: z
       .number()
       .positive()
       .default(15)
       .meta({ description: 'EMA half-life in days. Common values: 7 (quick), 15 (responsive), 30 (stable)' }),
-    lookbackDays: z
+    lookback_days: z
       .number()
       .positive()
       .default(90)
       .meta({ description: 'How many days of historical data to include' }),
     pattern: z.string().meta({ description: 'For tags: regex pattern to match. For metrics: metric name.' }),
-    sourceType: trendSourceTypeSchema.meta({ description: 'Type of source: tag or metric' }),
+    source_type: trendSourceTypeSchema.meta({ description: 'Type of source: tag or metric' }),
   })
   .meta({ id: 'GetTrendQuery' })
 
@@ -98,14 +98,14 @@ export type TrendHistoryPoint = z.infer<typeof trendHistoryPointSchema>
 export const trendResultSchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).meta({ description: 'Aggregation method used' }),
-    currentValue: z.number().meta({ description: 'Current trend value' }),
-    displayPeriod: trendDisplayPeriodSchema.meta({ description: 'Period the value is normalized to' }),
-    displayUnit: z.string().meta({ description: 'Human-readable unit (e.g., "per month")' }),
-    halfLifeDays: z.number().meta({ description: 'Half-life used for calculation' }),
+    current_value: z.number().meta({ description: 'Current trend value' }),
+    display_period: trendDisplayPeriodSchema.meta({ description: 'Period the value is normalized to' }),
+    display_unit: z.string().meta({ description: 'Human-readable unit (e.g., "per month")' }),
+    half_life_days: z.number().meta({ description: 'Half-life used for calculation' }),
     history: z.array(trendHistoryPointSchema).meta({ description: 'Historical trend values' }),
-    lookbackDays: z.number().meta({ description: 'Days of data included' }),
+    lookback_days: z.number().meta({ description: 'Days of data included' }),
     pattern: z.string().meta({ description: 'Pattern used for matching' }),
-    sourceType: trendSourceTypeSchema.meta({ description: 'Source type queried' }),
+    source_type: trendSourceTypeSchema.meta({ description: 'Source type queried' }),
   })
   .meta({ id: 'TrendResult' })
 

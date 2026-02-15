@@ -93,78 +93,78 @@ const parseLastFmMatchMode = (value: unknown) => {
 // ============================================================================
 
 export const mapActivityRow = (row: QueryResultRow): Activity => ({
-  activityType: parseActivityType(row.activity_type),
+  activity_type: parseActivityType(row.activity_type),
   data: row.data,
-  endTime: row.end_time ? new Date(row.end_time) : undefined,
+  end_time: row.end_time ? new Date(row.end_time) : undefined,
   id: row.id,
   notes: row.notes,
   source: parseDataSource(row.source),
-  startTime: new Date(row.start_time),
+  start_time: new Date(row.start_time),
   title: row.title,
 })
 
 export const mapNamedLocationRow = (row: QueryResultRow): NamedLocation => ({
-  createdAt: new Date(row.created_at),
+  created_at: new Date(row.created_at),
   id: row.id,
   lat: row.lat,
   lon: row.lon,
   name: row.name,
   radius: row.radius,
-  updatedAt: new Date(row.updated_at),
+  updated_at: new Date(row.updated_at),
 })
 
 export const mapDetectedLocationRow = (row: QueryResultRow): DetectedLocation => ({
   address: row.address,
-  createdAt: new Date(row.created_at),
-  firstVisit: new Date(row.first_visit),
-  geocodeStatus: parseGeocodeStatus(row.geocode_status),
+  created_at: new Date(row.created_at),
+  first_visit: new Date(row.first_visit),
+  geocode_status: parseGeocodeStatus(row.geocode_status),
   id: row.id,
-  lastVisit: new Date(row.last_visit),
+  last_visit: new Date(row.last_visit),
   lat: row.lat,
   lon: row.lon,
   radius: row.radius,
-  totalMinutes: row.total_minutes,
-  updatedAt: new Date(row.updated_at),
-  visitCount: row.visit_count,
+  total_minutes: row.total_minutes,
+  updated_at: new Date(row.updated_at),
+  visit_count: row.visit_count,
 })
 
 export const mapSyncStateRow = (row: QueryResultRow): SyncState => ({
-  dataType: row.data_type,
-  errorMessage: row.error_message,
+  data_type: row.data_type,
+  error_message: row.error_message,
   id: row.id,
-  lastSyncTime: row.last_sync_time ? new Date(row.last_sync_time) : undefined,
+  last_sync_time: row.last_sync_time ? new Date(row.last_sync_time) : undefined,
   provider: row.provider,
-  retryAfter: row.retry_after ? new Date(row.retry_after) : undefined,
+  retry_after: row.retry_after ? new Date(row.retry_after) : undefined,
   status: parseSyncStatus(row.status),
-  syncStartDate: row.sync_start_date ? new Date(row.sync_start_date) : undefined,
-  updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
+  sync_start_date: row.sync_start_date ? new Date(row.sync_start_date) : undefined,
+  updated_at: row.updated_at ? new Date(row.updated_at) : undefined,
 })
 
 export const mapTagRow = (row: QueryResultRow): Tag => ({
-  endTime: row.end_time ? new Date(row.end_time) : undefined,
-  externalId: row.external_id,
+  end_time: row.end_time ? new Date(row.end_time) : undefined,
+  external_id: row.external_id,
   id: row.id,
   source: row.source,
-  startTime: new Date(row.start_time),
+  start_time: new Date(row.start_time),
   tag: row.tag,
 })
 
 export const mapMcpSessionRow = (row: QueryResultRow): McpSessionRecord => ({
-  createdAt: new Date(row.created_at),
-  lastActivity: new Date(row.last_activity),
-  sessionId: row.session_id,
+  created_at: new Date(row.created_at),
+  last_activity: new Date(row.last_activity),
+  session_id: row.session_id,
   username: row.username,
 })
 
 export const mapLastFmTagRuleRow = (row: QueryResultRow): LastFmTagRule => ({
-  artistName: row.artist_name ?? undefined,
-  artistNames: row.artist_names ?? undefined,
-  createdAt: new Date(row.created_at),
+  artist_name: row.artist_name ?? undefined,
+  artist_names: row.artist_names ?? undefined,
+  created_at: new Date(row.created_at),
   id: row.id,
-  matchMode: parseLastFmMatchMode(row.match_mode),
-  matchType: parseLastFmMatchType(row.match_type),
-  mergeGapSeconds: row.merge_gap_seconds ?? undefined,
-  ruleName: row.rule_name,
-  tagName: row.tag_name,
-  trackName: row.track_name ?? undefined,
+  match_mode: parseLastFmMatchMode(row.match_mode),
+  match_type: parseLastFmMatchType(row.match_type),
+  merge_gap_seconds: row.merge_gap_seconds ?? undefined,
+  rule_name: row.rule_name,
+  tag_name: row.tag_name,
+  track_name: row.track_name ?? undefined,
 })

@@ -17,57 +17,57 @@ describe('Settings Integration Tests', () => {
     await cleanTestDb()
   })
 
-  describe('User Settings with tagMappings', () => {
-    test('stores and retrieves tagMappings', async () => {
+  describe('User Settings with tag_mappings', () => {
+    test('stores and retrieves tag_mappings', async () => {
       const user = getTestUser()
       const mappings = {
         '067e2862-8cf8-4307-a621-0636dd379cda': 'Hot Chocolate',
         '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a': 'YinYoga',
       }
 
-      await upsertUserSettings(user, { tagMappings: mappings })
+      await upsertUserSettings(user, { tag_mappings: mappings })
 
       const settings = await getUserSettings(user)
-      expect(settings?.tagMappings).toEqual(mappings)
+      expect(settings?.tag_mappings).toEqual(mappings)
     })
 
-    test('updates tagMappings while preserving other settings', async () => {
+    test('updates tag_mappings while preserving other settings', async () => {
       const user = getTestUser()
 
       // Set initial settings
-      await upsertUserSettings(user, { birthDate: '1990-01-15' })
+      await upsertUserSettings(user, { birth_date: '1990-01-15' })
 
       // Add tag mappings
       const mappings = { 'test-uuid': 'Test Tag' }
-      await upsertUserSettings(user, { tagMappings: mappings })
+      await upsertUserSettings(user, { tag_mappings: mappings })
 
       const settings = await getUserSettings(user)
-      expect(settings?.birthDate).toBe('1990-01-15')
-      expect(settings?.tagMappings).toEqual(mappings)
+      expect(settings?.birth_date).toBe('1990-01-15')
+      expect(settings?.tag_mappings).toEqual(mappings)
     })
 
-    test('replaces tagMappings with empty object to clear', async () => {
+    test('replaces tag_mappings with empty object to clear', async () => {
       const user = getTestUser()
 
-      await upsertUserSettings(user, { tagMappings: { 'test-uuid': 'Test' } })
+      await upsertUserSettings(user, { tag_mappings: { 'test-uuid': 'Test' } })
       // Setting to empty object effectively clears the mappings
-      await upsertUserSettings(user, { tagMappings: {} })
+      await upsertUserSettings(user, { tag_mappings: {} })
 
       const settings = await getUserSettings(user)
-      expect(settings?.tagMappings).toEqual({})
+      expect(settings?.tag_mappings).toEqual({})
     })
 
-    test('preserves tagMappings when update does not include tagMappings', async () => {
+    test('preserves tag_mappings when update does not include tag_mappings', async () => {
       const user = getTestUser()
       const mappings = { 'test-uuid': 'Test' }
 
-      await upsertUserSettings(user, { tagMappings: mappings })
-      // Updating other fields should not affect tagMappings
-      await upsertUserSettings(user, { birthDate: '2000-01-01' })
+      await upsertUserSettings(user, { tag_mappings: mappings })
+      // Updating other fields should not affect tag_mappings
+      await upsertUserSettings(user, { birth_date: '2000-01-01' })
 
       const settings = await getUserSettings(user)
-      expect(settings?.tagMappings).toEqual(mappings)
-      expect(settings?.birthDate).toBe('2000-01-01')
+      expect(settings?.tag_mappings).toEqual(mappings)
+      expect(settings?.birth_date).toBe('2000-01-01')
     })
   })
 
@@ -88,13 +88,13 @@ describe('Settings Integration Tests', () => {
     test('updates calendars while preserving other settings', async () => {
       const user = getTestUser()
 
-      await upsertUserSettings(user, { birthDate: '1990-01-15' })
+      await upsertUserSettings(user, { birth_date: '1990-01-15' })
 
       const calendars = [{ name: 'Work', url: 'https://example.com/work.ics' }]
       await upsertUserSettings(user, { calendars })
 
       const settings = await getUserSettings(user)
-      expect(settings?.birthDate).toBe('1990-01-15')
+      expect(settings?.birth_date).toBe('1990-01-15')
       expect(settings?.calendars).toEqual(calendars)
     })
 
@@ -115,11 +115,11 @@ describe('Settings Integration Tests', () => {
       const calendars = [{ name: 'Work', url: 'https://example.com/work.ics' }]
 
       await upsertUserSettings(user, { calendars })
-      await upsertUserSettings(user, { birthDate: '2000-01-01' })
+      await upsertUserSettings(user, { birth_date: '2000-01-01' })
 
       const settings = await getUserSettings(user)
       expect(settings?.calendars).toEqual(calendars)
-      expect(settings?.birthDate).toBe('2000-01-01')
+      expect(settings?.birth_date).toBe('2000-01-01')
     })
   })
 
@@ -154,11 +154,11 @@ describe('Settings Integration Tests', () => {
     test('updates dashboard while preserving other settings', async () => {
       const user = getTestUser()
 
-      await upsertUserSettings(user, { birthDate: '1990-01-15' })
+      await upsertUserSettings(user, { birth_date: '1990-01-15' })
       await upsertUserSettings(user, { dashboard: sampleDashboard })
 
       const settings = await getUserSettings(user)
-      expect(settings?.birthDate).toBe('1990-01-15')
+      expect(settings?.birth_date).toBe('1990-01-15')
       expect(settings?.dashboard).toEqual(sampleDashboard)
     })
 
@@ -179,11 +179,11 @@ describe('Settings Integration Tests', () => {
       const user = getTestUser()
 
       await upsertUserSettings(user, { dashboard: sampleDashboard })
-      await upsertUserSettings(user, { birthDate: '2000-01-01' })
+      await upsertUserSettings(user, { birth_date: '2000-01-01' })
 
       const settings = await getUserSettings(user)
       expect(settings?.dashboard).toEqual(sampleDashboard)
-      expect(settings?.birthDate).toBe('2000-01-01')
+      expect(settings?.birth_date).toBe('2000-01-01')
     })
 
     test('stores complex dashboard with multiple sections and widget types', async () => {
@@ -201,7 +201,7 @@ describe('Settings Integration Tests', () => {
                 type: 'metric_card' as const,
               },
               {
-                config: { color: '#3b82f6', lookbackDays: 30, metric: 'sleep_score' as const },
+                config: { color: '#3b82f6', lookback_days: 30, metric: 'sleep_score' as const },
                 id: 'sleep-sparkline',
                 type: 'sparkline_card' as const,
               },
@@ -214,7 +214,7 @@ describe('Settings Integration Tests', () => {
             type: 'charts' as const,
             widgets: [
               {
-                config: { halfLifeDays: 15, pattern: 'coffee', sourceType: 'tag' as const },
+                config: { half_life_days: 15, pattern: 'coffee', source_type: 'tag' as const },
                 id: 'coffee-trend',
                 type: 'trend_chart' as const,
               },

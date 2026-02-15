@@ -132,10 +132,10 @@ export const mergeClusterWithStored = (
   cluster: DetectedCluster,
   stored: DetectedLocation,
 ): {
-  totalMinutes: number
-  visitCount: number
-  firstVisit: Date
-  lastVisit: Date
+  total_minutes: number
+  visit_count: number
+  first_visit: Date
+  last_visit: Date
   lat: number
   lon: number
 } => {
@@ -143,12 +143,12 @@ export const mergeClusterWithStored = (
   const clusterLastVisit = new Date(cluster.lastVisit)
 
   return {
-    firstVisit: clusterFirstVisit < stored.firstVisit ? clusterFirstVisit : stored.firstVisit,
-    lastVisit: clusterLastVisit > stored.lastVisit ? clusterLastVisit : stored.lastVisit,
+    first_visit: clusterFirstVisit < stored.first_visit ? clusterFirstVisit : stored.first_visit,
+    last_visit: clusterLastVisit > stored.last_visit ? clusterLastVisit : stored.last_visit,
     lat: cluster.lat,
     lon: cluster.lon,
-    totalMinutes: stored.totalMinutes + cluster.totalMinutes,
-    visitCount: stored.visitCount + cluster.visitCount,
+    total_minutes: stored.total_minutes + cluster.totalMinutes,
+    visit_count: stored.visit_count + cluster.visitCount,
   }
 }
 
@@ -202,13 +202,13 @@ export const runDetectionForUser = async (
   for (const action of actions) {
     if (action.type === 'create') {
       const input: DetectedLocationInput = {
-        firstVisit: new Date(action.cluster.firstVisit),
-        lastVisit: new Date(action.cluster.lastVisit),
+        first_visit: new Date(action.cluster.firstVisit),
+        last_visit: new Date(action.cluster.lastVisit),
         lat: action.cluster.lat,
         lon: action.cluster.lon,
         radius: action.cluster.suggestedRadius,
-        totalMinutes: action.cluster.totalMinutes,
-        visitCount: action.cluster.visitCount,
+        total_minutes: action.cluster.totalMinutes,
+        visit_count: action.cluster.visitCount,
       }
       const created = await insertDetectedLocation(user, input)
       result.created++
@@ -221,13 +221,13 @@ export const runDetectionForUser = async (
       const merged = mergeClusterWithStored(action.cluster, stored)
 
       await updateDetectedLocation(user, action.id, {
-        firstVisit: merged.firstVisit,
-        geocodeStatus: action.needsReGeocode ? 'pending' : undefined,
-        lastVisit: merged.lastVisit,
+        first_visit: merged.first_visit,
+        geocode_status: action.needsReGeocode ? 'pending' : undefined,
+        last_visit: merged.last_visit,
         lat: merged.lat,
         lon: merged.lon,
-        totalMinutes: merged.totalMinutes,
-        visitCount: merged.visitCount,
+        total_minutes: merged.total_minutes,
+        visit_count: merged.visit_count,
       })
       result.updated++
 

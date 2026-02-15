@@ -36,16 +36,16 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
     try {
       const rules = await getLastFmTagRules(user)
       const serialized = rules.map((r) => ({
-        artistName: r.artistName,
-        artistNames: r.artistNames,
-        createdAt: r.createdAt.toISOString(),
+        artist_name: r.artist_name,
+        artist_names: r.artist_names,
+        created_at: r.created_at.toISOString(),
         id: r.id,
-        matchMode: r.matchMode,
-        matchType: r.matchType,
-        mergeGapSeconds: r.mergeGapSeconds ?? null,
-        ruleName: r.ruleName,
-        tagName: r.tagName,
-        trackName: r.trackName,
+        match_mode: r.match_mode,
+        match_type: r.match_type,
+        merge_gap_seconds: r.merge_gap_seconds ?? null,
+        rule_name: r.rule_name,
+        tag_name: r.tag_name,
+        track_name: r.track_name,
       }))
       res.json({ data: serialized, success: true })
     } catch (error) {
@@ -61,47 +61,55 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
     validateBody(addLastFmTagRuleBodySchema),
     async (req, res) => {
       const user = req.user!
-      const { ruleName, matchType, trackName, artistName, artistNames, matchMode, tagName, mergeGapSeconds } =
-        req.body
+      const {
+        rule_name,
+        match_type,
+        track_name,
+        artist_name,
+        artist_names,
+        match_mode,
+        tag_name,
+        merge_gap_seconds,
+      } = req.body
 
       // Validate required fields based on match_type
-      if ((matchType === 'track' || matchType === 'track_artist') && !trackName) {
+      if ((match_type === 'track' || match_type === 'track_artist') && !track_name) {
         return res
           .status(400)
-          .json({ error: `trackName is required for matchType "${matchType}"`, success: false })
+          .json({ error: `track_name is required for match_type "${match_type}"`, success: false })
       }
-      const hasArtist = artistName || (artistNames && artistNames.length > 0)
-      if ((matchType === 'artist' || matchType === 'track_artist') && !hasArtist) {
+      const hasArtist = artist_name || (artist_names && artist_names.length > 0)
+      if ((match_type === 'artist' || match_type === 'track_artist') && !hasArtist) {
         return res.status(400).json({
-          error: `artistName or artistNames is required for matchType "${matchType}"`,
+          error: `artist_name or artist_names is required for match_type "${match_type}"`,
           success: false,
         })
       }
 
       try {
         const rule = await insertLastFmTagRule(user, {
-          artistName,
-          artistNames,
-          matchMode: (matchMode ?? 'exact') as LastFmMatchMode,
-          matchType: matchType as LastFmMatchType,
-          mergeGapSeconds: mergeGapSeconds ?? undefined,
-          ruleName,
-          tagName,
-          trackName,
+          artist_name,
+          artist_names,
+          match_mode: (match_mode ?? 'exact') as LastFmMatchMode,
+          match_type: match_type as LastFmMatchType,
+          merge_gap_seconds: merge_gap_seconds ?? undefined,
+          rule_name,
+          tag_name,
+          track_name,
         })
 
         res.json({
           data: {
-            artistName: rule.artistName,
-            artistNames: rule.artistNames,
-            createdAt: rule.createdAt.toISOString(),
+            artist_name: rule.artist_name,
+            artist_names: rule.artist_names,
+            created_at: rule.created_at.toISOString(),
             id: rule.id,
-            matchMode: rule.matchMode,
-            matchType: rule.matchType,
-            mergeGapSeconds: rule.mergeGapSeconds ?? null,
-            ruleName: rule.ruleName,
-            tagName: rule.tagName,
-            trackName: rule.trackName,
+            match_mode: rule.match_mode,
+            match_type: rule.match_type,
+            merge_gap_seconds: rule.merge_gap_seconds ?? null,
+            rule_name: rule.rule_name,
+            tag_name: rule.tag_name,
+            track_name: rule.track_name,
           },
           success: true,
         })

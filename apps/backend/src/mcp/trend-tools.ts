@@ -53,11 +53,11 @@ Common half-life values:
       try {
         const result = await getTrend(user, {
           aggregation,
-          displayPeriod: display_period,
-          halfLifeDays: half_life_days,
-          lookbackDays: lookback_days,
+          display_period,
+          half_life_days,
+          lookback_days,
           pattern,
-          sourceType: source_type,
+          source_type,
         })
         return jsonResponse({ data: result, success: true })
       } catch (error) {

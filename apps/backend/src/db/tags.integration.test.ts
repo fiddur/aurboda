@@ -35,57 +35,57 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        externalId: 'tag-1',
+        external_id: 'tag-1',
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'coffee',
       })
 
       const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
       expect(tags).toHaveLength(1)
       expect(tags[0].tag).toBe('coffee')
-      expect(tags[0].externalId).toBe('tag-1')
-      expect(tags[0].endTime).toBeUndefined()
+      expect(tags[0].external_id).toBe('tag-1')
+      expect(tags[0].end_time).toBeUndefined()
     })
 
     test('inserts a tag with start and end time', async () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        endTime: new Date('2024-01-15T11:00:00Z'),
-        externalId: 'tag-2',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        external_id: 'tag-2',
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'meditation',
       })
 
       const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
       expect(tags).toHaveLength(1)
       expect(tags[0].tag).toBe('meditation')
-      expect(tags[0].endTime).toEqual(new Date('2024-01-15T11:00:00Z'))
+      expect(tags[0].end_time).toEqual(new Date('2024-01-15T11:00:00Z'))
     })
 
     test('upserts tag on conflict (same source + external_id)', async () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        externalId: 'tag-3',
+        external_id: 'tag-3',
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'coffee',
       })
 
       await insertTag(user, {
-        externalId: 'tag-3',
+        external_id: 'tag-3',
         source: 'manual',
-        startTime: new Date('2024-01-15T11:00:00Z'),
+        start_time: new Date('2024-01-15T11:00:00Z'),
         tag: 'tea',
       })
 
       const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
       expect(tags).toHaveLength(1)
       expect(tags[0].tag).toBe('tea')
-      expect(tags[0].startTime).toEqual(new Date('2024-01-15T11:00:00Z'))
+      expect(tags[0].start_time).toEqual(new Date('2024-01-15T11:00:00Z'))
     })
   })
 
@@ -94,21 +94,21 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        externalId: 'tag-a',
+        external_id: 'tag-a',
         source: 'manual',
-        startTime: new Date('2024-01-14T10:00:00Z'),
+        start_time: new Date('2024-01-14T10:00:00Z'),
         tag: 'before-range',
       })
       await insertTag(user, {
-        externalId: 'tag-b',
+        external_id: 'tag-b',
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'in-range',
       })
       await insertTag(user, {
-        externalId: 'tag-c',
+        external_id: 'tag-c',
         source: 'manual',
-        startTime: new Date('2024-01-16T10:00:00Z'),
+        start_time: new Date('2024-01-16T10:00:00Z'),
         tag: 'after-range',
       })
 
@@ -121,9 +121,9 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        externalId: 'tag-x',
+        external_id: 'tag-x',
         source: 'manual',
-        startTime: new Date('2024-01-10T10:00:00Z'),
+        start_time: new Date('2024-01-10T10:00:00Z'),
         tag: 'old-tag',
       })
 
@@ -137,9 +137,9 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        externalId: 'tag-to-delete',
+        external_id: 'tag-to-delete',
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'temporary',
       })
 
@@ -163,17 +163,17 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        endTime: new Date('2024-01-15T09:59:00Z'),
-        externalId: 'mergeable-tag',
+        end_time: new Date('2024-01-15T09:59:00Z'),
+        external_id: 'mergeable-tag',
         source: 'manual',
-        startTime: new Date('2024-01-15T09:00:00Z'),
+        start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'computer:dharma',
       })
 
       const result = await findMergeableTag(user, 'computer:dharma', new Date('2024-01-15T10:00:00Z'), 180)
 
       expect(result).toBeDefined()
-      expect(result!.externalId).toBe('mergeable-tag')
+      expect(result!.external_id).toBe('mergeable-tag')
       expect(result!.tag).toBe('computer:dharma')
     })
 
@@ -181,27 +181,27 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        externalId: 'point-tag',
+        external_id: 'point-tag',
         source: 'manual',
-        startTime: new Date('2024-01-15T09:58:00Z'),
+        start_time: new Date('2024-01-15T09:58:00Z'),
         tag: 'coffee',
       })
 
       const result = await findMergeableTag(user, 'coffee', new Date('2024-01-15T10:00:00Z'), 180)
 
       expect(result).toBeDefined()
-      expect(result!.externalId).toBe('point-tag')
-      expect(result!.endTime).toBeUndefined()
+      expect(result!.external_id).toBe('point-tag')
+      expect(result!.end_time).toBeUndefined()
     })
 
     test('returns undefined when no tag within merge span', async () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        endTime: new Date('2024-01-15T09:50:00Z'),
-        externalId: 'old-tag',
+        end_time: new Date('2024-01-15T09:50:00Z'),
+        external_id: 'old-tag',
         source: 'manual',
-        startTime: new Date('2024-01-15T09:00:00Z'),
+        start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'computer:dharma',
       })
 
@@ -214,10 +214,10 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        endTime: new Date('2024-01-15T09:59:00Z'),
-        externalId: 'oura-tag',
+        end_time: new Date('2024-01-15T09:59:00Z'),
+        external_id: 'oura-tag',
         source: 'oura',
-        startTime: new Date('2024-01-15T09:00:00Z'),
+        start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'meditation',
       })
 
@@ -230,10 +230,10 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        endTime: new Date('2024-01-15T09:59:00Z'),
-        externalId: 'lastfm-session-1',
+        end_time: new Date('2024-01-15T09:59:00Z'),
+        external_id: 'lastfm-session-1',
         source: 'lastfm-auto',
-        startTime: new Date('2024-01-15T09:00:00Z'),
+        start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'VocalExercise',
       })
 
@@ -246,7 +246,7 @@ describe('Tags Integration Tests', () => {
       )
 
       expect(result).toBeDefined()
-      expect(result!.externalId).toBe('lastfm-session-1')
+      expect(result!.external_id).toBe('lastfm-session-1')
       expect(result!.source).toBe('lastfm-auto')
     })
 
@@ -254,10 +254,10 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        endTime: new Date('2024-01-15T09:59:00Z'),
-        externalId: 'lastfm-session-2',
+        end_time: new Date('2024-01-15T09:59:00Z'),
+        external_id: 'lastfm-session-2',
         source: 'lastfm-auto',
-        startTime: new Date('2024-01-15T09:00:00Z'),
+        start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'VocalExercise',
       })
 
@@ -270,10 +270,10 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        endTime: new Date('2024-01-15T09:59:00Z'),
-        externalId: 'different-tag',
+        end_time: new Date('2024-01-15T09:59:00Z'),
+        external_id: 'different-tag',
         source: 'manual',
-        startTime: new Date('2024-01-15T09:00:00Z'),
+        start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'different-name',
       })
 
@@ -288,10 +288,10 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        endTime: new Date('2024-01-15T10:30:00Z'),
-        externalId: 'tag-to-update',
+        end_time: new Date('2024-01-15T10:30:00Z'),
+        external_id: 'tag-to-update',
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'session',
       })
 
@@ -299,7 +299,7 @@ describe('Tags Integration Tests', () => {
       expect(result).toBe(true)
 
       const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
-      expect(tags[0].endTime).toEqual(new Date('2024-01-15T11:00:00Z'))
+      expect(tags[0].end_time).toEqual(new Date('2024-01-15T11:00:00Z'))
     })
 
     test('returns false when tag not found', async () => {
@@ -323,27 +323,27 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        externalId: 'tag-1',
+        external_id: 'tag-1',
         source: 'manual',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'coffee',
       })
       await insertTag(user, {
-        externalId: 'tag-2',
+        external_id: 'tag-2',
         source: 'manual',
-        startTime: new Date('2024-01-15T11:00:00Z'),
+        start_time: new Date('2024-01-15T11:00:00Z'),
         tag: 'meditation',
       })
       await insertTag(user, {
-        externalId: 'tag-3',
+        external_id: 'tag-3',
         source: 'manual',
-        startTime: new Date('2024-01-15T12:00:00Z'),
+        start_time: new Date('2024-01-15T12:00:00Z'),
         tag: 'coffee', // duplicate
       })
       await insertTag(user, {
-        externalId: 'tag-4',
+        external_id: 'tag-4',
         source: 'oura',
-        startTime: new Date('2024-01-15T13:00:00Z'),
+        start_time: new Date('2024-01-15T13:00:00Z'),
         tag: 'apple',
       })
 
@@ -389,21 +389,21 @@ describe('Tags Integration Tests', () => {
 
       // Insert tags directly to tags table (simulating how Oura sync stores them)
       await insertTag(user, {
-        externalId: 'tag-1',
+        external_id: 'tag-1',
         source: 'oura',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         tag: uuid1,
       })
       await insertTag(user, {
-        externalId: 'tag-2',
+        external_id: 'tag-2',
         source: 'oura',
-        startTime: new Date('2024-01-15T11:00:00Z'),
+        start_time: new Date('2024-01-15T11:00:00Z'),
         tag: uuid1, // same tag, counted twice
       })
       await insertTag(user, {
-        externalId: 'tag-3',
+        external_id: 'tag-3',
         source: 'oura',
-        startTime: new Date('2024-01-15T12:00:00Z'),
+        start_time: new Date('2024-01-15T12:00:00Z'),
         tag: uuid2,
       })
 
@@ -421,15 +421,15 @@ describe('Tags Integration Tests', () => {
       const user = getTestUser()
 
       await insertTag(user, {
-        externalId: 'tag-1',
+        external_id: 'tag-1',
         source: 'oura',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'tag_generic_coffee',
       })
       await insertTag(user, {
-        externalId: 'tag-2',
+        external_id: 'tag-2',
         source: 'oura',
-        startTime: new Date('2024-01-15T11:00:00Z'),
+        start_time: new Date('2024-01-15T11:00:00Z'),
         tag: 'tag_sleep_sauna',
       })
 
@@ -444,21 +444,21 @@ describe('Tags Integration Tests', () => {
       const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
 
       await insertTag(user, {
-        externalId: 'tag-1',
+        external_id: 'tag-1',
         source: 'oura',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         tag: uuid, // should be included
       })
       await insertTag(user, {
-        externalId: 'tag-2',
+        external_id: 'tag-2',
         source: 'manual',
-        startTime: new Date('2024-01-15T11:00:00Z'),
+        start_time: new Date('2024-01-15T11:00:00Z'),
         tag: 'coffee', // should be excluded
       })
       await insertTag(user, {
-        externalId: 'tag-3',
+        external_id: 'tag-3',
         source: 'manual',
-        startTime: new Date('2024-01-15T12:00:00Z'),
+        start_time: new Date('2024-01-15T12:00:00Z'),
         tag: 'Food', // should be excluded
       })
 

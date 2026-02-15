@@ -117,7 +117,16 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
         minDurationMinutes: min_duration ? parseInt(min_duration, 10) : undefined,
         start: new Date(start),
       })
-      res.json({ data: detected, success: true })
+      const serialized = detected.map((d) => ({
+        first_visit: d.firstVisit,
+        last_visit: d.lastVisit,
+        lat: d.lat,
+        lon: d.lon,
+        suggested_radius: d.suggestedRadius,
+        total_minutes: d.totalMinutes,
+        visit_count: d.visitCount,
+      }))
+      res.json({ data: serialized, success: true })
     },
   )
 
@@ -131,8 +140,8 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
       // Transform Date objects to ISO strings for API response
       const serialized = detected.map((d) => ({
         ...d,
-        firstVisit: d.firstVisit.toISOString(),
-        lastVisit: d.lastVisit.toISOString(),
+        first_visit: d.first_visit.toISOString(),
+        last_visit: d.last_visit.toISOString(),
       }))
       res.json({ data: serialized, success: true })
     },

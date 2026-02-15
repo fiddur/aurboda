@@ -45,9 +45,9 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
         })
 
         const summary = results.map((r) => ({
-          dataType: r.dataType,
+          data_type: r.data_type,
           error: r.error,
-          recordsProcessed: r.recordsProcessed,
+          records_processed: r.records_processed,
           status: r.status,
         }))
 
@@ -77,19 +77,19 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
     },
     async ({ full_resync, start_date }) => {
       const settings = await getSettings(user)
-      if (!settings.rescueTimeKey) {
+      if (!settings.rescue_time_key) {
         return errorResponse('RescueTime API key is not configured in user settings.')
       }
 
       try {
-        const result = await syncRescueTimeData(user, settings.rescueTimeKey, {
+        const result = await syncRescueTimeData(user, settings.rescue_time_key, {
           fullResync: full_resync,
           startDate: start_date ? new Date(start_date) : undefined,
         })
 
         return jsonResponse({
           error: result.error,
-          recordsProcessed: result.recordsProcessed,
+          records_processed: result.records_processed,
           status: result.status,
           success: result.status === 'success',
         })
@@ -122,7 +122,7 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
         const summary = results.map((r) => ({
           calendar: r.calendar,
           error: r.error,
-          eventsProcessed: r.eventsProcessed,
+          events_processed: r.events_processed,
           status: r.status,
         }))
 
@@ -157,22 +157,22 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
       }
 
       const settings = await getSettings(user)
-      if (!settings.lastFmUsername) {
+      if (!settings.lastfm_username) {
         return errorResponse('Last.fm username is not configured in user settings.')
       }
 
       try {
-        const result = await syncLastFmData(user, lastFmApiKey, settings.lastFmUsername, {
+        const result = await syncLastFmData(user, lastFmApiKey, settings.lastfm_username, {
           fullResync: full_resync,
           startDate: start_date ? new Date(start_date) : undefined,
         })
 
         return jsonResponse({
           error: result.error,
-          scrobblesProcessed: result.scrobblesProcessed,
+          scrobbles_processed: result.scrobbles_processed,
           status: result.status,
           success: result.status === 'success',
-          tagsCreated: result.tagsCreated,
+          tags_created: result.tags_created,
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'

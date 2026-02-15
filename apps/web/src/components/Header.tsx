@@ -4,7 +4,7 @@ import { auth, logout } from '../state/auth'
 export function Header() {
   const { url } = useLocation()
   const isLoggedIn = auth.value.token
-  const isAdmin = auth.value.isAdmin
+  const isAdmin = auth.value.is_admin
 
   const handleLogout = (e: Event) => {
     e.preventDefault()

@@ -25,11 +25,11 @@ const LN2 = 0.693147
 
 export interface GetTrendInput {
   aggregation?: 'count' | 'mean' | 'sum'
-  displayPeriod?: TrendDisplayPeriod
-  halfLifeDays?: number
-  lookbackDays?: number
+  display_period?: TrendDisplayPeriod
+  half_life_days?: number
+  lookback_days?: number
   pattern: string
-  sourceType: TrendSourceType
+  source_type: TrendSourceType
 }
 
 /**
@@ -184,11 +184,11 @@ const calculateMetricTrend = async (
 export const getTrend = async (user: string, input: GetTrendInput): Promise<TrendResult> => {
   const {
     aggregation = 'count',
-    displayPeriod = 'monthly',
-    halfLifeDays = 15,
-    lookbackDays = 90,
+    display_period: displayPeriod = 'monthly',
+    half_life_days: halfLifeDays = 15,
+    lookback_days: lookbackDays = 90,
     pattern,
-    sourceType,
+    source_type: sourceType,
   } = input
 
   const displayUnits: Record<TrendDisplayPeriod, string> = {
@@ -208,14 +208,14 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
 
     return {
       aggregation: 'count',
-      currentValue,
-      displayPeriod,
-      displayUnit: displayUnits[displayPeriod],
-      halfLifeDays,
+      current_value: currentValue,
+      display_period: displayPeriod,
+      display_unit: displayUnits[displayPeriod],
+      half_life_days: halfLifeDays,
       history,
-      lookbackDays,
+      lookback_days: lookbackDays,
       pattern,
-      sourceType,
+      source_type: sourceType,
     }
   } else {
     // Metric source
@@ -236,14 +236,14 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
 
     return {
       aggregation: metricAggregation,
-      currentValue,
-      displayPeriod,
-      displayUnit: metricAggregation === 'sum' ? displayUnits[displayPeriod] : '',
-      halfLifeDays,
+      current_value: currentValue,
+      display_period: displayPeriod,
+      display_unit: metricAggregation === 'sum' ? displayUnits[displayPeriod] : '',
+      half_life_days: halfLifeDays,
       history,
-      lookbackDays,
+      lookback_days: lookbackDays,
       pattern,
-      sourceType,
+      source_type: sourceType,
     }
   }
 }

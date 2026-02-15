@@ -14,7 +14,7 @@ export const insertTag = async (user: string, tag: Tag) => {
        tag = EXCLUDED.tag,
        start_time = EXCLUDED.start_time,
        end_time = EXCLUDED.end_time`,
-    [tag.source, tag.externalId, tag.tag, tag.startTime, tag.endTime],
+    [tag.source, tag.external_id, tag.tag, tag.start_time, tag.end_time],
   )
 }
 

@@ -119,7 +119,7 @@ export const goalProgressSchema = z
   .object({
     current: z.number().meta({ description: 'Current value within the window' }),
     id: z.string().uuid().meta({ description: 'Goal ID' }),
-    losingTomorrow: z
+    losing_tomorrow: z
       .number()
       .meta({ description: 'Value that will drop off when oldest period exits window' }),
     max: z.number().positive().optional(),

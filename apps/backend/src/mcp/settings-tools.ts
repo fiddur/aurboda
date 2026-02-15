@@ -38,8 +38,8 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     },
     async ({ birth_date, hr_zone_start }) => {
       const result = await validateAndUpdateSettings(user, {
-        birthDate: birth_date,
-        hrZoneStart: hr_zone_start,
+        birth_date,
+        hr_zone_start,
       })
       return jsonResponse(result)
     },
@@ -64,13 +64,13 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     async () => {
       const tags = await getProgrammaticTags(user)
       const settings = await getUserSettings(user)
-      const mappings = settings?.tagMappings ?? {}
+      const mappings = settings?.tag_mappings ?? {}
 
       const data = tags.map((tag) => ({
         count: tag.count,
-        currentName: mappings[tag.tagKey] ?? null,
-        latestTime: tag.latestTime.toISOString(),
-        tagKey: tag.tagKey,
+        current_name: mappings[tag.tagKey] ?? null,
+        latest_time: tag.latestTime.toISOString(),
+        tag_key: tag.tagKey,
       }))
 
       return jsonResponse({ data, success: true })
@@ -87,10 +87,10 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     },
     async ({ name, tag_key }) => {
       const settings = await getUserSettings(user)
-      const currentMappings = settings?.tagMappings ?? {}
+      const currentMappings = settings?.tag_mappings ?? {}
       const newMappings = { ...currentMappings, [tag_key]: name }
 
-      await upsertUserSettings(user, { tagMappings: newMappings })
+      await upsertUserSettings(user, { tag_mappings: newMappings })
 
       return jsonResponse({ mapping: newMappings, success: true })
     },
@@ -99,7 +99,7 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
   // Tool: get_tag_mappings
   server.tool('get_tag_mappings', 'Get all current tag mappings (tag key -> display name).', {}, async () => {
     const settings = await getUserSettings(user)
-    return jsonResponse({ mappings: settings?.tagMappings ?? {}, success: true })
+    return jsonResponse({ mappings: settings?.tag_mappings ?? {}, success: true })
   })
 
   // Tool: get_goal_progress

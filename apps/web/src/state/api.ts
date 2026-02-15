@@ -70,36 +70,36 @@ import { auth } from './auth'
 // Frontend types with Date objects (converted from API string types)
 export type ActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap'
 
-export interface Activity extends Omit<ApiActivity, 'startTime' | 'endTime'> {
-  startTime: Date
-  endTime?: Date
+export interface Activity extends Omit<ApiActivity, 'start_time' | 'end_time'> {
+  start_time: Date
+  end_time?: Date
 }
 
-export interface ProductivityRecord extends Omit<ApiProductivityRecord, 'startTime' | 'endTime'> {
-  startTime: Date
-  endTime: Date
+export interface ProductivityRecord extends Omit<ApiProductivityRecord, 'start_time' | 'end_time'> {
+  start_time: Date
+  end_time: Date
 }
 
 export interface Place {
   region: string
-  startTime: Date
-  endTime: Date
+  start_time: Date
+  end_time: Date
 }
 
-export interface PlaceVisit extends Omit<ApiPlaceVisit, 'startTime' | 'endTime'> {
-  startTime: Date
-  endTime: Date
+export interface PlaceVisit extends Omit<ApiPlaceVisit, 'start_time' | 'end_time'> {
+  start_time: Date
+  end_time: Date
   durationMinutes: number
 }
 
-export interface StoredDetectedLocation extends Omit<ApiDetectedLocation, 'firstVisit' | 'lastVisit'> {
-  firstVisit: Date
-  lastVisit: Date
+export interface StoredDetectedLocation extends Omit<ApiDetectedLocation, 'first_visit' | 'last_visit'> {
+  first_visit: Date
+  last_visit: Date
 }
 
-export interface Tag extends Omit<ApiTag, 'startTime' | 'endTime'> {
-  startTime: Date
-  endTime?: Date
+export interface Tag extends Omit<ApiTag, 'start_time' | 'end_time'> {
+  start_time: Date
+  end_time?: Date
 }
 
 // Re-export API types that don't need Date conversion
@@ -181,8 +181,8 @@ export const fetchActivities = async (
 
   return (response.data.data ?? []).map((activity) => ({
     ...activity,
-    endTime: activity.endTime ? new Date(activity.endTime) : undefined,
-    startTime: new Date(activity.startTime),
+    end_time: activity.end_time ? new Date(activity.end_time) : undefined,
+    start_time: new Date(activity.start_time),
   }))
 }
 
@@ -200,8 +200,8 @@ export const fetchProductivity = async (start: Date, end: Date): Promise<Product
 
   return (response.data.data ?? []).map((record) => ({
     ...record,
-    endTime: new Date(record.endTime),
-    startTime: new Date(record.startTime),
+    end_time: new Date(record.end_time),
+    start_time: new Date(record.start_time),
   }))
 }
 
@@ -219,9 +219,9 @@ export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
 
   return (response.data.data ?? []).map((place) => ({
     ...place,
-    endTime: new Date(place.endTime),
+    end_time: new Date(place.end_time),
     region: place.name,
-    startTime: new Date(place.startTime),
+    start_time: new Date(place.start_time),
   }))
 }
 
@@ -239,8 +239,8 @@ export const fetchTags = async (start: Date, end: Date): Promise<Tag[]> => {
 
   return (response.data.data ?? []).map((tag) => ({
     ...tag,
-    endTime: tag.endTime ? new Date(tag.endTime) : undefined,
-    startTime: new Date(tag.startTime),
+    end_time: tag.end_time ? new Date(tag.end_time) : undefined,
+    start_time: new Date(tag.start_time),
   }))
 }
 
@@ -259,8 +259,8 @@ export const fetchPlaceVisits = async (start: Date, end: Date): Promise<PlaceVis
   return (response.data.data ?? []).map((place) => ({
     ...place,
     durationMinutes: place.duration,
-    endTime: new Date(place.endTime),
-    startTime: new Date(place.startTime),
+    end_time: new Date(place.end_time),
+    start_time: new Date(place.start_time),
   }))
 }
 
@@ -276,8 +276,8 @@ export const fetchStoredDetectedLocations = async (): Promise<StoredDetectedLoca
 
   return response.data.data.map((loc) => ({
     ...loc,
-    firstVisit: new Date(loc.firstVisit),
-    lastVisit: new Date(loc.lastVisit),
+    first_visit: new Date(loc.first_visit),
+    last_visit: new Date(loc.last_visit),
   }))
 }
 
@@ -386,7 +386,7 @@ export const setTagMapping = async (tagKey: string, name: string): Promise<TagMa
   const { token } = auth.value
   const response = await axios.post<SetTagMappingResponse>(
     `${API_URL}/tags/mapping`,
-    { name, tagKey },
+    { name, tag_key: tagKey },
     { headers: { Authorization: `Bearer ${token}` } },
   )
 
@@ -418,7 +418,7 @@ export interface AdminSettings {
 export interface InvitationResult {
   token: string
   url: string
-  expiresAt: Date
+  expires_at: Date
 }
 
 // Fetch admin settings
@@ -463,17 +463,17 @@ export const generateInvitation = async (expiryHours?: number): Promise<Invitati
     success: boolean
     token: string
     url: string
-    expiresAt: string
+    expires_at: string
   }>(
     `${API_URL}/admin/invitations`,
-    { expiryHours },
+    { expiry_hours: expiryHours },
     {
       headers: { Authorization: `Bearer ${token}` },
     },
   )
 
   return {
-    expiresAt: new Date(response.data.expiresAt),
+    expires_at: new Date(response.data.expires_at),
     token: response.data.token,
     url: response.data.url,
   }
@@ -596,11 +596,11 @@ export const fetchSteps = async (start: Date, end: Date): Promise<[Date, number]
 // ==========================================================================
 
 export interface FetchTrendParams {
-  sourceType: TrendSourceType
+  source_type: TrendSourceType
   pattern: string
-  halfLifeDays?: number
-  lookbackDays?: number
-  displayPeriod?: TrendDisplayPeriod
+  half_life_days?: number
+  lookback_days?: number
+  display_period?: TrendDisplayPeriod
   aggregation?: 'count' | 'sum' | 'mean'
 }
 
@@ -610,12 +610,12 @@ export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult>
   // Only include defined values to avoid sending empty strings
   const query: Partial<TrendQuery> = {
     pattern: params.pattern,
-    source_type: params.sourceType,
+    source_type: params.source_type,
   }
   if (params.aggregation) query.aggregation = params.aggregation
-  if (params.displayPeriod) query.display_period = params.displayPeriod
-  if (params.halfLifeDays) query.half_life_days = params.halfLifeDays.toString()
-  if (params.lookbackDays) query.lookback_days = params.lookbackDays.toString()
+  if (params.display_period) query.display_period = params.display_period
+  if (params.half_life_days) query.half_life_days = params.half_life_days.toString()
+  if (params.lookback_days) query.lookback_days = params.lookback_days.toString()
 
   const response = await axios.get<TrendResponse>(`${API_URL}/trends`, {
     headers: { Authorization: `Bearer ${token}` },

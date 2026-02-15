@@ -41,9 +41,9 @@ export interface LocationPoint {
 export interface Stay {
   lat: number
   lon: number
-  startTime: Date
-  endTime: Date
-  durationMinutes: number
+  start_time: Date
+  end_time: Date
+  duration_minutes: number
   points: LocationPoint[]
 }
 
@@ -130,12 +130,12 @@ export const detectStays = (
 
         if (durationMinutes >= minStayMinutes) {
           stays.push({
-            durationMinutes,
-            endTime,
+            duration_minutes: durationMinutes,
+            end_time: endTime,
             lat: currentCentroid.lat,
             lon: currentCentroid.lon,
             points: currentStay,
-            startTime,
+            start_time: startTime,
           })
         }
       }
@@ -154,12 +154,12 @@ export const detectStays = (
 
     if (durationMinutes >= minStayMinutes) {
       stays.push({
-        durationMinutes,
-        endTime,
+        duration_minutes: durationMinutes,
+        end_time: endTime,
         lat: currentCentroid.lat,
         lon: currentCentroid.lon,
         points: currentStay,
-        startTime,
+        start_time: startTime,
       })
     }
   }
@@ -204,14 +204,14 @@ export const clusterStays = (
 
   return clusters.map((cluster) => {
     const allPoints = cluster.stays.flatMap((s) => s.points)
-    const totalMinutes = cluster.stays.reduce((sum, s) => sum + s.durationMinutes, 0)
+    const totalMinutes = cluster.stays.reduce((sum, s) => sum + s.duration_minutes, 0)
     const firstVisit = cluster.stays.reduce(
-      (earliest, s) => (s.startTime < earliest ? s.startTime : earliest),
-      cluster.stays[0].startTime,
+      (earliest, s) => (s.start_time < earliest ? s.start_time : earliest),
+      cluster.stays[0].start_time,
     )
     const lastVisit = cluster.stays.reduce(
-      (latest, s) => (s.endTime > latest ? s.endTime : latest),
-      cluster.stays[0].endTime,
+      (latest, s) => (s.end_time > latest ? s.end_time : latest),
+      cluster.stays[0].end_time,
     )
 
     return {
@@ -318,12 +318,12 @@ export interface PlaceVisit {
   name: string
   lat: number
   lon: number
-  startTime: Date
-  endTime: Date
-  durationMinutes: number
+  start_time: Date
+  end_time: Date
+  duration_minutes: number
   source: 'named' | 'detected' | 'owntracks' | 'unknown'
   address?: string
-  detectedLocationId?: string
+  detected_location_id?: string
 }
 
 /**
@@ -402,11 +402,11 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     name: string
     lat: number
     lon: number
-    startTime: Date
-    endTime: Date
+    start_time: Date
+    end_time: Date
     source: 'named' | 'detected' | 'owntracks' | 'unknown'
     address?: string
-    detectedLocationId?: string
+    detected_location_id?: string
   } | null = null
 
   for (const loc of locations) {
@@ -442,41 +442,41 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     const samePlace =
       currentVisit &&
       currentVisit.name === placeName &&
-      currentVisit.detectedLocationId === detectedLocationId
+      currentVisit.detected_location_id === detectedLocationId
 
     if (samePlace) {
       // Extend current visit
-      currentVisit!.endTime = loc.time
+      currentVisit!.end_time = loc.time
     } else {
       // Finalize previous visit if exists
       if (currentVisit) {
-        const duration = (currentVisit.endTime.getTime() - currentVisit.startTime.getTime()) / (1000 * 60)
+        const duration = (currentVisit.end_time.getTime() - currentVisit.start_time.getTime()) / (1000 * 60)
         visits.push({
           ...currentVisit,
-          durationMinutes: Math.round(duration),
+          duration_minutes: Math.round(duration),
         })
       }
 
       // Start new visit
       currentVisit = {
         address,
-        detectedLocationId,
-        endTime: loc.time,
+        detected_location_id: detectedLocationId,
+        end_time: loc.time,
         lat: loc.lat,
         lon: loc.lon,
         name: placeName,
         source,
-        startTime: loc.time,
+        start_time: loc.time,
       }
     }
   }
 
   // Don't forget the last visit
   if (currentVisit) {
-    const duration = (currentVisit.endTime.getTime() - currentVisit.startTime.getTime()) / (1000 * 60)
+    const duration = (currentVisit.end_time.getTime() - currentVisit.start_time.getTime()) / (1000 * 60)
     visits.push({
       ...currentVisit,
-      durationMinutes: Math.round(duration),
+      duration_minutes: Math.round(duration),
     })
   }
 
@@ -498,20 +498,24 @@ export const mergeShortUnknownVisits = (visits: PlaceVisit[], minDurationMinutes
     const visit = visits[i]
 
     // Keep non-unknown visits and unknown visits >= minDuration
-    if (visit.source !== 'unknown' || visit.durationMinutes >= minDurationMinutes) {
+    if (visit.source !== 'unknown' || visit.duration_minutes >= minDurationMinutes) {
       result.push(visit)
     } else {
       // Short unknown visit - merge into adjacent visits
       if (result.length > 0) {
         // Extend previous visit to cover this gap
         const prev = result[result.length - 1]
-        prev.endTime = visit.endTime
-        prev.durationMinutes = Math.round((prev.endTime.getTime() - prev.startTime.getTime()) / (1000 * 60))
+        prev.end_time = visit.end_time
+        prev.duration_minutes = Math.round(
+          (prev.end_time.getTime() - prev.start_time.getTime()) / (1000 * 60),
+        )
       } else if (i + 1 < visits.length) {
         // No previous visit, extend next visit backwards
         const next = visits[i + 1]
-        next.startTime = visit.startTime
-        next.durationMinutes = Math.round((next.endTime.getTime() - next.startTime.getTime()) / (1000 * 60))
+        next.start_time = visit.start_time
+        next.duration_minutes = Math.round(
+          (next.end_time.getTime() - next.start_time.getTime()) / (1000 * 60),
+        )
       }
       // If it's the only visit and it's short unknown, we drop it entirely
     }

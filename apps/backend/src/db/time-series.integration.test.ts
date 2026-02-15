@@ -248,7 +248,7 @@ describe('Time Series Integration Tests', () => {
       expect(buckets).toHaveLength(2)
 
       // First bucket: 10:00-10:15
-      expect(buckets[0].bucketStart).toEqual(new Date('2024-01-15T10:00:00Z'))
+      expect(buckets[0].bucket_start).toEqual(new Date('2024-01-15T10:00:00Z'))
       expect(buckets[0].metric).toBe('heart_rate')
       expect(buckets[0].count).toBe(3)
       expect(buckets[0].min).toBe(70)
@@ -256,7 +256,7 @@ describe('Time Series Integration Tests', () => {
       expect(buckets[0].avg).toBeCloseTo(72, 1) // (70+72+74)/3 = 72
 
       // Second bucket: 10:15-10:30
-      expect(buckets[1].bucketStart).toEqual(new Date('2024-01-15T10:15:00Z'))
+      expect(buckets[1].bucket_start).toEqual(new Date('2024-01-15T10:15:00Z'))
       expect(buckets[1].metric).toBe('heart_rate')
       expect(buckets[1].count).toBe(3)
       expect(buckets[1].min).toBe(80)
@@ -349,9 +349,9 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(buckets).toHaveLength(2)
-      expect(buckets[0].bucketStart).toEqual(new Date('2024-01-15T10:00:00Z'))
+      expect(buckets[0].bucket_start).toEqual(new Date('2024-01-15T10:00:00Z'))
       expect(buckets[0].count).toBe(2)
-      expect(buckets[1].bucketStart).toEqual(new Date('2024-01-15T10:05:00Z'))
+      expect(buckets[1].bucket_start).toEqual(new Date('2024-01-15T10:05:00Z'))
       expect(buckets[1].count).toBe(2)
     })
 
@@ -374,10 +374,10 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(buckets).toHaveLength(2)
-      expect(buckets[0].bucketStart).toEqual(new Date('2024-01-15T10:00:00Z'))
+      expect(buckets[0].bucket_start).toEqual(new Date('2024-01-15T10:00:00Z'))
       expect(buckets[0].count).toBe(2)
       expect(buckets[0].avg).toBeCloseTo(72.5, 1)
-      expect(buckets[1].bucketStart).toEqual(new Date('2024-01-15T11:00:00Z'))
+      expect(buckets[1].bucket_start).toEqual(new Date('2024-01-15T11:00:00Z'))
       expect(buckets[1].count).toBe(2)
       expect(buckets[1].avg).toBeCloseTo(82.5, 1)
     })
@@ -403,10 +403,10 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(buckets).toHaveLength(2)
-      expect(buckets[0].bucketStart).toEqual(new Date('2024-01-15T00:00:00Z'))
+      expect(buckets[0].bucket_start).toEqual(new Date('2024-01-15T00:00:00Z'))
       expect(buckets[0].count).toBe(2)
       expect(buckets[0].avg).toBeCloseTo(75, 1)
-      expect(buckets[1].bucketStart).toEqual(new Date('2024-01-16T00:00:00Z'))
+      expect(buckets[1].bucket_start).toEqual(new Date('2024-01-16T00:00:00Z'))
       expect(buckets[1].count).toBe(2)
       expect(buckets[1].avg).toBeCloseTo(80, 1)
     })
@@ -430,8 +430,8 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(buckets).toHaveLength(2)
-      expect(buckets[0].bucketStart).toEqual(new Date('2024-01-15T10:00:00Z'))
-      expect(buckets[1].bucketStart).toEqual(new Date('2024-01-15T10:30:00Z'))
+      expect(buckets[0].bucket_start).toEqual(new Date('2024-01-15T10:00:00Z'))
+      expect(buckets[1].bucket_start).toEqual(new Date('2024-01-15T10:30:00Z'))
     })
 
     test('excludes data outside the time range', async () => {
