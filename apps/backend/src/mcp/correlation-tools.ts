@@ -1,8 +1,13 @@
 /**
  * MCP correlation analysis tools.
  */
-import { dateOnlySchema } from '@aurboda/api-spec'
-import { z } from 'zod'
+import {
+  activityImpactInputSchema,
+  dateOnlySchema,
+  eventProbabilityInputSchema,
+  genericCorrelationBodySchema,
+  hrvCorrelationInputSchema,
+} from '@aurboda/api-spec'
 import {
   getActivityImpact,
   getBaseline,
@@ -14,7 +19,6 @@ import {
 } from '../services/correlations'
 import { jsonResponse, type McpServer, type SyncProvider } from './helpers'
 
-// eslint-disable-next-line max-lines-per-function -- tool registrations are inherently long
 export const registerCorrelationTools = (server: McpServer, user: string, sync?: SyncProvider) => {
   // Tool: get_baseline
   server.tool(
@@ -36,9 +40,7 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
   server.tool(
     'get_hrv_activities_correlation',
     'Get HRV correlations with various activities. Returns Pearson correlation coefficients between HRV and productivity, locations, activities, and tags.',
-    {
-      period_days: z.number().int().optional().describe('Number of days to analyze. Defaults to 30.'),
-    },
+    { ...hrvCorrelationInputSchema.shape },
     async ({ period_days }) => {
       const periodDays = period_days ?? 30
       const correlations = await getHrvActivitiesCorrelation(user, periodDays, sync)
@@ -50,20 +52,7 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
   server.tool(
     'get_activity_impact',
     'Get the impact of a specific activity/tag on HRV and heart rate. Compares metric values before, during, and after the activity using time windows.',
-    {
-      activity: z
-        .string()
-        .describe('The activity or tag name to analyze (e.g., "gym", "coffee", "meditation")'),
-      activity_type: z
-        .enum(['productivity_category', 'productivity_app', 'location', 'tag', 'activity_type'])
-        .describe('Type of activity to search for'),
-      period_days: z.number().int().optional().describe('Number of days to analyze. Defaults to 90.'),
-      window_minutes: z
-        .number()
-        .int()
-        .optional()
-        .describe('Minutes to analyze before/after the activity. Defaults to 30.'),
-    },
+    { ...activityImpactInputSchema.shape },
     async ({ activity, activity_type, period_days, window_minutes }) => {
       const periodDays = period_days ?? 90
       const windowMinutes = window_minutes ?? 30
@@ -77,22 +66,7 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
   server.tool(
     'get_event_probability',
     'Get the probability correlation between two events. Analyzes whether one event (trigger) increases or decreases the probability of another event (outcome) occurring within specified time windows. Uses chi-squared test for statistical significance.',
-    {
-      lag_windows: z
-        .array(z.string())
-        .optional()
-        .describe(
-          'Time windows to analyze (e.g., ["12h", "24h", "36h", "48h"]). Uses hours (h) or days (d).',
-        ),
-      outcome_pattern: z
-        .string()
-        .describe('Regex pattern for outcome tags (e.g., "headache|migraine", "good_sleep")'),
-      period_days: z.number().int().optional().describe('Number of days to analyze. Defaults to 365.'),
-      trigger_type: z.enum(['activity', 'tag']).describe('Type of trigger event'),
-      trigger_value: z
-        .string()
-        .describe('Trigger activity type or tag pattern (e.g., "exercise", "gym", "coffee")'),
-    },
+    { ...eventProbabilityInputSchema.shape },
     async ({ lag_windows, outcome_pattern, period_days, trigger_type, trigger_value }) => {
       const probability = await getEventProbability(
         user,
@@ -116,34 +90,7 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
 Examples:
 - "Does meditation correlate with more productive time?" -> trigger: tag "meditation", outcome: productivity
 - "When I exercise 3x and tag FatCoffee 5x in a week, does my weight change?" -> compound triggers, metric outcome`,
-    {
-      lag_windows: z
-        .array(z.string())
-        .optional()
-        .describe('Time windows to analyze after trigger (e.g., ["24h", "7d"]). Uses hours (h) or days (d).'),
-      outcome: z
-        .object({
-          app: z.string().optional().describe('For productivity: specific app to measure'),
-          category: z.string().optional().describe('For productivity: category to measure'),
-          metric: z.string().optional().describe('For metric: metric name (e.g., "weight", "body_fat")'),
-          pattern: z.string().optional().describe('For tag: regex pattern to match'),
-          type: z.enum(['tag', 'metric', 'productivity']).describe('Type of outcome to measure'),
-        })
-        .describe('Outcome to measure'),
-      period_days: z.number().int().optional().describe('Number of days to analyze. Defaults to 90.'),
-      triggers: z
-        .array(
-          z.object({
-            minCount: z.number().int().optional().describe('Minimum occurrences in window (default: 1)'),
-            pattern: z.string().describe('Pattern to match (regex for tags, name for activities)'),
-            type: z
-              .enum(['activity', 'tag', 'productivity_category', 'productivity_app'])
-              .describe('Type of trigger'),
-            windowDays: z.number().int().optional().describe('Rolling window in days (default: 1)'),
-          }),
-        )
-        .describe('Trigger conditions (all must be met)'),
-    },
+    { ...genericCorrelationBodySchema.shape },
     async ({ lag_windows, outcome, period_days, triggers }) => {
       const result = await getGenericCorrelation(
         user,

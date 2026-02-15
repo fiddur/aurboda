@@ -4,9 +4,11 @@
 import {
   activityTypes,
   activityTypeSchema,
+  bucketSizeSchema,
   dateOnlySchema,
   isValidMetricOrCustom,
   type MetricType,
+  timeRangeQuerySchema,
   validMetrics,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
@@ -22,26 +24,16 @@ import {
   queryProductivity,
   queryTags,
 } from '../services/queries'
-import {
-  errorResponse,
-  jsonResponse,
-  type McpServer,
-  mcpTimeRangeSchema,
-  metricDescription,
-  type SyncProvider,
-} from './helpers'
+import { errorResponse, jsonResponse, type McpServer, metricDescription, type SyncProvider } from './helpers'
 
 // eslint-disable-next-line max-lines-per-function -- tool registrations are inherently long
 export const registerQueryTools = (server: McpServer, user: string, sync?: SyncProvider) => {
-  // Valid bucket sizes for bucketed metrics queries
-  const validBucketSizes = ['5m', '15m', '30m', '1h', '1d'] as const
-
   // Tool: query_metrics
   server.tool(
     'query_metrics',
     'Query health metrics for a time range. Returns time series data with timestamps and values.',
     {
-      ...mcpTimeRangeSchema,
+      ...timeRangeQuerySchema.shape,
       metric: z.string().describe(metricDescription),
     },
     async ({ end, metric, start }) => {
@@ -69,8 +61,8 @@ Use cases:
 - Exercise response: "Compare pre/during/post exercise HR"
 - Multi-day trends: "What's my average resting HR this week?" (use 1d bucket)`,
     {
-      ...mcpTimeRangeSchema,
-      bucket: z.enum(validBucketSizes).describe('Bucket size: "5m", "15m", "30m", "1h", or "1d"'),
+      ...timeRangeQuerySchema.shape,
+      bucket: bucketSizeSchema,
       metrics: z.array(z.string()).describe(`Metrics to include. Valid metrics: ${validMetrics.join(', ')}`),
     },
     async ({ bucket, end, metrics, start }) => {
@@ -124,7 +116,7 @@ Use cases:
     'query_period_summary',
     'Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness.',
     {
-      ...mcpTimeRangeSchema,
+      ...timeRangeQuerySchema.shape,
       metrics: z.array(z.string()).describe(`Metrics to include. Valid metrics: ${validMetrics.join(', ')}`),
     },
     async ({ end, metrics, start }) => {
@@ -147,7 +139,7 @@ Use cases:
   server.tool(
     'query_tags',
     'Query tags/labels for a time range. Returns all tags with start times, optional end times, and tag text.',
-    mcpTimeRangeSchema,
+    { ...timeRangeQuerySchema.shape },
     async ({ end, start }) => {
       const tags = await queryTags(user, new Date(start), new Date(end), sync)
       return jsonResponse({ data: tags, success: true })
@@ -159,7 +151,7 @@ Use cases:
     'query_activities',
     'Query activities (sleep, exercise, meditation, nap) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata.',
     {
-      ...mcpTimeRangeSchema,
+      ...timeRangeQuerySchema.shape,
       types: z
         .array(activityTypeSchema)
         .optional()
@@ -176,7 +168,7 @@ Use cases:
   server.tool(
     'query_productivity',
     'Query productivity data (from RescueTime) for a time range. Returns application/website usage with productivity scores.',
-    mcpTimeRangeSchema,
+    { ...timeRangeQuerySchema.shape },
     async ({ end, start }) => {
       const productivity = await queryProductivity(user, new Date(start), new Date(end), sync)
       return jsonResponse({ data: productivity, success: true })
@@ -187,7 +179,7 @@ Use cases:
   server.tool(
     'query_locations',
     'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, or owntracks).',
-    mcpTimeRangeSchema,
+    { ...timeRangeQuerySchema.shape },
     async ({ end, start }) => {
       const places = await queryLocations(user, new Date(start), new Date(end))
       return jsonResponse({ data: places, success: true })
