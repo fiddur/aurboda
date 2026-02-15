@@ -259,6 +259,49 @@ describe('central-db', () => {
     })
   })
 
+  describe('getOuraWebhookUrl', () => {
+    test('returns URL when set', async () => {
+      mockClient.query.mockResolvedValue({ rows: [{ value: 'https://example.com/webhooks/oura' }] })
+
+      const result = await centralDb.getOuraWebhookUrl()
+
+      expect(result).toBe('https://example.com/webhooks/oura')
+      expect(mockClient.query).toHaveBeenCalledWith('SELECT value FROM server_settings WHERE key = $1', [
+        'oura_webhook_url',
+      ])
+    })
+
+    test('returns null when not set', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      const result = await centralDb.getOuraWebhookUrl()
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('setOuraWebhookUrl', () => {
+    test('stores URL', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      await centralDb.setOuraWebhookUrl('https://example.com/webhooks/oura')
+
+      expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO server_settings'), [
+        JSON.stringify('https://example.com/webhooks/oura'),
+      ])
+    })
+
+    test('deletes URL when set to null', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      await centralDb.setOuraWebhookUrl(null)
+
+      expect(mockClient.query).toHaveBeenCalledWith('DELETE FROM server_settings WHERE key = $1', [
+        'oura_webhook_url',
+      ])
+    })
+  })
+
   describe('upsertOuraUserMapping', () => {
     test('inserts oura user mapping', async () => {
       mockClient.query.mockResolvedValue({ rows: [] })

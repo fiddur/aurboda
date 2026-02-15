@@ -99,6 +99,10 @@ export const adminSettingsResponseSchema = baseResponseSchema
   .extend({
     admin_count: z.number().int().meta({ description: 'Number of admin users' }),
     lastfm_api_key_set: z.boolean().meta({ description: 'Whether a Last.fm API key is configured' }),
+    oura_webhook_url: z
+      .string()
+      .nullable()
+      .meta({ description: 'Oura webhook callback URL for push sync (null if not configured)' }),
     signup_mode: signupModeSchema.meta({ description: 'Current signup mode' }),
   })
   .meta({ id: 'AdminSettingsResponse' })
@@ -115,6 +119,12 @@ export const updateAdminSettingsBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'Last.fm API key (set to null to clear)' }),
+    oura_webhook_url: z
+      .string()
+      .url()
+      .nullable()
+      .optional()
+      .meta({ description: 'Oura webhook callback URL (set to null to disable)' }),
     signup_mode: signupModeSchema.optional().meta({ description: 'New signup mode' }),
   })
   .meta({ id: 'UpdateAdminSettingsBody' })
