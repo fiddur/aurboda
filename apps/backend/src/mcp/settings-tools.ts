@@ -1,14 +1,12 @@
 /**
  * MCP user settings and tag mapping tools.
  */
-import { hrZoneThresholdsSchema } from '@aurboda/api-spec'
-import { z } from 'zod'
+import { setTagMappingBodySchema, updateSettingsInputSchema } from '@aurboda/api-spec'
 import { getProgrammaticTags, getUniqueTags, getUserSettings, upsertUserSettings } from '../db'
 import { getGoalsProgress } from '../services/goals'
 import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings'
 import { jsonResponse, type McpServer } from './helpers'
 
-// eslint-disable-next-line max-lines-per-function -- tool registrations are inherently long
 export const registerSettingsTools = (server: McpServer, user: string) => {
   // Tool: get_user_settings
   server.tool(
@@ -25,22 +23,9 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
   server.tool(
     'update_user_settings',
     'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
-    {
-      birth_date: z
-        .string()
-        .nullable()
-        .optional()
-        .describe('Birth date in YYYY-MM-DD format. Set to null to clear.'),
-      hr_zone_start: hrZoneThresholdsSchema
-        .nullable()
-        .optional()
-        .describe('Custom HR zone start thresholds. Values must be ascending. Set to null to clear.'),
-    },
-    async ({ birth_date, hr_zone_start }) => {
-      const result = await validateAndUpdateSettings(user, {
-        birth_date,
-        hr_zone_start,
-      })
+    { ...updateSettingsInputSchema.shape },
+    async (params) => {
+      const result = await validateAndUpdateSettings(user, params)
       return jsonResponse(result)
     },
   )
@@ -81,10 +66,7 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
   server.tool(
     'set_tag_mapping',
     'Set a display name for a programmatic tag (UUID, tag_* prefix, etc.). Use after get_programmatic_tags to name unmapped tags.',
-    {
-      name: z.string().min(1).describe('Display name for the tag'),
-      tag_key: z.string().min(1).describe('The programmatic tag identifier (UUID, tag_* prefix, etc.)'),
-    },
+    { ...setTagMappingBodySchema.shape },
     async ({ name, tag_key }) => {
       const settings = await getUserSettings(user)
       const currentMappings = settings?.tag_mappings ?? {}

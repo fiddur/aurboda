@@ -1,6 +1,7 @@
 /**
  * MCP Last.fm tag rule tools.
  */
+import { addLastFmTagRuleBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 import {
   deleteLastFmTagRule,
@@ -11,7 +12,6 @@ import {
 } from '../db'
 import { errorResponse, jsonResponse, type McpServer } from './helpers'
 
-// eslint-disable-next-line max-lines-per-function -- tool registrations are inherently long
 export const registerLastFmTools = (server: McpServer, user: string) => {
   // Tool: get_lastfm_tag_rules
   server.tool(
@@ -32,39 +32,7 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
   server.tool(
     'add_lastfm_tag_rule',
     'Add a Last.fm auto-tagging rule. Creates tags when scrobbles match the specified criteria.',
-    {
-      artist_name: z
-        .string()
-        .optional()
-        .describe('Artist name to match (required for artist or track_artist match type)'),
-      artist_names: z
-        .array(z.string())
-        .optional()
-        .describe('Multiple artist names to match (takes precedence over artist_name when set)'),
-      match_mode: z
-        .enum(['exact', 'contains'])
-        .optional()
-        .describe('Match mode: exact (case-insensitive) or contains (substring). Default: exact'),
-      match_type: z
-        .enum(['track', 'artist', 'track_artist'])
-        .describe(
-          'Type of match: track (any track with name), artist (any track by artist), track_artist (exact track + artist)',
-        ),
-      merge_gap_seconds: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe(
-          'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
-        ),
-      rule_name: z.string().min(1).describe('Human-readable name for the rule'),
-      tag_name: z.string().min(1).describe('Tag to create when rule matches'),
-      track_name: z
-        .string()
-        .optional()
-        .describe('Track name to match (required for track or track_artist match type)'),
-    },
+    { ...addLastFmTagRuleBodySchema.shape },
     async ({
       artist_name,
       artist_names,
@@ -89,7 +57,7 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
           artist_names,
           match_mode: (match_mode ?? 'exact') as LastFmMatchMode,
           match_type: match_type as LastFmMatchType,
-          merge_gap_seconds,
+          merge_gap_seconds: merge_gap_seconds ?? undefined,
           rule_name,
           tag_name,
           track_name,

@@ -1,7 +1,12 @@
 /**
  * MCP location management tools.
  */
-import { latWithValidationSchema, lonWithValidationSchema } from '@aurboda/api-spec'
+import {
+  addNamedLocationBodySchema,
+  promoteDetectedLocationBodySchema,
+  timeRangeQuerySchema,
+  updateNamedLocationBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
 import { getDetectedLocations as getStoredDetectedLocations } from '../db'
 import {
@@ -11,7 +16,7 @@ import {
   insertNamedLocation,
   updateNamedLocation,
 } from '../services/locations'
-import { errorResponse, jsonResponse, type McpServer, mcpTimeRangeSchema } from './helpers'
+import { errorResponse, jsonResponse, type McpServer } from './helpers'
 
 // eslint-disable-next-line max-lines-per-function -- tool registrations are inherently long
 export const registerLocationTools = (server: McpServer, user: string) => {
@@ -31,7 +36,7 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     'get_detected_locations',
     'Get frequently visited locations that are not yet named. Detects places where user spent 60+ minutes. Returns coordinates, visit count, and total time spent.',
     {
-      ...mcpTimeRangeSchema,
+      ...timeRangeQuerySchema.shape,
       min_duration: z.number().optional().describe('Minimum stay duration in minutes. Defaults to 60.'),
     },
     async ({ end, min_duration, start }) => {
@@ -60,12 +65,7 @@ export const registerLocationTools = (server: McpServer, user: string) => {
   server.tool(
     'add_named_location',
     'Create a named location. Use this to save a frequently visited place with a name.',
-    {
-      lat: latWithValidationSchema.describe('Latitude of the location (-90 to 90)'),
-      lon: lonWithValidationSchema.describe('Longitude of the location (-180 to 180)'),
-      name: z.string().describe('Name for the location (e.g., "Home", "Office", "Gym")'),
-      radius: z.number().optional().describe('Radius in meters. Defaults to 200.'),
-    },
+    { ...addNamedLocationBodySchema.shape },
     async ({ lat, lon, name, radius }) => {
       const location = await insertNamedLocation(user, { lat, lon, name, radius })
       return jsonResponse({ data: location, success: true })
@@ -78,10 +78,7 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     'Update an existing named location. Can change name, coordinates, or radius.',
     {
       id: z.string().describe('The ID of the named location to update'),
-      lat: z.number().optional().describe('New latitude (-90 to 90). Must be provided with lon.'),
-      lon: z.number().optional().describe('New longitude (-180 to 180). Must be provided with lat.'),
-      name: z.string().optional().describe('New name for the location'),
-      radius: z.number().optional().describe('New radius in meters'),
+      ...updateNamedLocationBodySchema.shape,
     },
     async ({ id, lat, lon, name, radius }) => {
       if ((lat !== undefined && lon === undefined) || (lon !== undefined && lat === undefined)) {
@@ -123,12 +120,7 @@ export const registerLocationTools = (server: McpServer, user: string) => {
   server.tool(
     'promote_detected_location',
     'Create a named location from detected coordinates. Use after get_detected_locations to save a frequently visited place.',
-    {
-      lat: latWithValidationSchema.describe('Latitude from detected location'),
-      lon: lonWithValidationSchema.describe('Longitude from detected location'),
-      name: z.string().describe('Name for the location'),
-      radius: z.number().optional().describe('Radius in meters. Uses suggested radius if not provided.'),
-    },
+    { ...promoteDetectedLocationBodySchema.shape },
     async ({ lat, lon, name, radius }) => {
       const location = await insertNamedLocation(user, { lat, lon, name, radius })
       return jsonResponse({ data: location, success: true })
