@@ -1,12 +1,96 @@
 /**
  * User settings storage and retrieval.
  */
-import type { CustomMetricDefinition, DashboardConfig, Goal } from '@aurboda/api-spec'
 import { query } from './connection'
-import type { CalendarConfig, UserSettings } from './types'
+import type { UserSettings } from './types'
+
+// ============================================================================
+// One-time migration from camelCase to snake_case JSONB keys
+// ============================================================================
+
+const topLevelRenames: Record<string, string> = {
+  birthDate: 'birth_date',
+  customMetrics: 'custom_metrics',
+  hrZoneStart: 'hr_zone_start',
+  lastFmUsername: 'lastfm_username',
+  rescueTimeKey: 'rescue_time_key',
+  tagMappings: 'tag_mappings',
+}
+
+const widgetConfigRenames: Record<string, string> = {
+  activityType: 'activity_type',
+  displayPeriod: 'display_period',
+  halfLifeDays: 'half_life_days',
+  lookbackDays: 'lookback_days',
+  periodDays: 'period_days',
+  showMeditation: 'show_meditation',
+  showSleep: 'show_sleep',
+  showWorkouts: 'show_workouts',
+  sourceType: 'source_type',
+  trendInverse: 'trend_inverse',
+  windowMinutes: 'window_minutes',
+}
+
+const renameKeys = (
+  obj: Record<string, unknown>,
+  renames: Record<string, string>,
+): Record<string, unknown> => {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    result[renames[key] ?? key] = value
+  }
+  return result
+}
+
+const migrateDashboardConfig = (dashboard: Record<string, unknown>): Record<string, unknown> => {
+  const sections = dashboard.sections
+  if (!Array.isArray(sections)) return dashboard
+
+  return {
+    ...dashboard,
+    sections: sections.map((section: Record<string, unknown>) => ({
+      ...section,
+      widgets:
+        Array.isArray(section.widgets) ?
+          (section.widgets as Array<Record<string, unknown>>).map((widget) => ({
+            ...widget,
+            config:
+              widget.config && typeof widget.config === 'object' ?
+                renameKeys(widget.config as Record<string, unknown>, widgetConfigRenames)
+              : widget.config,
+          }))
+        : section.widgets,
+    })),
+  }
+}
+
+/**
+ * Migrate settings JSONB from old camelCase keys to snake_case.
+ * Returns the migrated object if migration was needed, or null if already up-to-date.
+ */
+export const migrateSettingsToSnakeCase = (
+  settings: Record<string, unknown>,
+): Record<string, unknown> | null => {
+  const needsMigration = Object.keys(topLevelRenames).some((key) => key in settings)
+  if (!needsMigration) return null
+
+  const migrated = renameKeys(settings, topLevelRenames)
+
+  if (migrated.dashboard && typeof migrated.dashboard === 'object') {
+    migrated.dashboard = migrateDashboardConfig(migrated.dashboard as Record<string, unknown>)
+  }
+
+  return migrated
+}
+
+// ============================================================================
+// CRUD
+// ============================================================================
 
 /**
  * Get user settings from the database.
+ * On first read after the snake_case migration, converts old camelCase JSONB
+ * keys and writes the result back so subsequent reads need no conversion.
  * Returns null if no settings exist.
  */
 export const getUserSettings = async (user: string): Promise<UserSettings | null> => {
@@ -14,18 +98,15 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
 
   if (result.rows.length === 0) return null
 
-  const settings = result.rows[0].settings as Record<string, unknown>
-  return {
-    birth_date: settings.birth_date as string | undefined,
-    calendars: settings.calendars as CalendarConfig[] | undefined,
-    custom_metrics: settings.custom_metrics as CustomMetricDefinition[] | undefined,
-    dashboard: settings.dashboard as DashboardConfig | undefined,
-    goals: settings.goals as Goal[] | undefined,
-    hr_zone_start: settings.hr_zone_start as UserSettings['hr_zone_start'],
-    lastfm_username: settings.lastfm_username as string | undefined,
-    rescue_time_key: settings.rescue_time_key as string | undefined,
-    tag_mappings: settings.tag_mappings as UserSettings['tag_mappings'],
+  const raw = result.rows[0].settings as Record<string, unknown>
+
+  const migrated = migrateSettingsToSnakeCase(raw)
+  if (migrated) {
+    await query(user, `UPDATE user_settings SET settings = $1, updated_at = NOW()`, [migrated])
+    return migrated as UserSettings
   }
+
+  return raw as UserSettings
 }
 
 /**
