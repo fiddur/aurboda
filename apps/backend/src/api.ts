@@ -33,7 +33,9 @@ import { syncLastFmData } from './lastfm-sync'
 import { createMcpRouter } from './mcp'
 import { createDbSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
-import { syncAllOuraData } from './oura-sync'
+import { syncAllOuraData, syncOuraDataType } from './oura-sync'
+import { createOuraWebhookApi } from './oura-webhook-api'
+import { createOuraWebhookRouter, type OuraWebhookRouter } from './oura-webhook-router'
 import { createOwnTracksRouter } from './owntracks'
 import { syncRescueTimeData } from './rescuetime-sync'
 import { createActivitiesRouter } from './routes/activities-router'
@@ -50,6 +52,7 @@ import { createDetectionTrigger, DetectionTrigger } from './services/detection-t
 import { runDetectionForUser } from './services/detection-worker'
 import { createGeocodeQueue, GeocodeQueue } from './services/geocode-queue'
 import { createInvitationAuth } from './services/invitation'
+import { createOuraWebhookService, type OuraWebhookService } from './services/oura-webhook-service'
 import { getSettings } from './services/settings'
 import { createSyncProvider } from './services/sync-provider'
 import { createSyncRouter } from './sync-router'
@@ -72,12 +75,14 @@ const main = async () => {
   const auth = createAuth(sessionSecret)
   const invitationAuth = createInvitationAuth(sessionSecret)
 
-  const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
-  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
-
   // Initialize central database (server settings, admins)
   await initializeCentralDb()
   const centralDb = getCentralDb()
+
+  const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
+  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost, {
+    onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
+  })
 
   // Create sync provider for auto-syncing data before queries
   const syncProvider = createSyncProvider({
@@ -344,6 +349,71 @@ const main = async () => {
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)
 
+  // ==========================================================================
+  // Oura webhook push integration (opt-in via OURA_WEBHOOK_URL env var)
+  // ==========================================================================
+
+  let ouraWebhookRouter: OuraWebhookRouter | null = null
+  let ouraWebhookService: OuraWebhookService | null = null
+  const ouraWebhookUrl = process.env.OURA_WEBHOOK_URL
+  const ouraClientId = process.env.OURA_CLIENT ?? ''
+  const ouraClientSecret = process.env.OURA_SECRET ?? ''
+
+  if (ouraWebhookUrl && ouraClientId && ouraClientSecret) {
+    try {
+      // Get or generate verification token
+      let verificationToken = await centralDb.getServerSetting('oura_webhook_verification_token')
+      if (!verificationToken) {
+        const { randomBytes } = await import('crypto')
+        verificationToken = randomBytes(32).toString('hex')
+        await centralDb.setServerSetting('oura_webhook_verification_token', verificationToken)
+        console.log('Oura webhook: generated new verification token')
+      }
+
+      // Create webhook API client
+      const webhookApi = createOuraWebhookApi({
+        callbackUrl: ouraWebhookUrl,
+        clientId: ouraClientId,
+        clientSecret: ouraClientSecret,
+        verificationToken,
+      })
+
+      // Create and mount webhook router
+      ouraWebhookRouter = createOuraWebhookRouter({
+        getUsernameByOuraUserId: (ouraUserId) => centralDb.getUsernameByOuraUserId(ouraUserId),
+        syncOuraDataTypeForUser: async (username, dataType) => {
+          const accessToken = await oura.getAccessToken(username)
+          await syncOuraDataType(username, oura, dataType, accessToken)
+        },
+        verificationToken,
+      })
+      httpd.use('/webhooks/oura', ouraWebhookRouter)
+
+      // Create subscription service and initialize
+      ouraWebhookService = createOuraWebhookService({
+        createSubscription: (dataType, eventType) => webhookApi.createSubscription(dataType, eventType),
+        deleteLocalSubscription: (id) => centralDb.deleteOuraWebhookSubscription(id),
+        deleteRemoteSubscription: (id) => webhookApi.deleteSubscription(id),
+        getLocalSubscriptions: () => centralDb.getOuraWebhookSubscriptions(),
+        listRemoteSubscriptions: () => webhookApi.listSubscriptions(),
+        renewSubscription: (id) => webhookApi.renewSubscription(id),
+        upsertLocalSubscription: (sub) => centralDb.upsertOuraWebhookSubscription(sub),
+      })
+
+      // Initialize subscriptions in background (don't block startup)
+      ouraWebhookService.initSubscriptions().catch((error) => {
+        console.error('Oura webhook: failed to initialize subscriptions:', error)
+      })
+
+      // Start periodic renewal timer
+      ouraWebhookService.startRenewalTimer()
+
+      console.log(`Oura webhook: enabled at ${ouraWebhookUrl}`)
+    } catch (error) {
+      console.error('Oura webhook: failed to initialize:', error)
+    }
+  }
+
   // Initialize geocode queue (creates 'aurboda' database if needed)
   let geocodeQueue: GeocodeQueue | null = null
   try {
@@ -399,6 +469,12 @@ const main = async () => {
   const shutdown = async () => {
     console.log('Shutting down...')
     detectionTrigger.clearPendingDetections()
+    if (ouraWebhookRouter) {
+      ouraWebhookRouter.clearPendingWebhookSyncs()
+    }
+    if (ouraWebhookService) {
+      ouraWebhookService.stopRenewalTimer()
+    }
     if (geocodeQueue) {
       await geocodeQueue.stop()
     }
