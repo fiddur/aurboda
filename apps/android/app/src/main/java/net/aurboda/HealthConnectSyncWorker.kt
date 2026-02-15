@@ -101,7 +101,18 @@ class HealthConnectSyncWorker(
             }
 
             // Step 2: Fetch and send raw records (filtered to exclude aggregated types)
-            val records = fetchHealthData()
+            val (records, deletionIds) = fetchHealthData()
+
+            // Step 3: Send deletions to backend
+            if (deletionIds.isNotEmpty()) {
+                val deletionSuccess = sendDeletions(deletionIds, credentials.apiUrl, credentials.authToken)
+                if (!deletionSuccess) {
+                    Log.w(TAG, "Failed to send deletions, will retry")
+                    return Result.retry()
+                }
+                Log.d(TAG, "Sent ${deletionIds.size} deletions")
+            }
+
             if (records.isNotEmpty()) {
                 // Filter out records that are handled by aggregates
                 val filteredRecords = records.filter { record ->
@@ -127,6 +138,10 @@ class HealthConnectSyncWorker(
                     Result.success()
                 }
             } else {
+                // If we had deletions but no records, save token
+                if (deletionIds.isNotEmpty()) {
+                    pendingToken?.let { saveChangesToken(it) }
+                }
                 Log.d(TAG, "No new data to sync")
                 HrZoneWidgetProvider.triggerUpdate(applicationContext)
                 Result.success()
@@ -137,13 +152,16 @@ class HealthConnectSyncWorker(
         }
     }
 
-    private suspend fun fetchHealthData(): List<Record> {
+    private data class FetchResult(val records: List<Record>, val deletionIds: List<String>)
+
+    private suspend fun fetchHealthData(): FetchResult {
         val records = mutableListOf<Record>()
+        val deletionIds = mutableListOf<String>()
         val lastToken = loadChangesToken()
 
         if (lastToken == null) {
             Log.d(TAG, "No token found, skipping background fetch (initial fetch should be done in foreground)")
-            return emptyList()
+            return FetchResult(emptyList(), emptyList())
         }
 
         var currentToken: String = lastToken
@@ -163,6 +181,7 @@ class HealthConnectSyncWorker(
             changesResponse.changes.forEach {
                 if (it is DeletionChange) {
                     Log.d(TAG, "Record deleted, ID: ${it.recordId}")
+                    deletionIds.add(it.recordId)
                 }
             }
 
@@ -171,15 +190,19 @@ class HealthConnectSyncWorker(
         }
 
         // Save the new token if we have records to send (token will be updated after successful send)
-        // If no records, save token now to avoid re-fetching empty changes
-        if (records.isEmpty()) {
+        // If no records and no deletions, save token now to avoid re-fetching empty changes
+        if (records.isEmpty() && deletionIds.isEmpty()) {
             saveChangesToken(currentToken)
         } else {
             // Store temporarily, will be saved after successful send
             pendingToken = currentToken
         }
 
-        return records
+        if (deletionIds.isNotEmpty()) {
+            Log.d(TAG, "Collected ${deletionIds.size} deletion IDs")
+        }
+
+        return FetchResult(records, deletionIds)
     }
 
     private var pendingToken: String? = null
@@ -436,6 +459,31 @@ class HealthConnectSyncWorker(
             response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
         } catch (e: Exception) {
             Log.e(TAG, "Error posting daily aggregates", e)
+            false
+        }
+    }
+
+    /**
+     * Send Health Connect deletion IDs to the backend.
+     */
+    private suspend fun sendDeletions(
+        deletionIds: List<String>,
+        serverUrl: String,
+        authToken: String
+    ): Boolean {
+        if (deletionIds.isEmpty()) return true
+
+        val postData = PostWrapper(deletionIds)
+        return try {
+            val response = httpClient.post("$serverUrl/sync/deletions") {
+                contentType(ContentType.Application.Json)
+                headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+                setBody(postData)
+            }
+            Log.d(TAG, "Deletions response: ${response.status}")
+            response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
+        } catch (e: Exception) {
+            Log.e(TAG, "Error posting deletions", e)
             false
         }
     }

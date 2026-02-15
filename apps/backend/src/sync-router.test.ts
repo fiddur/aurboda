@@ -5,6 +5,7 @@ import { createSyncRouter, SyncRouterDeps } from './sync-router'
 
 describe('sync router', () => {
   const mockDeps: SyncRouterDeps = {
+    deleteHealthConnectRecords: vi.fn().mockResolvedValue(0),
     getCalendarSyncStates: vi.fn().mockResolvedValue([]),
     getLastFmApiKey: vi.fn().mockResolvedValue('test-lastfm-key'),
     getLastFmSyncStates: vi.fn().mockResolvedValue([]),
@@ -190,6 +191,47 @@ describe('sync router', () => {
 
       expect(response.status).toBe(200)
       expect(response.body).toEqual({ states: mockStates, success: true })
+    })
+  })
+
+  describe('deletions endpoint', () => {
+    test('POST /sync/deletions calls deleteHealthConnectRecords', async () => {
+      vi.mocked(mockDeps.deleteHealthConnectRecords).mockResolvedValueOnce(3)
+
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/sync/deletions')
+        .send({ data: ['id1', 'id2', 'id3'] })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ message: 'Deleted 3 records', success: true })
+      expect(mockDeps.deleteHealthConnectRecords).toHaveBeenCalledWith('testuser', ['id1', 'id2', 'id3'])
+    })
+
+    test('POST /sync/deletions does not call processHealthConnectData', async () => {
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/sync/deletions')
+        .send({ data: ['id1'] })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
+    })
+
+    test('POST /sync/deletions returns 400 for empty array', async () => {
+      const app = createTestApp()
+      const response = await request(app).post('/sync/deletions').send({ data: [] })
+
+      expect(response.status).toBe(400)
+      expect(mockDeps.deleteHealthConnectRecords).not.toHaveBeenCalled()
+    })
+
+    test('POST /sync/deletions returns 400 for missing data', async () => {
+      const app = createTestApp()
+      const response = await request(app).post('/sync/deletions').send({})
+
+      expect(response.status).toBe(400)
+      expect(mockDeps.deleteHealthConnectRecords).not.toHaveBeenCalled()
     })
   })
 

@@ -119,7 +119,12 @@ export { getOAuthToken, upsertOAuthToken } from './oauth'
 export { getAllSyncStates, getSyncState, resetSyncState, upsertSyncState } from './sync-state'
 
 // Health Connect
-export { getDailyAggregateValue, processDailyAggregate, processHealthConnectData } from './health-connect'
+export {
+  deleteHealthConnectRecords,
+  getDailyAggregateValue,
+  processDailyAggregate,
+  processHealthConnectData,
+} from './health-connect'
 
 // Settings
 export { getUserSettings, upsertUserSettings } from './settings'

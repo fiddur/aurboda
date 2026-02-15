@@ -173,6 +173,79 @@ function extractTimeSeriesPoints(
 }
 
 // ============================================================================
+// Health Connect Record Deletion
+// ============================================================================
+
+/**
+ * Delete Health Connect records by their external IDs.
+ *
+ * Removes the raw_record and cleans up corresponding time_series and activity entries.
+ * Only deletes time_series entries with source='health_connect' (preserves aggregates).
+ *
+ * @returns Number of raw records actually deleted.
+ */
+export const deleteHealthConnectRecords = async (user: string, externalIds: string[]): Promise<number> => {
+  let deleted = 0
+
+  for (const externalId of externalIds) {
+    // Delete raw record and return its data for cleanup
+    const result = await query(
+      user,
+      `DELETE FROM raw_records
+       WHERE source = 'health_connect' AND external_id = $1
+       RETURNING record_type, data`,
+      [externalId],
+    )
+
+    if (result.rows.length === 0) continue
+    deleted++
+
+    const { record_type: recordType, data } = result.rows[0] as {
+      record_type: string
+      data: Record<string, unknown>
+    }
+
+    // Clean up time_series entries
+    const metric = healthConnectMetricMapping[recordType]
+    if (metric) {
+      const points = extractTimeSeriesPoints(recordType, metric, data)
+      for (const point of points) {
+        await query(
+          user,
+          `DELETE FROM time_series WHERE time = $1 AND metric = $2 AND source = 'health_connect'`,
+          [point.time, point.metric],
+        )
+      }
+    }
+
+    // Clean up blood pressure entries (two metrics)
+    if (recordType === 'BloodPressureRecord') {
+      const time = new Date((data.time as string) || (data.startTime as string))
+      await query(
+        user,
+        `DELETE FROM time_series
+         WHERE time = $1 AND metric IN ('blood_pressure_systolic', 'blood_pressure_diastolic')
+           AND source = 'health_connect'`,
+        [time],
+      )
+    }
+
+    // Clean up activity entries
+    const activityType = healthConnectActivityMapping[recordType]
+    if (activityType && data.startTime) {
+      await query(
+        user,
+        `DELETE FROM activities
+         WHERE source = 'health_connect' AND activity_type = $1 AND start_time = $2`,
+        [activityType, new Date(data.startTime as string)],
+      )
+    }
+  }
+
+  return deleted
+}
+
+// ============================================================================
 // Daily Aggregates (Deduplicated cumulative metrics from Health Connect)
 // ============================================================================
 
