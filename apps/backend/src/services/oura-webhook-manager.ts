@@ -31,10 +31,12 @@ export interface OuraWebhookManagerDeps {
   ouraClientId: string
   ouraClientSecret: string
   syncOuraDataTypeForUser: (username: string, dataType: OuraDataType) => Promise<void>
+  webHost: string
 }
 
 export interface OuraWebhookManager {
-  enable: (callbackUrl: string) => Promise<void>
+  canEnable: () => boolean
+  enable: () => Promise<void>
   disable: () => Promise<void>
   isEnabled: () => boolean
   handleWebhookRequest: (req: Request, res: Response, next: NextFunction) => void
@@ -46,7 +48,18 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
   let webhookService: OuraWebhookService | null = null
   let enabled = false
 
-  const enable = async (callbackUrl: string): Promise<void> => {
+  const callbackUrl = `${deps.webHost}/api/webhooks/oura`
+
+  const canEnable = (): boolean => {
+    try {
+      const url = new URL(deps.webHost)
+      return url.protocol === 'https:'
+    } catch {
+      return false
+    }
+  }
+
+  const enable = async (): Promise<void> => {
     // Disable first if already enabled (clean swap)
     if (enabled) {
       await disable()
@@ -143,6 +156,7 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
   }
 
   return {
+    canEnable,
     disable,
     enable,
     handleWebhookRequest,

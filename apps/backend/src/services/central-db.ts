@@ -16,7 +16,7 @@ export type SignupMode = 'open' | 'invite_only' | 'closed'
 
 export interface ServerSettings {
   lastfm_api_key: string
-  oura_webhook_url: string
+  oura_webhook_enabled: boolean
   oura_webhook_verification_token: string
   signup_mode: SignupMode
 }
@@ -55,8 +55,8 @@ export interface CentralDb {
   removeAdmin: (username: string) => Promise<boolean>
   getAdminCount: () => Promise<number>
   getAdmins: () => Promise<string[]>
-  getOuraWebhookUrl: () => Promise<string | null>
-  setOuraWebhookUrl: (url: string | null) => Promise<void>
+  getOuraWebhookEnabled: () => Promise<boolean>
+  setOuraWebhookEnabled: (enabled: boolean) => Promise<void>
   upsertOuraUserMapping: (ouraUserId: string, username: string) => Promise<void>
   getUsernameByOuraUserId: (ouraUserId: string) => Promise<string | null>
   deleteOuraUserMapping: (ouraUserId: string) => Promise<boolean>
@@ -224,21 +224,21 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       return result.rows[0].value as string
     },
 
+    getOuraWebhookEnabled: async (): Promise<boolean> => {
+      const client = await getClient()
+      const result = await client.query('SELECT value FROM server_settings WHERE key = $1', [
+        'oura_webhook_enabled',
+      ])
+      if (result.rows.length === 0) return false
+      return result.rows[0].value as boolean
+    },
+
     getOuraWebhookSubscriptions: async (): Promise<OuraWebhookSubscription[]> => {
       const client = await getClient()
       const result = await client.query(
         'SELECT oura_subscription_id, data_type, event_type, callback_url, expiration_time, created_at, updated_at FROM oura_webhook_subscriptions ORDER BY created_at',
       )
       return result.rows
-    },
-
-    getOuraWebhookUrl: async (): Promise<string | null> => {
-      const client = await getClient()
-      const result = await client.query('SELECT value FROM server_settings WHERE key = $1', [
-        'oura_webhook_url',
-      ])
-      if (result.rows.length === 0) return null
-      return result.rows[0].value as string
     },
 
     getServerSetting: async <K extends keyof ServerSettings>(key: K): Promise<ServerSettings[K] | null> => {
@@ -305,18 +305,14 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       }
     },
 
-    setOuraWebhookUrl: async (url: string | null): Promise<void> => {
+    setOuraWebhookEnabled: async (enabled: boolean): Promise<void> => {
       const client = await getClient()
-      if (url === null) {
-        await client.query('DELETE FROM server_settings WHERE key = $1', ['oura_webhook_url'])
-      } else {
-        await client.query(
-          `INSERT INTO server_settings (key, value, updated_at)
-           VALUES ('oura_webhook_url', $1, NOW())
-           ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
-          [JSON.stringify(url)],
-        )
-      }
+      await client.query(
+        `INSERT INTO server_settings (key, value, updated_at)
+         VALUES ('oura_webhook_enabled', $1, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+        [JSON.stringify(enabled)],
+      )
     },
 
     setServerSetting: async <K extends keyof ServerSettings>(
