@@ -49,7 +49,7 @@ function SaveStatusIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
   )
 }
 
-// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+// eslint-disable-next-line complexity -- TODO: refactor
 export function AdminSettings() {
   const { route } = useLocation()
   const isLoggedIn = auth.value.token

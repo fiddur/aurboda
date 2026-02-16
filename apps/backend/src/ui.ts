@@ -6,7 +6,6 @@ import { ouraClient } from './oura'
 import { rescuetimeClient } from './rescuetime'
 import { getSettings } from './services/settings'
 
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   const now = new Date()
   const start = subDays(now, 4)

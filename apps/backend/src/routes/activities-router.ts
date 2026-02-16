@@ -25,7 +25,6 @@ import { addActivity, deleteActivity, updateActivity } from '../services/mutatio
 import { queryActivities, queryProductivity, type SyncProvider } from '../services/queries'
 import { validateBody, validateQuery } from '../validation'
 
-// eslint-disable-next-line max-lines-per-function -- route registration
 export const createActivitiesRouter = (
   authMiddleware: RequestHandler,
   syncProvider?: SyncProvider,

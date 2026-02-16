@@ -80,7 +80,7 @@ function DataSourceCard({
   )
 }
 
-// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+// eslint-disable-next-line complexity -- TODO: refactor
 export function Help() {
   const isLoggedIn = auth.value.token
 

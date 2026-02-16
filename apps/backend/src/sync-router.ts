@@ -79,7 +79,6 @@ export interface SyncRouterDeps {
  * IMPORTANT: Route order matters! Specific routes must be defined BEFORE
  * the generic /sync/:recordType route to avoid Express matching issues.
  */
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHandler): Router => {
   const router = Router()
 

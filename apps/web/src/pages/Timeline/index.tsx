@@ -206,7 +206,7 @@ const trackSleepMeditation = 0
 const trackExercise = trackHeight
 const trackPlaces = 2 * trackHeight
 
-// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+// eslint-disable-next-line complexity -- TODO: refactor
 export const Timeline = () => {
   const start = startOfDay(new Date(fromDate.value))
   const end = endOfDay(new Date(toDate.value))
@@ -471,7 +471,6 @@ interface TimelineChartProps {
   onZoomOut: () => void
 }
 
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 function TimelineChart({
   heartRates,
   hrvData,

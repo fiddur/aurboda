@@ -32,7 +32,6 @@ import {
 import { queryLocations } from '../services/queries'
 import { validateBody, validateQuery } from '../validation'
 
-// eslint-disable-next-line max-lines-per-function -- route registration
 export const createLocationsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()
 

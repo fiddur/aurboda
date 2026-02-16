@@ -31,7 +31,6 @@ import {
 import { type SyncProvider } from '../services/queries'
 import { validateBody, validateQuery } from '../validation'
 
-// eslint-disable-next-line max-lines-per-function -- route registration
 export const createCorrelationsRouter = (
   authMiddleware: RequestHandler,
   syncProvider?: SyncProvider,

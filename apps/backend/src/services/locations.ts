@@ -366,7 +366,6 @@ export const matchLocationToDetected = (
  * Get place visits for a time range, using named locations when available.
  * Falls back to detected locations, then OwnTracks regions.
  */
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export const getPlaceVisits = async (user: string, start: Date, end: Date): Promise<PlaceVisit[]> => {
   // Get location data from db with regions
   const result = await query(

@@ -52,7 +52,6 @@ import { validateBody, validateQuery } from '../validation'
 
 const validBucketSizes = ['5m', '15m', '30m', '1h', '1d'] as const
 
-// eslint-disable-next-line max-lines-per-function -- route registration
 export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider?: SyncProvider): Router => {
   const router = Router()
 

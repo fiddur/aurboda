@@ -42,7 +42,6 @@ export interface SyncResult {
 /**
  * Sync RescueTime productivity data.
  */
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export const syncRescueTimeData = async (
   user: string,
   apiKey: string,

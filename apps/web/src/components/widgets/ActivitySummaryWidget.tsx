@@ -11,7 +11,6 @@ interface ActivitySummaryWidgetProps {
   config: ActivitySummaryConfig
 }
 
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
   const { lookback_days = 7, show_workouts = true, show_sleep = true, show_meditation = true } = config
 

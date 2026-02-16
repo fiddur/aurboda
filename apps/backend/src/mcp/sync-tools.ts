@@ -20,7 +20,6 @@ import { errorResponse, jsonResponse, type McpServer } from './helpers'
 
 type OuraClient = ReturnType<typeof ouraClient>
 
-// eslint-disable-next-line max-lines-per-function -- tool registrations are inherently long
 export const registerSyncTools = (server: McpServer, user: string, oura?: OuraClient) => {
   // Tool: sync_oura
   server.tool(

@@ -103,7 +103,6 @@ interface LocalGoal extends Omit<Goal, 'min' | 'max' | 'window'> {
   isNew?: boolean // Track if this is a newly added goal not yet saved
 }
 
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export function GoalsSettings({ goals }: GoalsSettingsProps) {
   const queryClient = useQueryClient()
   const [saveStatus, setSaveStatus] = useState<{ status: 'idle' | 'saving' | 'saved'; time?: Date }>({
@@ -355,7 +354,6 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       {localGoals.length === 0 ?
         <p class="no-goals">No goals set. Click "+ Add Goal" to create one.</p>
       : <div class="goals-list">
-          {/* eslint-disable-next-line max-lines-per-function -- TODO: refactor */}
           {localGoals.map((goal) => {
             const validationError = validateGoal({
               ...goal,

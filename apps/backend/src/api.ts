@@ -65,7 +65,6 @@ declare global {
   }
 }
 
-// eslint-disable-next-line max-lines-per-function -- server setup and auth routes
 const main = async () => {
   const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
   const forbidden = Object.assign(new Error('Forbidden'), { status: 403 })

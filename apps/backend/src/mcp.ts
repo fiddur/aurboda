@@ -37,7 +37,6 @@ type OuraClientType = ReturnType<typeof ouraClient>
  * and can survive backend restarts. When a client reconnects with a
  * previously-issued session ID, the session is lazily restored.
  */
-// eslint-disable-next-line max-lines-per-function -- session management logic
 export function createMcpRouter(
   auth: Auth,
   oura?: OuraClientType,
