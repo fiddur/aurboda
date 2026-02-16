@@ -259,45 +259,45 @@ describe('central-db', () => {
     })
   })
 
-  describe('getOuraWebhookUrl', () => {
-    test('returns URL when set', async () => {
-      mockClient.query.mockResolvedValue({ rows: [{ value: 'https://example.com/webhooks/oura' }] })
+  describe('getOuraWebhookEnabled', () => {
+    test('returns true when enabled', async () => {
+      mockClient.query.mockResolvedValue({ rows: [{ value: true }] })
 
-      const result = await centralDb.getOuraWebhookUrl()
+      const result = await centralDb.getOuraWebhookEnabled()
 
-      expect(result).toBe('https://example.com/webhooks/oura')
+      expect(result).toBe(true)
       expect(mockClient.query).toHaveBeenCalledWith('SELECT value FROM server_settings WHERE key = $1', [
-        'oura_webhook_url',
+        'oura_webhook_enabled',
       ])
     })
 
-    test('returns null when not set', async () => {
+    test('returns false when not set', async () => {
       mockClient.query.mockResolvedValue({ rows: [] })
 
-      const result = await centralDb.getOuraWebhookUrl()
+      const result = await centralDb.getOuraWebhookEnabled()
 
-      expect(result).toBeNull()
+      expect(result).toBe(false)
     })
   })
 
-  describe('setOuraWebhookUrl', () => {
-    test('stores URL', async () => {
+  describe('setOuraWebhookEnabled', () => {
+    test('stores enabled state', async () => {
       mockClient.query.mockResolvedValue({ rows: [] })
 
-      await centralDb.setOuraWebhookUrl('https://example.com/webhooks/oura')
+      await centralDb.setOuraWebhookEnabled(true)
 
       expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO server_settings'), [
-        JSON.stringify('https://example.com/webhooks/oura'),
+        JSON.stringify(true),
       ])
     })
 
-    test('deletes URL when set to null', async () => {
+    test('stores disabled state', async () => {
       mockClient.query.mockResolvedValue({ rows: [] })
 
-      await centralDb.setOuraWebhookUrl(null)
+      await centralDb.setOuraWebhookEnabled(false)
 
-      expect(mockClient.query).toHaveBeenCalledWith('DELETE FROM server_settings WHERE key = $1', [
-        'oura_webhook_url',
+      expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO server_settings'), [
+        JSON.stringify(false),
       ])
     })
   })

@@ -413,7 +413,8 @@ export interface AdminSettings {
   signup_mode: SignupMode
   admin_count: number
   lastfm_api_key_set: boolean
-  oura_webhook_url: string | null
+  oura_webhook_available: boolean
+  oura_webhook_enabled: boolean
 }
 
 export interface InvitationResult {
@@ -432,7 +433,8 @@ export const fetchAdminSettings = async (): Promise<AdminSettings> => {
   return {
     admin_count: response.data.admin_count,
     lastfm_api_key_set: response.data.lastfm_api_key_set,
-    oura_webhook_url: response.data.oura_webhook_url,
+    oura_webhook_available: response.data.oura_webhook_available,
+    oura_webhook_enabled: response.data.oura_webhook_enabled,
     signup_mode: response.data.signup_mode,
   }
 }
@@ -441,7 +443,7 @@ export const fetchAdminSettings = async (): Promise<AdminSettings> => {
 export const updateAdminSettings = async (params: {
   signup_mode?: SignupMode
   lastfm_api_key?: string | null
-  oura_webhook_url?: string | null
+  oura_webhook_enabled?: boolean
 }): Promise<AdminSettings> => {
   const { token } = auth.value
   const response = await axios.patch<{ success: boolean } & AdminSettings>(
@@ -455,7 +457,8 @@ export const updateAdminSettings = async (params: {
   return {
     admin_count: response.data.admin_count,
     lastfm_api_key_set: response.data.lastfm_api_key_set,
-    oura_webhook_url: response.data.oura_webhook_url,
+    oura_webhook_available: response.data.oura_webhook_available,
+    oura_webhook_enabled: response.data.oura_webhook_enabled,
     signup_mode: response.data.signup_mode,
   }
 }

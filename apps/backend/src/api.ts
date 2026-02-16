@@ -367,18 +367,19 @@ const main = async () => {
       ouraClientId,
       ouraClientSecret,
       syncOuraDataTypeForUser,
+      webHost,
     })
 
     // Mount proxy handler (delegates to inner router when enabled, 404 when disabled)
     httpd.use('/webhooks/oura', (req, res, next) => ouraWebhookManager!.handleWebhookRequest(req, res, next))
 
-    // Enable from stored URL if previously configured
-    const storedWebhookUrl = await centralDb.getOuraWebhookUrl()
-    if (storedWebhookUrl) {
+    // Enable if previously configured and host supports it
+    const webhookEnabled = await centralDb.getOuraWebhookEnabled()
+    if (webhookEnabled && ouraWebhookManager.canEnable()) {
       try {
-        await ouraWebhookManager.enable(storedWebhookUrl)
+        await ouraWebhookManager.enable()
       } catch (error) {
-        console.error('Oura webhook: failed to enable from stored URL:', error)
+        console.error('Oura webhook: failed to enable on startup:', error)
       }
     }
   }
