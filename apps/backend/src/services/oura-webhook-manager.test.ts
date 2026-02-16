@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createOuraWebhookManager, type OuraWebhookManagerDeps } from './oura-webhook-manager'
 
 describe('oura-webhook-manager', () => {
-  const createDeps = (): OuraWebhookManagerDeps => ({
+  const createDeps = (webHost = 'https://example.com'): OuraWebhookManagerDeps => ({
     centralDb: {
       deleteAllOuraWebhookSubscriptions: vi.fn().mockResolvedValue(0),
       deleteOuraWebhookSubscription: vi.fn().mockResolvedValue(true),
@@ -15,6 +15,7 @@ describe('oura-webhook-manager', () => {
     ouraClientId: 'test-client-id',
     ouraClientSecret: 'test-client-secret',
     syncOuraDataTypeForUser: vi.fn().mockResolvedValue(undefined),
+    webHost,
   })
 
   beforeEach(() => {
@@ -26,13 +27,30 @@ describe('oura-webhook-manager', () => {
     vi.clearAllMocks()
   })
 
+  describe('canEnable', () => {
+    test('returns true for HTTPS host', () => {
+      const manager = createOuraWebhookManager(createDeps('https://aurboda.net'))
+      expect(manager.canEnable()).toBe(true)
+    })
+
+    test('returns false for HTTP host', () => {
+      const manager = createOuraWebhookManager(createDeps('http://localhost:5173'))
+      expect(manager.canEnable()).toBe(false)
+    })
+
+    test('returns false for invalid URL', () => {
+      const manager = createOuraWebhookManager(createDeps('not-a-url'))
+      expect(manager.canEnable()).toBe(false)
+    })
+  })
+
   describe('enable', () => {
     test('creates router and service, initializes subscriptions', async () => {
       const deps = createDeps()
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
       const manager = createOuraWebhookManager(deps)
 
-      await manager.enable('https://example.com/webhooks/oura')
+      await manager.enable()
 
       expect(manager.isEnabled()).toBe(true)
       consoleSpy.mockRestore()
@@ -43,7 +61,7 @@ describe('oura-webhook-manager', () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
       const manager = createOuraWebhookManager(deps)
 
-      await manager.enable('https://example.com/webhooks/oura')
+      await manager.enable()
 
       expect(deps.centralDb.getServerSetting).toHaveBeenCalledWith('oura_webhook_verification_token')
       // Should NOT generate a new token since one exists
@@ -60,7 +78,7 @@ describe('oura-webhook-manager', () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
       const manager = createOuraWebhookManager(deps)
 
-      await manager.enable('https://example.com/webhooks/oura')
+      await manager.enable()
 
       expect(deps.centralDb.setServerSetting).toHaveBeenCalledWith(
         'oura_webhook_verification_token',
@@ -76,7 +94,7 @@ describe('oura-webhook-manager', () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
       const manager = createOuraWebhookManager(deps)
 
-      await manager.enable('https://example.com/webhooks/oura')
+      await manager.enable()
       expect(manager.isEnabled()).toBe(true)
 
       await manager.disable()
@@ -118,7 +136,7 @@ describe('oura-webhook-manager', () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
       const manager = createOuraWebhookManager(deps)
 
-      await manager.enable('https://example.com/webhooks/oura')
+      await manager.enable()
       manager.shutdown()
 
       expect(manager.isEnabled()).toBe(false)

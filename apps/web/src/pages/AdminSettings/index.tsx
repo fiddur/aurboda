@@ -66,7 +66,6 @@ export function AdminSettings() {
   const [lastfmSaveStatus, setLastfmSaveStatus] = useState<SaveStatus>({ status: 'idle' })
   const [lastfmApiKey, setLastfmApiKey] = useState('')
   const [ouraWebhookSaveStatus, setOuraWebhookSaveStatus] = useState<SaveStatus>({ status: 'idle' })
-  const [ouraWebhookUrl, setOuraWebhookUrl] = useState('')
   const [invitation, setInvitation] = useState<InvitationResult | null>(null)
   const [invitationLoading, setInvitationLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -120,13 +119,12 @@ export function AdminSettings() {
     }
   }, [queryClient])
 
-  const handleOuraWebhookUrlBlur = useCallback(async () => {
-    if (!ouraWebhookUrl) return
+  const handleOuraWebhookToggle = useCallback(async () => {
+    const newValue = !settings?.oura_webhook_enabled
     setOuraWebhookSaveStatus({ status: 'saving' })
     try {
-      const result = await updateAdminSettings({ oura_webhook_url: ouraWebhookUrl })
+      const result = await updateAdminSettings({ oura_webhook_enabled: newValue })
       queryClient.setQueryData(['adminSettings'], result)
-      setOuraWebhookUrl('')
       setOuraWebhookSaveStatus({ status: 'saved', time: new Date() })
     } catch (err) {
       setOuraWebhookSaveStatus({
@@ -134,22 +132,7 @@ export function AdminSettings() {
         status: 'error',
       })
     }
-  }, [ouraWebhookUrl, queryClient])
-
-  const handleClearOuraWebhookUrl = useCallback(async () => {
-    setOuraWebhookSaveStatus({ status: 'saving' })
-    try {
-      const result = await updateAdminSettings({ oura_webhook_url: null })
-      queryClient.setQueryData(['adminSettings'], result)
-      setOuraWebhookUrl('')
-      setOuraWebhookSaveStatus({ status: 'saved', time: new Date() })
-    } catch (err) {
-      setOuraWebhookSaveStatus({
-        error: err instanceof Error ? err.message : 'Failed to save',
-        status: 'error',
-      })
-    }
-  }, [queryClient])
+  }, [settings?.oura_webhook_enabled, queryClient])
 
   const handleGenerateInvitation = useCallback(async () => {
     setInvitationLoading(true)
@@ -265,38 +248,26 @@ export function AdminSettings() {
           </p>
         </div>
 
-        <div class="form-field">
-          <div class="section-header-row">
-            <label for="oura-webhook-url">Oura Webhook URL</label>
-            <SaveStatusIndicator saveStatus={ouraWebhookSaveStatus} />
+        {settings?.oura_webhook_available && (
+          <div class="form-field">
+            <div class="section-header-row">
+              <label for="oura-webhook-toggle">Oura Webhook Push</label>
+              <SaveStatusIndicator saveStatus={ouraWebhookSaveStatus} />
+            </div>
+            <label class="toggle-row">
+              <input
+                id="oura-webhook-toggle"
+                type="checkbox"
+                checked={settings?.oura_webhook_enabled ?? false}
+                onChange={handleOuraWebhookToggle}
+              />
+              <span>{settings?.oura_webhook_enabled ? 'Enabled' : 'Disabled'}</span>
+            </label>
+            <p class="field-description">
+              Enable near-real-time data sync from Oura via webhook push notifications.
+            </p>
           </div>
-          {settings?.oura_webhook_url ?
-            <p class="connected-status">Enabled</p>
-          : null}
-          <div class="api-key-input-row">
-            <input
-              id="oura-webhook-url"
-              type="text"
-              value={ouraWebhookUrl}
-              onInput={(e) => setOuraWebhookUrl((e.target as HTMLInputElement).value)}
-              onBlur={handleOuraWebhookUrlBlur}
-              placeholder={
-                settings?.oura_webhook_url ? 'Enter new URL to update' : (
-                  'https://yourdomain.com/api/webhooks/oura'
-                )
-              }
-            />
-            {settings?.oura_webhook_url && (
-              <button type="button" class="clear-button" onClick={handleClearOuraWebhookUrl}>
-                Disable
-              </button>
-            )}
-          </div>
-          <p class="field-description">
-            Webhook callback URL for near-real-time Oura data sync. Requires Oura client credentials to be
-            configured on the server. Saves automatically when you leave the field.
-          </p>
-        </div>
+        )}
       </section>
 
       {settings?.signup_mode === 'invite_only' && (

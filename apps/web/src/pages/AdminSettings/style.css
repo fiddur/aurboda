@@ -127,6 +127,20 @@
   background: #d32f2f;
 }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: normal;
+}
+
+.toggle-row input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+}
+
 .generate-button {
   padding: 0.75rem 1.5rem;
   font-size: 1rem;
