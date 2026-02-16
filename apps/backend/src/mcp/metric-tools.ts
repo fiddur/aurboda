@@ -19,7 +19,6 @@ import {
 } from '../services/mutations'
 import { errorResponse, jsonResponse, type McpServer, metricDescription, parseOptionalDate } from './helpers'
 
-// eslint-disable-next-line max-lines-per-function -- tool registrations are inherently long
 export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: add_metric
   server.tool(

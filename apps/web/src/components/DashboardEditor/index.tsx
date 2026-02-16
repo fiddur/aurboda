@@ -121,7 +121,6 @@ const linkOptions = [
   { icon: 'settings', label: 'Settings', value: '/settings' },
 ]
 
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export function DashboardEditor({ sectionType, onAddWidget, onClose }: DashboardEditorProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<WidgetTemplate | null>(null)
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({})
@@ -151,7 +150,7 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
   }
 
   // Render configuration form based on widget type
-  // eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+  // eslint-disable-next-line complexity -- TODO: refactor
   const renderConfigForm = () => {
     if (!selectedTemplate) return null
 

@@ -80,7 +80,7 @@ export const processHealthConnectData = async (
 /**
  * Extract time series points from Health Connect record.
  */
-// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+// eslint-disable-next-line complexity -- TODO: refactor
 function extractTimeSeriesPoints(
   recordType: string,
   metric: MetricType,

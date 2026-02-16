@@ -24,7 +24,6 @@ import { addTag, deleteTag } from '../services/mutations'
 import { queryTags, type SyncProvider } from '../services/queries'
 import { validateBody, validateQuery } from '../validation'
 
-// eslint-disable-next-line max-lines-per-function -- route registration
 export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: SyncProvider): Router => {
   const router = Router()
 

@@ -26,7 +26,6 @@ export interface OuraClientOptions {
   onUserAuthenticated?: (ouraUserId: string, username: string) => Promise<void>
 }
 
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export const ouraClient = (client: string, secret: string, webHost: string, options?: OuraClientOptions) => {
   if (!client || !secret) throw new Error('Oura missing client or secret')
   const redirectUri = `${webHost}/auth/ouracb`

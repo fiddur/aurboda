@@ -26,7 +26,6 @@ import {
 } from '../services/queries'
 import { errorResponse, jsonResponse, type McpServer, metricDescription, type SyncProvider } from './helpers'
 
-// eslint-disable-next-line max-lines-per-function -- tool registrations are inherently long
 export const registerQueryTools = (server: McpServer, user: string, sync?: SyncProvider) => {
   // Tool: query_metrics
   server.tool(

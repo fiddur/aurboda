@@ -16,7 +16,7 @@ import './style.css'
 
 type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }
 
-// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+// eslint-disable-next-line complexity -- TODO: refactor
 export function LastFmTagRulesSettings() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()

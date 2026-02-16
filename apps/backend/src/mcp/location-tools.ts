@@ -18,7 +18,6 @@ import {
 } from '../services/locations'
 import { errorResponse, jsonResponse, type McpServer } from './helpers'
 
-// eslint-disable-next-line max-lines-per-function -- tool registrations are inherently long
 export const registerLocationTools = (server: McpServer, user: string) => {
   // Tool: get_named_locations
   server.tool(

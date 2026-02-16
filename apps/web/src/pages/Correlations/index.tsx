@@ -26,7 +26,6 @@ const periodDays = signal(30)
 const selectedActivity = signal<{ name: string; type: ActivityImpactType } | null>(null)
 
 // Impact timeline chart component
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 function ImpactTimelineChart({
   data,
   baseline,
@@ -37,7 +36,6 @@ function ImpactTimelineChart({
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
-  // eslint-disable-next-line max-lines-per-function -- TODO: refactor
   useEffect(() => {
     if (!svgRef.current || !containerRef.current) return
 
@@ -257,7 +255,7 @@ function CorrelationRow({
   )
 }
 
-// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+// eslint-disable-next-line complexity -- TODO: refactor
 export function Correlations() {
   // Fetch baseline
   const baselineQuery = useQuery({

@@ -24,7 +24,6 @@ const buildTagEntries = (uniqueTags: string[], programmaticTags: ProgrammaticTag
   }))
 }
 
-// eslint-disable-next-line max-lines-per-function -- TODO: refactor
 export function TagPicker({
   onChange,
   selectedTags,

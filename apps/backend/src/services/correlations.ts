@@ -463,7 +463,7 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
 /**
  * Get HRV/HR correlations with different activity types.
  */
-// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+// eslint-disable-next-line complexity -- TODO: refactor
 export async function getHrvActivitiesCorrelation(
   user: string,
   periodDays: number = 30,
@@ -690,7 +690,7 @@ export async function getHrvActivitiesCorrelation(
 /**
  * Get HRV timeline before/during/after a specific activity type.
  */
-// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+// eslint-disable-next-line complexity -- TODO: refactor
 export async function getActivityImpact(
   user: string,
   activity: string,
@@ -857,7 +857,7 @@ export async function getActivityImpact(
 /**
  * Get probability of outcome event after trigger event (for discrete event correlation).
  */
-// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+// eslint-disable-next-line complexity -- TODO: refactor
 export async function getEventProbability(
   user: string,
   trigger: { type: 'activity' | 'tag'; value: string },
@@ -1047,7 +1047,7 @@ interface EventWithTime {
  * - "Does meditation correlate with more productive time?"
  * - "When I exercise 3x and tag FatCoffee 5x in a week, does my weight change?"
  */
-// eslint-disable-next-line max-lines-per-function, complexity -- TODO: refactor
+// eslint-disable-next-line complexity -- TODO: refactor
 export async function getGenericCorrelation(
   user: string,
   triggers: TriggerCondition[],
