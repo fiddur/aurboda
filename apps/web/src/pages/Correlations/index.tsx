@@ -10,7 +10,6 @@ import {
   type ActivityImpactData,
   type ActivityImpactType,
   type BaselineData,
-  type HrvActivitiesData,
   type HrvStatsWithDelta,
   type LocationCorrelation,
   type ProductivityCorrelation,
@@ -199,8 +198,29 @@ function ImpactTimelineChart({
   )
 }
 
+// Delta class: positive delta = good for HRV, bad for HR (inverted)
+const getDeltaClass = (value: number | null, inverted: boolean): string => {
+  if (value === null) return ''
+  if (value === 0) return ''
+  const isPositive = inverted ? value < 0 : value > 0
+  return isPositive ? 'positive' : 'negative'
+}
+
+const formatDelta = (value: number | null, decimals: number): string => {
+  if (value === null) return '--'
+  return `${value > 0 ? '+' : ''}${value.toFixed(decimals)}`
+}
+
+const formatValue = (value: number | null | undefined, decimals: number): string =>
+  value != null ? value.toFixed(decimals) : '--'
+
+const isActivitySelected = (
+  selected: { name: string; type: ActivityImpactType } | null,
+  name: string,
+  type: ActivityImpactType,
+): boolean => selected?.name === name && selected?.type === type
+
 // Correlation row component
-// eslint-disable-next-line complexity -- TODO: refactor
 function CorrelationRow({
   name,
   stats,
@@ -216,9 +236,6 @@ function CorrelationRow({
   type: string
   extra?: string
 }) {
-  const hrvDelta = stats.hrv_delta_from_baseline
-  const hrDelta = stats.hr_delta_from_baseline
-
   return (
     <tr class={selected ? 'selected' : ''} onClick={onSelect}>
       <td class="name-cell">
@@ -227,35 +244,18 @@ function CorrelationRow({
       </td>
       <td class="type-cell">{type}</td>
       <td class="value-cell">{stats.mean_hrv?.toFixed(1) ?? '--'}</td>
-      <td
-        class={`delta-cell ${
-          hrvDelta !== null ?
-            hrvDelta > 0 ? 'positive'
-            : hrvDelta < 0 ? 'negative'
-            : ''
-          : ''
-        }`}
-      >
-        {hrvDelta !== null ? `${hrvDelta > 0 ? '+' : ''}${hrvDelta.toFixed(1)}` : '--'}
+      <td class={`delta-cell ${getDeltaClass(stats.hrv_delta_from_baseline, false)}`}>
+        {formatDelta(stats.hrv_delta_from_baseline, 1)}
       </td>
       <td class="value-cell">{stats.mean_hr?.toFixed(0) ?? '--'}</td>
-      <td
-        class={`delta-cell ${
-          hrDelta !== null ?
-            hrDelta < 0 ? 'positive'
-            : hrDelta > 0 ? 'negative'
-            : ''
-          : ''
-        }`}
-      >
-        {hrDelta !== null ? `${hrDelta > 0 ? '+' : ''}${hrDelta.toFixed(0)}` : '--'}
+      <td class={`delta-cell ${getDeltaClass(stats.hr_delta_from_baseline, true)}`}>
+        {formatDelta(stats.hr_delta_from_baseline, 0)}
       </td>
       <td class="samples-cell">{stats.sample_minutes} min</td>
     </tr>
   )
 }
 
-// eslint-disable-next-line complexity -- TODO: refactor
 export function Correlations() {
   // Fetch baseline
   const baselineQuery = useQuery({
@@ -283,8 +283,8 @@ export function Correlations() {
   })
 
   const baseline: BaselineData | null = baselineQuery.data ?? null
-  const correlations: HrvActivitiesData | null = correlationsQuery.data ?? null
-  const activityImpact: ActivityImpactData | null = activityImpactQuery.data ?? null
+  const correlations = correlationsQuery.data
+  const activityImpact = activityImpactQuery.data
 
   const isLoading = baselineQuery.isLoading || correlationsQuery.isLoading
 
@@ -293,7 +293,7 @@ export function Correlations() {
   }
 
   const handleSelectActivity = (name: string, type: ActivityImpactType) => {
-    if (selectedActivity.value?.name === name && selectedActivity.value?.type === type) {
+    if (isActivitySelected(selectedActivity.value, name, type)) {
       selectedActivity.value = null
     } else {
       selectedActivity.value = { name, type }
@@ -326,11 +326,11 @@ export function Correlations() {
           <div class="baseline-grid">
             <div class="baseline-card">
               <span class="baseline-label">HRV (30-day avg)</span>
-              <span class="baseline-value hrv">{baseline.hrv.avg30day?.toFixed(1) ?? '--'} ms</span>
+              <span class="baseline-value hrv">{formatValue(baseline.hrv.avg30day, 1)} ms</span>
             </div>
             <div class="baseline-card">
               <span class="baseline-label">Resting HR (30-day avg)</span>
-              <span class="baseline-value hr">{baseline.resting_hr.avg30day?.toFixed(0) ?? '--'} bpm</span>
+              <span class="baseline-value hr">{formatValue(baseline.resting_hr.avg30day, 0)} bpm</span>
             </div>
           </div>
         </section>
@@ -387,10 +387,11 @@ export function Correlations() {
                         name={a.activity_type}
                         stats={a}
                         onSelect={() => handleSelectActivity(a.activity_type, 'activity_type')}
-                        selected={
-                          selectedActivity.value?.name === a.activity_type &&
-                          selectedActivity.value?.type === 'activity_type'
-                        }
+                        selected={isActivitySelected(
+                          selectedActivity.value,
+                          a.activity_type,
+                          'activity_type',
+                        )}
                         type="activity"
                         extra={`${a.occurrences}× (avg ${a.avg_duration_min} min)`}
                       />
@@ -425,10 +426,7 @@ export function Correlations() {
                         name={l.location_name}
                         stats={l}
                         onSelect={() => handleSelectActivity(l.location_name, 'location')}
-                        selected={
-                          selectedActivity.value?.name === l.location_name &&
-                          selectedActivity.value?.type === 'location'
-                        }
+                        selected={isActivitySelected(selectedActivity.value, l.location_name, 'location')}
                         type="location"
                         extra={`${l.visit_count} visits`}
                       />
@@ -463,10 +461,11 @@ export function Correlations() {
                         name={p.category}
                         stats={p}
                         onSelect={() => handleSelectActivity(p.category, 'productivity_category')}
-                        selected={
-                          selectedActivity.value?.name === p.category &&
-                          selectedActivity.value?.type === 'productivity_category'
-                        }
+                        selected={isActivitySelected(
+                          selectedActivity.value,
+                          p.category,
+                          'productivity_category',
+                        )}
                         type="productivity"
                         extra={
                           p.correlation_coefficient !== null ?
@@ -505,9 +504,7 @@ export function Correlations() {
                         name={t.tag}
                         stats={t}
                         onSelect={() => handleSelectActivity(t.tag, 'tag')}
-                        selected={
-                          selectedActivity.value?.name === t.tag && selectedActivity.value?.type === 'tag'
-                        }
+                        selected={isActivitySelected(selectedActivity.value, t.tag, 'tag')}
                         type="tag"
                         extra={`${t.occurrences}×`}
                       />
