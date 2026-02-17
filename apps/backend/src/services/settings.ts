@@ -159,7 +159,6 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
  * Validate and update user settings.
  * Returns a SettingsResponse with either success or error.
  */
-// eslint-disable-next-line complexity -- TODO: refactor
 export const validateAndUpdateSettings = async (user: string, input: unknown): Promise<SettingsResponse> => {
   // Validate input
   const parsed = updateSettingsInputSchema.safeParse(input)
@@ -183,33 +182,23 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     }
   }
 
-  // Build updates object, converting null to undefined for clearing
+  // Build updates object, converting null to undefined (which clears/resets the field in storage)
+  const settingsFields = [
+    'birth_date',
+    'calendars',
+    'dashboard',
+    'goals',
+    'hr_zone_start',
+    'lastfm_username',
+    'rescue_time_key',
+    'tag_mappings',
+  ] as const
   const updates: Partial<UserSettings> = {}
-  if (parsed.data.birth_date !== undefined) {
-    updates.birth_date = parsed.data.birth_date === null ? undefined : parsed.data.birth_date
-  }
-  if (parsed.data.calendars !== undefined) {
-    updates.calendars = parsed.data.calendars === null ? undefined : parsed.data.calendars
-  }
-  if (parsed.data.dashboard !== undefined) {
-    // null resets to defaults (by removing from storage)
-    updates.dashboard = parsed.data.dashboard === null ? undefined : parsed.data.dashboard
-  }
-  if (parsed.data.hr_zone_start !== undefined) {
-    updates.hr_zone_start = parsed.data.hr_zone_start === null ? undefined : parsed.data.hr_zone_start
-  }
-  if (parsed.data.lastfm_username !== undefined) {
-    updates.lastfm_username = parsed.data.lastfm_username === null ? undefined : parsed.data.lastfm_username
-  }
-  if (parsed.data.rescue_time_key !== undefined) {
-    updates.rescue_time_key = parsed.data.rescue_time_key === null ? undefined : parsed.data.rescue_time_key
-  }
-  if (parsed.data.goals !== undefined) {
-    // null resets to defaults (by removing from storage), empty array clears all goals
-    updates.goals = parsed.data.goals === null ? undefined : parsed.data.goals
-  }
-  if (parsed.data.tag_mappings !== undefined) {
-    updates.tag_mappings = parsed.data.tag_mappings === null ? undefined : parsed.data.tag_mappings
+  for (const field of settingsFields) {
+    if (parsed.data[field] !== undefined) {
+      ;(updates as Record<string, unknown>)[field] =
+        parsed.data[field] === null ? undefined : parsed.data[field]
+    }
   }
 
   // Apply updates

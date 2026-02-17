@@ -119,7 +119,15 @@ For typescript:
 * `pnpm check` to check typescript etc
 
 
-Deployment:
+## Documentation
+
+* Keep documentation in `docs/` up to date when changing related code.
+* When adding or modifying a data source, update `docs/data-sources.md` and the relevant per-source doc (e.g., `docs/oura.md`).
+* When changing APIs, sync behavior, admin/user setup, or data models, update the corresponding docs to reflect the new behavior.
+* Documentation should stay well structured: the overview page (`docs/data-sources.md`) links to per-topic docs, each covering what data is synced, admin setup, user setup, and how sync works.
+
+
+## Deployment
 
 * aurboda-backend is automatically deployed to https://aurboda.net/api on merge to `develop`.
 * aurboda-web is automatically deployed to https://aurboda.net/ on merge to `develop`.

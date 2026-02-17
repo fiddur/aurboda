@@ -14,6 +14,14 @@ import './style.css'
 
 type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }
 
+const signupModeDescriptions: Record<SignupMode, string> = {
+  closed: 'No new users can sign up. Only existing accounts can log in.',
+  invite_only: 'New users need a valid invitation link to sign up. Generate invitation links below.',
+  open: 'Anyone visiting the site can create an account.',
+}
+
+const getErrorMessage = (err: unknown): string => (err instanceof Error ? err.message : 'Failed to save')
+
 const formatSavedTime = (time: Date): string => {
   const now = new Date()
   const diffSec = Math.floor((now.getTime() - time.getTime()) / 1000)
@@ -49,44 +57,16 @@ function SaveStatusIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
   )
 }
 
-// eslint-disable-next-line complexity -- TODO: refactor
-export function AdminSettings() {
-  const { route } = useLocation()
-  const isLoggedIn = auth.value.token
-  const isAdmin = auth.value.is_admin
+function IntegrationsSection() {
   const queryClient = useQueryClient()
-
-  const { data: settings, isLoading } = useQuery({
-    enabled: !!isLoggedIn && !!isAdmin,
+  const { data: settings } = useQuery({
     queryFn: fetchAdminSettings,
     queryKey: ['adminSettings'],
   })
 
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
   const [lastfmSaveStatus, setLastfmSaveStatus] = useState<SaveStatus>({ status: 'idle' })
   const [lastfmApiKey, setLastfmApiKey] = useState('')
   const [ouraWebhookSaveStatus, setOuraWebhookSaveStatus] = useState<SaveStatus>({ status: 'idle' })
-  const [invitation, setInvitation] = useState<InvitationResult | null>(null)
-  const [invitationLoading, setInvitationLoading] = useState(false)
-  const [copied, setCopied] = useState(false)
-
-  const handleSignupModeChange = useCallback(
-    async (e: Event) => {
-      const newMode = (e.target as HTMLSelectElement).value as SignupMode
-      setSaveStatus({ status: 'saving' })
-      try {
-        const result = await updateAdminSettings({ signup_mode: newMode })
-        queryClient.setQueryData(['adminSettings'], result)
-        setSaveStatus({ status: 'saved', time: new Date() })
-      } catch (err) {
-        setSaveStatus({
-          error: err instanceof Error ? err.message : 'Failed to save',
-          status: 'error',
-        })
-      }
-    },
-    [queryClient],
-  )
 
   const handleLastfmApiKeyBlur = useCallback(async () => {
     if (!lastfmApiKey) return
@@ -97,10 +77,7 @@ export function AdminSettings() {
       setLastfmApiKey('')
       setLastfmSaveStatus({ status: 'saved', time: new Date() })
     } catch (err) {
-      setLastfmSaveStatus({
-        error: err instanceof Error ? err.message : 'Failed to save',
-        status: 'error',
-      })
+      setLastfmSaveStatus({ error: getErrorMessage(err), status: 'error' })
     }
   }, [lastfmApiKey, queryClient])
 
@@ -112,10 +89,7 @@ export function AdminSettings() {
       setLastfmApiKey('')
       setLastfmSaveStatus({ status: 'saved', time: new Date() })
     } catch (err) {
-      setLastfmSaveStatus({
-        error: err instanceof Error ? err.message : 'Failed to save',
-        status: 'error',
-      })
+      setLastfmSaveStatus({ error: getErrorMessage(err), status: 'error' })
     }
   }, [queryClient])
 
@@ -127,12 +101,74 @@ export function AdminSettings() {
       queryClient.setQueryData(['adminSettings'], result)
       setOuraWebhookSaveStatus({ status: 'saved', time: new Date() })
     } catch (err) {
-      setOuraWebhookSaveStatus({
-        error: err instanceof Error ? err.message : 'Failed to save',
-        status: 'error',
-      })
+      setOuraWebhookSaveStatus({ error: getErrorMessage(err), status: 'error' })
     }
   }, [settings?.oura_webhook_enabled, queryClient])
+
+  return (
+    <section class="settings-section">
+      <h2>Integrations</h2>
+
+      <div class="form-field">
+        <div class="section-header-row">
+          <label for="lastfm-api-key">Last.fm API Key</label>
+          <SaveStatusIndicator saveStatus={lastfmSaveStatus} />
+        </div>
+        {settings?.lastfm_api_key_set ?
+          <p class="connected-status">Configured</p>
+        : null}
+        <div class="api-key-input-row">
+          <input
+            id="lastfm-api-key"
+            type="password"
+            value={lastfmApiKey}
+            onInput={(e) => setLastfmApiKey((e.target as HTMLInputElement).value)}
+            onBlur={handleLastfmApiKeyBlur}
+            placeholder={settings?.lastfm_api_key_set ? 'Enter new key to update' : 'Enter Last.fm API key'}
+          />
+          {settings?.lastfm_api_key_set && (
+            <button type="button" class="clear-button" onClick={handleClearLastfmApiKey}>
+              Clear
+            </button>
+          )}
+        </div>
+        <p class="field-description">
+          Server-wide Last.fm API key used for scrobble syncing.{' '}
+          <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer">
+            Register for an API key
+          </a>
+          . Saves automatically when you leave the field.
+        </p>
+      </div>
+
+      {settings?.oura_webhook_available && (
+        <div class="form-field">
+          <div class="section-header-row">
+            <label for="oura-webhook-toggle">Oura Webhook Push</label>
+            <SaveStatusIndicator saveStatus={ouraWebhookSaveStatus} />
+          </div>
+          <label class="toggle-row">
+            <input
+              id="oura-webhook-toggle"
+              type="checkbox"
+              checked={settings?.oura_webhook_enabled ?? false}
+              onChange={handleOuraWebhookToggle}
+            />
+            <span>Enable Oura webhook push notifications</span>
+          </label>
+          <p class="field-description">
+            Enable near-real-time data sync from Oura via webhook push notifications.
+          </p>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function InvitationsSection() {
+  const [invitation, setInvitation] = useState<InvitationResult | null>(null)
+  const [invitationLoading, setInvitationLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const handleGenerateInvitation = useCallback(async () => {
     setInvitationLoading(true)
@@ -156,6 +192,66 @@ export function AdminSettings() {
       console.error('Failed to copy:', err)
     }
   }, [invitation])
+
+  return (
+    <section class="settings-section">
+      <h2>Invitations</h2>
+      <p class="section-description">
+        Generate invitation links to share with people you want to invite to sign up.
+      </p>
+
+      <button
+        type="button"
+        class="generate-button"
+        onClick={handleGenerateInvitation}
+        disabled={invitationLoading}
+      >
+        {invitationLoading ? 'Generating...' : 'Generate Invitation Link'}
+      </button>
+
+      {invitation && (
+        <div class="invitation-result">
+          <div class="invitation-url">
+            <input type="text" value={invitation.url} readOnly />
+            <button type="button" class="copy-button" onClick={handleCopyLink}>
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <p class="invitation-expiry">Expires in: {formatExpiryTime(invitation.expires_at)}</p>
+        </div>
+      )}
+    </section>
+  )
+}
+
+export function AdminSettings() {
+  const { route } = useLocation()
+  const isLoggedIn = auth.value.token
+  const isAdmin = auth.value.is_admin
+  const queryClient = useQueryClient()
+
+  const { data: settings, isLoading } = useQuery({
+    enabled: !!isLoggedIn && !!isAdmin,
+    queryFn: fetchAdminSettings,
+    queryKey: ['adminSettings'],
+  })
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+
+  const handleSignupModeChange = useCallback(
+    async (e: Event) => {
+      const newMode = (e.target as HTMLSelectElement).value as SignupMode
+      setSaveStatus({ status: 'saving' })
+      try {
+        const result = await updateAdminSettings({ signup_mode: newMode })
+        queryClient.setQueryData(['adminSettings'], result)
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: getErrorMessage(err), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
 
   // Redirect non-admins
   if (!isLoggedIn || !isAdmin) {
@@ -197,13 +293,7 @@ export function AdminSettings() {
             <option value="invite_only">Invite Only - Requires invitation link</option>
             <option value="closed">Closed - No new signups allowed</option>
           </select>
-          <p class="field-description">
-            {settings?.signup_mode === 'open' && 'Anyone visiting the site can create an account.'}
-            {settings?.signup_mode === 'invite_only' &&
-              'New users need a valid invitation link to sign up. Generate invitation links below.'}
-            {settings?.signup_mode === 'closed' &&
-              'No new users can sign up. Only existing accounts can log in.'}
-          </p>
+          <p class="field-description">{signupModeDescriptions[settings?.signup_mode ?? 'open']}</p>
         </div>
 
         <div class="form-field">
@@ -213,92 +303,9 @@ export function AdminSettings() {
         </div>
       </section>
 
-      <section class="settings-section">
-        <h2>Integrations</h2>
+      <IntegrationsSection />
 
-        <div class="form-field">
-          <div class="section-header-row">
-            <label for="lastfm-api-key">Last.fm API Key</label>
-            <SaveStatusIndicator saveStatus={lastfmSaveStatus} />
-          </div>
-          {settings?.lastfm_api_key_set ?
-            <p class="connected-status">Configured</p>
-          : null}
-          <div class="api-key-input-row">
-            <input
-              id="lastfm-api-key"
-              type="password"
-              value={lastfmApiKey}
-              onInput={(e) => setLastfmApiKey((e.target as HTMLInputElement).value)}
-              onBlur={handleLastfmApiKeyBlur}
-              placeholder={settings?.lastfm_api_key_set ? 'Enter new key to update' : 'Enter Last.fm API key'}
-            />
-            {settings?.lastfm_api_key_set && (
-              <button type="button" class="clear-button" onClick={handleClearLastfmApiKey}>
-                Clear
-              </button>
-            )}
-          </div>
-          <p class="field-description">
-            Server-wide Last.fm API key used for scrobble syncing.{' '}
-            <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer">
-              Register for an API key
-            </a>
-            . Saves automatically when you leave the field.
-          </p>
-        </div>
-
-        {settings?.oura_webhook_available && (
-          <div class="form-field">
-            <div class="section-header-row">
-              <label for="oura-webhook-toggle">Oura Webhook Push</label>
-              <SaveStatusIndicator saveStatus={ouraWebhookSaveStatus} />
-            </div>
-            <label class="toggle-row">
-              <input
-                id="oura-webhook-toggle"
-                type="checkbox"
-                checked={settings?.oura_webhook_enabled ?? false}
-                onChange={handleOuraWebhookToggle}
-              />
-              <span>Enable Oura webhook push notifications</span>
-            </label>
-            <p class="field-description">
-              Enable near-real-time data sync from Oura via webhook push notifications.
-            </p>
-          </div>
-        )}
-      </section>
-
-      {settings?.signup_mode === 'invite_only' && (
-        <section class="settings-section">
-          <h2>Invitations</h2>
-          <p class="section-description">
-            Generate invitation links to share with people you want to invite to sign up.
-          </p>
-
-          <button
-            type="button"
-            class="generate-button"
-            onClick={handleGenerateInvitation}
-            disabled={invitationLoading}
-          >
-            {invitationLoading ? 'Generating...' : 'Generate Invitation Link'}
-          </button>
-
-          {invitation && (
-            <div class="invitation-result">
-              <div class="invitation-url">
-                <input type="text" value={invitation.url} readOnly />
-                <button type="button" class="copy-button" onClick={handleCopyLink}>
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-              <p class="invitation-expiry">Expires in: {formatExpiryTime(invitation.expires_at)}</p>
-            </div>
-          )}
-        </section>
-      )}
+      {settings?.signup_mode === 'invite_only' && <InvitationsSection />}
     </div>
   )
 }

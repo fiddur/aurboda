@@ -16,7 +16,74 @@ import './style.css'
 
 type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }
 
-// eslint-disable-next-line complexity -- TODO: refactor
+const getErrorMessage = (err: unknown): string => (err instanceof Error ? err.message : 'Failed to save')
+
+function SaveIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
+  if (saveStatus.status === 'idle') return null
+  const messages: Record<string, string> = {
+    error: saveStatus.error ?? 'Error',
+    saved: 'Rule created',
+    saving: 'Saving...',
+  }
+  return <span class={`save-indicator ${saveStatus.status}`}>{messages[saveStatus.status]}</span>
+}
+
+const needsTrack = (matchType: LastFmMatchType): boolean =>
+  matchType === 'track' || matchType === 'track_artist'
+
+const needsArtist = (matchType: LastFmMatchType): boolean =>
+  matchType === 'artist' || matchType === 'track_artist'
+
+const validateRuleForm = (
+  matchType: LastFmMatchType,
+  trackName: string,
+  artistName: string,
+  artistNames: string[],
+): string | null => {
+  if (needsTrack(matchType) && !trackName.trim()) return 'Track name is required'
+  if (needsArtist(matchType) && !artistNames.length && !artistName.trim())
+    return 'At least one artist name is required'
+  return null
+}
+
+const formatRuleArtists = (rule: LastFmTagRule): string => {
+  if (rule.artist_names && rule.artist_names.length > 0) {
+    return rule.artist_names.join(', ')
+  }
+  return rule.artist_name ?? ''
+}
+
+const formatRuleDescription = (rule: LastFmTagRule): string => {
+  let desc = ''
+  if (rule.match_type === 'track') desc = `Track: "${rule.track_name}"`
+  else if (rule.match_type === 'artist') desc = `Artist: "${formatRuleArtists(rule)}"`
+  else if (rule.match_type === 'track_artist') desc = `"${rule.track_name}" by "${formatRuleArtists(rule)}"`
+  if (rule.match_mode === 'contains') desc += ' (contains)'
+  return desc
+}
+
+const buildRule = (
+  base: Pick<AddLastFmTagRuleBody, 'match_mode' | 'match_type' | 'rule_name' | 'tag_name'>,
+  opts: { trackName: string; artistName: string; artistNames: string[]; mergeGapMinutes: string },
+): AddLastFmTagRuleBody => {
+  const rule: AddLastFmTagRuleBody = { ...base }
+  if (needsTrack(base.match_type)) {
+    rule.track_name = opts.trackName.trim()
+  }
+  if (needsArtist(base.match_type)) {
+    if (opts.artistNames.length > 0) {
+      rule.artist_names = opts.artistNames
+    } else {
+      rule.artist_name = opts.artistName.trim()
+    }
+  }
+  const gapMinutes = parseFloat(opts.mergeGapMinutes)
+  if (gapMinutes > 0) {
+    rule.merge_gap_seconds = Math.round(gapMinutes * 60)
+  }
+  return rule
+}
+
 export function LastFmTagRulesSettings() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
@@ -61,43 +128,23 @@ export function LastFmTagRulesSettings() {
   const handleAddRule = async () => {
     if (!ruleName.trim() || !tagName.trim()) return
 
-    // Validate required fields based on match type
-    if ((matchType === 'track' || matchType === 'track_artist') && !trackName.trim()) {
-      setSaveStatus({ error: 'Track name is required', status: 'error' })
-      return
-    }
-    const hasArtistInput =
-      matchType === 'artist' || matchType === 'track_artist' ?
-        artistNames.length > 0 || artistName.trim()
-      : true
-    if (!hasArtistInput) {
-      setSaveStatus({ error: 'At least one artist name is required', status: 'error' })
+    const validationError = validateRuleForm(matchType, trackName, artistName, artistNames)
+    if (validationError) {
+      setSaveStatus({ error: validationError, status: 'error' })
       return
     }
 
     setSaveStatus({ status: 'saving' })
     try {
-      const rule: AddLastFmTagRuleBody = {
-        match_mode: matchMode,
-        match_type: matchType,
-        rule_name: ruleName.trim(),
-        tag_name: tagName.trim(),
-      }
-      if (matchType === 'track' || matchType === 'track_artist') {
-        rule.track_name = trackName.trim()
-      }
-      if (matchType === 'artist' || matchType === 'track_artist') {
-        if (artistNames.length > 0) {
-          rule.artist_names = artistNames
-        } else {
-          rule.artist_name = artistName.trim()
-        }
-      }
-
-      const gapMinutes = parseFloat(mergeGapMinutes)
-      if (gapMinutes > 0) {
-        rule.merge_gap_seconds = Math.round(gapMinutes * 60)
-      }
+      const rule = buildRule(
+        {
+          match_mode: matchMode,
+          match_type: matchType,
+          rule_name: ruleName.trim(),
+          tag_name: tagName.trim(),
+        },
+        { artistName, artistNames, mergeGapMinutes, trackName },
+      )
 
       await createLastFmTagRule(rule)
       queryClient.invalidateQueries({ queryKey: ['lastfmTagRules'] })
@@ -112,10 +159,7 @@ export function LastFmTagRulesSettings() {
       setMergeGapMinutes('')
       setSaveStatus({ status: 'saved', time: new Date() })
     } catch (err) {
-      setSaveStatus({
-        error: err instanceof Error ? err.message : 'Failed to create rule',
-        status: 'error',
-      })
+      setSaveStatus({ error: getErrorMessage(err), status: 'error' })
     }
   }
 
@@ -126,18 +170,8 @@ export function LastFmTagRulesSettings() {
       await deleteLastFmTagRule(rule.id)
       queryClient.invalidateQueries({ queryKey: ['lastfmTagRules'] })
     } catch (err) {
-      setSaveStatus({
-        error: err instanceof Error ? err.message : 'Failed to delete rule',
-        status: 'error',
-      })
+      setSaveStatus({ error: getErrorMessage(err), status: 'error' })
     }
-  }
-
-  const formatRuleArtists = (rule: LastFmTagRule): string => {
-    if (rule.artist_names && rule.artist_names.length > 0) {
-      return rule.artist_names.join(', ')
-    }
-    return rule.artist_name ?? ''
   }
 
   // Don't show if Last.fm is not configured
@@ -145,17 +179,13 @@ export function LastFmTagRulesSettings() {
     return null
   }
 
+  const rulesList = rules ?? []
+
   return (
     <section class="settings-section lastfm-rules-section">
       <div class="section-header-row">
         <h2>Last.fm Auto-Tagging Rules</h2>
-        {saveStatus.status !== 'idle' && (
-          <span class={`save-indicator ${saveStatus.status}`}>
-            {saveStatus.status === 'saving' && 'Saving...'}
-            {saveStatus.status === 'saved' && 'Rule created'}
-            {saveStatus.status === 'error' && (saveStatus.error ?? 'Error')}
-          </span>
-        )}
+        <SaveIndicator saveStatus={saveStatus} />
       </div>
       <p class="section-description">
         Create rules to automatically tag your listening sessions. When a scrobble matches a rule, a tag will
@@ -166,18 +196,14 @@ export function LastFmTagRulesSettings() {
         <p class="loading">Loading rules...</p>
       : <>
           {/* Existing rules */}
-          {(rules ?? []).length > 0 && (
+          {rulesList.length > 0 && (
             <div class="rules-list">
-              {(rules ?? []).map((rule) => (
+              {rulesList.map((rule) => (
                 <div class="rule-item" key={rule.id}>
                   <div class="rule-info">
                     <span class="rule-name">{rule.rule_name}</span>
                     <span class="rule-details">
-                      {rule.match_type === 'track' && `Track: "${rule.track_name}"`}
-                      {rule.match_type === 'artist' && `Artist: "${formatRuleArtists(rule)}"`}
-                      {rule.match_type === 'track_artist' &&
-                        `"${rule.track_name}" by "${formatRuleArtists(rule)}"`}
-                      {rule.match_mode === 'contains' && ' (contains)'}
+                      {formatRuleDescription(rule)}
                       {' → '}
                       <strong>{rule.tag_name}</strong>
                       {rule.merge_gap_seconds && (
@@ -251,7 +277,7 @@ export function LastFmTagRulesSettings() {
               </div>
             </div>
 
-            {(matchType === 'track' || matchType === 'track_artist') && (
+            {needsTrack(matchType) && (
               <div class="form-field">
                 <label for="track-name">Track Name</label>
                 <input
@@ -264,7 +290,7 @@ export function LastFmTagRulesSettings() {
               </div>
             )}
 
-            {(matchType === 'artist' || matchType === 'track_artist') && (
+            {needsArtist(matchType) && (
               <div class="form-field">
                 <label>Artists</label>
                 {artistNames.length > 0 && (
