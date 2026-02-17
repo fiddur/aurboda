@@ -122,6 +122,67 @@ class DataApiTest {
     }
 
     @Test
+    fun `GoalProgress deserializes snake_case losing_tomorrow from API`() {
+        val json = """
+            {
+                "id": "a0000001-0000-4000-8000-000000000001",
+                "metric": "hr_zone_2_sec",
+                "min": 9000,
+                "max": null,
+                "window": "7d",
+                "current": 5400.0,
+                "losing_tomorrow": 1200.0,
+                "unit": "sec"
+            }
+        """.trimIndent()
+
+        val parsed = appJson.decodeFromString<GoalProgress>(json)
+        assertEquals("a0000001-0000-4000-8000-000000000001", parsed.id)
+        assertEquals("hr_zone_2_sec", parsed.metric)
+        assertEquals(9000.0, parsed.min)
+        assertNull(parsed.max)
+        assertEquals("7d", parsed.window)
+        assertEquals(5400.0, parsed.current, 0.01)
+        assertEquals(1200.0, parsed.losingTomorrow, 0.01)
+        assertEquals("sec", parsed.unit)
+    }
+
+    @Test
+    fun `GoalsProgressResponse deserializes complete API response`() {
+        val json = """
+            {
+                "success": true,
+                "goals": [
+                    {
+                        "id": "a0000001-0000-4000-8000-000000000001",
+                        "metric": "hr_zone_2_sec",
+                        "min": 9000,
+                        "window": "7d",
+                        "current": 5400.0,
+                        "losing_tomorrow": 1200.0,
+                        "unit": "sec"
+                    },
+                    {
+                        "id": "a0000002-0000-4000-8000-000000000002",
+                        "metric": "steps",
+                        "min": 70000,
+                        "window": "7d",
+                        "current": 45000.0,
+                        "losing_tomorrow": 8000.0,
+                        "unit": "count"
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val parsed = appJson.decodeFromString<GoalsProgressResponse>(json)
+        assertTrue(parsed.success)
+        assertEquals(2, parsed.goals.size)
+        assertEquals(1200.0, parsed.goals[0].losingTomorrow, 0.01)
+        assertEquals(8000.0, parsed.goals[1].losingTomorrow, 0.01)
+    }
+
+    @Test
     fun `PeriodSummaryResponse parses complete API response`() {
         val json = """
             {

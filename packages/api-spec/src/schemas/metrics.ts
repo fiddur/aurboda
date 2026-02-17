@@ -108,8 +108,16 @@ export type AddCustomMetricBody = z.infer<typeof addCustomMetricBodySchema>
 export const updateCustomMetricBodySchema = z
   .object({
     description: z.string().optional().meta({ description: 'Human-readable description' }),
-    max_value: z.number().nullable().optional().meta({ description: 'Maximum allowed value (null to clear)' }),
-    min_value: z.number().nullable().optional().meta({ description: 'Minimum allowed value (null to clear)' }),
+    max_value: z
+      .number()
+      .nullable()
+      .optional()
+      .meta({ description: 'Maximum allowed value (null to clear)' }),
+    min_value: z
+      .number()
+      .nullable()
+      .optional()
+      .meta({ description: 'Minimum allowed value (null to clear)' }),
     unit: z
       .string()
       .min(1)
