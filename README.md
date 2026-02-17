@@ -71,6 +71,8 @@ Replace `:latest` with `:develop` in docker-compose.yml to use development build
 Data Sources
 ------------
 
+See [docs/data-sources.md](docs/data-sources.md) for detailed documentation on all data sources, including admin and user setup instructions.
+
 | Source | Setup |
 |--------|-------|
 | Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), enter your server URL (e.g., `http://YOUR_SERVER_IP`), and log in with your credentials |
@@ -79,6 +81,8 @@ Data Sources
 | OwnTracks | [OwnTracks setup guide](docs/owntracks.md) (JSON HTTP mode) |
 | Oura | Connect via OAuth in user settings (web UI). Requires `OURA_CLIENT` and `OURA_SECRET` env vars on backend. |
 | RescueTime | Configure API key in user settings (web UI). Get key from [RescueTime API settings](https://www.rescuetime.com/anapi/manage). |
+| Last.fm | Configure API key in admin settings, username in user settings. See [docs/lastfm.md](docs/lastfm.md). |
+| Calendars | Add ICS URLs in user settings. See [docs/calendars.md](docs/calendars.md). |
 
 
 API Documentation
