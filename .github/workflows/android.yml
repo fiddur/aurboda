@@ -113,6 +113,5 @@ jobs:
 
           Built from commit: ${{ github.sha }}
           Version code: ${{ steps.version.outputs.VERSION_CODE }}" \
-            --prerelease \
             apps/android/app/build/outputs/apk/release/aurboda.apk \
             apps/android/app/build/outputs/apk/release/version.json
