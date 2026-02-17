@@ -154,7 +154,7 @@ function IntegrationsSection() {
               checked={settings?.oura_webhook_enabled ?? false}
               onChange={handleOuraWebhookToggle}
             />
-            <span>{settings?.oura_webhook_enabled ? 'Enabled' : 'Disabled'}</span>
+            <span>Enable Oura webhook push notifications</span>
           </label>
           <p class="field-description">
             Enable near-real-time data sync from Oura via webhook push notifications.
