@@ -523,7 +523,10 @@ export const genericCorrelationDataSchema = z
       p_value: z.number().nullable(),
     }),
     triggers: z.array(triggerConditionSchema).meta({ description: 'Trigger conditions used' }),
-    windows_matched: z.number().int().meta({ description: 'Number of windows where all conditions were met' }),
+    windows_matched: z
+      .number()
+      .int()
+      .meta({ description: 'Number of windows where all conditions were met' }),
   })
   .meta({ id: 'GenericCorrelationData' })
 
@@ -547,7 +550,11 @@ export const activityImpactInputSchema = z
       .string()
       .meta({ description: 'The activity or tag name to analyze (e.g., "gym", "coffee", "meditation")' }),
     activity_type: activityImpactTypeSchema.meta({ description: 'Type of activity to search for' }),
-    period_days: z.number().int().optional().meta({ description: 'Number of days to analyze. Defaults to 90.' }),
+    period_days: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of days to analyze. Defaults to 90.' }),
     window_minutes: z
       .number()
       .int()
@@ -561,16 +568,18 @@ export type ActivityImpactInput = z.infer<typeof activityImpactInputSchema>
 /** Event probability MCP input schema (typed numbers instead of query strings) */
 export const eventProbabilityInputSchema = z
   .object({
-    lag_windows: z
-      .array(z.string())
-      .optional()
-      .meta({
-        description: 'Time windows to analyze (e.g., ["12h", "24h", "36h", "48h"]). Uses hours (h) or days (d).',
-      }),
+    lag_windows: z.array(z.string()).optional().meta({
+      description:
+        'Time windows to analyze (e.g., ["12h", "24h", "36h", "48h"]). Uses hours (h) or days (d).',
+    }),
     outcome_pattern: z
       .string()
       .meta({ description: 'Regex pattern for outcome tags (e.g., "headache|migraine", "good_sleep")' }),
-    period_days: z.number().int().optional().meta({ description: 'Number of days to analyze. Defaults to 365.' }),
+    period_days: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of days to analyze. Defaults to 365.' }),
     trigger_type: eventTriggerTypeSchema.meta({ description: 'Type of trigger event' }),
     trigger_value: z
       .string()
@@ -583,7 +592,11 @@ export type EventProbabilityInput = z.infer<typeof eventProbabilityInputSchema>
 /** HRV correlation MCP input schema */
 export const hrvCorrelationInputSchema = z
   .object({
-    period_days: z.number().int().optional().meta({ description: 'Number of days to analyze. Defaults to 30.' }),
+    period_days: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of days to analyze. Defaults to 30.' }),
   })
   .meta({ id: 'HrvCorrelationInput' })
 

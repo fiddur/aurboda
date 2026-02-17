@@ -58,7 +58,7 @@ data class GoalProgress(
     val max: Double? = null,
     val window: String,
     val current: Double,
-    @SerialName("losingTomorrow") val losingTomorrow: Double,
+    @SerialName("losing_tomorrow") val losingTomorrow: Double,
     val unit: String
 )
 

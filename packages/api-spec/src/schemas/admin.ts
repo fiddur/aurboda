@@ -99,9 +99,9 @@ export const adminSettingsResponseSchema = baseResponseSchema
   .extend({
     admin_count: z.number().int().meta({ description: 'Number of admin users' }),
     lastfm_api_key_set: z.boolean().meta({ description: 'Whether a Last.fm API key is configured' }),
-    oura_webhook_available: z
-      .boolean()
-      .meta({ description: 'Whether Oura webhook push can be enabled (requires HTTPS and Oura credentials)' }),
+    oura_webhook_available: z.boolean().meta({
+      description: 'Whether Oura webhook push can be enabled (requires HTTPS and Oura credentials)',
+    }),
     oura_webhook_enabled: z.boolean().meta({ description: 'Whether Oura webhook push sync is enabled' }),
     signup_mode: signupModeSchema.meta({ description: 'Current signup mode' }),
   })

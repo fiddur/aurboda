@@ -448,16 +448,10 @@ export const lastFmTagRuleSchema = z
     id: z.string().uuid().meta({ description: 'Unique rule ID' }),
     match_mode: lastFmMatchModeSchema,
     match_type: lastFmMatchTypeSchema,
-    merge_gap_seconds: z
-      .number()
-      .int()
-      .positive()
-      .nullable()
-      .optional()
-      .meta({
-        description:
-          'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
-      }),
+    merge_gap_seconds: z.number().int().positive().nullable().optional().meta({
+      description:
+        'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
+    }),
     rule_name: z.string().meta({ description: 'Human-readable name for the rule' }),
     tag_name: z.string().meta({ description: 'Tag to create when rule matches' }),
     track_name: z
@@ -487,16 +481,10 @@ export const addLastFmTagRuleBodySchema = z
       .default('exact')
       .meta({ description: 'Match mode (default: exact)' }),
     match_type: lastFmMatchTypeSchema,
-    merge_gap_seconds: z
-      .number()
-      .int()
-      .positive()
-      .nullable()
-      .optional()
-      .meta({
-        description:
-          'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
-      }),
+    merge_gap_seconds: z.number().int().positive().nullable().optional().meta({
+      description:
+        'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
+    }),
     rule_name: z.string().min(1).meta({ description: 'Human-readable name for the rule' }),
     tag_name: z.string().min(1).meta({ description: 'Tag to create when rule matches' }),
     track_name: z

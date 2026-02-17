@@ -56,6 +56,8 @@ import {
 
 import { productivityResponseSchema } from './schemas/productivity.js'
 
+import { goalsProgressResponseSchema } from './schemas/goals.js'
+
 // Error response
 const errorResponseSchema = z
   .object({
@@ -148,6 +150,23 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Get daily summary',
         tags: ['Summary'],
+      },
+    },
+
+    // --- Goals ---
+    '/goals/progress': {
+      get: {
+        description:
+          'Get progress toward all user goals. Returns current value, min/max targets, and how much will be lost when the oldest day exits the rolling window.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: goalsProgressResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get goal progress',
+        tags: ['Goals'],
       },
     },
 
@@ -585,6 +604,7 @@ const openApiDocument = createDocument({
     { description: 'Development', url: 'http://localhost:3000' },
   ],
   tags: [
+    { description: 'Health metric goals and progress tracking', name: 'Goals' },
     { description: 'Time series health metrics', name: 'Metrics' },
     { description: 'Daily and period summaries', name: 'Summary' },
     { description: 'Activity tags/labels', name: 'Tags' },
