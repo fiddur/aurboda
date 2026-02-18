@@ -43,6 +43,7 @@ import androidx.health.connect.client.records.Vo2MaxRecord
 import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.records.WheelchairPushesRecord
 import androidx.health.connect.client.records.metadata.Metadata
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.time.Instant
@@ -68,6 +69,7 @@ data class DailyAggregate(
     val date: String,           // "2024-01-15"
     val metric: String,         // "steps", "distance", etc.
     val value: Double,
+    @SerialName("data_origins")
     val dataOrigins: List<String>  // Contributing app package names
 )
 
