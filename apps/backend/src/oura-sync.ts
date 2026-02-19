@@ -14,6 +14,7 @@ import {
   insertTag,
   insertTimeSeries,
   SyncState,
+  Tag,
   TimeSeriesPoint,
   upsertSyncState,
 } from './db'
@@ -89,14 +90,6 @@ interface OuraSession {
   heartRate?: OuraIntervalData
   hrv?: OuraIntervalData
   motion?: unknown
-}
-
-interface OuraTag {
-  startTime: Date
-  endTime?: Date
-  tag: string
-  externalId: string
-  source: string
 }
 
 /**
@@ -352,23 +345,17 @@ const processSessions = async (user: string, data: OuraSession[]) => {
 /**
  * Process Oura tag data.
  */
-const processTags = async (user: string, data: OuraTag[]) => {
+const processTags = async (user: string, data: Tag[]) => {
   for (const record of data) {
     await insertRawRecord(user, {
       data: record as unknown as Record<string, unknown>,
-      external_id: record.externalId,
+      external_id: record.external_id,
       record_type: 'enhanced_tag',
-      recorded_at: record.startTime,
+      recorded_at: record.start_time,
       source: 'oura',
     })
 
-    await insertTag(user, {
-      end_time: record.endTime,
-      external_id: record.externalId,
-      source: 'oura',
-      start_time: record.startTime,
-      tag: record.tag,
-    })
+    await insertTag(user, record)
   }
 }
 
@@ -403,7 +390,7 @@ export const processOuraData = async (
       await processSessions(user, data as OuraSession[])
       break
     case 'tags':
-      await processTags(user, data as OuraTag[])
+      await processTags(user, data as Tag[])
       break
   }
 }
