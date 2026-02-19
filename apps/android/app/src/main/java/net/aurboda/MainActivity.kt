@@ -580,15 +580,6 @@ fun HealthConnectScreen(
         }
     }
 
-    // Record types handled by daily aggregates (should not be sent as raw records)
-    val aggregatedRecordTypes = setOf(
-        StepsRecord::class,
-        DistanceRecord::class,
-        ActiveCaloriesBurnedRecord::class,
-        TotalCaloriesBurnedRecord::class,
-        FloorsClimbedRecord::class
-    )
-
     suspend fun sendPendingDataToServer(currentActiveContext: Context) {
         if (healthRecords.isEmpty() && pendingDeletionIds.isEmpty()) {
             statusMessage = "No records to send."
@@ -627,15 +618,16 @@ fun HealthConnectScreen(
             }
         }
 
-        // Step 2: Send raw records (excluding aggregated types handled by daily aggregates)
+        // Step 2: Send raw records
         if (allPostsSuccessful && healthRecords.isNotEmpty()) {
-            // Filter out aggregated types (steps, distance, etc.) - these are handled by daily aggregates
             val recordsWithKnownSerializers = healthRecords.filter {
-                it::class !in aggregatedRecordTypes && when (it) {
+                when (it) {
                     is HeartRateVariabilityRmssdRecord, is WeightRecord, is HeartRateRecord,
                     is ExerciseSessionRecord, is SpeedRecord, is PowerRecord, is NutritionRecord,
                     is LeanBodyMassRecord, is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord,
-                    is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord -> true
+                    is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord,
+                    is StepsRecord, is DistanceRecord, is ActiveCaloriesBurnedRecord,
+                    is TotalCaloriesBurnedRecord, is FloorsClimbedRecord -> true
                     else -> false
                 }
             }
@@ -643,9 +635,9 @@ fun HealthConnectScreen(
             statusMessage = "Sending ${recordsWithKnownSerializers.size} records to server..."
 
             if (recordsWithKnownSerializers.isEmpty()) {
-                Log.d("SendData", "No records with known serializers to send (aggregated types excluded).")
+                Log.d("SendData", "No records with known serializers to send.")
             } else {
-                Log.d("SendData", "Attempting to send ${recordsWithKnownSerializers.size} records (excluded ${healthRecords.size - recordsWithKnownSerializers.size} aggregated/unsupported types).")
+                Log.d("SendData", "Attempting to send ${recordsWithKnownSerializers.size} records (${healthRecords.size - recordsWithKnownSerializers.size} unsupported types excluded).")
 
                 val groupedRecords = recordsWithKnownSerializers.groupBy { it::class }
                 for ((recordClass, classRecords) in groupedRecords) {
@@ -668,6 +660,11 @@ fun HealthConnectScreen(
                         BodyWaterMassRecord::class -> handlePostData(BodyWaterMassRecordSerializable.fromRecordsList(classRecords), BodyWaterMassRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                         HeightRecord::class -> handlePostData(HeightRecordSerializable.fromRecordsList(classRecords), HeightRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                         RestingHeartRateRecord::class -> handlePostData(RestingHeartRateRecordSerializable.fromRecordsList(classRecords), RestingHeartRateRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        StepsRecord::class -> handlePostData(StepsRecordSerializable.fromRecordsList(classRecords), StepsRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        DistanceRecord::class -> handlePostData(DistanceRecordSerializable.fromRecordsList(classRecords), DistanceRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        ActiveCaloriesBurnedRecord::class -> handlePostData(ActiveCaloriesBurnedRecordSerializable.fromRecordsList(classRecords), ActiveCaloriesBurnedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        TotalCaloriesBurnedRecord::class -> handlePostData(TotalCaloriesBurnedRecordSerializable.fromRecordsList(classRecords), TotalCaloriesBurnedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
+                        FloorsClimbedRecord::class -> handlePostData(FloorsClimbedRecordSerializable.fromRecordsList(classRecords), FloorsClimbedRecordSerializable.serializer(), syncUrl, recordTypeSimpleName, ktorHttpClient, authToken)
                         else -> { Log.w("SendData", "No specific serialization for $recordTypeSimpleName. Skipping."); PostResult.Success }
                     }
                     if (!postResult.isSuccess) {
@@ -816,11 +813,13 @@ fun HealthConnectScreen(
                 Button(
                     onClick = { scope.launch { sendPendingDataToServer(context) } },
                     enabled = (pendingDeletionIds.isNotEmpty() || healthRecords.any { record ->
-                        record::class !in aggregatedRecordTypes && when (record) {
+                        when (record) {
                             is HeartRateVariabilityRmssdRecord, is WeightRecord, is HeartRateRecord,
                             is ExerciseSessionRecord, is SpeedRecord, is PowerRecord, is NutritionRecord,
                             is LeanBodyMassRecord, is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord,
-                            is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord -> true
+                            is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord,
+                            is StepsRecord, is DistanceRecord, is ActiveCaloriesBurnedRecord,
+                            is TotalCaloriesBurnedRecord, is FloorsClimbedRecord -> true
                             else -> false
                         }
                     }) && !isProcessing

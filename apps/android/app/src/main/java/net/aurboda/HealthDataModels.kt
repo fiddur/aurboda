@@ -568,6 +568,28 @@ data class SpeedRecordSerializable(
     }
 }
 
+// --- Floors Climbed Record ---
+@Serializable
+data class FloorsClimbedRecordSerializable(
+    val startTime: String,
+    val endTime: String,
+    val floors: Double,
+    val metadata: HealthConnectRecordMetadata
+) {
+    companion object {
+        fun fromRecordsList(classRecords: List<Record>): List<FloorsClimbedRecordSerializable> {
+            return classRecords.filterIsInstance<FloorsClimbedRecord>().map { record ->
+                FloorsClimbedRecordSerializable(
+                    startTime = record.startTime.toIsoString(),
+                    endTime = record.endTime.toIsoString(),
+                    floors = record.floors,
+                    metadata = record.metadata.toSerializable()
+                )
+            }
+        }
+    }
+}
+
 // --- Steps Record ---
 @Serializable
 data class StepsRecordSerializable(
