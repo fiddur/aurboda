@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- large visualization component */
 import { signal } from '@preact/signals'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useCallback, useEffect, useRef } from 'preact/hooks'
@@ -18,8 +18,15 @@ import { packLanes } from '../../utils/lanePacking'
 
 import './style.css'
 
-// State
-const selectedDate = signal(formatISO(new Date(), { representation: 'date' }))
+// State: fetch range and view range
+const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
+const toDate = signal(formatISO(new Date(), { representation: 'date' }))
+const viewStart = signal<Date | null>(null)
+const viewEnd = signal<Date | null>(null)
+
+// Default view: start of today to end of today
+const getDefaultViewStart = () => startOfDay(new Date())
+const getDefaultViewEnd = () => endOfDay(new Date())
 
 // Column definitions
 const COLUMNS = ['Sleep / Rest', 'Exercise', 'Location', 'Tags / Events', 'Productivity'] as const
@@ -357,54 +364,105 @@ const buildTooltipHtml = (item: ChartItem, music: string[], activities: Activity
 }
 
 const margin = { bottom: 10, left: 60, right: 10, top: 30 }
+const CHART_HEIGHT = 800
 
 // eslint-disable-next-line complexity -- D3 visualization component
 export const DayView = () => {
-  const date = new Date(selectedDate.value)
-  const dayStart = startOfDay(date)
-  const dayEnd = endOfDay(date)
+  const effectiveViewStart = viewStart.value ?? getDefaultViewStart()
+  const effectiveViewEnd = viewEnd.value ?? getDefaultViewEnd()
 
-  // Fetch with a buffer for sleep that started the previous evening
-  const fetchStart = subDays(dayStart, 0.5)
-  const fetchEnd = addDays(dayEnd, 0.5)
+  // Fetch range: includes a buffer around the view
+  const fetchStart = startOfDay(new Date(fromDate.value))
+  const fetchEnd = endOfDay(new Date(toDate.value))
 
   const activitiesQuery = useQuery({
-    queryFn: () => fetchActivities(fetchStart, fetchEnd),
-    queryKey: ['dayview-activities', selectedDate.value],
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryKey: ['dayview-activities', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
   })
 
   const placesQuery = useQuery({
-    queryFn: () => fetchPlaces(fetchStart, fetchEnd),
-    queryKey: ['dayview-places', selectedDate.value],
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchPlaces(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryKey: ['dayview-places', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
   })
 
   const tagsQuery = useQuery({
-    queryFn: () => fetchTags(fetchStart, fetchEnd),
-    queryKey: ['dayview-tags', selectedDate.value],
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchTags(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryKey: ['dayview-tags', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
   })
 
   const productivityQuery = useQuery({
-    queryFn: () => fetchProductivity(dayStart, dayEnd),
-    queryKey: ['dayview-productivity', selectedDate.value],
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchProductivity(fetchStart, fetchEnd),
+    queryKey: ['dayview-productivity', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
   })
 
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
+  const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown>>()
+  const isProgrammaticZoom = useRef(false)
+  const baseScaleRef = useRef<d3.ScaleTime<number, number>>()
 
-  const goToPrev = () => {
-    selectedDate.value = formatISO(subDays(date, 1), { representation: 'date' })
-  }
-  const goToNext = () => {
-    selectedDate.value = formatISO(addDays(date, 1), { representation: 'date' })
-  }
-  const goToToday = () => {
-    selectedDate.value = formatISO(new Date(), { representation: 'date' })
-  }
+  // Handle zoom - update view range and expand data fetch if needed
+  const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
+    viewStart.value = zoomStart
+    viewEnd.value = zoomEnd
+
+    const currentFetchStart = startOfDay(new Date(fromDate.value))
+    const currentFetchEnd = endOfDay(new Date(toDate.value))
+    const todayStr = formatISO(new Date(), { representation: 'date' })
+
+    let needsExpand = false
+    let newFrom = fromDate.value
+    let newTo = toDate.value
+
+    if (zoomStart < currentFetchStart) {
+      newFrom = formatISO(subDays(zoomStart, 3), { representation: 'date' })
+      needsExpand = true
+    }
+    if (zoomEnd > currentFetchEnd) {
+      const expanded = formatISO(addDays(zoomEnd, 3), { representation: 'date' })
+      newTo = expanded > todayStr ? todayStr : expanded
+      needsExpand = true
+    }
+
+    if (needsExpand) {
+      fromDate.value = newFrom
+      toDate.value = newTo
+    }
+  }, [])
+
+  // Navigation: jump by days
+  const handleJumpDays = useCallback(
+    (days: number) => {
+      const currentStart = viewStart.value ?? getDefaultViewStart()
+      const currentEnd = viewEnd.value ?? getDefaultViewEnd()
+      const newStart = addDays(currentStart, days)
+      const newEnd = addDays(currentEnd, days)
+
+      // Don't allow panning into the future
+      const todayEnd = endOfDay(new Date())
+      if (newEnd > todayEnd) return
+
+      handleZoom(newStart, newEnd)
+    },
+    [handleZoom],
+  )
+
+  // Reset to today
+  const handleResetToToday = useCallback(() => {
+    viewStart.value = null
+    viewEnd.value = null
+    fromDate.value = formatISO(subDays(new Date(), 1), { representation: 'date' })
+    toDate.value = formatISO(new Date(), { representation: 'date' })
+  }, [])
 
   const activities = activitiesQuery.data ?? []
   const places = placesQuery.data ?? []
@@ -431,7 +489,11 @@ export const DayView = () => {
     return { column: col, ...packed }
   })
 
-  const isToday = selectedDate.value === formatISO(new Date(), { representation: 'date' })
+  const isFetching =
+    activitiesQuery.isFetching ||
+    placesQuery.isFetching ||
+    tagsQuery.isFetching ||
+    productivityQuery.isFetching
 
   // Render SVG chart
   const renderChart = useCallback(() => {
@@ -439,16 +501,22 @@ export const DayView = () => {
 
     const containerWidth = containerRef.current.clientWidth
     const chartWidth = containerWidth - margin.left - margin.right
-    const chartHeight = 800
 
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
-    svg.attr('width', containerWidth).attr('height', chartHeight + margin.top + margin.bottom)
+    svg.attr('width', containerWidth).attr('height', CHART_HEIGHT + margin.top + margin.bottom)
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
 
-    // Time scale (Y axis)
-    const yScale = d3.scaleTime().domain([dayStart, dayEnd]).range([0, chartHeight])
+    // Base scale maps the default 1-day view to the chart height
+    const baseScale = d3
+      .scaleTime()
+      .domain([getDefaultViewStart(), getDefaultViewEnd()])
+      .range([0, CHART_HEIGHT])
+    baseScaleRef.current = baseScale
+
+    // Current view scale
+    const yScale = d3.scaleTime().domain([effectiveViewStart, effectiveViewEnd]).range([0, CHART_HEIGHT])
 
     // Column layout
     const colWidth = chartWidth / COLUMNS.length
@@ -462,7 +530,7 @@ export const DayView = () => {
       .attr('id', 'chart-clip')
       .append('rect')
       .attr('width', chartWidth)
-      .attr('height', chartHeight)
+      .attr('height', CHART_HEIGHT)
 
     const chartGroup = g.append('g').attr('clip-path', 'url(#chart-clip)')
 
@@ -486,12 +554,17 @@ export const DayView = () => {
     }
 
     // Draw function (called on zoom)
-    const draw = (transform: d3.ZoomTransform) => {
-      const newY = transform.rescaleY(yScale)
+    const draw = (currentYScale: d3.ScaleTime<number, number>) => {
       chartGroup.selectAll('*').remove()
+      g.selectAll('.hour-label').remove()
+      g.selectAll('.day-label').remove()
+
+      const domain = currentYScale.domain()
+      const domainStart = domain[0]!
+      const domainEnd = domain[1]!
 
       // Hourly grid lines
-      const hours = d3.timeHour.range(newY.domain()[0]!, newY.domain()[1]!)
+      const hours = d3.timeHour.range(domainStart, domainEnd)
       chartGroup
         .selectAll('.grid-line')
         .data(hours)
@@ -499,21 +572,19 @@ export const DayView = () => {
         .append('line')
         .attr('x1', 0)
         .attr('x2', chartWidth)
-        .attr('y1', (d) => newY(d))
-        .attr('y2', (d) => newY(d))
+        .attr('y1', (d) => currentYScale(d))
+        .attr('y2', (d) => currentYScale(d))
         .attr('stroke', 'currentColor')
         .attr('stroke-opacity', 0.1)
 
       // Hour labels on left
-      g.selectAll('.hour-label').remove()
-      const visibleHours = d3.timeHour.range(newY.domain()[0]!, newY.domain()[1]!)
       g.selectAll('.hour-label')
-        .data(visibleHours)
+        .data(hours)
         .enter()
         .append('text')
         .attr('class', 'hour-label')
         .attr('x', -8)
-        .attr('y', (d) => newY(d))
+        .attr('y', (d) => currentYScale(d))
         .attr('dy', '0.35em')
         .attr('text-anchor', 'end')
         .attr('fill', 'currentColor')
@@ -521,55 +592,111 @@ export const DayView = () => {
         .attr('opacity', 0.6)
         .text((d) => format(d, 'HH:mm'))
 
+      // Midnight / day boundary markers
+      const midnights = d3.timeDay.range(domainStart, domainEnd)
+      for (const midnight of midnights) {
+        const my = currentYScale(midnight)
+        chartGroup
+          .append('line')
+          .attr('x1', 0)
+          .attr('x2', chartWidth)
+          .attr('y1', my)
+          .attr('y2', my)
+          .attr('stroke', 'currentColor')
+          .attr('stroke-opacity', 0.3)
+          .attr('stroke-width', 1.5)
+          .attr('stroke-dasharray', '6,3')
+
+        // Day label
+        g.append('text')
+          .attr('class', 'day-label')
+          .attr('x', chartWidth + margin.right)
+          .attr('y', my + 4)
+          .attr('dy', '0.35em')
+          .attr('text-anchor', 'end')
+          .attr('fill', 'currentColor')
+          .attr('font-size', '0.65rem')
+          .attr('font-weight', '600')
+          .attr('opacity', 0.5)
+          .text(format(midnight, 'MMM d'))
+      }
+
       // Column separators
       for (let i = 1; i < COLUMNS.length; i++) {
         chartGroup
           .append('line')
           .attr('x1', i * colWidth)
           .attr('x2', i * colWidth)
-          .attr('y1', newY.range()[0]!)
-          .attr('y2', newY.range()[1]!)
+          .attr('y1', currentYScale.range()[0]!)
+          .attr('y2', currentYScale.range()[1]!)
           .attr('stroke', 'currentColor')
           .attr('stroke-opacity', 0.08)
       }
 
       // Draw items per column
-      drawColumnItems(chartGroup, columnData, colWidth, colGap, colPadding, newY, showTooltip, hideTooltip)
+      drawColumnItems(
+        chartGroup,
+        columnData,
+        colWidth,
+        colGap,
+        colPadding,
+        currentYScale,
+        showTooltip,
+        hideTooltip,
+      )
 
       // Now line
-      if (isToday) {
-        drawNowLine(chartGroup, chartWidth, newY)
-      }
+      drawNowLine(chartGroup, chartWidth, currentYScale)
     }
 
-    // Initial draw
-    draw(d3.zoomIdentity)
+    // Initial draw with current view
+    draw(yScale)
+
+    // Compute D3 zoom transform from the current view
+    const computeTransform = (vStart: Date, vEnd: Date): d3.ZoomTransform => {
+      const by0 = baseScale(vStart)
+      const by1 = baseScale(vEnd)
+      const k = CHART_HEIGHT / (by1 - by0)
+      const ty = -k * by0
+      return d3.zoomIdentity.translate(0, ty).scale(k)
+    }
 
     // D3 zoom
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.5, 20])
-      .translateExtent([
-        [0, -chartHeight * 0.5],
-        [containerWidth, chartHeight * 1.5],
-      ])
-      .extent([
-        [0, 0],
-        [containerWidth, chartHeight],
-      ])
+      .scaleExtent([0.1, 20])
+      .filter((event) => event.type !== 'dblclick')
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
-        const t = event.transform
-        const constrainedTransform = d3.zoomIdentity.translate(0, t.y).scale(t.k)
-        draw(constrainedTransform)
+        if (isProgrammaticZoom.current) return
+        const newY = event.transform.rescaleY(baseScale)
+        const newDomain = newY.domain()
+        draw(d3.scaleTime().domain(newDomain).range([0, CHART_HEIGHT]))
+        handleZoom(newDomain[0], newDomain[1])
       })
 
     svg.call(zoom)
+    zoomBehaviorRef.current = zoom
 
-    // Double-click resets zoom
+    // Set initial transform to match current view
+    const initialTransform = computeTransform(effectiveViewStart, effectiveViewEnd)
+    isProgrammaticZoom.current = true
+    svg.call(zoom.transform, initialTransform)
+    isProgrammaticZoom.current = false
+
+    // Double-click resets to today
     svg.on('dblclick.zoom', () => {
-      svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity)
+      handleResetToToday()
     })
-  }, [activities, chartItems, columnData, dayEnd, dayStart, isToday, tags])
+  }, [
+    activities,
+    chartItems,
+    columnData,
+    effectiveViewEnd,
+    effectiveViewStart,
+    handleResetToToday,
+    handleZoom,
+    tags,
+  ])
 
   // Re-render on data change and resize
   useEffect(() => {
@@ -587,29 +714,36 @@ export const DayView = () => {
   // Build sorted list of all items for mobile view
   const mobileItems = [...chartItems].sort((a, b) => a.start.getTime() - b.start.getTime())
 
+  // Date range label for navigation
+  const viewLabel =
+    format(effectiveViewStart, 'MMM d') === format(effectiveViewEnd, 'MMM d') ?
+      format(effectiveViewStart, 'MMM d, yyyy')
+    : `${format(effectiveViewStart, 'MMM d')} – ${format(effectiveViewEnd, 'MMM d, yyyy')}`
+
   return (
     <div class="day-view">
       <h1>Day View</h1>
 
       <div class="day-view-controls">
-        <div class="date-nav">
-          <button onClick={goToPrev} title="Previous day">
-            ←
+        <div class="day-view-nav">
+          <button class="nav-btn" onClick={() => handleJumpDays(-30)} title="Back 1 month">
+            {'<<'}
           </button>
-          <input
-            type="date"
-            value={selectedDate.value}
-            onInput={(e) => {
-              selectedDate.value = (e.target as HTMLInputElement).value
-            }}
-          />
-          <button onClick={goToNext} title="Next day">
-            →
+          <button class="nav-btn" onClick={() => handleJumpDays(-1)} title="Back 1 day">
+            {'<'}
+          </button>
+          <button class="nav-btn nav-today" onClick={handleResetToToday}>
+            Today
+          </button>
+          <button class="nav-btn" onClick={() => handleJumpDays(1)} title="Forward 1 day">
+            {'>'}
+          </button>
+          <button class="nav-btn" onClick={() => handleJumpDays(30)} title="Forward 1 month">
+            {'>>'}
           </button>
         </div>
-        <button class="today-btn" onClick={goToToday}>
-          Today
-        </button>
+        <span class="day-view-date-label">{viewLabel}</span>
+        {isFetching && !isLoading && <span class="day-view-fetching">Loading...</span>}
       </div>
 
       <div class="day-view-legend">
