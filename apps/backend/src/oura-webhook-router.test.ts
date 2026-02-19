@@ -27,6 +27,27 @@ describe('oura-webhook-router', () => {
     vi.clearAllMocks()
   })
 
+  describe('GET /webhooks/oura - challenge verification', () => {
+    test('returns 200 with challenge echoed back', async () => {
+      const deps = createDeps()
+      const app = createApp(deps)
+
+      const response = await request(app).get('/webhooks/oura?challenge=abc123')
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ challenge: 'abc123' })
+    })
+
+    test('returns 400 when challenge query param is missing', async () => {
+      const deps = createDeps()
+      const app = createApp(deps)
+
+      const response = await request(app).get('/webhooks/oura')
+
+      expect(response.status).toBe(400)
+    })
+  })
+
   describe('POST /webhooks/oura - notification handling', () => {
     test('returns 200 and triggers sync for valid notification', async () => {
       const deps = createDeps()
