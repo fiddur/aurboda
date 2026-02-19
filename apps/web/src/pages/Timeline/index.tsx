@@ -1,9 +1,9 @@
 /* eslint-disable max-lines -- TODO: refactor */
 import { Signal, signal } from '@preact/signals'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import {
   Activity,
   fetchActivities,
@@ -206,6 +206,10 @@ const trackSleepMeditation = 0
 const trackExercise = trackHeight
 const trackPlaces = 2 * trackHeight
 
+// Default view: yesterday + today
+const getDefaultStart = () => startOfDay(subDays(new Date(), 1))
+const getDefaultEnd = () => endOfDay(new Date())
+
 // eslint-disable-next-line complexity -- TODO: refactor
 export const Timeline = () => {
   const start = startOfDay(new Date(fromDate.value))
@@ -213,6 +217,7 @@ export const Timeline = () => {
 
   const heartRateQuery = useQuery({
     enabled: showHeartRate.value,
+    placeholderData: keepPreviousData,
     queryFn: () => fetchHeartRate(start, end),
     queryKey: ['heartRate', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
@@ -220,6 +225,7 @@ export const Timeline = () => {
 
   const hrvQuery = useQuery({
     enabled: showHrv.value,
+    placeholderData: keepPreviousData,
     queryFn: () => fetchHrv(start, end),
     queryKey: ['hrv', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
@@ -227,6 +233,7 @@ export const Timeline = () => {
 
   const activitiesQuery = useQuery({
     enabled: showSleepMeditation.value || showExercise.value,
+    placeholderData: keepPreviousData,
     queryFn: () => fetchActivities(start, end),
     queryKey: ['activities', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
@@ -234,6 +241,7 @@ export const Timeline = () => {
 
   const productivityQuery = useQuery({
     enabled: showProductivity.value,
+    placeholderData: keepPreviousData,
     queryFn: () => fetchProductivity(start, end),
     queryKey: ['productivity', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
@@ -241,6 +249,7 @@ export const Timeline = () => {
 
   const placesQuery = useQuery({
     enabled: showPlaces.value,
+    placeholderData: keepPreviousData,
     queryFn: () => fetchPlaces(start, end),
     queryKey: ['places', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
@@ -248,16 +257,11 @@ export const Timeline = () => {
 
   const tagsQuery = useQuery({
     enabled: showTags.value,
+    placeholderData: keepPreviousData,
     queryFn: () => fetchTags(start, end),
     queryKey: ['tags', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
   })
-
-  const handleDateChange = (e: Event) => {
-    const target = e.target as HTMLInputElement
-    if (target.name === 'from') fromDate.value = target.value
-    else if (target.name === 'to') toDate.value = target.value
-  }
 
   const isLoading =
     heartRateQuery.isLoading ||
@@ -266,6 +270,14 @@ export const Timeline = () => {
     productivityQuery.isLoading ||
     placesQuery.isLoading ||
     tagsQuery.isLoading
+
+  const isFetching =
+    heartRateQuery.isFetching ||
+    hrvQuery.isFetching ||
+    activitiesQuery.isFetching ||
+    productivityQuery.isFetching ||
+    placesQuery.isFetching ||
+    tagsQuery.isFetching
 
   const hasError =
     heartRateQuery.isError ||
@@ -288,67 +300,90 @@ export const Timeline = () => {
     .sort()
 
   // Calculate effective view range
-  const effectiveViewStart = viewStart.value || start
-  const effectiveViewEnd = viewEnd.value || end
+  const effectiveViewStart = viewStart.value || getDefaultStart()
+  const effectiveViewEnd = viewEnd.value || getDefaultEnd()
 
-  // Check if zoomed
-  const isZoomed = viewStart.value !== null || viewEnd.value !== null
-
-  // Handle zoom - update view range
+  // Handle zoom - update view range and expand data fetch if needed
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
     viewStart.value = zoomStart
     viewEnd.value = zoomEnd
+
+    // Check if we need more data
+    const fetchStart = startOfDay(new Date(fromDate.value))
+    const fetchEnd = endOfDay(new Date(toDate.value))
+    const todayStr = formatISO(new Date(), { representation: 'date' })
+
+    let needsExpand = false
+    let newFrom = fromDate.value
+    let newTo = toDate.value
+
+    if (zoomStart < fetchStart) {
+      newFrom = formatISO(subDays(zoomStart, 3), { representation: 'date' })
+      needsExpand = true
+    }
+    if (zoomEnd > fetchEnd) {
+      const expanded = formatISO(addDays(zoomEnd, 3), { representation: 'date' })
+      newTo = expanded > todayStr ? todayStr : expanded
+      needsExpand = true
+    }
+
+    if (needsExpand) {
+      fromDate.value = newFrom
+      toDate.value = newTo
+    }
   }, [])
 
-  // Handle zoom out - expand date range and fetch more data
-  const handleZoomOut = useCallback(() => {
-    // Expand the data fetch range by 1 day in each direction
-    const newFrom = formatISO(subDays(new Date(fromDate.value), 1), { representation: 'date' })
-    const newTo = formatISO(addDays(new Date(toDate.value), 1), { representation: 'date' })
+  // Navigation: jump by days
+  const handleJumpDays = useCallback(
+    (days: number) => {
+      const currentStart = viewStart.value || getDefaultStart()
+      const currentEnd = viewEnd.value || getDefaultEnd()
+      const newStart = addDays(currentStart, days)
+      const newEnd = addDays(currentEnd, days)
 
-    // Don't fetch future data
-    const today = formatISO(new Date(), { representation: 'date' })
-    const cappedTo = newTo > today ? today : newTo
+      // Don't allow panning into the future
+      const todayEnd = endOfDay(new Date())
+      if (newEnd > todayEnd) return
 
-    fromDate.value = newFrom
-    toDate.value = cappedTo
+      handleZoom(newStart, newEnd)
+    },
+    [handleZoom],
+  )
 
-    // Reset view to show full range
+  // Reset to default 2-day view
+  const handleResetToToday = useCallback(() => {
     viewStart.value = null
     viewEnd.value = null
+
+    // Reset fetch range to default
+    fromDate.value = formatISO(subDays(new Date(), 1), { representation: 'date' })
+    toDate.value = formatISO(new Date(), { representation: 'date' })
   }, [])
-
-  // Reset zoom to full data range
-  const handleResetZoom = useCallback(() => {
-    viewStart.value = null
-    viewEnd.value = null
-  }, [])
-
-  // Reset view when date range changes
-  useEffect(() => {
-    viewStart.value = null
-    viewEnd.value = null
-  }, [fromDate.value, toDate.value])
 
   return (
     <div class="timeline">
       <h1>Timeline</h1>
 
-      {/* Date range and controls */}
+      {/* Navigation controls */}
       <div class="timeline-controls">
-        <div class="date-range">
-          <label>
-            From: <input type="date" name="from" value={fromDate.value} onChange={handleDateChange} />
-          </label>
-          <label>
-            To: <input type="date" name="to" value={toDate.value} onChange={handleDateChange} />
-          </label>
-        </div>
-        {isZoomed && (
-          <button onClick={handleResetZoom} class="reset-btn">
-            Reset Zoom
+        <div class="timeline-nav">
+          <button class="nav-btn" onClick={() => handleJumpDays(-30)} title="Back 1 month">
+            {'<<'}
           </button>
-        )}
+          <button class="nav-btn" onClick={() => handleJumpDays(-1)} title="Back 1 day">
+            {'<'}
+          </button>
+          <button class="nav-btn nav-today" onClick={handleResetToToday}>
+            Today
+          </button>
+          <button class="nav-btn" onClick={() => handleJumpDays(1)} title="Forward 1 day">
+            {'>'}
+          </button>
+          <button class="nav-btn" onClick={() => handleJumpDays(30)} title="Forward 1 month">
+            {'>>'}
+          </button>
+        </div>
+        {isFetching && !isLoading && <span class="timeline-fetching">Loading...</span>}
       </div>
 
       {/* Layer toggles */}
@@ -436,17 +471,14 @@ export const Timeline = () => {
         showSleepMeditationSignal={showSleepMeditation}
         showExerciseSignal={showExercise}
         showPlacesSignal={showPlaces}
-        dataStart={start}
-        dataEnd={end}
         visibleStart={effectiveViewStart}
         visibleEnd={effectiveViewEnd}
         uniquePlaceNames={uniquePlaceNames}
         uniqueExerciseTypes={uniqueExerciseTypes}
         onZoom={handleZoom}
-        onZoomOut={handleZoomOut}
       />
 
-      <p class="timeline-help">Drag to select a region to zoom. Double-click to reset.</p>
+      <p class="timeline-help">Scroll to zoom · Drag to pan · Double-click to reset</p>
     </div>
   )
 }
@@ -461,14 +493,24 @@ interface TimelineChartProps {
   showSleepMeditationSignal: Signal<boolean>
   showExerciseSignal: Signal<boolean>
   showPlacesSignal: Signal<boolean>
-  dataStart: Date
-  dataEnd: Date
   visibleStart: Date
   visibleEnd: Date
   uniquePlaceNames: string[]
   uniqueExerciseTypes: string[]
   onZoom: (start: Date, end: Date) => void
-  onZoomOut: () => void
+}
+
+// Compute D3 zoom transform from a desired visible domain and base scale
+const computeTransform = (
+  start: Date,
+  end: Date,
+  baseScale: d3.ScaleTime<number, number>,
+): d3.ZoomTransform => {
+  const bx0 = baseScale(start)
+  const bx1 = baseScale(end)
+  const k = chartWidth / (bx1 - bx0)
+  const tx = -k * bx0
+  return d3.zoomIdentity.translate(tx, 0).scale(k)
 }
 
 function TimelineChart({
@@ -481,8 +523,6 @@ function TimelineChart({
   showSleepMeditationSignal,
   showExerciseSignal,
   showPlacesSignal,
-  dataStart,
-  dataEnd,
   visibleStart,
   visibleEnd,
   uniquePlaceNames,
@@ -491,8 +531,9 @@ function TimelineChart({
 }: TimelineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
-  const brushRef = useRef<SVGGElement>(null)
   const xAxisRef = useRef<SVGGElement>(null)
+  const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown>>()
+  const isProgrammaticZoom = useRef(false)
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     content: { time: '', title: '' },
@@ -500,6 +541,12 @@ function TimelineChart({
     x: 0,
     y: 0,
   })
+
+  // Stable base scale: maps the default 2-day view to pixel range
+  const baseScale = useMemo(
+    () => d3.scaleTime().domain([getDefaultStart(), getDefaultEnd()]).range([0, chartWidth]),
+    [],
+  )
 
   // Format duration in hours and minutes
   const formatDuration = (start_time: Date, end_time: Date): string => {
@@ -566,33 +613,67 @@ function TimelineChart({
   const getOverlappingTags = (start: Date, end: Date): Tag[] =>
     tags.filter((t) => t.start_time < end && (t.end_time ? t.end_time > start : t.start_time >= start))
 
-  // Setup brush for selection zoom
+  // Compute midnight markers within visible range
+  const midnights = useMemo(() => {
+    const result: Date[] = []
+    const d = new Date(visibleStart)
+    d.setHours(0, 0, 0, 0)
+    if (d <= visibleStart) d.setDate(d.getDate() + 1)
+    while (d <= visibleEnd) {
+      result.push(new Date(d))
+      d.setDate(d.getDate() + 1)
+    }
+    return result
+  }, [visibleStart, visibleEnd])
+
+  // Setup D3 zoom behavior
   useEffect(() => {
-    if (!brushRef.current) return
+    if (!svgRef.current) return
 
-    const brush = d3
-      .brushX<unknown>()
-      .extent([
-        [0, 0],
-        [chartWidth, chartHeight],
-      ])
-      .on('end', (event: d3.D3BrushEvent<unknown>) => {
-        if (!event.selection) return
-        const [x0, x1] = event.selection as [number, number]
-        const newStart = x.invert(x0)
-        const newEnd = x.invert(x1)
+    const svg = d3.select(svgRef.current)
 
-        // Clear brush selection
-        d3.select(brushRef.current).call(brush.move, null)
-
-        // Only zoom if selection is meaningful (at least 1 minute)
-        if (newEnd.getTime() - newStart.getTime() > 60000) {
-          onZoom(newStart, newEnd)
-        }
+    const zoom = d3
+      .zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.1, 50])
+      .filter((event) => {
+        // Allow wheel events and mouse drag, block double-click (handled separately)
+        if (event.type === 'dblclick') return false
+        return true
+      })
+      .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+        if (isProgrammaticZoom.current) return
+        const newX = event.transform.rescaleX(baseScale)
+        const domain = newX.domain()
+        onZoom(domain[0], domain[1])
       })
 
-    d3.select(brushRef.current).call(brush)
-  }, [chartWidth, chartHeight, visibleStart, visibleEnd, onZoom])
+    svg.call(zoom)
+
+    // Prevent default scroll behavior on the SVG so zoom works
+    svg.on('wheel.zoom', function (event: WheelEvent) {
+      event.preventDefault()
+      // Let D3 zoom handle it via the zoom behavior
+    })
+
+    // Re-apply zoom with proper wheel handling
+    svg.call(zoom)
+
+    zoomBehaviorRef.current = zoom
+
+    return () => {
+      svg.on('.zoom', null)
+    }
+  }, [baseScale, onZoom])
+
+  // Sync D3 zoom transform when visibleStart/visibleEnd change (from navigation)
+  useEffect(() => {
+    if (!svgRef.current || !zoomBehaviorRef.current) return
+
+    const transform = computeTransform(visibleStart, visibleEnd, baseScale)
+    isProgrammaticZoom.current = true
+    d3.select(svgRef.current).call(zoomBehaviorRef.current.transform, transform)
+    isProgrammaticZoom.current = false
+  }, [visibleStart, visibleEnd, baseScale])
 
   // Update x-axis with appropriate ticks based on zoom level
   useEffect(() => {
@@ -608,47 +689,36 @@ function TimelineChart({
     const rangeDays = rangeHours / 24
 
     if (rangeHours <= 1) {
-      // Less than 1 hour: show every 5 minutes
       tickInterval = d3.timeMinute.every(5)!
       tickFormat = '%H:%M'
     } else if (rangeHours <= 3) {
-      // 1-3 hours: show every 15 minutes
       tickInterval = d3.timeMinute.every(15)!
       tickFormat = '%H:%M'
     } else if (rangeHours <= 6) {
-      // 3-6 hours: show every 30 minutes
       tickInterval = d3.timeMinute.every(30)!
       tickFormat = '%H:%M'
     } else if (rangeHours <= 12) {
-      // 6-12 hours: show every hour
       tickInterval = d3.timeHour.every(1)!
       tickFormat = '%H:%M'
     } else if (rangeHours <= 24) {
-      // 12-24 hours: show every 2 hours
       tickInterval = d3.timeHour.every(2)!
       tickFormat = '%H:%M'
     } else if (rangeHours <= 48) {
-      // 1-2 days: show every 4 hours
       tickInterval = d3.timeHour.every(4)!
       tickFormat = '%a %H'
     } else if (rangeDays <= 7) {
-      // 2-7 days: show every 12 hours
       tickInterval = d3.timeHour.every(12)!
       tickFormat = '%a %H'
     } else if (rangeDays <= 14) {
-      // 1-2 weeks: show every day
       tickInterval = d3.timeDay.every(1)!
       tickFormat = '%b %d'
     } else if (rangeDays <= 31) {
-      // 2 weeks - 1 month: show every 2 days
       tickInterval = d3.timeDay.every(2)!
       tickFormat = '%b %d'
     } else if (rangeDays <= 90) {
-      // 1-3 months: show every week
       tickInterval = d3.timeWeek.every(1)!
       tickFormat = '%b %d'
     } else {
-      // More than 3 months: show every 2 weeks
       tickInterval = d3.timeWeek.every(2)!
       tickFormat = '%b %d'
     }
@@ -661,10 +731,10 @@ function TimelineChart({
     )
   }, [visibleStart, visibleEnd])
 
-  // Double-click to reset zoom
+  // Double-click to reset zoom to default 2-day view
   const handleDoubleClick = useCallback(() => {
-    onZoom(dataStart, dataEnd)
-  }, [dataStart, dataEnd, onZoom])
+    onZoom(getDefaultStart(), getDefaultEnd())
+  }, [onZoom])
 
   return (
     <div ref={containerRef} class="timeline-chart-container">
@@ -681,7 +751,7 @@ function TimelineChart({
         ref={svgRef}
         width={width}
         height={height}
-        style={{ color: 'currentColor', cursor: 'crosshair' }}
+        style={{ color: 'currentColor', cursor: 'grab' }}
         onDblClick={handleDoubleClick}
       >
         {/* Lane labels on the left */}
@@ -756,6 +826,13 @@ function TimelineChart({
         </g>
 
         <g transform={`translate(${margin.left},${margin.top})`}>
+          {/* Clip path to constrain chart content */}
+          <defs>
+            <clipPath id="chart-clip">
+              <rect x={0} y={0} width={chartWidth} height={chartHeight} />
+            </clipPath>
+          </defs>
+
           {/* Lane separator lines */}
           <line
             x1={0}
@@ -782,212 +859,238 @@ function TimelineChart({
             opacity={0.2}
           />
 
-          {/* Sleep sessions - in sleep/meditation lane */}
-          {sleepSessions.map((session, i) =>
-            session.end_time ?
-              <rect
-                key={`sleep-${i}`}
-                x={x(session.start_time)}
-                y={trackSleepMeditation}
-                width={Math.max(0, x(session.end_time) - x(session.start_time))}
-                height={trackHeight}
-                fill={colors.sleep}
-                opacity={0.4}
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) => {
-                  const avgHrv = getAvgHrvInRange(session.start_time, session.end_time!)
-                  const details = [formatDuration(session.start_time, session.end_time!)]
-                  if (avgHrv) details.push(`Avg HRV: ${avgHrv} ms`)
-                  showTooltip(
-                    e as unknown as MouseEvent,
-                    'Sleep',
-                    `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
-                    details.join(' | '),
-                  )
-                }}
-                onMouseLeave={hideTooltip}
-              />
-            : null,
-          )}
+          {/* Midnight markers */}
+          {midnights.map((midnight) => {
+            const mx = x(midnight)
+            if (mx < 0 || mx > chartWidth) return null
+            return (
+              <g key={midnight.getTime()}>
+                <line
+                  x1={mx}
+                  y1={0}
+                  x2={mx}
+                  y2={chartHeight}
+                  stroke="currentColor"
+                  opacity={0.3}
+                  strokeWidth={1.5}
+                  strokeDasharray="6 3"
+                />
+                <text x={mx + 4} y={12} fill="currentColor" opacity={0.5} fontSize="10">
+                  {format(midnight, 'MMM d')}
+                </text>
+              </g>
+            )
+          })}
 
-          {/* Meditation sessions - in sleep/meditation lane */}
-          {meditationSessions.map((session, i) =>
-            session.end_time ?
-              <rect
-                key={`meditation-${i}`}
-                x={x(session.start_time)}
-                y={trackSleepMeditation}
-                width={Math.max(0, x(session.end_time) - x(session.start_time))}
-                height={trackHeight}
-                fill={colors.meditation}
-                opacity={0.6}
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) => {
-                  const avgHrv =
-                    getMeditationHrv(session) ?? getAvgHrvInRange(session.start_time, session.end_time!)
-                  const overlapping = getOverlappingTags(session.start_time, session.end_time!)
-                  const details = [formatDuration(session.start_time, session.end_time!)]
-                  if (avgHrv) details.push(`Avg HRV: ${avgHrv} ms`)
-                  if (overlapping.length > 0) details.push(overlapping.map((t) => t.tag).join(', '))
-                  showTooltip(
-                    e as unknown as MouseEvent,
-                    session.title || 'Meditation',
-                    `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
-                    details.join(' | '),
-                  )
-                }}
-                onMouseLeave={hideTooltip}
-              />
-            : null,
-          )}
+          {/* Clipped chart content */}
+          <g clip-path="url(#chart-clip)">
+            {/* Sleep sessions - in sleep/meditation lane */}
+            {sleepSessions.map((session, i) =>
+              session.end_time ?
+                <rect
+                  key={`sleep-${i}`}
+                  x={x(session.start_time)}
+                  y={trackSleepMeditation}
+                  width={Math.max(0, x(session.end_time) - x(session.start_time))}
+                  height={trackHeight}
+                  fill={colors.sleep}
+                  opacity={0.4}
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={(e) => {
+                    const avgHrv = getAvgHrvInRange(session.start_time, session.end_time!)
+                    const details = [formatDuration(session.start_time, session.end_time!)]
+                    if (avgHrv) details.push(`Avg HRV: ${avgHrv} ms`)
+                    showTooltip(
+                      e as unknown as MouseEvent,
+                      'Sleep',
+                      `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
+                      details.join(' | '),
+                    )
+                  }}
+                  onMouseLeave={hideTooltip}
+                />
+              : null,
+            )}
 
-          {/* Productivity (Computer) - overlaid on top */}
-          {productivity
-            .filter((p) => !p.is_mobile)
-            .map((p, i) => (
-              <rect
-                key={`computer-${i}`}
-                x={x(p.start_time)}
-                y={0}
-                width={Math.max(0, x(p.end_time) - x(p.start_time))}
-                height={4}
-                fill={colors.computer}
-              />
-            ))}
+            {/* Meditation sessions - in sleep/meditation lane */}
+            {meditationSessions.map((session, i) =>
+              session.end_time ?
+                <rect
+                  key={`meditation-${i}`}
+                  x={x(session.start_time)}
+                  y={trackSleepMeditation}
+                  width={Math.max(0, x(session.end_time) - x(session.start_time))}
+                  height={trackHeight}
+                  fill={colors.meditation}
+                  opacity={0.6}
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={(e) => {
+                    const avgHrv =
+                      getMeditationHrv(session) ?? getAvgHrvInRange(session.start_time, session.end_time!)
+                    const overlapping = getOverlappingTags(session.start_time, session.end_time!)
+                    const details = [formatDuration(session.start_time, session.end_time!)]
+                    if (avgHrv) details.push(`Avg HRV: ${avgHrv} ms`)
+                    if (overlapping.length > 0) details.push(overlapping.map((t) => t.tag).join(', '))
+                    showTooltip(
+                      e as unknown as MouseEvent,
+                      session.title || 'Meditation',
+                      `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
+                      details.join(' | '),
+                    )
+                  }}
+                  onMouseLeave={hideTooltip}
+                />
+              : null,
+            )}
 
-          {/* Productivity (Mobile) - overlaid on top */}
-          {productivity
-            .filter((p) => p.is_mobile)
-            .map((p, i) => (
-              <rect
-                key={`mobile-${i}`}
-                x={x(p.start_time)}
-                y={4}
-                width={Math.max(0, x(p.end_time) - x(p.start_time))}
-                height={4}
-                fill={colors.mobile}
-              />
-            ))}
+            {/* Productivity (Computer) - overlaid on top */}
+            {productivity
+              .filter((p) => !p.is_mobile)
+              .map((p, i) => (
+                <rect
+                  key={`computer-${i}`}
+                  x={x(p.start_time)}
+                  y={0}
+                  width={Math.max(0, x(p.end_time) - x(p.start_time))}
+                  height={4}
+                  fill={colors.computer}
+                />
+              ))}
 
-          {/* Exercise sessions - in exercise lane */}
-          {exerciseSessions.map((session, i) =>
-            session.end_time ?
-              <rect
-                key={`exercise-${i}`}
-                x={x(session.start_time)}
-                y={trackExercise}
-                width={Math.max(0, x(session.end_time) - x(session.start_time))}
-                height={trackHeight}
-                fill={getExerciseColor(getExerciseTypeName(session), uniqueExerciseTypes)}
-                opacity={0.6}
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) =>
-                  showTooltip(
-                    e as unknown as MouseEvent,
-                    getExerciseTypeName(session),
-                    `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
-                    formatDuration(session.start_time, session.end_time!),
-                  )
-                }
-                onMouseLeave={hideTooltip}
-              />
-            : null,
-          )}
+            {/* Productivity (Mobile) - overlaid on top */}
+            {productivity
+              .filter((p) => p.is_mobile)
+              .map((p, i) => (
+                <rect
+                  key={`mobile-${i}`}
+                  x={x(p.start_time)}
+                  y={4}
+                  width={Math.max(0, x(p.end_time) - x(p.start_time))}
+                  height={4}
+                  fill={colors.mobile}
+                />
+              ))}
 
-          {/* Places - in places lane */}
-          {showPlacesSignal.value &&
-            places.map((place, i) => (
-              <rect
-                key={`place-${i}`}
-                x={x(place.start_time)}
-                y={trackPlaces}
-                width={Math.max(0, x(place.end_time) - x(place.start_time))}
-                height={trackHeight}
-                fill={getPlaceColor(place.region, uniquePlaceNames)}
-                opacity={0.7}
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) =>
-                  showTooltip(
-                    e as unknown as MouseEvent,
-                    place.region || 'Unknown Location',
-                    `${format(place.start_time, 'HH:mm')} - ${format(place.end_time, 'HH:mm')}`,
-                    formatDuration(place.start_time, place.end_time),
-                  )
-                }
-                onMouseLeave={hideTooltip}
-              />
-            ))}
+            {/* Exercise sessions - in exercise lane */}
+            {exerciseSessions.map((session, i) =>
+              session.end_time ?
+                <rect
+                  key={`exercise-${i}`}
+                  x={x(session.start_time)}
+                  y={trackExercise}
+                  width={Math.max(0, x(session.end_time) - x(session.start_time))}
+                  height={trackHeight}
+                  fill={getExerciseColor(getExerciseTypeName(session), uniqueExerciseTypes)}
+                  opacity={0.6}
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={(e) =>
+                    showTooltip(
+                      e as unknown as MouseEvent,
+                      getExerciseTypeName(session),
+                      `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
+                      formatDuration(session.start_time, session.end_time!),
+                    )
+                  }
+                  onMouseLeave={hideTooltip}
+                />
+              : null,
+            )}
 
-          {/* Tags - dashed lines or rectangles */}
-          {tags.map((tag, i) =>
-            tag.end_time ?
-              <rect
-                key={`tag-${i}`}
-                x={x(tag.start_time)}
-                y={0}
-                width={Math.max(0, x(tag.end_time) - x(tag.start_time))}
-                height={chartHeight}
+            {/* Places - in places lane */}
+            {showPlacesSignal.value &&
+              places.map((place, i) => (
+                <rect
+                  key={`place-${i}`}
+                  x={x(place.start_time)}
+                  y={trackPlaces}
+                  width={Math.max(0, x(place.end_time) - x(place.start_time))}
+                  height={trackHeight}
+                  fill={getPlaceColor(place.region, uniquePlaceNames)}
+                  opacity={0.7}
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={(e) =>
+                    showTooltip(
+                      e as unknown as MouseEvent,
+                      place.region || 'Unknown Location',
+                      `${format(place.start_time, 'HH:mm')} - ${format(place.end_time, 'HH:mm')}`,
+                      formatDuration(place.start_time, place.end_time),
+                    )
+                  }
+                  onMouseLeave={hideTooltip}
+                />
+              ))}
+
+            {/* Tags - dashed lines or rectangles */}
+            {tags.map((tag, i) =>
+              tag.end_time ?
+                <rect
+                  key={`tag-${i}`}
+                  x={x(tag.start_time)}
+                  y={0}
+                  width={Math.max(0, x(tag.end_time) - x(tag.start_time))}
+                  height={chartHeight}
+                  fill="none"
+                  stroke={colors.tags}
+                  strokeDasharray="4"
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={(e) =>
+                    showTooltip(
+                      e as unknown as MouseEvent,
+                      tag.tag,
+                      `${format(tag.start_time, 'HH:mm')} - ${format(tag.end_time!, 'HH:mm')}`,
+                      formatDuration(tag.start_time, tag.end_time!),
+                    )
+                  }
+                  onMouseLeave={hideTooltip}
+                />
+              : <line
+                  key={`tag-${i}`}
+                  x1={x(tag.start_time)}
+                  y1={0}
+                  x2={x(tag.start_time)}
+                  y2={chartHeight}
+                  stroke={colors.tags}
+                  strokeDasharray="4"
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={(e) =>
+                    showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.start_time, 'HH:mm'))
+                  }
+                  onMouseLeave={hideTooltip}
+                />,
+            )}
+
+            {/* HRV Line */}
+            {hrvData.length > 0 && (
+              <path
                 fill="none"
-                stroke={colors.tags}
-                strokeDasharray="4"
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) =>
-                  showTooltip(
-                    e as unknown as MouseEvent,
-                    tag.tag,
-                    `${format(tag.start_time, 'HH:mm')} - ${format(tag.end_time!, 'HH:mm')}`,
-                    formatDuration(tag.start_time, tag.end_time!),
-                  )
+                stroke={colors.hrv}
+                strokeWidth="1.5"
+                d={
+                  d3
+                    .line<[Date, number] | null>()
+                    .defined(Boolean)
+                    .x(([time]) => x(time))
+                    .y(([, value]) => yHrv(value))(preprocessData(hrvData, 10)) || ''
                 }
-                onMouseLeave={hideTooltip}
               />
-            : <line
-                key={`tag-${i}`}
-                x1={x(tag.start_time)}
-                y1={0}
-                x2={x(tag.start_time)}
-                y2={chartHeight}
-                stroke={colors.tags}
-                strokeDasharray="4"
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) =>
-                  showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.start_time, 'HH:mm'))
+            )}
+
+            {/* Heart Rate Line */}
+            {heartRates.length > 0 && (
+              <path
+                fill="none"
+                stroke={colors.heartRate}
+                strokeWidth="1.5"
+                d={
+                  d3
+                    .line<[Date, number] | null>()
+                    .defined(Boolean)
+                    .x(([time]) => x(time))
+                    .y(([, rate]) => yHr(rate))(preprocessData(heartRates, 10)) || ''
                 }
-                onMouseLeave={hideTooltip}
-              />,
-          )}
-
-          {/* HRV Line */}
-          {hrvData.length > 0 && (
-            <path
-              fill="none"
-              stroke={colors.hrv}
-              strokeWidth="1.5"
-              d={
-                d3
-                  .line<[Date, number] | null>()
-                  .defined(Boolean)
-                  .x(([time]) => x(time))
-                  .y(([, value]) => yHrv(value))(preprocessData(hrvData, 10)) || ''
-              }
-            />
-          )}
-
-          {/* Heart Rate Line */}
-          {heartRates.length > 0 && (
-            <path
-              fill="none"
-              stroke={colors.heartRate}
-              strokeWidth="1.5"
-              d={
-                d3
-                  .line<[Date, number] | null>()
-                  .defined(Boolean)
-                  .x(([time]) => x(time))
-                  .y(([, rate]) => yHr(rate))(preprocessData(heartRates, 10)) || ''
-              }
-            />
-          )}
+              />
+            )}
+          </g>
 
           {/* Y-axis for heart rate (left) */}
           <g
@@ -1006,9 +1109,6 @@ function TimelineChart({
 
           {/* X-axis */}
           <g ref={xAxisRef} transform={`translate(0,${chartHeight})`} />
-
-          {/* Brush for selection zoom */}
-          <g ref={brushRef} class="brush" />
         </g>
       </svg>
     </div>
