@@ -6,6 +6,7 @@ import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
 import { AdminSettings } from './pages/AdminSettings/index.jsx'
 import { Correlations } from './pages/Correlations/index.jsx'
+import { DayView } from './pages/DayView/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
 import { Help } from './pages/Help/index.jsx'
 import { Home } from './pages/Home/index.jsx'
@@ -34,6 +35,7 @@ export function App() {
             <Route path="/goals" component={Goals} />
             <Route path="/hr-zones" component={HrZones} />
             <Route path="/timeline" component={Timeline} />
+            <Route path="/day" component={DayView} />
             <Route path="/sleep" component={Sleep} />
             <Route path="/correlations" component={Correlations} />
             <Route path="/trends" component={Trends} />
