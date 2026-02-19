@@ -126,6 +126,7 @@ export const getExerciseTypeValue = (name: ExerciseTypeName): number => exercise
 export const activitySchema = z
   .object({
     activity_type: z.string().meta({ description: 'Activity type' }),
+    avg_hrv: z.number().optional().meta({ description: 'Average HRV (ms) during the activity' }),
     data: z.record(z.string(), z.unknown()).optional(),
     duration: durationMinutesSchema.optional(),
     end_time: iso8601DateTimeSchema.optional(),

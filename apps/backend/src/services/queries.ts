@@ -800,9 +800,32 @@ export interface ActivityResult {
   duration?: number // minutes
   activity_type: string
   title?: string
+  notes?: string
   source: string
   data?: Record<string, unknown>
   hr_zone_secs?: HrZoneSecs
+  avg_hrv?: number
+}
+
+/**
+ * Get average HRV for an activity, using embedded Oura data or time series.
+ */
+async function getAvgHrvForActivity(
+  user: string,
+  activity: { data?: Record<string, unknown>; start_time: Date; end_time?: Date },
+): Promise<number | undefined> {
+  // Try embedded Oura HRV data first (meditation sessions have hrv.items)
+  const hrv = activity.data?.hrv as { items?: (number | null)[] } | undefined
+  const items = hrv?.items?.filter((v): v is number => v !== null && v > 0)
+  if (items && items.length > 0) {
+    return Math.round(items.reduce((sum, v) => sum + v, 0) / items.length)
+  }
+
+  // Fall back to time series HRV data
+  if (!activity.end_time) return undefined
+  const hrvData = await getTimeSeries(user, 'hrv_rmssd', activity.start_time, activity.end_time)
+  if (hrvData.length === 0) return undefined
+  return Math.round(hrvData.reduce((sum, [, v]) => sum + v, 0) / hrvData.length)
 }
 
 /**
@@ -835,6 +858,7 @@ export async function queryActivities(
         duration:
           a.end_time ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60) : undefined,
         end_time: a.end_time?.toISOString(),
+        notes: a.notes,
         source: a.source,
         start_time: a.start_time.toISOString(),
         title: a.title,
@@ -846,6 +870,11 @@ export async function queryActivities(
         if (hrData.length > 0) {
           result.hr_zone_secs = computeHrZoneSecs(hrData, hrZones)
         }
+      }
+
+      // Compute average HRV for sleep and meditation
+      if ((a.activity_type === 'sleep' || a.activity_type === 'meditation') && a.end_time) {
+        result.avg_hrv = await getAvgHrvForActivity(user, a)
       }
 
       return result
@@ -867,9 +896,16 @@ export interface ProductivityResult {
 }
 
 /**
+ * Maximum gap (ms) between spans that still counts as "consecutive".
+ * RescueTime often has small gaps (e.g. end 06:39:59, next start 06:40:00).
+ * 2 minutes covers these gaps without merging truly separate sessions.
+ */
+const MERGE_GAP_MS = 2 * 60 * 1000
+
+/**
  * Merge consecutive productivity spans for the same activity/is_mobile.
- * Two spans are merged when the second starts exactly when the first ends
- * and they share the same activity name and is_mobile flag.
+ * Two spans are merged when the gap between prev.end_time and current.start_time
+ * is at most MERGE_GAP_MS and they share the same activity name and is_mobile flag.
  */
 export function mergeProductivitySpans(records: ProductivityRecord[]): ProductivityRecord[] {
   if (records.length === 0) return []
@@ -882,9 +918,10 @@ export function mergeProductivitySpans(records: ProductivityRecord[]): Productiv
 
     const sameActivity = current.activity === prev.activity
     const sameMobile = (current.is_mobile ?? false) === (prev.is_mobile ?? false)
-    const consecutive = prev.end_time.getTime() === current.start_time.getTime()
+    const gap = current.start_time.getTime() - prev.end_time.getTime()
+    const closeEnough = gap >= 0 && gap <= MERGE_GAP_MS
 
-    if (sameActivity && sameMobile && consecutive) {
+    if (sameActivity && sameMobile && closeEnough) {
       prev.end_time = current.end_time
       prev.duration_sec += current.duration_sec
     } else {
