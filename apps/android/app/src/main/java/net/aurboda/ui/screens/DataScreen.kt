@@ -25,10 +25,10 @@ import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import net.aurboda.DataResult
-import net.aurboda.HrZoneThresholds
-import net.aurboda.PeriodSummaryResponse
 import net.aurboda.appJson
 import net.aurboda.defaultHrZoneThresholds
+import net.aurboda.api.models.HrZoneThresholdsOutput
+import net.aurboda.api.models.PeriodSummaryResponse
 import net.aurboda.fetchPeriodSummary
 import net.aurboda.fetchUserSettings
 import net.aurboda.findMetricTimeSeconds
@@ -44,7 +44,7 @@ private sealed class DataScreenState {
     data object Loading : DataScreenState()
     data class Loaded(
         val periodSummary: PeriodSummaryResponse,
-        val hrZoneThresholds: HrZoneThresholds
+        val hrZoneThresholds: HrZoneThresholdsOutput
     ) : DataScreenState()
     data class Error(val message: String) : DataScreenState()
 }
@@ -83,7 +83,7 @@ fun DataScreen(
 
         // Fetch user settings for HR zone thresholds
         val thresholds = when (val settingsResult = fetchUserSettings(httpClient, apiUrl, authToken)) {
-            is DataResult.Success -> settingsResult.data.hrZoneStart ?: defaultHrZoneThresholds
+            is DataResult.Success -> settingsResult.data.hrZoneStart
             is DataResult.Error -> defaultHrZoneThresholds
         }
 
@@ -127,7 +127,7 @@ fun DataScreen(
 @Composable
 private fun DataContent(
     periodSummary: PeriodSummaryResponse,
-    hrZoneThresholds: HrZoneThresholds,
+    hrZoneThresholds: HrZoneThresholdsOutput,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -146,7 +146,7 @@ private fun DataContent(
 
         for (zoneIndex in 0..5) {
             val metricName = "hr_zone_${zoneIndex}_sec"
-            val timeSeconds = findMetricTimeSeconds(periodSummary.metrics, metricName)
+            val timeSeconds = findMetricTimeSeconds(periodSummary.metrics.orEmpty(), metricName)
 
             HrZoneBar(
                 zoneIndex = zoneIndex,

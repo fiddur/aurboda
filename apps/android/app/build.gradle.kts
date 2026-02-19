@@ -72,6 +72,12 @@ android {
     namespace = "net.aurboda"
     compileSdk = 36
 
+    sourceSets {
+        getByName("main") {
+            java.srcDir("../../../packages/api-spec/generated/kotlin/src/main/kotlin")
+        }
+    }
+
     defaultConfig {
         applicationId = "net.aurboda"
         minSdk = 34

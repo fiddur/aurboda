@@ -33,6 +33,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.KSerializer
+import net.aurboda.api.models.DailyAggregate
+import net.aurboda.api.models.DailyAggregatesBody
 import net.aurboda.widget.HrZoneWidgetProvider
 import java.util.concurrent.TimeUnit
 
@@ -54,12 +56,12 @@ class HealthConnectSyncWorker(
     }
 
     // Cumulative metrics that should be aggregated to avoid duplication
-    private val aggregatableMetrics: List<Pair<AggregateMetric<*>, String>> = listOf(
-        Pair(StepsRecord.COUNT_TOTAL, "steps"),
-        Pair(DistanceRecord.DISTANCE_TOTAL, "distance"),
-        Pair(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL, "calories_active"),
-        Pair(TotalCaloriesBurnedRecord.ENERGY_TOTAL, "calories_total"),
-        Pair(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL, "floors_climbed")
+    private val aggregatableMetrics: List<Pair<AggregateMetric<*>, DailyAggregate.Metric>> = listOf(
+        Pair(StepsRecord.COUNT_TOTAL, DailyAggregate.Metric.steps),
+        Pair(DistanceRecord.DISTANCE_TOTAL, DailyAggregate.Metric.distance),
+        Pair(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL, DailyAggregate.Metric.calories_active),
+        Pair(TotalCaloriesBurnedRecord.ENERGY_TOTAL, DailyAggregate.Metric.calories_total),
+        Pair(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL, DailyAggregate.Metric.floors_climbed)
     )
 
     // Record types that are handled by aggregates (to filter from raw records)
@@ -393,7 +395,7 @@ class HealthConnectSyncWorker(
             val startTime = date.atStartOfDay(zoneId).toInstant()
             val endTime = date.plusDays(1).atStartOfDay(zoneId).toInstant()
 
-            for ((metric, metricName) in aggregatableMetrics) {
+            for ((metric, metricType) in aggregatableMetrics) {
                 try {
                     val request = AggregateRequest(
                         metrics = setOf(metric),
@@ -419,15 +421,15 @@ class HealthConnectSyncWorker(
                         aggregates.add(
                             DailyAggregate(
                                 date = date.toString(), // YYYY-MM-DD format
-                                metric = metricName,
+                                metric = metricType,
                                 value = value,
                                 dataOrigins = dataOrigins
                             )
                         )
-                        Log.d(TAG, "Aggregate for $metricName on $date: $value from ${dataOrigins.size} sources")
+                        Log.d(TAG, "Aggregate for $metricType on $date: $value from ${dataOrigins.size} sources")
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to fetch aggregate for $metricName on $date", e)
+                    Log.w(TAG, "Failed to fetch aggregate for $metricType on $date", e)
                 }
             }
         }
@@ -448,7 +450,7 @@ class HealthConnectSyncWorker(
             return true
         }
 
-        val postData = PostWrapper(aggregates)
+        val postData = DailyAggregatesBody(data = aggregates)
         return try {
             val response = httpClient.post("$serverUrl/sync/daily-aggregates") {
                 contentType(ContentType.Application.Json)

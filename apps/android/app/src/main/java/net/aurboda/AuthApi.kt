@@ -10,21 +10,10 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.serialization.Serializable
+import net.aurboda.api.models.LoginBody
+import net.aurboda.api.models.LoginResponse
 
 private const val TAG = "AuthApi"
-
-@Serializable
-data class LoginRequest(
-    val username: String,
-    val password: String
-)
-
-@Serializable
-data class LoginResponse(
-    val token: String,
-    val refresh: String
-)
 
 sealed class LoginResult {
     data class Success(val token: String, val refreshToken: String) : LoginResult()
@@ -39,7 +28,7 @@ class AuthApi(private val httpClient: HttpClient) {
         return try {
             val response = httpClient.post(loginUrl) {
                 contentType(ContentType.Application.Json)
-                setBody(LoginRequest(username, password))
+                setBody(LoginBody(password = password, username = username))
             }
             val loginResponse = response.body<LoginResponse>()
             Log.d(TAG, "Login successful for user: $username")

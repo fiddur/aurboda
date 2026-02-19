@@ -15,7 +15,7 @@ import net.aurboda.DataResult
 import net.aurboda.R
 import net.aurboda.fetchGoalsProgress
 import net.aurboda.formatZoneTime
-import net.aurboda.GoalProgress
+import net.aurboda.api.models.GoalProgress
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -104,16 +104,16 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
         views.setOnClickFillInIntent(R.id.goal_item_container, fillInIntent)
 
         // Set label
-        val label = metricLabels[goal.metric] ?: goal.metric
+        val label = metricLabels[goal.metric.value] ?: goal.metric.value
         views.setTextViewText(R.id.goal_label, label)
 
         // Set current value
-        val valueText = formatGoalValue(goal.metric, goal.current, goal.unit)
+        val valueText = formatGoalValue(goal.metric.value, goal.current, goal.unit)
         views.setTextViewText(R.id.goal_value, valueText)
 
         // Set "losing tomorrow" text
         if (goal.losingTomorrow > 0) {
-            val losingText = "(-${formatGoalValue(goal.metric, goal.losingTomorrow, goal.unit)} tomorrow)"
+            val losingText = "(-${formatGoalValue(goal.metric.value, goal.losingTomorrow, goal.unit)} tomorrow)"
             views.setTextViewText(R.id.goal_losing, losingText)
         } else {
             views.setTextViewText(R.id.goal_losing, "")
