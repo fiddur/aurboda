@@ -64,15 +64,6 @@ class HealthConnectSyncWorker(
         Pair(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL, DailyAggregate.Metric.floors_climbed)
     )
 
-    // Record types that are handled by aggregates (to filter from raw records)
-    private val aggregatedRecordTypes = setOf(
-        StepsRecord::class,
-        DistanceRecord::class,
-        ActiveCaloriesBurnedRecord::class,
-        TotalCaloriesBurnedRecord::class,
-        FloorsClimbedRecord::class
-    )
-
     override suspend fun doWork(): Result {
         Log.d(TAG, "Starting background sync")
 
@@ -116,28 +107,14 @@ class HealthConnectSyncWorker(
             }
 
             if (records.isNotEmpty()) {
-                // Filter out records that are handled by aggregates
-                val filteredRecords = records.filter { record ->
-                    record::class !in aggregatedRecordTypes
-                }
-                Log.d(TAG, "Filtered ${records.size} records to ${filteredRecords.size} (excluded aggregated types)")
-
-                if (filteredRecords.isNotEmpty()) {
-                    val success = sendDataToServer(filteredRecords, credentials.apiUrl, credentials.authToken)
-                    if (success) {
-                        Log.d(TAG, "Background sync completed successfully")
-                        HrZoneWidgetProvider.triggerUpdate(applicationContext)
-                        Result.success()
-                    } else {
-                        Log.w(TAG, "Background sync failed to send data")
-                        Result.retry()
-                    }
-                } else {
-                    Log.d(TAG, "No filtered records to sync (all were aggregated types)")
-                    // Still save token since we successfully processed the records
-                    pendingToken?.let { saveChangesToken(it) }
+                val success = sendDataToServer(records, credentials.apiUrl, credentials.authToken)
+                if (success) {
+                    Log.d(TAG, "Background sync completed successfully")
                     HrZoneWidgetProvider.triggerUpdate(applicationContext)
                     Result.success()
+                } else {
+                    Log.w(TAG, "Background sync failed to send data")
+                    Result.retry()
                 }
             } else {
                 // If we had deletions but no records, save token
@@ -214,14 +191,14 @@ class HealthConnectSyncWorker(
         serverUrl: String,
         authToken: String
     ): Boolean {
-        // Note: StepsRecord, DistanceRecord, ActiveCaloriesBurnedRecord, TotalCaloriesBurnedRecord,
-        // and FloorsClimbedRecord are excluded here as they are handled by daily aggregates
         val recordsWithKnownSerializers = records.filter {
             when (it) {
                 is HeartRateVariabilityRmssdRecord, is WeightRecord, is HeartRateRecord,
                 is ExerciseSessionRecord, is SpeedRecord, is PowerRecord, is NutritionRecord,
                 is LeanBodyMassRecord, is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord,
-                is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord -> true
+                is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord,
+                is StepsRecord, is DistanceRecord, is ActiveCaloriesBurnedRecord,
+                is TotalCaloriesBurnedRecord, is FloorsClimbedRecord -> true
                 else -> false
             }
         }
@@ -240,8 +217,6 @@ class HealthConnectSyncWorker(
             val recordTypeSimpleName = recordClass.simpleName ?: "UnknownRecordType"
             val apiUrl = "$serverUrl/sync/$recordTypeSimpleName"
 
-            // Note: StepsRecord, DistanceRecord, ActiveCaloriesBurnedRecord, TotalCaloriesBurnedRecord
-            // are now handled by daily aggregates and excluded from raw record sync
             val postSuccessful = when (recordClass) {
                 HeartRateVariabilityRmssdRecord::class -> postData(
                     HrvRecordSerializable.fromRecordsList(classRecords),
@@ -311,6 +286,31 @@ class HealthConnectSyncWorker(
                 RestingHeartRateRecord::class -> postData(
                     RestingHeartRateRecordSerializable.fromRecordsList(classRecords),
                     RestingHeartRateRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                StepsRecord::class -> postData(
+                    StepsRecordSerializable.fromRecordsList(classRecords),
+                    StepsRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                DistanceRecord::class -> postData(
+                    DistanceRecordSerializable.fromRecordsList(classRecords),
+                    DistanceRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                ActiveCaloriesBurnedRecord::class -> postData(
+                    ActiveCaloriesBurnedRecordSerializable.fromRecordsList(classRecords),
+                    ActiveCaloriesBurnedRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                TotalCaloriesBurnedRecord::class -> postData(
+                    TotalCaloriesBurnedRecordSerializable.fromRecordsList(classRecords),
+                    TotalCaloriesBurnedRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                FloorsClimbedRecord::class -> postData(
+                    FloorsClimbedRecordSerializable.fromRecordsList(classRecords),
+                    FloorsClimbedRecordSerializable.serializer(),
                     apiUrl, recordTypeSimpleName, authToken
                 )
                 else -> {
