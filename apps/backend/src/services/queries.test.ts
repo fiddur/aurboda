@@ -1168,7 +1168,29 @@ describe('mergeProductivitySpans', () => {
     expect(result).toHaveLength(2)
   })
 
-  test('does not merge spans with a gap between them', () => {
+  test('merges spans with a small gap (within 2 min leeway)', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        duration_sec: 299,
+        end_time: new Date('2024-01-15T10:04:59Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:00Z'),
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0].start_time).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(result[0].end_time).toEqual(new Date('2024-01-15T10:10:00Z'))
+    expect(result[0].duration_sec).toBe(599)
+  })
+
+  test('does not merge spans with a large gap between them', () => {
     const result = mergeProductivitySpans([
       {
         activity: 'emacs',

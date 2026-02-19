@@ -166,7 +166,7 @@ interface TooltipContent {
 }
 
 // Categorization per column
-const categorizeSleepRest = (activities: Activity[]): ChartItem[] =>
+const categorizeSleepRest = (activities: Activity[], tags: Tag[]): ChartItem[] =>
   activities
     .filter(
       (a) => a.activity_type === 'sleep' || a.activity_type === 'nap' || a.activity_type === 'meditation',
@@ -177,6 +177,22 @@ const categorizeSleepRest = (activities: Activity[]): ChartItem[] =>
         a.activity_type === 'sleep' ? 'Sleep'
         : a.activity_type === 'nap' ? 'Nap'
         : 'Meditation'
+      const details: string[] = [formatDuration(a.start_time, end)]
+      if (a.avg_hrv) details.push(`Avg HRV: ${a.avg_hrv} ms`)
+      if (a.notes) details.push(a.notes)
+
+      // For meditation, show overlapping last.fm tags
+      if (a.activity_type === 'meditation') {
+        const music = tags
+          .filter((t) => t.source === 'lastfm' || t.source === 'lastfm-auto')
+          .filter((t) => {
+            const tagEnd = t.end_time ?? new Date(t.start_time.getTime() + 4 * 60000)
+            return t.start_time < end && tagEnd > a.start_time
+          })
+          .map((t) => t.tag)
+        if (music.length > 0) details.push(`♪ ${music.slice(0, 3).join(', ')}`)
+      }
+
       return {
         color: activityColors[a.activity_type] ?? '#3b82f6',
         column: 'Sleep / Rest' as Column,
@@ -185,7 +201,7 @@ const categorizeSleepRest = (activities: Activity[]): ChartItem[] =>
         label,
         start: a.start_time,
         tooltip: {
-          details: [formatDuration(a.start_time, end)],
+          details,
           time: `${formatTime(a.start_time)} – ${formatTime(end)}`,
           title: label,
         },
@@ -395,7 +411,7 @@ export const DayView = () => {
 
   const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
   const chartItems = [
-    ...categorizeSleepRest(activities),
+    ...categorizeSleepRest(activities, tags),
     ...categorizeExercise(activities),
     ...categorizeLocations(places, uniquePlaceNames),
     ...categorizeTags(tags),
