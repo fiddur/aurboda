@@ -1,11 +1,12 @@
 /**
- * MCP Last.fm tag rule tools.
+ * MCP Last.fm tools: scrobble queries and tag rule management.
  */
-import { addLastFmTagRuleBodySchema } from '@aurboda/api-spec'
+import { addLastFmTagRuleBodySchema, scrobblesQuerySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 import {
   deleteLastFmTagRule,
   getLastFmTagRules,
+  getScrobbles,
   insertLastFmTagRule,
   type LastFmMatchMode,
   type LastFmMatchType,
@@ -13,6 +14,23 @@ import {
 import { errorResponse, jsonResponse, type McpServer } from './helpers'
 
 export const registerLastFmTools = (server: McpServer, user: string) => {
+  // Tool: query_scrobbles
+  server.tool(
+    'query_scrobbles',
+    'Query Last.fm scrobbles for a time range. Returns tracks played with artist, album, and timestamp.',
+    { ...scrobblesQuerySchema.shape },
+    async ({ start, end }) => {
+      const scrobbles = await getScrobbles(user, new Date(start), new Date(end))
+      const serialized = scrobbles.map((s) => ({
+        album: s.album,
+        artist: s.artist,
+        recorded_at: s.recorded_at.toISOString(),
+        track: s.track,
+      }))
+      return jsonResponse({ data: serialized, success: true })
+    },
+  )
+
   // Tool: get_lastfm_tag_rules
   server.tool(
     'get_lastfm_tag_rules',
