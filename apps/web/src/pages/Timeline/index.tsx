@@ -546,6 +546,26 @@ function TimelineChart({
   const exerciseSessions =
     showExerciseSignal.value ? activities.filter((a) => a.activity_type === 'exercise') : []
 
+  // Calculate average HRV during a time window from the already-fetched HRV data
+  const getAvgHrvInRange = (start: Date, end: Date): number | undefined => {
+    const points = hrvData.filter(([t]) => t >= start && t <= end)
+    if (points.length === 0) return undefined
+    return Math.round(points.reduce((sum, [, v]) => sum + v, 0) / points.length)
+  }
+
+  // Get meditation HRV from activity's embedded Oura data
+  const getMeditationHrv = (session: Activity): number | undefined => {
+    const data = session.data as Record<string, unknown> | undefined
+    const hrv = data?.hrv as { items?: (number | null)[] } | undefined
+    const items = hrv?.items?.filter((v): v is number => v !== null && v > 0)
+    if (!items || items.length === 0) return undefined
+    return Math.round(items.reduce((sum, v) => sum + v, 0) / items.length)
+  }
+
+  // Find tags overlapping a time range (for last.fm tracks during meditation)
+  const getOverlappingTags = (start: Date, end: Date): Tag[] =>
+    tags.filter((t) => t.start_time < end && (t.end_time ? t.end_time > start : t.start_time >= start))
+
   // Setup brush for selection zoom
   useEffect(() => {
     if (!brushRef.current) return
@@ -774,14 +794,17 @@ function TimelineChart({
                 fill={colors.sleep}
                 opacity={0.4}
                 style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) =>
+                onMouseEnter={(e) => {
+                  const avgHrv = getAvgHrvInRange(session.start_time, session.end_time!)
+                  const details = [formatDuration(session.start_time, session.end_time!)]
+                  if (avgHrv) details.push(`Avg HRV: ${avgHrv} ms`)
                   showTooltip(
                     e as unknown as MouseEvent,
                     'Sleep',
                     `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
-                    formatDuration(session.start_time, session.end_time!),
+                    details.join(' | '),
                   )
-                }
+                }}
                 onMouseLeave={hideTooltip}
               />
             : null,
@@ -799,14 +822,20 @@ function TimelineChart({
                 fill={colors.meditation}
                 opacity={0.6}
                 style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) =>
+                onMouseEnter={(e) => {
+                  const avgHrv =
+                    getMeditationHrv(session) ?? getAvgHrvInRange(session.start_time, session.end_time!)
+                  const overlapping = getOverlappingTags(session.start_time, session.end_time!)
+                  const details = [formatDuration(session.start_time, session.end_time!)]
+                  if (avgHrv) details.push(`Avg HRV: ${avgHrv} ms`)
+                  if (overlapping.length > 0) details.push(overlapping.map((t) => t.tag).join(', '))
                   showTooltip(
                     e as unknown as MouseEvent,
                     session.title || 'Meditation',
                     `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
-                    formatDuration(session.start_time, session.end_time!),
+                    details.join(' | '),
                   )
-                }
+                }}
                 onMouseLeave={hideTooltip}
               />
             : null,

@@ -117,6 +117,50 @@ describe('Tags Integration Tests', () => {
       expect(tags[0].tag).toBe('in-range')
     })
 
+    test('returns span tags that overlap the query range', async () => {
+      const user = getTestUser()
+
+      // Span tag that started before range but extends into it
+      await insertTag(user, {
+        end_time: new Date('2024-01-15T02:00:00Z'),
+        external_id: 'tag-overlap',
+        source: 'calendar',
+        start_time: new Date('2024-01-14T23:00:00Z'),
+        tag: '[Work] Late meeting',
+      })
+
+      // Span tag fully within range
+      await insertTag(user, {
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        external_id: 'tag-within',
+        source: 'manual',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'meditation',
+      })
+
+      // Span tag that starts in range and extends past it
+      await insertTag(user, {
+        end_time: new Date('2024-01-16T02:00:00Z'),
+        external_id: 'tag-extends',
+        source: 'oura',
+        start_time: new Date('2024-01-15T23:00:00Z'),
+        tag: 'sleep',
+      })
+
+      // Span tag completely before range
+      await insertTag(user, {
+        end_time: new Date('2024-01-14T12:00:00Z'),
+        external_id: 'tag-before',
+        source: 'manual',
+        start_time: new Date('2024-01-14T10:00:00Z'),
+        tag: 'old-meeting',
+      })
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags).toHaveLength(3)
+      expect(tags.map((t) => t.tag).sort()).toEqual(['[Work] Late meeting', 'meditation', 'sleep'])
+    })
+
     test('returns empty array when no tags in range', async () => {
       const user = getTestUser()
 

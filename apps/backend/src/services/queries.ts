@@ -18,6 +18,7 @@ import {
   getTimeSeriesBucketed,
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
+  type ProductivityRecord,
 } from '../db'
 import {
   ActivityType,
@@ -862,10 +863,41 @@ export interface ProductivityResult {
   category?: string
   productivity?: number
   duration_sec: number
+  is_mobile?: boolean
+}
+
+/**
+ * Merge consecutive productivity spans for the same activity/is_mobile.
+ * Two spans are merged when the second starts exactly when the first ends
+ * and they share the same activity name and is_mobile flag.
+ */
+export function mergeProductivitySpans(records: ProductivityRecord[]): ProductivityRecord[] {
+  if (records.length === 0) return []
+
+  const merged: ProductivityRecord[] = [{ ...records[0] }]
+
+  for (let i = 1; i < records.length; i++) {
+    const current = records[i]
+    const prev = merged[merged.length - 1]
+
+    const sameActivity = current.activity === prev.activity
+    const sameMobile = (current.is_mobile ?? false) === (prev.is_mobile ?? false)
+    const consecutive = prev.end_time.getTime() === current.start_time.getTime()
+
+    if (sameActivity && sameMobile && consecutive) {
+      prev.end_time = current.end_time
+      prev.duration_sec += current.duration_sec
+    } else {
+      merged.push({ ...current })
+    }
+  }
+
+  return merged
 }
 
 /**
  * Query productivity data for a time range.
+ * Merges consecutive spans for the same activity to reduce visual clutter.
  * @param sync Optional sync provider to auto-refresh stale data before querying
  */
 export async function queryProductivity(
@@ -879,11 +911,13 @@ export async function queryProductivity(
   }
 
   const productivity = await getProductivity(user, start, end)
-  return productivity.map((p) => ({
+  const merged = mergeProductivitySpans(productivity)
+  return merged.map((p) => ({
     activity: p.activity,
     category: p.category,
     duration_sec: p.duration_sec,
     end_time: p.end_time.toISOString(),
+    is_mobile: p.is_mobile,
     productivity: p.productivity,
     start_time: p.start_time.toISOString(),
   }))

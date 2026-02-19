@@ -23,7 +23,8 @@ export const getTags = async (user: string, start: Date, end: Date): Promise<Tag
     user,
     `SELECT id, source, external_id, tag, start_time, end_time
      FROM tags
-     WHERE start_time >= $1 AND start_time <= $2
+     WHERE (end_time IS NOT NULL AND start_time <= $2 AND end_time >= $1)
+        OR (end_time IS NULL AND start_time >= $1 AND start_time <= $2)
      ORDER BY start_time`,
     [start, end],
   )

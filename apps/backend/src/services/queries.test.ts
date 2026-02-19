@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db'
 import { MetricType } from '../schema'
 import * as locationsService from './locations'
-import { getDailySummary, getPeriodSummary, queryMetrics, queryMetricsBucketed } from './queries'
+import {
+  getDailySummary,
+  getPeriodSummary,
+  mergeProductivitySpans,
+  queryMetrics,
+  queryMetricsBucketed,
+} from './queries'
 
 // Mock the db module
 vi.mock('../db', () => ({
@@ -1100,6 +1106,148 @@ describe('queryMetricsBucketed', () => {
     // Should have no hrv_sleep buckets since HRV data is during awake hours
     const hrvSleepBuckets = result.buckets.filter((b) => b.metrics.hrv_sleep)
     expect(hrvSleepBuckets).toHaveLength(0)
+  })
+})
+
+describe('mergeProductivitySpans', () => {
+  test('merges consecutive spans for the same activity', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        category: 'Software Development',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        productivity: 2,
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'emacs',
+        category: 'Software Development',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:00Z'),
+        productivity: 2,
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+      {
+        activity: 'emacs',
+        category: 'Software Development',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:15:00Z'),
+        productivity: 2,
+        start_time: new Date('2024-01-15T10:10:00Z'),
+      },
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0].activity).toBe('emacs')
+    expect(result[0].start_time).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(result[0].end_time).toEqual(new Date('2024-01-15T10:15:00Z'))
+    expect(result[0].duration_sec).toBe(900)
+  })
+
+  test('does not merge spans for different activities', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        category: 'Software Development',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        productivity: 2,
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'firefox',
+        category: 'Browsers',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:00Z'),
+        productivity: 0,
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+    ])
+
+    expect(result).toHaveLength(2)
+  })
+
+  test('does not merge spans with a gap between them', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:15:00Z'),
+        start_time: new Date('2024-01-15T10:10:00Z'),
+      },
+    ])
+
+    expect(result).toHaveLength(2)
+  })
+
+  test('merges interleaved activities separately', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'firefox',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:00Z'),
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:15:00Z'),
+        start_time: new Date('2024-01-15T10:10:00Z'),
+      },
+    ])
+
+    // emacs-firefox-emacs should remain 3 separate spans since emacs is not consecutive
+    expect(result).toHaveLength(3)
+  })
+
+  test('handles empty input', () => {
+    expect(mergeProductivitySpans([])).toEqual([])
+  })
+
+  test('handles single record', () => {
+    const record = {
+      activity: 'emacs',
+      duration_sec: 300,
+      end_time: new Date('2024-01-15T10:05:00Z'),
+      start_time: new Date('2024-01-15T10:00:00Z'),
+    }
+    const result = mergeProductivitySpans([record])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual(record)
+  })
+
+  test('does not merge desktop and mobile spans for same activity', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'slack',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        is_mobile: false,
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'slack',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:00Z'),
+        is_mobile: true,
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+    ])
+
+    expect(result).toHaveLength(2)
   })
 })
 
