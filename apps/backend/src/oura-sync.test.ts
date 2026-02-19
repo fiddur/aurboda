@@ -507,13 +507,13 @@ describe('processOuraData', () => {
 
   describe('tags', () => {
     test('processes tag data with custom name', async () => {
-      // Data is pre-transformed by oura.ts getTags()
+      // Data is pre-transformed by oura.ts getTags() which returns DB Tag type (snake_case)
       const data = [
         {
-          endTime: new Date('2025-01-01T08:05:00Z'),
-          externalId: 'tag-1',
-          source: 'oura',
-          startTime: new Date('2025-01-01T08:00:00Z'),
+          end_time: new Date('2025-01-01T08:05:00Z'),
+          external_id: 'tag-1',
+          source: 'oura' as const,
+          start_time: new Date('2025-01-01T08:00:00Z'),
           tag: 'Morning Coffee',
         },
       ]
@@ -528,59 +528,41 @@ describe('processOuraData', () => {
         source: 'oura',
       })
 
-      expect(db.insertTag).toHaveBeenCalledWith(user, {
-        end_time: new Date('2025-01-01T08:05:00Z'),
-        external_id: 'tag-1',
-        source: 'oura',
-        start_time: new Date('2025-01-01T08:00:00Z'),
-        tag: 'Morning Coffee',
-      })
+      expect(db.insertTag).toHaveBeenCalledWith(user, data[0])
     })
 
-    test('processes tag data without endTime', async () => {
-      // Data is pre-transformed by oura.ts getTags()
+    test('processes tag data without end_time', async () => {
+      // Data is pre-transformed by oura.ts getTags() which returns DB Tag type (snake_case)
       const data = [
         {
-          endTime: undefined,
-          externalId: 'tag-2',
-          source: 'oura',
-          startTime: new Date('2025-01-01T14:00:00Z'),
+          end_time: undefined,
+          external_id: 'tag-2',
+          source: 'oura' as const,
+          start_time: new Date('2025-01-01T14:00:00Z'),
           tag: 'stress_high',
         },
       ]
 
       await processOuraData(user, 'tags', data)
 
-      expect(db.insertTag).toHaveBeenCalledWith(user, {
-        end_time: undefined,
-        external_id: 'tag-2',
-        source: 'oura',
-        start_time: new Date('2025-01-01T14:00:00Z'),
-        tag: 'stress_high',
-      })
+      expect(db.insertTag).toHaveBeenCalledWith(user, data[0])
     })
 
     test('handles tag with unknown type', async () => {
       // Data is pre-transformed by oura.ts getTags() - 'unknown' is set by oura.ts when tag_type_code is null
       const data = [
         {
-          endTime: undefined,
-          externalId: 'tag-3',
-          source: 'oura',
-          startTime: new Date('2025-01-01T14:00:00Z'),
+          end_time: undefined,
+          external_id: 'tag-3',
+          source: 'oura' as const,
+          start_time: new Date('2025-01-01T14:00:00Z'),
           tag: 'unknown',
         },
       ]
 
       await processOuraData(user, 'tags', data)
 
-      expect(db.insertTag).toHaveBeenCalledWith(user, {
-        end_time: undefined,
-        external_id: 'tag-3',
-        source: 'oura',
-        start_time: new Date('2025-01-01T14:00:00Z'),
-        tag: 'unknown',
-      })
+      expect(db.insertTag).toHaveBeenCalledWith(user, data[0])
     })
   })
 })
