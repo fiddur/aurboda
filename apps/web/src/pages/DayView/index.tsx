@@ -409,6 +409,7 @@ export const DayView = () => {
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown>>()
   const isProgrammaticZoom = useRef(false)
   const baseScaleRef = useRef<d3.ScaleTime<number, number>>()
+  const zoomRafRef = useRef<number>(0)
 
   // Handle zoom - update view range and expand data fetch if needed
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
@@ -668,10 +669,13 @@ export const DayView = () => {
       .filter((event) => event.type !== 'dblclick')
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         if (isProgrammaticZoom.current) return
-        const newY = event.transform.rescaleY(baseScale)
-        const newDomain = newY.domain()
-        draw(d3.scaleTime().domain(newDomain).range([0, CHART_HEIGHT]))
-        handleZoom(newDomain[0], newDomain[1])
+        cancelAnimationFrame(zoomRafRef.current)
+        zoomRafRef.current = requestAnimationFrame(() => {
+          const newY = event.transform.rescaleY(baseScale)
+          const newDomain = newY.domain()
+          draw(d3.scaleTime().domain(newDomain).range([0, CHART_HEIGHT]))
+          handleZoom(newDomain[0], newDomain[1])
+        })
       })
 
     svg.call(zoom)
