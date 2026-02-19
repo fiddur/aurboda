@@ -9,6 +9,7 @@ import {
   type AddLastFmTagRuleBody,
   type AddLastFmTagRuleResponse,
   type LastFmTagRulesResponse,
+  type ScrobblesResponse,
   type SyncResponse,
 } from '@aurboda/api-spec'
 import { RequestHandler, Router } from 'express'
@@ -16,6 +17,7 @@ import type { ParamsDictionary } from 'express-serve-static-core'
 import {
   deleteLastFmTagRule,
   getLastFmTagRules,
+  getScrobbles,
   insertLastFmTagRule,
   type LastFmMatchMode,
   type LastFmMatchType,
@@ -27,6 +29,30 @@ import { validateBody } from './validation'
  */
 export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()
+
+  // GET /lastfm/scrobbles - Query scrobbles by time range
+  router.get<ParamsDictionary, ScrobblesResponse>('/scrobbles', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { start, end } = req.query as { start?: string; end?: string }
+
+    if (!start || !end) {
+      return res.status(400).json({ error: 'start and end query parameters are required', success: false })
+    }
+
+    try {
+      const scrobbles = await getScrobbles(user, new Date(start), new Date(end))
+      const serialized = scrobbles.map((s) => ({
+        album: s.album,
+        artist: s.artist,
+        recorded_at: s.recorded_at.toISOString(),
+        track: s.track,
+      }))
+      res.json({ data: serialized, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
 
   // GET /lastfm/tag-rules - List all tag rules
   router.get<ParamsDictionary, LastFmTagRulesResponse>('/tag-rules', authMiddleware, async (req, res) => {

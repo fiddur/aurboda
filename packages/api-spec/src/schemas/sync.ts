@@ -10,6 +10,7 @@ import {
   dateOnlySchema,
   iso8601DateTimeSchema,
   syncStatusSchema,
+  timeRangeQuerySchema,
 } from './common.js'
 
 // Shared sync options fields
@@ -517,3 +518,37 @@ export const addLastFmTagRuleResponseSchema = baseResponseSchema
   .meta({ id: 'AddLastFmTagRuleResponse' })
 
 export type AddLastFmTagRuleResponse = z.infer<typeof addLastFmTagRuleResponseSchema>
+
+// ============================================================================
+// Last.fm scrobbles query schemas
+// ============================================================================
+
+/**
+ * Scrobble record schema.
+ */
+export const scrobbleSchema = z
+  .object({
+    album: z.string().meta({ description: 'Album name' }),
+    artist: z.string().meta({ description: 'Artist name' }),
+    recorded_at: iso8601DateTimeSchema.meta({ description: 'When the track was played' }),
+    track: z.string().meta({ description: 'Track name' }),
+  })
+  .meta({ id: 'Scrobble' })
+
+export type Scrobble = z.infer<typeof scrobbleSchema>
+
+/**
+ * Scrobbles query schema.
+ */
+export const scrobblesQuerySchema = timeRangeQuerySchema.meta({ id: 'ScrobblesQuery' })
+
+export type ScrobblesQuery = z.infer<typeof scrobblesQuerySchema>
+
+/**
+ * Scrobbles response schema.
+ */
+export const scrobblesResponseSchema = createDataArrayResponseSchema(scrobbleSchema).meta({
+  id: 'ScrobblesResponse',
+})
+
+export type ScrobblesResponse = z.infer<typeof scrobblesResponseSchema>
