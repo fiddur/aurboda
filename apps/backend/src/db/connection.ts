@@ -132,7 +132,16 @@ export const migrateSchema = async (user: string) => {
   )
   const existingTableNames = new Set(existingTables.rows.map((r) => r.table_name))
 
-  // Create missing tables
+  // Column migrations BEFORE index creation (indexes may reference new columns)
+  if (existingTableNames.has('lastfm_tag_rules')) {
+    await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS merge_gap_seconds INTEGER`)
+    await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS artist_names JSONB`)
+  }
+  if (existingTableNames.has('tags')) {
+    await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_key VARCHAR(255)`)
+  }
+
+  // Create missing tables and indexes (columns now exist for index creation)
   for (const key of tableCreationOrder) {
     const tableName = key.replace('_indexes', '')
     if (!existingTableNames.has(tableName) || key.endsWith('_indexes')) {
@@ -142,18 +151,9 @@ export const migrateSchema = async (user: string) => {
     }
   }
 
-  // Column migrations for existing tables
-  if (existingTableNames.has('lastfm_tag_rules')) {
-    await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS merge_gap_seconds INTEGER`)
-    await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS artist_names JSONB`)
-  }
-
+  // Backfill tag_key for existing Oura tags
   if (existingTableNames.has('tags')) {
-    // Add tag_key column to preserve original Oura tag_type_code
-    await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_key VARCHAR(255)`)
-    await query(db, `CREATE INDEX IF NOT EXISTS idx_tags_tag_key ON tags (tag_key) WHERE tag_key IS NOT NULL`)
-
-    // Backfill: tags that still have programmatic names (UUID/tag_*) get tag_key = tag
+    // Tags that still have programmatic names (UUID/tag_*) get tag_key = tag
     await query(
       db,
       `UPDATE tags SET tag_key = tag
@@ -162,7 +162,7 @@ export const migrateSchema = async (user: string) => {
               OR tag LIKE 'tag\\_%')`,
     )
 
-    // Backfill: tags that were already mapped (tag = display name) — reverse-lookup from tag_mappings
+    // Tags that were already mapped (tag = display name) — reverse-lookup from tag_mappings
     await backfillTagKeysFromMappings(db, existingTableNames)
   }
 }
