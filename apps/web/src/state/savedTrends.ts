@@ -47,11 +47,45 @@ export const DEFAULT_TRENDS: SavedTrend[] = [
 
 const STORAGE_KEY = 'savedTrends'
 
+// Migrate old camelCase params from before the snake_case standardization.
+interface LegacyParams {
+  sourceType?: string
+  halfLifeDays?: number
+  lookbackDays?: number
+  displayPeriod?: string
+}
+
+const migrateParams = (params: FetchTrendParams & LegacyParams): FetchTrendParams => {
+  const { sourceType, halfLifeDays, lookbackDays, displayPeriod, ...rest } = params
+  return {
+    ...rest,
+    source_type: rest.source_type ?? (sourceType as FetchTrendParams['source_type']),
+    ...(rest.half_life_days == null && halfLifeDays != null ? { half_life_days: halfLifeDays } : {}),
+    ...(rest.lookback_days == null && lookbackDays != null ? { lookback_days: lookbackDays } : {}),
+    ...(rest.display_period == null && displayPeriod != null ?
+      { display_period: displayPeriod as FetchTrendParams['display_period'] }
+    : {}),
+  }
+}
+
 const loadSavedTrends = (): SavedTrend[] => {
   const saved = localStorage.getItem(STORAGE_KEY)
   if (saved) {
     try {
-      return JSON.parse(saved) as SavedTrend[]
+      const parsed = JSON.parse(saved) as Array<SavedTrend & { params: FetchTrendParams & LegacyParams }>
+      const needsMigration = parsed.some(
+        (t) =>
+          'sourceType' in t.params ||
+          'halfLifeDays' in t.params ||
+          'lookbackDays' in t.params ||
+          'displayPeriod' in t.params,
+      )
+      if (needsMigration) {
+        const migrated = parsed.map((t) => ({ ...t, params: migrateParams(t.params) }))
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated))
+        return migrated
+      }
+      return parsed
     } catch {
       return DEFAULT_TRENDS
     }
