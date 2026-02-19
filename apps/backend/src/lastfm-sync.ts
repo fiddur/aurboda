@@ -142,6 +142,7 @@ const applySessionRules = async (
     const matching: ScrobbleEvent[] = scrobbles
       .filter((s) => matchesRule(s, rule))
       .map((s) => ({ scrobble: s, timestamp: s.timestamp }))
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
 
     if (matching.length === 0) continue
 
