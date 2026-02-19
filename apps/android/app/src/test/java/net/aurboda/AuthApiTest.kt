@@ -1,5 +1,7 @@
 package net.aurboda
 
+import net.aurboda.api.models.LoginBody
+import net.aurboda.api.models.LoginResponse
 import org.junit.Test
 import org.junit.Assert.*
 
@@ -9,9 +11,9 @@ import org.junit.Assert.*
 class AuthApiTest {
 
     @Test
-    fun `LoginRequest serializes correctly`() {
-        val request = LoginRequest("testuser", "testpass")
-        val json = appJson.encodeToString(LoginRequest.serializer(), request)
+    fun `LoginBody serializes correctly`() {
+        val request = LoginBody(password = "testpass", username = "testuser")
+        val json = appJson.encodeToString(LoginBody.serializer(), request)
 
         assertTrue(json.contains("\"username\""))
         assertTrue(json.contains("\"testuser\""))
@@ -20,9 +22,9 @@ class AuthApiTest {
     }
 
     @Test
-    fun `LoginRequest deserializes correctly`() {
+    fun `LoginBody deserializes correctly`() {
         val json = """{"username":"user1","password":"pass1"}"""
-        val request = appJson.decodeFromString<LoginRequest>(json)
+        val request = appJson.decodeFromString<LoginBody>(json)
 
         assertEquals("user1", request.username)
         assertEquals("pass1", request.password)
@@ -39,7 +41,7 @@ class AuthApiTest {
 
     @Test
     fun `LoginResponse serializes correctly`() {
-        val response = LoginResponse("mytoken", "myrefresh")
+        val response = LoginResponse(refresh = "myrefresh", token = "mytoken")
         val json = appJson.encodeToString(LoginResponse.serializer(), response)
 
         assertTrue(json.contains("\"token\""))
