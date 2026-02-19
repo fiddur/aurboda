@@ -62,9 +62,9 @@ const migrateParams = (params: FetchTrendParams & LegacyParams): FetchTrendParam
     source_type: rest.source_type ?? (sourceType as FetchTrendParams['source_type']),
     ...(rest.half_life_days == null && halfLifeDays != null ? { half_life_days: halfLifeDays } : {}),
     ...(rest.lookback_days == null && lookbackDays != null ? { lookback_days: lookbackDays } : {}),
-    ...(rest.display_period == null && displayPeriod != null
-      ? { display_period: displayPeriod as FetchTrendParams['display_period'] }
-      : {}),
+    ...(rest.display_period == null && displayPeriod != null ?
+      { display_period: displayPeriod as FetchTrendParams['display_period'] }
+    : {}),
   }
 }
 
@@ -74,7 +74,11 @@ const loadSavedTrends = (): SavedTrend[] => {
     try {
       const parsed = JSON.parse(saved) as Array<SavedTrend & { params: FetchTrendParams & LegacyParams }>
       const needsMigration = parsed.some(
-        (t) => 'sourceType' in t.params || 'halfLifeDays' in t.params || 'lookbackDays' in t.params || 'displayPeriod' in t.params,
+        (t) =>
+          'sourceType' in t.params ||
+          'halfLifeDays' in t.params ||
+          'lookbackDays' in t.params ||
+          'displayPeriod' in t.params,
       )
       if (needsMigration) {
         const migrated = parsed.map((t) => ({ ...t, params: migrateParams(t.params) }))
