@@ -353,6 +353,56 @@ describe('applyTagRules', () => {
     expect(insertTag).toHaveBeenCalledTimes(2)
   })
 
+  it('creates separate session tags when scrobbles arrive in reverse chronological order', async () => {
+    vi.mocked(findMergeableTag).mockResolvedValue(undefined)
+
+    // Last.fm API returns scrobbles in reverse chronological order (newest first)
+    const scrobbles: Scrobble[] = [
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-17T10:08:00Z'), track: 'Song 3' },
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-17T10:04:00Z'), track: 'Song 2' },
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-17T10:00:00Z'), track: 'Song 1' },
+      // Different day - gap is much larger than merge gap
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-09T11:04:00Z'), track: 'Song 2' },
+      { artist: 'Warmup Artist', timestamp: new Date('2024-01-09T11:00:00Z'), track: 'Song 1' },
+    ]
+
+    const rules: LastFmTagRule[] = [
+      {
+        artist_name: 'Warmup Artist',
+        created_at: new Date(),
+        id: 'rule-1',
+        match_mode: 'exact',
+        match_type: 'artist',
+        merge_gap_seconds: 600,
+        rule_name: 'Vocal Exercises',
+        tag_name: 'VocalExercise',
+      },
+    ]
+
+    const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
+
+    expect(tagsCreated).toBe(2)
+    expect(insertTag).toHaveBeenCalledTimes(2)
+
+    // First session: Jan 9
+    expect(insertTag).toHaveBeenCalledWith('testuser', {
+      end_time: new Date('2024-01-09T11:04:00Z'),
+      external_id: expect.stringContaining('rule-1'),
+      source: 'lastfm-auto',
+      start_time: new Date('2024-01-09T11:00:00Z'),
+      tag: 'VocalExercise',
+    })
+
+    // Second session: Jan 17
+    expect(insertTag).toHaveBeenCalledWith('testuser', {
+      end_time: new Date('2024-01-17T10:08:00Z'),
+      external_id: expect.stringContaining('rule-1'),
+      source: 'lastfm-auto',
+      start_time: new Date('2024-01-17T10:00:00Z'),
+      tag: 'VocalExercise',
+    })
+  })
+
   it('extends existing tag via findMergeableTag for cross-sync merging', async () => {
     const existingTag = {
       end_time: new Date('2024-01-01T09:58:00Z'),
