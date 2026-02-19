@@ -50,6 +50,15 @@ export const createOuraWebhookRouter = (deps: OuraWebhookRouterDeps): OuraWebhoo
     pendingSyncs.clear()
   }
 
+  router.get('/', (req, res) => {
+    const { challenge } = req.query
+    if (typeof challenge !== 'string') {
+      res.status(400).json({ error: 'Missing challenge' })
+      return
+    }
+    res.json({ challenge })
+  })
+
   router.post('/', async (req, res) => {
     const { data_type, event_type, user_id, verification_token } = req.body ?? {}
 
