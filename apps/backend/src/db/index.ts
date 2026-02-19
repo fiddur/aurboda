@@ -50,7 +50,7 @@ export {
 } from './connection'
 
 // Raw records
-export { insertRawRecord } from './raw-records'
+export { getScrobbles, insertRawRecord, type ScrobbleRecord } from './raw-records'
 
 // Time series
 export {

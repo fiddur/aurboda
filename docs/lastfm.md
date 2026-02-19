@@ -9,7 +9,7 @@ Scrobbles are stored as raw records with:
 - MusicBrainz IDs (when available)
 - Timestamp
 
-Scrobbles themselves are not directly visible in the timeline. Instead, the **auto-tagging rules** system creates tags from matching scrobbles, which appear on the timeline and can be used in correlations.
+Scrobbles can be queried directly via API or MCP. The **auto-tagging rules** system creates tags from matching scrobbles, which appear on the timeline and can be used in correlations.
 
 ## Admin Setup
 
@@ -63,6 +63,15 @@ Rules can be managed in **Settings > Last.fm Tag Rules** or via MCP tools:
 - `get_lastfm_tag_rules()` -- List all rules
 - `add_lastfm_tag_rule(...)` -- Create a rule
 - `delete_lastfm_tag_rule(rule_id)` -- Delete a rule
+
+## Querying Scrobbles
+
+Raw scrobbles can be queried by time range:
+
+- **REST:** `GET /api/lastfm/scrobbles?start=...&end=...`
+- **MCP:** `query_scrobbles(start, end)`
+
+Returns track name, artist, album, and timestamp for each scrobble in the time range.
 
 ## Sync
 
