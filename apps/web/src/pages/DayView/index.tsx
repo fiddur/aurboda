@@ -9,12 +9,16 @@ import {
   fetchActivities,
   fetchPlaces,
   fetchProductivity,
+  fetchScrobbles,
   fetchTags,
+  fetchUserSettings,
   Place,
   ProductivityRecord,
   Tag,
 } from '../../state/api'
 import { packLanes } from '../../utils/lanePacking'
+import { categorizeMusic } from './categorizeMusic'
+import type { ChartItem, Column } from './types'
 
 import './style.css'
 
@@ -29,8 +33,8 @@ const getDefaultViewStart = () => startOfDay(new Date())
 const getDefaultViewEnd = () => endOfDay(new Date())
 
 // Column definitions
-const COLUMNS = ['Sleep / Rest', 'Exercise', 'Location', 'Tags / Events', 'Productivity'] as const
-type Column = (typeof COLUMNS)[number]
+const BASE_COLUMNS: Column[] = ['Sleep / Rest', 'Exercise', 'Location', 'Tags / Events', 'Productivity']
+const MUSIC_COLOR = '#ec4899'
 
 // Colors
 const activityColors: Record<string, string> = {
@@ -156,23 +160,6 @@ const formatDuration = (start: Date, end: Date): string => {
 
 const escapeHtml = (str: string): string =>
   str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-
-// Categorized item for the chart
-interface ChartItem {
-  column: Column
-  start: Date
-  end: Date
-  label: string
-  color: string
-  tooltip: TooltipContent
-  isPoint: boolean
-}
-
-interface TooltipContent {
-  title: string
-  time: string
-  details: string[]
-}
 
 // Categorization per column
 const categorizeSleepRest = (activities: Activity[], tags: Tag[]): ChartItem[] =>
@@ -403,6 +390,22 @@ export const DayView = () => {
     staleTime: 10 * 60 * 1000,
   })
 
+  const settingsQuery = useQuery({
+    queryFn: fetchUserSettings,
+    queryKey: ['user-settings'],
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const hasLastFm = Boolean(settingsQuery.data?.lastfm_username)
+
+  const scrobblesQuery = useQuery({
+    enabled: hasLastFm,
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchScrobbles(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryKey: ['dayview-scrobbles', fromDate.value, toDate.value],
+    staleTime: 10 * 60 * 1000,
+  })
+
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -469,6 +472,12 @@ export const DayView = () => {
   const places = placesQuery.data ?? []
   const tags = tagsQuery.data ?? []
   const productivity = productivityQuery.data ?? []
+  const scrobbles = scrobblesQuery.data ?? []
+
+  const musicItems = hasLastFm ? categorizeMusic(scrobbles) : []
+  const showMusicColumn = musicItems.length > 0
+
+  const columns: Column[] = showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS
 
   const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
   const chartItems = [
@@ -477,10 +486,11 @@ export const DayView = () => {
     ...categorizeLocations(places, uniquePlaceNames),
     ...categorizeTags(tags),
     ...categorizeProductivity(productivity),
+    ...musicItems,
   ]
 
   // Group by column and pack lanes
-  const columnData = COLUMNS.map((col) => {
+  const columnData = columns.map((col) => {
     const colItems = chartItems.filter((i) => i.column === col)
     const packed = packLanes(
       colItems,
@@ -494,7 +504,8 @@ export const DayView = () => {
     activitiesQuery.isFetching ||
     placesQuery.isFetching ||
     tagsQuery.isFetching ||
-    productivityQuery.isFetching
+    productivityQuery.isFetching ||
+    scrobblesQuery.isFetching
 
   // Render SVG chart
   const renderChart = useCallback(() => {
@@ -520,7 +531,7 @@ export const DayView = () => {
     const yScale = d3.scaleTime().domain([effectiveViewStart, effectiveViewEnd]).range([0, CHART_HEIGHT])
 
     // Column layout
-    const colWidth = chartWidth / COLUMNS.length
+    const colWidth = chartWidth / columns.length
     const colGap = 4
     const colPadding = 2
 
@@ -624,7 +635,7 @@ export const DayView = () => {
       }
 
       // Column separators
-      for (let i = 1; i < COLUMNS.length; i++) {
+      for (let i = 1; i < columns.length; i++) {
         chartGroup
           .append('line')
           .attr('x1', i * colWidth)
@@ -695,6 +706,7 @@ export const DayView = () => {
   }, [
     activities,
     chartItems,
+    columns,
     columnData,
     effectiveViewEnd,
     effectiveViewStart,
@@ -776,6 +788,12 @@ export const DayView = () => {
           <span class="legend-dot" style={{ background: TAG_COLOR }} />
           Tags
         </span>
+        {showMusicColumn && (
+          <span class="legend-item">
+            <span class="legend-dot" style={{ background: MUSIC_COLOR }} />
+            Music
+          </span>
+        )}
       </div>
 
       {isLoading && <div class="loading">Loading…</div>}
@@ -784,7 +802,7 @@ export const DayView = () => {
       {!isLoading && !isError && (
         <>
           <div class="day-view-column-headers" style={{ paddingLeft: `${margin.left}px` }}>
-            {COLUMNS.map((col, i) => (
+            {columns.map((col, i) => (
               <div
                 key={col}
                 style={{
@@ -831,7 +849,7 @@ export const DayView = () => {
 // D3 drawing helpers extracted to reduce component complexity
 
 type ColumnDataEntry = {
-  column: (typeof COLUMNS)[number]
+  column: Column
   items: { item: ChartItem; lane: number }[]
   laneCount: number
 }

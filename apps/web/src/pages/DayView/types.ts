@@ -1,0 +1,17 @@
+export type Column = 'Sleep / Rest' | 'Exercise' | 'Location' | 'Tags / Events' | 'Productivity' | 'Music'
+
+export interface TooltipContent {
+  title: string
+  time: string
+  details: string[]
+}
+
+export interface ChartItem {
+  column: Column
+  start: Date
+  end: Date
+  label: string
+  color: string
+  tooltip: TooltipContent
+  isPoint: boolean
+}

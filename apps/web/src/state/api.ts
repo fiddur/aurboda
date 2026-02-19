@@ -15,6 +15,7 @@ import type {
   DetectedLocation as ApiDetectedLocation,
   PlaceVisit as ApiPlaceVisit,
   ProductivityRecord as ApiProductivityRecord,
+  Scrobble as ApiScrobble,
   Tag as ApiTag,
   BaselineData,
   BaselineResponse,
@@ -48,6 +49,7 @@ import type {
   PromoteDetectedLocationBody,
   QueryMetricsQuery,
   QueryMetricsResponse,
+  ScrobblesResponse,
   SetTagMappingResponse,
   SyncResponse,
   TagCorrelation,
@@ -100,6 +102,10 @@ export interface StoredDetectedLocation extends Omit<ApiDetectedLocation, 'first
 export interface Tag extends Omit<ApiTag, 'start_time' | 'end_time'> {
   start_time: Date
   end_time?: Date
+}
+
+export interface Scrobble extends Omit<ApiScrobble, 'recorded_at'> {
+  recorded_at: Date
 }
 
 // Re-export API types that don't need Date conversion
@@ -241,6 +247,24 @@ export const fetchTags = async (start: Date, end: Date): Promise<Tag[]> => {
     ...tag,
     end_time: tag.end_time ? new Date(tag.end_time) : undefined,
     start_time: new Date(tag.start_time),
+  }))
+}
+
+// Fetch Last.fm scrobbles for the specified date range
+export const fetchScrobbles = async (start: Date, end: Date): Promise<Scrobble[]> => {
+  const { token } = auth.value
+  const params = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<ScrobblesResponse>(`${API_URL}/lastfm/scrobbles`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+
+  return (response.data.data ?? []).map((scrobble) => ({
+    ...scrobble,
+    recorded_at: new Date(scrobble.recorded_at),
   }))
 }
 
