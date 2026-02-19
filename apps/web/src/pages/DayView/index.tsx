@@ -41,13 +41,15 @@ const hrZoneColors: Record<number, string> = {
   5: '#ef4444',
 }
 
+const TAG_COLOR = '#8b5cf6'
+
 const tagSourceColors: Record<string, string> = {
   calendar: '#f59e0b',
-  default: '#9ca3af',
+  default: TAG_COLOR,
   lastfm: '#ec4899',
   'lastfm-auto': '#ec4899',
-  manual: '#8b5cf6',
-  oura: '#06b6d4',
+  manual: TAG_COLOR,
+  oura: TAG_COLOR,
 }
 
 const productivityColors: Record<number, string> = {
@@ -632,12 +634,8 @@ export const DayView = () => {
           Calendar
         </span>
         <span class="legend-item">
-          <span class="legend-dot" style={{ background: tagSourceColors.manual }} />
-          Manual
-        </span>
-        <span class="legend-item">
-          <span class="legend-dot" style={{ background: tagSourceColors.oura }} />
-          Oura
+          <span class="legend-dot" style={{ background: TAG_COLOR }} />
+          Tags
         </span>
       </div>
 
