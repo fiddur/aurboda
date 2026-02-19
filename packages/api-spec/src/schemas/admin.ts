@@ -76,6 +76,18 @@ export type SignupResponse = z.infer<typeof signupResponseSchema>
 // ============================================================================
 
 /**
+ * Login request body schema.
+ */
+export const loginBodySchema = z
+  .object({
+    password: z.string().min(1).meta({ description: 'User password' }),
+    username: z.string().min(1).meta({ description: 'Username' }),
+  })
+  .meta({ id: 'LoginBody' })
+
+export type LoginBody = z.infer<typeof loginBodySchema>
+
+/**
  * Login response schema.
  */
 export const loginResponseSchema = z
