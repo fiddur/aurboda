@@ -69,7 +69,7 @@ const calculateTagTrend = async (
           date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
           count(*) as cnt
         FROM tags
-        WHERE tag ~ $1
+        WHERE tag ~* $1
           AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day

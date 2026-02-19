@@ -53,10 +53,13 @@ function TrendChart({
       .domain(d3.extent(parsedData, (d) => d.date) as [Date, Date])
       .range([0, innerWidth])
 
-    const maxValue = d3.max(parsedData, (d) => d.value) ?? 0
+    const yExtent = d3.extent(parsedData, (d) => d.value) as [number, number]
+    const yRange = yExtent[1] - yExtent[0]
+    const yPadding = yRange * 0.1 || 1
     const y = d3
       .scaleLinear()
-      .domain([0, maxValue * 1.1])
+      .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+      .nice()
       .range([innerHeight, 0])
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)

@@ -47,11 +47,12 @@ function TrendChart({ data, color }: { data: { date: string; value: number }[]; 
       .range([0, innerWidth])
 
     const yExtent = d3.extent(parsedData, (d) => d.value) as [number, number]
-    const yMin = Math.min(0, yExtent[0])
-    const yPadding = (yExtent[1] - yMin) * 0.1 || 1
+    const yRange = yExtent[1] - yExtent[0]
+    const yPadding = yRange * 0.1 || 1
     const y = d3
       .scaleLinear()
-      .domain([yMin, yExtent[1] + yPadding])
+      .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+      .nice()
       .range([innerHeight, 0])
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)

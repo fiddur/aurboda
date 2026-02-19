@@ -71,8 +71,9 @@ function TagMappingRow({
         <span class="tag-count" title={`Used ${tag.count} time${tag.count !== 1 ? 's' : ''}`}>
           {tag.count} uses
         </span>
-        <span class="tag-latest" title={date.toLocaleString()}>
-          Last: {date.toLocaleDateString()}
+        <span class="tag-latest">
+          Last: {date.toLocaleDateString()}{' '}
+          {date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
         </span>
       </div>
 
