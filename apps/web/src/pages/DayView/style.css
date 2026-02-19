@@ -1,6 +1,7 @@
 .day-view {
   margin: 0 auto;
   padding: 2rem;
+  width: 100%;
 }
 
 .day-view h1 {
