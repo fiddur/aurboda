@@ -579,6 +579,7 @@ export const DayView = () => {
         .attr('stroke-opacity', 0.1)
 
       // Hour labels on left
+      const hourFontSize = chartWidth > 1200 ? '0.85rem' : '0.7rem'
       g.selectAll('.hour-label')
         .data(hours)
         .enter()
@@ -589,7 +590,7 @@ export const DayView = () => {
         .attr('dy', '0.35em')
         .attr('text-anchor', 'end')
         .attr('fill', 'currentColor')
-        .attr('font-size', '0.7rem')
+        .attr('font-size', hourFontSize)
         .attr('opacity', 0.6)
         .text((d) => format(d, 'HH:mm'))
 
@@ -912,14 +913,16 @@ const drawItem = (
 
   // Text label inside if tall enough
   if (blockHeight > 30) {
-    const maxChars = Math.floor(laneWidth / 6)
+    const fontSize = laneWidth > 100 ? '0.8rem' : '0.65rem'
+    const charWidth = laneWidth > 100 ? 7.5 : 6
+    const maxChars = Math.floor(laneWidth / charWidth)
     const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
     chartGroup
       .append('text')
       .attr('x', x + 4)
       .attr('y', y1 + 14)
       .attr('fill', 'white')
-      .attr('font-size', '0.65rem')
+      .attr('font-size', fontSize)
       .attr('font-weight', '500')
       .attr('pointer-events', 'none')
       .text(text)
