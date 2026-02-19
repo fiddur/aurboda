@@ -67,7 +67,7 @@ import { goalsProgressResponseSchema } from './schemas/goals.js'
 const errorResponseSchema = z
   .object({
     error: z.string(),
-    success: z.literal(false),
+    success: z.boolean().meta({ description: 'Always false for error responses' }),
   })
   .meta({ id: 'ErrorResponse' })
 
