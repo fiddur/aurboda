@@ -33,6 +33,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.KSerializer
+import net.aurboda.api.models.DailyAggregate
+import net.aurboda.api.models.DailyAggregatesBody
 import net.aurboda.widget.HrZoneWidgetProvider
 import java.util.concurrent.TimeUnit
 
@@ -54,21 +56,12 @@ class HealthConnectSyncWorker(
     }
 
     // Cumulative metrics that should be aggregated to avoid duplication
-    private val aggregatableMetrics: List<Pair<AggregateMetric<*>, String>> = listOf(
-        Pair(StepsRecord.COUNT_TOTAL, "steps"),
-        Pair(DistanceRecord.DISTANCE_TOTAL, "distance"),
-        Pair(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL, "calories_active"),
-        Pair(TotalCaloriesBurnedRecord.ENERGY_TOTAL, "calories_total"),
-        Pair(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL, "floors_climbed")
-    )
-
-    // Record types that are handled by aggregates (to filter from raw records)
-    private val aggregatedRecordTypes = setOf(
-        StepsRecord::class,
-        DistanceRecord::class,
-        ActiveCaloriesBurnedRecord::class,
-        TotalCaloriesBurnedRecord::class,
-        FloorsClimbedRecord::class
+    private val aggregatableMetrics: List<Pair<AggregateMetric<*>, DailyAggregate.Metric>> = listOf(
+        Pair(StepsRecord.COUNT_TOTAL, DailyAggregate.Metric.steps),
+        Pair(DistanceRecord.DISTANCE_TOTAL, DailyAggregate.Metric.distance),
+        Pair(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL, DailyAggregate.Metric.calories_active),
+        Pair(TotalCaloriesBurnedRecord.ENERGY_TOTAL, DailyAggregate.Metric.calories_total),
+        Pair(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL, DailyAggregate.Metric.floors_climbed)
     )
 
     override suspend fun doWork(): Result {
@@ -114,28 +107,14 @@ class HealthConnectSyncWorker(
             }
 
             if (records.isNotEmpty()) {
-                // Filter out records that are handled by aggregates
-                val filteredRecords = records.filter { record ->
-                    record::class !in aggregatedRecordTypes
-                }
-                Log.d(TAG, "Filtered ${records.size} records to ${filteredRecords.size} (excluded aggregated types)")
-
-                if (filteredRecords.isNotEmpty()) {
-                    val success = sendDataToServer(filteredRecords, credentials.apiUrl, credentials.authToken)
-                    if (success) {
-                        Log.d(TAG, "Background sync completed successfully")
-                        HrZoneWidgetProvider.triggerUpdate(applicationContext)
-                        Result.success()
-                    } else {
-                        Log.w(TAG, "Background sync failed to send data")
-                        Result.retry()
-                    }
-                } else {
-                    Log.d(TAG, "No filtered records to sync (all were aggregated types)")
-                    // Still save token since we successfully processed the records
-                    pendingToken?.let { saveChangesToken(it) }
+                val success = sendDataToServer(records, credentials.apiUrl, credentials.authToken)
+                if (success) {
+                    Log.d(TAG, "Background sync completed successfully")
                     HrZoneWidgetProvider.triggerUpdate(applicationContext)
                     Result.success()
+                } else {
+                    Log.w(TAG, "Background sync failed to send data")
+                    Result.retry()
                 }
             } else {
                 // If we had deletions but no records, save token
@@ -212,14 +191,14 @@ class HealthConnectSyncWorker(
         serverUrl: String,
         authToken: String
     ): Boolean {
-        // Note: StepsRecord, DistanceRecord, ActiveCaloriesBurnedRecord, TotalCaloriesBurnedRecord,
-        // and FloorsClimbedRecord are excluded here as they are handled by daily aggregates
         val recordsWithKnownSerializers = records.filter {
             when (it) {
                 is HeartRateVariabilityRmssdRecord, is WeightRecord, is HeartRateRecord,
                 is ExerciseSessionRecord, is SpeedRecord, is PowerRecord, is NutritionRecord,
                 is LeanBodyMassRecord, is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord,
-                is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord -> true
+                is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord,
+                is StepsRecord, is DistanceRecord, is ActiveCaloriesBurnedRecord,
+                is TotalCaloriesBurnedRecord, is FloorsClimbedRecord -> true
                 else -> false
             }
         }
@@ -238,8 +217,6 @@ class HealthConnectSyncWorker(
             val recordTypeSimpleName = recordClass.simpleName ?: "UnknownRecordType"
             val apiUrl = "$serverUrl/sync/$recordTypeSimpleName"
 
-            // Note: StepsRecord, DistanceRecord, ActiveCaloriesBurnedRecord, TotalCaloriesBurnedRecord
-            // are now handled by daily aggregates and excluded from raw record sync
             val postSuccessful = when (recordClass) {
                 HeartRateVariabilityRmssdRecord::class -> postData(
                     HrvRecordSerializable.fromRecordsList(classRecords),
@@ -309,6 +286,31 @@ class HealthConnectSyncWorker(
                 RestingHeartRateRecord::class -> postData(
                     RestingHeartRateRecordSerializable.fromRecordsList(classRecords),
                     RestingHeartRateRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                StepsRecord::class -> postData(
+                    StepsRecordSerializable.fromRecordsList(classRecords),
+                    StepsRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                DistanceRecord::class -> postData(
+                    DistanceRecordSerializable.fromRecordsList(classRecords),
+                    DistanceRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                ActiveCaloriesBurnedRecord::class -> postData(
+                    ActiveCaloriesBurnedRecordSerializable.fromRecordsList(classRecords),
+                    ActiveCaloriesBurnedRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                TotalCaloriesBurnedRecord::class -> postData(
+                    TotalCaloriesBurnedRecordSerializable.fromRecordsList(classRecords),
+                    TotalCaloriesBurnedRecordSerializable.serializer(),
+                    apiUrl, recordTypeSimpleName, authToken
+                )
+                FloorsClimbedRecord::class -> postData(
+                    FloorsClimbedRecordSerializable.fromRecordsList(classRecords),
+                    FloorsClimbedRecordSerializable.serializer(),
                     apiUrl, recordTypeSimpleName, authToken
                 )
                 else -> {
@@ -393,7 +395,7 @@ class HealthConnectSyncWorker(
             val startTime = date.atStartOfDay(zoneId).toInstant()
             val endTime = date.plusDays(1).atStartOfDay(zoneId).toInstant()
 
-            for ((metric, metricName) in aggregatableMetrics) {
+            for ((metric, metricType) in aggregatableMetrics) {
                 try {
                     val request = AggregateRequest(
                         metrics = setOf(metric),
@@ -419,15 +421,15 @@ class HealthConnectSyncWorker(
                         aggregates.add(
                             DailyAggregate(
                                 date = date.toString(), // YYYY-MM-DD format
-                                metric = metricName,
+                                metric = metricType,
                                 value = value,
                                 dataOrigins = dataOrigins
                             )
                         )
-                        Log.d(TAG, "Aggregate for $metricName on $date: $value from ${dataOrigins.size} sources")
+                        Log.d(TAG, "Aggregate for $metricType on $date: $value from ${dataOrigins.size} sources")
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to fetch aggregate for $metricName on $date", e)
+                    Log.w(TAG, "Failed to fetch aggregate for $metricType on $date", e)
                 }
             }
         }
@@ -448,7 +450,7 @@ class HealthConnectSyncWorker(
             return true
         }
 
-        val postData = PostWrapper(aggregates)
+        val postData = DailyAggregatesBody(data = aggregates)
         return try {
             val response = httpClient.post("$serverUrl/sync/daily-aggregates") {
                 contentType(ContentType.Application.Json)

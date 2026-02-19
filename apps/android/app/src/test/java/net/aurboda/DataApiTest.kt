@@ -1,5 +1,10 @@
 package net.aurboda
 
+import net.aurboda.api.models.GoalProgress
+import net.aurboda.api.models.GoalsProgressResponse
+import net.aurboda.api.models.MetricType
+import net.aurboda.api.models.PeriodMetricStats
+import net.aurboda.api.models.PeriodSummaryResponse
 import org.junit.Test
 import org.junit.Assert.*
 
@@ -8,49 +13,45 @@ import org.junit.Assert.*
  */
 class DataApiTest {
 
+    private fun metricStats(
+        metric: String = "hr_zone_0_sec",
+        unit: String = "sec",
+        avg: Double = 0.0,
+        min: Double = 0.0,
+        max: Double = 0.0,
+        count: Int = 1,
+        stddev: Double = 0.0,
+    ) = PeriodMetricStats(
+        avg = avg,
+        changeFromPreviousPeriodPercent = null,
+        completenessPercent = 100.0,
+        count = count,
+        max = max,
+        metric = metric,
+        min = min,
+        stddev = stddev,
+        trendPerDay = null,
+        unit = unit,
+    )
+
     @Test
     fun `getMetricTimeSeconds returns avg value for HR zone metric`() {
-        val metric = PeriodMetricStats(
-            metric = "hr_zone_2_sec",
-            unit = "sec",
-            avg = 3600.0,
-            min = 3600.0,
-            max = 3600.0,
-            count = 1,
-            stddev = 0.0
-        )
-
+        val metric = metricStats(metric = "hr_zone_2_sec", avg = 3600.0, min = 3600.0, max = 3600.0)
         assertEquals(3600.0, getMetricTimeSeconds(metric), 0.01)
     }
 
     @Test
-    fun `getMetricTimeSeconds returns 0 when avg is null`() {
-        val metric = PeriodMetricStats(
-            metric = "hr_zone_0_sec",
-            unit = "sec",
-            avg = null
-        )
-
-        assertEquals(0.0, getMetricTimeSeconds(metric), 0.01)
-    }
-
-    @Test
-    fun `getMetricTimeSeconds handles decimal values`() {
-        val metric = PeriodMetricStats(
-            metric = "hr_zone_1_sec",
-            unit = "sec",
-            avg = 2498.28
-        )
-
+    fun `getMetricTimeSeconds returns avg value`() {
+        val metric = metricStats(avg = 2498.28)
         assertEquals(2498.28, getMetricTimeSeconds(metric), 0.01)
     }
 
     @Test
     fun `findMetricTimeSeconds returns time for existing metric`() {
         val metrics = listOf(
-            PeriodMetricStats(metric = "hr_zone_0_sec", unit = "sec", avg = 1000.0),
-            PeriodMetricStats(metric = "hr_zone_1_sec", unit = "sec", avg = 2000.0),
-            PeriodMetricStats(metric = "hr_zone_2_sec", unit = "sec", avg = 3000.0)
+            metricStats(metric = "hr_zone_0_sec", avg = 1000.0),
+            metricStats(metric = "hr_zone_1_sec", avg = 2000.0),
+            metricStats(metric = "hr_zone_2_sec", avg = 3000.0),
         )
 
         assertEquals(2000.0, findMetricTimeSeconds(metrics, "hr_zone_1_sec"), 0.01)
@@ -59,7 +60,7 @@ class DataApiTest {
     @Test
     fun `findMetricTimeSeconds returns 0 for missing metric`() {
         val metrics = listOf(
-            PeriodMetricStats(metric = "hr_zone_0_sec", unit = "sec", avg = 1000.0)
+            metricStats(metric = "hr_zone_0_sec", avg = 1000.0),
         )
 
         assertEquals(0.0, findMetricTimeSeconds(metrics, "hr_zone_5_sec"), 0.01)
@@ -101,8 +102,7 @@ class DataApiTest {
     }
 
     @Test
-    fun `PeriodMetricStats parses JSON without sum field`() {
-        // Simulate API response that doesn't include 'sum'
+    fun `PeriodMetricStats parses JSON from API response`() {
         val json = """
             {
                 "metric": "hr_zone_0_sec",
@@ -111,13 +111,15 @@ class DataApiTest {
                 "min": 3525.0,
                 "max": 3525.0,
                 "count": 1,
-                "stddev": 0
+                "stddev": 0,
+                "completeness_percent": 100.0,
+                "trend_per_day": null,
+                "change_from_previous_period_percent": null
             }
         """.trimIndent()
 
         val parsed = appJson.decodeFromString<PeriodMetricStats>(json)
-        assertEquals(3525.0, parsed.avg)
-        assertNull(parsed.sum)
+        assertEquals(3525.0, parsed.avg, 0.01)
         assertEquals(3525.0, getMetricTimeSeconds(parsed), 0.01)
     }
 
@@ -138,7 +140,7 @@ class DataApiTest {
 
         val parsed = appJson.decodeFromString<GoalProgress>(json)
         assertEquals("a0000001-0000-4000-8000-000000000001", parsed.id)
-        assertEquals("hr_zone_2_sec", parsed.metric)
+        assertEquals(MetricType.hr_zone_2_sec, parsed.metric)
         assertEquals(9000.0, parsed.min)
         assertNull(parsed.max)
         assertEquals("7d", parsed.window)
@@ -188,10 +190,20 @@ class DataApiTest {
             {
                 "success": true,
                 "metrics": [
-                    {"metric": "hr_zone_0_sec", "unit": "sec", "avg": 3525.0, "count": 1},
-                    {"metric": "hr_zone_1_sec", "unit": "sec", "avg": 2498.28, "count": 1}
+                    {
+                        "metric": "hr_zone_0_sec", "unit": "sec", "avg": 3525.0,
+                        "min": 3525.0, "max": 3525.0, "count": 1, "stddev": 0,
+                        "completeness_percent": 100.0, "trend_per_day": null,
+                        "change_from_previous_period_percent": null
+                    },
+                    {
+                        "metric": "hr_zone_1_sec", "unit": "sec", "avg": 2498.28,
+                        "min": 2498.28, "max": 2498.28, "count": 1, "stddev": 0,
+                        "completeness_percent": 100.0, "trend_per_day": null,
+                        "change_from_previous_period_percent": null
+                    }
                 ],
-                "periodDays": 7,
+                "period_days": 7,
                 "start": "2026-01-17T00:00:00Z",
                 "end": "2026-01-23T23:59:59Z"
             }
@@ -199,8 +211,8 @@ class DataApiTest {
 
         val parsed = appJson.decodeFromString<PeriodSummaryResponse>(json)
         assertTrue(parsed.success)
-        assertEquals(2, parsed.metrics.size)
-        assertEquals(3525.0, findMetricTimeSeconds(parsed.metrics, "hr_zone_0_sec"), 0.01)
-        assertEquals(2498.28, findMetricTimeSeconds(parsed.metrics, "hr_zone_1_sec"), 0.01)
+        assertEquals(2, parsed.metrics?.size)
+        assertEquals(3525.0, findMetricTimeSeconds(parsed.metrics.orEmpty(), "hr_zone_0_sec"), 0.01)
+        assertEquals(2498.28, findMetricTimeSeconds(parsed.metrics.orEmpty(), "hr_zone_1_sec"), 0.01)
     }
 }

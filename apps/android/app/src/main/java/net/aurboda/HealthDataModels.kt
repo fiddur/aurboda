@@ -43,7 +43,6 @@ import androidx.health.connect.client.records.Vo2MaxRecord
 import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.records.WheelchairPushesRecord
 import androidx.health.connect.client.records.metadata.Metadata
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.time.Instant
@@ -62,16 +61,6 @@ val appJson = Json {
 // Generic wrapper for POST requests
 @Serializable
 data class PostWrapper<T>(val data: List<T>)
-
-// Daily aggregate for deduplicated cumulative metrics
-@Serializable
-data class DailyAggregate(
-    val date: String,           // "2024-01-15"
-    val metric: String,         // "steps", "distance", etc.
-    val value: Double,
-    @SerialName("data_origins")
-    val dataOrigins: List<String>  // Contributing app package names
-)
 
 // --- Base Metadata and Device for Serializable Records ---
 @Serializable
@@ -572,6 +561,28 @@ data class SpeedRecordSerializable(
                             speedInMetersPerSecond = it.speed.inMetersPerSecond
                         )
                     },
+                    metadata = record.metadata.toSerializable()
+                )
+            }
+        }
+    }
+}
+
+// --- Floors Climbed Record ---
+@Serializable
+data class FloorsClimbedRecordSerializable(
+    val startTime: String,
+    val endTime: String,
+    val floors: Double,
+    val metadata: HealthConnectRecordMetadata
+) {
+    companion object {
+        fun fromRecordsList(classRecords: List<Record>): List<FloorsClimbedRecordSerializable> {
+            return classRecords.filterIsInstance<FloorsClimbedRecord>().map { record ->
+                FloorsClimbedRecordSerializable(
+                    startTime = record.startTime.toIsoString(),
+                    endTime = record.endTime.toIsoString(),
+                    floors = record.floors,
                     metadata = record.metadata.toSerializable()
                 )
             }

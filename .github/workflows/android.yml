@@ -42,6 +42,23 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install api-spec dependencies
+        working-directory: .
+        run: pnpm --filter @aurboda/api-spec install
+
+      - name: Generate Kotlin models from OpenAPI
+        working-directory: .
+        run: pnpm --filter @aurboda/api-spec build && pnpm --filter @aurboda/api-spec generate
+
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > app/aurboda-release.keystore
 
