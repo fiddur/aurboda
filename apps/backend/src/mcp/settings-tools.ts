@@ -2,7 +2,13 @@
  * MCP user settings and tag mapping tools.
  */
 import { setTagMappingBodySchema, updateSettingsInputSchema } from '@aurboda/api-spec'
-import { getProgrammaticTags, getUniqueTags, getUserSettings, upsertUserSettings } from '../db'
+import {
+  getProgrammaticTags,
+  getUniqueTags,
+  getUserSettings,
+  updateTagNameByKey,
+  upsertUserSettings,
+} from '../db'
 import { getGoalsProgress } from '../services/goals'
 import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings'
 import { jsonResponse, type McpServer } from './helpers'
@@ -73,6 +79,7 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
       const newMappings = { ...currentMappings, [tag_key]: name }
 
       await upsertUserSettings(user, { tag_mappings: newMappings })
+      await updateTagNameByKey(user, tag_key, name)
 
       return jsonResponse({ mapping: newMappings, success: true })
     },

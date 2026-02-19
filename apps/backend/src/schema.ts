@@ -267,6 +267,7 @@ export const createTableStatements: Record<string, string> = {
       source          VARCHAR(50) NOT NULL,
       external_id     VARCHAR(255),
       tag             VARCHAR(100) NOT NULL,
+      tag_key         VARCHAR(255),
       start_time      TIMESTAMPTZ NOT NULL,
       end_time        TIMESTAMPTZ,
       CONSTRAINT unique_tag UNIQUE (source, external_id)
@@ -274,7 +275,8 @@ export const createTableStatements: Record<string, string> = {
   `,
   tags_indexes: `
     CREATE INDEX IF NOT EXISTS idx_tags_time ON tags (start_time DESC);
-    CREATE INDEX IF NOT EXISTS idx_tags_tag_time ON tags (tag, start_time DESC)
+    CREATE INDEX IF NOT EXISTS idx_tags_tag_time ON tags (tag, start_time DESC);
+    CREATE INDEX IF NOT EXISTS idx_tags_tag_key ON tags (tag_key) WHERE tag_key IS NOT NULL
   `,
 
   // Normalized time-series metrics for fast charting queries

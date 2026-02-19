@@ -147,6 +147,7 @@ export const mapTagRow = (row: QueryResultRow): Tag => ({
   source: row.source,
   start_time: new Date(row.start_time),
   tag: row.tag,
+  tag_key: row.tag_key ?? undefined,
 })
 
 export const mapMcpSessionRow = (row: QueryResultRow): McpSessionRecord => ({

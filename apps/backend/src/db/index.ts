@@ -104,6 +104,7 @@ export {
   insertTag,
   isProgrammaticTag,
   updateTagEndTime,
+  updateTagNameByKey,
 } from './tags'
 
 // Productivity

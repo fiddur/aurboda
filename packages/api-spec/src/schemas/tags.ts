@@ -23,6 +23,7 @@ export const tagSchema = z
     source: dataSourceSchema.optional(),
     start_time: iso8601DateTimeSchema,
     tag: tagTextSchema,
+    tag_key: z.string().optional().meta({ description: 'Original programmatic identifier (e.g. Oura tag_type_code)' }),
   })
   .meta({ id: 'Tag' })
 
