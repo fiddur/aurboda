@@ -534,6 +534,7 @@ function TimelineChart({
   const xAxisRef = useRef<SVGGElement>(null)
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown>>()
   const isProgrammaticZoom = useRef(false)
+  const zoomRafRef = useRef<number>(0)
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     content: { time: '', title: '' },
@@ -642,9 +643,12 @@ function TimelineChart({
       })
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         if (isProgrammaticZoom.current) return
-        const newX = event.transform.rescaleX(baseScale)
-        const domain = newX.domain()
-        onZoom(domain[0], domain[1])
+        cancelAnimationFrame(zoomRafRef.current)
+        zoomRafRef.current = requestAnimationFrame(() => {
+          const newX = event.transform.rescaleX(baseScale)
+          const domain = newX.domain()
+          onZoom(domain[0], domain[1])
+        })
       })
 
     svg.call(zoom)
@@ -661,6 +665,7 @@ function TimelineChart({
     zoomBehaviorRef.current = zoom
 
     return () => {
+      cancelAnimationFrame(zoomRafRef.current)
       svg.on('.zoom', null)
     }
   }, [baseScale, onZoom])
