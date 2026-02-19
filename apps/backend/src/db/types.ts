@@ -177,6 +177,7 @@ export interface Tag {
   source: DataSource
   external_id?: string
   tag: string
+  tag_key?: string
   start_time: Date
   end_time?: Date
 }

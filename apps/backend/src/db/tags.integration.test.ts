@@ -12,6 +12,7 @@ import {
   insertTag,
   isProgrammaticTag,
   updateTagEndTime,
+  updateTagNameByKey,
 } from '../db'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
 
@@ -86,6 +87,50 @@ describe('Tags Integration Tests', () => {
       expect(tags).toHaveLength(1)
       expect(tags[0].tag).toBe('tea')
       expect(tags[0].start_time).toEqual(new Date('2024-01-15T11:00:00Z'))
+    })
+
+    test('inserts a tag with tag_key', async () => {
+      const user = getTestUser()
+      const tagKey = '067e2862-8cf8-4307-a621-0636dd379cda'
+
+      await insertTag(user, {
+        external_id: 'oura-tag-1',
+        source: 'oura',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Food',
+        tag_key: tagKey,
+      })
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags).toHaveLength(1)
+      expect(tags[0].tag).toBe('Food')
+      expect(tags[0].tag_key).toBe(tagKey)
+    })
+
+    test('preserves tag_key on upsert when new value is undefined', async () => {
+      const user = getTestUser()
+      const tagKey = '067e2862-8cf8-4307-a621-0636dd379cda'
+
+      await insertTag(user, {
+        external_id: 'oura-tag-2',
+        source: 'oura',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Food',
+        tag_key: tagKey,
+      })
+
+      // Upsert without tag_key should preserve existing tag_key
+      await insertTag(user, {
+        external_id: 'oura-tag-2',
+        source: 'oura',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Snack',
+      })
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags).toHaveLength(1)
+      expect(tags[0].tag).toBe('Snack')
+      expect(tags[0].tag_key).toBe(tagKey)
     })
   })
 
@@ -354,6 +399,51 @@ describe('Tags Integration Tests', () => {
     })
   })
 
+  describe('updateTagNameByKey', () => {
+    test('updates all tags with matching tag_key', async () => {
+      const user = getTestUser()
+      const tagKey = '067e2862-8cf8-4307-a621-0636dd379cda'
+
+      await insertTag(user, {
+        external_id: 'oura-1',
+        source: 'oura',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'YinYoga',
+        tag_key: tagKey,
+      })
+      await insertTag(user, {
+        external_id: 'oura-2',
+        source: 'oura',
+        start_time: new Date('2024-01-16T10:00:00Z'),
+        tag: 'YinYoga',
+        tag_key: tagKey,
+      })
+      await insertTag(user, {
+        external_id: 'oura-3',
+        source: 'oura',
+        start_time: new Date('2024-01-17T10:00:00Z'),
+        tag: 'coffee',
+        tag_key: 'tag_generic_coffee',
+      })
+
+      const updated = await updateTagNameByKey(user, tagKey, 'Food')
+      expect(updated).toBe(2)
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-17T23:59:59Z'))
+      const foodTags = tags.filter((t) => t.tag === 'Food')
+      const coffeeTags = tags.filter((t) => t.tag === 'coffee')
+      expect(foodTags).toHaveLength(2)
+      expect(coffeeTags).toHaveLength(1)
+    })
+
+    test('returns 0 when no tags match', async () => {
+      const user = getTestUser()
+
+      const updated = await updateTagNameByKey(user, 'nonexistent-key', 'NewName')
+      expect(updated).toBe(0)
+    })
+  })
+
   describe('getUniqueTags', () => {
     test('returns empty array when no tags exist', async () => {
       const user = getTestUser()
@@ -426,29 +516,32 @@ describe('Tags Integration Tests', () => {
       expect(tags).toEqual([])
     })
 
-    test('returns UUID tags with counts from tags table', async () => {
+    test('returns tags with tag_key set (mapped tags)', async () => {
       const user = getTestUser()
       const uuid1 = '067e2862-8cf8-4307-a621-0636dd379cda'
       const uuid2 = '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a'
 
-      // Insert tags directly to tags table (simulating how Oura sync stores them)
+      // Tags with tag_key set (post-migration: tag has display name, tag_key has original)
       await insertTag(user, {
         external_id: 'tag-1',
         source: 'oura',
         start_time: new Date('2024-01-15T10:00:00Z'),
-        tag: uuid1,
+        tag: 'Food',
+        tag_key: uuid1,
       })
       await insertTag(user, {
         external_id: 'tag-2',
         source: 'oura',
         start_time: new Date('2024-01-15T11:00:00Z'),
-        tag: uuid1, // same tag, counted twice
+        tag: 'Food',
+        tag_key: uuid1, // same tag_key, counted twice
       })
       await insertTag(user, {
         external_id: 'tag-3',
         source: 'oura',
         start_time: new Date('2024-01-15T12:00:00Z'),
-        tag: uuid2,
+        tag: 'Sauna',
+        tag_key: uuid2,
       })
 
       const tags = await getProgrammaticTags(user)
@@ -461,14 +554,16 @@ describe('Tags Integration Tests', () => {
       expect(tags[1].count).toBe(2)
     })
 
-    test('returns tag_* prefixed tags', async () => {
+    test('falls back to programmatic tag names without tag_key (pre-migration)', async () => {
       const user = getTestUser()
+      const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
 
+      // Pre-migration tag: no tag_key, tag has the UUID directly
       await insertTag(user, {
         external_id: 'tag-1',
         source: 'oura',
         start_time: new Date('2024-01-15T10:00:00Z'),
-        tag: 'tag_generic_coffee',
+        tag: uuid,
       })
       await insertTag(user, {
         external_id: 'tag-2',
@@ -480,7 +575,7 @@ describe('Tags Integration Tests', () => {
       const tags = await getProgrammaticTags(user)
 
       expect(tags).toHaveLength(2)
-      expect(tags.map((t) => t.tagKey).sort()).toEqual(['tag_generic_coffee', 'tag_sleep_sauna'])
+      expect(tags.map((t) => t.tagKey).sort()).toEqual([uuid, 'tag_sleep_sauna'])
     })
 
     test('excludes regular human-readable tags', async () => {
@@ -491,25 +586,53 @@ describe('Tags Integration Tests', () => {
         external_id: 'tag-1',
         source: 'oura',
         start_time: new Date('2024-01-15T10:00:00Z'),
-        tag: uuid, // should be included
+        tag: 'Food',
+        tag_key: uuid, // should be included (has tag_key)
       })
       await insertTag(user, {
         external_id: 'tag-2',
         source: 'manual',
         start_time: new Date('2024-01-15T11:00:00Z'),
-        tag: 'coffee', // should be excluded
+        tag: 'coffee', // should be excluded (no tag_key, not programmatic)
       })
       await insertTag(user, {
         external_id: 'tag-3',
         source: 'manual',
         start_time: new Date('2024-01-15T12:00:00Z'),
-        tag: 'Food', // should be excluded
+        tag: 'Food', // should be excluded (no tag_key, not programmatic)
       })
 
       const tags = await getProgrammaticTags(user)
 
       expect(tags).toHaveLength(1)
       expect(tags[0].tagKey).toBe(uuid)
+    })
+
+    test('deduplicates between tag_key and fallback results', async () => {
+      const user = getTestUser()
+      const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
+
+      // Tag with tag_key set
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'oura',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Food',
+        tag_key: uuid,
+      })
+      // Pre-migration tag with same UUID as tag name (no tag_key)
+      await insertTag(user, {
+        external_id: 'tag-2',
+        source: 'oura',
+        start_time: new Date('2024-01-15T11:00:00Z'),
+        tag: uuid,
+      })
+
+      const tags = await getProgrammaticTags(user)
+
+      // Should not duplicate - tag_key result should take precedence
+      const uuidEntries = tags.filter((t) => t.tagKey === uuid)
+      expect(uuidEntries).toHaveLength(1)
     })
   })
 })

@@ -8,20 +8,21 @@ import type { Tag } from './types'
 export const insertTag = async (user: string, tag: Tag) => {
   await query(
     user,
-    `INSERT INTO tags (source, external_id, tag, start_time, end_time)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO tags (source, external_id, tag, tag_key, start_time, end_time)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (source, external_id) DO UPDATE SET
        tag = EXCLUDED.tag,
+       tag_key = COALESCE(EXCLUDED.tag_key, tags.tag_key),
        start_time = EXCLUDED.start_time,
        end_time = EXCLUDED.end_time`,
-    [tag.source, tag.external_id, tag.tag, tag.start_time, tag.end_time],
+    [tag.source, tag.external_id, tag.tag, tag.tag_key, tag.start_time, tag.end_time],
   )
 }
 
 export const getTags = async (user: string, start: Date, end: Date): Promise<Tag[]> => {
   const result = await query(
     user,
-    `SELECT id, source, external_id, tag, start_time, end_time
+    `SELECT id, source, external_id, tag, tag_key, start_time, end_time
      FROM tags
      WHERE (end_time IS NOT NULL AND start_time <= $2 AND end_time >= $1)
         OR (end_time IS NULL AND start_time >= $1 AND start_time <= $2)
@@ -58,7 +59,7 @@ export const findMergeableTag = async (
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, tag, start_time, end_time
+    `SELECT id, source, external_id, tag, tag_key, start_time, end_time
      FROM tags
      WHERE tag = $1
        AND source = $4
@@ -86,6 +87,15 @@ export const updateTagEndTime = async (user: string, externalId: string, endTime
   ])
 
   return (result.rowCount ?? 0) > 0
+}
+
+/**
+ * Update the display name (tag column) for all tags with a given tag_key.
+ * Used when a user changes a tag mapping to retroactively rename existing tags.
+ */
+export const updateTagNameByKey = async (user: string, tagKey: string, newName: string): Promise<number> => {
+  const result = await query(user, `UPDATE tags SET tag = $1 WHERE tag_key = $2`, [newName, tagKey])
+  return result.rowCount ?? 0
 }
 
 /**
@@ -118,27 +128,53 @@ export const isProgrammaticTag = (tag: string): boolean =>
  * Get programmatic tags from the tags table.
  * Returns tags that look like they need human-readable names (UUIDs, tag_* prefixes, etc.)
  * along with usage counts and last seen times.
+ *
+ * Uses tag_key column when available (populated by Oura sync), falling back to
+ * checking the tag column for programmatic patterns (for pre-migration data).
  */
 export const getProgrammaticTags = async (
   user: string,
 ): Promise<{ tagKey: string; count: number; latestTime: Date }[]> => {
-  // Query all unique tags with counts - we filter in JS for pattern matching flexibility
-  const result = await query(
+  // Query tags with tag_key set (the canonical source)
+  const tagKeyResult = await query(
+    user,
+    `SELECT
+       tag_key,
+       COUNT(*) as count,
+       MAX(start_time) as latest_time
+     FROM tags
+     WHERE tag_key IS NOT NULL
+     GROUP BY tag_key
+     ORDER BY MAX(start_time) DESC`,
+  )
+
+  const fromTagKey = tagKeyResult.rows.map((row) => ({
+    count: parseInt(row.count, 10),
+    latestTime: new Date(row.latest_time),
+    tagKey: row.tag_key as string,
+  }))
+
+  // Also check for programmatic tag names without tag_key (pre-migration data)
+  const tagKeyValues = new Set(fromTagKey.map((t) => t.tagKey))
+  const fallbackResult = await query(
     user,
     `SELECT
        tag,
        COUNT(*) as count,
        MAX(start_time) as latest_time
      FROM tags
+     WHERE tag_key IS NULL
      GROUP BY tag
      ORDER BY MAX(start_time) DESC`,
   )
 
-  return result.rows
-    .filter((row) => isProgrammaticTag(row.tag))
+  const fromTag = fallbackResult.rows
+    .filter((row) => isProgrammaticTag(row.tag) && !tagKeyValues.has(row.tag))
     .map((row) => ({
       count: parseInt(row.count, 10),
       latestTime: new Date(row.latest_time),
-      tagKey: row.tag,
+      tagKey: row.tag as string,
     }))
+
+  return [...fromTagKey, ...fromTag].sort((a, b) => b.latestTime.getTime() - a.latestTime.getTime())
 }

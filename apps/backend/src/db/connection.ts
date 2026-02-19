@@ -85,6 +85,38 @@ export const initializeSchema = async (user: string) => {
 }
 
 /**
+ * Backfill tag_key for Oura tags that were already mapped via tag_mappings in user settings.
+ * Reverses the mapping (display name -> programmatic key) to populate tag_key.
+ */
+const backfillTagKeysFromMappings = async (db: Client, existingTableNames: Set<string>) => {
+  if (!existingTableNames.has('user_settings')) return
+
+  const settingsResult = await query(db, `SELECT settings FROM user_settings LIMIT 1`)
+  if (settingsResult.rows.length === 0) return
+
+  const settings = settingsResult.rows[0].settings as Record<string, unknown>
+  const tagMappings = (settings.tag_mappings ?? settings.tagMappings) as Record<string, string> | undefined
+  if (!tagMappings) return
+
+  for (const [tagKey, displayName] of Object.entries(tagMappings)) {
+    // Match tags stored with the mapped display name
+    await query(
+      db,
+      `UPDATE tags SET tag_key = $1, tag = $2
+       WHERE tag_key IS NULL AND source = 'oura' AND tag = $3`,
+      [tagKey, displayName, displayName],
+    )
+    // Also catch tags still stored with the raw programmatic key as tag name
+    await query(
+      db,
+      `UPDATE tags SET tag_key = $1, tag = $2
+       WHERE tag_key IS NULL AND source = 'oura' AND tag = $3`,
+      [tagKey, displayName, tagKey],
+    )
+  }
+}
+
+/**
  * Run database migrations for a user.
  * Checks which tables exist and creates missing ones.
  */
@@ -114,6 +146,24 @@ export const migrateSchema = async (user: string) => {
   if (existingTableNames.has('lastfm_tag_rules')) {
     await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS merge_gap_seconds INTEGER`)
     await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS artist_names JSONB`)
+  }
+
+  if (existingTableNames.has('tags')) {
+    // Add tag_key column to preserve original Oura tag_type_code
+    await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_key VARCHAR(255)`)
+    await query(db, `CREATE INDEX IF NOT EXISTS idx_tags_tag_key ON tags (tag_key) WHERE tag_key IS NOT NULL`)
+
+    // Backfill: tags that still have programmatic names (UUID/tag_*) get tag_key = tag
+    await query(
+      db,
+      `UPDATE tags SET tag_key = tag
+       WHERE tag_key IS NULL
+         AND (tag ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+              OR tag LIKE 'tag\\_%')`,
+    )
+
+    // Backfill: tags that were already mapped (tag = display name) — reverse-lookup from tag_mappings
+    await backfillTagKeysFromMappings(db, existingTableNames)
   }
 }
 

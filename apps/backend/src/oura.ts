@@ -196,6 +196,7 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
               tag.tag_type_code && tagMappings && tag.tag_type_code in tagMappings ?
                 tagMappings[tag.tag_type_code]
               : tag.custom_name || tag.tag_type_code || 'unknown',
+            tag_key: tag.tag_type_code ?? undefined,
           }),
         )
         .filter(

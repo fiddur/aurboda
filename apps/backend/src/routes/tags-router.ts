@@ -19,7 +19,13 @@ import {
   type UniqueTagsResponse,
 } from '@aurboda/api-spec'
 import { RequestHandler, Router } from 'express'
-import { getProgrammaticTags, getUniqueTags, getUserSettings, upsertUserSettings } from '../db'
+import {
+  getProgrammaticTags,
+  getUniqueTags,
+  getUserSettings,
+  updateTagNameByKey,
+  upsertUserSettings,
+} from '../db'
 import { addTag, deleteTag } from '../services/mutations'
 import { queryTags, type SyncProvider } from '../services/queries'
 import { validateBody, validateQuery } from '../validation'
@@ -118,6 +124,7 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
       const newMappings = { ...currentMappings, [tag_key]: name }
 
       await upsertUserSettings(user, { tag_mappings: newMappings })
+      await updateTagNameByKey(user, tag_key, name)
 
       res.json({ mapping: newMappings, success: true })
     },
