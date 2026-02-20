@@ -775,19 +775,13 @@ export const DayView = () => {
       return d3.zoomIdentity.translate(0, ty).scale(k)
     }
 
-    // D3 zoom
+    // D3 zoom — clickDistance(5) allows stationary clicks to pass through to
+    // element click handlers (zoom only suppresses click when the user drags).
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 20])
       .clickDistance(5)
-      .filter((event: Event) => {
-        if (event.type === 'dblclick') return false
-        // Don't let zoom capture mousedown on clickable chart items
-        if (event.type === 'mousedown' || event.type === 'touchstart') {
-          if ((event.target as Element).closest?.('[data-clickable]')) return false
-        }
-        return true
-      })
+      .filter((event: Event) => event.type !== 'dblclick')
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         if (isProgrammaticZoom.current) return
         cancelAnimationFrame(zoomRafRef.current)
@@ -1109,8 +1103,8 @@ const drawItem = (
   const detailUrl =
     item.entity_id && item.entity_type ? `/detail/${item.entity_type}/${item.entity_id}` : undefined
 
-  // Mark items as clickable via data attribute. The zoom filter above skips
-  // mousedown events on [data-clickable] elements, so a plain click fires.
+  // Clickable items: d3-zoom lets click events through for stationary clicks
+  // (within clickDistance). We use data-clickable for CSS cursor override.
   const attachClickNav = (el: d3.Selection<SVGElement, unknown, null, undefined>) => {
     if (!detailUrl) return
     el.attr('data-clickable', 'true')
