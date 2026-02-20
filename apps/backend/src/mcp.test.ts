@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createAuth } from './auth'
 import * as db from './db'
 import { createMcpRouter } from './mcp'
+import { createInMemorySessionStore, McpSessionStore } from './mcp-session-store'
+import * as mutations from './services/mutations'
 import * as queries from './services/queries'
 
 // Mock the services
@@ -18,14 +20,23 @@ vi.mock('./services/queries', () => ({
 }))
 
 vi.mock('./services/mutations', () => ({
+  addActivity: vi.fn(),
+  addCustomMetric: vi.fn(),
   addMetric: vi.fn(),
   addTag: vi.fn(),
+  deleteCustomMetric: vi.fn(),
+  deleteTag: vi.fn(),
+  getCustomMetrics: vi.fn().mockResolvedValue([]),
 }))
 
 // Mock db for sync status and stored detected locations
 vi.mock('./db', () => ({
   getAllSyncStates: vi.fn(),
   getDetectedLocations: vi.fn(),
+  getProgrammaticTags: vi.fn().mockResolvedValue([]),
+  getUniqueTags: vi.fn().mockResolvedValue([]),
+  getUserSettings: vi.fn().mockResolvedValue(null),
+  upsertUserSettings: vi.fn(),
 }))
 
 // Mock the sync modules
@@ -69,6 +80,11 @@ function parseSSEResponse(text: string): unknown {
 describe('MCP Server', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Restore default mock implementations cleared by resetAllMocks
+    vi.mocked(mutations.getCustomMetrics).mockResolvedValue([])
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getUniqueTags).mockResolvedValue([])
+    vi.mocked(db.getProgrammaticTags).mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -244,18 +260,18 @@ describe('MCP Server', () => {
         metrics: [
           {
             avg: 45.5,
-            changeFromPreviousPeriodPercent: 10,
-            completenessPercent: 90,
+            change_from_previous_period_percent: 10,
+            completeness_percent: 90,
             count: 30,
             max: 65,
             metric: 'hrv_rmssd',
             min: 25,
             stddev: 10,
-            trendPerDay: 5,
+            trend_per_day: 5,
             unit: 'ms',
           },
         ],
-        periodDays: 31,
+        period_days: 31,
         start: '2024-01-01T00:00:00.000Z',
       })
 
@@ -274,7 +290,7 @@ describe('MCP Server', () => {
       expect(result.metrics[0].max).toBe(65)
       expect(result.metrics[0].stddev).toBe(10)
       expect(result.metrics[0].unit).toBe('ms')
-      expect(result.metrics[0].trendPerDay).toBe(5)
+      expect(result.metrics[0].trend_per_day).toBe(5)
 
       // Verify service was called with correct arguments
       expect(queries.getPeriodSummary).toHaveBeenCalledWith(
@@ -351,18 +367,18 @@ describe('MCP Server', () => {
         metrics: [
           {
             avg: 50,
-            changeFromPreviousPeriodPercent: 25,
-            completenessPercent: 100,
+            change_from_previous_period_percent: 25,
+            completeness_percent: 100,
             count: 30,
             max: 60,
             metric: 'hrv_rmssd',
             min: 40,
             stddev: 5,
-            trendPerDay: null,
+            trend_per_day: null,
             unit: 'ms',
           },
         ],
-        periodDays: 31,
+        period_days: 31,
         start: '2024-01-01T00:00:00.000Z',
       })
 
@@ -373,7 +389,7 @@ describe('MCP Server', () => {
       })
 
       expect(response.status).toBe(200)
-      expect(response.toolResult.metrics[0].changeFromPreviousPeriodPercent).toBe(25)
+      expect(response.toolResult.metrics[0].change_from_previous_period_percent).toBe(25)
     })
 
     test('identifies outliers beyond 2 stddev', async () => {
@@ -386,19 +402,19 @@ describe('MCP Server', () => {
         metrics: [
           {
             avg: 50,
-            changeFromPreviousPeriodPercent: null,
-            completenessPercent: 100,
+            change_from_previous_period_percent: null,
+            completeness_percent: 100,
             count: 30,
             max: 85,
             metric: 'hrv_rmssd',
             min: 20,
             outliers: [{ type: 'high', value: 85 }],
             stddev: 10,
-            trendPerDay: null,
+            trend_per_day: null,
             unit: 'ms',
           },
         ],
-        periodDays: 31,
+        period_days: 31,
         start: '2024-01-01T00:00:00.000Z',
       })
 
@@ -423,18 +439,18 @@ describe('MCP Server', () => {
         metrics: [
           {
             avg: 0,
-            changeFromPreviousPeriodPercent: null,
-            completenessPercent: 0,
+            change_from_previous_period_percent: null,
+            completeness_percent: 0,
             count: 0,
             max: 0,
             metric: 'hrv_rmssd',
             min: 0,
             stddev: 0,
-            trendPerDay: null,
+            trend_per_day: null,
             unit: 'ms',
           },
         ],
-        periodDays: 31,
+        period_days: 31,
         start: '2024-01-01T00:00:00.000Z',
       })
 
@@ -447,7 +463,7 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.metrics).toHaveLength(1)
       expect(response.toolResult.metrics[0].count).toBe(0)
-      expect(response.toolResult.metrics[0].completenessPercent).toBe(0)
+      expect(response.toolResult.metrics[0].completeness_percent).toBe(0)
     })
 
     test('calculates completeness percentage correctly', async () => {
@@ -460,18 +476,18 @@ describe('MCP Server', () => {
         metrics: [
           {
             avg: 50,
-            changeFromPreviousPeriodPercent: null,
-            completenessPercent: 48,
+            change_from_previous_period_percent: null,
+            completeness_percent: 48,
             count: 15,
             max: 60,
             metric: 'hrv_rmssd',
             min: 40,
             stddev: 5,
-            trendPerDay: null,
+            trend_per_day: null,
             unit: 'ms',
           },
         ],
-        periodDays: 31,
+        period_days: 31,
         start: '2024-01-01T00:00:00.000Z',
       })
 
@@ -482,7 +498,7 @@ describe('MCP Server', () => {
       })
 
       expect(response.status).toBe(200)
-      expect(response.toolResult.metrics[0].completenessPercent).toBe(48)
+      expect(response.toolResult.metrics[0].completeness_percent).toBe(48)
     })
   })
 
@@ -535,12 +551,12 @@ describe('MCP Server', () => {
 
       vi.mocked(queries.queryTags).mockResolvedValue([
         {
-          startTime: '2024-01-15T14:30:00Z',
+          start_time: '2024-01-15T14:30:00Z',
           tag: 'coffee',
         },
         {
-          endTime: '2024-01-15T16:00:00Z',
-          startTime: '2024-01-15T15:00:00Z',
+          end_time: '2024-01-15T16:00:00Z',
+          start_time: '2024-01-15T15:00:00Z',
           tag: 'meeting',
         },
       ])
@@ -630,20 +646,20 @@ describe('MCP Server', () => {
 
       vi.mocked(queries.queryActivities).mockResolvedValue([
         {
-          activityType: 'sleep',
+          activity_type: 'sleep',
           duration: 480,
-          endTime: '2024-01-15T07:00:00Z',
+          end_time: '2024-01-15T07:00:00Z',
           source: 'health_connect',
-          startTime: '2024-01-14T23:00:00Z',
+          start_time: '2024-01-14T23:00:00Z',
           title: 'Sleep',
         },
         {
-          activityType: 'exercise',
+          activity_type: 'exercise',
           duration: 45,
-          endTime: '2024-01-15T09:45:00Z',
-          hrZoneSecs: { 0: 60, 1: 300, 2: 900, 3: 1200, 4: 240, 5: 0 },
+          end_time: '2024-01-15T09:45:00Z',
+          hr_zone_secs: { 0: 60, 1: 300, 2: 900, 3: 1200, 4: 240, 5: 0 },
           source: 'health_connect',
-          startTime: '2024-01-15T09:00:00Z',
+          start_time: '2024-01-15T09:00:00Z',
           title: 'Morning Run',
         },
       ])
@@ -656,9 +672,9 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.data).toHaveLength(2)
-      expect(response.toolResult.data[0].activityType).toBe('sleep')
-      expect(response.toolResult.data[1].activityType).toBe('exercise')
-      expect(response.toolResult.data[1].hrZoneSecs).toBeDefined()
+      expect(response.toolResult.data[0].activity_type).toBe('sleep')
+      expect(response.toolResult.data[1].activity_type).toBe('exercise')
+      expect(response.toolResult.data[1].hr_zone_secs).toBeDefined()
     })
 
     test('filters by activity types when provided', async () => {
@@ -668,11 +684,11 @@ describe('MCP Server', () => {
 
       vi.mocked(queries.queryActivities).mockResolvedValue([
         {
-          activityType: 'exercise',
+          activity_type: 'exercise',
           duration: 45,
-          endTime: '2024-01-15T09:45:00Z',
+          end_time: '2024-01-15T09:45:00Z',
           source: 'health_connect',
-          startTime: '2024-01-15T09:00:00Z',
+          start_time: '2024-01-15T09:00:00Z',
           title: 'Morning Run',
         },
       ])
@@ -746,18 +762,18 @@ describe('MCP Server', () => {
         {
           activity: 'Visual Studio Code',
           category: 'Software Development',
-          durationSec: 7200,
-          endTime: '2024-01-15T17:00:00Z',
+          duration_sec: 7200,
+          end_time: '2024-01-15T17:00:00Z',
           productivity: 2,
-          startTime: '2024-01-15T09:00:00Z',
+          start_time: '2024-01-15T09:00:00Z',
         },
         {
           activity: 'Twitter',
           category: 'Social Networking',
-          durationSec: 1800,
-          endTime: '2024-01-15T18:00:00Z',
+          duration_sec: 1800,
+          end_time: '2024-01-15T18:00:00Z',
           productivity: -2,
-          startTime: '2024-01-15T17:30:00Z',
+          start_time: '2024-01-15T17:30:00Z',
         },
       ])
 
@@ -830,21 +846,21 @@ describe('MCP Server', () => {
       vi.mocked(queries.queryLocations).mockResolvedValue([
         {
           duration: 480,
-          endTime: '2024-01-15T17:00:00Z',
+          end_time: '2024-01-15T17:00:00Z',
           lat: 59.3293,
           lon: 18.0686,
           name: 'Office',
           source: 'named',
-          startTime: '2024-01-15T09:00:00Z',
+          start_time: '2024-01-15T09:00:00Z',
         },
         {
           duration: 120,
-          endTime: '2024-01-15T20:00:00Z',
+          end_time: '2024-01-15T20:00:00Z',
           lat: 59.3351,
           lon: 18.0542,
           name: 'Gym',
           source: 'named',
-          startTime: '2024-01-15T18:00:00Z',
+          start_time: '2024-01-15T18:00:00Z',
         },
       ])
 
@@ -930,31 +946,31 @@ describe('MCP Server', () => {
       vi.mocked(db.getDetectedLocations).mockResolvedValue([
         {
           address: '123 Main St, Stockholm',
-          createdAt: new Date('2024-01-01T00:00:00Z'),
-          firstVisit: new Date('2024-01-01T09:00:00Z'),
-          geocodeStatus: 'success',
+          created_at: new Date('2024-01-01T00:00:00Z'),
+          first_visit: new Date('2024-01-01T09:00:00Z'),
+          geocode_status: 'success',
           id: '123e4567-e89b-12d3-a456-426614174000',
-          lastVisit: new Date('2024-01-15T17:00:00Z'),
+          last_visit: new Date('2024-01-15T17:00:00Z'),
           lat: 59.3293,
           lon: 18.0686,
           radius: 200,
-          totalMinutes: 4800,
-          updatedAt: new Date('2024-01-15T17:00:00Z'),
-          visitCount: 10,
+          total_minutes: 4800,
+          updated_at: new Date('2024-01-15T17:00:00Z'),
+          visit_count: 10,
         },
         {
           address: null,
-          createdAt: new Date('2024-01-02T00:00:00Z'),
-          firstVisit: new Date('2024-01-02T10:00:00Z'),
-          geocodeStatus: 'pending',
+          created_at: new Date('2024-01-02T00:00:00Z'),
+          first_visit: new Date('2024-01-02T10:00:00Z'),
+          geocode_status: 'pending',
           id: '123e4567-e89b-12d3-a456-426614174001',
-          lastVisit: new Date('2024-01-16T18:00:00Z'),
+          last_visit: new Date('2024-01-16T18:00:00Z'),
           lat: 59.3351,
           lon: 18.0542,
           radius: 150,
-          totalMinutes: 600,
-          updatedAt: new Date('2024-01-16T18:00:00Z'),
-          visitCount: 3,
+          total_minutes: 600,
+          updated_at: new Date('2024-01-16T18:00:00Z'),
+          visit_count: 3,
         },
       ])
 
@@ -964,8 +980,8 @@ describe('MCP Server', () => {
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.data).toHaveLength(2)
       expect(response.toolResult.data[0].address).toBe('123 Main St, Stockholm')
-      expect(response.toolResult.data[0].geocodeStatus).toBe('success')
-      expect(response.toolResult.data[1].geocodeStatus).toBe('pending')
+      expect(response.toolResult.data[0].geocode_status).toBe('success')
+      expect(response.toolResult.data[1].geocode_status).toBe('pending')
       expect(db.getDetectedLocations).toHaveBeenCalledWith('testuser')
     })
 
@@ -981,6 +997,355 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.data).toHaveLength(0)
+    })
+  })
+
+  describe('Tool: add_activity', () => {
+    async function initializeSession(app: express.Express, token: string) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+      return response.headers['mcp-session-id'] as string
+    }
+
+    async function callTool(
+      app: express.Express,
+      token: string,
+      sessionId: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: args, name: toolName },
+        })
+
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return {
+        ...response,
+        parsed,
+        toolResult: JSON.parse(parsed.result.content[0].text),
+      }
+    }
+
+    test('creates exercise activity with exercise_type name', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      vi.mocked(mutations.addActivity).mockResolvedValue({
+        activity_type: 'exercise',
+        end_time: '2024-03-15T11:45:00.000Z',
+        id: 'test-uuid',
+        start_time: '2024-03-15T10:30:00.000Z',
+        success: true,
+        title: 'Upper body',
+      })
+
+      const response = await callTool(app, token, sessionId, 'add_activity', {
+        activity_type: 'exercise',
+        end_time: '2024-03-15T11:45:00Z',
+        exercise_type: 'weightlifting',
+        start_time: '2024-03-15T10:30:00Z',
+        title: 'Upper body',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(response.toolResult.id).toBe('test-uuid')
+      expect(mutations.addActivity).toHaveBeenCalledWith('testuser', {
+        activity_type: 'exercise',
+        data: {
+          exerciseType: 81,
+          exerciseTypeName: 'weightlifting',
+        },
+        end_time: expect.any(Date),
+        notes: undefined,
+        start_time: expect.any(Date),
+        title: 'Upper body',
+      })
+    })
+
+    test('creates activity without exercise_type', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      vi.mocked(mutations.addActivity).mockResolvedValue({
+        activity_type: 'meditation',
+        end_time: '2024-03-15T07:30:00.000Z',
+        id: 'test-uuid-2',
+        start_time: '2024-03-15T07:00:00.000Z',
+        success: true,
+        title: 'Morning meditation',
+      })
+
+      const response = await callTool(app, token, sessionId, 'add_activity', {
+        activity_type: 'meditation',
+        end_time: '2024-03-15T07:30:00Z',
+        start_time: '2024-03-15T07:00:00Z',
+        title: 'Morning meditation',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(mutations.addActivity).toHaveBeenCalledWith('testuser', {
+        activity_type: 'meditation',
+        data: undefined,
+        end_time: expect.any(Date),
+        notes: undefined,
+        start_time: expect.any(Date),
+        title: 'Morning meditation',
+      })
+    })
+
+    test('returns error for invalid exercise_type name', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            arguments: {
+              activity_type: 'exercise',
+              end_time: '2024-03-15T11:45:00Z',
+              exercise_type: 'invalid_exercise_type',
+              start_time: '2024-03-15T10:30:00Z',
+            },
+            name: 'add_activity',
+          },
+        })
+
+      expect(response.status).toBe(200)
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      expect(parsed.result.content[0].text).toContain('Invalid exercise_type')
+      expect(mutations.addActivity).not.toHaveBeenCalled()
+    })
+
+    test('returns error when end_time is before start_time', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const sessionId = await initializeSession(app, token)
+
+      vi.mocked(mutations.addActivity).mockResolvedValue({
+        error: 'end_time must be after start_time',
+        success: false,
+      })
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            arguments: {
+              activity_type: 'exercise',
+              end_time: '2024-03-15T09:00:00Z',
+              start_time: '2024-03-15T10:30:00Z',
+            },
+            name: 'add_activity',
+          },
+        })
+
+      expect(response.status).toBe(200)
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      expect(parsed.result.content[0].text).toContain('end_time must be after start_time')
+    })
+  })
+
+  describe('Session Persistence', () => {
+    function createTestAppWithStore(sessionStore: McpSessionStore) {
+      const app = express()
+      app.use('/mcp', createMcpRouter(auth, undefined, undefined, { sessionStore }))
+      return app
+    }
+
+    test('session can be restored after simulated restart', async () => {
+      const sessionStore = createInMemorySessionStore()
+      const app1 = createTestAppWithStore(sessionStore)
+      const token = auth.createToken('testuser')
+
+      // Create session on first "instance"
+      const initResponse = await mcpPost(app1)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      expect(initResponse.status).toBe(200)
+      const sessionId = initResponse.headers['mcp-session-id'] as string
+      expect(sessionId).toBeDefined()
+
+      // Simulate restart by creating a new app instance (fresh in-memory sessions)
+      // but using the same session store
+      const app2 = createTestAppWithStore(sessionStore)
+
+      // Use the same session ID - it should be restored from store
+      // Note: The McpServer instance is recreated, so we need to re-initialize
+      // but the session ID is preserved (the key benefit of persistence)
+      const response = await mcpPost(app2)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      expect(response.status).toBe(200)
+      // The session ID should be preserved (same as before)
+      expect(response.headers['mcp-session-id']).toBe(sessionId)
+    })
+
+    test('session store saves new sessions', async () => {
+      const sessionStore = createInMemorySessionStore()
+      const app = createTestAppWithStore(sessionStore)
+      const token = auth.createToken('testuser')
+
+      const initResponse = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      expect(initResponse.status).toBe(200)
+      const sessionId = initResponse.headers['mcp-session-id'] as string
+
+      // Verify session was saved to store
+      const record = await sessionStore.get('testuser', sessionId)
+      expect(record).not.toBeNull()
+      expect(record!.username).toBe('testuser')
+      expect(record!.session_id).toBe(sessionId)
+    })
+
+    test('session is deleted from store on DELETE', async () => {
+      const sessionStore = createInMemorySessionStore()
+      const app = createTestAppWithStore(sessionStore)
+      const token = auth.createToken('testuser')
+
+      // Create session
+      const initResponse = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      const sessionId = initResponse.headers['mcp-session-id'] as string
+
+      // Delete session
+      await mcpDelete(app).set('Authorization', `Bearer ${token}`).set('Mcp-Session-Id', sessionId)
+
+      // Verify session was removed from store
+      const record = await sessionStore.get('testuser', sessionId)
+      expect(record).toBeNull()
+    })
+
+    test('expired sessions are not restored', async () => {
+      vi.useFakeTimers()
+      const sessionStore = createInMemorySessionStore()
+
+      // Create session at "time zero"
+      const day1 = new Date('2024-01-01T10:00:00Z')
+      vi.setSystemTime(day1)
+
+      const app1 = createTestAppWithStore(sessionStore)
+      const token = auth.createToken('testuser')
+
+      const initResponse = await mcpPost(app1)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      expect(initResponse.status).toBe(200)
+      const sessionId = initResponse.headers['mcp-session-id'] as string
+
+      // Jump forward 8 days (past the 7-day expiry)
+      const day9 = new Date('2024-01-09T10:00:00Z')
+      vi.setSystemTime(day9)
+
+      // Simulate restart with fresh app
+      const app2 = createTestAppWithStore(sessionStore)
+
+      // Try to use the old session - should fail because it's expired
+      // Since the session can't be restored, the system will create a new one
+      // So the response will succeed but with a DIFFERENT session ID
+      const response = await mcpPost(app2)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Mcp-Session-Id', sessionId)
+        .send({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+
+      expect(response.status).toBe(200)
+      // A new session should have been created
+      const newSessionId = response.headers['mcp-session-id'] as string
+      expect(newSessionId).toBeDefined()
+      expect(newSessionId).not.toBe(sessionId)
+
+      vi.useRealTimers()
     })
   })
 })

@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vitest'
-import { clusterStays, detectStays, LocationPoint, Stay } from './locations'
+import {
+  clusterStays,
+  detectStays,
+  LocationPoint,
+  mergeShortUnknownVisits,
+  PlaceVisit,
+  Stay,
+} from './locations'
 
 describe('detectStays', () => {
   const makePoint = (lat: number, lon: number, minutesOffset: number): LocationPoint => ({
@@ -31,7 +38,7 @@ describe('detectStays', () => {
     const stays = detectStays(points, 200, 60)
 
     expect(stays).toHaveLength(1)
-    expect(stays[0].durationMinutes).toBe(90)
+    expect(stays[0].duration_minutes).toBe(90)
     expect(stays[0].lat).toBeCloseTo(59.33, 2)
     expect(stays[0].lon).toBeCloseTo(18.07, 2)
   })
@@ -71,9 +78,9 @@ describe('detectStays', () => {
     const stays = detectStays(points, 200, 60)
 
     expect(stays).toHaveLength(2)
-    expect(stays[0].durationMinutes).toBe(90)
+    expect(stays[0].duration_minutes).toBe(90)
     expect(stays[0].lat).toBeCloseTo(59.33, 2)
-    expect(stays[1].durationMinutes).toBe(90)
+    expect(stays[1].duration_minutes).toBe(90)
     expect(stays[1].lat).toBeCloseTo(59.4, 2)
   })
 
@@ -96,12 +103,12 @@ describe('detectStays', () => {
 
 describe('clusterStays', () => {
   const makeStay = (lat: number, lon: number, durationMinutes: number, dayOffset: number): Stay => ({
-    durationMinutes,
-    endTime: new Date(Date.UTC(2024, 0, 15 + dayOffset, 12, 0, 0)),
+    duration_minutes: durationMinutes,
+    end_time: new Date(Date.UTC(2024, 0, 15 + dayOffset, 12, 0, 0)),
     lat,
     lon,
     points: [{ lat, lon, time: new Date(Date.UTC(2024, 0, 15 + dayOffset, 10, 0, 0)) }],
-    startTime: new Date(Date.UTC(2024, 0, 15 + dayOffset, 10, 0, 0)),
+    start_time: new Date(Date.UTC(2024, 0, 15 + dayOffset, 10, 0, 0)),
   })
 
   test('returns empty array for empty input', () => {
@@ -161,5 +168,119 @@ describe('clusterStays', () => {
     expect(clusters[0].visitCount).toBe(3)
     expect(clusters[0].firstVisit).toContain('2024-01-15')
     expect(clusters[0].lastVisit).toContain('2024-01-25')
+  })
+})
+
+describe('mergeShortUnknownVisits', () => {
+  const makeVisit = (
+    name: string,
+    source: PlaceVisit['source'],
+    startMinutes: number,
+    durationMinutes: number,
+  ): PlaceVisit => {
+    const startTime = new Date(Date.UTC(2024, 0, 15, 10, startMinutes, 0))
+    const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000)
+    return {
+      duration_minutes: durationMinutes,
+      end_time: endTime,
+      lat: 59.33,
+      lon: 18.07,
+      name,
+      source,
+      start_time: startTime,
+    }
+  }
+
+  test('returns empty array for empty input', () => {
+    expect(mergeShortUnknownVisits([])).toEqual([])
+  })
+
+  test('keeps all visits when none are short unknown', () => {
+    const visits = [makeVisit('Home', 'named', 0, 60), makeVisit('Office', 'named', 70, 120)]
+
+    const result = mergeShortUnknownVisits(visits)
+
+    expect(result).toHaveLength(2)
+    expect(result[0].name).toBe('Home')
+    expect(result[1].name).toBe('Office')
+  })
+
+  test('keeps unknown visits that are >= 5 minutes', () => {
+    const visits = [
+      makeVisit('Home', 'named', 0, 60),
+      makeVisit('Somewhere', 'unknown', 60, 10),
+      makeVisit('Office', 'named', 70, 120),
+    ]
+
+    const result = mergeShortUnknownVisits(visits)
+
+    expect(result).toHaveLength(3)
+    expect(result[1].name).toBe('Somewhere')
+  })
+
+  test('merges short unknown visit into previous visit', () => {
+    const visits = [
+      makeVisit('Home', 'named', 0, 60),
+      makeVisit('Somewhere', 'unknown', 60, 3), // short GPS jump
+      makeVisit('Office', 'named', 63, 120),
+    ]
+
+    const result = mergeShortUnknownVisits(visits)
+
+    expect(result).toHaveLength(2)
+    expect(result[0].name).toBe('Home')
+    expect(result[0].duration_minutes).toBe(63) // extended to cover the gap
+    expect(result[1].name).toBe('Office')
+  })
+
+  test('extends next visit backwards when no previous visit exists', () => {
+    const visits = [
+      makeVisit('Somewhere', 'unknown', 0, 2), // short GPS jump at start
+      makeVisit('Home', 'named', 2, 60),
+    ]
+
+    const result = mergeShortUnknownVisits(visits)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('Home')
+    expect(result[0].duration_minutes).toBe(62) // extended backwards
+  })
+
+  test('drops short unknown visit if it is the only visit', () => {
+    const visits = [makeVisit('Somewhere', 'unknown', 0, 2)]
+
+    const result = mergeShortUnknownVisits(visits)
+
+    expect(result).toHaveLength(0)
+  })
+
+  test('handles multiple short unknown visits in sequence', () => {
+    const visits = [
+      makeVisit('Home', 'named', 0, 60),
+      makeVisit('Somewhere', 'unknown', 60, 2),
+      makeVisit('Somewhere', 'unknown', 62, 1),
+      makeVisit('Office', 'named', 63, 120),
+    ]
+
+    const result = mergeShortUnknownVisits(visits)
+
+    expect(result).toHaveLength(2)
+    expect(result[0].name).toBe('Home')
+    expect(result[0].duration_minutes).toBe(63) // extended through both gaps
+    expect(result[1].name).toBe('Office')
+  })
+
+  test('respects custom minDurationMinutes', () => {
+    const visits = [
+      makeVisit('Home', 'named', 0, 60),
+      makeVisit('Somewhere', 'unknown', 60, 8), // 8 min, below 10 min threshold
+      makeVisit('Office', 'named', 68, 120),
+    ]
+
+    const result = mergeShortUnknownVisits(visits, 10)
+
+    expect(result).toHaveLength(2)
+    expect(result[0].name).toBe('Home')
+    expect(result[0].duration_minutes).toBe(68) // extended
   })
 })

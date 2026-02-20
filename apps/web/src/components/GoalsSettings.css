@@ -1,0 +1,298 @@
+.goals-section .section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.goals-section .section-header h2 {
+  margin: 0;
+}
+
+.add-goal-button {
+  background: #673ab8;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.add-goal-button:hover {
+  background: #7c4dcc;
+}
+
+.save-status {
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+  padding: 0.25rem 0;
+}
+
+.save-status.saving {
+  color: #888;
+}
+
+.save-status.saved {
+  color: #4caf50;
+}
+
+.save-status.error {
+  color: #f44336;
+}
+
+.no-goals {
+  color: #888;
+  font-style: italic;
+  padding: 1rem 0;
+}
+
+.goals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.goal-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  padding: 0.75rem;
+  background: var(--bg-secondary, #f5f5f5);
+  border-radius: 8px;
+  flex-wrap: wrap;
+  position: relative;
+}
+
+.goal-row.invalid {
+  border: 2px solid #f44336;
+}
+
+.goal-row.new {
+  border: 2px dashed #673ab8;
+}
+
+.goal-row.dragging {
+  opacity: 0.5;
+}
+
+.goal-row.drag-over {
+  border-top: 2px solid #673ab8;
+}
+
+.drag-handle {
+  cursor: grab;
+  padding: 0.5rem 0.25rem;
+  color: #888;
+  font-size: 1rem;
+  letter-spacing: -2px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.goal-row.new .drag-handle {
+  visibility: hidden;
+}
+
+.field-error input {
+  border-color: #f44336 !important;
+  background-color: rgba(244, 67, 54, 0.05);
+}
+
+.validation-error {
+  width: 100%;
+  color: #f44336;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
+.goal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.goal-field label {
+  font-size: 0.75rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.metric-field {
+  flex: 2;
+  min-width: 120px;
+}
+
+.metric-field select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  width: 100%;
+  background: white;
+}
+
+.min-field,
+.max-field {
+  flex: 1;
+  min-width: 80px;
+}
+
+.window-field {
+  flex: 1;
+  min-width: 70px;
+}
+
+.window-field input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.input-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.input-with-unit input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.input-with-unit .unit {
+  font-size: 0.8rem;
+  color: #666;
+  min-width: 2rem;
+}
+
+.info-button {
+  background: #888;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 1.2em;
+  height: 1.2em;
+  font-size: 0.7rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin-left: 0.25rem;
+}
+
+.info-button:hover {
+  background: #666;
+}
+
+.delete-goal-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 0.5rem;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.delete-goal-button:hover {
+  opacity: 1;
+}
+
+.duration-help {
+  background: var(--bg-secondary, #f5f5f5);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
+.duration-help p {
+  margin: 0 0 0.5rem 0;
+}
+
+.duration-help ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.duration-help li {
+  margin: 0.25rem 0;
+}
+
+.duration-help code {
+  background: #e0e0e0;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .goal-row {
+    background: var(--bg-secondary, #2a2a2a);
+  }
+
+  .goal-field label {
+    color: #aaa;
+  }
+
+  .metric-field select,
+  .input-with-unit input,
+  .window-field input {
+    background: #333;
+    color: #fff;
+    border-color: #555;
+  }
+
+  .input-with-unit .unit {
+    color: #aaa;
+  }
+
+  .duration-help {
+    background: var(--bg-secondary, #2a2a2a);
+  }
+
+  .duration-help code {
+    background: #444;
+  }
+
+  .drag-handle {
+    color: #666;
+  }
+
+  .goal-row.drag-over {
+    border-top-color: #9c77db;
+  }
+
+  .field-error input {
+    background-color: rgba(244, 67, 54, 0.15);
+  }
+}
+
+/* Mobile responsive */
+@media (max-width: 639px) {
+  .goal-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .goal-field {
+    width: 100%;
+  }
+
+  .delete-goal-button {
+    align-self: flex-end;
+  }
+}

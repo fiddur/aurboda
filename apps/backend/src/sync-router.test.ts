@@ -5,13 +5,21 @@ import { createSyncRouter, SyncRouterDeps } from './sync-router'
 
 describe('sync router', () => {
   const mockDeps: SyncRouterDeps = {
+    deleteHealthConnectRecords: vi.fn().mockResolvedValue(0),
+    getCalendarSyncStates: vi.fn().mockResolvedValue([]),
+    getLastFmApiKey: vi.fn().mockResolvedValue('test-lastfm-key'),
+    getLastFmSyncStates: vi.fn().mockResolvedValue([]),
     getOuraSyncStates: vi.fn().mockResolvedValue([]),
     getRescueTimeSyncStates: vi.fn().mockResolvedValue([]),
-    getSettings: vi.fn().mockResolvedValue({ rescueTimeKey: 'test-key' }),
+    getSettings: vi.fn().mockResolvedValue({ rescue_time_key: 'test-key' }),
     processDailyAggregate: vi.fn().mockResolvedValue(undefined),
     processHealthConnectData: vi.fn().mockResolvedValue(undefined),
+    resetCalendarSyncState: vi.fn().mockResolvedValue(undefined),
+    resetLastFmSyncState: vi.fn().mockResolvedValue(undefined),
     resetOuraSyncState: vi.fn().mockResolvedValue(undefined),
     resetRescueTimeSyncState: vi.fn().mockResolvedValue(undefined),
+    syncCalendars: vi.fn().mockResolvedValue([]),
+    syncLastFm: vi.fn().mockResolvedValue({ scrobbles_processed: 0, status: 'success', tags_created: 0 }),
     syncOura: vi.fn().mockResolvedValue({ success: true }),
     syncRescueTime: vi.fn().mockResolvedValue({ success: true }),
   }
@@ -39,7 +47,7 @@ describe('sync router', () => {
       const response = await request(app)
         .post('/sync/daily-aggregates')
         .send({
-          data: [{ dataOrigins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 }],
+          data: [{ data_origins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 }],
         })
 
       expect(response.status).toBe(200)
@@ -105,8 +113,8 @@ describe('sync router', () => {
     test('processes multiple aggregates', async () => {
       const app = createTestApp()
       const aggregates = [
-        { dataOrigins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 },
-        { dataOrigins: ['app1', 'app2'], date: '2024-01-15', metric: 'distance', value: 500 },
+        { data_origins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 },
+        { data_origins: ['app1', 'app2'], date: '2024-01-15', metric: 'distance', value: 500 },
       ]
       const response = await request(app).post('/sync/daily-aggregates').send({ data: aggregates })
 
@@ -116,7 +124,7 @@ describe('sync router', () => {
 
     test('returns 400 for invalid data (missing required fields)', async () => {
       const app = createTestApp()
-      // Missing dataOrigins field
+      // Missing data_origins field
       const response = await request(app)
         .post('/sync/daily-aggregates')
         .send({ data: [{ date: '2024-01-15', metric: 'steps', value: 1000 }] })
@@ -130,10 +138,10 @@ describe('sync router', () => {
     test('GET /sync/oura/status returns sync states', async () => {
       const mockStates = [
         {
-          errorMessage: null,
-          lastSyncTime: '2024-01-15T10:00:00Z',
+          error_message: null,
+          last_sync_time: '2024-01-15T10:00:00Z',
           provider: 'oura',
-          retryAfter: null,
+          retry_after: null,
           status: 'idle' as const,
         },
       ]
@@ -169,10 +177,10 @@ describe('sync router', () => {
     test('GET /sync/rescuetime/status returns sync states', async () => {
       const mockStates = [
         {
-          errorMessage: null,
-          lastSyncTime: '2024-01-15T10:00:00Z',
+          error_message: null,
+          last_sync_time: '2024-01-15T10:00:00Z',
           provider: 'rescuetime',
-          retryAfter: null,
+          retry_after: null,
           status: 'idle' as const,
         },
       ]
@@ -183,6 +191,47 @@ describe('sync router', () => {
 
       expect(response.status).toBe(200)
       expect(response.body).toEqual({ states: mockStates, success: true })
+    })
+  })
+
+  describe('deletions endpoint', () => {
+    test('POST /sync/deletions calls deleteHealthConnectRecords', async () => {
+      vi.mocked(mockDeps.deleteHealthConnectRecords).mockResolvedValueOnce(3)
+
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/sync/deletions')
+        .send({ data: ['id1', 'id2', 'id3'] })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ message: 'Deleted 3 records', success: true })
+      expect(mockDeps.deleteHealthConnectRecords).toHaveBeenCalledWith('testuser', ['id1', 'id2', 'id3'])
+    })
+
+    test('POST /sync/deletions does not call processHealthConnectData', async () => {
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/sync/deletions')
+        .send({ data: ['id1'] })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
+    })
+
+    test('POST /sync/deletions returns 400 for empty array', async () => {
+      const app = createTestApp()
+      const response = await request(app).post('/sync/deletions').send({ data: [] })
+
+      expect(response.status).toBe(400)
+      expect(mockDeps.deleteHealthConnectRecords).not.toHaveBeenCalled()
+    })
+
+    test('POST /sync/deletions returns 400 for missing data', async () => {
+      const app = createTestApp()
+      const response = await request(app).post('/sync/deletions').send({})
+
+      expect(response.status).toBe(400)
+      expect(mockDeps.deleteHealthConnectRecords).not.toHaveBeenCalled()
     })
   })
 

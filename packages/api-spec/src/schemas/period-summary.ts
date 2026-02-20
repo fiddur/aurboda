@@ -3,12 +3,7 @@
  */
 
 import { z } from 'zod'
-import {
-  baseResponseSchema,
-  iso8601DateTimeSchema,
-  metricTypeSchema,
-  timeRangeQuerySchema,
-} from './common.js'
+import { baseResponseSchema, iso8601DateTimeSchema, timeRangeQuerySchema } from './common.js'
 
 /**
  * Outlier schema.
@@ -28,21 +23,21 @@ export type Outlier = z.infer<typeof outlierSchema>
 export const periodMetricStatsSchema = z
   .object({
     avg: z.number().meta({ description: 'Average value' }),
-    changeFromPreviousPeriodPercent: z.number().nullable().meta({
+    change_from_previous_period_percent: z.number().nullable().meta({
       description: 'Percent change from previous period',
     }),
-    completenessPercent: z.number().meta({
+    completeness_percent: z.number().meta({
       description: 'Data completeness (days with data / total days)',
     }),
     count: z.number().int().meta({ description: 'Number of data points' }),
     max: z.number().meta({ description: 'Maximum value' }),
-    metric: metricTypeSchema,
+    metric: z.string().min(1).max(50).meta({ description: 'Metric name (built-in or custom)' }),
     min: z.number().meta({ description: 'Minimum value' }),
     outliers: z.array(outlierSchema).optional().meta({
       description: 'Values more than 2 stddev from mean',
     }),
     stddev: z.number().meta({ description: 'Standard deviation' }),
-    trendPerDay: z.number().nullable().meta({
+    trend_per_day: z.number().nullable().meta({
       description: 'Daily trend (slope of linear regression)',
     }),
     unit: z.string().meta({ description: 'Unit of measurement' }),
@@ -58,7 +53,7 @@ export const periodSummaryResultSchema = z
   .object({
     end: iso8601DateTimeSchema,
     metrics: z.array(periodMetricStatsSchema),
-    periodDays: z.number().int().meta({ description: 'Number of days in period' }),
+    period_days: z.number().int().meta({ description: 'Number of days in period' }),
     start: iso8601DateTimeSchema,
   })
   .meta({ id: 'PeriodSummaryResult' })
@@ -72,7 +67,7 @@ export const periodSummaryResponseSchema = baseResponseSchema
   .extend({
     end: iso8601DateTimeSchema.optional(),
     metrics: z.array(periodMetricStatsSchema).optional(),
-    periodDays: z.number().int().optional(),
+    period_days: z.number().int().optional(),
     start: iso8601DateTimeSchema.optional(),
   })
   .meta({ id: 'PeriodSummaryResponse' })

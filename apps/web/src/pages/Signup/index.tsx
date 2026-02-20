@@ -1,13 +1,19 @@
 import { useLocation } from 'preact-iso'
-import { useEffect, useState } from 'preact/hooks'
-import { auth, ensureStatusLoaded, signup, signupAllowed } from '../../state/auth'
+import { useEffect, useMemo, useState } from 'preact/hooks'
+import { auth, ensureStatusLoaded, signup, signupMode } from '../../state/auth'
 
 import './style.css'
 
 export function Signup() {
-  const { route } = useLocation()
+  const { route, query } = useLocation()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Get invitation token from URL query param
+  const invitation = useMemo(() => {
+    const params = new URLSearchParams(query)
+    return params.get('invite') ?? undefined
+  }, [query])
 
   useEffect(() => {
     ensureStatusLoaded()
@@ -18,11 +24,26 @@ export function Signup() {
     return null
   }
 
-  if (signupAllowed.value === false) {
+  // Show different messages based on signup mode
+  if (signupMode.value === 'closed') {
     return (
       <div class="signup-page">
         <h1>Sign Up</h1>
-        <p class="not-available">Signup is currently not available on this server.</p>
+        <p class="not-available">Signup is currently closed on this server.</p>
+        <p class="login-link">
+          Already have an account? <a href="/login">Login</a>
+        </p>
+      </div>
+    )
+  }
+
+  if (signupMode.value === 'invite_only' && !invitation) {
+    return (
+      <div class="signup-page">
+        <h1>Sign Up</h1>
+        <p class="not-available">
+          This server requires an invitation to sign up. Please ask an administrator for an invitation link.
+        </p>
         <p class="login-link">
           Already have an account? <a href="/login">Login</a>
         </p>
@@ -46,7 +67,7 @@ export function Signup() {
         return
       }
 
-      const result = await signup(formData.get('user') as string, password)
+      const result = await signup(formData.get('user') as string, password, invitation)
 
       if (result.success) {
         route('/')
@@ -60,6 +81,8 @@ export function Signup() {
   return (
     <div class="signup-page">
       <h1>Sign Up</h1>
+
+      {invitation && <p class="invitation-notice">You have been invited to create an account.</p>}
 
       <form onSubmit={onSubmit} class="signup-form">
         <div class="form-field">

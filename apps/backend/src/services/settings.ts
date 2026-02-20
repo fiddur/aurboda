@@ -2,80 +2,30 @@
  * User settings service for HR zones and other user preferences.
  */
 
-import { z } from 'zod'
+import {
+  defaultGoals,
+  type Goal,
+  type HrZoneSecs,
+  type HrZoneSource,
+  type HrZoneThresholds,
+  updateSettingsInputSchema,
+  type UserSettingsResponse,
+} from '@aurboda/api-spec'
 import { getOAuthToken, getUserSettings, upsertUserSettings } from '../db'
+import { getCentralDb } from './central-db'
+
+// Re-export types from api-spec for use by other modules
+export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type HrZoneThresholds = { 1: number; 2: number; 3: number; 4: number; 5: number }
+import type { UserSettings } from '../db/types'
+export type { UserSettings }
 
-export interface UserSettings {
-  birthDate?: string // YYYY-MM-DD
-  hrZoneStart?: HrZoneThresholds
-  rescueTimeKey?: string // RescueTime API key (personal token)
-}
-
-export interface HrZoneSecs {
-  0: number
-  1: number
-  2: number
-  3: number
-  4: number
-  5: number
-}
-
-export type HrZoneSource = 'custom' | 'age_based' | 'default'
-
-export interface SettingsResponse {
-  success: boolean
-  birth_date: string | null
-  hr_zone_start: HrZoneThresholds
-  hr_zone_start_source: HrZoneSource
-  rescue_time_key: string | null
-  oura_connected: boolean
-  oura_configured: boolean // Whether Oura OAuth is configured on the server
-  error?: string
-}
-
-// ============================================================================
-// Zod Schemas (shared between API and MCP)
-// ============================================================================
-
-export const hrZoneThresholdsSchema = z
-  .object({
-    1: z.number().int().positive(),
-    2: z.number().int().positive(),
-    3: z.number().int().positive(),
-    4: z.number().int().positive(),
-    5: z.number().int().positive(),
-  })
-  .refine(
-    (zones) => zones[1] < zones[2] && zones[2] < zones[3] && zones[3] < zones[4] && zones[4] < zones[5],
-    { message: 'HR zone thresholds must be in ascending order' },
-  )
-
-export const birthDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Birth date must be in YYYY-MM-DD format')
-  .refine(
-    (date) => {
-      const parsed = new Date(date)
-      return !isNaN(parsed.getTime())
-    },
-    { message: 'Invalid date' },
-  )
-
-export const rescueTimeKeySchema = z.string().min(1, 'RescueTime API key cannot be empty')
-
-export const updateSettingsInputSchema = z.object({
-  birthDate: birthDateSchema.nullable().optional(),
-  hrZoneStart: hrZoneThresholdsSchema.nullable().optional(),
-  rescueTimeKey: rescueTimeKeySchema.nullable().optional(),
-})
-
-export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
+// Use UserSettingsResponse from api-spec but allow error field for validation failures
+export type SettingsResponse = UserSettingsResponse & { error?: string }
 
 // ============================================================================
 // Constants
@@ -156,17 +106,25 @@ export const getEffectiveHrZones = async (
   const settings = await getSettings(user)
 
   // Custom zones take priority
-  if (settings.hrZoneStart) {
-    return { source: 'custom', zones: settings.hrZoneStart }
+  if (settings.hr_zone_start) {
+    return { source: 'custom', zones: settings.hr_zone_start }
   }
 
   // Age-based zones if birth date is set
-  if (settings.birthDate) {
-    return { source: 'age_based', zones: calculateDefaultHrZones(settings.birthDate) }
+  if (settings.birth_date) {
+    return { source: 'age_based', zones: calculateDefaultHrZones(settings.birth_date) }
   }
 
   // Default zones
   return { source: 'default', zones: calculateDefaultHrZones(null) }
+}
+
+/**
+ * Get effective goals for a user (user goals or defaults).
+ */
+export const getEffectiveGoals = (settings: UserSettings): Goal[] => {
+  // If goals is undefined, return defaults. If empty array, return empty.
+  return settings.goals ?? defaultGoals
 }
 
 /**
@@ -177,15 +135,23 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const { zones, source } = await getEffectiveHrZones(user)
   const ouraToken = await getOAuthToken(user, 'oura')
   const ouraConfigured = !!(process.env.OURA_CLIENT && process.env.OURA_SECRET)
+  const lastFmApiKey = await getCentralDb().getLastFmApiKey()
+  const lastFmConfigured = !!lastFmApiKey
 
   return {
-    birth_date: settings.birthDate ?? null,
+    birth_date: settings.birth_date ?? null,
+    calendars: settings.calendars ?? [],
+    dashboard: settings.dashboard ?? null,
+    goals: getEffectiveGoals(settings),
     hr_zone_start: zones,
     hr_zone_start_source: source,
+    lastfm_configured: lastFmConfigured,
+    lastfm_username: settings.lastfm_username ?? null,
     oura_configured: ouraConfigured,
     oura_connected: ouraToken !== null,
-    rescue_time_key: settings.rescueTimeKey ?? null,
+    rescue_time_key: settings.rescue_time_key ?? null,
     success: true,
+    tag_mappings: settings.tag_mappings ?? {},
   }
 }
 
@@ -200,26 +166,39 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     const errorMessage = parsed.error.issues.map((e) => e.message).join('; ')
     return {
       birth_date: null,
+      calendars: [],
+      dashboard: null,
       error: errorMessage,
+      goals: defaultGoals,
       hr_zone_start: calculateDefaultHrZones(null),
       hr_zone_start_source: 'default',
+      lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
+      lastfm_username: null,
       oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
       oura_connected: false,
       rescue_time_key: null,
       success: false,
+      tag_mappings: {},
     }
   }
 
-  // Build updates object, converting null to undefined for clearing
+  // Build updates object, converting null to undefined (which clears/resets the field in storage)
+  const settingsFields = [
+    'birth_date',
+    'calendars',
+    'dashboard',
+    'goals',
+    'hr_zone_start',
+    'lastfm_username',
+    'rescue_time_key',
+    'tag_mappings',
+  ] as const
   const updates: Partial<UserSettings> = {}
-  if (parsed.data.birthDate !== undefined) {
-    updates.birthDate = parsed.data.birthDate === null ? undefined : parsed.data.birthDate
-  }
-  if (parsed.data.hrZoneStart !== undefined) {
-    updates.hrZoneStart = parsed.data.hrZoneStart === null ? undefined : parsed.data.hrZoneStart
-  }
-  if (parsed.data.rescueTimeKey !== undefined) {
-    updates.rescueTimeKey = parsed.data.rescueTimeKey === null ? undefined : parsed.data.rescueTimeKey
+  for (const field of settingsFields) {
+    if (parsed.data[field] !== undefined) {
+      ;(updates as Record<string, unknown>)[field] =
+        parsed.data[field] === null ? undefined : parsed.data[field]
+    }
   }
 
   // Apply updates

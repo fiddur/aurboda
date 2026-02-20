@@ -65,18 +65,30 @@ fun getLocalProperty(key: String, projectRootDir: File): String { // Assuming ch
     return properties.getProperty(key) ?: ""
 }
 
+// Read version code from environment variable (set by CI) or default to 1 for local builds
+val versionCodeFromEnv = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+
 android {
     namespace = "net.aurboda"
     compileSdk = 36
+
+    sourceSets {
+        getByName("main") {
+            java.srcDir("../../../packages/api-spec/generated/kotlin/src/main/kotlin")
+        }
+    }
 
     defaultConfig {
         applicationId = "net.aurboda"
         minSdk = 34
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = versionCodeFromEnv
+        versionName = "1.0.$versionCodeFromEnv"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Expose version info to runtime code
+        buildConfigField("int", "VERSION_CODE_INT", "$versionCodeFromEnv")
     }
 
     signingConfigs {

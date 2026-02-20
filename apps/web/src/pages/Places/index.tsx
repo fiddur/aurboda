@@ -1,8 +1,13 @@
+import 'leaflet/dist/leaflet.css'
+import './style.css'
+
 import { signal } from '@preact/signals'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
-import { useEffect, useState } from 'preact/hooks'
+import L from 'leaflet'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import {
+  addNamedLocation,
   fetchNamedLocations,
   fetchPlaceVisits,
   fetchStoredDetectedLocations,
@@ -11,7 +16,15 @@ import {
   StoredDetectedLocation,
 } from '../../state/api'
 
-// Signals for date selection
+// Fix Leaflet default marker icon path issue with bundlers
+// @ts-expect-error - Leaflet marker icon fix
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+})
+
 const selectedDate = signal(formatISO(new Date(), { representation: 'date' }))
 
 export const Places = () => {
@@ -19,16 +32,17 @@ export const Places = () => {
   const start = startOfDay(new Date(selectedDate.value))
   const end = endOfDay(new Date(selectedDate.value))
 
-  // Selected place for the map
   const [selectedPlace, setSelectedPlace] = useState<PlaceVisit | StoredDetectedLocation | null>(null)
-
-  // Modal state for naming locations
   const [namingLocation, setNamingLocation] = useState<{
     lat: number
     lon: number
     address?: string
   } | null>(null)
   const [nameInput, setNameInput] = useState('')
+
+  const mapRef = useRef<HTMLDivElement>(null)
+  const leafletMapRef = useRef<L.Map | null>(null)
+  const markerRef = useRef<L.Marker | null>(null)
 
   const placesQuery = useQuery({
     queryFn: () => fetchPlaceVisits(start, end),
@@ -59,6 +73,80 @@ export const Places = () => {
     },
   })
 
+  const addNamedMutation = useMutation({
+    mutationFn: addNamedLocation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['namedLocations'] })
+      queryClient.invalidateQueries({ queryKey: ['placeVisits'] })
+      setNamingLocation(null)
+      setNameInput('')
+    },
+  })
+
+  // Initialize Leaflet map
+  useEffect(() => {
+    if (!mapRef.current || leafletMapRef.current) return
+
+    const map = L.map(mapRef.current, {
+      center: [59.33, 18.07], // Default to Stockholm
+      zoom: 13,
+      zoomControl: true,
+    })
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map)
+
+    leafletMapRef.current = map
+
+    // Cleanup on unmount
+    return () => {
+      map.remove()
+      leafletMapRef.current = null
+    }
+  }, [])
+
+  // Update map when selected place changes
+  useEffect(() => {
+    const map = leafletMapRef.current
+    if (!map) return
+
+    if (selectedPlace && 'lat' in selectedPlace && selectedPlace.lat && selectedPlace.lon) {
+      const latLng: L.LatLngExpression = [selectedPlace.lat, selectedPlace.lon]
+
+      // Remove existing marker
+      if (markerRef.current) {
+        markerRef.current.remove()
+      }
+
+      // Add new marker
+      const marker = L.marker(latLng).addTo(map)
+      const popupContent = 'name' in selectedPlace ? selectedPlace.name : 'Selected Location'
+      marker.bindPopup(popupContent).openPopup()
+      markerRef.current = marker
+
+      // Center map on the marker
+      map.setView(latLng, 15)
+    }
+  }, [selectedPlace])
+
+  // Resize map when container size changes
+  useEffect(() => {
+    const map = leafletMapRef.current
+    if (!map) return
+
+    const resizeObserver = new ResizeObserver(() => {
+      map.invalidateSize()
+    })
+
+    if (mapRef.current) {
+      resizeObserver.observe(mapRef.current)
+    }
+
+    return () => resizeObserver.disconnect()
+  }, [])
+
   const handleDateChange = (e: Event) => {
     const target = e.target as HTMLInputElement
     selectedDate.value = target.value
@@ -76,16 +164,27 @@ export const Places = () => {
 
   const handlePlaceClick = (place: PlaceVisit) => {
     setSelectedPlace(place)
-    // If it's a detected/unnamed location, offer to name it
-    if (place.source === 'detected' && place.lat && place.lon) {
+    // Open naming modal for unnamed locations (detected or unknown) with valid coordinates
+    if ((place.source === 'detected' || place.source === 'unknown') && place.lat && place.lon) {
       setNamingLocation({ address: place.address, lat: place.lat, lon: place.lon })
       setNameInput(place.address || '')
     }
   }
 
   const handlePromote = () => {
-    if (namingLocation && nameInput.trim()) {
+    if (!namingLocation || !nameInput.trim()) return
+
+    // Use appropriate mutation based on whether it's a detected location
+    const placeSource = selectedPlace && 'source' in selectedPlace ? selectedPlace.source : null
+    if (placeSource === 'detected') {
       promoteMutation.mutate({
+        lat: namingLocation.lat,
+        lon: namingLocation.lon,
+        name: nameInput.trim(),
+      })
+    } else {
+      // For unknown locations, create a new named location directly
+      addNamedMutation.mutate({
         lat: namingLocation.lat,
         lon: namingLocation.lon,
         name: nameInput.trim(),
@@ -114,210 +213,137 @@ export const Places = () => {
 
   const isLoading = placesQuery.isLoading || detectedQuery.isLoading || namedQuery.isLoading
   const hasError = placesQuery.isError || detectedQuery.isError || namedQuery.isError
-
   const places = placesQuery.data || []
 
   // Calculate transit periods between stays
   const placesWithTransit = places.reduce<
-    (PlaceVisit | { type: 'transit'; startTime: Date; endTime: Date })[]
+    (PlaceVisit | { type: 'transit'; start_time: Date; end_time: Date })[]
   >((acc, place, index) => {
     if (index > 0) {
       const prevPlace = places[index - 1]
-      const transitStart = prevPlace.endTime
-      const transitEnd = place.startTime
+      const transitStart = prevPlace.end_time
+      const transitEnd = place.start_time
       const transitDuration = (transitEnd.getTime() - transitStart.getTime()) / (1000 * 60)
 
       // Only show transit if there's a gap of more than 1 minute
       if (transitDuration > 1) {
-        acc.push({ endTime: transitEnd, startTime: transitStart, type: 'transit' })
+        acc.push({ end_time: transitEnd, start_time: transitStart, type: 'transit' })
       }
     }
     acc.push(place)
     return acc
   }, [])
 
+  const getSourceColor = (source: string): string => {
+    switch (source) {
+      case 'named':
+        return '#22c55e'
+      case 'detected':
+        return '#f97316'
+      case 'owntracks':
+        return '#3b82f6'
+      default:
+        return '#9ca3af'
+    }
+  }
+
+  const isPending = promoteMutation.isPending || addNamedMutation.isPending
+
   return (
-    <div
-      class="places-page"
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '1rem' }}
-    >
-      <div style={{ alignItems: 'center', display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-        <h1 style={{ margin: 0 }}>Places</h1>
-        <div style={{ alignItems: 'center', display: 'flex', gap: '0.5rem' }}>
+    <div class="places-page">
+      <div class="places-header">
+        <h1>Places</h1>
+        <div class="date-nav">
           <button onClick={handlePreviousDay}>&lt;</button>
           <input type="date" value={selectedDate.value} onChange={handleDateChange} />
           <button onClick={handleNextDay}>&gt;</button>
         </div>
       </div>
 
-      {isLoading && <div>Loading...</div>}
-      {hasError && <div>Error loading data</div>}
+      {isLoading && <div class="loading">Loading...</div>}
+      {hasError && <div class="error">Error loading data</div>}
 
-      <div style={{ display: 'flex', flex: 1, gap: '1rem', minHeight: 0 }}>
-        {/* Places list */}
-        <div
-          style={{
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            flex: '0 0 400px',
-            overflow: 'auto',
-            padding: '0.5rem',
-          }}
-        >
-          {placesWithTransit.length === 0 && !isLoading && (
-            <div style={{ color: '#666' }}>No places visited on this day</div>
-          )}
+      <div class="places-content">
+        <div class="places-list">
+          <div class="places-list-scroll">
+            {placesWithTransit.length === 0 && !isLoading && (
+              <div style={{ color: '#6b7280', padding: '1rem' }}>No places visited on this day</div>
+            )}
 
-          {placesWithTransit.map((item, index) => {
-            if ('type' in item && item.type === 'transit') {
+            {placesWithTransit.map((item, index) => {
+              if ('type' in item && item.type === 'transit') {
+                return (
+                  <div key={`transit-${index}`} class="transit-item">
+                    {format(item.start_time, 'HH:mm')} - {format(item.end_time, 'HH:mm')} Transit
+                  </div>
+                )
+              }
+
+              const place = item as PlaceVisit
+              const isSelected = selectedPlace === place
+              const isUnnamed = place.source === 'detected' || place.source === 'unknown'
+
               return (
                 <div
-                  key={`transit-${index}`}
-                  style={{
-                    borderLeft: '2px dashed #ccc',
-                    color: '#999',
-                    marginLeft: '0.5rem',
-                    padding: '0.25rem 0.5rem',
-                  }}
+                  key={`place-${index}`}
+                  class={`place-item ${isSelected ? 'selected' : ''}`}
+                  onClick={() => handlePlaceClick(place)}
+                  style={{ borderLeft: `3px solid ${getSourceColor(place.source)}` }}
                 >
-                  {format(item.startTime, 'HH:mm')} - {format(item.endTime, 'HH:mm')} Transit
+                  <div class="place-item-header">
+                    <span class="place-time">
+                      {format(place.start_time, 'HH:mm')} - {format(place.end_time, 'HH:mm')}
+                    </span>
+                    <span class={`place-name ${isUnnamed ? 'unnamed' : ''}`}>
+                      {place.name}
+                      {isUnnamed && place.lat && place.lon && ' (click to name)'}
+                    </span>
+                  </div>
+                  {place.address && place.source !== 'named' && (
+                    <div class="place-address">{place.address}</div>
+                  )}
+                  <div class="place-duration">{place.duration} min</div>
                 </div>
               )
-            }
+            })}
+          </div>
 
-            const place = item as PlaceVisit
-            const isSelected = selectedPlace === place
-            const isUnnamed = place.source === 'detected'
-
-            return (
-              <div
-                key={`place-${index}`}
-                onClick={() => handlePlaceClick(place)}
-                style={{
-                  backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
-                  borderLeft: `3px solid ${getSourceColor(place.source)}`,
-                  cursor: 'pointer',
-                  marginBottom: '0.25rem',
-                  padding: '0.5rem',
-                }}
-              >
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <span style={{ color: '#666', minWidth: '100px' }}>
-                    {format(place.startTime, 'HH:mm')} - {format(place.endTime, 'HH:mm')}
-                  </span>
-                  <span style={{ fontWeight: isUnnamed ? 'normal' : 'bold' }}>
-                    {place.name}
-                    {isUnnamed && ' ●'}
-                  </span>
-                </div>
-                {place.address && place.source !== 'named' && (
-                  <div style={{ color: '#666', fontSize: '0.85em', marginTop: '0.25rem' }}>
-                    {place.address}
-                  </div>
-                )}
-                <div style={{ color: '#999', fontSize: '0.8em' }}>{place.durationMinutes} min</div>
-              </div>
-            )
-          })}
-
-          <div
-            style={{
-              borderTop: '1px solid #ccc',
-              color: '#666',
-              fontSize: '0.85em',
-              marginTop: '1rem',
-              paddingTop: '0.5rem',
-            }}
-          >
-            ● = Unnamed location (click to name)
+          <div class="places-list-footer">
+            <span style={{ color: '#22c55e' }}>Named</span> |{' '}
+            <span style={{ color: '#f97316' }}>Detected</span> |{' '}
+            <span style={{ color: '#3b82f6' }}>OwnTracks</span> |{' '}
+            <span style={{ color: '#9ca3af' }}>Unknown</span>
           </div>
         </div>
 
-        {/* Map placeholder */}
-        <div
-          style={{
-            alignItems: 'center',
-            backgroundColor: '#f5f5f5',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            display: 'flex',
-            flex: 1,
-            justifyContent: 'center',
-          }}
-        >
-          {selectedPlace && 'lat' in selectedPlace && selectedPlace.lat && selectedPlace.lon ?
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '3rem' }}>📍</div>
-              <div style={{ marginTop: '0.5rem' }}>
-                {'name' in selectedPlace ? selectedPlace.name : 'Selected Location'}
-              </div>
-              <div style={{ color: '#666', fontSize: '0.9em' }}>
-                {selectedPlace.lat.toFixed(5)}, {selectedPlace.lon.toFixed(5)}
-              </div>
-            </div>
-          : <div style={{ color: '#999' }}>Select a place to view on map</div>}
+        <div class="map-container">
+          <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
         </div>
       </div>
 
       {/* Naming Modal */}
       {namingLocation && (
-        <div
-          style={{
-            alignItems: 'center',
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            bottom: 0,
-            display: 'flex',
-            justifyContent: 'center',
-            left: 0,
-            position: 'fixed',
-            right: 0,
-            top: 0,
-            zIndex: 1000,
-          }}
-          onClick={closeModal}
-        >
-          <div
-            style={{
-              backgroundColor: 'white',
-              borderRadius: '8px',
-              maxWidth: '400px',
-              padding: '1.5rem',
-              width: '90%',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginBottom: '1rem', marginTop: 0 }}>Name this location</h3>
+        <div class="modal-overlay" onClick={closeModal}>
+          <div class="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Name this location</h3>
 
-            {namingLocation.address && (
-              <div style={{ color: '#666', marginBottom: '1rem' }}>Address: {namingLocation.address}</div>
-            )}
+            {namingLocation.address && <div class="modal-address">Address: {namingLocation.address}</div>}
 
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem' }}>Location name:</label>
+            <div class="modal-field">
+              <label>Location name:</label>
               <input
                 type="text"
                 value={nameInput}
                 onInput={(e) => setNameInput((e.target as HTMLInputElement).value)}
                 placeholder="e.g., Home, Office, Gym"
-                style={{ padding: '0.5rem', width: '100%' }}
+                autofocus
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <div class="modal-actions">
               <button onClick={closeModal}>Cancel</button>
-              <button
-                onClick={handlePromote}
-                disabled={!nameInput.trim() || promoteMutation.isPending}
-                style={{
-                  backgroundColor: '#1976d2',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: 'white',
-                  cursor: nameInput.trim() ? 'pointer' : 'not-allowed',
-                  padding: '0.5rem 1rem',
-                }}
-              >
-                {promoteMutation.isPending ? 'Saving...' : 'Save'}
+              <button class="btn-primary" onClick={handlePromote} disabled={!nameInput.trim() || isPending}>
+                {isPending ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>
@@ -325,17 +351,4 @@ export const Places = () => {
       )}
     </div>
   )
-}
-
-const getSourceColor = (source: string): string => {
-  switch (source) {
-    case 'named':
-      return '#4caf50' // green
-    case 'detected':
-      return '#ff9800' // orange
-    case 'owntracks':
-      return '#2196f3' // blue
-    default:
-      return '#9e9e9e' // gray
-  }
 }

@@ -89,7 +89,11 @@ docker compose up -d
 
 ### Using existing PostgreSQL
 
-If you have PostgreSQL running on your host machine:
+If you have PostgreSQL running on your host machine, ensure your service account has `CREATEDB` and `SUPERUSER` privileges (required for creating user databases and enabling PostGIS):
+
+```bash
+sudo -u postgres psql -c "ALTER USER aurboda_service WITH CREATEDB SUPERUSER"
+```
 
 ```yaml
 services:

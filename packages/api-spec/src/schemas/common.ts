@@ -13,6 +13,9 @@ export const validMetrics = [
   'heart_rate',
   'resting_heart_rate',
   'hrv_rmssd',
+  'hrv_sleep',
+  'hrv_activity',
+  'hrv_awake',
   'weight',
   'body_fat',
   'bone_mass',
@@ -86,6 +89,20 @@ export const isHrZoneMetric = (metric: MetricType): boolean =>
   (hrZoneMetrics as readonly string[]).includes(metric)
 
 /**
+ * Contextual HRV metrics are computed by filtering hrv_rmssd data by context.
+ * - hrv_sleep: HRV during sleep windows
+ * - hrv_activity: HRV during exercise sessions
+ * - hrv_awake: HRV when not sleeping or exercising
+ */
+export const contextualHrvMetrics = ['hrv_sleep', 'hrv_activity', 'hrv_awake'] as const
+
+/**
+ * Check if a metric is a contextual HRV metric (computed from hrv_rmssd).
+ */
+export const isContextualHrvMetric = (metric: MetricType): boolean =>
+  (contextualHrvMetrics as readonly string[]).includes(metric)
+
+/**
  * Valid activity types.
  */
 export const activityTypes = ['sleep', 'exercise', 'meditation', 'nap'] as const
@@ -105,7 +122,18 @@ export type ActivityType = z.infer<typeof activityTypeSchema>
  * Supported data sources.
  */
 export const dataSourceSchema = z
-  .enum(['health_connect', 'health_connect_aggregate', 'oura', 'garmin', 'rescuetime', 'owntracks', 'manual'])
+  .enum([
+    'health_connect',
+    'health_connect_aggregate',
+    'oura',
+    'garmin',
+    'rescuetime',
+    'owntracks',
+    'calendar',
+    'manual',
+    'lastfm',
+    'lastfm-auto',
+  ])
   .meta({
     description: 'Source of the data',
     example: 'health_connect',
@@ -158,7 +186,10 @@ export const metricUnits: Record<MetricType, string> = {
   hr_zone_3_sec: 'sec',
   hr_zone_4_sec: 'sec',
   hr_zone_5_sec: 'sec',
+  hrv_activity: 'ms',
+  hrv_awake: 'ms',
   hrv_rmssd: 'ms',
+  hrv_sleep: 'ms',
   lean_body_mass: 'kg',
   productivity_score: 'score',
   readiness_score: 'score',
@@ -178,6 +209,60 @@ export const metricUnits: Record<MetricType, string> = {
   vo2_max: 'mL/kg/min',
   weight: 'kg',
 }
+
+/**
+ * Custom metric definition.
+ * Users can define their own metric types with custom names and units.
+ */
+export const customMetricDefinitionSchema = z
+  .object({
+    description: z.string().optional().meta({ description: 'Human-readable description' }),
+    max_value: z.number().optional().meta({ description: 'Maximum allowed value' }),
+    min_value: z.number().optional().meta({ description: 'Minimum allowed value' }),
+    name: z
+      .string()
+      .min(1)
+      .max(50)
+      .regex(
+        /^[a-z][a-z0-9_]*$/,
+        'Must be lowercase letters, numbers, and underscores, starting with a letter',
+      )
+      .meta({ description: 'Metric name (e.g., "mood", "caffeine_mg")', example: 'mood' }),
+    unit: z
+      .string()
+      .min(1)
+      .max(20)
+      .meta({ description: 'Unit of measurement (e.g., "score", "mg")', example: 'score' }),
+  })
+  .meta({ id: 'CustomMetricDefinition' })
+
+export type CustomMetricDefinition = z.infer<typeof customMetricDefinitionSchema>
+
+/**
+ * Validate a custom metric name doesn't conflict with built-in metrics.
+ */
+export const isValidCustomMetricName = (name: string): boolean =>
+  /^[a-z][a-z0-9_]*$/.test(name) && name.length <= 50 && !isValidMetric(name)
+
+/**
+ * Get the unit for a metric, checking both built-in and custom metrics.
+ * Returns undefined if the metric is not found in either.
+ */
+export const getMetricUnit = (
+  metric: string,
+  customMetrics: CustomMetricDefinition[] = [],
+): string | undefined => {
+  if (isValidMetric(metric)) return metricUnits[metric]
+  return customMetrics.find((m) => m.name === metric)?.unit
+}
+
+/**
+ * Check if a string is a valid metric (built-in or custom).
+ */
+export const isValidMetricOrCustom = (
+  metric: string,
+  customMetrics: CustomMetricDefinition[] = [],
+): boolean => isValidMetric(metric) || customMetrics.some((m) => m.name === metric)
 
 /**
  * Cumulative metrics that are summed over a day and can have duplicate sources.

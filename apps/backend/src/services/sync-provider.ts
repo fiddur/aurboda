@@ -7,6 +7,7 @@
 
 import { isBefore, subMinutes } from 'date-fns'
 import { getSyncState } from '../db'
+import { syncAllCalendars } from '../ical-sync'
 import { ouraClient } from '../oura'
 import { isRateLimited as isOuraRateLimited, OuraDataType, syncOuraDataType } from '../oura-sync'
 import {
@@ -37,6 +38,26 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
   const threshold = config.syncThresholdMinutes ?? DEFAULT_SYNC_THRESHOLD_MINUTES
 
   return {
+    syncCalendarsIfNeeded: async (user: string): Promise<void> => {
+      try {
+        const settings = await getSettings(user)
+        if (!settings.calendars || settings.calendars.length === 0) return
+
+        // Check if any calendar needs sync by checking the first one
+        // (they all get synced together)
+        const syncState = await getSyncState(user, 'calendar', settings.calendars[0].name)
+        const thresholdTime = subMinutes(new Date(), threshold)
+        if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
+          return
+        }
+
+        console.log('Auto-syncing calendars...')
+        await syncAllCalendars(user, settings.calendars)
+      } catch (error) {
+        console.error('Failed to auto-sync calendars:', error)
+      }
+    },
+
     syncOuraIfNeeded: async (user: string, dataType: 'tags' | 'sessions'): Promise<void> => {
       if (!config.oura) return
 
@@ -46,13 +67,13 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
 
         // Skip if rate limited
         if (isOuraRateLimited(syncState)) {
-          console.log(`Oura ${dataType} sync skipped - rate limited until ${syncState?.retryAfter}`)
+          console.log(`Oura ${dataType} sync skipped - rate limited until ${syncState?.retry_after}`)
           return
         }
 
         // Check if sync is needed (never synced or older than threshold)
         const thresholdTime = subMinutes(new Date(), threshold)
-        if (syncState?.lastSyncTime && isBefore(thresholdTime, syncState.lastSyncTime)) {
+        if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
           return // Recently synced, no need to sync again
         }
 
@@ -67,7 +88,7 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
     syncRescueTimeIfNeeded: async (user: string): Promise<void> => {
       try {
         const settings = await getSettings(user)
-        if (!settings.rescueTimeKey) return
+        if (!settings.rescue_time_key) return
 
         const syncState = await getSyncState(user, 'rescuetime', 'productivity')
 
@@ -75,7 +96,7 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         if (!rescueTimeNeedsSync(syncState, threshold)) return
 
         console.log('Auto-syncing RescueTime productivity...')
-        await syncRescueTimeData(user, settings.rescueTimeKey)
+        await syncRescueTimeData(user, settings.rescue_time_key)
       } catch (error) {
         console.error('Failed to auto-sync RescueTime:', error)
       }

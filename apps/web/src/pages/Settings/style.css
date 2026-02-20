@@ -35,6 +35,33 @@
   margin-bottom: 0.5rem;
 }
 
+.section-header-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.section-header-row h2 {
+  margin-bottom: 0;
+}
+
+.save-indicator {
+  font-size: 0.85rem;
+}
+
+.save-indicator.saving {
+  color: #888;
+}
+
+.save-indicator.saved {
+  color: #4caf50;
+}
+
+.save-indicator.error {
+  color: #f44336;
+}
+
 .section-description {
   color: #666;
   margin-bottom: 1rem;
@@ -51,8 +78,20 @@
   margin-bottom: 0.5rem;
 }
 
+.field-header-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.field-header-row label {
+  margin-bottom: 0;
+}
+
 .form-field input[type="date"],
-.form-field input[type="password"] {
+.form-field input[type="password"],
+.form-field input[type="text"] {
   padding: 0.5rem;
   font-size: 1rem;
   border: 1px solid #ccc;
@@ -99,6 +138,70 @@
 
 .field-description.warning {
   color: #f57c00;
+}
+
+.calendars-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.calendar-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  gap: 1rem;
+}
+
+.calendar-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.calendar-name {
+  font-weight: 500;
+}
+
+.calendar-url {
+  font-size: 0.8rem;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remove-calendar-button {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  background: transparent;
+  border: 1px solid #f44336;
+  color: #f44336;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.remove-calendar-button:hover {
+  background: #f44336;
+  color: white;
+}
+
+.add-calendar-form {
+  margin-bottom: 0.5rem;
+}
+
+.add-calendar-form .form-field input[type="text"],
+.add-calendar-form .form-field input[type="url"] {
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 100%;
 }
 
 .hr-zones-form {
@@ -151,44 +254,6 @@
   background: #f5f5f5;
 }
 
-.button-group {
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-end;
-  margin-top: 1.5rem;
-}
-
-.button-group button {
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.button-group button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.button-group button.primary {
-  background: #673ab8;
-  color: white;
-  border: none;
-}
-
-.button-group button.primary:hover:not(:disabled) {
-  background: #5e35b1;
-}
-
-.button-group button:not(.primary) {
-  background: transparent;
-  border: 1px solid #ccc;
-}
-
-.button-group button:not(.primary):hover:not(:disabled) {
-  background: #f5f5f5;
-}
-
 @media (prefers-color-scheme: dark) {
   .settings-section {
     border-bottom-color: #444;
@@ -200,15 +265,32 @@
     color: #aaa;
   }
 
+  .calendar-item {
+    border-color: #444;
+  }
+
+  .calendar-url {
+    color: #aaa;
+  }
+
+  .add-calendar-form .form-field input[type="text"],
+  .add-calendar-form .form-field input[type="url"] {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+  }
+
   .form-field input[type="date"],
   .form-field input[type="password"],
+  .form-field input[type="text"],
   .zone-input input[type="number"] {
     background: #333;
     border-color: #555;
     color: #fff;
   }
 
-  .form-field input[type="password"]::placeholder {
+  .form-field input[type="password"]::placeholder,
+  .form-field input[type="text"]::placeholder {
     color: #888;
   }
 
@@ -218,15 +300,6 @@
   }
 
   .reset-zones-button:hover {
-    background: #444;
-  }
-
-  .button-group button:not(.primary) {
-    border-color: #555;
-    color: #fff;
-  }
-
-  .button-group button:not(.primary):hover:not(:disabled) {
     background: #444;
   }
 }

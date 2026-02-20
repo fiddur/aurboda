@@ -20,6 +20,9 @@ COPY packages/api-spec/ packages/api-spec/
 COPY apps/web/ apps/web/
 RUN pnpm --filter @aurboda/api-spec build && pnpm --filter aurboda-web build
 
+# Generate OpenAPI spec and HTML documentation
+RUN pnpm --filter @aurboda/api-spec generate:openapi && pnpm --filter @aurboda/api-spec generate:html
+
 # Production stage
 FROM node:22-alpine
 
@@ -46,6 +49,9 @@ COPY apps/backend/src ./apps/backend/src
 
 # Copy built web frontend
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
+
+# Copy generated API documentation
+COPY --from=builder /app/packages/api-spec/generated/api-docs.html /usr/share/nginx/html/apispec/index.html
 
 # Copy nginx config and entrypoint
 COPY nginx.conf /etc/nginx/http.d/default.conf

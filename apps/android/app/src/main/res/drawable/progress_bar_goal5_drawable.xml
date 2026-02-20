@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background track -->
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <corners android:radius="6dp" />
+            <!-- Purple (#9C27B0) at 20% alpha -->
+            <solid android:color="#339C27B0" />
+        </shape>
+    </item>
+    <!-- Progress -->
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <corners android:radius="6dp" />
+                <!-- Purple -->
+                <solid android:color="#FF9C27B0" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>

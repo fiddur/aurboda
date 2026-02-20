@@ -22,7 +22,11 @@ type OuraSession = {
   motion_count: unknown
 }
 
-export const ouraClient = (client: string, secret: string, webHost: string) => {
+export interface OuraClientOptions {
+  onUserAuthenticated?: (ouraUserId: string, username: string) => Promise<void>
+}
+
+export const ouraClient = (client: string, secret: string, webHost: string, options?: OuraClientOptions) => {
   if (!client || !secret) throw new Error('Oura missing client or secret')
   const redirectUri = `${webHost}/auth/ouracb`
 
@@ -33,6 +37,18 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
     )
     console.log(type, start, end, response.data)
     return response.data.data
+  }
+
+  const getPersonalInfo = async (accessToken: string): Promise<{ id: string } | null> => {
+    try {
+      const response = await axios.get('https://api.ouraring.com/v2/usercollection/personal_info', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      return response.data
+    } catch (error) {
+      console.error('Failed to fetch Oura personal info:', error instanceof Error ? error.message : error)
+      return null
+    }
   }
 
   return {
@@ -65,12 +81,21 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
       const { access_token, refresh_token, expires_in } = response.data
 
       await upsertOAuthToken(user, {
-        accessToken: access_token,
-        expiresAt: addSeconds(new Date(), expires_in),
+        access_token,
+        expires_at: addSeconds(new Date(), expires_in),
         provider: 'oura',
-        refreshToken: refresh_token,
+        refresh_token,
         scopes: scope ? scope.split(' ') : undefined,
       })
+
+      // Store Oura user ID mapping for webhook notifications
+      if (options?.onUserAuthenticated) {
+        const personalInfo = await getPersonalInfo(access_token)
+        if (personalInfo?.id) {
+          await options.onUserAuthenticated(personalInfo.id, user)
+          console.log(`Stored Oura user mapping: ${personalInfo.id} -> ${user}`)
+        }
+      }
 
       res.end()
     },
@@ -80,14 +105,14 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
       if (!token) throw new Error('User has no Oura OAuth token')
 
       // Return token if not expired (with 100 second buffer)
-      if (token.expiresAt && isFuture(addSeconds(token.expiresAt, -100))) {
-        return token.accessToken
+      if (token.expires_at && isFuture(addSeconds(token.expires_at, -100))) {
+        return token.access_token
       }
 
       // Refresh the token
       const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
       tokenUrl.searchParams.append('grant_type', 'refresh_token')
-      tokenUrl.searchParams.append('refresh_token', token.refreshToken!)
+      tokenUrl.searchParams.append('refresh_token', token.refresh_token!)
       tokenUrl.searchParams.append('client_id', client)
       tokenUrl.searchParams.append('client_secret', secret)
 
@@ -96,10 +121,10 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
       const { access_token, refresh_token, expires_in } = response.data
 
       await upsertOAuthToken(user, {
-        accessToken: access_token,
-        expiresAt: addSeconds(new Date(), expires_in),
+        access_token,
+        expires_at: addSeconds(new Date(), expires_in),
         provider: 'oura',
-        refreshToken: refresh_token,
+        refresh_token,
       })
 
       return access_token
@@ -153,29 +178,30 @@ export const ouraClient = (client: string, secret: string, webHost: string) => {
 
       return sessions
     },
-    async getTags(start: Date, end: Date, token: string): Promise<Tag[]> {
-      const customTags: Record<string, string> = {
-        '067e2862-8cf8-4307-a621-0636dd379cda': 'Hot Chocolate',
-        '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a': 'YinYoga',
-        '662ad09c-0998-4f0c-aad9-867c883dfdaa': 'Electrolytes',
-        'f830b90b-0689-42a1-bfe7-ea1b4487d0c3': 'Food',
-      }
-
+    async getTags(
+      start: Date,
+      end: Date,
+      token: string,
+      tagMappings?: Record<string, string>,
+    ): Promise<Tag[]> {
       const data: OuraTag[] = await getGeneric('enhanced_tag', start, end, token)
       const tags = data
         .map(
           (tag): Tag => ({
-            endTime: tag.end_time ? new Date(tag.end_time) : undefined,
-            externalId: tag.id,
+            end_time: tag.end_time ? new Date(tag.end_time) : undefined,
+            external_id: tag.id,
             source: 'oura',
-            startTime: new Date(tag.start_time),
+            start_time: new Date(tag.start_time),
             tag:
-              tag.tag_type_code && tag.tag_type_code in customTags ?
-                customTags[tag.tag_type_code]
-              : tag.tag_type_code || 'unknown',
+              tag.tag_type_code && tagMappings && tag.tag_type_code in tagMappings ?
+                tagMappings[tag.tag_type_code]
+              : tag.custom_name || tag.tag_type_code || 'unknown',
+            tag_key: tag.tag_type_code ?? undefined,
           }),
         )
-        .filter(({ startTime, endTime }) => isBefore(startTime, end) && (!endTime || isAfter(endTime, start)))
+        .filter(
+          ({ start_time, end_time }) => isBefore(start_time, end) && (!end_time || isAfter(end_time, start)),
+        )
       return tags
     },
     redirectToAuthorize(req: Request, res: Response) {

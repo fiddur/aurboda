@@ -4,6 +4,8 @@
 
 import { z } from 'zod'
 import { baseResponseSchema, hrZoneSourceSchema } from './common.js'
+import { dashboardConfigSchema } from './dashboard.js'
+import { goalsSchema } from './goals.js'
 
 // Shared HR zone threshold field
 const hrZoneThresholdSchema = z.number().int().positive()
@@ -61,6 +63,43 @@ export const rescueTimeKeySchema = z.string().min(1, 'RescueTime API key cannot 
 })
 
 /**
+ * Last.fm username schema.
+ */
+export const lastFmUsernameSchema = z.string().min(1, 'Last.fm username cannot be empty').meta({
+  description: 'Last.fm username for scrobble sync',
+})
+
+/**
+ * Tag mappings schema (UUID -> display name).
+ */
+export const tagMappingsSchema = z.record(z.string(), z.string()).meta({
+  description: 'Tag mappings from Oura tag_type_code UUIDs to display names',
+  id: 'TagMappings',
+})
+
+/**
+ * Calendar config schema (name + ICS URL pair).
+ */
+export const calendarConfigSchema = z
+  .object({
+    name: z.string().min(1).meta({ description: 'Display name for the calendar' }),
+    url: z.string().url().meta({ description: 'ICS URL for the calendar' }),
+  })
+  .meta({ id: 'CalendarConfig' })
+
+export type CalendarConfig = z.infer<typeof calendarConfigSchema>
+
+/**
+ * Calendars schema (array of calendar configs).
+ */
+export const calendarsSchema = z.array(calendarConfigSchema).meta({
+  description: 'Calendar ICS URL configurations',
+  id: 'Calendars',
+})
+
+export type TagMappings = z.infer<typeof tagMappingsSchema>
+
+/**
  * Update settings input schema.
  */
 export const updateSettingsInputSchema = z
@@ -68,11 +107,26 @@ export const updateSettingsInputSchema = z
     birth_date: birthDateSchema.nullable().optional().meta({
       description: 'Birth date (set to null to clear)',
     }),
+    calendars: calendarsSchema.nullable().optional().meta({
+      description: 'Calendar ICS URL configurations (set to null to clear all)',
+    }),
+    dashboard: dashboardConfigSchema.nullable().optional().meta({
+      description: 'Dashboard configuration (set to null to reset to defaults)',
+    }),
+    goals: goalsSchema.nullable().optional().meta({
+      description: 'Goals (set to null to reset to defaults, empty array to clear all)',
+    }),
     hr_zone_start: hrZoneThresholdsSchema.nullable().optional().meta({
       description: 'Custom HR zone thresholds (set to null to clear)',
     }),
+    lastfm_username: lastFmUsernameSchema.nullable().optional().meta({
+      description: 'Last.fm username for scrobble sync (set to null to clear)',
+    }),
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
+    }),
+    tag_mappings: tagMappingsSchema.nullable().optional().meta({
+      description: 'Tag name mappings (set to null to clear all)',
     }),
   })
   .meta({ id: 'UpdateSettingsInput' })
@@ -85,13 +139,21 @@ export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
     birth_date: z.string().nullable().meta({ description: 'Birth date in YYYY-MM-DD format' }),
+    calendars: calendarsSchema.meta({ description: 'Calendar ICS URL configurations' }),
+    dashboard: dashboardConfigSchema
+      .nullable()
+      .meta({ description: 'Custom dashboard configuration (null = use default)' }),
+    goals: goalsSchema.meta({ description: 'User goals for tracking metrics' }),
     hr_zone_start: hrZoneThresholdsSchema.meta({ description: 'Effective HR zone thresholds' }),
     hr_zone_start_source: hrZoneSourceSchema.meta({
       description: 'Source of HR zone thresholds',
     }),
+    lastfm_configured: z.boolean().meta({ description: 'Whether Last.fm API key is configured on server' }),
+    lastfm_username: z.string().nullable().meta({ description: 'Last.fm username for scrobble sync' }),
     oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
     rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),
+    tag_mappings: tagMappingsSchema.meta({ description: 'Tag name mappings from UUIDs to display names' }),
   })
   .meta({ id: 'UserSettingsResponse' })
 

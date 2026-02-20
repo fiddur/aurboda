@@ -10,6 +10,7 @@ import {
   dateOnlySchema,
   iso8601DateTimeSchema,
   syncStatusSchema,
+  timeRangeQuerySchema,
 } from './common.js'
 
 // Shared sync options fields
@@ -25,12 +26,12 @@ const startDateSyncSchema = dateOnlySchema.optional().meta({
  */
 export const providerSyncStatusSchema = z
   .object({
-    errorMessage: z.string().nullable().meta({ description: 'Error message if status is error' }),
-    lastSyncTime: iso8601DateTimeSchema.nullable().meta({
+    error_message: z.string().nullable().meta({ description: 'Error message if status is error' }),
+    last_sync_time: iso8601DateTimeSchema.nullable().meta({
       description: 'Last successful sync time',
     }),
     provider: z.string().meta({ description: 'Provider name', example: 'oura' }),
-    retryAfter: iso8601DateTimeSchema.nullable().meta({
+    retry_after: iso8601DateTimeSchema.nullable().meta({
       description: 'Time when retry is allowed',
     }),
     status: syncStatusSchema,
@@ -53,7 +54,7 @@ export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
  */
 export const syncStatusQuerySchema = z
   .object({
-    provider: z.enum(['oura', 'rescuetime', 'all']).optional().meta({
+    provider: z.enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'all']).optional().meta({
       description: 'Provider to check (defaults to all)',
     }),
   })
@@ -64,7 +65,7 @@ export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
 /**
  * Sync provider schema (for MCP).
  */
-export const syncProviderSchema = z.enum(['oura', 'rescuetime', 'all']).meta({
+export const syncProviderSchema = z.enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'all']).meta({
   description: 'Which provider to check',
 })
 
@@ -95,6 +96,17 @@ export const syncRescueTimeBodySchema = z
 export type SyncRescueTimeBody = z.infer<typeof syncRescueTimeBodySchema>
 
 /**
+ * Sync Calendars body schema.
+ */
+export const syncCalendarsBodySchema = z
+  .object({
+    full_resync: fullResyncSchema,
+  })
+  .meta({ id: 'SyncCalendarsBody' })
+
+export type SyncCalendarsBody = z.infer<typeof syncCalendarsBodySchema>
+
+/**
  * Sync response schema.
  */
 export const syncResponseSchema = baseResponseSchema
@@ -115,7 +127,7 @@ export type SyncResponse = z.infer<typeof syncResponseSchema>
  */
 export const dailyAggregateSchema = z
   .object({
-    dataOrigins: z.array(z.string()).meta({ description: 'Contributing app package names' }),
+    data_origins: z.array(z.string()).meta({ description: 'Contributing app package names' }),
     date: dateOnlySchema,
     metric: z.enum(cumulativeMetrics).meta({ description: 'Cumulative metric type' }),
     value: z.number().meta({ description: 'Aggregated value for the day' }),
@@ -155,9 +167,9 @@ export const healthConnectMetadataSchema = z
  */
 export const healthConnectRecordSchema = z
   .object({
-    endTime: iso8601DateTimeSchema.optional().meta({ description: 'End time for interval records' }),
+    end_time: iso8601DateTimeSchema.optional().meta({ description: 'End time for interval records' }),
     metadata: healthConnectMetadataSchema.optional(),
-    startTime: iso8601DateTimeSchema.optional().meta({ description: 'Start time' }),
+    start_time: iso8601DateTimeSchema.optional().meta({ description: 'Start time' }),
     time: iso8601DateTimeSchema.optional().meta({ description: 'Time for instant records' }),
   })
   .passthrough()
@@ -179,6 +191,24 @@ export const healthConnectSyncBodySchema = z
 export type HealthConnectSyncBody = z.infer<typeof healthConnectSyncBodySchema>
 
 // ============================================================================
+// Health Connect Deletions
+// ============================================================================
+
+/**
+ * Health Connect deletions request body schema.
+ * Used when Health Connect reports deleted records that should be removed from the backend.
+ */
+export const healthConnectDeletionsBodySchema = z
+  .object({
+    data: z.array(z.string()).min(1).meta({
+      description: 'Array of Health Connect record external IDs to delete',
+    }),
+  })
+  .meta({ id: 'HealthConnectDeletionsBody' })
+
+export type HealthConnectDeletionsBody = z.infer<typeof healthConnectDeletionsBodySchema>
+
+// ============================================================================
 // Provider-specific status responses
 // ============================================================================
 
@@ -198,10 +228,7 @@ export type OuraSyncStatusResponse = z.infer<typeof ouraSyncStatusResponseSchema
  */
 export const rescueTimeSyncStatusResponseSchema = baseResponseSchema
   .extend({
-    states: z
-      .array(providerSyncStatusSchema)
-      .optional()
-      .meta({ description: 'RescueTime sync states' }),
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'RescueTime sync states' }),
   })
   .meta({ id: 'RescueTimeSyncStatusResponse' })
 
@@ -238,10 +265,10 @@ export type OuraDataType = z.infer<typeof ouraDataTypeSchema>
  */
 export const ouraSyncResultSchema = z
   .object({
-    dataType: ouraDataTypeSchema,
+    data_type: ouraDataTypeSchema,
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
-    recordsProcessed: z.number().int().meta({ description: 'Number of records processed' }),
-    retryAfter: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
+    records_processed: z.number().int().meta({ description: 'Number of records processed' }),
+    retry_after: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
     status: syncResultStatusSchema,
   })
   .meta({ id: 'OuraSyncResult' })
@@ -254,8 +281,8 @@ export type OuraSyncResult = z.infer<typeof ouraSyncResultSchema>
 export const rescueTimeSyncResultSchema = z
   .object({
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
-    recordsProcessed: z.number().int().meta({ description: 'Number of records processed' }),
-    retryAfter: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
+    records_processed: z.number().int().meta({ description: 'Number of records processed' }),
+    retry_after: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
     status: syncResultStatusSchema,
   })
   .meta({ id: 'RescueTimeSyncResult' })
@@ -283,3 +310,245 @@ export const rescueTimeSyncResponseSchema = baseResponseSchema
   .meta({ id: 'RescueTimeSyncResponse' })
 
 export type RescueTimeSyncResponse = z.infer<typeof rescueTimeSyncResponseSchema>
+
+// ============================================================================
+// Calendar sync schemas
+// ============================================================================
+
+/**
+ * Calendar sync status response.
+ */
+export const calendarSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Calendar sync states' }),
+  })
+  .meta({ id: 'CalendarSyncStatusResponse' })
+
+export type CalendarSyncStatusResponse = z.infer<typeof calendarSyncStatusResponseSchema>
+
+/**
+ * Calendar sync result.
+ */
+export const calendarSyncResultSchema = z
+  .object({
+    calendar: z.string().meta({ description: 'Calendar name' }),
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    events_processed: z.number().int().meta({ description: 'Number of events processed' }),
+    status: syncResultStatusSchema,
+  })
+  .meta({ id: 'CalendarSyncResult' })
+
+export type CalendarSyncResult = z.infer<typeof calendarSyncResultSchema>
+
+/**
+ * Calendar sync response.
+ */
+export const calendarSyncResponseSchema = baseResponseSchema
+  .extend({
+    results: z.array(calendarSyncResultSchema).optional().meta({ description: 'Sync results per calendar' }),
+  })
+  .meta({ id: 'CalendarSyncResponse' })
+
+export type CalendarSyncResponse = z.infer<typeof calendarSyncResponseSchema>
+
+// ============================================================================
+// Last.fm sync schemas
+// ============================================================================
+
+/**
+ * Sync Last.fm body schema.
+ */
+export const syncLastFmBodySchema = z
+  .object({
+    full_resync: z.boolean().optional().meta({
+      description: 'If true, fetches all historical data (default 30 days)',
+    }),
+    start_date: dateOnlySchema.optional().meta({
+      description: 'Start date for sync (only used with full_resync)',
+    }),
+  })
+  .meta({ id: 'SyncLastFmBody' })
+
+export type SyncLastFmBody = z.infer<typeof syncLastFmBodySchema>
+
+/**
+ * Last.fm sync result.
+ */
+export const lastFmSyncResultSchema = z
+  .object({
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    scrobbles_processed: z.number().int().meta({ description: 'Number of scrobbles processed' }),
+    status: syncResultStatusSchema,
+    tags_created: z.number().int().meta({ description: 'Number of tags created from rules' }),
+  })
+  .meta({ id: 'LastFmSyncResult' })
+
+export type LastFmSyncResult = z.infer<typeof lastFmSyncResultSchema>
+
+/**
+ * Last.fm sync response.
+ */
+export const lastFmSyncResponseSchema = baseResponseSchema
+  .extend({
+    result: lastFmSyncResultSchema.optional().meta({ description: 'Sync result' }),
+  })
+  .meta({ id: 'LastFmSyncResponse' })
+
+export type LastFmSyncResponse = z.infer<typeof lastFmSyncResponseSchema>
+
+/**
+ * Last.fm sync status response.
+ */
+export const lastFmSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Last.fm sync states' }),
+  })
+  .meta({ id: 'LastFmSyncStatusResponse' })
+
+export type LastFmSyncStatusResponse = z.infer<typeof lastFmSyncStatusResponseSchema>
+
+// ============================================================================
+// Last.fm tag rules schemas
+// ============================================================================
+
+/**
+ * Last.fm match type for tag rules.
+ */
+export const lastFmMatchTypeSchema = z.enum(['track', 'artist', 'track_artist']).meta({
+  description:
+    'Type of match: track (any scrobble with track name), artist (any scrobble by artist), track_artist (exact track + artist)',
+  id: 'LastFmMatchType',
+})
+
+export type LastFmMatchType = z.infer<typeof lastFmMatchTypeSchema>
+
+/**
+ * Last.fm match mode for tag rules.
+ */
+export const lastFmMatchModeSchema = z.enum(['exact', 'contains']).meta({
+  description: 'How to match: exact (case-insensitive exact match) or contains (substring match)',
+  id: 'LastFmMatchMode',
+})
+
+export type LastFmMatchMode = z.infer<typeof lastFmMatchModeSchema>
+
+/**
+ * Last.fm tag rule schema.
+ */
+export const lastFmTagRuleSchema = z
+  .object({
+    artist_name: z
+      .string()
+      .optional()
+      .meta({ description: 'Artist name to match (for artist or track_artist match type)' }),
+    artist_names: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Multiple artist names to match (takes precedence over artistName when set)' }),
+    created_at: z.string().meta({ description: 'When the rule was created' }),
+    id: z.string().uuid().meta({ description: 'Unique rule ID' }),
+    match_mode: lastFmMatchModeSchema,
+    match_type: lastFmMatchTypeSchema,
+    merge_gap_seconds: z.number().int().positive().nullable().optional().meta({
+      description:
+        'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
+    }),
+    rule_name: z.string().meta({ description: 'Human-readable name for the rule' }),
+    tag_name: z.string().meta({ description: 'Tag to create when rule matches' }),
+    track_name: z
+      .string()
+      .optional()
+      .meta({ description: 'Track name to match (for track or track_artist match type)' }),
+  })
+  .meta({ id: 'LastFmTagRule' })
+
+export type LastFmTagRule = z.infer<typeof lastFmTagRuleSchema>
+
+/**
+ * Add Last.fm tag rule body schema.
+ */
+export const addLastFmTagRuleBodySchema = z
+  .object({
+    artist_name: z
+      .string()
+      .optional()
+      .meta({ description: 'Artist name to match (required for artist or track_artist match type)' }),
+    artist_names: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Multiple artist names to match (takes precedence over artistName when set)' }),
+    match_mode: lastFmMatchModeSchema
+      .optional()
+      .default('exact')
+      .meta({ description: 'Match mode (default: exact)' }),
+    match_type: lastFmMatchTypeSchema,
+    merge_gap_seconds: z.number().int().positive().nullable().optional().meta({
+      description:
+        'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
+    }),
+    rule_name: z.string().min(1).meta({ description: 'Human-readable name for the rule' }),
+    tag_name: z.string().min(1).meta({ description: 'Tag to create when rule matches' }),
+    track_name: z
+      .string()
+      .optional()
+      .meta({ description: 'Track name to match (required for track or track_artist match type)' }),
+  })
+  .meta({ id: 'AddLastFmTagRuleBody' })
+
+export type AddLastFmTagRuleBody = z.infer<typeof addLastFmTagRuleBodySchema>
+
+/**
+ * Last.fm tag rules response.
+ */
+export const lastFmTagRulesResponseSchema = baseResponseSchema
+  .extend({
+    data: z.array(lastFmTagRuleSchema).meta({ description: 'List of tag rules' }),
+  })
+  .meta({ id: 'LastFmTagRulesResponse' })
+
+export type LastFmTagRulesResponse = z.infer<typeof lastFmTagRulesResponseSchema>
+
+/**
+ * Add Last.fm tag rule response.
+ */
+export const addLastFmTagRuleResponseSchema = baseResponseSchema
+  .extend({
+    data: lastFmTagRuleSchema.optional().meta({ description: 'Created tag rule' }),
+  })
+  .meta({ id: 'AddLastFmTagRuleResponse' })
+
+export type AddLastFmTagRuleResponse = z.infer<typeof addLastFmTagRuleResponseSchema>
+
+// ============================================================================
+// Last.fm scrobbles query schemas
+// ============================================================================
+
+/**
+ * Scrobble record schema.
+ */
+export const scrobbleSchema = z
+  .object({
+    album: z.string().meta({ description: 'Album name' }),
+    artist: z.string().meta({ description: 'Artist name' }),
+    recorded_at: iso8601DateTimeSchema.meta({ description: 'When the track was played' }),
+    track: z.string().meta({ description: 'Track name' }),
+  })
+  .meta({ id: 'Scrobble' })
+
+export type Scrobble = z.infer<typeof scrobbleSchema>
+
+/**
+ * Scrobbles query schema.
+ */
+export const scrobblesQuerySchema = timeRangeQuerySchema.meta({ id: 'ScrobblesQuery' })
+
+export type ScrobblesQuery = z.infer<typeof scrobblesQuerySchema>
+
+/**
+ * Scrobbles response schema.
+ */
+export const scrobblesResponseSchema = createDataArrayResponseSchema(scrobbleSchema).meta({
+  id: 'ScrobblesResponse',
+})
+
+export type ScrobblesResponse = z.infer<typeof scrobblesResponseSchema>

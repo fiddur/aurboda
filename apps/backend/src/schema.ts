@@ -7,13 +7,18 @@
 
 // Re-export common types from shared api-spec package
 export {
+  contextualHrvMetrics,
   cumulativeMetrics,
+  getMetricUnit,
   hrZoneMetrics,
+  isContextualHrvMetric,
   isHrZoneMetric,
   isValidMetric,
+  isValidMetricOrCustom,
   metricUnits,
   validMetrics,
   type ActivityType,
+  type CustomMetricDefinition,
   type DataSource,
   type MetricType,
 } from '@aurboda/api-spec'
@@ -96,6 +101,27 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_lab_results_category ON lab_results (test_category, test_date DESC)
   `,
 
+  // Last.fm auto-tagging rules
+  lastfm_tag_rules: `
+    CREATE TABLE IF NOT EXISTS lastfm_tag_rules (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      rule_name         VARCHAR(100) NOT NULL,
+      match_type        VARCHAR(20) NOT NULL,
+      track_name        VARCHAR(255),
+      artist_name       VARCHAR(255),
+      match_mode        VARCHAR(20) DEFAULT 'exact',
+      tag_name          VARCHAR(100) NOT NULL,
+      merge_gap_seconds INTEGER,
+      artist_names      JSONB,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT unique_rule UNIQUE (match_type, track_name, artist_name, tag_name)
+    )
+  `,
+
+  lastfm_tag_rules_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_lastfm_tag_rules_match ON lastfm_tag_rules (match_type, match_mode)
+  `,
+
   // GPS location data with PostGIS support
   locations: `
     CREATE TABLE IF NOT EXISTS locations (
@@ -115,6 +141,20 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_locations_geo ON locations USING GIST (location)
   `,
 
+  // MCP session persistence for surviving backend restarts
+  mcp_sessions: `
+    CREATE TABLE IF NOT EXISTS mcp_sessions (
+      session_id      UUID PRIMARY KEY,
+      username        VARCHAR(255) NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_activity   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  mcp_sessions_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_mcp_sessions_username ON mcp_sessions (username);
+    CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_activity ON mcp_sessions (last_activity)
+  `,
+
   // User-defined named locations (detected and named via Aurboda)
   named_locations: `
     CREATE TABLE IF NOT EXISTS named_locations (
@@ -126,6 +166,7 @@ export const createTableStatements: Record<string, string> = {
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
+
   named_locations_indexes: `
     CREATE INDEX IF NOT EXISTS idx_named_locations_geo ON named_locations USING GIST (location)
   `,
@@ -204,7 +245,6 @@ export const createTableStatements: Record<string, string> = {
   `,
 
   // Sync state tracking for incremental data pulls
-
   sync_state: `
     CREATE TABLE IF NOT EXISTS sync_state (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -227,6 +267,7 @@ export const createTableStatements: Record<string, string> = {
       source          VARCHAR(50) NOT NULL,
       external_id     VARCHAR(255),
       tag             VARCHAR(100) NOT NULL,
+      tag_key         VARCHAR(255),
       start_time      TIMESTAMPTZ NOT NULL,
       end_time        TIMESTAMPTZ,
       CONSTRAINT unique_tag UNIQUE (source, external_id)
@@ -234,7 +275,8 @@ export const createTableStatements: Record<string, string> = {
   `,
   tags_indexes: `
     CREATE INDEX IF NOT EXISTS idx_tags_time ON tags (start_time DESC);
-    CREATE INDEX IF NOT EXISTS idx_tags_tag_time ON tags (tag, start_time DESC)
+    CREATE INDEX IF NOT EXISTS idx_tags_tag_time ON tags (tag, start_time DESC);
+    CREATE INDEX IF NOT EXISTS idx_tags_tag_key ON tags (tag_key) WHERE tag_key IS NOT NULL
   `,
 
   // Normalized time-series metrics for fast charting queries
@@ -273,6 +315,8 @@ export const tableCreationOrder = [
   'time_series_indexes',
   'activities',
   'activities_indexes',
+  'lastfm_tag_rules',
+  'lastfm_tag_rules_indexes',
   'locations',
   'locations_indexes',
   'places',
@@ -290,6 +334,8 @@ export const tableCreationOrder = [
   'oauth_tokens',
   'sync_state',
   'user_settings',
+  'mcp_sessions',
+  'mcp_sessions_indexes',
 ]
 
 /**

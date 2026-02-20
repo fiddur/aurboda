@@ -7,46 +7,12 @@ import io.ktor.client.request.headers
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-
-@Serializable
-data class PeriodMetricStats(
-    val metric: String,
-    val unit: String,
-    val avg: Double? = null,
-    val min: Double? = null,
-    val max: Double? = null,
-    val sum: Double? = null,
-    val count: Int? = null,
-    val stddev: Double? = null,
-    val trend: Double? = null,
-    @SerialName("data_points") val dataPoints: Int? = null
-)
-
-@Serializable
-data class PeriodSummaryResponse(
-    val success: Boolean,
-    val metrics: List<PeriodMetricStats>,
-    @SerialName("period_start") val periodStart: String? = null,
-    @SerialName("period_end") val periodEnd: String? = null
-)
-
-@Serializable
-data class HrZoneThresholds(
-    @SerialName("1") val zone1: Int,
-    @SerialName("2") val zone2: Int,
-    @SerialName("3") val zone3: Int,
-    @SerialName("4") val zone4: Int,
-    @SerialName("5") val zone5: Int
-)
-
-@Serializable
-data class UserSettingsResponse(
-    val success: Boolean,
-    @SerialName("hr_zone_start") val hrZoneStart: HrZoneThresholds? = null,
-    @SerialName("birth_date") val birthDate: String? = null
-)
+import net.aurboda.api.models.GoalsProgressResponse
+import net.aurboda.api.models.GoalProgress
+import net.aurboda.api.models.HrZoneThresholdsOutput
+import net.aurboda.api.models.PeriodMetricStats
+import net.aurboda.api.models.PeriodSummaryResponse
+import net.aurboda.api.models.UserSettingsResponse
 
 sealed class DataResult<out T> {
     data class Success<T>(val data: T) : DataResult<T>()
@@ -113,12 +79,40 @@ suspend fun fetchUserSettings(
     }
 }
 
-val defaultHrZoneThresholds = HrZoneThresholds(
-    zone1 = 86,
-    zone2 = 102,
-    zone3 = 118,
-    zone4 = 135,
-    zone5 = 151
+suspend fun fetchGoalsProgress(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String
+): DataResult<GoalsProgressResponse> {
+    return try {
+        val url = "$serverUrl/goals/progress"
+        Log.d("DataApi", "Fetching goals progress from: $url")
+
+        val response = httpClient.get(url) {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+        }
+
+        if (response.status == HttpStatusCode.OK) {
+            val body = response.bodyAsText()
+            Log.d("DataApi", "Goals progress response: $body")
+            val parsed = appJson.decodeFromString<GoalsProgressResponse>(body)
+            DataResult.Success(parsed)
+        } else {
+            Log.e("DataApi", "Goals progress error: ${response.status}")
+            DataResult.Error("Server returned ${response.status}")
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error fetching goals progress", e)
+        DataResult.Error(e.message ?: "Unknown error")
+    }
+}
+
+val defaultHrZoneThresholds = HrZoneThresholdsOutput(
+    _1 = 86,
+    _2 = 102,
+    _3 = 118,
+    _4 = 135,
+    _5 = 151
 )
 
 val hrZoneWeeklyTargetMinutes = listOf(0, 60, 200, 60, 30, 10)
@@ -134,16 +128,16 @@ fun formatZoneTime(seconds: Double): String {
     }
 }
 
-fun formatBpmRange(zoneIndex: Int, thresholds: HrZoneThresholds): String {
-    val zoneStarts = listOf(0, thresholds.zone1, thresholds.zone2, thresholds.zone3, thresholds.zone4, thresholds.zone5)
+fun formatBpmRange(zoneIndex: Int, thresholds: HrZoneThresholdsOutput): String {
+    val zoneStarts = listOf(0, thresholds._1, thresholds._2, thresholds._3, thresholds._4, thresholds._5)
     return when (zoneIndex) {
-        0 -> "< ${thresholds.zone1} bpm"
-        5 -> "${thresholds.zone5}+ bpm"
+        0 -> "< ${thresholds._1} bpm"
+        5 -> "${thresholds._5}+ bpm"
         else -> "${zoneStarts[zoneIndex]} - ${zoneStarts[zoneIndex + 1] - 1} bpm"
     }
 }
 
-fun getMetricTimeSeconds(metric: PeriodMetricStats): Double = metric.avg ?: 0.0
+fun getMetricTimeSeconds(metric: PeriodMetricStats): Double = metric.avg
 
 fun findMetricTimeSeconds(metrics: List<PeriodMetricStats>, metricName: String): Double =
     metrics.find { it.metric == metricName }?.let { getMetricTimeSeconds(it) } ?: 0.0

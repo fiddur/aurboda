@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db'
 import { MetricType } from '../schema'
 import * as locationsService from './locations'
-import { getDailySummary, getPeriodSummary, queryMetrics } from './queries'
+import {
+  getDailySummary,
+  getPeriodSummary,
+  mergeProductivitySpans,
+  queryMetrics,
+  queryMetricsBucketed,
+} from './queries'
 
 // Mock the db module
 vi.mock('../db', () => ({
@@ -14,6 +20,7 @@ vi.mock('../db', () => ({
   getSleepSessions: vi.fn(),
   getTags: vi.fn(),
   getTimeSeries: vi.fn(),
+  getTimeSeriesBucketed: vi.fn(),
   getTimeSeriesMultiMetric: vi.fn(),
   getTimeSeriesStats: vi.fn(),
   getUserSettings: vi.fn(),
@@ -88,54 +95,54 @@ describe('getDailySummary', () => {
     // Sleep sessions now use getSleepSessions with date overlap logic
     vi.mocked(db.getSleepSessions).mockResolvedValue([
       {
-        activityType: 'sleep',
-        endTime: new Date('2024-01-15T07:00:00Z'),
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
         source: 'oura',
-        startTime: new Date('2024-01-14T23:00:00Z'),
+        start_time: new Date('2024-01-14T23:00:00Z'),
       },
     ])
 
     // Exercise sessions still use getActivities
     vi.mocked(db.getActivities).mockResolvedValue([
       {
-        activityType: 'exercise',
-        endTime: new Date('2024-01-15T10:30:00Z'),
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:30:00Z'),
         source: 'health_connect',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         title: 'Running',
       },
     ])
 
     vi.mocked(db.getTags).mockResolvedValue([
-      { source: 'manual', startTime: new Date('2024-01-15T08:00:00Z'), tag: 'coffee' },
+      { source: 'manual', start_time: new Date('2024-01-15T08:00:00Z'), tag: 'coffee' },
     ])
 
     vi.mocked(db.getProductivity).mockResolvedValue([
       {
         activity: 'VS Code',
-        durationSec: 3600,
-        endTime: new Date('2024-01-15T11:00:00Z'),
+        duration_sec: 3600,
+        end_time: new Date('2024-01-15T11:00:00Z'),
         productivity: 2,
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
       },
       {
         activity: 'Twitter',
-        durationSec: 600,
-        endTime: new Date('2024-01-15T11:20:00Z'),
+        duration_sec: 600,
+        end_time: new Date('2024-01-15T11:20:00Z'),
         productivity: -2,
-        startTime: new Date('2024-01-15T11:10:00Z'),
+        start_time: new Date('2024-01-15T11:10:00Z'),
       },
     ])
 
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([
       {
-        durationMinutes: 1080,
-        endTime: new Date('2024-01-15T18:00:00Z'),
+        duration_minutes: 1080,
+        end_time: new Date('2024-01-15T18:00:00Z'),
         lat: 59.33,
         lon: 18.07,
         name: 'Home',
         source: 'named',
-        startTime: new Date('2024-01-15T00:00:00Z'),
+        start_time: new Date('2024-01-15T00:00:00Z'),
       },
     ])
 
@@ -148,7 +155,7 @@ describe('getDailySummary', () => {
     expect(result.date).toBe('2024-01-15')
 
     // Heart rate stats
-    expect(result.heartRate).toEqual({
+    expect(result.heart_rate).toEqual({
       avg: 72,
       count: 3,
       max: 80,
@@ -159,13 +166,13 @@ describe('getDailySummary', () => {
     expect(result.steps.total).toBe(8000)
 
     // Sleep sessions
-    expect(result.sleepSessions).toHaveLength(1)
-    expect(result.sleepSessions[0].duration).toBe(480) // 8 hours in minutes
+    expect(result.sleep_sessions).toHaveLength(1)
+    expect(result.sleep_sessions[0].duration).toBe(480) // 8 hours in minutes
 
     // Exercise sessions
-    expect(result.exerciseSessions).toHaveLength(1)
-    expect(result.exerciseSessions[0].title).toBe('Running')
-    expect(result.exerciseSessions[0].duration).toBe(30)
+    expect(result.exercise_sessions).toHaveLength(1)
+    expect(result.exercise_sessions[0].title).toBe('Running')
+    expect(result.exercise_sessions[0].duration).toBe(30)
 
     // Tags
     expect(result.tags).toHaveLength(1)
@@ -173,10 +180,10 @@ describe('getDailySummary', () => {
 
     // Productivity
     expect(result.productivity).toEqual({
-      distractingSec: 600,
-      productiveSec: 3600,
-      totalDurationSec: 4200,
-      veryProductiveSec: 3600,
+      distracting_sec: 600,
+      productive_sec: 3600,
+      total_duration_sec: 4200,
+      very_productive_sec: 3600,
     })
 
     // Places
@@ -197,7 +204,7 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.heartRate).toBeNull()
+    expect(result.heart_rate).toBeNull()
     expect(result.productivity).toBeNull()
   })
 
@@ -269,11 +276,11 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.ouraScores).toEqual({
-      cardiovascularAge: 35,
-      readinessScore: 85,
-      resilienceScore: 75,
-      sleepScore: 92,
+    expect(result.oura_scores).toEqual({
+      cardiovascular_age: 35,
+      readiness_score: 85,
+      resilience_score: 75,
+      sleep_score: 92,
     })
   })
 
@@ -289,7 +296,7 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.ouraScores).toBeNull()
+    expect(result.oura_scores).toBeNull()
   })
 
   test('returns partial ouraScores when some metrics are missing', async () => {
@@ -309,15 +316,15 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.ouraScores).toEqual({
-      cardiovascularAge: null,
-      readinessScore: 85,
-      resilienceScore: null,
-      sleepScore: 92,
+    expect(result.oura_scores).toEqual({
+      cardiovascular_age: null,
+      readiness_score: 85,
+      resilience_score: null,
+      sleep_score: 92,
     })
   })
 
-  test('computes hrZoneSecs for exercise sessions with HR data', async () => {
+  test('computes hr_zone_secs for exercise sessions with HR data', async () => {
     // First call: daily heart rate, second call: daily steps, third call: exercise session HR
     vi.mocked(db.getTimeSeries)
       .mockResolvedValueOnce([]) // daily heart_rate
@@ -332,10 +339,10 @@ describe('getDailySummary', () => {
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getActivities).mockResolvedValue([
       {
-        activityType: 'exercise',
-        endTime: new Date('2024-01-15T10:30:00Z'),
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:30:00Z'),
         source: 'health_connect',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         title: 'Running',
       },
     ])
@@ -347,13 +354,13 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.exerciseSessions).toHaveLength(1)
-    expect(result.exerciseSessions[0].hrZoneSecs).toBeDefined()
+    expect(result.exercise_sessions).toHaveLength(1)
+    expect(result.exercise_sessions[0].hr_zone_secs).toBeDefined()
     // All HR values (95, 100, 98) are in zone 1 (90-107 with default zones)
-    expect(result.exerciseSessions[0].hrZoneSecs![1]).toBeGreaterThan(0)
+    expect(result.exercise_sessions[0].hr_zone_secs![1]).toBeGreaterThan(0)
   })
 
-  test('does not include hrZoneSecs when exercise has no HR data', async () => {
+  test('does not include hr_zone_secs when exercise has no HR data', async () => {
     vi.mocked(db.getTimeSeries)
       .mockResolvedValueOnce([]) // daily heart_rate
       .mockResolvedValueOnce([]) // daily steps
@@ -362,10 +369,10 @@ describe('getDailySummary', () => {
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getActivities).mockResolvedValue([
       {
-        activityType: 'exercise',
-        endTime: new Date('2024-01-15T10:30:00Z'),
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:30:00Z'),
         source: 'health_connect',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         title: 'Running',
       },
     ])
@@ -377,14 +384,14 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.exerciseSessions).toHaveLength(1)
-    expect(result.exerciseSessions[0].hrZoneSecs).toBeUndefined()
+    expect(result.exercise_sessions).toHaveLength(1)
+    expect(result.exercise_sessions[0].hr_zone_secs).toBeUndefined()
   })
 
   test('uses custom HR zones from user settings', async () => {
     // Custom zones: zone 1 starts at 80 (lower than default 90)
     vi.mocked(db.getUserSettings).mockResolvedValue({
-      hrZoneStart: { 1: 80, 2: 100, 3: 120, 4: 140, 5: 160 },
+      hr_zone_start: { 1: 80, 2: 100, 3: 120, 4: 140, 5: 160 },
     })
 
     vi.mocked(db.getTimeSeries)
@@ -399,10 +406,10 @@ describe('getDailySummary', () => {
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getActivities).mockResolvedValue([
       {
-        activityType: 'exercise',
-        endTime: new Date('2024-01-15T10:30:00Z'),
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:30:00Z'),
         source: 'health_connect',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         title: 'Walking',
       },
     ])
@@ -414,13 +421,13 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.exerciseSessions[0].hrZoneSecs).toBeDefined()
+    expect(result.exercise_sessions[0].hr_zone_secs).toBeDefined()
     // With custom zones (zone 1 starts at 80), HR of 85 is in zone 1
-    expect(result.exerciseSessions[0].hrZoneSecs![1]).toBeGreaterThan(0)
-    expect(result.exerciseSessions[0].hrZoneSecs![0]).toBe(0)
+    expect(result.exercise_sessions[0].hr_zone_secs![1]).toBeGreaterThan(0)
+    expect(result.exercise_sessions[0].hr_zone_secs![0]).toBe(0)
   })
 
-  test('does not compute hrZoneSecs for exercise without endTime', async () => {
+  test('does not compute hr_zone_secs for exercise without endTime', async () => {
     vi.mocked(db.getTimeSeries)
       .mockResolvedValueOnce([]) // daily heart_rate
       .mockResolvedValueOnce([]) // daily steps
@@ -428,10 +435,10 @@ describe('getDailySummary', () => {
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getActivities).mockResolvedValue([
       {
-        activityType: 'exercise',
-        // No endTime - ongoing session
+        activity_type: 'exercise',
+        // No end_time - ongoing session
         source: 'health_connect',
-        startTime: new Date('2024-01-15T10:00:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
         title: 'Running',
       },
     ])
@@ -443,8 +450,8 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.exerciseSessions).toHaveLength(1)
-    expect(result.exerciseSessions[0].hrZoneSecs).toBeUndefined()
+    expect(result.exercise_sessions).toHaveLength(1)
+    expect(result.exercise_sessions[0].hr_zone_secs).toBeUndefined()
     // Should not have called getTimeSeries for the exercise session
     expect(db.getTimeSeries).toHaveBeenCalledTimes(2) // Only daily HR and steps
   })
@@ -465,9 +472,9 @@ describe('getPeriodSummary', () => {
       ])
 
     vi.mocked(db.getDailyAggregates).mockResolvedValue([
-      { avg: 40, date: '2024-01-01', metric: 'hrv_rmssd' },
-      { avg: 45, date: '2024-01-02', metric: 'hrv_rmssd' },
-      { avg: 50, date: '2024-01-03', metric: 'hrv_rmssd' },
+      { avg: 40, date: '2024-01-01', metric: 'hrv_rmssd', sum: 40 },
+      { avg: 45, date: '2024-01-02', metric: 'hrv_rmssd', sum: 45 },
+      { avg: 50, date: '2024-01-03', metric: 'hrv_rmssd', sum: 50 },
     ])
 
     const result = await getPeriodSummary(
@@ -493,9 +500,9 @@ describe('getPeriodSummary', () => {
 
     // Linear increase: 40, 45, 50 -> slope = 5
     vi.mocked(db.getDailyAggregates).mockResolvedValue([
-      { avg: 40, date: '2024-01-01', metric: 'hrv_rmssd' },
-      { avg: 45, date: '2024-01-02', metric: 'hrv_rmssd' },
-      { avg: 50, date: '2024-01-03', metric: 'hrv_rmssd' },
+      { avg: 40, date: '2024-01-01', metric: 'hrv_rmssd', sum: 40 },
+      { avg: 45, date: '2024-01-02', metric: 'hrv_rmssd', sum: 45 },
+      { avg: 50, date: '2024-01-03', metric: 'hrv_rmssd', sum: 50 },
     ])
 
     const result = await getPeriodSummary(
@@ -505,7 +512,7 @@ describe('getPeriodSummary', () => {
       new Date('2024-01-03'),
     )
 
-    expect(result.metrics[0].trendPerDay).toBe(5)
+    expect(result.metrics[0].trend_per_day).toBe(5)
   })
 
   test('calculates change from previous period', async () => {
@@ -527,7 +534,7 @@ describe('getPeriodSummary', () => {
       new Date('2024-01-31'),
     )
 
-    expect(result.metrics[0].changeFromPreviousPeriodPercent).toBe(25)
+    expect(result.metrics[0].change_from_previous_period_percent).toBe(25)
   })
 
   test('identifies outliers beyond 2 stddev', async () => {
@@ -562,7 +569,7 @@ describe('getPeriodSummary', () => {
 
     expect(result.metrics).toHaveLength(2)
     expect(result.metrics[0].count).toBe(0)
-    expect(result.metrics[0].completenessPercent).toBe(0)
+    expect(result.metrics[0].completeness_percent).toBe(0)
     expect(result.metrics[1].count).toBe(0)
   })
 
@@ -577,6 +584,7 @@ describe('getPeriodSummary', () => {
         avg: 50,
         date: `2024-01-${String(i + 1).padStart(2, '0')}`,
         metric: 'hrv_rmssd' as const,
+        sum: 50,
       })),
     )
 
@@ -587,7 +595,7 @@ describe('getPeriodSummary', () => {
       new Date('2024-01-31'),
     )
 
-    expect(result.metrics[0].completenessPercent).toBe(50) // 15/30 = 50%
+    expect(result.metrics[0].completeness_percent).toBe(50) // 15/30 = 50%
   })
 
   test('computes HR zone metrics from heart_rate data', async () => {
@@ -638,7 +646,7 @@ describe('getPeriodSummary', () => {
 
     // Custom zones: zone 1 starts at 70 (lower than default 90)
     vi.mocked(db.getUserSettings).mockResolvedValue({
-      hrZoneStart: { 1: 70, 2: 100, 3: 130, 4: 150, 5: 170 },
+      hr_zone_start: { 1: 70, 2: 100, 3: 130, 4: 150, 5: 170 },
     })
 
     // HR at 75 - would be zone 0 with defaults (90), but zone 1 with custom (70)
@@ -710,5 +718,661 @@ describe('getPeriodSummary', () => {
     expect(heartRate!.avg).toBe(72)
     expect(zone1).toBeDefined()
     expect(zone1!.avg).toBeGreaterThan(0)
+  })
+})
+
+describe('queryMetricsBucketed', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns bucketed data for a single metric', async () => {
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 300,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+      },
+      {
+        avg: 78,
+        bucket_start: new Date('2024-01-15T06:15:00Z'),
+        count: 280,
+        max: 85,
+        metric: 'heart_rate',
+        min: 70,
+      },
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:30:00Z'),
+      '15m',
+    )
+
+    expect(result.buckets).toHaveLength(2)
+    expect(result.bucket).toBe('15m')
+    expect(result.buckets[0]).toEqual({
+      end: '2024-01-15T06:15:00.000Z',
+      metrics: {
+        heart_rate: { avg: 72, count: 300, max: 80, min: 65 },
+      },
+      start: '2024-01-15T06:00:00.000Z',
+    })
+    expect(result.buckets[1]).toEqual({
+      end: '2024-01-15T06:30:00.000Z',
+      metrics: {
+        heart_rate: { avg: 78, count: 280, max: 85, min: 70 },
+      },
+      start: '2024-01-15T06:15:00.000Z',
+    })
+  })
+
+  test('returns bucketed data for multiple metrics', async () => {
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 300,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+      },
+      {
+        avg: 45,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 100,
+        max: 60,
+        metric: 'hrv_rmssd',
+        min: 30,
+      },
+      {
+        avg: 78,
+        bucket_start: new Date('2024-01-15T06:15:00Z'),
+        count: 280,
+        max: 85,
+        metric: 'heart_rate',
+        min: 70,
+      },
+      {
+        avg: 42,
+        bucket_start: new Date('2024-01-15T06:15:00Z'),
+        count: 90,
+        max: 55,
+        metric: 'hrv_rmssd',
+        min: 28,
+      },
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate', 'hrv_rmssd'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:30:00Z'),
+      '15m',
+    )
+
+    expect(result.buckets).toHaveLength(2)
+    expect(result.buckets[0].metrics).toEqual({
+      heart_rate: { avg: 72, count: 300, max: 80, min: 65 },
+      hrv_rmssd: { avg: 45, count: 100, max: 60, min: 30 },
+    })
+    expect(result.buckets[1].metrics).toEqual({
+      heart_rate: { avg: 78, count: 280, max: 85, min: 70 },
+      hrv_rmssd: { avg: 42, count: 90, max: 55, min: 28 },
+    })
+  })
+
+  test('returns empty buckets array when no data', async () => {
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:30:00Z'),
+      '15m',
+    )
+
+    expect(result.buckets).toHaveLength(0)
+  })
+
+  test('handles 5m bucket interval', async () => {
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 100,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+      },
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:05:00Z'),
+      '5m',
+    )
+
+    expect(result.bucket).toBe('5m')
+    expect(result.buckets[0].end).toBe('2024-01-15T06:05:00.000Z')
+    expect(db.getTimeSeriesBucketed).toHaveBeenCalledWith(
+      'testuser',
+      ['heart_rate'],
+      expect.any(Date),
+      expect.any(Date),
+      5,
+    )
+  })
+
+  test('handles 1h bucket interval', async () => {
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 1200,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+      },
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T07:00:00Z'),
+      '1h',
+    )
+
+    expect(result.bucket).toBe('1h')
+    expect(result.buckets[0].end).toBe('2024-01-15T07:00:00.000Z')
+    expect(db.getTimeSeriesBucketed).toHaveBeenCalledWith(
+      'testuser',
+      ['heart_rate'],
+      expect.any(Date),
+      expect.any(Date),
+      60,
+    )
+  })
+
+  test('handles 1d bucket interval', async () => {
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T00:00:00Z'),
+        count: 28800,
+        max: 120,
+        metric: 'heart_rate',
+        min: 55,
+      },
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-16T00:00:00Z'),
+      '1d',
+    )
+
+    expect(result.bucket).toBe('1d')
+    expect(result.buckets[0].end).toBe('2024-01-16T00:00:00.000Z')
+    expect(db.getTimeSeriesBucketed).toHaveBeenCalledWith(
+      'testuser',
+      ['heart_rate'],
+      expect.any(Date),
+      expect.any(Date),
+      1440,
+    )
+  })
+
+  test('handles buckets with partial metric coverage', async () => {
+    // Only heart_rate has data in second bucket, not hrv_rmssd
+    const mockBuckets: db.BucketedMetricData[] = [
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 300,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+      },
+      {
+        avg: 45,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 100,
+        max: 60,
+        metric: 'hrv_rmssd',
+        min: 30,
+      },
+      {
+        avg: 78,
+        bucket_start: new Date('2024-01-15T06:15:00Z'),
+        count: 280,
+        max: 85,
+        metric: 'heart_rate',
+        min: 70,
+      },
+      // No hrv_rmssd data for 06:15 bucket
+    ]
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate', 'hrv_rmssd'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:30:00Z'),
+      '15m',
+    )
+
+    expect(result.buckets).toHaveLength(2)
+    // First bucket has both metrics
+    expect(result.buckets[0].metrics.heart_rate).toBeDefined()
+    expect(result.buckets[0].metrics.hrv_rmssd).toBeDefined()
+    // Second bucket only has heart_rate
+    expect(result.buckets[1].metrics.heart_rate).toBeDefined()
+    expect(result.buckets[1].metrics.hrv_rmssd).toBeUndefined()
+  })
+
+  test('returns bucketed data for contextual HRV metric (hrv_sleep)', async () => {
+    // Raw HRV data during sleep
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T02:00:00Z'), 45],
+      [new Date('2024-01-15T03:00:00Z'), 48],
+      [new Date('2024-01-15T04:00:00Z'), 50],
+    ])
+
+    // Sleep session covering the HRV data
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    // No exercise
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['hrv_sleep'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T08:00:00Z'),
+      '1h',
+    )
+
+    // Should have buckets for the hours with HRV data during sleep
+    expect(result.buckets.length).toBeGreaterThan(0)
+
+    // All returned data should be hrv_sleep
+    for (const bucket of result.buckets) {
+      if (bucket.metrics.hrv_sleep) {
+        expect(bucket.metrics.hrv_sleep.avg).toBeGreaterThan(0)
+        expect(bucket.metrics.hrv_sleep.count).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  test('returns bucketed data for mixed regular and contextual HRV metrics', async () => {
+    // Mock regular bucketed data for heart_rate
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T02:00:00Z'),
+        count: 100,
+        max: 80,
+        metric: 'heart_rate' as MetricType,
+        min: 65,
+      },
+    ])
+
+    // Raw HRV data for contextual processing
+    vi.mocked(db.getTimeSeries).mockResolvedValue([[new Date('2024-01-15T02:30:00Z'), 45]])
+
+    // Sleep session
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    // No exercise
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate', 'hrv_sleep'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T08:00:00Z'),
+      '1h',
+    )
+
+    // Should have bucket with heart_rate from regular query
+    const bucketWithHr = result.buckets.find((b) => b.metrics.heart_rate)
+    expect(bucketWithHr).toBeDefined()
+    expect(bucketWithHr!.metrics.heart_rate?.avg).toBe(72)
+
+    // Should have bucket with hrv_sleep from contextual query
+    const bucketWithHrvSleep = result.buckets.find((b) => b.metrics.hrv_sleep)
+    expect(bucketWithHrvSleep).toBeDefined()
+  })
+
+  test('returns empty contextual HRV when no HRV data during context', async () => {
+    // HRV data only during awake hours
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T12:00:00Z'), 30],
+      [new Date('2024-01-15T14:00:00Z'), 28],
+    ])
+
+    // Sleep session doesn't overlap with HRV data
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    // No exercise
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['hrv_sleep'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+      '1h',
+    )
+
+    // Should have no hrv_sleep buckets since HRV data is during awake hours
+    const hrvSleepBuckets = result.buckets.filter((b) => b.metrics.hrv_sleep)
+    expect(hrvSleepBuckets).toHaveLength(0)
+  })
+})
+
+describe('mergeProductivitySpans', () => {
+  test('merges consecutive spans for the same activity', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        category: 'Software Development',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        productivity: 2,
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'emacs',
+        category: 'Software Development',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:00Z'),
+        productivity: 2,
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+      {
+        activity: 'emacs',
+        category: 'Software Development',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:15:00Z'),
+        productivity: 2,
+        start_time: new Date('2024-01-15T10:10:00Z'),
+      },
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0].activity).toBe('emacs')
+    expect(result[0].start_time).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(result[0].end_time).toEqual(new Date('2024-01-15T10:15:00Z'))
+    expect(result[0].duration_sec).toBe(900)
+  })
+
+  test('does not merge spans for different activities', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        category: 'Software Development',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        productivity: 2,
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'firefox',
+        category: 'Browsers',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:00Z'),
+        productivity: 0,
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+    ])
+
+    expect(result).toHaveLength(2)
+  })
+
+  test('merges spans with a small gap (within 2 min leeway)', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        duration_sec: 299,
+        end_time: new Date('2024-01-15T10:04:59Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:00Z'),
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0].start_time).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(result[0].end_time).toEqual(new Date('2024-01-15T10:10:00Z'))
+    expect(result[0].duration_sec).toBe(599)
+  })
+
+  test('does not merge spans with a large gap between them', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:15:00Z'),
+        start_time: new Date('2024-01-15T10:10:00Z'),
+      },
+    ])
+
+    expect(result).toHaveLength(2)
+  })
+
+  test('merges interleaved activities separately', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'firefox',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:00Z'),
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:15:00Z'),
+        start_time: new Date('2024-01-15T10:10:00Z'),
+      },
+    ])
+
+    // emacs-firefox-emacs should remain 3 separate spans since emacs is not consecutive
+    expect(result).toHaveLength(3)
+  })
+
+  test('handles empty input', () => {
+    expect(mergeProductivitySpans([])).toEqual([])
+  })
+
+  test('handles single record', () => {
+    const record = {
+      activity: 'emacs',
+      duration_sec: 300,
+      end_time: new Date('2024-01-15T10:05:00Z'),
+      start_time: new Date('2024-01-15T10:00:00Z'),
+    }
+    const result = mergeProductivitySpans([record])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual(record)
+  })
+
+  test('does not merge desktop and mobile spans for same activity', () => {
+    const result = mergeProductivitySpans([
+      {
+        activity: 'slack',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        is_mobile: false,
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'slack',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:00Z'),
+        is_mobile: true,
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+    ])
+
+    expect(result).toHaveLength(2)
+  })
+})
+
+describe('queryMetrics with contextual HRV', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns filtered HRV data for hrv_sleep', async () => {
+    // Raw HRV data - some during sleep, some during awake
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T02:00:00Z'), 45],
+      [new Date('2024-01-15T03:00:00Z'), 48],
+      [new Date('2024-01-15T12:00:00Z'), 30], // This is during awake
+    ])
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await queryMetrics(
+      'testuser',
+      'hrv_sleep',
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metric).toBe('hrv_sleep')
+    expect(result.unit).toBe('ms')
+    // Only samples during sleep should be included
+    expect(result.count).toBe(2)
+    expect(result.data.map((d) => d.value)).toEqual([45, 48])
+  })
+
+  test('returns filtered HRV data for hrv_awake', async () => {
+    // Raw HRV data
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T02:00:00Z'), 45], // During sleep
+      [new Date('2024-01-15T12:00:00Z'), 30], // During awake
+      [new Date('2024-01-15T14:00:00Z'), 28], // During awake
+    ])
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await queryMetrics(
+      'testuser',
+      'hrv_awake',
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metric).toBe('hrv_awake')
+    // Only samples during awake (not sleep, not activity) should be included
+    expect(result.count).toBe(2)
+    expect(result.data.map((d) => d.value)).toEqual([30, 28])
+  })
+
+  test('returns filtered HRV data for hrv_activity', async () => {
+    // Raw HRV data
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T10:00:00Z'), 22], // During exercise
+      [new Date('2024-01-15T10:30:00Z'), 18], // During exercise
+      [new Date('2024-01-15T14:00:00Z'), 30], // After exercise (awake)
+    ])
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T09:30:00Z'),
+        title: 'Morning Run',
+      },
+    ])
+
+    const result = await queryMetrics(
+      'testuser',
+      'hrv_activity',
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metric).toBe('hrv_activity')
+    // Only samples during exercise should be included
+    expect(result.count).toBe(2)
+    expect(result.data.map((d) => d.value)).toEqual([22, 18])
   })
 })

@@ -16,9 +16,11 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   const { places } = await getLocations(user, start, end)
   const settings = await getSettings(user)
   const rtData =
-    settings.rescueTimeKey ? await rescuetimeClient(settings.rescueTimeKey).getIntervalData(start, end) : []
+    settings.rescue_time_key ?
+      await rescuetimeClient(settings.rescue_time_key).getIntervalData(start, end)
+    : []
   const ouraToken = await oura.getAccessToken(user)
-  const tags = await oura.getTags(start, end, ouraToken)
+  const tags = await oura.getTags(start, end, ouraToken, settings.tag_mappings)
   const meditations = await oura.getSessions(start, end, ouraToken)
 
   console.log(tags)
@@ -76,13 +78,13 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   const exerciseSessions = await getActivities(user, 'exercise', start, end)
 
   // -- Sleep spans
-  sleepSessions.forEach(({ startTime, endTime }) => {
-    if (!endTime) return
+  sleepSessions.forEach(({ start_time, end_time }) => {
+    if (!end_time) return
     svg
       .append('rect')
-      .attr('x', xScale(startTime))
+      .attr('x', xScale(start_time))
       .attr('y', 0)
-      .attr('width', xScale(endTime) - xScale(startTime))
+      .attr('width', xScale(end_time) - xScale(start_time))
       .attr('height', height)
       .attr('fill', 'blue')
       .attr('opacity', 0.2)
@@ -111,13 +113,13 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
       .attr('opacity', 0.8)
   })
 
-  exerciseSessions.forEach(({ startTime, endTime }) => {
-    if (!endTime) return
+  exerciseSessions.forEach(({ start_time, end_time }) => {
+    if (!end_time) return
     svg
       .append('rect')
-      .attr('x', xScale(startTime))
+      .attr('x', xScale(start_time))
       .attr('y', trackExercise)
-      .attr('width', xScale(endTime) - xScale(startTime))
+      .attr('width', xScale(end_time) - xScale(start_time))
       .attr('height', trackHeight)
       .attr('fill', 'green')
       .attr('opacity', 0.2)
@@ -150,26 +152,26 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
     .attr('d', line)
 
   // -- Tags
-  tags.forEach(({ startTime, endTime, tag }) => {
-    if (endTime) {
-      console.log('=====', tag, startTime, endTime)
+  tags.forEach(({ start_time, end_time, tag }) => {
+    if (end_time) {
+      console.log('=====', tag, start_time, end_time)
       svg
         .append('rect')
-        .attr('x', xScale(startTime))
+        .attr('x', xScale(start_time))
         .attr('y', 0)
-        .attr('width', xScale(endTime) - xScale(startTime))
+        .attr('width', xScale(end_time) - xScale(start_time))
         .attr('height', height)
         //.attr('fill', 'black')
         .attr('stroke', 'black')
         .attr('stroke-dasharray', '4')
         .attr('opacity', 0.2)
     } else {
-      console.log('-----', startTime, tag)
+      console.log('-----', start_time, tag)
       svg
         .append('line')
-        .attr('x1', xScale(startTime))
+        .attr('x1', xScale(start_time))
         .attr('y1', 0)
-        .attr('x2', xScale(startTime))
+        .attr('x2', xScale(start_time))
         .attr('y2', height)
         .attr('stroke', 'black')
         .attr('stroke-dasharray', '4')

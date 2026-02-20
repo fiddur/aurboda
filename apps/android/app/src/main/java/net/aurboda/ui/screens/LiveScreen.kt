@@ -6,6 +6,7 @@ import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +46,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -56,6 +61,7 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.StepsRecord
 import net.aurboda.ble.BleScanState
+import net.aurboda.ble.ChartDataPoint
 import net.aurboda.ble.DeviceState
 import net.aurboda.ble.DiscoveredDevice
 import net.aurboda.ble.SensorService
@@ -64,6 +70,8 @@ import net.aurboda.ble.hasBlePermissions
 import net.aurboda.ble.isBleEnabled
 import net.aurboda.ble.isBleSupported
 import net.aurboda.ble.scanForSensors
+import java.time.Duration
+import java.time.Instant
 
 @Composable
 fun LiveScreen(
@@ -73,6 +81,24 @@ fun LiveScreen(
     var hasPermissions by remember { mutableStateOf(hasBlePermissions(context)) }
     var bleEnabled by remember { mutableStateOf(isBleEnabled(context)) }
     val bleSupported = remember { isBleSupported(context) }
+
+    // Activity recognition permission for phone step counter (Android 10+)
+    var hasActivityRecognitionPermission by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACTIVITY_RECOGNITION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val activityRecognitionPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasActivityRecognitionPermission = granted
+        if (granted) {
+            SensorService.startPhoneStepCounter(context)
+        }
+    }
 
     // Health Connect client and write permission state
     val healthConnectClient = remember { HealthConnectClient.getOrCreate(context) }
@@ -258,6 +284,8 @@ fun LiveScreen(
                     currentHrv = serviceState.currentHrv,
                     hrvReliable = serviceState.hrvReliable,
                     rrIntervalCount = serviceState.rrIntervalCount,
+                    hrChartData = serviceState.hrChartHistory,
+                    hrvChartData = serviceState.hrvChartHistory,
                     onEnableHealthConnect = {
                         healthConnectPermissionLauncher.launch(requiredPermissions)
                     },
@@ -300,6 +328,22 @@ fun LiveScreen(
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
+
+        // Phone Step Counter Section
+        PhoneStepCounterCard(
+            isActive = serviceState.phoneStepCounterActive,
+            stepCount = serviceState.phoneStepsSinceStart,
+            lastUpdateTime = serviceState.phoneStepLastUpdateTime,
+            onStart = {
+                if (hasActivityRecognitionPermission) {
+                    SensorService.startPhoneStepCounter(context)
+                } else {
+                    activityRecognitionPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                }
+            },
+            onStop = { SensorService.stopPhoneStepCounter(context) }
+        )
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Scanner Section - always visible to allow adding more devices
         ScannerSection(
@@ -353,6 +397,8 @@ private fun ConnectedDeviceCard(
     currentHrv: Double?,
     hrvReliable: Boolean,
     rrIntervalCount: Int,
+    hrChartData: List<ChartDataPoint>,
+    hrvChartData: List<ChartDataPoint>,
     onEnableHealthConnect: () -> Unit,
     onDisconnect: () -> Unit
 ) {
@@ -368,40 +414,59 @@ private fun ConnectedDeviceCard(
             containerColor = MaterialTheme.colorScheme.primaryContainer
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = when (device.type) {
-                        SensorType.HEART_RATE -> Icons.Default.Favorite
-                        SensorType.RUNNING_SPEED_CADENCE -> Icons.Default.PlayArrow
-                    },
-                    contentDescription = null,
-                    tint = when (device.type) {
-                        SensorType.HEART_RATE -> MaterialTheme.colorScheme.error
-                        SensorType.RUNNING_SPEED_CADENCE -> MaterialTheme.colorScheme.primary
-                    }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // Chart background layer - only show for HR devices with data
+            if (device.type == SensorType.HEART_RATE && (hrChartData.isNotEmpty() || hrvChartData.isNotEmpty())) {
+                LiveDataChart(
+                    hrData = hrChartData,
+                    hrvData = hrvChartData,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .padding(start = 8.dp, end = 8.dp, top = 32.dp, bottom = 48.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = device.name ?: "Unknown Device",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                // Battery indicator
-                if (batteryLevel != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    BatteryIndicator(level = batteryLevel)
-                }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            // Foreground content
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = when (device.type) {
+                            SensorType.HEART_RATE -> Icons.Default.Favorite
+                            SensorType.RUNNING_SPEED_CADENCE -> Icons.Default.PlayArrow
+                        },
+                        contentDescription = null,
+                        tint = when (device.type) {
+                            SensorType.HEART_RATE -> MaterialTheme.colorScheme.error
+                            SensorType.RUNNING_SPEED_CADENCE -> MaterialTheme.colorScheme.primary
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = device.name ?: "Unknown Device",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    // Battery indicator
+                    if (batteryLevel != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        BatteryIndicator(level = batteryLevel)
+                    }
+                }
+
+                // Connection health indicator (RSSI + data freshness)
+                ConnectionHealthIndicator(
+                    rssi = deviceState.rssi,
+                    lastDataReceivedTime = deviceState.lastDataReceivedTime
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
 
             when (device.type) {
                 SensorType.HEART_RATE -> {
@@ -508,6 +573,104 @@ private fun ConnectedDeviceCard(
                     Button(onClick = onEnableHealthConnect) {
                         Text("Enable HC")
                     }
+                }
+            }
+        }  // Column
+        }  // Box
+    }
+}
+
+@Composable
+private fun PhoneStepCounterCard(
+    isActive: Boolean,
+    stepCount: Int,
+    lastUpdateTime: Instant?,
+    onStart: () -> Unit,
+    onStop: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive)
+                MaterialTheme.colorScheme.tertiaryContainer
+            else
+                MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Phone Step Counter",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+
+            if (isActive) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = stepCount.toString(),
+                    fontSize = 48.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Text(
+                    text = "steps",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                )
+
+                // Data freshness indicator
+                if (lastUpdateTime != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val now = remember { mutableStateOf(Instant.now()) }
+                    LaunchedEffect(Unit) {
+                        while (true) {
+                            now.value = Instant.now()
+                            kotlinx.coroutines.delay(1000)
+                        }
+                    }
+                    val staleness = Duration.between(lastUpdateTime, now.value).toMillis() / 1000.0
+                    val stalenessText = when {
+                        staleness < 1 -> "updating now"
+                        staleness < 60 -> "${staleness.toInt()}s ago"
+                        else -> "${(staleness / 60).toInt()}m ago"
+                    }
+                    Text(
+                        text = "Last update: $stalenessText",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = onStop) {
+                    Text("Stop Counting")
+                }
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Use your phone's built-in step sensor",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = onStart) {
+                    Text("Start Counting")
                 }
             }
         }
@@ -646,6 +809,80 @@ private fun DiscoveredDeviceItem(
     }
 }
 
+private const val CHART_DURATION_MS = 5 * 60 * 1000L  // 5 minutes
+
+/**
+ * Draws a line chart with HR (red) and HRV (green) data as a background.
+ * The chart auto-scales vertically to fit the data with some padding.
+ */
+@Composable
+private fun LiveDataChart(
+    hrData: List<ChartDataPoint>,
+    hrvData: List<ChartDataPoint>,
+    modifier: Modifier = Modifier
+) {
+    val hrColor = Color(0xFFE57373)  // Light red
+    val hrvColor = Color(0xFF81C784)  // Light green
+
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        val now = System.currentTimeMillis()
+        val startTime = now - CHART_DURATION_MS
+
+        // Helper function to draw a line for a dataset
+        fun drawDataLine(
+            data: List<ChartDataPoint>,
+            color: Color,
+            minValue: Float,
+            maxValue: Float
+        ) {
+            if (data.size < 2) return
+
+            val valueRange = maxValue - minValue
+            if (valueRange <= 0) return
+
+            val path = Path()
+            var started = false
+
+            data.forEachIndexed { index, point ->
+                val x = ((point.timestamp - startTime).toFloat() / CHART_DURATION_MS) * width
+                val normalizedY = (point.value - minValue) / valueRange
+                val y = height - (normalizedY * height)  // Use full height, scale to exact min/max
+
+                if (!started) {
+                    path.moveTo(x, y)
+                    started = true
+                } else {
+                    path.lineTo(x, y)
+                }
+            }
+
+            drawPath(
+                path = path,
+                color = color,
+                style = Stroke(width = 2f)
+            )
+        }
+
+        // Calculate ranges for HR data - use exact min/max from data
+        if (hrData.isNotEmpty()) {
+            val hrValues = hrData.map { it.value }
+            val hrMin = hrValues.minOrNull() ?: 60f
+            val hrMax = hrValues.maxOrNull() ?: 100f
+            drawDataLine(hrData, hrColor, hrMin, hrMax)
+        }
+
+        // Calculate ranges for HRV data - use exact min/max from data
+        if (hrvData.isNotEmpty()) {
+            val hrvValues = hrvData.map { it.value }
+            val hrvMin = hrvValues.minOrNull() ?: 20f
+            val hrvMax = hrvValues.maxOrNull() ?: 80f
+            drawDataLine(hrvData, hrvColor, hrvMin, hrvMax)
+        }
+    }
+}
+
 @Composable
 private fun BatteryIndicator(level: Int) {
     val color = when {
@@ -684,6 +921,115 @@ private fun BatteryIndicator(level: Int) {
             text = "$level%",
             style = MaterialTheme.typography.bodySmall,
             color = color
+        )
+    }
+}
+
+@Composable
+private fun ConnectionHealthIndicator(
+    rssi: Int?,
+    lastDataReceivedTime: Instant?
+) {
+    val now = remember { mutableStateOf(Instant.now()) }
+
+    // Update "now" every second to keep staleness indicator current
+    LaunchedEffect(Unit) {
+        while (true) {
+            now.value = Instant.now()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
+    val staleness = lastDataReceivedTime?.let {
+        Duration.between(it, now.value).toMillis() / 1000.0
+    }
+
+    // RSSI signal strength interpretation:
+    // > -50 dBm: Excellent
+    // -50 to -70 dBm: Good
+    // -70 to -80 dBm: Fair
+    // < -80 dBm: Weak
+    val signalStrength = rssi?.let {
+        when {
+            it > -50 -> "excellent"
+            it > -70 -> "good"
+            it > -80 -> "fair"
+            else -> "weak"
+        }
+    }
+
+    val signalColor = when (signalStrength) {
+        "excellent" -> Color(0xFF4CAF50) // Green
+        "good" -> Color(0xFF8BC34A) // Light green
+        "fair" -> Color(0xFFFF9800) // Orange
+        "weak" -> Color(0xFFF44336) // Red
+        else -> Color.Gray
+    }
+
+    // Staleness color: green if fresh, yellow if getting stale, red if very stale
+    val stalenessColor = staleness?.let {
+        when {
+            it < 3 -> Color(0xFF4CAF50) // Green - fresh
+            it < 10 -> Color(0xFFFF9800) // Orange - getting stale
+            else -> Color(0xFFF44336) // Red - stale
+        }
+    } ?: Color.Gray
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+        modifier = Modifier.padding(vertical = 4.dp)
+    ) {
+        // Signal strength indicator (4 bars)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(1.dp),
+            verticalAlignment = Alignment.Bottom,
+            modifier = Modifier.height(14.dp)
+        ) {
+            val bars = when (signalStrength) {
+                "excellent" -> 4
+                "good" -> 3
+                "fair" -> 2
+                "weak" -> 1
+                else -> 0
+            }
+            for (i in 1..4) {
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height((4 + i * 2).dp)
+                        .background(
+                            if (i <= bars) signalColor else signalColor.copy(alpha = 0.3f),
+                            shape = MaterialTheme.shapes.extraSmall
+                        )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(4.dp))
+
+        // RSSI value
+        Text(
+            text = rssi?.let { "${it}dBm" } ?: "--",
+            style = MaterialTheme.typography.labelSmall,
+            color = signalColor
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Data freshness indicator
+        val stalenessText = staleness?.let {
+            when {
+                it < 1 -> "now"
+                it < 60 -> "${it.toInt()}s ago"
+                else -> "${(it / 60).toInt()}m ago"
+            }
+        } ?: "no data"
+
+        Text(
+            text = stalenessText,
+            style = MaterialTheme.typography.labelSmall,
+            color = stalenessColor
         )
     }
 }

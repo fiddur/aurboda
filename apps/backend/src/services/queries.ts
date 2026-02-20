@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- TODO: refactor - extract helpers */
 /**
  * Query services for health data.
  *
@@ -5,6 +6,7 @@
  * They are used by both the MCP tools and the REST API.
  */
 
+import type { CustomMetricDefinition } from '@aurboda/api-spec'
 import {
   getActivities,
   getDailyAggregates,
@@ -13,10 +15,20 @@ import {
   getSleepSessions,
   getTags,
   getTimeSeries,
+  getTimeSeriesBucketed,
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
+  type ProductivityRecord,
 } from '../db'
-import { ActivityType, isHrZoneMetric, MetricType, metricUnits } from '../schema'
+import {
+  ActivityType,
+  getMetricUnit,
+  isContextualHrvMetric,
+  isHrZoneMetric,
+  MetricType,
+  metricUnits,
+} from '../schema'
+import { classifyHrvByContext, getHrvContextWindows, HrvContext } from './hrv-context'
 import { getPlaceVisits } from './locations'
 import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs } from './settings'
 
@@ -33,6 +45,8 @@ export interface SyncProvider {
   syncOuraIfNeeded: (user: string, dataType: 'tags' | 'sessions') => Promise<void>
   /** Sync RescueTime productivity data if stale */
   syncRescueTimeIfNeeded: (user: string) => Promise<void>
+  /** Sync calendar data if stale */
+  syncCalendarsIfNeeded: (user: string) => Promise<void>
 }
 
 export interface MetricDataPoint {
@@ -41,10 +55,44 @@ export interface MetricDataPoint {
 }
 
 export interface QueryMetricsResult {
-  metric: MetricType
+  metric: string
   unit: string
   count: number
   data: MetricDataPoint[]
+}
+
+/**
+ * Valid bucket sizes for bucketed metrics queries.
+ */
+export type BucketSize = '5m' | '15m' | '30m' | '1h' | '1d'
+
+/**
+ * Bucket statistics for a single metric.
+ */
+export interface BucketMetricStats {
+  avg: number
+  min: number
+  max: number
+  count: number
+}
+
+/**
+ * A single time bucket with aggregated metrics.
+ */
+export interface MetricBucket {
+  start: string
+  end: string
+  metrics: Partial<Record<MetricType, BucketMetricStats>>
+}
+
+/**
+ * Result of a bucketed metrics query.
+ */
+export interface QueryMetricsBucketedResult {
+  start: string
+  end: string
+  bucket: BucketSize
+  buckets: MetricBucket[]
 }
 
 export interface HeartRateStats {
@@ -55,76 +103,76 @@ export interface HeartRateStats {
 }
 
 export interface SessionSummary {
-  startTime: string
-  endTime?: string
+  start_time: string
+  end_time?: string
   duration?: number // minutes
   title?: string
   data?: Record<string, unknown>
-  hrZoneSecs?: HrZoneSecs
+  hr_zone_secs?: HrZoneSecs
 }
 
 export interface TagSummary {
   tag: string
-  startTime: string
-  endTime?: string
+  start_time: string
+  end_time?: string
 }
 
 export interface PlaceSummary {
   name: string
-  startTime: string
-  endTime: string
+  start_time: string
+  end_time: string
   duration: number // minutes
   source: 'named' | 'detected' | 'owntracks' | 'unknown'
   lat?: number
   lon?: number
   address?: string
-  detectedLocationId?: string
+  detected_location_id?: string
 }
 
 export interface ProductivitySummary {
-  totalDurationSec: number
-  productiveSec: number
-  veryProductiveSec: number
-  distractingSec: number
+  total_duration_sec: number
+  productive_sec: number
+  very_productive_sec: number
+  distracting_sec: number
 }
 
 export interface OuraScores {
-  sleepScore: number | null
-  readinessScore: number | null
-  resilienceScore: number | null
-  cardiovascularAge: number | null
+  sleep_score: number | null
+  readiness_score: number | null
+  resilience_score: number | null
+  cardiovascular_age: number | null
 }
 
 export interface DailySummaryResult {
   date: string
-  heartRate: HeartRateStats | null
+  heart_rate: HeartRateStats | null
   steps: { total: number }
-  sleepSessions: SessionSummary[]
-  exerciseSessions: SessionSummary[]
+  sleep_sessions: SessionSummary[]
+  exercise_sessions: SessionSummary[]
   tags: TagSummary[]
   productivity: ProductivitySummary | null
   places: PlaceSummary[]
-  ouraScores: OuraScores | null
+  oura_scores: OuraScores | null
 }
 
 export interface PeriodMetricStats {
-  metric: MetricType
+  metric: string
   unit: string
   count: number
   min: number
   max: number
   avg: number
   stddev: number
-  trendPerDay: number | null
-  changeFromPreviousPeriodPercent: number | null
-  completenessPercent: number
+  trend_per_day: number | null
+  change_from_previous_period_percent: number | null
+  completeness_percent: number
   outliers?: { type: 'high' | 'low'; value: number }[]
 }
 
 export interface PeriodSummaryResult {
   start: string
   end: string
-  periodDays: number
+  period_days: number
   metrics: PeriodMetricStats[]
 }
 
@@ -134,15 +182,32 @@ export interface PeriodSummaryResult {
 
 /**
  * Query time series data for a single metric.
+ * Supports both built-in and custom metrics via the customMetrics parameter.
+ *
+ * Supports contextual HRV metrics (hrv_sleep, hrv_activity, hrv_awake) which
+ * are computed by filtering hrv_rmssd data by overlapping sleep/activity windows.
  */
 export async function queryMetrics(
   user: string,
-  metric: MetricType,
+  metric: string,
   start: Date,
   end: Date,
+  customMetrics: CustomMetricDefinition[] = [],
 ): Promise<QueryMetricsResult> {
+  const unit = getMetricUnit(metric, customMetrics) ?? metricUnits[metric as MetricType] ?? ''
+
+  // Handle contextual HRV metrics
+  if (isContextualHrvMetric(metric as MetricType)) {
+    const data = await getContextualHrvData(user, metric as MetricType, start, end)
+    return {
+      count: data.length,
+      data: data.map(([time, value]) => ({ time: time.toISOString(), value })),
+      metric,
+      unit,
+    }
+  }
+
   const data = await getTimeSeries(user, metric, start, end)
-  const unit = metricUnits[metric]
 
   return {
     count: data.length,
@@ -153,9 +218,229 @@ export async function queryMetrics(
 }
 
 /**
+ * Get contextual HRV data for a single metric.
+ */
+async function getContextualHrvData(
+  user: string,
+  metric: MetricType,
+  start: Date,
+  end: Date,
+): Promise<[Date, number][]> {
+  const contextMap: Record<string, HrvContext> = {
+    hrv_activity: 'activity',
+    hrv_awake: 'awake',
+    hrv_sleep: 'sleep',
+  }
+  const context = contextMap[metric]
+  if (!context) return []
+
+  // Fetch raw HRV data and context windows in parallel
+  const [hrvData, { sleepWindows, activityWindows }] = await Promise.all([
+    getTimeSeries(user, 'hrv_rmssd', start, end),
+    getHrvContextWindows(user, start, end),
+  ])
+
+  if (hrvData.length === 0) return []
+
+  // Classify and return the requested context
+  const classified = classifyHrvByContext(hrvData, sleepWindows, activityWindows)
+  return classified[context]
+}
+
+/**
+ * Convert bucket size string to minutes.
+ */
+const bucketSizeToMinutes: Record<BucketSize, number> = {
+  '1d': 1440,
+  '1h': 60,
+  '5m': 5,
+  '15m': 15,
+  '30m': 30,
+}
+
+/**
+ * Compute bucket start time for a given timestamp.
+ */
+const getBucketStart = (time: Date, bucketMinutes: number, rangeStart: Date): Date => {
+  const msPerBucket = bucketMinutes * 60 * 1000
+  const startMs = rangeStart.getTime()
+  const timeMs = time.getTime()
+  const bucketIndex = Math.floor((timeMs - startMs) / msPerBucket)
+  return new Date(startMs + bucketIndex * msPerBucket)
+}
+
+/**
+ * Map contextual HRV metric names to their context.
+ */
+const contextualHrvMetricToContext: Record<string, HrvContext> = {
+  hrv_activity: 'activity',
+  hrv_awake: 'awake',
+  hrv_sleep: 'sleep',
+}
+
+/**
+ * Compute bucketed aggregations for contextual HRV data.
+ * Returns buckets with min/max/avg/count for filtered HRV samples.
+ */
+const computeContextualHrvBuckets = (
+  hrvData: [Date, number][],
+  metric: MetricType,
+  bucketMinutes: number,
+  rangeStart: Date,
+): { bucket_start: Date; metric: MetricType; avg: number; min: number; max: number; count: number }[] => {
+  if (hrvData.length === 0) return []
+
+  // Group data by bucket
+  const bucketMap = new Map<string, number[]>()
+  for (const [time, value] of hrvData) {
+    const bucketStart = getBucketStart(time, bucketMinutes, rangeStart)
+    const key = bucketStart.toISOString()
+    if (!bucketMap.has(key)) {
+      bucketMap.set(key, [])
+    }
+    bucketMap.get(key)!.push(value)
+  }
+
+  // Compute aggregations for each bucket
+  return Array.from(bucketMap.entries()).map(([key, values]) => ({
+    avg: values.reduce((a, b) => a + b, 0) / values.length,
+    bucket_start: new Date(key),
+    count: values.length,
+    max: Math.max(...values),
+    metric,
+    min: Math.min(...values),
+  }))
+}
+
+/**
+ * Query bucketed/aggregated time series data for multiple metrics.
+ *
+ * Returns pre-aggregated buckets with min/max/avg/count for each metric,
+ * significantly reducing data size compared to raw time series queries.
+ *
+ * Supports contextual HRV metrics (hrv_sleep, hrv_activity, hrv_awake) which
+ * are computed by filtering hrv_rmssd data by overlapping sleep/activity windows.
+ *
+ * @param user - The username
+ * @param metrics - Array of metric types to query
+ * @param start - Start of time range
+ * @param end - End of time range
+ * @param bucket - Bucket size: '5m', '15m', '30m', '1h', or '1d'
+ */
+export async function queryMetricsBucketed(
+  user: string,
+  metrics: MetricType[],
+  start: Date,
+  end: Date,
+  bucket: BucketSize,
+): Promise<QueryMetricsBucketedResult> {
+  const bucketMinutes = bucketSizeToMinutes[bucket]
+
+  // Separate regular metrics from contextual HRV metrics
+  const regularMetrics = metrics.filter((m) => !isContextualHrvMetric(m))
+  const contextualHrvMetricsRequested = metrics.filter(isContextualHrvMetric)
+
+  // Fetch regular bucketed data and contextual HRV data in parallel
+  const needsContextualHrv = contextualHrvMetricsRequested.length > 0
+  const [regularData, contextualHrvData] = await Promise.all([
+    regularMetrics.length > 0 ? getTimeSeriesBucketed(user, regularMetrics, start, end, bucketMinutes) : [],
+    needsContextualHrv ?
+      computeContextualHrvData(user, contextualHrvMetricsRequested, start, end, bucketMinutes)
+    : [],
+  ])
+
+  // Combine all data
+  const allData = [...regularData, ...contextualHrvData]
+
+  // Group data by bucket start time
+  const bucketMap = new Map<string, MetricBucket>()
+
+  for (const row of allData) {
+    const bucketKey = row.bucket_start.toISOString()
+    const bucketEndMs = row.bucket_start.getTime() + bucketMinutes * 60 * 1000
+    const bucketEnd = new Date(bucketEndMs).toISOString()
+
+    if (!bucketMap.has(bucketKey)) {
+      bucketMap.set(bucketKey, {
+        end: bucketEnd,
+        metrics: {},
+        start: bucketKey,
+      })
+    }
+
+    const bucketEntry = bucketMap.get(bucketKey)!
+    bucketEntry.metrics[row.metric] = {
+      avg: row.avg,
+      count: row.count,
+      max: row.max,
+      min: row.min,
+    }
+  }
+
+  // Convert map to sorted array
+  const buckets = Array.from(bucketMap.values()).sort(
+    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+  )
+
+  return {
+    bucket,
+    buckets,
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+}
+
+/**
+ * Compute bucketed data for contextual HRV metrics.
+ * Fetches raw hrv_rmssd data, classifies by context, and computes bucket aggregations.
+ */
+async function computeContextualHrvData(
+  user: string,
+  metrics: MetricType[],
+  start: Date,
+  end: Date,
+  bucketMinutes: number,
+): Promise<
+  { bucket_start: Date; metric: MetricType; avg: number; min: number; max: number; count: number }[]
+> {
+  // Fetch raw HRV data and context windows in parallel
+  const [hrvData, { sleepWindows, activityWindows }] = await Promise.all([
+    getTimeSeries(user, 'hrv_rmssd', start, end),
+    getHrvContextWindows(user, start, end),
+  ])
+
+  if (hrvData.length === 0) return []
+
+  // Classify HRV data by context
+  const classified = classifyHrvByContext(hrvData, sleepWindows, activityWindows)
+
+  // Compute buckets for each requested contextual HRV metric
+  const results: {
+    bucket_start: Date
+    metric: MetricType
+    avg: number
+    min: number
+    max: number
+    count: number
+  }[] = []
+
+  for (const metric of metrics) {
+    const context = contextualHrvMetricToContext[metric]
+    if (context) {
+      const contextData = classified[context]
+      const buckets = computeContextualHrvBuckets(contextData, metric, bucketMinutes, start)
+      results.push(...buckets)
+    }
+  }
+
+  return results
+}
+
+/**
  * Get a comprehensive summary of health data for a specific day.
  * @param sync Optional sync provider to auto-refresh stale data before querying
  */
+// eslint-disable-next-line complexity -- TODO: refactor
 export async function getDailySummary(
   user: string,
   date: Date,
@@ -167,6 +452,7 @@ export async function getDailySummary(
       sync.syncOuraIfNeeded(user, 'tags'),
       sync.syncOuraIfNeeded(user, 'sessions'),
       sync.syncRescueTimeIfNeeded(user),
+      sync.syncCalendarsIfNeeded(user),
     ])
   }
 
@@ -223,15 +509,15 @@ export async function getDailySummary(
     productivity.length > 0 ?
       productivity.reduce(
         (acc, record) => {
-          acc.totalDurationSec += record.durationSec
+          acc.total_duration_sec += record.duration_sec
           if (record.productivity !== undefined && record.productivity !== null) {
-            if (record.productivity >= 1) acc.productiveSec += record.durationSec
-            if (record.productivity >= 2) acc.veryProductiveSec += record.durationSec
-            if (record.productivity <= -1) acc.distractingSec += record.durationSec
+            if (record.productivity >= 1) acc.productive_sec += record.duration_sec
+            if (record.productivity >= 2) acc.very_productive_sec += record.duration_sec
+            if (record.productivity <= -1) acc.distracting_sec += record.duration_sec
           }
           return acc
         },
-        { distractingSec: 0, productiveSec: 0, totalDurationSec: 0, veryProductiveSec: 0 },
+        { distracting_sec: 0, productive_sec: 0, total_duration_sec: 0, very_productive_sec: 0 },
       )
     : null
 
@@ -250,10 +536,10 @@ export async function getDailySummary(
   const ouraScores: OuraScores | null =
     hasAnyOuraData ?
       {
-        cardiovascularAge: cardiovascularAgeData?.[0]?.[1] ?? null,
-        readinessScore: readinessScoreData?.[0]?.[1] ?? null,
-        resilienceScore: resilienceScoreData?.[0]?.[1] ?? null,
-        sleepScore: sleepScoreData?.[0]?.[1] ?? null,
+        cardiovascular_age: cardiovascularAgeData?.[0]?.[1] ?? null,
+        readiness_score: readinessScoreData?.[0]?.[1] ?? null,
+        resilience_score: resilienceScoreData?.[0]?.[1] ?? null,
+        sleep_score: sleepScoreData?.[0]?.[1] ?? null,
       }
     : null
 
@@ -266,17 +552,17 @@ export async function getDailySummary(
       const sessionSummary: SessionSummary = {
         data: s.data,
         duration:
-          s.endTime ? Math.round((s.endTime.getTime() - s.startTime.getTime()) / 1000 / 60) : undefined,
-        endTime: s.endTime?.toISOString(),
-        startTime: s.startTime.toISOString(),
+          s.end_time ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60) : undefined,
+        end_time: s.end_time?.toISOString(),
+        start_time: s.start_time.toISOString(),
         title: s.title,
       }
 
       // Only compute HR zones for sessions with end time
-      if (s.endTime) {
-        const sessionHrData = await getTimeSeries(user, 'heart_rate', s.startTime, s.endTime)
+      if (s.end_time) {
+        const sessionHrData = await getTimeSeries(user, 'heart_rate', s.start_time, s.end_time)
         if (sessionHrData.length > 0) {
-          sessionSummary.hrZoneSecs = computeHrZoneSecs(sessionHrData, hrZones)
+          sessionSummary.hr_zone_secs = computeHrZoneSecs(sessionHrData, hrZones)
         }
       }
 
@@ -286,31 +572,32 @@ export async function getDailySummary(
 
   return {
     date: date.toISOString().split('T')[0],
-    exerciseSessions: exerciseSessionsWithHrZones,
-    heartRate: heartRateStats,
-    ouraScores,
+    exercise_sessions: exerciseSessionsWithHrZones,
+    heart_rate: heartRateStats,
+    oura_scores: ouraScores,
     places: placeVisits.map((p) => ({
       address: p.address,
-      detectedLocationId: p.detectedLocationId,
-      duration: p.durationMinutes,
-      endTime: p.endTime.toISOString(),
+      detected_location_id: p.detected_location_id,
+      duration: p.duration_minutes,
+      end_time: p.end_time.toISOString(),
       lat: p.lat,
       lon: p.lon,
       name: p.name,
       source: p.source,
-      startTime: p.startTime.toISOString(),
+      start_time: p.start_time.toISOString(),
     })),
     productivity: productivitySummary,
-    sleepSessions: sleepSessions.map((s) => ({
+    sleep_sessions: sleepSessions.map((s) => ({
       data: s.data,
-      duration: s.endTime ? Math.round((s.endTime.getTime() - s.startTime.getTime()) / 1000 / 60) : undefined,
-      endTime: s.endTime?.toISOString(),
-      startTime: s.startTime.toISOString(),
+      duration:
+        s.end_time ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60) : undefined,
+      end_time: s.end_time?.toISOString(),
+      start_time: s.start_time.toISOString(),
     })),
     steps: { total: totalSteps },
     tags: tags.map((t) => ({
-      endTime: t.endTime?.toISOString(),
-      startTime: t.startTime.toISOString(),
+      end_time: t.end_time?.toISOString(),
+      start_time: t.start_time.toISOString(),
       tag: t.tag,
     })),
   }
@@ -350,15 +637,15 @@ async function computeHrZoneStats(
 
     return {
       avg: Math.round(totalSecs * 100) / 100,
-      changeFromPreviousPeriodPercent: null, // Could compute if needed
-      completenessPercent: hrData.length > 0 ? 100 : 0,
+      change_from_previous_period_percent: null, // Could compute if needed
+      completeness_percent: hrData.length > 0 ? 100 : 0,
       count: hrData.length > 0 ? 1 : 0, // Treat as single aggregated value
       max: Math.round(totalSecs * 100) / 100,
       metric,
       min: Math.round(totalSecs * 100) / 100,
       outliers: undefined,
       stddev: 0,
-      trendPerDay: null,
+      trend_per_day: null,
       unit: metricUnits[metric],
     }
   })
@@ -369,13 +656,13 @@ async function computeHrZoneStats(
  */
 export async function getPeriodSummary(
   user: string,
-  metrics: MetricType[],
+  metrics: string[],
   start: Date,
   end: Date,
 ): Promise<PeriodSummaryResult> {
   // Separate HR zone metrics from regular metrics
-  const regularMetrics = metrics.filter((m) => !isHrZoneMetric(m))
-  const hrZoneMetricsRequested = metrics.filter(isHrZoneMetric)
+  const regularMetrics = metrics.filter((m) => !isHrZoneMetric(m as MetricType))
+  const hrZoneMetricsRequested = metrics.filter((m) => isHrZoneMetric(m as MetricType)) as MetricType[]
 
   // Calculate period length for previous period comparison
   const periodMs = end.getTime() - start.getTime()
@@ -439,16 +726,16 @@ export async function getPeriodSummary(
 
     return {
       avg: Math.round(stat.avg * 100) / 100,
-      changeFromPreviousPeriodPercent:
+      change_from_previous_period_percent:
         changeFromPrevious !== null ? Math.round(changeFromPrevious * 10) / 10 : null,
-      completenessPercent: completeness,
+      completeness_percent: completeness,
       count: stat.count,
       max: Math.round(stat.max * 100) / 100,
       metric: stat.metric,
       min: Math.round(stat.min * 100) / 100,
       outliers: outliers.length > 0 ? outliers : undefined,
       stddev: Math.round(stat.stddev * 100) / 100,
-      trendPerDay: trend !== null ? Math.round(trend * 1000) / 1000 : null,
+      trend_per_day: trend !== null ? Math.round(trend * 1000) / 1000 : null,
       unit: stat.unit,
     }
   })
@@ -458,16 +745,16 @@ export async function getPeriodSummary(
   for (const metric of missingRegularMetrics) {
     metricsWithTrends.push({
       avg: 0,
-      changeFromPreviousPeriodPercent: null,
-      completenessPercent: 0,
+      change_from_previous_period_percent: null,
+      completeness_percent: 0,
       count: 0,
       max: 0,
       metric,
       min: 0,
       outliers: undefined,
       stddev: 0,
-      trendPerDay: null,
-      unit: metricUnits[metric],
+      trend_per_day: null,
+      unit: metricUnits[metric as MetricType] ?? '',
     })
   }
 
@@ -477,7 +764,7 @@ export async function getPeriodSummary(
   return {
     end: end.toISOString(),
     metrics: metricsWithTrends,
-    periodDays: daysInPeriod,
+    period_days: daysInPeriod,
     start: start.toISOString(),
   }
 }
@@ -493,13 +780,13 @@ export async function queryTags(
   sync?: SyncProvider,
 ): Promise<TagSummary[]> {
   if (sync) {
-    await sync.syncOuraIfNeeded(user, 'tags')
+    await Promise.all([sync.syncOuraIfNeeded(user, 'tags'), sync.syncCalendarsIfNeeded(user)])
   }
 
   const tags = await getTags(user, start, end)
   return tags.map((t) => ({
-    endTime: t.endTime?.toISOString(),
-    startTime: t.startTime.toISOString(),
+    end_time: t.end_time?.toISOString(),
+    start_time: t.start_time.toISOString(),
     tag: t.tag,
   }))
 }
@@ -508,14 +795,37 @@ export async function queryTags(
  * Activity query result with formatted timestamps.
  */
 export interface ActivityResult {
-  startTime: string
-  endTime?: string
+  start_time: string
+  end_time?: string
   duration?: number // minutes
-  activityType: string
+  activity_type: string
   title?: string
+  notes?: string
   source: string
   data?: Record<string, unknown>
-  hrZoneSecs?: HrZoneSecs
+  hr_zone_secs?: HrZoneSecs
+  avg_hrv?: number
+}
+
+/**
+ * Get average HRV for an activity, using embedded Oura data or time series.
+ */
+async function getAvgHrvForActivity(
+  user: string,
+  activity: { data?: Record<string, unknown>; start_time: Date; end_time?: Date },
+): Promise<number | undefined> {
+  // Try embedded Oura HRV data first (meditation sessions have hrv.items)
+  const hrv = activity.data?.hrv as { items?: (number | null)[] } | undefined
+  const items = hrv?.items?.filter((v): v is number => v !== null && v > 0)
+  if (items && items.length > 0) {
+    return Math.round(items.reduce((sum, v) => sum + v, 0) / items.length)
+  }
+
+  // Fall back to time series HRV data
+  if (!activity.end_time) return undefined
+  const hrvData = await getTimeSeries(user, 'hrv_rmssd', activity.start_time, activity.end_time)
+  if (hrvData.length === 0) return undefined
+  return Math.round(hrvData.reduce((sum, [, v]) => sum + v, 0) / hrvData.length)
 }
 
 /**
@@ -543,22 +853,28 @@ export async function queryActivities(
   return Promise.all(
     activities.map(async (a) => {
       const result: ActivityResult = {
-        activityType: a.activityType,
+        activity_type: a.activity_type,
         data: a.data,
         duration:
-          a.endTime ? Math.round((a.endTime.getTime() - a.startTime.getTime()) / 1000 / 60) : undefined,
-        endTime: a.endTime?.toISOString(),
+          a.end_time ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60) : undefined,
+        end_time: a.end_time?.toISOString(),
+        notes: a.notes,
         source: a.source,
-        startTime: a.startTime.toISOString(),
+        start_time: a.start_time.toISOString(),
         title: a.title,
       }
 
       // Compute HR zones for exercise activities with end time
-      if (hrZones && a.activityType === 'exercise' && a.endTime) {
-        const hrData = await getTimeSeries(user, 'heart_rate', a.startTime, a.endTime)
+      if (hrZones && a.activity_type === 'exercise' && a.end_time) {
+        const hrData = await getTimeSeries(user, 'heart_rate', a.start_time, a.end_time)
         if (hrData.length > 0) {
-          result.hrZoneSecs = computeHrZoneSecs(hrData, hrZones)
+          result.hr_zone_secs = computeHrZoneSecs(hrData, hrZones)
         }
+      }
+
+      // Compute average HRV for sleep and meditation
+      if ((a.activity_type === 'sleep' || a.activity_type === 'meditation') && a.end_time) {
+        result.avg_hrv = await getAvgHrvForActivity(user, a)
       }
 
       return result
@@ -570,16 +886,55 @@ export async function queryActivities(
  * Productivity record with formatted timestamps.
  */
 export interface ProductivityResult {
-  startTime: string
-  endTime: string
+  start_time: string
+  end_time: string
   activity: string
   category?: string
   productivity?: number
-  durationSec: number
+  duration_sec: number
+  is_mobile?: boolean
+}
+
+/**
+ * Maximum gap (ms) between spans that still counts as "consecutive".
+ * RescueTime often has small gaps (e.g. end 06:39:59, next start 06:40:00).
+ * 2 minutes covers these gaps without merging truly separate sessions.
+ */
+const MERGE_GAP_MS = 2 * 60 * 1000
+
+/**
+ * Merge consecutive productivity spans for the same activity/is_mobile.
+ * Two spans are merged when the gap between prev.end_time and current.start_time
+ * is at most MERGE_GAP_MS and they share the same activity name and is_mobile flag.
+ */
+export function mergeProductivitySpans(records: ProductivityRecord[]): ProductivityRecord[] {
+  if (records.length === 0) return []
+
+  const merged: ProductivityRecord[] = [{ ...records[0] }]
+
+  for (let i = 1; i < records.length; i++) {
+    const current = records[i]
+    const prev = merged[merged.length - 1]
+
+    const sameActivity = current.activity === prev.activity
+    const sameMobile = (current.is_mobile ?? false) === (prev.is_mobile ?? false)
+    const gap = current.start_time.getTime() - prev.end_time.getTime()
+    const closeEnough = gap >= 0 && gap <= MERGE_GAP_MS
+
+    if (sameActivity && sameMobile && closeEnough) {
+      prev.end_time = current.end_time
+      prev.duration_sec += current.duration_sec
+    } else {
+      merged.push({ ...current })
+    }
+  }
+
+  return merged
 }
 
 /**
  * Query productivity data for a time range.
+ * Merges consecutive spans for the same activity to reduce visual clutter.
  * @param sync Optional sync provider to auto-refresh stale data before querying
  */
 export async function queryProductivity(
@@ -593,13 +948,15 @@ export async function queryProductivity(
   }
 
   const productivity = await getProductivity(user, start, end)
-  return productivity.map((p) => ({
+  const merged = mergeProductivitySpans(productivity)
+  return merged.map((p) => ({
     activity: p.activity,
     category: p.category,
-    durationSec: p.durationSec,
-    endTime: p.endTime.toISOString(),
+    duration_sec: p.duration_sec,
+    end_time: p.end_time.toISOString(),
+    is_mobile: p.is_mobile,
     productivity: p.productivity,
-    startTime: p.startTime.toISOString(),
+    start_time: p.start_time.toISOString(),
   }))
 }
 
@@ -610,13 +967,13 @@ export async function queryLocations(user: string, start: Date, end: Date): Prom
   const visits = await getPlaceVisits(user, start, end)
   return visits.map((p) => ({
     address: p.address,
-    detectedLocationId: p.detectedLocationId,
-    duration: p.durationMinutes,
-    endTime: p.endTime.toISOString(),
+    detected_location_id: p.detected_location_id,
+    duration: p.duration_minutes,
+    end_time: p.end_time.toISOString(),
     lat: p.lat,
     lon: p.lon,
     name: p.name,
     source: p.source,
-    startTime: p.startTime.toISOString(),
+    start_time: p.start_time.toISOString(),
   }))
 }

@@ -6,37 +6,16 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.util.Log
+import android.view.View
 import android.widget.RemoteViews
 import net.aurboda.MainActivity
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import net.aurboda.CredentialsManager
-import net.aurboda.DataResult
 import net.aurboda.R
-import net.aurboda.fetchPeriodSummary
-import net.aurboda.findMetricTimeSeconds
-import net.aurboda.formatZoneTime
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.android.Android
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.serialization.kotlinx.json.json
-import net.aurboda.appJson
-import java.time.LocalDate
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 
 private const val TAG = "HrZoneWidgetProvider"
 
-// Widget targets: Zone 2 min 150, max 200; Zone 5 min 5, max 10
-private const val ZONE_2_TARGET_MIN = 150
-private const val ZONE_5_TARGET_MIN = 5
-
 class HrZoneWidgetProvider : AppWidgetProvider() {
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onUpdate(
         context: Context,
@@ -56,7 +35,9 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val componentName = ComponentName(context, HrZoneWidgetProvider::class.java)
             val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
-            onUpdate(context, appWidgetManager, appWidgetIds)
+
+            // Notify the ListView adapter to refresh data
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.goals_list)
         }
     }
 
@@ -65,103 +46,37 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetId: Int
     ) {
-        scope.launch {
-            val views = RemoteViews(context.packageName, R.layout.widget_hr_zones)
+        val views = RemoteViews(context.packageName, R.layout.widget_hr_zones)
 
-            // Set up click handler to open the app on the Data tab
-            val openAppIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_DATA)
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                appWidgetId,
-                openAppIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
-
-            val credentials = CredentialsManager.getCredentials(context)
-            if (credentials == null) {
-                Log.w(TAG, "No credentials, showing empty widget")
-                setWidgetData(views, 0.0, 0.0)
-                appWidgetManager.updateAppWidget(appWidgetId, views)
-                return@launch
-            }
-
-            val httpClient = HttpClient(Android) {
-                install(ContentNegotiation) { json(appJson) }
-            }
-
-            try {
-                val hrZoneData = fetchHrZoneData(httpClient, credentials)
-                setWidgetData(views, hrZoneData.zone2Seconds, hrZoneData.zone5Seconds)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error fetching HR zone data", e)
-                // Keep existing data or show zeros
-                setWidgetData(views, 0.0, 0.0)
-            } finally {
-                httpClient.close()
-            }
-
-            appWidgetManager.updateAppWidget(appWidgetId, views)
+        // Set up click handler to open the app on the Data tab
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_DATA)
         }
-    }
-
-    private suspend fun fetchHrZoneData(
-        httpClient: HttpClient,
-        credentials: CredentialsManager.Credentials
-    ): HrZoneData {
-        val today = LocalDate.now()
-        val weekAgo = today.minusDays(6) // 7 days including today
-
-        val formatter = DateTimeFormatter.ISO_INSTANT
-        val startInstant = weekAgo.atStartOfDay().toInstant(ZoneOffset.UTC)
-        val endInstant = today.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
-
-        val start = formatter.format(startInstant)
-        val end = formatter.format(endInstant)
-
-        val metrics = listOf("hr_zone_2_sec", "hr_zone_5_sec")
-
-        val result = fetchPeriodSummary(
-            httpClient,
-            credentials.apiUrl,
-            credentials.authToken,
-            start,
-            end,
-            metrics
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            appWidgetId,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        views.setPendingIntentTemplate(R.id.goals_list, pendingIntent)
+        views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
 
-        return when (result) {
-            is DataResult.Success -> {
-                val zone2Seconds = findMetricTimeSeconds(result.data.metrics, "hr_zone_2_sec")
-                val zone5Seconds = findMetricTimeSeconds(result.data.metrics, "hr_zone_5_sec")
-                Log.d(TAG, "Fetched HR zone data: zone2=$zone2Seconds sec, zone5=$zone5Seconds sec")
-                HrZoneData(zone2Seconds, zone5Seconds)
-            }
-            is DataResult.Error -> {
-                Log.e(TAG, "Error fetching period summary: ${result.message}")
-                HrZoneData(0.0, 0.0)
-            }
+        // Set up the RemoteViews adapter for the ListView
+        val serviceIntent = Intent(context, GoalsWidgetService::class.java).apply {
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+            // Unique data URI to ensure fresh adapter per widget
+            data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
         }
-    }
+        views.setRemoteAdapter(R.id.goals_list, serviceIntent)
 
-    private fun setWidgetData(views: RemoteViews, zone2Seconds: Double, zone5Seconds: Double) {
-        val zone2Minutes = (zone2Seconds / 60.0).toInt()
-        val zone5Minutes = (zone5Seconds / 60.0).toInt()
+        // Set empty view
+        views.setEmptyView(R.id.goals_list, R.id.empty_view)
 
-        // Calculate progress as percentage (0-100)
-        val zone2Progress = ((zone2Minutes.toFloat() / ZONE_2_TARGET_MIN) * 100).coerceIn(0f, 100f).toInt()
-        val zone5Progress = ((zone5Minutes.toFloat() / ZONE_5_TARGET_MIN) * 100).coerceIn(0f, 100f).toInt()
+        appWidgetManager.updateAppWidget(appWidgetId, views)
 
-        // Set time text
-        views.setTextViewText(R.id.zone2_time, formatZoneTime(zone2Seconds))
-        views.setTextViewText(R.id.zone5_time, formatZoneTime(zone5Seconds))
-
-        // Set progress bar values
-        views.setProgressBar(R.id.zone2_progress, 100, zone2Progress, false)
-        views.setProgressBar(R.id.zone5_progress, 100, zone5Progress, false)
+        // Trigger data refresh
+        appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.goals_list)
     }
 
     companion object {
@@ -179,8 +94,3 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
         }
     }
 }
-
-private data class HrZoneData(
-    val zone2Seconds: Double,
-    val zone5Seconds: Double
-)

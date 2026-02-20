@@ -1,0 +1,252 @@
+.admin-settings-page {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.admin-settings-page h1 {
+  font-size: 1.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-settings-page .loading {
+  text-align: center;
+  padding: 2rem;
+}
+
+.settings-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.settings-section h2 {
+  font-size: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.section-header-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.section-header-row h2 {
+  margin-bottom: 0;
+}
+
+.section-description {
+  color: #666;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.save-indicator {
+  font-size: 0.85rem;
+}
+
+.save-indicator.saving {
+  color: #888;
+}
+
+.save-indicator.saved {
+  color: #4caf50;
+}
+
+.save-indicator.error {
+  color: #f44336;
+}
+
+.form-field {
+  margin-bottom: 1rem;
+}
+
+.form-field label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.form-field select {
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 400px;
+  background: white;
+}
+
+.field-description {
+  color: #666;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  line-height: 1.4;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.connected-status {
+  color: #4caf50;
+  font-weight: 500;
+  margin: 0 0 0.5rem;
+}
+
+.api-key-input-row {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 400px;
+}
+
+.api-key-input-row input {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.clear-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.clear-button:hover {
+  background: #d32f2f;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: normal;
+}
+
+.toggle-row input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+}
+
+.generate-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  background: #673ab8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 1rem;
+}
+
+.generate-button:hover:not(:disabled) {
+  background: #5e35b1;
+}
+
+.generate-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.invitation-result {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.invitation-url {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.invitation-url input {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: monospace;
+  background: white;
+}
+
+.copy-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: #2196f3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copy-button:hover {
+  background: #1976d2;
+}
+
+.invitation-expiry {
+  color: #666;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .settings-section {
+    border-bottom-color: #444;
+  }
+
+  .section-description,
+  .field-description {
+    color: #aaa;
+  }
+
+  .form-field select,
+  .api-key-input-row input {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+  }
+
+  .stat-value {
+    color: #fff;
+  }
+
+  .invitation-result {
+    background: #333;
+  }
+
+  .invitation-url input {
+    background: #222;
+    border-color: #555;
+    color: #fff;
+  }
+}
+
+@media (max-width: 639px) {
+  .admin-settings-page {
+    padding: 1rem;
+  }
+
+  .admin-settings-page h1 {
+    font-size: 1.5rem;
+  }
+
+  .invitation-url {
+    flex-direction: column;
+  }
+}

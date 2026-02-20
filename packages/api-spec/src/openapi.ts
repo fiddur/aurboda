@@ -48,19 +48,26 @@ import {
 } from './schemas/locations.js'
 
 import {
+  dailyAggregatesBodySchema,
+  healthConnectDeletionsBodySchema,
+  healthConnectSyncBodySchema,
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
   syncResponseSchema,
   syncStatusResponseSchema,
 } from './schemas/sync.js'
 
+import { loginBodySchema, loginResponseSchema } from './schemas/admin.js'
+
 import { productivityResponseSchema } from './schemas/productivity.js'
+
+import { goalsProgressResponseSchema } from './schemas/goals.js'
 
 // Error response
 const errorResponseSchema = z
   .object({
     error: z.string(),
-    success: z.literal(false),
+    success: z.boolean().meta({ description: 'Always false for error responses' }),
   })
   .meta({ id: 'ErrorResponse' })
 
@@ -148,6 +155,23 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Get daily summary',
         tags: ['Summary'],
+      },
+    },
+
+    // --- Goals ---
+    '/goals/progress': {
+      get: {
+        description:
+          'Get progress toward all user goals. Returns current value, min/max targets, and how much will be lost when the oldest day exits the rolling window.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: goalsProgressResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get goal progress',
+        tags: ['Goals'],
       },
     },
 
@@ -308,6 +332,28 @@ const openApiDocument = createDocument({
         tags: ['Locations'],
       },
     },
+
+    // --- Login ---
+    '/login': {
+      post: {
+        description: 'Authenticate with username and password to receive access and refresh tokens.',
+        requestBody: {
+          content: { 'application/json': { schema: loginBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: loginResponseSchema } },
+            description: 'Successful login',
+          },
+          401: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid credentials',
+          },
+        },
+        summary: 'Login',
+        tags: ['Auth'],
+      },
+    },
     '/metrics': {
       post: {
         description: 'Add a manual health metric measurement.',
@@ -410,6 +456,77 @@ const openApiDocument = createDocument({
         tags: ['Productivity'],
       },
     },
+    '/sync/{recordType}': {
+      post: {
+        description:
+          'Upload Health Connect records of a specific type (e.g., HeartRateRecord, SleepSessionRecord).',
+        requestBody: {
+          content: { 'application/json': { schema: healthConnectSyncBodySchema } },
+        },
+        requestParams: {
+          path: z.object({
+            recordType: z.string().meta({ description: 'Health Connect record type name' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: syncResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Sync Health Connect records',
+        tags: ['Sync'],
+      },
+    },
+
+    // --- Sync: Health Connect ---
+    '/sync/daily-aggregates': {
+      post: {
+        description: 'Upload daily aggregate data from Health Connect (steps, distance, calories, floors).',
+        requestBody: {
+          content: { 'application/json': { schema: dailyAggregatesBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: syncResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Sync daily aggregates',
+        tags: ['Sync'],
+      },
+    },
+    '/sync/deletions': {
+      post: {
+        description: 'Report deleted Health Connect records that should be removed from the backend.',
+        requestBody: {
+          content: { 'application/json': { schema: healthConnectDeletionsBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: syncResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Sync Health Connect deletions',
+        tags: ['Sync'],
+      },
+    },
     '/sync/oura': {
       post: {
         description:
@@ -456,6 +573,7 @@ const openApiDocument = createDocument({
     },
 
     // --- Sync ---
+
     '/sync/status': {
       get: {
         description:
@@ -585,6 +703,8 @@ const openApiDocument = createDocument({
     { description: 'Development', url: 'http://localhost:3000' },
   ],
   tags: [
+    { description: 'Authentication', name: 'Auth' },
+    { description: 'Health metric goals and progress tracking', name: 'Goals' },
     { description: 'Time series health metrics', name: 'Metrics' },
     { description: 'Daily and period summaries', name: 'Summary' },
     { description: 'Activity tags/labels', name: 'Tags' },

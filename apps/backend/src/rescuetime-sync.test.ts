@@ -41,31 +41,31 @@ describe('isRateLimited', () => {
   test('returns false when status is not rate_limited', () => {
     expect(
       isRateLimited({
-        dataType: 'productivity',
+        data_type: 'productivity',
         provider: 'rescuetime',
-        retryAfter: new Date('2025-01-01T13:00:00Z'),
+        retry_after: new Date('2025-01-01T13:00:00Z'),
         status: 'idle',
       }),
     ).toBe(false)
   })
 
-  test('returns false when retryAfter is in the past', () => {
+  test('returns false when retry_after is in the past', () => {
     expect(
       isRateLimited({
-        dataType: 'productivity',
+        data_type: 'productivity',
         provider: 'rescuetime',
-        retryAfter: new Date('2025-01-01T11:00:00Z'),
+        retry_after: new Date('2025-01-01T11:00:00Z'),
         status: 'rate_limited',
       }),
     ).toBe(false)
   })
 
-  test('returns true when rate_limited and retryAfter is in the future', () => {
+  test('returns true when rate_limited and retry_after is in the future', () => {
     expect(
       isRateLimited({
-        dataType: 'productivity',
+        data_type: 'productivity',
         provider: 'rescuetime',
-        retryAfter: new Date('2025-01-01T13:00:00Z'),
+        retry_after: new Date('2025-01-01T13:00:00Z'),
         status: 'rate_limited',
       }),
     ).toBe(true)
@@ -82,11 +82,11 @@ describe('needsSync', () => {
     expect(needsSync(null, 30)).toBe(true)
   })
 
-  test('returns true when lastSyncTime is undefined', () => {
+  test('returns true when last_sync_time is undefined', () => {
     expect(
       needsSync(
         {
-          dataType: 'productivity',
+          data_type: 'productivity',
           provider: 'rescuetime',
           status: 'idle',
         },
@@ -99,8 +99,8 @@ describe('needsSync', () => {
     expect(
       needsSync(
         {
-          dataType: 'productivity',
-          lastSyncTime: new Date('2025-01-01T11:00:00Z'), // 1 hour ago
+          data_type: 'productivity',
+          last_sync_time: new Date('2025-01-01T11:00:00Z'), // 1 hour ago
           provider: 'rescuetime',
           status: 'idle',
         },
@@ -113,8 +113,8 @@ describe('needsSync', () => {
     expect(
       needsSync(
         {
-          dataType: 'productivity',
-          lastSyncTime: new Date('2025-01-01T11:45:00Z'), // 15 minutes ago
+          data_type: 'productivity',
+          last_sync_time: new Date('2025-01-01T11:45:00Z'), // 15 minutes ago
           provider: 'rescuetime',
           status: 'idle',
         },

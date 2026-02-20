@@ -1,66 +1,22 @@
-import {
-  type ActivitiesQuery,
-  activitiesQuerySchema,
-  type ActivitiesResponse,
-  type AddMetricBody,
-  addMetricBodySchema,
-  type AddMetricResponse,
-  type AddNamedLocationBody,
-  addNamedLocationBodySchema,
-  type AddNamedLocationResponse,
-  type AddTagBody,
-  addTagBodySchema,
-  type AddTagResponse,
-  type DailySummaryQuery,
-  dailySummaryQuerySchema,
-  type DailySummaryResponse,
-  type DeleteTagResponse,
-  type DetectedLocationsQuery,
-  detectedLocationsQuerySchema,
-  type DetectedLocationsResponse,
-  type LocationsQuery,
-  locationsQuerySchema,
-  type LocationsResponse,
-  type NamedLocationsResponse,
-  type PeriodSummaryQuery,
-  periodSummaryQuerySchema,
-  type PeriodSummaryResponse,
-  type ProductivityQuery,
-  productivityQuerySchema,
-  type ProductivityResponse,
-  type PromoteDetectedLocationBody,
-  promoteDetectedLocationBodySchema,
-  type QueryMetricsQuery,
-  queryMetricsQuerySchema,
-  type QueryMetricsResponse,
-  type TagsQuery,
-  tagsQuerySchema,
-  type TagsResponse,
-  type UpdateNamedLocationBody,
-  updateNamedLocationBodySchema,
-  type UpdateSettingsInput,
-  updateSettingsInputSchema,
-  type UserSettingsResponse,
-} from '@aurboda/api-spec'
+/**
+ * Express server entry point.
+ *
+ * Route handlers are split into focused modules under routes/.
+ * This file handles: server setup, middleware, auth routes, and router mounting.
+ */
+import { type LoginResponse, type ServerStatusResponse, type SignupResponse } from '@aurboda/api-spec'
 import { json } from 'body-parser'
 import cors from 'cors'
-import { subHours } from 'date-fns'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
 import { createAuth } from './auth'
 import {
-  getActivities,
+  deleteHealthConnectRecords,
   getAllSyncStates,
   getDetectedLocationById,
-  getLocations,
-  getProductivity,
-  getDetectedLocations as getStoredDetectedLocations,
-  getTags,
-  getTimeSeries,
   initializeSchema,
   insertLocation,
   insertPlace,
-  insertProductivity,
   loginToUserDb,
   makeNewUserDb,
   migrateSchema,
@@ -71,38 +27,34 @@ import {
   schemaInitialized,
   updateDetectedLocation,
 } from './db'
+import { syncAllCalendars } from './ical-sync'
+import { createLastFmRouter } from './lastfm-router'
+import { syncLastFmData } from './lastfm-sync'
 import { createMcpRouter } from './mcp'
+import { createDbSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
-import { syncAllOuraData } from './oura-sync'
+import type { OuraDataType } from './oura-sync'
+import { syncAllOuraData, syncOuraDataType } from './oura-sync'
 import { createOwnTracksRouter } from './owntracks'
-import { rescuetimeClient } from './rescuetime'
 import { syncRescueTimeData } from './rescuetime-sync'
-import { isValidMetric, MetricType, validMetrics } from './schema'
+import { createActivitiesRouter } from './routes/activities-router'
+import { createAdminRouter } from './routes/admin-router'
+import { createCorrelationsRouter } from './routes/correlations-router'
+import { createDashboardRouter } from './routes/dashboard-router'
+import { createLocationsRouter } from './routes/locations-router'
+import { createMetricsRouter } from './routes/metrics-router'
+import { createSettingsRouter } from './routes/settings-router'
+import { createTagsRouter } from './routes/tags-router'
+import { createTrendsRouter } from './routes/trends-router'
+import { getCentralDb, initializeCentralDb } from './services/central-db'
 import { createDetectionTrigger, DetectionTrigger } from './services/detection-trigger'
 import { runDetectionForUser } from './services/detection-worker'
 import { createGeocodeQueue, GeocodeQueue } from './services/geocode-queue'
-import {
-  deleteNamedLocation,
-  getDetectedLocations,
-  getNamedLocations,
-  insertNamedLocation,
-  updateNamedLocation,
-} from './services/locations'
-import { addMetric, addTag } from './services/mutations'
-import {
-  getDailySummary,
-  getPeriodSummary,
-  queryActivities,
-  queryLocations,
-  queryMetrics,
-  queryProductivity,
-  queryTags,
-} from './services/queries'
-import { getSettings, getSettingsResponse, validateAndUpdateSettings } from './services/settings'
+import { createInvitationAuth } from './services/invitation'
+import { createOuraWebhookManager, type OuraWebhookManager } from './services/oura-webhook-manager'
+import { getSettings } from './services/settings'
 import { createSyncProvider } from './services/sync-provider'
 import { createSyncRouter } from './sync-router'
-import { reduceTimeSeries } from './utils'
-import { validateBody, validateQuery } from './validation'
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -115,11 +67,20 @@ declare global {
 
 const main = async () => {
   const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
+  const forbidden = Object.assign(new Error('Forbidden'), { status: 403 })
 
-  const auth = createAuth(process.env.SESSION_SECRET ?? '')
+  const sessionSecret = process.env.SESSION_SECRET ?? ''
+  const auth = createAuth(sessionSecret)
+  const invitationAuth = createInvitationAuth(sessionSecret)
+
+  // Initialize central database (server settings, admins)
+  await initializeCentralDb()
+  const centralDb = getCentralDb()
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
-  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost)
+  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost, {
+    onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
+  })
 
   // Create sync provider for auto-syncing data before queries
   const syncProvider = createSyncProvider({
@@ -135,12 +96,19 @@ const main = async () => {
   httpd.use(cors({ origin: true }))
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
-  httpd.use('/mcp', createMcpRouter(auth, oura, syncProvider))
+  // Use database-backed session store for persistence across restarts
+  httpd.use('/mcp', createMcpRouter(auth, oura, syncProvider, { sessionStore: createDbSessionStore() }))
 
   httpd.use(json({ limit: '10mb' }))
 
   httpd.use((req, res, next) => {
-    console.log(req.path, req.body)
+    const sanitizedBody =
+      req.body && typeof req.body === 'object' ?
+        Object.fromEntries(
+          Object.entries(req.body).map(([k, v]) => (k === 'password' ? [k, '[REDACTED]'] : [k, v])),
+        )
+      : req.body
+    console.log(req.path, sanitizedBody)
     next()
   })
 
@@ -157,19 +125,55 @@ const main = async () => {
     return next(unauthorized)
   }
 
-  const allowSignup = process.env.ALLOW_SIGNUP === 'true'
+  const adminMiddleware: RequestHandler = async (req, res, next) => {
+    if (!req.user) {
+      return next(unauthorized)
+    }
+    const isAdmin = await centralDb.isAdmin(req.user)
+    if (!isAdmin) {
+      return next(forbidden)
+    }
+    next()
+  }
 
-  httpd.get('/status', (_req, res) => {
-    res.json({ signupAllowed: allowSignup, success: true })
+  // ==========================================================================
+  // Auth routes (stay here - tightly coupled to server setup)
+  // ==========================================================================
+
+  httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
+    const signupMode = await centralDb.getSignupMode()
+    res.json({
+      signup_allowed: signupMode === 'open',
+      signup_mode: signupMode,
+      success: true,
+    })
   })
 
-  httpd.post('/signup', async (req, res, next) => {
-    if (!allowSignup) {
-      res.status(403).json({ error: 'Signup is disabled', success: false })
+  // eslint-disable-next-line complexity -- signup validation logic
+  httpd.post<Record<string, never>, SignupResponse>('/signup', async (req, res, next) => {
+    const signupMode = await centralDb.getSignupMode()
+
+    if (signupMode === 'closed') {
+      res.status(403).json({ error: 'Signup is currently closed', success: false })
       return
     }
 
-    const { username: user, password } = req.body
+    const { username: user, password, invitation } = req.body
+
+    // In invite_only mode, require valid invitation token
+    if (signupMode === 'invite_only') {
+      if (!invitation || typeof invitation !== 'string') {
+        res.status(403).json({ error: 'An invitation is required to sign up', success: false })
+        return
+      }
+      const validation = invitationAuth.validateInvitationToken(invitation)
+      if (!validation.valid) {
+        const errorMsg = validation.expired ? 'Invitation has expired' : 'Invalid invitation'
+        res.status(403).json({ error: errorMsg, success: false })
+        return
+      }
+    }
+
     if (!user || typeof user !== 'string' || !password || typeof password !== 'string') {
       res.status(400).json({ error: 'Username and password are required', success: false })
       return
@@ -213,14 +217,24 @@ const main = async () => {
     try {
       await makeNewUserDb(userDb, user, password)
       const token = auth.createToken(user)
-      res.json({ success: true, token })
+
+      // First user becomes admin automatically
+      const adminCount = await centralDb.getAdminCount()
+      let isAdmin = false
+      if (adminCount === 0) {
+        await centralDb.addAdmin(user)
+        isAdmin = true
+        console.log(`First user ${user} automatically made admin`)
+      }
+
+      res.json({ is_admin: isAdmin, success: true, token })
     } catch (err) {
       console.error('Signup error:', err)
       next(err)
     }
   })
 
-  httpd.post('/login', async (req, res, next) => {
+  httpd.post<Record<string, never>, LoginResponse>('/login', async (req, res, next) => {
     const { username: user, password } = req.body
     if (!user) return next(unauthorized)
 
@@ -243,9 +257,10 @@ const main = async () => {
     } else return next(unauthorized)
 
     const token = auth.createToken(user)
+    const isAdmin = await centralDb.isAdmin(user)
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ refresh: token, token }))
+    res.end(JSON.stringify({ is_admin: isAdmin, refresh: token, token }))
   })
 
   httpd.post('/refresh', async (req, res) => {
@@ -253,19 +268,22 @@ const main = async () => {
     res.end(JSON.stringify({ refresh, token: refresh }))
   })
 
+  // ==========================================================================
+  // External service routers (already extracted)
+  // ==========================================================================
+
   // Transform SyncState to ProviderSyncStatus format (undefined -> null)
-  const transformSyncStates = async (user: string, provider: 'oura' | 'rescuetime') => {
+  const transformSyncStates = async (user: string, provider: string) => {
     const states = await getAllSyncStates(user, provider)
     return states.map((s) => ({
-      errorMessage: s.errorMessage ?? null,
-      lastSyncTime: s.lastSyncTime?.toISOString() ?? null,
+      error_message: s.error_message ?? null,
+      last_sync_time: s.last_sync_time?.toISOString() ?? null,
       provider: s.provider,
-      retryAfter: s.retryAfter?.toISOString() ?? null,
+      retry_after: s.retry_after?.toISOString() ?? null,
       status: s.status === 'rate_limited' ? ('error' as const) : s.status,
     }))
   }
 
-  // Transform Oura sync results (Date -> ISO string)
   const transformOuraSyncResults = async (
     user: string,
     options: { fullResync?: boolean; startDate?: Date },
@@ -273,11 +291,10 @@ const main = async () => {
     const results = await syncAllOuraData(user, oura, options)
     return results.map((r) => ({
       ...r,
-      retryAfter: r.retryAfter?.toISOString(),
+      retry_after: r.retry_after?.toISOString(),
     }))
   }
 
-  // Transform RescueTime sync result (Date -> ISO string)
   const transformRescueTimeSyncResult = async (
     user: string,
     apiKey: string,
@@ -286,22 +303,38 @@ const main = async () => {
     const result = await syncRescueTimeData(user, apiKey, options)
     return {
       ...result,
-      retryAfter: result.retryAfter?.toISOString(),
+      retry_after: result.retry_after?.toISOString(),
     }
   }
 
-  // Sync router - handles /sync/* endpoints
+  const transformLastFmSyncResult = async (
+    user: string,
+    apiKey: string,
+    username: string,
+    options: { fullResync?: boolean; startDate?: Date },
+  ) => {
+    return await syncLastFmData(user, apiKey, username, options)
+  }
+
   httpd.use(
     '/sync',
     createSyncRouter(
       {
+        deleteHealthConnectRecords,
+        getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
+        getLastFmApiKey: () => centralDb.getLastFmApiKey(),
+        getLastFmSyncStates: (user) => transformSyncStates(user, 'lastfm'),
         getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
         getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),
         getSettings,
         processDailyAggregate,
         processHealthConnectData,
+        resetCalendarSyncState: (user) => resetSyncState(user, 'calendar'),
+        resetLastFmSyncState: (user) => resetSyncState(user, 'lastfm'),
         resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
+        syncCalendars: (user, calendars) => syncAllCalendars(user, calendars),
+        syncLastFm: transformLastFmSyncResult,
         syncOura: transformOuraSyncResults,
         syncRescueTime: transformRescueTimeSyncResult,
       },
@@ -309,8 +342,46 @@ const main = async () => {
     ),
   )
 
+  httpd.use('/lastfm', createLastFmRouter(authMiddleware))
+
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)
+
+  // ==========================================================================
+  // Oura webhook push integration (admin-configurable via Web UI)
+  // ==========================================================================
+
+  const ouraClientId = process.env.OURA_CLIENT ?? ''
+  const ouraClientSecret = process.env.OURA_SECRET ?? ''
+
+  let ouraWebhookManager: OuraWebhookManager | null = null
+  if (ouraClientId && ouraClientSecret) {
+    const syncOuraDataTypeForUser = async (username: string, dataType: OuraDataType) => {
+      const accessToken = await oura.getAccessToken(username)
+      await syncOuraDataType(username, oura, dataType, accessToken)
+    }
+
+    ouraWebhookManager = createOuraWebhookManager({
+      centralDb,
+      ouraClientId,
+      ouraClientSecret,
+      syncOuraDataTypeForUser,
+      webHost,
+    })
+
+    // Mount proxy handler (delegates to inner router when enabled, 404 when disabled)
+    httpd.use('/webhooks/oura', (req, res, next) => ouraWebhookManager!.handleWebhookRequest(req, res, next))
+
+    // Enable if previously configured and host supports it
+    const webhookEnabled = await centralDb.getOuraWebhookEnabled()
+    if (webhookEnabled && ouraWebhookManager.canEnable()) {
+      try {
+        await ouraWebhookManager.enable()
+      } catch (error) {
+        console.error('Oura webhook: failed to enable on startup:', error)
+      }
+    }
+  }
 
   // Initialize geocode queue (creates 'aurboda' database if needed)
   let geocodeQueue: GeocodeQueue | null = null
@@ -330,7 +401,6 @@ const main = async () => {
     runDetectionForUser,
   })
 
-  // OwnTracks data endpoint (protected by Basic Auth using existing user credentials)
   httpd.use(
     '/ownTracks',
     createOwnTracksRouter({
@@ -341,362 +411,33 @@ const main = async () => {
     }),
   )
 
-  httpd.get('/dump', async (req, res) => {
-    const { username: user } = req.query as { username: string }
-
-    const now = new Date()
-    //const start = subHours(now, 26) // TODO: Find yesterday's wakeup time?
-    const start = subHours(now, 26 + 24 * 7) // TODO..
-    const end = now // addDays(now, 1)
-
-    const { locations, places } = await getLocations(user, start, end)
-
-    const access_token = await oura.getAccessToken(user)
-
-    // Get data from new schema
-    const heartRates = reduceTimeSeries(await getTimeSeries(user, 'heart_rate', start, end))
-    const sleepSessions = await getActivities(user, 'sleep', start, end)
-    const exerciseSessions = await getActivities(user, 'exercise', start, end)
-    const tags = await getTags(user, start, end)
-
-    // Get productivity data from storage, falling back to RescueTime API
-    let rtData = await getProductivity(user, start, end)
-    const userSettings = await getSettings(user)
-    if (rtData.length === 0 && userSettings.rescueTimeKey) {
-      const freshData = await rescuetimeClient(userSettings.rescueTimeKey).getIntervalData(start, end)
-      // Store fetched data for future use
-      const productivityRecords = freshData.map((r) => ({
-        activity: r.activity,
-        category: r.category,
-        durationSec: r.duration,
-        endTime: r.endTime,
-        isMobile: r.mobile,
-        productivity: r.productivity,
-        source: 'rescuetime' as const,
-        startTime: r.startTime,
-      }))
-      await insertProductivity(user, productivityRecords)
-      rtData = productivityRecords
-    }
-
-    res.writeHead(200, {
-      'Content-Disposition': `attachment; filename="dump-${now.toISOString()}.json"`,
-      'Content-Type': 'application/json',
-    })
-    res.end(
-      JSON.stringify({
-        dailyCardiovascularAge: await oura.getDailyCardiovascularAge(start, end, access_token),
-        dailyReadiness: await oura.getDailyReadiness(start, end, access_token),
-        dailyResilience: await oura.getDailyResilience(start, end, access_token),
-        dailySleep: await oura.getDailySleep(start, end, access_token),
-        exerciseSessions,
-        heartRates,
-        locations,
-        places,
-        rtData,
-        sessions: await oura.getSessions(start, end, access_token),
-        sleepSessions,
-        tags,
-      }),
-    )
-  })
-
   // ==========================================================================
-  // REST API - Uses shared service layer with MCP
+  // REST API route modules
   // ==========================================================================
 
-  // GET /metrics/:metric - Query time series metrics
-  httpd.get<{ metric: string }, QueryMetricsResponse, unknown, QueryMetricsQuery>(
-    '/metrics/:metric',
-    authMiddleware,
-    validateQuery(queryMetricsQuerySchema),
-    async (req, res) => {
-      const { metric } = req.params
-      const { start, end } = req.query
-      const user = req.user!
-
-      if (!isValidMetric(metric)) {
-        return res.status(400).json({
-          error: `Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`,
-          success: false,
-        })
-      }
-
-      const result = await queryMetrics(user, metric, new Date(start), new Date(end))
-      res.json({ ...result, success: true })
-    },
-  )
-
-  // GET /daily-summary - Get comprehensive summary for a day
-  httpd.get<Record<string, never>, DailySummaryResponse, unknown, DailySummaryQuery>(
-    '/daily-summary',
-    authMiddleware,
-    validateQuery(dailySummaryQuerySchema),
-    async (req, res) => {
-      const { date } = req.query
-      const user = req.user!
-
-      const summary = await getDailySummary(user, new Date(date), syncProvider)
-      res.json({ data: summary, success: true })
-    },
-  )
-
-  // GET /period-summary - Get aggregated stats for a period
-  httpd.get<Record<string, never>, PeriodSummaryResponse, unknown, PeriodSummaryQuery>(
-    '/period-summary',
-    authMiddleware,
-    validateQuery(periodSummaryQuerySchema),
-    async (req, res) => {
-      const { start, end, metrics: metricsParam } = req.query
-      const user = req.user!
-
-      const metrics = metricsParam.split(',')
-      const invalidMetrics = metrics.filter((m) => !isValidMetric(m))
-      if (invalidMetrics.length > 0) {
-        return res.status(400).json({
-          error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
-          success: false,
-        })
-      }
-
-      const summary = await getPeriodSummary(user, metrics as MetricType[], new Date(start), new Date(end))
-      res.json({ ...summary, success: true })
-    },
-  )
-
-  // GET /tags - Query tags for a time range
-  httpd.get<Record<string, never>, TagsResponse, unknown, TagsQuery>(
-    '/tags',
-    authMiddleware,
-    validateQuery(tagsQuerySchema),
-    async (req, res) => {
-      const { start, end } = req.query
-      const user = req.user!
-
-      const tags = await queryTags(user, new Date(start), new Date(end), syncProvider)
-      res.json({ data: tags, success: true })
-    },
-  )
-
-  // POST /tags - Add a manual tag
-  httpd.post<Record<string, never>, AddTagResponse, AddTagBody>(
-    '/tags',
-    authMiddleware,
-    validateBody(addTagBodySchema),
-    async (req, res) => {
-      const { tag, start_time, end_time } = req.body
-      const user = req.user!
-
-      const startDate = new Date(start_time)
-      const endDate = end_time ? new Date(end_time) : undefined
-
-      const result = await addTag(user, { endTime: endDate, startTime: startDate, tag })
-      res.json(result)
-    },
-  )
-
-  // GET /activities - Query activities for a time range
-  httpd.get<Record<string, never>, ActivitiesResponse, unknown, ActivitiesQuery>(
-    '/activities',
-    authMiddleware,
-    validateQuery(activitiesQuerySchema),
-    async (req, res) => {
-      const { start, end, types: typesParam } = req.query
-      const user = req.user!
-
-      const types = (typesParam?.split(',') || ['sleep', 'exercise', 'meditation']) as (
-        | 'sleep'
-        | 'exercise'
-        | 'meditation'
-        | 'nap'
-      )[]
-
-      const activities = await queryActivities(user, types, new Date(start), new Date(end), syncProvider)
-      res.json({ data: activities, success: true })
-    },
-  )
-
-  // GET /productivity - Query productivity data for a time range
-  httpd.get<Record<string, never>, ProductivityResponse, unknown, ProductivityQuery>(
-    '/productivity',
-    authMiddleware,
-    validateQuery(productivityQuerySchema),
-    async (req, res) => {
-      const { start, end } = req.query
-      const user = req.user!
-
-      const productivity = await queryProductivity(user, new Date(start), new Date(end), syncProvider)
-      res.json({ data: productivity, success: true })
-    },
-  )
-
-  // GET /locations - Query location data for a time range
-  httpd.get<Record<string, never>, LocationsResponse, unknown, LocationsQuery>(
-    '/locations',
-    authMiddleware,
-    validateQuery(locationsQuerySchema),
-    async (req, res) => {
-      const { start, end } = req.query
-      const user = req.user!
-
-      const places = await queryLocations(user, new Date(start), new Date(end))
-      res.json({ data: places, success: true })
-    },
+  httpd.use(createMetricsRouter(authMiddleware, syncProvider))
+  httpd.use('/tags', createTagsRouter(authMiddleware, syncProvider))
+  httpd.use(createActivitiesRouter(authMiddleware, syncProvider))
+  httpd.use('/locations', createLocationsRouter(authMiddleware))
+  httpd.use(createSettingsRouter(authMiddleware))
+  httpd.use('/dashboard', createDashboardRouter(authMiddleware))
+  httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
+  httpd.use('/trends', createTrendsRouter(authMiddleware))
+  httpd.use(
+    '/admin',
+    createAdminRouter(
+      authMiddleware,
+      adminMiddleware,
+      centralDb,
+      invitationAuth,
+      webHost,
+      ouraWebhookManager,
+    ),
   )
 
   // ==========================================================================
-  // Named Locations API
+  // Server startup
   // ==========================================================================
-
-  // GET /locations/named - List all named locations
-  httpd.get<Record<string, never>, NamedLocationsResponse>(
-    '/locations/named',
-    authMiddleware,
-    async (req, res) => {
-      const locations = await getNamedLocations(req.user!)
-      res.json({ data: locations, success: true })
-    },
-  )
-
-  // POST /locations/named - Create a named location
-  httpd.post<Record<string, never>, AddNamedLocationResponse, AddNamedLocationBody>(
-    '/locations/named',
-    authMiddleware,
-    validateBody(addNamedLocationBodySchema),
-    async (req, res) => {
-      const { name, lat, lon, radius } = req.body
-      const user = req.user!
-
-      const location = await insertNamedLocation(user, { lat, lon, name, radius })
-      res.json({ data: location, success: true })
-    },
-  )
-
-  // PATCH /locations/named/:id - Update a named location
-  httpd.patch<{ id: string }, AddNamedLocationResponse, UpdateNamedLocationBody>(
-    '/locations/named/:id',
-    authMiddleware,
-    validateBody(updateNamedLocationBodySchema),
-    async (req, res) => {
-      const { id } = req.params
-      const { name, lat, lon, radius } = req.body
-      const user = req.user!
-
-      // lat and lon must be updated together
-      if ((lat !== undefined) !== (lon !== undefined)) {
-        return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
-      }
-
-      const location = await updateNamedLocation(user, id, { lat, lon, name, radius })
-      if (!location) {
-        return res.status(404).json({ error: 'Named location not found', success: false })
-      }
-      res.json({ data: location, success: true })
-    },
-  )
-
-  // DELETE /locations/named/:id - Delete a named location
-  httpd.delete<{ id: string }, DeleteTagResponse>(
-    '/locations/named/:id',
-    authMiddleware,
-    async (req, res) => {
-      const { id } = req.params
-      const deleted = await deleteNamedLocation(req.user!, id)
-      if (!deleted) {
-        return res.status(404).json({ error: 'Named location not found', success: false })
-      }
-      res.json({ success: true })
-    },
-  )
-
-  // GET /locations/detected - Get computed detected location clusters (on-demand analysis)
-  httpd.get<Record<string, never>, DetectedLocationsResponse, unknown, DetectedLocationsQuery>(
-    '/locations/detected',
-    authMiddleware,
-    validateQuery(detectedLocationsQuerySchema),
-    async (req, res) => {
-      const { start, end, min_duration } = req.query
-      const user = req.user!
-
-      const detected = await getDetectedLocations(user, {
-        end: new Date(end),
-        minDurationMinutes: min_duration ? parseInt(min_duration, 10) : undefined,
-        start: new Date(start),
-      })
-      res.json({ data: detected, success: true })
-    },
-  )
-
-  // GET /locations/detected/stored - Get stored detected locations with addresses
-  httpd.get<Record<string, never>, DetectedLocationsResponse>(
-    '/locations/detected/stored',
-    authMiddleware,
-    async (req, res) => {
-      const user = req.user!
-      const detected = await getStoredDetectedLocations(user)
-      // Transform Date objects to ISO strings for API response
-      const serialized = detected.map((d) => ({
-        ...d,
-        firstVisit: d.firstVisit.toISOString(),
-        lastVisit: d.lastVisit.toISOString(),
-      }))
-      res.json({ data: serialized, success: true })
-    },
-  )
-
-  // POST /locations/detected/promote - Promote detected location to named
-  httpd.post<Record<string, never>, AddNamedLocationResponse, PromoteDetectedLocationBody>(
-    '/locations/detected/promote',
-    authMiddleware,
-    validateBody(promoteDetectedLocationBodySchema),
-    async (req, res) => {
-      const { lat, lon, name, radius } = req.body
-      const user = req.user!
-
-      const location = await insertNamedLocation(user, { lat, lon, name, radius })
-      res.json({ data: location, success: true })
-    },
-  )
-
-  // POST /metrics - Add a manual metric measurement
-  httpd.post<Record<string, never>, AddMetricResponse, AddMetricBody>(
-    '/metrics',
-    authMiddleware,
-    validateBody(addMetricBodySchema),
-    async (req, res) => {
-      const { metric, value, time } = req.body
-      const user = req.user!
-
-      const measurementTime = time ? new Date(time) : new Date()
-
-      const result = await addMetric(user, { metric, time: measurementTime, value })
-      res.json(result)
-    },
-  )
-
-  // GET /user/settings - Get user settings with effective HR zones
-  httpd.get<Record<string, never>, UserSettingsResponse>(
-    '/user/settings',
-    authMiddleware,
-    async (req, res) => {
-      const result = await getSettingsResponse(req.user!)
-      res.json(result)
-    },
-  )
-
-  // PATCH /user/settings - Update user settings
-  httpd.patch<Record<string, never>, UserSettingsResponse, UpdateSettingsInput>(
-    '/user/settings',
-    authMiddleware,
-    validateBody(updateSettingsInputSchema),
-    async (req, res) => {
-      const result = await validateAndUpdateSettings(req.user!, req.body)
-      if (!result.success) {
-        return res.status(400).json(result)
-      }
-      res.json(result)
-    },
-  )
 
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {
@@ -707,6 +448,9 @@ const main = async () => {
   const shutdown = async () => {
     console.log('Shutting down...')
     detectionTrigger.clearPendingDetections()
+    if (ouraWebhookManager) {
+      ouraWebhookManager.shutdown()
+    }
     if (geocodeQueue) {
       await geocodeQueue.stop()
     }
