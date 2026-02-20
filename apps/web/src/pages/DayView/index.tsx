@@ -775,17 +775,11 @@ export const DayView = () => {
       return d3.zoomIdentity.translate(0, ty).scale(k)
     }
 
-    // D3 zoom — only on background, not on clickable items
+    // D3 zoom
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 20])
-      .filter((event) => {
-        if (event.type === 'dblclick') return false
-        // Don't capture drag/scroll on clickable chart items
-        const target = event.target as SVGElement | null
-        if (target?.classList?.contains('chart-item-clickable')) return false
-        return true
-      })
+      .filter((event) => event.type !== 'dblclick')
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         if (isProgrammaticZoom.current) return
         cancelAnimationFrame(zoomRafRef.current)
@@ -1107,17 +1101,33 @@ const drawItem = (
   const detailUrl =
     item.entity_id && item.entity_type ? `/detail/${item.entity_type}/${item.entity_id}` : undefined
 
-  const handleClick =
-    detailUrl ?
-      (event: MouseEvent) => {
-        // Allow ctrl/meta-click for new tab, otherwise navigate
-        if (event.ctrlKey || event.metaKey) {
-          window.open(detailUrl, '_blank')
-        } else {
-          window.location.href = detailUrl
+  // Attach click-navigation via pointerdown/pointerup. We stop propagation on
+  // pointerdown so D3 zoom (on the SVG) never sees the event and doesn't
+  // interfere. On pointerup we check movement to distinguish click from drag.
+  const attachClickNav = (el: d3.Selection<SVGElement, unknown, null, undefined>) => {
+    if (!detailUrl) return
+    let downX = 0
+    let downY = 0
+    el.style('cursor', 'pointer')
+      .on('pointerdown.nav', (event: PointerEvent) => {
+        if (event.button !== 0) return
+        downX = event.clientX
+        downY = event.clientY
+        event.stopPropagation()
+      })
+      .on('pointerup.nav', (event: PointerEvent) => {
+        if (event.button !== 0) return
+        const dx = Math.abs(event.clientX - downX)
+        const dy = Math.abs(event.clientY - downY)
+        if (dx < 5 && dy < 5) {
+          if (event.ctrlKey || event.metaKey) {
+            window.open(detailUrl, '_blank')
+          } else {
+            window.location.href = detailUrl
+          }
         }
-      }
-    : undefined
+      })
+  }
 
   if (item.isPoint) {
     const cy = y1
@@ -1132,8 +1142,7 @@ const drawItem = (
       .attr('opacity', 0.85)
       .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
       .on('mouseleave', hideTooltip)
-    if (handleClick)
-      point.classed('chart-item-clickable', true).style('cursor', 'pointer').on('click', handleClick)
+    attachClickNav(point as unknown as d3.Selection<SVGElement, unknown, null, undefined>)
     return
   }
 
@@ -1156,8 +1165,7 @@ const drawItem = (
       d3.select(this).attr('opacity', 0.75)
       hideTooltip()
     })
-  if (handleClick)
-    rect.classed('chart-item-clickable', true).style('cursor', 'pointer').on('click', handleClick)
+  attachClickNav(rect as unknown as d3.Selection<SVGElement, unknown, null, undefined>)
 
   // Text label inside if tall enough
   if (blockHeight > 30) {
