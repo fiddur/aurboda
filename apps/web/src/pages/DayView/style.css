@@ -118,6 +118,10 @@
   cursor: grabbing;
 }
 
+.day-view-chart-container svg [data-clickable] {
+  cursor: pointer;
+}
+
 /* Tooltip */
 .day-view-tooltip {
   position: absolute;

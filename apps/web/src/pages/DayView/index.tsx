@@ -779,7 +779,15 @@ export const DayView = () => {
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 20])
-      .filter((event) => event.type !== 'dblclick')
+      .clickDistance(5)
+      .filter((event: Event) => {
+        if (event.type === 'dblclick') return false
+        // Don't let zoom capture mousedown on clickable chart items
+        if (event.type === 'mousedown' || event.type === 'touchstart') {
+          if ((event.target as Element).closest?.('[data-clickable]')) return false
+        }
+        return true
+      })
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         if (isProgrammaticZoom.current) return
         cancelAnimationFrame(zoomRafRef.current)
@@ -1101,30 +1109,17 @@ const drawItem = (
   const detailUrl =
     item.entity_id && item.entity_type ? `/detail/${item.entity_type}/${item.entity_id}` : undefined
 
-  // Attach click-navigation via mousedown/mouseup. d3-zoom v3 uses mousedown
-  // (not pointerdown), so we must stop mousedown propagation to prevent zoom
-  // from capturing the drag. On mouseup we check movement to distinguish click.
+  // Mark items as clickable via data attribute. The zoom filter above skips
+  // mousedown events on [data-clickable] elements, so a plain click fires.
   const attachClickNav = (el: d3.Selection<SVGElement, unknown, null, undefined>) => {
     if (!detailUrl) return
-    let downX = 0
-    let downY = 0
-    el.style('cursor', 'pointer')
-      .on('mousedown.nav', (event: MouseEvent) => {
-        if (event.button !== 0) return
-        downX = event.clientX
-        downY = event.clientY
-        event.stopPropagation()
-      })
-      .on('mouseup.nav', (event: MouseEvent) => {
-        if (event.button !== 0) return
-        const dx = Math.abs(event.clientX - downX)
-        const dy = Math.abs(event.clientY - downY)
-        if (dx < 5 && dy < 5) {
-          if (event.ctrlKey || event.metaKey) {
-            window.open(detailUrl, '_blank')
-          } else {
-            window.location.href = detailUrl
-          }
+    el.attr('data-clickable', 'true')
+      .style('cursor', 'pointer')
+      .on('click.nav', (event: MouseEvent) => {
+        if (event.ctrlKey || event.metaKey) {
+          window.open(detailUrl, '_blank')
+        } else {
+          window.location.href = detailUrl
         }
       })
   }
