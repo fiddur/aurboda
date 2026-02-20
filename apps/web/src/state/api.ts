@@ -47,6 +47,8 @@ import type {
   ProgrammaticTag,
   ProgrammaticTagsResponse,
   PromoteDetectedLocationBody,
+  QueryMetricsBucketedQuery,
+  QueryMetricsBucketedResponse,
   QueryMetricsQuery,
   QueryMetricsResponse,
   ScrobblesResponse,
@@ -560,6 +562,27 @@ export const fetchActivityImpact = async (
   )
 
   return response.data.data!
+}
+
+// Fetch multiple metrics in time buckets (e.g. 1d for daily Oura scores)
+export const fetchBucketedMetrics = async (
+  start: Date,
+  end: Date,
+  metrics: string[],
+  bucket: string = '1d',
+): Promise<QueryMetricsBucketedResponse> => {
+  const { token } = auth.value
+  const params: QueryMetricsBucketedQuery = {
+    bucket: bucket as QueryMetricsBucketedQuery['bucket'],
+    end: end.toISOString(),
+    metrics: metrics.join(','),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<QueryMetricsBucketedResponse>(`${API_URL}/metrics/bucketed`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+  return response.data
 }
 
 // Fetch sleep metrics time series
