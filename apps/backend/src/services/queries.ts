@@ -6,7 +6,7 @@
  * They are used by both the MCP tools and the REST API.
  */
 
-import type { CustomMetricDefinition } from '@aurboda/api-spec'
+import type { CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
 import {
   getActivities,
   getDailyAggregates,
@@ -112,9 +112,11 @@ export interface SessionSummary {
 }
 
 export interface TagSummary {
+  id?: string
   tag: string
   start_time: string
   end_time?: string
+  source?: DataSource
 }
 
 export interface PlaceSummary {
@@ -786,6 +788,8 @@ export async function queryTags(
   const tags = await getTags(user, start, end)
   return tags.map((t) => ({
     end_time: t.end_time?.toISOString(),
+    id: t.id,
+    source: t.source,
     start_time: t.start_time.toISOString(),
     tag: t.tag,
   }))
@@ -795,6 +799,7 @@ export async function queryTags(
  * Activity query result with formatted timestamps.
  */
 export interface ActivityResult {
+  id?: string
   start_time: string
   end_time?: string
   duration?: number // minutes
@@ -858,6 +863,7 @@ export async function queryActivities(
         duration:
           a.end_time ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60) : undefined,
         end_time: a.end_time?.toISOString(),
+        id: a.id,
         notes: a.notes,
         source: a.source,
         start_time: a.start_time.toISOString(),
@@ -886,6 +892,7 @@ export async function queryActivities(
  * Productivity record with formatted timestamps.
  */
 export interface ProductivityResult {
+  id?: string
   start_time: string
   end_time: string
   activity: string
@@ -954,6 +961,7 @@ export async function queryProductivity(
     category: p.category,
     duration_sec: p.duration_sec,
     end_time: p.end_time.toISOString(),
+    id: p.id,
     is_mobile: p.is_mobile,
     productivity: p.productivity,
     start_time: p.start_time.toISOString(),
