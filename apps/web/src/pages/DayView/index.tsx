@@ -250,6 +250,8 @@ const categorizeSleepRest = (activities: Activity[], tags: Tag[], ouraByDate: Ou
         color: activityColors[a.activity_type] ?? '#3b82f6',
         column: 'Sleep / Rest' as Column,
         end,
+        entity_id: a.id,
+        entity_type: 'activity' as const,
         isPoint: false,
         label,
         start: a.start_time,
@@ -288,6 +290,8 @@ const categorizeExercise = (activities: Activity[]): ChartItem[] =>
         color: getExerciseColor(a),
         column: 'Exercise' as Column,
         end,
+        entity_id: a.id,
+        entity_type: 'activity' as const,
         isPoint: false,
         label: typeName,
         start: a.start_time,
@@ -325,6 +329,8 @@ const categorizeTags = (tags: Tag[]): ChartItem[] =>
         color: getTagColor(t),
         column: 'Tags / Events' as Column,
         end,
+        entity_id: t.id,
+        entity_type: 'tag' as const,
         isPoint,
         label: t.tag,
         start: t.start_time,
@@ -342,6 +348,8 @@ const categorizeProductivity = (productivity: ProductivityRecord[]): ChartItem[]
     color: getProductivityColor(p.productivity),
     column: 'Productivity' as Column,
     end: p.end_time,
+    entity_id: p.id,
+    entity_type: 'productivity' as const,
     isPoint: false,
     label: p.activity,
     start: p.start_time,
@@ -918,20 +926,31 @@ export const DayView = () => {
 
           <div class="day-view-list">
             {mobileItems.length === 0 && <p class="loading">No data for this day</p>}
-            {mobileItems.map((item, idx) => (
-              <div class="day-view-list-item" key={idx}>
-                <span class="list-dot" style={{ background: item.color }} />
-                <span class="list-time">{item.tooltip.time}</span>
-                <div class="list-content">
-                  <div class="list-title">{item.label}</div>
-                  {item.tooltip.details.map((d, i) => (
-                    <div class="list-detail" key={i}>
-                      {d}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+            {mobileItems.map((item, idx) => {
+              const href =
+                item.entity_id && item.entity_type ?
+                  `/detail/${item.entity_type}/${item.entity_id}`
+                : undefined
+              const Wrapper = href ? 'a' : 'div'
+              return (
+                <Wrapper
+                  class={`day-view-list-item${href ? ' clickable' : ''}`}
+                  key={idx}
+                  {...(href ? { href } : {})}
+                >
+                  <span class="list-dot" style={{ background: item.color }} />
+                  <span class="list-time">{item.tooltip.time}</span>
+                  <div class="list-content">
+                    <div class="list-title">{item.label}</div>
+                    {item.tooltip.details.map((d, i) => (
+                      <div class="list-detail" key={i}>
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+                </Wrapper>
+              )
+            })}
           </div>
         </>
       )}
@@ -1079,10 +1098,25 @@ const drawItem = (
   const x = colX + lane * (laneWidth + colPadding)
   const blockHeight = Math.max(y2 - y1, 2)
 
+  const detailUrl =
+    item.entity_id && item.entity_type ? `/detail/${item.entity_type}/${item.entity_id}` : undefined
+
+  const handleClick =
+    detailUrl ?
+      (event: MouseEvent) => {
+        // Allow ctrl/meta-click for new tab, otherwise navigate
+        if (event.ctrlKey || event.metaKey) {
+          window.open(detailUrl, '_blank')
+        } else {
+          window.location.href = detailUrl
+        }
+      }
+    : undefined
+
   if (item.isPoint) {
     const cy = y1
     const size = Math.min(laneWidth / 2, 6)
-    chartGroup
+    const point = chartGroup
       .append('polygon')
       .attr(
         'points',
@@ -1092,11 +1126,12 @@ const drawItem = (
       .attr('opacity', 0.85)
       .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
       .on('mouseleave', hideTooltip)
+    if (handleClick) point.style('cursor', 'pointer').on('click', handleClick)
     return
   }
 
   // Rectangle block
-  chartGroup
+  const rect = chartGroup
     .append('rect')
     .attr('x', x)
     .attr('y', y1)
@@ -1114,6 +1149,7 @@ const drawItem = (
       d3.select(this).attr('opacity', 0.75)
       hideTooltip()
     })
+  if (handleClick) rect.style('cursor', 'pointer').on('click', handleClick)
 
   // Text label inside if tall enough
   if (blockHeight > 30) {

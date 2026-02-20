@@ -199,6 +199,16 @@
   gap: 0.75rem;
   padding: 0.75rem 0;
   border-bottom: 1px solid #e5e7eb;
+  text-decoration: none;
+  color: inherit;
+}
+
+.day-view-list-item.clickable {
+  cursor: pointer;
+}
+
+.day-view-list-item.clickable:hover {
+  background: #f9fafb;
 }
 
 .day-view-list-item .list-dot {
@@ -301,6 +311,10 @@
 
   .day-view-list-item .list-detail {
     color: #9ca3af;
+  }
+
+  .day-view-list-item.clickable:hover {
+    background: #1f2937;
   }
 }
 

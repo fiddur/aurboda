@@ -97,7 +97,8 @@ export const insertActivity = async (user: string, activity: Activity) => {
        end_time = EXCLUDED.end_time,
        title = EXCLUDED.title,
        notes = EXCLUDED.notes,
-       data = EXCLUDED.data`,
+       data = EXCLUDED.data
+     WHERE activities.deleted_at IS NULL`,
     [
       activity.id,
       activity.source,
@@ -111,12 +112,17 @@ export const insertActivity = async (user: string, activity: Activity) => {
   )
 }
 
-export const getActivityById = async (user: string, id: string): Promise<Activity | null> => {
+export const getActivityById = async (
+  user: string,
+  id: string,
+  includeDeleted = false,
+): Promise<Activity | null> => {
+  const deletedClause = includeDeleted ? '' : ' AND deleted_at IS NULL'
   const result = await query(
     user,
-    `SELECT id, source, activity_type, start_time, end_time, title, notes, data
+    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
-     WHERE id = $1`,
+     WHERE id = $1${deletedClause}`,
     [id],
   )
 
@@ -128,7 +134,21 @@ export const getActivityById = async (user: string, id: string): Promise<Activit
 }
 
 export const deleteActivity = async (user: string, id: string): Promise<boolean> => {
-  const result = await query(user, `DELETE FROM activities WHERE id = $1`, [id])
+  const result = await query(
+    user,
+    `UPDATE activities SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
+    [id],
+  )
+
+  return (result.rowCount ?? 0) > 0
+}
+
+export const restoreActivity = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE activities SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`,
+    [id],
+  )
 
   return (result.rowCount ?? 0) > 0
 }
@@ -147,7 +167,7 @@ export const updateActivity = async (
   if (fields.length === 0) return getActivityById(user, id)
 
   const update = buildDynamicUpdate('activities', id, fields, {
-    returning: 'id, source, activity_type, start_time, end_time, title, notes, data',
+    returning: 'id, source, activity_type, start_time, end_time, title, notes, data, deleted_at',
   })
   if (!update) return getActivityById(user, id)
 
@@ -166,9 +186,10 @@ export const getActivities = async (
 
   const result = await query(
     user,
-    `SELECT id, source, activity_type, start_time, end_time, title, notes, data
+    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
      WHERE activity_type = ANY($1) AND start_time >= $2 AND start_time <= $3
+       AND deleted_at IS NULL
      ORDER BY start_time`,
     [types, start, end],
   )
@@ -186,11 +207,12 @@ export const getActivities = async (
 export const getSleepSessions = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
   const result = await query(
     user,
-    `SELECT id, source, activity_type, start_time, end_time, title, notes, data
+    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
      WHERE activity_type = 'sleep'
        AND start_time < $2
        AND (end_time >= $1 OR end_time IS NULL)
+       AND deleted_at IS NULL
      ORDER BY start_time`,
     [start, end],
   )

@@ -14,6 +14,7 @@ import { registerCorrelationTools } from './mcp/correlation-tools'
 import { registerLastFmTools } from './mcp/lastfm-tools'
 import { registerLocationTools } from './mcp/location-tools'
 import { registerMetricTools } from './mcp/metric-tools'
+import { registerNoteTools } from './mcp/note-tools'
 import { registerQueryTools } from './mcp/query-tools'
 import { registerSettingsTools } from './mcp/settings-tools'
 import { registerSyncTools } from './mcp/sync-tools'
@@ -77,6 +78,7 @@ export function createMcpRouter(
     registerLocationTools(server, user)
     registerCorrelationTools(server, user, sync)
     registerTrendTools(server, user)
+    registerNoteTools(server, user)
 
     return server
   }

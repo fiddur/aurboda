@@ -5,14 +5,23 @@
  * They are used by both the MCP tools and the REST API.
  */
 
-import type { ActivityType, CustomMetricDefinition } from '@aurboda/api-spec'
+import type { ActivityType, EntityType as ApiEntityType, CustomMetricDefinition } from '@aurboda/api-spec'
 import { randomUUID } from 'crypto'
 import {
   deleteActivity as dbDeleteActivity,
+  deleteNote as dbDeleteNote,
+  deleteProductivityRecord as dbDeleteProductivityRecord,
   deleteTag as dbDeleteTag,
+  deleteTagById as dbDeleteTagById,
   getActivityById as dbGetActivityById,
+  getNotesForEntity as dbGetNotesForEntity,
   insertActivity as dbInsertActivity,
+  insertNote as dbInsertNote,
+  restoreActivity as dbRestoreActivity,
+  restoreProductivityRecord as dbRestoreProductivityRecord,
+  restoreTag as dbRestoreTag,
   updateActivity as dbUpdateActivity,
+  updateNote as dbUpdateNote,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
   findMergeableTag,
@@ -21,6 +30,7 @@ import {
   insertTimeSeries,
   updateTagEndTime,
   upsertUserSettings,
+  type EntityType,
 } from '../db'
 import { getMetricUnit, isValidMetric, isValidMetricOrCustom } from '../schema'
 
@@ -528,4 +538,115 @@ export async function updateActivity(
     success: true,
     title: updated.title,
   }
+}
+
+// ============================================================================
+// Restore Functions (soft-delete undo)
+// ============================================================================
+
+export interface RestoreResult {
+  success: boolean
+  restored: boolean
+  id: string
+}
+
+export async function restoreActivity(user: string, id: string): Promise<RestoreResult> {
+  const restored = await dbRestoreActivity(user, id)
+  return { id, restored, success: restored }
+}
+
+export async function restoreTag(user: string, id: string): Promise<RestoreResult> {
+  const restored = await dbRestoreTag(user, id)
+  return { id, restored, success: restored }
+}
+
+export async function restoreProductivity(user: string, id: string): Promise<RestoreResult> {
+  const restored = await dbRestoreProductivityRecord(user, id)
+  return { id, restored, success: restored }
+}
+
+export async function deleteTagById(user: string, id: string): Promise<DeleteTagResult> {
+  const deleted = await dbDeleteTagById(user, id)
+  return { deleted, external_id: id, success: deleted }
+}
+
+export async function deleteProductivity(user: string, id: string): Promise<DeleteActivityResult> {
+  const deleted = await dbDeleteProductivityRecord(user, id)
+  return { deleted, id, success: deleted }
+}
+
+// ============================================================================
+// Notes Functions
+// ============================================================================
+
+export interface AddNoteInput {
+  entity_type: EntityType
+  entity_id: string
+  content: string
+}
+
+export interface NoteResult {
+  success: boolean
+  data?: {
+    id: string
+    entity_type: ApiEntityType
+    entity_id: string
+    content: string
+    created_at: string
+    updated_at: string
+  }
+  error?: string
+}
+
+export async function addNote(user: string, input: AddNoteInput): Promise<NoteResult> {
+  const note = await dbInsertNote(user, input.entity_type, input.entity_id, input.content)
+  return {
+    data: {
+      content: note.content,
+      created_at: note.created_at.toISOString(),
+      entity_id: note.entity_id,
+      entity_type: note.entity_type,
+      id: note.id,
+      updated_at: note.updated_at.toISOString(),
+    },
+    success: true,
+  }
+}
+
+export async function updateNoteContent(user: string, id: string, content: string): Promise<NoteResult> {
+  const note = await dbUpdateNote(user, id, content)
+  if (!note) {
+    return { error: 'Note not found', success: false }
+  }
+  return {
+    data: {
+      content: note.content,
+      created_at: note.created_at.toISOString(),
+      entity_id: note.entity_id,
+      entity_type: note.entity_type,
+      id: note.id,
+      updated_at: note.updated_at.toISOString(),
+    },
+    success: true,
+  }
+}
+
+export async function deleteNoteById(
+  user: string,
+  id: string,
+): Promise<{ success: boolean; deleted: boolean }> {
+  const deleted = await dbDeleteNote(user, id)
+  return { deleted, success: deleted }
+}
+
+export async function getNotesForEntity(user: string, entityType: ApiEntityType, entityId: string) {
+  const notes = await dbGetNotesForEntity(user, entityType as EntityType, entityId)
+  return notes.map((n) => ({
+    content: n.content,
+    created_at: n.created_at.toISOString(),
+    entity_id: n.entity_id,
+    entity_type: n.entity_type,
+    id: n.id,
+    updated_at: n.updated_at.toISOString(),
+  }))
 }

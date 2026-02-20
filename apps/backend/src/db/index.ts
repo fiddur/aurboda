@@ -15,6 +15,7 @@ export type {
   DetectedLocation,
   DetectedLocationInput,
   DetectedLocationUpdate,
+  EntityType,
   GeocodeStatus,
   LabResult,
   LastFmMatchMode,
@@ -26,6 +27,7 @@ export type {
   MetricStats,
   NamedLocation,
   NamedLocationInput,
+  Note,
   OAuthToken,
   Place,
   ProductivityRecord,
@@ -72,6 +74,7 @@ export {
   getSleepSessions,
   insertActivity,
   mergeOverlappingActivities,
+  restoreActivity,
   updateActivity,
 } from './activities'
 
@@ -97,18 +100,29 @@ export {
 // Tags
 export {
   deleteTag,
+  deleteTagById,
   findMergeableTag,
   getProgrammaticTags,
+  getTagById,
   getTags,
   getUniqueTags,
   insertTag,
   isProgrammaticTag,
+  restoreTag,
   updateTagEndTime,
   updateTagNameByKey,
 } from './tags'
 
 // Productivity
-export { getProductivity, insertProductivity } from './productivity'
+export {
+  deleteProductivityRecord,
+  getProductivity,
+  insertProductivity,
+  restoreProductivityRecord,
+} from './productivity'
+
+// Notes
+export { deleteNote, getNoteById, getNotesForEntity, insertNote, updateNote } from './notes'
 
 // Lab results
 export { getLabResults, insertLabResult } from './lab-results'
@@ -150,10 +164,12 @@ export {
   mapLastFmTagRuleRow,
   mapMcpSessionRow,
   mapNamedLocationRow,
+  mapNoteRow,
   mapSyncStateRow,
   mapTagRow,
   parseActivityType,
   parseDataSource,
+  parseEntityType,
   parseGeocodeStatus,
   parseMetricType,
   parseSyncStatus,

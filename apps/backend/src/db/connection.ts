@@ -139,6 +139,13 @@ export const migrateSchema = async (user: string) => {
   }
   if (existingTableNames.has('tags')) {
     await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_key VARCHAR(255)`)
+    await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
+  }
+  if (existingTableNames.has('activities')) {
+    await query(db, `ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
+  }
+  if (existingTableNames.has('productivity')) {
+    await query(db, `ALTER TABLE productivity ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
   }
 
   // Create missing tables and indexes (columns now exist for index creation)

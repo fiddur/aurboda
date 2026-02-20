@@ -744,3 +744,145 @@ export const deleteLastFmTagRule = async (ruleId: string): Promise<void> => {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
+
+// ============================================================================
+// Soft Delete & Restore
+// ============================================================================
+
+export const softDeleteActivity = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/activities/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export const restoreActivity = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.post(
+    `${API_URL}/activities/${id}/restore`,
+    {},
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+}
+
+export const softDeleteTag = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/tags/id/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export const restoreTag = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.post(
+    `${API_URL}/tags/id/${id}/restore`,
+    {},
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+}
+
+export const softDeleteProductivity = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/productivity/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export const restoreProductivity = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.post(
+    `${API_URL}/productivity/${id}/restore`,
+    {},
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+}
+
+// ============================================================================
+// Entity Detail Fetching
+// ============================================================================
+
+export const fetchActivityById = async (id: string): Promise<Activity> => {
+  const { token } = auth.value
+  const response = await axios.get(`${API_URL}/activities/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  const d = response.data.data
+  return {
+    ...d,
+    end_time: d.end_time ? new Date(d.end_time) : undefined,
+    start_time: new Date(d.start_time),
+  }
+}
+
+export const fetchTagById = async (id: string): Promise<Tag> => {
+  const { token } = auth.value
+  const response = await axios.get(`${API_URL}/tags/id/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  const d = response.data.data
+  return {
+    ...d,
+    end_time: d.end_time ? new Date(d.end_time) : undefined,
+    start_time: new Date(d.start_time),
+  }
+}
+
+// ============================================================================
+// Notes
+// ============================================================================
+
+export interface NoteData {
+  id: string
+  entity_type: string
+  entity_id: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+export const fetchNotes = async (entityType: string, entityId: string): Promise<NoteData[]> => {
+  const { token } = auth.value
+  const response = await axios.get(`${API_URL}/notes`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { entity_id: entityId, entity_type: entityType },
+  })
+
+  return response.data.data ?? []
+}
+
+export const addNote = async (entityType: string, entityId: string, content: string): Promise<NoteData> => {
+  const { token } = auth.value
+  const response = await axios.post(
+    `${API_URL}/notes`,
+    { content, entity_id: entityId, entity_type: entityType },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+
+  return response.data.data
+}
+
+export const updateNote = async (id: string, content: string): Promise<NoteData> => {
+  const { token } = auth.value
+  const response = await axios.patch(
+    `${API_URL}/notes/${id}`,
+    { content },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+
+  return response.data.data
+}
+
+export const deleteNote = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/notes/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}

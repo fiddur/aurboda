@@ -17,8 +17,10 @@ export const productivityRecordSchema = z
   .object({
     activity: z.string().meta({ description: 'Activity/application name' }),
     category: z.string().optional().meta({ description: 'Activity category' }),
+    deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
     duration_sec: z.number().int().meta({ description: 'Duration in seconds' }),
     end_time: iso8601DateTimeSchema,
+    id: z.string().uuid().optional().meta({ description: 'Productivity record ID' }),
     is_mobile: z.boolean().optional().meta({ description: 'Whether activity was on mobile' }),
     productivity: z.number().int().optional().meta({
       description: 'Productivity score (-2 to 2)',

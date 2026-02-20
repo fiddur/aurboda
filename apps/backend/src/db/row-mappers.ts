@@ -8,10 +8,12 @@ import type { QueryResultRow } from 'pg'
 import type {
   Activity,
   DetectedLocation,
+  EntityType,
   GeocodeStatus,
   LastFmTagRule,
   McpSessionRecord,
   NamedLocation,
+  Note,
   SyncState,
   SyncStatus,
   Tag,
@@ -35,6 +37,7 @@ const VALID_DATA_SOURCES = [
 
 const VALID_GEOCODE_STATUSES = ['pending', 'geocoding', 'success', 'failed'] as const
 const VALID_SYNC_STATUSES = ['idle', 'syncing', 'error', 'rate_limited'] as const
+const VALID_ENTITY_TYPES = ['activity', 'tag', 'productivity'] as const
 const VALID_LASTFM_MATCH_TYPES = ['track', 'artist', 'track_artist'] as const
 const VALID_LASTFM_MATCH_MODES = ['exact', 'contains'] as const
 
@@ -66,6 +69,13 @@ export const parseSyncStatus = (value: unknown): SyncStatus => {
   throw new Error(`Invalid SyncStatus: ${JSON.stringify(value)}`)
 }
 
+export const parseEntityType = (value: unknown): EntityType => {
+  if (typeof value === 'string' && (VALID_ENTITY_TYPES as readonly string[]).includes(value)) {
+    return value as EntityType
+  }
+  throw new Error(`Invalid EntityType: ${JSON.stringify(value)}`)
+}
+
 export const parseMetricType = (value: unknown): MetricType => {
   // MetricType is a wide union; for DB rows we trust the value is valid
   if (typeof value !== 'string') {
@@ -95,6 +105,7 @@ const parseLastFmMatchMode = (value: unknown) => {
 export const mapActivityRow = (row: QueryResultRow): Activity => ({
   activity_type: parseActivityType(row.activity_type),
   data: row.data,
+  deleted_at: row.deleted_at ? new Date(row.deleted_at) : undefined,
   end_time: row.end_time ? new Date(row.end_time) : undefined,
   id: row.id,
   notes: row.notes,
@@ -141,6 +152,7 @@ export const mapSyncStateRow = (row: QueryResultRow): SyncState => ({
 })
 
 export const mapTagRow = (row: QueryResultRow): Tag => ({
+  deleted_at: row.deleted_at ? new Date(row.deleted_at) : undefined,
   end_time: row.end_time ? new Date(row.end_time) : undefined,
   external_id: row.external_id,
   id: row.id,
@@ -168,4 +180,13 @@ export const mapLastFmTagRuleRow = (row: QueryResultRow): LastFmTagRule => ({
   rule_name: row.rule_name,
   tag_name: row.tag_name,
   track_name: row.track_name ?? undefined,
+})
+
+export const mapNoteRow = (row: QueryResultRow): Note => ({
+  content: row.content,
+  created_at: new Date(row.created_at),
+  entity_id: row.entity_id,
+  entity_type: parseEntityType(row.entity_type),
+  id: row.id,
+  updated_at: new Date(row.updated_at),
 })

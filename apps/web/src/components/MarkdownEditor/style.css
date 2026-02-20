@@ -1,0 +1,154 @@
+.md-editor {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.md-editor-tabs {
+  display: flex;
+  border-bottom: 1px solid #d1d5db;
+  background: #f9fafb;
+}
+
+.md-editor-tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.md-editor-tab:hover {
+  color: #374151;
+}
+
+.md-editor-tab.active {
+  color: #673ab8;
+  border-bottom-color: #673ab8;
+  background: #fff;
+}
+
+.md-editor-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: none;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  min-height: 80px;
+  box-sizing: border-box;
+}
+
+.md-editor-textarea:focus {
+  outline: none;
+}
+
+.md-editor-preview {
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  min-height: 80px;
+}
+
+.md-editor-preview h1,
+.md-editor-preview h2,
+.md-editor-preview h3 {
+  margin: 0.5em 0 0.25em;
+}
+
+.md-editor-preview h1 { font-size: 1.25rem; }
+.md-editor-preview h2 { font-size: 1.1rem; }
+.md-editor-preview h3 { font-size: 1rem; }
+
+.md-editor-preview p {
+  margin: 0.5em 0;
+}
+
+.md-editor-preview ul,
+.md-editor-preview ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.md-editor-preview code {
+  background: #f3f4f6;
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+.md-editor-preview pre {
+  background: #f3f4f6;
+  padding: 0.75em;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.md-editor-preview pre code {
+  background: none;
+  padding: 0;
+}
+
+.md-editor-preview a {
+  color: #673ab8;
+}
+
+.md-editor-preview blockquote {
+  margin: 0.5em 0;
+  padding-left: 0.75em;
+  border-left: 3px solid #d1d5db;
+  color: #6b7280;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .md-editor {
+    border-color: #4b5563;
+  }
+
+  .md-editor-tabs {
+    border-color: #4b5563;
+    background: #1f2937;
+  }
+
+  .md-editor-tab {
+    color: #9ca3af;
+  }
+
+  .md-editor-tab:hover {
+    color: #d1d5db;
+  }
+
+  .md-editor-tab.active {
+    color: #a78bfa;
+    border-bottom-color: #a78bfa;
+    background: #111827;
+  }
+
+  .md-editor-textarea {
+    background: #111827;
+    color: #f3f4f6;
+  }
+
+  .md-editor-preview {
+    color: #f3f4f6;
+  }
+
+  .md-editor-preview code {
+    background: #374151;
+  }
+
+  .md-editor-preview pre {
+    background: #374151;
+  }
+
+  .md-editor-preview blockquote {
+    border-left-color: #4b5563;
+    color: #9ca3af;
+  }
+}
