@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks'
 import {
   Activity,
   fetchActivities,
+  fetchBucketedMetrics,
   fetchPlaces,
   fetchProductivity,
   fetchScrobbles,
@@ -161,8 +162,60 @@ const formatDuration = (start: Date, end: Date): string => {
 const escapeHtml = (str: string): string =>
   str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
+/** Oura sleep metrics keyed by date string (YYYY-MM-DD). */
+type OuraSleepMetrics = Record<string, number>
+type OuraSleepByDate = Map<string, OuraSleepMetrics>
+
+/**
+ * Health Connect sleep stage values.
+ * AWAKE=1, SLEEPING=2, OUT_OF_BED=3, LIGHT=4, DEEP=5, REM=6
+ */
+const HC_SLEEP_STAGES = new Set([2, 4, 5, 6])
+
+const computeHcSleepMinutes = (data: Record<string, unknown> | undefined): number | undefined => {
+  const stages = data?.stages
+  if (!Array.isArray(stages)) return undefined
+  let ms = 0
+  for (const stage of stages as { startTime?: string; endTime?: string; stage?: number }[]) {
+    if (
+      HC_SLEEP_STAGES.has(stage.stage ?? -1) &&
+      typeof stage.startTime === 'string' &&
+      typeof stage.endTime === 'string'
+    ) {
+      ms += new Date(stage.endTime).getTime() - new Date(stage.startTime).getTime()
+    }
+  }
+  return ms > 0 ? Math.round(ms / 60000) : undefined
+}
+
+const buildSleepDetails = (a: Activity, end: Date, ouraByDate: OuraSleepByDate): string[] => {
+  const details: string[] = []
+  details.push(`Bed: ${formatDuration(a.start_time, end)}`)
+
+  const sleepMin = computeHcSleepMinutes(a.data as Record<string, unknown> | undefined)
+  if (sleepMin !== undefined) {
+    const h = Math.floor(sleepMin / 60)
+    const m = sleepMin % 60
+    details.push(`Sleep: ${m > 0 ? `${h}h ${m}m` : `${h}h`}`)
+  }
+
+  const oura = ouraByDate.get(format(end, 'yyyy-MM-dd'))
+  if (oura) {
+    if (oura.sleep_score !== undefined) details.push(`ō score: ${Math.round(oura.sleep_score)}`)
+    if (oura.sleep_efficiency !== undefined)
+      details.push(`ō efficiency: ${Math.round(oura.sleep_efficiency)}%`)
+    if (oura.sleep_restfulness !== undefined)
+      details.push(`ō restfulness: ${Math.round(oura.sleep_restfulness)}`)
+    if (oura.sleep_deep_score !== undefined) details.push(`ō deep: ${Math.round(oura.sleep_deep_score)}`)
+    if (oura.sleep_rem_score !== undefined) details.push(`ō REM: ${Math.round(oura.sleep_rem_score)}`)
+  }
+
+  if (a.avg_hrv) details.push(`Avg HRV: ${a.avg_hrv} ms`)
+  return details
+}
+
 // Categorization per column
-const categorizeSleepRest = (activities: Activity[], tags: Tag[]): ChartItem[] =>
+const categorizeSleepRest = (activities: Activity[], tags: Tag[], ouraByDate: OuraSleepByDate): ChartItem[] =>
   activities
     .filter(
       (a) => a.activity_type === 'sleep' || a.activity_type === 'nap' || a.activity_type === 'meditation',
@@ -173,8 +226,12 @@ const categorizeSleepRest = (activities: Activity[], tags: Tag[]): ChartItem[] =
         a.activity_type === 'sleep' ? 'Sleep'
         : a.activity_type === 'nap' ? 'Nap'
         : 'Meditation'
-      const details: string[] = [formatDuration(a.start_time, end)]
-      if (a.avg_hrv) details.push(`Avg HRV: ${a.avg_hrv} ms`)
+
+      const details =
+        a.activity_type === 'sleep' ?
+          buildSleepDetails(a, end, ouraByDate)
+        : [formatDuration(a.start_time, end), ...(a.avg_hrv ? [`Avg HRV: ${a.avg_hrv} ms`] : [])]
+
       if (a.notes) details.push(a.notes)
 
       // For meditation, show overlapping last.fm tags
@@ -396,6 +453,19 @@ export const DayView = () => {
     staleTime: 30 * 60 * 1000,
   })
 
+  const ouraMetricsQuery = useQuery({
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      fetchBucketedMetrics(
+        subDays(fetchStart, 0.5),
+        addDays(fetchEnd, 0.5),
+        ['sleep_score', 'sleep_efficiency', 'sleep_restfulness', 'sleep_deep_score', 'sleep_rem_score'],
+        '1d',
+      ),
+    queryKey: ['dayview-oura-sleep', fromDate.value, toDate.value],
+    staleTime: 10 * 60 * 1000,
+  })
+
   const hasLastFm = Boolean(settingsQuery.data?.lastfm_username)
 
   const scrobblesQuery = useQuery({
@@ -474,6 +544,17 @@ export const DayView = () => {
   const productivity = productivityQuery.data ?? []
   const scrobbles = scrobblesQuery.data ?? []
 
+  // Build date-keyed map of Oura sleep metrics (keyed by YYYY-MM-DD of bucket start)
+  const ouraByDate: OuraSleepByDate = new Map()
+  for (const bucket of ouraMetricsQuery.data?.buckets ?? []) {
+    const dayKey = format(new Date(bucket.start), 'yyyy-MM-dd')
+    const metrics: OuraSleepMetrics = {}
+    for (const [metric, stats] of Object.entries(bucket.metrics)) {
+      metrics[metric] = stats.avg
+    }
+    ouraByDate.set(dayKey, metrics)
+  }
+
   const musicItems = hasLastFm ? categorizeMusic(scrobbles) : []
   const showMusicColumn = musicItems.length > 0
 
@@ -481,7 +562,7 @@ export const DayView = () => {
 
   const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
   const chartItems = [
-    ...categorizeSleepRest(activities, tags),
+    ...categorizeSleepRest(activities, tags, ouraByDate),
     ...categorizeExercise(activities),
     ...categorizeLocations(places, uniquePlaceNames),
     ...categorizeTags(tags),
@@ -575,7 +656,18 @@ export const DayView = () => {
       const domainStart = domain[0]!
       const domainEnd = domain[1]!
 
-      // Hourly grid lines
+      // Determine adaptive hour interval based on pixels-per-hour
+      const oneHourLater = new Date(domainStart.getTime() + 3600000)
+      const pixelsPerHour = Math.abs(currentYScale(oneHourLater) - currentYScale(domainStart))
+      let hourIntervalHours: number
+      if (pixelsPerHour >= 30) hourIntervalHours = 1
+      else if (pixelsPerHour >= 15) hourIntervalHours = 2
+      else if (pixelsPerHour >= 8) hourIntervalHours = 4
+      else if (pixelsPerHour >= 4) hourIntervalHours = 6
+      else if (pixelsPerHour >= 2) hourIntervalHours = 12
+      else hourIntervalHours = 24
+
+      // Hourly grid lines (always every hour for fine grid, but subtle)
       const hours = d3.timeHour.range(domainStart, domainEnd)
       chartGroup
         .selectAll('.grid-line')
@@ -589,10 +681,11 @@ export const DayView = () => {
         .attr('stroke', 'currentColor')
         .attr('stroke-opacity', 0.1)
 
-      // Hour labels on left
+      // Hour labels on left — only at the adaptive interval to avoid overlap
+      const labelHours = hours.filter((d) => d.getHours() % hourIntervalHours === 0)
       const hourFontSize = chartWidth > 1200 ? '0.85rem' : '0.7rem'
       g.selectAll('.hour-label')
-        .data(hours)
+        .data(labelHours)
         .enter()
         .append('text')
         .attr('class', 'hour-label')
@@ -854,6 +947,91 @@ type ColumnDataEntry = {
   laneCount: number
 }
 
+/** Minimum rendered height (px) before items get merged into a cluster. */
+const MIN_ITEM_HEIGHT = 4
+
+/**
+ * Merge items that would render too small to see individually.
+ * Items whose height < MIN_ITEM_HEIGHT and that are close together (gap < MIN_ITEM_HEIGHT px)
+ * are grouped into a single merged block with a combined tooltip.
+ */
+const mergeSmallItems = (
+  packedItems: { item: ChartItem; lane: number }[],
+  yScale: d3.ScaleTime<number, number>,
+): { item: ChartItem; lane: number }[] => {
+  if (packedItems.length === 0) return packedItems
+
+  // Sort by start time for grouping
+  const sorted = [...packedItems].sort((a, b) => a.item.start.getTime() - b.item.start.getTime())
+
+  // Check if any items are tiny
+  const anyTiny = sorted.some(({ item }) => {
+    const h = Math.abs(yScale(item.end) - yScale(item.start))
+    return h < MIN_ITEM_HEIGHT
+  })
+  if (!anyTiny) return packedItems
+
+  // Group nearby tiny items; large items stay as-is
+  const result: { item: ChartItem; lane: number }[] = []
+  let clusterItems: ChartItem[] = []
+
+  const flushCluster = () => {
+    if (clusterItems.length === 0) return
+    if (clusterItems.length === 1) {
+      result.push({ item: clusterItems[0]!, lane: 0 })
+    } else {
+      const mergedStart = clusterItems.reduce(
+        (min, i) => (i.start < min ? i.start : min),
+        clusterItems[0]!.start,
+      )
+      const mergedEnd = clusterItems.reduce((max, i) => (i.end > max ? i.end : max), clusterItems[0]!.end)
+      const first = clusterItems[0]!
+      const merged: ChartItem = {
+        color: first.color,
+        column: first.column,
+        end: mergedEnd,
+        isPoint: false,
+        label: `${clusterItems.length} items`,
+        start: mergedStart,
+        tooltip: {
+          details: clusterItems.map((i) => `${formatTime(i.start)} ${i.label}`),
+          time: `${formatTime(mergedStart)} – ${formatTime(mergedEnd)}`,
+          title: `${clusterItems.length} ${first.column}`,
+        },
+      }
+      result.push({ item: merged, lane: 0 })
+    }
+    clusterItems = []
+  }
+
+  for (const { item } of sorted) {
+    const h = Math.abs(yScale(item.end) - yScale(item.start))
+    if (h >= MIN_ITEM_HEIGHT) {
+      // Large item: flush pending cluster then add as-is
+      flushCluster()
+      result.push({ item, lane: 0 })
+      continue
+    }
+
+    // Small item: check if it's close to the current cluster's end
+    if (clusterItems.length === 0) {
+      clusterItems.push(item)
+    } else {
+      const clusterEnd = clusterItems.reduce((max, i) => (i.end > max ? i.end : max), clusterItems[0]!.end)
+      const gapPx = yScale(item.start) - yScale(clusterEnd)
+      if (gapPx <= MIN_ITEM_HEIGHT * 2) {
+        clusterItems.push(item)
+      } else {
+        flushCluster()
+        clusterItems.push(item)
+      }
+    }
+  }
+  flushCluster()
+
+  return result
+}
+
 const drawColumnItems = (
   chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
   columnData: ColumnDataEntry[],
@@ -866,13 +1044,21 @@ const drawColumnItems = (
 ) => {
   for (let colIdx = 0; colIdx < columnData.length; colIdx++) {
     const { items: packedItems, laneCount } = columnData[colIdx]!
+
+    // Merge tiny items adaptively based on current zoom level
+    const mergedItems = mergeSmallItems(packedItems, yScale)
+    const hasMerged = mergedItems.some((m) => m.item.label.endsWith(' items'))
+
     const colX = colIdx * colWidth + colGap
     const usableWidth = colWidth - colGap * 2
-    const lanes = Math.max(laneCount, 1)
+    // If merging happened, use full column width for merged blocks
+    const effectiveLanes = hasMerged ? 1 : Math.max(laneCount, 1)
+    const lanes = effectiveLanes
     const laneWidth = (usableWidth - (lanes - 1) * colPadding) / lanes
 
-    for (const { item, lane } of packedItems) {
-      drawItem(chartGroup, item, lane, colX, laneWidth, colPadding, yScale, showTooltip, hideTooltip)
+    for (const { item, lane } of mergedItems) {
+      const effectiveLane = hasMerged ? 0 : lane
+      drawItem(chartGroup, item, effectiveLane, colX, laneWidth, colPadding, yScale, showTooltip, hideTooltip)
     }
   }
 }
