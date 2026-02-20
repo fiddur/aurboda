@@ -1101,21 +1101,21 @@ const drawItem = (
   const detailUrl =
     item.entity_id && item.entity_type ? `/detail/${item.entity_type}/${item.entity_id}` : undefined
 
-  // Attach click-navigation via pointerdown/pointerup. We stop propagation on
-  // pointerdown so D3 zoom (on the SVG) never sees the event and doesn't
-  // interfere. On pointerup we check movement to distinguish click from drag.
+  // Attach click-navigation via mousedown/mouseup. d3-zoom v3 uses mousedown
+  // (not pointerdown), so we must stop mousedown propagation to prevent zoom
+  // from capturing the drag. On mouseup we check movement to distinguish click.
   const attachClickNav = (el: d3.Selection<SVGElement, unknown, null, undefined>) => {
     if (!detailUrl) return
     let downX = 0
     let downY = 0
     el.style('cursor', 'pointer')
-      .on('pointerdown.nav', (event: PointerEvent) => {
+      .on('mousedown.nav', (event: MouseEvent) => {
         if (event.button !== 0) return
         downX = event.clientX
         downY = event.clientY
         event.stopPropagation()
       })
-      .on('pointerup.nav', (event: PointerEvent) => {
+      .on('mouseup.nav', (event: MouseEvent) => {
         if (event.button !== 0) return
         const dx = Math.abs(event.clientX - downX)
         const dy = Math.abs(event.clientY - downY)
