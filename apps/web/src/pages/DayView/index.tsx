@@ -775,11 +775,17 @@ export const DayView = () => {
       return d3.zoomIdentity.translate(0, ty).scale(k)
     }
 
-    // D3 zoom
+    // D3 zoom — only on background, not on clickable items
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 20])
-      .filter((event) => event.type !== 'dblclick')
+      .filter((event) => {
+        if (event.type === 'dblclick') return false
+        // Don't capture drag/scroll on clickable chart items
+        const target = event.target as SVGElement | null
+        if (target?.classList?.contains('chart-item-clickable')) return false
+        return true
+      })
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         if (isProgrammaticZoom.current) return
         cancelAnimationFrame(zoomRafRef.current)
@@ -1126,7 +1132,8 @@ const drawItem = (
       .attr('opacity', 0.85)
       .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
       .on('mouseleave', hideTooltip)
-    if (handleClick) point.style('cursor', 'pointer').on('click', handleClick)
+    if (handleClick)
+      point.classed('chart-item-clickable', true).style('cursor', 'pointer').on('click', handleClick)
     return
   }
 
@@ -1149,7 +1156,8 @@ const drawItem = (
       d3.select(this).attr('opacity', 0.75)
       hideTooltip()
     })
-  if (handleClick) rect.style('cursor', 'pointer').on('click', handleClick)
+  if (handleClick)
+    rect.classed('chart-item-clickable', true).style('cursor', 'pointer').on('click', handleClick)
 
   // Text label inside if tall enough
   if (blockHeight > 30) {
