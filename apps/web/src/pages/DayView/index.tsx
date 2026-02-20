@@ -1103,25 +1103,15 @@ const drawItem = (
   const detailUrl =
     item.entity_id && item.entity_type ? `/detail/${item.entity_type}/${item.entity_id}` : undefined
 
-  // Clickable items: d3-zoom lets click events through for stationary clicks
-  // (within clickDistance). We use data-clickable for CSS cursor override.
-  const attachClickNav = (el: d3.Selection<SVGElement, unknown, null, undefined>) => {
-    if (!detailUrl) return
-    el.attr('data-clickable', 'true')
-      .style('cursor', 'pointer')
-      .on('click.nav', (event: MouseEvent) => {
-        if (event.ctrlKey || event.metaKey) {
-          window.open(detailUrl, '_blank')
-        } else {
-          window.location.href = detailUrl
-        }
-      })
-  }
+  // Wrap clickable items in an SVG <a> so the browser handles middle-click,
+  // right-click context menu, ctrl+click etc. natively.
+  const parent =
+    detailUrl ? chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true') : chartGroup
 
   if (item.isPoint) {
     const cy = y1
     const size = Math.min(laneWidth / 2, 6)
-    const point = chartGroup
+    parent
       .append('polygon')
       .attr(
         'points',
@@ -1131,12 +1121,11 @@ const drawItem = (
       .attr('opacity', 0.85)
       .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
       .on('mouseleave', hideTooltip)
-    attachClickNav(point as unknown as d3.Selection<SVGElement, unknown, null, undefined>)
     return
   }
 
   // Rectangle block
-  const rect = chartGroup
+  parent
     .append('rect')
     .attr('x', x)
     .attr('y', y1)
@@ -1154,7 +1143,6 @@ const drawItem = (
       d3.select(this).attr('opacity', 0.75)
       hideTooltip()
     })
-  attachClickNav(rect as unknown as d3.Selection<SVGElement, unknown, null, undefined>)
 
   // Text label inside if tall enough
   if (blockHeight > 30) {
@@ -1162,7 +1150,7 @@ const drawItem = (
     const charWidth = laneWidth > 100 ? 7.5 : 6
     const maxChars = Math.floor(laneWidth / charWidth)
     const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
-    chartGroup
+    parent
       .append('text')
       .attr('x', x + 4)
       .attr('y', y1 + 14)
