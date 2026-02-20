@@ -6,12 +6,16 @@ import { createSyncRouter, SyncRouterDeps } from './sync-router'
 describe('sync router', () => {
   const mockDeps: SyncRouterDeps = {
     deleteHealthConnectRecords: vi.fn().mockResolvedValue(0),
+    getActivityWatchSyncStates: vi.fn().mockResolvedValue([]),
     getCalendarSyncStates: vi.fn().mockResolvedValue([]),
     getLastFmApiKey: vi.fn().mockResolvedValue('test-lastfm-key'),
     getLastFmSyncStates: vi.fn().mockResolvedValue([]),
     getOuraSyncStates: vi.fn().mockResolvedValue([]),
     getRescueTimeSyncStates: vi.fn().mockResolvedValue([]),
     getSettings: vi.fn().mockResolvedValue({ rescue_time_key: 'test-key' }),
+    processActivityWatchEvents: vi
+      .fn()
+      .mockResolvedValue({ device_name: '', records_stored: 0, status: 'success' }),
     processDailyAggregate: vi.fn().mockResolvedValue(undefined),
     processHealthConnectData: vi.fn().mockResolvedValue(undefined),
     resetCalendarSyncState: vi.fn().mockResolvedValue(undefined),
