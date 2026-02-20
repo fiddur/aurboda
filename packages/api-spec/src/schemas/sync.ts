@@ -54,7 +54,7 @@ export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
  */
 export const syncStatusQuerySchema = z
   .object({
-    provider: z.enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'all']).optional().meta({
+    provider: z.enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all']).optional().meta({
       description: 'Provider to check (defaults to all)',
     }),
   })
@@ -65,9 +65,11 @@ export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
 /**
  * Sync provider schema (for MCP).
  */
-export const syncProviderSchema = z.enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'all']).meta({
-  description: 'Which provider to check',
-})
+export const syncProviderSchema = z
+  .enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+  .meta({
+    description: 'Which provider to check',
+  })
 
 export type SyncProviderType = z.infer<typeof syncProviderSchema>
 
@@ -552,3 +554,80 @@ export const scrobblesResponseSchema = createDataArrayResponseSchema(scrobbleSch
 })
 
 export type ScrobblesResponse = z.infer<typeof scrobblesResponseSchema>
+
+// ============================================================================
+// ActivityWatch push sync schemas
+// ============================================================================
+
+/**
+ * A single ActivityWatch event (from aw-watcher-window or aw-watcher-android).
+ */
+export const activityWatchEventSchema = z
+  .object({
+    app: z.string().meta({ description: 'Application name' }),
+    duration: z.number().meta({ description: 'Duration in seconds' }),
+    timestamp: iso8601DateTimeSchema.meta({ description: 'Event start time (ISO 8601)' }),
+    title: z.string().optional().meta({ description: 'Window title' }),
+  })
+  .meta({ id: 'ActivityWatchEvent' })
+
+export type ActivityWatchEvent = z.infer<typeof activityWatchEventSchema>
+
+/**
+ * Request body for POST /sync/activitywatch.
+ * Sent by the push agent on each device.
+ */
+export const syncActivityWatchBodySchema = z
+  .object({
+    device_name: z
+      .string()
+      .max(100)
+      .optional()
+      .meta({
+        description:
+          'Hostname or user-configured device name. Defaults to empty string (single-device setup).',
+      }),
+    events: z.array(activityWatchEventSchema).min(1).meta({ description: 'ActivityWatch events to store' }),
+  })
+  .meta({ id: 'SyncActivityWatchBody' })
+
+export type SyncActivityWatchBody = z.infer<typeof syncActivityWatchBodySchema>
+
+/**
+ * ActivityWatch sync result.
+ */
+export const activityWatchSyncResultSchema = z
+  .object({
+    device_name: z.string().meta({ description: 'Device name used for deduplication' }),
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    records_stored: z.number().int().meta({ description: 'Number of events stored' }),
+    status: syncResultStatusSchema,
+  })
+  .meta({ id: 'ActivityWatchSyncResult' })
+
+export type ActivityWatchSyncResult = z.infer<typeof activityWatchSyncResultSchema>
+
+/**
+ * ActivityWatch sync response.
+ */
+export const activityWatchSyncResponseSchema = baseResponseSchema
+  .extend({
+    result: activityWatchSyncResultSchema.optional().meta({ description: 'Sync result' }),
+  })
+  .meta({ id: 'ActivityWatchSyncResponse' })
+
+export type ActivityWatchSyncResponse = z.infer<typeof activityWatchSyncResponseSchema>
+
+/**
+ * ActivityWatch sync status response.
+ */
+export const activityWatchSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z
+      .array(providerSyncStatusSchema)
+      .optional()
+      .meta({ description: 'ActivityWatch sync states per device' }),
+  })
+  .meta({ id: 'ActivityWatchSyncStatusResponse' })
+
+export type ActivityWatchSyncStatusResponse = z.infer<typeof activityWatchSyncStatusResponseSchema>

@@ -223,7 +223,7 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_places_geo ON places USING GIST (location)
   `,
 
-  // RescueTime productivity data
+  // Productivity data (RescueTime, ActivityWatch, etc.)
 
   productivity: `
     CREATE TABLE IF NOT EXISTS productivity (
@@ -236,8 +236,9 @@ export const createTableStatements: Record<string, string> = {
       productivity    SMALLINT,
       duration_sec    INTEGER NOT NULL,
       is_mobile       BOOLEAN DEFAULT FALSE,
+      device_name     VARCHAR(100) NOT NULL DEFAULT '',
       deleted_at      TIMESTAMPTZ,
-      CONSTRAINT unique_productivity UNIQUE (source, start_time, activity)
+      CONSTRAINT unique_productivity UNIQUE (source, start_time, activity, device_name)
     )
   `,
   productivity_indexes: `

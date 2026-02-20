@@ -5,7 +5,13 @@ import { GoalsSettings } from '../../components/GoalsSettings'
 import { LastFmTagRulesSettings } from '../../components/LastFmTagRulesSettings'
 import { TagMappingsSettings } from '../../components/TagMappingsSettings'
 import { API_URL } from '../../config'
-import { fetchUserSettings, HrZoneThresholds, UpdateSettingsInput, updateUserSettings } from '../../state/api'
+import {
+  fetchUserSettings,
+  generateApiToken,
+  HrZoneThresholds,
+  UpdateSettingsInput,
+  updateUserSettings,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
 import { parseZoneValue, updateZoneThreshold, validateHrZoneThresholds } from '../../utils/settings'
@@ -55,6 +61,12 @@ export function Settings() {
   // Calendar form state
   const [newCalendarName, setNewCalendarName] = useState('')
   const [newCalendarUrl, setNewCalendarUrl] = useState('')
+
+  // ActivityWatch push agent token
+  const [activityWatchToken, setActivityWatchToken] = useState<string>('')
+  const [activityWatchTokenStatus, setActivityWatchTokenStatus] = useState<'idle' | 'loading' | 'copied'>(
+    'idle',
+  )
 
   // Save status for each section
   const [birthDateStatus, setBirthDateStatus] = useState<SaveStatus>({ status: 'idle' })
@@ -183,6 +195,25 @@ export function Settings() {
     const currentCalendars: CalendarConfig[] = userSettings?.calendars ?? []
     const updatedCalendars = currentCalendars.filter((_, i) => i !== index)
     saveSection({ calendars: updatedCalendars }, setCalendarsStatus)
+  }
+
+  const handleGenerateActivityWatchToken = async () => {
+    setActivityWatchTokenStatus('loading')
+    try {
+      const token = await generateApiToken()
+      setActivityWatchToken(token)
+      setActivityWatchTokenStatus('idle')
+    } catch {
+      setActivityWatchTokenStatus('idle')
+    }
+  }
+
+  const handleCopyActivityWatchToken = () => {
+    if (!activityWatchToken) return
+    navigator.clipboard.writeText(activityWatchToken).then(() => {
+      setActivityWatchTokenStatus('copied')
+      setTimeout(() => setActivityWatchTokenStatus('idle'), 2000)
+    })
   }
 
   const handleConnectOura = () => {
@@ -317,6 +348,54 @@ export function Settings() {
               </p>
             </>
           }
+        </div>
+        <div class="form-field">
+          <label>ActivityWatch</label>
+          <p class="field-description">
+            <a href="https://activitywatch.net" target="_blank" rel="noopener noreferrer">
+              ActivityWatch
+            </a>{' '}
+            is an open-source, privacy-first activity tracker. Install it on your desktop and configure the
+            push agent to sync your window activity to Aurboda. See{' '}
+            <a href="https://docs.aurboda.net/activitywatch" target="_blank" rel="noopener noreferrer">
+              the setup guide
+            </a>{' '}
+            for instructions.
+          </p>
+          <div class="activitywatch-token-section">
+            <p class="field-description">
+              The push agent needs your Aurboda API token. Generate one and paste it into the agent config.
+            </p>
+            <div class="token-actions">
+              <button
+                type="button"
+                class="connect-button"
+                onClick={handleGenerateActivityWatchToken}
+                disabled={activityWatchTokenStatus === 'loading'}
+              >
+                {activityWatchTokenStatus === 'loading' ? 'Generating...' : 'Generate API Token'}
+              </button>
+              {activityWatchToken && (
+                <>
+                  <input
+                    class="token-display"
+                    type="text"
+                    readOnly
+                    value={activityWatchToken}
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                  />
+                  <button type="button" class="connect-button" onClick={handleCopyActivityWatchToken}>
+                    {activityWatchTokenStatus === 'copied' ? 'Copied!' : 'Copy'}
+                  </button>
+                </>
+              )}
+            </div>
+            {activityWatchToken && (
+              <p class="field-description warning">
+                Store this token securely — it grants access to your Aurboda account.
+              </p>
+            )}
+          </div>
         </div>
       </section>
 

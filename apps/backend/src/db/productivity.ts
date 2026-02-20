@@ -17,14 +17,15 @@ export const insertProductivity = async (user: string, records: ProductivityReco
     r.productivity,
     r.duration_sec,
     r.is_mobile || false,
+    r.device_name ?? '',
   ])
 
   await query(
     user,
     format(
-      `INSERT INTO productivity (source, start_time, end_time, activity, category, productivity, duration_sec, is_mobile)
+      `INSERT INTO productivity (source, start_time, end_time, activity, category, productivity, duration_sec, is_mobile, device_name)
        VALUES %L
-       ON CONFLICT (source, start_time, activity) DO UPDATE SET
+       ON CONFLICT (source, start_time, activity, device_name) DO UPDATE SET
          end_time = EXCLUDED.end_time,
          category = EXCLUDED.category,
          productivity = EXCLUDED.productivity,
@@ -42,7 +43,7 @@ export const getProductivity = async (
 ): Promise<ProductivityRecord[]> => {
   const result = await query(
     user,
-    `SELECT id, source, start_time, end_time, activity, category, productivity, duration_sec, is_mobile
+    `SELECT id, source, start_time, end_time, activity, category, productivity, duration_sec, is_mobile, device_name
      FROM productivity
      WHERE start_time >= $1 AND start_time <= $2
        AND deleted_at IS NULL
@@ -53,6 +54,7 @@ export const getProductivity = async (
   return result.rows.map((row) => ({
     activity: row.activity,
     category: row.category,
+    device_name: row.device_name || undefined,
     duration_sec: row.duration_sec,
     end_time: new Date(row.end_time),
     id: row.id,
