@@ -146,6 +146,16 @@ export const migrateSchema = async (user: string) => {
   }
   if (existingTableNames.has('productivity')) {
     await query(db, `ALTER TABLE productivity ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
+    await query(
+      db,
+      `ALTER TABLE productivity ADD COLUMN IF NOT EXISTS device_name VARCHAR(100) NOT NULL DEFAULT ''`,
+    )
+    // Update unique constraint to include device_name for multi-device support
+    await query(db, `ALTER TABLE productivity DROP CONSTRAINT IF EXISTS unique_productivity`)
+    await query(
+      db,
+      `ALTER TABLE productivity ADD CONSTRAINT unique_productivity UNIQUE (source, start_time, activity, device_name)`,
+    )
   }
 
   // Create missing tables and indexes (columns now exist for index creation)

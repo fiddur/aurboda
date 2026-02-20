@@ -123,6 +123,7 @@ export type ActivityType = z.infer<typeof activityTypeSchema>
  */
 export const dataSourceSchema = z
   .enum([
+    'activitywatch',
     'health_connect',
     'health_connect_aggregate',
     'oura',

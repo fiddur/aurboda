@@ -8,6 +8,7 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 |--------|-----------|-------------|-------------|------------|
 | [Oura Ring](./oura.md) | Sleep, readiness, resilience, cardiovascular age, meditation, HRV, tags | Pull (API) + Push (webhook) | OAuth credentials (env vars) | OAuth connect |
 | [Health Connect](./health-connect.md) | HR, HRV, weight, body composition, steps, sleep, exercise, 40+ record types | Push (Android app) | None | Install Android app |
+| [ActivityWatch](./activitywatch.md) | App/window usage, per-device tracking | Push (agent script) | None | Install AW + push agent |
 | [RescueTime](./rescuetime.md) | App/website usage, productivity scores | Pull (API) | None | API key |
 | [Last.fm](./lastfm.md) | Music scrobbles, auto-generated tags | Pull (API) | API key (admin setting) | Last.fm username |
 | [Calendars](./calendars.md) | Calendar events (stored as tags) | Pull (ICS fetch) | None | ICS URL(s) |
@@ -15,12 +16,18 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 
 ## Sync Behavior
 
-All pull-based sources support:
+**Pull-based sources** (Oura, RescueTime, Last.fm, Calendars) support:
 
 - **Manual sync** via REST API (`POST /api/sync/{provider}`) or MCP tool (`sync_{provider}`)
 - **Auto-sync** triggered before queries if data is older than 30 minutes
 - **Full resync** option to re-fetch historical data
 - **Sync state tracking** per provider with rate limit handling
+
+**Push-based sources** (ActivityWatch, Health Connect, OwnTracks) receive data from agents/apps:
+
+- Data is sent by a local agent or app via `POST /api/sync/{provider}`
+- ActivityWatch tracks last push time per device
+- No auto-sync (agent controls the schedule)
 
 Check sync status for all providers:
 - REST: `GET /api/sync/status`

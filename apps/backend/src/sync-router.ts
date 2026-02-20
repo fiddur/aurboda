@@ -2,10 +2,14 @@ import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
   healthConnectSyncBodySchema,
+  syncActivityWatchBodySchema,
   syncCalendarsBodySchema,
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
+  type ActivityWatchSyncResponse,
+  type ActivityWatchSyncResult,
+  type ActivityWatchSyncStatusResponse,
   type CalendarConfig,
   type CalendarSyncResponse,
   type CalendarSyncResult,
@@ -25,6 +29,7 @@ import {
   type RescueTimeSyncResponse,
   type RescueTimeSyncResult,
   type RescueTimeSyncStatusResponse,
+  type SyncActivityWatchBody,
   type SyncCalendarsBody,
   type SyncLastFmBody,
   type SyncOuraBody,
@@ -71,6 +76,12 @@ export interface SyncRouterDeps {
     user: string,
   ) => Promise<{ rescue_time_key?: string; calendars?: CalendarConfig[]; lastfm_username?: string }>
   getLastFmApiKey: () => Promise<string | null>
+  processActivityWatchEvents: (
+    user: string,
+    events: SyncActivityWatchBody['events'],
+    deviceName: string,
+  ) => Promise<ActivityWatchSyncResult>
+  getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
 }
 
 /**
@@ -331,6 +342,42 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       res.status(500).json({ error: message, success: false })
     }
   })
+
+  // ActivityWatch push sync endpoints
+  router.post<ParamsDictionary, ActivityWatchSyncResponse, SyncActivityWatchBody>(
+    '/activitywatch',
+    authMiddleware,
+    validateBody(syncActivityWatchBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { events, device_name } = req.body
+      const deviceName = device_name ?? ''
+
+      try {
+        const result = await deps.processActivityWatchEvents(user, events, deviceName)
+        res.json({ result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.get<ParamsDictionary, ActivityWatchSyncStatusResponse>(
+    '/activitywatch/status',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+
+      try {
+        const states = await deps.getActivityWatchSyncStates(user)
+        res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
 
   // Health Connect deletions endpoint
   router.post<ParamsDictionary, SyncResponse, HealthConnectDeletionsBody>(

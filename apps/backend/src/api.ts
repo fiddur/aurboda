@@ -9,6 +9,7 @@ import { json } from 'body-parser'
 import cors from 'cors'
 import express, { RequestHandler } from 'express'
 import { Client } from 'pg'
+import { processActivityWatchEvents } from './activitywatch-sync'
 import { createAuth } from './auth'
 import {
   deleteHealthConnectRecords,
@@ -269,6 +270,13 @@ const main = async () => {
     res.end(JSON.stringify({ refresh, token: refresh }))
   })
 
+  // Generate a fresh API token for the authenticated user (e.g. for push agents like ActivityWatch)
+  httpd.get('/auth/token', authMiddleware, (req, res) => {
+    const user = req.user!
+    const token = auth.createToken(user)
+    res.json({ success: true, token })
+  })
+
   // ==========================================================================
   // External service routers (already extracted)
   // ==========================================================================
@@ -322,12 +330,14 @@ const main = async () => {
     createSyncRouter(
       {
         deleteHealthConnectRecords,
+        getActivityWatchSyncStates: (user) => transformSyncStates(user, 'activitywatch'),
         getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
         getLastFmApiKey: () => centralDb.getLastFmApiKey(),
         getLastFmSyncStates: (user) => transformSyncStates(user, 'lastfm'),
         getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
         getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),
         getSettings,
+        processActivityWatchEvents,
         processDailyAggregate,
         processHealthConnectData,
         resetCalendarSyncState: (user) => resetSyncState(user, 'calendar'),

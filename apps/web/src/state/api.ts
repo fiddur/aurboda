@@ -140,6 +140,15 @@ export type {
   UserSettingsResponse,
 }
 
+// Generate a fresh API token for the authenticated user (used for push agents like ActivityWatch)
+export const generateApiToken = async (): Promise<string> => {
+  const { token } = auth.value
+  const response = await axios.get<{ success: boolean; token: string }>(`${API_URL}/auth/token`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data.token
+}
+
 // Fetch heart rate data for the specified date range
 export const fetchHeartRate = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value

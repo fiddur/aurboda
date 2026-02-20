@@ -240,6 +240,31 @@
   color: #666;
 }
 
+.activitywatch-token-section {
+  margin-top: 0.75rem;
+}
+
+.token-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.token-display {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem;
+  font-size: 0.8rem;
+  font-family: monospace;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f5f5f5;
+  color: #333;
+  cursor: text;
+}
+
 .reset-zones-button {
   margin-top: 1rem;
   padding: 0.5rem 1rem;
@@ -301,6 +326,12 @@
 
   .reset-zones-button:hover {
     background: #444;
+  }
+
+  .token-display {
+    background: #2a2a2a;
+    border-color: #555;
+    color: #ddd;
   }
 }
 

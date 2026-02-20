@@ -150,7 +150,7 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
   // Tool: get_sync_status
   server.tool(
     'get_sync_status',
-    'Get the current sync status for Oura, RescueTime, Calendar, and Last.fm data sources. Shows last sync time, status, and any errors.',
+    'Get the current sync status for Oura, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors. ActivityWatch shows last push time per device.',
     {
       provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
     },
@@ -172,6 +172,10 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
 
         if (provider === 'all' || provider === 'lastfm') {
           states.lastfm = await getAllSyncStates(user, 'lastfm')
+        }
+
+        if (provider === 'all' || provider === 'activitywatch') {
+          states.activitywatch = await getAllSyncStates(user, 'activitywatch')
         }
 
         return jsonResponse({ states, success: true })

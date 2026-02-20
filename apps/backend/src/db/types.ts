@@ -198,6 +198,7 @@ export interface ProductivityRecord {
   productivity?: number
   duration_sec: number
   is_mobile?: boolean
+  device_name?: string
   deleted_at?: Date
 }
 
