@@ -128,6 +128,7 @@ export const activitySchema = z
     activity_type: z.string().meta({ description: 'Activity type' }),
     avg_hrv: z.number().optional().meta({ description: 'Average HRV (ms) during the activity' }),
     data: z.record(z.string(), z.unknown()).optional(),
+    deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
     duration: durationMinutesSchema.optional(),
     end_time: iso8601DateTimeSchema.optional(),
     hr_zone_secs: hrZoneSecsSchema.optional().meta({

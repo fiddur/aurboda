@@ -21,12 +21,13 @@ import {
 import { RequestHandler, Router } from 'express'
 import {
   getProgrammaticTags,
+  getTagById,
   getUniqueTags,
   getUserSettings,
   updateTagNameByKey,
   upsertUserSettings,
 } from '../db'
-import { addTag, deleteTag } from '../services/mutations'
+import { addTag, deleteTag, deleteTagById, restoreTag } from '../services/mutations'
 import { queryTags, type SyncProvider } from '../services/queries'
 import { validateBody, validateQuery } from '../validation'
 
@@ -81,6 +82,57 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
       res.json(result)
     },
   )
+
+  // GET /tags/id/:id - Get a single tag by ID (for detail page)
+  router.get<{ id: string }>('/id/:id', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const user = req.user!
+
+    const tag = await getTagById(user, id, true)
+    if (!tag) {
+      return res.status(404).json({ error: 'Tag not found', success: false })
+    }
+
+    res.json({
+      data: {
+        deleted_at: tag.deleted_at?.toISOString(),
+        end_time: tag.end_time?.toISOString(),
+        external_id: tag.external_id,
+        id: tag.id,
+        source: tag.source,
+        start_time: tag.start_time.toISOString(),
+        tag: tag.tag,
+        tag_key: tag.tag_key,
+      },
+      success: true,
+    })
+  })
+
+  // DELETE /tags/id/:id - Soft-delete a tag by UUID (not external_id)
+  router.delete<{ id: string }>('/id/:id', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const user = req.user!
+
+    const result = await deleteTagById(user, id)
+    if (!result.success) {
+      return res.status(404).json({ error: 'Tag not found', success: false })
+    }
+
+    res.json({ success: true })
+  })
+
+  // POST /tags/id/:id/restore - Restore a soft-deleted tag
+  router.post<{ id: string }>('/id/:id/restore', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const user = req.user!
+
+    const result = await restoreTag(user, id)
+    if (!result.success) {
+      return res.status(404).json({ error: 'Tag not found or not deleted', success: false })
+    }
+
+    res.json({ success: true })
+  })
 
   // GET /tags/unique - Get all unique tag names
   router.get<Record<string, never>, UniqueTagsResponse>('/unique', authMiddleware, async (req, res) => {

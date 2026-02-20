@@ -2,7 +2,8 @@
  * MCP tag management tools.
  */
 import { addTagBodySchema, deleteTagParamsSchema } from '@aurboda/api-spec'
-import { addTag, deleteTag } from '../services/mutations'
+import { z } from 'zod'
+import { addTag, deleteTag, restoreTag } from '../services/mutations'
 import { errorResponse, jsonResponse, type McpServer, parseOptionalDate } from './helpers'
 
 export const registerTagTools = (server: McpServer, user: string) => {
@@ -40,6 +41,17 @@ export const registerTagTools = (server: McpServer, user: string) => {
     { ...deleteTagParamsSchema.shape },
     async ({ external_id }) => {
       const result = await deleteTag(user, external_id)
+      return jsonResponse(result)
+    },
+  )
+
+  // Tool: restore_tag
+  server.tool(
+    'restore_tag',
+    'Restore a soft-deleted tag by its ID.',
+    { id: z.string().uuid().describe('The ID of the tag to restore') },
+    async ({ id }) => {
+      const result = await restoreTag(user, id)
       return jsonResponse(result)
     },
   )

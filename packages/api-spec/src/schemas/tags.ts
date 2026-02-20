@@ -17,6 +17,7 @@ import {
  */
 export const tagSchema = z
   .object({
+    deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
     end_time: iso8601DateTimeSchema.optional(),
     external_id: z.string().optional().meta({ description: 'External ID from source' }),
     id: z.string().uuid().optional().meta({ description: 'Tag ID' }),

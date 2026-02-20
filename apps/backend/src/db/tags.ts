@@ -14,7 +14,8 @@ export const insertTag = async (user: string, tag: Tag) => {
        tag = EXCLUDED.tag,
        tag_key = COALESCE(EXCLUDED.tag_key, tags.tag_key),
        start_time = EXCLUDED.start_time,
-       end_time = EXCLUDED.end_time`,
+       end_time = EXCLUDED.end_time
+     WHERE tags.deleted_at IS NULL`,
     [tag.source, tag.external_id, tag.tag, tag.tag_key, tag.start_time, tag.end_time],
   )
 }
@@ -22,10 +23,11 @@ export const insertTag = async (user: string, tag: Tag) => {
 export const getTags = async (user: string, start: Date, end: Date): Promise<Tag[]> => {
   const result = await query(
     user,
-    `SELECT id, source, external_id, tag, tag_key, start_time, end_time
+    `SELECT id, source, external_id, tag, tag_key, start_time, end_time, deleted_at
      FROM tags
-     WHERE (end_time IS NOT NULL AND start_time <= $2 AND end_time >= $1)
-        OR (end_time IS NULL AND start_time >= $1 AND start_time <= $2)
+     WHERE deleted_at IS NULL
+       AND ((end_time IS NOT NULL AND start_time <= $2 AND end_time >= $1)
+            OR (end_time IS NULL AND start_time >= $1 AND start_time <= $2))
      ORDER BY start_time`,
     [start, end],
   )
@@ -33,8 +35,46 @@ export const getTags = async (user: string, start: Date, end: Date): Promise<Tag
   return result.rows.map(mapTagRow)
 }
 
+export const getTagById = async (user: string, id: string, includeDeleted = false): Promise<Tag | null> => {
+  const deletedClause = includeDeleted ? '' : ' AND deleted_at IS NULL'
+  const result = await query(
+    user,
+    `SELECT id, source, external_id, tag, tag_key, start_time, end_time, deleted_at
+     FROM tags
+     WHERE id = $1${deletedClause}`,
+    [id],
+  )
+
+  if (result.rows.length === 0) return null
+  return mapTagRow(result.rows[0])
+}
+
 export const deleteTag = async (user: string, externalId: string): Promise<boolean> => {
-  const result = await query(user, `DELETE FROM tags WHERE external_id = $1`, [externalId])
+  const result = await query(
+    user,
+    `UPDATE tags SET deleted_at = NOW() WHERE external_id = $1 AND deleted_at IS NULL`,
+    [externalId],
+  )
+
+  return (result.rowCount ?? 0) > 0
+}
+
+export const deleteTagById = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE tags SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
+    [id],
+  )
+
+  return (result.rowCount ?? 0) > 0
+}
+
+export const restoreTag = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE tags SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`,
+    [id],
+  )
 
   return (result.rowCount ?? 0) > 0
 }
@@ -59,10 +99,11 @@ export const findMergeableTag = async (
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, tag, tag_key, start_time, end_time
+    `SELECT id, source, external_id, tag, tag_key, start_time, end_time, deleted_at
      FROM tags
      WHERE tag = $1
        AND source = $4
+       AND deleted_at IS NULL
        AND (
          (end_time IS NOT NULL AND end_time >= $2 AND end_time <= $3)
          OR (end_time IS NULL AND start_time >= $2 AND start_time <= $3)
@@ -102,7 +143,7 @@ export const updateTagNameByKey = async (user: string, tagKey: string, newName: 
  * Get unique tags from the database (all stored tag names).
  */
 export const getUniqueTags = async (user: string): Promise<string[]> => {
-  const result = await query(user, `SELECT DISTINCT tag FROM tags ORDER BY tag`)
+  const result = await query(user, `SELECT DISTINCT tag FROM tags WHERE deleted_at IS NULL ORDER BY tag`)
   return result.rows.map((row) => row.tag)
 }
 
@@ -143,7 +184,7 @@ export const getProgrammaticTags = async (
        COUNT(*) as count,
        MAX(start_time) as latest_time
      FROM tags
-     WHERE tag_key IS NOT NULL
+     WHERE tag_key IS NOT NULL AND deleted_at IS NULL
      GROUP BY tag_key
      ORDER BY MAX(start_time) DESC`,
   )
@@ -163,7 +204,7 @@ export const getProgrammaticTags = async (
        COUNT(*) as count,
        MAX(start_time) as latest_time
      FROM tags
-     WHERE tag_key IS NULL
+     WHERE tag_key IS NULL AND deleted_at IS NULL
      GROUP BY tag
      ORDER BY MAX(start_time) DESC`,
   )

@@ -77,6 +77,7 @@ export interface Activity {
   title?: string
   notes?: string
   data?: Record<string, unknown>
+  deleted_at?: Date
 }
 
 export interface ActivityUpdate {
@@ -180,6 +181,7 @@ export interface Tag {
   tag_key?: string
   start_time: Date
   end_time?: Date
+  deleted_at?: Date
 }
 
 // ============================================================================
@@ -187,6 +189,7 @@ export interface Tag {
 // ============================================================================
 
 export interface ProductivityRecord {
+  id?: string
   source?: DataSource
   start_time: Date
   end_time: Date
@@ -195,6 +198,22 @@ export interface ProductivityRecord {
   productivity?: number
   duration_sec: number
   is_mobile?: boolean
+  deleted_at?: Date
+}
+
+// ============================================================================
+// Notes
+// ============================================================================
+
+export type EntityType = 'activity' | 'tag' | 'productivity'
+
+export interface Note {
+  id: string
+  entity_type: EntityType
+  entity_id: string
+  content: string
+  created_at: Date
+  updated_at: Date
 }
 
 // ============================================================================

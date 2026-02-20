@@ -43,6 +43,7 @@ import { createCorrelationsRouter } from './routes/correlations-router'
 import { createDashboardRouter } from './routes/dashboard-router'
 import { createLocationsRouter } from './routes/locations-router'
 import { createMetricsRouter } from './routes/metrics-router'
+import { createNotesRouter } from './routes/notes-router'
 import { createSettingsRouter } from './routes/settings-router'
 import { createTagsRouter } from './routes/tags-router'
 import { createTrendsRouter } from './routes/trends-router'
@@ -417,6 +418,7 @@ const main = async () => {
 
   httpd.use(createMetricsRouter(authMiddleware, syncProvider))
   httpd.use('/tags', createTagsRouter(authMiddleware, syncProvider))
+  httpd.use('/notes', createNotesRouter(authMiddleware))
   httpd.use(createActivitiesRouter(authMiddleware, syncProvider))
   httpd.use('/locations', createLocationsRouter(authMiddleware))
   httpd.use(createSettingsRouter(authMiddleware))

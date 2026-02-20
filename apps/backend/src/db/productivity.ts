@@ -28,7 +28,8 @@ export const insertProductivity = async (user: string, records: ProductivityReco
          end_time = EXCLUDED.end_time,
          category = EXCLUDED.category,
          productivity = EXCLUDED.productivity,
-         duration_sec = EXCLUDED.duration_sec`,
+         duration_sec = EXCLUDED.duration_sec
+       WHERE productivity.deleted_at IS NULL`,
       values,
     ),
   )
@@ -41,9 +42,10 @@ export const getProductivity = async (
 ): Promise<ProductivityRecord[]> => {
   const result = await query(
     user,
-    `SELECT source, start_time, end_time, activity, category, productivity, duration_sec, is_mobile
+    `SELECT id, source, start_time, end_time, activity, category, productivity, duration_sec, is_mobile
      FROM productivity
      WHERE start_time >= $1 AND start_time <= $2
+       AND deleted_at IS NULL
      ORDER BY start_time`,
     [start, end],
   )
@@ -53,9 +55,30 @@ export const getProductivity = async (
     category: row.category,
     duration_sec: row.duration_sec,
     end_time: new Date(row.end_time),
+    id: row.id,
     is_mobile: row.is_mobile,
     productivity: row.productivity,
     source: row.source,
     start_time: new Date(row.start_time),
   }))
+}
+
+export const deleteProductivityRecord = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE productivity SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
+    [id],
+  )
+
+  return (result.rowCount ?? 0) > 0
+}
+
+export const restoreProductivityRecord = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE productivity SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`,
+    [id],
+  )
+
+  return (result.rowCount ?? 0) > 0
 }

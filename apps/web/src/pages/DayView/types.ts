@@ -14,4 +14,6 @@ export interface ChartItem {
   color: string
   tooltip: TooltipContent
   isPoint: boolean
+  entity_id?: string
+  entity_type?: 'activity' | 'tag' | 'productivity'
 }

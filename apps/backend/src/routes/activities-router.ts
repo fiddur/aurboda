@@ -21,7 +21,15 @@ import {
   type UpdateActivityResponse,
 } from '@aurboda/api-spec'
 import { RequestHandler, Router } from 'express'
-import { addActivity, deleteActivity, updateActivity } from '../services/mutations'
+import { getActivityById } from '../db'
+import {
+  addActivity,
+  deleteActivity,
+  deleteProductivity,
+  restoreActivity,
+  restoreProductivity,
+  updateActivity,
+} from '../services/mutations'
 import { queryActivities, queryProductivity, type SyncProvider } from '../services/queries'
 import { validateBody, validateQuery } from '../validation'
 
@@ -160,6 +168,71 @@ export const createActivitiesRouter = (
       })
     },
   )
+
+  // GET /activities/:id - Get a single activity by ID (for detail page)
+  router.get<{ id: string }>('/activities/:id', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const user = req.user!
+
+    const activity = await getActivityById(user, id, true)
+    if (!activity) {
+      return res.status(404).json({ error: 'Activity not found', success: false })
+    }
+
+    res.json({
+      data: {
+        activity_type: activity.activity_type,
+        data: activity.data,
+        deleted_at: activity.deleted_at?.toISOString(),
+        end_time: activity.end_time?.toISOString(),
+        id: activity.id,
+        notes: activity.notes,
+        source: activity.source,
+        start_time: activity.start_time.toISOString(),
+        title: activity.title,
+      },
+      success: true,
+    })
+  })
+
+  // POST /activities/:id/restore - Restore a soft-deleted activity
+  router.post<{ id: string }>('/activities/:id/restore', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const user = req.user!
+
+    const result = await restoreActivity(user, id)
+    if (!result.success) {
+      return res.status(404).json({ error: 'Activity not found or not deleted', success: false })
+    }
+
+    res.json({ success: true })
+  })
+
+  // DELETE /productivity/:id - Soft-delete a productivity record
+  router.delete<{ id: string }>('/productivity/:id', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const user = req.user!
+
+    const result = await deleteProductivity(user, id)
+    if (!result.success) {
+      return res.status(404).json({ error: 'Productivity record not found', success: false })
+    }
+
+    res.json({ success: true })
+  })
+
+  // POST /productivity/:id/restore - Restore a soft-deleted productivity record
+  router.post<{ id: string }>('/productivity/:id/restore', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const user = req.user!
+
+    const result = await restoreProductivity(user, id)
+    if (!result.success) {
+      return res.status(404).json({ error: 'Record not found or not deleted', success: false })
+    }
+
+    res.json({ success: true })
+  })
 
   // GET /productivity - Query productivity data for a time range
   router.get<Record<string, never>, ProductivityResponse, unknown, ProductivityQuery>(

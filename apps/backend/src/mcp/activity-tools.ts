@@ -10,7 +10,7 @@ import {
   updateActivityBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { addActivity, deleteActivity, updateActivity } from '../services/mutations'
+import { addActivity, deleteActivity, restoreActivity, updateActivity } from '../services/mutations'
 import { errorResponse, jsonResponse, type McpServer } from './helpers'
 
 export const registerActivityTools = (server: McpServer, user: string) => {
@@ -69,6 +69,17 @@ export const registerActivityTools = (server: McpServer, user: string) => {
     { ...deleteActivityParamsSchema.shape },
     async ({ id }) => {
       const result = await deleteActivity(user, id)
+      return jsonResponse(result)
+    },
+  )
+
+  // Tool: restore_activity
+  server.tool(
+    'restore_activity',
+    'Restore a soft-deleted activity by its ID.',
+    { id: z.string().uuid().describe('The ID of the activity to restore') },
+    async ({ id }) => {
+      const result = await restoreActivity(user, id)
       return jsonResponse(result)
     },
   )

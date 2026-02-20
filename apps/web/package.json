@@ -23,6 +23,7 @@
     "d3": "^7.9.0",
     "date-fns": "^4.1.0",
     "leaflet": "^1.9.4",
+    "marked": "^17.0.3",
     "preact": "^10.27.2",
     "preact-iso": "^2.10.0",
     "react-leaflet": "^5.0.0"

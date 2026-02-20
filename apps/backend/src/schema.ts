@@ -44,13 +44,15 @@ export const createTableStatements: Record<string, string> = {
       title           VARCHAR(255),
       notes           TEXT,
       data            JSONB,
+      deleted_at      TIMESTAMPTZ,
       CONSTRAINT unique_activity UNIQUE (source, activity_type, start_time)
     )
   `,
 
   activities_indexes: `
     CREATE INDEX IF NOT EXISTS idx_activities_type_time ON activities (activity_type, start_time DESC);
-    CREATE INDEX IF NOT EXISTS idx_activities_time_range ON activities (start_time, end_time)
+    CREATE INDEX IF NOT EXISTS idx_activities_time_range ON activities (start_time, end_time);
+    CREATE INDEX IF NOT EXISTS idx_activities_not_deleted ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL
   `,
 
   // Detected locations (clusters detected from GPS data with geocoded addresses)
@@ -150,6 +152,7 @@ export const createTableStatements: Record<string, string> = {
       last_activity   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
+
   mcp_sessions_indexes: `
     CREATE INDEX IF NOT EXISTS idx_mcp_sessions_username ON mcp_sessions (username);
     CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_activity ON mcp_sessions (last_activity)
@@ -166,9 +169,25 @@ export const createTableStatements: Record<string, string> = {
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
-
   named_locations_indexes: `
     CREATE INDEX IF NOT EXISTS idx_named_locations_geo ON named_locations USING GIST (location)
+  `,
+
+  // Notes/comments on any entity (polymorphic reference)
+  notes: `
+    CREATE TABLE IF NOT EXISTS notes (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      entity_type     VARCHAR(50) NOT NULL,
+      entity_id       UUID NOT NULL,
+      content         TEXT NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
+  notes_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_notes_entity ON notes (entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_notes_created ON notes (created_at DESC)
   `,
 
   // OAuth tokens for third-party APIs
@@ -217,12 +236,14 @@ export const createTableStatements: Record<string, string> = {
       productivity    SMALLINT,
       duration_sec    INTEGER NOT NULL,
       is_mobile       BOOLEAN DEFAULT FALSE,
+      deleted_at      TIMESTAMPTZ,
       CONSTRAINT unique_productivity UNIQUE (source, start_time, activity)
     )
   `,
   productivity_indexes: `
     CREATE INDEX IF NOT EXISTS idx_productivity_time ON productivity (start_time DESC);
-    CREATE INDEX IF NOT EXISTS idx_productivity_category ON productivity (category, start_time DESC)
+    CREATE INDEX IF NOT EXISTS idx_productivity_category ON productivity (category, start_time DESC);
+    CREATE INDEX IF NOT EXISTS idx_productivity_not_deleted ON productivity (start_time DESC) WHERE deleted_at IS NULL
   `,
   // Raw data sink - stores all incoming data in original form
 
@@ -270,13 +291,15 @@ export const createTableStatements: Record<string, string> = {
       tag_key         VARCHAR(255),
       start_time      TIMESTAMPTZ NOT NULL,
       end_time        TIMESTAMPTZ,
+      deleted_at      TIMESTAMPTZ,
       CONSTRAINT unique_tag UNIQUE (source, external_id)
     )
   `,
   tags_indexes: `
     CREATE INDEX IF NOT EXISTS idx_tags_time ON tags (start_time DESC);
     CREATE INDEX IF NOT EXISTS idx_tags_tag_time ON tags (tag, start_time DESC);
-    CREATE INDEX IF NOT EXISTS idx_tags_tag_key ON tags (tag_key) WHERE tag_key IS NOT NULL
+    CREATE INDEX IF NOT EXISTS idx_tags_tag_key ON tags (tag_key) WHERE tag_key IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_tags_not_deleted ON tags (start_time DESC) WHERE deleted_at IS NULL
   `,
 
   // Normalized time-series metrics for fast charting queries
@@ -334,6 +357,8 @@ export const tableCreationOrder = [
   'oauth_tokens',
   'sync_state',
   'user_settings',
+  'notes',
+  'notes_indexes',
   'mcp_sessions',
   'mcp_sessions_indexes',
 ]
