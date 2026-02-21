@@ -1,5 +1,6 @@
 .entity-detail-page {
-  max-width: 700px;
+  max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
   padding: 2rem;
 }
@@ -107,6 +108,164 @@
 
 .field-value {
   color: #374151;
+}
+
+/* Detail grid layout for rich detail views */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.detail-grid-full {
+  grid-column: 1 / -1;
+}
+
+/* Oura metric summary cards */
+.metric-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.metric-card {
+  padding: 0.75rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+  min-width: 100px;
+  text-align: center;
+}
+
+.metric-card-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.metric-card-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #374151;
+}
+
+.metric-card-unit {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #9ca3af;
+}
+
+/* Activity chart */
+.activity-chart-container {
+  position: relative;
+}
+
+.chart-toggles {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.chart-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #6b7280;
+  transition: all 0.15s ease;
+}
+
+.chart-toggle.active {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+  color: #374151;
+}
+
+.chart-toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.chart-svg-container {
+  width: 100%;
+  overflow: hidden;
+}
+
+.chart-svg-container svg {
+  display: block;
+}
+
+/* Music playlist */
+.music-playlist {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+  padding: 1rem;
+}
+
+.music-playlist h3 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.music-playlist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.music-playlist-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.music-playlist-time {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  white-space: nowrap;
+  min-width: 40px;
+}
+
+.music-playlist-track {
+  color: #374151;
+}
+
+.music-playlist-artist {
+  font-weight: 500;
+}
+
+.music-playlist-album {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+/* Section card */
+.detail-section {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.detail-section h3 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
 }
 
 /* HR zones */
@@ -398,6 +557,43 @@
   .hr-zone-legend {
     color: #9ca3af;
   }
+
+  .metric-card {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .metric-card-value {
+    color: #f3f4f6;
+  }
+
+  .metric-card-label {
+    color: #9ca3af;
+  }
+
+  .music-playlist {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .music-playlist-track {
+    color: #d1d5db;
+  }
+
+  .detail-section {
+    border-color: #374151;
+  }
+
+  .chart-toggle {
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+
+  .chart-toggle.active {
+    background: #374151;
+    border-color: #6b7280;
+    color: #d1d5db;
+  }
 }
 
 /* Responsive */
@@ -417,5 +613,18 @@
 
   .field-label {
     min-width: auto;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-cards {
+    gap: 0.5rem;
+  }
+
+  .metric-card {
+    min-width: 80px;
+    padding: 0.5rem 0.75rem;
   }
 }

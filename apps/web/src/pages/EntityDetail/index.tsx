@@ -1,6 +1,11 @@
 /**
  * Entity detail page — shows an activity, tag, or productivity record
  * with notes and action buttons (delete / restore).
+ *
+ * Activities dispatch to type-specific detail components:
+ * - sleep/nap → SleepDetail (hypnogram, Oura metrics, HR/HRV)
+ * - exercise  → ExerciseDetail (HR chart, HR zones)
+ * - other     → generic ActivityDetail
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -23,6 +28,9 @@ import {
   Tag,
   updateNote,
 } from '../../state/api'
+import { ExerciseDetail } from './ExerciseDetail'
+import { MusicPlaylist } from './MusicPlaylist'
+import { SleepDetail } from './SleepDetail'
 
 import './style.css'
 
@@ -43,10 +51,8 @@ const formatDuration = (start: Date, end: Date): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-const hrZoneLabels = ['Rest', 'Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 'Zone 5']
-const hrZoneColors = ['#22c55e', '#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444']
-
-const ActivityDetail = ({ activity }: { activity: Activity }) => {
+/** Generic activity detail for types other than sleep/exercise. */
+const GenericActivityDetail = ({ activity }: { activity: Activity }) => {
   const end = activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
   const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseTypeName as
     | string
@@ -85,47 +91,27 @@ const ActivityDetail = ({ activity }: { activity: Activity }) => {
           </div>
         )}
       </div>
-
-      {activity.hr_zone_secs && <HrZoneBar zones={activity.hr_zone_secs as Record<number, number>} />}
     </div>
   )
 }
 
-const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
-  const total = Object.values(zones).reduce((s, v) => s + v, 0)
-  if (total <= 0) return null
+/** Dispatch to type-specific activity detail component. */
+const ActivityDetailDispatch = ({ activity }: { activity: Activity }) => {
+  const end = activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
+
+  const isSleep = activity.activity_type === 'sleep' || activity.activity_type === 'nap'
+  const isExercise = activity.activity_type === 'exercise'
 
   return (
-    <div class="hr-zones-detail">
-      <h3>HR Zones</h3>
-      <div class="hr-zone-visual-bar">
-        {[0, 1, 2, 3, 4, 5].map((z) => {
-          const secs = zones[z] ?? 0
-          const pct = (secs / total) * 100
-          if (pct <= 0) return null
-          return (
-            <span
-              key={z}
-              class="hr-zone-segment"
-              style={{ background: hrZoneColors[z], width: `${pct}%` }}
-              title={`${hrZoneLabels[z]}: ${Math.round(secs / 60)}m`}
-            />
-          )
-        })}
+    <>
+      {isSleep && <SleepDetail activity={activity} />}
+      {isExercise && <ExerciseDetail activity={activity} />}
+      {!isSleep && !isExercise && <GenericActivityDetail activity={activity} />}
+
+      <div class="detail-grid">
+        <MusicPlaylist start={activity.start_time} end={end} />
       </div>
-      <div class="hr-zone-legend">
-        {[0, 1, 2, 3, 4, 5].map((z) => {
-          const secs = zones[z] ?? 0
-          if (secs <= 0) return null
-          return (
-            <span key={z} class="hr-zone-entry">
-              <span class="hr-zone-dot" style={{ background: hrZoneColors[z] }} />
-              {hrZoneLabels[z]}: {Math.round(secs / 60)}m
-            </span>
-          )
-        })}
-      </div>
-    </div>
+    </>
   )
 }
 
@@ -404,7 +390,7 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
         onMutationSuccess={invalidateEntity}
       />
 
-      {entityType === 'activity' && activity && <ActivityDetail activity={activity} />}
+      {entityType === 'activity' && activity && <ActivityDetailDispatch activity={activity} />}
       {entityType === 'tag' && tag && <TagDetail tag={tag} />}
 
       <NotesSection entityType={entityType} entityId={entityId} />
