@@ -87,10 +87,19 @@ describe('correlations service', () => {
 
       const result = await getBaseline('testuser')
 
-      expect(result.hrv.avg7day).toBe(45.5)
-      expect(result.hrv.avg30day).toBe(44.2)
+      // Verify HRV is fetched via queryMetrics('hrv_sleep'), not getTimeSeriesStats('hrv_rmssd')
+      expect(queries.queryMetrics).toHaveBeenCalledTimes(3)
+      for (const [, metric] of vi.mocked(queries.queryMetrics).mock.calls) {
+        expect(metric).toBe('hrv_sleep')
+      }
+
+      // Verify averages are computed correctly from the data points
+      expect(result.hrv.avg7day).toBe(45.5) // (40 + 46 + 50.5) / 3
+      expect(result.hrv.avg30day).toBe(44.2) // (42 + 46.4) / 2
       expect(result.resting_hr.avg7day).toBe(60.3)
       expect(result.resting_hr.avg30day).toBe(61.1)
+
+      // Verify trends are calculated (30-day vs previous 30-day)
       expect(result.hrv.trend_percent).not.toBeNull()
       expect(result.resting_hr.trend_percent).not.toBeNull()
       expect(result.period.start).toBeDefined()
@@ -102,6 +111,9 @@ describe('correlations service', () => {
       vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
 
       const result = await getBaseline('testuser')
+
+      // Should still call queryMetrics for sleep HRV even when empty
+      expect(queries.queryMetrics).toHaveBeenCalledTimes(3)
 
       expect(result.hrv.avg7day).toBeNull()
       expect(result.hrv.avg30day).toBeNull()
