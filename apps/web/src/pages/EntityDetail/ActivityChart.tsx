@@ -1,0 +1,252 @@
+/**
+ * D3-based activity chart with toggleable overlays.
+ *
+ * Supports:
+ * - Sleep hypnogram (colored bands by sleep stage)
+ * - Heart rate line overlay
+ * - HRV line overlay
+ */
+import { useQuery } from '@tanstack/react-query'
+import * as d3 from 'd3'
+import { format } from 'date-fns'
+import { useEffect, useRef, useState } from 'preact/hooks'
+import { fetchHeartRate, fetchHrv } from '../../state/api'
+import { STAGE_COLORS, STAGE_LABELS, STAGE_Y_ORDER, type SleepStage } from './sleep-utils'
+
+interface ActivityChartProps {
+  start: Date
+  end: Date
+  stages?: SleepStage[]
+  showHrDefault?: boolean
+  showHrvDefault?: boolean
+}
+
+const CHART_HEIGHT = 260
+const MARGIN = { bottom: 30, left: 50, right: 60, top: 10 }
+
+/** Hypnogram Y-axis labels in display order (top to bottom). */
+const HYPNOGRAM_LABELS = ['Awake', 'REM', 'Light', 'Deep']
+const HYPNOGRAM_Y_VALUES = [0, 1, 2, 3]
+
+type GSelection = d3.Selection<SVGGElement, unknown, null, undefined>
+
+const drawHypnogram = (
+  g: GSelection,
+  xScale: d3.ScaleTime<number, number>,
+  innerWidth: number,
+  innerHeight: number,
+  stages: SleepStage[],
+) => {
+  const yScale = d3.scaleLinear().domain([-0.5, 3.5]).range([0, innerHeight])
+
+  const yAxis = g.append('g')
+  for (let i = 0; i < HYPNOGRAM_LABELS.length; i++) {
+    yAxis
+      .append('text')
+      .attr('x', -8)
+      .attr('y', yScale(HYPNOGRAM_Y_VALUES[i]!))
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'end')
+      .attr('fill', 'currentColor')
+      .attr('font-size', '0.7rem')
+      .attr('opacity', 0.6)
+      .text(HYPNOGRAM_LABELS[i]!)
+  }
+
+  for (const yVal of HYPNOGRAM_Y_VALUES) {
+    g.append('line')
+      .attr('x1', 0)
+      .attr('x2', innerWidth)
+      .attr('y1', yScale(yVal))
+      .attr('y2', yScale(yVal))
+      .attr('stroke', 'currentColor')
+      .attr('stroke-opacity', 0.1)
+  }
+
+  const bandHeight = innerHeight / 4
+  for (const stage of stages) {
+    const sx = xScale(new Date(stage.startTime))
+    const ex = xScale(new Date(stage.endTime))
+    const yVal = STAGE_Y_ORDER[stage.stage] ?? 0
+
+    g.append('rect')
+      .attr('x', sx)
+      .attr('y', yScale(yVal) - bandHeight / 2)
+      .attr('width', Math.max(ex - sx, 1))
+      .attr('height', bandHeight)
+      .attr('fill', STAGE_COLORS[stage.stage] ?? '#9ca3af')
+      .attr('opacity', 0.7)
+      .append('title')
+      .text(
+        `${STAGE_LABELS[stage.stage] ?? 'Unknown'}: ${format(new Date(stage.startTime), 'HH:mm')} – ${format(new Date(stage.endTime), 'HH:mm')}`,
+      )
+  }
+}
+
+const drawLineOverlay = (
+  g: GSelection,
+  xScale: d3.ScaleTime<number, number>,
+  innerWidth: number,
+  innerHeight: number,
+  data: [Date, number][],
+  color: string,
+  unit: string,
+  axisSide: 'left' | 'right',
+  axisOffset: number = 0,
+) => {
+  const yExtent = d3.extent(data, (d) => d[1]) as [number, number]
+  const padding = (yExtent[1] - yExtent[0]) * 0.1 || 5
+  const yScale = d3
+    .scaleLinear()
+    .domain([yExtent[0] - padding, yExtent[1] + padding])
+    .range([innerHeight, 0])
+
+  if (axisSide === 'right') {
+    g.append('g')
+      .attr('transform', `translate(${innerWidth + axisOffset},0)`)
+      .call(d3.axisRight(yScale).ticks(4))
+      .selectAll('text')
+      .attr('fill', color)
+      .attr('font-size', '0.7rem')
+
+    g.append('text')
+      .attr('x', innerWidth + axisOffset + 35)
+      .attr('y', -2)
+      .attr('text-anchor', 'end')
+      .attr('fill', color)
+      .attr('font-size', '0.65rem')
+      .text(unit)
+  } else {
+    g.append('g')
+      .call(d3.axisLeft(yScale).ticks(4))
+      .selectAll('text')
+      .attr('fill', color)
+      .attr('font-size', '0.7rem')
+  }
+
+  const line = d3
+    .line<[Date, number]>()
+    .x((d) => xScale(d[0]))
+    .y((d) => yScale(d[1]))
+    .curve(d3.curveMonotoneX)
+
+  g.append('path')
+    .datum(data)
+    .attr('fill', 'none')
+    .attr('stroke', color)
+    .attr('stroke-width', 1.5)
+    .attr('stroke-opacity', 0.8)
+    .attr('d', line)
+}
+
+const hasData = (data: [Date, number][] | undefined): data is [Date, number][] =>
+  data !== undefined && data.length > 0
+
+export const ActivityChart = ({
+  start,
+  end,
+  stages,
+  showHrDefault = false,
+  showHrvDefault = false,
+}: ActivityChartProps) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [showHr, setShowHr] = useState(showHrDefault)
+  const [showHrv, setShowHrv] = useState(showHrvDefault)
+
+  const hrQuery = useQuery({
+    enabled: showHr,
+    queryFn: () => fetchHeartRate(start, end),
+    queryKey: ['detail-hr', start.toISOString(), end.toISOString()],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const hrvQuery = useQuery({
+    enabled: showHrv,
+    queryFn: () => fetchHrv(start, end),
+    queryKey: ['detail-hrv', start.toISOString(), end.toISOString()],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const hasHypnogram = stages && stages.length > 0
+  const hrData = showHr ? hrQuery.data : undefined
+  const hrvData = showHrv ? hrvQuery.data : undefined
+
+  useEffect(() => {
+    if (!svgRef.current || !containerRef.current) return
+
+    const containerWidth = containerRef.current.clientWidth
+    const svg = d3.select(svgRef.current)
+    svg.selectAll('*').remove()
+
+    const innerWidth = containerWidth - MARGIN.left - MARGIN.right
+    const innerHeight = CHART_HEIGHT - MARGIN.top - MARGIN.bottom
+
+    svg.attr('width', containerWidth).attr('height', CHART_HEIGHT)
+
+    const g = svg.append('g').attr('transform', `translate(${MARGIN.left},${MARGIN.top})`)
+
+    const xScale = d3.scaleTime().domain([start, end]).range([0, innerWidth])
+
+    g.append('g')
+      .attr('transform', `translate(0,${innerHeight})`)
+      .call(
+        d3
+          .axisBottom(xScale)
+          .ticks(6)
+          .tickFormat((d) => format(d as Date, 'HH:mm')),
+      )
+      .selectAll('text')
+      .attr('fill', 'currentColor')
+
+    if (hasHypnogram) {
+      drawHypnogram(g, xScale, innerWidth, innerHeight, stages!)
+    }
+
+    if (hasData(hrData)) {
+      drawLineOverlay(
+        g,
+        xScale,
+        innerWidth,
+        innerHeight,
+        hrData,
+        '#ef4444',
+        'bpm',
+        hasHypnogram ? 'right' : 'left',
+      )
+    }
+
+    if (hasData(hrvData)) {
+      const hrVisible = hasData(hrData)
+      const axisSide = hrVisible || hasHypnogram ? 'right' : 'left'
+      const offset = axisSide === 'right' && hrVisible ? 45 : 0
+      drawLineOverlay(g, xScale, innerWidth, innerHeight, hrvData, '#14b8a6', 'ms', axisSide, offset)
+    }
+  }, [start, end, stages, hasHypnogram, hrData, hrvData])
+
+  return (
+    <div class="activity-chart-container">
+      <div class="chart-toggles">
+        <button
+          class={`chart-toggle${showHr ? ' active' : ''}`}
+          onClick={() => setShowHr(!showHr)}
+          type="button"
+        >
+          <span class="chart-toggle-dot" style={{ background: '#ef4444' }} />
+          HR {hrQuery.isLoading && showHr ? '...' : ''}
+        </button>
+        <button
+          class={`chart-toggle${showHrv ? ' active' : ''}`}
+          onClick={() => setShowHrv(!showHrv)}
+          type="button"
+        >
+          <span class="chart-toggle-dot" style={{ background: '#14b8a6' }} />
+          HRV {hrvQuery.isLoading && showHrv ? '...' : ''}
+        </button>
+      </div>
+      <div class="chart-svg-container" ref={containerRef}>
+        <svg ref={svgRef} />
+      </div>
+    </div>
+  )
+}
