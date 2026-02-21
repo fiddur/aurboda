@@ -9,7 +9,7 @@
 import { type MetricType } from '@aurboda/api-spec'
 import { getActivities, getProductivity, getTags, getTimeSeries, getTimeSeriesStats } from '../db'
 import { getPlaceVisits } from './locations'
-import { SyncProvider } from './queries'
+import { queryMetrics, SyncProvider } from './queries'
 
 // ============================================================================
 // Types
@@ -420,12 +420,20 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
   const prevEnd30day = new Date(start30day)
   prevEnd30day.setMilliseconds(-1)
 
-  // Fetch all stats in parallel
-  const [hrvStats7day, hrvStats30day, hrvStatsPrev30day, hrStats7day, hrStats30day, hrStatsPrev30day] =
+  // Compute average from sleep HRV data (contextual metric, not stored directly)
+  const getSleepHrvAvg = async (start: Date, end: Date): Promise<number | null> => {
+    const result = await queryMetrics(user, 'hrv_sleep', start, end)
+    if (result.count === 0) return null
+    const sum = result.data.reduce((acc, d) => acc + d.value, 0)
+    return sum / result.count
+  }
+
+  // Fetch sleep HRV and resting HR stats in parallel
+  const [hrvAvg7day, hrvAvg30day, hrvAvgPrev30day, hrStats7day, hrStats30day, hrStatsPrev30day] =
     await Promise.all([
-      getTimeSeriesStats(user, ['hrv_rmssd'], start7day, end7day),
-      getTimeSeriesStats(user, ['hrv_rmssd'], start30day, end30day),
-      getTimeSeriesStats(user, ['hrv_rmssd'], prevStart30day, prevEnd30day),
+      getSleepHrvAvg(start7day, end7day),
+      getSleepHrvAvg(start30day, end30day),
+      getSleepHrvAvg(prevStart30day, prevEnd30day),
       getTimeSeriesStats(user, ['resting_heart_rate'], start7day, end7day),
       getTimeSeriesStats(user, ['resting_heart_rate'], start30day, end30day),
       getTimeSeriesStats(user, ['resting_heart_rate'], prevStart30day, prevEnd30day),
@@ -433,8 +441,8 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
 
   // Calculate trends
   const hrvTrend =
-    hrvStats30day[0]?.avg && hrvStatsPrev30day[0]?.avg ?
-      ((hrvStats30day[0].avg - hrvStatsPrev30day[0].avg) / hrvStatsPrev30day[0].avg) * 100
+    hrvAvg30day !== null && hrvAvgPrev30day !== null ?
+      ((hrvAvg30day - hrvAvgPrev30day) / hrvAvgPrev30day) * 100
     : null
 
   const hrTrend =
@@ -444,8 +452,8 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
 
   return {
     hrv: {
-      avg7day: hrvStats7day[0]?.avg ? Math.round(hrvStats7day[0].avg * 10) / 10 : null,
-      avg30day: hrvStats30day[0]?.avg ? Math.round(hrvStats30day[0].avg * 10) / 10 : null,
+      avg7day: hrvAvg7day !== null ? Math.round(hrvAvg7day * 10) / 10 : null,
+      avg30day: hrvAvg30day !== null ? Math.round(hrvAvg30day * 10) / 10 : null,
       trend_percent: hrvTrend !== null ? Math.round(hrvTrend * 10) / 10 : null,
     },
     period: {
