@@ -31,6 +31,7 @@ import {
 import { classifyHrvByContext, getHrvContextWindows, HrvContext } from './hrv-context'
 import { getPlaceVisits } from './locations'
 import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs } from './settings'
+import { computeSleepMinutes } from './sleep-duration'
 
 // ============================================================================
 // Types
@@ -589,13 +590,19 @@ export async function getDailySummary(
       start_time: p.start_time.toISOString(),
     })),
     productivity: productivitySummary,
-    sleep_sessions: sleepSessions.map((s) => ({
-      data: s.data,
-      duration:
-        s.end_time ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60) : undefined,
-      end_time: s.end_time?.toISOString(),
-      start_time: s.start_time.toISOString(),
-    })),
+    sleep_sessions: sleepSessions.map((s) => {
+      const timeInBed =
+        s.end_time ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60) : undefined
+      const totalSleep = computeSleepMinutes(s.data as Record<string, unknown> | undefined)
+      return {
+        data: s.data,
+        duration: totalSleep ?? timeInBed,
+        end_time: s.end_time?.toISOString(),
+        start_time: s.start_time.toISOString(),
+        time_in_bed: timeInBed,
+        total_sleep: totalSleep,
+      }
+    }),
     steps: { total: totalSteps },
     tags: tags.map((t) => ({
       end_time: t.end_time?.toISOString(),
@@ -803,6 +810,8 @@ export interface ActivityResult {
   start_time: string
   end_time?: string
   duration?: number // minutes
+  time_in_bed?: number // minutes (end_time - start_time, sleep only)
+  total_sleep?: number // minutes (actual sleep excluding awake, sleep only)
   activity_type: string
   title?: string
   notes?: string
@@ -857,17 +866,29 @@ export async function queryActivities(
 
   return Promise.all(
     activities.map(async (a) => {
+      const timeInBedMinutes =
+        a.end_time ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60) : undefined
+
       const result: ActivityResult = {
         activity_type: a.activity_type,
         data: a.data,
-        duration:
-          a.end_time ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60) : undefined,
+        duration: timeInBedMinutes,
         end_time: a.end_time?.toISOString(),
         id: a.id,
         notes: a.notes,
         source: a.source,
         start_time: a.start_time.toISOString(),
         title: a.title,
+      }
+
+      // For sleep activities: compute actual sleep time from stage data
+      if (a.activity_type === 'sleep') {
+        result.time_in_bed = timeInBedMinutes
+        const sleepMinutes = computeSleepMinutes(a.data as Record<string, unknown> | undefined)
+        if (sleepMinutes !== undefined) {
+          result.total_sleep = sleepMinutes
+          result.duration = sleepMinutes
+        }
       }
 
       // Compute HR zones for exercise activities with end time

@@ -166,36 +166,13 @@ const escapeHtml = (str: string): string =>
 type OuraSleepMetrics = Record<string, number>
 type OuraSleepByDate = Map<string, OuraSleepMetrics>
 
-/**
- * Health Connect sleep stage values.
- * AWAKE=1, SLEEPING=2, OUT_OF_BED=3, LIGHT=4, DEEP=5, REM=6
- */
-const HC_SLEEP_STAGES = new Set([2, 4, 5, 6])
-
-const computeHcSleepMinutes = (data: Record<string, unknown> | undefined): number | undefined => {
-  const stages = data?.stages
-  if (!Array.isArray(stages)) return undefined
-  let ms = 0
-  for (const stage of stages as { startTime?: string; endTime?: string; stage?: number }[]) {
-    if (
-      HC_SLEEP_STAGES.has(stage.stage ?? -1) &&
-      typeof stage.startTime === 'string' &&
-      typeof stage.endTime === 'string'
-    ) {
-      ms += new Date(stage.endTime).getTime() - new Date(stage.startTime).getTime()
-    }
-  }
-  return ms > 0 ? Math.round(ms / 60000) : undefined
-}
-
 const buildSleepDetails = (a: Activity, end: Date, ouraByDate: OuraSleepByDate): string[] => {
   const details: string[] = []
   details.push(`Bed: ${formatDuration(a.start_time, end)}`)
 
-  const sleepMin = computeHcSleepMinutes(a.data as Record<string, unknown> | undefined)
-  if (sleepMin !== undefined) {
-    const h = Math.floor(sleepMin / 60)
-    const m = sleepMin % 60
+  if (a.total_sleep !== undefined) {
+    const h = Math.floor(a.total_sleep / 60)
+    const m = a.total_sleep % 60
     details.push(`Sleep: ${m > 0 ? `${h}h ${m}m` : `${h}h`}`)
   }
 
