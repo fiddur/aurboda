@@ -138,7 +138,14 @@ export const activitySchema = z
     notes: z.string().optional().meta({ description: 'Activity notes' }),
     source: z.string().optional().meta({ description: 'Data source' }),
     start_time: iso8601DateTimeSchema,
+    time_in_bed: durationMinutesSchema.optional().meta({
+      description: 'Time in bed in minutes (end_time - start_time). Only present for sleep activities.',
+    }),
     title: z.string().optional().meta({ description: 'Activity title' }),
+    total_sleep: durationMinutesSchema.optional().meta({
+      description:
+        'Actual sleep time in minutes, excluding awake periods. Only present for sleep activities with stage data.',
+    }),
   })
   .meta({ id: 'Activity' })
 

@@ -161,7 +161,7 @@ function SleepDurationChart({ sleepSessions, height = 180 }: { sleepSessions: Ac
       .filter((s) => s.end_time)
       .map((s) => ({
         date: s.start_time,
-        hours: (s.end_time!.getTime() - s.start_time.getTime()) / 3600000,
+        hours: (s.duration ?? (s.end_time!.getTime() - s.start_time.getTime()) / 60000) / 60,
       }))
       .sort((a, b) => a.date.getTime() - b.date.getTime())
 
@@ -372,13 +372,14 @@ export function Sleep() {
 
   const isLoading = sleepScoresQuery.isLoading || periodSummaryQuery.isLoading || activitiesQuery.isLoading
 
-  // Calculate average sleep duration
+  // Calculate average sleep duration (using total_sleep from API when available)
+  const sessionsWithDuration = sleepSessions.filter((s) => s.end_time)
   const avgSleepDuration =
-    sleepSessions.length > 0 ?
-      sleepSessions.reduce((sum, s) => {
-        if (!s.end_time) return sum
-        return sum + (s.end_time.getTime() - s.start_time.getTime()) / 3600000
-      }, 0) / sleepSessions.length
+    sessionsWithDuration.length > 0 ?
+      sessionsWithDuration.reduce(
+        (sum, s) => sum + (s.duration ?? (s.end_time!.getTime() - s.start_time.getTime()) / 60000) / 60,
+        0,
+      ) / sessionsWithDuration.length
     : null
 
   const handleDaysChange = (e: Event) => {
