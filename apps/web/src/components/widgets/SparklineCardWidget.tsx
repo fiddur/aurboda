@@ -9,6 +9,7 @@ import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useEffect, useRef } from 'preact/hooks'
 import {
   fetchHrv,
+  fetchMetricTimeSeries,
   fetchPeriodSummary,
   fetchReadinessScores,
   fetchRestingHeartRate,
@@ -152,19 +153,17 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
   const start = startOfDay(subDays(new Date(), lookback_days))
 
   // Fetch time series data for sparkline
-  const fetcher = metricFetchers[metric]
+  const fetcher = metricFetchers[metric] ?? ((s: Date, e: Date) => fetchMetricTimeSeries(metric, s, e))
   const timeSeriesQuery = useQuery({
-    enabled: !!fetcher,
-    queryFn: () => (fetcher ? fetcher(start, end) : Promise.resolve([])),
+    queryFn: () => fetcher(start, end),
     queryKey: ['sparkline', metric, formatISO(start, { representation: 'date' })],
     staleTime: 5 * 60 * 1000,
   })
 
   // Fetch period summary for the value and trend
-  const apiMetric = metricToApiMetric[metric]
+  const apiMetric = metricToApiMetric[metric] ?? metric
   const periodSummaryQuery = useQuery({
-    enabled: !!apiMetric,
-    queryFn: () => fetchPeriodSummary(start, end, apiMetric ? [apiMetric] : []),
+    queryFn: () => fetchPeriodSummary(start, end, [apiMetric]),
     queryKey: ['periodSummary', metric, formatISO(start, { representation: 'date' })],
     staleTime: 5 * 60 * 1000,
   })
@@ -180,7 +179,7 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
     for (const m of metricsArray) {
       periodSummary[m.metric] = m
     }
-    const stats = apiMetric ? periodSummary[apiMetric] : null
+    const stats = periodSummary[apiMetric]
     if (stats) {
       value = stats.avg ?? null
       trend = stats.change_from_previous_period_percent ?? null
