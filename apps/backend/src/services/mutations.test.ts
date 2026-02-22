@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db'
+import { parseMetricEntityId, toMetricEntityId } from './metric-entity-id'
 import {
   addActivity,
   addCustomMetric,
@@ -1011,5 +1012,60 @@ describe('deleteMetricData', () => {
 
     expect(result.success).toBe(true)
     expect(result.deletedCount).toBe(0)
+  })
+})
+
+describe('toMetricEntityId', () => {
+  test('constructs composite key from parts', () => {
+    const result = toMetricEntityId(new Date('2024-01-15T10:30:00.000Z'), 'heart_rate', 'oura')
+    expect(result).toBe('2024-01-15T10:30:00.000Z|heart_rate|oura')
+  })
+
+  test('preserves millisecond precision', () => {
+    const result = toMetricEntityId(new Date('2024-01-15T10:30:00.123Z'), 'weight', 'manual')
+    expect(result).toBe('2024-01-15T10:30:00.123Z|weight|manual')
+  })
+})
+
+describe('parseMetricEntityId', () => {
+  test('parses valid composite key', () => {
+    const result = parseMetricEntityId('2024-01-15T10:30:00.000Z|heart_rate|oura')
+    expect(result).toEqual({
+      metric: 'heart_rate',
+      source: 'oura',
+      time: new Date('2024-01-15T10:30:00.000Z'),
+    })
+  })
+
+  test('returns null for invalid format (too few parts)', () => {
+    expect(parseMetricEntityId('2024-01-15T10:30:00.000Z|heart_rate')).toBeNull()
+  })
+
+  test('returns null for invalid format (too many parts)', () => {
+    expect(parseMetricEntityId('a|b|c|d')).toBeNull()
+  })
+
+  test('returns null for invalid time', () => {
+    expect(parseMetricEntityId('not-a-date|heart_rate|oura')).toBeNull()
+  })
+
+  test('returns null for empty metric', () => {
+    expect(parseMetricEntityId('2024-01-15T10:30:00.000Z||oura')).toBeNull()
+  })
+
+  test('returns null for empty source', () => {
+    expect(parseMetricEntityId('2024-01-15T10:30:00.000Z|heart_rate|')).toBeNull()
+  })
+
+  test('roundtrips with toMetricEntityId', () => {
+    const time = new Date('2024-01-15T10:30:00.000Z')
+    const entityId = toMetricEntityId(time, 'weight', 'manual')
+    const parsed = parseMetricEntityId(entityId)
+
+    expect(parsed).toEqual({
+      metric: 'weight',
+      source: 'manual',
+      time,
+    })
   })
 })

@@ -190,7 +190,7 @@ export interface CommentSummary {
 
 const getCommentsMap = async (
   user: string,
-  entityType: 'activity' | 'tag' | 'productivity',
+  entityType: 'activity' | 'tag' | 'productivity' | 'metric',
   ids: string[],
 ): Promise<Map<string, CommentSummary[]>> => {
   const notesMap = await getNotesByEntityIds(user, entityType, ids)
