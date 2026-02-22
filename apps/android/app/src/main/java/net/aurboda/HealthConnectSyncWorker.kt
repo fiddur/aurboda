@@ -6,7 +6,6 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.aggregate.AggregateMetric
 import androidx.health.connect.client.changes.DeletionChange
 import androidx.health.connect.client.changes.UpsertionChange
-import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.*
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ChangesTokenRequest
@@ -26,7 +25,6 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.headers
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -37,10 +35,12 @@ import net.aurboda.api.models.DailyAggregate
 import net.aurboda.api.models.DailyAggregatesBody
 import net.aurboda.widget.HrZoneWidgetProvider
 import java.util.concurrent.TimeUnit
+import kotlin.reflect.KClass
 
 private const val TAG = "HealthConnectSyncWorker"
 private const val PREFS_NAME = "AurbodaAppPrefs"
 private const val CHANGES_TOKEN_KEY = "healthConnectChangesToken"
+private const val GRANTED_TYPES_KEY = "grantedRecordTypeNames"
 private const val WORK_NAME = "health_connect_sync"
 
 class HealthConnectSyncWorker(
@@ -55,13 +55,19 @@ class HealthConnectSyncWorker(
         }
     }
 
-    // Cumulative metrics that should be aggregated to avoid duplication
-    private val aggregatableMetrics: List<Pair<AggregateMetric<*>, DailyAggregate.Metric>> = listOf(
-        Pair(StepsRecord.COUNT_TOTAL, DailyAggregate.Metric.steps),
-        Pair(DistanceRecord.DISTANCE_TOTAL, DailyAggregate.Metric.distance),
-        Pair(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL, DailyAggregate.Metric.calories_active),
-        Pair(TotalCaloriesBurnedRecord.ENERGY_TOTAL, DailyAggregate.Metric.calories_total),
-        Pair(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL, DailyAggregate.Metric.floors_climbed)
+    // Cumulative metrics with the record class they require permission for
+    private data class AggregatableMetric(
+        val aggregateMetric: AggregateMetric<*>,
+        val dailyMetric: DailyAggregate.Metric,
+        val recordClass: KClass<out Record>
+    )
+
+    private val allAggregatableMetrics: List<AggregatableMetric> = listOf(
+        AggregatableMetric(StepsRecord.COUNT_TOTAL, DailyAggregate.Metric.steps, StepsRecord::class),
+        AggregatableMetric(DistanceRecord.DISTANCE_TOTAL, DailyAggregate.Metric.distance, DistanceRecord::class),
+        AggregatableMetric(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL, DailyAggregate.Metric.calories_active, ActiveCaloriesBurnedRecord::class),
+        AggregatableMetric(TotalCaloriesBurnedRecord.ENERGY_TOTAL, DailyAggregate.Metric.calories_total, TotalCaloriesBurnedRecord::class),
+        AggregatableMetric(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL, DailyAggregate.Metric.floors_climbed, FloorsClimbedRecord::class)
     )
 
     override suspend fun doWork(): Result {
@@ -73,17 +79,25 @@ class HealthConnectSyncWorker(
             return Result.success()
         }
 
-        // Check permissions
-        val permissions = allRecordTypes.map { HealthPermission.getReadPermission(it) }.toSet()
+        // Check permissions — proceed with whatever is granted (partial permissions support)
         val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
-        if (!grantedPermissions.containsAll(permissions)) {
-            Log.w(TAG, "Not all permissions granted, skipping sync")
+        val grantedTypes = getGrantedRecordTypes(grantedPermissions)
+        if (grantedTypes.isEmpty()) {
+            Log.w(TAG, "No permissions granted, skipping sync")
             return Result.success()
         }
+        Log.d(TAG, "Granted ${grantedTypes.size}/${allRecordTypes.size} record types")
+
+        // Invalidate token if granted types changed since last sync
+        invalidateTokenIfGrantedTypesChanged(grantedTypes)
+
+        // Filter aggregatable metrics to only those with granted permissions
+        val grantedTypeSet = grantedTypes.toSet()
+        val activeAggregateMetrics = allAggregatableMetrics.filter { it.recordClass in grantedTypeSet }
 
         return try {
             // Step 1: Fetch and send daily aggregates for cumulative metrics (deduplicated)
-            val aggregates = fetchDailyAggregates(days = 7)
+            val aggregates = fetchDailyAggregates(activeAggregateMetrics, days = 7)
             if (aggregates.isNotEmpty()) {
                 val aggregateSuccess = sendDailyAggregates(aggregates, credentials.apiUrl, credentials.authToken)
                 if (!aggregateSuccess) {
@@ -382,10 +396,34 @@ class HealthConnectSyncWorker(
     }
 
     /**
-     * Fetch daily aggregates for cumulative metrics using Health Connect's aggregate() API.
-     * This automatically deduplicates based on user-configured app priority.
+     * Check if granted types changed and invalidate the changes token if so.
      */
-    private suspend fun fetchDailyAggregates(days: Int = 7): List<DailyAggregate> {
+    private fun invalidateTokenIfGrantedTypesChanged(currentGrantedTypes: List<KClass<out Record>>) {
+        val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val currentNames = currentGrantedTypes.map { it.simpleName ?: "" }.sorted().joinToString(",")
+        val savedNames = prefs.getString(GRANTED_TYPES_KEY, null)
+
+        if (savedNames != null && savedNames != currentNames) {
+            Log.d(TAG, "Granted types changed, invalidating changes token")
+            prefs.edit()
+                .remove(CHANGES_TOKEN_KEY)
+                .putString(GRANTED_TYPES_KEY, currentNames)
+                .apply()
+        } else {
+            prefs.edit().putString(GRANTED_TYPES_KEY, currentNames).apply()
+        }
+    }
+
+    /**
+     * Fetch daily aggregates for cumulative metrics using Health Connect's aggregate() API.
+     * Only fetches for metrics that have granted permissions.
+     */
+    private suspend fun fetchDailyAggregates(
+        metrics: List<AggregatableMetric>,
+        days: Int = 7
+    ): List<DailyAggregate> {
+        if (metrics.isEmpty()) return emptyList()
+
         val aggregates = mutableListOf<DailyAggregate>()
         val today = LocalDate.now()
         val zoneId = ZoneId.systemDefault()
@@ -395,7 +433,7 @@ class HealthConnectSyncWorker(
             val startTime = date.atStartOfDay(zoneId).toInstant()
             val endTime = date.plusDays(1).atStartOfDay(zoneId).toInstant()
 
-            for ((metric, metricType) in aggregatableMetrics) {
+            for ((metric, metricType, _) in metrics) {
                 try {
                     val request = AggregateRequest(
                         metrics = setOf(metric),
