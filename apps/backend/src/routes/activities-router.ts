@@ -21,7 +21,7 @@ import {
   type UpdateActivityResponse,
 } from '@aurboda/api-spec'
 import { RequestHandler, Router } from 'express'
-import { getActivityById } from '../db'
+import { getActivityById, getOverlappingActivities } from '../db'
 import {
   addActivity,
   deleteActivity,
@@ -179,6 +179,31 @@ export const createActivitiesRouter = (
       return res.status(404).json({ error: 'Activity not found', success: false })
     }
 
+    // Check for overlapping activities from other sources
+    const overlapping = activity.deleted_at ? [] : await getOverlappingActivities(user, activity)
+
+    const hasMultipleSources = overlapping.length > 1
+    const sourceRecords =
+      hasMultipleSources ?
+        overlapping.map((a) => ({
+          data_origin: (a.data as Record<string, unknown> | undefined)?.dataOrigin as string | undefined,
+          end_time: a.end_time?.toISOString(),
+          id: a.id!,
+          source: a.source,
+          start_time: a.start_time.toISOString(),
+          title: a.title,
+        }))
+      : undefined
+
+    const mergedStartTime =
+      hasMultipleSources ?
+        new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))).toISOString()
+      : undefined
+    const mergedEndTime =
+      hasMultipleSources ?
+        new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))).toISOString()
+      : undefined
+
     res.json({
       data: {
         activity_type: activity.activity_type,
@@ -186,8 +211,11 @@ export const createActivitiesRouter = (
         deleted_at: activity.deleted_at?.toISOString(),
         end_time: activity.end_time?.toISOString(),
         id: activity.id,
+        merged_end_time: mergedEndTime,
+        merged_start_time: mergedStartTime,
         notes: activity.notes,
         source: activity.source,
+        source_records: sourceRecords,
         start_time: activity.start_time.toISOString(),
         title: activity.title,
       },

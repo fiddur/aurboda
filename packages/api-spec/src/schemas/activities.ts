@@ -152,6 +152,42 @@ export const activitySchema = z
 export type Activity = z.infer<typeof activitySchema>
 
 /**
+ * Source record schema for multi-source merged activities.
+ */
+export const sourceRecordSchema = z
+  .object({
+    data_origin: z.string().optional().meta({ description: 'Health Connect data origin package' }),
+    end_time: iso8601DateTimeSchema.optional(),
+    id: z.string().uuid().meta({ description: 'Activity ID' }),
+    source: z.string().meta({ description: 'Data source' }),
+    start_time: iso8601DateTimeSchema,
+    title: z.string().optional().meta({ description: 'Activity title' }),
+  })
+  .meta({ id: 'SourceRecord', description: 'Individual source record within a merged activity' })
+
+export type SourceRecord = z.infer<typeof sourceRecordSchema>
+
+/**
+ * Activity detail response schema (single activity with optional merge info).
+ */
+export const activityDetailSchema = activitySchema
+  .extend({
+    merged_end_time: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Merged end time across all overlapping sources' }),
+    merged_start_time: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Merged start time across all overlapping sources' }),
+    source_records: z
+      .array(sourceRecordSchema)
+      .optional()
+      .meta({ description: 'Individual source records when activity is merged from multiple sources' }),
+  })
+  .meta({ id: 'ActivityDetail' })
+
+export type ActivityDetail = z.infer<typeof activityDetailSchema>
+
+/**
  * Activities query schema.
  */
 export const activitiesQuerySchema = timeRangeQuerySchema
