@@ -158,6 +158,11 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
+  // Migrate notes entity_id from UUID to TEXT (supports composite keys for metrics)
+  if (existingTableNames.has('notes')) {
+    await query(db, `ALTER TABLE notes ALTER COLUMN entity_id TYPE TEXT`)
+  }
+
   // Create missing tables and indexes (columns now exist for index creation)
   for (const key of tableCreationOrder) {
     const tableName = key.replace('_indexes', '')

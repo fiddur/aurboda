@@ -10,7 +10,7 @@ export const registerNoteTools = (server: McpServer, user: string) => {
   // Tool: add_note
   server.tool(
     'add_note',
-    'Add a note/comment to an entity (activity, tag, or productivity record).',
+    'Add a note/comment to an entity (activity, tag, productivity record, or metric data point). For metrics, use entity_type "metric" with entity_id as a composite key: "<iso_time>|<metric>|<source>" (e.g. "2024-01-15T10:30:00.000Z|heart_rate|oura").',
     { ...addNoteBodySchema.shape },
     async ({ entity_type, entity_id, content }) => {
       const result = await addNote(user, { content, entity_id, entity_type })
@@ -21,7 +21,7 @@ export const registerNoteTools = (server: McpServer, user: string) => {
   // Tool: get_notes
   server.tool(
     'get_notes',
-    'Get all notes for an entity (activity, tag, or productivity record).',
+    'Get all notes for an entity (activity, tag, productivity record, or metric data point). For metrics, use entity_type "metric" with entity_id as a composite key: "<iso_time>|<metric>|<source>".',
     { ...notesQuerySchema.shape },
     async ({ entity_type, entity_id }) => {
       const notes = await getNotesForEntity(user, entity_type, entity_id)

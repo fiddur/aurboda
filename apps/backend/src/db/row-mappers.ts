@@ -37,7 +37,7 @@ const VALID_DATA_SOURCES = [
 
 const VALID_GEOCODE_STATUSES = ['pending', 'geocoding', 'success', 'failed'] as const
 const VALID_SYNC_STATUSES = ['idle', 'syncing', 'error', 'rate_limited'] as const
-const VALID_ENTITY_TYPES = ['activity', 'tag', 'productivity'] as const
+const VALID_ENTITY_TYPES = ['activity', 'tag', 'productivity', 'metric'] as const
 const VALID_LASTFM_MATCH_TYPES = ['track', 'artist', 'track_artist'] as const
 const VALID_LASTFM_MATCH_MODES = ['exact', 'contains'] as const
 
