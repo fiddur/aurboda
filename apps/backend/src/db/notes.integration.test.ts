@@ -1,7 +1,14 @@
 import { randomUUID } from 'crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
-import { deleteNote, getNoteById, getNotesForEntity, insertNote, updateNote } from './notes'
+import {
+  deleteNote,
+  getNoteById,
+  getNotesByEntityIds,
+  getNotesForEntity,
+  insertNote,
+  updateNote,
+} from './notes'
 
 const CONTAINER_TIMEOUT = 60_000
 
@@ -107,6 +114,61 @@ describe('Notes Integration Tests', () => {
       const user = getTestUser()
       const updated = await updateNote(user, randomUUID(), 'New content')
       expect(updated).toBeNull()
+    })
+  })
+
+  describe('getNotesByEntityIds', () => {
+    test('returns empty map for empty IDs array', async () => {
+      const user = getTestUser()
+      const result = await getNotesByEntityIds(user, 'activity', [])
+      expect(result.size).toBe(0)
+    })
+
+    test('returns notes grouped by entity ID', async () => {
+      const user = getTestUser()
+      const entityId1 = randomUUID()
+      const entityId2 = randomUUID()
+
+      await insertNote(user, 'activity', entityId1, 'Note 1a')
+      await insertNote(user, 'activity', entityId1, 'Note 1b')
+      await insertNote(user, 'activity', entityId2, 'Note 2a')
+
+      const result = await getNotesByEntityIds(user, 'activity', [entityId1, entityId2])
+
+      expect(result.size).toBe(2)
+      expect(result.get(entityId1)).toHaveLength(2)
+      expect(result.get(entityId1)![0].content).toBe('Note 1a')
+      expect(result.get(entityId1)![1].content).toBe('Note 1b')
+      expect(result.get(entityId2)).toHaveLength(1)
+      expect(result.get(entityId2)![0].content).toBe('Note 2a')
+    })
+
+    test('only returns notes for the requested entity type', async () => {
+      const user = getTestUser()
+      const entityId = randomUUID()
+
+      await insertNote(user, 'activity', entityId, 'Activity note')
+      await insertNote(user, 'tag', entityId, 'Tag note')
+
+      const result = await getNotesByEntityIds(user, 'activity', [entityId])
+
+      expect(result.size).toBe(1)
+      expect(result.get(entityId)).toHaveLength(1)
+      expect(result.get(entityId)![0].content).toBe('Activity note')
+    })
+
+    test('entities without notes are absent from the map', async () => {
+      const user = getTestUser()
+      const entityId1 = randomUUID()
+      const entityId2 = randomUUID()
+
+      await insertNote(user, 'activity', entityId1, 'Only entity 1 has a note')
+
+      const result = await getNotesByEntityIds(user, 'activity', [entityId1, entityId2])
+
+      expect(result.size).toBe(1)
+      expect(result.has(entityId1)).toBe(true)
+      expect(result.has(entityId2)).toBe(false)
     })
   })
 

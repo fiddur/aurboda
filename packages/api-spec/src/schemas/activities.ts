@@ -11,6 +11,7 @@ import {
   iso8601DateTimeSchema,
   timeRangeQuerySchema,
 } from './common.js'
+import { commentSchema } from './notes.js'
 import { hrZoneSecsSchema } from './settings.js'
 
 /**
@@ -127,6 +128,7 @@ export const activitySchema = z
   .object({
     activity_type: z.string().meta({ description: 'Activity type' }),
     avg_hrv: z.number().optional().meta({ description: 'Average HRV (ms) during the activity' }),
+    comments: z.array(commentSchema).optional().meta({ description: 'Attached comments' }),
     data: z.record(z.string(), z.unknown()).optional(),
     deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
     duration: durationMinutesSchema.optional(),

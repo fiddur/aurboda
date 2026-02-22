@@ -11,12 +11,14 @@ import {
   tagTextSchema,
   timeRangeQuerySchema,
 } from './common.js'
+import { commentSchema } from './notes.js'
 
 /**
  * Tag schema.
  */
 export const tagSchema = z
   .object({
+    comments: z.array(commentSchema).optional().meta({ description: 'Attached comments' }),
     deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
     end_time: iso8601DateTimeSchema.optional(),
     external_id: z.string().optional().meta({ description: 'External ID from source' }),

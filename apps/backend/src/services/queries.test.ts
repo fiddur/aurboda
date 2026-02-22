@@ -6,8 +6,11 @@ import {
   getDailySummary,
   getPeriodSummary,
   mergeProductivitySpans,
+  queryActivities,
   queryMetrics,
   queryMetricsBucketed,
+  queryProductivity,
+  queryTags,
 } from './queries'
 
 // Mock the db module
@@ -16,6 +19,7 @@ vi.mock('../db', () => ({
   getDailyAggregateValue: vi.fn(),
   getDailyAggregates: vi.fn(),
   getLocations: vi.fn(),
+  getNotesByEntityIds: vi.fn(),
   getProductivity: vi.fn(),
   getSleepSessions: vi.fn(),
   getTags: vi.fn(),
@@ -1374,5 +1378,184 @@ describe('queryMetrics with contextual HRV', () => {
     // Only samples during exercise should be included
     expect(result.count).toBe(2)
     expect(result.data.map((d) => d.value)).toEqual([22, 18])
+  })
+})
+
+describe('queryTags with comments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('attaches comments when notes exist', async () => {
+    const tagId = 'tag-id-1'
+    vi.mocked(db.getTags).mockResolvedValue([
+      { id: tagId, source: 'manual', start_time: new Date('2024-01-15T08:00:00Z'), tag: 'coffee' },
+    ])
+
+    const notesMap = new Map([
+      [
+        tagId,
+        [
+          {
+            content: 'Morning coffee',
+            created_at: new Date('2024-01-15T08:01:00Z'),
+            entity_id: tagId,
+            entity_type: 'tag' as const,
+            id: 'note-1',
+            updated_at: new Date('2024-01-15T08:01:00Z'),
+          },
+        ],
+      ],
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(notesMap)
+
+    const result = await queryTags('testuser', new Date('2024-01-15'), new Date('2024-01-16'))
+
+    expect(result).toHaveLength(1)
+    expect(result[0].comments).toHaveLength(1)
+    expect(result[0].comments[0].content).toBe('Morning coffee')
+    expect(result[0].comments[0].id).toBe('note-1')
+  })
+
+  test('returns empty comments array when no notes exist', async () => {
+    vi.mocked(db.getTags).mockResolvedValue([
+      { id: 'tag-1', source: 'manual', start_time: new Date('2024-01-15T08:00:00Z'), tag: 'coffee' },
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+
+    const result = await queryTags('testuser', new Date('2024-01-15'), new Date('2024-01-16'))
+
+    expect(result[0].comments).toEqual([])
+  })
+})
+
+describe('queryActivities with comments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+  })
+
+  test('attaches comments to activities', async () => {
+    const activityId = 'activity-id-1'
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:30:00Z'),
+        id: activityId,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        title: 'Running',
+      },
+    ])
+
+    const notesMap = new Map([
+      [
+        activityId,
+        [
+          {
+            content: 'Felt great!',
+            created_at: new Date('2024-01-15T11:00:00Z'),
+            entity_id: activityId,
+            entity_type: 'activity' as const,
+            id: 'note-1',
+            updated_at: new Date('2024-01-15T11:00:00Z'),
+          },
+        ],
+      ],
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(notesMap)
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+
+    const result = await queryActivities(
+      'testuser',
+      ['exercise'],
+      new Date('2024-01-15'),
+      new Date('2024-01-16'),
+    )
+
+    expect(result).toHaveLength(1)
+    expect(result[0].comments).toHaveLength(1)
+    expect(result[0].comments[0].content).toBe('Felt great!')
+  })
+
+  test('returns empty comments array when no notes exist', async () => {
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activity_type: 'exercise',
+        id: 'activity-1',
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+
+    const result = await queryActivities(
+      'testuser',
+      ['exercise'],
+      new Date('2024-01-15'),
+      new Date('2024-01-16'),
+    )
+
+    expect(result[0].comments).toEqual([])
+  })
+})
+
+describe('queryProductivity with comments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('attaches comments to productivity records', async () => {
+    const prodId = 'prod-id-1'
+    vi.mocked(db.getProductivity).mockResolvedValue([
+      {
+        activity: 'VS Code',
+        duration_sec: 3600,
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: prodId,
+        productivity: 2,
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+    ])
+
+    const notesMap = new Map([
+      [
+        prodId,
+        [
+          {
+            content: 'Deep focus session',
+            created_at: new Date('2024-01-15T11:01:00Z'),
+            entity_id: prodId,
+            entity_type: 'productivity' as const,
+            id: 'note-1',
+            updated_at: new Date('2024-01-15T11:01:00Z'),
+          },
+        ],
+      ],
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(notesMap)
+
+    const result = await queryProductivity('testuser', new Date('2024-01-15'), new Date('2024-01-16'))
+
+    expect(result).toHaveLength(1)
+    expect(result[0].comments).toHaveLength(1)
+    expect(result[0].comments[0].content).toBe('Deep focus session')
+  })
+
+  test('returns empty comments array when no notes exist', async () => {
+    vi.mocked(db.getProductivity).mockResolvedValue([
+      {
+        activity: 'VS Code',
+        duration_sec: 3600,
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'prod-1',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+
+    const result = await queryProductivity('testuser', new Date('2024-01-15'), new Date('2024-01-16'))
+
+    expect(result[0].comments).toEqual([])
   })
 })
