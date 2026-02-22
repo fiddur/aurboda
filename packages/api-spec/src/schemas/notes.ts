@@ -40,6 +40,20 @@ export const noteSchema = z
 export type Note = z.infer<typeof noteSchema>
 
 /**
+ * Embedded comment schema (without entity_type/entity_id since those are implicit).
+ */
+export const commentSchema = z
+  .object({
+    content: z.string().meta({ description: 'Comment content (markdown)' }),
+    created_at: iso8601DateTimeSchema.optional(),
+    id: z.string().uuid().optional().meta({ description: 'Comment/note ID' }),
+    updated_at: iso8601DateTimeSchema.optional(),
+  })
+  .meta({ id: 'Comment', description: 'A comment attached to an entity' })
+
+export type Comment = z.infer<typeof commentSchema>
+
+/**
  * Add note request body.
  */
 export const addNoteBodySchema = z

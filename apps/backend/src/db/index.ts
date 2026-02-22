@@ -123,7 +123,14 @@ export {
 } from './productivity'
 
 // Notes
-export { deleteNote, getNoteById, getNotesForEntity, insertNote, updateNote } from './notes'
+export {
+  deleteNote,
+  getNoteById,
+  getNotesByEntityIds,
+  getNotesForEntity,
+  insertNote,
+  updateNote,
+} from './notes'
 
 // Lab results
 export { getLabResults, insertLabResult } from './lab-results'

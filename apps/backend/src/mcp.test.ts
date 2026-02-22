@@ -551,10 +551,12 @@ describe('MCP Server', () => {
 
       vi.mocked(queries.queryTags).mockResolvedValue([
         {
+          comments: [],
           start_time: '2024-01-15T14:30:00Z',
           tag: 'coffee',
         },
         {
+          comments: [],
           end_time: '2024-01-15T16:00:00Z',
           start_time: '2024-01-15T15:00:00Z',
           tag: 'meeting',
@@ -647,6 +649,7 @@ describe('MCP Server', () => {
       vi.mocked(queries.queryActivities).mockResolvedValue([
         {
           activity_type: 'sleep',
+          comments: [],
           duration: 480,
           end_time: '2024-01-15T07:00:00Z',
           source: 'health_connect',
@@ -655,6 +658,7 @@ describe('MCP Server', () => {
         },
         {
           activity_type: 'exercise',
+          comments: [],
           duration: 45,
           end_time: '2024-01-15T09:45:00Z',
           hr_zone_secs: { 0: 60, 1: 300, 2: 900, 3: 1200, 4: 240, 5: 0 },
@@ -685,6 +689,7 @@ describe('MCP Server', () => {
       vi.mocked(queries.queryActivities).mockResolvedValue([
         {
           activity_type: 'exercise',
+          comments: [],
           duration: 45,
           end_time: '2024-01-15T09:45:00Z',
           source: 'health_connect',
@@ -762,6 +767,7 @@ describe('MCP Server', () => {
         {
           activity: 'Visual Studio Code',
           category: 'Software Development',
+          comments: [],
           duration_sec: 7200,
           end_time: '2024-01-15T17:00:00Z',
           productivity: 2,
@@ -770,6 +776,7 @@ describe('MCP Server', () => {
         {
           activity: 'Twitter',
           category: 'Social Networking',
+          comments: [],
           duration_sec: 1800,
           end_time: '2024-01-15T18:00:00Z',
           productivity: -2,

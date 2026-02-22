@@ -11,6 +11,7 @@ import {
   getActivities,
   getDailyAggregates,
   getDailyAggregateValue,
+  getNotesByEntityIds,
   getProductivity,
   getSleepSessions,
   getTags,
@@ -118,6 +119,7 @@ export interface TagSummary {
   start_time: string
   end_time?: string
   source?: DataSource
+  comments: CommentSummary[]
 }
 
 export interface PlaceSummary {
@@ -177,6 +179,34 @@ export interface PeriodSummaryResult {
   end: string
   period_days: number
   metrics: PeriodMetricStats[]
+}
+
+export interface CommentSummary {
+  id: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+const getCommentsMap = async (
+  user: string,
+  entityType: 'activity' | 'tag' | 'productivity',
+  ids: string[],
+): Promise<Map<string, CommentSummary[]>> => {
+  const notesMap = await getNotesByEntityIds(user, entityType, ids)
+  const result = new Map<string, CommentSummary[]>()
+  for (const [entityId, notes] of notesMap) {
+    result.set(
+      entityId,
+      notes.map((n) => ({
+        content: n.content,
+        created_at: n.created_at.toISOString(),
+        id: n.id,
+        updated_at: n.updated_at.toISOString(),
+      })),
+    )
+  }
+  return result
 }
 
 // ============================================================================
@@ -605,6 +635,7 @@ export async function getDailySummary(
     }),
     steps: { total: totalSteps },
     tags: tags.map((t) => ({
+      comments: [],
       end_time: t.end_time?.toISOString(),
       start_time: t.start_time.toISOString(),
       tag: t.tag,
@@ -793,7 +824,10 @@ export async function queryTags(
   }
 
   const tags = await getTags(user, start, end)
+  const ids = tags.map((t) => t.id).filter((id): id is string => id !== undefined)
+  const commentsMap = await getCommentsMap(user, 'tag', ids)
   return tags.map((t) => ({
+    comments: t.id ? (commentsMap.get(t.id) ?? []) : [],
     end_time: t.end_time?.toISOString(),
     id: t.id,
     source: t.source,
@@ -819,6 +853,7 @@ export interface ActivityResult {
   data?: Record<string, unknown>
   hr_zone_secs?: HrZoneSecs
   avg_hrv?: number
+  comments: CommentSummary[]
 }
 
 /**
@@ -864,6 +899,10 @@ export async function queryActivities(
   const includesExercise = types.includes('exercise')
   const hrZones = includesExercise ? (await getEffectiveHrZones(user)).zones : null
 
+  // Fetch comments for all activities
+  const activityIds = activities.map((a) => a.id).filter((id): id is string => id !== undefined)
+  const commentsMap = await getCommentsMap(user, 'activity', activityIds)
+
   return Promise.all(
     activities.map(async (a) => {
       const timeInBedMinutes =
@@ -871,6 +910,7 @@ export async function queryActivities(
 
       const result: ActivityResult = {
         activity_type: a.activity_type,
+        comments: a.id ? (commentsMap.get(a.id) ?? []) : [],
         data: a.data,
         duration: timeInBedMinutes,
         end_time: a.end_time?.toISOString(),
@@ -921,6 +961,7 @@ export interface ProductivityResult {
   productivity?: number
   duration_sec: number
   is_mobile?: boolean
+  comments: CommentSummary[]
 }
 
 /**
@@ -977,9 +1018,12 @@ export async function queryProductivity(
 
   const productivity = await getProductivity(user, start, end)
   const merged = mergeProductivitySpans(productivity)
+  const prodIds = merged.map((p) => p.id).filter((id): id is string => id !== undefined)
+  const commentsMap = await getCommentsMap(user, 'productivity', prodIds)
   return merged.map((p) => ({
     activity: p.activity,
     category: p.category,
+    comments: p.id ? (commentsMap.get(p.id) ?? []) : [],
     duration_sec: p.duration_sec,
     end_time: p.end_time.toISOString(),
     id: p.id,
