@@ -17,14 +17,58 @@ export const _setClientForUser = (user: string, client: Client) => {
   dbByUser[user] = client
 }
 
+/**
+ * Check if an error is a PostgreSQL schema error (missing table or column).
+ * Only these errors should trigger automatic migration retry.
+ * @internal Exported for testing.
+ */
+export const _isSchemaError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false
+  const code = (error as Error & { code?: string }).code
+  return code === '42P01' || code === '42703' // undefined_table, undefined_column
+}
+
+const migrationInProgress: Record<string, Promise<void> | undefined> = {}
+
+/**
+ * Run migration for a user, coalescing concurrent calls.
+ * If a migration is already in progress for the user, returns the existing promise.
+ * @internal Exported for testing — pass a custom migrate function in tests.
+ */
+export const _runMigrationOnce = (
+  user: string,
+  migrate: (user: string) => Promise<void> = migrateSchema,
+): Promise<void> => {
+  const existing = migrationInProgress[user]
+  if (existing) return existing
+
+  const promise = migrate(user).finally(() => {
+    delete migrationInProgress[user]
+  })
+  migrationInProgress[user] = promise
+  return promise
+}
+
 export const query = async <T extends QueryResultRow = QueryResultRow>(
   dbOrUser: Client | string,
   queryStr: string,
   params?: unknown[],
+  /** @internal Override migration function for testing. */
+  migrate?: (user: string) => Promise<void>,
 ) => {
   const db = typeof dbOrUser === 'string' ? await getDbForUser(dbOrUser) : dbOrUser
-  const result = await db.query<T>(queryStr, params)
-  return result
+
+  try {
+    return await db.query<T>(queryStr, params)
+  } catch (error) {
+    // Only retry with migration when called with a username (not a Client directly)
+    if (typeof dbOrUser === 'string' && _isSchemaError(error)) {
+      console.log(`Schema error for user ${dbOrUser}, running migration and retrying: ${error}`)
+      await _runMigrationOnce(dbOrUser, migrate)
+      return await db.query<T>(queryStr, params)
+    }
+    throw error
+  }
 }
 
 export const loginToUserDb = async (user: string, password: string) => {

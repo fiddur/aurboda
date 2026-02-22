@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -37,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -58,7 +56,6 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.headers
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -80,16 +77,13 @@ import net.aurboda.update.installApk
 // Import allRecordTypes from HealthDataModels
 import net.aurboda.allRecordTypes
 import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.ZoneId
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 import kotlin.reflect.KClass
 
 private const val PREFS_NAME = "AurbodaAppPrefs"
 private const val CHANGES_TOKEN_KEY = "healthConnectChangesToken"
 private const val BACKGROUND_SYNC_ENABLED_KEY = "backgroundSyncEnabled"
+private const val GRANTED_TYPES_KEY = "grantedRecordTypeNames"
 
 private fun isBackgroundSyncEnabled(context: Context): Boolean {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -184,6 +178,29 @@ private fun loadChangesToken(context: Context): String? {
     val token = prefs.getString(CHANGES_TOKEN_KEY, null)
     Log.d("TokenManager", "Loaded token: ${token?.take(10)}...")
     return token
+}
+
+/**
+ * Check if the set of granted record types has changed since last fetch.
+ * If changed, invalidate the changes token to force a full re-fetch.
+ */
+private fun invalidateTokenIfGrantedTypesChanged(
+    context: Context,
+    currentGrantedTypes: List<KClass<out Record>>
+) {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val currentNames = currentGrantedTypes.map { it.simpleName ?: "" }.sorted().joinToString(",")
+    val savedNames = prefs.getString(GRANTED_TYPES_KEY, null)
+
+    if (savedNames != null && savedNames != currentNames) {
+        Log.d("TokenManager", "Granted types changed, invalidating changes token")
+        prefs.edit()
+            .remove(CHANGES_TOKEN_KEY)
+            .putString(GRANTED_TYPES_KEY, currentNames)
+            .apply()
+    } else {
+        prefs.edit().putString(GRANTED_TYPES_KEY, currentNames).apply()
+    }
 }
 
 private const val SEND_DATA_TAG = "SendData"
@@ -391,7 +408,25 @@ fun HealthConnectScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val healthConnectClient = remember { HealthConnectClient.getOrCreate(context) }
-    var hasPermissions by remember { mutableStateOf(false) }
+
+    // -- Permission state (partial permissions support) --
+    var grantedPermissions by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val grantedRecordTypes by remember(grantedPermissions) {
+        derivedStateOf { getGrantedRecordTypes(grantedPermissions) }
+    }
+    val hasAnyPermissions by remember(grantedRecordTypes) {
+        derivedStateOf { grantedRecordTypes.isNotEmpty() }
+    }
+    val hasAllPermissions by remember(grantedPermissions) {
+        derivedStateOf {
+            val allPermissions = allRecordTypes.map { HealthPermission.getReadPermission(it) }.toSet()
+            grantedPermissions.containsAll(allPermissions)
+        }
+    }
+    val categoryStatuses by remember(grantedPermissions) {
+        derivedStateOf { getCategoryStatuses(grantedPermissions) }
+    }
+
     var healthRecords by remember { mutableStateOf<List<Record>>(emptyList()) }
     var pendingDeletionIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var isProcessing by remember { mutableStateOf(false) }
@@ -403,7 +438,6 @@ fun HealthConnectScreen(
     val batteryOptimizationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
-        // Check if exemption was granted after returning from settings
         if (isIgnoringBatteryOptimizations(context)) {
             Log.d("BatteryOptimization", "Battery optimization exemption granted")
         } else {
@@ -412,22 +446,27 @@ fun HealthConnectScreen(
     }
 
     val scope = rememberCoroutineScope()
-    val permissions = remember(allRecordTypes) { allRecordTypes.map { HealthPermission.getReadPermission(it) }.toSet() }
+    val allPermissions = remember(allRecordTypes) { allRecordTypes.map { HealthPermission.getReadPermission(it) }.toSet() }
     val ktorHttpClient = remember { HttpClient(Android) { install(ContentNegotiation) { json(appJson) } } }
 
     suspend fun fetchHealthData(currentActiveContext: Context) {
-        if (!hasPermissions) {
-            statusMessage = "Permissions not granted. Cannot fetch data."
-            Log.d("HealthConnectScreen", "fetchHealthData called but no permissions.")
-            return 
-        }
-        if(isProcessing) { 
-            Log.d("HealthConnectScreen", "fetchHealthData called while already processing (concurrent call). Bailing.")
+        if (grantedRecordTypes.isEmpty()) {
+            statusMessage = "No permissions granted. Cannot fetch data."
+            Log.d("HealthConnectScreen", "fetchHealthData called but no granted types.")
             return
         }
-        isProcessing = true 
+        if (isProcessing) {
+            Log.d("HealthConnectScreen", "fetchHealthData called while already processing. Bailing.")
+            return
+        }
+        isProcessing = true
         statusMessage = "Fetching data from Health Connect..."
-        Log.d("HealthConnectScreen", "Starting data fetch for ${allRecordTypes.size} types...")
+        val typesToFetch = grantedRecordTypes
+        Log.d("HealthConnectScreen", "Starting data fetch for ${typesToFetch.size} granted types...")
+
+        // Invalidate token if the set of granted types has changed
+        invalidateTokenIfGrantedTypesChanged(currentActiveContext, typesToFetch)
+
         val localHealthRecords = mutableListOf<Record>()
         val localDeletionIds = mutableListOf<String>()
         var localPendingTokenToPersist: String? = null
@@ -440,7 +479,7 @@ fun HealthConnectScreen(
             try {
                 val sevenDaysAgo = ZonedDateTime.now().minusDays(7).toInstant()
                 val now = Instant.now()
-                for (recordType: KClass<out Record> in allRecordTypes) {
+                for (recordType: KClass<out Record> in typesToFetch) {
                     try {
                         @Suppress("UNCHECKED_CAST")
                         val specificRecordType = recordType as KClass<Record>
@@ -450,32 +489,32 @@ fun HealthConnectScreen(
                             ascendingOrder = false
                         )
                         val recordsOfType = healthConnectClient.readRecords(request).records
-                        if(recordsOfType.isNotEmpty()) {
+                        if (recordsOfType.isNotEmpty()) {
                             Log.d("FetchData", "Fetched ${recordsOfType.size} records of type ${recordType.simpleName}")
                             localHealthRecords.addAll(recordsOfType)
                         }
                     } catch (e: Exception) {
-                        Log.w("FetchData", "Error fetching ${recordType.simpleName}: ${e.message}. May require specific permissions not yet handled or type not available.")
+                        Log.w("FetchData", "Error fetching ${recordType.simpleName}: ${e.message}")
                     }
                 }
-                Log.d("FetchData", "Initial fetch process complete. Total ${localHealthRecords.size} records fetched.")
+                Log.d("FetchData", "Initial fetch complete. Total ${localHealthRecords.size} records.")
                 if (localHealthRecords.isNotEmpty()) {
-                    val initialToken = healthConnectClient.getChangesToken(ChangesTokenRequest(allRecordTypes.toSet()))
+                    val initialToken = healthConnectClient.getChangesToken(ChangesTokenRequest(typesToFetch.toSet()))
                     localPendingTokenToPersist = initialToken
                     statusMessage = "Fetched ${localHealthRecords.size} initial records. Ready to send."
                 } else {
-                    statusMessage = "No records found during initial fetch for any type."
+                    statusMessage = "No records found during initial fetch."
                     try {
-                        val initialToken = healthConnectClient.getChangesToken(ChangesTokenRequest(allRecordTypes.toSet()))
-                        saveChangesToken(currentActiveContext, initialToken) 
-                        Log.d("FetchData", "Saved initial token as no data was found: ${initialToken.take(10)}...")
+                        val initialToken = healthConnectClient.getChangesToken(ChangesTokenRequest(typesToFetch.toSet()))
+                        saveChangesToken(currentActiveContext, initialToken)
+                        Log.d("FetchData", "Saved initial token (no data): ${initialToken.take(10)}...")
                     } catch (e: Exception) {
-                        Log.e("FetchData", "Failed to get/save initial changes token when no initial data found.", e)
-                        statusMessage = "Error initializing token with no data."
+                        Log.e("FetchData", "Failed to get/save initial changes token.", e)
+                        statusMessage = "Error initializing token."
                     }
                 }
             } catch (e: Exception) {
-                Log.e("FetchData", "Error during overall initial data fetch from Health Connect.", e)
+                Log.e("FetchData", "Error during initial data fetch.", e)
                 statusMessage = "Error fetching initial data: ${e.message}"
                 fetchSuccessful = false
             }
@@ -486,18 +525,16 @@ fun HealthConnectScreen(
                 var totalUpsertions = 0
                 var hasMore = true
 
-                // Loop to fetch all changes until hasMore is false
                 while (hasMore) {
                     val changesResponse = healthConnectClient.getChanges(currentToken)
                     val upsertions = changesResponse.changes.mapNotNull { if (it is UpsertionChange) it.record else null }
                     if (upsertions.isNotEmpty()) {
-                        Log.d("FetchData", "Adding ${upsertions.size} upserted records to list.")
+                        Log.d("FetchData", "Adding ${upsertions.size} upserted records.")
                         localHealthRecords.addAll(upsertions)
                         totalUpsertions += upsertions.size
                     }
                     changesResponse.changes.forEach {
                         if (it is DeletionChange) {
-                            Log.d("HealthConnect", "Record deleted, ID: ${it.recordId}")
                             localDeletionIds.add(it.recordId)
                         }
                     }
@@ -506,17 +543,14 @@ fun HealthConnectScreen(
                     currentToken = changesResponse.nextChangesToken
 
                     if (hasMore) {
-                        Log.d("FetchData", "More changes available, continuing fetch...")
                         statusMessage = "Fetching more data... ($totalUpsertions records so far)"
                     }
                 }
 
                 localPendingTokenToPersist = currentToken
-                Log.d("FetchData", "Fetched $totalUpsertions total upsertions, ${localDeletionIds.size} deletions. Next token candidate: ${localPendingTokenToPersist?.take(10)}...")
                 if (totalUpsertions == 0 && localDeletionIds.isEmpty()) {
                     statusMessage = "No new changes found."
                     saveChangesToken(currentActiveContext, localPendingTokenToPersist)
-                    Log.d("FetchData", "Saved next changes token as no new data was found: ${localPendingTokenToPersist?.take(10)}...")
                     localPendingTokenToPersist = null
                 } else {
                     val parts = mutableListOf<String>()
@@ -525,7 +559,7 @@ fun HealthConnectScreen(
                     statusMessage = "Fetched ${parts.joinToString(", ")}. Ready to send."
                 }
             } catch (e: Exception) {
-                Log.e("FetchData", "Error fetching changes from Health Connect.", e)
+                Log.e("FetchData", "Error fetching changes.", e)
                 statusMessage = "Error fetching changes: ${e.message}"
                 fetchSuccessful = false
             }
@@ -540,43 +574,49 @@ fun HealthConnectScreen(
             pendingDeletionIds = emptyList()
             pendingTokenToPersist = null
         }
-        Log.d("HealthConnectScreen", "Data fetch processing finished. status: $statusMessage")
-        isProcessing = false 
+        Log.d("HealthConnectScreen", "Data fetch finished. status: $statusMessage")
+        isProcessing = false
+    }
+
+    /** Re-query actual granted permissions from system after launcher returns. */
+    suspend fun refreshPermissions() {
+        grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
+        val count = grantedRecordTypes.size
+        Log.d("HealthConnect", "Permissions refreshed: $count/${allRecordTypes.size} types granted")
+        if (count > 0) {
+            statusMessage = "$count of ${allRecordTypes.size} data types authorized."
+        } else {
+            statusMessage = "No permissions granted."
+        }
     }
 
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissionsMap ->
-        val allGranted = permissionsMap.values.all { it }
-        hasPermissions = allGranted
-        if (allGranted) {
-            Log.d("HealthConnect", "All permissions granted via launcher. Attempting to fetch data.")
-            scope.launch { fetchHealthData(context) } 
-        } else {
-            val deniedPermissions = permissionsMap.filter { !it.value }.keys
-            val deniedCount = deniedPermissions.size
-            Log.w("HealthConnect", "Not all permissions were granted via launcher. Denied ($deniedCount): $deniedPermissions")
-            statusMessage = "$deniedCount permission(s) were denied. Health data may be incomplete. Missing: ${deniedPermissions.joinToString()}"
-            isProcessing = false 
+    ) { _ ->
+        // Don't trust the launcher result — re-query actual permissions from system
+        scope.launch {
+            refreshPermissions()
+            if (grantedRecordTypes.isNotEmpty()) {
+                fetchHealthData(context)
+            } else {
+                isProcessing = false
+            }
         }
     }
 
     suspend fun checkPermissionsAndFetchData(coroutineScope: CoroutineScope, currentContext: Context) {
-        val grantedPermissionsSet = healthConnectClient.permissionController.getGrantedPermissions()
-        if (grantedPermissionsSet.containsAll(permissions)) {
-            hasPermissions = true
-            Log.d("HealthConnect", "Permissions are already granted. Will attempt to fetch data.")
+        grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
+        val grantedCount = grantedRecordTypes.size
+        Log.d("HealthConnect", "Permission check: $grantedCount/${allRecordTypes.size} types granted")
+
+        if (grantedCount > 0) {
+            statusMessage = "$grantedCount of ${allRecordTypes.size} data types authorized."
             coroutineScope.launch { fetchHealthData(currentContext) }
         } else {
-            hasPermissions = false
-            val missingPermissions = permissions.subtract(grantedPermissionsSet)
-            Log.w("HealthConnect", "Permissions check failed. App needs ${permissions.size}, granted ${grantedPermissionsSet.size}.")
-            Log.w("HealthConnect", "Expected permissions: ${permissions.joinToString()}")
-            Log.w("HealthConnect", "Granted permissions: ${grantedPermissionsSet.joinToString()}")
-            Log.w("HealthConnect", "Missing permissions (${missingPermissions.size}): ${missingPermissions.joinToString()}")
-            statusMessage = "${missingPermissions.size} permission(s) not granted. Requesting. Missing: ${missingPermissions.joinToString { it.substringAfterLast(".") } }"
-            isProcessing = false 
-            requestPermissionLauncher.launch(permissions.toTypedArray())
+            // No permissions at all — request everything
+            statusMessage = "No permissions granted. Requesting access..."
+            isProcessing = false
+            requestPermissionLauncher.launch(allPermissions.toTypedArray())
         }
     }
 
@@ -586,8 +626,8 @@ fun HealthConnectScreen(
             Log.d("SendData", "No records or deletions to send.")
             return
         }
-        if(isProcessing){
-             Log.d("SendData", "sendPendingDataToServer called while already processing.")
+        if (isProcessing) {
+            Log.d("SendData", "sendPendingDataToServer called while already processing.")
             return
         }
         isProcessing = true
@@ -637,7 +677,7 @@ fun HealthConnectScreen(
             if (recordsWithKnownSerializers.isEmpty()) {
                 Log.d("SendData", "No records with known serializers to send.")
             } else {
-                Log.d("SendData", "Attempting to send ${recordsWithKnownSerializers.size} records (${healthRecords.size - recordsWithKnownSerializers.size} unsupported types excluded).")
+                Log.d("SendData", "Sending ${recordsWithKnownSerializers.size} records.")
 
                 val groupedRecords = recordsWithKnownSerializers.groupBy { it::class }
                 for ((recordClass, classRecords) in groupedRecords) {
@@ -685,21 +725,28 @@ fun HealthConnectScreen(
                 Log.d("SendData", "All posts successful. Saved token: ${pendingTokenToPersist?.take(10)}...")
                 pendingTokenToPersist = null
             } else {
-                statusMessage = "Data sent successfully, but no new token was pending."
+                statusMessage = "Data sent successfully."
                 Log.d("SendData", "All posts successful. No new token was pending to save.")
             }
             healthRecords = emptyList()
             pendingDeletionIds = emptyList()
         } else {
-            Log.w("SendData", "Not all posts successful. Pending records and their token candidate remain.")
+            Log.w("SendData", "Not all posts successful. Pending records remain.")
         }
         isProcessing = false
     }
-    
+
+    /** Perform fetch + send in one step. */
+    suspend fun syncNow(currentContext: Context) {
+        fetchHealthData(currentContext)
+        if (healthRecords.isNotEmpty() || pendingDeletionIds.isNotEmpty()) {
+            sendPendingDataToServer(currentContext)
+        }
+    }
+
     LaunchedEffect(Unit) {
-        Log.d("HealthConnectScreen", "LaunchedEffect: Initial check - current status: $statusMessage, isProcessing: $isProcessing")
+        Log.d("HealthConnectScreen", "LaunchedEffect: Initial check")
         checkPermissionsAndFetchData(this, context)
-        // Re-schedule background sync if it was previously enabled
         if (backgroundSyncEnabled) {
             HealthConnectSyncWorker.schedule(context)
         }
@@ -708,14 +755,13 @@ fun HealthConnectScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                Log.d("HealthConnectScreen", "App resumed. HasPermissions: $hasPermissions, IsProcessing: $isProcessing, BackgroundSyncEnabled: $backgroundSyncEnabled")
-                if (hasPermissions && !isProcessing) {
-                    Log.d("HealthConnectScreen", "Permissions granted and not processing, fetching data on resume.")
+                Log.d("HealthConnectScreen", "App resumed. HasAny: $hasAnyPermissions, IsProcessing: $isProcessing")
+                if (hasAnyPermissions && !isProcessing) {
                     scope.launch {
+                        // Re-check permissions in case user changed them in system settings
+                        refreshPermissions()
                         fetchHealthData(context)
-                        // Auto-send when background sync is enabled
                         if (backgroundSyncEnabled && (healthRecords.isNotEmpty() || pendingDeletionIds.isNotEmpty())) {
-                            Log.d("HealthConnectScreen", "Background sync enabled, auto-sending ${healthRecords.size} records and ${pendingDeletionIds.size} deletions.")
                             sendPendingDataToServer(context)
                         }
                     }
@@ -729,208 +775,223 @@ fun HealthConnectScreen(
     }
 
     // Periodic sync while app is open (when background sync is enabled)
-    LaunchedEffect(backgroundSyncEnabled, hasPermissions) {
-        if (backgroundSyncEnabled && hasPermissions) {
+    LaunchedEffect(backgroundSyncEnabled, hasAnyPermissions) {
+        if (backgroundSyncEnabled && hasAnyPermissions) {
             Log.d("HealthConnectScreen", "Starting periodic sync loop (60s interval)")
             while (true) {
-                delay(60_000L) // Wait 60 seconds
+                delay(60_000L)
                 if (!isProcessing) {
                     Log.d("HealthConnectScreen", "Periodic sync: fetching and sending data")
-                    fetchHealthData(context)
-                    if (healthRecords.isNotEmpty() || pendingDeletionIds.isNotEmpty()) {
-                        sendPendingDataToServer(context)
-                    }
+                    syncNow(context)
                 }
             }
         }
     }
 
-    val supportedRecordsForDisplay by remember(healthRecords) {
-        derivedStateOf {
-            healthRecords.filterNot { record ->
-                val summary = getRecordSummary(record)
-                summary == record::class.simpleName || summary == "Record"
-            }
-        }
+    val pendingRecordCount by remember(healthRecords) {
+        derivedStateOf { healthRecords.size + pendingDeletionIds.size }
     }
 
-    val unsupportedRecordsSummaryText by remember(healthRecords) {
-        derivedStateOf {
-            val unsupported = healthRecords.filter { record ->
-                val summary = getRecordSummary(record)
-                summary == record::class.simpleName || summary == "Record"
-            }
-            val groupedByType = unsupported.groupBy { it::class }
-            if (groupedByType.isEmpty()) {
-                ""
-            } else {
-                val count = unsupported.size
-                val typesString = groupedByType.keys.mapNotNull { it.simpleName }.distinct().sorted().joinToString(", ")
-                "$count Unsupported Records of types: $typesString"
-            }
-        }
-    }
+    // --- UI ---
 
-    val groupedAndSortedSupportedRecordsForDisplay by remember(supportedRecordsForDisplay) {
-        derivedStateOf {
-            val zoneId = ZoneId.systemDefault()
-            supportedRecordsForDisplay
-                .groupBy { record -> LocalDateTime.ofInstant(record.getPrimaryInstant(), zoneId).toLocalDate() }
-                .entries
-                .sortedByDescending { it.key } 
-                .map { entry -> entry.key to entry.value.sortedByDescending { record -> record.getPrimaryInstant() } } 
-        }
-    }
-
-    val timeFormatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
-    val dateHeaderFormatter = remember { DateTimeFormatter.ofPattern("EEE, MMM d, yyyy") }
-    val today = remember { LocalDate.now(ZoneId.systemDefault()) }
-    val yesterday = remember { today.minusDays(1) }
-
-    Column(
+    LazyColumn(
         modifier = modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(statusMessage)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (!hasPermissions) {
-            Button(
-                onClick = { scope.launch { checkPermissionsAndFetchData(scope, context) } }, 
-                enabled = !isProcessing 
+        // -- Sync Status Card --
+        item {
+            androidx.compose.material3.Card(
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Request Permissions")
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { scope.launch { fetchHealthData(context) } },
-                    enabled = !isProcessing
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Fetch New Data")
-                }
-                Button(
-                    onClick = { scope.launch { sendPendingDataToServer(context) } },
-                    enabled = (pendingDeletionIds.isNotEmpty() || healthRecords.any { record ->
-                        when (record) {
-                            is HeartRateVariabilityRmssdRecord, is WeightRecord, is HeartRateRecord,
-                            is ExerciseSessionRecord, is SpeedRecord, is PowerRecord, is NutritionRecord,
-                            is LeanBodyMassRecord, is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord,
-                            is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord,
-                            is StepsRecord, is DistanceRecord, is ActiveCaloriesBurnedRecord,
-                            is TotalCaloriesBurnedRecord, is FloorsClimbedRecord -> true
-                            else -> false
-                        }
-                    }) && !isProcessing
-                ) {
-                    Text("Send Pending Data")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("Background Sync")
-                Switch(
-                    checked = backgroundSyncEnabled,
-                    onCheckedChange = { enabled ->
-                        backgroundSyncEnabled = enabled
-                        setBackgroundSyncEnabled(context, enabled)
-                        if (enabled && !isIgnoringBatteryOptimizations(context)) {
-                            showBatteryOptimizationDialog = true
-                        }
-                    }
-                )
-            }
-
-            if (showBatteryOptimizationDialog) {
-                AlertDialog(
-                    onDismissRequest = { showBatteryOptimizationDialog = false },
-                    title = { Text("Battery Optimization") },
-                    text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(
-                            "For reliable background sync, allow Aurboda to run " +
-                            "without battery restrictions. This helps ensure your " +
-                            "health data syncs even when the app is closed."
-                        )
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                showBatteryOptimizationDialog = false
-                                batteryOptimizationLauncher.launch(
-                                    createBatteryOptimizationIntent(context)
-                                )
-                            }
-                        ) {
-                            Text("Allow")
-                        }
-                    },
-                    dismissButton = {
-                        Button(
-                            onClick = { showBatteryOptimizationDialog = false }
-                        ) {
-                            Text("Not Now")
-                        }
-                    }
-                )
-            }
-        }
-
-        Text("Total pending records (all types): ${healthRecords.size}")
-        if (unsupportedRecordsSummaryText.isNotEmpty()) {
-            Text(unsupportedRecordsSummaryText)
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (groupedAndSortedSupportedRecordsForDisplay.isNotEmpty()) {
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                groupedAndSortedSupportedRecordsForDisplay.forEach { (date, recordsInGroup) ->
-                    item {
-                        val dateHeaderText = when (date) {
-                            today -> "Today"
-                            yesterday -> "Yesterday"
-                            else -> date.format(dateHeaderFormatter)
-                        }
-                        Text(
-                            text = dateHeaderText,
+                            "Health Connect Sync",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(vertical = 8.dp)
+                            fontWeight = FontWeight.Bold
                         )
-                    }
-                    items(recordsInGroup) { record ->
-                        Row(verticalAlignment = Alignment.CenterVertically) { 
-                            val recordTime = LocalDateTime.ofInstant(record.getPrimaryInstant(), ZoneId.systemDefault()).format(timeFormatter)
-                            val recordSummaryText = getRecordSummary(record) 
-                            Row {
-                                recordTime.forEach { char ->
-                                    Text(
-                                        text = char.toString(),
-                                        fontFamily = FontFamily.Monospace,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.width(12.dp) 
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(8.dp)) 
-                            Text(
-                                text = recordSummaryText,
-                                modifier = Modifier.weight(1f) 
+                        if (isProcessing) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.height(16.dp).width(16.dp),
+                                strokeWidth = 2.dp
                             )
                         }
                     }
+
+                    Text(
+                        statusMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        "${grantedRecordTypes.size} of ${allRecordTypes.size} data types authorized",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    if (pendingRecordCount > 0) {
+                        Text(
+                            "$pendingRecordCount records pending",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Background Sync", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = backgroundSyncEnabled,
+                            onCheckedChange = { enabled ->
+                                backgroundSyncEnabled = enabled
+                                setBackgroundSyncEnabled(context, enabled)
+                                if (enabled && !isIgnoringBatteryOptimizations(context)) {
+                                    showBatteryOptimizationDialog = true
+                                }
+                            }
+                        )
+                    }
+
+                    Button(
+                        onClick = { scope.launch { syncNow(context) } },
+                        enabled = hasAnyPermissions && !isProcessing,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Sync Now")
+                    }
                 }
             }
-        } else if (hasPermissions && !isProcessing && healthRecords.isEmpty()) {
-             Text("No health records found for the selected period.")
-        } else if (hasPermissions && !isProcessing && supportedRecordsForDisplay.isEmpty() && healthRecords.isNotEmpty()){
-             Text("No records with custom display found. Check 'Unsupported Records' summary above.")
         }
+
+        // -- Data Source Category Cards --
+        items(categoryStatuses.size) { index ->
+            val status = categoryStatuses[index]
+            val iconText = when {
+                status.allGranted -> "\u2705"     // green check
+                status.partiallyGranted -> "\u26A0\uFE0F"  // amber warning
+                else -> "\u274C"                  // red X
+            }
+            val iconColor = when {
+                status.allGranted -> MaterialTheme.colorScheme.primary
+                status.partiallyGranted -> MaterialTheme.colorScheme.tertiary
+                else -> MaterialTheme.colorScheme.error
+            }
+
+            androidx.compose.material3.Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(iconText, style = MaterialTheme.typography.titleLarge)
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            status.category.name,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            status.category.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (!status.allGranted) {
+                            Text(
+                                "${status.grantedCount}/${status.totalCount} types",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = iconColor
+                            )
+                        }
+                    }
+
+                    if (!status.allGranted) {
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = {
+                                val categoryPermissions = status.category.recordTypes
+                                    .map { HealthPermission.getReadPermission(it) }
+                                    .toTypedArray()
+                                requestPermissionLauncher.launch(categoryPermissions)
+                            }
+                        ) {
+                            Text("Grant")
+                        }
+                    }
+                }
+            }
+        }
+
+        // -- Grant All Permissions button --
+        if (!hasAllPermissions) {
+            item {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = {
+                        requestPermissionLauncher.launch(allPermissions.toTypedArray())
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Grant All Permissions")
+                }
+            }
+        }
+
+        // -- Empty state --
+        if (!hasAnyPermissions && !isProcessing) {
+            item {
+                Text(
+                    "Grant at least one data category to start syncing your health data.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 16.dp)
+                )
+            }
+        }
+    }
+
+    // Battery optimization dialog
+    if (showBatteryOptimizationDialog) {
+        AlertDialog(
+            onDismissRequest = { showBatteryOptimizationDialog = false },
+            title = { Text("Battery Optimization") },
+            text = {
+                Text(
+                    "For reliable background sync, allow Aurboda to run " +
+                    "without battery restrictions. This helps ensure your " +
+                    "health data syncs even when the app is closed."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showBatteryOptimizationDialog = false
+                        batteryOptimizationLauncher.launch(
+                            createBatteryOptimizationIntent(context)
+                        )
+                    }
+                ) {
+                    Text("Allow")
+                }
+            },
+            dismissButton = {
+                Button(
+                    onClick = { showBatteryOptimizationDialog = false }
+                ) {
+                    Text("Not Now")
+                }
+            }
+        )
     }
 }
 
