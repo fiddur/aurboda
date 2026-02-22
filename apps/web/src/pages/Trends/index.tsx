@@ -1,7 +1,7 @@
-/* eslint-disable max-lines -- chart tooltip interaction adds lines */
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { useEffect, useRef, useState } from 'preact/hooks'
+import { MetricPicker } from '../../components/MetricPicker'
 import { TagPicker } from '../../components/TagPicker'
 import { fetchTrend, type FetchTrendParams, type TrendDisplayPeriod, type TrendResult } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -312,13 +312,8 @@ function TrendConfigForm({
             />
           </label>
         : <label class="pattern-input">
-            Metric Name
-            <input
-              type="text"
-              value={pattern}
-              onInput={(e) => setPattern((e.target as HTMLInputElement).value)}
-              placeholder="e.g., weight"
-            />
+            Metric
+            <MetricPicker value={pattern} onChange={setPattern} placeholder="Search metrics..." />
           </label>
         }
       </div>

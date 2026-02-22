@@ -10,9 +10,9 @@ import { baseResponseSchema } from './common.js'
 // =============================================================================
 
 /**
- * Metric types available for metric widgets.
+ * Built-in metric names available for dashboard widgets.
  */
-export const dashboardMetricSchema = z.enum([
+export const builtinDashboardMetrics = [
   // Baseline metrics
   'hrv_7day',
   'hrv_30day',
@@ -29,7 +29,17 @@ export const dashboardMetricSchema = z.enum([
   'hrv_rmssd',
   'resting_heart_rate',
   'hr_zone_2_sec',
-])
+] as const
+
+export type BuiltinDashboardMetric = (typeof builtinDashboardMetrics)[number]
+
+/**
+ * Metric types available for metric widgets.
+ * Accepts any non-empty string to support custom metrics.
+ */
+export const dashboardMetricSchema = z.string().min(1).meta({
+  description: 'Metric name (built-in or custom)',
+})
 
 export type DashboardMetric = z.infer<typeof dashboardMetricSchema>
 
