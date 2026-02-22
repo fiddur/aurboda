@@ -558,6 +558,84 @@
   background: #f3f4f6;
 }
 
+/* Edit mode */
+.btn-edit {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.5rem;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+}
+
+.btn-edit:hover:not(:disabled) {
+  background: #673ab8;
+  border-color: #673ab8;
+  color: white;
+}
+
+.btn-edit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.edit-title-input {
+  display: block;
+  width: 100%;
+  margin: 0 0 1rem;
+  padding: 0.375rem 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  box-sizing: border-box;
+}
+
+.edit-title-input:focus {
+  outline: none;
+  border-color: #673ab8;
+  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+}
+
+.edit-datetime-input {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.9rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+
+.edit-datetime-input:focus {
+  outline: none;
+  border-color: #673ab8;
+  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+}
+
+.edit-notes-input {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.9rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.edit-notes-input:focus {
+  outline: none;
+  border-color: #673ab8;
+  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+}
+
 /* Loading & error */
 .entity-detail-page .loading,
 .entity-detail-page .error {
@@ -690,6 +768,45 @@
 
   .source-record-title {
     color: #9ca3af;
+  }
+
+  .btn-edit {
+    background: #374151;
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+
+  .btn-edit:hover:not(:disabled) {
+    background: #8b5cf6;
+    border-color: #8b5cf6;
+    color: white;
+  }
+
+  .edit-title-input {
+    border-color: #4b5563;
+  }
+
+  .edit-title-input:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+  }
+
+  .edit-datetime-input {
+    border-color: #4b5563;
+  }
+
+  .edit-datetime-input:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+  }
+
+  .edit-notes-input {
+    border-color: #4b5563;
+  }
+
+  .edit-notes-input:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
   }
 
   .chart-toggle {

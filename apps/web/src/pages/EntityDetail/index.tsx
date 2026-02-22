@@ -8,49 +8,30 @@
  * - other     → generic ActivityDetail
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
-import { marked } from 'marked'
 import { useRoute } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
-import { MarkdownEditor } from '../../components/MarkdownEditor/index.jsx'
 import {
   Activity,
-  addNote,
-  deleteNote,
   fetchActivityById,
-  fetchNotes,
   fetchTagById,
-  NoteData,
   restoreActivity,
   restoreTag,
   softDeleteActivity,
   softDeleteTag,
   SourceRecord,
   Tag,
-  updateNote,
+  updateActivity,
 } from '../../state/api'
+import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { ExerciseDetail } from './ExerciseDetail'
+import { formatDateTime, formatDateTimeLocal, formatDuration, formatTime } from './format-utils'
 import { MusicPlaylist } from './MusicPlaylist'
+import { NotesSection } from './NotesSection'
 import { SleepDetail } from './SleepDetail'
 
 import './style.css'
 
-marked.setOptions({ breaks: true, gfm: true })
-
 type EntityType = 'activity' | 'tag' | 'productivity'
-
-const formatTime = (d: Date) => format(d, 'HH:mm')
-
-const formatDateTime = (d: Date) => format(d, 'yyyy-MM-dd HH:mm')
-
-const formatDuration = (start: Date, end: Date): string => {
-  const ms = end.getTime() - start.getTime()
-  const totalMin = Math.round(ms / 60000)
-  if (totalMin < 60) return `${totalMin}m`
-  const h = Math.floor(totalMin / 60)
-  const m = totalMin % 60
-  return m > 0 ? `${h}h ${m}m` : `${h}h`
-}
 
 const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
   <div class="source-records">
@@ -61,8 +42,8 @@ const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
           {record.title ?? record.exercise_type_name ?? record.data_origin ?? record.source}
         </span>
         <span class="source-record-time">
-          {format(new Date(record.start_time), 'HH:mm')}
-          {record.end_time ? ` – ${format(new Date(record.end_time), 'HH:mm')}` : ''}
+          {formatTime(new Date(record.start_time))}
+          {record.end_time ? ` – ${formatTime(new Date(record.end_time))}` : ''}
         </span>
         {record.title && record.data_origin && <span class="source-record-title">{record.data_origin}</span>}
       </a>
@@ -71,7 +52,17 @@ const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
 )
 
 /** Generic activity detail for types other than sleep/exercise. */
-const GenericActivityDetail = ({ activity }: { activity: Activity }) => {
+const GenericActivityDetail = ({
+  activity,
+  isEditing,
+  draft,
+  onDraftChange,
+}: {
+  activity: Activity
+  isEditing: boolean
+  draft: ActivityDraft
+  onDraftChange: (d: ActivityDraft) => void
+}) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
@@ -86,38 +77,40 @@ const GenericActivityDetail = ({ activity }: { activity: Activity }) => {
         {activity.source && <span class="entity-source">Source: {activity.source}</span>}
       </div>
 
-      <h2>{activity.title || exerciseType || activity.activity_type}</h2>
+      <EditableActivityFields
+        title={activity.title || exerciseType || activity.activity_type}
+        displayStart={displayStart}
+        displayEnd={displayEnd}
+        notes={activity.notes}
+        isEditing={isEditing}
+        draft={draft}
+        onDraftChange={onDraftChange}
+      />
 
-      <div class="entity-fields">
-        <div class="field-row">
-          <span class="field-label">Time</span>
-          <span class="field-value">
-            {formatDateTime(displayStart)} – {formatTime(displayEnd)}
-          </span>
-        </div>
-        <div class="field-row">
-          <span class="field-label">Duration</span>
-          <span class="field-value">{formatDuration(displayStart, displayEnd)}</span>
-        </div>
-        {activity.avg_hrv !== undefined && (
+      {!isEditing && activity.avg_hrv !== undefined && (
+        <div class="entity-fields">
           <div class="field-row">
             <span class="field-label">Avg HRV</span>
             <span class="field-value">{activity.avg_hrv} ms</span>
           </div>
-        )}
-        {activity.notes && (
-          <div class="field-row">
-            <span class="field-label">Notes</span>
-            <span class="field-value">{activity.notes}</span>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
 
 /** Dispatch to type-specific activity detail component. */
-const ActivityDetailDispatch = ({ activity }: { activity: Activity }) => {
+const ActivityDetailDispatch = ({
+  activity,
+  isEditing,
+  draft,
+  onDraftChange,
+}: {
+  activity: Activity
+  isEditing: boolean
+  draft: ActivityDraft
+  onDraftChange: (d: ActivityDraft) => void
+}) => {
   const musicStart = activity.merged_start_time ?? activity.start_time
   const musicEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
@@ -132,9 +125,25 @@ const ActivityDetailDispatch = ({ activity }: { activity: Activity }) => {
         <div class="merged-indicator">Merged from {activity.source_records!.length} sources</div>
       )}
 
-      {isSleep && <SleepDetail activity={activity} />}
-      {isExercise && <ExerciseDetail activity={activity} />}
-      {!isSleep && !isExercise && <GenericActivityDetail activity={activity} />}
+      {isSleep && (
+        <SleepDetail activity={activity} isEditing={isEditing} draft={draft} onDraftChange={onDraftChange} />
+      )}
+      {isExercise && (
+        <ExerciseDetail
+          activity={activity}
+          isEditing={isEditing}
+          draft={draft}
+          onDraftChange={onDraftChange}
+        />
+      )}
+      {!isSleep && !isExercise && (
+        <GenericActivityDetail
+          activity={activity}
+          isEditing={isEditing}
+          draft={draft}
+          onDraftChange={onDraftChange}
+        />
+      )}
 
       {hasSourceRecords && <SourceRecordsSection records={activity.source_records!} />}
 
@@ -184,150 +193,6 @@ const TagDetail = ({ tag }: { tag: Tag }) => {
   )
 }
 
-const NotesSection = ({
-  entityType,
-  entityId,
-  allEntityIds,
-}: {
-  entityType: EntityType
-  entityId: string
-  allEntityIds?: string[]
-}) => {
-  const queryClient = useQueryClient()
-  const [newNote, setNewNote] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editContent, setEditContent] = useState('')
-
-  // Fetch notes for all source entity IDs (merged activity) or just the one
-  const idsToFetch = allEntityIds ?? [entityId]
-  const notesQuery = useQuery({
-    queryFn: async () => {
-      const results = await Promise.all(idsToFetch.map((id) => fetchNotes(entityType, id)))
-      return results
-        .flat()
-        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    },
-    queryKey: ['notes', entityType, ...idsToFetch],
-    staleTime: 30_000,
-  })
-
-  const invalidateNotes = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ['notes', entityType, ...idsToFetch] }),
-    [queryClient, entityType, ...idsToFetch],
-  )
-
-  const addMutation = useMutation({
-    mutationFn: () => addNote(entityType, entityId, newNote),
-    onSuccess: () => {
-      setNewNote('')
-      invalidateNotes()
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, content }: { id: string; content: string }) => updateNote(id, content),
-    onSuccess: () => {
-      setEditingId(null)
-      invalidateNotes()
-    },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteNote(id),
-    onSuccess: invalidateNotes,
-  })
-
-  const handleAdd = useCallback(
-    (e: Event) => {
-      e.preventDefault()
-      if (!newNote.trim()) return
-      addMutation.mutate()
-    },
-    [newNote, addMutation],
-  )
-
-  const startEdit = useCallback((note: NoteData) => {
-    setEditingId(note.id)
-    setEditContent(note.content)
-  }, [])
-
-  const handleUpdate = useCallback(
-    (e: Event) => {
-      e.preventDefault()
-      if (!editingId || !editContent.trim()) return
-      updateMutation.mutate({ content: editContent, id: editingId })
-    },
-    [editingId, editContent, updateMutation],
-  )
-
-  const notes = notesQuery.data ?? []
-
-  return (
-    <div class="notes-section">
-      <h3>Notes</h3>
-
-      {notesQuery.isLoading && <p class="notes-loading">Loading notes…</p>}
-
-      {notes.length > 0 && (
-        <div class="notes-list">
-          {notes.map((note) => (
-            <div key={note.id} class="note-item">
-              {editingId === note.id ?
-                <form onSubmit={handleUpdate} class="note-edit-form">
-                  <MarkdownEditor value={editContent} onChange={setEditContent} rows={3} />
-                  <div class="note-edit-actions">
-                    <button type="submit" class="btn-primary" disabled={updateMutation.isPending}>
-                      Save
-                    </button>
-                    <button type="button" class="btn-secondary" onClick={() => setEditingId(null)}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              : <>
-                  <div
-                    class="note-content"
-                    dangerouslySetInnerHTML={{ __html: marked.parse(note.content) as string }}
-                  />
-                  <div class="note-footer">
-                    <span class="note-date">{format(new Date(note.created_at), 'yyyy-MM-dd HH:mm')}</span>
-                    <div class="note-actions">
-                      <button
-                        class="note-action-btn"
-                        onClick={() => startEdit(note)}
-                        title="Edit note"
-                        type="button"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        class="note-action-btn danger"
-                        onClick={() => deleteMutation.mutate(note.id)}
-                        title="Delete note"
-                        type="button"
-                        disabled={deleteMutation.isPending}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </>
-              }
-            </div>
-          ))}
-        </div>
-      )}
-
-      <form onSubmit={handleAdd} class="note-add-form">
-        <MarkdownEditor value={newNote} onChange={setNewNote} placeholder="Add a note…" rows={3} />
-        <button type="submit" class="btn-primary" disabled={!newNote.trim() || addMutation.isPending}>
-          {addMutation.isPending ? 'Adding…' : 'Add Note'}
-        </button>
-      </form>
-    </div>
-  )
-}
-
 const deleteEntity = (entityType: EntityType, entityId: string): Promise<void> => {
   if (entityType === 'activity') return softDeleteActivity(entityId)
   if (entityType === 'tag') return softDeleteTag(entityId)
@@ -340,16 +205,37 @@ const restoreEntity = (entityType: EntityType, entityId: string): Promise<void> 
   return Promise.reject(new Error('Unsupported entity type for restore'))
 }
 
+const PencilIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </svg>
+)
+
 const EntityActions = ({
   entityType,
   entityId,
   isDeleted,
   onMutationSuccess,
+  canEdit,
+  isMerged,
+  isEditing,
+  onStartEditing,
+  onCancelEditing,
+  onSave,
+  isSaving,
 }: {
   entityType: EntityType
   entityId: string
   isDeleted: boolean
   onMutationSuccess: () => void
+  canEdit: boolean
+  isMerged: boolean
+  isEditing: boolean
+  onStartEditing: () => void
+  onCancelEditing: () => void
+  onSave: () => void
+  isSaving: boolean
 }) => {
   const deleteMutation = useMutation({
     mutationFn: () => deleteEntity(entityType, entityId),
@@ -379,16 +265,51 @@ const EntityActions = ({
 
   return (
     <div class="entity-actions">
-      <button
-        class="btn-danger"
-        onClick={() => deleteMutation.mutate()}
-        disabled={deleteMutation.isPending}
-        type="button"
-      >
-        {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-      </button>
+      {canEdit && !isEditing && (
+        <button
+          class="btn-edit"
+          onClick={onStartEditing}
+          disabled={isMerged}
+          title={isMerged ? 'Edit individual sources' : 'Edit activity'}
+          type="button"
+        >
+          <PencilIcon />
+        </button>
+      )}
+      {isEditing && (
+        <>
+          <button class="btn-primary" onClick={onSave} disabled={isSaving} type="button">
+            {isSaving ? 'Saving…' : 'Save'}
+          </button>
+          <button class="btn-secondary" onClick={onCancelEditing} type="button">
+            Cancel
+          </button>
+        </>
+      )}
+      {!isEditing && (
+        <button
+          class="btn-danger"
+          onClick={() => deleteMutation.mutate()}
+          disabled={deleteMutation.isPending}
+          type="button"
+        >
+          {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+        </button>
+      )}
     </div>
   )
+}
+
+const makeDraft = (activity: Activity): ActivityDraft => {
+  const displayStart = activity.merged_start_time ?? activity.start_time
+  const displayEnd =
+    activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
+  return {
+    end_time: formatDateTimeLocal(displayEnd),
+    notes: activity.notes ?? '',
+    start_time: formatDateTimeLocal(displayStart),
+    title: activity.title ?? '',
+  }
 }
 
 const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entityId: string }) => {
@@ -427,6 +348,49 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
     : entityType === 'tag' ? Boolean(tag?.deleted_at)
     : false
 
+  // Edit state
+  const [isEditing, setIsEditing] = useState(false)
+  const emptyDraft: ActivityDraft = { end_time: '', notes: '', start_time: '', title: '' }
+  const [draft, setDraft] = useState<ActivityDraft>(emptyDraft)
+
+  const isMergedActivity = Boolean(
+    entityType === 'activity' && activity?.source_records && activity.source_records.length > 1,
+  )
+
+  const startEditing = useCallback(() => {
+    if (!activity) return
+    setDraft(makeDraft(activity))
+    setIsEditing(true)
+  }, [activity])
+
+  const cancelEditing = useCallback(() => {
+    setIsEditing(false)
+    setDraft(emptyDraft)
+  }, [])
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      if (!activity) return Promise.resolve()
+      const body: Record<string, string> = {}
+      const originalDraft = makeDraft(activity)
+      if (draft.title !== originalDraft.title) body.title = draft.title
+      if (draft.start_time !== originalDraft.start_time)
+        body.start_time = new Date(draft.start_time).toISOString()
+      if (draft.end_time !== originalDraft.end_time) body.end_time = new Date(draft.end_time).toISOString()
+      if (draft.notes !== originalDraft.notes) body.notes = draft.notes
+      if (Object.keys(body).length === 0) return Promise.resolve()
+      return updateActivity(rawEntityId, body)
+    },
+    onSuccess: () => {
+      setIsEditing(false)
+      invalidateEntity()
+    },
+  })
+
+  const handleSave = useCallback(() => {
+    saveMutation.mutate()
+  }, [saveMutation])
+
   // Collect all entity IDs for notes (primary + source records for merged activities)
   const allEntityIds =
     entityType === 'activity' && activity?.source_records ?
@@ -443,9 +407,23 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
         entityId={rawEntityId}
         isDeleted={isDeleted}
         onMutationSuccess={invalidateEntity}
+        canEdit={entityType === 'activity'}
+        isMerged={isMergedActivity}
+        isEditing={isEditing}
+        onStartEditing={startEditing}
+        onCancelEditing={cancelEditing}
+        onSave={handleSave}
+        isSaving={saveMutation.isPending}
       />
 
-      {entityType === 'activity' && activity && <ActivityDetailDispatch activity={activity} />}
+      {entityType === 'activity' && activity && (
+        <ActivityDetailDispatch
+          activity={activity}
+          isEditing={isEditing}
+          draft={draft}
+          onDraftChange={setDraft}
+        />
+      )}
       {entityType === 'tag' && tag && <TagDetail tag={tag} />}
 
       <NotesSection entityType={entityType} entityId={rawEntityId} allEntityIds={allEntityIds} />
