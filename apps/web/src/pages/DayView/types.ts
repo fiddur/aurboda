@@ -16,4 +16,5 @@ export interface ChartItem {
   isPoint: boolean
   entity_id?: string
   entity_type?: 'activity' | 'tag' | 'productivity'
+  href?: string
 }
