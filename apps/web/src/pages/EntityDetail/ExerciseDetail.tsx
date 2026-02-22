@@ -1,7 +1,8 @@
 /**
  * Exercise-specific detail view with HR chart and HR zone bar.
  */
-import { Activity } from '../../state/api'
+import { useQuery } from '@tanstack/react-query'
+import { Activity, fetchMetricTimeSeries } from '../../state/api'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 
@@ -64,6 +65,17 @@ export const ExerciseDetail = ({
     | string
     | undefined
 
+  const caloriesQuery = useQuery({
+    queryFn: () => fetchMetricTimeSeries('calories_active', displayStart, displayEnd),
+    queryKey: ['detail-calories', displayStart.toISOString(), displayEnd.toISOString()],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const totalCalories =
+    caloriesQuery.data && caloriesQuery.data.length > 0 ?
+      Math.round(caloriesQuery.data.reduce((sum, [, val]) => sum + val, 0))
+    : undefined
+
   return (
     <>
       <div class="entity-info">
@@ -82,6 +94,15 @@ export const ExerciseDetail = ({
           onDraftChange={onDraftChange}
         />
 
+        {!isEditing && totalCalories !== undefined && (
+          <div class="entity-fields">
+            <div class="field-row">
+              <span class="field-label">Active Calories</span>
+              <span class="field-value">{totalCalories} kcal</span>
+            </div>
+          </div>
+        )}
+
         {!isEditing && activity.avg_hrv !== undefined && (
           <div class="entity-fields">
             <div class="field-row">
@@ -96,7 +117,7 @@ export const ExerciseDetail = ({
 
       {/* HR chart with overlays */}
       <div class="detail-grid-full">
-        <ActivityChart start={displayStart} end={displayEnd} showHrDefault={true} />
+        <ActivityChart start={displayStart} end={displayEnd} showHrDefault={true} showHrvDefault={true} />
       </div>
     </>
   )

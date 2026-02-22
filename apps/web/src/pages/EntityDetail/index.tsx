@@ -449,9 +449,9 @@ export const EntityDetail = () => {
   return (
     <div class="entity-detail-page">
       <div class="entity-detail-header">
-        <a href="/day" class="back-link">
-          Back to Day View
-        </a>
+        <button type="button" class="back-link back-link-btn" onClick={() => history.back()}>
+          Back
+        </button>
       </div>
       <EntityContent entityType={entityType} entityId={entityId} />
     </div>

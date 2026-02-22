@@ -75,17 +75,16 @@ export const EditableActivityFields = ({
             <span class="field-label">{durationLabel}</span>
             <span class="field-value">{draftDuration}</span>
           </div>
-          <div class="field-row">
-            <span class="field-label">Notes</span>
-            <span class="field-value">
-              <textarea
-                class="edit-notes-input"
-                value={draft.notes}
-                onInput={(e) => onDraftChange({ ...draft, notes: (e.target as HTMLTextAreaElement).value })}
-                rows={3}
-              />
-            </span>
-          </div>
+        </div>
+
+        <div class="edit-notes-block">
+          <span class="field-label">Notes</span>
+          <textarea
+            class="edit-notes-input"
+            value={draft.notes}
+            onInput={(e) => onDraftChange({ ...draft, notes: (e.target as HTMLTextAreaElement).value })}
+            rows={3}
+          />
         </div>
       </>
     )
