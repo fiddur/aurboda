@@ -25,6 +25,7 @@ import {
   restoreTag,
   softDeleteActivity,
   softDeleteTag,
+  SourceRecord,
   Tag,
   updateNote,
 } from '../../state/api'
@@ -51,9 +52,27 @@ const formatDuration = (start: Date, end: Date): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
+const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
+  <div class="source-records">
+    <h3>Sources ({records.length})</h3>
+    {records.map((record) => (
+      <a key={record.id} href={`/detail/activity/${record.id}`} class="source-record">
+        <span class="source-record-source">{record.data_origin ?? record.source}</span>
+        <span class="source-record-time">
+          {format(new Date(record.start_time), 'HH:mm')}
+          {record.end_time ? ` – ${format(new Date(record.end_time), 'HH:mm')}` : ''}
+        </span>
+        {record.title && <span class="source-record-title">{record.title}</span>}
+      </a>
+    ))}
+  </div>
+)
+
 /** Generic activity detail for types other than sleep/exercise. */
 const GenericActivityDetail = ({ activity }: { activity: Activity }) => {
-  const end = activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
+  const displayStart = activity.merged_start_time ?? activity.start_time
+  const displayEnd =
+    activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
   const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseTypeName as
     | string
     | undefined
@@ -71,12 +90,12 @@ const GenericActivityDetail = ({ activity }: { activity: Activity }) => {
         <div class="field-row">
           <span class="field-label">Time</span>
           <span class="field-value">
-            {formatDateTime(activity.start_time)} – {formatTime(end)}
+            {formatDateTime(displayStart)} – {formatTime(displayEnd)}
           </span>
         </div>
         <div class="field-row">
           <span class="field-label">Duration</span>
-          <span class="field-value">{formatDuration(activity.start_time, end)}</span>
+          <span class="field-value">{formatDuration(displayStart, displayEnd)}</span>
         </div>
         {activity.avg_hrv !== undefined && (
           <div class="field-row">
@@ -101,12 +120,19 @@ const ActivityDetailDispatch = ({ activity }: { activity: Activity }) => {
 
   const isSleep = activity.activity_type === 'sleep' || activity.activity_type === 'nap'
   const isExercise = activity.activity_type === 'exercise'
+  const hasSourceRecords = activity.source_records && activity.source_records.length > 1
 
   return (
     <>
+      {hasSourceRecords && (
+        <div class="merged-indicator">Merged from {activity.source_records!.length} sources</div>
+      )}
+
       {isSleep && <SleepDetail activity={activity} />}
       {isExercise && <ExerciseDetail activity={activity} />}
       {!isSleep && !isExercise && <GenericActivityDetail activity={activity} />}
+
+      {hasSourceRecords && <SourceRecordsSection records={activity.source_records!} />}
 
       <div class="detail-grid">
         <MusicPlaylist start={activity.start_time} end={end} />

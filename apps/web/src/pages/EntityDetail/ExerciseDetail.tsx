@@ -59,7 +59,9 @@ const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
 }
 
 export const ExerciseDetail = ({ activity }: { activity: Activity }) => {
-  const end = activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
+  const displayStart = activity.merged_start_time ?? activity.start_time
+  const displayEnd =
+    activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
   const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseTypeName as
     | string
     | undefined
@@ -78,12 +80,12 @@ export const ExerciseDetail = ({ activity }: { activity: Activity }) => {
           <div class="field-row">
             <span class="field-label">Time</span>
             <span class="field-value">
-              {formatDateTime(activity.start_time)} – {formatTime(end)}
+              {formatDateTime(displayStart)} – {formatTime(displayEnd)}
             </span>
           </div>
           <div class="field-row">
             <span class="field-label">Duration</span>
-            <span class="field-value">{formatDuration(activity.start_time, end)}</span>
+            <span class="field-value">{formatDuration(displayStart, displayEnd)}</span>
           </div>
           {activity.avg_hrv !== undefined && (
             <div class="field-row">
@@ -104,7 +106,7 @@ export const ExerciseDetail = ({ activity }: { activity: Activity }) => {
 
       {/* HR chart with overlays */}
       <div class="detail-grid-full">
-        <ActivityChart start={activity.start_time} end={end} showHrDefault={true} />
+        <ActivityChart start={displayStart} end={displayEnd} showHrDefault={true} />
       </div>
     </>
   )

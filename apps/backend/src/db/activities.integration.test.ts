@@ -5,6 +5,7 @@ import {
   deleteActivity,
   getActivities,
   getActivityById,
+  getOverlappingActivities,
   getSleepSessions,
   insertActivity,
   updateActivity,
@@ -288,6 +289,123 @@ describe('Activities Integration Tests', () => {
 
       const result = await deleteActivity(user, nonExistentId)
       expect(result).toBe(false)
+    })
+  })
+
+  describe('getOverlappingActivities', () => {
+    test('returns overlapping activities of the same type', async () => {
+      const user = getTestUser()
+      const id1 = randomUUID()
+      const id2 = randomUUID()
+
+      // Two overlapping exercises from different sources
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: id1,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        title: 'From Gravl',
+      })
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:45:00Z'),
+        id: id2,
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:05:00Z'),
+        title: 'From Fitbit',
+      })
+
+      const activity = await getActivityById(user, id1)
+      expect(activity).not.toBeNull()
+
+      const overlapping = await getOverlappingActivities(user, activity!)
+      expect(overlapping).toHaveLength(2)
+      expect(overlapping.map((a) => a.id).sort()).toEqual([id1, id2].sort())
+    })
+
+    test('does not return non-overlapping activities', async () => {
+      const user = getTestUser()
+      const id1 = randomUUID()
+      const id2 = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: id1,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T15:00:00Z'),
+        id: id2,
+        source: 'garmin',
+        start_time: new Date('2024-01-15T14:00:00Z'),
+      })
+
+      const activity = await getActivityById(user, id1)
+      const overlapping = await getOverlappingActivities(user, activity!)
+      expect(overlapping).toHaveLength(1)
+      expect(overlapping[0]!.id).toBe(id1)
+    })
+
+    test('does not return activities of a different type', async () => {
+      const user = getTestUser()
+      const id1 = randomUUID()
+      const id2 = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: id1,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      await insertActivity(user, {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T10:30:00Z'),
+        id: id2,
+        source: 'oura',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const activity = await getActivityById(user, id1)
+      const overlapping = await getOverlappingActivities(user, activity!)
+      expect(overlapping).toHaveLength(1)
+      expect(overlapping[0]!.id).toBe(id1)
+    })
+
+    test('excludes deleted activities', async () => {
+      const user = getTestUser()
+      const id1 = randomUUID()
+      const id2 = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: id1,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:45:00Z'),
+        id: id2,
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      })
+
+      await deleteActivity(user, id2)
+
+      const activity = await getActivityById(user, id1)
+      const overlapping = await getOverlappingActivities(user, activity!)
+      expect(overlapping).toHaveLength(1)
+      expect(overlapping[0]!.id).toBe(id1)
     })
   })
 

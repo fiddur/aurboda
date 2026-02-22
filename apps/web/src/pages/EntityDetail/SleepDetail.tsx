@@ -75,10 +75,12 @@ const OuraMetricsCards = ({ metrics }: { metrics: Partial<Record<OuraSleepMetric
 
 export const SleepDetail = ({ activity }: { activity: Activity }) => {
   const end = activity.end_time ?? new Date(activity.start_time.getTime() + 8 * 60 * 60000)
+  const displayStart = activity.merged_start_time ?? activity.start_time
+  const displayEnd = activity.merged_end_time ?? end
   const stages = parseSleepStages(activity.data as Record<string, unknown> | undefined)
   const sleepMinutes = resolveSleepMinutes(activity.total_sleep, stages)
 
-  const endDateStr = format(end, 'yyyy-MM-dd')
+  const endDateStr = format(displayEnd, 'yyyy-MM-dd')
   const ouraQuery = useQuery({
     queryFn: () => {
       const dayStart = new Date(`${endDateStr}T00:00:00`)
@@ -106,12 +108,12 @@ export const SleepDetail = ({ activity }: { activity: Activity }) => {
           <div class="field-row">
             <span class="field-label">Time</span>
             <span class="field-value">
-              {formatDateTime(activity.start_time)} – {formatTime(end)}
+              {formatDateTime(displayStart)} – {formatTime(displayEnd)}
             </span>
           </div>
           <div class="field-row">
             <span class="field-label">In Bed</span>
-            <span class="field-value">{formatDuration(activity.start_time, end)}</span>
+            <span class="field-value">{formatDuration(displayStart, displayEnd)}</span>
           </div>
           {sleepMinutes !== undefined && (
             <div class="field-row">
@@ -138,9 +140,11 @@ export const SleepDetail = ({ activity }: { activity: Activity }) => {
 
       <div class="detail-grid-full">
         <ActivityChart
-          start={activity.start_time}
-          end={end}
+          start={displayStart}
+          end={displayEnd}
           stages={stages.length > 0 ? stages : undefined}
+          showHrDefault={true}
+          showHrvDefault={true}
         />
       </div>
     </>

@@ -74,9 +74,21 @@ import { auth } from './auth'
 // Frontend types with Date objects (converted from API string types)
 export type ActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap'
 
+export interface SourceRecord {
+  id: string
+  source: string
+  start_time: string
+  end_time?: string
+  title?: string
+  data_origin?: string
+}
+
 export interface Activity extends Omit<ApiActivity, 'start_time' | 'end_time'> {
   start_time: Date
   end_time?: Date
+  source_records?: SourceRecord[]
+  merged_start_time?: Date
+  merged_end_time?: Date
 }
 
 export interface ProductivityRecord extends Omit<ApiProductivityRecord, 'start_time' | 'end_time'> {
@@ -826,6 +838,9 @@ export const fetchActivityById = async (id: string): Promise<Activity> => {
   return {
     ...d,
     end_time: d.end_time ? new Date(d.end_time) : undefined,
+    merged_end_time: d.merged_end_time ? new Date(d.merged_end_time) : undefined,
+    merged_start_time: d.merged_start_time ? new Date(d.merged_start_time) : undefined,
+    source_records: d.source_records,
     start_time: new Date(d.start_time),
   }
 }

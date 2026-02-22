@@ -71,6 +71,7 @@ export {
   deleteActivity,
   getActivities,
   getActivityById,
+  getOverlappingActivities,
   getSleepSessions,
   insertActivity,
   mergeOverlappingActivities,

@@ -88,6 +88,27 @@ export const mergeOverlappingActivities = (activities: Activity[]): Activity[] =
   return result.sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 }
 
+/**
+ * Find all non-deleted activities of the same type that overlap in time with the given activity.
+ * Returns raw DB rows (no merge) including the activity itself.
+ */
+export const getOverlappingActivities = async (user: string, activity: Activity): Promise<Activity[]> => {
+  const endTime = activity.end_time ?? activity.start_time
+  const result = await query(
+    user,
+    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
+     FROM activities
+     WHERE activity_type = $1
+       AND deleted_at IS NULL
+       AND start_time <= $3
+       AND (end_time >= $2 OR end_time IS NULL)
+     ORDER BY start_time`,
+    [activity.activity_type, activity.start_time, endTime],
+  )
+
+  return result.rows.map(mapActivityRow)
+}
+
 export const insertActivity = async (user: string, activity: Activity) => {
   await query(
     user,

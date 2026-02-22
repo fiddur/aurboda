@@ -5,12 +5,14 @@
  * - Sleep hypnogram (colored bands by sleep stage)
  * - Heart rate line overlay
  * - HRV line overlay
+ * - Hover tooltip with crosshair
  */
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { format } from 'date-fns'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { fetchHeartRate, fetchHrv } from '../../state/api'
+import { findNearest, findStageAtTime } from './chart-utils'
 import { STAGE_COLORS, STAGE_LABELS, STAGE_Y_ORDER, type SleepStage } from './sleep-utils'
 
 interface ActivityChartProps {
@@ -151,6 +153,7 @@ export const ActivityChart = ({
 }: ActivityChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
   const [showHr, setShowHr] = useState(showHrDefault)
   const [showHrv, setShowHrv] = useState(showHrvDefault)
 
@@ -222,6 +225,68 @@ export const ActivityChart = ({
       const offset = axisSide === 'right' && hrVisible ? 45 : 0
       drawLineOverlay(g, xScale, innerWidth, innerHeight, hrvData, '#14b8a6', 'ms', axisSide, offset)
     }
+
+    // Tooltip crosshair and interaction overlay
+    const crosshair = g
+      .append('line')
+      .attr('y1', 0)
+      .attr('y2', innerHeight)
+      .attr('stroke', 'currentColor')
+      .attr('stroke-opacity', 0.4)
+      .attr('stroke-dasharray', '4 3')
+      .attr('pointer-events', 'none')
+      .style('display', 'none')
+
+    const tooltip = tooltipRef.current
+
+    g.append('rect')
+      .attr('width', innerWidth)
+      .attr('height', innerHeight)
+      .attr('fill', 'transparent')
+      .attr('pointer-events', 'all')
+      .on('mousemove', (event: MouseEvent) => {
+        const [mx] = d3.pointer(event)
+        const time = xScale.invert(mx)
+
+        crosshair.attr('x1', mx).attr('x2', mx).style('display', null)
+
+        const lines: string[] = [format(time, 'HH:mm:ss')]
+
+        if (hasData(hrData)) {
+          const nearest = findNearest(hrData, time)
+          if (nearest) lines.push(`HR: ${Math.round(nearest[1])} bpm`)
+        }
+        if (hasData(hrvData)) {
+          const nearest = findNearest(hrvData, time)
+          if (nearest) lines.push(`HRV: ${Math.round(nearest[1])} ms`)
+        }
+        if (hasHypnogram && stages) {
+          const stage = findStageAtTime(stages, time)
+          if (stage) lines.push(`Stage: ${stage}`)
+        }
+
+        if (tooltip) {
+          tooltip.textContent = lines.join('\n')
+          tooltip.style.display = 'block'
+
+          // Position relative to container
+          const containerRect = containerRef.current!.getBoundingClientRect()
+          const svgRect = svgRef.current!.getBoundingClientRect()
+          const tooltipX = mx + MARGIN.left + (svgRect.left - containerRect.left)
+          const tooltipWidth = tooltip.offsetWidth
+          const availableWidth = containerRect.width
+
+          // Flip to left side if too close to right edge
+          const left =
+            tooltipX + tooltipWidth + 12 > availableWidth ? tooltipX - tooltipWidth - 12 : tooltipX + 12
+          tooltip.style.left = `${left}px`
+          tooltip.style.top = `${MARGIN.top + 8}px`
+        }
+      })
+      .on('mouseleave', () => {
+        crosshair.style('display', 'none')
+        if (tooltip) tooltip.style.display = 'none'
+      })
   }, [start, end, stages, hasHypnogram, hrData, hrvData])
 
   return (
@@ -246,6 +311,7 @@ export const ActivityChart = ({
       </div>
       <div class="chart-svg-container" ref={containerRef}>
         <svg ref={svgRef} />
+        <div class="chart-tooltip" ref={tooltipRef} />
       </div>
     </div>
   )

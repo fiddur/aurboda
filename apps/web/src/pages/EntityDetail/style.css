@@ -157,6 +157,69 @@
   color: #9ca3af;
 }
 
+/* Merged activity indicator */
+.merged-indicator {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  margin-bottom: 1rem;
+  background: #ede9fe;
+  color: #5b21b6;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+/* Source records */
+.source-records {
+  margin-top: 1.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.source-records h3 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.source-record {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s ease;
+}
+
+.source-record:last-child {
+  margin-bottom: 0;
+}
+
+.source-record:hover {
+  background: #f3f4f6;
+}
+
+.source-record-source {
+  font-weight: 500;
+  font-size: 0.85rem;
+  min-width: 100px;
+}
+
+.source-record-time {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.source-record-title {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-left: auto;
+}
+
 /* Activity chart */
 .activity-chart-container {
   position: relative;
@@ -196,8 +259,24 @@
 }
 
 .chart-svg-container {
+  position: relative;
   width: 100%;
   overflow: hidden;
+}
+
+.chart-tooltip {
+  display: none;
+  position: absolute;
+  padding: 0.375rem 0.5rem;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: pre;
+  pointer-events: none;
+  z-index: 10;
+  color: #374151;
 }
 
 .chart-svg-container svg {
@@ -584,6 +663,35 @@
     border-color: #374151;
   }
 
+  .merged-indicator {
+    background: #2e1065;
+    color: #c4b5fd;
+  }
+
+  .source-records {
+    border-color: #374151;
+  }
+
+  .source-record {
+    border-color: #374151;
+  }
+
+  .source-record:hover {
+    background: #1f2937;
+  }
+
+  .source-record-source {
+    color: #d1d5db;
+  }
+
+  .source-record-time {
+    color: #9ca3af;
+  }
+
+  .source-record-title {
+    color: #9ca3af;
+  }
+
   .chart-toggle {
     border-color: #4b5563;
     color: #9ca3af;
@@ -592,6 +700,12 @@
   .chart-toggle.active {
     background: #374151;
     border-color: #6b7280;
+    color: #d1d5db;
+  }
+
+  .chart-tooltip {
+    background: rgba(31, 41, 55, 0.95);
+    border-color: #4b5563;
     color: #d1d5db;
   }
 }
