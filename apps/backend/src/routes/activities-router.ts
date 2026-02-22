@@ -213,19 +213,32 @@ export const createActivitiesRouter = (
           new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))).toISOString()
         : undefined
 
+      // Compute merged fields from all sources (same rules as mergeOverlappingActivities)
+      const sorted = [...overlapping].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+      const mergedTitle = sorted.find((a) => a.title)?.title ?? activity.title
+      const mergedNotes =
+        sorted
+          .map((a) => a.notes)
+          .filter(Boolean)
+          .join('\n') || activity.notes
+      const mergedData = sorted.reduce<Record<string, unknown>>(
+        (acc, a) => (a.data ? { ...acc, ...a.data } : acc),
+        {},
+      )
+
       return res.json({
         data: {
           activity_type: activity.activity_type,
-          data: activity.data,
+          data: Object.keys(mergedData).length > 0 ? mergedData : activity.data,
           end_time: activity.end_time?.toISOString(),
           id: activity.id,
           merged_end_time: mergedEndTime,
           merged_start_time: mergedStartTime,
-          notes: activity.notes,
+          notes: mergedNotes,
           source: activity.source,
           source_records: sourceRecords,
           start_time: activity.start_time.toISOString(),
-          title: activity.title,
+          title: mergedTitle,
         },
         success: true,
       })

@@ -118,7 +118,9 @@ const GenericActivityDetail = ({ activity }: { activity: Activity }) => {
 
 /** Dispatch to type-specific activity detail component. */
 const ActivityDetailDispatch = ({ activity }: { activity: Activity }) => {
-  const end = activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
+  const musicStart = activity.merged_start_time ?? activity.start_time
+  const musicEnd =
+    activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
 
   const isSleep = activity.activity_type === 'sleep' || activity.activity_type === 'nap'
   const isExercise = activity.activity_type === 'exercise'
@@ -137,7 +139,7 @@ const ActivityDetailDispatch = ({ activity }: { activity: Activity }) => {
       {hasSourceRecords && <SourceRecordsSection records={activity.source_records!} />}
 
       <div class="detail-grid">
-        <MusicPlaylist start={activity.start_time} end={end} />
+        <MusicPlaylist start={musicStart} end={musicEnd} />
       </div>
     </>
   )

@@ -102,24 +102,59 @@ export const mergeOverlappingActivities = (activities: Activity[]): MergedActivi
 }
 
 /**
- * Find all non-deleted activities of the same type that overlap in time with the given activity.
- * Returns raw DB rows (no merge) including the activity itself.
+ * Given merged results and the original raw activities, find all raw activities
+ * belonging to the same merge group as the given activity ID.
+ *
+ * Pure function — no DB access, easy to unit test.
+ */
+export const findMergedGroupForActivity = (
+  mergedResults: MergedActivity[],
+  rawActivities: Activity[],
+  activityId: string,
+): Activity[] => {
+  // Find which merged result contains the target activity ID
+  const mergedGroup = mergedResults.find((m) => m.id === activityId || m.source_ids?.includes(activityId))
+  if (!mergedGroup) return []
+
+  // Collect all IDs in this merge group
+  const groupIds = new Set(mergedGroup.source_ids ?? (mergedGroup.id ? [mergedGroup.id] : []))
+
+  // Return the raw activities that belong to this group, sorted by start_time
+  return rawActivities
+    .filter((a) => a.id !== undefined && groupIds.has(a.id))
+    .sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+}
+
+/**
+ * Find all non-deleted activities of the same type that belong to the same merge group
+ * as the given activity. Uses transitive merge logic (via mergeOverlappingActivities +
+ * findMergedGroupForActivity) to guarantee consistency with the day view.
+ *
+ * Queries a wide time window (activity's day +/- 12h) and runs the merge algorithm
+ * to find the full transitive chain.
  */
 export const getOverlappingActivities = async (user: string, activity: Activity): Promise<Activity[]> => {
-  const endTime = activity.end_time ?? activity.start_time
+  // Query a wide window around the activity to catch all transitively-connected activities
+  const activityTime = activity.start_time.getTime()
+  const windowStart = new Date(activityTime - 12 * 60 * 60 * 1000)
+  const windowEnd = new Date(activityTime + 24 * 60 * 60 * 1000)
+
   const result = await query(
     user,
     `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
      WHERE activity_type = $1
        AND deleted_at IS NULL
+       AND start_time >= $2
        AND start_time <= $3
-       AND (end_time >= $2 OR end_time IS NULL)
      ORDER BY start_time`,
-    [activity.activity_type, activity.start_time, endTime],
+    [activity.activity_type, windowStart, windowEnd],
   )
 
-  return result.rows.map(mapActivityRow)
+  const rawActivities = result.rows.map(mapActivityRow)
+  const merged = mergeOverlappingActivities(rawActivities)
+
+  return findMergedGroupForActivity(merged, rawActivities, activity.id!)
 }
 
 export const insertActivity = async (user: string, activity: Activity) => {
