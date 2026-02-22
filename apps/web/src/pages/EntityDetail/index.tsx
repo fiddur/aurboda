@@ -57,12 +57,14 @@ const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
     <h3>Sources ({records.length})</h3>
     {records.map((record) => (
       <a key={record.id} href={`/detail/activity/${record.id}`} class="source-record">
-        <span class="source-record-source">{record.data_origin ?? record.source}</span>
+        <span class="source-record-source">
+          {record.title ?? record.exercise_type_name ?? record.data_origin ?? record.source}
+        </span>
         <span class="source-record-time">
           {format(new Date(record.start_time), 'HH:mm')}
           {record.end_time ? ` – ${format(new Date(record.end_time), 'HH:mm')}` : ''}
         </span>
-        {record.title && <span class="source-record-title">{record.title}</span>}
+        {record.title && record.data_origin && <span class="source-record-title">{record.data_origin}</span>}
       </a>
     ))}
   </div>
@@ -180,21 +182,36 @@ const TagDetail = ({ tag }: { tag: Tag }) => {
   )
 }
 
-const NotesSection = ({ entityType, entityId }: { entityType: EntityType; entityId: string }) => {
+const NotesSection = ({
+  entityType,
+  entityId,
+  allEntityIds,
+}: {
+  entityType: EntityType
+  entityId: string
+  allEntityIds?: string[]
+}) => {
   const queryClient = useQueryClient()
   const [newNote, setNewNote] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
 
+  // Fetch notes for all source entity IDs (merged activity) or just the one
+  const idsToFetch = allEntityIds ?? [entityId]
   const notesQuery = useQuery({
-    queryFn: () => fetchNotes(entityType, entityId),
-    queryKey: ['notes', entityType, entityId],
+    queryFn: async () => {
+      const results = await Promise.all(idsToFetch.map((id) => fetchNotes(entityType, id)))
+      return results
+        .flat()
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    },
+    queryKey: ['notes', entityType, ...idsToFetch],
     staleTime: 30_000,
   })
 
   const invalidateNotes = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ['notes', entityType, entityId] }),
-    [queryClient, entityType, entityId],
+    () => queryClient.invalidateQueries({ queryKey: ['notes', entityType, ...idsToFetch] }),
+    [queryClient, entityType, ...idsToFetch],
   )
 
   const addMutation = useMutation({
@@ -375,6 +392,10 @@ const EntityActions = ({
 const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entityId: string }) => {
   const queryClient = useQueryClient()
 
+  // Strip merged: prefix for raw operations (delete/restore/notes write)
+  const isMerged = entityId.startsWith('merged:')
+  const rawEntityId = isMerged ? entityId.slice('merged:'.length) : entityId
+
   const activityQuery = useQuery({
     enabled: entityType === 'activity',
     queryFn: () => fetchActivityById(entityId),
@@ -404,6 +425,12 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
     : entityType === 'tag' ? Boolean(tag?.deleted_at)
     : false
 
+  // Collect all entity IDs for notes (primary + source records for merged activities)
+  const allEntityIds =
+    entityType === 'activity' && activity?.source_records ?
+      activity.source_records.map((r) => r.id)
+    : undefined
+
   if (isLoading) return <p class="loading">Loading…</p>
   if (isError) return <p class="error">Failed to load {entityType}</p>
 
@@ -411,7 +438,7 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
     <>
       <EntityActions
         entityType={entityType}
-        entityId={entityId}
+        entityId={rawEntityId}
         isDeleted={isDeleted}
         onMutationSuccess={invalidateEntity}
       />
@@ -419,7 +446,7 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
       {entityType === 'activity' && activity && <ActivityDetailDispatch activity={activity} />}
       {entityType === 'tag' && tag && <TagDetail tag={tag} />}
 
-      <NotesSection entityType={entityType} entityId={entityId} />
+      <NotesSection entityType={entityType} entityId={rawEntityId} allEntityIds={allEntityIds} />
     </>
   )
 }

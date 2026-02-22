@@ -5,7 +5,7 @@ import type { ActivityType } from '../schema'
 import { query } from './connection'
 import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update'
 import { mapActivityRow } from './row-mappers'
-import type { Activity, ActivityUpdate } from './types'
+import type { Activity, ActivityUpdate, MergedActivity } from './types'
 
 /**
  * Merge overlapping activities of the same type.
@@ -24,7 +24,7 @@ import type { Activity, ActivityUpdate } from './types'
  * - Data objects are merged (later values override earlier for same keys)
  */
 // eslint-disable-next-line complexity -- TODO: refactor
-export const mergeOverlappingActivities = (activities: Activity[]): Activity[] => {
+export const mergeOverlappingActivities = (activities: Activity[]): MergedActivity[] => {
   if (activities.length === 0) return []
 
   // Group by activity type
@@ -35,13 +35,14 @@ export const mergeOverlappingActivities = (activities: Activity[]): Activity[] =
     byType.set(a.activity_type, group)
   }
 
-  const result: Activity[] = []
+  const result: MergedActivity[] = []
 
   for (const [, typeActivities] of byType) {
     // Sort by start time
     const sorted = [...typeActivities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 
-    let current = { ...sorted[0] }
+    let current: MergedActivity = { ...sorted[0] }
+    let currentSourceIds: string[] = sorted[0].id ? [sorted[0].id] : []
 
     for (let i = 1; i < sorted.length; i++) {
       const next = sorted[i]
@@ -73,14 +74,26 @@ export const mergeOverlappingActivities = (activities: Activity[]): Activity[] =
         if (next.data) {
           current.data = { ...current.data, ...next.data }
         }
+
+        // Track source IDs
+        if (next.id) {
+          currentSourceIds.push(next.id)
+        }
       } else {
         // No overlap, save current and start new
+        if (currentSourceIds.length > 1) {
+          current.source_ids = currentSourceIds
+        }
         result.push(current)
         current = { ...next }
+        currentSourceIds = next.id ? [next.id] : []
       }
     }
 
     // Don't forget the last one
+    if (currentSourceIds.length > 1) {
+      current.source_ids = currentSourceIds
+    }
     result.push(current)
   }
 
@@ -202,7 +215,7 @@ export const getActivities = async (
   activityType: ActivityType | ActivityType[],
   start: Date,
   end: Date,
-): Promise<Activity[]> => {
+): Promise<MergedActivity[]> => {
   const types = Array.isArray(activityType) ? activityType : [activityType]
 
   const result = await query(
@@ -225,7 +238,7 @@ export const getActivities = async (
  * Uses date overlap logic so overnight sleep (starting 11pm, ending 7am)
  * appears on the wake-up day rather than the start day.
  */
-export const getSleepSessions = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
+export const getSleepSessions = async (user: string, start: Date, end: Date): Promise<MergedActivity[]> => {
   const result = await query(
     user,
     `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at

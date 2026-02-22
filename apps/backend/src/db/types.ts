@@ -80,6 +80,10 @@ export interface Activity {
   deleted_at?: Date
 }
 
+export interface MergedActivity extends Activity {
+  source_ids?: string[] // only set when 2+ activities were merged
+}
+
 export interface ActivityUpdate {
   start_time?: Date
   end_time?: Date
