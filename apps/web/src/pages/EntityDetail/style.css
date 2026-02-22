@@ -20,6 +20,14 @@
   text-decoration: underline;
 }
 
+.back-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
 /* Deleted banner */
 .deleted-banner {
   display: flex;
@@ -615,6 +623,13 @@
   outline: none;
   border-color: #673ab8;
   box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+}
+
+.edit-notes-block {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .edit-notes-input {

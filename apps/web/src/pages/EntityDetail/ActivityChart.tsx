@@ -24,7 +24,7 @@ interface ActivityChartProps {
 }
 
 const CHART_HEIGHT = 260
-const MARGIN = { bottom: 30, left: 50, right: 60, top: 10 }
+const MARGIN = { bottom: 30, left: 50, right: 110, top: 10 }
 
 /** Hypnogram Y-axis labels in display order (top to bottom). */
 const HYPNOGRAM_LABELS = ['Awake', 'REM', 'Light', 'Deep']
@@ -95,12 +95,14 @@ const drawLineOverlay = (
   unit: string,
   axisSide: 'left' | 'right',
   axisOffset: number = 0,
+  forceZeroMin: boolean = false,
 ) => {
   const yExtent = d3.extent(data, (d) => d[1]) as [number, number]
   const padding = (yExtent[1] - yExtent[0]) * 0.1 || 5
+  const yMin = forceZeroMin && yExtent[0] >= 0 ? 0 : yExtent[0] - padding
   const yScale = d3
     .scaleLinear()
-    .domain([yExtent[0] - padding, yExtent[1] + padding])
+    .domain([yMin, yExtent[1] + padding])
     .range([innerHeight, 0])
 
   if (axisSide === 'right') {
@@ -223,7 +225,7 @@ export const ActivityChart = ({
       const hrVisible = hasData(hrData)
       const axisSide = hrVisible || hasHypnogram ? 'right' : 'left'
       const offset = axisSide === 'right' && hrVisible ? 45 : 0
-      drawLineOverlay(g, xScale, innerWidth, innerHeight, hrvData, '#14b8a6', 'ms', axisSide, offset)
+      drawLineOverlay(g, xScale, innerWidth, innerHeight, hrvData, '#14b8a6', 'ms', axisSide, offset, true)
     }
 
     // Tooltip crosshair and interaction overlay
