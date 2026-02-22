@@ -778,6 +778,16 @@ export const softDeleteActivity = async (id: string): Promise<void> => {
   })
 }
 
+export const updateActivity = async (
+  id: string,
+  body: { start_time?: string; end_time?: string; title?: string; notes?: string },
+): Promise<void> => {
+  const { token } = auth.value
+  await axios.patch(`${API_URL}/activities/${id}`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export const restoreActivity = async (id: string): Promise<void> => {
   const { token } = auth.value
   await axios.post(

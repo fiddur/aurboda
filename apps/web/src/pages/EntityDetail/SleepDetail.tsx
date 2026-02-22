@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Activity, fetchBucketedMetrics } from '../../state/api'
 import { ActivityChart } from './ActivityChart'
+import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import {
   computeSleepMinutesFromStages,
   formatMinutesAsHM,
@@ -14,18 +15,6 @@ import {
   type OuraSleepMetricKey,
   parseSleepStages,
 } from './sleep-utils'
-
-const formatTime = (d: Date) => format(d, 'HH:mm')
-const formatDateTime = (d: Date) => format(d, 'yyyy-MM-dd HH:mm')
-
-const formatDuration = (start: Date, end: Date): string => {
-  const ms = end.getTime() - start.getTime()
-  const totalMin = Math.round(ms / 60000)
-  if (totalMin < 60) return `${totalMin}m`
-  const h = Math.floor(totalMin / 60)
-  const m = totalMin % 60
-  return m > 0 ? `${h}h ${m}m` : `${h}h`
-}
 
 /** Extract Oura metric values from bucketed query response. */
 const extractOuraMetrics = (
@@ -73,7 +62,17 @@ const OuraMetricsCards = ({ metrics }: { metrics: Partial<Record<OuraSleepMetric
   </div>
 )
 
-export const SleepDetail = ({ activity }: { activity: Activity }) => {
+export const SleepDetail = ({
+  activity,
+  isEditing,
+  draft,
+  onDraftChange,
+}: {
+  activity: Activity
+  isEditing: boolean
+  draft: ActivityDraft
+  onDraftChange: (d: ActivityDraft) => void
+}) => {
   const end = activity.end_time ?? new Date(activity.start_time.getTime() + 8 * 60 * 60000)
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd = activity.merged_end_time ?? end
@@ -102,38 +101,33 @@ export const SleepDetail = ({ activity }: { activity: Activity }) => {
           {activity.source && <span class="entity-source">Source: {activity.source}</span>}
         </div>
 
-        <h2>{activity.title || (activity.activity_type === 'nap' ? 'Nap' : 'Sleep')}</h2>
+        <EditableActivityFields
+          title={activity.title || (activity.activity_type === 'nap' ? 'Nap' : 'Sleep')}
+          displayStart={displayStart}
+          displayEnd={displayEnd}
+          notes={activity.notes}
+          isEditing={isEditing}
+          draft={draft}
+          onDraftChange={onDraftChange}
+          durationLabel="In Bed"
+        />
 
-        <div class="entity-fields">
-          <div class="field-row">
-            <span class="field-label">Time</span>
-            <span class="field-value">
-              {formatDateTime(displayStart)} – {formatTime(displayEnd)}
-            </span>
+        {!isEditing && (
+          <div class="entity-fields">
+            {sleepMinutes !== undefined && (
+              <div class="field-row">
+                <span class="field-label">Asleep</span>
+                <span class="field-value">{formatMinutesAsHM(sleepMinutes)}</span>
+              </div>
+            )}
+            {activity.avg_hrv !== undefined && (
+              <div class="field-row">
+                <span class="field-label">Avg HRV</span>
+                <span class="field-value">{activity.avg_hrv} ms</span>
+              </div>
+            )}
           </div>
-          <div class="field-row">
-            <span class="field-label">In Bed</span>
-            <span class="field-value">{formatDuration(displayStart, displayEnd)}</span>
-          </div>
-          {sleepMinutes !== undefined && (
-            <div class="field-row">
-              <span class="field-label">Asleep</span>
-              <span class="field-value">{formatMinutesAsHM(sleepMinutes)}</span>
-            </div>
-          )}
-          {activity.avg_hrv !== undefined && (
-            <div class="field-row">
-              <span class="field-label">Avg HRV</span>
-              <span class="field-value">{activity.avg_hrv} ms</span>
-            </div>
-          )}
-          {activity.notes && (
-            <div class="field-row">
-              <span class="field-label">Notes</span>
-              <span class="field-value">{activity.notes}</span>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {hasOuraMetrics && <OuraMetricsCards metrics={ouraMetrics} />}
