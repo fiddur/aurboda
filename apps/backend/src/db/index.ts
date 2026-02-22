@@ -70,6 +70,7 @@ export {
 // Activities
 export {
   deleteActivity,
+  findMergedGroupForActivity,
   getActivities,
   getActivityById,
   getOverlappingActivities,

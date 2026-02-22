@@ -407,6 +407,49 @@ describe('Activities Integration Tests', () => {
       expect(overlapping).toHaveLength(1)
       expect(overlapping[0]!.id).toBe(id1)
     })
+
+    test('finds transitively connected activities', async () => {
+      const user = getTestUser()
+      const idA = randomUUID()
+      const idB = randomUUID()
+      const idC = randomUUID()
+
+      // A: 10:00-10:30, B: 10:20-11:00, C: 10:50-11:30
+      // A overlaps B, B overlaps C, but A does NOT directly overlap C
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:30:00Z'),
+        id: idA,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        title: 'Part A',
+      })
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: idB,
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:20:00Z'),
+        title: 'Part B',
+      })
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:30:00Z'),
+        id: idC,
+        source: 'manual',
+        start_time: new Date('2024-01-15T10:50:00Z'),
+        title: 'Part C',
+      })
+
+      const activity = await getActivityById(user, idA)
+      expect(activity).not.toBeNull()
+
+      const overlapping = await getOverlappingActivities(user, activity!)
+      expect(overlapping).toHaveLength(3)
+      expect(overlapping.map((a) => a.id).sort()).toEqual([idA, idB, idC].sort())
+    })
   })
 
   describe('updateActivity', () => {
