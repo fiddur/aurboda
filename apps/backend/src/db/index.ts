@@ -24,6 +24,7 @@ export type {
   LastFmTagRuleInput,
   Location,
   McpSessionRecord,
+  MergedActivity,
   MetricStats,
   NamedLocation,
   NamedLocationInput,

@@ -874,7 +874,7 @@ export async function queryActivities(
         data: a.data,
         duration: timeInBedMinutes,
         end_time: a.end_time?.toISOString(),
-        id: a.id,
+        id: 'source_ids' in a && a.source_ids ? `merged:${a.id}` : a.id,
         notes: a.notes,
         source: a.source,
         start_time: a.start_time.toISOString(),

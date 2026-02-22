@@ -170,40 +170,68 @@ export const createActivitiesRouter = (
   )
 
   // GET /activities/:id - Get a single activity by ID (for detail page)
+  // Supports merged: prefix — merged:<uuid> returns merged view, plain uuid returns raw activity
   router.get<{ id: string }>('/activities/:id', authMiddleware, async (req, res) => {
-    const { id } = req.params
+    const rawId = req.params.id
     const user = req.user!
 
-    const activity = await getActivityById(user, id, true)
+    const isMerged = rawId.startsWith('merged:')
+    const realId = isMerged ? rawId.slice('merged:'.length) : rawId
+
+    const activity = await getActivityById(user, realId, true)
     if (!activity) {
       return res.status(404).json({ error: 'Activity not found', success: false })
     }
 
-    // Check for overlapping activities from other sources
-    const overlapping = activity.deleted_at ? [] : await getOverlappingActivities(user, activity)
+    // For merged: prefix, fetch overlapping activities and return merged view
+    if (isMerged && !activity.deleted_at) {
+      const overlapping = await getOverlappingActivities(user, activity)
+      const hasMultipleSources = overlapping.length > 1
 
-    const hasMultipleSources = overlapping.length > 1
-    const sourceRecords =
-      hasMultipleSources ?
-        overlapping.map((a) => ({
-          data_origin: (a.data as Record<string, unknown> | undefined)?.dataOrigin as string | undefined,
-          end_time: a.end_time?.toISOString(),
-          id: a.id!,
-          source: a.source,
-          start_time: a.start_time.toISOString(),
-          title: a.title,
-        }))
-      : undefined
+      const sourceRecords =
+        hasMultipleSources ?
+          overlapping.map((a) => {
+            const data = a.data as Record<string, unknown> | undefined
+            return {
+              data_origin: data?.dataOrigin as string | undefined,
+              end_time: a.end_time?.toISOString(),
+              exercise_type_name: data?.exerciseTypeName as string | undefined,
+              id: a.id!,
+              source: a.source,
+              start_time: a.start_time.toISOString(),
+              title: a.title,
+            }
+          })
+        : undefined
 
-    const mergedStartTime =
-      hasMultipleSources ?
-        new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))).toISOString()
-      : undefined
-    const mergedEndTime =
-      hasMultipleSources ?
-        new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))).toISOString()
-      : undefined
+      const mergedStartTime =
+        hasMultipleSources ?
+          new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))).toISOString()
+        : undefined
+      const mergedEndTime =
+        hasMultipleSources ?
+          new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))).toISOString()
+        : undefined
 
+      return res.json({
+        data: {
+          activity_type: activity.activity_type,
+          data: activity.data,
+          end_time: activity.end_time?.toISOString(),
+          id: activity.id,
+          merged_end_time: mergedEndTime,
+          merged_start_time: mergedStartTime,
+          notes: activity.notes,
+          source: activity.source,
+          source_records: sourceRecords,
+          start_time: activity.start_time.toISOString(),
+          title: activity.title,
+        },
+        success: true,
+      })
+    }
+
+    // Plain UUID: return raw single activity (no overlap lookup)
     res.json({
       data: {
         activity_type: activity.activity_type,
@@ -211,11 +239,8 @@ export const createActivitiesRouter = (
         deleted_at: activity.deleted_at?.toISOString(),
         end_time: activity.end_time?.toISOString(),
         id: activity.id,
-        merged_end_time: mergedEndTime,
-        merged_start_time: mergedStartTime,
         notes: activity.notes,
         source: activity.source,
-        source_records: sourceRecords,
         start_time: activity.start_time.toISOString(),
         title: activity.title,
       },
