@@ -583,8 +583,16 @@ function TimelineChart({
   // Heart rate y scale (left axis)
   const yHr = d3.scaleLinear().domain([40, 200]).range([chartHeight, 0])
 
-  // HRV y scale (right axis) - typical RMSSD values range from 10-100ms
-  const yHrv = d3.scaleLinear().domain([0, 150]).range([chartHeight, 0])
+  // HRV y scale (right axis) - dynamic domain based on actual data
+  const hrvExtent = d3.extent(hrvData, ([, v]) => v) as [number, number]
+  const hrvMin = hrvExtent[0] ?? 0
+  const hrvMax = hrvExtent[1] ?? 150
+  const hrvPadding = Math.max((hrvMax - hrvMin) * 0.2, 5)
+  const yHrv = d3
+    .scaleLinear()
+    .domain([Math.max(0, hrvMin - hrvPadding), hrvMax + hrvPadding])
+    .nice()
+    .range([chartHeight, 0])
 
   // Filter activities by type
   const sleepSessions =
@@ -1108,7 +1116,7 @@ function TimelineChart({
           <g
             transform={`translate(${chartWidth},0)`}
             ref={(g) => {
-              if (g) d3.select(g).call(d3.axisRight(yHrv)).selectAll('text').style('fill', colors.hrv)
+              if (g) d3.select(g).call(d3.axisRight(yHrv).ticks(6)).selectAll('text').style('fill', colors.hrv)
             }}
           />
 
