@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- chart tooltip interaction adds lines */
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { useEffect, useRef, useState } from 'preact/hooks'
@@ -19,6 +20,7 @@ import './style.css'
 function TrendChart({ data, color }: { data: { date: string; value: number }[]; color: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || data.length < 2) return
@@ -122,6 +124,72 @@ function TrendChart({ data, color }: { data: { date: string; value: number }[]; 
 
     // Y axis
     g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').attr('font-size', '11px')
+
+    // Tooltip crosshair and highlight
+    const crosshair = g
+      .append('line')
+      .attr('y1', 0)
+      .attr('y2', innerHeight)
+      .attr('stroke', 'currentColor')
+      .attr('stroke-opacity', 0.4)
+      .attr('stroke-dasharray', '4 3')
+      .attr('pointer-events', 'none')
+      .style('display', 'none')
+
+    const highlightDot = g
+      .append('circle')
+      .attr('r', 4)
+      .attr('fill', color)
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 2)
+      .attr('pointer-events', 'none')
+      .style('display', 'none')
+
+    const bisector = d3.bisector<{ date: Date; value: number }, Date>((d) => d.date).left
+    const tooltip = tooltipRef.current
+
+    g.append('rect')
+      .attr('width', innerWidth)
+      .attr('height', innerHeight)
+      .attr('fill', 'transparent')
+      .attr('pointer-events', 'all')
+      .on('mousemove', (event: MouseEvent) => {
+        const [mx] = d3.pointer(event)
+        const dateAtMouse = x.invert(mx)
+        const idx = bisector(parsedData, dateAtMouse, 1)
+        const d0 = parsedData[idx - 1]
+        const d1 = parsedData[idx]
+        if (!d0) return
+        const nearest =
+          d1 && dateAtMouse.getTime() - d0.date.getTime() > d1.date.getTime() - dateAtMouse.getTime() ?
+            d1
+          : d0
+        const cx = x(nearest.date)
+        const cy = y(nearest.value)
+
+        crosshair.attr('x1', cx).attr('x2', cx).style('display', null)
+        highlightDot.attr('cx', cx).attr('cy', cy).style('display', null)
+
+        if (tooltip) {
+          const dateLabel =
+            spanYears >= 1 ? d3.timeFormat("%b %d, '%y")(nearest.date) : d3.timeFormat('%b %d')(nearest.date)
+          tooltip.textContent = `${dateLabel}: ${nearest.value.toFixed(1)}`
+          tooltip.style.display = 'block'
+
+          const containerRect = container.getBoundingClientRect()
+          const tooltipX = mx + margin.left
+          const tooltipWidth = tooltip.offsetWidth
+          const left =
+            tooltipX + tooltipWidth + 12 > containerRect.width ? tooltipX - tooltipWidth - 12 : tooltipX + 12
+          tooltip.style.left = `${left}px`
+          tooltip.style.top = `${margin.top + 8}px`
+        }
+      })
+      .on('mouseleave', () => {
+        crosshair.style('display', 'none')
+        highlightDot.style('display', 'none')
+        if (tooltip) tooltip.style.display = 'none'
+      })
   }, [data, color])
 
   if (data.length < 2) {
@@ -131,6 +199,7 @@ function TrendChart({ data, color }: { data: { date: string; value: number }[]; 
   return (
     <div ref={containerRef} class="trend-chart-container">
       <svg ref={svgRef} />
+      <div class="trend-chart-tooltip" ref={tooltipRef} />
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { signal } from '@preact/signals'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
-import { useCallback, useEffect, useRef } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import {
   Activity,
   fetchActivities,
@@ -84,6 +84,18 @@ const placeColorPalette = [
 ]
 
 const NOW_COLOR = '#ef4444'
+
+type LegendCategory = 'sleep' | 'nap' | 'meditation' | 'exercise' | 'calendar' | 'tags' | 'music'
+
+const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = {
+  calendar: (item) => item.column === 'Tags / Events' && item.color === tagSourceColors.calendar,
+  exercise: (item) => item.column === 'Exercise',
+  meditation: (item) => item.column === 'Sleep / Rest' && item.label === 'Meditation',
+  music: (item) => item.column === 'Music',
+  nap: (item) => item.column === 'Sleep / Rest' && item.label === 'Nap',
+  sleep: (item) => item.column === 'Sleep / Rest' && item.label === 'Sleep',
+  tags: (item) => item.column === 'Tags / Events' && item.color !== tagSourceColors.calendar,
+}
 
 // Helpers
 const getPlaceColor = (name: string, allNames: string[]): string => {
@@ -285,6 +297,7 @@ const categorizeLocations = (places: Place[], uniquePlaceNames: string[]): Chart
     color: getPlaceColor(p.region, uniquePlaceNames),
     column: 'Location' as Column,
     end: p.end_time,
+    href: `/places?date=${format(p.start_time, 'yyyy-MM-dd')}&name=${encodeURIComponent(p.region || '')}`,
     isPoint: false,
     label: p.region || 'Unknown',
     start: p.start_time,
@@ -523,6 +536,27 @@ export const DayView = () => {
     toDate.value = formatISO(new Date(), { representation: 'date' })
   }, [])
 
+  const [hiddenCategories, setHiddenCategories] = useState<Set<LegendCategory>>(new Set())
+
+  const toggleCategory = useCallback((cat: LegendCategory) => {
+    setHiddenCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }, [])
+
+  const isItemHidden = useCallback(
+    (item: ChartItem): boolean => {
+      for (const cat of hiddenCategories) {
+        if (CATEGORY_MATCHERS[cat](item)) return true
+      }
+      return false
+    },
+    [hiddenCategories],
+  )
+
   const activities = activitiesQuery.data ?? []
   const places = placesQuery.data ?? []
   const tags = tagsQuery.data ?? []
@@ -543,7 +577,7 @@ export const DayView = () => {
   const musicItems = hasLastFm ? categorizeMusic(scrobbles) : []
   const showMusicColumn = musicItems.length > 0
 
-  const columns: Column[] = showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS
+  const allColumns: Column[] = showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS
 
   const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
   const chartItems = [
@@ -553,7 +587,12 @@ export const DayView = () => {
     ...categorizeTags(tags),
     ...categorizeProductivity(productivity),
     ...musicItems,
-  ]
+  ].filter((item) => !isItemHidden(item))
+
+  // Only show columns that have visible items (plus always keep Productivity/Location since they don't toggle)
+  const columns = allColumns.filter(
+    (col) => col === 'Productivity' || col === 'Location' || chartItems.some((item) => item.column === col),
+  )
 
   // Group by column and pack lanes
   const columnData = columns.map((col) => {
@@ -844,36 +883,29 @@ export const DayView = () => {
       </div>
 
       <div class="day-view-legend">
-        <span class="legend-item">
-          <span class="legend-dot" style={{ background: activityColors.sleep }} />
-          Sleep
-        </span>
-        <span class="legend-item">
-          <span class="legend-dot" style={{ background: activityColors.nap }} />
-          Nap
-        </span>
-        <span class="legend-item">
-          <span class="legend-dot" style={{ background: activityColors.meditation }} />
-          Meditation
-        </span>
-        <span class="legend-item">
-          <span class="legend-dot" style={{ background: hrZoneColors[2] }} />
-          Exercise
-        </span>
-        <span class="legend-item">
-          <span class="legend-dot" style={{ background: tagSourceColors.calendar }} />
-          Calendar
-        </span>
-        <span class="legend-item">
-          <span class="legend-dot" style={{ background: TAG_COLOR }} />
-          Tags
-        </span>
-        {showMusicColumn && (
-          <span class="legend-item">
-            <span class="legend-dot" style={{ background: MUSIC_COLOR }} />
-            Music
-          </span>
-        )}
+        {(
+          [
+            { cat: 'sleep' as LegendCategory, color: activityColors.sleep!, label: 'Sleep' },
+            { cat: 'nap' as LegendCategory, color: activityColors.nap!, label: 'Nap' },
+            { cat: 'meditation' as LegendCategory, color: activityColors.meditation!, label: 'Meditation' },
+            { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
+            { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
+            { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
+            ...(showMusicColumn ?
+              [{ cat: 'music' as LegendCategory, color: MUSIC_COLOR, label: 'Music' }]
+            : []),
+          ] as { cat: LegendCategory; color: string; label: string }[]
+        ).map(({ cat, color, label }) => (
+          <button
+            key={cat}
+            class={`legend-item${hiddenCategories.has(cat) ? ' legend-item-hidden' : ''}`}
+            onClick={() => toggleCategory(cat)}
+            type="button"
+          >
+            <span class="legend-dot" style={{ background: color }} />
+            {label}
+          </button>
+        ))}
       </div>
 
       {isLoading && <div class="loading">Loading…</div>}
@@ -909,7 +941,7 @@ export const DayView = () => {
               const href =
                 item.entity_id && item.entity_type ?
                   `/detail/${item.entity_type}/${item.entity_id}`
-                : undefined
+                : (item.href ?? undefined)
               const Wrapper = href ? 'a' : 'div'
               return (
                 <Wrapper
@@ -1078,7 +1110,9 @@ const drawItem = (
   const blockHeight = Math.max(y2 - y1, 2)
 
   const detailUrl =
-    item.entity_id && item.entity_type ? `/detail/${item.entity_type}/${item.entity_id}` : undefined
+    item.entity_id && item.entity_type ?
+      `/detail/${item.entity_type}/${item.entity_id}`
+    : (item.href ?? undefined)
 
   // Wrap clickable items in an SVG <a> so the browser handles middle-click,
   // right-click context menu, ctrl+click etc. natively.
@@ -1098,6 +1132,24 @@ const drawItem = (
       .attr('opacity', 0.85)
       .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
       .on('mouseleave', hideTooltip)
+
+    // Text label next to point marker
+    const availableWidth = laneWidth - size - 8
+    if (availableWidth > 20) {
+      const charWidth = 5.5
+      const maxChars = Math.floor(availableWidth / charWidth)
+      const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+      parent
+        .append('text')
+        .attr('x', x + laneWidth / 2 + size + 4)
+        .attr('y', cy)
+        .attr('dy', '0.35em')
+        .attr('fill', item.color)
+        .attr('font-size', '0.6rem')
+        .attr('opacity', 0.8)
+        .attr('pointer-events', 'none')
+        .text(text)
+    }
     return
   }
 

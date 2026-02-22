@@ -5,6 +5,7 @@ import { signal } from '@preact/signals'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import L from 'leaflet'
+import { useLocation } from 'preact-iso'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import {
   addNamedLocation,
@@ -29,6 +30,18 @@ const selectedDate = signal(formatISO(new Date(), { representation: 'date' }))
 
 export const Places = () => {
   const queryClient = useQueryClient()
+  const { query } = useLocation()
+  const initialNameRef = useRef<string | null>(null)
+
+  // On mount: apply URL params for date and name
+  useEffect(() => {
+    const params = new URLSearchParams(query)
+    const dateParam = params.get('date')
+    const nameParam = params.get('name')
+    if (dateParam) selectedDate.value = dateParam
+    if (nameParam) initialNameRef.current = nameParam
+  }, [])
+
   const start = startOfDay(new Date(selectedDate.value))
   const end = endOfDay(new Date(selectedDate.value))
 
@@ -82,6 +95,16 @@ export const Places = () => {
       setNameInput('')
     },
   })
+
+  // Auto-select place from URL param after data loads
+  useEffect(() => {
+    if (!initialNameRef.current || !placesQuery.data) return
+    const match = placesQuery.data.find((p) => p.name === initialNameRef.current)
+    if (match) {
+      setSelectedPlace(match)
+      initialNameRef.current = null
+    }
+  }, [placesQuery.data])
 
   // Initialize Leaflet map
   useEffect(() => {
