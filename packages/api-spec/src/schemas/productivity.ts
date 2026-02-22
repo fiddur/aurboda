@@ -9,6 +9,7 @@ import {
   iso8601DateTimeSchema,
   timeRangeQuerySchema,
 } from './common.js'
+import { commentSchema } from './notes.js'
 
 /**
  * Productivity record schema.
@@ -17,6 +18,7 @@ export const productivityRecordSchema = z
   .object({
     activity: z.string().meta({ description: 'Activity/application name' }),
     category: z.string().optional().meta({ description: 'Activity category' }),
+    comments: z.array(commentSchema).optional().meta({ description: 'Attached comments' }),
     deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
     duration_sec: z.number().int().meta({ description: 'Duration in seconds' }),
     end_time: iso8601DateTimeSchema,
