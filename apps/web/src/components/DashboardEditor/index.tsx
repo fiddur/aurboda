@@ -4,6 +4,8 @@
 
 import type { DashboardWidget, SectionType } from '@aurboda/api-spec'
 import { useState } from 'preact/hooks'
+import { getMetricDisplayName } from '../../utils/metricLabels'
+import { MetricPicker } from '../MetricPicker'
 
 import './style.css'
 
@@ -95,20 +97,6 @@ const widgetTemplates: WidgetTemplate[] = [
   },
 ]
 
-// Metric options for metric widgets
-const metricOptions = [
-  { label: 'HRV (7-day)', value: 'hrv_7day' },
-  { label: 'HRV (30-day)', value: 'hrv_30day' },
-  { label: 'Resting HR (7-day)', value: 'rhr_7day' },
-  { label: 'Resting HR (30-day)', value: 'rhr_30day' },
-  { label: 'Sleep Score', value: 'sleep_score' },
-  { label: 'Readiness Score', value: 'readiness_score' },
-  { label: 'Steps', value: 'steps' },
-  { label: 'Zone 2 (Weekly)', value: 'zone2_weekly' },
-  { label: 'Weight', value: 'weight' },
-  { label: 'Body Fat', value: 'body_fat' },
-]
-
 // Link options for quick link widgets
 const linkOptions = [
   { icon: 'timeline', label: 'Timeline', value: '/timeline' },
@@ -160,21 +148,13 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
           <div class="config-form">
             <div class="form-group">
               <label>Metric</label>
-              <select
+              <MetricPicker
                 value={(configValues.metric as string) ?? 'hrv_7day'}
-                onChange={(e) => {
-                  const metric = (e.target as HTMLSelectElement).value
-                  const option = metricOptions.find((o) => o.value === metric)
+                onChange={(metric) => {
                   updateConfig('metric', metric)
-                  updateConfig('title', option?.label ?? metric)
+                  updateConfig('title', getMetricDisplayName(metric))
                 }}
-              >
-                {metricOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div class="form-group">
               <label>Title</label>
@@ -201,16 +181,10 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
           <div class="config-form">
             <div class="form-group">
               <label>Metric</label>
-              <select
+              <MetricPicker
                 value={(configValues.metric as string) ?? 'sleep_score'}
-                onChange={(e) => updateConfig('metric', (e.target as HTMLSelectElement).value)}
-              >
-                {metricOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(metric) => updateConfig('metric', metric)}
+              />
             </div>
             <div class="form-group">
               <label>Lookback Days</label>
@@ -267,13 +241,20 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
               </select>
             </div>
             <div class="form-group">
-              <label>Pattern</label>
-              <input
-                type="text"
-                value={(configValues.pattern as string) ?? ''}
-                onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
-                placeholder="e.g., coffee, exercise"
-              />
+              <label>{(configValues.source_type as string) === 'metric' ? 'Metric' : 'Pattern'}</label>
+              {(configValues.source_type as string) === 'metric' ?
+                <MetricPicker
+                  value={(configValues.pattern as string) ?? ''}
+                  onChange={(metric) => updateConfig('pattern', metric)}
+                  placeholder="Search metrics..."
+                />
+              : <input
+                  type="text"
+                  value={(configValues.pattern as string) ?? ''}
+                  onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
+                  placeholder="e.g., coffee, exercise"
+                />
+              }
             </div>
             <div class="form-group">
               <label>Display Period</label>

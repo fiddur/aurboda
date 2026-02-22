@@ -210,7 +210,7 @@ export interface ProductivityRecord {
 // Notes
 // ============================================================================
 
-export type EntityType = 'activity' | 'tag' | 'productivity'
+export type EntityType = 'activity' | 'tag' | 'productivity' | 'metric'
 
 export interface Note {
   id: string

@@ -1,0 +1,120 @@
+.metric-picker {
+  position: relative;
+}
+
+.metric-picker-input {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.875rem;
+  color: #1f2937;
+  min-height: 38px;
+  box-sizing: border-box;
+}
+
+.metric-picker-input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+  outline: none;
+}
+
+.metric-picker-input::placeholder {
+  color: #9ca3af;
+}
+
+.metric-picker-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.metric-picker-group-header {
+  padding: 0.375rem 0.75rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
+  cursor: default;
+}
+
+.metric-picker-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.metric-picker-option:hover,
+.metric-picker-option.highlighted {
+  background: #f3f0ff;
+}
+
+.metric-picker-option.selected {
+  font-weight: 500;
+}
+
+.metric-option-label {
+  color: #1f2937;
+}
+
+.metric-option-key {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .metric-picker-input {
+    background: #111827;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
+  .metric-picker-input::placeholder {
+    color: #6b7280;
+  }
+
+  .metric-picker-dropdown {
+    background: #1f2937;
+    border-color: #4b5563;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .metric-picker-group-header {
+    color: #6b7280;
+  }
+
+  .metric-picker-option:hover,
+  .metric-picker-option.highlighted {
+    background: #374151;
+  }
+
+  .metric-option-label {
+    color: #f9fafb;
+  }
+
+  .metric-option-key {
+    color: #6b7280;
+  }
+}

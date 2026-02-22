@@ -19,6 +19,8 @@ import type {
   Tag as ApiTag,
   BaselineData,
   BaselineResponse,
+  CustomMetricDefinition,
+  CustomMetricsListResponse,
   DashboardConfig,
   DashboardResponse,
   Goal,
@@ -130,6 +132,7 @@ export type {
   ActivityImpactType,
   AddLastFmTagRuleBody,
   BaselineData,
+  CustomMetricDefinition,
   DashboardConfig,
   Goal,
   GoalProgress,
@@ -660,6 +663,39 @@ export const fetchSteps = async (start: Date, end: Date): Promise<[Date, number]
     start: start.toISOString(),
   }
   const response = await axios.get<QueryMetricsResponse>(`${API_URL}/metrics/steps`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+
+  return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
+}
+
+// ==========================================================================
+// Custom Metrics API
+// ==========================================================================
+
+// Fetch user's custom metric definitions
+export const fetchCustomMetrics = async (): Promise<CustomMetricDefinition[]> => {
+  const { token } = auth.value
+  const response = await axios.get<CustomMetricsListResponse>(`${API_URL}/metrics/custom`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data ?? []
+}
+
+// Fetch time series data for any metric (built-in or custom)
+export const fetchMetricTimeSeries = async (
+  metric: string,
+  start: Date,
+  end: Date,
+): Promise<[Date, number][]> => {
+  const { token } = auth.value
+  const params: QueryMetricsQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<QueryMetricsResponse>(`${API_URL}/metrics/${encodeURIComponent(metric)}`, {
     headers: { Authorization: `Bearer ${token}` },
     params,
   })

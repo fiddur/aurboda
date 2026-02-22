@@ -75,8 +75,8 @@ const extractPeriodValue = (
 ): { value: number | string | null; trend: number | null; subtitle: string | undefined } => {
   if (!periodSummary) return { subtitle: undefined, trend: null, value: null }
 
-  const apiMetric = metricToApiMetric[metric]
-  const stats = apiMetric ? periodSummary[apiMetric] : null
+  const apiMetric = metricToApiMetric[metric] ?? metric
+  const stats = periodSummary[apiMetric]
 
   if (!stats) return { subtitle: undefined, trend: null, value: null }
 
@@ -119,11 +119,11 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
   // Fetch period summary for other metrics
   const end = endOfDay(new Date())
   const start30days = startOfDay(subDays(new Date(), 30))
-  const apiMetric = metricToApiMetric[metric]
+  const apiMetric = metricToApiMetric[metric] ?? metric
 
   const periodSummaryQuery = useQuery({
-    enabled: !isBaseline && !!apiMetric,
-    queryFn: () => fetchPeriodSummary(start30days, end, apiMetric ? [apiMetric] : []),
+    enabled: !isBaseline,
+    queryFn: () => fetchPeriodSummary(start30days, end, [apiMetric]),
     queryKey: ['periodSummary', metric],
     staleTime: 5 * 60 * 1000,
   })

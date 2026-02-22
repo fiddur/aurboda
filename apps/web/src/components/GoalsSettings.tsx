@@ -2,6 +2,7 @@ import { metricUnits, validMetrics } from '@aurboda/api-spec'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 import { type Goal, updateUserSettings } from '../state/api'
+import { metricLabels } from '../utils/metricLabels'
 
 import './GoalsSettings.css'
 
@@ -18,31 +19,6 @@ const durationUnits = [
   { description: 'weeks', unit: 'w' },
   { description: 'months', unit: 'M' },
 ]
-
-// Friendly names for metrics
-const metricLabels: Record<string, string> = {
-  calories_active: 'Active Calories',
-  calories_basal: 'Basal Calories',
-  calories_total: 'Total Calories',
-  distance: 'Distance',
-  floors_climbed: 'Floors Climbed',
-  heart_rate: 'Heart Rate',
-  hr_zone_0_sec: 'Zone 0 (Below Z1)',
-  hr_zone_1_sec: 'Zone 1',
-  hr_zone_2_sec: 'Zone 2',
-  hr_zone_3_sec: 'Zone 3',
-  hr_zone_4_sec: 'Zone 4',
-  hr_zone_5_sec: 'Zone 5',
-  hrv_rmssd: 'HRV (RMSSD)',
-  readiness_score: 'Readiness Score',
-  resilience_score: 'Resilience Score',
-  resting_heart_rate: 'Resting HR',
-  sleep_score: 'Sleep Score',
-  spo2: 'SpO2',
-  steps: 'Steps',
-  vo2_max: 'VO2 Max',
-  weight: 'Weight',
-}
 
 // Get display unit for a metric (e.g., 'sec' -> 'min' for HR zones)
 const getDisplayUnit = (metric: string): string => {
