@@ -1116,7 +1116,8 @@ function TimelineChart({
           <g
             transform={`translate(${chartWidth},0)`}
             ref={(g) => {
-              if (g) d3.select(g).call(d3.axisRight(yHrv).ticks(6)).selectAll('text').style('fill', colors.hrv)
+              if (g)
+                d3.select(g).call(d3.axisRight(yHrv).ticks(6)).selectAll('text').style('fill', colors.hrv)
             }}
           />
 
