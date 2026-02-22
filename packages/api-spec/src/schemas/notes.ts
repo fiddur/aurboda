@@ -13,7 +13,7 @@ import {
 /**
  * Valid entity types for notes and soft-delete references.
  */
-export const entityTypes = ['activity', 'tag', 'productivity'] as const
+export const entityTypes = ['activity', 'tag', 'productivity', 'metric'] as const
 
 export const entityTypeSchema = z.enum(entityTypes).meta({
   description: 'Entity type for polymorphic references',
@@ -30,7 +30,9 @@ export const noteSchema = z
   .object({
     content: z.string().meta({ description: 'Note content (markdown)' }),
     created_at: iso8601DateTimeSchema.optional(),
-    entity_id: z.string().uuid().meta({ description: 'ID of the referenced entity' }),
+    entity_id: z
+      .string()
+      .meta({ description: 'ID of the referenced entity (UUID for most types, composite key for metrics)' }),
     entity_type: entityTypeSchema,
     id: z.string().uuid().optional().meta({ description: 'Note ID' }),
     updated_at: iso8601DateTimeSchema.optional(),
@@ -59,7 +61,10 @@ export type Comment = z.infer<typeof commentSchema>
 export const addNoteBodySchema = z
   .object({
     content: z.string().min(1).meta({ description: 'Note content (markdown)' }),
-    entity_id: z.string().uuid().meta({ description: 'ID of the referenced entity' }),
+    entity_id: z
+      .string()
+      .min(1)
+      .meta({ description: 'ID of the referenced entity (UUID for most types, composite key for metrics)' }),
     entity_type: entityTypeSchema,
   })
   .meta({ id: 'AddNoteBody' })
@@ -82,7 +87,10 @@ export type UpdateNoteBody = z.infer<typeof updateNoteBodySchema>
  */
 export const notesQuerySchema = z
   .object({
-    entity_id: z.string().uuid().meta({ description: 'ID of the referenced entity' }),
+    entity_id: z
+      .string()
+      .min(1)
+      .meta({ description: 'ID of the referenced entity (UUID for most types, composite key for metrics)' }),
     entity_type: entityTypeSchema,
   })
   .meta({ id: 'NotesQuery' })

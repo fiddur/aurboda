@@ -178,7 +178,7 @@ export const createTableStatements: Record<string, string> = {
     CREATE TABLE IF NOT EXISTS notes (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       entity_type     VARCHAR(50) NOT NULL,
-      entity_id       UUID NOT NULL,
+      entity_id       TEXT NOT NULL,
       content         TEXT NOT NULL,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()

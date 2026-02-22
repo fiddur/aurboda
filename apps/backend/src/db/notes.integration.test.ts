@@ -172,6 +172,68 @@ describe('Notes Integration Tests', () => {
     })
   })
 
+  describe('metric entity type with composite key', () => {
+    test('creates and retrieves a note with composite metric entity_id', async () => {
+      const user = getTestUser()
+      const entityId = '2024-01-15T10:30:00.000Z|heart_rate|oura'
+
+      const note = await insertNote(user, 'metric', entityId, 'HRV low due to illness')
+
+      expect(note.id).toBeDefined()
+      expect(note.entity_type).toBe('metric')
+      expect(note.entity_id).toBe(entityId)
+      expect(note.content).toBe('HRV low due to illness')
+    })
+
+    test('retrieves notes for a metric entity', async () => {
+      const user = getTestUser()
+      const entityId = '2024-01-15T10:30:00.000Z|weight|manual'
+
+      await insertNote(user, 'metric', entityId, 'Weight high after big meal')
+      await insertNote(user, 'metric', entityId, 'Follow-up measurement')
+
+      const notes = await getNotesForEntity(user, 'metric', entityId)
+
+      expect(notes).toHaveLength(2)
+      expect(notes[0].content).toBe('Weight high after big meal')
+      expect(notes[1].content).toBe('Follow-up measurement')
+    })
+
+    test('metric notes do not interfere with UUID-based entity notes', async () => {
+      const user = getTestUser()
+      const metricEntityId = '2024-01-15T10:30:00.000Z|heart_rate|oura'
+      const activityEntityId = randomUUID()
+
+      await insertNote(user, 'metric', metricEntityId, 'Metric note')
+      await insertNote(user, 'activity', activityEntityId, 'Activity note')
+
+      const metricNotes = await getNotesForEntity(user, 'metric', metricEntityId)
+      const activityNotes = await getNotesForEntity(user, 'activity', activityEntityId)
+
+      expect(metricNotes).toHaveLength(1)
+      expect(metricNotes[0].content).toBe('Metric note')
+      expect(activityNotes).toHaveLength(1)
+      expect(activityNotes[0].content).toBe('Activity note')
+    })
+
+    test('getNotesByEntityIds works with composite metric entity_ids', async () => {
+      const user = getTestUser()
+      const entityId1 = '2024-01-15T10:30:00.000Z|heart_rate|oura'
+      const entityId2 = '2024-01-16T08:00:00.000Z|weight|manual'
+
+      await insertNote(user, 'metric', entityId1, 'HR note')
+      await insertNote(user, 'metric', entityId2, 'Weight note')
+
+      const result = await getNotesByEntityIds(user, 'metric', [entityId1, entityId2])
+
+      expect(result.size).toBe(2)
+      expect(result.get(entityId1)).toHaveLength(1)
+      expect(result.get(entityId1)![0].content).toBe('HR note')
+      expect(result.get(entityId2)).toHaveLength(1)
+      expect(result.get(entityId2)![0].content).toBe('Weight note')
+    })
+  })
+
   describe('deleteNote', () => {
     test('deletes note and returns true', async () => {
       const user = getTestUser()
