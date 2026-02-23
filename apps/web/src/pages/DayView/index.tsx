@@ -1003,57 +1003,58 @@ const mergeSmallItems = (
 
   // Group nearby tiny items; large items stay as-is
   const result: { item: ChartItem; lane: number }[] = []
-  let clusterItems: ChartItem[] = []
+  let cluster: { item: ChartItem; lane: number }[] = []
 
   const flushCluster = () => {
-    if (clusterItems.length === 0) return
-    if (clusterItems.length === 1) {
-      result.push({ item: clusterItems[0]!, lane: 0 })
+    if (cluster.length === 0) return
+    if (cluster.length === 1) {
+      result.push(cluster[0]!)
     } else {
-      const mergedStart = clusterItems.reduce(
-        (min, i) => (i.start < min ? i.start : min),
-        clusterItems[0]!.start,
-      )
-      const mergedEnd = clusterItems.reduce((max, i) => (i.end > max ? i.end : max), clusterItems[0]!.end)
-      const first = clusterItems[0]!
+      const items = cluster.map((c) => c.item)
+      const mergedStart = items.reduce((min, i) => (i.start < min ? i.start : min), items[0]!.start)
+      const mergedEnd = items.reduce((max, i) => (i.end > max ? i.end : max), items[0]!.end)
+      const first = items[0]!
       const merged: ChartItem = {
         color: first.color,
         column: first.column,
         end: mergedEnd,
         isPoint: false,
-        label: `${clusterItems.length} items`,
+        label: `${items.length} items`,
         start: mergedStart,
         tooltip: {
-          details: clusterItems.map((i) => `${formatTime(i.start)} ${i.label}`),
+          details: items.map((i) => `${formatTime(i.start)} ${i.label}`),
           time: `${formatTime(mergedStart)} – ${formatTime(mergedEnd)}`,
-          title: `${clusterItems.length} ${first.column}`,
+          title: `${items.length} ${first.column}`,
         },
       }
       result.push({ item: merged, lane: 0 })
     }
-    clusterItems = []
+    cluster = []
   }
 
-  for (const { item } of sorted) {
-    const h = Math.abs(yScale(item.end) - yScale(item.start))
+  for (const packed of sorted) {
+    const h = Math.abs(yScale(packed.item.end) - yScale(packed.item.start))
     if (h >= MIN_ITEM_HEIGHT) {
       // Large item: flush pending cluster then add as-is
       flushCluster()
-      result.push({ item, lane: 0 })
+      result.push(packed)
       continue
     }
 
     // Small item: check if it's close to the current cluster's end
-    if (clusterItems.length === 0) {
-      clusterItems.push(item)
+    if (cluster.length === 0) {
+      cluster.push(packed)
     } else {
-      const clusterEnd = clusterItems.reduce((max, i) => (i.end > max ? i.end : max), clusterItems[0]!.end)
-      const gapPx = yScale(item.start) - yScale(clusterEnd)
+      const clusterEnd = cluster.reduce(
+        (max, c) => (c.item.end > max ? c.item.end : max),
+        cluster[0]!.item.end,
+      )
+      const gapPx = yScale(packed.item.start) - yScale(clusterEnd)
       if (gapPx <= MIN_ITEM_HEIGHT * 2) {
-        clusterItems.push(item)
+        cluster.push(packed)
       } else {
         flushCluster()
-        clusterItems.push(item)
+        cluster.push(packed)
       }
     }
   }
@@ -1122,26 +1123,24 @@ const drawItem = (
   if (item.isPoint) {
     const cy = y1
     const size = Math.min(laneWidth / 2, 6)
+    const cx = x + size + 2
     parent
       .append('polygon')
-      .attr(
-        'points',
-        `${x + laneWidth / 2},${cy - size} ${x + laneWidth / 2 + size},${cy} ${x + laneWidth / 2},${cy + size} ${x + laneWidth / 2 - size},${cy}`,
-      )
+      .attr('points', `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`)
       .attr('fill', item.color)
       .attr('opacity', 0.85)
       .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
       .on('mouseleave', hideTooltip)
 
     // Text label next to point marker
-    const availableWidth = laneWidth - size - 8
+    const availableWidth = laneWidth - 2 * size - 6
     if (availableWidth > 20) {
       const charWidth = 5.5
       const maxChars = Math.floor(availableWidth / charWidth)
       const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
       parent
         .append('text')
-        .attr('x', x + laneWidth / 2 + size + 4)
+        .attr('x', x + 2 * size + 6)
         .attr('y', cy)
         .attr('dy', '0.35em')
         .attr('fill', item.color)
