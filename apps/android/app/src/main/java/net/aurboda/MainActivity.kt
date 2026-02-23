@@ -761,9 +761,12 @@ fun HealthConnectScreen(
                         // Re-check permissions in case user changed them in system settings
                         refreshPermissions()
                         fetchHealthData(context)
-                        if (backgroundSyncEnabled && (healthRecords.isNotEmpty() || pendingDeletionIds.isNotEmpty())) {
+                        // Always send pending data when app comes to foreground
+                        if (healthRecords.isNotEmpty() || pendingDeletionIds.isNotEmpty()) {
                             sendPendingDataToServer(context)
                         }
+                        // Refresh widget with latest data
+                        net.aurboda.widget.HrZoneWidgetProvider.triggerUpdate(context)
                     }
                 }
             }
