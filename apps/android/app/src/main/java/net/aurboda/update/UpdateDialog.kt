@@ -47,6 +47,39 @@ fun UpdateAvailableDialog(
 }
 
 @Composable
+fun UpdateReadyToInstallDialog(
+    versionInfo: VersionInfo,
+    onInstall: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Update Ready") },
+        text = {
+            Column {
+                Text("Version ${versionInfo.versionName} has been downloaded and is ready to install.")
+                versionInfo.releaseNotes?.let { notes ->
+                    if (notes.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(notes)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onInstall) {
+                Text("Install")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Later")
+            }
+        }
+    )
+}
+
+@Composable
 fun UpdateDownloadingDialog(
     onDismiss: () -> Unit
 ) {

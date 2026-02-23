@@ -66,16 +66,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.KSerializer
 import net.aurboda.ui.theme.AurbodaAppTheme
+import net.aurboda.update.DownloadState
 import net.aurboda.update.UpdateAvailableDialog
 import net.aurboda.update.UpdateCheckResult
 import net.aurboda.update.UpdateDownloadingDialog
 import net.aurboda.update.UpdateErrorDialog
+import net.aurboda.update.UpdateReadyToInstallDialog
 import net.aurboda.update.VersionInfo
 import net.aurboda.update.checkForUpdate
 import net.aurboda.update.downloadUpdate
+import net.aurboda.update.getExistingDownloadState
 import net.aurboda.update.installApk
 // Import allRecordTypes from HealthDataModels
 import net.aurboda.allRecordTypes
+import java.io.File
 import java.time.Instant
 import java.time.ZonedDateTime
 import kotlin.reflect.KClass
@@ -282,6 +286,8 @@ fun AurbodaApp(initialTab: MainTab? = null) {
     var updateAvailable by remember { mutableStateOf<VersionInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showDownloadingDialog by remember { mutableStateOf(false) }
+    var showInstallDialog by remember { mutableStateOf(false) }
+    var downloadedApkFile by remember { mutableStateOf<File?>(null) }
     var updateError by remember { mutableStateOf<String?>(null) }
 
     // Check for updates on app launch
@@ -292,7 +298,22 @@ fun AurbodaApp(initialTab: MainTab? = null) {
             is UpdateCheckResult.UpdateAvailable -> {
                 Log.d("UpdateChecker", "Update available: ${result.versionInfo.versionName}")
                 updateAvailable = result.versionInfo
-                showUpdateDialog = true
+
+                // Check if we already have this download in progress or finished
+                when (val downloadState = getExistingDownloadState(context, result.versionInfo.versionName)) {
+                    is DownloadState.Downloaded -> {
+                        Log.d("UpdateChecker", "APK already downloaded: ${downloadState.apkFile.name}")
+                        downloadedApkFile = downloadState.apkFile
+                        showInstallDialog = true
+                    }
+                    is DownloadState.InProgress -> {
+                        Log.d("UpdateChecker", "Download already in progress")
+                        showDownloadingDialog = true
+                    }
+                    is DownloadState.None -> {
+                        showUpdateDialog = true
+                    }
+                }
             }
             is UpdateCheckResult.NoUpdate -> {
                 Log.d("UpdateChecker", "No update available")
@@ -317,7 +338,8 @@ fun AurbodaApp(initialTab: MainTab? = null) {
                     onDownloadComplete = { apkFile ->
                         scope.launch {
                             showDownloadingDialog = false
-                            installApk(context, apkFile)
+                            downloadedApkFile = apkFile
+                            showInstallDialog = true
                         }
                     },
                     onDownloadFailed = { error ->
@@ -329,6 +351,17 @@ fun AurbodaApp(initialTab: MainTab? = null) {
                 )
             },
             onDismiss = { showUpdateDialog = false }
+        )
+    }
+
+    if (showInstallDialog && updateAvailable != null && downloadedApkFile != null) {
+        UpdateReadyToInstallDialog(
+            versionInfo = updateAvailable!!,
+            onInstall = {
+                showInstallDialog = false
+                installApk(context, downloadedApkFile!!)
+            },
+            onDismiss = { showInstallDialog = false }
         )
     }
 
