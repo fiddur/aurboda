@@ -140,6 +140,24 @@ export const updateTagNameByKey = async (user: string, tagKey: string, newName: 
 }
 
 /**
+ * Hard-delete all tags with a given source (including soft-deleted ones).
+ * Used for full re-tagging of auto-generated tags.
+ */
+export const hardDeleteTagsBySource = async (user: string, source: string): Promise<number> => {
+  const result = await query(user, `DELETE FROM tags WHERE source = $1`, [source])
+  return result.rowCount ?? 0
+}
+
+/**
+ * Hard-delete all tags whose external_id starts with the given prefix.
+ * Used to clean up tags for a specific rule when it's deleted.
+ */
+export const hardDeleteTagsByExternalIdPrefix = async (user: string, prefix: string): Promise<number> => {
+  const result = await query(user, `DELETE FROM tags WHERE external_id LIKE $1`, [prefix + '%'])
+  return result.rowCount ?? 0
+}
+
+/**
  * Get unique tags from the database (all stored tag names).
  */
 export const getUniqueTags = async (user: string): Promise<string[]> => {

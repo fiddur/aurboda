@@ -9,6 +9,8 @@ import {
   getProgrammaticTags,
   getTags,
   getUniqueTags,
+  hardDeleteTagsByExternalIdPrefix,
+  hardDeleteTagsBySource,
   insertTag,
   isProgrammaticTag,
   updateTagEndTime,
@@ -633,6 +635,93 @@ describe('Tags Integration Tests', () => {
       // Should not duplicate - tag_key result should take precedence
       const uuidEntries = tags.filter((t) => t.tagKey === uuid)
       expect(uuidEntries).toHaveLength(1)
+    })
+  })
+
+  describe('hardDeleteTagsBySource', () => {
+    test('deletes all tags with the given source including soft-deleted', async () => {
+      const user = getTestUser()
+
+      await insertTag(user, {
+        external_id: 'lastfm-auto-rule1-1000',
+        source: 'lastfm-auto',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Guitar',
+      })
+      await insertTag(user, {
+        external_id: 'lastfm-auto-rule1-2000',
+        source: 'lastfm-auto',
+        start_time: new Date('2024-01-15T11:00:00Z'),
+        tag: 'Guitar',
+      })
+      // Soft-delete one
+      await deleteTag(user, 'lastfm-auto-rule1-2000')
+
+      // Tag from a different source (should survive)
+      await insertTag(user, {
+        external_id: 'manual-tag-1',
+        source: 'manual',
+        start_time: new Date('2024-01-15T12:00:00Z'),
+        tag: 'coffee',
+      })
+
+      const deleted = await hardDeleteTagsBySource(user, 'lastfm-auto')
+      expect(deleted).toBe(2)
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags).toHaveLength(1)
+      expect(tags[0].tag).toBe('coffee')
+    })
+
+    test('returns 0 when no tags match', async () => {
+      const user = getTestUser()
+
+      const deleted = await hardDeleteTagsBySource(user, 'nonexistent-source')
+      expect(deleted).toBe(0)
+    })
+  })
+
+  describe('hardDeleteTagsByExternalIdPrefix', () => {
+    test('deletes tags matching the external_id prefix', async () => {
+      const user = getTestUser()
+      const ruleId = 'abc-123'
+
+      await insertTag(user, {
+        external_id: `lastfm-auto-${ruleId}-1000`,
+        source: 'lastfm-auto',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Guitar',
+      })
+      await insertTag(user, {
+        external_id: `lastfm-session-${ruleId}-2000`,
+        source: 'lastfm-auto',
+        start_time: new Date('2024-01-15T11:00:00Z'),
+        tag: 'Guitar',
+      })
+      // Tag from a different rule (should survive)
+      await insertTag(user, {
+        external_id: 'lastfm-auto-other-rule-3000',
+        source: 'lastfm-auto',
+        start_time: new Date('2024-01-15T12:00:00Z'),
+        tag: 'Drums',
+      })
+
+      const deleted1 = await hardDeleteTagsByExternalIdPrefix(user, `lastfm-auto-${ruleId}-`)
+      expect(deleted1).toBe(1)
+
+      const deleted2 = await hardDeleteTagsByExternalIdPrefix(user, `lastfm-session-${ruleId}-`)
+      expect(deleted2).toBe(1)
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags).toHaveLength(1)
+      expect(tags[0].tag).toBe('Drums')
+    })
+
+    test('returns 0 when no tags match', async () => {
+      const user = getTestUser()
+
+      const deleted = await hardDeleteTagsByExternalIdPrefix(user, 'nonexistent-prefix-')
+      expect(deleted).toBe(0)
     })
   })
 })

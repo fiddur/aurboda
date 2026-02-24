@@ -56,13 +56,26 @@ When `merge_gap_seconds` is set, consecutive matching scrobbles within the speci
 
 For example, with a 10-minute merge gap: if you listen to 5 tracks by the same artist over 20 minutes, they become one tag spanning the full session rather than 5 separate tags.
 
+### Retroactive Tagging
+
+When a new rule is created, it is automatically applied to all existing scrobbles in the database. This means you don't need to re-sync to pick up historical matches.
+
+When a rule is deleted, all auto-generated tags from that rule are also removed.
+
+### Re-Tagging
+
+If rules have been changed and tags are out of sync, you can do a full re-tag to delete all auto-generated Last.fm tags and reapply all rules from scratch:
+
+- **REST:** `POST /api/lastfm/retag`
+- **MCP:** `retag_lastfm_scrobbles()`
+
 ### Managing Rules
 
 Rules can be managed in **Settings > Last.fm Tag Rules** or via MCP tools:
 
 - `get_lastfm_tag_rules()` -- List all rules
-- `add_lastfm_tag_rule(...)` -- Create a rule
-- `delete_lastfm_tag_rule(rule_id)` -- Delete a rule
+- `add_lastfm_tag_rule(...)` -- Create a rule (also applies retroactively)
+- `delete_lastfm_tag_rule(rule_id)` -- Delete a rule (also removes its auto-tags)
 
 ## Querying Scrobbles
 
@@ -74,6 +87,10 @@ Raw scrobbles can be queried by time range:
 Returns track name, artist, album, and timestamp for each scrobble in the time range.
 
 ## Sync
+
+### Auto-Sync
+
+Last.fm scrobbles are automatically synced when querying tags or the daily summary, if the last sync was more than 30 minutes ago. This ensures scrobble data stays current without manual intervention.
 
 ### Manual Sync
 

@@ -53,7 +53,7 @@ export {
 } from './connection'
 
 // Raw records
-export { getScrobbles, insertRawRecord, type ScrobbleRecord } from './raw-records'
+export { getAllScrobbles, getScrobbles, insertRawRecord, type ScrobbleRecord } from './raw-records'
 
 // Time series
 export {
@@ -109,6 +109,8 @@ export {
   getTagById,
   getTags,
   getUniqueTags,
+  hardDeleteTagsByExternalIdPrefix,
+  hardDeleteTagsBySource,
   insertTag,
   isProgrammaticTag,
   restoreTag,
