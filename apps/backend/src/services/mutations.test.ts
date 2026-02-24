@@ -839,6 +839,166 @@ describe('updateActivity', () => {
     expect(result.error).toBe('end_time must be after start_time')
     expect(db.updateActivity).not.toHaveBeenCalled()
   })
+
+  test('merges data with existing activity data', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 70, exerciseTypeName: 'strength_training' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+    })
+
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: undefined,
+      notes: undefined,
+      start_time: undefined,
+      title: undefined,
+    })
+  })
+
+  test('merges new data fields while preserving existing ones', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { calories: 300, exerciseType: 70, exerciseTypeName: 'strength_training' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { calories: 300, exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+    })
+
+    // Should merge: existing {calories, exerciseType, exerciseTypeName} + new {exerciseType, exerciseTypeName}
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      data: { calories: 300, exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: undefined,
+      notes: undefined,
+      start_time: undefined,
+      title: undefined,
+    })
+  })
+
+  test('sets data on activity with no existing data', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 56, exerciseTypeName: 'running' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      data: { exerciseType: 56, exerciseTypeName: 'running' },
+    })
+
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      data: { exerciseType: 56, exerciseTypeName: 'running' },
+      end_time: undefined,
+      notes: undefined,
+      start_time: undefined,
+      title: undefined,
+    })
+  })
+
+  test('does not pass data when input has no data field', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 70 },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 70 },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      notes: 'Updated notes',
+      source: 'manual',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      notes: 'Updated notes',
+    })
+
+    // data should be undefined (not touched) when not provided in input
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      data: undefined,
+      end_time: undefined,
+      notes: 'Updated notes',
+      start_time: undefined,
+      title: undefined,
+    })
+  })
+
+  test('updates data and other fields together', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'manual',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+      title: 'Heavy lifting',
+    })
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      title: 'Heavy lifting',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.title).toBe('Heavy lifting')
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: undefined,
+      notes: undefined,
+      start_time: undefined,
+      title: 'Heavy lifting',
+    })
+  })
 })
 
 describe('updateCustomMetric', () => {
