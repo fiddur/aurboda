@@ -9,6 +9,7 @@ export interface ActivityDraft {
   start_time: string // yyyy-MM-ddTHH:mm for datetime-local
   end_time: string
   notes: string
+  exercise_type?: string
 }
 
 interface EditableActivityFieldsProps {

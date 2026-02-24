@@ -4,6 +4,7 @@ import { render } from 'preact'
 import { LocationProvider, Route, Router } from 'preact-iso'
 import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
+import { AddData } from './pages/AddData/index.jsx'
 import { AdminSettings } from './pages/AdminSettings/index.jsx'
 import { Correlations } from './pages/Correlations/index.jsx'
 import { DayView } from './pages/DayView/index.jsx'
@@ -37,6 +38,7 @@ export function App() {
             <Route path="/hr-zones" component={HrZones} />
             <Route path="/timeline" component={Timeline} />
             <Route path="/day" component={DayView} />
+            <Route path="/add" component={AddData} />
             <Route path="/detail/:type/:id" component={EntityDetail} />
             <Route path="/sleep" component={Sleep} />
             <Route path="/correlations" component={Correlations} />

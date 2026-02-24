@@ -145,6 +145,7 @@ export interface UpdateActivityInput {
   end_time?: Date
   title?: string
   notes?: string
+  data?: Record<string, unknown>
 }
 
 export interface UpdateActivityResult {
@@ -514,7 +515,12 @@ export async function updateActivity(
     }
   }
 
+  // Merge new data fields into existing data (preserving fields not being updated)
+  const mergedData =
+    input.data ? { ...((existing.data as Record<string, unknown>) ?? {}), ...input.data } : undefined
+
   const updated = await dbUpdateActivity(user, id, {
+    data: mergedData,
     end_time: input.end_time,
     notes: input.notes,
     start_time: input.start_time,

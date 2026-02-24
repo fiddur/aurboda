@@ -1,6 +1,7 @@
 /**
  * Exercise-specific detail view with HR chart and HR zone bar.
  */
+import { exerciseTypeNames } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, fetchMetricTimeSeries } from '../../state/api'
 import { ActivityChart } from './ActivityChart'
@@ -46,6 +47,8 @@ const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
     </div>
   )
 }
+
+const formatExerciseTypeName = (name: string): string => name.replace(/_/g, ' ')
 
 export const ExerciseDetail = ({
   activity,
@@ -93,6 +96,39 @@ export const ExerciseDetail = ({
           draft={draft}
           onDraftChange={onDraftChange}
         />
+
+        {isEditing && (
+          <div class="entity-fields" style={{ marginTop: '0.5rem' }}>
+            <div class="field-row">
+              <span class="field-label">Exercise Type</span>
+              <span class="field-value">
+                <select
+                  class="edit-datetime-input"
+                  value={draft.exercise_type ?? exerciseType ?? ''}
+                  onChange={(e) =>
+                    onDraftChange({ ...draft, exercise_type: (e.target as HTMLSelectElement).value })
+                  }
+                >
+                  <option value="">-- Select --</option>
+                  {exerciseTypeNames.map((name) => (
+                    <option key={name} value={name}>
+                      {formatExerciseTypeName(name)}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {!isEditing && exerciseType && (
+          <div class="entity-fields">
+            <div class="field-row">
+              <span class="field-label">Exercise Type</span>
+              <span class="field-value">{formatExerciseTypeName(exerciseType)}</span>
+            </div>
+          </div>
+        )}
 
         {!isEditing && totalCalories !== undefined && (
           <div class="entity-fields">

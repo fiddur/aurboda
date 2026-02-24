@@ -1,6 +1,7 @@
 import type { CalendarConfig } from '@aurboda/api-spec'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
+import { CustomMetricsSettings } from '../../components/CustomMetricsSettings'
 import { GoalsSettings } from '../../components/GoalsSettings'
 import { LastFmTagRulesSettings } from '../../components/LastFmTagRulesSettings'
 import { TagMappingsSettings } from '../../components/TagMappingsSettings'
@@ -503,6 +504,8 @@ export function Settings() {
           <p class="field-description">Using default thresholds (or age-based if birth date is set).</p>
         )}
       </section>
+
+      <CustomMetricsSettings />
 
       <LastFmTagRulesSettings />
 
