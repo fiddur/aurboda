@@ -3,15 +3,26 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { LastFmTagRule } from './db'
+import type { LastFmTagRule, ScrobbleRecord } from './db'
 import type { Scrobble } from './lastfm'
-import { applyTagRules, matchesRule, syncLastFmData } from './lastfm-sync'
+import {
+  applyRuleRetroactively,
+  applyTagRules,
+  cleanupRuleTags,
+  matchesRule,
+  retagAllScrobbles,
+  scrobbleRecordToScrobble,
+  syncLastFmData,
+} from './lastfm-sync'
 
 // Mock the db module
 vi.mock('./db', () => ({
   findMergeableTag: vi.fn(),
+  getAllScrobbles: vi.fn(),
   getLastFmTagRules: vi.fn(),
   getSyncState: vi.fn(),
+  hardDeleteTagsByExternalIdPrefix: vi.fn(),
+  hardDeleteTagsBySource: vi.fn(),
   insertRawRecord: vi.fn(),
   insertTag: vi.fn(),
   updateTagEndTime: vi.fn(),
@@ -27,8 +38,11 @@ vi.mock('./lastfm', () => ({
 
 import {
   findMergeableTag,
+  getAllScrobbles,
   getLastFmTagRules,
   getSyncState,
+  hardDeleteTagsByExternalIdPrefix,
+  hardDeleteTagsBySource,
   insertRawRecord,
   insertTag,
   updateTagEndTime,
@@ -631,5 +645,198 @@ describe('syncLastFmData', () => {
     })
 
     expect(mockClient.getRecentTracks).toHaveBeenCalledWith('lastfm-username', startDate, expect.any(Date))
+  })
+})
+
+describe('scrobbleRecordToScrobble', () => {
+  it('converts ScrobbleRecord to Scrobble', () => {
+    const record: ScrobbleRecord = {
+      album: 'Test Album',
+      artist: 'Test Artist',
+      recorded_at: new Date('2024-01-01T10:00:00Z'),
+      track: 'Test Track',
+    }
+
+    const result = scrobbleRecordToScrobble(record)
+
+    expect(result).toEqual({
+      album: 'Test Album',
+      artist: 'Test Artist',
+      timestamp: new Date('2024-01-01T10:00:00Z'),
+      track: 'Test Track',
+    })
+  })
+
+  it('converts empty album string to undefined', () => {
+    const record: ScrobbleRecord = {
+      album: '',
+      artist: 'Test Artist',
+      recorded_at: new Date('2024-01-01T10:00:00Z'),
+      track: 'Test Track',
+    }
+
+    const result = scrobbleRecordToScrobble(record)
+
+    expect(result.album).toBeUndefined()
+  })
+})
+
+describe('applyRuleRetroactively', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('applies rule to all existing scrobbles', async () => {
+    const records: ScrobbleRecord[] = [
+      {
+        album: 'Album 1',
+        artist: 'Match Artist',
+        recorded_at: new Date('2024-01-01T10:00:00Z'),
+        track: 'Song 1',
+      },
+      {
+        album: 'Album 2',
+        artist: 'Other Artist',
+        recorded_at: new Date('2024-01-01T11:00:00Z'),
+        track: 'Song 2',
+      },
+    ]
+    vi.mocked(getAllScrobbles).mockResolvedValue(records)
+
+    const rule: LastFmTagRule = {
+      artist_name: 'Match Artist',
+      created_at: new Date(),
+      id: 'rule-1',
+      match_mode: 'exact',
+      match_type: 'artist',
+      rule_name: 'Test Rule',
+      tag_name: 'TestTag',
+    }
+
+    const tagsCreated = await applyRuleRetroactively('testuser', rule)
+
+    expect(tagsCreated).toBe(1)
+    expect(getAllScrobbles).toHaveBeenCalledWith('testuser')
+    expect(insertTag).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns 0 when no scrobbles exist', async () => {
+    vi.mocked(getAllScrobbles).mockResolvedValue([])
+
+    const rule: LastFmTagRule = {
+      artist_name: 'Any Artist',
+      created_at: new Date(),
+      id: 'rule-1',
+      match_mode: 'exact',
+      match_type: 'artist',
+      rule_name: 'Test Rule',
+      tag_name: 'TestTag',
+    }
+
+    const tagsCreated = await applyRuleRetroactively('testuser', rule)
+
+    expect(tagsCreated).toBe(0)
+    expect(insertTag).not.toHaveBeenCalled()
+  })
+})
+
+describe('cleanupRuleTags', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('deletes point-in-time and session tags for the rule', async () => {
+    vi.mocked(hardDeleteTagsByExternalIdPrefix).mockResolvedValueOnce(3).mockResolvedValueOnce(2)
+
+    const deleted = await cleanupRuleTags('testuser', 'rule-abc')
+
+    expect(deleted).toBe(5)
+    expect(hardDeleteTagsByExternalIdPrefix).toHaveBeenCalledWith('testuser', 'lastfm-auto-rule-abc-')
+    expect(hardDeleteTagsByExternalIdPrefix).toHaveBeenCalledWith('testuser', 'lastfm-session-rule-abc-')
+  })
+
+  it('returns 0 when no tags match', async () => {
+    vi.mocked(hardDeleteTagsByExternalIdPrefix).mockResolvedValue(0)
+
+    const deleted = await cleanupRuleTags('testuser', 'nonexistent')
+
+    expect(deleted).toBe(0)
+  })
+})
+
+describe('retagAllScrobbles', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('deletes all auto-tags and reapplies rules', async () => {
+    vi.mocked(hardDeleteTagsBySource).mockResolvedValue(10)
+    vi.mocked(getAllScrobbles).mockResolvedValue([
+      {
+        album: 'Album',
+        artist: 'Match Artist',
+        recorded_at: new Date('2024-01-01T10:00:00Z'),
+        track: 'Song 1',
+      },
+    ])
+    vi.mocked(getLastFmTagRules).mockResolvedValue([
+      {
+        artist_name: 'Match Artist',
+        created_at: new Date(),
+        id: 'rule-1',
+        match_mode: 'exact',
+        match_type: 'artist',
+        rule_name: 'Test Rule',
+        tag_name: 'TestTag',
+      },
+    ])
+
+    const result = await retagAllScrobbles('testuser')
+
+    expect(result.tags_deleted).toBe(10)
+    expect(result.tags_created).toBe(1)
+    expect(hardDeleteTagsBySource).toHaveBeenCalledWith('testuser', 'lastfm-auto')
+    expect(insertTag).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns early when no scrobbles exist', async () => {
+    vi.mocked(hardDeleteTagsBySource).mockResolvedValue(5)
+    vi.mocked(getAllScrobbles).mockResolvedValue([])
+    vi.mocked(getLastFmTagRules).mockResolvedValue([
+      {
+        artist_name: 'Any',
+        created_at: new Date(),
+        id: 'rule-1',
+        match_mode: 'exact',
+        match_type: 'artist',
+        rule_name: 'Rule',
+        tag_name: 'Tag',
+      },
+    ])
+
+    const result = await retagAllScrobbles('testuser')
+
+    expect(result.tags_deleted).toBe(5)
+    expect(result.tags_created).toBe(0)
+    expect(insertTag).not.toHaveBeenCalled()
+  })
+
+  it('returns early when no rules exist', async () => {
+    vi.mocked(hardDeleteTagsBySource).mockResolvedValue(5)
+    vi.mocked(getAllScrobbles).mockResolvedValue([
+      {
+        album: '',
+        artist: 'Artist',
+        recorded_at: new Date('2024-01-01T10:00:00Z'),
+        track: 'Song',
+      },
+    ])
+    vi.mocked(getLastFmTagRules).mockResolvedValue([])
+
+    const result = await retagAllScrobbles('testuser')
+
+    expect(result.tags_deleted).toBe(5)
+    expect(result.tags_created).toBe(0)
+    expect(insertTag).not.toHaveBeenCalled()
   })
 })

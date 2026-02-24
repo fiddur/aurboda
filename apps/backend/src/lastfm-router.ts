@@ -8,9 +8,10 @@ import {
   addLastFmTagRuleBodySchema,
   type AddLastFmTagRuleBody,
   type AddLastFmTagRuleResponse,
+  type DeleteLastFmTagRuleResponse,
   type LastFmTagRulesResponse,
+  type RetagLastFmResponse,
   type ScrobblesResponse,
-  type SyncResponse,
 } from '@aurboda/api-spec'
 import { RequestHandler, Router } from 'express'
 import type { ParamsDictionary } from 'express-serve-static-core'
@@ -22,6 +23,7 @@ import {
   type LastFmMatchMode,
   type LastFmMatchType,
 } from './db'
+import { applyRuleRetroactively, cleanupRuleTags, retagAllScrobbles } from './lastfm-sync'
 import { validateBody } from './validation'
 
 /**
@@ -123,6 +125,9 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
           track_name,
         })
 
+        // Apply the new rule retroactively to all existing scrobbles
+        const tagsApplied = await applyRuleRetroactively(user, rule)
+
         res.json({
           data: {
             artist_name: rule.artist_name,
@@ -134,6 +139,7 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
             merge_gap_seconds: rule.merge_gap_seconds ?? null,
             rule_name: rule.rule_name,
             tag_name: rule.tag_name,
+            tags_applied: tagsApplied,
             track_name: rule.track_name,
           },
           success: true,
@@ -151,17 +157,39 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // DELETE /lastfm/tag-rules/:id - Delete a tag rule
-  router.delete<{ id: string }, SyncResponse>('/tag-rules/:id', authMiddleware, async (req, res) => {
+  // DELETE /lastfm/tag-rules/:id - Delete a tag rule and its auto-generated tags
+  router.delete<{ id: string }, DeleteLastFmTagRuleResponse>(
+    '/tag-rules/:id',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const { id } = req.params
+
+      try {
+        const tagsRemoved = await cleanupRuleTags(user, id)
+        const deleted = await deleteLastFmTagRule(user, id)
+        if (!deleted) {
+          return res.status(404).json({ error: 'Rule not found', success: false })
+        }
+        res.json({ success: true, tags_removed: tagsRemoved })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  // POST /lastfm/retag - Delete all auto-tags and reapply all rules from scratch
+  router.post<ParamsDictionary, RetagLastFmResponse>('/retag', authMiddleware, async (req, res) => {
     const user = req.user!
-    const { id } = req.params
 
     try {
-      const deleted = await deleteLastFmTagRule(user, id)
-      if (!deleted) {
-        return res.status(404).json({ error: 'Rule not found', success: false })
-      }
-      res.json({ success: true })
+      const result = await retagAllScrobbles(user)
+      res.json({
+        success: true,
+        tags_created: result.tags_created,
+        tags_deleted: result.tags_deleted,
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       res.status(500).json({ error: message, success: false })

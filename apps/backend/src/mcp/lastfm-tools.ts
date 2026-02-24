@@ -11,6 +11,7 @@ import {
   type LastFmMatchMode,
   type LastFmMatchType,
 } from '../db'
+import { applyRuleRetroactively, cleanupRuleTags, retagAllScrobbles } from '../lastfm-sync'
 import { errorResponse, jsonResponse, type McpServer } from './helpers'
 
 export const registerLastFmTools = (server: McpServer, user: string) => {
@@ -49,7 +50,7 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
   // Tool: add_lastfm_tag_rule
   server.tool(
     'add_lastfm_tag_rule',
-    'Add a Last.fm auto-tagging rule. Creates tags when scrobbles match the specified criteria.',
+    'Add a Last.fm auto-tagging rule. Creates tags when scrobbles match the specified criteria. The rule is applied retroactively to all existing scrobbles.',
     { ...addLastFmTagRuleBodySchema.shape },
     async ({
       artist_name,
@@ -81,10 +82,14 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
           track_name,
         })
 
+        // Apply the new rule retroactively to all existing scrobbles
+        const tagsApplied = await applyRuleRetroactively(user, rule)
+
         return jsonResponse({
           data: {
             ...rule,
             created_at: rule.created_at.toISOString(),
+            tags_applied: tagsApplied,
           },
           success: true,
         })
@@ -101,16 +106,32 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
   // Tool: delete_lastfm_tag_rule
   server.tool(
     'delete_lastfm_tag_rule',
-    'Delete a Last.fm auto-tagging rule by its ID.',
+    'Delete a Last.fm auto-tagging rule by its ID. Also removes all auto-generated tags from this rule.',
     {
       rule_id: z.string().uuid().describe('The ID of the rule to delete'),
     },
     async ({ rule_id }) => {
+      const tagsRemoved = await cleanupRuleTags(user, rule_id)
       const deleted = await deleteLastFmTagRule(user, rule_id)
       if (!deleted) {
         return jsonResponse({ error: 'Rule not found', success: false })
       }
-      return jsonResponse({ success: true })
+      return jsonResponse({ success: true, tags_removed: tagsRemoved })
+    },
+  )
+
+  // Tool: retag_lastfm_scrobbles
+  server.tool(
+    'retag_lastfm_scrobbles',
+    'Delete all auto-generated Last.fm tags and reapply all rules from scratch. Use after changing rules to fix tagging.',
+    {},
+    async () => {
+      const result = await retagAllScrobbles(user)
+      return jsonResponse({
+        success: true,
+        tags_created: result.tags_created,
+        tags_deleted: result.tags_deleted,
+      })
     },
   )
 }

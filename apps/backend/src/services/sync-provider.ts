@@ -8,6 +8,7 @@
 import { isBefore, subMinutes } from 'date-fns'
 import { getSyncState } from '../db'
 import { syncAllCalendars } from '../ical-sync'
+import { syncLastFmData } from '../lastfm-sync'
 import { ouraClient } from '../oura'
 import { isRateLimited as isOuraRateLimited, OuraDataType, syncOuraDataType } from '../oura-sync'
 import {
@@ -24,6 +25,8 @@ const DEFAULT_SYNC_THRESHOLD_MINUTES = 30
 type OuraClientType = ReturnType<typeof ouraClient>
 
 export interface SyncProviderConfig {
+  /** Callback to get the Last.fm API key (optional - if not provided, Last.fm sync is disabled) */
+  getLastFmApiKey?: () => Promise<string | null>
   /** Oura API client (optional - if not provided, Oura sync is disabled) */
   oura?: OuraClientType
   /** Sync threshold in minutes (default: 30) */
@@ -55,6 +58,29 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         await syncAllCalendars(user, settings.calendars)
       } catch (error) {
         console.error('Failed to auto-sync calendars:', error)
+      }
+    },
+
+    syncLastFmIfNeeded: async (user: string): Promise<void> => {
+      if (!config.getLastFmApiKey) return
+
+      try {
+        const settings = await getSettings(user)
+        if (!settings.lastfm_username) return
+
+        const apiKey = await config.getLastFmApiKey()
+        if (!apiKey) return
+
+        const syncState = await getSyncState(user, 'lastfm', 'scrobbles')
+        const thresholdTime = subMinutes(new Date(), threshold)
+        if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
+          return
+        }
+
+        console.log('Auto-syncing Last.fm scrobbles...')
+        await syncLastFmData(user, apiKey, settings.lastfm_username)
+      } catch (error) {
+        console.error('Failed to auto-sync Last.fm:', error)
       }
     },
 

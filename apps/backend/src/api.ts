@@ -86,6 +86,7 @@ const main = async () => {
 
   // Create sync provider for auto-syncing data before queries
   const syncProvider = createSyncProvider({
+    getLastFmApiKey: () => centralDb.getLastFmApiKey(),
     oura,
   })
 

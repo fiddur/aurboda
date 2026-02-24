@@ -24,6 +24,28 @@ export interface ScrobbleRecord {
 }
 
 /**
+ * Query all Last.fm scrobbles from raw_records (no time range bounds).
+ * Used for re-tagging all scrobbles when rules change.
+ */
+export const getAllScrobbles = async (user: string): Promise<ScrobbleRecord[]> => {
+  const result = await query(
+    user,
+    `SELECT recorded_at, data
+     FROM raw_records
+     WHERE source = 'lastfm' AND record_type = 'scrobble'
+     ORDER BY recorded_at ASC`,
+    [],
+  )
+
+  return result.rows.map((row) => ({
+    album: (row.data.album as string) ?? '',
+    artist: (row.data.artist as string) ?? '',
+    recorded_at: row.recorded_at as Date,
+    track: (row.data.track as string) ?? '',
+  }))
+}
+
+/**
  * Query Last.fm scrobbles from raw_records within a time range.
  */
 export const getScrobbles = async (user: string, start: Date, end: Date): Promise<ScrobbleRecord[]> => {

@@ -515,11 +515,47 @@ export type LastFmTagRulesResponse = z.infer<typeof lastFmTagRulesResponseSchema
  */
 export const addLastFmTagRuleResponseSchema = baseResponseSchema
   .extend({
-    data: lastFmTagRuleSchema.optional().meta({ description: 'Created tag rule' }),
+    data: lastFmTagRuleSchema
+      .extend({
+        tags_applied: z
+          .number()
+          .int()
+          .optional()
+          .meta({ description: 'Number of tags retroactively created from existing scrobbles' }),
+      })
+      .optional()
+      .meta({ description: 'Created tag rule' }),
   })
   .meta({ id: 'AddLastFmTagRuleResponse' })
 
 export type AddLastFmTagRuleResponse = z.infer<typeof addLastFmTagRuleResponseSchema>
+
+/**
+ * Delete Last.fm tag rule response.
+ */
+export const deleteLastFmTagRuleResponseSchema = baseResponseSchema
+  .extend({
+    tags_removed: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of auto-generated tags removed' }),
+  })
+  .meta({ id: 'DeleteLastFmTagRuleResponse' })
+
+export type DeleteLastFmTagRuleResponse = z.infer<typeof deleteLastFmTagRuleResponseSchema>
+
+/**
+ * Last.fm retag response.
+ */
+export const retagLastFmResponseSchema = baseResponseSchema
+  .extend({
+    tags_created: z.number().int().optional().meta({ description: 'Number of tags created' }),
+    tags_deleted: z.number().int().optional().meta({ description: 'Number of tags deleted' }),
+  })
+  .meta({ id: 'RetagLastFmResponse' })
+
+export type RetagLastFmResponse = z.infer<typeof retagLastFmResponseSchema>
 
 // ============================================================================
 // Last.fm scrobbles query schemas

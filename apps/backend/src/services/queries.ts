@@ -49,6 +49,8 @@ export interface SyncProvider {
   syncRescueTimeIfNeeded: (user: string) => Promise<void>
   /** Sync calendar data if stale */
   syncCalendarsIfNeeded: (user: string) => Promise<void>
+  /** Sync Last.fm scrobbles if stale */
+  syncLastFmIfNeeded: (user: string) => Promise<void>
 }
 
 export interface MetricDataPoint {
@@ -486,6 +488,7 @@ export async function getDailySummary(
       sync.syncOuraIfNeeded(user, 'sessions'),
       sync.syncRescueTimeIfNeeded(user),
       sync.syncCalendarsIfNeeded(user),
+      sync.syncLastFmIfNeeded(user),
     ])
   }
 
@@ -820,7 +823,11 @@ export async function queryTags(
   sync?: SyncProvider,
 ): Promise<TagSummary[]> {
   if (sync) {
-    await Promise.all([sync.syncOuraIfNeeded(user, 'tags'), sync.syncCalendarsIfNeeded(user)])
+    await Promise.all([
+      sync.syncOuraIfNeeded(user, 'tags'),
+      sync.syncCalendarsIfNeeded(user),
+      sync.syncLastFmIfNeeded(user),
+    ])
   }
 
   const tags = await getTags(user, start, end)
