@@ -9,11 +9,13 @@ import type {
   ActivityImpactType,
   AddActivityBody,
   AddActivityResponse,
+  AddCustomMetricBody,
   AddLastFmTagRuleBody,
   AddLastFmTagRuleResponse,
   AddMetricBody,
   AddNamedLocationBody,
   AddNamedLocationResponse,
+  AddTagBody,
   Activity as ApiActivity,
   DetectedLocation as ApiDetectedLocation,
   PlaceVisit as ApiPlaceVisit,
@@ -70,6 +72,8 @@ import type {
   TrendResult,
   TrendSourceType,
   UniqueTagsResponse,
+  UpdateActivityBody,
+  UpdateCustomMetricBody,
   UpdateSettingsInput,
   UserSettingsResponse,
 } from '@aurboda/api-spec'
@@ -819,16 +823,7 @@ export const softDeleteActivity = async (id: string): Promise<void> => {
   })
 }
 
-export const updateActivity = async (
-  id: string,
-  body: {
-    start_time?: string
-    end_time?: string
-    title?: string
-    notes?: string
-    exercise_type?: ExerciseTypeName
-  },
-): Promise<void> => {
+export const updateActivity = async (id: string, body: UpdateActivityBody): Promise<void> => {
   const { token } = auth.value
   await axios.patch(`${API_URL}/activities/${id}`, body, {
     headers: { Authorization: `Bearer ${token}` },
@@ -981,12 +976,7 @@ export const addActivity = async (body: AddActivityBody): Promise<AddActivityRes
   return response.data
 }
 
-export const addTag = async (body: {
-  tag: string
-  start_time: string
-  end_time?: string
-  merge_span?: number
-}): Promise<void> => {
+export const addTag = async (body: AddTagBody): Promise<void> => {
   const { token } = auth.value
   await axios.post(`${API_URL}/tags`, body, {
     headers: { Authorization: `Bearer ${token}` },
@@ -1004,13 +994,7 @@ export const addMetric = async (body: AddMetricBody): Promise<void> => {
 // Custom Metrics Management
 // ============================================================================
 
-export const addCustomMetric = async (body: {
-  name: string
-  unit: string
-  description?: string
-  min_value?: number
-  max_value?: number
-}): Promise<CustomMetricDefinition> => {
+export const addCustomMetric = async (body: AddCustomMetricBody): Promise<CustomMetricDefinition> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; data: CustomMetricDefinition }>(
     `${API_URL}/metrics/custom`,
@@ -1022,7 +1006,7 @@ export const addCustomMetric = async (body: {
 
 export const updateCustomMetric = async (
   name: string,
-  body: { description?: string; unit?: string; min_value?: number | null; max_value?: number | null },
+  body: UpdateCustomMetricBody,
 ): Promise<CustomMetricDefinition> => {
   const { token } = auth.value
   const response = await axios.patch<{ success: boolean; data: CustomMetricDefinition }>(
