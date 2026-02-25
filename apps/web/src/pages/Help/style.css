@@ -63,6 +63,14 @@
   margin-bottom: 3rem;
 }
 
+.help-page .section-description {
+  color: #4b5563;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: -1rem 0 1.5rem 0;
+  max-width: 700px;
+}
+
 .help-page .sources-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
@@ -217,7 +225,8 @@
     color: #f9fafb;
   }
 
-  .help-page .page-subtitle {
+  .help-page .page-subtitle,
+  .help-page .section-description {
     color: #9ca3af;
   }
 

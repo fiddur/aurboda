@@ -165,13 +165,13 @@ export function Help() {
 
   return (
     <div class="help-page">
-      <header class="page-header">
+      <div class="page-header">
         <h1>Getting Started</h1>
         <p class="page-subtitle">
           Connect your data sources to start tracking. Below you can see which sources are active and how to
           set up any that are missing.
         </p>
-      </header>
+      </div>
 
       {isLoading && <div class="loading">Checking your data sources...</div>}
 
@@ -261,27 +261,6 @@ export function Help() {
           />
 
           <DataSourceCard
-            name="RescueTime (Productivity)"
-            status={{
-              description:
-                hasProductivity ? 'Productivity data detected in the last 7 days.'
-                : isRescueTimeConfigured ? 'RescueTime configured but no recent data synced.'
-                : 'RescueTime not configured.',
-              hasData: hasProductivity,
-              isConfigured: isRescueTimeConfigured,
-            }}
-            setupSteps={[
-              'Sign up for RescueTime and install their app on your devices.',
-              'Get your API key from RescueTime API settings.',
-              'Enter the API key in Settings > Data Sources.',
-            ]}
-            links={[
-              { text: 'Go to Settings', url: '/settings' },
-              { text: 'RescueTime API Settings', url: 'https://www.rescuetime.com/anapi/manage' },
-            ]}
-          />
-
-          <DataSourceCard
             name="Location Tracking (OwnTracks)"
             status={{
               description:
@@ -302,6 +281,58 @@ export function Help() {
                 url: 'https://github.com/fiddur/aurboda/blob/develop/docs/owntracks.md',
               },
               { text: 'OwnTracks Website', url: 'https://owntracks.org/' },
+            ]}
+          />
+        </div>
+      </section>
+
+      <section class="data-sources">
+        <h2>Screen Time</h2>
+        <p class="section-description">
+          Track which apps and websites you use. Data from both sources is combined into the Screen Time
+          column in the Day view.
+        </p>
+
+        <div class="sources-grid">
+          <DataSourceCard
+            name="RescueTime"
+            status={{
+              description:
+                isRescueTimeConfigured && hasProductivity ? 'Screen time data detected in the last 7 days.'
+                : isRescueTimeConfigured ? 'RescueTime configured but no recent data synced.'
+                : 'RescueTime not configured.',
+              hasData: isRescueTimeConfigured && hasProductivity,
+              isConfigured: isRescueTimeConfigured,
+            }}
+            setupSteps={[
+              'Sign up for RescueTime and install their app on your devices.',
+              'Get your API key from RescueTime API settings.',
+              'Enter the API key in Settings > Data Sources.',
+            ]}
+            links={[
+              { text: 'Go to Settings', url: '/settings' },
+              { text: 'RescueTime API Settings', url: 'https://www.rescuetime.com/anapi/manage' },
+            ]}
+          />
+
+          <DataSourceCard
+            name="ActivityWatch"
+            status={{
+              description:
+                hasProductivity ?
+                  'Screen time data detected in the last 7 days.'
+                : 'ActivityWatch not configured.',
+              hasData: hasProductivity,
+            }}
+            setupSteps={[
+              'Install ActivityWatch on your computer (activitywatch.net).',
+              'Install the aw-push-agent to push data to Aurboda.',
+              'Generate a push agent token in Settings > Data Sources.',
+              'Configure the push agent with your Aurboda URL and token.',
+            ]}
+            links={[
+              { text: 'Go to Settings', url: '/settings' },
+              { text: 'ActivityWatch Website', url: 'https://activitywatch.net/' },
             ]}
           />
         </div>
