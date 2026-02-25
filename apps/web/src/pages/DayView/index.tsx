@@ -36,7 +36,7 @@ const getDefaultViewStart = () => startOfDay(new Date())
 const getDefaultViewEnd = () => endOfDay(new Date())
 
 // Column definitions
-const BASE_COLUMNS: Column[] = ['Sleep / Rest', 'Exercise', 'Location', 'Tags / Events', 'Productivity']
+const BASE_COLUMNS: Column[] = ['Sleep / Rest', 'Exercise', 'Location', 'Tags / Events', 'Screen Time']
 const MUSIC_COLOR = '#ec4899'
 
 // Colors
@@ -87,14 +87,25 @@ const placeColorPalette = [
 
 const NOW_COLOR = '#ef4444'
 
-type LegendCategory = 'sleep' | 'nap' | 'meditation' | 'exercise' | 'calendar' | 'tags' | 'music'
+type LegendCategory =
+  | 'sleep'
+  | 'nap'
+  | 'meditation'
+  | 'exercise'
+  | 'calendar'
+  | 'tags'
+  | 'music'
+  | 'location'
+  | 'screentime'
 
 const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = {
   calendar: (item) => item.column === 'Tags / Events' && item.color === tagSourceColors.calendar,
   exercise: (item) => item.column === 'Exercise',
+  location: (item) => item.column === 'Location',
   meditation: (item) => item.column === 'Sleep / Rest' && item.label === 'Meditation',
   music: (item) => item.column === 'Music',
   nap: (item) => item.column === 'Sleep / Rest' && item.label === 'Nap',
+  screentime: (item) => item.column === 'Screen Time',
   sleep: (item) => item.column === 'Sleep / Rest' && item.label === 'Sleep',
   tags: (item) => item.column === 'Tags / Events' && item.color !== tagSourceColors.calendar,
 }
@@ -336,7 +347,7 @@ const categorizeTags = (tags: Tag[]): ChartItem[] =>
 const categorizeProductivity = (productivity: ProductivityRecord[]): ChartItem[] =>
   productivity.map((p) => ({
     color: getProductivityColor(p.productivity),
-    column: 'Productivity' as Column,
+    column: 'Screen Time' as Column,
     end: p.end_time,
     entity_id: p.id,
     entity_type: 'productivity' as const,
@@ -576,10 +587,8 @@ export const DayView = () => {
     ...musicItems,
   ].filter((item) => !isItemHidden(item))
 
-  // Only show columns that have visible items (plus always keep Productivity/Location since they don't toggle)
-  const columns = allColumns.filter(
-    (col) => col === 'Productivity' || col === 'Location' || chartItems.some((item) => item.column === col),
-  )
+  // Only show columns that have visible items
+  const columns = allColumns.filter((col) => chartItems.some((item) => item.column === col))
 
   // Group by column and pack lanes
   const columnData = columns.map((col) => {
@@ -876,8 +885,10 @@ export const DayView = () => {
             { cat: 'nap' as LegendCategory, color: activityColors.nap!, label: 'Nap' },
             { cat: 'meditation' as LegendCategory, color: activityColors.meditation!, label: 'Meditation' },
             { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
+            { cat: 'location' as LegendCategory, color: placeColorPalette[0]!, label: 'Location' },
             { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
             { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
+            { cat: 'screentime' as LegendCategory, color: productivityColors[1]!, label: 'Screen Time' },
             ...(showMusicColumn ?
               [{ cat: 'music' as LegendCategory, color: MUSIC_COLOR, label: 'Music' }]
             : []),
