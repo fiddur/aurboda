@@ -89,6 +89,7 @@ export interface ActivityUpdate {
   end_time?: Date
   title?: string
   notes?: string
+  data?: Record<string, unknown>
 }
 
 // ============================================================================

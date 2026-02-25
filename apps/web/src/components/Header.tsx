@@ -31,6 +31,9 @@ export function Header() {
             <a href="/day" class={url == '/day' && 'active'}>
               Day
             </a>
+            <a href="/add" class={url == '/add' && 'active'}>
+              + Add
+            </a>
             <a href="/trends" class={url == '/trends' && 'active'}>
               Trends
             </a>

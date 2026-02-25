@@ -87,13 +87,34 @@ export const registerActivityTools = (server: McpServer, user: string) => {
   // Tool: update_activity
   server.tool(
     'update_activity',
-    'Update an existing activity. Can modify start_time, end_time, title, and notes. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
+    'Update an existing activity. Can modify start_time, end_time, title, notes, and exercise_type. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
     {
       id: z.string().uuid().describe('The ID of the activity to update'),
       ...updateActivityBodySchema.shape,
+      // Override enum with z.string() to allow handler-level validation with friendlier error message
+      exercise_type: z
+        .string()
+        .optional()
+        .describe(
+          `New exercise type name (e.g., "weightlifting", "running"). Only for exercise activities. Valid types: ${exerciseTypeNames.slice(0, 10).join(', ')}...`,
+        ),
     },
-    async ({ id, start_time, end_time, title, notes }) => {
+    async ({ id, start_time, end_time, title, notes, exercise_type }) => {
+      let data: Record<string, unknown> | undefined
+      if (exercise_type !== undefined) {
+        if (!isValidExerciseType(exercise_type)) {
+          return errorResponse(
+            `Invalid exercise_type "${exercise_type}". Valid types include: ${exerciseTypeNames.slice(0, 15).join(', ')}...`,
+          )
+        }
+        data = {
+          exerciseType: getExerciseTypeValue(exercise_type),
+          exerciseTypeName: exercise_type,
+        }
+      }
+
       const result = await updateActivity(user, id, {
+        data,
         end_time: end_time ? new Date(end_time) : undefined,
         notes,
         start_time: start_time ? new Date(start_time) : undefined,

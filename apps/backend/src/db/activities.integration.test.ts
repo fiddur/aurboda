@@ -526,5 +526,93 @@ describe('Activities Integration Tests', () => {
       expect(updated).not.toBeNull()
       expect(updated?.title).toBe('Morning meditation')
     })
+
+    test('updates data field on activity', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'manual',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const updated = await updateActivity(user, activityId, {
+        data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated?.data).toEqual({ exerciseType: 81, exerciseTypeName: 'weightlifting' })
+    })
+
+    test('replaces entire data field (no partial merge at db level)', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { calories: 300, exerciseType: 70, exerciseTypeName: 'strength_training' },
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'manual',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      // DB layer replaces data entirely; merging is done in the service layer
+      const updated = await updateActivity(user, activityId, {
+        data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated?.data).toEqual({ exerciseType: 81, exerciseTypeName: 'weightlifting' })
+    })
+
+    test('preserves data when updating other fields', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'manual',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const updated = await updateActivity(user, activityId, {
+        title: 'Heavy lifting session',
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated?.title).toBe('Heavy lifting session')
+      expect(updated?.data).toEqual({ exerciseType: 81, exerciseTypeName: 'weightlifting' })
+    })
+
+    test('updates data and other fields together', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'manual',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const updated = await updateActivity(user, activityId, {
+        data: { exerciseType: 56, exerciseTypeName: 'running' },
+        notes: 'Morning run in the park',
+        title: 'Morning Run',
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated?.title).toBe('Morning Run')
+      expect(updated?.notes).toBe('Morning run in the park')
+      expect(updated?.data).toEqual({ exerciseType: 56, exerciseTypeName: 'running' })
+    })
   })
 })

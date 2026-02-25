@@ -285,6 +285,9 @@ export type DeleteActivityResponse = z.infer<typeof deleteActivityResponseSchema
 export const updateActivityBodySchema = z
   .object({
     end_time: iso8601DateTimeSchema.optional().meta({ description: 'New end time of the activity' }),
+    exercise_type: exerciseTypeSchema.optional().meta({
+      description: 'New exercise type name (only for exercise activities)',
+    }),
     notes: z.string().optional().meta({ description: 'New activity notes' }),
     start_time: iso8601DateTimeSchema.optional().meta({ description: 'New start time of the activity' }),
     title: z.string().optional().meta({ description: 'New activity title' }),

@@ -232,6 +232,7 @@ export const updateActivity = async (
   if (updates.end_time !== undefined) fields.push({ column: 'end_time', value: updates.end_time })
   if (updates.title !== undefined) fields.push({ column: 'title', value: updates.title })
   if (updates.notes !== undefined) fields.push({ column: 'notes', value: updates.notes })
+  if (updates.data !== undefined) fields.push({ column: 'data', value: JSON.stringify(updates.data) })
 
   if (fields.length === 0) return getActivityById(user, id)
 

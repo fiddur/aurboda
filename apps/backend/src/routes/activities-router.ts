@@ -140,10 +140,26 @@ export const createActivitiesRouter = (
     validateBody(updateActivityBodySchema),
     async (req, res) => {
       const { id } = req.params
-      const { start_time, end_time, title, notes } = req.body
+      const { start_time, end_time, title, notes, exercise_type } = req.body
       const user = req.user!
 
+      // Convert exercise_type name to data object if provided
+      let data: Record<string, unknown> | undefined
+      if (exercise_type !== undefined) {
+        if (!isValidExerciseType(exercise_type)) {
+          return res.status(400).json({
+            error: `Invalid exercise_type "${exercise_type}"`,
+            success: false,
+          })
+        }
+        data = {
+          exerciseType: getExerciseTypeValue(exercise_type),
+          exerciseTypeName: exercise_type,
+        }
+      }
+
       const result = await updateActivity(user, id, {
+        data,
         end_time: end_time ? new Date(end_time) : undefined,
         notes,
         start_time: start_time ? new Date(start_time) : undefined,

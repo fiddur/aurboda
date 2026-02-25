@@ -12,6 +12,7 @@ import { useRoute } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 import {
   Activity,
+  type ExerciseTypeName,
   fetchActivityById,
   fetchTagById,
   restoreActivity,
@@ -304,8 +305,12 @@ const makeDraft = (activity: Activity): ActivityDraft => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
+  const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseTypeName as
+    | string
+    | undefined
   return {
     end_time: formatDateTimeLocal(displayEnd),
+    exercise_type: exerciseType,
     notes: activity.notes ?? '',
     start_time: formatDateTimeLocal(displayStart),
     title: activity.title ?? '',
@@ -371,13 +376,21 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
   const saveMutation = useMutation({
     mutationFn: () => {
       if (!activity) return Promise.resolve()
-      const body: Record<string, string> = {}
+      const body: {
+        start_time?: string
+        end_time?: string
+        title?: string
+        notes?: string
+        exercise_type?: ExerciseTypeName
+      } = {}
       const originalDraft = makeDraft(activity)
       if (draft.title !== originalDraft.title) body.title = draft.title
       if (draft.start_time !== originalDraft.start_time)
         body.start_time = new Date(draft.start_time).toISOString()
       if (draft.end_time !== originalDraft.end_time) body.end_time = new Date(draft.end_time).toISOString()
       if (draft.notes !== originalDraft.notes) body.notes = draft.notes
+      if (draft.exercise_type !== originalDraft.exercise_type && draft.exercise_type)
+        body.exercise_type = draft.exercise_type as ExerciseTypeName
       if (Object.keys(body).length === 0) return Promise.resolve()
       return updateActivity(rawEntityId, body)
     },
