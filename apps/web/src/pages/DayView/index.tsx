@@ -15,10 +15,12 @@ import {
   fetchUserSettings,
   Place,
   ProductivityRecord,
+  Scrobble,
   Tag,
 } from '../../state/api'
 import { packLanes } from '../../utils/lanePacking'
 import { categorizeMusic } from './categorizeMusic'
+import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import type { ChartItem, Column } from './types'
 
 import './style.css'
@@ -204,7 +206,11 @@ const buildSleepDetails = (a: Activity, end: Date, ouraByDate: OuraSleepByDate):
 }
 
 // Categorization per column
-const categorizeSleepRest = (activities: Activity[], tags: Tag[], ouraByDate: OuraSleepByDate): ChartItem[] =>
+const categorizeSleepRest = (
+  activities: Activity[],
+  scrobbles: Scrobble[],
+  ouraByDate: OuraSleepByDate,
+): ChartItem[] =>
   activities
     .filter(
       (a) => a.activity_type === 'sleep' || a.activity_type === 'nap' || a.activity_type === 'meditation',
@@ -223,15 +229,9 @@ const categorizeSleepRest = (activities: Activity[], tags: Tag[], ouraByDate: Ou
 
       if (a.notes) details.push(a.notes)
 
-      // For meditation, show overlapping last.fm tags
+      // For meditation, show overlapping scrobbles (artist – track)
       if (a.activity_type === 'meditation') {
-        const music = tags
-          .filter((t) => t.source === 'lastfm' || t.source === 'lastfm-auto')
-          .filter((t) => {
-            const tagEnd = t.end_time ?? new Date(t.start_time.getTime() + 4 * 60000)
-            return t.start_time < end && tagEnd > a.start_time
-          })
-          .map((t) => t.tag)
+        const music = findOverlappingScrobbles(scrobbles, a.start_time, end)
         if (music.length > 0) details.push(`♪ ${music.slice(0, 3).join(', ')}`)
       }
 
@@ -310,7 +310,7 @@ const categorizeLocations = (places: Place[], uniquePlaceNames: string[]): Chart
 
 const categorizeTags = (tags: Tag[]): ChartItem[] =>
   tags
-    .filter((t) => t.source !== 'lastfm' && t.source !== 'lastfm-auto')
+    .filter((t) => t.source !== 'lastfm')
     .map((t) => {
       const isPoint = !t.end_time
       const end = t.end_time ?? new Date(t.start_time.getTime() + 15 * 60000)
@@ -353,19 +353,6 @@ const categorizeProductivity = (productivity: ProductivityRecord[]): ChartItem[]
       title: p.activity,
     },
   }))
-
-// Find overlapping lastfm tags for a given time range
-const findOverlappingMusic = (tags: Tag[], start: Date, end: Date): string[] => {
-  const music: string[] = []
-  for (const t of tags) {
-    if (t.source !== 'lastfm' && t.source !== 'lastfm-auto') continue
-    const tagEnd = t.end_time ?? new Date(t.start_time.getTime() + 4 * 60000)
-    if (t.start_time < end && tagEnd > start) {
-      music.push(t.tag)
-    }
-  }
-  return music
-}
 
 // Build HR zone bar HTML for exercise tooltips
 const buildHrZoneBarHtml = (zones: Record<number, number>): string => {
@@ -421,28 +408,28 @@ export const DayView = () => {
     placeholderData: keepPreviousData,
     queryFn: () => fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['dayview-activities', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   })
 
   const placesQuery = useQuery({
     placeholderData: keepPreviousData,
     queryFn: () => fetchPlaces(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['dayview-places', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   })
 
   const tagsQuery = useQuery({
     placeholderData: keepPreviousData,
     queryFn: () => fetchTags(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['dayview-tags', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   })
 
   const productivityQuery = useQuery({
     placeholderData: keepPreviousData,
     queryFn: () => fetchProductivity(fetchStart, fetchEnd),
     queryKey: ['dayview-productivity', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   })
 
   const settingsQuery = useQuery({
@@ -461,7 +448,7 @@ export const DayView = () => {
         '1d',
       ),
     queryKey: ['dayview-oura-sleep', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   })
 
   const hasLastFm = Boolean(settingsQuery.data?.lastfm_username)
@@ -471,7 +458,7 @@ export const DayView = () => {
     placeholderData: keepPreviousData,
     queryFn: () => fetchScrobbles(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['dayview-scrobbles', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   })
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -581,7 +568,7 @@ export const DayView = () => {
 
   const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
   const chartItems = [
-    ...categorizeSleepRest(activities, tags, ouraByDate),
+    ...categorizeSleepRest(activities, scrobbles, ouraByDate),
     ...categorizeExercise(activities),
     ...categorizeLocations(places, uniquePlaceNames),
     ...categorizeTags(tags),
@@ -653,7 +640,7 @@ export const DayView = () => {
 
     const showTooltip = (event: MouseEvent, item: ChartItem) => {
       if (!tooltipRef.current || !containerRef.current) return
-      const music = findOverlappingMusic(tags, item.start, item.end)
+      const music = findOverlappingScrobbles(scrobbles, item.start, item.end)
       const tip = tooltipRef.current
       const containerRect = containerRef.current.getBoundingClientRect()
 
@@ -831,7 +818,7 @@ export const DayView = () => {
     effectiveViewStart,
     handleResetToToday,
     handleZoom,
-    tags,
+    scrobbles,
   ])
 
   // Re-render on data change and resize
