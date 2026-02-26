@@ -22,6 +22,7 @@ vi.mock('../db', () => ({
   deleteTag: vi.fn(),
   deleteTimeSeriesMetric: vi.fn(),
   deleteTimeSeriesPoint: vi.fn(),
+  enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
   findMergeableTag: vi.fn(),
   getActivityById: vi.fn(),
   getUserSettings: vi.fn(),
@@ -55,7 +56,7 @@ describe('addTag', () => {
     expect(db.insertTag).toHaveBeenCalledWith('testuser', {
       end_time: undefined,
       external_id: expect.any(String),
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T10:00:00Z'),
       tag: 'coffee',
     })
@@ -77,7 +78,7 @@ describe('addTag', () => {
     expect(db.insertTag).toHaveBeenCalledWith('testuser', {
       end_time: new Date('2024-01-15T11:00:00Z'),
       external_id: expect.any(String),
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T10:00:00Z'),
       tag: 'meditation',
     })
@@ -127,7 +128,7 @@ describe('addTag', () => {
       end_time: new Date('2024-01-15T09:59:00Z'),
       external_id: 'existing-tag-id',
       id: 'db-id',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T09:00:00Z'),
       tag: 'computer:dharma',
     })
@@ -159,7 +160,7 @@ describe('addTag', () => {
       end_time: new Date('2024-01-15T09:59:00Z'),
       external_id: 'existing-tag-id',
       id: 'db-id',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T09:00:00Z'),
       tag: 'computer:dharma',
     })
@@ -190,7 +191,7 @@ describe('addTag', () => {
       end_time: undefined,
       external_id: 'existing-tag-id',
       id: 'db-id',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T09:59:00Z'),
       tag: 'computer:dharma',
     })
@@ -239,7 +240,7 @@ describe('addMetric', () => {
     expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
       {
         metric: 'weight',
-        source: 'manual',
+        source: 'aurboda',
         time: new Date('2024-01-15T08:00:00Z'),
         unit: 'kg',
         value: 75.5,
@@ -326,7 +327,7 @@ describe('addActivity', () => {
       end_time: new Date('2024-03-15T11:45:00Z'),
       id: expect.any(String),
       notes: undefined,
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:30:00Z'),
       title: undefined,
     })
@@ -355,7 +356,7 @@ describe('addActivity', () => {
       end_time: new Date('2024-03-15T11:45:00Z'),
       id: expect.any(String),
       notes: 'Dumbbell Bench Press: 12×30kg, 8×35kg',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:30:00Z'),
       title: 'Upper body',
     })
@@ -404,7 +405,7 @@ describe('addActivity', () => {
       end_time: new Date('2024-03-15T07:30:00Z'),
       id: expect.any(String),
       notes: undefined,
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T07:00:00Z'),
       title: 'Morning meditation',
     })
@@ -625,7 +626,7 @@ describe('addMetric with custom metrics', () => {
     expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
       {
         metric: 'mood',
-        source: 'manual',
+        source: 'aurboda',
         time: new Date('2024-01-15T08:00:00Z'),
         unit: 'score',
         value: 8,
@@ -717,14 +718,14 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
     vi.mocked(db.updateActivity).mockResolvedValue({
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T12:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T09:00:00Z'),
     })
 
@@ -749,7 +750,7 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
     vi.mocked(db.updateActivity).mockResolvedValue({
@@ -757,7 +758,7 @@ describe('updateActivity', () => {
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
       notes: 'Felt great!',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
       title: 'Morning workout',
     })
@@ -790,7 +791,7 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -808,7 +809,7 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -826,7 +827,7 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -846,7 +847,7 @@ describe('updateActivity', () => {
       data: { exerciseType: 70, exerciseTypeName: 'strength_training' },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
     vi.mocked(db.updateActivity).mockResolvedValue({
@@ -854,7 +855,7 @@ describe('updateActivity', () => {
       data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -877,7 +878,7 @@ describe('updateActivity', () => {
       data: { calories: 300, exerciseType: 70, exerciseTypeName: 'strength_training' },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
     vi.mocked(db.updateActivity).mockResolvedValue({
@@ -885,7 +886,7 @@ describe('updateActivity', () => {
       data: { calories: 300, exerciseType: 81, exerciseTypeName: 'weightlifting' },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -908,7 +909,7 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
     vi.mocked(db.updateActivity).mockResolvedValue({
@@ -916,7 +917,7 @@ describe('updateActivity', () => {
       data: { exerciseType: 56, exerciseTypeName: 'running' },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -939,7 +940,7 @@ describe('updateActivity', () => {
       data: { exerciseType: 70 },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
     vi.mocked(db.updateActivity).mockResolvedValue({
@@ -948,7 +949,7 @@ describe('updateActivity', () => {
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
       notes: 'Updated notes',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -971,7 +972,7 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
     vi.mocked(db.updateActivity).mockResolvedValue({
@@ -979,7 +980,7 @@ describe('updateActivity', () => {
       data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
       title: 'Heavy lifting',
     })
@@ -1219,12 +1220,12 @@ describe('parseMetricEntityId', () => {
 
   test('roundtrips with toMetricEntityId', () => {
     const time = new Date('2024-01-15T10:30:00.000Z')
-    const entityId = toMetricEntityId(time, 'weight', 'manual')
+    const entityId = toMetricEntityId(time, 'weight', 'aurboda')
     const parsed = parseMetricEntityId(entityId)
 
     expect(parsed).toEqual({
       metric: 'weight',
-      source: 'manual',
+      source: 'aurboda',
       time,
     })
   })

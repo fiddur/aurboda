@@ -207,6 +207,9 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE notes ALTER COLUMN entity_id TYPE TEXT`)
   }
 
+  // Migrate source columns to support 'aurboda' (rename 'manual' -> 'aurboda' for new data)
+  // Note: existing 'manual' data is preserved; new entries use 'aurboda'
+
   // Create missing tables and indexes (columns now exist for index creation)
   for (const key of tableCreationOrder) {
     const tableName = key.replace('_indexes', '')

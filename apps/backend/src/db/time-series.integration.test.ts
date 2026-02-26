@@ -524,11 +524,11 @@ describe('Time Series Integration Tests', () => {
   // ==========================================================================
 
   describe('deleteTimeSeriesPoint', () => {
-    test('deletes a manual measurement and returns true', async () => {
+    test('deletes a user-created measurement and returns true', async () => {
       const user = getTestUser()
 
       await insertTimeSeries(user, [
-        { metric: 'weight', source: 'manual', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+        { metric: 'weight', source: 'aurboda', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
       ])
 
       const result = await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T08:00:00Z'))
@@ -544,7 +544,7 @@ describe('Time Series Integration Tests', () => {
       expect(data).toHaveLength(0)
     })
 
-    test('does not delete non-manual source data', async () => {
+    test('does not delete external source data', async () => {
       const user = getTestUser()
 
       await insertTimeSeries(user, [
@@ -574,13 +574,13 @@ describe('Time Series Integration Tests', () => {
   })
 
   describe('deleteTimeSeriesMetric', () => {
-    test('deletes all manual measurements for a metric and returns count', async () => {
+    test('deletes all user-created measurements for a metric and returns count', async () => {
       const user = getTestUser()
 
       await insertTimeSeries(user, [
-        { metric: 'weight', source: 'manual', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
-        { metric: 'weight', source: 'manual', time: new Date('2024-01-16T08:00:00Z'), value: 75.3 },
-        { metric: 'weight', source: 'manual', time: new Date('2024-01-17T08:00:00Z'), value: 75.1 },
+        { metric: 'weight', source: 'aurboda', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+        { metric: 'weight', source: 'aurboda', time: new Date('2024-01-16T08:00:00Z'), value: 75.3 },
+        { metric: 'weight', source: 'aurboda', time: new Date('2024-01-17T08:00:00Z'), value: 75.1 },
       ])
 
       const count = await deleteTimeSeriesMetric(user, 'weight')
@@ -596,13 +596,13 @@ describe('Time Series Integration Tests', () => {
       expect(data).toHaveLength(0)
     })
 
-    test('only deletes manual source, preserves non-manual', async () => {
+    test('only deletes user-created (manual/aurboda) source, preserves external', async () => {
       const user = getTestUser()
 
       await insertTimeSeries(user, [
         { metric: 'weight', source: 'manual', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
         { metric: 'weight', source: 'health_connect', time: new Date('2024-01-15T09:00:00Z'), value: 75.4 },
-        { metric: 'weight', source: 'manual', time: new Date('2024-01-16T08:00:00Z'), value: 75.3 },
+        { metric: 'weight', source: 'aurboda', time: new Date('2024-01-16T08:00:00Z'), value: 75.3 },
       ])
 
       const count = await deleteTimeSeriesMetric(user, 'weight')
@@ -619,7 +619,7 @@ describe('Time Series Integration Tests', () => {
       expect(data[0][1]).toBe(75.4) // health_connect data preserved
     })
 
-    test('returns 0 when no manual data exists', async () => {
+    test('returns 0 when no user-created data exists', async () => {
       const user = getTestUser()
 
       const count = await deleteTimeSeriesMetric(user, 'weight')

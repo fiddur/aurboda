@@ -51,7 +51,7 @@ export const commentSchema = z
     id: z.string().uuid().optional().meta({ description: 'Comment/note ID' }),
     updated_at: iso8601DateTimeSchema.optional(),
   })
-  .meta({ id: 'Comment', description: 'A comment attached to an entity' })
+  .meta({ description: 'A comment attached to an entity', id: 'Comment' })
 
 export type Comment = z.infer<typeof commentSchema>
 

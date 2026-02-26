@@ -24,6 +24,8 @@ import {
   updateNote as dbUpdateNote,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
+  enqueueOutboundSync,
+  findHcRecordId,
   findMergeableTag,
   getUserSettings,
   insertTag,
@@ -32,7 +34,15 @@ import {
   upsertUserSettings,
   type EntityType,
 } from '../db'
-import { getMetricUnit, isValidMetric, isValidMetricOrCustom } from '../schema'
+import {
+  activityTypeToHealthConnectType,
+  getMetricUnit,
+  isHealthConnectSyncableActivity,
+  isHealthConnectSyncableMetric,
+  isValidMetric,
+  isValidMetricOrCustom,
+  metricToHealthConnectType,
+} from '../schema'
 
 // ============================================================================
 // Types
@@ -203,7 +213,7 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
   await insertTag(user, {
     end_time: input.end_time,
     external_id: externalId,
-    source: 'manual',
+    source: 'aurboda',
     start_time: input.start_time,
     tag: input.tag,
   })
@@ -269,12 +279,30 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
   await insertTimeSeries(user, [
     {
       metric: input.metric,
-      source: 'manual',
+      source: 'aurboda',
       time: input.time,
       unit,
       value: input.value,
     },
   ])
+
+  // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
+  try {
+    if (isHealthConnectSyncableMetric(input.metric)) {
+      const hcRecordType = metricToHealthConnectType[input.metric as keyof typeof metricToHealthConnectType]
+      if (hcRecordType) {
+        await enqueueOutboundSync(user, {
+          entity_id: `${input.metric}|${input.time.toISOString()}`,
+          entity_type: 'time_series',
+          hc_record_type: hcRecordType,
+          operation: 'insert',
+          payload: { metric: input.metric, time: input.time.toISOString(), unit, value: input.value },
+        })
+      }
+    }
+  } catch (err) {
+    console.error('Failed to enqueue outbound sync for metric:', err)
+  }
 
   return {
     metric: input.metric,
@@ -320,10 +348,36 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
     end_time: input.end_time,
     id,
     notes: input.notes,
-    source: 'manual',
+    source: 'aurboda',
     start_time: input.start_time,
     title: input.title,
   })
+
+  // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
+  try {
+    if (isHealthConnectSyncableActivity(input.activity_type)) {
+      const hcRecordType =
+        activityTypeToHealthConnectType[input.activity_type as keyof typeof activityTypeToHealthConnectType]
+      if (hcRecordType) {
+        await enqueueOutboundSync(user, {
+          entity_id: id,
+          entity_type: 'activity',
+          hc_record_type: hcRecordType,
+          operation: 'insert',
+          payload: {
+            activity_type: input.activity_type,
+            data: input.data,
+            end_time: input.end_time.toISOString(),
+            notes: input.notes,
+            start_time: input.start_time.toISOString(),
+            title: input.title,
+          },
+        })
+      }
+    }
+  } catch (err) {
+    console.error('Failed to enqueue outbound sync for activity:', err)
+  }
 
   return {
     activity_type: input.activity_type,
@@ -472,7 +526,36 @@ export async function getCustomMetrics(user: string): Promise<CustomMetricDefini
  * Delete an activity by its ID.
  */
 export async function deleteActivity(user: string, id: string): Promise<DeleteActivityResult> {
+  // Look up the activity before deleting to check if it needs HC sync
+  const activity = await dbGetActivityById(user, id)
   const deleted = await dbDeleteActivity(user, id)
+
+  // Enqueue outbound delete if this was an aurboda-owned HC-syncable activity (best-effort)
+  try {
+    if (
+      deleted &&
+      activity &&
+      activity.source === 'aurboda' &&
+      isHealthConnectSyncableActivity(activity.activity_type)
+    ) {
+      const hcRecordType =
+        activityTypeToHealthConnectType[
+          activity.activity_type as keyof typeof activityTypeToHealthConnectType
+        ]
+      const hcRecordId = await findHcRecordId(user, 'activity', id)
+      if (hcRecordType) {
+        await enqueueOutboundSync(user, {
+          entity_id: id,
+          entity_type: 'activity',
+          hc_record_type: hcRecordType,
+          operation: 'delete',
+          payload: { hc_record_id: hcRecordId },
+        })
+      }
+    }
+  } catch (err) {
+    console.error('Failed to enqueue outbound sync for activity delete:', err)
+  }
 
   return {
     deleted,
@@ -533,6 +616,32 @@ export async function updateActivity(
       id,
       success: false,
     }
+  }
+
+  // Enqueue outbound sync if this is an aurboda-owned HC-syncable activity (best-effort)
+  try {
+    if (updated.source === 'aurboda' && isHealthConnectSyncableActivity(updated.activity_type)) {
+      const hcRecordType =
+        activityTypeToHealthConnectType[updated.activity_type as keyof typeof activityTypeToHealthConnectType]
+      if (hcRecordType) {
+        await enqueueOutboundSync(user, {
+          entity_id: id,
+          entity_type: 'activity',
+          hc_record_type: hcRecordType,
+          operation: 'update',
+          payload: {
+            activity_type: updated.activity_type,
+            data: updated.data,
+            end_time: updated.end_time?.toISOString(),
+            notes: updated.notes,
+            start_time: updated.start_time.toISOString(),
+            title: updated.title,
+          },
+        })
+      }
+    }
+  } catch (err) {
+    console.error('Failed to enqueue outbound sync for activity update:', err)
   }
 
   return {

@@ -70,7 +70,7 @@ describe('mapActivityRow', () => {
       end_time: '2024-01-15T11:00:00Z',
       id: 'abc-123',
       notes: 'Morning run',
-      source: 'manual',
+      source: 'aurboda',
       start_time: '2024-01-15T10:00:00Z',
       title: 'Run',
     }
@@ -83,7 +83,7 @@ describe('mapActivityRow', () => {
       end_time: new Date('2024-01-15T11:00:00Z'),
       id: 'abc-123',
       notes: 'Morning run',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T10:00:00Z'),
       title: 'Run',
     })
@@ -112,7 +112,7 @@ describe('mapActivityRow', () => {
       end_time: null,
       id: 'abc',
       notes: null,
-      source: 'manual',
+      source: 'aurboda',
       start_time: '2024-01-15T10:00:00Z',
       title: null,
     }
@@ -256,7 +256,7 @@ describe('mapTagRow', () => {
       end_time: '2024-01-15T11:00:00Z',
       external_id: 'ext-1',
       id: 'tag-1',
-      source: 'manual',
+      source: 'aurboda',
       start_time: '2024-01-15T10:00:00Z',
       tag: 'coffee',
     }
@@ -267,7 +267,7 @@ describe('mapTagRow', () => {
       end_time: new Date('2024-01-15T11:00:00Z'),
       external_id: 'ext-1',
       id: 'tag-1',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T10:00:00Z'),
       tag: 'coffee',
     })
@@ -278,7 +278,7 @@ describe('mapTagRow', () => {
       end_time: null,
       external_id: 'ext-1',
       id: 'tag-1',
-      source: 'manual',
+      source: 'aurboda',
       start_time: '2024-01-15T10:00:00Z',
       tag: 'coffee',
     }

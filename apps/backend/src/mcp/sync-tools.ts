@@ -2,13 +2,15 @@
  * MCP sync tools - data synchronization with external services.
  */
 import {
+  outboundSyncAckItemSchema,
   syncCalendarsBodySchema,
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncProviderSchema,
   syncRescueTimeBodySchema,
 } from '@aurboda/api-spec'
-import { getAllSyncStates } from '../db'
+import { z } from 'zod'
+import { ackOutboundSync, getAllSyncStates, getPendingOutboundSync } from '../db'
 import { syncAllCalendars } from '../ical-sync'
 import { syncLastFmData } from '../lastfm-sync'
 import { ouraClient } from '../oura'
@@ -179,6 +181,57 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
         }
 
         return jsonResponse({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  // Tool: get_outbound_sync
+  server.tool(
+    'get_outbound_sync',
+    'Get pending outbound sync entries that need to be written to Health Connect. Returns changes (inserts, updates, deletes) queued for the Android app to apply.',
+    {
+      limit: z.number().int().min(1).max(500).optional().describe('Max entries to return (default 100)'),
+    },
+    async ({ limit }) => {
+      try {
+        const entries = await getPendingOutboundSync(user, limit)
+        return jsonResponse({
+          count: entries.length,
+          data: entries.map((e) => ({
+            ...e,
+            created_at: e.created_at.toISOString(),
+            synced_at: e.synced_at?.toISOString(),
+          })),
+          success: true,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  // Tool: ack_outbound_sync
+  server.tool(
+    'ack_outbound_sync',
+    'Acknowledge that outbound sync entries were successfully written to Health Connect. Pass the entry ID and optionally the Health Connect record ID assigned after writing.',
+    {
+      entries: z
+        .array(z.object({ ...outboundSyncAckItemSchema.shape }))
+        .min(1)
+        .describe('Entries to acknowledge'),
+    },
+    async ({ entries }) => {
+      try {
+        let acknowledged = 0
+        for (const entry of entries) {
+          const ok = await ackOutboundSync(user, entry.id, entry.hc_record_id)
+          if (ok) acknowledged++
+        }
+        return jsonResponse({ acknowledged, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })

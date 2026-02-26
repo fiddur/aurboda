@@ -2,6 +2,7 @@ import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
   healthConnectSyncBodySchema,
+  outboundSyncAckBodySchema,
   syncActivityWatchBodySchema,
   syncCalendarsBodySchema,
   syncLastFmBodySchema,
@@ -25,6 +26,9 @@ import {
   type OuraSyncResponse,
   type OuraSyncResult,
   type OuraSyncStatusResponse,
+  type OutboundSyncAckBody,
+  type OutboundSyncAckResponse,
+  type OutboundSyncResponse,
   type ProviderSyncStatus,
   type RescueTimeSyncResponse,
   type RescueTimeSyncResult,
@@ -43,6 +47,19 @@ import { validateBody } from './validation'
 /**
  * Dependencies for sync router - allows testing with mocks
  */
+interface OutboundSyncEntry {
+  id: string
+  entity_type: string
+  entity_id: string
+  operation: 'insert' | 'update' | 'delete'
+  hc_record_type: string
+  payload: Record<string, unknown>
+  hc_record_id?: string
+  status: 'pending' | 'synced' | 'failed'
+  created_at: Date
+  synced_at?: Date
+}
+
 export interface SyncRouterDeps {
   deleteHealthConnectRecords: (user: string, externalIds: string[]) => Promise<number>
   processDailyAggregate: (user: string, aggregate: DailyAggregate) => Promise<void>
@@ -82,6 +99,9 @@ export interface SyncRouterDeps {
     deviceName: string,
   ) => Promise<ActivityWatchSyncResult>
   getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
+  // Outbound sync (Health Connect write-back)
+  getPendingOutboundSync: (user: string, limit?: number) => Promise<OutboundSyncEntry[]>
+  ackOutboundSync: (user: string, id: string, hcRecordId?: string) => Promise<boolean>
 }
 
 /**
@@ -372,6 +392,51 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       try {
         const states = await deps.getActivityWatchSyncStates(user)
         res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  // ===========================================================================
+  // Outbound sync endpoints (Health Connect write-back)
+  // ===========================================================================
+
+  // Get pending outbound sync entries for the Android app to write to Health Connect
+  router.get<ParamsDictionary, OutboundSyncResponse>('/outbound', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    try {
+      const entries = await deps.getPendingOutboundSync(user)
+      const data = entries.map((e) => ({
+        ...e,
+        created_at: e.created_at.toISOString(),
+        synced_at: e.synced_at?.toISOString(),
+      }))
+      res.json({ data, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  // Acknowledge that outbound sync entries were written to Health Connect
+  router.post<ParamsDictionary, OutboundSyncAckResponse, OutboundSyncAckBody>(
+    '/outbound/ack',
+    authMiddleware,
+    validateBody(outboundSyncAckBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { entries } = req.body
+
+      try {
+        let acknowledged = 0
+        for (const entry of entries) {
+          const ok = await deps.ackOutboundSync(user, entry.id, entry.hc_record_id)
+          if (ok) acknowledged++
+        }
+        res.json({ acknowledged, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message, success: false })
