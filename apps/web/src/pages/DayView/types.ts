@@ -1,4 +1,4 @@
-export type Column = 'Sleep / Rest' | 'Exercise' | 'Location' | 'Tags / Events' | 'Productivity' | 'Music'
+export type Column = 'Sleep / Rest' | 'Exercise' | 'Location' | 'Tags / Events' | 'Screen Time' | 'Music'
 
 export interface TooltipContent {
   title: string
