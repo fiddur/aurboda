@@ -101,7 +101,7 @@ export interface SyncRouterDeps {
   getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   // Outbound sync (Health Connect write-back)
   getPendingOutboundSync: (user: string, limit?: number) => Promise<OutboundSyncEntry[]>
-  ackOutboundSync: (user: string, id: string, hcRecordId?: string) => Promise<boolean>
+  ackOutboundSync: (user: string, id: string, hcRecordId?: string | null) => Promise<boolean>
 }
 
 /**
