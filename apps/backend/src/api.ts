@@ -12,9 +12,11 @@ import { Client } from 'pg'
 import { processActivityWatchEvents } from './activitywatch-sync'
 import { createAuth } from './auth'
 import {
+  ackOutboundSync,
   deleteHealthConnectRecords,
   getAllSyncStates,
   getDetectedLocationById,
+  getPendingOutboundSync,
   initializeSchema,
   insertLocation,
   insertPlace,
@@ -330,12 +332,14 @@ const main = async () => {
     '/sync',
     createSyncRouter(
       {
+        ackOutboundSync,
         deleteHealthConnectRecords,
         getActivityWatchSyncStates: (user) => transformSyncStates(user, 'activitywatch'),
         getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
         getLastFmApiKey: () => centralDb.getLastFmApiKey(),
         getLastFmSyncStates: (user) => transformSyncStates(user, 'lastfm'),
         getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
+        getPendingOutboundSync,
         getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),
         getSettings,
         processActivityWatchEvents,

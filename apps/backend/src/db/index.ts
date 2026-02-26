@@ -153,6 +153,19 @@ export {
   processHealthConnectData,
 } from './health-connect'
 
+// Outbound sync queue
+export {
+  ackOutboundSync,
+  enqueueOutboundSync,
+  failOutboundSync,
+  findHcRecordId,
+  getPendingOutboundSync,
+  type EnqueueOutboundSyncInput,
+  type OutboundSyncEntry,
+  type OutboundSyncOperation,
+  type OutboundSyncStatus,
+} from './outbound-sync'
+
 // Settings
 export { getUserSettings, upsertUserSettings } from './settings'
 

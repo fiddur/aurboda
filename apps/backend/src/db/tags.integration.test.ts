@@ -256,7 +256,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T09:59:00Z'),
         external_id: 'mergeable-tag',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'computer:dharma',
       })
@@ -273,7 +273,7 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'point-tag',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T09:58:00Z'),
         tag: 'coffee',
       })
@@ -291,7 +291,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T09:50:00Z'),
         external_id: 'old-tag',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'computer:dharma',
       })
@@ -301,7 +301,7 @@ describe('Tags Integration Tests', () => {
       expect(result).toBeUndefined()
     })
 
-    test('only finds manual source tags', async () => {
+    test('only finds aurboda source tags by default', async () => {
       const user = getTestUser()
 
       await insertTag(user, {

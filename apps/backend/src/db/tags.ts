@@ -85,14 +85,14 @@ export const restoreTag = async (user: string, id: string): Promise<boolean> => 
  * - Same tag name
  * - end_time within mergeSpanSeconds of newStartTime (for tags with end_time)
  * - OR start_time within mergeSpanSeconds of newStartTime (for point-in-time tags without end_time)
- * Only considers tags from the specified source (defaults to 'manual').
+ * Only considers tags from the specified source (defaults to 'aurboda').
  */
 export const findMergeableTag = async (
   user: string,
   tagName: string,
   newStartTime: Date,
   mergeSpanSeconds: number,
-  source: string = 'manual',
+  source: string = 'aurboda',
 ): Promise<Tag | undefined> => {
   // Calculate the earliest allowed end_time/start_time for merging
   const earliestMergeTime = new Date(newStartTime.getTime() - mergeSpanSeconds * 1000)

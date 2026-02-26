@@ -160,13 +160,16 @@ export const sourceRecordSchema = z
   .object({
     data_origin: z.string().optional().meta({ description: 'Health Connect data origin package' }),
     end_time: iso8601DateTimeSchema.optional(),
-    exercise_type_name: z.string().optional().meta({ description: 'Exercise type name (e.g. weightlifting)' }),
+    exercise_type_name: z
+      .string()
+      .optional()
+      .meta({ description: 'Exercise type name (e.g. weightlifting)' }),
     id: z.string().uuid().meta({ description: 'Activity ID' }),
     source: z.string().meta({ description: 'Data source' }),
     start_time: iso8601DateTimeSchema,
     title: z.string().optional().meta({ description: 'Activity title' }),
   })
-  .meta({ id: 'SourceRecord', description: 'Individual source record within a merged activity' })
+  .meta({ description: 'Individual source record within a merged activity', id: 'SourceRecord' })
 
 export type SourceRecord = z.infer<typeof sourceRecordSchema>
 

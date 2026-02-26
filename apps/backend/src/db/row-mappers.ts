@@ -24,6 +24,7 @@ import type {
 // ============================================================================
 
 const VALID_DATA_SOURCES = [
+  'aurboda',
   'health_connect',
   'health_connect_aggregate',
   'oura',

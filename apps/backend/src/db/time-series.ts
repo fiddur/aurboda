@@ -208,16 +208,18 @@ export const getDailyAggregates = async (
 export const deleteTimeSeriesPoint = async (user: string, metric: string, time: Date): Promise<boolean> => {
   const result = await query(
     user,
-    `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source = 'manual'`,
+    `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source IN ('manual', 'aurboda')`,
     [metric, time],
   )
   return (result.rowCount ?? 0) > 0
 }
 
 export const deleteTimeSeriesMetric = async (user: string, metric: string): Promise<number> => {
-  const result = await query(user, `DELETE FROM time_series WHERE metric = $1 AND source = 'manual'`, [
-    metric,
-  ])
+  const result = await query(
+    user,
+    `DELETE FROM time_series WHERE metric = $1 AND source IN ('manual', 'aurboda')`,
+    [metric],
+  )
   return result.rowCount ?? 0
 }
 

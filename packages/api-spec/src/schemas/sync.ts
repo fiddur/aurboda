@@ -535,11 +535,7 @@ export type AddLastFmTagRuleResponse = z.infer<typeof addLastFmTagRuleResponseSc
  */
 export const deleteLastFmTagRuleResponseSchema = baseResponseSchema
   .extend({
-    tags_removed: z
-      .number()
-      .int()
-      .optional()
-      .meta({ description: 'Number of auto-generated tags removed' }),
+    tags_removed: z.number().int().optional().meta({ description: 'Number of auto-generated tags removed' }),
   })
   .meta({ id: 'DeleteLastFmTagRuleResponse' })
 
@@ -615,14 +611,9 @@ export type ActivityWatchEvent = z.infer<typeof activityWatchEventSchema>
  */
 export const syncActivityWatchBodySchema = z
   .object({
-    device_name: z
-      .string()
-      .max(100)
-      .optional()
-      .meta({
-        description:
-          'Hostname or user-configured device name. Defaults to empty string (single-device setup).',
-      }),
+    device_name: z.string().max(100).optional().meta({
+      description: 'Hostname or user-configured device name. Defaults to empty string (single-device setup).',
+    }),
     events: z.array(activityWatchEventSchema).min(1).meta({ description: 'ActivityWatch events to store' }),
   })
   .meta({ id: 'SyncActivityWatchBody' })

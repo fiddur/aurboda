@@ -205,6 +205,27 @@ export const createTableStatements: Record<string, string> = {
     )
   `,
 
+  // Outbound sync queue - tracks changes to push to Health Connect
+
+  outbound_sync_queue: `
+    CREATE TABLE IF NOT EXISTS outbound_sync_queue (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      entity_type     VARCHAR(50) NOT NULL,
+      entity_id       VARCHAR(255) NOT NULL,
+      operation       VARCHAR(20) NOT NULL,
+      hc_record_type  VARCHAR(100) NOT NULL,
+      payload         JSONB NOT NULL,
+      hc_record_id    VARCHAR(255),
+      status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      synced_at       TIMESTAMPTZ
+    )
+  `,
+  outbound_sync_queue_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_outbound_sync_queue_status ON outbound_sync_queue (status) WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS idx_outbound_sync_queue_entity ON outbound_sync_queue (entity_type, entity_id)
+  `,
+
   // Named places / geofences
 
   places: `
@@ -362,6 +383,8 @@ export const tableCreationOrder = [
   'notes_indexes',
   'mcp_sessions',
   'mcp_sessions_indexes',
+  'outbound_sync_queue',
+  'outbound_sync_queue_indexes',
 ]
 
 /**
@@ -399,3 +422,44 @@ export const healthConnectActivityMapping: Record<string, ActivityType | null> =
   ExerciseSessionRecord: 'exercise',
   SleepSessionRecord: 'sleep',
 }
+
+// ============================================================================
+// Reverse mappings: Aurboda data -> Health Connect record types
+// Used for outbound sync (writing Aurboda data to Health Connect)
+// ============================================================================
+
+/**
+ * Mapping from Aurboda metric types to Health Connect record type names.
+ * Only metrics that have a direct HC equivalent are included.
+ */
+export const metricToHealthConnectType: Partial<Record<MetricType, string>> = {
+  body_fat: 'BodyFatRecord',
+  body_water_mass: 'BodyWaterMassRecord',
+  bone_mass: 'BoneMassRecord',
+  heart_rate: 'HeartRateRecord',
+  height: 'HeightRecord',
+  hrv_rmssd: 'HeartRateVariabilityRmssdRecord',
+  lean_body_mass: 'LeanBodyMassRecord',
+  resting_heart_rate: 'RestingHeartRateRecord',
+  steps: 'StepsRecord',
+  weight: 'WeightRecord',
+}
+
+/**
+ * Mapping from Aurboda activity types to Health Connect record type names.
+ */
+export const activityTypeToHealthConnectType: Partial<Record<ActivityType, string>> = {
+  exercise: 'ExerciseSessionRecord',
+  sleep: 'SleepSessionRecord',
+}
+
+/**
+ * Check if a metric type can be synced to Health Connect.
+ */
+export const isHealthConnectSyncableMetric = (metric: string): boolean => metric in metricToHealthConnectType
+
+/**
+ * Check if an activity type can be synced to Health Connect.
+ */
+export const isHealthConnectSyncableActivity = (activityType: string): boolean =>
+  activityType in activityTypeToHealthConnectType
