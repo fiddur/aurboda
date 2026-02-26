@@ -28,6 +28,10 @@ const metricNameSchema = z.string().min(1).max(50).meta({
  */
 export const metricDataPointSchema = z
   .object({
+    source: z
+      .string()
+      .optional()
+      .meta({ description: 'Data source (e.g., "manual", "oura", "health_connect")' }),
     time: iso8601DateTimeSchema,
     value: metricValueSchema,
   })

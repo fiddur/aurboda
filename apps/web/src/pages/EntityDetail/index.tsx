@@ -1,5 +1,5 @@
 /**
- * Entity detail page — shows an activity, tag, or productivity record
+ * Entity detail page — shows an activity, tag, productivity record, or metric data point
  * with notes and action buttons (delete / restore).
  *
  * Activities dispatch to type-specific detail components:
@@ -7,14 +7,19 @@
  * - exercise  → ExerciseDetail (HR chart, HR zones)
  * - other     → generic ActivityDetail
  */
+import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 import {
   Activity,
+  deleteMetricPoint,
   type ExerciseTypeName,
   fetchActivityById,
+  fetchCustomMetrics,
+  fetchMetricTimeSeriesWithSource,
   fetchTagById,
+  type MetricDataPointWithSource,
   restoreActivity,
   restoreTag,
   softDeleteActivity,
@@ -32,7 +37,7 @@ import { SleepDetail } from './SleepDetail'
 
 import './style.css'
 
-type EntityType = 'activity' | 'tag' | 'productivity'
+type EntityType = 'activity' | 'tag' | 'productivity' | 'metric'
 
 const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
   <div class="source-records">
@@ -194,9 +199,99 @@ const TagDetail = ({ tag }: { tag: Tag }) => {
   )
 }
 
+/** Parse a metric entity ID (format: "iso_time|metric_name|source"). */
+const parseMetricEntityId = (entityId: string): { time: string; metric: string; source: string } | null => {
+  const parts = entityId.split('|')
+  if (parts.length !== 3) return null
+  const [time, metric, source] = parts
+  if (!time || !metric || !source) return null
+  const d = new Date(time)
+  if (isNaN(d.getTime())) return null
+  return { metric, source, time }
+}
+
+/** Map metric name to human-readable display label. */
+const formatMetricLabel = (metric: string): string =>
+  metric.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+
+const MetricDetail = ({ entityId }: { entityId: string }) => {
+  const parsed = parseMetricEntityId(entityId)
+
+  // Look up the data point to get current value (in case it was updated)
+  const customMetricsQuery = useQuery({
+    queryFn: fetchCustomMetrics,
+    queryKey: ['custom-metrics'],
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const pointQuery = useQuery({
+    enabled: parsed !== null,
+    queryFn: async (): Promise<MetricDataPointWithSource | null> => {
+      if (!parsed) return null
+      const time = new Date(parsed.time)
+      // Narrow query: 1 second window around the exact time
+      const start = new Date(time.getTime() - 500)
+      const end = new Date(time.getTime() + 500)
+      const points = await fetchMetricTimeSeriesWithSource(parsed.metric, start, end)
+      // Find exact match by source
+      return points.find((p) => p.source === parsed.source) ?? points[0] ?? null
+    },
+    queryKey: ['metric-point', entityId],
+    staleTime: 60_000,
+  })
+
+  if (!parsed) {
+    return <p class="error">Invalid metric reference</p>
+  }
+
+  const metricLabel = formatMetricLabel(parsed.metric)
+  const customUnit = customMetricsQuery.data?.find((m) => m.name === parsed.metric)?.unit
+  const unit = customUnit ?? (builtinMetricUnits as Record<string, string>)[parsed.metric] ?? ''
+  const point = pointQuery.data
+  const time = new Date(parsed.time)
+  const displayValue = point ? Number(point.value.toFixed(2)) : null
+
+  return (
+    <div class="entity-info">
+      <div class="entity-meta">
+        <span class="entity-type-badge">metric</span>
+        <span class="entity-source">Source: {parsed.source}</span>
+      </div>
+
+      <h2>{metricLabel}</h2>
+
+      <div class="entity-fields">
+        <div class="field-row">
+          <span class="field-label">Time</span>
+          <span class="field-value">{formatDateTime(time)}</span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Value</span>
+          <span class="field-value">
+            {pointQuery.isLoading ?
+              'Loading...'
+            : displayValue !== null ?
+              `${displayValue}${unit ? ` ${unit}` : ''}`
+            : 'Not found'}
+          </span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Metric</span>
+          <span class="field-value">{parsed.metric}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const deleteEntity = (entityType: EntityType, entityId: string): Promise<void> => {
   if (entityType === 'activity') return softDeleteActivity(entityId)
   if (entityType === 'tag') return softDeleteTag(entityId)
+  if (entityType === 'metric') {
+    const parsed = parseMetricEntityId(entityId)
+    if (!parsed) return Promise.reject(new Error('Invalid metric entity ID'))
+    return deleteMetricPoint(parsed.metric, parsed.time)
+  }
   return Promise.reject(new Error('Unsupported entity type for delete'))
 }
 
@@ -342,8 +437,14 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
     queryClient.invalidateQueries({ queryKey: ['entity-detail', entityType, entityId] })
   }, [queryClient, entityType, entityId])
 
-  const isLoading = entityType === 'activity' ? activityQuery.isLoading : tagQuery.isLoading
-  const isError = entityType === 'activity' ? activityQuery.isError : tagQuery.isError
+  const isLoading =
+    entityType === 'activity' ? activityQuery.isLoading
+    : entityType === 'tag' ? tagQuery.isLoading
+    : false // metric detail handles its own loading
+  const isError =
+    entityType === 'activity' ? activityQuery.isError
+    : entityType === 'tag' ? tagQuery.isError
+    : false
 
   const activity = activityQuery.data
   const tag = tagQuery.data
@@ -352,6 +453,9 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
     entityType === 'activity' ? Boolean(activity?.deleted_at)
     : entityType === 'tag' ? Boolean(tag?.deleted_at)
     : false
+
+  // For metrics, only manual entries can be deleted
+  const isManualMetric = entityType === 'metric' && parseMetricEntityId(entityId)?.source === 'manual'
 
   // Edit state
   const [isEditing, setIsEditing] = useState(false)
@@ -415,19 +519,22 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
 
   return (
     <>
-      <EntityActions
-        entityType={entityType}
-        entityId={rawEntityId}
-        isDeleted={isDeleted}
-        onMutationSuccess={invalidateEntity}
-        canEdit={entityType === 'activity'}
-        isMerged={isMergedActivity}
-        isEditing={isEditing}
-        onStartEditing={startEditing}
-        onCancelEditing={cancelEditing}
-        onSave={handleSave}
-        isSaving={saveMutation.isPending}
-      />
+      {/* Metrics only support delete for manual entries; hide actions for non-manual metrics */}
+      {entityType !== 'metric' || isManualMetric ?
+        <EntityActions
+          entityType={entityType}
+          entityId={rawEntityId}
+          isDeleted={isDeleted}
+          onMutationSuccess={entityType === 'metric' ? () => history.back() : invalidateEntity}
+          canEdit={entityType === 'activity'}
+          isMerged={isMergedActivity}
+          isEditing={isEditing}
+          onStartEditing={startEditing}
+          onCancelEditing={cancelEditing}
+          onSave={handleSave}
+          isSaving={saveMutation.isPending}
+        />
+      : null}
 
       {entityType === 'activity' && activity && (
         <ActivityDetailDispatch
@@ -438,18 +545,19 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
         />
       )}
       {entityType === 'tag' && tag && <TagDetail tag={tag} />}
+      {entityType === 'metric' && <MetricDetail entityId={entityId} />}
 
       <NotesSection entityType={entityType} entityId={rawEntityId} allEntityIds={allEntityIds} />
     </>
   )
 }
 
-const VALID_ENTITY_TYPES = new Set<string>(['activity', 'tag', 'productivity'])
+const VALID_ENTITY_TYPES = new Set<string>(['activity', 'tag', 'productivity', 'metric'])
 
 export const EntityDetail = () => {
   const { params } = useRoute()
   const entityType = params.type as EntityType
-  const entityId = params.id as string
+  const entityId = decodeURIComponent(params.id as string)
 
   if (!VALID_ENTITY_TYPES.has(entityType)) {
     return (

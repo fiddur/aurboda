@@ -10,6 +10,7 @@ import {
   fetchActivities,
   fetchBucketedMetrics,
   fetchCustomMetrics,
+  fetchMetricTimeSeriesWithSource,
   fetchPlaces,
   fetchProductivity,
   fetchScrobbles,
@@ -19,6 +20,7 @@ import {
   ProductivityRecord,
   Scrobble,
   Tag,
+  type MetricDataPointWithSource,
 } from '../../state/api'
 import { packLanes } from '../../utils/lanePacking'
 import { categorizeMusic } from './categorizeMusic'
@@ -375,27 +377,19 @@ const formatMetricLabel = (metric: string): string =>
   metric.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
 /**
- * Categorize bucketed metric data into chart items for the Tags / Events lane.
+ * Categorize metric data points into chart items for the Tags / Events lane.
  * Only includes metrics with <= OCCASIONAL_METRIC_MAX_COUNT data points per day.
  */
-interface MetricBucketData {
-  start: string
-  end: string
-  metrics: Record<string, { avg: number; min: number; max: number; count: number }>
-}
-
 const categorizeOccasionalMetrics = (
-  buckets: MetricBucketData[],
+  dataPoints: MetricDataPointWithSource[],
   metricUnits: Record<string, string>,
 ): ChartItem[] => {
-  if (!buckets || buckets.length === 0) return []
+  if (!dataPoints || dataPoints.length === 0) return []
 
-  // Count total data points per metric across all buckets
+  // Count total data points per metric
   const metricCounts: Record<string, number> = {}
-  for (const bucket of buckets) {
-    for (const [metric, stats] of Object.entries(bucket.metrics)) {
-      metricCounts[metric] = (metricCounts[metric] ?? 0) + stats.count
-    }
+  for (const dp of dataPoints) {
+    metricCounts[dp.metric] = (metricCounts[dp.metric] ?? 0) + 1
   }
 
   // Only include metrics that are truly "occasional"
@@ -407,35 +401,32 @@ const categorizeOccasionalMetrics = (
 
   if (occasionalMetrics.size === 0) return []
 
-  const items: ChartItem[] = []
-  for (const bucket of buckets) {
-    for (const [metric, stats] of Object.entries(bucket.metrics)) {
-      if (!occasionalMetrics.has(metric)) continue
-
-      const time = new Date(bucket.start)
-      const end = new Date(time.getTime() + 15 * 60000)
-      const unit = metricUnits[metric] ?? ''
-      const displayValue = Number(stats.avg.toFixed(2))
+  return dataPoints
+    .filter((dp) => occasionalMetrics.has(dp.metric))
+    .map((dp) => {
+      const unit = metricUnits[dp.metric] ?? ''
+      const displayValue = Number(dp.value.toFixed(2))
       const valueStr = `${displayValue}${unit ? ` ${unit}` : ''}`
-      const metricLabel = formatMetricLabel(metric)
+      const metricLabel = formatMetricLabel(dp.metric)
+      const end = new Date(dp.time.getTime() + 15 * 60000)
+      const entityId = `${dp.time.toISOString()}|${dp.metric}|${dp.source}`
 
-      items.push({
+      return {
         color: METRIC_COLOR,
         column: 'Tags / Events' as Column,
         end,
+        entity_id: entityId,
+        entity_type: 'metric' as const,
         isPoint: true,
         label: `${metricLabel}: ${valueStr}`,
-        start: time,
+        start: dp.time,
         tooltip: {
-          details: [`Value: ${valueStr}`, 'Metric measurement'],
-          time: formatTime(time),
+          details: [`Value: ${valueStr}`, `Source: ${dp.source}`, 'Metric measurement'],
+          time: formatTime(dp.time),
           title: metricLabel,
         },
-      })
-    }
-  }
-
-  return items
+      }
+    })
 }
 
 const categorizeProductivity = (productivity: ProductivityRecord[]): ChartItem[] =>
@@ -588,12 +579,18 @@ export const DayView = () => {
     return units
   }, [customMetricsQuery.data])
 
-  // Fetch occasional metric data with 5-minute buckets for the day view
+  // Fetch occasional metric data with source info for entity linking
   const occasionalMetricsQuery = useQuery({
     enabled: occasionalMetricNames.length > 0,
     placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchBucketedMetrics(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), occasionalMetricNames, '5m'),
+    queryFn: async () => {
+      const start = subDays(fetchStart, 0.5)
+      const end = addDays(fetchEnd, 0.5)
+      const results = await Promise.all(
+        occasionalMetricNames.map((metric) => fetchMetricTimeSeriesWithSource(metric, start, end)),
+      )
+      return results.flat()
+    },
     queryKey: ['dayview-occasional-metrics', fromDate.value, toDate.value, occasionalMetricNames],
     staleTime: 5 * 60 * 1000,
   })
@@ -701,10 +698,7 @@ export const DayView = () => {
   const musicItems = hasLastFm ? categorizeMusic(scrobbles) : []
   const showMusicColumn = musicItems.length > 0
 
-  const occasionalMetricItems = categorizeOccasionalMetrics(
-    (occasionalMetricsQuery.data?.buckets ?? []) as MetricBucketData[],
-    allMetricUnits,
-  )
+  const occasionalMetricItems = categorizeOccasionalMetrics(occasionalMetricsQuery.data ?? [], allMetricUnits)
 
   const allColumns: Column[] = showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS
 
@@ -1074,7 +1068,7 @@ export const DayView = () => {
             {mobileItems.map((item, idx) => {
               const href =
                 item.entity_id && item.entity_type ?
-                  `/detail/${item.entity_type}/${item.entity_id}`
+                  `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
                 : (item.href ?? undefined)
               const Wrapper = href ? 'a' : 'div'
               return (
@@ -1246,7 +1240,7 @@ const drawItem = (
 
   const detailUrl =
     item.entity_id && item.entity_type ?
-      `/detail/${item.entity_type}/${item.entity_id}`
+      `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
     : (item.href ?? undefined)
 
   // Wrap clickable items in an SVG <a> so the browser handles middle-click,
