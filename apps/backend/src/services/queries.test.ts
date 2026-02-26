@@ -89,13 +89,21 @@ describe('getDailySummary', () => {
   test('aggregates all data sources for a day', async () => {
     vi.mocked(db.getTimeSeries)
       .mockResolvedValueOnce([
+        // Daily heart rate data
         [new Date('2024-01-15T10:00:00Z'), 72],
         [new Date('2024-01-15T11:00:00Z'), 80],
         [new Date('2024-01-15T12:00:00Z'), 65],
       ])
       .mockResolvedValueOnce([
+        // Daily steps data
         [new Date('2024-01-15T08:00:00Z'), 5000],
         [new Date('2024-01-15T12:00:00Z'), 3000],
+      ])
+      .mockResolvedValueOnce([
+        // Exercise session HR data (for HR zone calculation)
+        [new Date('2024-01-15T10:00:00Z'), 72],
+        [new Date('2024-01-15T10:15:00Z'), 80],
+        [new Date('2024-01-15T10:30:00Z'), 75],
       ])
 
     // Sleep sessions now use getSleepSessions with date overlap logic
