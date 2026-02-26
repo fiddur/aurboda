@@ -33,6 +33,9 @@ export type OuraDataType =
 /** Default start date for historical sync (90 days back) */
 const DEFAULT_SYNC_HISTORY_DAYS = 90
 
+/** Overlap buffer for incremental syncs to catch retroactive edits (in days). */
+const INCREMENTAL_SYNC_OVERLAP_DAYS = 2
+
 /** Backoff intervals for rate limiting (in minutes) */
 const RATE_LIMIT_BACKOFF = [1, 5, 15, 60]
 
@@ -435,7 +438,8 @@ export const syncOuraDataType = async (
   if (options.fullResync || !syncState?.last_sync_time) {
     start = options.startDate || subDays(end, DEFAULT_SYNC_HISTORY_DAYS)
   } else {
-    start = syncState.last_sync_time
+    // Add overlap buffer to catch retroactive edits in Oura
+    start = subDays(syncState.last_sync_time, INCREMENTAL_SYNC_OVERLAP_DAYS)
   }
 
   // Mark as syncing

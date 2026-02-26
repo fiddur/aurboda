@@ -5,7 +5,7 @@
  * Activities dispatch to type-specific detail components:
  * - sleep/nap → SleepDetail (hypnogram, Oura metrics, HR/HRV)
  * - exercise  → ExerciseDetail (HR chart, HR zones)
- * - other     → generic ActivityDetail
+ * - other     → generic ActivityDetail (HR/HRV chart)
  */
 import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -28,6 +28,7 @@ import {
   Tag,
   updateActivity,
 } from '../../state/api'
+import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { ExerciseDetail } from './ExerciseDetail'
 import { formatDateTime, formatDateTimeLocal, formatDuration, formatTime } from './format-utils'
@@ -101,6 +102,8 @@ const GenericActivityDetail = ({
           </div>
         </div>
       )}
+
+      <ActivityChart start={displayStart} end={displayEnd} showHrDefault={true} showHrvDefault={true} />
     </div>
   )
 }

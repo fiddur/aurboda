@@ -48,6 +48,7 @@ import type {
   LocationsResponse,
   NamedLocation,
   NamedLocationsResponse,
+  OuraSyncResponse,
   PeriodMetricStats,
   PeriodSummaryQuery,
   PeriodSummaryResponse,
@@ -416,6 +417,17 @@ export const updateUserSettings = async (params: UpdateSettingsInput): Promise<U
     headers: { Authorization: `Bearer ${token}` },
   })
 
+  return response.data
+}
+
+// Trigger Oura sync
+export const syncOura = async (fullResync?: boolean): Promise<OuraSyncResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<OuraSyncResponse>(
+    `${API_URL}/sync/oura`,
+    { full_resync: fullResync },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
   return response.data
 }
 
