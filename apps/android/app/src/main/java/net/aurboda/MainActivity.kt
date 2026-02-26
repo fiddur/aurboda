@@ -991,15 +991,24 @@ fun HealthConnectScreen(
     }
     // Process outbound sync: write backend changes to Health Connect
     try {
-      processOutboundSync(
-        apiUrl = apiUrl,
-        authToken = authToken,
-        httpClient = ktorHttpClient,
-        healthConnectClient = healthConnectClient,
-        grantedPermissions = grantedPermissions,
-      )
+      val result =
+        processOutboundSync(
+          apiUrl = apiUrl,
+          authToken = authToken,
+          httpClient = ktorHttpClient,
+          healthConnectClient = healthConnectClient,
+          grantedPermissions = grantedPermissions,
+        )
+      if (result.fetched > 0) {
+        val parts = mutableListOf<String>()
+        if (result.written > 0) parts.add("${result.written} written to HC")
+        if (result.skipped > 0) parts.add("${result.skipped} skipped")
+        if (!result.acknowledged) parts.add("ack failed")
+        statusMessage = "Outbound: ${parts.joinToString(", ")} (of ${result.fetched} pending)"
+      }
     } catch (e: Exception) {
-      Log.w("OutboundSync", "Outbound sync failed in syncNow: ${e.message}")
+      Log.w("OutboundSync", "Outbound sync failed in syncNow: ${e.message}", e)
+      statusMessage = "Outbound sync error: ${e.message}"
     }
   }
 
@@ -1144,6 +1153,13 @@ fun HealthConnectScreen(
           ) {
             Text("Sync Now")
           }
+
+          Text(
+            "Build ${BuildConfig.BUILD_TIMESTAMP}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.align(Alignment.End),
+          )
         }
       }
     }

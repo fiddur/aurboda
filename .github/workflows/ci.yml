@@ -11,8 +11,33 @@ on:
       - develop
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      node: ${{ steps.filter.outputs.node }}
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            node:
+              - 'apps/backend/**'
+              - 'apps/web/**'
+              - 'packages/api-spec/**'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/ci.yml'
+            android:
+              - 'apps/android/**'
+              - 'packages/api-spec/**'
+              - '.github/workflows/ci.yml'
+
   node:
     name: Node (test, check, build)
+    needs: changes
+    if: needs.changes.outputs.node == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -56,6 +81,8 @@ jobs:
 
   android:
     name: Android (test, build)
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
 
     defaults:
@@ -105,3 +132,23 @@ jobs:
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
+
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [node, android]
+    steps:
+      - name: Check results
+        run: |
+          echo "Node: ${{ needs.node.result }}"
+          echo "Android: ${{ needs.android.result }}"
+          if [[ "${{ needs.node.result }}" == "failure" || "${{ needs.android.result }}" == "failure" ]]; then
+            echo "❌ One or more jobs failed"
+            exit 1
+          fi
+          if [[ "${{ needs.node.result }}" == "cancelled" || "${{ needs.android.result }}" == "cancelled" ]]; then
+            echo "⚠️ One or more jobs were cancelled"
+            exit 1
+          fi
+          echo "✅ All jobs passed or were skipped"
