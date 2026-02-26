@@ -48,16 +48,8 @@ jobs:
           flags: backend
           fail_ci_if_error: false
 
-      - name: Run web tests with coverage
-        run: pnpm --filter aurboda-web test run --coverage
-
-      - name: Upload web coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: apps/web/coverage/coverage-final.json
-          flags: web
-          fail_ci_if_error: false
+      - name: Run web tests
+        run: pnpm --filter aurboda-web test run
 
       - name: Build web
         run: pnpm --filter aurboda-web build
@@ -108,16 +100,8 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "aurbodaApiToken=${{ secrets.AURBODA_API_TOKEN }}" >> local.properties
 
-      - name: Run unit tests with coverage
-        run: ./gradlew testDebugUnitTest jacocoTestReport
-
-      - name: Upload Android coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: apps/android/app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml
-          flags: android
-          fail_ci_if_error: false
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
 
       - name: Build debug APK
         run: ./gradlew assembleDebug

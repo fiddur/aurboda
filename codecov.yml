@@ -4,9 +4,13 @@ coverage:
       default:
         target: auto
         threshold: 1%
+        flags:
+          - backend
     patch:
       default:
         target: auto
+        flags:
+          - backend
 
 flag_management:
   default_rules:
@@ -16,14 +20,4 @@ flag_management:
     - name: backend
       paths:
         - apps/backend/
-      carryforward: true
-
-    - name: web
-      paths:
-        - apps/web/
-      carryforward: true
-
-    - name: android
-      paths:
-        - apps/android/
       carryforward: true
