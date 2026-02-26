@@ -450,6 +450,7 @@ export const metricToHealthConnectType: Partial<Record<MetricType, string>> = {
  */
 export const activityTypeToHealthConnectType: Partial<Record<ActivityType, string>> = {
   exercise: 'ExerciseSessionRecord',
+  nap: 'SleepSessionRecord',
   sleep: 'SleepSessionRecord',
 }
 
