@@ -427,19 +427,28 @@ private suspend fun deleteHealthConnectRecord(
  *
  * @return true if all entries were processed successfully (or none pending)
  */
+data class OutboundSyncResult(
+  val fetched: Int = 0,
+  val written: Int = 0,
+  val skipped: Int = 0,
+  val acknowledged: Boolean = true,
+  val error: String? = null,
+)
+
 suspend fun processOutboundSync(
   apiUrl: String,
   authToken: String,
   httpClient: HttpClient,
   healthConnectClient: HealthConnectClient,
   grantedPermissions: Set<String>,
-): Boolean {
+): OutboundSyncResult {
   val entries = fetchOutboundSyncEntries(apiUrl, authToken, httpClient)
-  if (entries.isEmpty()) return true
+  if (entries.isEmpty()) return OutboundSyncResult()
 
   Log.d(TAG, "🔄 Processing ${entries.size} outbound sync entries")
 
   val ackItems = mutableListOf<OutboundSyncAckItemApi>()
+  var skipped = 0
 
   for (entry in entries) {
     val hcRecordId = writeToHealthConnect(entry, healthConnectClient, grantedPermissions)
@@ -451,6 +460,7 @@ suspend fun processOutboundSync(
         ),
       )
     } else {
+      skipped++
       Log.w(TAG, "⚠️ Skipped entry ${entry.id} (${entry.hc_record_type}/${entry.operation})")
     }
   }
@@ -461,11 +471,21 @@ suspend fun processOutboundSync(
       Log.d(TAG, "✅ Outbound sync complete: ${ackItems.size}/${entries.size} entries synced")
     } else {
       Log.w(TAG, "⚠️ Outbound sync: wrote to HC but failed to acknowledge")
-      return false
+      return OutboundSyncResult(
+        fetched = entries.size,
+        written = ackItems.size,
+        skipped = skipped,
+        acknowledged = false,
+      )
     }
   }
 
-  return true
+  return OutboundSyncResult(
+    fetched = entries.size,
+    written = ackItems.size,
+    skipped = skipped,
+    acknowledged = true,
+  )
 }
 
 // ============================================================================

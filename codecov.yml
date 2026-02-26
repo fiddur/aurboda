@@ -1,5 +1,7 @@
 coverage:
   status:
+    default_rules:
+      flag_coverage_not_uploaded_behavior: pass
     project:
       default:
         target: auto
