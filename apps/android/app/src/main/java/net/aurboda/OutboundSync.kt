@@ -148,15 +148,26 @@ suspend fun acknowledgeOutboundSync(
 // Health Connect Record Builder
 // ============================================================================
 
+/** Result of a write attempt — either a record ID or a skip reason. */
+sealed class WriteResult {
+  data class Success(
+    val recordId: String,
+  ) : WriteResult()
+
+  data class Skipped(
+    val reason: String,
+  ) : WriteResult()
+}
+
 /**
  * Write an outbound sync entry to Health Connect.
- * Returns the Health Connect record ID on success, null on failure.
+ * Returns Success with the HC record ID, or Skipped with a reason.
  */
 suspend fun writeToHealthConnect(
   entry: OutboundSyncEntryApi,
   healthConnectClient: HealthConnectClient,
   grantedPermissions: Set<String>,
-): String? =
+): WriteResult =
   try {
     when (entry.operation) {
       // insertRecords() handles both insert and update: Health Connect deduplicates by
@@ -165,16 +176,16 @@ suspend fun writeToHealthConnect(
       "delete" -> {
         val success = deleteHealthConnectRecord(entry, healthConnectClient)
         // Return a marker so ack knows it succeeded (no new record ID for deletes)
-        if (success) "deleted" else null
+        if (success) WriteResult.Success("deleted") else WriteResult.Skipped("delete failed")
       }
       else -> {
         Log.w(TAG, "⚠️ Unknown operation: ${entry.operation} for entry ${entry.id}")
-        null
+        WriteResult.Skipped("unknown operation: ${entry.operation}")
       }
     }
   } catch (e: Exception) {
     Log.e(TAG, "🚫 Failed to write ${entry.hc_record_type} to Health Connect: ${e.message}", e)
-    null
+    WriteResult.Skipped("exception: ${e.message}")
   }
 
 /**
@@ -185,16 +196,18 @@ private suspend fun writeUpsertRecord(
   entry: OutboundSyncEntryApi,
   healthConnectClient: HealthConnectClient,
   grantedPermissions: Set<String>,
-): String? {
+): WriteResult {
   val clientRecordId = "$OUTBOUND_SYNC_CLIENT_ID_PREFIX${entry.entity_id}"
   val payload = entry.payload
+
+  Log.d(TAG, "📋 Processing ${entry.hc_record_type} (${entry.operation}), payload keys: ${payload.keys}")
 
   val record: Record =
     when (entry.hc_record_type) {
       "WeightRecord" -> {
-        if (!hasWritePermission<WeightRecord>(grantedPermissions)) return null
-        val value = payload.getDouble("value") ?: return null
-        val time = payload.getInstant("time") ?: return null
+        if (!hasWritePermission<WeightRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_WEIGHT permission")
+        val value = payload.getDouble("value") ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val time = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         WeightRecord(
           weight =
             androidx.health.connect.client.units.Mass
@@ -205,9 +218,9 @@ private suspend fun writeUpsertRecord(
         )
       }
       "HeightRecord" -> {
-        if (!hasWritePermission<HeightRecord>(grantedPermissions)) return null
-        val value = payload.getDouble("value") ?: return null
-        val time = payload.getInstant("time") ?: return null
+        if (!hasWritePermission<HeightRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_HEIGHT permission")
+        val value = payload.getDouble("value") ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val time = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         HeightRecord(
           height =
             androidx.health.connect.client.units.Length
@@ -218,9 +231,9 @@ private suspend fun writeUpsertRecord(
         )
       }
       "BodyFatRecord" -> {
-        if (!hasWritePermission<BodyFatRecord>(grantedPermissions)) return null
-        val value = payload.getDouble("value") ?: return null
-        val time = payload.getInstant("time") ?: return null
+        if (!hasWritePermission<BodyFatRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_BODY_FAT permission")
+        val value = payload.getDouble("value") ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val time = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         BodyFatRecord(
           percentage =
             androidx.health.connect.client.units
@@ -231,9 +244,9 @@ private suspend fun writeUpsertRecord(
         )
       }
       "LeanBodyMassRecord" -> {
-        if (!hasWritePermission<LeanBodyMassRecord>(grantedPermissions)) return null
-        val value = payload.getDouble("value") ?: return null
-        val time = payload.getInstant("time") ?: return null
+        if (!hasWritePermission<LeanBodyMassRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_LEAN_BODY_MASS permission")
+        val value = payload.getDouble("value") ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val time = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         LeanBodyMassRecord(
           mass =
             androidx.health.connect.client.units.Mass
@@ -244,9 +257,9 @@ private suspend fun writeUpsertRecord(
         )
       }
       "BoneMassRecord" -> {
-        if (!hasWritePermission<BoneMassRecord>(grantedPermissions)) return null
-        val value = payload.getDouble("value") ?: return null
-        val time = payload.getInstant("time") ?: return null
+        if (!hasWritePermission<BoneMassRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_BONE_MASS permission")
+        val value = payload.getDouble("value") ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val time = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         BoneMassRecord(
           mass =
             androidx.health.connect.client.units.Mass
@@ -257,9 +270,9 @@ private suspend fun writeUpsertRecord(
         )
       }
       "BodyWaterMassRecord" -> {
-        if (!hasWritePermission<BodyWaterMassRecord>(grantedPermissions)) return null
-        val value = payload.getDouble("value") ?: return null
-        val time = payload.getInstant("time") ?: return null
+        if (!hasWritePermission<BodyWaterMassRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_BODY_WATER_MASS permission")
+        val value = payload.getDouble("value") ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val time = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         BodyWaterMassRecord(
           mass =
             androidx.health.connect.client.units.Mass
@@ -270,9 +283,15 @@ private suspend fun writeUpsertRecord(
         )
       }
       "RestingHeartRateRecord" -> {
-        if (!hasWritePermission<RestingHeartRateRecord>(grantedPermissions)) return null
-        val value = payload.getDouble("value")?.toLong() ?: return null
-        val time = payload.getInstant("time") ?: return null
+        if (!hasWritePermission<RestingHeartRateRecord>(
+            grantedPermissions,
+          )
+        ) {
+          return WriteResult.Skipped("no WRITE_RESTING_HEART_RATE permission")
+        }
+        val value =
+          payload.getDouble("value")?.toLong() ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val time = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         RestingHeartRateRecord(
           beatsPerMinute = value,
           time = time,
@@ -281,9 +300,10 @@ private suspend fun writeUpsertRecord(
         )
       }
       "StepsRecord" -> {
-        if (!hasWritePermission<StepsRecord>(grantedPermissions)) return null
-        val value = payload.getDouble("value")?.toLong() ?: return null
-        val startTime = payload.getInstant("time") ?: return null
+        if (!hasWritePermission<StepsRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_STEPS permission")
+        val value =
+          payload.getDouble("value")?.toLong() ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val startTime = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         // Synthetic time window: StepsRecord requires a time range but the backend only stores a
         // point-in-time. A 60-second window is acceptable for single-value step entries (e.g.,
         // manual corrections). Aggregated daily totals come from other apps, not outbound sync.
@@ -298,9 +318,10 @@ private suspend fun writeUpsertRecord(
         )
       }
       "HeartRateRecord" -> {
-        if (!hasWritePermission<HeartRateRecord>(grantedPermissions)) return null
-        val value = payload.getDouble("value")?.toLong() ?: return null
-        val time = payload.getInstant("time") ?: return null
+        if (!hasWritePermission<HeartRateRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_HEART_RATE permission")
+        val value =
+          payload.getDouble("value")?.toLong() ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val time = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         // Synthetic time window: HeartRateRecord requires a time range but the backend stores a
         // single sample. A 1-second window wrapping that sample is the minimum valid range.
         val endTime = time.plusSeconds(1)
@@ -314,9 +335,14 @@ private suspend fun writeUpsertRecord(
         )
       }
       "HeartRateVariabilityRmssdRecord" -> {
-        if (!hasWritePermission<HeartRateVariabilityRmssdRecord>(grantedPermissions)) return null
-        val value = payload.getDouble("value") ?: return null
-        val time = payload.getInstant("time") ?: return null
+        if (!hasWritePermission<HeartRateVariabilityRmssdRecord>(
+            grantedPermissions,
+          )
+        ) {
+          return WriteResult.Skipped("no WRITE_HEART_RATE_VARIABILITY permission")
+        }
+        val value = payload.getDouble("value") ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val time = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         HeartRateVariabilityRmssdRecord(
           heartRateVariabilityMillis = value,
           time = time,
@@ -325,9 +351,12 @@ private suspend fun writeUpsertRecord(
         )
       }
       "ExerciseSessionRecord" -> {
-        if (!hasWritePermission<ExerciseSessionRecord>(grantedPermissions)) return null
-        val startTime = payload.getInstant("start_time") ?: return null
-        val endTime = payload.getInstant("end_time") ?: return null
+        if (!hasWritePermission<ExerciseSessionRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_EXERCISE permission")
+        val startTime =
+          payload.getInstant("start_time")
+            ?: return WriteResult.Skipped("missing/invalid 'start_time' in payload: ${payload["start_time"]}")
+        val endTime =
+          payload.getInstant("end_time") ?: return WriteResult.Skipped("missing/invalid 'end_time' in payload: ${payload["end_time"]}")
         val title = payload.getString("title")
         val notes = payload.getString("notes")
         // Extract exercise type from the nested data object; falls back to OTHER_WORKOUT.
@@ -351,9 +380,12 @@ private suspend fun writeUpsertRecord(
         )
       }
       "SleepSessionRecord" -> {
-        if (!hasWritePermission<SleepSessionRecord>(grantedPermissions)) return null
-        val startTime = payload.getInstant("start_time") ?: return null
-        val endTime = payload.getInstant("end_time") ?: return null
+        if (!hasWritePermission<SleepSessionRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_SLEEP permission")
+        val startTime =
+          payload.getInstant("start_time")
+            ?: return WriteResult.Skipped("missing/invalid 'start_time' in payload: ${payload["start_time"]}")
+        val endTime =
+          payload.getInstant("end_time") ?: return WriteResult.Skipped("missing/invalid 'end_time' in payload: ${payload["end_time"]}")
         val title = payload.getString("title")
         val notes = payload.getString("notes")
         SleepSessionRecord(
@@ -368,7 +400,7 @@ private suspend fun writeUpsertRecord(
       }
       else -> {
         Log.w(TAG, "⚠️ Unsupported HC record type: ${entry.hc_record_type}")
-        return null
+        return WriteResult.Skipped("unsupported record type: ${entry.hc_record_type}")
       }
     }
 
@@ -377,7 +409,7 @@ private suspend fun writeUpsertRecord(
   if (recordId != null) {
     Log.d(TAG, "📝 Wrote ${entry.hc_record_type} to Health Connect: $recordId")
   }
-  return recordId
+  return if (recordId != null) WriteResult.Success(recordId) else WriteResult.Skipped("insertRecords returned no ID")
 }
 
 /**
@@ -433,6 +465,7 @@ data class OutboundSyncResult(
   val skipped: Int = 0,
   val acknowledged: Boolean = true,
   val error: String? = null,
+  val skipReasons: List<String> = emptyList(),
 )
 
 suspend fun processOutboundSync(
@@ -449,19 +482,24 @@ suspend fun processOutboundSync(
 
   val ackItems = mutableListOf<OutboundSyncAckItemApi>()
   var skipped = 0
+  val skipReasons = mutableListOf<String>()
 
   for (entry in entries) {
-    val hcRecordId = writeToHealthConnect(entry, healthConnectClient, grantedPermissions)
-    if (hcRecordId != null) {
-      ackItems.add(
-        OutboundSyncAckItemApi(
-          id = entry.id,
-          hc_record_id = if (hcRecordId == "deleted") null else hcRecordId,
-        ),
-      )
-    } else {
-      skipped++
-      Log.w(TAG, "⚠️ Skipped entry ${entry.id} (${entry.hc_record_type}/${entry.operation})")
+    when (val result = writeToHealthConnect(entry, healthConnectClient, grantedPermissions)) {
+      is WriteResult.Success -> {
+        ackItems.add(
+          OutboundSyncAckItemApi(
+            id = entry.id,
+            hc_record_id = if (result.recordId == "deleted") null else result.recordId,
+          ),
+        )
+      }
+      is WriteResult.Skipped -> {
+        skipped++
+        val reason = "${entry.hc_record_type}: ${result.reason}"
+        skipReasons.add(reason)
+        Log.w(TAG, "⚠️ Skipped entry ${entry.id} (${entry.hc_record_type}/${entry.operation}): ${result.reason}")
+      }
     }
   }
 
@@ -476,6 +514,7 @@ suspend fun processOutboundSync(
         written = ackItems.size,
         skipped = skipped,
         acknowledged = false,
+        skipReasons = skipReasons,
       )
     }
   }
@@ -485,6 +524,7 @@ suspend fun processOutboundSync(
     written = ackItems.size,
     skipped = skipped,
     acknowledged = true,
+    skipReasons = skipReasons,
   )
 }
 

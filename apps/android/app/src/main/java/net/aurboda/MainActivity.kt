@@ -479,8 +479,12 @@ fun HealthConnectScreen(
   }
   val hasAllPermissions by remember(grantedPermissions) {
     derivedStateOf {
-      val allPermissions = allRecordTypes.map { HealthPermission.getReadPermission(it) }.toSet()
-      grantedPermissions.containsAll(allPermissions)
+      val allPerms =
+        allRecordTypes
+          .flatMap {
+            listOf(HealthPermission.getReadPermission(it), HealthPermission.getWritePermission(it))
+          }.toSet()
+      grantedPermissions.containsAll(allPerms)
     }
   }
   val categoryStatuses by remember(grantedPermissions) {
@@ -507,7 +511,10 @@ fun HealthConnectScreen(
     }
 
   val scope = rememberCoroutineScope()
-  val allPermissions = remember(allRecordTypes) { allRecordTypes.map { HealthPermission.getReadPermission(it) }.toSet() }
+  val allPermissions =
+    remember(allRecordTypes) {
+      allRecordTypes.flatMap { listOf(HealthPermission.getReadPermission(it), HealthPermission.getWritePermission(it)) }.toSet()
+    }
   val ktorHttpClient = remember { HttpClient(Android) { install(ContentNegotiation) { json(appJson) } } }
 
   suspend fun fetchHealthData(currentActiveContext: Context) {
@@ -1004,7 +1011,13 @@ fun HealthConnectScreen(
         if (result.written > 0) parts.add("${result.written} written to HC")
         if (result.skipped > 0) parts.add("${result.skipped} skipped")
         if (!result.acknowledged) parts.add("ack failed")
-        statusMessage = "Outbound: ${parts.joinToString(", ")} (of ${result.fetched} pending)"
+        val msg = "Outbound: ${parts.joinToString(", ")} (of ${result.fetched} pending)"
+        statusMessage =
+          if (result.skipReasons.isNotEmpty()) {
+            "$msg\n${result.skipReasons.joinToString("\n")}"
+          } else {
+            msg
+          }
       }
     } catch (e: Exception) {
       Log.w("OutboundSync", "Outbound sync failed in syncNow: ${e.message}", e)
@@ -1215,7 +1228,7 @@ fun HealthConnectScreen(
               onClick = {
                 val categoryPermissions =
                   status.category.recordTypes
-                    .map { HealthPermission.getReadPermission(it) }
+                    .flatMap { listOf(HealthPermission.getReadPermission(it), HealthPermission.getWritePermission(it)) }
                     .toTypedArray()
                 requestPermissionLauncher.launch(categoryPermissions)
               },
