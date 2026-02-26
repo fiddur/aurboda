@@ -726,6 +726,38 @@ export const fetchMetricTimeSeries = async (
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
+/** Metric data point with source info for linking to detail views. */
+export interface MetricDataPointWithSource {
+  time: Date
+  value: number
+  source: string
+  metric: string
+}
+
+/** Fetch time series data for a metric including source (for entity linking). */
+export const fetchMetricTimeSeriesWithSource = async (
+  metric: string,
+  start: Date,
+  end: Date,
+): Promise<MetricDataPointWithSource[]> => {
+  const { token } = auth.value
+  const params: QueryMetricsQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<QueryMetricsResponse>(`${API_URL}/metrics/${encodeURIComponent(metric)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+
+  return (response.data.data ?? []).map((d) => ({
+    metric,
+    source: d.source ?? 'manual',
+    time: new Date(d.time),
+    value: d.value,
+  }))
+}
+
 // ==========================================================================
 // Trends API
 // ==========================================================================
@@ -1004,6 +1036,15 @@ export const addMetric = async (body: AddMetricBody): Promise<AddMetricResponse>
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data
+}
+
+/** Delete a single manual metric measurement. */
+export const deleteMetricPoint = async (metric: string, time: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/metrics/${encodeURIComponent(metric)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { time },
+  })
 }
 
 // ============================================================================

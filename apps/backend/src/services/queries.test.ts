@@ -27,6 +27,7 @@ vi.mock('../db', () => ({
   getTimeSeriesBucketed: vi.fn(),
   getTimeSeriesMultiMetric: vi.fn(),
   getTimeSeriesStats: vi.fn(),
+  getTimeSeriesWithSource: vi.fn(),
   getUserSettings: vi.fn(),
 }))
 
@@ -40,13 +41,13 @@ describe('queryMetrics', () => {
     vi.clearAllMocks()
   })
 
-  test('returns formatted time series data', async () => {
-    const mockData: [Date, number][] = [
-      [new Date('2024-01-01T10:00:00Z'), 72],
-      [new Date('2024-01-01T11:00:00Z'), 75],
-      [new Date('2024-01-01T12:00:00Z'), 68],
+  test('returns formatted time series data with source', async () => {
+    const mockData = [
+      { source: 'oura', time: new Date('2024-01-01T10:00:00Z'), value: 72 },
+      { source: 'oura', time: new Date('2024-01-01T11:00:00Z'), value: 75 },
+      { source: 'manual', time: new Date('2024-01-01T12:00:00Z'), value: 68 },
     ]
-    vi.mocked(db.getTimeSeries).mockResolvedValue(mockData)
+    vi.mocked(db.getTimeSeriesWithSource).mockResolvedValue(mockData)
 
     const result = await queryMetrics(
       'testuser',
@@ -59,11 +60,12 @@ describe('queryMetrics', () => {
     expect(result.unit).toBe('bpm')
     expect(result.count).toBe(3)
     expect(result.data).toHaveLength(3)
-    expect(result.data[0]).toEqual({ time: '2024-01-01T10:00:00.000Z', value: 72 })
+    expect(result.data[0]).toEqual({ source: 'oura', time: '2024-01-01T10:00:00.000Z', value: 72 })
+    expect(result.data[2]).toEqual({ source: 'manual', time: '2024-01-01T12:00:00.000Z', value: 68 })
   })
 
   test('returns empty data when no records', async () => {
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getTimeSeriesWithSource).mockResolvedValue([])
 
     const result = await queryMetrics(
       'testuser',
@@ -87,13 +89,21 @@ describe('getDailySummary', () => {
   test('aggregates all data sources for a day', async () => {
     vi.mocked(db.getTimeSeries)
       .mockResolvedValueOnce([
+        // Daily heart rate data
         [new Date('2024-01-15T10:00:00Z'), 72],
         [new Date('2024-01-15T11:00:00Z'), 80],
         [new Date('2024-01-15T12:00:00Z'), 65],
       ])
       .mockResolvedValueOnce([
+        // Daily steps data
         [new Date('2024-01-15T08:00:00Z'), 5000],
         [new Date('2024-01-15T12:00:00Z'), 3000],
+      ])
+      .mockResolvedValueOnce([
+        // Exercise session HR data (for HR zone calculation)
+        [new Date('2024-01-15T10:00:00Z'), 72],
+        [new Date('2024-01-15T10:15:00Z'), 80],
+        [new Date('2024-01-15T10:30:00Z'), 75],
       ])
 
     // Sleep sessions now use getSleepSessions with date overlap logic

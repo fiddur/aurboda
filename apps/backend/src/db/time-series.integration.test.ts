@@ -12,6 +12,7 @@ import {
   deleteTimeSeriesPoint,
   getTimeSeries,
   getTimeSeriesBucketed,
+  getTimeSeriesWithSource,
   insertTimeSeries,
 } from './time-series'
 
@@ -214,6 +215,65 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(data).toHaveLength(2)
+    })
+  })
+
+  // ==========================================================================
+  // Time Series With Source
+  // ==========================================================================
+
+  describe('getTimeSeriesWithSource', () => {
+    test('returns time, value, and source for each data point', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'weight', source: 'manual', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+        { metric: 'weight', source: 'health_connect', time: new Date('2024-01-15T09:00:00Z'), value: 75.3 },
+      ])
+
+      const data = await getTimeSeriesWithSource(
+        user,
+        'weight',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+
+      expect(data).toHaveLength(2)
+      expect(data[0]).toEqual({
+        source: 'manual',
+        time: new Date('2024-01-15T08:00:00Z'),
+        value: 75.5,
+      })
+      expect(data[1]).toEqual({
+        source: 'health_connect',
+        time: new Date('2024-01-15T09:00:00Z'),
+        value: 75.3,
+      })
+    })
+
+    test('filters cumulative metrics to aggregate source only', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'health_connect', time: new Date('2024-01-15T10:00:00Z'), value: 100 },
+        {
+          metric: 'steps',
+          source: 'health_connect_aggregate',
+          time: new Date('2024-01-15T00:00:00Z'),
+          value: 8500,
+        },
+      ])
+
+      const data = await getTimeSeriesWithSource(
+        user,
+        'steps',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+
+      expect(data).toHaveLength(1)
+      expect(data[0].source).toBe('health_connect_aggregate')
+      expect(data[0].value).toBe(8500)
     })
   })
 

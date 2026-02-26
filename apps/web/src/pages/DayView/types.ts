@@ -15,6 +15,6 @@ export interface ChartItem {
   tooltip: TooltipContent
   isPoint: boolean
   entity_id?: string
-  entity_type?: 'activity' | 'tag' | 'productivity'
+  entity_type?: 'activity' | 'tag' | 'productivity' | 'metric'
   href?: string
 }

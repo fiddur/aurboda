@@ -64,6 +64,7 @@ export {
   getTimeSeriesBucketed,
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
+  getTimeSeriesWithSource,
   insertTimeSeries,
 } from './time-series'
 
