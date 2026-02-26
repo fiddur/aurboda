@@ -4,9 +4,61 @@
   padding: 2rem;
 }
 
+.add-data-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
 .add-data-page h1 {
   font-size: 1.75rem;
-  margin-bottom: 1.5rem;
+  margin: 0;
+}
+
+.add-more-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.add-more-label {
+  font-size: 0.85rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  background: #d1d5db;
+  border-radius: 10px;
+  transition: background 0.2s ease;
+  cursor: pointer;
+}
+
+.toggle-switch.active {
+  background: #673ab8;
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-switch.active .toggle-knob {
+  transform: translateX(16px);
 }
 
 .add-data-tabs {
@@ -128,7 +180,7 @@
   gap: 0.5rem;
 }
 
-.add-form .form-check input[type="checkbox"] {
+.add-form .form-check input[type='checkbox'] {
   width: auto;
 }
 
@@ -164,6 +216,18 @@
 
   .add-data-tab {
     color: #9ca3af;
+  }
+
+  .add-more-label {
+    color: #9ca3af;
+  }
+
+  .toggle-switch {
+    background: #4b5563;
+  }
+
+  .toggle-switch.active {
+    background: #8b5cf6;
   }
 
   .add-data-tab:hover {

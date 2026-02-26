@@ -1,6 +1,7 @@
 import { exerciseTypeNames, type ExerciseTypeName } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 import { MetricPicker } from '../../components/MetricPicker'
 import { addActivity, addMetric, addNote, addTag, fetchUniqueTags, type ActivityType } from '../../state/api'
@@ -9,9 +10,18 @@ import './style.css'
 
 type Tab = 'activity' | 'tag' | 'metric'
 
+const STORAGE_KEY = 'addData.addMore'
+const getAddMore = (): boolean => localStorage.getItem(STORAGE_KEY) !== 'false'
+const setAddMore = (value: boolean): void => localStorage.setItem(STORAGE_KEY, String(value))
+
 const nowLocal = () => format(new Date(), "yyyy-MM-dd'T'HH:mm")
 
-const AddActivityForm = () => {
+interface FormProps {
+  /** Called after successful creation. If it returns true, the form was navigated away. */
+  onCreated: (entityType: string, entityId: string | undefined) => boolean
+}
+
+const AddActivityForm = ({ onCreated }: FormProps) => {
   const queryClient = useQueryClient()
   const [activityType, setActivityType] = useState<ActivityType>('exercise')
   const [exerciseType, setExerciseType] = useState<ExerciseTypeName>('other_workout')
@@ -46,7 +56,9 @@ const AddActivityForm = () => {
       setError(err.message)
       setSuccess('')
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['dayview-activities'] })
+      if (onCreated('activity', result.data?.id)) return
       setSuccess('Activity added')
       setError('')
       setTitle('')
@@ -54,7 +66,6 @@ const AddActivityForm = () => {
       setComment('')
       setStartTime(nowLocal())
       setEndTime(nowLocal())
-      queryClient.invalidateQueries({ queryKey: ['dayview-activities'] })
     },
   })
 
@@ -160,7 +171,7 @@ const AddActivityForm = () => {
   )
 }
 
-const AddTagForm = () => {
+const AddTagForm = ({ onCreated }: FormProps) => {
   const queryClient = useQueryClient()
   const [tagName, setTagName] = useState('')
   const [startTime, setStartTime] = useState(nowLocal())
@@ -205,7 +216,11 @@ const AddTagForm = () => {
       setError(err.message)
       setSuccess('')
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['dayview-tags'] })
+      queryClient.invalidateQueries({ queryKey: ['uniqueTags'] })
+      const tagId = result.data?.id ?? (result as unknown as { id?: string }).id
+      if (onCreated('tag', tagId)) return
       setSuccess(`Tag "${tagName}" added`)
       setError('')
       setTagName('')
@@ -213,8 +228,6 @@ const AddTagForm = () => {
       setStartTime(nowLocal())
       setHasEndTime(false)
       setMergeSpan('')
-      queryClient.invalidateQueries({ queryKey: ['dayview-tags'] })
-      queryClient.invalidateQueries({ queryKey: ['uniqueTags'] })
     },
   })
 
@@ -325,7 +338,7 @@ const AddTagForm = () => {
   )
 }
 
-const AddMetricForm = () => {
+const AddMetricForm = ({ onCreated }: FormProps) => {
   const [metric, setMetric] = useState('')
   const [value, setValue] = useState('')
   const [time, setTime] = useState(nowLocal())
@@ -358,6 +371,7 @@ const AddMetricForm = () => {
       setSuccess('')
     },
     onSuccess: () => {
+      if (onCreated('metric', undefined)) return
       setSuccess(`Metric "${metric}" recorded`)
       setError('')
       setValue('')
@@ -422,15 +436,51 @@ const AddMetricForm = () => {
 }
 
 export const AddData = () => {
+  const { route } = useLocation()
   const [activeTab, setActiveTab] = useState<Tab>('activity')
+  const [addMore, setAddMoreState] = useState(getAddMore)
 
   const handleTabClick = useCallback((tab: Tab) => {
     setActiveTab(tab)
   }, [])
 
+  const toggleAddMore = useCallback(() => {
+    setAddMoreState((prev) => {
+      const next = !prev
+      setAddMore(next)
+      return next
+    })
+  }, [])
+
+  /**
+   * Called after successful creation.
+   * Returns true if navigation happened (form should not reset).
+   */
+  const handleCreated = useCallback(
+    (entityType: string, entityId: string | undefined): boolean => {
+      if (addMore) return false
+      if (entityType === 'metric' || !entityId) {
+        // No detail page for metrics; navigate to day view instead
+        route('/day')
+        return true
+      }
+      route(`/detail/${entityType}/${entityId}`)
+      return true
+    },
+    [addMore, route],
+  )
+
   return (
     <div class="add-data-page">
-      <h1>Add Data</h1>
+      <div class="add-data-header">
+        <h1>Add Data</h1>
+        <label class="add-more-toggle" title="Keep form open to add more data">
+          <span class="add-more-label">Add more</span>
+          <span class={`toggle-switch ${addMore ? 'active' : ''}`} onClick={toggleAddMore}>
+            <span class="toggle-knob" />
+          </span>
+        </label>
+      </div>
 
       <div class="add-data-tabs">
         <button
@@ -456,9 +506,9 @@ export const AddData = () => {
         </button>
       </div>
 
-      {activeTab === 'activity' && <AddActivityForm />}
-      {activeTab === 'tag' && <AddTagForm />}
-      {activeTab === 'metric' && <AddMetricForm />}
+      {activeTab === 'activity' && <AddActivityForm onCreated={handleCreated} />}
+      {activeTab === 'tag' && <AddTagForm onCreated={handleCreated} />}
+      {activeTab === 'metric' && <AddMetricForm onCreated={handleCreated} />}
     </div>
   )
 }
