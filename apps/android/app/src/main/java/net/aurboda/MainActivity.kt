@@ -1153,6 +1153,13 @@ fun HealthConnectScreen(
           ) {
             Text("Sync Now")
           }
+
+          Text(
+            "Build ${BuildConfig.BUILD_TIMESTAMP}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.align(Alignment.End),
+          )
         }
       }
     }

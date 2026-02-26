@@ -1,6 +1,10 @@
 import java.io.File // Assuming this was added to fix the previous 'Unresolved reference: io'
 import java.io.FileInputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.Properties
+import java.util.TimeZone
 
 plugins {
   alias(libs.plugins.android.application)
@@ -46,6 +50,11 @@ android {
 
     // Expose version info to runtime code
     buildConfigField("int", "VERSION_CODE_INT", "$versionCodeFromEnv")
+    val buildTimestamp =
+      SimpleDateFormat("yyyyMMddHHmm", Locale.US)
+        .apply { timeZone = TimeZone.getTimeZone("UTC") }
+        .format(Date())
+    buildConfigField("String", "BUILD_TIMESTAMP", "\"$buildTimestamp\"")
   }
 
   signingConfigs {
