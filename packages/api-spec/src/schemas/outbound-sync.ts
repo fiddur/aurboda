@@ -80,8 +80,8 @@ export const outboundSyncAckItemSchema = z
   .object({
     hc_record_id: z
       .string()
-      .optional()
-      .meta({ description: 'Health Connect record ID assigned after writing' }),
+      .nullish()
+      .meta({ description: 'Health Connect record ID assigned after writing (null for deletes)' }),
     id: z.string().uuid().meta({ description: 'Sync queue entry ID to acknowledge' }),
   })
   .meta({ id: 'OutboundSyncAckItem' })
