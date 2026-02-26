@@ -85,24 +85,26 @@ export const restoreTag = async (user: string, id: string): Promise<boolean> => 
  * - Same tag name
  * - end_time within mergeSpanSeconds of newStartTime (for tags with end_time)
  * - OR start_time within mergeSpanSeconds of newStartTime (for point-in-time tags without end_time)
- * Only considers tags from the specified source (defaults to 'aurboda').
+ * Only considers tags from the specified sources (defaults to both 'aurboda' and 'manual' for
+ * backward compatibility with pre-existing user-created tags).
  */
 export const findMergeableTag = async (
   user: string,
   tagName: string,
   newStartTime: Date,
   mergeSpanSeconds: number,
-  source: string = 'aurboda',
+  sources: string | string[] = ['aurboda', 'manual'],
 ): Promise<Tag | undefined> => {
   // Calculate the earliest allowed end_time/start_time for merging
   const earliestMergeTime = new Date(newStartTime.getTime() - mergeSpanSeconds * 1000)
+  const sourceArray = Array.isArray(sources) ? sources : [sources]
 
   const result = await query(
     user,
     `SELECT id, source, external_id, tag, tag_key, start_time, end_time, deleted_at
      FROM tags
      WHERE tag = $1
-       AND source = $4
+       AND source = ANY($4)
        AND deleted_at IS NULL
        AND (
          (end_time IS NOT NULL AND end_time >= $2 AND end_time <= $3)
@@ -110,7 +112,7 @@ export const findMergeableTag = async (
        )
      ORDER BY COALESCE(end_time, start_time) DESC
      LIMIT 1`,
-    [tagName, earliestMergeTime, newStartTime, source],
+    [tagName, earliestMergeTime, newStartTime, sourceArray],
   )
 
   if (result.rows.length === 0) return undefined

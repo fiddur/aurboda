@@ -39,7 +39,7 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-1',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'coffee',
       })
@@ -57,7 +57,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T11:00:00Z'),
         external_id: 'tag-2',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'meditation',
       })
@@ -73,14 +73,14 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-3',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'coffee',
       })
 
       await insertTag(user, {
         external_id: 'tag-3',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T11:00:00Z'),
         tag: 'tea',
       })
@@ -142,19 +142,19 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-a',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-14T10:00:00Z'),
         tag: 'before-range',
       })
       await insertTag(user, {
         external_id: 'tag-b',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'in-range',
       })
       await insertTag(user, {
         external_id: 'tag-c',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-16T10:00:00Z'),
         tag: 'after-range',
       })
@@ -180,7 +180,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T11:00:00Z'),
         external_id: 'tag-within',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'meditation',
       })
@@ -198,7 +198,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-14T12:00:00Z'),
         external_id: 'tag-before',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-14T10:00:00Z'),
         tag: 'old-meeting',
       })
@@ -213,7 +213,7 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-x',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-10T10:00:00Z'),
         tag: 'old-tag',
       })
@@ -229,7 +229,7 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-to-delete',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'temporary',
       })
@@ -301,7 +301,7 @@ describe('Tags Integration Tests', () => {
       expect(result).toBeUndefined()
     })
 
-    test('only finds aurboda source tags by default', async () => {
+    test('only finds user-created (aurboda/manual) source tags by default', async () => {
       const user = getTestUser()
 
       await insertTag(user, {
@@ -315,6 +315,24 @@ describe('Tags Integration Tests', () => {
       const result = await findMergeableTag(user, 'meditation', new Date('2024-01-15T10:00:00Z'), 180)
 
       expect(result).toBeUndefined()
+    })
+
+    test('finds legacy manual source tags by default', async () => {
+      const user = getTestUser()
+
+      await insertTag(user, {
+        end_time: new Date('2024-01-15T09:59:00Z'),
+        external_id: 'legacy-manual-tag',
+        source: 'manual',
+        start_time: new Date('2024-01-15T09:00:00Z'),
+        tag: 'coffee',
+      })
+
+      const result = await findMergeableTag(user, 'coffee', new Date('2024-01-15T10:00:00Z'), 180)
+
+      expect(result).toBeDefined()
+      expect(result!.external_id).toBe('legacy-manual-tag')
+      expect(result!.source).toBe('manual')
     })
 
     test('finds lastfm-auto source tags when source parameter is specified', async () => {
@@ -341,7 +359,7 @@ describe('Tags Integration Tests', () => {
       expect(result!.source).toBe('lastfm-auto')
     })
 
-    test('does not find lastfm-auto source tags when searching for manual', async () => {
+    test('does not find lastfm-auto source tags with default sources', async () => {
       const user = getTestUser()
 
       await insertTag(user, {
@@ -363,7 +381,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T09:59:00Z'),
         external_id: 'different-tag',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'different-name',
       })
@@ -381,7 +399,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T10:30:00Z'),
         external_id: 'tag-to-update',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'session',
       })
@@ -460,19 +478,19 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-1',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'coffee',
       })
       await insertTag(user, {
         external_id: 'tag-2',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T11:00:00Z'),
         tag: 'meditation',
       })
       await insertTag(user, {
         external_id: 'tag-3',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T12:00:00Z'),
         tag: 'coffee', // duplicate
       })
@@ -593,13 +611,13 @@ describe('Tags Integration Tests', () => {
       })
       await insertTag(user, {
         external_id: 'tag-2',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T11:00:00Z'),
         tag: 'coffee', // should be excluded (no tag_key, not programmatic)
       })
       await insertTag(user, {
         external_id: 'tag-3',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T12:00:00Z'),
         tag: 'Food', // should be excluded (no tag_key, not programmatic)
       })
@@ -660,7 +678,7 @@ describe('Tags Integration Tests', () => {
       // Tag from a different source (should survive)
       await insertTag(user, {
         external_id: 'manual-tag-1',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T12:00:00Z'),
         tag: 'coffee',
       })

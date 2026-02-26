@@ -240,7 +240,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         title: 'Morning run',
       })
@@ -272,7 +272,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
@@ -438,7 +438,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:30:00Z'),
         id: idC,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:50:00Z'),
         title: 'Part C',
       })
@@ -461,7 +461,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
@@ -483,7 +483,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
@@ -516,7 +516,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'meditation',
         end_time: new Date('2024-01-15T08:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T07:30:00Z'),
         title: 'Morning meditation',
       })
@@ -535,7 +535,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
@@ -556,7 +556,7 @@ describe('Activities Integration Tests', () => {
         data: { calories: 300, exerciseType: 70, exerciseTypeName: 'strength_training' },
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
@@ -578,7 +578,7 @@ describe('Activities Integration Tests', () => {
         data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
@@ -599,7 +599,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
