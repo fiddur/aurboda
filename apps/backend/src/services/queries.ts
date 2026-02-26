@@ -19,6 +19,7 @@ import {
   getTimeSeriesBucketed,
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
+  getTimeSeriesWithSource,
   type ProductivityRecord,
 } from '../db'
 import {
@@ -54,6 +55,7 @@ export interface SyncProvider {
 }
 
 export interface MetricDataPoint {
+  source?: string
   time: string
   value: number
 }
@@ -242,11 +244,11 @@ export async function queryMetrics(
     }
   }
 
-  const data = await getTimeSeries(user, metric, start, end)
+  const data = await getTimeSeriesWithSource(user, metric, start, end)
 
   return {
     count: data.length,
-    data: data.map(([time, value]) => ({ time: time.toISOString(), value })),
+    data: data.map((d) => ({ source: d.source, time: d.time.toISOString(), value: d.value })),
     metric,
     unit,
   }

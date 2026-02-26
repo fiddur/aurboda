@@ -64,6 +64,31 @@ export const getTimeSeries = async (
   return result.rows.map((row) => [new Date(row.time), row.value])
 }
 
+/** Like getTimeSeries but also returns the source field for each data point. */
+export const getTimeSeriesWithSource = async (
+  user: string,
+  metric: string,
+  start: Date,
+  end: Date,
+): Promise<{ time: Date; value: number; source: string }[]> => {
+  const isCumulative = cumulativeMetrics.includes(metric as MetricType)
+
+  const result = await query(
+    user,
+    isCumulative ?
+      `SELECT time, value, source FROM time_series
+       WHERE metric = $1 AND time >= $2 AND time <= $3
+         AND source = 'health_connect_aggregate'
+       ORDER BY time`
+    : `SELECT time, value, source FROM time_series
+       WHERE metric = $1 AND time >= $2 AND time <= $3
+       ORDER BY time`,
+    [metric, start, end],
+  )
+
+  return result.rows.map((row) => ({ source: row.source, time: new Date(row.time), value: row.value }))
+}
+
 export const getTimeSeriesMultiMetric = async (
   user: string,
   metrics: MetricType[],
