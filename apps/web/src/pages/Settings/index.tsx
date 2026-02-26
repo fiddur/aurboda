@@ -10,6 +10,7 @@ import {
   fetchUserSettings,
   generateApiToken,
   HrZoneThresholds,
+  syncOura,
   UpdateSettingsInput,
   updateUserSettings,
 } from '../../state/api'
@@ -222,6 +223,25 @@ export function Settings() {
     window.location.href = `${API_URL}/auth/connectOura`
   }
 
+  const [ouraSyncStatus, setOuraSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
+  const [ouraSyncMessage, setOuraSyncMessage] = useState<string>('')
+
+  const handleOuraFullResync = useCallback(async () => {
+    setOuraSyncStatus('syncing')
+    setOuraSyncMessage('')
+    try {
+      const response = await syncOura(true)
+      const totalRecords = (response.results ?? []).reduce((sum, r) => sum + (r.records_processed ?? 0), 0)
+      setOuraSyncStatus('done')
+      setOuraSyncMessage(`Synced ${totalRecords} records`)
+      // Invalidate queries that depend on Oura data
+      await queryClient.invalidateQueries()
+    } catch (err) {
+      setOuraSyncStatus('error')
+      setOuraSyncMessage(err instanceof Error ? err.message : 'Sync failed')
+    }
+  }, [queryClient])
+
   if (!isLoggedIn) {
     return (
       <div class="settings-page">
@@ -275,7 +295,20 @@ export function Settings() {
         <div class="form-field">
           <label>Oura Ring</label>
           {userSettings?.oura_connected ?
-            <p class="connected-status">Connected</p>
+            <div class="oura-connected-row">
+              <p class="connected-status">Connected</p>
+              <button
+                type="button"
+                class="connect-button oura-resync-button"
+                disabled={ouraSyncStatus === 'syncing'}
+                onClick={handleOuraFullResync}
+              >
+                {ouraSyncStatus === 'syncing' ? 'Syncing...' : 'Full Re-sync'}
+              </button>
+              {ouraSyncMessage && (
+                <span class={`oura-sync-message ${ouraSyncStatus}`}>{ouraSyncMessage}</span>
+              )}
+            </div>
           : userSettings?.oura_configured === false ?
             <button type="button" class="connect-button" disabled>
               Connect Oura
