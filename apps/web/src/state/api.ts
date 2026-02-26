@@ -13,9 +13,11 @@ import type {
   AddLastFmTagRuleBody,
   AddLastFmTagRuleResponse,
   AddMetricBody,
+  AddMetricResponse,
   AddNamedLocationBody,
   AddNamedLocationResponse,
   AddTagBody,
+  AddTagResponse,
   Activity as ApiActivity,
   DetectedLocation as ApiDetectedLocation,
   PlaceVisit as ApiPlaceVisit,
@@ -976,18 +978,20 @@ export const addActivity = async (body: AddActivityBody): Promise<AddActivityRes
   return response.data
 }
 
-export const addTag = async (body: AddTagBody): Promise<void> => {
+export const addTag = async (body: AddTagBody): Promise<AddTagResponse> => {
   const { token } = auth.value
-  await axios.post(`${API_URL}/tags`, body, {
+  const response = await axios.post<AddTagResponse>(`${API_URL}/tags`, body, {
     headers: { Authorization: `Bearer ${token}` },
   })
+  return response.data
 }
 
-export const addMetric = async (body: AddMetricBody): Promise<void> => {
+export const addMetric = async (body: AddMetricBody): Promise<AddMetricResponse> => {
   const { token } = auth.value
-  await axios.post(`${API_URL}/metrics`, body, {
+  const response = await axios.post<AddMetricResponse>(`${API_URL}/metrics`, body, {
     headers: { Authorization: `Bearer ${token}` },
   })
+  return response.data
 }
 
 // ============================================================================

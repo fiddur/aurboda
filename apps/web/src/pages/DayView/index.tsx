@@ -1,13 +1,15 @@
 /* eslint-disable max-lines -- large visualization component */
+import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
 import { signal } from '@preact/signals'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import {
   Activity,
   fetchActivities,
   fetchBucketedMetrics,
+  fetchCustomMetrics,
   fetchPlaces,
   fetchProductivity,
   fetchScrobbles,
@@ -56,6 +58,27 @@ const hrZoneColors: Record<number, string> = {
 }
 
 const TAG_COLOR = '#8b5cf6'
+const METRIC_COLOR = '#14b8a6' // teal for metrics
+
+/** Built-in metrics that are measured occasionally (not continuously streamed from a wearable). */
+const OCCASIONAL_BUILTIN_METRICS = [
+  'weight',
+  'body_fat',
+  'bone_mass',
+  'lean_body_mass',
+  'body_water_mass',
+  'height',
+  'blood_glucose',
+  'blood_pressure_systolic',
+  'blood_pressure_diastolic',
+  'body_temperature',
+  'basal_body_temperature',
+  'spo2',
+  'vo2_max',
+]
+
+/** Maximum data points per metric per day to still show in the day view. */
+const OCCASIONAL_METRIC_MAX_COUNT = 10
 
 const tagSourceColors: Record<string, string> = {
   calendar: '#f59e0b',
@@ -94,6 +117,7 @@ type LegendCategory =
   | 'exercise'
   | 'calendar'
   | 'tags'
+  | 'metrics'
   | 'music'
   | 'location'
   | 'screentime'
@@ -103,11 +127,13 @@ const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = 
   exercise: (item) => item.column === 'Exercise',
   location: (item) => item.column === 'Location',
   meditation: (item) => item.column === 'Sleep / Rest' && item.label === 'Meditation',
+  metrics: (item) => item.column === 'Tags / Events' && item.color === METRIC_COLOR,
   music: (item) => item.column === 'Music',
   nap: (item) => item.column === 'Sleep / Rest' && item.label === 'Nap',
   screentime: (item) => item.column === 'Screen Time',
   sleep: (item) => item.column === 'Sleep / Rest' && item.label === 'Sleep',
-  tags: (item) => item.column === 'Tags / Events' && item.color !== tagSourceColors.calendar,
+  tags: (item) =>
+    item.column === 'Tags / Events' && item.color !== tagSourceColors.calendar && item.color !== METRIC_COLOR,
 }
 
 // Helpers
@@ -344,6 +370,74 @@ const categorizeTags = (tags: Tag[]): ChartItem[] =>
       }
     })
 
+/** Map metric name to human-readable display label. */
+const formatMetricLabel = (metric: string): string =>
+  metric.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+
+/**
+ * Categorize bucketed metric data into chart items for the Tags / Events lane.
+ * Only includes metrics with <= OCCASIONAL_METRIC_MAX_COUNT data points per day.
+ */
+interface MetricBucketData {
+  start: string
+  end: string
+  metrics: Record<string, { avg: number; min: number; max: number; count: number }>
+}
+
+const categorizeOccasionalMetrics = (
+  buckets: MetricBucketData[],
+  metricUnits: Record<string, string>,
+): ChartItem[] => {
+  if (!buckets || buckets.length === 0) return []
+
+  // Count total data points per metric across all buckets
+  const metricCounts: Record<string, number> = {}
+  for (const bucket of buckets) {
+    for (const [metric, stats] of Object.entries(bucket.metrics)) {
+      metricCounts[metric] = (metricCounts[metric] ?? 0) + stats.count
+    }
+  }
+
+  // Only include metrics that are truly "occasional"
+  const occasionalMetrics = new Set(
+    Object.entries(metricCounts)
+      .filter(([, count]) => count <= OCCASIONAL_METRIC_MAX_COUNT)
+      .map(([metric]) => metric),
+  )
+
+  if (occasionalMetrics.size === 0) return []
+
+  const items: ChartItem[] = []
+  for (const bucket of buckets) {
+    for (const [metric, stats] of Object.entries(bucket.metrics)) {
+      if (!occasionalMetrics.has(metric)) continue
+
+      const time = new Date(bucket.start)
+      const end = new Date(time.getTime() + 15 * 60000)
+      const unit = metricUnits[metric] ?? ''
+      const displayValue = Number(stats.avg.toFixed(2))
+      const valueStr = `${displayValue}${unit ? ` ${unit}` : ''}`
+      const metricLabel = formatMetricLabel(metric)
+
+      items.push({
+        color: METRIC_COLOR,
+        column: 'Tags / Events' as Column,
+        end,
+        isPoint: true,
+        label: `${metricLabel}: ${valueStr}`,
+        start: time,
+        tooltip: {
+          details: [`Value: ${valueStr}`, 'Metric measurement'],
+          time: formatTime(time),
+          title: metricLabel,
+        },
+      })
+    }
+  }
+
+  return items
+}
+
 const categorizeProductivity = (productivity: ProductivityRecord[]): ChartItem[] =>
   productivity.map((p) => ({
     color: getProductivityColor(p.productivity),
@@ -472,6 +566,38 @@ export const DayView = () => {
     staleTime: 5 * 60 * 1000,
   })
 
+  // Fetch custom metric definitions to know which custom metrics to show
+  const customMetricsQuery = useQuery({
+    queryFn: fetchCustomMetrics,
+    queryKey: ['custom-metrics'],
+    staleTime: 30 * 60 * 1000,
+  })
+
+  // Build list of all occasional metric names (built-in + custom)
+  const occasionalMetricNames = useMemo(() => {
+    const customNames = (customMetricsQuery.data ?? []).map((m) => m.name)
+    return [...OCCASIONAL_BUILTIN_METRICS, ...customNames]
+  }, [customMetricsQuery.data])
+
+  // Build metric units map (built-in + custom)
+  const allMetricUnits = useMemo(() => {
+    const units: Record<string, string> = { ...builtinMetricUnits }
+    for (const m of customMetricsQuery.data ?? []) {
+      units[m.name] = m.unit
+    }
+    return units
+  }, [customMetricsQuery.data])
+
+  // Fetch occasional metric data with 5-minute buckets for the day view
+  const occasionalMetricsQuery = useQuery({
+    enabled: occasionalMetricNames.length > 0,
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      fetchBucketedMetrics(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), occasionalMetricNames, '5m'),
+    queryKey: ['dayview-occasional-metrics', fromDate.value, toDate.value, occasionalMetricNames],
+    staleTime: 5 * 60 * 1000,
+  })
+
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -575,6 +701,11 @@ export const DayView = () => {
   const musicItems = hasLastFm ? categorizeMusic(scrobbles) : []
   const showMusicColumn = musicItems.length > 0
 
+  const occasionalMetricItems = categorizeOccasionalMetrics(
+    (occasionalMetricsQuery.data?.buckets ?? []) as MetricBucketData[],
+    allMetricUnits,
+  )
+
   const allColumns: Column[] = showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS
 
   const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
@@ -584,6 +715,7 @@ export const DayView = () => {
     ...categorizeLocations(places, uniquePlaceNames),
     ...categorizeTags(tags),
     ...categorizeProductivity(productivity),
+    ...occasionalMetricItems,
     ...musicItems,
   ].filter((item) => !isItemHidden(item))
 
@@ -606,7 +738,8 @@ export const DayView = () => {
     placesQuery.isFetching ||
     tagsQuery.isFetching ||
     productivityQuery.isFetching ||
-    scrobblesQuery.isFetching
+    scrobblesQuery.isFetching ||
+    occasionalMetricsQuery.isFetching
 
   // Render SVG chart
   const renderChart = useCallback(() => {
@@ -888,6 +1021,9 @@ export const DayView = () => {
             { cat: 'location' as LegendCategory, color: placeColorPalette[0]!, label: 'Location' },
             { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
             { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
+            ...(occasionalMetricItems.length > 0 ?
+              [{ cat: 'metrics' as LegendCategory, color: METRIC_COLOR, label: 'Metrics' }]
+            : []),
             { cat: 'screentime' as LegendCategory, color: productivityColors[1]!, label: 'Screen Time' },
             ...(showMusicColumn ?
               [{ cat: 'music' as LegendCategory, color: MUSIC_COLOR, label: 'Music' }]

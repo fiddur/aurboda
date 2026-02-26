@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useCallback, useState } from 'preact/hooks'
 import { MetricPicker } from '../../components/MetricPicker'
-import { addActivity, addMetric, addTag, fetchUniqueTags, type ActivityType } from '../../state/api'
+import { addActivity, addMetric, addNote, addTag, fetchUniqueTags, type ActivityType } from '../../state/api'
 
 import './style.css'
 
@@ -19,19 +19,29 @@ const AddActivityForm = () => {
   const [startTime, setStartTime] = useState(nowLocal())
   const [endTime, setEndTime] = useState(nowLocal())
   const [notes, setNotes] = useState('')
+  const [comment, setComment] = useState('')
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
   const mutation = useMutation({
-    mutationFn: () =>
-      addActivity({
+    mutationFn: async () => {
+      const result = await addActivity({
         activity_type: activityType,
         end_time: new Date(endTime).toISOString(),
         ...(activityType === 'exercise' ? { exercise_type: exerciseType } : {}),
         ...(notes ? { notes } : {}),
         start_time: new Date(startTime).toISOString(),
         ...(title ? { title } : {}),
-      }),
+      })
+      if (comment.trim() && result.data?.id) {
+        try {
+          await addNote('activity', result.data.id, comment.trim())
+        } catch {
+          // Activity was created successfully; comment save failed silently
+        }
+      }
+      return result
+    },
     onError: (err: Error) => {
       setError(err.message)
       setSuccess('')
@@ -41,6 +51,7 @@ const AddActivityForm = () => {
       setError('')
       setTitle('')
       setNotes('')
+      setComment('')
       setStartTime(nowLocal())
       setEndTime(nowLocal())
       queryClient.invalidateQueries({ queryKey: ['dayview-activities'] })
@@ -125,6 +136,16 @@ const AddActivityForm = () => {
         )}
       </div>
 
+      <div class="form-field">
+        <label>Comment</label>
+        <textarea
+          value={comment}
+          onInput={(e) => setComment((e.target as HTMLTextAreaElement).value)}
+          placeholder="Optional comment"
+          rows={2}
+        />
+      </div>
+
       <div class="add-form-actions">
         <button
           class="btn-primary"
@@ -146,6 +167,7 @@ const AddTagForm = () => {
   const [hasEndTime, setHasEndTime] = useState(false)
   const [endTime, setEndTime] = useState(nowLocal())
   const [mergeSpan, setMergeSpan] = useState('')
+  const [comment, setComment] = useState('')
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
@@ -161,13 +183,24 @@ const AddTagForm = () => {
   )
 
   const mutation = useMutation({
-    mutationFn: () =>
-      addTag({
+    mutationFn: async () => {
+      const result = await addTag({
         ...(hasEndTime ? { end_time: new Date(endTime).toISOString() } : {}),
         ...(mergeSpan ? { merge_span: parseInt(mergeSpan, 10) } : {}),
         start_time: new Date(startTime).toISOString(),
         tag: tagName,
-      }),
+      })
+      // Backend returns id at top level (not wrapped in data)
+      const tagId = result.data?.id ?? (result as unknown as { id?: string }).id
+      if (comment.trim() && tagId) {
+        try {
+          await addNote('tag', tagId, comment.trim())
+        } catch {
+          // Tag was created successfully; comment save failed silently
+        }
+      }
+      return result
+    },
     onError: (err: Error) => {
       setError(err.message)
       setSuccess('')
@@ -176,6 +209,7 @@ const AddTagForm = () => {
       setSuccess(`Tag "${tagName}" added`)
       setError('')
       setTagName('')
+      setComment('')
       setStartTime(nowLocal())
       setHasEndTime(false)
       setMergeSpan('')
@@ -267,6 +301,16 @@ const AddTagForm = () => {
         <span class="form-hint">If set, extends an existing tag if it ended within this many seconds</span>
       </div>
 
+      <div class="form-field">
+        <label>Comment</label>
+        <textarea
+          value={comment}
+          onInput={(e) => setComment((e.target as HTMLTextAreaElement).value)}
+          placeholder="Optional comment"
+          rows={2}
+        />
+      </div>
+
       <div class="add-form-actions">
         <button
           class="btn-primary"
@@ -285,16 +329,30 @@ const AddMetricForm = () => {
   const [metric, setMetric] = useState('')
   const [value, setValue] = useState('')
   const [time, setTime] = useState(nowLocal())
+  const [comment, setComment] = useState('')
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
   const mutation = useMutation({
-    mutationFn: () =>
-      addMetric({
+    mutationFn: async () => {
+      const metricTimeISO = new Date(time).toISOString()
+      const result = await addMetric({
         metric,
-        time: new Date(time).toISOString(),
+        time: metricTimeISO,
         value: parseFloat(value),
-      }),
+      })
+      if (comment.trim() && result.success) {
+        // Backend returns stored time; fall back to the submitted time
+        const storedTime = (result as unknown as { time?: string }).time ?? metricTimeISO
+        const entityId = `${storedTime}|${metric}|manual`
+        try {
+          await addNote('metric', entityId, comment.trim())
+        } catch {
+          // Metric was recorded successfully; comment save failed silently
+        }
+      }
+      return result
+    },
     onError: (err: Error) => {
       setError(err.message)
       setSuccess('')
@@ -303,6 +361,7 @@ const AddMetricForm = () => {
       setSuccess(`Metric "${metric}" recorded`)
       setError('')
       setValue('')
+      setComment('')
       setTime(nowLocal())
     },
   })
@@ -336,6 +395,16 @@ const AddMetricForm = () => {
             onInput={(e) => setTime((e.target as HTMLInputElement).value)}
           />
         </div>
+      </div>
+
+      <div class="form-field">
+        <label>Comment</label>
+        <textarea
+          value={comment}
+          onInput={(e) => setComment((e.target as HTMLTextAreaElement).value)}
+          placeholder="Optional comment"
+          rows={2}
+        />
       </div>
 
       <div class="add-form-actions">
