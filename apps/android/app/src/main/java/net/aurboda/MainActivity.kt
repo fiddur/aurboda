@@ -176,7 +176,7 @@ fun getRecordSummary(record: Record): String =
         ?.power
         ?.inWatts ?: 0.0,
     )}W"
-    is NutritionRecord -> "Nutrition: ${record.name ?: "Unnamed food"} (${record.mealType ?: "Unknown"}, ${String.format(
+    is NutritionRecord -> "Nutrition: ${record.name ?: "Unnamed food"} (mealType=${record.mealType}, ${String.format(
       "%.0f",
       record.energy?.inKilocalories ?: 0.0,
     )} kcal)"
@@ -300,6 +300,7 @@ class MainActivity : ComponentActivity() {
 
 private const val VERSION_JSON_URL = "https://github.com/fiddur/aurboda/releases/latest/download/version.json"
 
+@Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @Composable
 fun AurbodaApp(initialTab: MainTab? = null) {
   val appState = rememberAppState(initialTab = initialTab)
@@ -457,6 +458,7 @@ fun AurbodaApp(initialTab: MainTab? = null) {
   }
 }
 
+@Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @Composable
 fun HealthConnectScreen(
   apiUrl: String,
@@ -553,7 +555,7 @@ fun HealthConnectScreen(
                 .readRecords(request)
                 .records
                 .filter { record ->
-                  // Skip records written by Aurboda's outbound sync to prevent sync loops
+                  // Skip records written by Aurboda (outbound sync + BLE sensors)
                   val isOwnOrigin = record.metadata.dataOrigin.packageName == "net.aurboda"
                   val isOutboundSync =
                     record.metadata.clientRecordId
@@ -561,10 +563,7 @@ fun HealthConnectScreen(
                   !(isOwnOrigin || isOutboundSync)
                 }
             if (recordsOfType.isNotEmpty()) {
-              Log.d(
-                "FetchData",
-                "Fetched ${recordsOfType.size} records of type ${recordType.simpleName} (after filtering own records)",
-              )
+              Log.d("FetchData", "Fetched ${recordsOfType.size} records of type ${recordType.simpleName} (after filtering)")
               localHealthRecords.addAll(recordsOfType)
             }
           } catch (e: Exception) {
@@ -605,7 +604,7 @@ fun HealthConnectScreen(
             changesResponse.changes
               .mapNotNull { if (it is UpsertionChange) it.record else null }
               .filter { record ->
-                // Skip records written by Aurboda's outbound sync to prevent sync loops
+                // Skip records written by Aurboda (outbound sync + BLE sensors)
                 val isOwnOrigin = record.metadata.dataOrigin.packageName == "net.aurboda"
                 val isOutboundSync =
                   record.metadata.clientRecordId
@@ -613,7 +612,7 @@ fun HealthConnectScreen(
                 !(isOwnOrigin || isOutboundSync)
               }
           if (upsertions.isNotEmpty()) {
-            Log.d("FetchData", "Adding ${upsertions.size} upserted records (after filtering own records).")
+            Log.d("FetchData", "Adding ${upsertions.size} upserted records (after filtering).")
             localHealthRecords.addAll(upsertions)
             totalUpsertions += upsertions.size
           }

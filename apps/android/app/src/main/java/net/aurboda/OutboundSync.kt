@@ -16,10 +16,11 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.time.Instant
 import java.time.ZoneOffset
@@ -158,11 +159,13 @@ suspend fun writeToHealthConnect(
 ): String? =
   try {
     when (entry.operation) {
+      // insertRecords() handles both insert and update: Health Connect deduplicates by
+      // clientRecordId, so re-inserting with the same ID effectively upserts the record.
       "insert", "update" -> writeUpsertRecord(entry, healthConnectClient, grantedPermissions)
       "delete" -> {
-        deleteHealthConnectRecord(entry, healthConnectClient)
+        val success = deleteHealthConnectRecord(entry, healthConnectClient)
         // Return a marker so ack knows it succeeded (no new record ID for deletes)
-        "deleted"
+        if (success) "deleted" else null
       }
       else -> {
         Log.w(TAG, "⚠️ Unknown operation: ${entry.operation} for entry ${entry.id}")
@@ -281,7 +284,9 @@ private suspend fun writeUpsertRecord(
         if (!hasWritePermission<StepsRecord>(grantedPermissions)) return null
         val value = payload.getDouble("value")?.toLong() ?: return null
         val startTime = payload.getInstant("time") ?: return null
-        // Steps need a time range; use 1-minute window
+        // Synthetic time window: StepsRecord requires a time range but the backend only stores a
+        // point-in-time. A 60-second window is acceptable for single-value step entries (e.g.,
+        // manual corrections). Aggregated daily totals come from other apps, not outbound sync.
         val endTime = startTime.plusSeconds(60)
         StepsRecord(
           count = value,
@@ -296,6 +301,8 @@ private suspend fun writeUpsertRecord(
         if (!hasWritePermission<HeartRateRecord>(grantedPermissions)) return null
         val value = payload.getDouble("value")?.toLong() ?: return null
         val time = payload.getInstant("time") ?: return null
+        // Synthetic time window: HeartRateRecord requires a time range but the backend stores a
+        // single sample. A 1-second window wrapping that sample is the minimum valid range.
         val endTime = time.plusSeconds(1)
         HeartRateRecord(
           startTime = time,
@@ -323,12 +330,21 @@ private suspend fun writeUpsertRecord(
         val endTime = payload.getInstant("end_time") ?: return null
         val title = payload.getString("title")
         val notes = payload.getString("notes")
+        // Extract exercise type from the nested data object; falls back to OTHER_WORKOUT.
+        // Backend stores exerciseType as an int matching HC's EXERCISE_TYPE_* constants.
+        val exerciseType =
+          payload["data"]
+            ?.jsonObject
+            ?.get("exerciseType")
+            ?.jsonPrimitive
+            ?.intOrNull
+            ?: ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
         ExerciseSessionRecord(
           startTime = startTime,
           startZoneOffset = ZoneOffset.systemDefault().rules.getOffset(startTime),
           endTime = endTime,
           endZoneOffset = ZoneOffset.systemDefault().rules.getOffset(endTime),
-          exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT,
+          exerciseType = exerciseType,
           title = title,
           notes = notes,
           metadata = Metadata.manualEntry(clientRecordId),
@@ -366,24 +382,28 @@ private suspend fun writeUpsertRecord(
 
 /**
  * Delete a record from Health Connect by its record ID.
+ * Returns true if the delete succeeded or the entry is unprocessable (should be ack'd to prevent
+ * infinite retry). Returns false only on transient failures that should be retried.
  */
 private suspend fun deleteHealthConnectRecord(
   entry: OutboundSyncEntryApi,
   healthConnectClient: HealthConnectClient,
-) {
+): Boolean {
   val hcRecordId =
     entry.payload.getString("hc_record_id")
       ?: entry.hc_record_id
   if (hcRecordId == null) {
-    Log.w(TAG, "⚠️ No HC record ID for delete operation on entry ${entry.id}")
-    return
+    // No HC record ID available — this entry can never be processed, so ack it to avoid
+    // infinite retry. This can happen if the record was created before outbound sync tracked IDs.
+    Log.w(TAG, "⚠️ No HC record ID for delete on entry ${entry.id}, acknowledging as unprocessable")
+    return true
   }
 
   // We need to know the record class to delete. Map hc_record_type back to class.
   val recordClass = hcRecordTypeToClass(entry.hc_record_type)
   if (recordClass == null) {
-    Log.w(TAG, "⚠️ Unknown record type for delete: ${entry.hc_record_type}")
-    return
+    Log.w(TAG, "⚠️ Unknown record type for delete: ${entry.hc_record_type}, acknowledging as unprocessable")
+    return true
   }
 
   healthConnectClient.deleteRecords(
@@ -392,6 +412,7 @@ private suspend fun deleteHealthConnectRecord(
     clientRecordIdsList = emptyList(),
   )
   Log.d(TAG, "🗑️ Deleted ${entry.hc_record_type} from Health Connect: $hcRecordId")
+  return true
 }
 
 // ============================================================================

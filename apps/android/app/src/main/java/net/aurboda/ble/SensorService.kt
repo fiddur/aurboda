@@ -52,34 +52,34 @@ private const val TAG = "SensorService"
 private const val NOTIFICATION_ID = 1001
 private const val CHANNEL_ID = "sensor_service_channel"
 private const val SYNC_INTERVAL_MS = 5000L
-private const val RR_BUFFER_MIN_SIZE = 30   // Minimum intervals for HRV calculation
-private const val RR_BUFFER_MAX_SIZE = 300  // Maximum intervals (~5 minutes at 60bpm)
-private const val CHART_HISTORY_DURATION_MS = 5 * 60 * 1000L  // 5 minutes of chart history
+private const val RR_BUFFER_MIN_SIZE = 30 // Minimum intervals for HRV calculation
+private const val RR_BUFFER_MAX_SIZE = 300 // Maximum intervals (~5 minutes at 60bpm)
+private const val CHART_HISTORY_DURATION_MS = 5 * 60 * 1000L // 5 minutes of chart history
 private const val ONE_MINUTE_MS = 60_000L
 
 /**
  * Data point for chart display with timestamp.
  */
 data class ChartDataPoint(
-    val timestamp: Long,  // epoch millis
-    val value: Float
+  val timestamp: Long, // epoch millis
+  val value: Float,
 )
 
 /**
  * State for an individual connected device.
  */
 data class DeviceState(
-    val device: ConnectedDevice,
-    val connectionState: BleConnectionState = BleConnectionState.Connected,
-    val batteryLevel: Int? = null,
-    val rssi: Int? = null,
-    val lastDataReceivedTime: Instant? = null,
-    // HR device specific
-    val currentHeartRate: Int? = null,
-    // RSC device specific
-    val currentCadence: Int? = null,
-    val currentSpeed: Float? = null,
-    val stepsSinceStart: Int = 0
+  val device: ConnectedDevice,
+  val connectionState: BleConnectionState = BleConnectionState.Connected,
+  val batteryLevel: Int? = null,
+  val rssi: Int? = null,
+  val lastDataReceivedTime: Instant? = null,
+  // HR device specific
+  val currentHeartRate: Int? = null,
+  // RSC device specific
+  val currentCadence: Int? = null,
+  val currentSpeed: Float? = null,
+  val stepsSinceStart: Int = 0,
 )
 
 /**
@@ -87,31 +87,31 @@ data class DeviceState(
  * Supports multiple simultaneously connected devices.
  */
 data class SensorServiceState(
-    val isRunning: Boolean = false,
-    val connectedDevices: Map<String, DeviceState> = emptyMap(),  // keyed by device address
-    val connectingDevices: Set<String> = emptySet(),  // addresses of devices currently connecting
-    val lastSyncTime: Instant? = null,
-    val pendingSamples: Int = 0,
-    val pendingCadenceSamples: Int = 0,
-    val currentHrv: Double? = null,           // Latest RMSSD in ms
-    val hrvReliable: Boolean = false,         // Whether HRV measurement is reliable
-    val rrIntervalCount: Int = 0,             // Number of RR intervals in buffer
-    val hrChartHistory: List<ChartDataPoint> = emptyList(),   // 5 min HR history for chart
-    val hrvChartHistory: List<ChartDataPoint> = emptyList(),  // 5 min HRV history for chart
-    // Phone step counter
-    val phoneStepCounterAvailable: Boolean = false,
-    val phoneStepCounterActive: Boolean = false,
-    val phoneStepsSinceStart: Int = 0,
-    val phoneStepLastUpdateTime: Instant? = null
+  val isRunning: Boolean = false,
+  val connectedDevices: Map<String, DeviceState> = emptyMap(), // keyed by device address
+  val connectingDevices: Set<String> = emptySet(), // addresses of devices currently connecting
+  val lastSyncTime: Instant? = null,
+  val pendingSamples: Int = 0,
+  val pendingCadenceSamples: Int = 0,
+  val currentHrv: Double? = null, // Latest RMSSD in ms
+  val hrvReliable: Boolean = false, // Whether HRV measurement is reliable
+  val rrIntervalCount: Int = 0, // Number of RR intervals in buffer
+  val hrChartHistory: List<ChartDataPoint> = emptyList(), // 5 min HR history for chart
+  val hrvChartHistory: List<ChartDataPoint> = emptyList(), // 5 min HRV history for chart
+  // Phone step counter
+  val phoneStepCounterAvailable: Boolean = false,
+  val phoneStepCounterActive: Boolean = false,
+  val phoneStepsSinceStart: Int = 0,
+  val phoneStepLastUpdateTime: Instant? = null,
 ) {
-    // Convenience accessors for backward compatibility and easy access
-    val hrDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.HEART_RATE }
-    val rscDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.RUNNING_SPEED_CADENCE }
-    val currentHeartRate: Int? get() = hrDevice?.currentHeartRate
-    val currentCadence: Int? get() = rscDevice?.currentCadence
-    val stepsSinceStart: Int get() = rscDevice?.stepsSinceStart ?: 0
-    val hasConnectedDevices: Boolean get() = connectedDevices.isNotEmpty()
-    val isConnecting: Boolean get() = connectingDevices.isNotEmpty()
+  // Convenience accessors for backward compatibility and easy access
+  val hrDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.HEART_RATE }
+  val rscDevice: DeviceState? get() = connectedDevices.values.find { it.device.type == SensorType.RUNNING_SPEED_CADENCE }
+  val currentHeartRate: Int? get() = hrDevice?.currentHeartRate
+  val currentCadence: Int? get() = rscDevice?.currentCadence
+  val stepsSinceStart: Int get() = rscDevice?.stepsSinceStart ?: 0
+  val hasConnectedDevices: Boolean get() = connectedDevices.isNotEmpty()
+  val isConnecting: Boolean get() = connectingDevices.isNotEmpty()
 }
 
 /**
@@ -119,8 +119,8 @@ data class SensorServiceState(
  */
 @Serializable
 data class LiveHeartRateSample(
-    val time: String,
-    val beatsPerMinute: Long
+  val time: String,
+  val beatsPerMinute: Long,
 )
 
 /**
@@ -129,10 +129,10 @@ data class LiveHeartRateSample(
  */
 @Serializable
 data class LiveHeartRateRecord(
-    val startTime: String,
-    val endTime: String,
-    val samples: List<LiveHeartRateSample>,
-    val metadata: LiveRecordMetadata
+  val startTime: String,
+  val endTime: String,
+  val samples: List<LiveHeartRateSample>,
+  val metadata: LiveRecordMetadata,
 )
 
 /**
@@ -140,42 +140,46 @@ data class LiveHeartRateRecord(
  */
 @Serializable
 data class LiveRecordMetadata(
-    val id: String,
-    val dataOrigin: String = "net.aurboda",
-    val device: LiveDeviceInfo? = null
+  val id: String,
+  val dataOrigin: String = "net.aurboda",
+  val device: LiveDeviceInfo? = null,
 )
 
 @Serializable
 data class LiveDeviceInfo(
-    val type: Int = 2, // TYPE_CHEST_STRAP
-    val model: String? = null
+  val type: Int = 2, // TYPE_CHEST_STRAP
+  val model: String? = null,
 )
 
 @Serializable
-private data class HeartRateSyncBody(val data: List<LiveHeartRateRecord>)
+private data class HeartRateSyncBody(
+  val data: List<LiveHeartRateRecord>,
+)
 
 /**
  * Steps record in Health Connect format for backend sync.
  */
 @Serializable
 data class LiveStepsRecord(
-    val startTime: String,
-    val endTime: String,
-    val count: Long,
-    val metadata: LiveRecordMetadata
+  val startTime: String,
+  val endTime: String,
+  val count: Long,
+  val metadata: LiveRecordMetadata,
 )
 
 @Serializable
-private data class StepsSyncBody(val data: List<LiveStepsRecord>)
+private data class StepsSyncBody(
+  val data: List<LiveStepsRecord>,
+)
 
 /**
  * Accumulates steps for a specific clock minute.
  * The minute is identified by its start time (truncated to minute boundary).
  */
 data class MinuteStepBucket(
-    val minuteStart: Instant,  // Start of the clock minute (e.g., 11:46:00.000)
-    var totalSteps: Long = 0,
-    var lastCadence: Int = 0   // Last known cadence for ongoing calculation
+  val minuteStart: Instant, // Start of the clock minute (e.g., 11:46:00.000)
+  var totalSteps: Long = 0,
+  var lastCadence: Int = 0, // Last known cadence for ongoing calculation
 )
 
 /**
@@ -183,13 +187,15 @@ data class MinuteStepBucket(
  */
 @Serializable
 data class LiveHrvRecord(
-    val time: String,
-    val heartRateVariabilityMillis: Double,
-    val metadata: LiveRecordMetadata
+  val time: String,
+  val heartRateVariabilityMillis: Double,
+  val metadata: LiveRecordMetadata,
 )
 
 @Serializable
-private data class HrvSyncBody(val data: List<LiveHrvRecord>)
+private data class HrvSyncBody(
+  val data: List<LiveHrvRecord>,
+)
 
 /**
  * Foreground service that manages BLE sensor connections.
@@ -197,1027 +203,1132 @@ private data class HrvSyncBody(val data: List<LiveHrvRecord>)
  * syncs to backend every 5 seconds, and writes to Health Connect.
  */
 class SensorService : Service() {
+  private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+  private val connectionManagers = mutableMapOf<String, BleConnectionManager>()
+  private val deviceJobs = mutableMapOf<String, List<Job>>() // Jobs per device address
+  private var syncJob: Job? = null
+  private var phoneStepJob: Job? = null
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val connectionManagers = mutableMapOf<String, BleConnectionManager>()
-    private val deviceJobs = mutableMapOf<String, List<Job>>()  // Jobs per device address
-    private var syncJob: Job? = null
-    private var phoneStepJob: Job? = null
+  // Phone step counter
+  private var phoneStepCounter: PhoneStepCounter? = null
 
-    // Phone step counter
-    private var phoneStepCounter: PhoneStepCounter? = null
+  private val sampleBuffer = mutableListOf<HeartRateSample>()
+  private val cadenceSampleBuffer = mutableListOf<CadenceSample>()
+  private val rrIntervalBuffer = ArrayDeque<Int>(RR_BUFFER_MAX_SIZE)
+  private val hrChartBuffer = mutableListOf<ChartDataPoint>()
+  private val hrvChartBuffer = mutableListOf<ChartDataPoint>()
 
-    private val sampleBuffer = mutableListOf<HeartRateSample>()
-    private val cadenceSampleBuffer = mutableListOf<CadenceSample>()
-    private val rrIntervalBuffer = ArrayDeque<Int>(RR_BUFFER_MAX_SIZE)
-    private val hrChartBuffer = mutableListOf<ChartDataPoint>()
-    private val hrvChartBuffer = mutableListOf<ChartDataPoint>()
-    // Step buckets keyed by minute start time (epoch millis truncated to minute)
-    // Also used for phone step counter data
-    private val stepBuckets = mutableMapOf<Long, MinuteStepBucket>()
-    private val phoneStepBuckets = mutableMapOf<Long, MinuteStepBucket>()
-    private val bufferLock = Any()
+  // Step buckets keyed by minute start time (epoch millis truncated to minute)
+  // Also used for phone step counter data
+  private val stepBuckets = mutableMapOf<Long, MinuteStepBucket>()
+  private val phoneStepBuckets = mutableMapOf<Long, MinuteStepBucket>()
+  private val bufferLock = Any()
 
-    private val httpClient by lazy {
-        HttpClient(Android) {
-            install(ContentNegotiation) { json(appJson) }
-        }
+  private val httpClient by lazy {
+    HttpClient(Android) {
+      install(ContentNegotiation) { json(appJson) }
     }
-
-    private val healthConnectClient by lazy {
-        HealthConnectClient.getOrCreate(applicationContext)
-    }
-
-    override fun onCreate() {
-        super.onCreate()
-        Log.d(TAG, "Service created")
-        createNotificationChannel()
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_CONNECT -> {
-                val deviceAddress = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
-                if (deviceAddress != null) {
-                    // Start foreground if not already running
-                    if (!_serviceState.value.isRunning) {
-                        startForegroundWithNotification()
-                    }
-                    connectToDevice(deviceAddress)
-                } else {
-                    Log.w(TAG, "No device address provided")
-                    if (!_serviceState.value.hasConnectedDevices) {
-                        stopSelf()
-                    }
-                }
-            }
-            ACTION_DISCONNECT -> {
-                val deviceAddress = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
-                if (deviceAddress != null) {
-                    disconnectDevice(deviceAddress)
-                } else {
-                    disconnectAll()
-                }
-            }
-            ACTION_STOP -> {
-                stopSensorService()
-            }
-            ACTION_START_PHONE_STEPS -> {
-                startPhoneStepCounter()
-            }
-            ACTION_STOP_PHONE_STEPS -> {
-                stopPhoneStepCounter()
-            }
-        }
-        return START_NOT_STICKY
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onDestroy() {
-        super.onDestroy()
-        Log.d(TAG, "Service destroyed")
-        cleanup()
-        serviceScope.cancel()
-    }
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Sensor Service",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Keeps BLE sensor connections active"
-                setShowBadge(false)
-            }
-            val notificationManager = getSystemService(NotificationManager::class.java)
-            notificationManager.createNotificationChannel(channel)
-        }
-    }
-
-    @SuppressLint("ForegroundServiceType")
-    private fun startForegroundWithNotification() {
-        val notification = buildNotification(_serviceState.value)
-        startForeground(NOTIFICATION_ID, notification)
-        updateState { it.copy(isRunning = true) }
-    }
-
-    private fun buildNotification(state: SensorServiceState): Notification {
-        val openIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        val openPendingIntent = PendingIntent.getActivity(
-            this, 0, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val stopIntent = Intent(this, SensorService::class.java).apply {
-            action = ACTION_STOP
-        }
-        val stopPendingIntent = PendingIntent.getService(
-            this, 1, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val contentText = buildString {
-            val hrText = state.currentHeartRate?.let { "HR: $it BPM" }
-            val cadenceText = state.currentCadence?.let { "Cadence: $it spm • ${state.stepsSinceStart} steps" }
-            val phoneStepsText = if (state.phoneStepCounterActive) "Phone: ${state.phoneStepsSinceStart} steps" else null
-
-            when {
-                hrText != null && cadenceText != null -> append("$hrText • $cadenceText")
-                hrText != null && phoneStepsText != null -> append("$hrText • $phoneStepsText")
-                hrText != null -> append(hrText)
-                cadenceText != null -> append(cadenceText)
-                phoneStepsText != null -> append(phoneStepsText)
-                state.hasConnectedDevices -> append("${state.connectedDevices.size} sensor(s) connected")
-                state.isConnecting -> append("Connecting...")
-                else -> append("Ready")
-            }
-        }
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Aurboda - Sensors Active")
-            .setContentText(contentText)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setOngoing(true)
-            .setSilent(true)
-            .setContentIntent(openPendingIntent)
-            .addAction(0, "Stop", stopPendingIntent)
-            .build()
-    }
-
-    private fun updateNotification() {
-        val notification = buildNotification(_serviceState.value)
-        val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.notify(NOTIFICATION_ID, notification)
-    }
-
-    private fun connectToDevice(deviceAddress: String) {
-        // Don't connect if already connected or connecting to this device
-        if (connectionManagers.containsKey(deviceAddress)) {
-            Log.w(TAG, "Already connected to device: $deviceAddress")
-            return
-        }
-        if (_serviceState.value.connectingDevices.contains(deviceAddress)) {
-            Log.w(TAG, "Already connecting to device: $deviceAddress")
-            return
-        }
-
-        Log.d(TAG, "Connecting to device: $deviceAddress")
-        updateState { it.copy(connectingDevices = it.connectingDevices + deviceAddress) }
-
-        val manager = BleConnectionManager(this)
-        val jobs = mutableListOf<Job>()
-
-        // Observe connection state
-        jobs += serviceScope.launch {
-            manager.connectionState.collect { state ->
-                Log.d(TAG, "Connection state for $deviceAddress: $state")
-
-                when (state) {
-                    is BleConnectionState.Connected -> {
-                        updateState { it.copy(connectingDevices = it.connectingDevices - deviceAddress) }
-                        startDataCollection(manager, deviceAddress)
-                        startSyncLoop()
-                    }
-                    is BleConnectionState.Disconnected -> {
-                        handleDeviceDisconnected(deviceAddress)
-                    }
-                    is BleConnectionState.Error -> {
-                        Log.e(TAG, "Connection error for $deviceAddress: ${state.message}")
-                        updateState { it.copy(connectingDevices = it.connectingDevices - deviceAddress) }
-                    }
-                    else -> {}
-                }
-            }
-        }
-
-        // Observe connected device info
-        jobs += serviceScope.launch {
-            manager.connectedDeviceInfo.collect { device ->
-                if (device != null) {
-                    updateState { state ->
-                        val deviceState = state.connectedDevices[deviceAddress]?.copy(device = device)
-                            ?: DeviceState(device = device)
-                        state.copy(connectedDevices = state.connectedDevices + (deviceAddress to deviceState))
-                    }
-                    updateNotification()
-                }
-            }
-        }
-
-        // Observe battery level
-        jobs += serviceScope.launch {
-            manager.batteryLevel.collect { level ->
-                updateDeviceState(deviceAddress) { it.copy(batteryLevel = level) }
-            }
-        }
-
-        // Observe current heart rate
-        jobs += serviceScope.launch {
-            manager.currentHeartRate.collect { hr ->
-                updateDeviceState(deviceAddress) { it.copy(currentHeartRate = hr) }
-                updateNotification()
-            }
-        }
-
-        // Observe current cadence
-        jobs += serviceScope.launch {
-            manager.currentCadence.collect { cadence ->
-                updateDeviceState(deviceAddress) { it.copy(currentCadence = cadence) }
-                updateNotification()
-            }
-        }
-
-        // Observe current speed
-        jobs += serviceScope.launch {
-            manager.currentSpeed.collect { speed ->
-                updateDeviceState(deviceAddress) { it.copy(currentSpeed = speed) }
-            }
-        }
-
-        // Observe cumulative steps
-        jobs += serviceScope.launch {
-            manager.stepsSinceStart.collect { steps ->
-                updateDeviceState(deviceAddress) { it.copy(stepsSinceStart = steps) }
-                updateNotification()
-            }
-        }
-
-        // Observe RSSI (signal strength)
-        jobs += serviceScope.launch {
-            manager.rssi.collect { rssi ->
-                updateDeviceState(deviceAddress) { it.copy(rssi = rssi) }
-            }
-        }
-
-        // Observe last data received time
-        jobs += serviceScope.launch {
-            manager.lastDataReceivedTime.collect { time ->
-                updateDeviceState(deviceAddress) { it.copy(lastDataReceivedTime = time) }
-            }
-        }
-
-        connectionManagers[deviceAddress] = manager
-        deviceJobs[deviceAddress] = jobs
-
-        manager.connect(deviceAddress)
-    }
-
-    private fun updateDeviceState(deviceAddress: String, update: (DeviceState) -> DeviceState) {
-        updateState { state ->
-            val deviceState = state.connectedDevices[deviceAddress] ?: return@updateState state
-            state.copy(connectedDevices = state.connectedDevices + (deviceAddress to update(deviceState)))
-        }
-    }
-
-    private fun handleDeviceDisconnected(deviceAddress: String) {
-        Log.d(TAG, "Device disconnected: $deviceAddress")
-
-        // Check if this was an HR device and clear RR buffer + HRV state + chart history
-        val wasHrDevice = _serviceState.value.connectedDevices[deviceAddress]?.device?.type == SensorType.HEART_RATE
-        if (wasHrDevice) {
-            synchronized(bufferLock) {
-                rrIntervalBuffer.clear()
-                hrChartBuffer.clear()
-                hrvChartBuffer.clear()
-                Log.d(TAG, "Cleared RR interval buffer and chart history due to HR device disconnect")
-            }
-            updateState { it.copy(
-                currentHrv = null,
-                hrvReliable = false,
-                rrIntervalCount = 0,
-                hrChartHistory = emptyList(),
-                hrvChartHistory = emptyList()
-            ) }
-        }
-
-        // Cancel jobs for this device
-        deviceJobs[deviceAddress]?.forEach { it.cancel() }
-        deviceJobs.remove(deviceAddress)
-
-        // Close and remove connection manager
-        connectionManagers[deviceAddress]?.close()
-        connectionManagers.remove(deviceAddress)
-
-        // Update state
-        updateState { state ->
-            state.copy(
-                connectedDevices = state.connectedDevices - deviceAddress,
-                connectingDevices = state.connectingDevices - deviceAddress
-            )
-        }
-        updateNotification()
-
-        // Stop service if no devices connected
-        if (connectionManagers.isEmpty() && _serviceState.value.connectingDevices.isEmpty()) {
-            Log.d(TAG, "No devices connected, stopping service")
-            stopSensorService()
-        }
-    }
-
-    private fun startDataCollection(manager: BleConnectionManager, deviceAddress: String) {
-        // Add collection jobs to the device's job list
-        val existingJobs = deviceJobs[deviceAddress]?.toMutableList() ?: mutableListOf()
-
-        existingJobs += serviceScope.launch {
-            manager.heartRateSamples.collect { sample ->
-                synchronized(bufferLock) {
-                    sampleBuffer.add(sample)
-
-                    // Add to chart history and prune old data
-                    val now = System.currentTimeMillis()
-                    val cutoff = now - CHART_HISTORY_DURATION_MS
-                    hrChartBuffer.add(ChartDataPoint(now, sample.bpm.toFloat()))
-                    hrChartBuffer.removeAll { it.timestamp < cutoff }
-
-                    updateState { it.copy(
-                        pendingSamples = sampleBuffer.size,
-                        hrChartHistory = hrChartBuffer.toList()
-                    ) }
-
-                    // Collect RR intervals for HRV calculation (rolling window)
-                    sample.rrIntervals?.forEach { rr ->
-                        if (rrIntervalBuffer.size >= RR_BUFFER_MAX_SIZE) {
-                            rrIntervalBuffer.removeFirst()
-                        }
-                        rrIntervalBuffer.addLast(rr)
-                    }
-                }
-            }
-        }
-
-        existingJobs += serviceScope.launch {
-            var lastSampleTime: Instant? = null
-            manager.cadenceSamples.collect { sample ->
-                synchronized(bufferLock) {
-                    cadenceSampleBuffer.add(sample)
-
-                    // Accumulate steps into minute buckets
-                    val sampleTimeMs = sample.timestamp.toEpochMilli()
-                    val minuteStartMs = sampleTimeMs - (sampleTimeMs % ONE_MINUTE_MS)
-                    val minuteStart = Instant.ofEpochMilli(minuteStartMs)
-
-                    val bucket = stepBuckets.getOrPut(minuteStartMs) {
-                        MinuteStepBucket(minuteStart = minuteStart)
-                    }
-
-                    // Calculate steps since last sample using cadence
-                    lastSampleTime?.let { lastTime ->
-                        val elapsedSeconds = java.time.Duration.between(lastTime, sample.timestamp).toMillis() / 1000.0
-                        if (elapsedSeconds > 0 && elapsedSeconds < 30) { // Sanity check
-                            val stepsInInterval = (sample.cadence * elapsedSeconds / 60.0).toLong()
-                            bucket.totalSteps += stepsInInterval
-                        }
-                    }
-                    bucket.lastCadence = sample.cadence
-                    lastSampleTime = sample.timestamp
-
-                    updateState { it.copy(pendingCadenceSamples = cadenceSampleBuffer.size) }
-                }
-            }
-        }
-
-        deviceJobs[deviceAddress] = existingJobs
-    }
-
-    private fun startSyncLoop() {
-        syncJob?.cancel()
-        syncJob = serviceScope.launch {
-            while (true) {
-                delay(SYNC_INTERVAL_MS)
-                syncPendingSamples()
-            }
-        }
-    }
-
-    private suspend fun syncPendingSamples() {
-        val hrSamplesToSync: List<HeartRateSample>
-        val rrIntervalsForHrv: List<Int>
-        val completedStepBuckets: List<MinuteStepBucket>
-        val completedPhoneStepBuckets: List<MinuteStepBucket>
-
-        synchronized(bufferLock) {
-            hrSamplesToSync = sampleBuffer.toList()
-            // Copy RR intervals for HRV calculation (don't clear - rolling window)
-            rrIntervalsForHrv = rrIntervalBuffer.toList()
-
-            // Extract completed minute buckets (all minutes except the current one)
-            val nowMs = System.currentTimeMillis()
-            val currentMinuteStartMs = nowMs - (nowMs % ONE_MINUTE_MS)
-
-            // BLE foot pod step buckets
-            completedStepBuckets = stepBuckets.entries
-                .filter { it.key < currentMinuteStartMs && it.value.totalSteps > 0 }
-                .map { it.value }
-                .sortedBy { it.minuteStart }
-
-            // Remove completed buckets from the map
-            completedStepBuckets.forEach { bucket ->
-                stepBuckets.remove(bucket.minuteStart.toEpochMilli())
-            }
-
-            // Phone step counter buckets
-            completedPhoneStepBuckets = phoneStepBuckets.entries
-                .filter { it.key < currentMinuteStartMs && it.value.totalSteps > 0 }
-                .map { it.value }
-                .sortedBy { it.minuteStart }
-
-            // Remove completed phone step buckets
-            completedPhoneStepBuckets.forEach { bucket ->
-                phoneStepBuckets.remove(bucket.minuteStart.toEpochMilli())
-            }
-
-            // Clear raw cadence samples (they've been accumulated into buckets)
-            cadenceSampleBuffer.clear()
-
-            if (hrSamplesToSync.isEmpty() && completedStepBuckets.isEmpty() && completedPhoneStepBuckets.isEmpty()) return
-            sampleBuffer.clear()
-            updateState { it.copy(pendingSamples = 0, pendingCadenceSamples = 0) }
-        }
-
-        // Sync HR samples if any
-        if (hrSamplesToSync.isNotEmpty()) {
-            Log.d(TAG, "Syncing ${hrSamplesToSync.size} HR samples")
-            val backendSuccess = syncHeartRateToBackend(hrSamplesToSync)
-            if (!backendSuccess) {
-                synchronized(bufferLock) {
-                    sampleBuffer.addAll(0, hrSamplesToSync)
-                    updateState { it.copy(pendingSamples = sampleBuffer.size) }
-                }
-            } else {
-                writeHeartRateToHealthConnect(hrSamplesToSync)
-            }
-        }
-
-        // Sync completed minute step buckets if any (from BLE foot pod)
-        if (completedStepBuckets.isNotEmpty()) {
-            val totalSteps = completedStepBuckets.sumOf { it.totalSteps }
-            Log.d(TAG, "Syncing ${completedStepBuckets.size} BLE step bucket(s) with $totalSteps total steps")
-            val backendSuccess = syncStepBucketsToBackend(completedStepBuckets, "ble-footpod")
-            if (!backendSuccess) {
-                // Re-add buckets on failure
-                synchronized(bufferLock) {
-                    completedStepBuckets.forEach { bucket ->
-                        stepBuckets[bucket.minuteStart.toEpochMilli()] = bucket
-                    }
-                }
-            } else {
-                writeStepBucketsToHealthConnect(completedStepBuckets)
-            }
-        }
-
-        // Sync completed phone step buckets if any
-        if (completedPhoneStepBuckets.isNotEmpty()) {
-            val totalSteps = completedPhoneStepBuckets.sumOf { it.totalSteps }
-            Log.d(TAG, "Syncing ${completedPhoneStepBuckets.size} phone step bucket(s) with $totalSteps total steps")
-            val backendSuccess = syncStepBucketsToBackend(completedPhoneStepBuckets, "phone")
-            if (!backendSuccess) {
-                // Re-add buckets on failure
-                synchronized(bufferLock) {
-                    completedPhoneStepBuckets.forEach { bucket ->
-                        phoneStepBuckets[bucket.minuteStart.toEpochMilli()] = bucket
-                    }
-                }
-            } else {
-                writeStepBucketsToHealthConnect(completedPhoneStepBuckets)
-            }
-        }
-
-        // Calculate and sync HRV if we have enough RR intervals
-        if (rrIntervalsForHrv.size >= RR_BUFFER_MIN_SIZE) {
-            val hrvResult = calculateHrv(rrIntervalsForHrv)
-            Log.d(TAG, "HRV calculation: rmssd=${hrvResult.rmssd}, valid=${hrvResult.validIntervals}, " +
-                    "artifacts=${hrvResult.artifactCount} (${String.format("%.1f", hrvResult.artifactPercentage)}%), " +
-                    "reliable=${hrvResult.isReliable}")
-
-            // Add to HRV chart history if we have a valid value
-            if (hrvResult.rmssd != null) {
-                synchronized(bufferLock) {
-                    val now = System.currentTimeMillis()
-                    val cutoff = now - CHART_HISTORY_DURATION_MS
-                    hrvChartBuffer.add(ChartDataPoint(now, hrvResult.rmssd.toFloat()))
-                    hrvChartBuffer.removeAll { it.timestamp < cutoff }
-                }
-            }
-
-            // Update state for UI display
-            updateState { it.copy(
-                currentHrv = hrvResult.rmssd,
-                hrvReliable = hrvResult.isReliable,
-                rrIntervalCount = rrIntervalsForHrv.size,
-                hrvChartHistory = hrvChartBuffer.toList()
-            ) }
-
-            if (hrvResult.isReliable && hrvResult.rmssd != null) {
-                val timestamp = Instant.now()
-                syncHrvToBackend(hrvResult.rmssd, timestamp)
-                writeHrvToHealthConnect(hrvResult.rmssd, timestamp)
-            }
-        } else {
-            // Update state to show collecting progress
-            updateState { it.copy(
-                currentHrv = null,
-                hrvReliable = false,
-                rrIntervalCount = rrIntervalsForHrv.size
-            ) }
-            if (rrIntervalsForHrv.isNotEmpty()) {
-                Log.d(TAG, "HRV: Collecting RR intervals (${rrIntervalsForHrv.size}/$RR_BUFFER_MIN_SIZE)")
-            }
-        }
-
-        updateState { it.copy(lastSyncTime = Instant.now()) }
-    }
-
-    private suspend fun syncHeartRateToBackend(samples: List<HeartRateSample>): Boolean {
-        val credentials = CredentialsManager.getCredentials(this) ?: run {
-            Log.w(TAG, "No credentials, skipping backend sync")
-            return true // Don't block on missing credentials
-        }
-
-        if (samples.isEmpty()) return true
-
-        // Sort samples and create a single HeartRateRecord in Health Connect format
-        val sortedSamples = samples.sortedBy { it.timestamp }
-        val startTime = sortedSamples.first().timestamp
-        val endTime = sortedSamples.last().timestamp.plusSeconds(1)
-
-        // Generate unique ID for this batch based on start time
-        val recordId = "live-hr-${startTime.epochSecond}-${startTime.nano}"
-
-        // Get device info from HR device if available
-        val hrManager = connectionManagers.values.find {
-            it.connectedDeviceInfo.value?.type == SensorType.HEART_RATE
-        }
-        val deviceInfo = hrManager?.connectedDeviceInfo?.value?.let { device ->
-            LiveDeviceInfo(
-                type = 2, // TYPE_CHEST_STRAP
-                model = device.name
-            )
-        }
-
-        val record = LiveHeartRateRecord(
-            startTime = startTime.toString(),
-            endTime = endTime.toString(),
-            samples = sortedSamples.map { sample ->
-                LiveHeartRateSample(
-                    time = sample.timestamp.toString(),
-                    beatsPerMinute = sample.bpm.toLong()
-                )
-            },
-            metadata = LiveRecordMetadata(
-                id = recordId,
-                device = deviceInfo
-            )
-        )
-
-        return try {
-            val response = httpClient.post("${credentials.apiUrl}/sync/HeartRateRecord") {
-                contentType(ContentType.Application.Json)
-                headers { append(HttpHeaders.Authorization, "Bearer ${credentials.authToken}") }
-                setBody(HeartRateSyncBody(listOf(record)))
-            }
-            val success = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
-            Log.d(TAG, "Backend sync ${if (success) "succeeded" else "failed"}: ${response.status}")
-            success
-        } catch (e: Exception) {
-            Log.e(TAG, "Backend sync error", e)
-            false
-        }
-    }
-
-    private suspend fun writeHeartRateToHealthConnect(samples: List<HeartRateSample>) {
-        if (samples.isEmpty()) return
-
-        try {
-            // Check write permission
-            val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
-            val writePermission = HealthPermission.getWritePermission(HeartRateRecord::class)
-            if (writePermission !in grantedPermissions) {
-                Log.w(TAG, "No Health Connect write permission for HeartRateRecord")
-                return
-            }
-
-            // Group samples into 1-second intervals for Health Connect
-            // Health Connect expects HeartRateRecord with a time range and samples
-            val sortedSamples = samples.sortedBy { it.timestamp }
-            val startTime = sortedSamples.first().timestamp
-            val endTime = sortedSamples.last().timestamp.plusSeconds(1)
-
-            val hrSamples = sortedSamples.map { sample ->
-                HeartRateRecord.Sample(
-                    time = sample.timestamp,
-                    beatsPerMinute = sample.bpm.toLong()
-                )
-            }
-
-            val record = HeartRateRecord(
-                startTime = startTime,
-                startZoneOffset = ZoneOffset.systemDefault().rules.getOffset(startTime),
-                endTime = endTime,
-                endZoneOffset = ZoneOffset.systemDefault().rules.getOffset(endTime),
-                samples = hrSamples,
-                metadata = Metadata.autoRecorded(
-                    device = Device(type = Device.TYPE_CHEST_STRAP)
-                )
-            )
-
-            healthConnectClient.insertRecords(listOf(record))
-            Log.d(TAG, "Wrote ${samples.size} HR samples to Health Connect")
-        } catch (e: Exception) {
-            Log.e(TAG, "Health Connect write error", e)
-        }
-    }
-
-    /**
-     * Sync step buckets to backend. Each bucket represents one clock minute with
-     * timestamps aligned to minute boundaries (e.g., 11:46:00.000 - 11:46:59.999).
-     */
-    private suspend fun syncStepBucketsToBackend(buckets: List<MinuteStepBucket>, source: String = "ble-footpod"): Boolean {
-        val credentials = CredentialsManager.getCredentials(this) ?: run {
-            Log.w(TAG, "No credentials, skipping backend sync")
-            return true // Don't block on missing credentials
-        }
-
-        if (buckets.isEmpty()) return true
-
-        // Get device info based on source
-        val deviceInfo = when (source) {
-            "phone" -> LiveDeviceInfo(
-                type = 1, // TYPE_PHONE
-                model = android.os.Build.MODEL
-            )
-            else -> {
-                // BLE foot pod - get device info from RSC device if available
-                val rscManager = connectionManagers.values.find {
-                    it.connectedDeviceInfo.value?.type == SensorType.RUNNING_SPEED_CADENCE
-                }
-                rscManager?.connectedDeviceInfo?.value?.let { device ->
-                    LiveDeviceInfo(
-                        type = 4, // TYPE_WATCH or foot pod
-                        model = device.name
-                    )
-                }
-            }
-        }
-
-        // Create one record per minute bucket with clock-minute-aligned timestamps
-        val records = buckets.map { bucket ->
-            val minuteEnd = bucket.minuteStart.plusMillis(ONE_MINUTE_MS - 1) // 11:46:59.999
-            val recordId = "live-steps-$source-${bucket.minuteStart.epochSecond}"
-
-            LiveStepsRecord(
-                startTime = bucket.minuteStart.toString(),
-                endTime = minuteEnd.toString(),
-                count = bucket.totalSteps,
-                metadata = LiveRecordMetadata(
-                    id = recordId,
-                    device = deviceInfo
-                )
-            )
-        }
-
-        return try {
-            val response = httpClient.post("${credentials.apiUrl}/sync/StepsRecord") {
-                contentType(ContentType.Application.Json)
-                headers { append(HttpHeaders.Authorization, "Bearer ${credentials.authToken}") }
-                setBody(StepsSyncBody(records))
-            }
-            val success = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
-            val totalSteps = buckets.sumOf { it.totalSteps }
-            Log.d(TAG, "Steps backend sync (${buckets.size} minutes, $totalSteps steps) ${if (success) "succeeded" else "failed"}: ${response.status}")
-            success
-        } catch (e: Exception) {
-            Log.e(TAG, "Steps backend sync error", e)
-            false
-        }
-    }
-
-    /**
-     * Write step buckets to Health Connect. Each bucket becomes one StepsRecord with
-     * timestamps aligned to minute boundaries for proper aggregation/deduplication.
-     */
-    private suspend fun writeStepBucketsToHealthConnect(buckets: List<MinuteStepBucket>) {
-        if (buckets.isEmpty()) return
-
-        try {
-            // Check write permission
-            val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
-            val writePermission = HealthPermission.getWritePermission(StepsRecord::class)
-            if (writePermission !in grantedPermissions) {
-                Log.w(TAG, "No Health Connect write permission for StepsRecord")
-                return
-            }
-
-            // Create one record per minute bucket with clock-minute-aligned timestamps
-            val records = buckets.map { bucket ->
-                val minuteEnd = bucket.minuteStart.plusMillis(ONE_MINUTE_MS - 1) // 11:46:59.999
-
-                StepsRecord(
-                    startTime = bucket.minuteStart,
-                    startZoneOffset = ZoneOffset.systemDefault().rules.getOffset(bucket.minuteStart),
-                    endTime = minuteEnd,
-                    endZoneOffset = ZoneOffset.systemDefault().rules.getOffset(minuteEnd),
-                    count = bucket.totalSteps,
-                    metadata = Metadata.autoRecorded(
-                        device = Device(type = Device.TYPE_WATCH)
-                    )
-                )
-            }
-
-            healthConnectClient.insertRecords(records)
-            val totalSteps = buckets.sumOf { it.totalSteps }
-            Log.d(TAG, "Wrote ${buckets.size} minute bucket(s) with $totalSteps total steps to Health Connect")
-        } catch (e: Exception) {
-            Log.e(TAG, "Health Connect steps write error", e)
-        }
-    }
-
-    private suspend fun syncHrvToBackend(rmssd: Double, timestamp: Instant) {
-        val credentials = CredentialsManager.getCredentials(this) ?: run {
-            Log.w(TAG, "No credentials, skipping HRV backend sync")
-            return
-        }
-
-        val recordId = "live-hrv-${timestamp.epochSecond}-${timestamp.nano}"
-
-        // Get device info from HR device if available
-        val hrManager = connectionManagers.values.find {
-            it.connectedDeviceInfo.value?.type == SensorType.HEART_RATE
-        }
-        val deviceInfo = hrManager?.connectedDeviceInfo?.value?.let { device ->
-            LiveDeviceInfo(
-                type = 2, // TYPE_CHEST_STRAP
-                model = device.name
-            )
-        }
-
-        val record = LiveHrvRecord(
-            time = timestamp.toString(),
-            heartRateVariabilityMillis = rmssd,
-            metadata = LiveRecordMetadata(
-                id = recordId,
-                device = deviceInfo
-            )
-        )
-
-        try {
-            val response = httpClient.post("${credentials.apiUrl}/sync/HeartRateVariabilityRmssdRecord") {
-                contentType(ContentType.Application.Json)
-                headers { append(HttpHeaders.Authorization, "Bearer ${credentials.authToken}") }
-                setBody(HrvSyncBody(listOf(record)))
-            }
-            val success = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
-            Log.d(TAG, "HRV backend sync ${if (success) "succeeded" else "failed"}: ${response.status}")
-        } catch (e: Exception) {
-            Log.e(TAG, "HRV backend sync error", e)
-        }
-    }
-
-    private suspend fun writeHrvToHealthConnect(rmssd: Double, timestamp: Instant) {
-        try {
-            // Check write permission
-            val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
-            val writePermission = HealthPermission.getWritePermission(HeartRateVariabilityRmssdRecord::class)
-            if (writePermission !in grantedPermissions) {
-                Log.w(TAG, "No Health Connect write permission for HeartRateVariabilityRmssdRecord")
-                return
-            }
-
-            val record = HeartRateVariabilityRmssdRecord(
-                time = timestamp,
-                zoneOffset = ZoneOffset.systemDefault().rules.getOffset(timestamp),
-                heartRateVariabilityMillis = rmssd,
-                metadata = Metadata.autoRecorded(
-                    device = Device(type = Device.TYPE_CHEST_STRAP)
-                )
-            )
-
-            healthConnectClient.insertRecords(listOf(record))
-            Log.d(TAG, "Wrote HRV (RMSSD=${String.format("%.1f", rmssd)}ms) to Health Connect")
-        } catch (e: Exception) {
-            Log.e(TAG, "Health Connect HRV write error", e)
-        }
-    }
-
-    private fun disconnectDevice(deviceAddress: String) {
-        Log.d(TAG, "Disconnecting device: $deviceAddress")
-        connectionManagers[deviceAddress]?.disconnect()
-    }
-
-    private fun disconnectAll() {
-        Log.d(TAG, "Disconnecting all devices...")
-        connectionManagers.keys.toList().forEach { address ->
-            connectionManagers[address]?.disconnect()
-        }
-    }
-
-    private fun startPhoneStepCounter() {
-        Log.d(TAG, "Starting phone step counter")
-
-        // Create counter if needed
-        if (phoneStepCounter == null) {
-            phoneStepCounter = PhoneStepCounter(applicationContext)
-        }
-
-        val counter = phoneStepCounter!!
-
-        // Update availability state
-        updateState { it.copy(phoneStepCounterAvailable = counter.isAvailable.value) }
-
-        if (!counter.isAvailable.value) {
-            Log.w(TAG, "Phone step counter not available on this device")
-            return
-        }
-
-        // Start foreground if not already running
-        if (!_serviceState.value.isRunning) {
+  }
+
+  private val healthConnectClient by lazy {
+    HealthConnectClient.getOrCreate(applicationContext)
+  }
+
+  override fun onCreate() {
+    super.onCreate()
+    Log.d(TAG, "Service created")
+    createNotificationChannel()
+  }
+
+  override fun onStartCommand(
+    intent: Intent?,
+    flags: Int,
+    startId: Int,
+  ): Int {
+    when (intent?.action) {
+      ACTION_CONNECT -> {
+        val deviceAddress = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
+        if (deviceAddress != null) {
+          // Start foreground if not already running
+          if (!_serviceState.value.isRunning) {
             startForegroundWithNotification()
-        }
-
-        // Start monitoring
-        if (counter.startMonitoring()) {
-            updateState { it.copy(phoneStepCounterActive = true) }
-
-            // Start sync loop if not already running
-            if (syncJob == null || syncJob?.isActive != true) {
-                startSyncLoop()
-            }
-
-            // Collect step updates
-            phoneStepJob?.cancel()
-            phoneStepJob = serviceScope.launch {
-                var lastStepCount = 0
-                var lastMinuteStartMs = 0L
-
-                counter.stepsSinceStart.collect { steps ->
-                    updateState { it.copy(phoneStepsSinceStart = steps) }
-
-                    // Accumulate into minute buckets for syncing
-                    val now = Instant.now()
-                    val minuteStartMs = now.toEpochMilli() - (now.toEpochMilli() % ONE_MINUTE_MS)
-
-                    synchronized(bufferLock) {
-                        // Calculate delta since last update
-                        val stepsDelta = steps - lastStepCount
-
-                        if (stepsDelta > 0) {
-                            val bucket = phoneStepBuckets.getOrPut(minuteStartMs) {
-                                MinuteStepBucket(minuteStart = Instant.ofEpochMilli(minuteStartMs))
-                            }
-
-                            // If we're in a new minute, add the delta to the new bucket
-                            // If same minute, add to existing bucket
-                            bucket.totalSteps += stepsDelta
-                            Log.d(TAG, "Phone steps: +$stepsDelta in bucket ${bucket.minuteStart}, total in bucket: ${bucket.totalSteps}")
-                        }
-
-                        lastStepCount = steps
-                        lastMinuteStartMs = minuteStartMs
-                    }
-
-                    updateNotification()
-                }
-            }
-
-            // Also collect last update time
-            serviceScope.launch {
-                counter.lastUpdateTime.collect { time ->
-                    updateState { it.copy(phoneStepLastUpdateTime = time) }
-                }
-            }
-
-            Log.d(TAG, "Phone step counter started")
+          }
+          connectToDevice(deviceAddress)
         } else {
-            Log.e(TAG, "Failed to start phone step counter")
+          Log.w(TAG, "No device address provided")
+          if (!_serviceState.value.hasConnectedDevices) {
+            stopSelf()
+          }
         }
+      }
+      ACTION_DISCONNECT -> {
+        val deviceAddress = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
+        if (deviceAddress != null) {
+          disconnectDevice(deviceAddress)
+        } else {
+          disconnectAll()
+        }
+      }
+      ACTION_STOP -> {
+        stopSensorService()
+      }
+      ACTION_START_PHONE_STEPS -> {
+        startPhoneStepCounter()
+      }
+      ACTION_STOP_PHONE_STEPS -> {
+        stopPhoneStepCounter()
+      }
+    }
+    return START_NOT_STICKY
+  }
+
+  override fun onBind(intent: Intent?): IBinder? = null
+
+  override fun onDestroy() {
+    super.onDestroy()
+    Log.d(TAG, "Service destroyed")
+    cleanup()
+    serviceScope.cancel()
+  }
+
+  private fun createNotificationChannel() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val channel =
+        NotificationChannel(
+          CHANNEL_ID,
+          "Sensor Service",
+          NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+          description = "Keeps BLE sensor connections active"
+          setShowBadge(false)
+        }
+      val notificationManager = getSystemService(NotificationManager::class.java)
+      notificationManager.createNotificationChannel(channel)
+    }
+  }
+
+  @SuppressLint("ForegroundServiceType")
+  private fun startForegroundWithNotification() {
+    val notification = buildNotification(_serviceState.value)
+    startForeground(NOTIFICATION_ID, notification)
+    updateState { it.copy(isRunning = true) }
+  }
+
+  private fun buildNotification(state: SensorServiceState): Notification {
+    val openIntent =
+      Intent(this, MainActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+      }
+    val openPendingIntent =
+      PendingIntent.getActivity(
+        this,
+        0,
+        openIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+      )
+
+    val stopIntent =
+      Intent(this, SensorService::class.java).apply {
+        action = ACTION_STOP
+      }
+    val stopPendingIntent =
+      PendingIntent.getService(
+        this,
+        1,
+        stopIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+      )
+
+    val contentText =
+      buildString {
+        val hrText = state.currentHeartRate?.let { "HR: $it BPM" }
+        val cadenceText = state.currentCadence?.let { "Cadence: $it spm • ${state.stepsSinceStart} steps" }
+        val phoneStepsText = if (state.phoneStepCounterActive) "Phone: ${state.phoneStepsSinceStart} steps" else null
+
+        when {
+          hrText != null && cadenceText != null -> append("$hrText • $cadenceText")
+          hrText != null && phoneStepsText != null -> append("$hrText • $phoneStepsText")
+          hrText != null -> append(hrText)
+          cadenceText != null -> append(cadenceText)
+          phoneStepsText != null -> append(phoneStepsText)
+          state.hasConnectedDevices -> append("${state.connectedDevices.size} sensor(s) connected")
+          state.isConnecting -> append("Connecting...")
+          else -> append("Ready")
+        }
+      }
+
+    return NotificationCompat
+      .Builder(this, CHANNEL_ID)
+      .setContentTitle("Aurboda - Sensors Active")
+      .setContentText(contentText)
+      .setSmallIcon(R.mipmap.ic_launcher)
+      .setOngoing(true)
+      .setSilent(true)
+      .setContentIntent(openPendingIntent)
+      .addAction(0, "Stop", stopPendingIntent)
+      .build()
+  }
+
+  private fun updateNotification() {
+    val notification = buildNotification(_serviceState.value)
+    val notificationManager = getSystemService(NotificationManager::class.java)
+    notificationManager.notify(NOTIFICATION_ID, notification)
+  }
+
+  private fun connectToDevice(deviceAddress: String) {
+    // Don't connect if already connected or connecting to this device
+    if (connectionManagers.containsKey(deviceAddress)) {
+      Log.w(TAG, "Already connected to device: $deviceAddress")
+      return
+    }
+    if (_serviceState.value.connectingDevices.contains(deviceAddress)) {
+      Log.w(TAG, "Already connecting to device: $deviceAddress")
+      return
     }
 
-    private fun stopPhoneStepCounter() {
-        Log.d(TAG, "Stopping phone step counter")
-        phoneStepJob?.cancel()
-        phoneStepJob = null
-        phoneStepCounter?.stopMonitoring()
-        updateState {
-            it.copy(
-                phoneStepCounterActive = false,
-                phoneStepsSinceStart = 0,
-                phoneStepLastUpdateTime = null
-            )
-        }
-        synchronized(bufferLock) {
-            phoneStepBuckets.clear()
-        }
+    Log.d(TAG, "Connecting to device: $deviceAddress")
+    updateState { it.copy(connectingDevices = it.connectingDevices + deviceAddress) }
 
-        // Stop service if nothing else is running
-        if (!_serviceState.value.hasConnectedDevices && !_serviceState.value.isConnecting) {
-            stopSensorService()
-        } else {
+    val manager = BleConnectionManager(this)
+    val jobs = mutableListOf<Job>()
+
+    // Observe connection state
+    jobs +=
+      serviceScope.launch {
+        manager.connectionState.collect { state ->
+          Log.d(TAG, "Connection state for $deviceAddress: $state")
+
+          when (state) {
+            is BleConnectionState.Connected -> {
+              updateState { it.copy(connectingDevices = it.connectingDevices - deviceAddress) }
+              startDataCollection(manager, deviceAddress)
+              startSyncLoop()
+            }
+            is BleConnectionState.Disconnected -> {
+              handleDeviceDisconnected(deviceAddress)
+            }
+            is BleConnectionState.Error -> {
+              Log.e(TAG, "Connection error for $deviceAddress: ${state.message}")
+              updateState { it.copy(connectingDevices = it.connectingDevices - deviceAddress) }
+            }
+            else -> {}
+          }
+        }
+      }
+
+    // Observe connected device info
+    jobs +=
+      serviceScope.launch {
+        manager.connectedDeviceInfo.collect { device ->
+          if (device != null) {
+            updateState { state ->
+              val deviceState =
+                state.connectedDevices[deviceAddress]?.copy(device = device)
+                  ?: DeviceState(device = device)
+              state.copy(connectedDevices = state.connectedDevices + (deviceAddress to deviceState))
+            }
             updateNotification()
+          }
         }
+      }
+
+    // Observe battery level
+    jobs +=
+      serviceScope.launch {
+        manager.batteryLevel.collect { level ->
+          updateDeviceState(deviceAddress) { it.copy(batteryLevel = level) }
+        }
+      }
+
+    // Observe current heart rate
+    jobs +=
+      serviceScope.launch {
+        manager.currentHeartRate.collect { hr ->
+          updateDeviceState(deviceAddress) { it.copy(currentHeartRate = hr) }
+          updateNotification()
+        }
+      }
+
+    // Observe current cadence
+    jobs +=
+      serviceScope.launch {
+        manager.currentCadence.collect { cadence ->
+          updateDeviceState(deviceAddress) { it.copy(currentCadence = cadence) }
+          updateNotification()
+        }
+      }
+
+    // Observe current speed
+    jobs +=
+      serviceScope.launch {
+        manager.currentSpeed.collect { speed ->
+          updateDeviceState(deviceAddress) { it.copy(currentSpeed = speed) }
+        }
+      }
+
+    // Observe cumulative steps
+    jobs +=
+      serviceScope.launch {
+        manager.stepsSinceStart.collect { steps ->
+          updateDeviceState(deviceAddress) { it.copy(stepsSinceStart = steps) }
+          updateNotification()
+        }
+      }
+
+    // Observe RSSI (signal strength)
+    jobs +=
+      serviceScope.launch {
+        manager.rssi.collect { rssi ->
+          updateDeviceState(deviceAddress) { it.copy(rssi = rssi) }
+        }
+      }
+
+    // Observe last data received time
+    jobs +=
+      serviceScope.launch {
+        manager.lastDataReceivedTime.collect { time ->
+          updateDeviceState(deviceAddress) { it.copy(lastDataReceivedTime = time) }
+        }
+      }
+
+    connectionManagers[deviceAddress] = manager
+    deviceJobs[deviceAddress] = jobs
+
+    manager.connect(deviceAddress)
+  }
+
+  private fun updateDeviceState(
+    deviceAddress: String,
+    update: (DeviceState) -> DeviceState,
+  ) {
+    updateState { state ->
+      val deviceState = state.connectedDevices[deviceAddress] ?: return@updateState state
+      state.copy(connectedDevices = state.connectedDevices + (deviceAddress to update(deviceState)))
+    }
+  }
+
+  private fun handleDeviceDisconnected(deviceAddress: String) {
+    Log.d(TAG, "Device disconnected: $deviceAddress")
+
+    // Check if this was an HR device and clear RR buffer + HRV state + chart history
+    val wasHrDevice =
+      _serviceState.value.connectedDevices[deviceAddress]
+        ?.device
+        ?.type == SensorType.HEART_RATE
+    if (wasHrDevice) {
+      synchronized(bufferLock) {
+        rrIntervalBuffer.clear()
+        hrChartBuffer.clear()
+        hrvChartBuffer.clear()
+        Log.d(TAG, "Cleared RR interval buffer and chart history due to HR device disconnect")
+      }
+      updateState {
+        it.copy(
+          currentHrv = null,
+          hrvReliable = false,
+          rrIntervalCount = 0,
+          hrChartHistory = emptyList(),
+          hrvChartHistory = emptyList(),
+        )
+      }
     }
 
-    private fun stopSensorService() {
-        Log.d(TAG, "Stopping service...")
-        cleanup()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-        updateState { SensorServiceState() }
+    // Cancel jobs for this device
+    deviceJobs[deviceAddress]?.forEach { it.cancel() }
+    deviceJobs.remove(deviceAddress)
+
+    // Close and remove connection manager
+    connectionManagers[deviceAddress]?.close()
+    connectionManagers.remove(deviceAddress)
+
+    // Update state
+    updateState { state ->
+      state.copy(
+        connectedDevices = state.connectedDevices - deviceAddress,
+        connectingDevices = state.connectingDevices - deviceAddress,
+      )
+    }
+    updateNotification()
+
+    // Stop service if no devices connected
+    if (connectionManagers.isEmpty() && _serviceState.value.connectingDevices.isEmpty()) {
+      Log.d(TAG, "No devices connected, stopping service")
+      stopSensorService()
+    }
+  }
+
+  private fun startDataCollection(
+    manager: BleConnectionManager,
+    deviceAddress: String,
+  ) {
+    // Add collection jobs to the device's job list
+    val existingJobs = deviceJobs[deviceAddress]?.toMutableList() ?: mutableListOf()
+
+    existingJobs +=
+      serviceScope.launch {
+        manager.heartRateSamples.collect { sample ->
+          synchronized(bufferLock) {
+            sampleBuffer.add(sample)
+
+            // Add to chart history and prune old data
+            val now = System.currentTimeMillis()
+            val cutoff = now - CHART_HISTORY_DURATION_MS
+            hrChartBuffer.add(ChartDataPoint(now, sample.bpm.toFloat()))
+            hrChartBuffer.removeAll { it.timestamp < cutoff }
+
+            updateState {
+              it.copy(
+                pendingSamples = sampleBuffer.size,
+                hrChartHistory = hrChartBuffer.toList(),
+              )
+            }
+
+            // Collect RR intervals for HRV calculation (rolling window)
+            sample.rrIntervals?.forEach { rr ->
+              if (rrIntervalBuffer.size >= RR_BUFFER_MAX_SIZE) {
+                rrIntervalBuffer.removeFirst()
+              }
+              rrIntervalBuffer.addLast(rr)
+            }
+          }
+        }
+      }
+
+    existingJobs +=
+      serviceScope.launch {
+        var lastSampleTime: Instant? = null
+        manager.cadenceSamples.collect { sample ->
+          synchronized(bufferLock) {
+            cadenceSampleBuffer.add(sample)
+
+            // Accumulate steps into minute buckets
+            val sampleTimeMs = sample.timestamp.toEpochMilli()
+            val minuteStartMs = sampleTimeMs - (sampleTimeMs % ONE_MINUTE_MS)
+            val minuteStart = Instant.ofEpochMilli(minuteStartMs)
+
+            val bucket =
+              stepBuckets.getOrPut(minuteStartMs) {
+                MinuteStepBucket(minuteStart = minuteStart)
+              }
+
+            // Calculate steps since last sample using cadence
+            lastSampleTime?.let { lastTime ->
+              val elapsedSeconds =
+                java.time.Duration
+                  .between(lastTime, sample.timestamp)
+                  .toMillis() / 1000.0
+              if (elapsedSeconds > 0 && elapsedSeconds < 30) { // Sanity check
+                val stepsInInterval = (sample.cadence * elapsedSeconds / 60.0).toLong()
+                bucket.totalSteps += stepsInInterval
+              }
+            }
+            bucket.lastCadence = sample.cadence
+            lastSampleTime = sample.timestamp
+
+            updateState { it.copy(pendingCadenceSamples = cadenceSampleBuffer.size) }
+          }
+        }
+      }
+
+    deviceJobs[deviceAddress] = existingJobs
+  }
+
+  private fun startSyncLoop() {
+    syncJob?.cancel()
+    syncJob =
+      serviceScope.launch {
+        while (true) {
+          delay(SYNC_INTERVAL_MS)
+          syncPendingSamples()
+        }
+      }
+  }
+
+  private suspend fun syncPendingSamples() {
+    val hrSamplesToSync: List<HeartRateSample>
+    val rrIntervalsForHrv: List<Int>
+    val completedStepBuckets: List<MinuteStepBucket>
+    val completedPhoneStepBuckets: List<MinuteStepBucket>
+
+    synchronized(bufferLock) {
+      hrSamplesToSync = sampleBuffer.toList()
+      // Copy RR intervals for HRV calculation (don't clear - rolling window)
+      rrIntervalsForHrv = rrIntervalBuffer.toList()
+
+      // Extract completed minute buckets (all minutes except the current one)
+      val nowMs = System.currentTimeMillis()
+      val currentMinuteStartMs = nowMs - (nowMs % ONE_MINUTE_MS)
+
+      // BLE foot pod step buckets
+      completedStepBuckets =
+        stepBuckets.entries
+          .filter { it.key < currentMinuteStartMs && it.value.totalSteps > 0 }
+          .map { it.value }
+          .sortedBy { it.minuteStart }
+
+      // Remove completed buckets from the map
+      completedStepBuckets.forEach { bucket ->
+        stepBuckets.remove(bucket.minuteStart.toEpochMilli())
+      }
+
+      // Phone step counter buckets
+      completedPhoneStepBuckets =
+        phoneStepBuckets.entries
+          .filter { it.key < currentMinuteStartMs && it.value.totalSteps > 0 }
+          .map { it.value }
+          .sortedBy { it.minuteStart }
+
+      // Remove completed phone step buckets
+      completedPhoneStepBuckets.forEach { bucket ->
+        phoneStepBuckets.remove(bucket.minuteStart.toEpochMilli())
+      }
+
+      // Clear raw cadence samples (they've been accumulated into buckets)
+      cadenceSampleBuffer.clear()
+
+      if (hrSamplesToSync.isEmpty() && completedStepBuckets.isEmpty() && completedPhoneStepBuckets.isEmpty()) return
+      sampleBuffer.clear()
+      updateState { it.copy(pendingSamples = 0, pendingCadenceSamples = 0) }
     }
 
-    private fun cleanup() {
-        syncJob?.cancel()
-        phoneStepJob?.cancel()
-
-        // Stop phone step counter
-        phoneStepCounter?.stopMonitoring()
-        phoneStepCounter = null
-
-        // Cancel all device jobs
-        deviceJobs.values.forEach { jobs ->
-            jobs.forEach { it.cancel() }
-        }
-        deviceJobs.clear()
-
-        // Close all connection managers
-        connectionManagers.values.forEach { it.close() }
-        connectionManagers.clear()
-
-        // Clear all buffers
+    // Sync HR samples if any
+    if (hrSamplesToSync.isNotEmpty()) {
+      Log.d(TAG, "Syncing ${hrSamplesToSync.size} HR samples")
+      val backendSuccess = syncHeartRateToBackend(hrSamplesToSync)
+      if (!backendSuccess) {
         synchronized(bufferLock) {
-            sampleBuffer.clear()
-            cadenceSampleBuffer.clear()
-            rrIntervalBuffer.clear()
-            hrChartBuffer.clear()
-            hrvChartBuffer.clear()
-            stepBuckets.clear()
-            phoneStepBuckets.clear()
+          sampleBuffer.addAll(0, hrSamplesToSync)
+          updateState { it.copy(pendingSamples = sampleBuffer.size) }
         }
+      } else {
+        writeHeartRateToHealthConnect(hrSamplesToSync)
+      }
     }
 
-    private fun updateState(update: (SensorServiceState) -> SensorServiceState) {
-        _serviceState.value = update(_serviceState.value)
+    // Sync completed minute step buckets if any (from BLE foot pod)
+    if (completedStepBuckets.isNotEmpty()) {
+      val totalSteps = completedStepBuckets.sumOf { it.totalSteps }
+      Log.d(TAG, "Syncing ${completedStepBuckets.size} BLE step bucket(s) with $totalSteps total steps")
+      val backendSuccess = syncStepBucketsToBackend(completedStepBuckets, "ble-footpod")
+      if (!backendSuccess) {
+        // Re-add buckets on failure
+        synchronized(bufferLock) {
+          completedStepBuckets.forEach { bucket ->
+            stepBuckets[bucket.minuteStart.toEpochMilli()] = bucket
+          }
+        }
+      } else {
+        writeStepBucketsToHealthConnect(completedStepBuckets)
+      }
     }
 
-    companion object {
-        const val ACTION_CONNECT = "net.aurboda.action.CONNECT_SENSOR"
-        const val ACTION_DISCONNECT = "net.aurboda.action.DISCONNECT_SENSOR"
-        const val ACTION_STOP = "net.aurboda.action.STOP_SENSOR_SERVICE"
-        const val ACTION_START_PHONE_STEPS = "net.aurboda.action.START_PHONE_STEPS"
-        const val ACTION_STOP_PHONE_STEPS = "net.aurboda.action.STOP_PHONE_STEPS"
-        const val EXTRA_DEVICE_ADDRESS = "device_address"
-
-        private val _serviceState = MutableStateFlow(SensorServiceState())
-        val serviceState: StateFlow<SensorServiceState> = _serviceState.asStateFlow()
-
-        fun connect(context: Context, deviceAddress: String) {
-            val intent = Intent(context, SensorService::class.java).apply {
-                action = ACTION_CONNECT
-                putExtra(EXTRA_DEVICE_ADDRESS, deviceAddress)
-            }
-            context.startForegroundService(intent)
+    // Sync completed phone step buckets if any
+    if (completedPhoneStepBuckets.isNotEmpty()) {
+      val totalSteps = completedPhoneStepBuckets.sumOf { it.totalSteps }
+      Log.d(TAG, "Syncing ${completedPhoneStepBuckets.size} phone step bucket(s) with $totalSteps total steps")
+      val backendSuccess = syncStepBucketsToBackend(completedPhoneStepBuckets, "phone")
+      if (!backendSuccess) {
+        // Re-add buckets on failure
+        synchronized(bufferLock) {
+          completedPhoneStepBuckets.forEach { bucket ->
+            phoneStepBuckets[bucket.minuteStart.toEpochMilli()] = bucket
+          }
         }
-
-        fun disconnect(context: Context, deviceAddress: String) {
-            val intent = Intent(context, SensorService::class.java).apply {
-                action = ACTION_DISCONNECT
-                putExtra(EXTRA_DEVICE_ADDRESS, deviceAddress)
-            }
-            context.startService(intent)
-        }
-
-        fun disconnectAll(context: Context) {
-            val intent = Intent(context, SensorService::class.java).apply {
-                action = ACTION_DISCONNECT
-            }
-            context.startService(intent)
-        }
-
-        fun startPhoneStepCounter(context: Context) {
-            val intent = Intent(context, SensorService::class.java).apply {
-                action = ACTION_START_PHONE_STEPS
-            }
-            context.startForegroundService(intent)
-        }
-
-        fun stopPhoneStepCounter(context: Context) {
-            val intent = Intent(context, SensorService::class.java).apply {
-                action = ACTION_STOP_PHONE_STEPS
-            }
-            context.startService(intent)
-        }
-
-        fun stop(context: Context) {
-            val intent = Intent(context, SensorService::class.java).apply {
-                action = ACTION_STOP
-            }
-            context.startService(intent)
-        }
-
-        internal fun updateServiceState(state: SensorServiceState) {
-            _serviceState.value = state
-        }
+      } else {
+        writeStepBucketsToHealthConnect(completedPhoneStepBuckets)
+      }
     }
+
+    // Calculate and sync HRV if we have enough RR intervals
+    if (rrIntervalsForHrv.size >= RR_BUFFER_MIN_SIZE) {
+      val hrvResult = calculateHrv(rrIntervalsForHrv)
+      Log.d(
+        TAG,
+        "HRV calculation: rmssd=${hrvResult.rmssd}, valid=${hrvResult.validIntervals}, " +
+          "artifacts=${hrvResult.artifactCount} (${String.format("%.1f", hrvResult.artifactPercentage)}%), " +
+          "reliable=${hrvResult.isReliable}",
+      )
+
+      // Add to HRV chart history if we have a valid value
+      if (hrvResult.rmssd != null) {
+        synchronized(bufferLock) {
+          val now = System.currentTimeMillis()
+          val cutoff = now - CHART_HISTORY_DURATION_MS
+          hrvChartBuffer.add(ChartDataPoint(now, hrvResult.rmssd.toFloat()))
+          hrvChartBuffer.removeAll { it.timestamp < cutoff }
+        }
+      }
+
+      // Update state for UI display
+      updateState {
+        it.copy(
+          currentHrv = hrvResult.rmssd,
+          hrvReliable = hrvResult.isReliable,
+          rrIntervalCount = rrIntervalsForHrv.size,
+          hrvChartHistory = hrvChartBuffer.toList(),
+        )
+      }
+
+      if (hrvResult.isReliable && hrvResult.rmssd != null) {
+        val timestamp = Instant.now()
+        syncHrvToBackend(hrvResult.rmssd, timestamp)
+        writeHrvToHealthConnect(hrvResult.rmssd, timestamp)
+      }
+    } else {
+      // Update state to show collecting progress
+      updateState {
+        it.copy(
+          currentHrv = null,
+          hrvReliable = false,
+          rrIntervalCount = rrIntervalsForHrv.size,
+        )
+      }
+      if (rrIntervalsForHrv.isNotEmpty()) {
+        Log.d(TAG, "HRV: Collecting RR intervals (${rrIntervalsForHrv.size}/$RR_BUFFER_MIN_SIZE)")
+      }
+    }
+
+    updateState { it.copy(lastSyncTime = Instant.now()) }
+  }
+
+  private suspend fun syncHeartRateToBackend(samples: List<HeartRateSample>): Boolean {
+    val credentials =
+      CredentialsManager.getCredentials(this) ?: run {
+        Log.w(TAG, "No credentials, skipping backend sync")
+        return true // Don't block on missing credentials
+      }
+
+    if (samples.isEmpty()) return true
+
+    // Sort samples and create a single HeartRateRecord in Health Connect format
+    val sortedSamples = samples.sortedBy { it.timestamp }
+    val startTime = sortedSamples.first().timestamp
+    val endTime = sortedSamples.last().timestamp.plusSeconds(1)
+
+    // Generate unique ID for this batch based on start time
+    val recordId = "live-hr-${startTime.epochSecond}-${startTime.nano}"
+
+    // Get device info from HR device if available
+    val hrManager =
+      connectionManagers.values.find {
+        it.connectedDeviceInfo.value?.type == SensorType.HEART_RATE
+      }
+    val deviceInfo =
+      hrManager?.connectedDeviceInfo?.value?.let { device ->
+        LiveDeviceInfo(
+          type = 2, // TYPE_CHEST_STRAP
+          model = device.name,
+        )
+      }
+
+    val record =
+      LiveHeartRateRecord(
+        startTime = startTime.toString(),
+        endTime = endTime.toString(),
+        samples =
+          sortedSamples.map { sample ->
+            LiveHeartRateSample(
+              time = sample.timestamp.toString(),
+              beatsPerMinute = sample.bpm.toLong(),
+            )
+          },
+        metadata =
+          LiveRecordMetadata(
+            id = recordId,
+            device = deviceInfo,
+          ),
+      )
+
+    return try {
+      val response =
+        httpClient.post("${credentials.apiUrl}/sync/HeartRateRecord") {
+          contentType(ContentType.Application.Json)
+          headers { append(HttpHeaders.Authorization, "Bearer ${credentials.authToken}") }
+          setBody(HeartRateSyncBody(listOf(record)))
+        }
+      val success = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
+      Log.d(TAG, "Backend sync ${if (success) "succeeded" else "failed"}: ${response.status}")
+      success
+    } catch (e: Exception) {
+      Log.e(TAG, "Backend sync error", e)
+      false
+    }
+  }
+
+  private suspend fun writeHeartRateToHealthConnect(samples: List<HeartRateSample>) {
+    if (samples.isEmpty()) return
+
+    try {
+      // Check write permission
+      val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
+      val writePermission = HealthPermission.getWritePermission(HeartRateRecord::class)
+      if (writePermission !in grantedPermissions) {
+        Log.w(TAG, "No Health Connect write permission for HeartRateRecord")
+        return
+      }
+
+      // Group samples into 1-second intervals for Health Connect
+      // Health Connect expects HeartRateRecord with a time range and samples
+      val sortedSamples = samples.sortedBy { it.timestamp }
+      val startTime = sortedSamples.first().timestamp
+      val endTime = sortedSamples.last().timestamp.plusSeconds(1)
+
+      val hrSamples =
+        sortedSamples.map { sample ->
+          HeartRateRecord.Sample(
+            time = sample.timestamp,
+            beatsPerMinute = sample.bpm.toLong(),
+          )
+        }
+
+      val record =
+        HeartRateRecord(
+          startTime = startTime,
+          startZoneOffset = ZoneOffset.systemDefault().rules.getOffset(startTime),
+          endTime = endTime,
+          endZoneOffset = ZoneOffset.systemDefault().rules.getOffset(endTime),
+          samples = hrSamples,
+          metadata =
+            Metadata.autoRecorded(
+              device = Device(type = Device.TYPE_CHEST_STRAP),
+            ),
+        )
+
+      healthConnectClient.insertRecords(listOf(record))
+      Log.d(TAG, "Wrote ${samples.size} HR samples to Health Connect")
+    } catch (e: Exception) {
+      Log.e(TAG, "Health Connect write error", e)
+    }
+  }
+
+  /**
+   * Sync step buckets to backend. Each bucket represents one clock minute with
+   * timestamps aligned to minute boundaries (e.g., 11:46:00.000 - 11:46:59.999).
+   */
+  private suspend fun syncStepBucketsToBackend(
+    buckets: List<MinuteStepBucket>,
+    source: String = "ble-footpod",
+  ): Boolean {
+    val credentials =
+      CredentialsManager.getCredentials(this) ?: run {
+        Log.w(TAG, "No credentials, skipping backend sync")
+        return true // Don't block on missing credentials
+      }
+
+    if (buckets.isEmpty()) return true
+
+    // Get device info based on source
+    val deviceInfo =
+      when (source) {
+        "phone" ->
+          LiveDeviceInfo(
+            type = 1, // TYPE_PHONE
+            model = android.os.Build.MODEL,
+          )
+        else -> {
+          // BLE foot pod - get device info from RSC device if available
+          val rscManager =
+            connectionManagers.values.find {
+              it.connectedDeviceInfo.value?.type == SensorType.RUNNING_SPEED_CADENCE
+            }
+          rscManager?.connectedDeviceInfo?.value?.let { device ->
+            LiveDeviceInfo(
+              type = 4, // TYPE_WATCH or foot pod
+              model = device.name,
+            )
+          }
+        }
+      }
+
+    // Create one record per minute bucket with clock-minute-aligned timestamps
+    val records =
+      buckets.map { bucket ->
+        val minuteEnd = bucket.minuteStart.plusMillis(ONE_MINUTE_MS - 1) // 11:46:59.999
+        val recordId = "live-steps-$source-${bucket.minuteStart.epochSecond}"
+
+        LiveStepsRecord(
+          startTime = bucket.minuteStart.toString(),
+          endTime = minuteEnd.toString(),
+          count = bucket.totalSteps,
+          metadata =
+            LiveRecordMetadata(
+              id = recordId,
+              device = deviceInfo,
+            ),
+        )
+      }
+
+    return try {
+      val response =
+        httpClient.post("${credentials.apiUrl}/sync/StepsRecord") {
+          contentType(ContentType.Application.Json)
+          headers { append(HttpHeaders.Authorization, "Bearer ${credentials.authToken}") }
+          setBody(StepsSyncBody(records))
+        }
+      val success = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
+      val totalSteps = buckets.sumOf { it.totalSteps }
+      Log.d(
+        TAG,
+        "Steps backend sync (${buckets.size} minutes, $totalSteps steps) ${if (success) "succeeded" else "failed"}: ${response.status}",
+      )
+      success
+    } catch (e: Exception) {
+      Log.e(TAG, "Steps backend sync error", e)
+      false
+    }
+  }
+
+  /**
+   * Write step buckets to Health Connect. Each bucket becomes one StepsRecord with
+   * timestamps aligned to minute boundaries for proper aggregation/deduplication.
+   */
+  private suspend fun writeStepBucketsToHealthConnect(buckets: List<MinuteStepBucket>) {
+    if (buckets.isEmpty()) return
+
+    try {
+      // Check write permission
+      val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
+      val writePermission = HealthPermission.getWritePermission(StepsRecord::class)
+      if (writePermission !in grantedPermissions) {
+        Log.w(TAG, "No Health Connect write permission for StepsRecord")
+        return
+      }
+
+      // Create one record per minute bucket with clock-minute-aligned timestamps
+      val records =
+        buckets.map { bucket ->
+          val minuteEnd = bucket.minuteStart.plusMillis(ONE_MINUTE_MS - 1) // 11:46:59.999
+
+          StepsRecord(
+            startTime = bucket.minuteStart,
+            startZoneOffset = ZoneOffset.systemDefault().rules.getOffset(bucket.minuteStart),
+            endTime = minuteEnd,
+            endZoneOffset = ZoneOffset.systemDefault().rules.getOffset(minuteEnd),
+            count = bucket.totalSteps,
+            metadata =
+              Metadata.autoRecorded(
+                device = Device(type = Device.TYPE_WATCH),
+              ),
+          )
+        }
+
+      healthConnectClient.insertRecords(records)
+      val totalSteps = buckets.sumOf { it.totalSteps }
+      Log.d(TAG, "Wrote ${buckets.size} minute bucket(s) with $totalSteps total steps to Health Connect")
+    } catch (e: Exception) {
+      Log.e(TAG, "Health Connect steps write error", e)
+    }
+  }
+
+  private suspend fun syncHrvToBackend(
+    rmssd: Double,
+    timestamp: Instant,
+  ) {
+    val credentials =
+      CredentialsManager.getCredentials(this) ?: run {
+        Log.w(TAG, "No credentials, skipping HRV backend sync")
+        return
+      }
+
+    val recordId = "live-hrv-${timestamp.epochSecond}-${timestamp.nano}"
+
+    // Get device info from HR device if available
+    val hrManager =
+      connectionManagers.values.find {
+        it.connectedDeviceInfo.value?.type == SensorType.HEART_RATE
+      }
+    val deviceInfo =
+      hrManager?.connectedDeviceInfo?.value?.let { device ->
+        LiveDeviceInfo(
+          type = 2, // TYPE_CHEST_STRAP
+          model = device.name,
+        )
+      }
+
+    val record =
+      LiveHrvRecord(
+        time = timestamp.toString(),
+        heartRateVariabilityMillis = rmssd,
+        metadata =
+          LiveRecordMetadata(
+            id = recordId,
+            device = deviceInfo,
+          ),
+      )
+
+    try {
+      val response =
+        httpClient.post("${credentials.apiUrl}/sync/HeartRateVariabilityRmssdRecord") {
+          contentType(ContentType.Application.Json)
+          headers { append(HttpHeaders.Authorization, "Bearer ${credentials.authToken}") }
+          setBody(HrvSyncBody(listOf(record)))
+        }
+      val success = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
+      Log.d(TAG, "HRV backend sync ${if (success) "succeeded" else "failed"}: ${response.status}")
+    } catch (e: Exception) {
+      Log.e(TAG, "HRV backend sync error", e)
+    }
+  }
+
+  private suspend fun writeHrvToHealthConnect(
+    rmssd: Double,
+    timestamp: Instant,
+  ) {
+    try {
+      // Check write permission
+      val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
+      val writePermission = HealthPermission.getWritePermission(HeartRateVariabilityRmssdRecord::class)
+      if (writePermission !in grantedPermissions) {
+        Log.w(TAG, "No Health Connect write permission for HeartRateVariabilityRmssdRecord")
+        return
+      }
+
+      val record =
+        HeartRateVariabilityRmssdRecord(
+          time = timestamp,
+          zoneOffset = ZoneOffset.systemDefault().rules.getOffset(timestamp),
+          heartRateVariabilityMillis = rmssd,
+          metadata =
+            Metadata.autoRecorded(
+              device = Device(type = Device.TYPE_CHEST_STRAP),
+            ),
+        )
+
+      healthConnectClient.insertRecords(listOf(record))
+      Log.d(TAG, "Wrote HRV (RMSSD=${String.format("%.1f", rmssd)}ms) to Health Connect")
+    } catch (e: Exception) {
+      Log.e(TAG, "Health Connect HRV write error", e)
+    }
+  }
+
+  private fun disconnectDevice(deviceAddress: String) {
+    Log.d(TAG, "Disconnecting device: $deviceAddress")
+    connectionManagers[deviceAddress]?.disconnect()
+  }
+
+  private fun disconnectAll() {
+    Log.d(TAG, "Disconnecting all devices...")
+    connectionManagers.keys.toList().forEach { address ->
+      connectionManagers[address]?.disconnect()
+    }
+  }
+
+  private fun startPhoneStepCounter() {
+    Log.d(TAG, "Starting phone step counter")
+
+    // Create counter if needed
+    if (phoneStepCounter == null) {
+      phoneStepCounter = PhoneStepCounter(applicationContext)
+    }
+
+    val counter = phoneStepCounter!!
+
+    // Update availability state
+    updateState { it.copy(phoneStepCounterAvailable = counter.isAvailable.value) }
+
+    if (!counter.isAvailable.value) {
+      Log.w(TAG, "Phone step counter not available on this device")
+      return
+    }
+
+    // Start foreground if not already running
+    if (!_serviceState.value.isRunning) {
+      startForegroundWithNotification()
+    }
+
+    // Start monitoring
+    if (counter.startMonitoring()) {
+      updateState { it.copy(phoneStepCounterActive = true) }
+
+      // Start sync loop if not already running
+      if (syncJob == null || syncJob?.isActive != true) {
+        startSyncLoop()
+      }
+
+      // Collect step updates
+      phoneStepJob?.cancel()
+      phoneStepJob =
+        serviceScope.launch {
+          var lastStepCount = 0
+
+          counter.stepsSinceStart.collect { steps ->
+            updateState { it.copy(phoneStepsSinceStart = steps) }
+
+            // Accumulate into minute buckets for syncing
+            val now = Instant.now()
+            val minuteStartMs = now.toEpochMilli() - (now.toEpochMilli() % ONE_MINUTE_MS)
+
+            synchronized(bufferLock) {
+              // Calculate delta since last update
+              val stepsDelta = steps - lastStepCount
+
+              if (stepsDelta > 0) {
+                val bucket =
+                  phoneStepBuckets.getOrPut(minuteStartMs) {
+                    MinuteStepBucket(minuteStart = Instant.ofEpochMilli(minuteStartMs))
+                  }
+
+                // If we're in a new minute, add the delta to the new bucket
+                // If same minute, add to existing bucket
+                bucket.totalSteps += stepsDelta
+                Log.d(TAG, "Phone steps: +$stepsDelta in bucket ${bucket.minuteStart}, total in bucket: ${bucket.totalSteps}")
+              }
+
+              lastStepCount = steps
+            }
+
+            updateNotification()
+          }
+        }
+
+      // Also collect last update time
+      serviceScope.launch {
+        counter.lastUpdateTime.collect { time ->
+          updateState { it.copy(phoneStepLastUpdateTime = time) }
+        }
+      }
+
+      Log.d(TAG, "Phone step counter started")
+    } else {
+      Log.e(TAG, "Failed to start phone step counter")
+    }
+  }
+
+  private fun stopPhoneStepCounter() {
+    Log.d(TAG, "Stopping phone step counter")
+    phoneStepJob?.cancel()
+    phoneStepJob = null
+    phoneStepCounter?.stopMonitoring()
+    updateState {
+      it.copy(
+        phoneStepCounterActive = false,
+        phoneStepsSinceStart = 0,
+        phoneStepLastUpdateTime = null,
+      )
+    }
+    synchronized(bufferLock) {
+      phoneStepBuckets.clear()
+    }
+
+    // Stop service if nothing else is running
+    if (!_serviceState.value.hasConnectedDevices && !_serviceState.value.isConnecting) {
+      stopSensorService()
+    } else {
+      updateNotification()
+    }
+  }
+
+  private fun stopSensorService() {
+    Log.d(TAG, "Stopping service...")
+    cleanup()
+    stopForeground(STOP_FOREGROUND_REMOVE)
+    stopSelf()
+    updateState { SensorServiceState() }
+  }
+
+  private fun cleanup() {
+    syncJob?.cancel()
+    phoneStepJob?.cancel()
+
+    // Stop phone step counter
+    phoneStepCounter?.stopMonitoring()
+    phoneStepCounter = null
+
+    // Cancel all device jobs
+    deviceJobs.values.forEach { jobs ->
+      jobs.forEach { it.cancel() }
+    }
+    deviceJobs.clear()
+
+    // Close all connection managers
+    connectionManagers.values.forEach { it.close() }
+    connectionManagers.clear()
+
+    // Clear all buffers
+    synchronized(bufferLock) {
+      sampleBuffer.clear()
+      cadenceSampleBuffer.clear()
+      rrIntervalBuffer.clear()
+      hrChartBuffer.clear()
+      hrvChartBuffer.clear()
+      stepBuckets.clear()
+      phoneStepBuckets.clear()
+    }
+  }
+
+  private fun updateState(update: (SensorServiceState) -> SensorServiceState) {
+    _serviceState.value = update(_serviceState.value)
+  }
+
+  companion object {
+    const val ACTION_CONNECT = "net.aurboda.action.CONNECT_SENSOR"
+    const val ACTION_DISCONNECT = "net.aurboda.action.DISCONNECT_SENSOR"
+    const val ACTION_STOP = "net.aurboda.action.STOP_SENSOR_SERVICE"
+    const val ACTION_START_PHONE_STEPS = "net.aurboda.action.START_PHONE_STEPS"
+    const val ACTION_STOP_PHONE_STEPS = "net.aurboda.action.STOP_PHONE_STEPS"
+    const val EXTRA_DEVICE_ADDRESS = "device_address"
+
+    private val _serviceState = MutableStateFlow(SensorServiceState())
+    val serviceState: StateFlow<SensorServiceState> = _serviceState.asStateFlow()
+
+    fun connect(
+      context: Context,
+      deviceAddress: String,
+    ) {
+      val intent =
+        Intent(context, SensorService::class.java).apply {
+          action = ACTION_CONNECT
+          putExtra(EXTRA_DEVICE_ADDRESS, deviceAddress)
+        }
+      context.startForegroundService(intent)
+    }
+
+    fun disconnect(
+      context: Context,
+      deviceAddress: String,
+    ) {
+      val intent =
+        Intent(context, SensorService::class.java).apply {
+          action = ACTION_DISCONNECT
+          putExtra(EXTRA_DEVICE_ADDRESS, deviceAddress)
+        }
+      context.startService(intent)
+    }
+
+    fun disconnectAll(context: Context) {
+      val intent =
+        Intent(context, SensorService::class.java).apply {
+          action = ACTION_DISCONNECT
+        }
+      context.startService(intent)
+    }
+
+    fun startPhoneStepCounter(context: Context) {
+      val intent =
+        Intent(context, SensorService::class.java).apply {
+          action = ACTION_START_PHONE_STEPS
+        }
+      context.startForegroundService(intent)
+    }
+
+    fun stopPhoneStepCounter(context: Context) {
+      val intent =
+        Intent(context, SensorService::class.java).apply {
+          action = ACTION_STOP_PHONE_STEPS
+        }
+      context.startService(intent)
+    }
+
+    fun stop(context: Context) {
+      val intent =
+        Intent(context, SensorService::class.java).apply {
+          action = ACTION_STOP
+        }
+      context.startService(intent)
+    }
+
+    internal fun updateServiceState(state: SensorServiceState) {
+      _serviceState.value = state
+    }
+  }
 }

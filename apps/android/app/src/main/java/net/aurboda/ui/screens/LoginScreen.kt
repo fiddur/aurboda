@@ -40,153 +40,159 @@ import net.aurboda.LoginResult
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LoginScreen(
-    initialServerUrl: String? = null,
-    authApi: AuthApi = remember { AuthApi.create() },
-    onSaveCredentials: (serverUrl: String, username: String, token: String) -> Unit = { serverUrl, username, token ->
-        throw IllegalStateException("onSaveCredentials must be provided")
-    },
-    onLoginSuccess: () -> Unit
+  initialServerUrl: String? = null,
+  authApi: AuthApi = remember { AuthApi.create() },
+  onSaveCredentials: (serverUrl: String, username: String, token: String) -> Unit = { _, _, _ ->
+    throw IllegalStateException("onSaveCredentials must be provided")
+  },
+  onLoginSuccess: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    val autofill = LocalAutofill.current
-    val autofillTree = LocalAutofillTree.current
+  val scope = rememberCoroutineScope()
+  val autofill = LocalAutofill.current
+  val autofillTree = LocalAutofillTree.current
 
-    var serverUrl by remember { mutableStateOf(initialServerUrl ?: "https://aurboda.net") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+  var serverUrl by remember { mutableStateOf(initialServerUrl ?: "https://aurboda.net") }
+  var username by remember { mutableStateOf("") }
+  var password by remember { mutableStateOf("") }
+  var isLoading by remember { mutableStateOf(false) }
+  var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val usernameAutofillNode = remember {
-        AutofillNode(
-            autofillTypes = listOf(AutofillType.Username),
-            onFill = { username = it }
-        )
+  val usernameAutofillNode =
+    remember {
+      AutofillNode(
+        autofillTypes = listOf(AutofillType.Username),
+        onFill = { username = it },
+      )
     }
-    val passwordAutofillNode = remember {
-        AutofillNode(
-            autofillTypes = listOf(AutofillType.Password),
-            onFill = { password = it }
-        )
+  val passwordAutofillNode =
+    remember {
+      AutofillNode(
+        autofillTypes = listOf(AutofillType.Password),
+        onFill = { password = it },
+      )
     }
-    autofillTree += usernameAutofillNode
-    autofillTree += passwordAutofillNode
+  autofillTree += usernameAutofillNode
+  autofillTree += passwordAutofillNode
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Aurboda",
-            style = MaterialTheme.typography.headlineLarge
-        )
+  Column(
+    modifier =
+      Modifier
+        .fillMaxSize()
+        .padding(24.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.Center,
+  ) {
+    Text(
+      text = "Aurboda",
+      style = MaterialTheme.typography.headlineLarge,
+    )
 
-        Spacer(modifier = Modifier.height(32.dp))
+    Spacer(modifier = Modifier.height(32.dp))
 
-        OutlinedTextField(
-            value = serverUrl,
-            onValueChange = { serverUrl = it },
-            label = { Text("Server URL") },
-            placeholder = { Text("https://aurboda.net") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            enabled = !isLoading
-        )
+    OutlinedTextField(
+      value = serverUrl,
+      onValueChange = { serverUrl = it },
+      label = { Text("Server URL") },
+      placeholder = { Text("https://aurboda.net") },
+      modifier = Modifier.fillMaxWidth(),
+      singleLine = true,
+      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+      enabled = !isLoading,
+    )
 
-        Spacer(modifier = Modifier.height(16.dp))
+    Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = username,
-            onValueChange = { username = it },
-            label = { Text("Username") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { coordinates ->
-                    usernameAutofillNode.boundingBox = coordinates.boundsInWindow()
-                }
-                .onFocusChanged { focusState ->
-                    if (focusState.isFocused) {
-                        autofill?.requestAutofillForNode(usernameAutofillNode)
-                    } else {
-                        autofill?.cancelAutofillForNode(usernameAutofillNode)
-                    }
-                },
-            singleLine = true,
-            enabled = !isLoading
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Password") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { coordinates ->
-                    passwordAutofillNode.boundingBox = coordinates.boundsInWindow()
-                }
-                .onFocusChanged { focusState ->
-                    if (focusState.isFocused) {
-                        autofill?.requestAutofillForNode(passwordAutofillNode)
-                    } else {
-                        autofill?.cancelAutofillForNode(passwordAutofillNode)
-                    }
-                },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            enabled = !isLoading
-        )
-
-        if (errorMessage != null) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = errorMessage!!,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = {
-                scope.launch {
-                    isLoading = true
-                    errorMessage = null
-
-                    // Normalize server URL
-                    val normalizedUrl = serverUrl.trimEnd('/')
-
-                    when (val result = authApi.login(normalizedUrl, username, password)) {
-                        is LoginResult.Success -> {
-                            onSaveCredentials(normalizedUrl, username, result.token)
-                            onLoginSuccess()
-                        }
-                        is LoginResult.Error -> {
-                            errorMessage = result.message
-                        }
-                    }
-                    isLoading = false
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isLoading && serverUrl.isNotBlank() &&
-                    username.isNotBlank() && password.isNotBlank()
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp
-                )
+    OutlinedTextField(
+      value = username,
+      onValueChange = { username = it },
+      label = { Text("Username") },
+      modifier =
+        Modifier
+          .fillMaxWidth()
+          .onGloballyPositioned { coordinates ->
+            usernameAutofillNode.boundingBox = coordinates.boundsInWindow()
+          }.onFocusChanged { focusState ->
+            if (focusState.isFocused) {
+              autofill?.requestAutofillForNode(usernameAutofillNode)
             } else {
-                Text("Login")
+              autofill?.cancelAutofillForNode(usernameAutofillNode)
             }
-        }
+          },
+      singleLine = true,
+      enabled = !isLoading,
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    OutlinedTextField(
+      value = password,
+      onValueChange = { password = it },
+      label = { Text("Password") },
+      modifier =
+        Modifier
+          .fillMaxWidth()
+          .onGloballyPositioned { coordinates ->
+            passwordAutofillNode.boundingBox = coordinates.boundsInWindow()
+          }.onFocusChanged { focusState ->
+            if (focusState.isFocused) {
+              autofill?.requestAutofillForNode(passwordAutofillNode)
+            } else {
+              autofill?.cancelAutofillForNode(passwordAutofillNode)
+            }
+          },
+      singleLine = true,
+      visualTransformation = PasswordVisualTransformation(),
+      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+      enabled = !isLoading,
+    )
+
+    if (errorMessage != null) {
+      Spacer(modifier = Modifier.height(8.dp))
+      Text(
+        text = errorMessage!!,
+        color = MaterialTheme.colorScheme.error,
+        style = MaterialTheme.typography.bodySmall,
+      )
     }
+
+    Spacer(modifier = Modifier.height(24.dp))
+
+    Button(
+      onClick = {
+        scope.launch {
+          isLoading = true
+          errorMessage = null
+
+          // Normalize server URL
+          val normalizedUrl = serverUrl.trimEnd('/')
+
+          when (val result = authApi.login(normalizedUrl, username, password)) {
+            is LoginResult.Success -> {
+              onSaveCredentials(normalizedUrl, username, result.token)
+              onLoginSuccess()
+            }
+            is LoginResult.Error -> {
+              errorMessage = result.message
+            }
+          }
+          isLoading = false
+        }
+      },
+      modifier = Modifier.fillMaxWidth(),
+      enabled =
+        !isLoading &&
+          serverUrl.isNotBlank() &&
+          username.isNotBlank() &&
+          password.isNotBlank(),
+    ) {
+      if (isLoading) {
+        CircularProgressIndicator(
+          modifier = Modifier.size(20.dp),
+          strokeWidth = 2.dp,
+        )
+      } else {
+        Text("Login")
+      }
+    }
+  }
 }

@@ -138,15 +138,19 @@ class HealthConnectSyncWorker(
         Log.d(TAG, "No new inbound data to sync")
       }
 
-      // Step 4: Process outbound sync (backend -> Health Connect)
-      val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
-      processOutboundSync(
-        apiUrl = credentials.apiUrl,
-        authToken = credentials.authToken,
-        httpClient = httpClient,
-        healthConnectClient = healthConnectClient,
-        grantedPermissions = grantedPermissions,
-      )
+      // Step 4: Process outbound sync (backend -> Health Connect).
+      // Reuses grantedPermissions from step 0 above — permissions don't change mid-sync.
+      try {
+        processOutboundSync(
+          apiUrl = credentials.apiUrl,
+          authToken = credentials.authToken,
+          httpClient = httpClient,
+          healthConnectClient = healthConnectClient,
+          grantedPermissions = grantedPermissions,
+        )
+      } catch (e: Exception) {
+        Log.w(TAG, "Outbound sync failed: ${e.message}")
+      }
 
       HrZoneWidgetProvider.triggerUpdate(applicationContext)
       Result.success()
@@ -178,23 +182,17 @@ class HealthConnectSyncWorker(
       val changesResponse = healthConnectClient.getChanges(currentToken)
       val upsertions =
         changesResponse.changes
-          .mapNotNull {
-            if (it is UpsertionChange) it.record else null
-          }.filter { record ->
-            // Skip records written by Aurboda's outbound sync to prevent sync loops
+          .mapNotNull { if (it is UpsertionChange) it.record else null }
+          .filter { record ->
+            // Skip records written by Aurboda's outbound sync to prevent sync loops.
+            // This covers both outbound-synced records (clientRecordId prefix) and
+            // BLE sensor writes (same dataOrigin package), which are already sent
+            // directly to the backend and shouldn't be re-ingested via HC.
             val isOwnOrigin = record.metadata.dataOrigin.packageName == "net.aurboda"
             val isOutboundSync =
               record.metadata.clientRecordId
                 ?.startsWith(OUTBOUND_SYNC_CLIENT_ID_PREFIX) == true
-            if (isOwnOrigin || isOutboundSync) {
-              Log.d(
-                TAG,
-                "Skipping own record: ${record::class.simpleName} (origin=${record.metadata.dataOrigin.packageName}, clientId=${record.metadata.clientRecordId})",
-              )
-              false
-            } else {
-              true
-            }
+            !(isOwnOrigin || isOutboundSync)
           }
 
       if (upsertions.isNotEmpty()) {
