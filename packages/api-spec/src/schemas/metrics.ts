@@ -90,7 +90,13 @@ export type AddMetricBody = z.infer<typeof addMetricBodySchema>
 /**
  * Add metric response.
  */
-export const addMetricResponseSchema = baseResponseSchema.meta({ id: 'AddMetricResponse' })
+export const addMetricResponseSchema = baseResponseSchema
+  .extend({
+    entity_id: z.string().optional().meta({
+      description: 'Composite entity ID for the created metric point (format: time|metric|source)',
+    }),
+  })
+  .meta({ id: 'AddMetricResponse' })
 
 export type AddMetricResponse = z.infer<typeof addMetricResponseSchema>
 

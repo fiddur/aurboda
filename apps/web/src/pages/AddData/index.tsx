@@ -354,12 +354,9 @@ const AddMetricForm = ({ onCreated }: FormProps) => {
         time: metricTimeISO,
         value: parseFloat(value),
       })
-      if (comment.trim() && result.success) {
-        // Backend returns stored time; fall back to the submitted time
-        const storedTime = (result as unknown as { time?: string }).time ?? metricTimeISO
-        const entityId = `${storedTime}|${metric}|aurboda`
+      if (comment.trim() && result.success && result.entity_id) {
         try {
-          await addNote('metric', entityId, comment.trim())
+          await addNote('metric', result.entity_id, comment.trim())
         } catch {
           // Metric was recorded successfully; comment save failed silently
         }
@@ -370,8 +367,8 @@ const AddMetricForm = ({ onCreated }: FormProps) => {
       setError(err.message)
       setSuccess('')
     },
-    onSuccess: () => {
-      if (onCreated('metric', undefined)) return
+    onSuccess: (result) => {
+      if (onCreated('metric', result.entity_id)) return
       setSuccess(`Metric "${metric}" recorded`)
       setError('')
       setValue('')
@@ -459,8 +456,7 @@ export const AddData = () => {
   const handleCreated = useCallback(
     (entityType: string, entityId: string | undefined): boolean => {
       if (addMore) return false
-      if (entityType === 'metric' || !entityId) {
-        // No detail page for metrics; navigate to day view instead
+      if (!entityId) {
         route('/day')
         return true
       }
