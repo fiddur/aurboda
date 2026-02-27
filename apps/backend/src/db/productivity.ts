@@ -1,5 +1,5 @@
 /**
- * RescueTime productivity data storage and retrieval.
+ * Productivity data storage and retrieval (RescueTime, ActivityWatch, etc.)
  */
 import format from 'pg-format'
 import { query } from './connection'
@@ -13,23 +13,27 @@ export const insertProductivity = async (user: string, records: ProductivityReco
     r.start_time,
     r.end_time,
     r.activity,
+    r.title || null,
     r.category,
     r.productivity,
     r.duration_sec,
     r.is_mobile || false,
     r.device_name ?? '',
+    r.resolved_category || null,
   ])
 
   await query(
     user,
     format(
-      `INSERT INTO productivity (source, start_time, end_time, activity, category, productivity, duration_sec, is_mobile, device_name)
+      `INSERT INTO productivity (source, start_time, end_time, activity, title, category, productivity, duration_sec, is_mobile, device_name, resolved_category)
        VALUES %L
        ON CONFLICT (source, start_time, activity, device_name) DO UPDATE SET
          end_time = EXCLUDED.end_time,
+         title = EXCLUDED.title,
          category = EXCLUDED.category,
          productivity = EXCLUDED.productivity,
-         duration_sec = EXCLUDED.duration_sec
+         duration_sec = EXCLUDED.duration_sec,
+         resolved_category = EXCLUDED.resolved_category
        WHERE productivity.deleted_at IS NULL`,
       values,
     ),
@@ -43,7 +47,7 @@ export const getProductivity = async (
 ): Promise<ProductivityRecord[]> => {
   const result = await query(
     user,
-    `SELECT id, source, start_time, end_time, activity, category, productivity, duration_sec, is_mobile, device_name
+    `SELECT id, source, start_time, end_time, activity, title, category, productivity, duration_sec, is_mobile, device_name, resolved_category
      FROM productivity
      WHERE start_time >= $1 AND start_time <= $2
        AND deleted_at IS NULL
@@ -60,8 +64,10 @@ export const getProductivity = async (
     id: row.id,
     is_mobile: row.is_mobile,
     productivity: row.productivity,
+    resolved_category: row.resolved_category || undefined,
     source: row.source,
     start_time: new Date(row.start_time),
+    title: row.title || undefined,
   }))
 }
 
@@ -83,4 +89,45 @@ export const restoreProductivityRecord = async (user: string, id: string): Promi
   )
 
   return (result.rowCount ?? 0) > 0
+}
+
+/**
+ * Batch update resolved_category on productivity records.
+ * Used after category rules change to recategorize all records.
+ */
+export const batchUpdateResolvedCategory = async (
+  user: string,
+  updates: Array<{ id: string; resolved_category: string[] | null }>,
+) => {
+  if (updates.length === 0) return
+
+  // Use a CTE with VALUES for efficient batch update
+  const values = updates.map((u) => [u.id, u.resolved_category])
+
+  await query(
+    user,
+    format(
+      `UPDATE productivity AS p
+       SET resolved_category = v.resolved_category::TEXT[]
+       FROM (VALUES %L) AS v(id, resolved_category)
+       WHERE p.id = v.id::UUID`,
+      values,
+    ),
+  )
+}
+
+/**
+ * Get all non-deleted productivity records (for recategorization).
+ * Returns only id, activity, and title to minimize memory usage.
+ */
+export const getAllProductivityForCategorization = async (
+  user: string,
+): Promise<Array<{ id: string; activity: string; title?: string }>> => {
+  const result = await query(user, `SELECT id, activity, title FROM productivity WHERE deleted_at IS NULL`)
+
+  return result.rows.map((row) => ({
+    activity: row.activity,
+    id: row.id,
+    title: row.title || undefined,
+  }))
 }

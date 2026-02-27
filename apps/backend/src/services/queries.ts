@@ -968,11 +968,13 @@ export interface ProductivityResult {
   start_time: string
   end_time: string
   activity: string
+  title?: string
   category?: string
   productivity?: number
   duration_sec: number
   is_mobile?: boolean
   source?: DataSource
+  resolved_category?: string[]
   comments: CommentSummary[]
 }
 
@@ -1101,9 +1103,11 @@ export async function queryProductivity(
       id: p.id,
       is_mobile: p.is_mobile,
       productivity: p.productivity,
+      resolved_category: p.resolved_category,
       source: p.source,
       source_ids: p.source_ids.length > 1 ? p.source_ids : undefined,
       start_time: p.start_time.toISOString(),
+      title: p.title,
     }
   })
 }
