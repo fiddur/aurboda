@@ -57,6 +57,7 @@ val appJson =
     isLenient = true
     ignoreUnknownKeys = true
     encodeDefaults = true // Important if you have default values and want them in the JSON
+    explicitNulls = false // Omit null fields from JSON; null means "not provided", not "set to null"
   }
 
 // Generic wrapper for POST requests

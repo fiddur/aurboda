@@ -90,11 +90,7 @@ export const getPendingOutboundSync = async (user: string, limit = 100): Promise
  * Acknowledge that an outbound sync entry was successfully written to Health Connect.
  * Updates the status and stores the HC-assigned record ID.
  */
-export const ackOutboundSync = async (
-  user: string,
-  id: string,
-  hcRecordId?: string | null,
-): Promise<boolean> => {
+export const ackOutboundSync = async (user: string, id: string, hcRecordId?: string): Promise<boolean> => {
   const result = await query(
     user,
     `UPDATE outbound_sync_queue
