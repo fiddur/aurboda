@@ -18,11 +18,15 @@ import {
   fetchActivityById,
   fetchCustomMetrics,
   fetchMetricTimeSeriesWithSource,
+  fetchProductivity,
   fetchTagById,
   type MetricDataPointWithSource,
+  type ProductivityRecord,
   restoreActivity,
+  restoreProductivity,
   restoreTag,
   softDeleteActivity,
+  softDeleteProductivity,
   softDeleteTag,
   SourceRecord,
   Tag,
@@ -287,9 +291,67 @@ const MetricDetail = ({ entityId }: { entityId: string }) => {
   )
 }
 
+const productivityScoreLabel = (score: number | undefined | null): string => {
+  switch (score) {
+    case 2:
+      return 'Very Productive'
+    case 1:
+      return 'Productive'
+    case 0:
+      return 'Neutral'
+    case -1:
+      return 'Distracting'
+    case -2:
+      return 'Very Distracting'
+    default:
+      return 'Uncategorized'
+  }
+}
+
+const ProductivityDetail = ({ record }: { record: ProductivityRecord }) => (
+  <div class="entity-info">
+    <div class="entity-meta">
+      <span class="entity-type-badge">screen time</span>
+      {record.is_mobile && <span class="entity-source">Mobile</span>}
+    </div>
+
+    <h2>{record.activity}</h2>
+
+    <div class="entity-fields">
+      <div class="field-row">
+        <span class="field-label">Time</span>
+        <span class="field-value">
+          {formatTime(record.start_time)} – {formatTime(record.end_time)}
+        </span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Duration</span>
+        <span class="field-value">{formatDuration(record.start_time, record.end_time)}</span>
+      </div>
+      {record.category && (
+        <div class="field-row">
+          <span class="field-label">Category</span>
+          <span class="field-value">{record.category}</span>
+        </div>
+      )}
+      <div class="field-row">
+        <span class="field-label">Productivity</span>
+        <span class="field-value">{productivityScoreLabel(record.productivity)}</span>
+      </div>
+      {record.source_ids && record.source_ids.length > 1 && (
+        <div class="field-row">
+          <span class="field-label">Merged spans</span>
+          <span class="field-value">{record.source_ids.length}</span>
+        </div>
+      )}
+    </div>
+  </div>
+)
+
 const deleteEntity = (entityType: EntityType, entityId: string): Promise<void> => {
   if (entityType === 'activity') return softDeleteActivity(entityId)
   if (entityType === 'tag') return softDeleteTag(entityId)
+  if (entityType === 'productivity') return softDeleteProductivity(entityId)
   if (entityType === 'metric') {
     const parsed = parseMetricEntityId(entityId)
     if (!parsed) return Promise.reject(new Error('Invalid metric entity ID'))
@@ -301,6 +363,7 @@ const deleteEntity = (entityType: EntityType, entityId: string): Promise<void> =
 const restoreEntity = (entityType: EntityType, entityId: string): Promise<void> => {
   if (entityType === 'activity') return restoreActivity(entityId)
   if (entityType === 'tag') return restoreTag(entityId)
+  if (entityType === 'productivity') return restoreProductivity(entityId)
   return Promise.reject(new Error('Unsupported entity type for restore'))
 }
 
@@ -436,6 +499,25 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
     staleTime: 60_000,
   })
 
+  // Productivity: fetch a 1-second window around the record start_time to locate it.
+  // We use a broad 24h window keyed on the id; the matching record is found by id.
+  const productivityQuery = useQuery({
+    enabled: entityType === 'productivity',
+    queryFn: async () => {
+      // Fetch a full day's worth of data and find the record by id
+      const now = new Date()
+      const dayStart = new Date(now)
+      dayStart.setHours(0, 0, 0, 0)
+      const dayEnd = new Date(now)
+      dayEnd.setHours(23, 59, 59, 999)
+      // Try today first, then fall back to a wider 7-day window
+      const records = await fetchProductivity(new Date(Date.now() - 7 * 86400000), dayEnd)
+      return records.find((r) => r.id === entityId || r.source_ids?.includes(entityId)) ?? null
+    },
+    queryKey: ['entity-detail', 'productivity', entityId],
+    staleTime: 60_000,
+  })
+
   const invalidateEntity = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['entity-detail', entityType, entityId] })
   }, [queryClient, entityType, entityId])
@@ -443,14 +525,17 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
   const isLoading =
     entityType === 'activity' ? activityQuery.isLoading
     : entityType === 'tag' ? tagQuery.isLoading
+    : entityType === 'productivity' ? productivityQuery.isLoading
     : false // metric detail handles its own loading
   const isError =
     entityType === 'activity' ? activityQuery.isError
     : entityType === 'tag' ? tagQuery.isError
+    : entityType === 'productivity' ? productivityQuery.isError
     : false
 
   const activity = activityQuery.data
   const tag = tagQuery.data
+  const productivityRecord = productivityQuery.data
 
   const isDeleted =
     entityType === 'activity' ? Boolean(activity?.deleted_at)
@@ -511,10 +596,10 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
     saveMutation.mutate()
   }, [saveMutation])
 
-  // Collect all entity IDs for notes (primary + source records for merged activities)
+  // Collect all entity IDs for notes (primary + source records for merged activities/productivity)
   const allEntityIds =
-    entityType === 'activity' && activity?.source_records ?
-      activity.source_records.map((r) => r.id)
+    entityType === 'activity' && activity?.source_records ? activity.source_records.map((r) => r.id)
+    : entityType === 'productivity' && productivityRecord?.source_ids ? productivityRecord.source_ids
     : undefined
 
   if (isLoading) return <p class="loading">Loading…</p>
@@ -548,6 +633,9 @@ const EntityContent = ({ entityType, entityId }: { entityType: EntityType; entit
         />
       )}
       {entityType === 'tag' && tag && <TagDetail tag={tag} />}
+      {entityType === 'productivity' && productivityRecord && (
+        <ProductivityDetail record={productivityRecord} />
+      )}
       {entityType === 'metric' && <MetricDetail entityId={entityId} />}
 
       <NotesSection entityType={entityType} entityId={rawEntityId} allEntityIds={allEntityIds} />
