@@ -1131,6 +1131,7 @@ describe('mergeProductivitySpans', () => {
         category: 'Software Development',
         duration_sec: 300,
         end_time: new Date('2024-01-15T10:05:00Z'),
+        id: 'id-1',
         productivity: 2,
         start_time: new Date('2024-01-15T10:00:00Z'),
       },
@@ -1139,6 +1140,7 @@ describe('mergeProductivitySpans', () => {
         category: 'Software Development',
         duration_sec: 300,
         end_time: new Date('2024-01-15T10:10:00Z'),
+        id: 'id-2',
         productivity: 2,
         start_time: new Date('2024-01-15T10:05:00Z'),
       },
@@ -1147,16 +1149,18 @@ describe('mergeProductivitySpans', () => {
         category: 'Software Development',
         duration_sec: 300,
         end_time: new Date('2024-01-15T10:15:00Z'),
+        id: 'id-3',
         productivity: 2,
         start_time: new Date('2024-01-15T10:10:00Z'),
       },
     ])
 
     expect(result).toHaveLength(1)
-    expect(result[0].activity).toBe('emacs')
-    expect(result[0].start_time).toEqual(new Date('2024-01-15T10:00:00Z'))
-    expect(result[0].end_time).toEqual(new Date('2024-01-15T10:15:00Z'))
-    expect(result[0].duration_sec).toBe(900)
+    expect(result[0]!.activity).toBe('emacs')
+    expect(result[0]!.start_time).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(result[0]!.end_time).toEqual(new Date('2024-01-15T10:15:00Z'))
+    expect(result[0]!.duration_sec).toBe(900)
+    expect(result[0]!.source_ids).toEqual(['id-1', 'id-2', 'id-3'])
   })
 
   test('does not merge spans for different activities', () => {
@@ -1223,7 +1227,43 @@ describe('mergeProductivitySpans', () => {
     expect(result).toHaveLength(2)
   })
 
-  test('merges interleaved activities separately', () => {
+  test('merges interleaved same-activity spans within gap threshold', () => {
+    // emacs → firefox (30s) → emacs: the two emacs spans are within 2 min of each other
+    const result = mergeProductivitySpans([
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:05:00Z'),
+        id: 'id-emacs-1',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'firefox',
+        duration_sec: 30,
+        end_time: new Date('2024-01-15T10:05:30Z'),
+        id: 'id-firefox-1',
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      },
+      {
+        activity: 'emacs',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T10:10:30Z'),
+        id: 'id-emacs-2',
+        start_time: new Date('2024-01-15T10:05:30Z'),
+      },
+    ])
+
+    // emacs spans merge (gap = 30s < 2min); firefox stays separate
+    expect(result).toHaveLength(2)
+    const emacs = result.find((r) => r.activity === 'emacs')!
+    expect(emacs.start_time).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(emacs.end_time).toEqual(new Date('2024-01-15T10:10:30Z'))
+    expect(emacs.duration_sec).toBe(600) // only actual emacs time, not the firefox gap
+    expect(emacs.source_ids).toEqual(['id-emacs-1', 'id-emacs-2'])
+  })
+
+  test('does not merge interleaved same-activity spans when gap exceeds threshold', () => {
+    // emacs → firefox (5 min) → emacs: gap too large, stays as 2 separate emacs spans
     const result = mergeProductivitySpans([
       {
         activity: 'emacs',
@@ -1245,8 +1285,161 @@ describe('mergeProductivitySpans', () => {
       },
     ])
 
-    // emacs-firefox-emacs should remain 3 separate spans since emacs is not consecutive
     expect(result).toHaveLength(3)
+  })
+
+  test('real-world ActivityWatch pattern: rapid Alacritty/firefox interleaving', () => {
+    // Derived from actual MCP data: 06:00-07:10 on 2026-02-27
+    // Sub-second granularity, lots of 3-30s switches between terminal and browser
+    const records = [
+      {
+        activity: 'Alacritty',
+        duration_sec: 257,
+        end_time: new Date('2026-02-27T06:04:18Z'),
+        id: 'a1',
+        start_time: new Date('2026-02-27T06:00:01Z'),
+      },
+      {
+        activity: 'firefox',
+        duration_sec: 3,
+        end_time: new Date('2026-02-27T06:04:22Z'),
+        id: 'f1',
+        start_time: new Date('2026-02-27T06:04:18Z'),
+      },
+      {
+        activity: 'Alacritty',
+        duration_sec: 11,
+        end_time: new Date('2026-02-27T06:04:34Z'),
+        id: 'a2',
+        start_time: new Date('2026-02-27T06:04:23Z'),
+      },
+      {
+        activity: 'firefox',
+        duration_sec: 7,
+        end_time: new Date('2026-02-27T06:04:42Z'),
+        id: 'f2',
+        start_time: new Date('2026-02-27T06:04:35Z'),
+      },
+      {
+        activity: 'Alacritty',
+        duration_sec: 0,
+        end_time: new Date('2026-02-27T06:04:43Z'),
+        id: 'a3',
+        start_time: new Date('2026-02-27T06:04:43Z'),
+      },
+      {
+        activity: 'firefox',
+        duration_sec: 13,
+        end_time: new Date('2026-02-27T06:04:58Z'),
+        id: 'f3',
+        start_time: new Date('2026-02-27T06:04:44Z'),
+      },
+      {
+        activity: 'Alacritty',
+        duration_sec: 66,
+        end_time: new Date('2026-02-27T06:06:06Z'),
+        id: 'a4',
+        start_time: new Date('2026-02-27T06:04:59Z'),
+      },
+      {
+        activity: 'Alacritty',
+        duration_sec: 3,
+        end_time: new Date('2026-02-27T06:06:10Z'),
+        id: 'a5',
+        start_time: new Date('2026-02-27T06:06:07Z'),
+      },
+      {
+        activity: 'Alacritty',
+        duration_sec: 21,
+        end_time: new Date('2026-02-27T06:06:35Z'),
+        id: 'a6',
+        start_time: new Date('2026-02-27T06:06:14Z'),
+      },
+      {
+        activity: 'Alacritty',
+        duration_sec: 1,
+        end_time: new Date('2026-02-27T06:06:39Z'),
+        id: 'a7',
+        start_time: new Date('2026-02-27T06:06:38Z'),
+      },
+      {
+        activity: 'firefox',
+        duration_sec: 16,
+        end_time: new Date('2026-02-27T06:07:02Z'),
+        id: 'f4',
+        start_time: new Date('2026-02-27T06:06:40Z'),
+      },
+      {
+        activity: 'Alacritty',
+        duration_sec: 3,
+        end_time: new Date('2026-02-27T06:07:06Z'),
+        id: 'a8',
+        start_time: new Date('2026-02-27T06:07:03Z'),
+      },
+      {
+        activity: 'Alacritty',
+        duration_sec: 173,
+        end_time: new Date('2026-02-27T06:10:01Z'),
+        id: 'a9',
+        start_time: new Date('2026-02-27T06:07:08Z'),
+      },
+      {
+        activity: 'Alacritty',
+        duration_sec: 241,
+        end_time: new Date('2026-02-27T06:14:02Z'),
+        id: 'a10',
+        start_time: new Date('2026-02-27T06:10:01Z'),
+      },
+    ]
+
+    const result = mergeProductivitySpans(records)
+
+    // All Alacritty spans should merge into one (max gap between consecutive Alacritty ≤ 2min)
+    const alacrittySpans = result.filter((r) => r.activity === 'Alacritty')
+    expect(alacrittySpans).toHaveLength(1)
+    expect(alacrittySpans[0]!.start_time).toEqual(new Date('2026-02-27T06:00:01Z'))
+    expect(alacrittySpans[0]!.end_time).toEqual(new Date('2026-02-27T06:14:02Z'))
+    // duration_sec is the sum of actual Alacritty time only (not firefox gaps)
+    expect(alacrittySpans[0]!.duration_sec).toBe(257 + 11 + 0 + 66 + 3 + 21 + 1 + 3 + 173 + 241)
+    expect(alacrittySpans[0]!.source_ids).toContain('a1')
+    expect(alacrittySpans[0]!.source_ids).toContain('a10')
+
+    // All firefox spans merge into one (all gaps ≤ 2min)
+    const firefoxSpans = result.filter((r) => r.activity === 'firefox')
+    expect(firefoxSpans).toHaveLength(1)
+    expect(firefoxSpans[0]!.duration_sec).toBe(3 + 7 + 13 + 16)
+  })
+
+  test('zero-duration blip records are absorbed into the surrounding span', () => {
+    // A 0-second focus event (e.g. system notification stealing focus briefly)
+    const result = mergeProductivitySpans([
+      {
+        activity: 'Alacritty',
+        duration_sec: 60,
+        end_time: new Date('2024-01-15T10:01:00Z'),
+        id: 'a1',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'plasmashell',
+        duration_sec: 0,
+        end_time: new Date('2024-01-15T10:01:00Z'),
+        id: 'p1',
+        start_time: new Date('2024-01-15T10:01:00Z'),
+      },
+      {
+        activity: 'Alacritty',
+        duration_sec: 60,
+        end_time: new Date('2024-01-15T10:02:00Z'),
+        id: 'a2',
+        start_time: new Date('2024-01-15T10:01:00Z'),
+      },
+    ])
+
+    // Alacritty spans on either side of a 0-sec plasmashell event should merge
+    const alacritty = result.find((r) => r.activity === 'Alacritty')!
+    expect(alacritty.duration_sec).toBe(120)
+    expect(alacritty.source_ids).toEqual(['a1', 'a2'])
   })
 
   test('handles empty input', () => {
@@ -1262,7 +1455,8 @@ describe('mergeProductivitySpans', () => {
     }
     const result = mergeProductivitySpans([record])
     expect(result).toHaveLength(1)
-    expect(result[0]).toEqual(record)
+    expect(result[0]).toMatchObject(record)
+    expect(result[0]!.source_ids).toEqual([]) // no id on input record, so no source_ids collected
   })
 
   test('does not merge desktop and mobile spans for same activity', () => {

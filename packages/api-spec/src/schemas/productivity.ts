@@ -24,6 +24,10 @@ export const productivityRecordSchema = z
     end_time: iso8601DateTimeSchema,
     id: z.string().uuid().optional().meta({ description: 'Productivity record ID' }),
     is_mobile: z.boolean().optional().meta({ description: 'Whether activity was on mobile' }),
+    source_ids: z
+      .array(z.string().uuid())
+      .optional()
+      .meta({ description: 'IDs of all constituent records when spans were merged' }),
     productivity: z.number().int().optional().meta({
       description: 'Productivity score (-2 to 2)',
       example: 2,

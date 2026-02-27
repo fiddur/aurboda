@@ -960,9 +960,11 @@ export async function queryActivities(
 
 /**
  * Productivity record with formatted timestamps.
+ * source_ids lists all original record IDs that were merged into this span.
  */
 export interface ProductivityResult {
   id?: string
+  source_ids?: string[]
   start_time: string
   end_time: string
   activity: string
@@ -974,25 +976,41 @@ export interface ProductivityResult {
 }
 
 /**
- * Maximum gap (ms) between spans that still counts as "consecutive".
- * RescueTime often has small gaps (e.g. end 06:39:59, next start 06:40:00).
- * 2 minutes covers these gaps without merging truly separate sessions.
+ * Maximum gap (ms) between spans of the same activity that are still merged.
+ * Applies both to directly consecutive spans and to spans separated by other
+ * activities (interleave merging). 2 minutes covers RescueTime rounding gaps
+ * and typical rapid window switches (e.g. terminal → browser → terminal).
  */
 const MERGE_GAP_MS = 2 * 60 * 1000
 
+/** Internal type that tracks source IDs through the merge pipeline. */
+type MergeRecord = ProductivityRecord & { source_ids: string[] }
+
 /**
- * Merge consecutive productivity spans for the same activity/is_mobile.
- * Two spans are merged when the gap between prev.end_time and current.start_time
- * is at most MERGE_GAP_MS and they share the same activity name and is_mobile flag.
+ * Merge productivity spans for the same activity/is_mobile, in two phases:
+ *
+ * Phase 1 — sequential: adjacent spans of the same activity within MERGE_GAP_MS
+ * are collapsed (handles RescueTime minute-boundary rounding).
+ *
+ * Phase 2 — interleave: spans of the same activity separated only by short
+ * bursts of other apps (total interleaved gap ≤ MERGE_GAP_MS) are merged into
+ * a single span. duration_sec accumulates only the actual time in that app;
+ * source_ids tracks all original record IDs that were consolidated.
+ *
+ * Records must arrive sorted by start_time (the DB query guarantees this).
  */
-export function mergeProductivitySpans(records: ProductivityRecord[]): ProductivityRecord[] {
+// eslint-disable-next-line complexity -- two-phase merge algorithm is inherently branchy
+export function mergeProductivitySpans(
+  records: ProductivityRecord[],
+): (ProductivityRecord & { source_ids: string[] })[] {
   if (records.length === 0) return []
 
-  const merged: ProductivityRecord[] = [{ ...records[0] }]
+  // --- Phase 1: sequential merge (same as before) ---
+  const phase1: MergeRecord[] = [{ ...records[0]!, source_ids: records[0]!.id ? [records[0]!.id] : [] }]
 
   for (let i = 1; i < records.length; i++) {
-    const current = records[i]
-    const prev = merged[merged.length - 1]
+    const current = records[i]!
+    const prev = phase1[phase1.length - 1]!
 
     const sameActivity = current.activity === prev.activity
     const sameMobile = (current.is_mobile ?? false) === (prev.is_mobile ?? false)
@@ -1002,12 +1020,48 @@ export function mergeProductivitySpans(records: ProductivityRecord[]): Productiv
     if (sameActivity && sameMobile && closeEnough) {
       prev.end_time = current.end_time
       prev.duration_sec += current.duration_sec
+      if (current.id) prev.source_ids.push(current.id)
     } else {
-      merged.push({ ...current })
+      phase1.push({ ...current, source_ids: current.id ? [current.id] : [] })
     }
   }
 
-  return merged
+  // --- Phase 2: interleave merge ---
+  // Walk forward; for each span check whether the most-recent span of the same
+  // activity ended within MERGE_GAP_MS. If so, extend that earlier span and
+  // drop the current one from the output.
+  const phase2: MergeRecord[] = []
+  // Maps "activity|is_mobile" → index in phase2 of the last span for that key
+  const lastIndexFor = new Map<string, number>()
+
+  for (const span of phase1) {
+    const key = `${span.activity}|${span.is_mobile ?? false}`
+    const prevIdx = lastIndexFor.get(key)
+
+    if (prevIdx !== undefined) {
+      const prev = phase2[prevIdx]!
+      const gap = span.start_time.getTime() - prev.end_time.getTime()
+
+      if (gap >= 0 && gap <= MERGE_GAP_MS) {
+        // Extend the earlier span; add this span's duration and source IDs
+        prev.end_time = span.end_time
+        prev.duration_sec += span.duration_sec
+        prev.source_ids.push(...span.source_ids)
+        // Update the index so future same-activity spans compare against the
+        // latest end_time (which is now in the same slot prevIdx)
+        lastIndexFor.set(key, prevIdx)
+        continue
+      }
+    }
+
+    // No mergeable predecessor — emit as a new span
+    lastIndexFor.set(key, phase2.length)
+    phase2.push({ ...span })
+  }
+
+  // Re-sort by start_time (interleave merging preserves the first-span position
+  // but later spans may slot earlier ones after others are skipped)
+  return phase2.sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 }
 
 /**
@@ -1027,19 +1081,29 @@ export async function queryProductivity(
 
   const productivity = await getProductivity(user, start, end)
   const merged = mergeProductivitySpans(productivity)
-  const prodIds = merged.map((p) => p.id).filter((id): id is string => id !== undefined)
-  const commentsMap = await getCommentsMap(user, 'productivity', prodIds)
-  return merged.map((p) => ({
-    activity: p.activity,
-    category: p.category,
-    comments: p.id ? (commentsMap.get(p.id) ?? []) : [],
-    duration_sec: p.duration_sec,
-    end_time: p.end_time.toISOString(),
-    id: p.id,
-    is_mobile: p.is_mobile,
-    productivity: p.productivity,
-    start_time: p.start_time.toISOString(),
-  }))
+  // Fetch comments for all source IDs so comments on any constituent record surface
+  const allIds = merged.flatMap((p) =>
+    p.source_ids.length > 0 ? p.source_ids
+    : p.id ? [p.id]
+    : [],
+  )
+  const commentsMap = await getCommentsMap(user, 'productivity', allIds)
+  return merged.map((p) => {
+    // Collect comments from all source IDs for this merged span
+    const comments = p.source_ids.flatMap((sid) => commentsMap.get(sid) ?? [])
+    return {
+      activity: p.activity,
+      category: p.category,
+      comments,
+      duration_sec: p.duration_sec,
+      end_time: p.end_time.toISOString(),
+      id: p.id,
+      is_mobile: p.is_mobile,
+      productivity: p.productivity,
+      source_ids: p.source_ids.length > 1 ? p.source_ids : undefined,
+      start_time: p.start_time.toISOString(),
+    }
+  })
 }
 
 /**
