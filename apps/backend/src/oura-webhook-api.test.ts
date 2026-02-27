@@ -135,6 +135,7 @@ describe('oura-webhook-api', () => {
         'daily_resilience',
         'daily_sleep',
         'session',
+        'sleep',
         'enhanced_tag',
       ])
     })

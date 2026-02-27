@@ -22,6 +22,22 @@ type OuraSession = {
   motion_count: unknown
 }
 
+/** Raw Oura sleep period record from /v2/usercollection/sleep */
+export type OuraSleepPeriodRaw = {
+  id: string
+  type: string // 'long_sleep' | 'sleep' | 'rest'
+  bedtime_start: string
+  bedtime_end: string
+  sleep_phase_5_min: string | null
+  heart_rate: { interval: number; items: (number | null)[] } | null
+  heart_rate_variability: { interval: number; items: (number | null)[] } | null
+  average_hrv: number | null
+  lowest_heart_rate: number | null
+  average_heart_rate: number | null
+  readiness_score_delta: number | null
+  day: string
+}
+
 export interface OuraClientOptions {
   onUserAuthenticated?: (ouraUserId: string, username: string) => Promise<void>
 }
@@ -153,6 +169,7 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
         ({ timestamp }: { timestamp: string }) => isBefore(timestamp, end) && isAfter(timestamp, start),
       )
     },
+
     async getSessions(start: Date, end: Date, token: string) {
       // id: 'ab6b5798-2ecf-41cd-a0dc-7974796e49a4',
       // day: '2025-09-06',
@@ -177,6 +194,13 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
         .filter(({ startTime, endTime }) => isBefore(startTime, end) && isAfter(endTime, start))
 
       return sessions
+    },
+
+    async getSleep(start: Date, end: Date, token: string): Promise<OuraSleepPeriodRaw[]> {
+      const data = (await getGeneric('sleep', start, end, token)) as OuraSleepPeriodRaw[]
+      return data.filter(
+        ({ bedtime_start, bedtime_end }) => isBefore(bedtime_start, end) && isAfter(bedtime_end, start),
+      )
     },
     async getTags(
       start: Date,
