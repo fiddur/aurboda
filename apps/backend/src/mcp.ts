@@ -16,6 +16,7 @@ import { registerLocationTools } from './mcp/location-tools'
 import { registerMetricTools } from './mcp/metric-tools'
 import { registerNoteTools } from './mcp/note-tools'
 import { registerQueryTools } from './mcp/query-tools'
+import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools'
 import { registerSettingsTools } from './mcp/settings-tools'
 import { registerSyncTools } from './mcp/sync-tools'
 import { registerTagTools } from './mcp/tag-tools'
@@ -79,6 +80,7 @@ export function createMcpRouter(
     registerCorrelationTools(server, user, sync)
     registerTrendTools(server, user)
     registerNoteTools(server, user)
+    registerScreentimeCategoryTools(server, user)
 
     return server
   }

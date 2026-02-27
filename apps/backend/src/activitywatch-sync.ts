@@ -7,8 +7,9 @@
  * See docs/activitywatch.md for setup instructions.
  */
 import type { ActivityWatchEvent, ActivityWatchSyncResult } from '@aurboda/api-spec'
-import { insertProductivity, upsertSyncState } from './db'
+import { getScreentimeCategories, insertProductivity, upsertSyncState } from './db'
 import type { ProductivityRecord } from './db/types'
+import { categorizeRecords, compileRules } from './services/screentime-categories'
 
 /**
  * Process a batch of ActivityWatch events from a push agent.
@@ -40,8 +41,16 @@ export const processActivityWatchEvents = async (
         productivity: undefined,
         source: 'activitywatch',
         start_time: startTime,
+        title: event.title || undefined,
       }
     })
+
+    // Resolve categories if user has screentime rules configured
+    const categories = await getScreentimeCategories(user)
+    if (categories.length > 0) {
+      const compiledRules = compileRules(categories)
+      categorizeRecords(records, compiledRules)
+    }
 
     await insertProductivity(user, records)
 
