@@ -47,6 +47,7 @@ import { createDashboardRouter } from './routes/dashboard-router'
 import { createLocationsRouter } from './routes/locations-router'
 import { createMetricsRouter } from './routes/metrics-router'
 import { createNotesRouter } from './routes/notes-router'
+import { createScreentimeCategoriesRouter } from './routes/screentime-categories-router'
 import { createSettingsRouter } from './routes/settings-router'
 import { createTagsRouter } from './routes/tags-router'
 import { createTrendsRouter } from './routes/trends-router'
@@ -440,6 +441,7 @@ const main = async () => {
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/trends', createTrendsRouter(authMiddleware))
+  httpd.use('/screentime-categories', createScreentimeCategoriesRouter(authMiddleware))
   httpd.use(
     '/admin',
     createAdminRouter(

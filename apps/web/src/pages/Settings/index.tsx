@@ -4,6 +4,7 @@ import { useCallback, useState } from 'preact/hooks'
 import { CustomMetricsSettings } from '../../components/CustomMetricsSettings'
 import { GoalsSettings } from '../../components/GoalsSettings'
 import { LastFmTagRulesSettings } from '../../components/LastFmTagRulesSettings'
+import { ScreentimeCategoriesSettings } from '../../components/ScreentimeCategoriesSettings'
 import { TagMappingsSettings } from '../../components/TagMappingsSettings'
 import { API_URL } from '../../config'
 import {
@@ -537,6 +538,8 @@ export function Settings() {
           <p class="field-description">Using default thresholds (or age-based if birth date is set).</p>
         )}
       </section>
+
+      <ScreentimeCategoriesSettings />
 
       <CustomMetricsSettings />
 

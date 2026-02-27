@@ -199,12 +199,41 @@ export interface ProductivityRecord {
   start_time: Date
   end_time: Date
   activity: string
+  title?: string
   category?: string
   productivity?: number
   duration_sec: number
   is_mobile?: boolean
   device_name?: string
+  resolved_category?: string[]
   deleted_at?: Date
+}
+
+// ============================================================================
+// Screentime Categories
+// ============================================================================
+
+export interface ScreentimeCategory {
+  id: string
+  name: string[]
+  rule_type: 'regex' | 'none'
+  rule_regex?: string
+  ignore_case: boolean
+  color?: string
+  score?: number
+  sort_order: number
+  created_at: Date
+  updated_at: Date
+}
+
+export interface ScreentimeCategoryInput {
+  name: string[]
+  rule_type: 'regex' | 'none'
+  rule_regex?: string
+  ignore_case?: boolean
+  color?: string
+  score?: number
+  sort_order?: number
 }
 
 // ============================================================================

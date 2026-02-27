@@ -1,0 +1,142 @@
+/**
+ * Screentime categories route group.
+ *
+ * Handles: /screentime-categories/*
+ */
+import {
+  type CreateScreentimeCategoryBody,
+  createScreentimeCategoryBodySchema,
+  type ImportAwCategoriesBody,
+  importAwCategoriesBodySchema,
+  type UpdateScreentimeCategoryBody,
+  updateScreentimeCategoryBodySchema,
+} from '@aurboda/api-spec'
+import { type RequestHandler, Router } from 'express'
+import {
+  createCategory,
+  fetchAwCategories,
+  getCategoryById,
+  importFromActivityWatch,
+  listCategories,
+  modifyCategory,
+  recategorizeAll,
+  removeCategory,
+} from '../services/screentime-categories'
+import { validateBody } from '../validation'
+
+export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler): Router => {
+  const router = Router()
+
+  // GET / - List all categories
+  router.get('/', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const categories = await listCategories(user)
+    res.json({ data: categories, success: true })
+  })
+
+  // GET /:id - Get a single category
+  router.get<{ id: string }>('/:id', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const category = await getCategoryById(user, req.params.id)
+    if (!category) {
+      res.status(404).json({ error: 'Category not found', success: false })
+      return
+    }
+    res.json({ data: category, success: true })
+  })
+
+  // POST / - Create a category
+  router.post('/', authMiddleware, validateBody(createScreentimeCategoryBodySchema), async (req, res) => {
+    const user = req.user!
+    const body = req.body as CreateScreentimeCategoryBody
+    const category = await createCategory(user, {
+      color: body.color,
+      ignore_case: body.ignore_case ?? true,
+      name: body.name,
+      rule_regex: body.rule_regex,
+      rule_type: body.rule_type ?? 'none',
+      score: body.score,
+      sort_order: body.sort_order,
+    })
+    res.status(201).json({ data: category, success: true })
+  })
+
+  // PUT /:id - Update a category
+  router.put<{ id: string }>(
+    '/:id',
+    authMiddleware,
+    validateBody(updateScreentimeCategoryBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const body = req.body as UpdateScreentimeCategoryBody
+      const category = await modifyCategory(user, req.params.id, body)
+      if (!category) {
+        res.status(404).json({ error: 'Category not found', success: false })
+        return
+      }
+      res.json({ data: category, success: true })
+    },
+  )
+
+  // DELETE /:id - Delete a category and its children
+  router.delete<{ id: string }>('/:id', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const count = await removeCategory(user, req.params.id)
+    if (count === 0) {
+      res.status(404).json({ error: 'Category not found', success: false })
+      return
+    }
+    res.json({ deleted: count, success: true })
+  })
+
+  // POST /import-activitywatch - Import categories from ActivityWatch
+  router.post(
+    '/import-activitywatch',
+    authMiddleware,
+    validateBody(importAwCategoriesBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const body = req.body as ImportAwCategoriesBody
+
+      try {
+        let awCategories = body.categories
+
+        if (!awCategories) {
+          // Fetch from ActivityWatch server
+          const serverUrl = body.url || 'http://localhost:5600'
+          awCategories = await fetchAwCategories(serverUrl)
+        }
+
+        const result = await importFromActivityWatch(user, awCategories, body.replace ?? false)
+        res.json({ data: result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Import failed'
+        res.status(400).json({ error: message, success: false })
+      }
+    },
+  )
+
+  // POST /recategorize - Force full recategorization
+  router.post('/recategorize', authMiddleware, async (req, res) => {
+    const user = req.user!
+
+    // Start recategorization and respond immediately
+    const countPromise = recategorizeAll(user)
+
+    try {
+      const count = await countPromise
+      res.json({ records_updated: count, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Recategorization failed'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  // GET /defaults - Get default category suggestions
+  router.get('/defaults', authMiddleware, async (_req, res) => {
+    const { defaultScreentimeCategories } = await import('@aurboda/api-spec')
+    res.json({ data: defaultScreentimeCategories, success: true })
+  })
+
+  return router
+}
