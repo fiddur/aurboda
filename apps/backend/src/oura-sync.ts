@@ -18,7 +18,7 @@ import {
   TimeSeriesPoint,
   upsertSyncState,
 } from './db'
-import { ouraClient } from './oura'
+import { ouraClient, type OuraSleepPeriodRaw } from './oura'
 import { MetricType } from './schema'
 
 /** Oura data types that can be synced */
@@ -28,6 +28,7 @@ export type OuraDataType =
   | 'dailyResilience'
   | 'dailySleep'
   | 'sessions'
+  | 'sleep'
   | 'tags'
 
 /** Default start date for historical sync (90 days back) */
@@ -345,6 +346,137 @@ const processSessions = async (user: string, data: OuraSession[]) => {
   }
 }
 
+// ── Oura sleep period processing ─────────────────────────────────────────────
+
+/**
+ * Mapping from Oura sleep_phase_5_min digits to Health Connect stage numbers.
+ *
+ * Oura encoding:  1=deep, 2=light, 3=REM, 4=awake
+ * HC encoding:    1=awake, 2=sleeping/unknown, 4=light, 5=deep, 6=REM
+ */
+const OURA_PHASE_TO_HC_STAGE: Record<string, number> = {
+  '1': 5, // deep
+  '2': 4, // light
+  '3': 6, // REM
+  '4': 1, // awake
+}
+
+interface SleepStage {
+  startTime: string
+  endTime: string
+  stage: number
+}
+
+/**
+ * Convert Oura's sleep_phase_5_min string into Health Connect sleep stages.
+ *
+ * Each character represents a 5-minute epoch starting from bedtimeStart.
+ * Consecutive same-stage epochs are merged into a single entry.
+ */
+export const convertOuraSleepPhases = (phases: string | null, bedtimeStart: Date): SleepStage[] => {
+  if (!phases) return []
+
+  const stages: SleepStage[] = []
+  const epochMs = 5 * 60 * 1000
+
+  let currentStage: number | null = null
+  let stageStart: Date | null = null
+
+  for (let i = 0; i < phases.length; i++) {
+    const hcStage = OURA_PHASE_TO_HC_STAGE[phases[i]]
+    if (hcStage === undefined) continue // skip unknown digits
+
+    const epochStart = new Date(bedtimeStart.getTime() + i * epochMs)
+
+    if (hcStage !== currentStage) {
+      // Close previous stage
+      if (currentStage !== null && stageStart !== null) {
+        stages.push({
+          endTime: epochStart.toISOString(),
+          stage: currentStage,
+          startTime: stageStart.toISOString(),
+        })
+      }
+      currentStage = hcStage
+      stageStart = epochStart
+    }
+  }
+
+  // Close final stage
+  if (currentStage !== null && stageStart !== null) {
+    const finalEnd = new Date(bedtimeStart.getTime() + phases.length * epochMs)
+    stages.push({
+      endTime: finalEnd.toISOString(),
+      stage: currentStage,
+      startTime: stageStart.toISOString(),
+    })
+  }
+
+  return stages
+}
+
+/** Map Oura sleep period type to Aurboda activity type. */
+const OURA_SLEEP_TYPE_MAP: Record<string, 'sleep' | 'nap' | 'meditation'> = {
+  long_sleep: 'sleep',
+  rest: 'meditation',
+  sleep: 'nap',
+}
+
+/**
+ * Process Oura individual sleep period data (night sleep, naps, rest).
+ */
+const processSleep = async (user: string, data: OuraSleepPeriodRaw[]) => {
+  for (const record of data) {
+    const bedtimeStart = new Date(record.bedtime_start)
+    const bedtimeEnd = new Date(record.bedtime_end)
+
+    await insertRawRecord(user, {
+      data: record as unknown as Record<string, unknown>,
+      external_id: record.id,
+      record_type: 'sleep',
+      recorded_at: bedtimeStart,
+      source: 'oura',
+    })
+
+    const activityType = OURA_SLEEP_TYPE_MAP[record.type] ?? 'sleep'
+    const stages = convertOuraSleepPhases(record.sleep_phase_5_min, bedtimeStart)
+
+    const titleMap: Record<string, string> = {
+      long_sleep: 'Sleep',
+      rest: 'Rest',
+      sleep: 'Nap',
+    }
+
+    await insertActivity(user, {
+      activity_type: activityType,
+      data: {
+        averageHeartRate: record.average_heart_rate,
+        averageHrv: record.average_hrv,
+        lowestHeartRate: record.lowest_heart_rate,
+        ouraType: record.type,
+        stages,
+      },
+      end_time: bedtimeEnd,
+      source: 'oura',
+      start_time: bedtimeStart,
+      title: titleMap[record.type] ?? record.type,
+    })
+
+    // Extract HR and HRV interval data to time series
+    const hrPoints = extractIntervalPoints(bedtimeStart, record.heart_rate ?? undefined, 'heart_rate')
+    const hrvPoints = extractIntervalPoints(
+      bedtimeStart,
+      record.heart_rate_variability ?? undefined,
+      'hrv_rmssd',
+    )
+    const timeSeriesPoints = [...hrPoints, ...hrvPoints]
+
+    if (timeSeriesPoints.length > 0) {
+      await insertTimeSeries(user, timeSeriesPoints)
+    }
+  }
+}
+
 /**
  * Process Oura tag data.
  */
@@ -391,6 +523,9 @@ export const processOuraData = async (
       break
     case 'sessions':
       await processSessions(user, data as OuraSession[])
+      break
+    case 'sleep':
+      await processSleep(user, data as OuraSleepPeriodRaw[])
       break
     case 'tags':
       await processTags(user, data as Tag[])
@@ -468,6 +603,9 @@ export const syncOuraDataType = async (
         break
       case 'sessions':
         data = await oura.getSessions(start, end, accessToken)
+        break
+      case 'sleep':
+        data = await oura.getSleep(start, end, accessToken)
         break
       case 'tags': {
         const settings = await getUserSettings(user)
@@ -547,6 +685,7 @@ export const syncAllOuraData = async (
     'dailyResilience',
     'dailySleep',
     'sessions',
+    'sleep',
     'tags',
   ]
 

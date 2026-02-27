@@ -6,8 +6,10 @@
  */
 
 import { addMinutes, isBefore, isFuture, subDays } from 'date-fns'
-import { getSyncState, insertProductivity, SyncState, upsertSyncState } from './db'
+import { getScreentimeCategories, getSyncState, insertProductivity, SyncState, upsertSyncState } from './db'
+import type { ProductivityRecord } from './db/types'
 import { rescuetimeClient } from './rescuetime'
+import { categorizeRecords, compileRules } from './services/screentime-categories'
 
 /** Default start date for historical sync (30 days back) */
 const DEFAULT_SYNC_HISTORY_DAYS = 30
@@ -84,7 +86,7 @@ export const syncRescueTimeData = async (
     const data = await client.getIntervalData(start, end)
 
     // Store the data
-    const productivityRecords = data.map((r) => ({
+    const productivityRecords: ProductivityRecord[] = data.map((r) => ({
       activity: r.activity,
       category: r.category,
       duration_sec: r.duration,
@@ -95,7 +97,13 @@ export const syncRescueTimeData = async (
       start_time: r.startTime,
     }))
 
+    // Resolve categories if user has screentime rules configured
     if (productivityRecords.length > 0) {
+      const categories = await getScreentimeCategories(user)
+      if (categories.length > 0) {
+        const compiledRules = compileRules(categories)
+        categorizeRecords(productivityRecords, compiledRules)
+      }
       await insertProductivity(user, productivityRecords)
     }
 

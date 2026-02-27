@@ -73,6 +73,15 @@
   font-size: 1.5rem;
 }
 
+.entity-subtitle {
+  margin: -0.75rem 0 1rem;
+  font-size: 0.9rem;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .entity-fields {
   display: flex;
   flex-direction: column;
@@ -654,6 +663,10 @@
 
   .entity-info h2 {
     color: #f3f4f6;
+  }
+
+  .entity-subtitle {
+    color: #9ca3af;
   }
 
   .field-label {

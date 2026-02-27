@@ -1,0 +1,307 @@
+/* Screentime Categories Settings */
+.sc-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 1.25rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.sc-row:last-child {
+  border-bottom: none;
+}
+
+.sc-row.editing {
+  flex-direction: column;
+  align-items: stretch;
+  background: #fafafa;
+}
+
+.sc-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sc-color-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sc-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.sc-regex {
+  font-size: 0.8rem;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-score {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.sc-actions {
+  display: flex;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+/* Edit mode */
+.sc-edit-fields {
+  width: 100%;
+}
+
+.sc-edit-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sc-input {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+  flex: 1;
+}
+
+.sc-input.wide {
+  flex: 2;
+}
+
+.sc-input:focus {
+  outline: none;
+  border-color: #673ab8;
+  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+}
+
+.sc-select {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sc-select:focus {
+  outline: none;
+  border-color: #673ab8;
+  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+}
+
+.sc-color-label,
+.sc-score-label,
+.sc-case-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.sc-color-input {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+}
+
+.sc-clear-btn {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0 0.25rem;
+}
+
+.sc-clear-btn:hover {
+  color: #ef4444;
+}
+
+.sc-color-pick-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.sc-color-pick-btn:hover {
+  border-color: #673ab8;
+  color: #673ab8;
+}
+
+/* Add form */
+.sc-add-form {
+  margin: 1rem 0;
+}
+
+.sc-add-form h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.5rem;
+}
+
+.sc-add-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Actions bar */
+.sc-actions-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.sc-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.sc-import-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Status messages */
+.sc-empty {
+  color: #9ca3af;
+  font-style: italic;
+  padding: 1rem 0;
+}
+
+.sc-error {
+  color: #ef4444;
+  font-size: 0.85rem;
+}
+
+.sc-success {
+  color: #22c55e;
+  font-size: 0.85rem;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .sc-tree {
+    border-color: #444;
+  }
+
+  .sc-row {
+    border-bottom-color: #333;
+  }
+
+  .sc-row.editing {
+    background: #1e1e1e;
+  }
+
+  .sc-regex {
+    background: #374151;
+    color: #9ca3af;
+  }
+
+  .sc-input {
+    border-color: #4b5563;
+  }
+
+  .sc-input:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+  }
+
+  .sc-select {
+    border-color: #4b5563;
+  }
+
+  .sc-select:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+  }
+
+  .sc-color-input {
+    border-color: #4b5563;
+  }
+
+  .sc-color-pick-btn {
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+
+  .sc-color-pick-btn:hover {
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+  }
+}
+
+/* Mobile */
+@media (max-width: 639px) {
+  .sc-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .sc-edit-row {
+    flex-direction: column;
+  }
+
+  .sc-add-row {
+    flex-direction: column;
+  }
+
+  .sc-import-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sc-input,
+  .sc-select {
+    width: 100%;
+  }
+}

@@ -516,7 +516,7 @@ export async function getHrvActivitiesCorrelation(
   >()
 
   for (const record of productivity) {
-    const category = record.category || 'Uncategorized'
+    const category = record.resolved_category?.join(' > ') || record.category || 'Uncategorized'
     if (!productivityByCategory.has(category)) {
       productivityByCategory.set(category, { hrValues: [], hrvValues: [], minutes: 0, scores: [] })
     }
@@ -740,8 +740,10 @@ export async function getActivityImpact(
   if (activityType === 'productivity_category' || activityType === 'productivity_app') {
     const productivity = await getProductivity(user, start, end)
     for (const record of productivity) {
+      const resolvedCatStr = record.resolved_category?.join(' > ')
       const matches =
         activityType === 'productivity_category' ?
+          resolvedCatStr?.toLowerCase() === activity.toLowerCase() ||
           record.category?.toLowerCase() === activity.toLowerCase()
         : record.activity.toLowerCase().includes(activity.toLowerCase())
 
@@ -1126,11 +1128,13 @@ export async function getGenericCorrelation(
       }
     } else if (trigger.type === 'productivity_category') {
       for (const prod of productivity) {
-        if (prod.category && matchesPattern(prod.category, trigger.pattern)) {
+        const resolvedCatStr = prod.resolved_category?.join(' > ')
+        const catStr = resolvedCatStr || prod.category
+        if (catStr && matchesPattern(catStr, trigger.pattern)) {
           triggerEvents.push({
             time: prod.start_time,
             type: 'productivity_category',
-            value: prod.category,
+            value: catStr,
           })
         }
       }
@@ -1303,8 +1307,9 @@ export async function getGenericCorrelation(
         for (const prod of productivity) {
           if (prod.start_time <= windowEnd || prod.start_time > lagEnd) continue
 
+          const prodCatStr = prod.resolved_category?.join(' > ') || prod.category
           const matchesCategory =
-            !outcome.category || (prod.category && matchesPattern(prod.category, outcome.category))
+            !outcome.category || (prodCatStr && matchesPattern(prodCatStr, outcome.category))
           const matchesApp = !outcome.app || matchesPattern(prod.activity, outcome.app)
 
           if (matchesCategory && matchesApp) {

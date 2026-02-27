@@ -153,6 +153,7 @@ describe('oura-webhook-router', () => {
         ['daily_resilience', 'dailyResilience'],
         ['daily_sleep', 'dailySleep'],
         ['session', 'sessions'],
+        ['sleep', 'sleep'],
         ['enhanced_tag', 'tags'],
       ]
 

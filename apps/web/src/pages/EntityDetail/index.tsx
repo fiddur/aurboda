@@ -316,6 +316,7 @@ const ProductivityDetail = ({ record }: { record: ProductivityRecord }) => (
     </div>
 
     <h2>{record.activity}</h2>
+    {record.title && <p class="entity-subtitle">{record.title}</p>}
 
     <div class="entity-fields">
       <div class="field-row">
@@ -328,7 +329,13 @@ const ProductivityDetail = ({ record }: { record: ProductivityRecord }) => (
         <span class="field-label">Duration</span>
         <span class="field-value">{formatDuration(record.start_time, record.end_time)}</span>
       </div>
-      {record.category && (
+      {record.resolved_category && record.resolved_category.length > 0 && (
+        <div class="field-row">
+          <span class="field-label">Category</span>
+          <span class="field-value">{record.resolved_category.join(' > ')}</span>
+        </div>
+      )}
+      {record.category && !(record.resolved_category && record.resolved_category.length > 0) && (
         <div class="field-row">
           <span class="field-label">Category</span>
           <span class="field-value">{record.category}</span>

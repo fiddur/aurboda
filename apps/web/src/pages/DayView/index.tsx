@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- large visualization component */
-import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
+import { metricUnits as builtinMetricUnits, type ScreentimeCategory } from '@aurboda/api-spec'
 import { signal, useSignalEffect } from '@preact/signals'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
@@ -13,6 +13,7 @@ import {
   fetchMetricTimeSeriesWithSource,
   fetchPlaces,
   fetchProductivity,
+  fetchScreentimeCategories,
   fetchScrobbles,
   fetchTagMappings,
   fetchTags,
@@ -486,26 +487,52 @@ const categorizeOccasionalMetrics = (
     })
 }
 
-const categorizeProductivity = (productivity: ProductivityRecord[]): ChartItem[] =>
-  productivity.map((p) => ({
-    color: getProductivityColor(p.productivity),
-    column: 'Screen Time' as Column,
-    end: p.end_time,
-    entity_id: p.id,
-    entity_type: 'productivity' as const,
-    isPoint: false,
-    label: p.activity,
-    start: p.start_time,
-    tooltip: {
-      details: [
-        p.category ?? '',
-        formatDuration(p.start_time, p.end_time),
-        `Score: ${p.productivity ?? 0}`,
-      ].filter(Boolean),
-      time: `${formatTime(p.start_time)} – ${formatTime(p.end_time)}`,
-      title: p.activity,
-    },
-  }))
+/**
+ * Get the resolved color for a productivity record based on screentime categories.
+ * Falls back to productivity score coloring, then gray.
+ */
+const getResolvedColor = (p: ProductivityRecord, categories: ScreentimeCategory[]): string => {
+  if (p.resolved_category && p.resolved_category.length > 0 && categories.length > 0) {
+    // Walk from exact match up to parents until we find a color
+    for (let depth = p.resolved_category.length; depth > 0; depth--) {
+      const path = p.resolved_category.slice(0, depth)
+      const match = categories.find(
+        (c) => c.name.length === path.length && c.name.every((n, i) => n === path[i]),
+      )
+      if (match?.color) return match.color
+    }
+  }
+  // Fall back to productivity score color
+  return getProductivityColor(p.productivity)
+}
+
+const categorizeProductivity = (
+  productivity: ProductivityRecord[],
+  categories: ScreentimeCategory[],
+): ChartItem[] =>
+  productivity.map((p) => {
+    const categoryLabel = p.resolved_category?.join(' > ') || p.category || ''
+    return {
+      color: getResolvedColor(p, categories),
+      column: 'Screen Time' as Column,
+      end: p.end_time,
+      entity_id: p.id,
+      entity_type: 'productivity' as const,
+      isPoint: false,
+      label: p.activity,
+      start: p.start_time,
+      tooltip: {
+        details: [
+          categoryLabel,
+          p.title ? `Title: ${p.title}` : '',
+          formatDuration(p.start_time, p.end_time),
+          p.productivity != null ? `Score: ${p.productivity}` : '',
+        ].filter(Boolean),
+        time: `${formatTime(p.start_time)} – ${formatTime(p.end_time)}`,
+        title: p.activity,
+      },
+    }
+  })
 
 // Build HR zone bar HTML for exercise tooltips
 const buildHrZoneBarHtml = (zones: Record<number, number>): string => {
@@ -601,6 +628,12 @@ export const DayView = () => {
     queryFn: () => fetchProductivity(fetchStart, fetchEnd),
     queryKey: ['dayview-productivity', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
+  })
+
+  const screentimeCategoriesQuery = useQuery<ScreentimeCategory[]>({
+    queryFn: fetchScreentimeCategories,
+    queryKey: ['screentime-categories'],
+    staleTime: 30 * 60 * 1000,
   })
 
   const settingsQuery = useQuery({
@@ -864,7 +897,7 @@ export const DayView = () => {
       ...categorizeExercise(activities),
       ...categorizeLocations(places, uniquePlaceNames),
       ...categorizeTags(tags, tagIcons),
-      ...categorizeProductivity(productivity),
+      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? []),
       ...occasionalMetricItems,
       ...musicItems,
     ],
@@ -877,6 +910,7 @@ export const DayView = () => {
       tags,
       tagIcons,
       productivity,
+      screentimeCategoriesQuery.data,
       occasionalMetricItems,
       musicItems,
     ],

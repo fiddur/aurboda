@@ -33,6 +33,8 @@ export type {
   Place,
   ProductivityRecord,
   RawRecord,
+  ScreentimeCategory,
+  ScreentimeCategoryInput,
   SyncState,
   SyncStatus,
   Tag,
@@ -121,11 +123,24 @@ export {
 
 // Productivity
 export {
+  batchUpdateResolvedCategory,
   deleteProductivityRecord,
+  getAllProductivityForCategorization,
   getProductivity,
   insertProductivity,
   restoreProductivityRecord,
 } from './productivity'
+
+// Screentime categories
+export {
+  bulkInsertScreentimeCategories,
+  deleteAllScreentimeCategories,
+  deleteScreentimeCategoryWithChildren,
+  getScreentimeCategories,
+  getScreentimeCategoryById,
+  insertScreentimeCategory,
+  updateScreentimeCategory,
+} from './screentime-categories'
 
 // Notes
 export {

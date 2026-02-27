@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from './db'
-import { calculateRetryAfter, isRateLimited, processOuraData, syncOuraDataType } from './oura-sync'
+import {
+  calculateRetryAfter,
+  convertOuraSleepPhases,
+  isRateLimited,
+  processOuraData,
+  syncOuraDataType,
+} from './oura-sync'
 
 // Mock the db module
 vi.mock('./db', () => ({
@@ -91,6 +97,59 @@ describe('isRateLimited', () => {
         status: 'rate_limited',
       }),
     ).toBe(true)
+  })
+})
+
+describe('convertOuraSleepPhases', () => {
+  const bedtime = new Date('2025-01-15T23:00:00Z')
+
+  test('converts basic Oura phases to HC stages', () => {
+    // 1=deep→5, 2=light→4, 3=REM→6, 4=awake→1
+    const stages = convertOuraSleepPhases('1234', bedtime)
+    expect(stages).toEqual([
+      { endTime: '2025-01-15T23:05:00.000Z', stage: 5, startTime: '2025-01-15T23:00:00.000Z' },
+      { endTime: '2025-01-15T23:10:00.000Z', stage: 4, startTime: '2025-01-15T23:05:00.000Z' },
+      { endTime: '2025-01-15T23:15:00.000Z', stage: 6, startTime: '2025-01-15T23:10:00.000Z' },
+      { endTime: '2025-01-15T23:20:00.000Z', stage: 1, startTime: '2025-01-15T23:15:00.000Z' },
+    ])
+  })
+
+  test('merges consecutive same-stage epochs', () => {
+    // Three consecutive deep (1) then one awake (4)
+    const stages = convertOuraSleepPhases('1114', bedtime)
+    expect(stages).toEqual([
+      { endTime: '2025-01-15T23:15:00.000Z', stage: 5, startTime: '2025-01-15T23:00:00.000Z' },
+      { endTime: '2025-01-15T23:20:00.000Z', stage: 1, startTime: '2025-01-15T23:15:00.000Z' },
+    ])
+  })
+
+  test('returns empty array for null input', () => {
+    expect(convertOuraSleepPhases(null, bedtime)).toEqual([])
+  })
+
+  test('returns empty array for empty string', () => {
+    expect(convertOuraSleepPhases('', bedtime)).toEqual([])
+  })
+
+  test('skips unknown digit characters', () => {
+    // '0' and '9' are not valid Oura phases — they should be skipped
+    const stages = convertOuraSleepPhases('091', bedtime)
+    // Only the '1' (deep) at position 2 should be converted
+    // Position 0 (0) and position 1 (9) are skipped, position 2 (1) is deep
+    expect(stages).toEqual([
+      { endTime: '2025-01-15T23:15:00.000Z', stage: 5, startTime: '2025-01-15T23:10:00.000Z' },
+    ])
+  })
+
+  test('handles realistic sleep phase string', () => {
+    // A short sequence: deep, deep, light, light, REM, awake
+    const stages = convertOuraSleepPhases('112234', bedtime)
+    expect(stages).toEqual([
+      { endTime: '2025-01-15T23:10:00.000Z', stage: 5, startTime: '2025-01-15T23:00:00.000Z' }, // deep 10min
+      { endTime: '2025-01-15T23:20:00.000Z', stage: 4, startTime: '2025-01-15T23:10:00.000Z' }, // light 10min
+      { endTime: '2025-01-15T23:25:00.000Z', stage: 6, startTime: '2025-01-15T23:20:00.000Z' }, // REM 5min
+      { endTime: '2025-01-15T23:30:00.000Z', stage: 1, startTime: '2025-01-15T23:25:00.000Z' }, // awake 5min
+    ])
   })
 })
 
@@ -506,6 +565,144 @@ describe('processOuraData', () => {
     })
   })
 
+  describe('sleep', () => {
+    const makeSleepRecord = (overrides: Record<string, unknown> = {}) => ({
+      average_heart_rate: 55,
+      average_hrv: 45,
+      bedtime_end: '2025-01-16T07:00:00Z',
+      bedtime_start: '2025-01-15T23:00:00Z',
+      day: '2025-01-15',
+      heart_rate: null,
+      heart_rate_variability: null,
+      id: 'sleep-1',
+      lowest_heart_rate: 48,
+      readiness_score_delta: null,
+      sleep_phase_5_min: '1122334',
+      type: 'long_sleep',
+      ...overrides,
+    })
+
+    test('processes long_sleep as sleep activity', async () => {
+      await processOuraData(user, 'sleep', [makeSleepRecord()])
+
+      expect(db.insertRawRecord).toHaveBeenCalledWith(user, {
+        data: expect.objectContaining({ id: 'sleep-1', type: 'long_sleep' }),
+        external_id: 'sleep-1',
+        record_type: 'sleep',
+        recorded_at: new Date('2025-01-15T23:00:00Z'),
+        source: 'oura',
+      })
+
+      expect(db.insertActivity).toHaveBeenCalledWith(user, {
+        activity_type: 'sleep',
+        data: expect.objectContaining({
+          averageHeartRate: 55,
+          averageHrv: 45,
+          lowestHeartRate: 48,
+          ouraType: 'long_sleep',
+          stages: expect.arrayContaining([
+            expect.objectContaining({ stage: 5 }), // deep
+          ]),
+        }),
+        end_time: new Date('2025-01-16T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2025-01-15T23:00:00Z'),
+        title: 'Sleep',
+      })
+    })
+
+    test('processes short sleep as nap activity', async () => {
+      await processOuraData(user, 'sleep', [makeSleepRecord({ id: 'nap-1', type: 'sleep' })])
+
+      expect(db.insertActivity).toHaveBeenCalledWith(
+        user,
+        expect.objectContaining({
+          activity_type: 'nap',
+          title: 'Nap',
+        }),
+      )
+    })
+
+    test('processes rest as meditation activity', async () => {
+      await processOuraData(user, 'sleep', [makeSleepRecord({ id: 'rest-1', type: 'rest' })])
+
+      expect(db.insertActivity).toHaveBeenCalledWith(
+        user,
+        expect.objectContaining({
+          activity_type: 'meditation',
+          title: 'Rest',
+        }),
+      )
+    })
+
+    test('converts sleep phases to HC stage format', async () => {
+      // '12' → deep(5) then light(4), each 5 min
+      await processOuraData(user, 'sleep', [makeSleepRecord({ sleep_phase_5_min: '12' })])
+
+      const activityCall = vi.mocked(db.insertActivity).mock.calls[0]!
+      const data = activityCall[1].data as { stages: Array<{ stage: number }> }
+      expect(data.stages).toEqual([
+        {
+          endTime: '2025-01-15T23:05:00.000Z',
+          stage: 5,
+          startTime: '2025-01-15T23:00:00.000Z',
+        },
+        {
+          endTime: '2025-01-15T23:10:00.000Z',
+          stage: 4,
+          startTime: '2025-01-15T23:05:00.000Z',
+        },
+      ])
+    })
+
+    test('handles null sleep phases gracefully', async () => {
+      await processOuraData(user, 'sleep', [makeSleepRecord({ sleep_phase_5_min: null })])
+
+      const activityCall = vi.mocked(db.insertActivity).mock.calls[0]!
+      const data = activityCall[1].data as { stages: unknown[] }
+      expect(data.stages).toEqual([])
+    })
+
+    test('extracts HR interval data to time series', async () => {
+      await processOuraData(user, 'sleep', [
+        makeSleepRecord({
+          heart_rate: { interval: 300, items: [55, 52, null, 50] },
+        }),
+      ])
+
+      expect(db.insertTimeSeries).toHaveBeenCalledWith(
+        user,
+        expect.arrayContaining([
+          { metric: 'heart_rate', source: 'oura', time: new Date('2025-01-15T23:00:00Z'), value: 55 },
+          { metric: 'heart_rate', source: 'oura', time: new Date('2025-01-15T23:05:00Z'), value: 52 },
+          { metric: 'heart_rate', source: 'oura', time: new Date('2025-01-15T23:15:00Z'), value: 50 },
+        ]),
+      )
+    })
+
+    test('extracts HRV interval data to time series', async () => {
+      await processOuraData(user, 'sleep', [
+        makeSleepRecord({
+          heart_rate_variability: { interval: 300, items: [45, 50] },
+        }),
+      ])
+
+      expect(db.insertTimeSeries).toHaveBeenCalledWith(
+        user,
+        expect.arrayContaining([
+          { metric: 'hrv_rmssd', source: 'oura', time: new Date('2025-01-15T23:00:00Z'), value: 45 },
+          { metric: 'hrv_rmssd', source: 'oura', time: new Date('2025-01-15T23:05:00Z'), value: 50 },
+        ]),
+      )
+    })
+
+    test('does not call insertTimeSeries when no HR/HRV data', async () => {
+      await processOuraData(user, 'sleep', [makeSleepRecord()])
+
+      expect(db.insertTimeSeries).not.toHaveBeenCalled()
+    })
+  })
+
   describe('tags', () => {
     test('processes tag data with custom name', async () => {
       // Data is pre-transformed by oura.ts getTags() which returns DB Tag type (snake_case)
@@ -581,6 +778,7 @@ describe('syncOuraDataType', () => {
     getDailySleep: vi.fn().mockResolvedValue([]),
     getPersonalInfo: vi.fn(),
     getSessions: vi.fn().mockResolvedValue([]),
+    getSleep: vi.fn().mockResolvedValue([]),
     getTags: vi.fn().mockResolvedValue([]),
     getUserId: vi.fn(),
     storeAccessToken: vi.fn(),

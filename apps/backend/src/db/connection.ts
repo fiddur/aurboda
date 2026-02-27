@@ -194,6 +194,8 @@ export const migrateSchema = async (user: string) => {
       db,
       `ALTER TABLE productivity ADD COLUMN IF NOT EXISTS device_name VARCHAR(100) NOT NULL DEFAULT ''`,
     )
+    await query(db, `ALTER TABLE productivity ADD COLUMN IF NOT EXISTS title TEXT`)
+    await query(db, `ALTER TABLE productivity ADD COLUMN IF NOT EXISTS resolved_category TEXT[]`)
     // Update unique constraint to include device_name for multi-device support
     await query(db, `ALTER TABLE productivity DROP CONSTRAINT IF EXISTS unique_productivity`)
     await query(
