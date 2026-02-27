@@ -97,6 +97,7 @@ export interface SyncRouterDeps {
     user: string,
     events: SyncActivityWatchBody['events'],
     deviceName: string,
+    isMobile?: boolean,
   ) => Promise<ActivityWatchSyncResult>
   getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   // Outbound sync (Health Connect write-back)
@@ -370,11 +371,11 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     validateBody(syncActivityWatchBodySchema),
     async (req, res) => {
       const user = req.user!
-      const { events, device_name } = req.body
+      const { events, device_name, is_mobile } = req.body
       const deviceName = device_name ?? ''
 
       try {
-        const result = await deps.processActivityWatchEvents(user, events, deviceName)
+        const result = await deps.processActivityWatchEvents(user, events, deviceName, is_mobile)
         res.json({ result, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'

@@ -36,13 +36,13 @@ import java.time.ZoneId
 import java.util.concurrent.TimeUnit
 import kotlin.reflect.KClass
 
-private const val TAG = "HealthConnectSyncWorker"
+private const val TAG = "SyncWorker"
 private const val PREFS_NAME = "AurbodaAppPrefs"
 private const val CHANGES_TOKEN_KEY = "healthConnectChangesToken"
 private const val GRANTED_TYPES_KEY = "grantedRecordTypeNames"
 private const val WORK_NAME = "health_connect_sync"
 
-class HealthConnectSyncWorker(
+class SyncWorker(
   context: Context,
   params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
@@ -150,6 +150,21 @@ class HealthConnectSyncWorker(
         )
       } catch (e: Exception) {
         Log.w(TAG, "Outbound sync failed: ${e.message}")
+      }
+
+      // Step 5: ActivityWatch sync (if enabled).
+      // Best-effort: failures don't affect overall sync result.
+      if (isActivityWatchSyncEnabled(applicationContext)) {
+        try {
+          processActivityWatchSync(
+            apiUrl = credentials.apiUrl,
+            authToken = credentials.authToken,
+            httpClient = httpClient,
+            context = applicationContext,
+          )
+        } catch (e: Exception) {
+          Log.w(TAG, "ActivityWatch sync failed: ${e.message}")
+        }
       }
 
       HrZoneWidgetProvider.triggerUpdate(applicationContext)
@@ -636,7 +651,7 @@ class HealthConnectSyncWorker(
           .build()
 
       val workRequest =
-        PeriodicWorkRequestBuilder<HealthConnectSyncWorker>(
+        PeriodicWorkRequestBuilder<SyncWorker>(
           15,
           TimeUnit.MINUTES,
         ).setConstraints(constraints)

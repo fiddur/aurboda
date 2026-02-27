@@ -615,6 +615,9 @@ export const syncActivityWatchBodySchema = z
       description: 'Hostname or user-configured device name. Defaults to empty string (single-device setup).',
     }),
     events: z.array(activityWatchEventSchema).min(1).meta({ description: 'ActivityWatch events to store' }),
+    is_mobile: z.boolean().optional().meta({
+      description: 'Whether the events come from a mobile device. Defaults to false.',
+    }),
   })
   .meta({ id: 'SyncActivityWatchBody' })
 

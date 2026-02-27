@@ -168,6 +168,18 @@ export type {
   UserSettingsResponse,
 }
 
+// Check if ActivityWatch has ever pushed data (returns sync states per device)
+export const fetchActivityWatchStatus = async (): Promise<{ last_sync_time: string | null }[]> => {
+  const { token } = auth.value
+  const response = await axios.get<{
+    success: boolean
+    states?: { last_sync_time: string | null }[]
+  }>(`${API_URL}/sync/activitywatch/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data.states ?? []
+}
+
 // Generate a fresh API token for the authenticated user (used for push agents like ActivityWatch)
 export const generateApiToken = async (): Promise<string> => {
   const { token } = auth.value

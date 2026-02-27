@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- large visualization component */
 import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
-import { signal } from '@preact/signals'
+import { signal, useSignalEffect } from '@preact/signals'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
@@ -38,6 +38,54 @@ const viewEnd = signal<Date | null>(null)
 // Default view: start of today to end of today
 const getDefaultViewStart = () => startOfDay(new Date())
 const getDefaultViewEnd = () => endOfDay(new Date())
+
+// ── URL hash helpers ──────────────────────────────────────────────────────────
+// Hash format: #from=2026-02-27T06:00&to=2026-02-27T18:00&hide=sleep,music
+// The router (preact-iso) completely ignores hash fragments, so replaceState
+// with a hash update never triggers a re-render or route change.
+
+/** Parse window.location.hash into view state. */
+const parseViewHash = (): { from: Date | null; to: Date | null; hide: LegendCategory[] } => {
+  const hash = window.location.hash.slice(1) // remove leading '#'
+  if (!hash) return { from: null, hide: [], to: null }
+  const params = new URLSearchParams(hash)
+  const fromStr = params.get('from')
+  const toStr = params.get('to')
+  const hideStr = params.get('hide')
+  const from = fromStr ? new Date(fromStr) : null
+  const to = toStr ? new Date(toStr) : null
+  const hide = hideStr ? (hideStr.split(',').filter(Boolean) as LegendCategory[]) : []
+  return {
+    from: from && !isNaN(from.getTime()) ? from : null,
+    hide,
+    to: to && !isNaN(to.getTime()) ? to : null,
+  }
+}
+
+/** Build hash string from current view state. Returns '' if everything is default (today). */
+const buildViewHash = (start: Date | null, end: Date | null, hidden: ReadonlySet<string>): string => {
+  const params = new URLSearchParams()
+  if (start) params.set('from', start.toISOString())
+  if (end) params.set('to', end.toISOString())
+  if (hidden.size > 0) params.set('hide', [...hidden].join(','))
+  const str = params.toString()
+  return str ? `#${str}` : ''
+}
+
+// Initialise signals from hash on page load (runs once when module is first loaded).
+// Because these are module-level signals they persist across SPA navigations.
+const _initialHash = parseViewHash()
+if (_initialHash.from) {
+  viewStart.value = _initialHash.from
+  viewEnd.value = _initialHash.to
+  // Expand fetch range to cover the hashed viewport
+  const fetchFrom = _initialHash.from
+  const fetchTo = _initialHash.to ?? _initialHash.from
+  fromDate.value = formatISO(subDays(fetchFrom, 1), { representation: 'date' })
+  const todayStr = formatISO(new Date(), { representation: 'date' })
+  const expandedTo = formatISO(addDays(fetchTo, 1), { representation: 'date' })
+  toDate.value = expandedTo > todayStr ? todayStr : expandedTo
+}
 
 // Column definitions
 const BASE_COLUMNS: Column[] = ['Sleep / Rest', 'Exercise', 'Location', 'Tags / Events', 'Screen Time']
@@ -686,7 +734,25 @@ export const DayView = () => {
     toDate.value = formatISO(new Date(), { representation: 'date' })
   }, [])
 
-  const [hiddenCategories, setHiddenCategories] = useState<Set<LegendCategory>>(new Set())
+  const [hiddenCategories, setHiddenCategories] = useState<Set<LegendCategory>>(
+    () => new Set(_initialHash.hide),
+  )
+
+  // Keep a ref so useSignalEffect can read the latest hiddenCategories without re-subscribing
+  const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
+  hiddenCategoriesRef.current = hiddenCategories
+
+  // Sync view state → URL hash whenever viewStart or viewEnd signals change
+  useSignalEffect(() => {
+    const hash = buildViewHash(viewStart.value, viewEnd.value, hiddenCategoriesRef.current)
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+  })
+
+  // Also sync when hiddenCategories changes (toggling legend items)
+  useEffect(() => {
+    const hash = buildViewHash(viewStart.value, viewEnd.value, hiddenCategories)
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+  }, [hiddenCategories])
 
   const toggleCategory = useCallback((cat: LegendCategory) => {
     setHiddenCategories((prev) => {

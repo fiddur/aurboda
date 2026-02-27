@@ -16,11 +16,13 @@ import type { ProductivityRecord } from './db/types'
  * @param user - The Aurboda username
  * @param events - ActivityWatch events from aw-watcher-window or aw-watcher-android
  * @param deviceName - Hostname or user-configured device name (empty string for single-device setup)
+ * @param isMobile - Whether the events come from a mobile device (default false)
  */
 export const processActivityWatchEvents = async (
   user: string,
   events: ActivityWatchEvent[],
   deviceName: string,
+  isMobile = false,
 ): Promise<ActivityWatchSyncResult> => {
   try {
     const records: ProductivityRecord[] = events.map((event) => {
@@ -34,7 +36,7 @@ export const processActivityWatchEvents = async (
         device_name: deviceName,
         duration_sec: durationSec,
         end_time: endTime,
-        is_mobile: false,
+        is_mobile: isMobile,
         productivity: undefined,
         source: 'activitywatch',
         start_time: startTime,

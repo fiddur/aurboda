@@ -78,6 +78,7 @@ export interface AddMetricResult {
   value: number
   unit: string
   time: string
+  entity_id?: string
 }
 
 export interface DeleteTagResult {
@@ -304,10 +305,12 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
     console.error('Failed to enqueue outbound sync for metric:', err)
   }
 
+  const storedTime = input.time.toISOString()
   return {
+    entity_id: `${storedTime}|${input.metric}|aurboda`,
     metric: input.metric,
     success: true,
-    time: input.time.toISOString(),
+    time: storedTime,
     unit: unit ?? '',
     value: input.value,
   }

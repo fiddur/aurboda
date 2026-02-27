@@ -4,15 +4,15 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 
 ## Overview
 
-| Source | Data Types | Sync Method | Admin Setup | User Setup |
-|--------|-----------|-------------|-------------|------------|
-| [Oura Ring](./oura.md) | Sleep, readiness, resilience, cardiovascular age, meditation, HRV, tags | Pull (API) + Push (webhook) | OAuth credentials (env vars) | OAuth connect |
-| [Health Connect](./health-connect.md) | HR, HRV, weight, body composition, steps, sleep, exercise, 40+ record types | Push (Android app) | None | Install Android app |
-| [ActivityWatch](./activitywatch.md) | App/window usage, per-device tracking | Push (agent script) | None | Install AW + push agent |
-| [RescueTime](./rescuetime.md) | App/website usage, productivity scores | Pull (API) | None | API key |
-| [Last.fm](./lastfm.md) | Music scrobbles, auto-generated tags | Pull (API) | API key (admin setting) | Last.fm username |
-| [Calendars](./calendars.md) | Calendar events (stored as tags) | Pull (ICS fetch) | None | ICS URL(s) |
-| [OwnTracks](./owntracks.md) | GPS location, geofences | Push (HTTP) | None | OwnTracks app config |
+| Source                                | Data Types                                                                  | Sync Method                             | Admin Setup                  | User Setup                                               |
+| ------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------- | ---------------------------- | -------------------------------------------------------- |
+| [Oura Ring](./oura.md)                | Sleep, readiness, resilience, cardiovascular age, meditation, HRV, tags     | Pull (API) + Push (webhook)             | OAuth credentials (env vars) | OAuth connect                                            |
+| [Health Connect](./health-connect.md) | HR, HRV, weight, body composition, steps, sleep, exercise, 40+ record types | Push (Android app)                      | None                         | Install Android app                                      |
+| [ActivityWatch](./activitywatch.md)   | App/window usage, per-device tracking                                       | Push (agent script / Android companion) | None                         | Install AW + push agent or enable in Aurboda Android app |
+| [RescueTime](./rescuetime.md)         | App/website usage, productivity scores                                      | Pull (API)                              | None                         | API key                                                  |
+| [Last.fm](./lastfm.md)                | Music scrobbles, auto-generated tags                                        | Pull (API)                              | API key (admin setting)      | Last.fm username                                         |
+| [Calendars](./calendars.md)           | Calendar events (stored as tags)                                            | Pull (ICS fetch)                        | None                         | ICS URL(s)                                               |
+| [OwnTracks](./owntracks.md)           | GPS location, geofences                                                     | Push (HTTP)                             | None                         | OwnTracks app config                                     |
 
 ## Sync Behavior
 
@@ -30,6 +30,7 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 - No auto-sync (agent controls the schedule)
 
 Check sync status for all providers:
+
 - REST: `GET /api/sync/status`
 - MCP: `get_sync_status()`
 

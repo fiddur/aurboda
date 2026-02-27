@@ -5,29 +5,6 @@
   padding: 2rem;
 }
 
-.entity-detail-header {
-  margin-bottom: 1.5rem;
-}
-
-.back-link {
-  color: #673ab8;
-  text-decoration: none;
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.back-link:hover {
-  text-decoration: underline;
-}
-
-.back-link-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-}
-
 /* Deleted banner */
 .deleted-banner {
   display: flex;
@@ -665,10 +642,6 @@
 
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
-  .back-link {
-    color: #a78bfa;
-  }
-
   .deleted-banner {
     background: #450a0a;
     border-color: #7f1d1d;
