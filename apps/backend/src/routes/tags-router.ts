@@ -168,14 +168,32 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
     authMiddleware,
     validateBody(setTagMappingBodySchema),
     async (req, res) => {
-      const { tag_key, name } = req.body
+      const { tag_key, name, icon } = req.body
       const user = req.user!
 
       const settings = await getUserSettings(user)
       const currentMappings = settings?.tag_mappings ?? {}
       const newMappings = { ...currentMappings, [tag_key]: name }
 
-      await upsertUserSettings(user, { tag_mappings: newMappings })
+      // Handle icon: store in tag_icons map, keyed by display name for easy lookup
+      const updates: { tag_mappings: Record<string, string>; tag_icons?: Record<string, string> } = {
+        tag_mappings: newMappings,
+      }
+      if (icon !== undefined) {
+        const currentIcons = settings?.tag_icons ?? {}
+        if (icon) {
+          updates.tag_icons = { ...currentIcons, [name]: icon }
+        } else {
+          // Empty string clears the icon — remove entries for both old and new name
+          const newIcons = { ...currentIcons }
+          delete newIcons[name]
+          // Also remove icon for the tag_key in case it was stored that way
+          delete newIcons[tag_key]
+          updates.tag_icons = newIcons
+        }
+      }
+
+      await upsertUserSettings(user, updates)
       await updateTagNameByKey(user, tag_key, name)
 
       res.json({ mapping: newMappings, success: true })
@@ -186,7 +204,11 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   router.get<Record<string, never>, TagMappingsResponse>('/mappings', authMiddleware, async (req, res) => {
     const user = req.user!
     const settings = await getUserSettings(user)
-    res.json({ mappings: settings?.tag_mappings ?? {}, success: true })
+    res.json({
+      icons: settings?.tag_icons ?? {},
+      mappings: settings?.tag_mappings ?? {},
+      success: true,
+    })
   })
 
   return router

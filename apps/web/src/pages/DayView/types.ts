@@ -17,4 +17,8 @@ export interface ChartItem {
   entity_id?: string
   entity_type?: 'activity' | 'tag' | 'productivity' | 'metric'
   href?: string
+  /** Activity type for sparkline overlay targeting */
+  activity_type?: 'sleep' | 'nap' | 'meditation' | 'exercise'
+  /** Emoji or icon URL to render instead of the default point marker */
+  icon?: string
 }

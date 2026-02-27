@@ -467,16 +467,39 @@ export const fetchProgrammaticTags = async (): Promise<ProgrammaticTag[]> => {
   return response.data.data ?? []
 }
 
-// Set a tag mapping
-export const setTagMapping = async (tagKey: string, name: string): Promise<TagMappings> => {
+// Set a tag mapping (with optional icon)
+export const setTagMapping = async (tagKey: string, name: string, icon?: string): Promise<TagMappings> => {
   const { token } = auth.value
-  const response = await axios.post<SetTagMappingResponse>(
-    `${API_URL}/tags/mapping`,
-    { name, tag_key: tagKey },
-    { headers: { Authorization: `Bearer ${token}` } },
-  )
+  const body: { tag_key: string; name: string; icon?: string } = { name, tag_key: tagKey }
+  if (icon !== undefined) body.icon = icon
+  const response = await axios.post<SetTagMappingResponse>(`${API_URL}/tags/mapping`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 
   return response.data.mapping ?? {}
+}
+
+/** Tag mapping entry with name and optional icon. */
+export interface TagMappingEntry {
+  name: string
+  icon?: string
+}
+
+/** Fetch all tag mappings (names and icons). */
+export const fetchTagMappings = async (): Promise<{
+  mappings: TagMappings
+  icons: Record<string, string>
+}> => {
+  const { token } = auth.value
+  const response = await axios.get<{
+    success: boolean
+    mappings: TagMappings
+    icons?: Record<string, string>
+  }>(`${API_URL}/tags/mappings`, { headers: { Authorization: `Bearer ${token}` } })
+  return {
+    icons: response.data.icons ?? {},
+    mappings: response.data.mappings,
+  }
 }
 
 // Fetch goal progress

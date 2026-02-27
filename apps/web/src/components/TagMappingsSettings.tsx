@@ -1,7 +1,8 @@
 import type { ProgrammaticTag } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
-import { fetchProgrammaticTags, setTagMapping } from '../state/api'
+import { fetchProgrammaticTags, fetchTagMappings, setTagMapping } from '../state/api'
+import { isEmoji, isUrl, suggestEmoji } from '../utils/emojiLookup'
 
 import './TagMappingsSettings.css'
 
@@ -20,14 +21,18 @@ const formatTagKey = (tagKey: string): string => {
 type RowStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 function TagMappingRow({
+  currentIcon,
   onSave,
   tag,
 }: {
   tag: ProgrammaticTag
-  onSave: (tagKey: string, name: string) => Promise<void>
+  currentIcon?: string
+  onSave: (tagKey: string, name: string, icon?: string) => Promise<void>
 }) {
   const [localValue, setLocalValue] = useState<string | undefined>(undefined)
+  const [localIcon, setLocalIcon] = useState<string | undefined>(undefined)
   const [status, setStatus] = useState<RowStatus>('idle')
+  const [suggestedEmoji, setSuggestedEmoji] = useState<string | undefined>(undefined)
 
   // Clear saved indicator after 3 seconds
   useEffect(() => {
@@ -37,29 +42,55 @@ function TagMappingRow({
   }, [status])
 
   const displayValue = localValue ?? tag.current_name ?? ''
+  const displayIcon = localIcon ?? currentIcon ?? ''
   const isUnmapped = !tag.current_name
 
-  const handleBlur = async () => {
-    if (localValue === undefined) return
+  // Auto-suggest emoji when name changes
+  useEffect(() => {
+    const name = localValue ?? tag.current_name
+    if (name && !currentIcon && localIcon === undefined) {
+      const suggestion = suggestEmoji(name)
+      setSuggestedEmoji(suggestion)
+    } else {
+      setSuggestedEmoji(undefined)
+    }
+  }, [localValue, tag.current_name, currentIcon, localIcon])
 
-    const serverValue = tag.current_name ?? ''
-    if (localValue === serverValue) {
+  const handleBlur = async () => {
+    if (localValue === undefined && localIcon === undefined) return
+
+    const serverName = tag.current_name ?? ''
+    const nameChanged = localValue !== undefined && localValue !== serverName
+    const iconChanged = localIcon !== undefined && localIcon !== (currentIcon ?? '')
+
+    if (!nameChanged && !iconChanged) {
       setLocalValue(undefined)
+      setLocalIcon(undefined)
       return
     }
 
-    if (!localValue.trim()) {
+    const name = (localValue ?? tag.current_name ?? '').trim()
+    if (!name) {
       setLocalValue(undefined)
+      setLocalIcon(undefined)
       return
     }
 
     setStatus('saving')
     try {
-      await onSave(tag.tag_key, localValue.trim())
+      await onSave(tag.tag_key, name, iconChanged ? localIcon : undefined)
       setLocalValue(undefined)
+      setLocalIcon(undefined)
       setStatus('saved')
     } catch {
       setStatus('error')
+    }
+  }
+
+  const handleAcceptSuggestion = () => {
+    if (suggestedEmoji) {
+      setLocalIcon(suggestedEmoji)
+      setSuggestedEmoji(undefined)
     }
   }
 
@@ -102,6 +133,34 @@ function TagMappingRow({
         </span>
       </div>
 
+      <div class="tag-icon-field">
+        <input
+          type="text"
+          value={displayIcon}
+          onInput={(e) => setLocalIcon((e.target as HTMLInputElement).value)}
+          onBlur={() => void handleBlur()}
+          placeholder="Icon"
+          title="Emoji character or image URL"
+          class="tag-icon-input"
+          disabled={status === 'saving'}
+        />
+        {displayIcon && (isEmoji(displayIcon) || isUrl(displayIcon)) && (
+          <span class="tag-icon-preview">
+            {isEmoji(displayIcon) ? displayIcon : <img src={displayIcon} alt="icon" width="16" height="16" />}
+          </span>
+        )}
+        {suggestedEmoji && !displayIcon && (
+          <button
+            type="button"
+            class="tag-icon-suggestion"
+            onClick={handleAcceptSuggestion}
+            title={`Suggested: ${suggestedEmoji}`}
+          >
+            {suggestedEmoji}?
+          </button>
+        )}
+      </div>
+
       <div class="tag-uuid" title={tag.tag_key}>
         {formatTagKey(tag.tag_key)}
       </div>
@@ -117,16 +176,24 @@ export function TagMappingsSettings() {
     queryKey: ['programmaticTags'],
   })
 
+  const { data: mappingsData } = useQuery({
+    queryFn: fetchTagMappings,
+    queryKey: ['tag-mappings'],
+    staleTime: 30 * 60 * 1000,
+  })
+
   const mutation = useMutation({
-    mutationFn: ({ tagKey, name }: { tagKey: string; name: string }) => setTagMapping(tagKey, name),
+    mutationFn: ({ tagKey, name, icon }: { tagKey: string; name: string; icon?: string }) =>
+      setTagMapping(tagKey, name, icon),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['programmaticTags'] })
       queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+      queryClient.invalidateQueries({ queryKey: ['tag-mappings'] })
     },
   })
 
-  const handleSave = async (tagKey: string, name: string): Promise<void> => {
-    await mutation.mutateAsync({ name, tagKey })
+  const handleSave = async (tagKey: string, name: string, icon?: string): Promise<void> => {
+    await mutation.mutateAsync({ icon, name, tagKey })
   }
 
   if (isLoading) {
@@ -139,6 +206,7 @@ export function TagMappingsSettings() {
   }
 
   const unmappedCount = tags?.filter((t) => !t.current_name).length ?? 0
+  const icons = mappingsData?.icons ?? {}
 
   return (
     <section class="settings-section tag-mappings-section">
@@ -148,15 +216,20 @@ export function TagMappingsSettings() {
       </div>
 
       <p class="section-description">
-        Set display names for programmatic tags (UUIDs, tag_* prefixes). Tags without names will show their
-        raw identifier. Changes save automatically when you leave the field.
+        Set display names and icons for programmatic tags. Icons can be emoji characters or image URLs.
+        Changes save automatically when you leave the field.
       </p>
 
       {!tags || tags.length === 0 ?
         <p class="no-tags">No programmatic tags found. Tags will appear here after syncing data.</p>
       : <div class="tag-mappings-list">
           {tags.map((tag) => (
-            <TagMappingRow key={tag.tag_key} tag={tag} onSave={handleSave} />
+            <TagMappingRow
+              key={tag.tag_key}
+              tag={tag}
+              currentIcon={icons[tag.current_name ?? ''] ?? icons[tag.tag_key]}
+              onSave={handleSave}
+            />
           ))}
         </div>
       }

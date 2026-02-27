@@ -151,6 +151,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     oura_connected: ouraToken !== null,
     rescue_time_key: settings.rescue_time_key ?? null,
     success: true,
+    tag_icons: settings.tag_icons ?? {},
     tag_mappings: settings.tag_mappings ?? {},
   }
 }
@@ -178,6 +179,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
       oura_connected: false,
       rescue_time_key: null,
       success: false,
+      tag_icons: {},
       tag_mappings: {},
     }
   }
@@ -191,6 +193,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     'hr_zone_start',
     'lastfm_username',
     'rescue_time_key',
+    'tag_icons',
     'tag_mappings',
   ] as const
   const updates: Partial<UserSettings> = {}

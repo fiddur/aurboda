@@ -158,12 +158,28 @@ export type ProgrammaticTagsResponse = z.infer<typeof programmaticTagsResponseSc
  */
 export const setTagMappingBodySchema = z
   .object({
+    icon: z.string().optional().meta({
+      description:
+        'Emoji character, unicode name, or URL (http/https) to an image (SVG/PNG) to use as tag icon',
+    }),
     name: z.string().min(1).meta({ description: 'Display name for the tag' }),
     tag_key: z.string().min(1).meta({ description: 'The programmatic tag identifier to map' }),
   })
   .meta({ id: 'SetTagMappingBody' })
 
 export type SetTagMappingBody = z.infer<typeof setTagMappingBodySchema>
+
+/**
+ * Tag mapping entry with name and optional icon.
+ */
+export const tagMappingEntrySchema = z
+  .object({
+    icon: z.string().optional().meta({ description: 'Emoji, unicode name, or URL for tag icon' }),
+    name: z.string().meta({ description: 'Display name for the tag' }),
+  })
+  .meta({ id: 'TagMappingEntry' })
+
+export type TagMappingEntry = z.infer<typeof tagMappingEntrySchema>
 
 /**
  * Set tag mapping response schema.
@@ -181,6 +197,10 @@ export type SetTagMappingResponse = z.infer<typeof setTagMappingResponseSchema>
  */
 export const tagMappingsResponseSchema = baseResponseSchema
   .extend({
+    icons: z
+      .record(z.string(), z.string())
+      .optional()
+      .meta({ description: 'Tag icon mappings (tag key or name -> emoji/URL)' }),
     mappings: z
       .record(z.string(), z.string())
       .meta({ description: 'All tag mappings (tag key -> display name)' }),
