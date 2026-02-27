@@ -1549,8 +1549,8 @@ const drawItem = (
     const cx = x + size + 2
 
     if (item.icon && isEmoji(item.icon)) {
-      // Render emoji instead of diamond marker
-      const emojiSize = Math.min(laneWidth * 0.4, 16)
+      // Render emoji only — no text label (tooltip on hover provides the name)
+      const emojiSize = 14
       parent
         .append('text')
         .attr('x', cx)
@@ -1564,8 +1564,8 @@ const drawItem = (
         .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
         .on('mouseleave', hideTooltip)
     } else if (item.icon && isUrl(item.icon)) {
-      // Render custom image icon
-      const imgSize = Math.min(laneWidth * 0.4, 16)
+      // Render custom image icon only — no text label
+      const imgSize = 14
       parent
         .append('image')
         .attr('href', item.icon)
@@ -1574,10 +1574,11 @@ const drawItem = (
         .attr('width', imgSize)
         .attr('height', imgSize)
         .attr('pointer-events', 'all')
+        .attr('cursor', detailUrl ? 'pointer' : 'default')
         .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
         .on('mouseleave', hideTooltip)
     } else {
-      // Default diamond marker
+      // Default: diamond marker + text label
       parent
         .append('polygon')
         .attr('points', `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`)
@@ -1585,26 +1586,24 @@ const drawItem = (
         .attr('opacity', 0.85)
         .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
         .on('mouseleave', hideTooltip)
-    }
 
-    // Text label next to point marker (offset further for emoji/image icons)
-    const markerWidth = item.icon ? Math.min(laneWidth * 0.4, 16) : 2 * size
-    const labelX = x + markerWidth + 6
-    const availableWidth = laneWidth - markerWidth - 8
-    if (availableWidth > 20) {
-      const charWidth = 5.5
-      const maxChars = Math.floor(availableWidth / charWidth)
-      const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
-      parent
-        .append('text')
-        .attr('x', labelX)
-        .attr('y', cy)
-        .attr('dy', '0.35em')
-        .attr('fill', item.color)
-        .attr('font-size', '0.6rem')
-        .attr('opacity', 0.8)
-        .attr('pointer-events', 'none')
-        .text(text)
+      const labelX = x + 2 * size + 6
+      const availableWidth = laneWidth - 2 * size - 8
+      if (availableWidth > 20) {
+        const charWidth = 5.5
+        const maxChars = Math.floor(availableWidth / charWidth)
+        const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+        parent
+          .append('text')
+          .attr('x', labelX)
+          .attr('y', cy)
+          .attr('dy', '0.35em')
+          .attr('fill', item.color)
+          .attr('font-size', '0.6rem')
+          .attr('opacity', 0.8)
+          .attr('pointer-events', 'none')
+          .text(text)
+      }
     }
     return
   }
