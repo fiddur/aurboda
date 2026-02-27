@@ -972,6 +972,7 @@ export interface ProductivityResult {
   productivity?: number
   duration_sec: number
   is_mobile?: boolean
+  source?: DataSource
   comments: CommentSummary[]
 }
 
@@ -1100,6 +1101,7 @@ export async function queryProductivity(
       id: p.id,
       is_mobile: p.is_mobile,
       productivity: p.productivity,
+      source: p.source,
       source_ids: p.source_ids.length > 1 ? p.source_ids : undefined,
       start_time: p.start_time.toISOString(),
     }
