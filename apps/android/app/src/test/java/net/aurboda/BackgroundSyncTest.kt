@@ -58,7 +58,7 @@ class BackgroundSyncTest {
   @Test
   fun `schedule creates periodic work with network constraint`() {
     // When: We schedule the background sync
-    HealthConnectSyncWorker.schedule(context)
+    SyncWorker.schedule(context)
 
     // Then: Work should be enqueued
     val workInfos =
@@ -79,7 +79,7 @@ class BackgroundSyncTest {
   @Test
   fun `schedule uses UPDATE policy to replace existing work`() {
     // Given: Work is already scheduled
-    HealthConnectSyncWorker.schedule(context)
+    SyncWorker.schedule(context)
 
     val initialWorkInfos =
       WorkManager
@@ -89,7 +89,7 @@ class BackgroundSyncTest {
     assertEquals(1, initialWorkInfos.size)
 
     // When: We schedule again (simulating app restart)
-    HealthConnectSyncWorker.schedule(context)
+    SyncWorker.schedule(context)
 
     // Then: There should still be exactly one work request (UPDATE policy)
     val workInfos =
@@ -104,7 +104,7 @@ class BackgroundSyncTest {
   @Test
   fun `cancel removes scheduled work`() {
     // Given: Work is scheduled
-    HealthConnectSyncWorker.schedule(context)
+    SyncWorker.schedule(context)
 
     val initialWorkInfos =
       WorkManager
@@ -114,7 +114,7 @@ class BackgroundSyncTest {
     assertEquals(1, initialWorkInfos.size)
 
     // When: We cancel the work
-    HealthConnectSyncWorker.cancel(context)
+    SyncWorker.cancel(context)
 
     // Then: Work should be cancelled
     val workInfos =
@@ -171,7 +171,7 @@ class BackgroundSyncTest {
     val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     val isEnabled = prefs.getBoolean(backgroundSyncEnabledKey, false)
     if (isEnabled) {
-      HealthConnectSyncWorker.schedule(context)
+      SyncWorker.schedule(context)
     }
 
     // Then: Work should be scheduled
@@ -197,7 +197,7 @@ class BackgroundSyncTest {
     val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     val isEnabled = prefs.getBoolean(backgroundSyncEnabledKey, false)
     if (isEnabled) {
-      HealthConnectSyncWorker.schedule(context)
+      SyncWorker.schedule(context)
     }
 
     // Then: No work should be scheduled

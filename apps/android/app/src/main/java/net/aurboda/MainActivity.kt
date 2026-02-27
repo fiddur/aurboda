@@ -102,9 +102,9 @@ private fun setBackgroundSyncEnabled(
   val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
   prefs.edit().putBoolean(BACKGROUND_SYNC_ENABLED_KEY, enabled).apply()
   if (enabled) {
-    HealthConnectSyncWorker.schedule(context)
+    SyncWorker.schedule(context)
   } else {
-    HealthConnectSyncWorker.cancel(context)
+    SyncWorker.cancel(context)
   }
 }
 
@@ -505,6 +505,10 @@ fun HealthConnectScreen(
   var statusMessage by remember { mutableStateOf("Checking permissions...") }
   var backgroundSyncEnabled by remember { mutableStateOf(isBackgroundSyncEnabled(context)) }
   var showBatteryOptimizationDialog by remember { mutableStateOf(false) }
+
+  // -- ActivityWatch state --
+  var awSyncEnabled by remember { mutableStateOf(isActivityWatchSyncEnabled(context)) }
+  var awSyncResult by remember { mutableStateOf<ActivityWatchSyncResult?>(null) }
 
   val batteryOptimizationLauncher =
     rememberLauncherForActivityResult(
@@ -1032,13 +1036,28 @@ fun HealthConnectScreen(
       Log.w("OutboundSync", "Outbound sync failed in syncNow: ${e.message}", e)
       statusMessage = "Outbound sync error: ${e.message}"
     }
+    // ActivityWatch sync (if enabled)
+    if (awSyncEnabled) {
+      try {
+        awSyncResult =
+          processActivityWatchSync(
+            apiUrl = apiUrl,
+            authToken = authToken,
+            httpClient = ktorHttpClient,
+            context = currentContext,
+          )
+      } catch (e: Exception) {
+        Log.w("ActivityWatch", "AW sync failed in syncNow: ${e.message}", e)
+        awSyncResult = ActivityWatchSyncResult(error = e.message)
+      }
+    }
   }
 
   LaunchedEffect(Unit) {
     Log.d("HealthConnectScreen", "LaunchedEffect: Initial check")
     checkPermissionsAndFetchData(this, context)
     if (backgroundSyncEnabled) {
-      HealthConnectSyncWorker.schedule(context)
+      SyncWorker.schedule(context)
     }
   }
 
@@ -1260,6 +1279,77 @@ fun HealthConnectScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             modifier = Modifier.align(Alignment.End),
           )
+        }
+      }
+    }
+
+    // -- ActivityWatch Sync Card --
+    item {
+      androidx.compose.material3.Card(
+        modifier = Modifier.fillMaxWidth(),
+      ) {
+        Column(
+          modifier = Modifier.padding(16.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Text(
+            "ActivityWatch",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+          )
+          Text(
+            "Sync app usage data from ActivityWatch for Android.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Text("ActivityWatch Sync", style = MaterialTheme.typography.bodyMedium)
+            Switch(
+              checked = awSyncEnabled,
+              onCheckedChange = { enabled ->
+                awSyncEnabled = enabled
+                setActivityWatchSyncEnabled(context, enabled)
+              },
+            )
+          }
+
+          if (awSyncEnabled) {
+            val result = awSyncResult
+            val awStatusText =
+              when {
+                result == null -> "Sync on next run"
+                result.error != null -> "Error: ${result.error}"
+                !result.available -> "ActivityWatch not detected"
+                result.eventsPushed > 0 -> "${result.eventsPushed} events synced"
+                result.bucketsFound == 0 -> "No app-usage buckets found"
+                else -> "Up to date"
+              }
+            val awStatusColor =
+              when {
+                result == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                result.error != null -> MaterialTheme.colorScheme.error
+                !result.available -> MaterialTheme.colorScheme.onSurfaceVariant
+                result.eventsPushed > 0 -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+              }
+            Text(
+              awStatusText,
+              style = MaterialTheme.typography.bodySmall,
+              color = awStatusColor,
+            )
+
+            if (result != null && !result.available) {
+              Text(
+                "Install ActivityWatch for Android to sync app usage data.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+              )
+            }
+          }
         }
       }
     }

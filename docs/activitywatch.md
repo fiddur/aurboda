@@ -24,13 +24,13 @@ ActivityWatch (local)  →  Push Agent (cron/systemd)  →  Aurboda API
 
 Each record contains:
 
-| Field | Description |
-|-------|-------------|
-| `activity` | Application name (e.g., "firefox", "emacs", "alacritty") |
-| `duration_sec` | Time spent in seconds |
-| `start_time` / `end_time` | Precise timestamps |
-| `device_name` | Hostname or configured device name |
-| `source` | Always `activitywatch` |
+| Field                     | Description                                              |
+| ------------------------- | -------------------------------------------------------- |
+| `activity`                | Application name (e.g., "firefox", "emacs", "alacritty") |
+| `duration_sec`            | Time spent in seconds                                    |
+| `start_time` / `end_time` | Precise timestamps                                       |
+| `device_name`             | Hostname or configured device name                       |
+| `source`                  | Always `activitywatch`                                   |
 
 Window titles are available in the raw ActivityWatch data but are not currently stored (to avoid sensitive information leaking into the database). Category and productivity scores are not assigned yet — see the [categorization follow-up](https://github.com/fiddur/aurboda/issues/218).
 
@@ -189,6 +189,7 @@ crontab -e
 ```
 
 Add:
+
 ```
 */5 * * * * AURBODA_URL=https://aurboda.net/api AURBODA_TOKEN=your-token DEVICE_NAME=laptop ~/.local/bin/aw-to-aurboda.sh >> ~/.local/state/aw-aurboda/push.log 2>&1
 ```
@@ -249,12 +250,23 @@ Aurboda stores a separate `device_name` with each productivity record. Existing 
 
 ## Android
 
-The [ActivityWatch Android app](https://github.com/ActivityWatch/aw-android) exposes the same local REST API on the device. Pushing to Aurboda from Android requires either:
+The [ActivityWatch Android app](https://github.com/ActivityWatch/aw-android) runs `aw-server-rust` as a native library, exposing the standard ActivityWatch REST API at `localhost:5600` on the device. The Aurboda Android app queries it directly — no Tasker or Termux needed.
 
-- **Option A**: Tasker automation that calls the push script periodically via Termux
-- **Option B**: A dedicated Android companion app (follow-up work)
+### Setup
 
-For now, set `is_mobile: true` in the payload when pushing from Android.
+1. Install [ActivityWatch for Android](https://github.com/ActivityWatch/aw-android) and ensure it is running.
+2. Open the Aurboda app → **Sync** tab.
+3. Enable the **ActivityWatch Sync** toggle.
+
+That's it. Aurboda will sync app-usage events from ActivityWatch automatically, both during foreground "Sync Now" and in the background (every 15 minutes when background sync is enabled).
+
+### How it works
+
+- Aurboda checks `http://localhost:5600` for ActivityWatch availability (2-second timeout; skips silently if not reachable).
+- It fetches app-usage buckets (`currentwindow` type or `aw-android-appevents-*` buckets).
+- New events since the last sync are mapped to the `ActivityWatchEvent` format and POSTed to the backend with `is_mobile: true`.
+- The `device_name` is set to the Android device model name automatically.
+- Last sync time is tracked per bucket in SharedPreferences to avoid re-sending events.
 
 ## Sync Status
 
