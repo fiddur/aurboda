@@ -16,6 +16,7 @@ export const OURA_DATA_TYPES = [
   'daily_resilience',
   'daily_sleep',
   'session',
+  'sleep',
   'enhanced_tag',
 ] as const
 
@@ -32,6 +33,7 @@ export const ouraWebhookDataTypeMap: Record<OuraWebhookDataType, OuraDataType> =
   daily_sleep: 'dailySleep',
   enhanced_tag: 'tags',
   session: 'sessions',
+  sleep: 'sleep',
 }
 
 export interface OuraSubscriptionResponse {

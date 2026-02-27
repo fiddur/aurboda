@@ -254,7 +254,15 @@ export type SyncResultStatus = z.infer<typeof syncResultStatusSchema>
  * Oura data types that can be synced.
  */
 export const ouraDataTypeSchema = z
-  .enum(['dailyCardiovascularAge', 'dailyReadiness', 'dailyResilience', 'dailySleep', 'sessions', 'tags'])
+  .enum([
+    'dailyCardiovascularAge',
+    'dailyReadiness',
+    'dailyResilience',
+    'dailySleep',
+    'sessions',
+    'sleep',
+    'tags',
+  ])
   .meta({
     description: 'Oura data type',
     id: 'OuraDataType',
