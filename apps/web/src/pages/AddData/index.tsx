@@ -357,7 +357,7 @@ const AddMetricForm = ({ onCreated }: FormProps) => {
       if (comment.trim() && result.success) {
         // Backend returns stored time; fall back to the submitted time
         const storedTime = (result as unknown as { time?: string }).time ?? metricTimeISO
-        const entityId = `${storedTime}|${metric}|manual`
+        const entityId = `${storedTime}|${metric}|aurboda`
         try {
           await addNote('metric', entityId, comment.trim())
         } catch {
