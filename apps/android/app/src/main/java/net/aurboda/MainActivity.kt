@@ -77,8 +77,9 @@ import net.aurboda.update.checkForUpdate
 import net.aurboda.update.downloadUpdate
 import net.aurboda.update.getExistingDownloadState
 import net.aurboda.update.installApk
-// Import allRecordTypes from HealthDataModels
+// Import record type lists from HealthDataModels
 import net.aurboda.allRecordTypes
+import net.aurboda.writableRecordTypes
 import java.io.File
 import java.time.Instant
 import java.time.ZonedDateTime
@@ -486,7 +487,7 @@ fun HealthConnectScreen(
   }
   val hasAllWritePermissions by remember(grantedPermissions) {
     derivedStateOf {
-      val writePerms = allRecordTypes.map { HealthPermission.getWritePermission(it) }.toSet()
+      val writePerms = writableRecordTypes.map { HealthPermission.getWritePermission(it) }.toSet()
       grantedPermissions.containsAll(writePerms)
     }
   }
@@ -519,7 +520,9 @@ fun HealthConnectScreen(
   val scope = rememberCoroutineScope()
   val allPermissions =
     remember(allRecordTypes) {
-      allRecordTypes.flatMap { listOf(HealthPermission.getReadPermission(it), HealthPermission.getWritePermission(it)) }.toSet()
+      val readPerms = allRecordTypes.map { HealthPermission.getReadPermission(it) }
+      val writePerms = writableRecordTypes.map { HealthPermission.getWritePermission(it) }
+      (readPerms + writePerms).toSet()
     }
   val ktorHttpClient = remember { HttpClient(Android) { install(ContentNegotiation) { json(appJson) } } }
 
@@ -1174,42 +1177,80 @@ fun HealthConnectScreen(
           }
 
           if (!hasAllPermissions) {
-            if (hasAllReadPermissions && !hasAllWritePermissions) {
-              Text(
-                "Write permissions needed for outbound sync (pushing data to Health Connect).",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-              )
-              Text(
-                "If the button below has no effect, open Settings > Health Connect > App permissions > Aurboda and grant write access.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
-            }
-            androidx.compose.material3.OutlinedButton(
-              onClick = {
-                requestPermissionLauncher.launch(allPermissions.toTypedArray())
-              },
+            var permissionsExpanded by remember { mutableStateOf(false) }
+            val missingLabel =
+              if (!hasAllReadPermissions && !hasAllWritePermissions) {
+                "Read & write permissions pending"
+              } else if (!hasAllReadPermissions) {
+                "Read permissions pending"
+              } else {
+                "Write permissions pending"
+              }
+
+            androidx.compose.material3.Surface(
+              onClick = { permissionsExpanded = !permissionsExpanded },
+              shape = MaterialTheme.shapes.small,
+              color = MaterialTheme.colorScheme.surfaceVariant,
               modifier = Modifier.fillMaxWidth(),
             ) {
-              Text(if (hasAllReadPermissions) "Grant Write Permissions" else "Grant All Permissions")
-            }
-            androidx.compose.material3.TextButton(
-              onClick = {
-                val intent =
-                  Intent("androidx.health.ACTION_MANAGE_HEALTH_PERMISSIONS")
-                    .putExtra(Intent.EXTRA_PACKAGE_NAME, context.packageName)
-                try {
-                  context.startActivity(intent)
-                } catch (e: Exception) {
-                  Log.w("HealthConnect", "Could not open HC settings: ${e.message}")
+              Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  modifier = Modifier.fillMaxWidth(),
+                ) {
+                  Text(
+                    missingLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                  Text(
+                    if (permissionsExpanded) "\u25B2" else "\u25BC",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
                 }
-              },
-            ) {
-              Text(
-                "Open Health Connect Settings",
-                style = MaterialTheme.typography.bodySmall,
-              )
+
+                if (permissionsExpanded) {
+                  androidx.compose.foundation.layout
+                    .Spacer(modifier = Modifier.height(8.dp))
+                  if (hasAllReadPermissions && !hasAllWritePermissions) {
+                    Text(
+                      "Write access allows outbound sync (pushing data to Health Connect). " +
+                        "If the button has no effect, use Health Connect Settings.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.foundation.layout
+                      .Spacer(modifier = Modifier.height(8.dp))
+                  }
+                  androidx.compose.material3.OutlinedButton(
+                    onClick = {
+                      requestPermissionLauncher.launch(allPermissions.toTypedArray())
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                  ) {
+                    Text(if (hasAllReadPermissions) "Grant Write Permissions" else "Grant All Permissions")
+                  }
+                  androidx.compose.material3.TextButton(
+                    onClick = {
+                      val intent =
+                        Intent("androidx.health.ACTION_MANAGE_HEALTH_PERMISSIONS")
+                          .putExtra(Intent.EXTRA_PACKAGE_NAME, context.packageName)
+                      try {
+                        context.startActivity(intent)
+                      } catch (e: Exception) {
+                        Log.w("HealthConnect", "Could not open HC settings: ${e.message}")
+                      }
+                    },
+                  ) {
+                    Text(
+                      "Open Health Connect Settings",
+                      style = MaterialTheme.typography.bodySmall,
+                    )
+                  }
+                }
+              }
             }
           }
 
@@ -1274,8 +1315,12 @@ fun HealthConnectScreen(
               onClick = {
                 val categoryPermissions =
                   status.category.recordTypes
-                    .flatMap { listOf(HealthPermission.getReadPermission(it), HealthPermission.getWritePermission(it)) }
-                    .toTypedArray()
+                    .flatMap { type ->
+                      buildList {
+                        add(HealthPermission.getReadPermission(type))
+                        if (type in writableRecordTypes) add(HealthPermission.getWritePermission(type))
+                      }
+                    }.toTypedArray()
                 requestPermissionLauncher.launch(categoryPermissions)
               },
             ) {

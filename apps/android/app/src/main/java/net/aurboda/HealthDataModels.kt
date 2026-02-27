@@ -711,6 +711,27 @@ fun Metadata.toSerializable(): HealthConnectRecordMetadata =
     recordingMethod = this.recordingMethod,
   )
 
+/**
+ * Record types for which we have WRITE permissions in the manifest.
+ * These are the types used for outbound sync (backend → Health Connect).
+ * Must match the WRITE_* permissions declared in AndroidManifest.xml.
+ */
+val writableRecordTypes: Set<KClass<out Record>> =
+  setOf(
+    BodyFatRecord::class,
+    BodyWaterMassRecord::class,
+    BoneMassRecord::class,
+    ExerciseSessionRecord::class,
+    HeartRateRecord::class,
+    HeartRateVariabilityRmssdRecord::class,
+    HeightRecord::class,
+    LeanBodyMassRecord::class,
+    RestingHeartRateRecord::class,
+    SleepSessionRecord::class,
+    StepsRecord::class,
+    WeightRecord::class,
+  )
+
 // Comprehensive list of all record KClass objects we want to read, sorted alphabetically
 val allRecordTypes: List<KClass<out Record>> =
   listOf(
