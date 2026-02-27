@@ -161,6 +161,9 @@ export function Help() {
   const isOuraConnected = settingsQuery.data?.oura_connected ?? false
   const isRescueTimeConfigured = !!settingsQuery.data?.rescue_time_key
   const hasActivityWatch = (awStatusQuery.data?.length ?? 0) > 0
+  const awProductivity = (productivityQuery.data ?? []).filter((r) => r.source === 'activitywatch')
+  const hasAwDesktop = awProductivity.some((r) => !r.is_mobile)
+  const hasAwMobile = awProductivity.some((r) => r.is_mobile)
 
   if (!isLoggedIn) {
     return (
@@ -327,14 +330,18 @@ export function Help() {
           />
 
           <DataSourceCard
-            name="ActivityWatch"
+            name="ActivityWatch (Desktop)"
             status={{
-              description: hasActivityWatch ? 'ActivityWatch data syncing.' : 'ActivityWatch not set up.',
-              hasData: hasActivityWatch,
+              description:
+                hasAwDesktop ? 'Desktop screen time data syncing.'
+                : hasActivityWatch ? 'ActivityWatch syncing, but no desktop data in the last 7 days.'
+                : 'ActivityWatch desktop not set up.',
+              hasData: hasAwDesktop,
             }}
             setupSteps={[
-              'Desktop: Install ActivityWatch, generate an API token in Settings, and set up the push agent script.',
-              'Android: Install ActivityWatch for Android, then enable "ActivityWatch Sync" in Aurboda\'s Sync tab.',
+              'Install ActivityWatch on your computer.',
+              'Generate an API token in Settings.',
+              'Set up the push agent script to sync data to Aurboda.',
             ]}
             links={[
               { text: 'Go to Settings', url: '/settings' },
@@ -343,6 +350,30 @@ export function Help() {
                 url: 'https://github.com/fiddur/aurboda/blob/develop/docs/activitywatch.md',
               },
               { text: 'ActivityWatch Website', url: 'https://activitywatch.net/' },
+            ]}
+          />
+
+          <DataSourceCard
+            name="ActivityWatch (Mobile)"
+            status={{
+              description:
+                hasAwMobile ? 'Mobile screen time data syncing.' : 'ActivityWatch mobile not set up.',
+              hasData: hasAwMobile,
+            }}
+            setupSteps={[
+              'Install ActivityWatch for Android from GitHub.',
+              'Install the Aurboda Android app.',
+              'Enable "ActivityWatch Sync" in Aurboda\'s Sync tab.',
+            ]}
+            links={[
+              {
+                text: 'ActivityWatch for Android',
+                url: 'https://github.com/ActivityWatch/aw-android/releases',
+              },
+              {
+                text: 'Download Aurboda APK',
+                url: 'https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk',
+              },
             ]}
           />
         </div>
