@@ -491,6 +491,18 @@ const buildTooltipHtml = (item: ChartItem, music: string[], activities: Activity
 const margin = { bottom: 10, left: 60, right: 10, top: 30 }
 const CHART_HEIGHT = 800
 
+/** Convert a view date range into the D3 zoom transform that maps baseScale onto that window. */
+const computeZoomTransform = (
+  baseScale: d3.ScaleTime<number, number>,
+  vStart: Date,
+  vEnd: Date,
+): d3.ZoomTransform => {
+  const by0 = baseScale(vStart)
+  const by1 = baseScale(vEnd)
+  const k = CHART_HEIGHT / (by1 - by0)
+  return d3.zoomIdentity.translate(0, -k * by0).scale(k)
+}
+
 // eslint-disable-next-line complexity -- D3 visualization component
 export const DayView = () => {
   const effectiveViewStart = viewStart.value ?? getDefaultViewStart()
@@ -602,6 +614,17 @@ export const DayView = () => {
   const isProgrammaticZoom = useRef(false)
   const baseScaleRef = useRef<d3.ScaleTime<number, number>>()
   const zoomRafRef = useRef<number>(0)
+  // Holds the latest `draw` function so the zoom effect can call it without re-binding
+  const drawRef = useRef<((scale: d3.ScaleTime<number, number>) => void) | null>(null)
+
+  // Pin the base scale domain to today's calendar date (not new Date() each call).
+  // This prevents sub-millisecond drift causing visible jumps when the transform is
+  // re-applied after a Preact re-render.
+  const todayKey = format(new Date(), 'yyyy-MM-dd')
+  const baseScaleDomain = useMemo(
+    () => [startOfDay(new Date(todayKey)), endOfDay(new Date(todayKey))] as [Date, Date],
+    [todayKey],
+  )
 
   // Handle zoom - update view range and expand data fetch if needed
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
@@ -684,48 +707,87 @@ export const DayView = () => {
   const productivity = productivityQuery.data ?? []
   const scrobbles = scrobblesQuery.data ?? []
 
-  // Build date-keyed map of Oura sleep metrics (keyed by YYYY-MM-DD of bucket start)
-  const ouraByDate: OuraSleepByDate = new Map()
-  for (const bucket of ouraMetricsQuery.data?.buckets ?? []) {
-    const dayKey = format(new Date(bucket.start), 'yyyy-MM-dd')
-    const metrics: OuraSleepMetrics = {}
-    for (const [metric, stats] of Object.entries(bucket.metrics)) {
-      metrics[metric] = stats.avg
+  // Memoize the Oura sleep metrics map so its identity is stable across re-renders
+  const ouraByDate = useMemo<OuraSleepByDate>(() => {
+    const map: OuraSleepByDate = new Map()
+    for (const bucket of ouraMetricsQuery.data?.buckets ?? []) {
+      const key = format(new Date(bucket.start), 'yyyy-MM-dd')
+      const metrics: OuraSleepMetrics = {}
+      for (const [metric, stats] of Object.entries(bucket.metrics)) {
+        metrics[metric] = stats.avg
+      }
+      map.set(key, metrics)
     }
-    ouraByDate.set(dayKey, metrics)
-  }
+    return map
+  }, [ouraMetricsQuery.data])
 
-  const musicItems = hasLastFm ? categorizeMusic(scrobbles) : []
+  const musicItems = useMemo(() => (hasLastFm ? categorizeMusic(scrobbles) : []), [hasLastFm, scrobbles])
   const showMusicColumn = musicItems.length > 0
 
-  const occasionalMetricItems = categorizeOccasionalMetrics(occasionalMetricsQuery.data ?? [], allMetricUnits)
+  const occasionalMetricItems = useMemo(
+    () => categorizeOccasionalMetrics(occasionalMetricsQuery.data ?? [], allMetricUnits),
+    [occasionalMetricsQuery.data, allMetricUnits],
+  )
 
-  const allColumns: Column[] = showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS
+  const allColumns: Column[] = useMemo(
+    () => (showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS),
+    [showMusicColumn],
+  )
 
-  const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
-  const chartItems = [
-    ...categorizeSleepRest(activities, scrobbles, ouraByDate),
-    ...categorizeExercise(activities),
-    ...categorizeLocations(places, uniquePlaceNames),
-    ...categorizeTags(tags),
-    ...categorizeProductivity(productivity),
-    ...occasionalMetricItems,
-    ...musicItems,
-  ].filter((item) => !isItemHidden(item))
+  const uniquePlaceNames = useMemo(
+    () => [...new Set(places.map((p) => p.region))].filter(Boolean).sort(),
+    [places],
+  )
+
+  // All chart items before visibility filtering — stable across re-renders when data is unchanged
+  const allChartItems = useMemo(
+    () => [
+      ...categorizeSleepRest(activities, scrobbles, ouraByDate),
+      ...categorizeExercise(activities),
+      ...categorizeLocations(places, uniquePlaceNames),
+      ...categorizeTags(tags),
+      ...categorizeProductivity(productivity),
+      ...occasionalMetricItems,
+      ...musicItems,
+    ],
+    [
+      activities,
+      scrobbles,
+      ouraByDate,
+      places,
+      uniquePlaceNames,
+      tags,
+      productivity,
+      occasionalMetricItems,
+      musicItems,
+    ],
+  )
+
+  const chartItems = useMemo(
+    () => allChartItems.filter((item) => !isItemHidden(item)),
+    [allChartItems, isItemHidden],
+  )
 
   // Only show columns that have visible items
-  const columns = allColumns.filter((col) => chartItems.some((item) => item.column === col))
+  const columns = useMemo(
+    () => allColumns.filter((col) => chartItems.some((item) => item.column === col)),
+    [allColumns, chartItems],
+  )
 
   // Group by column and pack lanes
-  const columnData = columns.map((col) => {
-    const colItems = chartItems.filter((i) => i.column === col)
-    const packed = packLanes(
-      colItems,
-      (i) => i.start,
-      (i) => (i.isPoint ? undefined : i.end),
-    )
-    return { column: col, ...packed }
-  })
+  const columnData = useMemo(
+    () =>
+      columns.map((col) => {
+        const colItems = chartItems.filter((i) => i.column === col)
+        const packed = packLanes(
+          colItems,
+          (i) => i.start,
+          (i) => (i.isPoint ? undefined : i.end),
+        )
+        return { column: col, ...packed }
+      }),
+    [columns, chartItems],
+  )
 
   const isFetching =
     activitiesQuery.isFetching ||
@@ -735,7 +797,7 @@ export const DayView = () => {
     scrobblesQuery.isFetching ||
     occasionalMetricsQuery.isFetching
 
-  // Render SVG chart
+  // Render SVG chart (data/structure only — zoom behavior is set up separately)
   const renderChart = useCallback(() => {
     if (!svgRef.current || !containerRef.current) return
 
@@ -748,11 +810,9 @@ export const DayView = () => {
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
 
-    // Base scale maps the default 1-day view to the chart height
-    const baseScale = d3
-      .scaleTime()
-      .domain([getDefaultViewStart(), getDefaultViewEnd()])
-      .range([0, CHART_HEIGHT])
+    // Base scale maps today's full day to the chart height.
+    // Domain is pinned via useMemo to avoid sub-millisecond drift on each render.
+    const baseScale = d3.scaleTime().domain(baseScaleDomain).range([0, CHART_HEIGHT])
     baseScaleRef.current = baseScale
 
     // Current view scale
@@ -793,7 +853,8 @@ export const DayView = () => {
       if (tooltipRef.current) tooltipRef.current.style.display = 'none'
     }
 
-    // Draw function (called on zoom)
+    // Draw function — also stored in a ref so the zoom effect can call the latest
+    // version without needing to re-bind the zoom behavior on every data change.
     const draw = (currentYScale: d3.ScaleTime<number, number>) => {
       chartGroup.selectAll('*').remove()
       g.selectAll('.hour-label').remove()
@@ -902,59 +963,32 @@ export const DayView = () => {
       drawNowLine(chartGroup, chartWidth, currentYScale)
     }
 
+    // Keep the ref up-to-date so the zoom handler always calls the latest draw
+    drawRef.current = draw
+
     // Initial draw with current view
     draw(yScale)
 
-    // Compute D3 zoom transform from the current view
-    const computeTransform = (vStart: Date, vEnd: Date): d3.ZoomTransform => {
-      const by0 = baseScale(vStart)
-      const by1 = baseScale(vEnd)
-      const k = CHART_HEIGHT / (by1 - by0)
-      const ty = -k * by0
-      return d3.zoomIdentity.translate(0, ty).scale(k)
+    // Re-attach the zoom behavior (it was unbound by svg.selectAll('*').remove() above)
+    // and restore the current transform without firing the zoom handler.
+    if (zoomBehaviorRef.current) {
+      isProgrammaticZoom.current = true
+      svg.call(zoomBehaviorRef.current)
+      svg.call(
+        zoomBehaviorRef.current.transform,
+        computeZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd),
+      )
+      isProgrammaticZoom.current = false
     }
-
-    // D3 zoom — clickDistance(5) allows stationary clicks to pass through to
-    // element click handlers (zoom only suppresses click when the user drags).
-    const zoom = d3
-      .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 20])
-      .clickDistance(5)
-      .filter((event: Event) => event.type !== 'dblclick')
-      .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
-        if (isProgrammaticZoom.current) return
-        cancelAnimationFrame(zoomRafRef.current)
-        zoomRafRef.current = requestAnimationFrame(() => {
-          const newY = event.transform.rescaleY(baseScale)
-          const newDomain = newY.domain()
-          draw(d3.scaleTime().domain(newDomain).range([0, CHART_HEIGHT]))
-          handleZoom(newDomain[0], newDomain[1])
-        })
-      })
-
-    svg.call(zoom)
-    zoomBehaviorRef.current = zoom
-
-    // Set initial transform to match current view
-    const initialTransform = computeTransform(effectiveViewStart, effectiveViewEnd)
-    isProgrammaticZoom.current = true
-    svg.call(zoom.transform, initialTransform)
-    isProgrammaticZoom.current = false
-
-    // Double-click resets to today
-    svg.on('dblclick.zoom', () => {
-      handleResetToToday()
-    })
   }, [
-    activities,
+    baseScaleDomain,
     chartItems,
-    columns,
     columnData,
+    columns,
     effectiveViewEnd,
     effectiveViewStart,
-    handleResetToToday,
-    handleZoom,
     scrobbles,
+    activities,
   ])
 
   // Re-render on data change and resize
@@ -964,6 +998,61 @@ export const DayView = () => {
     if (containerRef.current) resizeObserver.observe(containerRef.current)
     return () => resizeObserver.disconnect()
   }, [renderChart])
+
+  // Set up the D3 zoom behavior once (or when the draw function / reset handler changes).
+  // Keeping zoom setup separate from renderChart means the zoom behavior survives data
+  // re-renders without being torn down and re-created on every frame.
+  useEffect(() => {
+    if (!svgRef.current || !baseScaleRef.current) return
+    const svg = d3.select(svgRef.current)
+
+    const zoom = d3
+      .zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.1, 20])
+      .clickDistance(5)
+      .filter((event: Event) => event.type !== 'dblclick')
+      .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+        if (isProgrammaticZoom.current) return
+        cancelAnimationFrame(zoomRafRef.current)
+        zoomRafRef.current = requestAnimationFrame(() => {
+          // Only redraw — do NOT update Preact signals here. That would trigger a
+          // component re-render → renderChart → SVG teardown on every drag frame.
+          const baseScale = baseScaleRef.current
+          if (!baseScale) return
+          const newY = event.transform.rescaleY(baseScale)
+          const newDomain = newY.domain() as [Date, Date]
+          drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, CHART_HEIGHT]))
+        })
+      })
+      .on('end', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+        if (isProgrammaticZoom.current) return
+        // Commit the final position to Preact state once the user lifts their finger/mouse.
+        const baseScale = baseScaleRef.current
+        if (!baseScale) return
+        const newY = event.transform.rescaleY(baseScale)
+        const newDomain = newY.domain() as [Date, Date]
+        handleZoom(newDomain[0], newDomain[1])
+      })
+
+    svg.call(zoom)
+    zoomBehaviorRef.current = zoom
+
+    // Apply the current view as the initial transform
+    const baseScale = baseScaleRef.current
+    if (baseScale) {
+      const t = computeZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd)
+      isProgrammaticZoom.current = true
+      svg.call(zoom.transform, t)
+      isProgrammaticZoom.current = false
+    }
+
+    // Double-click resets to today
+    svg.on('dblclick.zoom', () => handleResetToToday())
+
+    return () => {
+      cancelAnimationFrame(zoomRafRef.current)
+    }
+  }, [handleZoom, handleResetToToday, effectiveViewStart, effectiveViewEnd])
 
   const isLoading =
     activitiesQuery.isLoading || placesQuery.isLoading || tagsQuery.isLoading || productivityQuery.isLoading
