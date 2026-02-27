@@ -660,11 +660,6 @@ export const EntityDetail = () => {
 
   return (
     <div class="entity-detail-page">
-      <div class="entity-detail-header">
-        <button type="button" class="back-link back-link-btn" onClick={() => history.back()}>
-          Back
-        </button>
-      </div>
       <EntityContent entityType={entityType} entityId={entityId} />
     </div>
   )
