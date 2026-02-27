@@ -48,7 +48,7 @@ export const createActivitiesRouter = (
       const { start, end, types: typesParam } = req.query
       const user = req.user!
 
-      const types = (typesParam?.split(',') || ['sleep', 'exercise', 'meditation']) as (
+      const types = (typesParam?.split(',') || ['sleep', 'exercise', 'meditation', 'nap']) as (
         | 'sleep'
         | 'exercise'
         | 'meditation'

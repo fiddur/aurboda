@@ -562,7 +562,13 @@ export const DayView = () => {
 
   const activitiesQuery = useQuery({
     placeholderData: keepPreviousData,
-    queryFn: () => fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryFn: () =>
+      fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), [
+        'sleep',
+        'exercise',
+        'meditation',
+        'nap',
+      ]),
     queryKey: ['dayview-activities', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
   })
