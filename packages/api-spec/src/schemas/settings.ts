@@ -78,6 +78,14 @@ export const tagMappingsSchema = z.record(z.string(), z.string()).meta({
 })
 
 /**
+ * Tag icons schema (tag key or display name -> emoji/URL).
+ */
+export const tagIconsSchema = z.record(z.string(), z.string()).meta({
+  description: 'Tag icon mappings (tag key or display name -> emoji character or image URL)',
+  id: 'TagIcons',
+})
+
+/**
  * Calendar config schema (name + ICS URL pair).
  */
 export const calendarConfigSchema = z
@@ -125,6 +133,9 @@ export const updateSettingsInputSchema = z
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
     }),
+    tag_icons: tagIconsSchema.nullable().optional().meta({
+      description: 'Tag icon mappings (set to null to clear all)',
+    }),
     tag_mappings: tagMappingsSchema.nullable().optional().meta({
       description: 'Tag name mappings (set to null to clear all)',
     }),
@@ -153,6 +164,7 @@ export const userSettingsResponseSchema = baseResponseSchema
     oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
     rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),
+    tag_icons: tagIconsSchema.meta({ description: 'Tag icon mappings (tag key or name -> emoji/URL)' }),
     tag_mappings: tagMappingsSchema.meta({ description: 'Tag name mappings from UUIDs to display names' }),
   })
   .meta({ id: 'UserSettingsResponse' })

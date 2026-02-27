@@ -37,7 +37,6 @@
   font-style: italic;
 }
 
-
 .tag-mappings-list {
   display: flex;
   flex-direction: column;
@@ -144,6 +143,58 @@
   color: #dc2626;
   font-weight: 700;
   font-size: 1.1rem;
+}
+
+.tag-icon-field {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 80px;
+}
+
+.tag-icon-input {
+  width: 60px;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.tag-icon-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+.tag-icon-input:disabled {
+  opacity: 0.6;
+}
+
+.tag-icon-preview {
+  font-size: 1.2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.tag-icon-preview img {
+  vertical-align: middle;
+  border-radius: 2px;
+}
+
+.tag-icon-suggestion {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.tag-icon-suggestion:hover {
+  background: #e0f2fe;
 }
 
 .tag-uuid {

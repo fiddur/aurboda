@@ -146,6 +146,9 @@ export const upsertUserSettings = async (
   if (updates.rescue_time_key !== undefined) {
     merged.rescue_time_key = updates.rescue_time_key
   }
+  if (updates.tag_icons !== undefined) {
+    merged.tag_icons = updates.tag_icons
+  }
   if (updates.tag_mappings !== undefined) {
     merged.tag_mappings = updates.tag_mappings
   }

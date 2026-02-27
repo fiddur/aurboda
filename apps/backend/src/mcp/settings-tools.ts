@@ -73,12 +73,27 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     'set_tag_mapping',
     'Set a display name for a programmatic tag (UUID, tag_* prefix, etc.). Use after get_programmatic_tags to name unmapped tags.',
     { ...setTagMappingBodySchema.shape },
-    async ({ name, tag_key }) => {
+    async ({ name, tag_key, icon }) => {
       const settings = await getUserSettings(user)
       const currentMappings = settings?.tag_mappings ?? {}
       const newMappings = { ...currentMappings, [tag_key]: name }
 
-      await upsertUserSettings(user, { tag_mappings: newMappings })
+      const updates: { tag_mappings: Record<string, string>; tag_icons?: Record<string, string> } = {
+        tag_mappings: newMappings,
+      }
+      if (icon !== undefined) {
+        const currentIcons = settings?.tag_icons ?? {}
+        if (icon) {
+          updates.tag_icons = { ...currentIcons, [name]: icon }
+        } else {
+          const newIcons = { ...currentIcons }
+          delete newIcons[name]
+          delete newIcons[tag_key]
+          updates.tag_icons = newIcons
+        }
+      }
+
+      await upsertUserSettings(user, updates)
       await updateTagNameByKey(user, tag_key, name)
 
       return jsonResponse({ mapping: newMappings, success: true })
@@ -88,7 +103,11 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
   // Tool: get_tag_mappings
   server.tool('get_tag_mappings', 'Get all current tag mappings (tag key -> display name).', {}, async () => {
     const settings = await getUserSettings(user)
-    return jsonResponse({ mappings: settings?.tag_mappings ?? {}, success: true })
+    return jsonResponse({
+      icons: settings?.tag_icons ?? {},
+      mappings: settings?.tag_mappings ?? {},
+      success: true,
+    })
   })
 
   // Tool: get_goal_progress

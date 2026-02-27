@@ -15,6 +15,7 @@ import {
   fetchProductivity,
   fetchScreentimeCategories,
   fetchScrobbles,
+  fetchTagMappings,
   fetchTags,
   fetchUserSettings,
   Place,
@@ -23,8 +24,10 @@ import {
   Tag,
   type MetricDataPointWithSource,
 } from '../../state/api'
+import { isEmoji, isUrl } from '../../utils/emojiLookup'
 import { packLanes } from '../../utils/lanePacking'
 import { categorizeMusic } from './categorizeMusic'
+import { drawActivitySparklines, parseBucketedData } from './drawActivitySparklines'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import type { ChartItem, Column } from './types'
 
@@ -324,6 +327,7 @@ const categorizeSleepRest = (
       }
 
       return {
+        activity_type: a.activity_type as 'sleep' | 'nap' | 'meditation',
         color: activityColors[a.activity_type] ?? '#3b82f6',
         column: 'Sleep / Rest' as Column,
         end,
@@ -364,6 +368,7 @@ const categorizeExercise = (activities: Activity[]): ChartItem[] =>
         if (zoneStr) details.push(zoneStr)
       }
       return {
+        activity_type: 'exercise' as const,
         color: getExerciseColor(a),
         column: 'Exercise' as Column,
         end,
@@ -396,19 +401,23 @@ const categorizeLocations = (places: Place[], uniquePlaceNames: string[]): Chart
     },
   }))
 
-const categorizeTags = (tags: Tag[]): ChartItem[] =>
+const categorizeTags = (tags: Tag[], tagIcons: Record<string, string>): ChartItem[] =>
   tags
     .filter((t) => t.source !== 'lastfm')
     .map((t) => {
       const isPoint = !t.end_time
       const end = t.end_time ?? new Date(t.start_time.getTime() + 15 * 60000)
       const sourceLabel = t.source ? ` (${t.source})` : ''
+      // Look up icon by tag name (case-insensitive) or by tag_key
+      const icon =
+        tagIcons[t.tag] ?? tagIcons[t.tag.toLowerCase()] ?? (t.tag_key ? tagIcons[t.tag_key] : undefined)
       return {
         color: getTagColor(t),
         column: 'Tags / Events' as Column,
         end,
         entity_id: t.id,
         entity_type: 'tag' as const,
+        icon,
         isPoint,
         label: t.tag,
         start: t.start_time,
@@ -656,6 +665,27 @@ export const DayView = () => {
     staleTime: 5 * 60 * 1000,
   })
 
+  // Fetch HR/HRV bucketed data for sparkline overlays on activities
+  const sparklineMetricsQuery = useQuery({
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      fetchBucketedMetrics(
+        subDays(fetchStart, 0.5),
+        addDays(fetchEnd, 0.5),
+        ['heart_rate', 'hrv_rmssd'],
+        '5m',
+      ),
+    queryKey: ['dayview-sparkline-metrics', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Fetch tag mappings with icons
+  const tagMappingsQuery = useQuery({
+    queryFn: fetchTagMappings,
+    queryKey: ['tag-mappings'],
+    staleTime: 30 * 60 * 1000,
+  })
+
   // Fetch custom metric definitions to know which custom metrics to show
   const customMetricsQuery = useQuery({
     queryFn: fetchCustomMetrics,
@@ -834,6 +864,22 @@ export const DayView = () => {
     [occasionalMetricsQuery.data, allMetricUnits],
   )
 
+  // Build tag icon lookup from tag mappings
+  const tagIcons = useMemo<Record<string, string>>(() => {
+    const icons = tagMappingsQuery.data?.icons ?? {}
+    return icons
+  }, [tagMappingsQuery.data])
+
+  // Parse sparkline bucketed data
+  const sparklineBuckets = useMemo(
+    () => parseBucketedData(sparklineMetricsQuery.data),
+    [sparklineMetricsQuery.data],
+  )
+
+  // Sparkline overlay toggles
+  const [showSparklineHR, setShowSparklineHR] = useState(true)
+  const [showSparklineHRV, setShowSparklineHRV] = useState(true)
+
   const allColumns: Column[] = useMemo(
     () => (showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS),
     [showMusicColumn],
@@ -850,7 +896,7 @@ export const DayView = () => {
       ...categorizeSleepRest(activities, scrobbles, ouraByDate),
       ...categorizeExercise(activities),
       ...categorizeLocations(places, uniquePlaceNames),
-      ...categorizeTags(tags),
+      ...categorizeTags(tags, tagIcons),
       ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? []),
       ...occasionalMetricItems,
       ...musicItems,
@@ -862,6 +908,7 @@ export const DayView = () => {
       places,
       uniquePlaceNames,
       tags,
+      tagIcons,
       productivity,
       screentimeCategoriesQuery.data,
       occasionalMetricItems,
@@ -901,7 +948,8 @@ export const DayView = () => {
     tagsQuery.isFetching ||
     productivityQuery.isFetching ||
     scrobblesQuery.isFetching ||
-    occasionalMetricsQuery.isFetching
+    occasionalMetricsQuery.isFetching ||
+    sparklineMetricsQuery.isFetching
 
   // Render SVG chart (data/structure only — zoom behavior is set up separately)
   const renderChart = useCallback(() => {
@@ -930,8 +978,8 @@ export const DayView = () => {
     const colPadding = 2
 
     // Clip path
-    svg
-      .append('defs')
+    const defs = svg.append('defs')
+    defs
       .append('clipPath')
       .attr('id', 'chart-clip')
       .append('rect')
@@ -1065,6 +1113,36 @@ export const DayView = () => {
         hideTooltip,
       )
 
+      // Draw sparkline overlays on activity blocks
+      if (sparklineBuckets.length > 0 && (showSparklineHR || showSparklineHRV)) {
+        // Build a lookup for item layout positions based on column data
+        const getItemRect = (item: ChartItem): { x: number; width: number } | undefined => {
+          for (let ci = 0; ci < columnData.length; ci++) {
+            const cd = columnData[ci]!
+            const found = cd.items.find((packed) => packed.item === item)
+            if (found) {
+              const cx = ci * colWidth + colGap
+              const usable = colWidth - colGap * 2
+              const lanes = Math.max(cd.laneCount, 1)
+              const lw = (usable - (lanes - 1) * colPadding) / lanes
+              return { width: lw, x: cx + found.lane * (lw + colPadding) }
+            }
+          }
+          return undefined
+        }
+
+        drawActivitySparklines(
+          chartGroup,
+          defs,
+          chartItems,
+          sparklineBuckets,
+          currentYScale,
+          showSparklineHR,
+          showSparklineHRV,
+          getItemRect,
+        )
+      }
+
       // Now line
       drawNowLine(chartGroup, chartWidth, currentYScale)
     }
@@ -1095,6 +1173,9 @@ export const DayView = () => {
     effectiveViewStart,
     scrobbles,
     activities,
+    sparklineBuckets,
+    showSparklineHR,
+    showSparklineHRV,
   ])
 
   // Re-render on data change and resize
@@ -1229,6 +1310,25 @@ export const DayView = () => {
             {label}
           </button>
         ))}
+        <span class="legend-separator" />
+        <button
+          class={`legend-item${!showSparklineHR ? ' legend-item-hidden' : ''}`}
+          onClick={() => setShowSparklineHR((v) => !v)}
+          type="button"
+          title="Toggle HR sparklines on activities"
+        >
+          <span class="legend-dot" style={{ background: '#ef4444' }} />
+          HR
+        </button>
+        <button
+          class={`legend-item${!showSparklineHRV ? ' legend-item-hidden' : ''}`}
+          onClick={() => setShowSparklineHRV((v) => !v)}
+          type="button"
+          title="Toggle HRV sparklines on activities"
+        >
+          <span class="legend-dot" style={{ background: '#14b8a6' }} />
+          HRV
+        </button>
       </div>
 
       {isLoading && <div class="loading">Loading…</div>}
@@ -1447,23 +1547,57 @@ const drawItem = (
     const cy = y1
     const size = Math.min(laneWidth / 2, 6)
     const cx = x + size + 2
-    parent
-      .append('polygon')
-      .attr('points', `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`)
-      .attr('fill', item.color)
-      .attr('opacity', 0.85)
-      .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
-      .on('mouseleave', hideTooltip)
 
-    // Text label next to point marker
-    const availableWidth = laneWidth - 2 * size - 6
+    if (item.icon && isEmoji(item.icon)) {
+      // Render emoji instead of diamond marker
+      const emojiSize = Math.min(laneWidth * 0.4, 16)
+      parent
+        .append('text')
+        .attr('x', cx)
+        .attr('y', cy)
+        .attr('dy', '0.35em')
+        .attr('text-anchor', 'middle')
+        .attr('font-size', `${emojiSize}px`)
+        .attr('pointer-events', 'all')
+        .attr('cursor', detailUrl ? 'pointer' : 'default')
+        .text(item.icon)
+        .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+        .on('mouseleave', hideTooltip)
+    } else if (item.icon && isUrl(item.icon)) {
+      // Render custom image icon
+      const imgSize = Math.min(laneWidth * 0.4, 16)
+      parent
+        .append('image')
+        .attr('href', item.icon)
+        .attr('x', cx - imgSize / 2)
+        .attr('y', cy - imgSize / 2)
+        .attr('width', imgSize)
+        .attr('height', imgSize)
+        .attr('pointer-events', 'all')
+        .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+        .on('mouseleave', hideTooltip)
+    } else {
+      // Default diamond marker
+      parent
+        .append('polygon')
+        .attr('points', `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`)
+        .attr('fill', item.color)
+        .attr('opacity', 0.85)
+        .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+        .on('mouseleave', hideTooltip)
+    }
+
+    // Text label next to point marker (offset further for emoji/image icons)
+    const markerWidth = item.icon ? Math.min(laneWidth * 0.4, 16) : 2 * size
+    const labelX = x + markerWidth + 6
+    const availableWidth = laneWidth - markerWidth - 8
     if (availableWidth > 20) {
       const charWidth = 5.5
       const maxChars = Math.floor(availableWidth / charWidth)
       const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
       parent
         .append('text')
-        .attr('x', x + 2 * size + 6)
+        .attr('x', labelX)
         .attr('y', cy)
         .attr('dy', '0.35em')
         .attr('fill', item.color)

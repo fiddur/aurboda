@@ -39,7 +39,9 @@
   font-weight: 600;
   cursor: pointer;
   color: #374151;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   min-width: 2rem;
   text-align: center;
 }
@@ -73,8 +75,13 @@
 }
 
 @keyframes dayview-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 /* Legend */
@@ -102,7 +109,9 @@
   font: inherit;
   font-size: 0.85rem;
   color: inherit;
-  transition: opacity 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
 }
 
 .day-view-legend .legend-item:hover {
@@ -118,6 +127,14 @@
   width: 12px;
   height: 12px;
   border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.day-view-legend .legend-separator {
+  width: 1px;
+  height: 20px;
+  background: #d1d5db;
+  margin: 0 0.25rem;
   flex-shrink: 0;
 }
 
@@ -316,6 +333,10 @@
 
   .day-view-legend .legend-item:hover {
     background: rgba(255, 255, 255, 0.08);
+  }
+
+  .day-view-legend .legend-separator {
+    background: #4b5563;
   }
 
   .day-view-tooltip {
