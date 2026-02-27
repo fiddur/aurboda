@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import {
   fetchActivities,
+  fetchActivityWatchStatus,
   fetchHeartRate,
   fetchPlaces,
   fetchProductivity,
@@ -135,13 +136,22 @@ export function Help() {
     staleTime: 5 * 60 * 1000,
   })
 
+  // Fetch ActivityWatch sync status (distinct from RescueTime)
+  const awStatusQuery = useQuery({
+    enabled: !!isLoggedIn,
+    queryFn: fetchActivityWatchStatus,
+    queryKey: ['awStatus'],
+    staleTime: 5 * 60 * 1000,
+  })
+
   const isLoading =
     heartRateQuery.isLoading ||
     sleepQuery.isLoading ||
     exerciseQuery.isLoading ||
     productivityQuery.isLoading ||
     locationsQuery.isLoading ||
-    settingsQuery.isLoading
+    settingsQuery.isLoading ||
+    awStatusQuery.isLoading
 
   const hasHeartRate = (heartRateQuery.data?.length ?? 0) > 0
   const hasSleep = (sleepQuery.data?.length ?? 0) > 0
@@ -150,6 +160,7 @@ export function Help() {
   const hasLocations = (locationsQuery.data?.length ?? 0) > 0
   const isOuraConnected = settingsQuery.data?.oura_connected ?? false
   const isRescueTimeConfigured = !!settingsQuery.data?.rescue_time_key
+  const hasActivityWatch = (awStatusQuery.data?.length ?? 0) > 0
 
   if (!isLoggedIn) {
     return (
@@ -318,20 +329,19 @@ export function Help() {
           <DataSourceCard
             name="ActivityWatch"
             status={{
-              description:
-                hasProductivity ?
-                  'Screen time data detected in the last 7 days.'
-                : 'ActivityWatch not configured.',
-              hasData: hasProductivity,
+              description: hasActivityWatch ? 'ActivityWatch data syncing.' : 'ActivityWatch not set up.',
+              hasData: hasActivityWatch,
             }}
             setupSteps={[
-              'Install ActivityWatch on your computer (activitywatch.net).',
-              'Install the aw-push-agent to push data to Aurboda.',
-              'Generate a push agent token in Settings > Data Sources.',
-              'Configure the push agent with your Aurboda URL and token.',
+              'Desktop: Install ActivityWatch, generate an API token in Settings, and set up the push agent script.',
+              'Android: Install ActivityWatch for Android, then enable "ActivityWatch Sync" in Aurboda\'s Sync tab.',
             ]}
             links={[
               { text: 'Go to Settings', url: '/settings' },
+              {
+                text: 'Setup Guide',
+                url: 'https://github.com/fiddur/aurboda/blob/develop/docs/activitywatch.md',
+              },
               { text: 'ActivityWatch Website', url: 'https://activitywatch.net/' },
             ]}
           />

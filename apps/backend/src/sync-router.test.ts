@@ -259,4 +259,42 @@ describe('sync router', () => {
       expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
     })
   })
+
+  describe('activitywatch endpoint', () => {
+    test('POST /sync/activitywatch passes events and device_name', async () => {
+      const app = createTestApp()
+      const events = [{ app: 'firefox', duration: 120, timestamp: '2024-01-15T10:00:00Z' }]
+      const response = await request(app)
+        .post('/sync/activitywatch')
+        .send({ device_name: 'my-laptop', events })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.processActivityWatchEvents).toHaveBeenCalledWith(
+        'testuser',
+        events,
+        'my-laptop',
+        undefined,
+      )
+    })
+
+    test('POST /sync/activitywatch passes is_mobile when provided', async () => {
+      const app = createTestApp()
+      const events = [{ app: 'com.example.app', duration: 60, timestamp: '2024-01-15T10:00:00Z' }]
+      const response = await request(app)
+        .post('/sync/activitywatch')
+        .send({ device_name: 'pixel-8', events, is_mobile: true })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.processActivityWatchEvents).toHaveBeenCalledWith('testuser', events, 'pixel-8', true)
+    })
+
+    test('POST /sync/activitywatch defaults device_name to empty string', async () => {
+      const app = createTestApp()
+      const events = [{ app: 'vim', duration: 300, timestamp: '2024-01-15T10:00:00Z' }]
+      const response = await request(app).post('/sync/activitywatch').send({ events })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.processActivityWatchEvents).toHaveBeenCalledWith('testuser', events, '', undefined)
+    })
+  })
 })
