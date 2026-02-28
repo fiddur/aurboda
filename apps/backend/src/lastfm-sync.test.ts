@@ -329,8 +329,9 @@ describe('applyTagRules', () => {
 
     expect(tagsCreated).toBe(1)
     expect(insertTag).toHaveBeenCalledTimes(1)
+    // End time is the last scrobble (10:08) + merge_gap_seconds (10min) = 10:18.
     expect(insertTag).toHaveBeenCalledWith('testuser', {
-      end_time: new Date('2024-01-01T10:08:00Z'),
+      end_time: new Date('2024-01-01T10:18:00Z'),
       external_id: expect.stringMatching(/^lastfm-session-rule-1-/),
       source: 'lastfm-auto',
       start_time: new Date('2024-01-01T10:00:00Z'),
@@ -398,18 +399,18 @@ describe('applyTagRules', () => {
     expect(tagsCreated).toBe(2)
     expect(insertTag).toHaveBeenCalledTimes(2)
 
-    // First session: Jan 9
+    // First session: Jan 9 (11:00–11:04) + merge_gap 10min = 11:14.
     expect(insertTag).toHaveBeenCalledWith('testuser', {
-      end_time: new Date('2024-01-09T11:04:00Z'),
+      end_time: new Date('2024-01-09T11:14:00Z'),
       external_id: expect.stringContaining('rule-1'),
       source: 'lastfm-auto',
       start_time: new Date('2024-01-09T11:00:00Z'),
       tag: 'VocalExercise',
     })
 
-    // Second session: Jan 17
+    // Second session: Jan 17 (10:00–10:08) + merge_gap 10min = 10:18.
     expect(insertTag).toHaveBeenCalledWith('testuser', {
-      end_time: new Date('2024-01-17T10:08:00Z'),
+      end_time: new Date('2024-01-17T10:18:00Z'),
       external_id: expect.stringContaining('rule-1'),
       source: 'lastfm-auto',
       start_time: new Date('2024-01-17T10:00:00Z'),
@@ -448,13 +449,48 @@ describe('applyTagRules', () => {
 
     const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
 
+    // End extended by merge_gap_seconds: 10:06 + 10min = 10:16.
     expect(tagsCreated).toBe(1)
     expect(updateTagEndTime).toHaveBeenCalledWith(
       'testuser',
       'lastfm-session-rule-1-existing',
-      new Date('2024-01-01T10:06:00Z'),
+      new Date('2024-01-01T10:16:00Z'),
     )
     expect(insertTag).not.toHaveBeenCalled()
+  })
+
+  it('extends single-scrobble session by merge_gap_seconds', async () => {
+    vi.mocked(findMergeableTag).mockResolvedValue(undefined)
+
+    // Single matching scrobble — merge_gap_seconds used as duration estimate
+    const scrobbles: Scrobble[] = [
+      { artist: 'Holosync', timestamp: new Date('2024-01-01T14:36:00Z'), track: 'Dive' },
+    ]
+
+    const rules: LastFmTagRule[] = [
+      {
+        artist_name: 'Holosync',
+        created_at: new Date(),
+        id: 'rule-1',
+        match_mode: 'exact',
+        match_type: 'artist',
+        merge_gap_seconds: 1860, // 31 minutes
+        rule_name: 'Holosync',
+        tag_name: 'Holosync',
+      },
+    ]
+
+    const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
+
+    expect(tagsCreated).toBe(1)
+    expect(insertTag).toHaveBeenCalledWith('testuser', {
+      // End = 14:36 + 31min = 15:07
+      end_time: new Date('2024-01-01T15:07:00Z'),
+      external_id: expect.stringMatching(/^lastfm-session-rule-1-/),
+      source: 'lastfm-auto',
+      start_time: new Date('2024-01-01T14:36:00Z'),
+      tag: 'Holosync',
+    })
   })
 
   it('handles mix of point-in-time and session rules', async () => {

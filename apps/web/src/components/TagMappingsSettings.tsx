@@ -87,10 +87,22 @@ function TagMappingRow({
     }
   }
 
-  const handleAcceptSuggestion = () => {
-    if (suggestedEmoji) {
+  const handleAcceptSuggestion = async () => {
+    if (!suggestedEmoji) return
+
+    const name = (localValue ?? tag.current_name ?? '').trim()
+    if (!name) return
+
+    setSuggestedEmoji(undefined)
+    setStatus('saving')
+    try {
+      await onSave(tag.tag_key, name, suggestedEmoji)
+      setLocalValue(undefined)
+      setLocalIcon(undefined)
+      setStatus('saved')
+    } catch {
       setLocalIcon(suggestedEmoji)
-      setSuggestedEmoji(undefined)
+      setStatus('error')
     }
   }
 

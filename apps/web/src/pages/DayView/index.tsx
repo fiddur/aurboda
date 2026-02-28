@@ -1457,8 +1457,9 @@ const mergeSmallItems = (
 
   for (const packed of sorted) {
     const h = Math.abs(yScale(packed.item.end) - yScale(packed.item.start))
-    if (h >= MIN_ITEM_HEIGHT) {
-      // Large item: flush pending cluster then add as-is
+    if (h >= MIN_ITEM_HEIGHT || (packed.item.isPoint && packed.item.icon)) {
+      // Large item or icon point: flush pending cluster then add as-is
+      // Icon points are handled by stackIconPoints instead of merging
       flushCluster()
       result.push(packed)
       continue
@@ -1486,6 +1487,50 @@ const mergeSmallItems = (
   return result
 }
 
+/**
+ * Stack icon-bearing point items horizontally instead of spreading across sub-lanes.
+ * Groups items at the same start time that have icons, forces them to lane 0,
+ * and assigns a horizontal pixel offset so they sit side by side.
+ * Non-icon items and duration items keep their original lanes.
+ */
+const stackIconPoints = (
+  items: { item: ChartItem; lane: number }[],
+): { item: ChartItem; lane: number; xOffset: number }[] => {
+  // Separate icon points from everything else
+  const iconPoints = items.filter((p) => p.item.isPoint && p.item.icon)
+  if (iconPoints.length <= 1) return items.map((p) => ({ ...p, xOffset: 0 }))
+
+  // Group icon points by start time
+  const byTime = new Map<number, { item: ChartItem; lane: number }[]>()
+  for (const p of iconPoints) {
+    const t = p.item.start.getTime()
+    const group = byTime.get(t) ?? []
+    group.push(p)
+    byTime.set(t, group)
+  }
+
+  // Build a set of items that are stacked (have siblings at the same time)
+  const stackedSet = new Set<ChartItem>()
+  const offsetMap = new Map<ChartItem, number>()
+  const ICON_STEP = 18 // horizontal spacing between stacked icons
+
+  for (const group of byTime.values()) {
+    // Sort by label for consistent ordering
+    group.sort((a, b) => a.item.label.localeCompare(b.item.label))
+    for (let i = 0; i < group.length; i++) {
+      stackedSet.add(group[i]!.item)
+      offsetMap.set(group[i]!.item, i * ICON_STEP)
+    }
+  }
+
+  return items.map((p) => {
+    if (stackedSet.has(p.item)) {
+      return { item: p.item, lane: 0, xOffset: offsetMap.get(p.item) ?? 0 }
+    }
+    return { ...p, xOffset: 0 }
+  })
+}
+
 const drawColumnItems = (
   chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
   columnData: ColumnDataEntry[],
@@ -1503,16 +1548,37 @@ const drawColumnItems = (
     const mergedItems = mergeSmallItems(packedItems, yScale)
     const hasMerged = mergedItems.some((m) => m.item.label.endsWith(' items'))
 
+    // Stack icon points horizontally instead of sub-lanes
+    const stackedItems = stackIconPoints(mergedItems)
+
     const colX = colIdx * colWidth + colGap
     const usableWidth = colWidth - colGap * 2
+
+    // Determine effective lane count: icon-stacked items don't need extra lanes
+    const hasStacked = stackedItems.some((s) => s.xOffset > 0)
+    const nonStackedLanes =
+      hasStacked ?
+        Math.max(1, ...stackedItems.filter((s) => s.xOffset === 0 && !s.item.isPoint).map((s) => s.lane + 1))
+      : laneCount
     // If merging happened, use full column width for merged blocks
-    const effectiveLanes = hasMerged ? 1 : Math.max(laneCount, 1)
+    const effectiveLanes = hasMerged ? 1 : Math.max(nonStackedLanes, 1)
     const lanes = effectiveLanes
     const laneWidth = (usableWidth - (lanes - 1) * colPadding) / lanes
 
-    for (const { item, lane } of mergedItems) {
+    for (const { item, lane, xOffset } of stackedItems) {
       const effectiveLane = hasMerged ? 0 : lane
-      drawItem(chartGroup, item, effectiveLane, colX, laneWidth, colPadding, yScale, showTooltip, hideTooltip)
+      drawItem(
+        chartGroup,
+        item,
+        effectiveLane,
+        colX,
+        laneWidth,
+        colPadding,
+        yScale,
+        showTooltip,
+        hideTooltip,
+        xOffset,
+      )
     }
   }
 }
@@ -1527,10 +1593,11 @@ const drawItem = (
   yScale: d3.ScaleTime<number, number>,
   showTooltip: (event: MouseEvent, item: ChartItem) => void,
   hideTooltip: () => void,
+  xOffset = 0,
 ) => {
   const y1 = yScale(item.start)
   const y2 = yScale(item.end)
-  const x = colX + lane * (laneWidth + colPadding)
+  const x = colX + lane * (laneWidth + colPadding) + xOffset
   const blockHeight = Math.max(y2 - y1, 2)
 
   const detailUrl =
@@ -1549,8 +1616,8 @@ const drawItem = (
     const cx = x + size + 2
 
     if (item.icon && isEmoji(item.icon)) {
-      // Render emoji instead of diamond marker
-      const emojiSize = Math.min(laneWidth * 0.4, 16)
+      // Render emoji only — no text label (tooltip on hover provides the name)
+      const emojiSize = 14
       parent
         .append('text')
         .attr('x', cx)
@@ -1564,8 +1631,8 @@ const drawItem = (
         .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
         .on('mouseleave', hideTooltip)
     } else if (item.icon && isUrl(item.icon)) {
-      // Render custom image icon
-      const imgSize = Math.min(laneWidth * 0.4, 16)
+      // Render custom image icon only — no text label
+      const imgSize = 14
       parent
         .append('image')
         .attr('href', item.icon)
@@ -1574,10 +1641,11 @@ const drawItem = (
         .attr('width', imgSize)
         .attr('height', imgSize)
         .attr('pointer-events', 'all')
+        .attr('cursor', detailUrl ? 'pointer' : 'default')
         .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
         .on('mouseleave', hideTooltip)
     } else {
-      // Default diamond marker
+      // Default: diamond marker + text label
       parent
         .append('polygon')
         .attr('points', `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`)
@@ -1585,26 +1653,24 @@ const drawItem = (
         .attr('opacity', 0.85)
         .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
         .on('mouseleave', hideTooltip)
-    }
 
-    // Text label next to point marker (offset further for emoji/image icons)
-    const markerWidth = item.icon ? Math.min(laneWidth * 0.4, 16) : 2 * size
-    const labelX = x + markerWidth + 6
-    const availableWidth = laneWidth - markerWidth - 8
-    if (availableWidth > 20) {
-      const charWidth = 5.5
-      const maxChars = Math.floor(availableWidth / charWidth)
-      const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
-      parent
-        .append('text')
-        .attr('x', labelX)
-        .attr('y', cy)
-        .attr('dy', '0.35em')
-        .attr('fill', item.color)
-        .attr('font-size', '0.6rem')
-        .attr('opacity', 0.8)
-        .attr('pointer-events', 'none')
-        .text(text)
+      const labelX = x + 2 * size + 6
+      const availableWidth = laneWidth - 2 * size - 8
+      if (availableWidth > 20) {
+        const charWidth = 5.5
+        const maxChars = Math.floor(availableWidth / charWidth)
+        const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+        parent
+          .append('text')
+          .attr('x', labelX)
+          .attr('y', cy)
+          .attr('dy', '0.35em')
+          .attr('fill', item.color)
+          .attr('font-size', '0.6rem')
+          .attr('opacity', 0.8)
+          .attr('pointer-events', 'none')
+          .text(text)
+      }
     }
     return
   }
@@ -1629,8 +1695,30 @@ const drawItem = (
       hideTooltip()
     })
 
-  // Text label inside if tall enough
-  if (blockHeight > 30) {
+  // Icon overlay for duration blocks
+  if (item.icon && isEmoji(item.icon)) {
+    const emojiSize = 14
+    parent
+      .append('text')
+      .attr('x', x + laneWidth / 2)
+      .attr('y', y1 + blockHeight / 2)
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', `${emojiSize}px`)
+      .attr('pointer-events', 'none')
+      .text(item.icon)
+  } else if (item.icon && isUrl(item.icon)) {
+    const imgSize = 14
+    parent
+      .append('image')
+      .attr('href', item.icon)
+      .attr('x', x + laneWidth / 2 - imgSize / 2)
+      .attr('y', y1 + blockHeight / 2 - imgSize / 2)
+      .attr('width', imgSize)
+      .attr('height', imgSize)
+      .attr('pointer-events', 'none')
+  } else if (blockHeight > 30) {
+    // Text label inside if tall enough (only when no icon)
     const fontSize = laneWidth > 100 ? '0.8rem' : '0.65rem'
     const charWidth = laneWidth > 100 ? 7.5 : 6
     const maxChars = Math.floor(laneWidth / charWidth)
