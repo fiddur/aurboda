@@ -133,6 +133,11 @@ interface ScrobbleEvent extends TimestampedEvent {
 /**
  * Apply session rules (rules with mergeGapSeconds) to scrobbles.
  * Groups matching scrobbles into sessions and creates span tags.
+ *
+ * The session end time is extended by merge_gap_seconds to account for the
+ * last track's duration, so that a single-scrobble session (e.g. a 30-minute
+ * meditation track with merge_gap_seconds=1860) gets a meaningful span rather
+ * than start_time === end_time.
  */
 const applySessionRules = async (
   user: string,
@@ -155,6 +160,11 @@ const applySessionRules = async (
     for (let i = 0; i < sessions.length; i++) {
       const session = sessions[i]
 
+      // Extend session end by merge_gap_seconds to account for last track duration.
+      // The merge gap is configured per-rule and represents the expected track/session
+      // length, so it serves as a reasonable duration estimate.
+      const sessionEnd = new Date(session.endTime.getTime() + gapMs)
+
       // For the first session, try cross-sync merging
       if (i === 0) {
         const existingTag = await findMergeableTag(
@@ -166,7 +176,7 @@ const applySessionRules = async (
         )
 
         if (existingTag) {
-          await updateTagEndTime(user, existingTag.external_id!, session.endTime)
+          await updateTagEndTime(user, existingTag.external_id!, sessionEnd)
           tagsCreated++
           continue
         }
@@ -174,7 +184,7 @@ const applySessionRules = async (
 
       const externalId = `lastfm-session-${rule.id}-${session.startTime.getTime()}`
       await insertTag(user, {
-        end_time: session.endTime,
+        end_time: sessionEnd,
         external_id: externalId,
         source: 'lastfm-auto',
         start_time: session.startTime,
