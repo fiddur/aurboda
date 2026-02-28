@@ -536,7 +536,7 @@ describe('Tags Integration Tests', () => {
       expect(tags).toEqual([])
     })
 
-    test('returns tags with tag_key set (mapped tags)', async () => {
+    test('returns tags with tag_key set as programmatic', async () => {
       const user = getTestUser()
       const uuid1 = '067e2862-8cf8-4307-a621-0636dd379cda'
       const uuid2 = '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a'
@@ -565,13 +565,15 @@ describe('Tags Integration Tests', () => {
       })
 
       const tags = await getProgrammaticTags(user)
+      const programmatic = tags.filter((t) => t.isProgrammatic)
 
-      expect(tags).toHaveLength(2)
+      expect(programmatic).toHaveLength(2)
       // Sorted by latest time descending
-      expect(tags[0].tagKey).toBe(uuid2)
-      expect(tags[0].count).toBe(1)
-      expect(tags[1].tagKey).toBe(uuid1)
-      expect(tags[1].count).toBe(2)
+      expect(programmatic[0].tagKey).toBe(uuid2)
+      expect(programmatic[0].count).toBe(1)
+      expect(programmatic[0].isProgrammatic).toBe(true)
+      expect(programmatic[1].tagKey).toBe(uuid1)
+      expect(programmatic[1].count).toBe(2)
     })
 
     test('falls back to programmatic tag names without tag_key (pre-migration)', async () => {
@@ -593,12 +595,14 @@ describe('Tags Integration Tests', () => {
       })
 
       const tags = await getProgrammaticTags(user)
+      const programmatic = tags.filter((t) => t.isProgrammatic)
 
-      expect(tags).toHaveLength(2)
-      expect(tags.map((t) => t.tagKey).sort()).toEqual([uuid, 'tag_sleep_sauna'])
+      expect(programmatic).toHaveLength(2)
+      expect(programmatic.map((t) => t.tagKey).sort()).toEqual([uuid, 'tag_sleep_sauna'])
+      expect(programmatic.every((t) => t.isProgrammatic)).toBe(true)
     })
 
-    test('excludes regular human-readable tags', async () => {
+    test('includes regular human-readable tags as non-programmatic', async () => {
       const user = getTestUser()
       const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
 
@@ -607,25 +611,57 @@ describe('Tags Integration Tests', () => {
         source: 'oura',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'Food',
-        tag_key: uuid, // should be included (has tag_key)
+        tag_key: uuid,
       })
       await insertTag(user, {
         external_id: 'tag-2',
         source: 'aurboda',
         start_time: new Date('2024-01-15T11:00:00Z'),
-        tag: 'coffee', // should be excluded (no tag_key, not programmatic)
+        tag: 'coffee',
       })
       await insertTag(user, {
         external_id: 'tag-3',
-        source: 'aurboda',
+        source: 'lastfm-auto',
         start_time: new Date('2024-01-15T12:00:00Z'),
-        tag: 'Food', // should be excluded (no tag_key, not programmatic)
+        tag: 'VocalExercise',
+      })
+
+      const tags = await getProgrammaticTags(user)
+
+      // All tags should be returned
+      expect(tags).toHaveLength(3)
+
+      // Programmatic tag (has tag_key)
+      const ouraTag = tags.find((t) => t.tagKey === uuid)
+      expect(ouraTag).toBeDefined()
+      expect(ouraTag!.isProgrammatic).toBe(true)
+
+      // Non-programmatic tags (manual and lastfm-auto)
+      const coffeeTag = tags.find((t) => t.tagKey === 'coffee')
+      expect(coffeeTag).toBeDefined()
+      expect(coffeeTag!.isProgrammatic).toBe(false)
+
+      const vocalTag = tags.find((t) => t.tagKey === 'VocalExercise')
+      expect(vocalTag).toBeDefined()
+      expect(vocalTag!.isProgrammatic).toBe(false)
+    })
+
+    test('includes calendar tags as non-programmatic', async () => {
+      const user = getTestUser()
+
+      await insertTag(user, {
+        external_id: 'cal-1',
+        source: 'calendar',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: '[Work] Standup',
       })
 
       const tags = await getProgrammaticTags(user)
 
       expect(tags).toHaveLength(1)
-      expect(tags[0].tagKey).toBe(uuid)
+      expect(tags[0].tagKey).toBe('[Work] Standup')
+      expect(tags[0].isProgrammatic).toBe(false)
+      expect(tags[0].count).toBe(1)
     })
 
     test('deduplicates between tag_key and fallback results', async () => {

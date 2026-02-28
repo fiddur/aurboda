@@ -186,17 +186,18 @@ export const isProgrammaticTag = (tag: string): boolean =>
   PROGRAMMATIC_TAG_PATTERNS.some((pattern) => pattern.test(tag))
 
 /**
- * Get programmatic tags from the tags table.
- * Returns tags that look like they need human-readable names (UUIDs, tag_* prefixes, etc.)
- * along with usage counts and last seen times.
+ * Get all tags for the tag mapper.
+ * Returns programmatic tags (UUIDs, tag_* prefixes) that need human-readable names,
+ * plus all other tags so users can set icons on any tag.
  *
  * Uses tag_key column when available (populated by Oura sync), falling back to
  * checking the tag column for programmatic patterns (for pre-migration data).
+ * Also includes non-programmatic tags grouped by display name.
  */
 export const getProgrammaticTags = async (
   user: string,
-): Promise<{ tagKey: string; count: number; latestTime: Date }[]> => {
-  // Query tags with tag_key set (the canonical source)
+): Promise<{ tagKey: string; count: number; latestTime: Date; isProgrammatic: boolean }[]> => {
+  // Query tags with tag_key set (the canonical source — Oura tags)
   const tagKeyResult = await query(
     user,
     `SELECT
@@ -211,11 +212,12 @@ export const getProgrammaticTags = async (
 
   const fromTagKey = tagKeyResult.rows.map((row) => ({
     count: parseInt(row.count, 10),
+    isProgrammatic: true,
     latestTime: new Date(row.latest_time),
     tagKey: row.tag_key as string,
   }))
 
-  // Also check for programmatic tag names without tag_key (pre-migration data)
+  // Also check tags without tag_key, grouped by tag name
   const tagKeyValues = new Set(fromTagKey.map((t) => t.tagKey))
   const fallbackResult = await query(
     user,
@@ -230,9 +232,10 @@ export const getProgrammaticTags = async (
   )
 
   const fromTag = fallbackResult.rows
-    .filter((row) => isProgrammaticTag(row.tag) && !tagKeyValues.has(row.tag))
+    .filter((row) => !tagKeyValues.has(row.tag))
     .map((row) => ({
       count: parseInt(row.count, 10),
+      isProgrammatic: isProgrammaticTag(row.tag),
       latestTime: new Date(row.latest_time),
       tagKey: row.tag as string,
     }))
