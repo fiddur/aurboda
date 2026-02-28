@@ -1,7 +1,12 @@
 import { randomUUID } from 'crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
-import { deleteLastFmTagRule, getLastFmTagRules, insertLastFmTagRule } from './lastfm-rules'
+import {
+  deleteLastFmTagRule,
+  getLastFmTagRules,
+  insertLastFmTagRule,
+  updateLastFmTagRule,
+} from './lastfm-rules'
 
 const CONTAINER_TIMEOUT = 60_000
 
@@ -257,5 +262,158 @@ describe('Last.fm Tag Rules Integration Tests', () => {
     })
 
     expect(rule.match_mode).toBe('exact')
+  })
+
+  test('updateLastFmTagRule updates rule_name', async () => {
+    const user = getTestUser()
+    const rule = await insertLastFmTagRule(user, {
+      match_mode: 'exact',
+      match_type: 'track',
+      rule_name: 'Original',
+      tag_name: 'Tag1',
+      track_name: 'Track 1',
+    })
+
+    const updated = await updateLastFmTagRule(user, rule.id, { rule_name: 'Updated Name' })
+
+    expect(updated).not.toBeNull()
+    expect(updated!.rule_name).toBe('Updated Name')
+    expect(updated!.tag_name).toBe('Tag1')
+    expect(updated!.track_name).toBe('Track 1')
+  })
+
+  test('updateLastFmTagRule updates multiple fields', async () => {
+    const user = getTestUser()
+    const rule = await insertLastFmTagRule(user, {
+      match_mode: 'exact',
+      match_type: 'track',
+      rule_name: 'Original',
+      tag_name: 'Tag1',
+      track_name: 'Track 1',
+    })
+
+    const updated = await updateLastFmTagRule(user, rule.id, {
+      match_mode: 'contains',
+      rule_name: 'New Name',
+      tag_name: 'NewTag',
+      track_name: 'New Track',
+    })
+
+    expect(updated).not.toBeNull()
+    expect(updated!.rule_name).toBe('New Name')
+    expect(updated!.tag_name).toBe('NewTag')
+    expect(updated!.track_name).toBe('New Track')
+    expect(updated!.match_mode).toBe('contains')
+  })
+
+  test('updateLastFmTagRule updates merge_gap_seconds', async () => {
+    const user = getTestUser()
+    const rule = await insertLastFmTagRule(user, {
+      artist_name: 'Some Artist',
+      match_mode: 'exact',
+      match_type: 'artist',
+      merge_gap_seconds: 300,
+      rule_name: 'Gap Rule',
+      tag_name: 'GapTag',
+    })
+
+    const updated = await updateLastFmTagRule(user, rule.id, { merge_gap_seconds: 600 })
+
+    expect(updated!.merge_gap_seconds).toBe(600)
+  })
+
+  test('updateLastFmTagRule clears merge_gap_seconds with null', async () => {
+    const user = getTestUser()
+    const rule = await insertLastFmTagRule(user, {
+      artist_name: 'Some Artist',
+      match_mode: 'exact',
+      match_type: 'artist',
+      merge_gap_seconds: 300,
+      rule_name: 'Gap Rule',
+      tag_name: 'GapTag',
+    })
+
+    const updated = await updateLastFmTagRule(user, rule.id, { merge_gap_seconds: null })
+
+    expect(updated!.merge_gap_seconds).toBeUndefined()
+  })
+
+  test('updateLastFmTagRule updates artist_names', async () => {
+    const user = getTestUser()
+    const rule = await insertLastFmTagRule(user, {
+      artist_names: ['Artist A'],
+      match_mode: 'exact',
+      match_type: 'artist',
+      rule_name: 'Multi Artist',
+      tag_name: 'MultiTag',
+    })
+
+    const updated = await updateLastFmTagRule(user, rule.id, {
+      artist_names: ['Artist A', 'Artist B', 'Artist C'],
+    })
+
+    expect(updated!.artist_names).toEqual(['Artist A', 'Artist B', 'Artist C'])
+  })
+
+  test('updateLastFmTagRule returns null for non-existent rule', async () => {
+    const user = getTestUser()
+
+    const updated = await updateLastFmTagRule(user, randomUUID(), { rule_name: 'Nope' })
+
+    expect(updated).toBeNull()
+  })
+
+  test('updateLastFmTagRule returns null when no fields provided', async () => {
+    const user = getTestUser()
+    const rule = await insertLastFmTagRule(user, {
+      match_mode: 'exact',
+      match_type: 'track',
+      rule_name: 'No Update',
+      tag_name: 'Tag1',
+      track_name: 'Track 1',
+    })
+
+    const updated = await updateLastFmTagRule(user, rule.id, {})
+
+    expect(updated).toBeNull()
+  })
+
+  test('updateLastFmTagRule changes match_type from track to artist', async () => {
+    const user = getTestUser()
+    const rule = await insertLastFmTagRule(user, {
+      match_mode: 'exact',
+      match_type: 'track',
+      rule_name: 'Type Change',
+      tag_name: 'TypeTag',
+      track_name: 'Old Track',
+    })
+
+    const updated = await updateLastFmTagRule(user, rule.id, {
+      artist_name: 'New Artist',
+      match_type: 'artist',
+    })
+
+    expect(updated!.match_type).toBe('artist')
+    expect(updated!.artist_name).toBe('New Artist')
+    // track_name remains from the original insert (DB doesn't clear it automatically)
+    expect(updated!.track_name).toBe('Old Track')
+  })
+
+  test('updateLastFmTagRule persists changes in database', async () => {
+    const user = getTestUser()
+    const rule = await insertLastFmTagRule(user, {
+      match_mode: 'exact',
+      match_type: 'track',
+      rule_name: 'Persist Test',
+      tag_name: 'PersistTag',
+      track_name: 'Some Track',
+    })
+
+    await updateLastFmTagRule(user, rule.id, { rule_name: 'Persisted Name' })
+
+    const rules = await getLastFmTagRules(user)
+    const found = rules.find((r) => r.id === rule.id)
+    expect(found).toBeDefined()
+    expect(found!.rule_name).toBe('Persisted Name')
   })
 })

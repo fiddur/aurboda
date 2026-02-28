@@ -1,13 +1,18 @@
 /**
  * MCP Last.fm tools: scrobble queries and tag rule management.
  */
-import { addLastFmTagRuleBodySchema, scrobblesQuerySchema } from '@aurboda/api-spec'
+import {
+  addLastFmTagRuleBodySchema,
+  scrobblesQuerySchema,
+  updateLastFmTagRuleBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
 import {
   deleteLastFmTagRule,
   getLastFmTagRules,
   getScrobbles,
   insertLastFmTagRule,
+  updateLastFmTagRule,
   type LastFmMatchMode,
   type LastFmMatchType,
 } from '../db'
@@ -89,6 +94,64 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
           data: {
             ...rule,
             created_at: rule.created_at.toISOString(),
+            tags_applied: tagsApplied,
+          },
+          success: true,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        if (message.includes('unique_rule')) {
+          return errorResponse('A rule with the same match criteria and tag already exists')
+        }
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  // Tool: update_lastfm_tag_rule
+  server.tool(
+    'update_lastfm_tag_rule',
+    'Update an existing Last.fm auto-tagging rule. Only provided fields are updated. Old auto-tags are removed and the updated rule is re-applied retroactively.',
+    {
+      id: z.string().uuid().describe('The ID of the rule to update'),
+      ...updateLastFmTagRuleBodySchema.shape,
+    },
+    async ({
+      id,
+      artist_name,
+      artist_names,
+      match_mode,
+      match_type,
+      merge_gap_seconds,
+      rule_name,
+      tag_name,
+      track_name,
+    }) => {
+      try {
+        // Clean up old auto-tags before updating
+        await cleanupRuleTags(user, id)
+
+        const updated = await updateLastFmTagRule(user, id, {
+          artist_name,
+          artist_names,
+          match_mode: match_mode as LastFmMatchMode | undefined,
+          match_type: match_type as LastFmMatchType | undefined,
+          merge_gap_seconds: merge_gap_seconds ?? undefined,
+          rule_name,
+          tag_name,
+          track_name,
+        })
+
+        if (!updated) {
+          return jsonResponse({ error: 'Rule not found', success: false })
+        }
+
+        const tagsApplied = await applyRuleRetroactively(user, updated)
+
+        return jsonResponse({
+          data: {
+            ...updated,
+            created_at: updated.created_at.toISOString(),
             tags_applied: tagsApplied,
           },
           success: true,

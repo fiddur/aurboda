@@ -508,6 +508,59 @@ export const addLastFmTagRuleBodySchema = z
 export type AddLastFmTagRuleBody = z.infer<typeof addLastFmTagRuleBodySchema>
 
 /**
+ * Update Last.fm tag rule body schema.
+ * All fields are optional — only provided fields are updated.
+ */
+export const updateLastFmTagRuleBodySchema = z
+  .object({
+    artist_name: z
+      .string()
+      .optional()
+      .meta({ description: 'Artist name to match (for artist or track_artist match type)' }),
+    artist_names: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Multiple artist names to match (takes precedence over artist_name when set)' }),
+    match_mode: lastFmMatchModeSchema.optional().meta({ description: 'Match mode' }),
+    match_type: lastFmMatchTypeSchema.optional().meta({ description: 'Type of match' }),
+    merge_gap_seconds: z.number().int().positive().nullable().optional().meta({
+      description: 'Session merge gap in seconds. Set to null to remove.',
+    }),
+    rule_name: z.string().min(1).optional().meta({ description: 'Human-readable name for the rule' }),
+    tag_name: z.string().min(1).optional().meta({ description: 'Tag to create when rule matches' }),
+    track_name: z
+      .string()
+      .optional()
+      .meta({ description: 'Track name to match (for track or track_artist match type)' }),
+  })
+  .meta({
+    id: 'UpdateLastFmTagRuleBody',
+    description: 'Partial update body for a Last.fm tag rule. Only provided fields are updated.',
+  })
+
+export type UpdateLastFmTagRuleBody = z.infer<typeof updateLastFmTagRuleBodySchema>
+
+/**
+ * Update Last.fm tag rule response.
+ */
+export const updateLastFmTagRuleResponseSchema = baseResponseSchema
+  .extend({
+    data: lastFmTagRuleSchema
+      .extend({
+        tags_applied: z
+          .number()
+          .int()
+          .optional()
+          .meta({ description: 'Number of tags retroactively created after re-applying the updated rule' }),
+      })
+      .optional()
+      .meta({ description: 'Updated tag rule' }),
+  })
+  .meta({ id: 'UpdateLastFmTagRuleResponse' })
+
+export type UpdateLastFmTagRuleResponse = z.infer<typeof updateLastFmTagRuleResponseSchema>
+
+/**
  * Last.fm tag rules response.
  */
 export const lastFmTagRulesResponseSchema = baseResponseSchema
