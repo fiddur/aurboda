@@ -1488,17 +1488,17 @@ const mergeSmallItems = (
 }
 
 /**
- * Stack icon-bearing point items vertically instead of spreading across sub-lanes.
+ * Stack icon-bearing point items horizontally instead of spreading across sub-lanes.
  * Groups items at the same start time that have icons, forces them to lane 0,
- * and assigns a vertical pixel offset so they sit below each other.
+ * and assigns a horizontal pixel offset so they sit side by side.
  * Non-icon items and duration items keep their original lanes.
  */
 const stackIconPoints = (
   items: { item: ChartItem; lane: number }[],
-): { item: ChartItem; lane: number; yOffset: number }[] => {
+): { item: ChartItem; lane: number; xOffset: number }[] => {
   // Separate icon points from everything else
   const iconPoints = items.filter((p) => p.item.isPoint && p.item.icon)
-  if (iconPoints.length <= 1) return items.map((p) => ({ ...p, yOffset: 0 }))
+  if (iconPoints.length <= 1) return items.map((p) => ({ ...p, xOffset: 0 }))
 
   // Group icon points by start time
   const byTime = new Map<number, { item: ChartItem; lane: number }[]>()
@@ -1512,7 +1512,7 @@ const stackIconPoints = (
   // Build a set of items that are stacked (have siblings at the same time)
   const stackedSet = new Set<ChartItem>()
   const offsetMap = new Map<ChartItem, number>()
-  const ICON_STEP = 18 // vertical spacing between stacked icons
+  const ICON_STEP = 18 // horizontal spacing between stacked icons
 
   for (const group of byTime.values()) {
     // Sort by label for consistent ordering
@@ -1525,9 +1525,9 @@ const stackIconPoints = (
 
   return items.map((p) => {
     if (stackedSet.has(p.item)) {
-      return { item: p.item, lane: 0, yOffset: offsetMap.get(p.item) ?? 0 }
+      return { item: p.item, lane: 0, xOffset: offsetMap.get(p.item) ?? 0 }
     }
-    return { ...p, yOffset: 0 }
+    return { ...p, xOffset: 0 }
   })
 }
 
@@ -1548,24 +1548,24 @@ const drawColumnItems = (
     const mergedItems = mergeSmallItems(packedItems, yScale)
     const hasMerged = mergedItems.some((m) => m.item.label.endsWith(' items'))
 
-    // Stack icon points vertically instead of sub-lanes
+    // Stack icon points horizontally instead of sub-lanes
     const stackedItems = stackIconPoints(mergedItems)
 
     const colX = colIdx * colWidth + colGap
     const usableWidth = colWidth - colGap * 2
 
     // Determine effective lane count: icon-stacked items don't need extra lanes
-    const hasStacked = stackedItems.some((s) => s.yOffset > 0)
+    const hasStacked = stackedItems.some((s) => s.xOffset > 0)
     const nonStackedLanes =
       hasStacked ?
-        Math.max(1, ...stackedItems.filter((s) => s.yOffset === 0 && !s.item.isPoint).map((s) => s.lane + 1))
+        Math.max(1, ...stackedItems.filter((s) => s.xOffset === 0 && !s.item.isPoint).map((s) => s.lane + 1))
       : laneCount
     // If merging happened, use full column width for merged blocks
     const effectiveLanes = hasMerged ? 1 : Math.max(nonStackedLanes, 1)
     const lanes = effectiveLanes
     const laneWidth = (usableWidth - (lanes - 1) * colPadding) / lanes
 
-    for (const { item, lane, yOffset } of stackedItems) {
+    for (const { item, lane, xOffset } of stackedItems) {
       const effectiveLane = hasMerged ? 0 : lane
       drawItem(
         chartGroup,
@@ -1577,7 +1577,7 @@ const drawColumnItems = (
         yScale,
         showTooltip,
         hideTooltip,
-        yOffset,
+        xOffset,
       )
     }
   }
@@ -1593,11 +1593,11 @@ const drawItem = (
   yScale: d3.ScaleTime<number, number>,
   showTooltip: (event: MouseEvent, item: ChartItem) => void,
   hideTooltip: () => void,
-  yOffset = 0,
+  xOffset = 0,
 ) => {
-  const y1 = yScale(item.start) + yOffset
-  const y2 = yScale(item.end) + yOffset
-  const x = colX + lane * (laneWidth + colPadding)
+  const y1 = yScale(item.start)
+  const y2 = yScale(item.end)
+  const x = colX + lane * (laneWidth + colPadding) + xOffset
   const blockHeight = Math.max(y2 - y1, 2)
 
   const detailUrl =
