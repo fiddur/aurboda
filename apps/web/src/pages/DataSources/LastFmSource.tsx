@@ -64,10 +64,6 @@ export function LastFmSource() {
 
   return (
     <div class="data-sources-page">
-      <a href="/data-sources" class="back-link">
-        &larr; All Data Sources
-      </a>
-
       <div class="page-header">
         <h1>Last.fm</h1>
       </div>

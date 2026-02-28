@@ -75,10 +75,6 @@ export function RescueTimeSource() {
 
   return (
     <div class="data-sources-page">
-      <a href="/data-sources" class="back-link">
-        &larr; All Data Sources
-      </a>
-
       <div class="page-header">
         <h1>RescueTime</h1>
       </div>

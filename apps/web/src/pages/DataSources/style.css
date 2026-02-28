@@ -264,20 +264,6 @@
   margin-bottom: 0.5rem;
 }
 
-.data-source-detail .back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  color: #673ab8;
-  text-decoration: none;
-  font-size: 0.875rem;
-  margin-bottom: 1rem;
-}
-
-.data-source-detail .back-link:hover {
-  text-decoration: underline;
-}
-
 /* Getting started tips on overview */
 .getting-started-tips {
   background: #f9fafb;
@@ -637,10 +623,6 @@
 
   .data-source-detail .setup-instructions ol {
     color: #9ca3af;
-  }
-
-  .data-source-detail .back-link {
-    color: #a78bfa;
   }
 
   .getting-started-tips {
