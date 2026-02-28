@@ -1457,8 +1457,9 @@ const mergeSmallItems = (
 
   for (const packed of sorted) {
     const h = Math.abs(yScale(packed.item.end) - yScale(packed.item.start))
-    if (h >= MIN_ITEM_HEIGHT) {
-      // Large item: flush pending cluster then add as-is
+    if (h >= MIN_ITEM_HEIGHT || (packed.item.isPoint && packed.item.icon)) {
+      // Large item or icon point: flush pending cluster then add as-is
+      // Icon points are handled by stackIconPoints instead of merging
       flushCluster()
       result.push(packed)
       continue
