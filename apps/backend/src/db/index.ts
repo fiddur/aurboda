@@ -186,7 +186,12 @@ export {
 export { getUserSettings, upsertUserSettings } from './settings'
 
 // Last.fm tag rules
-export { deleteLastFmTagRule, getLastFmTagRules, insertLastFmTagRule } from './lastfm-rules'
+export {
+  deleteLastFmTagRule,
+  getLastFmTagRules,
+  insertLastFmTagRule,
+  updateLastFmTagRule,
+} from './lastfm-rules'
 
 // MCP sessions
 export {

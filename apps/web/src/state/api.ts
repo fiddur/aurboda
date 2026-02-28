@@ -81,6 +81,8 @@ import type {
   UniqueTagsResponse,
   UpdateActivityBody,
   UpdateCustomMetricBody,
+  UpdateLastFmTagRuleBody,
+  UpdateLastFmTagRuleResponse,
   UpdateScreentimeCategoryBody,
   UpdateSettingsInput,
   UserSettingsResponse,
@@ -169,6 +171,7 @@ export type {
   TrendDisplayPeriod,
   TrendResult,
   TrendSourceType,
+  UpdateLastFmTagRuleBody,
   UpdateSettingsInput,
   UserSettingsResponse,
 }
@@ -886,6 +889,21 @@ export const createLastFmTagRule = async (rule: AddLastFmTagRuleBody): Promise<L
   const response = await axios.post<AddLastFmTagRuleResponse>(`${API_URL}/lastfm/tag-rules`, rule, {
     headers: { Authorization: `Bearer ${token}` },
   })
+
+  return response.data.data!
+}
+
+// Update an existing Last.fm tag rule
+export const updateLastFmTagRule = async (
+  ruleId: string,
+  body: UpdateLastFmTagRuleBody,
+): Promise<LastFmTagRule> => {
+  const { token } = auth.value
+  const response = await axios.put<UpdateLastFmTagRuleResponse>(
+    `${API_URL}/lastfm/tag-rules/${ruleId}`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
 
   return response.data.data!
 }

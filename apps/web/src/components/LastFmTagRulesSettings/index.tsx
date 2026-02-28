@@ -1,14 +1,16 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 import {
   createLastFmTagRule,
   deleteLastFmTagRule,
   fetchLastFmTagRules,
   fetchUserSettings,
+  updateLastFmTagRule,
   type AddLastFmTagRuleBody,
   type LastFmMatchMode,
   type LastFmMatchType,
   type LastFmTagRule,
+  type UpdateLastFmTagRuleBody,
 } from '../../state/api'
 import { auth } from '../../state/auth'
 
@@ -22,7 +24,7 @@ function SaveIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
   if (saveStatus.status === 'idle') return null
   const messages: Record<string, string> = {
     error: saveStatus.error ?? 'Error',
-    saved: 'Rule created',
+    saved: 'Rule saved',
     saving: 'Saving...',
   }
   return <span class={`save-indicator ${saveStatus.status}`}>{messages[saveStatus.status]}</span>
@@ -82,6 +84,289 @@ const buildRule = (
     rule.merge_gap_seconds = Math.round(gapMinutes * 60)
   }
   return rule
+}
+
+function EditableRuleRow({
+  rule,
+  onDeleted,
+  onUpdated,
+}: {
+  rule: LastFmTagRule
+  onDeleted: () => void
+  onUpdated: () => void
+}) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editRuleName, setEditRuleName] = useState(rule.rule_name)
+  const [editTagName, setEditTagName] = useState(rule.tag_name)
+  const [editMatchType, setEditMatchType] = useState<LastFmMatchType>(rule.match_type)
+  const [editMatchMode, setEditMatchMode] = useState<LastFmMatchMode>(rule.match_mode)
+  const [editTrackName, setEditTrackName] = useState(rule.track_name ?? '')
+  const [editArtistName, setEditArtistName] = useState(rule.artist_name ?? '')
+  const [editArtistNames, setEditArtistNames] = useState<string[]>(rule.artist_names ?? [])
+  const [editNewArtistInput, setEditNewArtistInput] = useState('')
+  const [editMergeGapMinutes, setEditMergeGapMinutes] = useState(
+    rule.merge_gap_seconds ? String(Math.round(rule.merge_gap_seconds / 60)) : '',
+  )
+
+  const resetForm = () => {
+    setEditRuleName(rule.rule_name)
+    setEditTagName(rule.tag_name)
+    setEditMatchType(rule.match_type)
+    setEditMatchMode(rule.match_mode)
+    setEditTrackName(rule.track_name ?? '')
+    setEditArtistName(rule.artist_name ?? '')
+    setEditArtistNames(rule.artist_names ?? [])
+    setEditNewArtistInput('')
+    setEditMergeGapMinutes(rule.merge_gap_seconds ? String(Math.round(rule.merge_gap_seconds / 60)) : '')
+  }
+
+  const handleEditAddArtist = () => {
+    const name = editNewArtistInput.trim()
+    if (name && !editArtistNames.includes(name)) {
+      setEditArtistNames([...editArtistNames, name])
+      setEditNewArtistInput('')
+    }
+  }
+
+  const updateMutation = useMutation({
+    mutationFn: () => {
+      const body: UpdateLastFmTagRuleBody = {}
+
+      if (editRuleName.trim() !== rule.rule_name) body.rule_name = editRuleName.trim()
+      if (editTagName.trim() !== rule.tag_name) body.tag_name = editTagName.trim()
+      if (editMatchType !== rule.match_type) body.match_type = editMatchType
+      if (editMatchMode !== rule.match_mode) body.match_mode = editMatchMode
+
+      if (needsTrack(editMatchType)) {
+        if (editTrackName.trim() !== (rule.track_name ?? '')) body.track_name = editTrackName.trim()
+      }
+      if (needsArtist(editMatchType)) {
+        if (editArtistNames.length > 0) {
+          const original = rule.artist_names ?? []
+          if (
+            editArtistNames.length !== original.length ||
+            editArtistNames.some((n, i) => n !== original[i])
+          ) {
+            body.artist_names = editArtistNames
+          }
+        } else if (editArtistName.trim() !== (rule.artist_name ?? '')) {
+          body.artist_name = editArtistName.trim()
+        }
+      }
+
+      const gapMinutes = parseFloat(editMergeGapMinutes)
+      const newGapSeconds = gapMinutes > 0 ? Math.round(gapMinutes * 60) : null
+      if (newGapSeconds !== (rule.merge_gap_seconds ?? null)) {
+        body.merge_gap_seconds = newGapSeconds
+      }
+
+      return updateLastFmTagRule(rule.id, body)
+    },
+    onSuccess: () => {
+      setIsEditing(false)
+      onUpdated()
+    },
+  })
+
+  const handleDelete = async () => {
+    if (!confirm(`Delete rule "${rule.rule_name}"?`)) return
+    try {
+      await deleteLastFmTagRule(rule.id)
+      onDeleted()
+    } catch {
+      // Error will be visible via the parent's status
+    }
+  }
+
+  if (isEditing) {
+    const validationError = validateRuleForm(editMatchType, editTrackName, editArtistName, editArtistNames)
+    const canSave = editRuleName.trim() && editTagName.trim() && !validationError
+
+    return (
+      <div class="rule-item editing">
+        <div class="rule-edit-fields">
+          <div class="form-row">
+            <div class="form-field">
+              <label>Rule Name</label>
+              <input
+                type="text"
+                value={editRuleName}
+                onInput={(e) => setEditRuleName((e.target as HTMLInputElement).value)}
+              />
+            </div>
+            <div class="form-field">
+              <label>Tag to Create</label>
+              <input
+                type="text"
+                value={editTagName}
+                onInput={(e) => setEditTagName((e.target as HTMLInputElement).value)}
+              />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Match Type</label>
+              <select
+                value={editMatchType}
+                onChange={(e) => setEditMatchType((e.target as HTMLSelectElement).value as LastFmMatchType)}
+              >
+                <option value="track">Track Name (any artist)</option>
+                <option value="artist">Artist Name (any track)</option>
+                <option value="track_artist">Track + Artist (exact)</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Match Mode</label>
+              <select
+                value={editMatchMode}
+                onChange={(e) => setEditMatchMode((e.target as HTMLSelectElement).value as LastFmMatchMode)}
+              >
+                <option value="exact">Exact (case-insensitive)</option>
+                <option value="contains">Contains (substring)</option>
+              </select>
+            </div>
+          </div>
+
+          {needsTrack(editMatchType) && (
+            <div class="form-field">
+              <label>Track Name</label>
+              <input
+                type="text"
+                value={editTrackName}
+                onInput={(e) => setEditTrackName((e.target as HTMLInputElement).value)}
+              />
+            </div>
+          )}
+
+          {needsArtist(editMatchType) && (
+            <div class="form-field">
+              <label>Artists</label>
+              {editArtistNames.length > 0 && (
+                <div class="artist-names-list">
+                  {editArtistNames.map((name, idx) => (
+                    <span class="artist-name-chip" key={name}>
+                      {name}
+                      <button
+                        type="button"
+                        class="remove-artist-button"
+                        onClick={() => setEditArtistNames(editArtistNames.filter((_, i) => i !== idx))}
+                      >
+                        x
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div class="artist-input-row">
+                <input
+                  type="text"
+                  value={editArtistNames.length > 0 ? editNewArtistInput : editArtistName}
+                  onInput={(e) => {
+                    const val = (e.target as HTMLInputElement).value
+                    if (editArtistNames.length > 0) {
+                      setEditNewArtistInput(val)
+                    } else {
+                      setEditArtistName(val)
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && editArtistNames.length > 0) {
+                      e.preventDefault()
+                      handleEditAddArtist()
+                    }
+                  }}
+                  placeholder={editArtistNames.length > 0 ? 'Add another artist...' : 'Artist name'}
+                />
+                <button
+                  type="button"
+                  class="add-artist-button"
+                  onClick={() => {
+                    if (editArtistNames.length === 0 && editArtistName.trim()) {
+                      setEditArtistNames([editArtistName.trim()])
+                      setEditArtistName('')
+                    } else {
+                      handleEditAddArtist()
+                    }
+                  }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div class="form-field">
+            <label>Session merge gap (minutes)</label>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={editMergeGapMinutes}
+              onInput={(e) => setEditMergeGapMinutes((e.target as HTMLInputElement).value)}
+              placeholder="Leave empty for one tag per scrobble"
+            />
+          </div>
+        </div>
+
+        <div class="rule-edit-actions">
+          <button
+            type="button"
+            class="connect-button"
+            onClick={() => updateMutation.mutate()}
+            disabled={!canSave || updateMutation.isPending}
+          >
+            {updateMutation.isPending ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            type="button"
+            class="cancel-button"
+            onClick={() => {
+              resetForm()
+              setIsEditing(false)
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+        {updateMutation.isError && <p class="rule-edit-error">{getErrorMessage(updateMutation.error)}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <div class="rule-item" key={rule.id}>
+      <div class="rule-info">
+        <span class="rule-name">{rule.rule_name}</span>
+        <span class="rule-details">
+          {formatRuleDescription(rule)}
+          {' → '}
+          <strong>{rule.tag_name}</strong>
+          {rule.merge_gap_seconds && (
+            <span class="rule-merge-info">
+              {' '}
+              (session merge: {Math.round(rule.merge_gap_seconds / 60)}min)
+            </span>
+          )}
+        </span>
+      </div>
+      <div class="rule-actions">
+        <button
+          type="button"
+          class="edit-rule-button"
+          onClick={() => {
+            resetForm()
+            setIsEditing(true)
+          }}
+        >
+          Edit
+        </button>
+        <button type="button" class="remove-rule-button" onClick={handleDelete}>
+          Delete
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export function LastFmTagRulesSettings() {
@@ -163,16 +448,7 @@ export function LastFmTagRulesSettings() {
     }
   }
 
-  const handleDeleteRule = async (rule: LastFmTagRule) => {
-    if (!confirm(`Delete rule "${rule.rule_name}"?`)) return
-
-    try {
-      await deleteLastFmTagRule(rule.id)
-      queryClient.invalidateQueries({ queryKey: ['lastfmTagRules'] })
-    } catch (err) {
-      setSaveStatus({ error: getErrorMessage(err), status: 'error' })
-    }
-  }
+  const invalidateRules = () => queryClient.invalidateQueries({ queryKey: ['lastfmTagRules'] })
 
   // Don't show if Last.fm is not configured
   if (!userSettings?.lastfm_username) {
@@ -199,25 +475,12 @@ export function LastFmTagRulesSettings() {
           {rulesList.length > 0 && (
             <div class="rules-list">
               {rulesList.map((rule) => (
-                <div class="rule-item" key={rule.id}>
-                  <div class="rule-info">
-                    <span class="rule-name">{rule.rule_name}</span>
-                    <span class="rule-details">
-                      {formatRuleDescription(rule)}
-                      {' → '}
-                      <strong>{rule.tag_name}</strong>
-                      {rule.merge_gap_seconds && (
-                        <span class="rule-merge-info">
-                          {' '}
-                          (session merge: {Math.round(rule.merge_gap_seconds / 60)}min)
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  <button type="button" class="remove-rule-button" onClick={() => handleDeleteRule(rule)}>
-                    Delete
-                  </button>
-                </div>
+                <EditableRuleRow
+                  key={rule.id}
+                  rule={rule}
+                  onDeleted={invalidateRules}
+                  onUpdated={invalidateRules}
+                />
               ))}
             </div>
           )}
