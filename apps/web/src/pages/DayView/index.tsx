@@ -1486,6 +1486,50 @@ const mergeSmallItems = (
   return result
 }
 
+/**
+ * Stack icon-bearing point items vertically instead of spreading across sub-lanes.
+ * Groups items at the same start time that have icons, forces them to lane 0,
+ * and assigns a vertical pixel offset so they sit below each other.
+ * Non-icon items and duration items keep their original lanes.
+ */
+const stackIconPoints = (
+  items: { item: ChartItem; lane: number }[],
+): { item: ChartItem; lane: number; yOffset: number }[] => {
+  // Separate icon points from everything else
+  const iconPoints = items.filter((p) => p.item.isPoint && p.item.icon)
+  if (iconPoints.length <= 1) return items.map((p) => ({ ...p, yOffset: 0 }))
+
+  // Group icon points by start time
+  const byTime = new Map<number, { item: ChartItem; lane: number }[]>()
+  for (const p of iconPoints) {
+    const t = p.item.start.getTime()
+    const group = byTime.get(t) ?? []
+    group.push(p)
+    byTime.set(t, group)
+  }
+
+  // Build a set of items that are stacked (have siblings at the same time)
+  const stackedSet = new Set<ChartItem>()
+  const offsetMap = new Map<ChartItem, number>()
+  const ICON_STEP = 18 // vertical spacing between stacked icons
+
+  for (const group of byTime.values()) {
+    // Sort by label for consistent ordering
+    group.sort((a, b) => a.item.label.localeCompare(b.item.label))
+    for (let i = 0; i < group.length; i++) {
+      stackedSet.add(group[i]!.item)
+      offsetMap.set(group[i]!.item, i * ICON_STEP)
+    }
+  }
+
+  return items.map((p) => {
+    if (stackedSet.has(p.item)) {
+      return { item: p.item, lane: 0, yOffset: offsetMap.get(p.item) ?? 0 }
+    }
+    return { ...p, yOffset: 0 }
+  })
+}
+
 const drawColumnItems = (
   chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
   columnData: ColumnDataEntry[],
@@ -1503,16 +1547,37 @@ const drawColumnItems = (
     const mergedItems = mergeSmallItems(packedItems, yScale)
     const hasMerged = mergedItems.some((m) => m.item.label.endsWith(' items'))
 
+    // Stack icon points vertically instead of sub-lanes
+    const stackedItems = stackIconPoints(mergedItems)
+
     const colX = colIdx * colWidth + colGap
     const usableWidth = colWidth - colGap * 2
+
+    // Determine effective lane count: icon-stacked items don't need extra lanes
+    const hasStacked = stackedItems.some((s) => s.yOffset > 0)
+    const nonStackedLanes =
+      hasStacked ?
+        Math.max(1, ...stackedItems.filter((s) => s.yOffset === 0 && !s.item.isPoint).map((s) => s.lane + 1))
+      : laneCount
     // If merging happened, use full column width for merged blocks
-    const effectiveLanes = hasMerged ? 1 : Math.max(laneCount, 1)
+    const effectiveLanes = hasMerged ? 1 : Math.max(nonStackedLanes, 1)
     const lanes = effectiveLanes
     const laneWidth = (usableWidth - (lanes - 1) * colPadding) / lanes
 
-    for (const { item, lane } of mergedItems) {
+    for (const { item, lane, yOffset } of stackedItems) {
       const effectiveLane = hasMerged ? 0 : lane
-      drawItem(chartGroup, item, effectiveLane, colX, laneWidth, colPadding, yScale, showTooltip, hideTooltip)
+      drawItem(
+        chartGroup,
+        item,
+        effectiveLane,
+        colX,
+        laneWidth,
+        colPadding,
+        yScale,
+        showTooltip,
+        hideTooltip,
+        yOffset,
+      )
     }
   }
 }
@@ -1527,9 +1592,10 @@ const drawItem = (
   yScale: d3.ScaleTime<number, number>,
   showTooltip: (event: MouseEvent, item: ChartItem) => void,
   hideTooltip: () => void,
+  yOffset = 0,
 ) => {
-  const y1 = yScale(item.start)
-  const y2 = yScale(item.end)
+  const y1 = yScale(item.start) + yOffset
+  const y2 = yScale(item.end) + yOffset
   const x = colX + lane * (laneWidth + colPadding)
   const blockHeight = Math.max(y2 - y1, 2)
 
@@ -1629,8 +1695,30 @@ const drawItem = (
       hideTooltip()
     })
 
-  // Text label inside if tall enough
-  if (blockHeight > 30) {
+  // Icon overlay for duration blocks
+  if (item.icon && isEmoji(item.icon)) {
+    const emojiSize = 14
+    parent
+      .append('text')
+      .attr('x', x + laneWidth / 2)
+      .attr('y', y1 + blockHeight / 2)
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', `${emojiSize}px`)
+      .attr('pointer-events', 'none')
+      .text(item.icon)
+  } else if (item.icon && isUrl(item.icon)) {
+    const imgSize = 14
+    parent
+      .append('image')
+      .attr('href', item.icon)
+      .attr('x', x + laneWidth / 2 - imgSize / 2)
+      .attr('y', y1 + blockHeight / 2 - imgSize / 2)
+      .attr('width', imgSize)
+      .attr('height', imgSize)
+      .attr('pointer-events', 'none')
+  } else if (blockHeight > 30) {
+    // Text label inside if tall enough (only when no icon)
     const fontSize = laneWidth > 100 ? '0.8rem' : '0.65rem'
     const charWidth = laneWidth > 100 ? 7.5 : 6
     const maxChars = Math.floor(laneWidth / charWidth)
