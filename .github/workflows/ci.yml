@@ -158,7 +158,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "⏳ Waiting for Codecov status checks..."
+          echo "⏳ Waiting for Codecov check runs..."
           SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           CHECKS=("codecov/patch" "codecov/project")
           MAX_ATTEMPTS=30
@@ -167,15 +167,19 @@ jobs:
           for check in "${CHECKS[@]}"; do
             echo "  Waiting for $check..."
             for ((i=1; i<=MAX_ATTEMPTS; i++)); do
-              STATE=$(gh api "repos/${{ github.repository }}/commits/${SHA}/status" \
-                --jq ".statuses | map(select(.context == \"$check\")) | last | .state // empty")
+              RESULT=$(gh api "repos/${{ github.repository }}/commits/${SHA}/check-runs" \
+                --jq "[.check_runs[] | select(.name == \"$check\")] | last | {status: .status, conclusion: .conclusion}")
+              STATUS=$(echo "$RESULT" | jq -r '.status // empty')
+              CONCLUSION=$(echo "$RESULT" | jq -r '.conclusion // empty')
 
-              if [[ "$STATE" == "success" ]]; then
-                echo "  ✅ $check passed"
-                break
-              elif [[ "$STATE" == "failure" || "$STATE" == "error" ]]; then
-                echo "  ❌ $check failed (state: $STATE)"
-                exit 1
+              if [[ "$STATUS" == "completed" ]]; then
+                if [[ "$CONCLUSION" == "success" || "$CONCLUSION" == "neutral" ]]; then
+                  echo "  ✅ $check passed (conclusion: $CONCLUSION)"
+                  break
+                else
+                  echo "  ❌ $check failed (conclusion: $CONCLUSION)"
+                  exit 1
+                fi
               fi
 
               if [[ $i -eq $MAX_ATTEMPTS ]]; then
