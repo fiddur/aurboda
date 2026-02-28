@@ -1,0 +1,696 @@
+/* ============================================================================
+ * Shared Data Sources styles
+ * ============================================================================ */
+
+.data-sources-page {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.data-sources-page .page-header {
+  margin-bottom: 2rem;
+}
+
+.data-sources-page h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.data-sources-page .page-subtitle {
+  color: #4b5563;
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 700px;
+}
+
+.data-sources-page h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 1rem 0;
+}
+
+.data-sources-page .loading {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+}
+
+/* ============================================================================
+ * Overview page: source cards grid
+ * ============================================================================ */
+
+.sources-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.source-card {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 1.25rem;
+  text-decoration: none;
+  color: inherit;
+  transition:
+    box-shadow 0.2s,
+    border-color 0.2s;
+}
+
+.source-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: #673ab8;
+}
+
+.source-card.connected {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.source-card.not-connected {
+  border-color: #e5e7eb;
+}
+
+.source-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.source-card-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.source-card .status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.source-card .status-dot.connected {
+  background: #16a34a;
+}
+
+.source-card .status-dot.not-connected {
+  background: #d1d5db;
+}
+
+.source-card .data-types {
+  font-size: 0.8rem;
+  color: #6b7280;
+  line-height: 1.5;
+  margin: 0 0 0.5rem 0;
+}
+
+.source-card .source-status-text {
+  font-size: 0.8rem;
+  margin: 0;
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+
+.source-card .source-status-text.connected {
+  color: #16a34a;
+  font-weight: 500;
+}
+
+.source-card .source-status-text.not-connected {
+  color: #9ca3af;
+}
+
+/* ============================================================================
+ * Sub-page: individual data source
+ * ============================================================================ */
+
+.data-source-detail {
+  margin-bottom: 2rem;
+}
+
+.data-source-detail .source-description {
+  color: #4b5563;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+  max-width: 700px;
+}
+
+.data-source-detail .data-types-section {
+  margin-bottom: 1.5rem;
+}
+
+.data-source-detail .data-types-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.data-source-detail .data-type-badge {
+  display: inline-block;
+  padding: 0.25rem 0.625rem;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  color: #374151;
+}
+
+.data-source-detail .doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  text-decoration: none;
+  color: #673ab8;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 1.5rem;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.data-source-detail .doc-link:hover {
+  background: #f3f0ff;
+  border-color: #673ab8;
+}
+
+.data-source-detail .external-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: #673ab8;
+  border-radius: 6px;
+  text-decoration: none;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-right: 0.5rem;
+  margin-bottom: 0.5rem;
+  transition: background 0.15s;
+}
+
+.data-source-detail .external-link:hover {
+  background: #5b32a3;
+}
+
+.data-source-detail .links-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.data-source-detail .status-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.data-source-detail .status-banner.connected {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+
+.data-source-detail .status-banner.not-connected {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #854d0e;
+}
+
+.data-source-detail .setup-instructions {
+  margin-bottom: 1.5rem;
+}
+
+.data-source-detail .setup-instructions h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 0.75rem 0;
+}
+
+.data-source-detail .setup-instructions ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+  color: #4b5563;
+  line-height: 1.7;
+}
+
+.data-source-detail .setup-instructions li {
+  margin-bottom: 0.5rem;
+}
+
+/* Getting started tips on overview */
+.getting-started-tips {
+  background: #f9fafb;
+  border-radius: 10px;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+  margin-top: 1.5rem;
+}
+
+.getting-started-tips h2 {
+  border: none;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0;
+}
+
+.getting-started-tips ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #4b5563;
+  line-height: 1.7;
+}
+
+.getting-started-tips li {
+  margin-bottom: 0.5rem;
+}
+
+.getting-started-tips li:last-child {
+  margin-bottom: 0;
+}
+
+.getting-started-tips strong {
+  color: #1f2937;
+}
+
+/* ============================================================================
+ * Shared settings sections embedded in data source pages
+ * ============================================================================ */
+
+.data-sources-page .settings-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.data-sources-page .settings-section h2 {
+  font-size: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.data-sources-page .form-field {
+  margin-bottom: 1rem;
+}
+
+.data-sources-page .form-field label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.data-sources-page .form-field input[type='date'],
+.data-sources-page .form-field input[type='password'],
+.data-sources-page .form-field input[type='text'],
+.data-sources-page .form-field input[type='url'] {
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.data-sources-page .connected-status {
+  color: #4caf50;
+  font-weight: 500;
+  margin: 0;
+}
+
+.data-sources-page .connect-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: #673ab8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.data-sources-page .connect-button:hover:not(:disabled) {
+  background: #5e35b1;
+}
+
+.data-sources-page .connect-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.data-sources-page .field-description {
+  color: #666;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  line-height: 1.4;
+}
+
+.data-sources-page .field-description a {
+  color: #673ab8;
+}
+
+.data-sources-page .field-description.warning {
+  color: #f57c00;
+}
+
+.data-sources-page .section-description {
+  color: #666;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.data-sources-page .section-header-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.data-sources-page .section-header-row h2 {
+  margin-bottom: 0;
+}
+
+.data-sources-page .save-indicator {
+  font-size: 0.85rem;
+}
+
+.data-sources-page .save-indicator.saving {
+  color: #888;
+}
+
+.data-sources-page .save-indicator.saved {
+  color: #4caf50;
+}
+
+.data-sources-page .save-indicator.error {
+  color: #f44336;
+}
+
+/* Oura specific */
+.data-sources-page .oura-connected-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.data-sources-page .oura-resync-button {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.data-sources-page .oura-sync-message {
+  font-size: 0.8rem;
+}
+
+.data-sources-page .oura-sync-message.done {
+  color: #4caf50;
+}
+
+.data-sources-page .oura-sync-message.error {
+  color: #f44336;
+}
+
+/* AW token */
+.data-sources-page .activitywatch-token-section {
+  margin-top: 0.75rem;
+}
+
+.data-sources-page .token-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.data-sources-page .token-display {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem;
+  font-size: 0.8rem;
+  font-family: monospace;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f5f5f5;
+  color: #333;
+  cursor: text;
+}
+
+/* Calendars */
+.data-sources-page .calendars-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.data-sources-page .calendar-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  gap: 1rem;
+}
+
+.data-sources-page .calendar-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.data-sources-page .calendar-name {
+  font-weight: 500;
+}
+
+.data-sources-page .calendar-url {
+  font-size: 0.8rem;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-sources-page .remove-calendar-button {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  background: transparent;
+  border: 1px solid #f44336;
+  color: #f44336;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.data-sources-page .remove-calendar-button:hover {
+  background: #f44336;
+  color: white;
+}
+
+.data-sources-page .add-calendar-form {
+  margin-bottom: 0.5rem;
+}
+
+.data-sources-page .add-calendar-form .form-field input[type='text'],
+.data-sources-page .add-calendar-form .form-field input[type='url'] {
+  max-width: 100%;
+}
+
+/* ============================================================================
+ * Dark mode
+ * ============================================================================ */
+
+@media (prefers-color-scheme: dark) {
+  .data-sources-page h1 {
+    color: #f9fafb;
+  }
+
+  .data-sources-page .page-subtitle {
+    color: #9ca3af;
+  }
+
+  .data-sources-page h2 {
+    color: #e5e7eb;
+  }
+
+  .source-card {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .source-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border-color: #8b5cf6;
+  }
+
+  .source-card.connected {
+    border-color: #166534;
+    background: #052e16;
+  }
+
+  .source-card.not-connected {
+    border-color: #374151;
+  }
+
+  .source-card-header h3 {
+    color: #f9fafb;
+  }
+
+  .source-card .status-dot.not-connected {
+    background: #4b5563;
+  }
+
+  .source-card .data-types {
+    color: #9ca3af;
+  }
+
+  .source-card .source-status-text.connected {
+    color: #4ade80;
+  }
+
+  .source-card .source-status-text.not-connected {
+    color: #6b7280;
+  }
+
+  .data-source-detail .source-description {
+    color: #9ca3af;
+  }
+
+  .data-source-detail .data-type-badge {
+    background: #374151;
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .data-source-detail .doc-link {
+    background: #1f2937;
+    border-color: #374151;
+    color: #a78bfa;
+  }
+
+  .data-source-detail .doc-link:hover {
+    background: #2d2053;
+    border-color: #8b5cf6;
+  }
+
+  .data-source-detail .external-link {
+    background: #7c3aed;
+  }
+
+  .data-source-detail .external-link:hover {
+    background: #6d28d9;
+  }
+
+  .data-source-detail .status-banner.connected {
+    background: #052e16;
+    border-color: #166534;
+    color: #4ade80;
+  }
+
+  .data-source-detail .status-banner.not-connected {
+    background: #422006;
+    border-color: #854d0e;
+    color: #fbbf24;
+  }
+
+  .data-source-detail .setup-instructions h3 {
+    color: #e5e7eb;
+  }
+
+  .data-source-detail .setup-instructions ol {
+    color: #9ca3af;
+  }
+
+  .getting-started-tips {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .getting-started-tips ul {
+    color: #9ca3af;
+  }
+
+  .getting-started-tips strong {
+    color: #f9fafb;
+  }
+
+  .data-sources-page .settings-section {
+    border-bottom-color: #444;
+  }
+
+  .data-sources-page .section-description,
+  .data-sources-page .field-description {
+    color: #aaa;
+  }
+
+  .data-sources-page .form-field input[type='date'],
+  .data-sources-page .form-field input[type='password'],
+  .data-sources-page .form-field input[type='text'],
+  .data-sources-page .form-field input[type='url'] {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+  }
+
+  .data-sources-page .form-field input::placeholder {
+    color: #888;
+  }
+
+  .data-sources-page .calendar-item {
+    border-color: #444;
+  }
+
+  .data-sources-page .calendar-url {
+    color: #aaa;
+  }
+
+  .data-sources-page .token-display {
+    background: #2a2a2a;
+    border-color: #555;
+    color: #ddd;
+  }
+}
+
+/* ============================================================================
+ * Responsive
+ * ============================================================================ */
+
+@media (max-width: 800px) {
+  .sources-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 639px) {
+  .data-sources-page {
+    padding: 1rem;
+  }
+
+  .data-sources-page h1 {
+    font-size: 1.5rem;
+  }
+}

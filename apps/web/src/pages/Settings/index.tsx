@@ -1,20 +1,6 @@
-import type { CalendarConfig } from '@aurboda/api-spec'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
-import { CustomMetricsSettings } from '../../components/CustomMetricsSettings'
-import { GoalsSettings } from '../../components/GoalsSettings'
-import { LastFmTagRulesSettings } from '../../components/LastFmTagRulesSettings'
-import { ScreentimeCategoriesSettings } from '../../components/ScreentimeCategoriesSettings'
-import { TagMappingsSettings } from '../../components/TagMappingsSettings'
-import { API_URL } from '../../config'
-import {
-  fetchUserSettings,
-  generateApiToken,
-  HrZoneThresholds,
-  syncOura,
-  UpdateSettingsInput,
-  updateUserSettings,
-} from '../../state/api'
+import { fetchUserSettings, HrZoneThresholds, UpdateSettingsInput, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
 import { parseZoneValue, updateZoneThreshold, validateHrZoneThresholds } from '../../utils/settings'
@@ -44,7 +30,6 @@ function SaveStatusIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
   )
 }
 
-// eslint-disable-next-line complexity -- TODO: refactor
 export function Settings() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
@@ -58,32 +43,15 @@ export function Settings() {
   // Form state
   const [birthDate, setBirthDate] = useState<string>('')
   const [hrZones, setHrZones] = useState<HrZoneThresholds | null>(null)
-  const [rescueTimeKey, setRescueTimeKey] = useState<string>('')
-  const [lastfmUsername, setLastfmUsername] = useState<string>('')
-
-  // Calendar form state
-  const [newCalendarName, setNewCalendarName] = useState('')
-  const [newCalendarUrl, setNewCalendarUrl] = useState('')
-
-  // ActivityWatch push agent token
-  const [activityWatchToken, setActivityWatchToken] = useState<string>('')
-  const [activityWatchTokenStatus, setActivityWatchTokenStatus] = useState<'idle' | 'loading' | 'copied'>(
-    'idle',
-  )
 
   // Save status for each section
   const [birthDateStatus, setBirthDateStatus] = useState<SaveStatus>({ status: 'idle' })
-  const [rescueTimeStatus, setRescueTimeStatus] = useState<SaveStatus>({ status: 'idle' })
-  const [lastfmStatus, setLastfmStatus] = useState<SaveStatus>({ status: 'idle' })
   const [hrZonesStatus, setHrZonesStatus] = useState<SaveStatus>({ status: 'idle' })
-  const [calendarsStatus, setCalendarsStatus] = useState<SaveStatus>({ status: 'idle' })
 
   // Initialize form when data loads
   const initializeForm = () => {
     setBirthDate(userSettings?.birth_date ?? '')
     setHrZones(userSettings?.hr_zone_start ?? null)
-    setRescueTimeKey('')
-    setLastfmUsername(userSettings?.lastfm_username ?? '')
   }
 
   // Track if form has been initialized
@@ -157,92 +125,6 @@ export function Settings() {
     saveSection({ hr_zone_start: null }, setHrZonesStatus)
   }
 
-  const handleRescueTimeKeyChange = (e: Event) => {
-    const value = (e.target as HTMLInputElement).value
-    setRescueTimeKey(value)
-  }
-
-  const handleRescueTimeKeyBlur = () => {
-    if (!rescueTimeKey) return
-
-    saveSection({ rescue_time_key: rescueTimeKey }, setRescueTimeStatus)
-    setRescueTimeKey('')
-  }
-
-  const handleLastfmUsernameChange = (e: Event) => {
-    const value = (e.target as HTMLInputElement).value
-    setLastfmUsername(value)
-  }
-
-  const handleLastfmUsernameBlur = () => {
-    const serverValue = userSettings?.lastfm_username ?? ''
-    if (lastfmUsername === serverValue) return
-
-    saveSection({ lastfm_username: lastfmUsername || null }, setLastfmStatus)
-  }
-
-  const handleAddCalendar = () => {
-    if (!newCalendarName.trim() || !newCalendarUrl.trim()) return
-
-    const currentCalendars: CalendarConfig[] = userSettings?.calendars ?? []
-    const updatedCalendars = [
-      ...currentCalendars,
-      { name: newCalendarName.trim(), url: newCalendarUrl.trim() },
-    ]
-    saveSection({ calendars: updatedCalendars }, setCalendarsStatus)
-    setNewCalendarName('')
-    setNewCalendarUrl('')
-  }
-
-  const handleRemoveCalendar = (index: number) => {
-    const currentCalendars: CalendarConfig[] = userSettings?.calendars ?? []
-    const updatedCalendars = currentCalendars.filter((_, i) => i !== index)
-    saveSection({ calendars: updatedCalendars }, setCalendarsStatus)
-  }
-
-  const handleGenerateActivityWatchToken = async () => {
-    setActivityWatchTokenStatus('loading')
-    try {
-      const token = await generateApiToken()
-      setActivityWatchToken(token)
-      setActivityWatchTokenStatus('idle')
-    } catch {
-      setActivityWatchTokenStatus('idle')
-    }
-  }
-
-  const handleCopyActivityWatchToken = () => {
-    if (!activityWatchToken) return
-    navigator.clipboard.writeText(activityWatchToken).then(() => {
-      setActivityWatchTokenStatus('copied')
-      setTimeout(() => setActivityWatchTokenStatus('idle'), 2000)
-    })
-  }
-
-  const handleConnectOura = () => {
-    // Redirect to Oura OAuth flow
-    window.location.href = `${API_URL}/auth/connectOura`
-  }
-
-  const [ouraSyncStatus, setOuraSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
-  const [ouraSyncMessage, setOuraSyncMessage] = useState<string>('')
-
-  const handleOuraFullResync = useCallback(async () => {
-    setOuraSyncStatus('syncing')
-    setOuraSyncMessage('')
-    try {
-      const response = await syncOura(true)
-      const totalRecords = (response.results ?? []).reduce((sum, r) => sum + (r.records_processed ?? 0), 0)
-      setOuraSyncStatus('done')
-      setOuraSyncMessage(`Synced ${totalRecords} records`)
-      // Invalidate queries that depend on Oura data
-      await queryClient.invalidateQueries()
-    } catch (err) {
-      setOuraSyncStatus('error')
-      setOuraSyncMessage(err instanceof Error ? err.message : 'Sync failed')
-    }
-  }, [queryClient])
-
   if (!isLoggedIn) {
     return (
       <div class="settings-page">
@@ -289,220 +171,6 @@ export function Settings() {
 
       <section class="settings-section">
         <div class="section-header-row">
-          <h2>Data Sources</h2>
-          <SaveStatusIndicator saveStatus={rescueTimeStatus} />
-        </div>
-
-        <div class="form-field">
-          <label>Oura Ring</label>
-          {userSettings?.oura_connected ?
-            <div class="oura-connected-row">
-              <p class="connected-status">Connected</p>
-              <button
-                type="button"
-                class="connect-button oura-resync-button"
-                disabled={ouraSyncStatus === 'syncing'}
-                onClick={handleOuraFullResync}
-              >
-                {ouraSyncStatus === 'syncing' ? 'Syncing...' : 'Full Re-sync'}
-              </button>
-              {ouraSyncMessage && (
-                <span class={`oura-sync-message ${ouraSyncStatus}`}>{ouraSyncMessage}</span>
-              )}
-            </div>
-          : userSettings?.oura_configured === false ?
-            <button type="button" class="connect-button" disabled>
-              Connect Oura
-            </button>
-          : <button type="button" class="connect-button" onClick={handleConnectOura}>
-              Connect Oura
-            </button>
-          }
-          {userSettings?.oura_configured === false ?
-            <p class="field-description warning">
-              Oura OAuth is not configured on the server. Ask your administrator to set up OURA_CLIENT and
-              OURA_SECRET environment variables.
-            </p>
-          : <p class="field-description">Connect your Oura Ring to sync sleep scores, readiness, and more.</p>
-          }
-        </div>
-
-        <div class="form-field">
-          <label for="rescuetime-key">RescueTime API Key</label>
-          {userSettings?.rescue_time_key ?
-            <p class="connected-status">Configured</p>
-          : null}
-          <input
-            id="rescuetime-key"
-            type="password"
-            value={rescueTimeKey}
-            onInput={handleRescueTimeKeyChange}
-            onBlur={handleRescueTimeKeyBlur}
-            placeholder={
-              userSettings?.rescue_time_key ? 'Enter new key to update' : 'Enter your RescueTime API key'
-            }
-          />
-          <p class="field-description">
-            Get your API key from{' '}
-            <a href="https://www.rescuetime.com/anapi/manage" target="_blank" rel="noopener noreferrer">
-              RescueTime API settings
-            </a>
-            . Used to sync productivity data. Saves automatically when you leave the field.
-          </p>
-        </div>
-
-        <div class="form-field">
-          <div class="field-header-row">
-            <label for="lastfm-username">Last.fm Username</label>
-            <SaveStatusIndicator saveStatus={lastfmStatus} />
-          </div>
-          {userSettings?.lastfm_username ?
-            <p class="connected-status">Configured</p>
-          : null}
-          {userSettings?.lastfm_configured === false ?
-            <p class="field-description warning">
-              Last.fm API key is not configured on the server. Ask your administrator to configure the Last.fm
-              API key in Admin Settings.
-            </p>
-          : <>
-              <input
-                id="lastfm-username"
-                type="text"
-                value={lastfmUsername}
-                onInput={handleLastfmUsernameChange}
-                onBlur={handleLastfmUsernameBlur}
-                placeholder="Enter your Last.fm username"
-              />
-              <p class="field-description">
-                Enter your Last.fm username to sync scrobbles and create auto-tags based on your listening
-                history. Find your username on your{' '}
-                <a href="https://www.last.fm/user/_" target="_blank" rel="noopener noreferrer">
-                  Last.fm profile
-                </a>
-                .
-              </p>
-            </>
-          }
-        </div>
-        <div class="form-field">
-          <label>ActivityWatch</label>
-          <p class="field-description">
-            <a href="https://activitywatch.net" target="_blank" rel="noopener noreferrer">
-              ActivityWatch
-            </a>{' '}
-            is an open-source, privacy-first activity tracker. Install it on your desktop and configure the
-            push agent to sync your window activity to Aurboda. See{' '}
-            <a href="https://docs.aurboda.net/activitywatch" target="_blank" rel="noopener noreferrer">
-              the setup guide
-            </a>{' '}
-            for instructions.
-          </p>
-          <div class="activitywatch-token-section">
-            <p class="field-description">
-              The push agent needs your Aurboda API token. Generate one and paste it into the agent config.
-            </p>
-            <div class="token-actions">
-              <button
-                type="button"
-                class="connect-button"
-                onClick={handleGenerateActivityWatchToken}
-                disabled={activityWatchTokenStatus === 'loading'}
-              >
-                {activityWatchTokenStatus === 'loading' ? 'Generating...' : 'Generate API Token'}
-              </button>
-              {activityWatchToken && (
-                <>
-                  <input
-                    class="token-display"
-                    type="text"
-                    readOnly
-                    value={activityWatchToken}
-                    onClick={(e) => (e.target as HTMLInputElement).select()}
-                  />
-                  <button type="button" class="connect-button" onClick={handleCopyActivityWatchToken}>
-                    {activityWatchTokenStatus === 'copied' ? 'Copied!' : 'Copy'}
-                  </button>
-                </>
-              )}
-            </div>
-            {activityWatchToken && (
-              <p class="field-description warning">
-                Store this token securely — it grants access to your Aurboda account.
-              </p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section class="settings-section">
-        <div class="section-header-row">
-          <h2>Calendars</h2>
-          <SaveStatusIndicator saveStatus={calendarsStatus} />
-        </div>
-        <p class="section-description">
-          Add calendar ICS URLs to correlate calendar events with your health data. Events will appear as tags
-          in trends and correlation analysis.
-        </p>
-
-        {(userSettings?.calendars ?? []).length > 0 && (
-          <div class="calendars-list">
-            {(userSettings?.calendars ?? []).map((cal, index) => (
-              <div class="calendar-item" key={`${cal.name}-${index}`}>
-                <div class="calendar-info">
-                  <span class="calendar-name">{cal.name}</span>
-                  <span class="calendar-url">{cal.url}</span>
-                </div>
-                <button
-                  type="button"
-                  class="remove-calendar-button"
-                  onClick={() => handleRemoveCalendar(index)}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div class="add-calendar-form">
-          <div class="form-field">
-            <label for="calendar-name">Calendar Name</label>
-            <input
-              id="calendar-name"
-              type="text"
-              value={newCalendarName}
-              onInput={(e) => setNewCalendarName((e.target as HTMLInputElement).value)}
-              placeholder="e.g., Work, Personal"
-            />
-          </div>
-          <div class="form-field">
-            <label for="calendar-url">ICS URL</label>
-            <input
-              id="calendar-url"
-              type="url"
-              value={newCalendarUrl}
-              onInput={(e) => setNewCalendarUrl((e.target as HTMLInputElement).value)}
-              placeholder="https://calendar.google.com/calendar/ical/..."
-            />
-          </div>
-          <button
-            type="button"
-            class="connect-button"
-            onClick={handleAddCalendar}
-            disabled={!newCalendarName.trim() || !newCalendarUrl.trim()}
-          >
-            Add Calendar
-          </button>
-        </div>
-
-        <p class="field-description">
-          For Google Calendar: Go to Settings &gt; calendar &gt; Integrate calendar &gt; copy the "Secret
-          address in iCal format" URL.
-        </p>
-      </section>
-
-      <section class="settings-section">
-        <div class="section-header-row">
           <h2>HR Zone Thresholds</h2>
           <SaveStatusIndicator saveStatus={hrZonesStatus} />
         </div>
@@ -539,15 +207,13 @@ export function Settings() {
         )}
       </section>
 
-      <ScreentimeCategoriesSettings />
-
-      <CustomMetricsSettings />
-
-      <LastFmTagRulesSettings />
-
-      <GoalsSettings goals={userSettings?.goals ?? []} />
-
-      <TagMappingsSettings />
+      <section class="settings-section">
+        <p class="section-description">
+          Data source settings (Oura, RescueTime, Last.fm, ActivityWatch, Calendars) and related configuration
+          (screen time categories, tag mappings, custom metrics, goals) have moved to{' '}
+          <a href="/data-sources">Data Sources</a>.
+        </p>
+      </section>
     </div>
   )
 }

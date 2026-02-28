@@ -1,97 +1,141 @@
 :root {
-	font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-	line-height: 1.5;
-	font-weight: 400;
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
 
-	color: #222;
-	background-color: #ffffff;
+  color: #222;
+  background-color: #ffffff;
 
-	font-synthesis: none;
-	text-rendering: optimizeLegibility;
-	-webkit-font-smoothing: antialiased;
-	-moz-osx-font-smoothing: grayscale;
-	-webkit-text-size-adjust: 100%;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-	margin: 0;
+  margin: 0;
 }
 
 #app {
-	display: flex;
-	flex-direction: column;
-	min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
 header {
-	background-color: #673ab8;
+  background-color: #673ab8;
 }
 
 header nav {
-	display: flex;
+  display: flex;
 }
 
 header nav .spacer {
-	flex: 1;
+  flex: 1;
 }
 
 header a {
-	color: #fff;
-	padding: 0.75rem;
-	text-decoration: none;
+  color: #fff;
+  padding: 0.75rem;
+  text-decoration: none;
 }
 
 header a.active {
-	background-color: #0005;
+  background-color: #0005;
 }
 
 header a:hover {
-	background-color: #0008;
+  background-color: #0008;
+}
+
+/* Nav dropdown for Data Sources */
+.nav-dropdown {
+  position: relative;
+}
+
+.nav-dropdown .dropdown-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+
+.dropdown-arrow {
+  font-size: 0.7em;
+  margin-left: 0.125rem;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  background: #673ab8;
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdown-menu a {
+  padding: 0.5rem 1rem;
+  color: #fff;
+  text-decoration: none;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.dropdown-menu a:hover {
+  background-color: #0008;
+}
+
+.dropdown-menu a.active {
+  background-color: #0005;
 }
 
 main {
-	flex: auto;
-	display: flex;
-	width: 100%;
-	text-align: left;
+  flex: auto;
+  display: flex;
+  width: 100%;
+  text-align: left;
 }
 
 @media (max-width: 639px) {
-	main {
-		margin: 2rem;
-	}
+  main {
+    margin: 2rem;
+  }
 }
 
 .site-footer {
-	text-align: right;
-	font-size: 0.75rem;
-	padding: 0.5rem 1rem;
-	color: #888;
+  text-align: right;
+  font-size: 0.75rem;
+  padding: 0.5rem 1rem;
+  color: #888;
 }
 
 .site-footer a {
-	color: #888;
+  color: #888;
 }
 
 .site-footer a:hover {
-	color: #673ab8;
+  color: #673ab8;
 }
 
 @media (prefers-color-scheme: dark) {
-	:root {
-		color: #ccc;
-		background-color: #1a1a1a;
-	}
+  :root {
+    color: #ccc;
+    background-color: #1a1a1a;
+  }
 
-	.site-footer {
-		color: #666;
-	}
+  .site-footer {
+    color: #666;
+  }
 
-	.site-footer a {
-		color: #666;
-	}
+  .site-footer a {
+    color: #666;
+  }
 
-	.site-footer a:hover {
-		color: #8b5cf6;
-	}
+  .site-footer a:hover {
+    color: #8b5cf6;
+  }
 }
