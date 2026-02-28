@@ -139,7 +139,7 @@ jobs:
     if: always()
     needs: [node, android]
     steps:
-      - name: Check results
+      - name: Check job results
         run: |
           echo "Node: ${{ needs.node.result }}"
           echo "Android: ${{ needs.android.result }}"
@@ -152,3 +152,37 @@ jobs:
             exit 1
           fi
           echo "✅ All jobs passed or were skipped"
+
+      - name: Check Codecov status (when backend ran)
+        if: needs.node.result == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "⏳ Waiting for Codecov status checks..."
+          SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          CHECKS=("codecov/patch" "codecov/project")
+          MAX_ATTEMPTS=30
+          SLEEP=10
+
+          for check in "${CHECKS[@]}"; do
+            echo "  Waiting for $check..."
+            for ((i=1; i<=MAX_ATTEMPTS; i++)); do
+              STATE=$(gh api "repos/${{ github.repository }}/commits/${SHA}/status" \
+                --jq ".statuses | map(select(.context == \"$check\")) | last | .state // empty")
+
+              if [[ "$STATE" == "success" ]]; then
+                echo "  ✅ $check passed"
+                break
+              elif [[ "$STATE" == "failure" || "$STATE" == "error" ]]; then
+                echo "  ❌ $check failed (state: $STATE)"
+                exit 1
+              fi
+
+              if [[ $i -eq $MAX_ATTEMPTS ]]; then
+                echo "  ⚠️ $check did not report within $((MAX_ATTEMPTS * SLEEP))s — skipping"
+                break
+              fi
+              sleep $SLEEP
+            done
+          done
+          echo "✅ Codecov checks verified"
