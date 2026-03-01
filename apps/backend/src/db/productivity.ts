@@ -5,6 +5,32 @@ import format from 'pg-format'
 import { query } from './connection'
 import type { ProductivityRecord } from './types'
 
+/**
+ * Convert a JS string array to a PostgreSQL array literal.
+ *
+ * pg-format's %L treats JS arrays as sub-tuples for multi-row VALUES,
+ * so we must serialize TEXT[] columns ourselves before formatting.
+ *
+ * Examples:
+ *   ['TV']                       → '{TV}'
+ *   ['Work', 'Programming']      → '{Work,Programming}'
+ *   ['has "quotes"', 'a,comma']  → '{"has \\"quotes\\"","a,comma"}'
+ *   null / undefined              → null
+ */
+export const toPgArray = (arr: string[] | null | undefined): string | null => {
+  if (arr == null) return null
+
+  const escaped = arr.map((s) => {
+    // Quote the element if it contains special chars, is empty, or looks like a keyword
+    if (s === '' || /[{},"\\\s]/.test(s) || s.toUpperCase() === 'NULL') {
+      return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
+    }
+    return s
+  })
+
+  return '{' + escaped.join(',') + '}'
+}
+
 export const insertProductivity = async (user: string, records: ProductivityRecord[]) => {
   if (records.length === 0) return
 
@@ -19,7 +45,7 @@ export const insertProductivity = async (user: string, records: ProductivityReco
     r.duration_sec,
     r.is_mobile || false,
     r.device_name ?? '',
-    r.resolved_category || null,
+    toPgArray(r.resolved_category) ?? null,
   ])
 
   await query(
@@ -102,7 +128,9 @@ export const batchUpdateResolvedCategory = async (
   if (updates.length === 0) return
 
   // Use a CTE with VALUES for efficient batch update
-  const values = updates.map((u) => [u.id, u.resolved_category])
+  // Convert JS arrays to PostgreSQL array literals; pg-format %L treats
+  // JS arrays as sub-tuples, which produces invalid TEXT[] values.
+  const values = updates.map((u) => [u.id, toPgArray(u.resolved_category)])
 
   await query(
     user,
