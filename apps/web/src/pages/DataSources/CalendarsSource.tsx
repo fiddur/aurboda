@@ -3,10 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 import { fetchUserSettings, type UpdateSettingsInput, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
+import { DataTypesList, LoginRequired, type SaveStatus, SaveStatusIndicator, StatusBanner } from './shared'
 
 import './style.css'
-
-type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; error?: string }
 
 const DATA_TYPES = ['Calendar events (imported as tags)', 'Event titles and times']
 
@@ -62,13 +61,7 @@ export function CalendarsSource() {
     saveSection({ calendars: updatedCalendars }, setSaveStatus)
   }
 
-  if (!isLoggedIn) {
-    return (
-      <div class="data-sources-page">
-        <p>Please log in to view data source settings.</p>
-      </div>
-    )
-  }
+  if (!isLoggedIn) return <LoginRequired />
 
   return (
     <div class="data-sources-page">
@@ -83,21 +76,14 @@ export function CalendarsSource() {
           your health data.
         </p>
 
-        <div class="data-types-section">
-          <h2>Data provided</h2>
-          <div class="data-types-list">
-            {DATA_TYPES.map((dt) => (
-              <span key={dt} class="data-type-badge">
-                {dt}
-              </span>
-            ))}
-          </div>
-        </div>
+        <DataTypesList types={DATA_TYPES} />
 
-        <div class={`status-banner ${hasCalendars ? 'connected' : 'not-connected'}`}>
-          <span class={`status-dot ${hasCalendars ? 'connected' : 'not-connected'}`} />
-          {hasCalendars ? `${userSettings?.calendars?.length} calendar(s) configured` : 'No calendars added'}
-        </div>
+        <StatusBanner
+          connected={hasCalendars}
+          label={
+            hasCalendars ? `${userSettings?.calendars?.length} calendar(s) configured` : 'No calendars added'
+          }
+        />
 
         <div class="links-row">
           <a
@@ -114,9 +100,7 @@ export function CalendarsSource() {
           <section class="settings-section">
             <div class="section-header-row">
               <h2>Calendars</h2>
-              {saveStatus.status === 'saving' && <span class="save-indicator saving">Saving...</span>}
-              {saveStatus.status === 'saved' && <span class="save-indicator saved">Saved</span>}
-              {saveStatus.status === 'error' && <span class="save-indicator error">{saveStatus.error}</span>}
+              <SaveStatusIndicator saveStatus={saveStatus} />
             </div>
 
             {(userSettings?.calendars ?? []).length > 0 && (

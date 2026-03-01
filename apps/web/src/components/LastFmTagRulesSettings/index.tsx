@@ -1,18 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 import {
-  createLastFmTagRule,
   deleteLastFmTagRule,
   fetchLastFmTagRules,
   fetchUserSettings,
   updateLastFmTagRule,
-  type AddLastFmTagRuleBody,
   type LastFmMatchMode,
   type LastFmMatchType,
   type LastFmTagRule,
   type UpdateLastFmTagRuleBody,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { AddRuleForm } from './AddRuleForm'
 
 import './style.css'
 
@@ -64,38 +63,75 @@ const formatRuleDescription = (rule: LastFmTagRule): string => {
   return desc
 }
 
-const buildRule = (
-  base: Pick<AddLastFmTagRuleBody, 'match_mode' | 'match_type' | 'rule_name' | 'tag_name'>,
-  opts: { trackName: string; artistName: string; artistNames: string[]; mergeGapMinutes: string },
-): AddLastFmTagRuleBody => {
-  const rule: AddLastFmTagRuleBody = { ...base }
-  if (needsTrack(base.match_type)) {
-    rule.track_name = opts.trackName.trim()
+const artistNamesChanged = (editNames: string[], original: string[]): boolean =>
+  editNames.length !== original.length || editNames.some((n, i) => n !== original[i])
+
+/** Compute changed artist fields, if any. */
+function getArtistUpdates(
+  rule: LastFmTagRule,
+  editArtistNames: string[],
+  editArtistName: string,
+): Partial<UpdateLastFmTagRuleBody> {
+  if (editArtistNames.length > 0) {
+    return artistNamesChanged(editArtistNames, rule.artist_names ?? []) ?
+        { artist_names: editArtistNames }
+      : {}
   }
-  if (needsArtist(base.match_type)) {
-    if (opts.artistNames.length > 0) {
-      rule.artist_names = opts.artistNames
-    } else {
-      rule.artist_name = opts.artistName.trim()
-    }
-  }
-  const gapMinutes = parseFloat(opts.mergeGapMinutes)
-  if (gapMinutes > 0) {
-    rule.merge_gap_seconds = Math.round(gapMinutes * 60)
-  }
-  return rule
+  return editArtistName.trim() !== (rule.artist_name ?? '') ? { artist_name: editArtistName.trim() } : {}
 }
 
-function EditableRuleRow({
+/** Parse gap minutes string to seconds (or null). */
+const parseGapSeconds = (mergeGapMinutes: string): number | null => {
+  const gapMinutes = parseFloat(mergeGapMinutes)
+  return gapMinutes > 0 ? Math.round(gapMinutes * 60) : null
+}
+
+/** Build a partial update body by comparing edit state to the original rule. */
+function buildUpdateBody(
+  rule: LastFmTagRule,
+  edit: {
+    ruleName: string
+    tagName: string
+    matchType: LastFmMatchType
+    matchMode: LastFmMatchMode
+    trackName: string
+    artistName: string
+    artistNames: string[]
+    mergeGapMinutes: string
+  },
+): UpdateLastFmTagRuleBody {
+  const body: UpdateLastFmTagRuleBody = {}
+
+  if (edit.ruleName.trim() !== rule.rule_name) body.rule_name = edit.ruleName.trim()
+  if (edit.tagName.trim() !== rule.tag_name) body.tag_name = edit.tagName.trim()
+  if (edit.matchType !== rule.match_type) body.match_type = edit.matchType
+  if (edit.matchMode !== rule.match_mode) body.match_mode = edit.matchMode
+
+  if (needsTrack(edit.matchType) && edit.trackName.trim() !== (rule.track_name ?? '')) {
+    body.track_name = edit.trackName.trim()
+  }
+  if (needsArtist(edit.matchType)) {
+    Object.assign(body, getArtistUpdates(rule, edit.artistNames, edit.artistName))
+  }
+
+  const newGapSeconds = parseGapSeconds(edit.mergeGapMinutes)
+  if (newGapSeconds !== (rule.merge_gap_seconds ?? null)) {
+    body.merge_gap_seconds = newGapSeconds
+  }
+
+  return body
+}
+
+/** Inline edit form for an existing rule. */
+function RuleEditForm({
   rule,
-  onDeleted,
-  onUpdated,
+  onSaved,
+  onCancel,
 }: {
   rule: LastFmTagRule
-  onDeleted: () => void
-  onUpdated: () => void
+  onSaved: () => void
+  onCancel: () => void
 }) {
-  const [isEditing, setIsEditing] = useState(false)
   const [editRuleName, setEditRuleName] = useState(rule.rule_name)
   const [editTagName, setEditTagName] = useState(rule.tag_name)
   const [editMatchType, setEditMatchType] = useState<LastFmMatchType>(rule.match_type)
@@ -108,18 +144,6 @@ function EditableRuleRow({
     rule.merge_gap_seconds ? String(Math.round(rule.merge_gap_seconds / 60)) : '',
   )
 
-  const resetForm = () => {
-    setEditRuleName(rule.rule_name)
-    setEditTagName(rule.tag_name)
-    setEditMatchType(rule.match_type)
-    setEditMatchMode(rule.match_mode)
-    setEditTrackName(rule.track_name ?? '')
-    setEditArtistName(rule.artist_name ?? '')
-    setEditArtistNames(rule.artist_names ?? [])
-    setEditNewArtistInput('')
-    setEditMergeGapMinutes(rule.merge_gap_seconds ? String(Math.round(rule.merge_gap_seconds / 60)) : '')
-  }
-
   const handleEditAddArtist = () => {
     const name = editNewArtistInput.trim()
     if (name && !editArtistNames.includes(name)) {
@@ -130,43 +154,179 @@ function EditableRuleRow({
 
   const updateMutation = useMutation({
     mutationFn: () => {
-      const body: UpdateLastFmTagRuleBody = {}
-
-      if (editRuleName.trim() !== rule.rule_name) body.rule_name = editRuleName.trim()
-      if (editTagName.trim() !== rule.tag_name) body.tag_name = editTagName.trim()
-      if (editMatchType !== rule.match_type) body.match_type = editMatchType
-      if (editMatchMode !== rule.match_mode) body.match_mode = editMatchMode
-
-      if (needsTrack(editMatchType)) {
-        if (editTrackName.trim() !== (rule.track_name ?? '')) body.track_name = editTrackName.trim()
-      }
-      if (needsArtist(editMatchType)) {
-        if (editArtistNames.length > 0) {
-          const original = rule.artist_names ?? []
-          if (
-            editArtistNames.length !== original.length ||
-            editArtistNames.some((n, i) => n !== original[i])
-          ) {
-            body.artist_names = editArtistNames
-          }
-        } else if (editArtistName.trim() !== (rule.artist_name ?? '')) {
-          body.artist_name = editArtistName.trim()
-        }
-      }
-
-      const gapMinutes = parseFloat(editMergeGapMinutes)
-      const newGapSeconds = gapMinutes > 0 ? Math.round(gapMinutes * 60) : null
-      if (newGapSeconds !== (rule.merge_gap_seconds ?? null)) {
-        body.merge_gap_seconds = newGapSeconds
-      }
-
+      const body = buildUpdateBody(rule, {
+        artistName: editArtistName,
+        artistNames: editArtistNames,
+        matchMode: editMatchMode,
+        matchType: editMatchType,
+        mergeGapMinutes: editMergeGapMinutes,
+        ruleName: editRuleName,
+        tagName: editTagName,
+        trackName: editTrackName,
+      })
       return updateLastFmTagRule(rule.id, body)
     },
-    onSuccess: () => {
-      setIsEditing(false)
-      onUpdated()
-    },
+    onSuccess: onSaved,
   })
+
+  const validationError = validateRuleForm(editMatchType, editTrackName, editArtistName, editArtistNames)
+  const canSave = editRuleName.trim() && editTagName.trim() && !validationError
+
+  return (
+    <div class="rule-item editing">
+      <div class="rule-edit-fields">
+        <div class="form-row">
+          <div class="form-field">
+            <label>Rule Name</label>
+            <input
+              type="text"
+              value={editRuleName}
+              onInput={(e) => setEditRuleName((e.target as HTMLInputElement).value)}
+            />
+          </div>
+          <div class="form-field">
+            <label>Tag to Create</label>
+            <input
+              type="text"
+              value={editTagName}
+              onInput={(e) => setEditTagName((e.target as HTMLInputElement).value)}
+            />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label>Match Type</label>
+            <select
+              value={editMatchType}
+              onChange={(e) => setEditMatchType((e.target as HTMLSelectElement).value as LastFmMatchType)}
+            >
+              <option value="track">Track Name (any artist)</option>
+              <option value="artist">Artist Name (any track)</option>
+              <option value="track_artist">Track + Artist (exact)</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Match Mode</label>
+            <select
+              value={editMatchMode}
+              onChange={(e) => setEditMatchMode((e.target as HTMLSelectElement).value as LastFmMatchMode)}
+            >
+              <option value="exact">Exact (case-insensitive)</option>
+              <option value="contains">Contains (substring)</option>
+            </select>
+          </div>
+        </div>
+
+        {needsTrack(editMatchType) && (
+          <div class="form-field">
+            <label>Track Name</label>
+            <input
+              type="text"
+              value={editTrackName}
+              onInput={(e) => setEditTrackName((e.target as HTMLInputElement).value)}
+            />
+          </div>
+        )}
+
+        {needsArtist(editMatchType) && (
+          <div class="form-field">
+            <label>Artists</label>
+            {editArtistNames.length > 0 && (
+              <div class="artist-names-list">
+                {editArtistNames.map((name, idx) => (
+                  <span class="artist-name-chip" key={name}>
+                    {name}
+                    <button
+                      type="button"
+                      class="remove-artist-button"
+                      onClick={() => setEditArtistNames(editArtistNames.filter((_, i) => i !== idx))}
+                    >
+                      x
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div class="artist-input-row">
+              <input
+                type="text"
+                value={editArtistNames.length > 0 ? editNewArtistInput : editArtistName}
+                onInput={(e) => {
+                  const val = (e.target as HTMLInputElement).value
+                  if (editArtistNames.length > 0) {
+                    setEditNewArtistInput(val)
+                  } else {
+                    setEditArtistName(val)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && editArtistNames.length > 0) {
+                    e.preventDefault()
+                    handleEditAddArtist()
+                  }
+                }}
+                placeholder={editArtistNames.length > 0 ? 'Add another artist...' : 'Artist name'}
+              />
+              <button
+                type="button"
+                class="add-artist-button"
+                onClick={() => {
+                  if (editArtistNames.length === 0 && editArtistName.trim()) {
+                    setEditArtistNames([editArtistName.trim()])
+                    setEditArtistName('')
+                  } else {
+                    handleEditAddArtist()
+                  }
+                }}
+              >
+                +
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div class="form-field">
+          <label>Session merge gap (minutes)</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={editMergeGapMinutes}
+            onInput={(e) => setEditMergeGapMinutes((e.target as HTMLInputElement).value)}
+            placeholder="Leave empty for one tag per scrobble"
+          />
+        </div>
+      </div>
+
+      <div class="rule-edit-actions">
+        <button
+          type="button"
+          class="connect-button"
+          onClick={() => updateMutation.mutate()}
+          disabled={!canSave || updateMutation.isPending}
+        >
+          {updateMutation.isPending ? 'Saving...' : 'Save'}
+        </button>
+        <button type="button" class="cancel-button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+      {updateMutation.isError && <p class="rule-edit-error">{getErrorMessage(updateMutation.error)}</p>}
+    </div>
+  )
+}
+
+function EditableRuleRow({
+  rule,
+  onDeleted,
+  onUpdated,
+}: {
+  rule: LastFmTagRule
+  onDeleted: () => void
+  onUpdated: () => void
+}) {
+  const [isEditing, setIsEditing] = useState(false)
 
   const handleDelete = async () => {
     if (!confirm(`Delete rule "${rule.rule_name}"?`)) return
@@ -179,158 +339,15 @@ function EditableRuleRow({
   }
 
   if (isEditing) {
-    const validationError = validateRuleForm(editMatchType, editTrackName, editArtistName, editArtistNames)
-    const canSave = editRuleName.trim() && editTagName.trim() && !validationError
-
     return (
-      <div class="rule-item editing">
-        <div class="rule-edit-fields">
-          <div class="form-row">
-            <div class="form-field">
-              <label>Rule Name</label>
-              <input
-                type="text"
-                value={editRuleName}
-                onInput={(e) => setEditRuleName((e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div class="form-field">
-              <label>Tag to Create</label>
-              <input
-                type="text"
-                value={editTagName}
-                onInput={(e) => setEditTagName((e.target as HTMLInputElement).value)}
-              />
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-field">
-              <label>Match Type</label>
-              <select
-                value={editMatchType}
-                onChange={(e) => setEditMatchType((e.target as HTMLSelectElement).value as LastFmMatchType)}
-              >
-                <option value="track">Track Name (any artist)</option>
-                <option value="artist">Artist Name (any track)</option>
-                <option value="track_artist">Track + Artist (exact)</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label>Match Mode</label>
-              <select
-                value={editMatchMode}
-                onChange={(e) => setEditMatchMode((e.target as HTMLSelectElement).value as LastFmMatchMode)}
-              >
-                <option value="exact">Exact (case-insensitive)</option>
-                <option value="contains">Contains (substring)</option>
-              </select>
-            </div>
-          </div>
-
-          {needsTrack(editMatchType) && (
-            <div class="form-field">
-              <label>Track Name</label>
-              <input
-                type="text"
-                value={editTrackName}
-                onInput={(e) => setEditTrackName((e.target as HTMLInputElement).value)}
-              />
-            </div>
-          )}
-
-          {needsArtist(editMatchType) && (
-            <div class="form-field">
-              <label>Artists</label>
-              {editArtistNames.length > 0 && (
-                <div class="artist-names-list">
-                  {editArtistNames.map((name, idx) => (
-                    <span class="artist-name-chip" key={name}>
-                      {name}
-                      <button
-                        type="button"
-                        class="remove-artist-button"
-                        onClick={() => setEditArtistNames(editArtistNames.filter((_, i) => i !== idx))}
-                      >
-                        x
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div class="artist-input-row">
-                <input
-                  type="text"
-                  value={editArtistNames.length > 0 ? editNewArtistInput : editArtistName}
-                  onInput={(e) => {
-                    const val = (e.target as HTMLInputElement).value
-                    if (editArtistNames.length > 0) {
-                      setEditNewArtistInput(val)
-                    } else {
-                      setEditArtistName(val)
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && editArtistNames.length > 0) {
-                      e.preventDefault()
-                      handleEditAddArtist()
-                    }
-                  }}
-                  placeholder={editArtistNames.length > 0 ? 'Add another artist...' : 'Artist name'}
-                />
-                <button
-                  type="button"
-                  class="add-artist-button"
-                  onClick={() => {
-                    if (editArtistNames.length === 0 && editArtistName.trim()) {
-                      setEditArtistNames([editArtistName.trim()])
-                      setEditArtistName('')
-                    } else {
-                      handleEditAddArtist()
-                    }
-                  }}
-                >
-                  +
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div class="form-field">
-            <label>Session merge gap (minutes)</label>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={editMergeGapMinutes}
-              onInput={(e) => setEditMergeGapMinutes((e.target as HTMLInputElement).value)}
-              placeholder="Leave empty for one tag per scrobble"
-            />
-          </div>
-        </div>
-
-        <div class="rule-edit-actions">
-          <button
-            type="button"
-            class="connect-button"
-            onClick={() => updateMutation.mutate()}
-            disabled={!canSave || updateMutation.isPending}
-          >
-            {updateMutation.isPending ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            type="button"
-            class="cancel-button"
-            onClick={() => {
-              resetForm()
-              setIsEditing(false)
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-        {updateMutation.isError && <p class="rule-edit-error">{getErrorMessage(updateMutation.error)}</p>}
-      </div>
+      <RuleEditForm
+        rule={rule}
+        onSaved={() => {
+          setIsEditing(false)
+          onUpdated()
+        }}
+        onCancel={() => setIsEditing(false)}
+      />
     )
   }
 
@@ -351,14 +368,7 @@ function EditableRuleRow({
         </span>
       </div>
       <div class="rule-actions">
-        <button
-          type="button"
-          class="edit-rule-button"
-          onClick={() => {
-            resetForm()
-            setIsEditing(true)
-          }}
-        >
+        <button type="button" class="edit-rule-button" onClick={() => setIsEditing(true)}>
           Edit
         </button>
         <button type="button" class="remove-rule-button" onClick={handleDelete}>
@@ -385,68 +395,7 @@ export function LastFmTagRulesSettings() {
     queryKey: ['lastfmTagRules'],
   })
 
-  // Form state for new rule
-  const [ruleName, setRuleName] = useState('')
-  const [matchType, setMatchType] = useState<LastFmMatchType>('track')
-  const [trackName, setTrackName] = useState('')
-  const [artistName, setArtistName] = useState('')
-  const [artistNames, setArtistNames] = useState<string[]>([])
-  const [newArtistInput, setNewArtistInput] = useState('')
-  const [matchMode, setMatchMode] = useState<LastFmMatchMode>('exact')
-  const [tagName, setTagName] = useState('')
-  const [mergeGapMinutes, setMergeGapMinutes] = useState('')
-
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
-
-  const handleAddArtist = () => {
-    const name = newArtistInput.trim()
-    if (name && !artistNames.includes(name)) {
-      setArtistNames([...artistNames, name])
-      setNewArtistInput('')
-    }
-  }
-
-  const handleRemoveArtist = (index: number) => {
-    setArtistNames(artistNames.filter((_, i) => i !== index))
-  }
-
-  const handleAddRule = async () => {
-    if (!ruleName.trim() || !tagName.trim()) return
-
-    const validationError = validateRuleForm(matchType, trackName, artistName, artistNames)
-    if (validationError) {
-      setSaveStatus({ error: validationError, status: 'error' })
-      return
-    }
-
-    setSaveStatus({ status: 'saving' })
-    try {
-      const rule = buildRule(
-        {
-          match_mode: matchMode,
-          match_type: matchType,
-          rule_name: ruleName.trim(),
-          tag_name: tagName.trim(),
-        },
-        { artistName, artistNames, mergeGapMinutes, trackName },
-      )
-
-      await createLastFmTagRule(rule)
-      queryClient.invalidateQueries({ queryKey: ['lastfmTagRules'] })
-
-      // Reset form
-      setRuleName('')
-      setTrackName('')
-      setArtistName('')
-      setArtistNames([])
-      setNewArtistInput('')
-      setTagName('')
-      setMergeGapMinutes('')
-      setSaveStatus({ status: 'saved', time: new Date() })
-    } catch (err) {
-      setSaveStatus({ error: getErrorMessage(err), status: 'error' })
-    }
-  }
 
   const invalidateRules = () => queryClient.invalidateQueries({ queryKey: ['lastfmTagRules'] })
 
@@ -486,160 +435,7 @@ export function LastFmTagRulesSettings() {
           )}
 
           {/* Add new rule form */}
-          <div class="add-rule-form">
-            <h3>Add New Rule</h3>
-
-            <div class="form-row">
-              <div class="form-field">
-                <label for="rule-name">Rule Name</label>
-                <input
-                  id="rule-name"
-                  type="text"
-                  value={ruleName}
-                  onInput={(e) => setRuleName((e.target as HTMLInputElement).value)}
-                  placeholder="e.g., Vocal Exercises"
-                />
-              </div>
-
-              <div class="form-field">
-                <label for="tag-name">Tag to Create</label>
-                <input
-                  id="tag-name"
-                  type="text"
-                  value={tagName}
-                  onInput={(e) => setTagName((e.target as HTMLInputElement).value)}
-                  placeholder="e.g., VocalExercises"
-                />
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-field">
-                <label for="match-type">Match Type</label>
-                <select
-                  id="match-type"
-                  value={matchType}
-                  onChange={(e) => setMatchType((e.target as HTMLSelectElement).value as LastFmMatchType)}
-                >
-                  <option value="track">Track Name (any artist)</option>
-                  <option value="artist">Artist Name (any track)</option>
-                  <option value="track_artist">Track + Artist (exact)</option>
-                </select>
-              </div>
-
-              <div class="form-field">
-                <label for="match-mode">Match Mode</label>
-                <select
-                  id="match-mode"
-                  value={matchMode}
-                  onChange={(e) => setMatchMode((e.target as HTMLSelectElement).value as LastFmMatchMode)}
-                >
-                  <option value="exact">Exact (case-insensitive)</option>
-                  <option value="contains">Contains (substring)</option>
-                </select>
-              </div>
-            </div>
-
-            {needsTrack(matchType) && (
-              <div class="form-field">
-                <label for="track-name">Track Name</label>
-                <input
-                  id="track-name"
-                  type="text"
-                  value={trackName}
-                  onInput={(e) => setTrackName((e.target as HTMLInputElement).value)}
-                  placeholder="e.g., Warmup Track 1"
-                />
-              </div>
-            )}
-
-            {needsArtist(matchType) && (
-              <div class="form-field">
-                <label>Artists</label>
-                {artistNames.length > 0 && (
-                  <div class="artist-names-list">
-                    {artistNames.map((name, idx) => (
-                      <span class="artist-name-chip" key={name}>
-                        {name}
-                        <button
-                          type="button"
-                          class="remove-artist-button"
-                          onClick={() => handleRemoveArtist(idx)}
-                        >
-                          x
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div class="artist-input-row">
-                  <input
-                    type="text"
-                    value={artistNames.length > 0 ? newArtistInput : artistName}
-                    onInput={(e) => {
-                      const val = (e.target as HTMLInputElement).value
-                      if (artistNames.length > 0) {
-                        setNewArtistInput(val)
-                      } else {
-                        setArtistName(val)
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && artistNames.length > 0) {
-                        e.preventDefault()
-                        handleAddArtist()
-                      }
-                    }}
-                    placeholder={artistNames.length > 0 ? 'Add another artist...' : 'e.g., Meditation Artist'}
-                  />
-                  <button
-                    type="button"
-                    class="add-artist-button"
-                    onClick={() => {
-                      if (artistNames.length === 0 && artistName.trim()) {
-                        setArtistNames([artistName.trim()])
-                        setArtistName('')
-                      } else {
-                        handleAddArtist()
-                      }
-                    }}
-                  >
-                    +
-                  </button>
-                </div>
-                <p class="field-help">
-                  Add multiple artists to match any of them. Use + button or Enter to add.
-                </p>
-              </div>
-            )}
-
-            <div class="form-field">
-              <label for="merge-gap">Session merge gap (minutes)</label>
-              <input
-                id="merge-gap"
-                type="number"
-                min="1"
-                step="1"
-                value={mergeGapMinutes}
-                onInput={(e) => setMergeGapMinutes((e.target as HTMLInputElement).value)}
-                placeholder="e.g., 10"
-              />
-              <p class="field-help">
-                When set, consecutive matching scrobbles within this gap are grouped into a single span tag.
-                Leave empty for one tag per scrobble. The gap should account for track length + pause between
-                tracks.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              class="connect-button"
-              onClick={handleAddRule}
-              disabled={!ruleName.trim() || !tagName.trim()}
-            >
-              Add Rule
-            </button>
-          </div>
+          <AddRuleForm onRuleAdded={invalidateRules} setSaveStatus={setSaveStatus} />
         </>
       }
     </section>

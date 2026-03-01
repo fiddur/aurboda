@@ -1583,6 +1583,136 @@ const drawColumnItems = (
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SvgParent = d3.Selection<any, unknown, null, undefined>
+
+/** Render a point-in-time marker (emoji, image, or diamond). */
+const drawPointMarker = (
+  parent: SvgParent,
+  item: ChartItem,
+  cx: number,
+  cy: number,
+  size: number,
+  laneWidth: number,
+  x: number,
+  detailUrl: string | undefined,
+  showTooltip: (event: MouseEvent, item: ChartItem) => void,
+  hideTooltip: () => void,
+) => {
+  const cursor = detailUrl ? 'pointer' : 'default'
+
+  if (item.icon && isEmoji(item.icon)) {
+    parent
+      .append('text')
+      .attr('x', cx)
+      .attr('y', cy)
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '14px')
+      .attr('pointer-events', 'all')
+      .attr('cursor', cursor)
+      .text(item.icon)
+      .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+      .on('mouseleave', hideTooltip)
+    return
+  }
+
+  if (item.icon && isUrl(item.icon)) {
+    const imgSize = 14
+    parent
+      .append('image')
+      .attr('href', item.icon)
+      .attr('x', cx - imgSize / 2)
+      .attr('y', cy - imgSize / 2)
+      .attr('width', imgSize)
+      .attr('height', imgSize)
+      .attr('pointer-events', 'all')
+      .attr('cursor', cursor)
+      .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+      .on('mouseleave', hideTooltip)
+    return
+  }
+
+  // Default: diamond marker + text label
+  parent
+    .append('polygon')
+    .attr('points', `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`)
+    .attr('fill', item.color)
+    .attr('opacity', 0.85)
+    .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+    .on('mouseleave', hideTooltip)
+
+  const labelX = x + 2 * size + 6
+  const availableWidth = laneWidth - 2 * size - 8
+  if (availableWidth > 20) {
+    const charWidth = 5.5
+    const maxChars = Math.floor(availableWidth / charWidth)
+    const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+    parent
+      .append('text')
+      .attr('x', labelX)
+      .attr('y', cy)
+      .attr('dy', '0.35em')
+      .attr('fill', item.color)
+      .attr('font-size', '0.6rem')
+      .attr('opacity', 0.8)
+      .attr('pointer-events', 'none')
+      .text(text)
+  }
+}
+
+/** Render icon or text label overlay on a duration block. */
+const drawBlockOverlay = (
+  parent: SvgParent,
+  item: ChartItem,
+  x: number,
+  y1: number,
+  laneWidth: number,
+  blockHeight: number,
+) => {
+  if (item.icon && isEmoji(item.icon)) {
+    parent
+      .append('text')
+      .attr('x', x + laneWidth / 2)
+      .attr('y', y1 + blockHeight / 2)
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '14px')
+      .attr('pointer-events', 'none')
+      .text(item.icon)
+    return
+  }
+
+  if (item.icon && isUrl(item.icon)) {
+    const imgSize = 14
+    parent
+      .append('image')
+      .attr('href', item.icon)
+      .attr('x', x + laneWidth / 2 - imgSize / 2)
+      .attr('y', y1 + blockHeight / 2 - imgSize / 2)
+      .attr('width', imgSize)
+      .attr('height', imgSize)
+      .attr('pointer-events', 'none')
+    return
+  }
+
+  if (blockHeight > 30) {
+    const fontSize = laneWidth > 100 ? '0.8rem' : '0.65rem'
+    const charWidth = laneWidth > 100 ? 7.5 : 6
+    const maxChars = Math.floor(laneWidth / charWidth)
+    const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+    parent
+      .append('text')
+      .attr('x', x + 4)
+      .attr('y', y1 + 14)
+      .attr('fill', 'white')
+      .attr('font-size', fontSize)
+      .attr('font-weight', '500')
+      .attr('pointer-events', 'none')
+      .text(text)
+  }
+}
+
 const drawItem = (
   chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
   item: ChartItem,
@@ -1607,71 +1737,12 @@ const drawItem = (
 
   // Wrap clickable items in an SVG <a> so the browser handles middle-click,
   // right-click context menu, ctrl+click etc. natively.
-  const parent =
+  const parent: SvgParent =
     detailUrl ? chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true') : chartGroup
 
   if (item.isPoint) {
-    const cy = y1
     const size = Math.min(laneWidth / 2, 6)
-    const cx = x + size + 2
-
-    if (item.icon && isEmoji(item.icon)) {
-      // Render emoji only — no text label (tooltip on hover provides the name)
-      const emojiSize = 14
-      parent
-        .append('text')
-        .attr('x', cx)
-        .attr('y', cy)
-        .attr('dy', '0.35em')
-        .attr('text-anchor', 'middle')
-        .attr('font-size', `${emojiSize}px`)
-        .attr('pointer-events', 'all')
-        .attr('cursor', detailUrl ? 'pointer' : 'default')
-        .text(item.icon)
-        .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
-        .on('mouseleave', hideTooltip)
-    } else if (item.icon && isUrl(item.icon)) {
-      // Render custom image icon only — no text label
-      const imgSize = 14
-      parent
-        .append('image')
-        .attr('href', item.icon)
-        .attr('x', cx - imgSize / 2)
-        .attr('y', cy - imgSize / 2)
-        .attr('width', imgSize)
-        .attr('height', imgSize)
-        .attr('pointer-events', 'all')
-        .attr('cursor', detailUrl ? 'pointer' : 'default')
-        .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
-        .on('mouseleave', hideTooltip)
-    } else {
-      // Default: diamond marker + text label
-      parent
-        .append('polygon')
-        .attr('points', `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`)
-        .attr('fill', item.color)
-        .attr('opacity', 0.85)
-        .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
-        .on('mouseleave', hideTooltip)
-
-      const labelX = x + 2 * size + 6
-      const availableWidth = laneWidth - 2 * size - 8
-      if (availableWidth > 20) {
-        const charWidth = 5.5
-        const maxChars = Math.floor(availableWidth / charWidth)
-        const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
-        parent
-          .append('text')
-          .attr('x', labelX)
-          .attr('y', cy)
-          .attr('dy', '0.35em')
-          .attr('fill', item.color)
-          .attr('font-size', '0.6rem')
-          .attr('opacity', 0.8)
-          .attr('pointer-events', 'none')
-          .text(text)
-      }
-    }
+    drawPointMarker(parent, item, x + size + 2, y1, size, laneWidth, x, detailUrl, showTooltip, hideTooltip)
     return
   }
 
@@ -1695,44 +1766,7 @@ const drawItem = (
       hideTooltip()
     })
 
-  // Icon overlay for duration blocks
-  if (item.icon && isEmoji(item.icon)) {
-    const emojiSize = 14
-    parent
-      .append('text')
-      .attr('x', x + laneWidth / 2)
-      .attr('y', y1 + blockHeight / 2)
-      .attr('dy', '0.35em')
-      .attr('text-anchor', 'middle')
-      .attr('font-size', `${emojiSize}px`)
-      .attr('pointer-events', 'none')
-      .text(item.icon)
-  } else if (item.icon && isUrl(item.icon)) {
-    const imgSize = 14
-    parent
-      .append('image')
-      .attr('href', item.icon)
-      .attr('x', x + laneWidth / 2 - imgSize / 2)
-      .attr('y', y1 + blockHeight / 2 - imgSize / 2)
-      .attr('width', imgSize)
-      .attr('height', imgSize)
-      .attr('pointer-events', 'none')
-  } else if (blockHeight > 30) {
-    // Text label inside if tall enough (only when no icon)
-    const fontSize = laneWidth > 100 ? '0.8rem' : '0.65rem'
-    const charWidth = laneWidth > 100 ? 7.5 : 6
-    const maxChars = Math.floor(laneWidth / charWidth)
-    const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
-    parent
-      .append('text')
-      .attr('x', x + 4)
-      .attr('y', y1 + 14)
-      .attr('fill', 'white')
-      .attr('font-size', fontSize)
-      .attr('font-weight', '500')
-      .attr('pointer-events', 'none')
-      .text(text)
-  }
+  drawBlockOverlay(parent, item, x, y1, laneWidth, blockHeight)
 }
 
 const drawNowLine = (

@@ -50,6 +50,47 @@ const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
 
 const formatExerciseTypeName = (name: string): string => name.replace(/_/g, ' ')
 
+/** Read-only display of exercise stats (type, calories, HRV, HR zones). */
+const ExerciseStats = ({
+  exerciseType,
+  totalCalories,
+  avgHrv,
+  hrZoneSecs,
+}: {
+  exerciseType?: string
+  totalCalories?: number
+  avgHrv?: number
+  hrZoneSecs?: Record<string, unknown>
+}) => (
+  <>
+    {exerciseType && (
+      <div class="entity-fields">
+        <div class="field-row">
+          <span class="field-label">Exercise Type</span>
+          <span class="field-value">{formatExerciseTypeName(exerciseType)}</span>
+        </div>
+      </div>
+    )}
+    {totalCalories !== undefined && (
+      <div class="entity-fields">
+        <div class="field-row">
+          <span class="field-label">Active Calories</span>
+          <span class="field-value">{totalCalories} kcal</span>
+        </div>
+      </div>
+    )}
+    {avgHrv !== undefined && (
+      <div class="entity-fields">
+        <div class="field-row">
+          <span class="field-label">Avg HRV</span>
+          <span class="field-value">{avgHrv} ms</span>
+        </div>
+      </div>
+    )}
+    {hrZoneSecs && <HrZoneBar zones={hrZoneSecs as Record<number, number>} />}
+  </>
+)
+
 export const ExerciseDetail = ({
   activity,
   isEditing,
@@ -121,34 +162,14 @@ export const ExerciseDetail = ({
           </div>
         )}
 
-        {!isEditing && exerciseType && (
-          <div class="entity-fields">
-            <div class="field-row">
-              <span class="field-label">Exercise Type</span>
-              <span class="field-value">{formatExerciseTypeName(exerciseType)}</span>
-            </div>
-          </div>
+        {!isEditing && (
+          <ExerciseStats
+            exerciseType={exerciseType}
+            totalCalories={totalCalories}
+            avgHrv={activity.avg_hrv}
+            hrZoneSecs={activity.hr_zone_secs as Record<string, unknown> | undefined}
+          />
         )}
-
-        {!isEditing && totalCalories !== undefined && (
-          <div class="entity-fields">
-            <div class="field-row">
-              <span class="field-label">Active Calories</span>
-              <span class="field-value">{totalCalories} kcal</span>
-            </div>
-          </div>
-        )}
-
-        {!isEditing && activity.avg_hrv !== undefined && (
-          <div class="entity-fields">
-            <div class="field-row">
-              <span class="field-label">Avg HRV</span>
-              <span class="field-value">{activity.avg_hrv} ms</span>
-            </div>
-          </div>
-        )}
-
-        {activity.hr_zone_secs && <HrZoneBar zones={activity.hr_zone_secs as Record<number, number>} />}
       </div>
 
       {/* HR chart with overlays */}
