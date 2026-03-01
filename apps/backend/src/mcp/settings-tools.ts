@@ -50,7 +50,7 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
   // Tool: get_programmatic_tags
   server.tool(
     'get_programmatic_tags',
-    'Get all programmatic tags (UUIDs, tag_* prefixes) with their current mapped names. These are tags that look like they need human-readable display names. Tags without a currentName are unmapped.',
+    'Get all tags available for mapping. Includes programmatic tags (UUIDs, tag_* prefixes) that need human-readable display names, plus all other tags so icons can be set on any tag. Tags with is_programmatic=true and no current_name are unmapped.',
     {},
     async () => {
       const tags = await getProgrammaticTags(user)
@@ -59,7 +59,8 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
 
       const data = tags.map((tag) => ({
         count: tag.count,
-        current_name: mappings[tag.tagKey] ?? null,
+        current_name: tag.isProgrammatic ? (mappings[tag.tagKey] ?? null) : tag.tagKey,
+        is_programmatic: tag.isProgrammatic,
         latest_time: tag.latestTime.toISOString(),
         tag_key: tag.tagKey,
       }))

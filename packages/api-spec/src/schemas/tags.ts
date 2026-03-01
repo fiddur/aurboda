@@ -126,15 +126,19 @@ export const uniqueTagsResponseSchema = baseResponseSchema
 export type UniqueTagsResponse = z.infer<typeof uniqueTagsResponseSchema>
 
 /**
- * Programmatic tag info - tags that look like they need human-readable names.
- * Includes UUIDs (Oura custom tags), tag_* prefixes (Oura presets), etc.
+ * Programmatic tag info - tags that can be configured in the tag mapper.
+ * Includes programmatic tags (UUIDs, tag_* prefixes) that need human-readable names,
+ * as well as all other tags so users can set icons on any tag.
  */
 export const programmaticTagSchema = z
   .object({
     count: z.number().int().meta({ description: 'Number of occurrences' }),
     current_name: z.string().nullable().meta({ description: 'Current mapped name (null if unmapped)' }),
+    is_programmatic: z
+      .boolean()
+      .meta({ description: 'Whether this tag needs a name mapping (true for UUIDs/tag_* prefixes)' }),
     latest_time: iso8601DateTimeSchema.meta({ description: 'Most recent occurrence' }),
-    tag_key: z.string().meta({ description: 'The programmatic tag identifier (UUID, tag_* prefix, etc.)' }),
+    tag_key: z.string().meta({ description: 'The tag identifier (programmatic key or tag name)' }),
   })
   .meta({ id: 'ProgrammaticTag' })
 

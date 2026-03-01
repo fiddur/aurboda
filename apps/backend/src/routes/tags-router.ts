@@ -141,7 +141,7 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
     res.json({ data: tags, success: true })
   })
 
-  // GET /tags/programmatic - Get all programmatic tags with their current mappings
+  // GET /tags/programmatic - Get all tags with their current mappings (for tag mapper)
   router.get<Record<string, never>, ProgrammaticTagsResponse>(
     '/programmatic',
     authMiddleware,
@@ -153,7 +153,9 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
 
       const data = tags.map((tag) => ({
         count: tag.count,
-        current_name: mappings[tag.tagKey] ?? null,
+        // For programmatic tags, look up the mapped name; for regular tags, the tag name IS the name
+        current_name: tag.isProgrammatic ? (mappings[tag.tagKey] ?? null) : tag.tagKey,
+        is_programmatic: tag.isProgrammatic,
         latest_time: tag.latestTime.toISOString(),
         tag_key: tag.tagKey,
       }))
