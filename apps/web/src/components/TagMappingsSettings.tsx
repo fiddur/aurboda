@@ -34,6 +34,8 @@ function TagMappingRow({
   const [status, setStatus] = useState<RowStatus>('idle')
   const [suggestedEmoji, setSuggestedEmoji] = useState<string | undefined>(undefined)
 
+  const isProgrammatic = tag.is_programmatic
+
   // Clear saved indicator after 3 seconds
   useEffect(() => {
     if (status !== 'saved') return
@@ -43,7 +45,7 @@ function TagMappingRow({
 
   const displayValue = localValue ?? tag.current_name ?? ''
   const displayIcon = localIcon ?? currentIcon ?? ''
-  const isUnmapped = !tag.current_name
+  const isUnmapped = isProgrammatic && !tag.current_name
 
   // Auto-suggest emoji when name changes
   useEffect(() => {
@@ -126,9 +128,10 @@ function TagMappingRow({
           value={displayValue}
           onInput={(e) => setLocalValue((e.target as HTMLInputElement).value)}
           onBlur={() => void handleBlur()}
-          placeholder="Enter display name..."
+          placeholder={isProgrammatic ? 'Enter display name...' : undefined}
           class={isUnmapped ? 'unmapped' : ''}
-          disabled={status === 'saving'}
+          disabled={status === 'saving' || !isProgrammatic}
+          readOnly={!isProgrammatic}
         />
         <span class="row-status">
           {status === 'saving' && <span class="status-saving" title="Saving..." />}
@@ -173,9 +176,11 @@ function TagMappingRow({
         )}
       </div>
 
-      <div class="tag-uuid" title={tag.tag_key}>
-        {formatTagKey(tag.tag_key)}
-      </div>
+      {isProgrammatic && (
+        <div class="tag-uuid" title={tag.tag_key}>
+          {formatTagKey(tag.tag_key)}
+        </div>
+      )}
     </div>
   )
 }
@@ -217,7 +222,7 @@ export function TagMappingsSettings() {
     )
   }
 
-  const unmappedCount = tags?.filter((t) => !t.current_name).length ?? 0
+  const unmappedCount = tags?.filter((t) => t.is_programmatic && !t.current_name).length ?? 0
   const icons = mappingsData?.icons ?? {}
 
   return (
@@ -228,12 +233,12 @@ export function TagMappingsSettings() {
       </div>
 
       <p class="section-description">
-        Set display names and icons for programmatic tags. Icons can be emoji characters or image URLs.
-        Changes save automatically when you leave the field.
+        Set display names for programmatic tags and icons for any tag. Icons can be emoji characters or image
+        URLs. Changes save automatically when you leave the field.
       </p>
 
       {!tags || tags.length === 0 ?
-        <p class="no-tags">No programmatic tags found. Tags will appear here after syncing data.</p>
+        <p class="no-tags">No tags found. Tags will appear here after syncing data.</p>
       : <div class="tag-mappings-list">
           {tags.map((tag) => (
             <TagMappingRow
