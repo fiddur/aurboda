@@ -5,25 +5,14 @@
  * They are used by both the MCP tools and the REST API.
  */
 
-import type { ActivityType, EntityType as ApiEntityType, CustomMetricDefinition } from '@aurboda/api-spec'
+import type { ActivityType, CustomMetricDefinition } from '@aurboda/api-spec'
 import { randomUUID } from 'crypto'
 import {
   deleteActivity as dbDeleteActivity,
-  deleteNote as dbDeleteNote,
-  deleteProductivityRecord as dbDeleteProductivityRecord,
   deleteTag as dbDeleteTag,
-  deleteTagById as dbDeleteTagById,
   getActivityById as dbGetActivityById,
-  getNotesForEntity as dbGetNotesForEntity,
   insertActivity as dbInsertActivity,
-  insertNote as dbInsertNote,
-  restoreActivity as dbRestoreActivity,
-  restoreProductivityRecord as dbRestoreProductivityRecord,
-  restoreTag as dbRestoreTag,
   updateActivity as dbUpdateActivity,
-  updateNote as dbUpdateNote,
-  deleteTimeSeriesMetric,
-  deleteTimeSeriesPoint,
   enqueueOutboundSync,
   findHcRecordId,
   findMergeableTag,
@@ -31,8 +20,6 @@ import {
   insertTag,
   insertTimeSeries,
   updateTagEndTime,
-  upsertUserSettings,
-  type EntityType,
 } from '../db'
 import {
   activityTypeToHealthConnectType,
@@ -105,44 +92,6 @@ export interface AddActivityResult {
   title?: string
   notes?: string
   error?: string
-}
-
-export interface CustomMetricResult {
-  success: boolean
-  error?: string
-  data?: CustomMetricDefinition
-}
-
-export interface DeleteCustomMetricResult {
-  success: boolean
-  deleted: boolean
-  name: string
-}
-
-export interface UpdateCustomMetricInput {
-  unit?: string
-  description?: string
-  minValue?: number | null
-  maxValue?: number | null
-}
-
-export interface UpdateCustomMetricResult {
-  success: boolean
-  error?: string
-  data?: CustomMetricDefinition
-}
-
-export interface DeleteMetricResult {
-  success: boolean
-  deleted: boolean
-  metric: string
-  time: string
-}
-
-export interface DeleteMetricDataResult {
-  success: boolean
-  metric: string
-  deletedCount: number
 }
 
 export interface DeleteActivityResult {
@@ -229,6 +178,24 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
   }
 }
 
+/** Validate custom metric value range; returns error string if invalid, null if ok. */
+function validateCustomMetricRange(
+  customMetrics: CustomMetricDefinition[],
+  metric: string,
+  value: number,
+): string | null {
+  if (isValidMetric(metric)) return null
+  const customDef = customMetrics.find((m) => m.name === metric)
+  if (!customDef) return null
+  if (customDef.min_value !== undefined && value < customDef.min_value) {
+    return `Value ${value} is below minimum ${customDef.min_value} for metric "${metric}".`
+  }
+  if (customDef.max_value !== undefined && value > customDef.max_value) {
+    return `Value ${value} exceeds maximum ${customDef.max_value} for metric "${metric}".`
+  }
+  return null
+}
+
 /**
  * Add a manual health metric measurement.
  * Supports both built-in and custom metrics.
@@ -250,30 +217,15 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
 
   const unit = getMetricUnit(input.metric, customMetrics)
 
-  // Validate value range for custom metrics
-  if (!isValidMetric(input.metric)) {
-    const customDef = customMetrics.find((m) => m.name === input.metric)
-    if (customDef) {
-      if (customDef.min_value !== undefined && input.value < customDef.min_value) {
-        return {
-          error: `Value ${input.value} is below minimum ${customDef.min_value} for metric "${input.metric}".`,
-          metric: input.metric,
-          success: false,
-          time: input.time.toISOString(),
-          unit: unit ?? '',
-          value: input.value,
-        }
-      }
-      if (customDef.max_value !== undefined && input.value > customDef.max_value) {
-        return {
-          error: `Value ${input.value} exceeds maximum ${customDef.max_value} for metric "${input.metric}".`,
-          metric: input.metric,
-          success: false,
-          time: input.time.toISOString(),
-          unit: unit ?? '',
-          value: input.value,
-        }
-      }
+  const rangeError = validateCustomMetricRange(customMetrics, input.metric, input.value)
+  if (rangeError) {
+    return {
+      error: rangeError,
+      metric: input.metric,
+      success: false,
+      time: input.time.toISOString(),
+      unit: unit ?? '',
+      value: input.value,
     }
   }
 
@@ -393,137 +345,23 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
   }
 }
 
-// ============================================================================
-// Custom Metric Management
-// ============================================================================
-
-/**
- * Register a new custom metric type.
- */
-export async function addCustomMetric(
-  user: string,
-  definition: CustomMetricDefinition,
-): Promise<CustomMetricResult> {
-  // Check name doesn't conflict with built-in metrics
-  if (isValidMetric(definition.name)) {
-    return {
-      error: `Metric name "${definition.name}" conflicts with a built-in metric.`,
-      success: false,
-    }
-  }
-
-  const settings = await getUserSettings(user)
-  const existing = settings?.custom_metrics ?? []
-
-  // Check for duplicate
-  if (existing.some((m) => m.name === definition.name)) {
-    return {
-      error: `Custom metric "${definition.name}" already exists.`,
-      success: false,
-    }
-  }
-
-  await upsertUserSettings(user, {
-    custom_metrics: [...existing, definition],
-  })
-
-  return {
-    data: definition,
-    success: true,
-  }
-}
-
-/**
- * Delete a custom metric definition.
- * Note: Existing time_series data for the metric is preserved.
- */
-export async function deleteCustomMetric(user: string, name: string): Promise<DeleteCustomMetricResult> {
-  const settings = await getUserSettings(user)
-  const existing = settings?.custom_metrics ?? []
-
-  const filtered = existing.filter((m) => m.name !== name)
-  if (filtered.length === existing.length) {
-    return { deleted: false, name, success: false }
-  }
-
-  await upsertUserSettings(user, { custom_metrics: filtered })
-
-  return { deleted: true, name, success: true }
-}
-
-/**
- * Update a custom metric definition.
- * - `undefined` in input means "don't change"
- * - `null` for minValue/maxValue means "clear"
- */
-export async function updateCustomMetric(
-  user: string,
-  name: string,
-  updates: UpdateCustomMetricInput,
-): Promise<UpdateCustomMetricResult> {
-  const settings = await getUserSettings(user)
-  const existing = settings?.custom_metrics ?? []
-
-  const index = existing.findIndex((m) => m.name === name)
-  if (index === -1) {
-    return { error: `Custom metric "${name}" not found.`, success: false }
-  }
-
-  const current = existing[index]
-  const updated: CustomMetricDefinition = {
-    ...current,
-    ...(updates.unit !== undefined && { unit: updates.unit }),
-    ...(updates.description !== undefined && { description: updates.description }),
-    ...(updates.minValue !== undefined && {
-      min_value: updates.minValue === null ? undefined : updates.minValue,
-    }),
-    ...(updates.maxValue !== undefined && {
-      max_value: updates.maxValue === null ? undefined : updates.maxValue,
-    }),
-  }
-
-  const newMetrics = [...existing]
-  newMetrics[index] = updated
-
-  await upsertUserSettings(user, { custom_metrics: newMetrics })
-
-  return { data: updated, success: true }
-}
-
-/**
- * Delete a single manual metric measurement by metric name and time.
- */
-export async function deleteMetric(user: string, metric: string, time: Date): Promise<DeleteMetricResult> {
-  const deleted = await deleteTimeSeriesPoint(user, metric, time)
-
-  return {
-    deleted,
-    metric,
-    success: deleted,
-    time: time.toISOString(),
-  }
-}
-
-/**
- * Delete all manual metric measurements for a given metric.
- */
-export async function deleteMetricData(user: string, metric: string): Promise<DeleteMetricDataResult> {
-  const deletedCount = await deleteTimeSeriesMetric(user, metric)
-
-  return {
-    deletedCount,
-    metric,
-    success: true,
-  }
-}
-
-/**
- * Get all custom metric definitions for a user.
- */
-export async function getCustomMetrics(user: string): Promise<CustomMetricDefinition[]> {
-  const settings = await getUserSettings(user)
-  return settings?.custom_metrics ?? []
-}
+// Re-export custom metric management functions
+export {
+  addCustomMetric,
+  deleteCustomMetric,
+  deleteMetric,
+  deleteMetricData,
+  getCustomMetrics,
+  updateCustomMetric,
+} from './custom-metrics'
+export type {
+  CustomMetricResult,
+  DeleteCustomMetricResult,
+  DeleteMetricDataResult,
+  DeleteMetricResult,
+  UpdateCustomMetricInput,
+  UpdateCustomMetricResult,
+} from './custom-metrics'
 
 /**
  * Delete an activity by its ID.
@@ -658,113 +496,16 @@ export async function updateActivity(
   }
 }
 
-// ============================================================================
-// Restore Functions (soft-delete undo)
-// ============================================================================
+// Re-export restore and delete-by-id functions
+export {
+  deleteProductivity,
+  deleteTagById,
+  restoreActivity,
+  restoreProductivity,
+  restoreTag,
+} from './restore'
+export type { RestoreResult } from './restore'
 
-export interface RestoreResult {
-  success: boolean
-  restored: boolean
-  id: string
-}
-
-export async function restoreActivity(user: string, id: string): Promise<RestoreResult> {
-  const restored = await dbRestoreActivity(user, id)
-  return { id, restored, success: restored }
-}
-
-export async function restoreTag(user: string, id: string): Promise<RestoreResult> {
-  const restored = await dbRestoreTag(user, id)
-  return { id, restored, success: restored }
-}
-
-export async function restoreProductivity(user: string, id: string): Promise<RestoreResult> {
-  const restored = await dbRestoreProductivityRecord(user, id)
-  return { id, restored, success: restored }
-}
-
-export async function deleteTagById(user: string, id: string): Promise<DeleteTagResult> {
-  const deleted = await dbDeleteTagById(user, id)
-  return { deleted, external_id: id, success: deleted }
-}
-
-export async function deleteProductivity(user: string, id: string): Promise<DeleteActivityResult> {
-  const deleted = await dbDeleteProductivityRecord(user, id)
-  return { deleted, id, success: deleted }
-}
-
-// ============================================================================
-// Notes Functions
-// ============================================================================
-
-export interface AddNoteInput {
-  entity_type: EntityType
-  entity_id: string
-  content: string
-}
-
-export interface NoteResult {
-  success: boolean
-  data?: {
-    id: string
-    entity_type: ApiEntityType
-    entity_id: string
-    content: string
-    created_at: string
-    updated_at: string
-  }
-  error?: string
-}
-
-export async function addNote(user: string, input: AddNoteInput): Promise<NoteResult> {
-  const note = await dbInsertNote(user, input.entity_type, input.entity_id, input.content)
-  return {
-    data: {
-      content: note.content,
-      created_at: note.created_at.toISOString(),
-      entity_id: note.entity_id,
-      entity_type: note.entity_type,
-      id: note.id,
-      updated_at: note.updated_at.toISOString(),
-    },
-    success: true,
-  }
-}
-
-export async function updateNoteContent(user: string, id: string, content: string): Promise<NoteResult> {
-  const note = await dbUpdateNote(user, id, content)
-  if (!note) {
-    return { error: 'Note not found', success: false }
-  }
-  return {
-    data: {
-      content: note.content,
-      created_at: note.created_at.toISOString(),
-      entity_id: note.entity_id,
-      entity_type: note.entity_type,
-      id: note.id,
-      updated_at: note.updated_at.toISOString(),
-    },
-    success: true,
-  }
-}
-
-export async function deleteNoteById(
-  user: string,
-  id: string,
-): Promise<{ success: boolean; deleted: boolean }> {
-  const deleted = await dbDeleteNote(user, id)
-  return { deleted, success: deleted }
-}
-
-export async function getNotesForEntity(user: string, entityType: ApiEntityType, entityId: string) {
-  const notes = await dbGetNotesForEntity(user, entityType as EntityType, entityId)
-  return notes.map((n) => ({
-    content: n.content,
-    created_at: n.created_at.toISOString(),
-    entity_id: n.entity_id,
-    entity_type: n.entity_type,
-    id: n.id,
-    updated_at: n.updated_at.toISOString(),
-  }))
-}
+// Re-export notes functions for backward compatibility
+export { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from './notes'
+export type { AddNoteInput, NoteResult } from './notes'

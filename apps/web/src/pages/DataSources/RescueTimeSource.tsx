@@ -9,12 +9,17 @@ import {
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { DataTypesList, LoginRequired, type SaveStatus, SaveStatusIndicator, StatusBanner } from './shared'
 
 import './style.css'
 
-type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; error?: string }
-
 const DATA_TYPES = ['App usage', 'Website usage', 'Productivity scores', 'Time spent per category']
+
+function getStatusLabel(isConfigured: boolean, hasProductivity: boolean): string {
+  if (isConfigured && hasProductivity) return 'Screen time data syncing'
+  if (isConfigured) return 'RescueTime configured but no recent data synced'
+  return 'RescueTime not configured'
+}
 
 export function RescueTimeSource() {
   const isLoggedIn = auth.value.token
@@ -65,13 +70,7 @@ export function RescueTimeSource() {
     setRescueTimeKey('')
   }
 
-  if (!isLoggedIn) {
-    return (
-      <div class="data-sources-page">
-        <p>Please log in to view data source settings.</p>
-      </div>
-    )
-  }
+  if (!isLoggedIn) return <LoginRequired />
 
   return (
     <div class="data-sources-page">
@@ -88,25 +87,11 @@ export function RescueTimeSource() {
           pulls your data periodically via the RescueTime API.
         </p>
 
-        <div class="data-types-section">
-          <h2>Data provided</h2>
-          <div class="data-types-list">
-            {DATA_TYPES.map((dt) => (
-              <span key={dt} class="data-type-badge">
-                {dt}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div class={`status-banner ${isConfigured && hasProductivity ? 'connected' : 'not-connected'}`}>
-          <span class={`status-dot ${isConfigured && hasProductivity ? 'connected' : 'not-connected'}`} />
-          {isConfigured && hasProductivity ?
-            'Screen time data syncing'
-          : isConfigured ?
-            'RescueTime configured but no recent data synced'
-          : 'RescueTime not configured'}
-        </div>
+        <DataTypesList types={DATA_TYPES} />
+        <StatusBanner
+          connected={isConfigured && hasProductivity}
+          label={getStatusLabel(isConfigured, hasProductivity)}
+        />
 
         <div class="links-row">
           <a
@@ -131,9 +116,7 @@ export function RescueTimeSource() {
           <section class="settings-section">
             <div class="section-header-row">
               <h2>API Key</h2>
-              {saveStatus.status === 'saving' && <span class="save-indicator saving">Saving...</span>}
-              {saveStatus.status === 'saved' && <span class="save-indicator saved">Saved</span>}
-              {saveStatus.status === 'error' && <span class="save-indicator error">{saveStatus.error}</span>}
+              <SaveStatusIndicator saveStatus={saveStatus} />
             </div>
             {isConfigured && <p class="connected-status">Configured</p>}
             <div class="form-field">

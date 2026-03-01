@@ -3,10 +3,9 @@ import { useCallback, useState } from 'preact/hooks'
 import { LastFmTagRulesSettings } from '../../components/LastFmTagRulesSettings'
 import { fetchUserSettings, type UpdateSettingsInput, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
+import { DataTypesList, LoginRequired, type SaveStatus, SaveStatusIndicator, StatusBanner } from './shared'
 
 import './style.css'
-
-type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; error?: string }
 
 const DATA_TYPES = ['Music scrobbles', 'Auto-generated tags from listening rules']
 
@@ -54,13 +53,7 @@ export function LastFmSource() {
     saveSection({ lastfm_username: lastfmUsername || null }, setSaveStatus)
   }
 
-  if (!isLoggedIn) {
-    return (
-      <div class="data-sources-page">
-        <p>Please log in to view data source settings.</p>
-      </div>
-    )
-  }
+  if (!isLoggedIn) return <LoginRequired />
 
   return (
     <div class="data-sources-page">
@@ -78,21 +71,11 @@ export function LastFmSource() {
           tagging when you do vocal exercises or meditate with specific music.
         </p>
 
-        <div class="data-types-section">
-          <h2>Data provided</h2>
-          <div class="data-types-list">
-            {DATA_TYPES.map((dt) => (
-              <span key={dt} class="data-type-badge">
-                {dt}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div class={`status-banner ${isConfigured ? 'connected' : 'not-connected'}`}>
-          <span class={`status-dot ${isConfigured ? 'connected' : 'not-connected'}`} />
-          {isConfigured ? `Connected as ${userSettings?.lastfm_username}` : 'Not configured'}
-        </div>
+        <DataTypesList types={DATA_TYPES} />
+        <StatusBanner
+          connected={isConfigured}
+          label={isConfigured ? `Connected as ${userSettings?.lastfm_username}` : 'Not configured'}
+        />
 
         <div class="links-row">
           <a
@@ -109,9 +92,7 @@ export function LastFmSource() {
           <section class="settings-section">
             <div class="section-header-row">
               <h2>Username</h2>
-              {saveStatus.status === 'saving' && <span class="save-indicator saving">Saving...</span>}
-              {saveStatus.status === 'saved' && <span class="save-indicator saved">Saved</span>}
-              {saveStatus.status === 'error' && <span class="save-indicator error">{saveStatus.error}</span>}
+              <SaveStatusIndicator saveStatus={saveStatus} />
             </div>
             {userSettings?.lastfm_configured === false ?
               <p class="field-description warning">

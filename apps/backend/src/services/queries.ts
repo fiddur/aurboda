@@ -32,7 +32,7 @@ import {
 } from '../schema'
 import { classifyHrvByContext, getHrvContextWindows, HrvContext } from './hrv-context'
 import { getPlaceVisits } from './locations'
-import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs } from './settings'
+import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs, type HrZoneThresholds } from './settings'
 import { computeSleepMinutes } from './sleep-duration'
 
 // ============================================================================
@@ -886,6 +886,57 @@ async function getAvgHrvForActivity(
   return Math.round(hrvData.reduce((sum, [, v]) => sum + v, 0) / hrvData.length)
 }
 
+/** Add sleep-specific fields (time_in_bed, total_sleep) to an activity result. */
+function enrichSleepFields(result: ActivityResult, data: Record<string, unknown> | undefined): void {
+  result.time_in_bed = result.duration
+  const sleepMinutes = computeSleepMinutes(data)
+  if (sleepMinutes !== undefined) {
+    result.total_sleep = sleepMinutes
+    result.duration = sleepMinutes
+  }
+}
+
+/** Enrich a raw activity record into an ActivityResult with computed fields. */
+async function enrichActivity(
+  user: string,
+  a: Awaited<ReturnType<typeof getActivities>>[number],
+  hrZones: HrZoneThresholds | null,
+  commentsMap: Map<string, CommentSummary[]>,
+): Promise<ActivityResult> {
+  const result: ActivityResult = {
+    activity_type: a.activity_type,
+    comments: a.id ? (commentsMap.get(a.id) ?? []) : [],
+    data: a.data,
+    duration:
+      a.end_time ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60) : undefined,
+    end_time: a.end_time?.toISOString(),
+    id: 'source_ids' in a && a.source_ids ? `merged:${a.id}` : a.id,
+    notes: a.notes,
+    source: a.source,
+    start_time: a.start_time.toISOString(),
+    title: a.title,
+  }
+
+  if (a.activity_type === 'sleep') {
+    enrichSleepFields(result, a.data as Record<string, unknown> | undefined)
+  }
+
+  // Compute HR zones for exercise activities with end time
+  if (hrZones && a.activity_type === 'exercise' && a.end_time) {
+    const hrData = await getTimeSeries(user, 'heart_rate', a.start_time, a.end_time)
+    if (hrData.length > 0) {
+      result.hr_zone_secs = computeHrZoneSecs(hrData, hrZones)
+    }
+  }
+
+  // Compute average HRV for sleep and meditation
+  if ((a.activity_type === 'sleep' || a.activity_type === 'meditation') && a.end_time) {
+    result.avg_hrv = await getAvgHrvForActivity(user, a)
+  }
+
+  return result
+}
+
 /**
  * Query activities for a time range.
  * @param sync Optional sync provider to auto-refresh stale data before querying
@@ -912,50 +963,7 @@ export async function queryActivities(
   const activityIds = activities.map((a) => a.id).filter((id): id is string => id !== undefined)
   const commentsMap = await getCommentsMap(user, 'activity', activityIds)
 
-  return Promise.all(
-    activities.map(async (a) => {
-      const timeInBedMinutes =
-        a.end_time ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60) : undefined
-
-      const result: ActivityResult = {
-        activity_type: a.activity_type,
-        comments: a.id ? (commentsMap.get(a.id) ?? []) : [],
-        data: a.data,
-        duration: timeInBedMinutes,
-        end_time: a.end_time?.toISOString(),
-        id: 'source_ids' in a && a.source_ids ? `merged:${a.id}` : a.id,
-        notes: a.notes,
-        source: a.source,
-        start_time: a.start_time.toISOString(),
-        title: a.title,
-      }
-
-      // For sleep activities: compute actual sleep time from stage data
-      if (a.activity_type === 'sleep') {
-        result.time_in_bed = timeInBedMinutes
-        const sleepMinutes = computeSleepMinutes(a.data as Record<string, unknown> | undefined)
-        if (sleepMinutes !== undefined) {
-          result.total_sleep = sleepMinutes
-          result.duration = sleepMinutes
-        }
-      }
-
-      // Compute HR zones for exercise activities with end time
-      if (hrZones && a.activity_type === 'exercise' && a.end_time) {
-        const hrData = await getTimeSeries(user, 'heart_rate', a.start_time, a.end_time)
-        if (hrData.length > 0) {
-          result.hr_zone_secs = computeHrZoneSecs(hrData, hrZones)
-        }
-      }
-
-      // Compute average HRV for sleep and meditation
-      if ((a.activity_type === 'sleep' || a.activity_type === 'meditation') && a.end_time) {
-        result.avg_hrv = await getAvgHrvForActivity(user, a)
-      }
-
-      return result
-    }),
-  )
+  return Promise.all(activities.map((a) => enrichActivity(user, a, hrZones, commentsMap)))
 }
 
 /**

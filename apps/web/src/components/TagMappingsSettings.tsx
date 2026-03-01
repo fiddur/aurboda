@@ -20,6 +20,54 @@ const formatTagKey = (tagKey: string): string => {
 
 type RowStatus = 'idle' | 'saving' | 'saved' | 'error'
 
+const RowStatusIndicator = ({ status }: { status: RowStatus }) => (
+  <span class="row-status">
+    {status === 'saving' && <span class="status-saving" title="Saving..." />}
+    {status === 'saved' && (
+      <span class="status-saved" title="Saved">
+        &#10003;
+      </span>
+    )}
+    {status === 'error' && (
+      <span class="status-error" title="Failed to save">
+        !
+      </span>
+    )}
+  </span>
+)
+
+const IconPreview = ({ icon }: { icon: string }) => {
+  if (!icon) return null
+  if (isEmoji(icon)) return <span class="tag-icon-preview">{icon}</span>
+  if (isUrl(icon))
+    return (
+      <span class="tag-icon-preview">
+        <img src={icon} alt="icon" width="16" height="16" />
+      </span>
+    )
+  return null
+}
+
+/** Determine what changed vs server state and return the name to save, or null if no save needed. */
+function getBlurSavePayload(
+  localValue: string | undefined,
+  localIcon: string | undefined,
+  currentName: string | undefined,
+  currentIcon: string | undefined,
+): { name: string; iconChanged: boolean } | null {
+  if (localValue === undefined && localIcon === undefined) return null
+
+  const serverName = currentName ?? ''
+  const nameChanged = localValue !== undefined && localValue !== serverName
+  const iconChanged = localIcon !== undefined && localIcon !== (currentIcon ?? '')
+  if (!nameChanged && !iconChanged) return null
+
+  const name = (localValue ?? currentName ?? '').trim()
+  if (!name) return null
+
+  return { iconChanged, name }
+}
+
 function TagMappingRow({
   currentIcon,
   onSave,
@@ -59,20 +107,8 @@ function TagMappingRow({
   }, [localValue, tag.current_name, currentIcon, localIcon])
 
   const handleBlur = async () => {
-    if (localValue === undefined && localIcon === undefined) return
-
-    const serverName = tag.current_name ?? ''
-    const nameChanged = localValue !== undefined && localValue !== serverName
-    const iconChanged = localIcon !== undefined && localIcon !== (currentIcon ?? '')
-
-    if (!nameChanged && !iconChanged) {
-      setLocalValue(undefined)
-      setLocalIcon(undefined)
-      return
-    }
-
-    const name = (localValue ?? tag.current_name ?? '').trim()
-    if (!name) {
+    const payload = getBlurSavePayload(localValue, localIcon, tag.current_name, currentIcon)
+    if (!payload) {
       setLocalValue(undefined)
       setLocalIcon(undefined)
       return
@@ -80,7 +116,7 @@ function TagMappingRow({
 
     setStatus('saving')
     try {
-      await onSave(tag.tag_key, name, iconChanged ? localIcon : undefined)
+      await onSave(tag.tag_key, payload.name, payload.iconChanged ? localIcon : undefined)
       setLocalValue(undefined)
       setLocalIcon(undefined)
       setStatus('saved')
@@ -133,19 +169,7 @@ function TagMappingRow({
           disabled={status === 'saving' || !isProgrammatic}
           readOnly={!isProgrammatic}
         />
-        <span class="row-status">
-          {status === 'saving' && <span class="status-saving" title="Saving..." />}
-          {status === 'saved' && (
-            <span class="status-saved" title="Saved">
-              &#10003;
-            </span>
-          )}
-          {status === 'error' && (
-            <span class="status-error" title="Failed to save">
-              !
-            </span>
-          )}
-        </span>
+        <RowStatusIndicator status={status} />
       </div>
 
       <div class="tag-icon-field">
@@ -159,11 +183,7 @@ function TagMappingRow({
           class="tag-icon-input"
           disabled={status === 'saving'}
         />
-        {displayIcon && (isEmoji(displayIcon) || isUrl(displayIcon)) && (
-          <span class="tag-icon-preview">
-            {isEmoji(displayIcon) ? displayIcon : <img src={displayIcon} alt="icon" width="16" height="16" />}
-          </span>
-        )}
+        <IconPreview icon={displayIcon} />
         {suggestedEmoji && !displayIcon && (
           <button
             type="button"

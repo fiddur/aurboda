@@ -29,12 +29,12 @@ export default [
   {
     plugins: { 'sort-keys': sortKeys },
     rules: {
-      complexity: ['warn', 15],
-      'max-depth': ['warn', 4],
-      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
+      complexity: ['error', 15],
+      'max-depth': ['error', 4],
+      'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
       'max-lines-per-function': 'off',
-      'no-shadow': 'warn',
-      'object-shorthand': 'warn',
+      'no-shadow': 'error',
+      'object-shorthand': 'error',
       'sort-keys/sort-keys-fix': ['error', 'asc', { natural: true }],
     },
   },

@@ -15,6 +15,22 @@ const DATA_SOURCE_LINKS = [
   { label: 'Calendars', path: '/data-sources/calendars' },
 ]
 
+const NAV_LINKS = [
+  { href: '/goals', label: 'Goals' },
+  { href: '/hr-zones', label: 'HR Zones' },
+  { href: '/timeline', label: 'Timeline' },
+  { href: '/day', label: 'Day' },
+  { href: '/add', label: '+ Add' },
+  { href: '/trends', label: 'Trends' },
+  { href: '/places', label: 'Places' },
+]
+
+const NavLink = ({ href, label, url }: { href: string; label: string; url: string }) => (
+  <a href={href} class={url === href ? 'active' : undefined}>
+    {label}
+  </a>
+)
+
 export function Header() {
   const { url } = useLocation()
   const isLoggedIn = auth.value.token
@@ -60,32 +76,14 @@ export function Header() {
   return (
     <header>
       <nav>
-        <a href="/" class={url == '/' && 'active'}>
+        <a href="/" class={url === '/' ? 'active' : undefined}>
           Home
         </a>
         {isLoggedIn ?
           <>
-            <a href="/goals" class={url == '/goals' && 'active'}>
-              Goals
-            </a>
-            <a href="/hr-zones" class={url == '/hr-zones' && 'active'}>
-              HR Zones
-            </a>
-            <a href="/timeline" class={url == '/timeline' && 'active'}>
-              Timeline
-            </a>
-            <a href="/day" class={url == '/day' && 'active'}>
-              Day
-            </a>
-            <a href="/add" class={url == '/add' && 'active'}>
-              + Add
-            </a>
-            <a href="/trends" class={url == '/trends' && 'active'}>
-              Trends
-            </a>
-            <a href="/places" class={url == '/places' && 'active'}>
-              Places
-            </a>
+            {NAV_LINKS.map((link) => (
+              <NavLink key={link.href} href={link.href} label={link.label} url={url} />
+            ))}
             <div class={`nav-dropdown ${isDataSourcesActive ? 'active' : ''}`} ref={dropdownRef}>
               <a
                 href="/data-sources"
@@ -105,19 +103,19 @@ export function Header() {
               )}
             </div>
             {isAdmin && (
-              <a href="/admin" class={url == '/admin' && 'active'}>
+              <a href="/admin" class={url === '/admin' ? 'active' : undefined}>
                 Admin
               </a>
             )}
             <span class="spacer" />
-            <a href="/settings" class={url == '/settings' ? 'active user-link' : 'user-link'}>
+            <a href="/settings" class={url === '/settings' ? 'active user-link' : 'user-link'}>
               {auth.value.user}
             </a>
             <a href="#" onClick={handleLogout} class="logout-link">
               Logout
             </a>
           </>
-        : <a href="/login" class={url == '/login' && 'active'}>
+        : <a href="/login" class={url === '/login' ? 'active' : undefined}>
             Login
           </a>
         }
