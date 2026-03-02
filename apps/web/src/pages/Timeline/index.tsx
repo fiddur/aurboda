@@ -11,16 +11,41 @@ import {
   fetchHrv,
   fetchPlaces,
   fetchProductivity,
+  fetchTagMappings,
   fetchTags,
   Place,
   ProductivityRecord,
   Tag,
 } from '../../state/api'
 import { preprocessData } from '../../utils/chart'
+import { isEmoji, isUrl } from '../../utils/emojiLookup'
+import { packLanes } from '../../utils/lanePacking'
 
 import './style.css'
 
-// Tooltip state type
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+/** A unified item in the Activity lane: activities + duration tags merged together. */
+interface ActivityLaneItem {
+  id: string
+  start: Date
+  end: Date
+  label: string
+  color: string
+  opacity: number
+  type: 'sleep' | 'nap' | 'meditation' | 'exercise' | 'duration-tag'
+  icon?: string
+  /** Original source for dedup detection */
+  source?: string
+  /** Merged annotation: if this item subsumes a tag that represents the same real-world event */
+  mergedAnnotations?: string[]
+  /** Warning about overlaps for user notification */
+  overlapWarning?: string
+  tooltipTitle: string
+  tooltipTime: string
+  tooltipDetails?: string
+}
+
 interface TooltipState {
   visible: boolean
   x: number
@@ -29,76 +54,79 @@ interface TooltipState {
     title: string
     time: string
     value?: string
+    warning?: string
   }
 }
 
-// Signals to handle user-selected dates (data fetch range)
+// ── Signals ───────────────────────────────────────────────────────────────────
+
 const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
 const toDate = signal(formatISO(new Date(), { representation: 'date' }))
-
-// Signals for zoom view (visible range, can be subset of fetched data)
 const viewStart = signal<Date | null>(null)
 const viewEnd = signal<Date | null>(null)
 
-// Signals for toggling data layers
+// Toggle signals for data layers
 const showHeartRate = signal(true)
 const showHrv = signal(true)
-const showSleepMeditation = signal(true)
-const showExercise = signal(true)
+const showActivities = signal(true)
 const showProductivity = signal(true)
 const showPlaces = signal(true)
 const showTags = signal(true)
 
-// Dark mode aware colors
+// ── Colors ────────────────────────────────────────────────────────────────────
+
 const colors = {
-  // Text colors for dark mode compatibility
   axis: 'currentColor',
-
-  // Productivity
-  computer: '#3b82f6', // Blue
-
-  // Activity backgrounds
-  exercise: '#22c55e', // Green
-
-  // Line charts
-  heartRate: '#ef4444', // Red
-  hrv: '#10b981', // Emerald
-  meditation: '#a855f7', // Purple
-  mobile: '#06b6d4', // Cyan
-  sleep: '#3b82f6', // Blue
-
-  // Tags - use semi-transparent to work in both modes
-  tags: 'rgba(156, 163, 175, 0.5)', // Gray
-
-  // Travel indicator
-  travel: '#9ca3af', // Gray for unknown/travel
+  computer: '#3b82f6',
+  durationTag: '#f59e0b', // Amber for duration tags in activity lane
+  exercise: '#22c55e',
+  heartRate: '#ef4444',
+  hrv: '#10b981',
+  meditation: '#a855f7',
+  mobile: '#06b6d4',
+  nap: '#60a5fa',
+  sleep: '#3b82f6',
+  tags: 'rgba(156, 163, 175, 0.5)',
+  travel: '#9ca3af',
 }
 
-// Place colors - using colors that work well in both light and dark modes
 const placeColorPalette = [
-  '#f59e0b', // Amber
-  '#10b981', // Emerald
-  '#8b5cf6', // Violet
-  '#ec4899', // Pink
-  '#06b6d4', // Cyan
-  '#f97316', // Orange
-  '#84cc16', // Lime
-  '#6366f1', // Indigo
+  '#f59e0b',
+  '#10b981',
+  '#8b5cf6',
+  '#ec4899',
+  '#06b6d4',
+  '#f97316',
+  '#84cc16',
+  '#6366f1',
 ]
 
-// Exercise type colors
 const exerciseColorPalette = [
-  '#22c55e', // Green - default/first
-  '#f97316', // Orange
-  '#3b82f6', // Blue
-  '#ec4899', // Pink
-  '#8b5cf6', // Violet
-  '#14b8a6', // Teal
-  '#eab308', // Yellow
-  '#ef4444', // Red
+  '#22c55e',
+  '#f97316',
+  '#3b82f6',
+  '#ec4899',
+  '#8b5cf6',
+  '#14b8a6',
+  '#eab308',
+  '#ef4444',
 ]
 
-// HealthConnect exercise type mapping (subset of common types)
+// Tag-specific colors for the activity lane
+const durationTagColors: Record<string, string> = {
+  Breathwork: '#06b6d4', // Cyan
+  'Cold Exposure': '#38bdf8', // Sky
+  Holosync: '#a78bfa', // Violet (similar to meditation)
+  'Hot Bath': '#f97316', // Orange
+  Meditation: '#a855f7', // Purple (same as activity meditation)
+  Sauna: '#ef4444', // Red
+  Sex: '#ec4899', // Pink
+  'Vocal Training': '#14b8a6', // Teal
+  YinYoga: '#c084fc', // Light purple
+}
+
+// ── HealthConnect exercise type mapping ───────────────────────────────────────
+
 const exerciseTypeNames: Record<number, string> = {
   0: 'Workout',
   2: 'Badminton',
@@ -164,56 +192,293 @@ const exerciseTypeNames: Record<number, string> = {
   83: 'Yoga',
 }
 
-// Get exercise type name from activity data
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 const getExerciseTypeName = (activity: Activity): string => {
-  // HealthConnect exercises have exerciseType in data
   const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseType as
     | number
     | undefined
   if (exerciseType !== undefined && exerciseTypeNames[exerciseType]) {
     return exerciseTypeNames[exerciseType]
   }
-  // Fall back to title for Oura or other sources
   return activity.title || 'Workout'
 }
 
-// Generate consistent color for a place name
 const getPlaceColor = (placeName: string, allPlaces: string[]): string => {
-  if (!placeName || placeName === 'Travel' || placeName === 'Unknown') {
-    return colors.travel
-  }
+  if (!placeName || placeName === 'Travel' || placeName === 'Unknown') return colors.travel
   const index = allPlaces.indexOf(placeName)
   return placeColorPalette[index % placeColorPalette.length]
 }
 
-// Generate consistent color for exercise type
 const getExerciseColor = (exerciseTypeName: string, allTypes: string[]): string => {
   const index = allTypes.indexOf(exerciseTypeName)
   if (index === -1) return exerciseColorPalette[0]
   return exerciseColorPalette[index % exerciseColorPalette.length]
 }
 
-// Chart dimensions
-const margin = { bottom: 30, left: 140, right: 50, top: 10 }
-const width = 1000
-const height = 500
-const chartWidth = width - margin.left - margin.right
-const chartHeight = height - margin.top - margin.bottom
+const formatDuration = (start: Date, end: Date): string => {
+  const ms = end.getTime() - start.getTime()
+  const hours = Math.floor(ms / 3600000)
+  const minutes = Math.floor((ms % 3600000) / 60000)
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
 
-// Track layout
-const trackHeight = chartHeight / 4
-const trackSleepMeditation = 0
-const trackExercise = trackHeight
-const trackPlaces = 2 * trackHeight
+/** Check if two time ranges overlap. */
+const rangesOverlap = (s1: Date, e1: Date, s2: Date, e2: Date): boolean => s1 < e2 && s2 < e1
 
-// Default view: yesterday + today
+/** Compute overlap in minutes between two time ranges. */
+const overlapMinutes = (s1: Date, e1: Date, s2: Date, e2: Date): number => {
+  const overlapStart = Math.max(s1.getTime(), s2.getTime())
+  const overlapEnd = Math.min(e1.getTime(), e2.getTime())
+  return Math.max(0, (overlapEnd - overlapStart) / 60000)
+}
+
+/** Resolve the icon for a tag from the icon mappings. */
+const resolveTagIcon = (tag: Tag, icons: Record<string, string>): string | undefined =>
+  icons[tag.tag] ?? icons[tag.tag.toLowerCase()] ?? (tag.tag_key ? icons[tag.tag_key] : undefined)
+
+// ── Tags to exclude from activity lane (they are not activity-like) ──────────
+const COMPUTER_TAG_PREFIX = 'computer:'
+
+/** Check if a duration tag should be shown in the activity lane */
+const isDurationTagActivityLike = (tag: Tag): boolean => {
+  if (!tag.end_time) return false
+  if (tag.tag.startsWith(COMPUTER_TAG_PREFIX)) return false
+  if (tag.source === 'lastfm' || tag.source === 'lastfm-auto') return false
+  return true
+}
+
+// ── Source merging ────────────────────────────────────────────────────────────
+// Tags that typically represent the same real-world event as a detected activity.
+// e.g. Holosync (lastfm) often coincides exactly with an Oura meditation session.
+// YinYoga (manual/oura tag) often coincides with meditation.
+const TAG_ACTIVITY_MERGE_MAP: Record<string, string[]> = {
+  Breathwork: ['meditation'],
+  Holosync: ['meditation', 'nap'],
+  Meditation: ['meditation'],
+  YinYoga: ['meditation'],
+}
+
+/** Convert an Activity record to an ActivityLaneItem. Returns undefined for unknown types. */
+const activityToLaneItem = (a: Activity, exerciseTypes: string[]): ActivityLaneItem | undefined => {
+  if (!a.end_time) return undefined
+  const end = a.end_time
+
+  let label: string
+  let color: string
+  let type: ActivityLaneItem['type']
+
+  switch (a.activity_type) {
+    case 'sleep':
+      label = 'Sleep'
+      color = colors.sleep
+      type = 'sleep'
+      break
+    case 'nap':
+      label = 'Nap'
+      color = colors.nap
+      type = 'nap'
+      break
+    case 'meditation':
+      label = a.title || 'Meditation'
+      color = colors.meditation
+      type = 'meditation'
+      break
+    case 'exercise':
+      label = getExerciseTypeName(a)
+      color = getExerciseColor(label, exerciseTypes)
+      type = 'exercise'
+      break
+    default:
+      return undefined
+  }
+
+  return {
+    color,
+    end,
+    id: a.id,
+    label,
+    mergedAnnotations: [],
+    opacity: a.activity_type === 'sleep' ? 0.5 : 0.7,
+    source: a.source ?? undefined,
+    start: a.start_time,
+    tooltipDetails: formatDuration(a.start_time, end),
+    tooltipTime: `${format(a.start_time, 'HH:mm')} - ${format(end, 'HH:mm')}`,
+    tooltipTitle: label,
+    type,
+  }
+}
+
+/** Try to merge a duration tag into an existing activity item. Returns true if merged. */
+const tryMergeTagIntoActivity = (tag: Tag, items: ActivityLaneItem[]): boolean => {
+  const tagEnd = tag.end_time!
+  const mergeableTypes = TAG_ACTIVITY_MERGE_MAP[tag.tag]
+  if (!mergeableTypes) return false
+
+  for (const item of items) {
+    if (!mergeableTypes.includes(item.type)) continue
+    const overlap = overlapMinutes(tag.start_time, tagEnd, item.start, item.end)
+    const tagDuration = (tagEnd.getTime() - tag.start_time.getTime()) / 60000
+    if (overlap > tagDuration * 0.5) {
+      item.mergedAnnotations = item.mergedAnnotations ?? []
+      item.mergedAnnotations.push(tag.tag)
+      item.label = `${item.label} (${tag.tag})`
+      return true
+    }
+  }
+  return false
+}
+
+/** Create a duration tag item and detect overlaps with existing items. */
+const createDurationTagItem = (
+  tag: Tag,
+  items: ActivityLaneItem[],
+  overlaps: OverlapWarning[],
+  tagIcons: Record<string, string>,
+): ActivityLaneItem => {
+  const tagEnd = tag.end_time!
+  const icon = resolveTagIcon(tag, tagIcons)
+
+  const tagItem: ActivityLaneItem = {
+    color: durationTagColors[tag.tag] ?? colors.durationTag,
+    end: tagEnd,
+    icon,
+    id: tag.id,
+    label: tag.tag,
+    opacity: 0.6,
+    source: tag.source ?? undefined,
+    start: tag.start_time,
+    tooltipDetails: formatDuration(tag.start_time, tagEnd),
+    tooltipTime: `${format(tag.start_time, 'HH:mm')} - ${format(tagEnd, 'HH:mm')}`,
+    tooltipTitle: tag.tag,
+    type: 'duration-tag',
+  }
+
+  // Check for overlaps with existing items
+  for (const existing of items) {
+    if (!rangesOverlap(tag.start_time, tagEnd, existing.start, existing.end)) continue
+    const mins = overlapMinutes(tag.start_time, tagEnd, existing.start, existing.end)
+    if (mins > 2) {
+      overlaps.push({
+        item1Label: existing.label,
+        item1Time: `${format(existing.start, 'HH:mm')}-${format(existing.end, 'HH:mm')}`,
+        item2Label: tag.tag,
+        item2Time: `${format(tag.start_time, 'HH:mm')}-${format(tagEnd, 'HH:mm')}`,
+        overlapMinutes: Math.round(mins),
+      })
+      tagItem.overlapWarning = `Overlaps with ${existing.label} by ${Math.round(mins)}min`
+    }
+  }
+
+  return tagItem
+}
+
+/**
+ * Build the unified activity lane items from activities and duration tags.
+ *
+ * Strategy:
+ * 1. Convert all activities to ActivityLaneItems.
+ * 2. For each duration tag, check if it should be merged with an existing activity
+ *    (same-event from different source) or added as a separate item.
+ * 3. Detect remaining overlaps and annotate them for visual handling.
+ */
+const buildActivityLaneItems = (
+  activities: Activity[],
+  tags: Tag[],
+  tagIcons: Record<string, string>,
+  exerciseTypes: string[],
+): { items: ActivityLaneItem[]; overlaps: OverlapWarning[] } => {
+  const items: ActivityLaneItem[] = []
+  const overlaps: OverlapWarning[] = []
+
+  // 1. Convert activities
+  for (const a of activities) {
+    const item = activityToLaneItem(a, exerciseTypes)
+    if (item) items.push(item)
+  }
+
+  // 2. Process duration tags
+  for (const tag of tags.filter(isDurationTagActivityLike)) {
+    if (!tryMergeTagIntoActivity(tag, items)) {
+      items.push(createDurationTagItem(tag, items, overlaps, tagIcons))
+    }
+  }
+
+  return { items, overlaps }
+}
+
+interface OverlapWarning {
+  item1Label: string
+  item1Time: string
+  item2Label: string
+  item2Time: string
+  overlapMinutes: number
+}
+
+// ── Layout constants ──────────────────────────────────────────────────────────
+
+const margin = { bottom: 30, left: 100, right: 50, top: 10 }
+const CHART_HEIGHT = 500
+const chartHeight = CHART_HEIGHT - margin.top - margin.bottom
+
+// Track layout: 3 lanes instead of 4 (Activity, Places, Tags/Icons)
+const TRACK_COUNT = 3
+const trackHeight = chartHeight / TRACK_COUNT
+const trackActivity = 0
+const trackPlaces = trackHeight
+const trackTags = 2 * trackHeight
+
+const TAG_ICON_SIZE = 18
+
+// ── Default view ──────────────────────────────────────────────────────────────
+
 const getDefaultStart = () => startOfDay(subDays(new Date(), 1))
 const getDefaultEnd = () => endOfDay(new Date())
+
+// ── D3 zoom transform from visible domain ────────────────────────────────────
+
+const computeTransform = (
+  start: Date,
+  end: Date,
+  baseScale: d3.ScaleTime<number, number>,
+  chartWidth: number,
+): d3.ZoomTransform => {
+  const bx0 = baseScale(start)
+  const bx1 = baseScale(end)
+  const k = chartWidth / (bx1 - bx0)
+  const tx = -k * bx0
+  return d3.zoomIdentity.translate(tx, 0).scale(k)
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line complexity -- TODO: refactor
 export const Timeline = () => {
   const start = startOfDay(new Date(fromDate.value))
   const end = endOfDay(new Date(toDate.value))
+
+  // Responsive width
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState(1200)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width)
+      }
+    })
+    observer.observe(el)
+    setContainerWidth(el.clientWidth)
+    return () => observer.disconnect()
+  }, [])
+
+  const svgWidth = containerWidth
+  const chartWidth = svgWidth - margin.left - margin.right
+
+  // ── Data queries ──────────────────────────────────────────────────────────
 
   const heartRateQuery = useQuery({
     enabled: showHeartRate.value,
@@ -232,7 +497,7 @@ export const Timeline = () => {
   })
 
   const activitiesQuery = useQuery({
-    enabled: showSleepMeditation.value || showExercise.value,
+    enabled: showActivities.value,
     placeholderData: keepPreviousData,
     queryFn: () => fetchActivities(start, end),
     queryKey: ['activities', fromDate.value, toDate.value],
@@ -256,12 +521,20 @@ export const Timeline = () => {
   })
 
   const tagsQuery = useQuery({
-    enabled: showTags.value,
+    enabled: showTags.value || showActivities.value,
     placeholderData: keepPreviousData,
     queryFn: () => fetchTags(start, end),
     queryKey: ['tags', fromDate.value, toDate.value],
     staleTime: 10 * 60 * 1000,
   })
+
+  const tagMappingsQuery = useQuery({
+    queryFn: fetchTagMappings,
+    queryKey: ['tag-mappings'],
+    staleTime: 30 * 60 * 1000,
+  })
+
+  // ── Derived data ────────────────────────────────────────────────────────────
 
   const isLoading =
     heartRateQuery.isLoading ||
@@ -270,7 +543,6 @@ export const Timeline = () => {
     productivityQuery.isLoading ||
     placesQuery.isLoading ||
     tagsQuery.isLoading
-
   const isFetching =
     heartRateQuery.isFetching ||
     hrvQuery.isFetching ||
@@ -278,7 +550,6 @@ export const Timeline = () => {
     productivityQuery.isFetching ||
     placesQuery.isFetching ||
     tagsQuery.isFetching
-
   const hasError =
     heartRateQuery.isError ||
     hrvQuery.isError ||
@@ -287,28 +558,51 @@ export const Timeline = () => {
     placesQuery.isError ||
     tagsQuery.isError
 
-  // Get unique place names for legend
   const places = placesQuery.data || []
-  const uniquePlaceNames = [...new Set(places.map((p) => p.region))].filter(Boolean).sort()
-
+  const uniquePlaceNames = useMemo(
+    () => [...new Set(places.map((p) => p.region))].filter(Boolean).sort(),
+    [places],
+  )
   const activities = activitiesQuery.data || []
+  const allTags = tagsQuery.data || []
+  const tagIcons = useMemo(() => tagMappingsQuery.data?.icons ?? {}, [tagMappingsQuery.data?.icons])
 
-  // Get unique exercise types for legend (by activity type, not title)
-  const exerciseSessions = activities.filter((a) => a.activity_type === 'exercise')
-  const uniqueExerciseTypes = [...new Set(exerciseSessions.map((a) => getExerciseTypeName(a)))]
-    .filter(Boolean)
-    .sort()
+  const uniqueExerciseTypes = useMemo(() => {
+    const exerciseSessions = activities.filter((a) => a.activity_type === 'exercise')
+    return [...new Set(exerciseSessions.map(getExerciseTypeName))].filter(Boolean).sort()
+  }, [activities])
+
+  // Build unified activity lane
+  const { items: activityLaneItems, overlaps: overlapWarnings } = useMemo(
+    () => buildActivityLaneItems(activities, allTags, tagIcons, uniqueExerciseTypes),
+    [activities, allTags, tagIcons, uniqueExerciseTypes],
+  )
+
+  // Point-only tags (no end_time) and non-activity duration tags for tag lane
+  const pointAndNonActivityTags = useMemo(
+    () =>
+      allTags.filter((t) => {
+        // Exclude lastfm source
+        if (t.source === 'lastfm' || t.source === 'lastfm-auto') return false
+        // If it's a duration tag that went into the activity lane, exclude
+        if (isDurationTagActivityLike(t)) return false
+        // Also exclude computer tags from the tag icons lane
+        if (t.tag.startsWith(COMPUTER_TAG_PREFIX)) return false
+        return true
+      }),
+    [allTags],
+  )
 
   // Calculate effective view range
   const effectiveViewStart = viewStart.value || getDefaultStart()
   const effectiveViewEnd = viewEnd.value || getDefaultEnd()
 
-  // Handle zoom - update view range and expand data fetch if needed
+  // ── Navigation ────────────────────────────────────────────────────────────
+
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
     viewStart.value = zoomStart
     viewEnd.value = zoomEnd
 
-    // Check if we need more data
     const fetchStart = startOfDay(new Date(fromDate.value))
     const fetchEnd = endOfDay(new Date(toDate.value))
     const todayStr = formatISO(new Date(), { representation: 'date' })
@@ -333,35 +627,28 @@ export const Timeline = () => {
     }
   }, [])
 
-  // Navigation: jump by days
   const handleJumpDays = useCallback(
     (days: number) => {
       const currentStart = viewStart.value || getDefaultStart()
       const currentEnd = viewEnd.value || getDefaultEnd()
       const newStart = addDays(currentStart, days)
       const newEnd = addDays(currentEnd, days)
-
-      // Don't allow panning into the future
       const todayEnd = endOfDay(new Date())
       if (newEnd > todayEnd) return
-
       handleZoom(newStart, newEnd)
     },
     [handleZoom],
   )
 
-  // Reset to default 2-day view
   const handleResetToToday = useCallback(() => {
     viewStart.value = null
     viewEnd.value = null
-
-    // Reset fetch range to default
     fromDate.value = formatISO(subDays(new Date(), 1), { representation: 'date' })
     toDate.value = formatISO(new Date(), { representation: 'date' })
   }, [])
 
   return (
-    <div class="timeline">
+    <div class="timeline" ref={containerRef}>
       <h1>Timeline</h1>
 
       {/* Navigation controls */}
@@ -442,19 +729,26 @@ export const Timeline = () => {
         </div>
       )}
 
-      {/* Exercise types legend */}
-      {showExercise.value && uniqueExerciseTypes.length > 0 && (
-        <div class="timeline-legend">
-          <strong>Exercise:</strong>
-          {uniqueExerciseTypes.map((name) => (
-            <span key={name} class="legend-item">
-              <span
-                class="legend-dot"
-                style={{ backgroundColor: getExerciseColor(name, uniqueExerciseTypes) }}
-              />
-              {name}
-            </span>
-          ))}
+      {/* Overlap warnings */}
+      {overlapWarnings.length > 0 && (
+        <div class="timeline-overlap-warnings">
+          <details>
+            <summary>
+              {overlapWarnings.length} overlap{overlapWarnings.length > 1 ? 's' : ''} detected
+            </summary>
+            <ul>
+              {overlapWarnings.map((w, i) => (
+                <li key={i}>
+                  <strong>{w.item1Label}</strong> ({w.item1Time}) overlaps with{' '}
+                  <strong>{w.item2Label}</strong> ({w.item2Time}) by {w.overlapMinutes}min
+                </li>
+              ))}
+            </ul>
+            <p class="overlap-hint">
+              This may indicate duplicate tracking from different sources, or genuinely concurrent activities.
+              Check your data sources if unexpected.
+            </p>
+          </details>
         </div>
       )}
 
@@ -464,18 +758,19 @@ export const Timeline = () => {
       <TimelineChart
         heartRates={showHeartRate.value ? heartRateQuery.data || [] : []}
         hrvData={showHrv.value ? hrvQuery.data || [] : []}
-        activities={activities}
+        activityLaneItems={showActivities.value ? activityLaneItems : []}
         productivity={showProductivity.value ? productivityQuery.data || [] : []}
         places={showPlaces.value ? places : []}
-        tags={showTags.value ? tagsQuery.data || [] : []}
-        showSleepMeditationSignal={showSleepMeditation}
-        showExerciseSignal={showExercise}
+        pointTags={showTags.value ? pointAndNonActivityTags : []}
+        tagIcons={tagIcons}
         showPlacesSignal={showPlaces}
+        showActivitiesSignal={showActivities}
         visibleStart={effectiveViewStart}
         visibleEnd={effectiveViewEnd}
         uniquePlaceNames={uniquePlaceNames}
-        uniqueExerciseTypes={uniqueExerciseTypes}
         onZoom={handleZoom}
+        chartWidth={chartWidth}
+        svgWidth={svgWidth}
       />
 
       <p class="timeline-help">Scroll to zoom · Drag to pan · Double-click to reset</p>
@@ -483,53 +778,44 @@ export const Timeline = () => {
   )
 }
 
+// ── Chart Component ───────────────────────────────────────────────────────────
+
 interface TimelineChartProps {
   heartRates: [Date, number][]
   hrvData: [Date, number][]
-  activities: Activity[]
+  activityLaneItems: ActivityLaneItem[]
   productivity: ProductivityRecord[]
   places: Place[]
-  tags: Tag[]
-  showSleepMeditationSignal: Signal<boolean>
-  showExerciseSignal: Signal<boolean>
+  pointTags: Tag[]
+  tagIcons: Record<string, string>
   showPlacesSignal: Signal<boolean>
+  showActivitiesSignal: Signal<boolean>
   visibleStart: Date
   visibleEnd: Date
   uniquePlaceNames: string[]
-  uniqueExerciseTypes: string[]
   onZoom: (start: Date, end: Date) => void
-}
-
-// Compute D3 zoom transform from a desired visible domain and base scale
-const computeTransform = (
-  start: Date,
-  end: Date,
-  baseScale: d3.ScaleTime<number, number>,
-): d3.ZoomTransform => {
-  const bx0 = baseScale(start)
-  const bx1 = baseScale(end)
-  const k = chartWidth / (bx1 - bx0)
-  const tx = -k * bx0
-  return d3.zoomIdentity.translate(tx, 0).scale(k)
+  chartWidth: number
+  svgWidth: number
 }
 
 function TimelineChart({
   heartRates,
   hrvData,
-  activities,
+  activityLaneItems,
   productivity,
   places,
-  tags,
-  showSleepMeditationSignal,
-  showExerciseSignal,
+  pointTags,
+  tagIcons,
   showPlacesSignal,
+  showActivitiesSignal,
   visibleStart,
   visibleEnd,
   uniquePlaceNames,
-  uniqueExerciseTypes,
   onZoom,
+  chartWidth,
+  svgWidth,
 }: TimelineChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const xAxisRef = useRef<SVGGElement>(null)
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown>>()
@@ -543,47 +829,35 @@ function TimelineChart({
     y: 0,
   })
 
-  // Stable base scale: maps the default 2-day view to pixel range
+  // Stable base scale
   const baseScale = useMemo(
     () => d3.scaleTime().domain([getDefaultStart(), getDefaultEnd()]).range([0, chartWidth]),
-    [],
+    [chartWidth],
   )
 
-  // Format duration in hours and minutes
-  const formatDuration = (start_time: Date, end_time: Date): string => {
-    const ms = end_time.getTime() - start_time.getTime()
-    const hours = Math.floor(ms / 3600000)
-    const minutes = Math.floor((ms % 3600000) / 60000)
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`
-    }
-    return `${minutes}m`
-  }
-
-  // Show tooltip
-  const showTooltip = (event: MouseEvent, title: string, time: string, value?: string) => {
-    if (!containerRef.current) return
-    const rect = containerRef.current.getBoundingClientRect()
+  const showTooltip = (event: MouseEvent, title: string, time: string, value?: string, warning?: string) => {
+    if (!chartContainerRef.current) return
+    const rect = chartContainerRef.current.getBoundingClientRect()
     setTooltip({
-      content: { time, title, value },
+      content: { time, title, value, warning },
       visible: true,
       x: event.clientX - rect.left + 10,
       y: event.clientY - rect.top - 10,
     })
   }
 
-  // Hide tooltip
-  const hideTooltip = () => {
-    setTooltip((prev) => ({ ...prev, visible: false }))
-  }
+  const hideTooltip = () => setTooltip((prev) => ({ ...prev, visible: false }))
 
   // Time scale based on view range
-  const x = d3.scaleTime().domain([visibleStart, visibleEnd]).range([0, chartWidth])
+  const x = useMemo(
+    () => d3.scaleTime().domain([visibleStart, visibleEnd]).range([0, chartWidth]),
+    [visibleStart, visibleEnd, chartWidth],
+  )
 
   // Heart rate y scale (left axis)
   const yHr = d3.scaleLinear().domain([40, 200]).range([chartHeight, 0])
 
-  // HRV y scale (right axis) - dynamic domain based on actual data
+  // HRV y scale (right axis)
   const hrvExtent = d3.extent(hrvData, ([, v]) => v) as [number, number]
   const hrvMin = hrvExtent[0] ?? 0
   const hrvMax = hrvExtent[1] ?? 150
@@ -594,35 +868,29 @@ function TimelineChart({
     .nice()
     .range([chartHeight, 0])
 
-  // Filter activities by type
-  const sleepSessions =
-    showSleepMeditationSignal.value ? activities.filter((a) => a.activity_type === 'sleep') : []
-  const meditationSessions =
-    showSleepMeditationSignal.value ? activities.filter((a) => a.activity_type === 'meditation') : []
-  const exerciseSessions =
-    showExerciseSignal.value ? activities.filter((a) => a.activity_type === 'exercise') : []
+  // Pack activity lane items into sub-lanes for overlap handling
+  const packedActivityItems = useMemo(
+    () =>
+      packLanes(
+        activityLaneItems,
+        (i) => i.start,
+        (i) => i.end,
+      ),
+    [activityLaneItems],
+  )
 
-  // Calculate average HRV during a time window from the already-fetched HRV data
-  const getAvgHrvInRange = (start: Date, end: Date): number | undefined => {
-    const points = hrvData.filter(([t]) => t >= start && t <= end)
-    if (points.length === 0) return undefined
-    return Math.round(points.reduce((sum, [, v]) => sum + v, 0) / points.length)
-  }
+  // Pack point tags into sub-lanes for vertical stacking
+  const packedPointTags = useMemo(
+    () =>
+      packLanes(
+        pointTags,
+        (t) => t.start_time,
+        (t) => t.end_time,
+      ),
+    [pointTags],
+  )
 
-  // Get meditation HRV from activity's embedded Oura data
-  const getMeditationHrv = (session: Activity): number | undefined => {
-    const data = session.data as Record<string, unknown> | undefined
-    const hrv = data?.hrv as { items?: (number | null)[] } | undefined
-    const items = hrv?.items?.filter((v): v is number => v !== null && v > 0)
-    if (!items || items.length === 0) return undefined
-    return Math.round(items.reduce((sum, v) => sum + v, 0) / items.length)
-  }
-
-  // Find tags overlapping a time range (for last.fm tracks during meditation)
-  const getOverlappingTags = (start: Date, end: Date): Tag[] =>
-    tags.filter((t) => t.start_time < end && (t.end_time ? t.end_time > start : t.start_time >= start))
-
-  // Compute midnight markers within visible range
+  // Midnight markers
   const midnights = useMemo(() => {
     const result: Date[] = []
     const d = new Date(visibleStart)
@@ -635,20 +903,15 @@ function TimelineChart({
     return result
   }, [visibleStart, visibleEnd])
 
-  // Setup D3 zoom behavior
+  // D3 zoom setup
   useEffect(() => {
     if (!svgRef.current) return
-
     const svg = d3.select(svgRef.current)
 
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 50])
-      .filter((event) => {
-        // Allow wheel events and mouse drag, block double-click (handled separately)
-        if (event.type === 'dblclick') return false
-        return true
-      })
+      .filter((event) => event.type !== 'dblclick')
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         if (isProgrammaticZoom.current) return
         cancelAnimationFrame(zoomRafRef.current)
@@ -660,16 +923,9 @@ function TimelineChart({
       })
 
     svg.call(zoom)
-
-    // Prevent default scroll behavior on the SVG so zoom works
     svg.on('wheel.zoom', function (event: WheelEvent) {
       event.preventDefault()
-      // Let D3 zoom handle it via the zoom behavior
     })
-
-    // Re-apply zoom with proper wheel handling
-    svg.call(zoom)
-
     zoomBehaviorRef.current = zoom
 
     return () => {
@@ -678,28 +934,24 @@ function TimelineChart({
     }
   }, [baseScale, onZoom])
 
-  // Sync D3 zoom transform when visibleStart/visibleEnd change (from navigation)
+  // Sync D3 zoom transform from navigation
   useEffect(() => {
     if (!svgRef.current || !zoomBehaviorRef.current) return
-
-    const transform = computeTransform(visibleStart, visibleEnd, baseScale)
+    const transform = computeTransform(visibleStart, visibleEnd, baseScale, chartWidth)
     isProgrammaticZoom.current = true
     d3.select(svgRef.current).call(zoomBehaviorRef.current.transform, transform)
     isProgrammaticZoom.current = false
-  }, [visibleStart, visibleEnd, baseScale])
+  }, [visibleStart, visibleEnd, baseScale, chartWidth])
 
-  // Update x-axis with appropriate ticks based on zoom level
+  // Update x-axis ticks
   useEffect(() => {
     if (!xAxisRef.current) return
-
     const rangeMs = visibleEnd.getTime() - visibleStart.getTime()
     const rangeHours = rangeMs / (1000 * 60 * 60)
+    const rangeDays = rangeHours / 24
 
-    // Choose appropriate tick interval based on visible range
     let tickInterval: d3.TimeInterval
     let tickFormat: string
-
-    const rangeDays = rangeHours / 24
 
     if (rangeHours <= 1) {
       tickInterval = d3.timeMinute.every(5)!
@@ -742,35 +994,39 @@ function TimelineChart({
         .ticks(tickInterval)
         .tickFormat((d) => d3.timeFormat(tickFormat)(d as Date)),
     )
-  }, [visibleStart, visibleEnd])
+  }, [visibleStart, visibleEnd, chartWidth])
 
-  // Double-click to reset zoom to default 2-day view
   const handleDoubleClick = useCallback(() => {
     onZoom(getDefaultStart(), getDefaultEnd())
   }, [onZoom])
 
+  // Sub-lane height for activity lane
+  const activityLaneCount = Math.max(1, packedActivityItems.laneCount)
+  const activitySubLaneHeight = trackHeight / activityLaneCount
+
   return (
-    <div ref={containerRef} class="timeline-chart-container">
+    <div ref={chartContainerRef} class="timeline-chart-container">
       {/* Tooltip */}
       {tooltip.visible && (
         <div class="timeline-tooltip" style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}>
           <div class="tooltip-title">{tooltip.content.title}</div>
           <div class="tooltip-time">{tooltip.content.time}</div>
           {tooltip.content.value && <div class="tooltip-value">{tooltip.content.value}</div>}
+          {tooltip.content.warning && <div class="tooltip-warning">{tooltip.content.warning}</div>}
         </div>
       )}
 
       <svg
         ref={svgRef}
-        width={width}
-        height={height}
+        width={svgWidth}
+        height={CHART_HEIGHT}
         style={{ color: 'currentColor', cursor: 'grab' }}
         onDblClick={handleDoubleClick}
       >
         {/* Lane labels on the left */}
         <g transform={`translate(0,${margin.top})`}>
-          {/* Sleep/Meditation lane label */}
-          <foreignObject x={5} y={trackSleepMeditation} width={margin.left - 10} height={trackHeight}>
+          {/* Activity lane label */}
+          <foreignObject x={5} y={trackActivity} width={margin.left - 10} height={trackHeight}>
             <label
               style={{
                 alignItems: 'center',
@@ -783,36 +1039,10 @@ function TimelineChart({
             >
               <input
                 type="checkbox"
-                checked={showSleepMeditationSignal.value}
-                onChange={(e) => (showSleepMeditationSignal.value = (e.target as HTMLInputElement).checked)}
+                checked={showActivitiesSignal.value}
+                onChange={(e) => (showActivitiesSignal.value = (e.target as HTMLInputElement).checked)}
               />
-              <span>
-                Sleep <span style={{ color: colors.sleep }}>●</span> / Meditation{' '}
-                <span style={{ color: colors.meditation }}>●</span>
-              </span>
-            </label>
-          </foreignObject>
-
-          {/* Exercise lane label */}
-          <foreignObject x={5} y={trackExercise} width={margin.left - 10} height={trackHeight}>
-            <label
-              style={{
-                alignItems: 'center',
-                cursor: 'pointer',
-                display: 'flex',
-                fontSize: '12px',
-                gap: '4px',
-                height: '100%',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={showExerciseSignal.value}
-                onChange={(e) => (showExerciseSignal.value = (e.target as HTMLInputElement).checked)}
-              />
-              <span>
-                Exercise <span style={{ color: colors.exercise }}>●</span>
-              </span>
+              <span>Activity</span>
             </label>
           </foreignObject>
 
@@ -836,10 +1066,17 @@ function TimelineChart({
               <span>Location</span>
             </label>
           </foreignObject>
+
+          {/* Tags lane label */}
+          <foreignObject x={5} y={trackTags} width={margin.left - 10} height={trackHeight}>
+            <span style={{ alignItems: 'center', display: 'flex', fontSize: '12px', height: '100%' }}>
+              Tags
+            </span>
+          </foreignObject>
         </g>
 
         <g transform={`translate(${margin.left},${margin.top})`}>
-          {/* Clip path to constrain chart content */}
+          {/* Clip path */}
           <defs>
             <clipPath id="chart-clip">
               <rect x={0} y={0} width={chartWidth} height={chartHeight} />
@@ -897,66 +1134,84 @@ function TimelineChart({
 
           {/* Clipped chart content */}
           <g clip-path="url(#chart-clip)">
-            {/* Sleep sessions - in sleep/meditation lane */}
-            {sleepSessions.map((session, i) =>
-              session.end_time ?
-                <rect
-                  key={`sleep-${i}`}
-                  x={x(session.start_time)}
-                  y={trackSleepMeditation}
-                  width={Math.max(0, x(session.end_time) - x(session.start_time))}
-                  height={trackHeight}
-                  fill={colors.sleep}
-                  opacity={0.4}
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={(e) => {
-                    const avgHrv = getAvgHrvInRange(session.start_time, session.end_time!)
-                    const details = [formatDuration(session.start_time, session.end_time!)]
-                    if (avgHrv) details.push(`Avg HRV: ${avgHrv} ms`)
-                    showTooltip(
-                      e as unknown as MouseEvent,
-                      'Sleep',
-                      `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
-                      details.join(' | '),
-                    )
-                  }}
-                  onMouseLeave={hideTooltip}
-                />
-              : null,
-            )}
+            {/* ── Activity lane: unified activities + duration tags ── */}
+            {packedActivityItems.items.map(({ item, lane }) => {
+              const laneY = trackActivity + lane * activitySubLaneHeight
+              const laneH = activitySubLaneHeight - 1 // 1px gap between sub-lanes
+              const rectX = x(item.start)
+              const rectW = Math.max(0, x(item.end) - rectX)
+              const hasOverlap = !!item.overlapWarning
 
-            {/* Meditation sessions - in sleep/meditation lane */}
-            {meditationSessions.map((session, i) =>
-              session.end_time ?
-                <rect
-                  key={`meditation-${i}`}
-                  x={x(session.start_time)}
-                  y={trackSleepMeditation}
-                  width={Math.max(0, x(session.end_time) - x(session.start_time))}
-                  height={trackHeight}
-                  fill={colors.meditation}
-                  opacity={0.6}
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={(e) => {
-                    const avgHrv =
-                      getMeditationHrv(session) ?? getAvgHrvInRange(session.start_time, session.end_time!)
-                    const overlapping = getOverlappingTags(session.start_time, session.end_time!)
-                    const details = [formatDuration(session.start_time, session.end_time!)]
-                    if (avgHrv) details.push(`Avg HRV: ${avgHrv} ms`)
-                    if (overlapping.length > 0) details.push(overlapping.map((t) => t.tag).join(', '))
-                    showTooltip(
-                      e as unknown as MouseEvent,
-                      session.title || 'Meditation',
-                      `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
-                      details.join(' | '),
-                    )
-                  }}
-                  onMouseLeave={hideTooltip}
-                />
-              : null,
-            )}
+              return (
+                <g key={`activity-${item.id}`}>
+                  <rect
+                    x={rectX}
+                    y={laneY}
+                    width={rectW}
+                    height={laneH}
+                    fill={item.color}
+                    opacity={hasOverlap ? 0.45 : item.opacity}
+                    rx={2}
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={(e) => {
+                      const details = [item.tooltipDetails]
+                      if (item.mergedAnnotations && item.mergedAnnotations.length > 0) {
+                        details.push(`Merged: ${item.mergedAnnotations.join(', ')}`)
+                      }
+                      showTooltip(
+                        e as unknown as MouseEvent,
+                        item.tooltipTitle,
+                        item.tooltipTime,
+                        details.filter(Boolean).join(' | '),
+                        item.overlapWarning,
+                      )
+                    }}
+                    onMouseLeave={hideTooltip}
+                  />
+                  {/* Overlap indicator: dashed border */}
+                  {hasOverlap && (
+                    <rect
+                      x={rectX}
+                      y={laneY}
+                      width={rectW}
+                      height={laneH}
+                      fill="none"
+                      stroke="#fbbf24"
+                      strokeWidth={1.5}
+                      strokeDasharray="4 2"
+                      rx={2}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  )}
+                  {/* Label text if block is wide enough */}
+                  {rectW > 40 && (
+                    <text
+                      x={rectX + 4}
+                      y={laneY + laneH / 2 + 4}
+                      fill="white"
+                      fontSize={Math.min(11, laneH - 4)}
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {item.icon && isEmoji(item.icon) ? `${item.icon} ` : ''}
+                      {item.label}
+                    </text>
+                  )}
+                  {/* Icon for duration tags with image icons */}
+                  {item.icon && isUrl(item.icon) && rectW > 20 && (
+                    <image
+                      href={item.icon}
+                      x={rectX + 2}
+                      y={laneY + 2}
+                      width={Math.min(laneH - 4, 16)}
+                      height={Math.min(laneH - 4, 16)}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  )}
+                </g>
+              )
+            })}
 
-            {/* Productivity (Computer) - overlaid on top */}
+            {/* ── Productivity: thin bars at top of chart ── */}
             {productivity
               .filter((p) => !p.is_mobile)
               .map((p, i) => (
@@ -969,8 +1224,6 @@ function TimelineChart({
                   fill={colors.computer}
                 />
               ))}
-
-            {/* Productivity (Mobile) - overlaid on top */}
             {productivity
               .filter((p) => p.is_mobile)
               .map((p, i) => (
@@ -984,32 +1237,7 @@ function TimelineChart({
                 />
               ))}
 
-            {/* Exercise sessions - in exercise lane */}
-            {exerciseSessions.map((session, i) =>
-              session.end_time ?
-                <rect
-                  key={`exercise-${i}`}
-                  x={x(session.start_time)}
-                  y={trackExercise}
-                  width={Math.max(0, x(session.end_time) - x(session.start_time))}
-                  height={trackHeight}
-                  fill={getExerciseColor(getExerciseTypeName(session), uniqueExerciseTypes)}
-                  opacity={0.6}
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={(e) =>
-                    showTooltip(
-                      e as unknown as MouseEvent,
-                      getExerciseTypeName(session),
-                      `${format(session.start_time, 'HH:mm')} - ${format(session.end_time!, 'HH:mm')}`,
-                      formatDuration(session.start_time, session.end_time!),
-                    )
-                  }
-                  onMouseLeave={hideTooltip}
-                />
-              : null,
-            )}
-
-            {/* Places - in places lane */}
+            {/* ── Places lane ── */}
             {showPlacesSignal.value &&
               places.map((place, i) => (
                 <rect
@@ -1033,46 +1261,74 @@ function TimelineChart({
                 />
               ))}
 
-            {/* Tags - dashed lines or rectangles */}
-            {tags.map((tag, i) =>
-              tag.end_time ?
-                <rect
+            {/* ── Tags lane: vertically stacked icons ── */}
+            {packedPointTags.items.map(({ item: tag, lane }, i) => {
+              const icon = resolveTagIcon(tag, tagIcons)
+              const tx = x(tag.start_time)
+              // Stack icons vertically using lane assignment
+              const tagY = trackTags + 4 + lane * (TAG_ICON_SIZE + 2)
+
+              if (icon && isEmoji(icon)) {
+                return (
+                  <text
+                    key={`tag-${i}`}
+                    x={tx}
+                    y={tagY + TAG_ICON_SIZE * 0.8}
+                    fontSize={TAG_ICON_SIZE}
+                    textAnchor="middle"
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={(e) =>
+                      showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.start_time, 'HH:mm'))
+                    }
+                    onMouseLeave={hideTooltip}
+                  >
+                    {icon}
+                  </text>
+                )
+              }
+
+              if (icon && isUrl(icon)) {
+                return (
+                  <image
+                    key={`tag-${i}`}
+                    href={icon}
+                    x={tx - TAG_ICON_SIZE / 2}
+                    y={tagY}
+                    width={TAG_ICON_SIZE}
+                    height={TAG_ICON_SIZE}
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={(e) =>
+                      showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.start_time, 'HH:mm'))
+                    }
+                    onMouseLeave={hideTooltip}
+                  />
+                )
+              }
+
+              // No icon: show a small diamond marker
+              const dy = tagY + TAG_ICON_SIZE / 2
+              const s = 4
+              return (
+                <g
                   key={`tag-${i}`}
-                  x={x(tag.start_time)}
-                  y={0}
-                  width={Math.max(0, x(tag.end_time) - x(tag.start_time))}
-                  height={chartHeight}
-                  fill="none"
-                  stroke={colors.tags}
-                  strokeDasharray="4"
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={(e) =>
-                    showTooltip(
-                      e as unknown as MouseEvent,
-                      tag.tag,
-                      `${format(tag.start_time, 'HH:mm')} - ${format(tag.end_time!, 'HH:mm')}`,
-                      formatDuration(tag.start_time, tag.end_time!),
-                    )
-                  }
-                  onMouseLeave={hideTooltip}
-                />
-              : <line
-                  key={`tag-${i}`}
-                  x1={x(tag.start_time)}
-                  y1={0}
-                  x2={x(tag.start_time)}
-                  y2={chartHeight}
-                  stroke={colors.tags}
-                  strokeDasharray="4"
                   style={{ cursor: 'pointer' }}
                   onMouseEnter={(e) =>
                     showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.start_time, 'HH:mm'))
                   }
                   onMouseLeave={hideTooltip}
-                />,
-            )}
+                >
+                  <polygon
+                    points={`${tx},${dy - s} ${tx + s},${dy} ${tx},${dy + s} ${tx - s},${dy}`}
+                    fill={colors.tags}
+                  />
+                  <text x={tx + s + 3} y={dy + 3} fill="currentColor" fontSize="9" opacity={0.6}>
+                    {tag.tag}
+                  </text>
+                </g>
+              )
+            })}
 
-            {/* HRV Line */}
+            {/* ── HRV Line ── */}
             {hrvData.length > 0 && (
               <path
                 fill="none"
@@ -1088,7 +1344,7 @@ function TimelineChart({
               />
             )}
 
-            {/* Heart Rate Line */}
+            {/* ── Heart Rate Line ── */}
             {heartRates.length > 0 && (
               <path
                 fill="none"
