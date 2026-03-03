@@ -337,7 +337,7 @@ const categorizeLocations = (places: Place[], uniquePlaceNames: string[]): Chart
     },
   }))
 
-const categorizeTags = (tags: Tag[], tagIcons: Record<string, string>): ChartItem[] =>
+const categorizeTags = (tags: Tag[], itemIcons: Record<string, string>): ChartItem[] =>
   tags
     .filter((t) => t.source !== 'lastfm')
     .map((t) => {
@@ -345,7 +345,7 @@ const categorizeTags = (tags: Tag[], tagIcons: Record<string, string>): ChartIte
       const end = t.end_time ?? new Date(t.start_time.getTime() + 15 * 60000)
       const sourceLabel = t.source ? ` (${t.source})` : ''
       const icon =
-        tagIcons[t.tag] ?? tagIcons[t.tag.toLowerCase()] ?? (t.tag_key ? tagIcons[t.tag_key] : undefined)
+        itemIcons[t.tag] ?? itemIcons[t.tag.toLowerCase()] ?? (t.tag_key ? itemIcons[t.tag_key] : undefined)
       return {
         color: getTagColor(t),
         column: 'Tags / Events' as Column,
@@ -749,7 +749,7 @@ export const Timeline = () => {
     return map
   }, [ouraMetricsQuery.data])
 
-  const tagIcons = useMemo<Record<string, string>>(() => {
+  const itemIcons = useMemo<Record<string, string>>(() => {
     return tagMappingsQuery.data?.icons ?? {}
   }, [tagMappingsQuery.data])
 
@@ -777,7 +777,7 @@ export const Timeline = () => {
       buildActivityColumnItems(
         activities,
         tags,
-        tagIcons,
+        itemIcons,
         activityColors,
         getExerciseColor,
         getExerciseTypeName,
@@ -785,7 +785,7 @@ export const Timeline = () => {
         (a, end) => buildSleepDetails(a, end, ouraByDate),
         scrobbles,
       ),
-    [activities, tags, tagIcons, ouraByDate, scrobbles],
+    [activities, tags, itemIcons, ouraByDate, scrobbles],
   )
 
   // Tags that should stay in the Tags / Events column (not pulled into Activity)
@@ -858,7 +858,7 @@ export const Timeline = () => {
     () => [
       ...activityItems,
       ...categorizeLocations(places, uniquePlaceNames),
-      ...categorizeTags(nonActivityTags, tagIcons),
+      ...categorizeTags(nonActivityTags, itemIcons),
       ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? []),
       ...occasionalMetricItems,
       ...musicItems,
@@ -868,7 +868,7 @@ export const Timeline = () => {
       places,
       uniquePlaceNames,
       nonActivityTags,
-      tagIcons,
+      itemIcons,
       productivity,
       screentimeCategoriesQuery.data,
       occasionalMetricItems,

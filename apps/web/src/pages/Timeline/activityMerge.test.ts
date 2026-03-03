@@ -152,7 +152,7 @@ describe('buildActivityColumnItems', () => {
     nap: '#60a5fa',
     sleep: '#3b82f6',
   }
-  const tagIcons: Record<string, string> = {}
+  const itemIcons: Record<string, string> = {}
   const ouraByDate = new Map<string, Record<string, number>>()
   const buildSleepDetails = () => ['8h sleep']
   const getExerciseTypeName = () => 'Running'
@@ -163,7 +163,7 @@ describe('buildActivityColumnItems', () => {
     const { items } = buildActivityColumnItems(
       [makeActivity()],
       [],
-      tagIcons,
+      itemIcons,
       activityColors,
       exerciseColor,
       getExerciseTypeName,
@@ -181,7 +181,7 @@ describe('buildActivityColumnItems', () => {
     const { items } = buildActivityColumnItems(
       [makeActivity()],
       [tag],
-      tagIcons,
+      itemIcons,
       activityColors,
       exerciseColor,
       getExerciseTypeName,
@@ -200,7 +200,7 @@ describe('buildActivityColumnItems', () => {
     const { items } = buildActivityColumnItems(
       [makeActivity()],
       [tag],
-      tagIcons,
+      itemIcons,
       activityColors,
       exerciseColor,
       getExerciseTypeName,
@@ -217,7 +217,7 @@ describe('buildActivityColumnItems', () => {
     const { items } = buildActivityColumnItems(
       [makeActivity()],
       [tag],
-      tagIcons,
+      itemIcons,
       activityColors,
       exerciseColor,
       getExerciseTypeName,
@@ -236,7 +236,7 @@ describe('buildActivityColumnItems', () => {
     const { overlaps } = buildActivityColumnItems(
       [makeActivity()],
       [tag],
-      tagIcons,
+      itemIcons,
       activityColors,
       exerciseColor,
       getExerciseTypeName,
@@ -252,7 +252,7 @@ describe('buildActivityColumnItems', () => {
     const { items, overlaps } = buildActivityColumnItems(
       [],
       [],
-      tagIcons,
+      itemIcons,
       activityColors,
       exerciseColor,
       getExerciseTypeName,

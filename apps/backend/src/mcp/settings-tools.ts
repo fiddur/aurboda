@@ -2,15 +2,14 @@
  * MCP user settings and tag mapping tools.
  */
 import { setTagMappingBodySchema, updateSettingsInputSchema } from '@aurboda/api-spec'
-import {
-  getProgrammaticTags,
-  getUniqueTags,
-  getUserSettings,
-  updateTagNameByKey,
-  upsertUserSettings,
-} from '../db'
+import { getProgrammaticTags, getUniqueTags, getUserSettings } from '../db'
 import { getGoalsProgress } from '../services/goals'
-import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings'
+import {
+  getSettingsResponse,
+  getTagMappings,
+  setTagMapping,
+  validateAndUpdateSettings,
+} from '../services/settings'
 import { jsonResponse, type McpServer } from './helpers'
 
 export const registerSettingsTools = (server: McpServer, user: string) => {
@@ -75,40 +74,15 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     'Set a display name for a programmatic tag (UUID, tag_* prefix, etc.). Use after get_programmatic_tags to name unmapped tags.',
     { ...setTagMappingBodySchema.shape },
     async ({ name, tag_key, icon }) => {
-      const settings = await getUserSettings(user)
-      const currentMappings = settings?.tag_mappings ?? {}
-      const newMappings = { ...currentMappings, [tag_key]: name }
-
-      const updates: { tag_mappings: Record<string, string>; tag_icons?: Record<string, string> } = {
-        tag_mappings: newMappings,
-      }
-      if (icon !== undefined) {
-        const currentIcons = settings?.tag_icons ?? {}
-        if (icon) {
-          updates.tag_icons = { ...currentIcons, [name]: icon }
-        } else {
-          const newIcons = { ...currentIcons }
-          delete newIcons[name]
-          delete newIcons[tag_key]
-          updates.tag_icons = newIcons
-        }
-      }
-
-      await upsertUserSettings(user, updates)
-      await updateTagNameByKey(user, tag_key, name)
-
-      return jsonResponse({ mapping: newMappings, success: true })
+      const mapping = await setTagMapping(user, tag_key, name, icon)
+      return jsonResponse({ mapping, success: true })
     },
   )
 
   // Tool: get_tag_mappings
   server.tool('get_tag_mappings', 'Get all current tag mappings (tag key -> display name).', {}, async () => {
-    const settings = await getUserSettings(user)
-    return jsonResponse({
-      icons: settings?.tag_icons ?? {},
-      mappings: settings?.tag_mappings ?? {},
-      success: true,
-    })
+    const result = await getTagMappings(user)
+    return jsonResponse({ ...result, success: true })
   })
 
   // Tool: get_goal_progress

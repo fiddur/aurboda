@@ -1,4 +1,56 @@
 /**
+ * Default emoji icons for activity types and exercise types on the timeline.
+ * These are applied automatically unless the user overrides them in item_icons settings.
+ *
+ * Keys use a prefix convention to avoid collision with tag names:
+ * - Activity types: 'activity:sleep', 'activity:nap', 'activity:meditation'
+ * - Exercise types: 'exercise:Running', 'exercise:Biking', etc. (matching exerciseTypeNames display labels)
+ */
+export const DEFAULT_ITEM_ICONS: Record<string, string> = {
+  // Activity types
+  'activity:meditation': '🧘',
+  'activity:nap': '💤',
+  'activity:sleep': '😴',
+
+  // Exercise types (keyed by display name from exerciseTypeNames)
+  'exercise:Biking': '🚴',
+  'exercise:Boot Camp': '🏋️',
+  'exercise:Calisthenics': '🤸',
+  'exercise:Dancing': '💃',
+  'exercise:Elliptical': '🏃',
+  'exercise:HIIT': '🔥',
+  'exercise:Hiking': '🥾',
+  'exercise:Ice Skating': '⛸️',
+  'exercise:Pilates': '🧘',
+  'exercise:Rock Climbing': '🧗',
+  'exercise:Rowing': '🚣',
+  'exercise:Running': '🏃',
+  'exercise:Soccer': '⚽',
+  'exercise:Stair Climbing': '🪜',
+  'exercise:Strength Training': '💪',
+  'exercise:Stretching': '🧘',
+  'exercise:Swimming (Open Water)': '🏊',
+  'exercise:Swimming (Pool)': '🏊',
+  'exercise:Treadmill': '🏃',
+  'exercise:Walking': '🚶',
+  'exercise:Weightlifting': '🏋️',
+  'exercise:Workout': '🏋️',
+  'exercise:Yoga': '🧘',
+}
+
+/**
+ * Resolve an icon for a timeline item key.
+ * Checks user overrides first, then falls back to defaults.
+ */
+export const resolveItemIcon = (key: string, userIcons: Record<string, string>): string | undefined => {
+  if (userIcons[key] !== undefined) {
+    // Empty string means user explicitly cleared the icon
+    return userIcons[key] || undefined
+  }
+  return DEFAULT_ITEM_ICONS[key]
+}
+
+/**
  * Common word → emoji lookup for auto-suggesting tag icons.
  * Kept intentionally small — covers the most common life-logging tags.
  */

@@ -11,7 +11,7 @@ import {
   updateSettingsInputSchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
-import { getOAuthToken, getUserSettings, upsertUserSettings } from '../db'
+import { getOAuthToken, getUserSettings, updateTagNameByKey, upsertUserSettings } from '../db'
 import { getCentralDb } from './central-db'
 
 // Re-export types from api-spec for use by other modules
@@ -128,6 +128,68 @@ export const getEffectiveGoals = (settings: UserSettings): Goal[] => {
 }
 
 /**
+ * Build the settings updates object for a tag mapping change.
+ * Handles both the mapping itself and any icon set/clear.
+ */
+export const buildTagMappingUpdates = (
+  currentSettings: UserSettings,
+  tagKey: string,
+  name: string,
+  icon?: string,
+): Partial<UserSettings> => {
+  const currentMappings = currentSettings.tag_mappings ?? {}
+  const updates: Partial<UserSettings> = {
+    tag_mappings: { ...currentMappings, [tagKey]: name },
+  }
+
+  if (icon !== undefined) {
+    const currentIcons = currentSettings.item_icons ?? {}
+    if (icon) {
+      updates.item_icons = { ...currentIcons, [name]: icon }
+    } else {
+      // Empty string clears the icon — remove entries for both display name and tag_key
+      const newIcons = { ...currentIcons }
+      delete newIcons[name]
+      delete newIcons[tagKey]
+      updates.item_icons = newIcons
+    }
+  }
+
+  return updates
+}
+
+/**
+ * Set a tag mapping (display name + optional icon) and rename existing tag records.
+ * Used by both REST API and MCP tools.
+ */
+export const setTagMapping = async (
+  user: string,
+  tagKey: string,
+  name: string,
+  icon?: string,
+): Promise<Record<string, string>> => {
+  const settings = await getSettings(user)
+  const updates = buildTagMappingUpdates(settings, tagKey, name, icon)
+  await upsertUserSettings(user, updates)
+  await updateTagNameByKey(user, tagKey, name)
+  return updates.tag_mappings!
+}
+
+/**
+ * Get tag mappings and icons for a user.
+ * Used by both REST API and MCP tools.
+ */
+export const getTagMappings = async (
+  user: string,
+): Promise<{ mappings: Record<string, string>; icons: Record<string, string> }> => {
+  const settings = await getSettings(user)
+  return {
+    icons: settings.item_icons ?? {},
+    mappings: settings.tag_mappings ?? {},
+  }
+}
+
+/**
  * Get settings response in the format used by both API and MCP.
  */
 export const getSettingsResponse = async (user: string): Promise<SettingsResponse> => {
@@ -145,13 +207,14 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     goals: getEffectiveGoals(settings),
     hr_zone_start: zones,
     hr_zone_start_source: source,
+    item_icons: settings.item_icons ?? {},
     lastfm_configured: lastFmConfigured,
     lastfm_username: settings.lastfm_username ?? null,
     oura_configured: ouraConfigured,
     oura_connected: ouraToken !== null,
     rescue_time_key: settings.rescue_time_key ?? null,
     success: true,
-    tag_icons: settings.tag_icons ?? {},
+    tag_icons: settings.item_icons ?? {},
     tag_mappings: settings.tag_mappings ?? {},
   }
 }
@@ -173,6 +236,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
       goals: defaultGoals,
       hr_zone_start: calculateDefaultHrZones(null),
       hr_zone_start_source: 'default',
+      item_icons: {},
       lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
       lastfm_username: null,
       oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
@@ -191,6 +255,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     'dashboard',
     'goals',
     'hr_zone_start',
+    'item_icons',
     'lastfm_username',
     'rescue_time_key',
     'tag_icons',
