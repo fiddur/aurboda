@@ -21,6 +21,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  height: 100vh;
 }
 
 /* ── Header ────────────────────────────────────────────────── */
@@ -262,10 +263,22 @@ header {
 /* ── Main content ─────────────────────────────────────────── */
 
 main {
-  flex: auto;
+  flex: 1;
+  min-height: 0;
   display: flex;
+  flex-direction: column;
   width: 100%;
   text-align: left;
+  overflow: auto;
+}
+
+/* Router wrapper and route containers must pass height to children */
+main > div {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
 }
 
 /* ── Footer ───────────────────────────────────────────────── */
