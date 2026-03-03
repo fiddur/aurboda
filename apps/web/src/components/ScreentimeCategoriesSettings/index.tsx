@@ -372,8 +372,8 @@ export function ScreentimeCategoriesSettings() {
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey })
-    // Also invalidate DayView which depends on categories
-    queryClient.invalidateQueries({ queryKey: ['dayview-productivity'] })
+    // Also invalidate Timeline which depends on categories
+    queryClient.invalidateQueries({ queryKey: ['timeline-productivity'] })
   }, [queryClient])
 
   // Import from AW

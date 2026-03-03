@@ -18,7 +18,6 @@ import { LastFmSource } from './pages/DataSources/LastFmSource.jsx'
 import { OuraSource } from './pages/DataSources/OuraSource.jsx'
 import { OwnTracksSource } from './pages/DataSources/OwnTracksSource.jsx'
 import { RescueTimeSource } from './pages/DataSources/RescueTimeSource.jsx'
-import { DayView } from './pages/DayView/index.jsx'
 import { EntityDetail } from './pages/EntityDetail/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
 import { Home } from './pages/Home/index.jsx'
@@ -46,7 +45,6 @@ export function App() {
             <Route path="/goals" component={Goals} />
             <Route path="/hr-zones" component={HrZones} />
             <Route path="/timeline" component={Timeline} />
-            <Route path="/day" component={DayView} />
             <Route path="/add" component={AddData} />
             <Route path="/detail/:type/:id" component={EntityDetail} />
             <Route path="/sleep" component={Sleep} />

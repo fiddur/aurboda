@@ -457,7 +457,7 @@ export const AddData = () => {
     (entityType: string, entityId: string | undefined): boolean => {
       if (addMore) return false
       if (!entityId) {
-        route('/day')
+        route('/timeline')
         return true
       }
       route(`/detail/${entityType}/${entityId}`)

@@ -19,7 +19,6 @@ const NAV_LINKS = [
   { href: '/goals', label: 'Goals' },
   { href: '/hr-zones', label: 'HR Zones' },
   { href: '/timeline', label: 'Timeline' },
-  { href: '/day', label: 'Day' },
   { href: '/add', label: '+ Add' },
   { href: '/trends', label: 'Trends' },
   { href: '/places', label: 'Places' },

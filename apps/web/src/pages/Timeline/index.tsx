@@ -1,5 +1,6 @@
-/* eslint-disable max-lines -- TODO: refactor */
-import { Signal, signal } from '@preact/signals'
+/* eslint-disable max-lines -- large visualization component */
+import { metricUnits as builtinMetricUnits, type ScreentimeCategory } from '@aurboda/api-spec'
+import { signal, useSignalEffect } from '@preact/signals'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
@@ -7,87 +8,184 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import {
   Activity,
   fetchActivities,
+  fetchBucketedMetrics,
+  fetchCustomMetrics,
   fetchHeartRate,
   fetchHrv,
+  fetchMetricTimeSeriesWithSource,
   fetchPlaces,
   fetchProductivity,
+  fetchScreentimeCategories,
+  fetchScrobbles,
   fetchTagMappings,
   fetchTags,
+  fetchUserSettings,
   Place,
   ProductivityRecord,
   Tag,
+  type MetricDataPointWithSource,
 } from '../../state/api'
 import { preprocessData } from '../../utils/chart'
 import { isEmoji, isUrl } from '../../utils/emojiLookup'
 import { packLanes } from '../../utils/lanePacking'
+import { buildActivityColumnItems, EXCLUDED_TAG_PREFIXES, EXCLUDED_TAG_SOURCES } from './activityMerge'
+import { categorizeMusic } from './categorizeMusic'
+import { drawActivitySparklines, parseBucketedData } from './drawActivitySparklines'
+import { findOverlappingScrobbles } from './findOverlappingScrobbles'
+import type { ChartItem, Column, Orientation } from './types'
 
 import './style.css'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-/** A unified item in the Activity lane: activities + duration tags merged together. */
-interface ActivityLaneItem {
-  id: string
-  start: Date
-  end: Date
-  label: string
-  color: string
-  opacity: number
-  type: 'sleep' | 'nap' | 'meditation' | 'exercise' | 'duration-tag'
-  icon?: string
-  /** Original source for dedup detection */
-  source?: string
-  /** Merged annotation: if this item subsumes a tag that represents the same real-world event */
-  mergedAnnotations?: string[]
-  /** Warning about overlaps for user notification */
-  overlapWarning?: string
-  tooltipTitle: string
-  tooltipTime: string
-  tooltipDetails?: string
-}
-
-interface TooltipState {
-  visible: boolean
-  x: number
-  y: number
-  content: {
-    title: string
-    time: string
-    value?: string
-    warning?: string
-  }
-}
-
-// ── Signals ───────────────────────────────────────────────────────────────────
+// ── Signals (module-level, persist across SPA navigations) ────────────────────
 
 const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
 const toDate = signal(formatISO(new Date(), { representation: 'date' }))
 const viewStart = signal<Date | null>(null)
 const viewEnd = signal<Date | null>(null)
 
-// Toggle signals for data layers
-const showHeartRate = signal(true)
-const showHrv = signal(true)
-const showActivities = signal(true)
-const showProductivity = signal(true)
-const showPlaces = signal(true)
-const showTags = signal(true)
+// Default view: start of today to end of today
+const getDefaultViewStart = () => startOfDay(new Date())
+const getDefaultViewEnd = () => endOfDay(new Date())
+
+// ── URL hash helpers ──────────────────────────────────────────────────────────
+// Hash format: #from=2026-02-27T06:00&to=2026-02-27T18:00&hide=sleep,music&o=h
+
+type LegendCategory =
+  | 'sleep'
+  | 'nap'
+  | 'meditation'
+  | 'exercise'
+  | 'calendar'
+  | 'tags'
+  | 'metrics'
+  | 'music'
+  | 'location'
+  | 'screentime'
+
+/** Parse window.location.hash into view state. */
+const parseViewHash = (): {
+  from: Date | null
+  to: Date | null
+  hide: LegendCategory[]
+  orientation: Orientation | null
+} => {
+  const hash = window.location.hash.slice(1)
+  if (!hash) return { from: null, hide: [], orientation: null, to: null }
+  const params = new URLSearchParams(hash)
+  const fromStr = params.get('from')
+  const toStr = params.get('to')
+  const hideStr = params.get('hide')
+  const oStr = params.get('o')
+  const from = fromStr ? new Date(fromStr) : null
+  const to = toStr ? new Date(toStr) : null
+  const hide = hideStr ? (hideStr.split(',').filter(Boolean) as LegendCategory[]) : []
+  const orientation: Orientation | null =
+    oStr === 'h' ? 'horizontal'
+    : oStr === 'v' ? 'vertical'
+    : null
+  return {
+    from: from && !isNaN(from.getTime()) ? from : null,
+    hide,
+    orientation,
+    to: to && !isNaN(to.getTime()) ? to : null,
+  }
+}
+
+const getDefaultOrientation = (): Orientation =>
+  typeof window !== 'undefined' && window.innerWidth >= window.innerHeight ? 'horizontal' : 'vertical'
+
+/** Build hash string from current view state. */
+const buildViewHash = (
+  start: Date | null,
+  end: Date | null,
+  hidden: ReadonlySet<string>,
+  orientation: Orientation,
+): string => {
+  const params = new URLSearchParams()
+  if (start) params.set('from', start.toISOString())
+  if (end) params.set('to', end.toISOString())
+  if (hidden.size > 0) params.set('hide', [...hidden].join(','))
+  // Only write orientation when it differs from the viewport default
+  const defaultO = getDefaultOrientation()
+  if (orientation !== defaultO) params.set('o', orientation === 'horizontal' ? 'h' : 'v')
+  const str = params.toString()
+  return str ? `#${str}` : ''
+}
+
+// Initialise signals from hash on page load
+const _initialHash = parseViewHash()
+if (_initialHash.from) {
+  viewStart.value = _initialHash.from
+  viewEnd.value = _initialHash.to
+  const fetchFrom = _initialHash.from
+  const fetchTo = _initialHash.to ?? _initialHash.from
+  fromDate.value = formatISO(subDays(fetchFrom, 1), { representation: 'date' })
+  const todayStr = formatISO(new Date(), { representation: 'date' })
+  const expandedTo = formatISO(addDays(fetchTo, 1), { representation: 'date' })
+  toDate.value = expandedTo > todayStr ? todayStr : expandedTo
+}
+
+// ── Column definitions ────────────────────────────────────────────────────────
+
+const BASE_COLUMNS: Column[] = ['Activity', 'Location', 'Tags / Events', 'Screen Time']
+const MUSIC_COLOR = '#ec4899'
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 
-const colors = {
-  axis: 'currentColor',
-  computer: '#3b82f6',
-  durationTag: '#f59e0b', // Amber for duration tags in activity lane
-  exercise: '#22c55e',
-  heartRate: '#ef4444',
-  hrv: '#10b981',
+const activityColors: Record<string, string> = {
   meditation: '#a855f7',
-  mobile: '#06b6d4',
   nap: '#60a5fa',
   sleep: '#3b82f6',
-  tags: 'rgba(156, 163, 175, 0.5)',
-  travel: '#9ca3af',
+}
+
+const hrZoneColors: Record<number, string> = {
+  0: '#22c55e',
+  1: '#22c55e',
+  2: '#3b82f6',
+  3: '#f59e0b',
+  4: '#f97316',
+  5: '#ef4444',
+}
+
+const TAG_COLOR = '#8b5cf6'
+const METRIC_COLOR = '#14b8a6'
+const NOW_COLOR = '#ef4444'
+const HR_COLOR = '#ef4444'
+const HRV_COLOR = '#10b981'
+
+const OCCASIONAL_BUILTIN_METRICS = [
+  'weight',
+  'body_fat',
+  'bone_mass',
+  'lean_body_mass',
+  'body_water_mass',
+  'height',
+  'blood_glucose',
+  'blood_pressure_systolic',
+  'blood_pressure_diastolic',
+  'body_temperature',
+  'basal_body_temperature',
+  'spo2',
+  'vo2_max',
+]
+
+const OCCASIONAL_METRIC_MAX_COUNT = 10
+
+const tagSourceColors: Record<string, string> = {
+  calendar: '#f59e0b',
+  default: TAG_COLOR,
+  lastfm: '#ec4899',
+  'lastfm-auto': '#ec4899',
+  manual: TAG_COLOR,
+  oura: TAG_COLOR,
+}
+
+const productivityColors: Record<number, string> = {
+  '-1': '#f97316',
+  '-2': '#ef4444',
+  0: '#9ca3af',
+  1: '#3b82f6',
+  2: '#22c55e',
 }
 
 const placeColorPalette = [
@@ -101,98 +199,59 @@ const placeColorPalette = [
   '#6366f1',
 ]
 
-const exerciseColorPalette = [
-  '#22c55e',
-  '#f97316',
-  '#3b82f6',
-  '#ec4899',
-  '#8b5cf6',
-  '#14b8a6',
-  '#eab308',
-  '#ef4444',
-]
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Tag-specific colors for the activity lane
-const durationTagColors: Record<string, string> = {
-  Breathwork: '#06b6d4', // Cyan
-  'Cold Exposure': '#38bdf8', // Sky
-  Holosync: '#a78bfa', // Violet (similar to meditation)
-  'Hot Bath': '#f97316', // Orange
-  Meditation: '#a855f7', // Purple (same as activity meditation)
-  Sauna: '#ef4444', // Red
-  Sex: '#ec4899', // Pink
-  'Vocal Training': '#14b8a6', // Teal
-  YinYoga: '#c084fc', // Light purple
+const getPlaceColor = (name: string, allNames: string[]): string => {
+  if (!name || name === 'Travel' || name === 'Unknown') return '#9ca3af'
+  const index = allNames.indexOf(name)
+  return placeColorPalette[index % placeColorPalette.length]
 }
 
-// ── HealthConnect exercise type mapping ───────────────────────────────────────
+const getExerciseColor = (activity: Activity): string => {
+  const zones = activity.hr_zone_secs
+  if (!zones) return hrZoneColors[0]!
+  let maxZone = 0
+  let maxSecs = 0
+  for (let z = 0; z <= 5; z++) {
+    const secs = (zones as Record<number, number>)[z] ?? 0
+    if (secs > maxSecs) {
+      maxSecs = secs
+      maxZone = z
+    }
+  }
+  return hrZoneColors[maxZone] ?? hrZoneColors[0]!
+}
+
+const getTagColor = (tag: Tag): string => tagSourceColors[tag.source ?? 'default'] ?? tagSourceColors.default!
+
+const getProductivityColor = (score: number | undefined): string =>
+  productivityColors[score ?? 0] ?? productivityColors[0]!
 
 const exerciseTypeNames: Record<number, string> = {
   0: 'Workout',
-  2: 'Badminton',
-  4: 'Baseball',
-  5: 'Basketball',
   8: 'Biking',
-  9: 'Biking (Stationary)',
   10: 'Boot Camp',
-  11: 'Boxing',
   13: 'Calisthenics',
-  14: 'Cricket',
   16: 'Dancing',
   25: 'Elliptical',
-  26: 'Fencing',
-  27: 'Football (American)',
-  28: 'Football (Australian)',
-  29: 'Frisbee',
-  30: 'Golf',
-  31: 'Guided Breathing',
-  32: 'Gymnastics',
-  33: 'Handball',
   34: 'HIIT',
   35: 'Hiking',
-  36: 'Ice Hockey',
   37: 'Ice Skating',
-  44: 'Martial Arts',
-  46: 'Paddling',
-  47: 'Paragliding',
   48: 'Pilates',
-  50: 'Racquetball',
   51: 'Rock Climbing',
-  52: 'Roller Hockey',
   53: 'Rowing',
-  54: 'Rowing Machine',
-  55: 'Rugby',
   56: 'Running',
-  57: 'Running (Treadmill)',
-  58: 'Sailing',
-  59: 'Scuba Diving',
-  60: 'Skating',
-  61: 'Skiing',
-  62: 'Skiing (Cross Country)',
-  63: 'Skiing (Downhill)',
-  64: 'Snowboarding',
-  65: 'Snowshoeing',
+  57: 'Treadmill',
   66: 'Soccer',
-  67: 'Softball',
-  68: 'Squash',
-  69: 'Stair Climbing',
-  70: 'Stair Climbing (Machine)',
-  71: 'Strength Training',
-  72: 'Stretching',
-  73: 'Surfing',
+  68: 'Stair Climbing',
+  70: 'Strength Training',
+  71: 'Stretching',
   74: 'Swimming (Open Water)',
   75: 'Swimming (Pool)',
-  76: 'Table Tennis',
-  77: 'Tennis',
-  78: 'Volleyball',
   79: 'Walking',
-  80: 'Water Polo',
   81: 'Weightlifting',
-  82: 'Wheelchair',
   83: 'Yoga',
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const getExerciseTypeName = (activity: Activity): string => {
   const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseType as
@@ -204,328 +263,384 @@ const getExerciseTypeName = (activity: Activity): string => {
   return activity.title || 'Workout'
 }
 
-const getPlaceColor = (placeName: string, allPlaces: string[]): string => {
-  if (!placeName || placeName === 'Travel' || placeName === 'Unknown') return colors.travel
-  const index = allPlaces.indexOf(placeName)
-  return placeColorPalette[index % placeColorPalette.length]
-}
-
-const getExerciseColor = (exerciseTypeName: string, allTypes: string[]): string => {
-  const index = allTypes.indexOf(exerciseTypeName)
-  if (index === -1) return exerciseColorPalette[0]
-  return exerciseColorPalette[index % exerciseColorPalette.length]
-}
+const formatTime = (date: Date): string => format(date, 'HH:mm')
 
 const formatDuration = (start: Date, end: Date): string => {
   const ms = end.getTime() - start.getTime()
-  const hours = Math.floor(ms / 3600000)
-  const minutes = Math.floor((ms % 3600000) / 60000)
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
+  const totalMin = Math.round(ms / 60000)
+  if (totalMin < 60) return `${totalMin}m`
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-/** Check if two time ranges overlap. */
-const rangesOverlap = (s1: Date, e1: Date, s2: Date, e2: Date): boolean => s1 < e2 && s2 < e1
+const escapeHtml = (str: string): string =>
+  str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-/** Compute overlap in minutes between two time ranges. */
-const overlapMinutes = (s1: Date, e1: Date, s2: Date, e2: Date): number => {
-  const overlapStart = Math.max(s1.getTime(), s2.getTime())
-  const overlapEnd = Math.min(e1.getTime(), e2.getTime())
-  return Math.max(0, (overlapEnd - overlapStart) / 60000)
-}
+type OuraSleepMetrics = Record<string, number>
+type OuraSleepByDate = Map<string, OuraSleepMetrics>
 
-/** Resolve the icon for a tag from the icon mappings. */
-const resolveTagIcon = (tag: Tag, icons: Record<string, string>): string | undefined =>
-  icons[tag.tag] ?? icons[tag.tag.toLowerCase()] ?? (tag.tag_key ? icons[tag.tag_key] : undefined)
+const buildSleepDetails = (a: Activity, end: Date, ouraByDate: OuraSleepByDate): string[] => {
+  const details: string[] = []
+  details.push(`Bed: ${formatDuration(a.start_time, end)}`)
 
-// ── Tags to exclude from activity lane (they are not activity-like) ──────────
-const COMPUTER_TAG_PREFIX = 'computer:'
-
-/** Check if a duration tag should be shown in the activity lane */
-const isDurationTagActivityLike = (tag: Tag): boolean => {
-  if (!tag.end_time) return false
-  if (tag.tag.startsWith(COMPUTER_TAG_PREFIX)) return false
-  if (tag.source === 'lastfm' || tag.source === 'lastfm-auto') return false
-  return true
-}
-
-// ── Source merging ────────────────────────────────────────────────────────────
-// Tags that typically represent the same real-world event as a detected activity.
-// e.g. Holosync (lastfm) often coincides exactly with an Oura meditation session.
-// YinYoga (manual/oura tag) often coincides with meditation.
-const TAG_ACTIVITY_MERGE_MAP: Record<string, string[]> = {
-  Breathwork: ['meditation'],
-  Holosync: ['meditation', 'nap'],
-  Meditation: ['meditation'],
-  YinYoga: ['meditation'],
-}
-
-/** Convert an Activity record to an ActivityLaneItem. Returns undefined for unknown types. */
-const activityToLaneItem = (a: Activity, exerciseTypes: string[]): ActivityLaneItem | undefined => {
-  if (!a.end_time) return undefined
-  const end = a.end_time
-
-  let label: string
-  let color: string
-  let type: ActivityLaneItem['type']
-
-  switch (a.activity_type) {
-    case 'sleep':
-      label = 'Sleep'
-      color = colors.sleep
-      type = 'sleep'
-      break
-    case 'nap':
-      label = 'Nap'
-      color = colors.nap
-      type = 'nap'
-      break
-    case 'meditation':
-      label = a.title || 'Meditation'
-      color = colors.meditation
-      type = 'meditation'
-      break
-    case 'exercise':
-      label = getExerciseTypeName(a)
-      color = getExerciseColor(label, exerciseTypes)
-      type = 'exercise'
-      break
-    default:
-      return undefined
+  if (a.total_sleep !== undefined) {
+    const h = Math.floor(a.total_sleep / 60)
+    const m = a.total_sleep % 60
+    details.push(`Sleep: ${m > 0 ? `${h}h ${m}m` : `${h}h`}`)
   }
 
-  return {
-    color,
-    end,
-    id: a.id,
-    label,
-    mergedAnnotations: [],
-    opacity: a.activity_type === 'sleep' ? 0.5 : 0.7,
-    source: a.source ?? undefined,
-    start: a.start_time,
-    tooltipDetails: formatDuration(a.start_time, end),
-    tooltipTime: `${format(a.start_time, 'HH:mm')} - ${format(end, 'HH:mm')}`,
-    tooltipTitle: label,
-    type,
-  }
-}
-
-/** Try to merge a duration tag into an existing activity item. Returns true if merged. */
-const tryMergeTagIntoActivity = (tag: Tag, items: ActivityLaneItem[]): boolean => {
-  const tagEnd = tag.end_time!
-  const mergeableTypes = TAG_ACTIVITY_MERGE_MAP[tag.tag]
-  if (!mergeableTypes) return false
-
-  for (const item of items) {
-    if (!mergeableTypes.includes(item.type)) continue
-    const overlap = overlapMinutes(tag.start_time, tagEnd, item.start, item.end)
-    const tagDuration = (tagEnd.getTime() - tag.start_time.getTime()) / 60000
-    if (overlap > tagDuration * 0.5) {
-      item.mergedAnnotations = item.mergedAnnotations ?? []
-      item.mergedAnnotations.push(tag.tag)
-      item.label = `${item.label} (${tag.tag})`
-      return true
-    }
-  }
-  return false
-}
-
-/** Create a duration tag item and detect overlaps with existing items. */
-const createDurationTagItem = (
-  tag: Tag,
-  items: ActivityLaneItem[],
-  overlaps: OverlapWarning[],
-  tagIcons: Record<string, string>,
-): ActivityLaneItem => {
-  const tagEnd = tag.end_time!
-  const icon = resolveTagIcon(tag, tagIcons)
-
-  const tagItem: ActivityLaneItem = {
-    color: durationTagColors[tag.tag] ?? colors.durationTag,
-    end: tagEnd,
-    icon,
-    id: tag.id,
-    label: tag.tag,
-    opacity: 0.6,
-    source: tag.source ?? undefined,
-    start: tag.start_time,
-    tooltipDetails: formatDuration(tag.start_time, tagEnd),
-    tooltipTime: `${format(tag.start_time, 'HH:mm')} - ${format(tagEnd, 'HH:mm')}`,
-    tooltipTitle: tag.tag,
-    type: 'duration-tag',
+  const oura = ouraByDate.get(format(end, 'yyyy-MM-dd'))
+  if (oura) {
+    if (oura.sleep_score !== undefined) details.push(`ō score: ${Math.round(oura.sleep_score)}`)
+    if (oura.sleep_efficiency !== undefined)
+      details.push(`ō efficiency: ${Math.round(oura.sleep_efficiency)}%`)
+    if (oura.sleep_restfulness !== undefined)
+      details.push(`ō restfulness: ${Math.round(oura.sleep_restfulness)}`)
+    if (oura.sleep_deep_score !== undefined) details.push(`ō deep: ${Math.round(oura.sleep_deep_score)}`)
+    if (oura.sleep_rem_score !== undefined) details.push(`ō REM: ${Math.round(oura.sleep_rem_score)}`)
   }
 
-  // Check for overlaps with existing items
-  for (const existing of items) {
-    if (!rangesOverlap(tag.start_time, tagEnd, existing.start, existing.end)) continue
-    const mins = overlapMinutes(tag.start_time, tagEnd, existing.start, existing.end)
-    if (mins > 2) {
-      overlaps.push({
-        item1Label: existing.label,
-        item1Time: `${format(existing.start, 'HH:mm')}-${format(existing.end, 'HH:mm')}`,
-        item2Label: tag.tag,
-        item2Time: `${format(tag.start_time, 'HH:mm')}-${format(tagEnd, 'HH:mm')}`,
-        overlapMinutes: Math.round(mins),
-      })
-      tagItem.overlapWarning = `Overlaps with ${existing.label} by ${Math.round(mins)}min`
-    }
-  }
-
-  return tagItem
+  if (a.avg_hrv) details.push(`Avg HRV: ${a.avg_hrv} ms`)
+  return details
 }
 
-/**
- * Build the unified activity lane items from activities and duration tags.
- *
- * Strategy:
- * 1. Convert all activities to ActivityLaneItems.
- * 2. For each duration tag, check if it should be merged with an existing activity
- *    (same-event from different source) or added as a separate item.
- * 3. Detect remaining overlaps and annotate them for visual handling.
- */
-const buildActivityLaneItems = (
-  activities: Activity[],
-  tags: Tag[],
-  tagIcons: Record<string, string>,
-  exerciseTypes: string[],
-): { items: ActivityLaneItem[]; overlaps: OverlapWarning[] } => {
-  const items: ActivityLaneItem[] = []
-  const overlaps: OverlapWarning[] = []
-
-  // 1. Convert activities
-  for (const a of activities) {
-    const item = activityToLaneItem(a, exerciseTypes)
-    if (item) items.push(item)
-  }
-
-  // 2. Process duration tags
-  for (const tag of tags.filter(isDurationTagActivityLike)) {
-    if (!tryMergeTagIntoActivity(tag, items)) {
-      items.push(createDurationTagItem(tag, items, overlaps, tagIcons))
-    }
-  }
-
-  return { items, overlaps }
+const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = {
+  calendar: (item) => item.column === 'Tags / Events' && item.color === tagSourceColors.calendar,
+  exercise: (item) => item.column === 'Activity' && item.activity_type === 'exercise',
+  location: (item) => item.column === 'Location',
+  meditation: (item) => item.column === 'Activity' && item.activity_type === 'meditation',
+  metrics: (item) => item.column === 'Tags / Events' && item.color === METRIC_COLOR,
+  music: (item) => item.column === 'Music',
+  nap: (item) => item.column === 'Activity' && item.activity_type === 'nap',
+  screentime: (item) => item.column === 'Screen Time',
+  sleep: (item) => item.column === 'Activity' && item.activity_type === 'sleep',
+  tags: (item) =>
+    item.column === 'Tags / Events' && item.color !== tagSourceColors.calendar && item.color !== METRIC_COLOR,
 }
 
-interface OverlapWarning {
-  item1Label: string
-  item1Time: string
-  item2Label: string
-  item2Time: string
-  overlapMinutes: number
-}
+// ── Categorization helpers ────────────────────────────────────────────────────
 
-// ── Layout constants ──────────────────────────────────────────────────────────
+const categorizeLocations = (places: Place[], uniquePlaceNames: string[]): ChartItem[] =>
+  places.map((p) => ({
+    color: getPlaceColor(p.region, uniquePlaceNames),
+    column: 'Location' as Column,
+    end: p.end_time,
+    href: `/places?date=${format(p.start_time, 'yyyy-MM-dd')}&name=${encodeURIComponent(p.region || '')}`,
+    isPoint: false,
+    label: p.region || 'Unknown',
+    start: p.start_time,
+    tooltip: {
+      details: [formatDuration(p.start_time, p.end_time)],
+      time: `${formatTime(p.start_time)} – ${formatTime(p.end_time)}`,
+      title: p.region || 'Unknown',
+    },
+  }))
 
-const margin = { bottom: 30, left: 100, right: 50, top: 10 }
-const CHART_HEIGHT = 500
-const chartHeight = CHART_HEIGHT - margin.top - margin.bottom
-
-// Track layout: 3 lanes instead of 4 (Activity, Places, Tags/Icons)
-const TRACK_COUNT = 3
-const trackHeight = chartHeight / TRACK_COUNT
-const trackActivity = 0
-const trackPlaces = trackHeight
-const trackTags = 2 * trackHeight
-
-const TAG_ICON_SIZE = 18
-
-// ── Default view ──────────────────────────────────────────────────────────────
-
-const getDefaultStart = () => startOfDay(subDays(new Date(), 1))
-const getDefaultEnd = () => endOfDay(new Date())
-
-// ── D3 zoom transform from visible domain ────────────────────────────────────
-
-const computeTransform = (
-  start: Date,
-  end: Date,
-  baseScale: d3.ScaleTime<number, number>,
-  chartWidth: number,
-): d3.ZoomTransform => {
-  const bx0 = baseScale(start)
-  const bx1 = baseScale(end)
-  const k = chartWidth / (bx1 - bx0)
-  const tx = -k * bx0
-  return d3.zoomIdentity.translate(tx, 0).scale(k)
-}
-
-// ── Main Component ────────────────────────────────────────────────────────────
-
-// eslint-disable-next-line complexity -- TODO: refactor
-export const Timeline = () => {
-  const start = startOfDay(new Date(fromDate.value))
-  const end = endOfDay(new Date(toDate.value))
-
-  // Responsive width
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState(1200)
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width)
+const categorizeTags = (tags: Tag[], tagIcons: Record<string, string>): ChartItem[] =>
+  tags
+    .filter((t) => t.source !== 'lastfm')
+    .map((t) => {
+      const isPoint = !t.end_time
+      const end = t.end_time ?? new Date(t.start_time.getTime() + 15 * 60000)
+      const sourceLabel = t.source ? ` (${t.source})` : ''
+      const icon =
+        tagIcons[t.tag] ?? tagIcons[t.tag.toLowerCase()] ?? (t.tag_key ? tagIcons[t.tag_key] : undefined)
+      return {
+        color: getTagColor(t),
+        column: 'Tags / Events' as Column,
+        end,
+        entity_id: t.id,
+        entity_type: 'tag' as const,
+        icon,
+        isPoint,
+        label: t.tag,
+        start: t.start_time,
+        tooltip: {
+          details:
+            isPoint ? [`Point event${sourceLabel}`] : [formatDuration(t.start_time, end) + sourceLabel],
+          time: isPoint ? formatTime(t.start_time) : `${formatTime(t.start_time)} – ${formatTime(end)}`,
+          title: t.tag,
+        },
       }
     })
-    observer.observe(el)
-    setContainerWidth(el.clientWidth)
-    return () => observer.disconnect()
-  }, [])
 
-  const svgWidth = containerWidth
-  const chartWidth = svgWidth - margin.left - margin.right
+const formatMetricLabel = (metric: string): string =>
+  metric.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
-  // ── Data queries ──────────────────────────────────────────────────────────
+const categorizeOccasionalMetrics = (
+  dataPoints: MetricDataPointWithSource[],
+  metricUnitsMap: Record<string, string>,
+): ChartItem[] => {
+  if (!dataPoints || dataPoints.length === 0) return []
 
-  const heartRateQuery = useQuery({
-    enabled: showHeartRate.value,
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchHeartRate(start, end),
-    queryKey: ['heartRate', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
+  const metricCounts: Record<string, number> = {}
+  for (const dp of dataPoints) {
+    metricCounts[dp.metric] = (metricCounts[dp.metric] ?? 0) + 1
+  }
+
+  const occasionalMetrics = new Set(
+    Object.entries(metricCounts)
+      .filter(([, count]) => count <= OCCASIONAL_METRIC_MAX_COUNT)
+      .map(([metric]) => metric),
+  )
+
+  if (occasionalMetrics.size === 0) return []
+
+  return dataPoints
+    .filter((dp) => occasionalMetrics.has(dp.metric))
+    .map((dp) => {
+      const unit = metricUnitsMap[dp.metric] ?? ''
+      const displayValue = Number(dp.value.toFixed(2))
+      const valueStr = `${displayValue}${unit ? ` ${unit}` : ''}`
+      const metricLabel = formatMetricLabel(dp.metric)
+      const end = new Date(dp.time.getTime() + 15 * 60000)
+      const entityId = `${dp.time.toISOString()}|${dp.metric}|${dp.source}`
+
+      return {
+        color: METRIC_COLOR,
+        column: 'Tags / Events' as Column,
+        end,
+        entity_id: entityId,
+        entity_type: 'metric' as const,
+        isPoint: true,
+        label: `${metricLabel}: ${valueStr}`,
+        start: dp.time,
+        tooltip: {
+          details: [`Value: ${valueStr}`, `Source: ${dp.source}`, 'Metric measurement'],
+          time: formatTime(dp.time),
+          title: metricLabel,
+        },
+      }
+    })
+}
+
+const getResolvedColor = (p: ProductivityRecord, categories: ScreentimeCategory[]): string => {
+  if (p.resolved_category && p.resolved_category.length > 0 && categories.length > 0) {
+    for (let depth = p.resolved_category.length; depth > 0; depth--) {
+      const path = p.resolved_category.slice(0, depth)
+      const match = categories.find(
+        (c) => c.name.length === path.length && c.name.every((n, i) => n === path[i]),
+      )
+      if (match?.color) return match.color
+    }
+  }
+  return getProductivityColor(p.productivity)
+}
+
+const categorizeProductivity = (
+  productivity: ProductivityRecord[],
+  categories: ScreentimeCategory[],
+): ChartItem[] =>
+  productivity.map((p) => {
+    const categoryLabel = p.resolved_category?.join(' > ') || p.category || ''
+    return {
+      color: getResolvedColor(p, categories),
+      column: 'Screen Time' as Column,
+      end: p.end_time,
+      entity_id: p.id,
+      entity_type: 'productivity' as const,
+      isPoint: false,
+      label: p.activity,
+      start: p.start_time,
+      tooltip: {
+        details: [
+          categoryLabel,
+          p.title ? `Title: ${p.title}` : '',
+          formatDuration(p.start_time, p.end_time),
+          p.productivity != null ? `Score: ${p.productivity}` : '',
+        ].filter(Boolean),
+        time: `${formatTime(p.start_time)} – ${formatTime(p.end_time)}`,
+        title: p.activity,
+      },
+    }
   })
 
-  const hrvQuery = useQuery({
-    enabled: showHrv.value,
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchHrv(start, end),
-    queryKey: ['hrv', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
-  })
+// ── Tooltip HTML builder ──────────────────────────────────────────────────────
+
+const buildHrZoneBarHtml = (zones: Record<number, number>): string => {
+  const total = Object.values(zones).reduce((s, v) => s + v, 0)
+  if (total <= 0) return ''
+  let html = '<div class="hr-zone-bar">'
+  for (let z = 0; z <= 5; z++) {
+    const pct = ((zones[z] ?? 0) / total) * 100
+    if (pct > 0) {
+      html += `<span style="width:${pct}%;background:${hrZoneColors[z]}"></span>`
+    }
+  }
+  return html + '</div>'
+}
+
+export const buildTooltipHtml = (item: ChartItem, music: string[], activities: Activity[]): string => {
+  let html = `<div class="tooltip-title">${escapeHtml(item.tooltip.title)}</div>`
+  html += `<div class="tooltip-time">${escapeHtml(item.tooltip.time)}</div>`
+  for (const d of item.tooltip.details) {
+    html += `<div class="tooltip-detail">${escapeHtml(d)}</div>`
+  }
+
+  if (item.activity_type === 'exercise') {
+    const activity = activities.find(
+      (a) => a.activity_type === 'exercise' && a.start_time.getTime() === item.start.getTime(),
+    )
+    const zones = activity?.hr_zone_secs as Record<number, number> | undefined
+    if (zones) html += buildHrZoneBarHtml(zones)
+  }
+
+  if (music.length > 0) {
+    const musicList = music.slice(0, 3).join(', ')
+    const suffix = music.length > 3 ? ` +${music.length - 3} more` : ''
+    html += `<div class="tooltip-music">♪ ${escapeHtml(musicList + suffix)}</div>`
+  }
+
+  return html
+}
+
+// ── Chart layout constants ────────────────────────────────────────────────────
+
+const VERTICAL_CHART_HEIGHT = 800
+const HORIZONTAL_CHART_HEIGHT = 500
+const HORIZONTAL_MARGIN = { bottom: 30, left: 60, right: 60, top: 10 }
+const VERTICAL_MARGIN = { bottom: 10, left: 60, right: 10, top: 30 }
+
+const computeVerticalZoomTransform = (
+  baseScale: d3.ScaleTime<number, number>,
+  vStart: Date,
+  vEnd: Date,
+): d3.ZoomTransform => {
+  const by0 = baseScale(vStart)
+  const by1 = baseScale(vEnd)
+  const k = VERTICAL_CHART_HEIGHT / (by1 - by0)
+  return d3.zoomIdentity.translate(0, -k * by0).scale(k)
+}
+
+const computeHorizontalZoomTransform = (
+  baseScale: d3.ScaleTime<number, number>,
+  vStart: Date,
+  vEnd: Date,
+  chartWidth: number,
+): d3.ZoomTransform => {
+  const bx0 = baseScale(vStart)
+  const bx1 = baseScale(vEnd)
+  const k = chartWidth / (bx1 - bx0)
+  return d3.zoomIdentity.translate(-k * bx0, 0).scale(k)
+}
+
+// ── Main Timeline component ───────────────────────────────────────────────────
+
+// eslint-disable-next-line complexity -- D3 visualization component
+export const Timeline = () => {
+  const effectiveViewStart = viewStart.value ?? getDefaultViewStart()
+  const effectiveViewEnd = viewEnd.value ?? getDefaultViewEnd()
+
+  const fetchStart = startOfDay(new Date(fromDate.value))
+  const fetchEnd = endOfDay(new Date(toDate.value))
+
+  // ── Orientation state ──────────────────────────────────────────────────────
+  const [orientation, setOrientation] = useState<Orientation>(
+    () => _initialHash.orientation ?? getDefaultOrientation(),
+  )
+
+  const orientationRef = useRef(orientation)
+  orientationRef.current = orientation
+
+  // ── Data queries ───────────────────────────────────────────────────────────
 
   const activitiesQuery = useQuery({
-    enabled: showActivities.value,
     placeholderData: keepPreviousData,
-    queryFn: () => fetchActivities(start, end),
-    queryKey: ['activities', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
-  })
-
-  const productivityQuery = useQuery({
-    enabled: showProductivity.value,
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchProductivity(start, end),
-    queryKey: ['productivity', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
+    queryFn: () =>
+      fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), [
+        'sleep',
+        'exercise',
+        'meditation',
+        'nap',
+      ]),
+    queryKey: ['timeline-activities', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
   })
 
   const placesQuery = useQuery({
-    enabled: showPlaces.value,
     placeholderData: keepPreviousData,
-    queryFn: () => fetchPlaces(start, end),
-    queryKey: ['places', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
+    queryFn: () => fetchPlaces(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryKey: ['timeline-places', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
   })
 
   const tagsQuery = useQuery({
-    enabled: showTags.value || showActivities.value,
     placeholderData: keepPreviousData,
-    queryFn: () => fetchTags(start, end),
-    queryKey: ['tags', fromDate.value, toDate.value],
-    staleTime: 10 * 60 * 1000,
+    queryFn: () => fetchTags(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryKey: ['timeline-tags', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const productivityQuery = useQuery({
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchProductivity(fetchStart, fetchEnd),
+    queryKey: ['timeline-productivity', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const screentimeCategoriesQuery = useQuery<ScreentimeCategory[]>({
+    queryFn: fetchScreentimeCategories,
+    queryKey: ['screentime-categories'],
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const settingsQuery = useQuery({
+    queryFn: fetchUserSettings,
+    queryKey: ['user-settings'],
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const ouraMetricsQuery = useQuery({
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      fetchBucketedMetrics(
+        subDays(fetchStart, 0.5),
+        addDays(fetchEnd, 0.5),
+        ['sleep_score', 'sleep_efficiency', 'sleep_restfulness', 'sleep_deep_score', 'sleep_rem_score'],
+        '1d',
+      ),
+    queryKey: ['timeline-oura-sleep', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const hasLastFm = Boolean(settingsQuery.data?.lastfm_username)
+
+  const scrobblesQuery = useQuery({
+    enabled: hasLastFm,
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchScrobbles(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryKey: ['timeline-scrobbles', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const sparklineMetricsQuery = useQuery({
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      fetchBucketedMetrics(
+        subDays(fetchStart, 0.5),
+        addDays(fetchEnd, 0.5),
+        ['heart_rate', 'hrv_rmssd'],
+        '5m',
+      ),
+    queryKey: ['timeline-sparkline-metrics', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const heartRateQuery = useQuery({
+    enabled: orientation === 'horizontal',
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchHeartRate(new Date(fromDate.value), new Date(toDate.value)),
+    queryKey: ['timeline-hr', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const hrvQuery = useQuery({
+    enabled: orientation === 'horizontal',
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchHrv(new Date(fromDate.value), new Date(toDate.value)),
+    queryKey: ['timeline-hrv', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
   })
 
   const tagMappingsQuery = useQuery({
@@ -534,88 +649,257 @@ export const Timeline = () => {
     staleTime: 30 * 60 * 1000,
   })
 
-  // ── Derived data ────────────────────────────────────────────────────────────
+  const customMetricsQuery = useQuery({
+    queryFn: fetchCustomMetrics,
+    queryKey: ['custom-metrics'],
+    staleTime: 30 * 60 * 1000,
+  })
 
-  const isLoading =
-    heartRateQuery.isLoading ||
-    hrvQuery.isLoading ||
-    activitiesQuery.isLoading ||
-    productivityQuery.isLoading ||
-    placesQuery.isLoading ||
-    tagsQuery.isLoading
-  const isFetching =
-    heartRateQuery.isFetching ||
-    hrvQuery.isFetching ||
-    activitiesQuery.isFetching ||
-    productivityQuery.isFetching ||
-    placesQuery.isFetching ||
-    tagsQuery.isFetching
-  const hasError =
-    heartRateQuery.isError ||
-    hrvQuery.isError ||
-    activitiesQuery.isError ||
-    productivityQuery.isError ||
-    placesQuery.isError ||
-    tagsQuery.isError
+  const occasionalMetricNames = useMemo(() => {
+    const customNames = (customMetricsQuery.data ?? []).map((m) => m.name)
+    return [...OCCASIONAL_BUILTIN_METRICS, ...customNames]
+  }, [customMetricsQuery.data])
 
-  const places = placesQuery.data || []
+  const allMetricUnits = useMemo(() => {
+    const units: Record<string, string> = { ...builtinMetricUnits }
+    for (const m of customMetricsQuery.data ?? []) {
+      units[m.name] = m.unit
+    }
+    return units
+  }, [customMetricsQuery.data])
+
+  const occasionalMetricsQuery = useQuery({
+    enabled: occasionalMetricNames.length > 0,
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const start = subDays(fetchStart, 0.5)
+      const end = addDays(fetchEnd, 0.5)
+      const results = await Promise.all(
+        occasionalMetricNames.map((metric) => fetchMetricTimeSeriesWithSource(metric, start, end)),
+      )
+      return results.flat()
+    },
+    queryKey: ['timeline-occasional-metrics', fromDate.value, toDate.value, occasionalMetricNames],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // ── Refs ───────────────────────────────────────────────────────────────────
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown>>()
+  const isProgrammaticZoom = useRef(false)
+  const baseScaleRef = useRef<d3.ScaleTime<number, number>>()
+  const zoomRafRef = useRef<number>(0)
+  const drawRef = useRef<((scale: d3.ScaleTime<number, number>) => void) | null>(null)
+
+  // ── Derived data ───────────────────────────────────────────────────────────
+
+  const todayKey = format(new Date(), 'yyyy-MM-dd')
+  const baseScaleDomain = useMemo(
+    () => [startOfDay(new Date(todayKey)), endOfDay(new Date(todayKey))] as [Date, Date],
+    [todayKey],
+  )
+
+  const activities = activitiesQuery.data ?? []
+  const places = placesQuery.data ?? []
+  const tags = tagsQuery.data ?? []
+  const productivity = productivityQuery.data ?? []
+  const scrobbles = scrobblesQuery.data ?? []
+
+  const ouraByDate = useMemo<OuraSleepByDate>(() => {
+    const map: OuraSleepByDate = new Map()
+    for (const bucket of ouraMetricsQuery.data?.buckets ?? []) {
+      const key = format(new Date(bucket.start), 'yyyy-MM-dd')
+      const metrics: OuraSleepMetrics = {}
+      for (const [metric, stats] of Object.entries(bucket.metrics)) {
+        metrics[metric] = stats.avg
+      }
+      map.set(key, metrics)
+    }
+    return map
+  }, [ouraMetricsQuery.data])
+
+  const tagIcons = useMemo<Record<string, string>>(() => {
+    return tagMappingsQuery.data?.icons ?? {}
+  }, [tagMappingsQuery.data])
+
+  const musicItems = useMemo(() => (hasLastFm ? categorizeMusic(scrobbles) : []), [hasLastFm, scrobbles])
+  const showMusicColumn = musicItems.length > 0
+
+  const occasionalMetricItems = useMemo(
+    () => categorizeOccasionalMetrics(occasionalMetricsQuery.data ?? [], allMetricUnits),
+    [occasionalMetricsQuery.data, allMetricUnits],
+  )
+
+  const sparklineBuckets = useMemo(
+    () => parseBucketedData(sparklineMetricsQuery.data),
+    [sparklineMetricsQuery.data],
+  )
+
   const uniquePlaceNames = useMemo(
     () => [...new Set(places.map((p) => p.region))].filter(Boolean).sort(),
     [places],
   )
-  const activities = activitiesQuery.data || []
-  const allTags = tagsQuery.data || []
-  const tagIcons = useMemo(() => tagMappingsQuery.data?.icons ?? {}, [tagMappingsQuery.data?.icons])
 
-  const uniqueExerciseTypes = useMemo(() => {
-    const exerciseSessions = activities.filter((a) => a.activity_type === 'exercise')
-    return [...new Set(exerciseSessions.map(getExerciseTypeName))].filter(Boolean).sort()
-  }, [activities])
-
-  // Build unified activity lane
-  const { items: activityLaneItems, overlaps: overlapWarnings } = useMemo(
-    () => buildActivityLaneItems(activities, allTags, tagIcons, uniqueExerciseTypes),
-    [activities, allTags, tagIcons, uniqueExerciseTypes],
-  )
-
-  // Point-only tags (no end_time) and non-activity duration tags for tag lane
-  const pointAndNonActivityTags = useMemo(
+  // Unified Activity column items (activities + merged duration tags)
+  const { items: activityItems, overlaps: overlapWarnings } = useMemo(
     () =>
-      allTags.filter((t) => {
-        // Exclude lastfm source
-        if (t.source === 'lastfm' || t.source === 'lastfm-auto') return false
-        // If it's a duration tag that went into the activity lane, exclude
-        if (isDurationTagActivityLike(t)) return false
-        // Also exclude computer tags from the tag icons lane
-        if (t.tag.startsWith(COMPUTER_TAG_PREFIX)) return false
-        return true
-      }),
-    [allTags],
+      buildActivityColumnItems(
+        activities,
+        tags,
+        tagIcons,
+        activityColors,
+        getExerciseColor,
+        getExerciseTypeName,
+        ouraByDate,
+        (a, end) => buildSleepDetails(a, end, ouraByDate),
+        scrobbles,
+      ),
+    [activities, tags, tagIcons, ouraByDate, scrobbles],
   )
 
-  // Calculate effective view range
-  const effectiveViewStart = viewStart.value || getDefaultStart()
-  const effectiveViewEnd = viewEnd.value || getDefaultEnd()
+  // Tags that should stay in the Tags / Events column (not pulled into Activity)
+  const nonActivityTags = useMemo(
+    () =>
+      tags.filter((t) => {
+        if (!t.end_time) return true // point tags always go to Tags column
+        if (t.source && EXCLUDED_TAG_SOURCES.has(t.source)) return true
+        for (const prefix of EXCLUDED_TAG_PREFIXES) {
+          if (t.tag.startsWith(prefix)) return true
+        }
+        // Check if this tag was placed in the Activity column
+        return !activityItems.some((i) => i.entity_id === t.id)
+      }),
+    [tags, activityItems],
+  )
 
-  // ── Navigation ────────────────────────────────────────────────────────────
+  // ── Legend / filtering ─────────────────────────────────────────────────────
+
+  const [hiddenCategories, setHiddenCategories] = useState<Set<LegendCategory>>(
+    () => new Set(_initialHash.hide),
+  )
+  const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
+  hiddenCategoriesRef.current = hiddenCategories
+
+  const [showSparklineHR, setShowSparklineHR] = useState(true)
+  const [showSparklineHRV, setShowSparklineHRV] = useState(true)
+
+  // Sync view state + orientation → URL hash
+  useSignalEffect(() => {
+    const hash = buildViewHash(
+      viewStart.value,
+      viewEnd.value,
+      hiddenCategoriesRef.current,
+      orientationRef.current,
+    )
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+  })
+
+  useEffect(() => {
+    const hash = buildViewHash(viewStart.value, viewEnd.value, hiddenCategories, orientation)
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+  }, [hiddenCategories, orientation])
+
+  const toggleCategory = useCallback((cat: LegendCategory) => {
+    setHiddenCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }, [])
+
+  const isItemHidden = useCallback(
+    (item: ChartItem): boolean => {
+      for (const cat of hiddenCategories) {
+        if (CATEGORY_MATCHERS[cat](item)) return true
+      }
+      return false
+    },
+    [hiddenCategories],
+  )
+
+  const allColumns: Column[] = useMemo(
+    () => (showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS),
+    [showMusicColumn],
+  )
+
+  const allChartItems = useMemo(
+    () => [
+      ...activityItems,
+      ...categorizeLocations(places, uniquePlaceNames),
+      ...categorizeTags(nonActivityTags, tagIcons),
+      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? []),
+      ...occasionalMetricItems,
+      ...musicItems,
+    ],
+    [
+      activityItems,
+      places,
+      uniquePlaceNames,
+      nonActivityTags,
+      tagIcons,
+      productivity,
+      screentimeCategoriesQuery.data,
+      occasionalMetricItems,
+      musicItems,
+    ],
+  )
+
+  const chartItems = useMemo(
+    () => allChartItems.filter((item) => !isItemHidden(item)),
+    [allChartItems, isItemHidden],
+  )
+
+  const columns = useMemo(
+    () => allColumns.filter((col) => chartItems.some((item) => item.column === col)),
+    [allColumns, chartItems],
+  )
+
+  const columnData = useMemo(
+    () =>
+      columns.map((col) => {
+        const colItems = chartItems.filter((i) => i.column === col)
+        const packed = packLanes(
+          colItems,
+          (i) => i.start,
+          (i) => (i.isPoint ? undefined : i.end),
+        )
+        return { column: col, ...packed }
+      }),
+    [columns, chartItems],
+  )
+
+  const isFetching =
+    activitiesQuery.isFetching ||
+    placesQuery.isFetching ||
+    tagsQuery.isFetching ||
+    productivityQuery.isFetching ||
+    scrobblesQuery.isFetching ||
+    occasionalMetricsQuery.isFetching ||
+    sparklineMetricsQuery.isFetching
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
 
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
     viewStart.value = zoomStart
     viewEnd.value = zoomEnd
 
-    const fetchStart = startOfDay(new Date(fromDate.value))
-    const fetchEnd = endOfDay(new Date(toDate.value))
+    const currentFetchStart = startOfDay(new Date(fromDate.value))
+    const currentFetchEnd = endOfDay(new Date(toDate.value))
     const todayStr = formatISO(new Date(), { representation: 'date' })
 
     let needsExpand = false
     let newFrom = fromDate.value
     let newTo = toDate.value
 
-    if (zoomStart < fetchStart) {
+    if (zoomStart < currentFetchStart) {
       newFrom = formatISO(subDays(zoomStart, 3), { representation: 'date' })
       needsExpand = true
     }
-    if (zoomEnd > fetchEnd) {
+    if (zoomEnd > currentFetchEnd) {
       const expanded = formatISO(addDays(zoomEnd, 3), { representation: 'date' })
       newTo = expanded > todayStr ? todayStr : expanded
       needsExpand = true
@@ -629,8 +913,8 @@ export const Timeline = () => {
 
   const handleJumpDays = useCallback(
     (days: number) => {
-      const currentStart = viewStart.value || getDefaultStart()
-      const currentEnd = viewEnd.value || getDefaultEnd()
+      const currentStart = viewStart.value ?? getDefaultViewStart()
+      const currentEnd = viewEnd.value ?? getDefaultViewEnd()
       const newStart = addDays(currentStart, days)
       const newEnd = addDays(currentEnd, days)
       const todayEnd = endOfDay(new Date())
@@ -647,11 +931,679 @@ export const Timeline = () => {
     toDate.value = formatISO(new Date(), { representation: 'date' })
   }, [])
 
+  // ── showTooltip / hideTooltip (shared) ────────────────────────────────────
+
+  const showTooltip = useCallback(
+    (event: MouseEvent, item: ChartItem) => {
+      if (!tooltipRef.current || !containerRef.current) return
+      const music = findOverlappingScrobbles(scrobbles, item.start, item.end)
+      const tip = tooltipRef.current
+      const containerRect = containerRef.current.getBoundingClientRect()
+      tip.innerHTML = buildTooltipHtml(item, music, activities)
+      tip.style.display = 'block'
+      const x = event.clientX - containerRect.left + 12
+      const y = event.clientY - containerRect.top - 10
+      tip.style.left = `${Math.min(x, containerRect.width - 320)}px`
+      tip.style.top = `${y}px`
+    },
+    [scrobbles, activities],
+  )
+
+  const hideTooltip = useCallback(() => {
+    if (tooltipRef.current) tooltipRef.current.style.display = 'none'
+  }, [])
+
+  // ── Vertical chart rendering ───────────────────────────────────────────────
+
+  const renderVerticalChart = useCallback(() => {
+    if (!svgRef.current || !containerRef.current) return
+
+    const containerWidth = containerRef.current.clientWidth
+    const margin = VERTICAL_MARGIN
+    const chartWidth = containerWidth - margin.left - margin.right
+
+    const svg = d3.select(svgRef.current)
+    svg.selectAll('*').remove()
+    svg.attr('width', containerWidth).attr('height', VERTICAL_CHART_HEIGHT + margin.top + margin.bottom)
+
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
+
+    const baseScale = d3.scaleTime().domain(baseScaleDomain).range([0, VERTICAL_CHART_HEIGHT])
+    baseScaleRef.current = baseScale
+
+    const yScale = d3
+      .scaleTime()
+      .domain([effectiveViewStart, effectiveViewEnd])
+      .range([0, VERTICAL_CHART_HEIGHT])
+
+    const colWidth = chartWidth / columns.length
+    const colGap = 4
+    const colPadding = 2
+
+    const defs = svg.append('defs')
+    defs
+      .append('clipPath')
+      .attr('id', 'chart-clip')
+      .append('rect')
+      .attr('width', chartWidth)
+      .attr('height', VERTICAL_CHART_HEIGHT)
+
+    const chartGroup = g.append('g').attr('clip-path', 'url(#chart-clip)')
+
+    const draw = (currentYScale: d3.ScaleTime<number, number>) => {
+      chartGroup.selectAll('*').remove()
+      g.selectAll('.hour-label').remove()
+      g.selectAll('.day-label').remove()
+
+      const domain = currentYScale.domain()
+      const domainStart = domain[0]!
+      const domainEnd = domain[1]!
+
+      const oneHourLater = new Date(domainStart.getTime() + 3600000)
+      const pixelsPerHour = Math.abs(currentYScale(oneHourLater) - currentYScale(domainStart))
+      let hourIntervalHours: number
+      if (pixelsPerHour >= 30) hourIntervalHours = 1
+      else if (pixelsPerHour >= 15) hourIntervalHours = 2
+      else if (pixelsPerHour >= 8) hourIntervalHours = 4
+      else if (pixelsPerHour >= 4) hourIntervalHours = 6
+      else if (pixelsPerHour >= 2) hourIntervalHours = 12
+      else hourIntervalHours = 24
+
+      const hours = d3.timeHour.range(domainStart, domainEnd)
+      chartGroup
+        .selectAll('.grid-line')
+        .data(hours)
+        .enter()
+        .append('line')
+        .attr('x1', 0)
+        .attr('x2', chartWidth)
+        .attr('y1', (d) => currentYScale(d))
+        .attr('y2', (d) => currentYScale(d))
+        .attr('stroke', 'currentColor')
+        .attr('stroke-opacity', 0.1)
+
+      const labelHours = hours.filter((d) => d.getHours() % hourIntervalHours === 0)
+      const hourFontSize = chartWidth > 1200 ? '0.85rem' : '0.7rem'
+      g.selectAll('.hour-label')
+        .data(labelHours)
+        .enter()
+        .append('text')
+        .attr('class', 'hour-label')
+        .attr('x', -8)
+        .attr('y', (d) => currentYScale(d))
+        .attr('dy', '0.35em')
+        .attr('text-anchor', 'end')
+        .attr('fill', 'currentColor')
+        .attr('font-size', hourFontSize)
+        .attr('opacity', 0.6)
+        .text((d) => format(d, 'HH:mm'))
+
+      const midnights = d3.timeDay.range(domainStart, domainEnd)
+      for (const midnight of midnights) {
+        const my = currentYScale(midnight)
+        chartGroup
+          .append('line')
+          .attr('x1', 0)
+          .attr('x2', chartWidth)
+          .attr('y1', my)
+          .attr('y2', my)
+          .attr('stroke', 'currentColor')
+          .attr('stroke-opacity', 0.3)
+          .attr('stroke-width', 1.5)
+          .attr('stroke-dasharray', '6,3')
+
+        g.append('text')
+          .attr('class', 'day-label')
+          .attr('x', chartWidth + margin.right)
+          .attr('y', my + 4)
+          .attr('dy', '0.35em')
+          .attr('text-anchor', 'end')
+          .attr('fill', 'currentColor')
+          .attr('font-size', '0.65rem')
+          .attr('font-weight', '600')
+          .attr('opacity', 0.5)
+          .text(format(midnight, 'MMM d'))
+      }
+
+      for (let i = 1; i < columns.length; i++) {
+        chartGroup
+          .append('line')
+          .attr('x1', i * colWidth)
+          .attr('x2', i * colWidth)
+          .attr('y1', currentYScale.range()[0]!)
+          .attr('y2', currentYScale.range()[1]!)
+          .attr('stroke', 'currentColor')
+          .attr('stroke-opacity', 0.08)
+      }
+
+      drawColumnItems(
+        chartGroup,
+        columnData,
+        colWidth,
+        colGap,
+        colPadding,
+        currentYScale,
+        showTooltip,
+        hideTooltip,
+      )
+
+      if (sparklineBuckets.length > 0 && (showSparklineHR || showSparklineHRV)) {
+        const getItemRect = (item: ChartItem): { x: number; width: number } | undefined => {
+          for (let ci = 0; ci < columnData.length; ci++) {
+            const cd = columnData[ci]!
+            const found = cd.items.find((packed) => packed.item === item)
+            if (found) {
+              const cx = ci * colWidth + colGap
+              const usable = colWidth - colGap * 2
+              const lanes = Math.max(cd.laneCount, 1)
+              const lw = (usable - (lanes - 1) * colPadding) / lanes
+              return { width: lw, x: cx + found.lane * (lw + colPadding) }
+            }
+          }
+          return undefined
+        }
+
+        drawActivitySparklines(
+          chartGroup,
+          defs,
+          chartItems,
+          sparklineBuckets,
+          currentYScale,
+          showSparklineHR,
+          showSparklineHRV,
+          getItemRect,
+        )
+      }
+
+      drawNowLine(chartGroup, chartWidth, currentYScale)
+    }
+
+    drawRef.current = draw
+    draw(yScale)
+
+    if (zoomBehaviorRef.current) {
+      isProgrammaticZoom.current = true
+      svg.call(zoomBehaviorRef.current)
+      svg.call(
+        zoomBehaviorRef.current.transform,
+        computeVerticalZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd),
+      )
+      isProgrammaticZoom.current = false
+    }
+  }, [
+    baseScaleDomain,
+    chartItems,
+    columnData,
+    columns,
+    effectiveViewEnd,
+    effectiveViewStart,
+    sparklineBuckets,
+    showSparklineHR,
+    showSparklineHRV,
+    showTooltip,
+    hideTooltip,
+  ])
+
+  // ── Horizontal chart rendering ─────────────────────────────────────────────
+
+  const renderHorizontalChart = useCallback(() => {
+    if (!svgRef.current || !containerRef.current) return
+
+    const containerWidth = containerRef.current.clientWidth
+    const margin = HORIZONTAL_MARGIN
+    const chartWidth = containerWidth - margin.left - margin.right
+    const chartHeight = HORIZONTAL_CHART_HEIGHT - margin.top - margin.bottom
+
+    const TRACK_COUNT = 3
+    const trackHeight = chartHeight / TRACK_COUNT
+    const trackActivity = 0
+    const trackPlaces = trackHeight
+    const trackTags = 2 * trackHeight
+    const TAG_ICON_SIZE = 18
+
+    const svg = d3.select(svgRef.current)
+    svg.selectAll('*').remove()
+    svg.attr('width', containerWidth).attr('height', HORIZONTAL_CHART_HEIGHT)
+
+    // Add defs once
+    const defs = svg.append('defs')
+    defs
+      .append('clipPath')
+      .attr('id', 'h-chart-clip')
+      .append('rect')
+      .attr('x', 0)
+      .attr('y', 0)
+      .attr('width', chartWidth)
+      .attr('height', chartHeight)
+
+    const baseScale = d3
+      .scaleTime()
+      .domain([getDefaultViewStart(), getDefaultViewEnd()])
+      .range([0, chartWidth])
+    baseScaleRef.current = baseScale
+
+    const heartRates = heartRateQuery.data ?? []
+    const hrvData = hrvQuery.data ?? []
+
+    const yHr = d3.scaleLinear().domain([40, 200]).range([chartHeight, 0])
+    const hrvExtent = d3.extent(hrvData, ([, v]) => v) as [number, number]
+    const hrvMin = hrvExtent[0] ?? 0
+    const hrvMax = hrvExtent[1] ?? 150
+    const hrvPadding = Math.max((hrvMax - hrvMin) * 0.2, 5)
+    const yHrv = d3
+      .scaleLinear()
+      .domain([Math.max(0, hrvMin - hrvPadding), hrvMax + hrvPadding])
+      .nice()
+      .range([chartHeight, 0])
+
+    const visibleActivityItems = activityItems.filter((i) => !isItemHidden(i))
+    const packedActivityItems = packLanes(
+      visibleActivityItems,
+      (i) => i.start,
+      (i) => i.end,
+    )
+
+    const pointTags = chartItems.filter((i) => i.column === 'Tags / Events' && i.isPoint)
+    const packedPointTags = packLanes(
+      pointTags,
+      (t) => t.start,
+      () => undefined,
+    )
+
+    const activitySubLaneHeight =
+      packedActivityItems.laneCount > 1 ? trackHeight / packedActivityItems.laneCount : trackHeight
+
+    // eslint-disable-next-line complexity -- D3 drawing function; splitting would obscure data flow
+    const draw = (currentXScale: d3.ScaleTime<number, number>) => {
+      // Only redraw the chart content group — axes and static elements survive
+      svg.selectAll('.chart-content').remove()
+
+      const g = svg
+        .append('g')
+        .attr('class', 'chart-content')
+        .attr('transform', `translate(${margin.left},${margin.top})`)
+
+      const clipped = g.append('g').attr('clip-path', 'url(#h-chart-clip)')
+
+      // Day boundary lines
+      const domain = currentXScale.domain()
+      const midnights = d3.timeDay.range(domain[0]!, domain[1]!)
+      for (const midnight of midnights) {
+        const mx = currentXScale(midnight)
+        g.append('line')
+          .attr('x1', mx)
+          .attr('x2', mx)
+          .attr('y1', 0)
+          .attr('y2', chartHeight)
+          .attr('stroke', 'currentColor')
+          .attr('stroke-opacity', 0.2)
+          .attr('stroke-dasharray', '4,2')
+
+        g.append('text')
+          .attr('x', mx + 3)
+          .attr('y', -4)
+          .attr('fill', 'currentColor')
+          .attr('font-size', '0.65rem')
+          .attr('opacity', 0.5)
+          .text(format(midnight, 'EEE MMM d'))
+      }
+
+      // Lane separator lines
+      g.append('line')
+        .attr('x1', 0)
+        .attr('x2', chartWidth)
+        .attr('y1', trackHeight)
+        .attr('y2', trackHeight)
+        .attr('stroke', 'currentColor')
+        .attr('stroke-opacity', 0.2)
+      g.append('line')
+        .attr('x1', 0)
+        .attr('x2', chartWidth)
+        .attr('y1', trackHeight * 2)
+        .attr('y2', trackHeight * 2)
+        .attr('stroke', 'currentColor')
+        .attr('stroke-opacity', 0.2)
+
+      // Lane labels
+      const laneLabels = [
+        { label: 'Activity', y: trackActivity },
+        { label: 'Location', y: trackPlaces },
+        { label: 'Tags', y: trackTags },
+      ]
+      for (const { label, y } of laneLabels) {
+        g.append('text')
+          .attr('x', -margin.left + 4)
+          .attr('y', y + trackHeight / 2)
+          .attr('dy', '0.35em')
+          .attr('fill', 'currentColor')
+          .attr('font-size', '0.65rem')
+          .attr('opacity', 0.5)
+          .text(label)
+      }
+
+      // ── Activity lane ──
+      for (const { item, lane } of packedActivityItems.items) {
+        const laneY = trackActivity + lane * activitySubLaneHeight
+        const laneH = activitySubLaneHeight - 1
+        const rx = currentXScale(item.start)
+        const rw = Math.max(0, currentXScale(item.end) - rx)
+
+        clipped
+          .append('rect')
+          .attr('x', rx)
+          .attr('y', laneY)
+          .attr('width', rw)
+          .attr('height', laneH)
+          .attr('fill', item.color)
+          .attr('opacity', 0.7)
+          .attr('rx', 2)
+          .attr('cursor', 'pointer')
+          .on('mouseenter', function (event: MouseEvent) {
+            d3.select(this).attr('opacity', 0.9)
+            showTooltip(event, item)
+          })
+          .on('mouseleave', function () {
+            d3.select(this).attr('opacity', 0.7)
+            hideTooltip()
+          })
+
+        if (rw > 40) {
+          const maxChars = Math.floor(rw / 6)
+          const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+          clipped
+            .append('text')
+            .attr('x', rx + 4)
+            .attr('y', laneY + Math.min(laneH * 0.6, 14))
+            .attr('fill', 'white')
+            .attr('font-size', '0.65rem')
+            .attr('pointer-events', 'none')
+            .text(text)
+        }
+
+        if (item.icon && isEmoji(item.icon) && rw > 20) {
+          clipped
+            .append('text')
+            .attr('x', rx + rw / 2)
+            .attr('y', laneY + laneH / 2)
+            .attr('dy', '0.35em')
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '12px')
+            .attr('pointer-events', 'none')
+            .text(item.icon)
+        }
+      }
+
+      // ── Places lane ──
+      const placeItems = chartItems.filter((i) => i.column === 'Location')
+      for (const place of placeItems) {
+        clipped
+          .append('rect')
+          .attr('x', currentXScale(place.start))
+          .attr('y', trackPlaces)
+          .attr('width', Math.max(0, currentXScale(place.end) - currentXScale(place.start)))
+          .attr('height', trackHeight)
+          .attr('fill', place.color)
+          .attr('opacity', 0.7)
+          .attr('cursor', 'pointer')
+          .on('mouseenter', function (event: MouseEvent) {
+            d3.select(this).attr('opacity', 0.9)
+            showTooltip(event, place)
+          })
+          .on('mouseleave', function () {
+            d3.select(this).attr('opacity', 0.7)
+            hideTooltip()
+          })
+      }
+
+      // ── Tags lane: stacked icons ──
+      for (const { item: tag, lane } of packedPointTags.items) {
+        const icon = tag.icon
+        const tx = currentXScale(tag.start)
+        const tagY = trackTags + 4 + lane * (TAG_ICON_SIZE + 2)
+
+        if (icon && isEmoji(icon)) {
+          clipped
+            .append('text')
+            .attr('x', tx)
+            .attr('y', tagY + TAG_ICON_SIZE * 0.8)
+            .attr('font-size', TAG_ICON_SIZE)
+            .attr('text-anchor', 'middle')
+            .attr('cursor', 'pointer')
+            .text(icon)
+            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
+            .on('mouseleave', hideTooltip)
+        } else if (icon && isUrl(icon)) {
+          clipped
+            .append('image')
+            .attr('href', icon)
+            .attr('x', tx - TAG_ICON_SIZE / 2)
+            .attr('y', tagY)
+            .attr('width', TAG_ICON_SIZE)
+            .attr('height', TAG_ICON_SIZE)
+            .attr('cursor', 'pointer')
+            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
+            .on('mouseleave', hideTooltip)
+        } else {
+          clipped
+            .append('line')
+            .attr('x1', tx)
+            .attr('x2', tx)
+            .attr('y1', trackTags)
+            .attr('y2', trackTags + trackHeight)
+            .attr('stroke', tag.color)
+            .attr('stroke-width', 1.5)
+            .attr('stroke-dasharray', '3,2')
+            .attr('opacity', 0.6)
+            .attr('cursor', 'pointer')
+            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
+            .on('mouseleave', hideTooltip)
+        }
+      }
+
+      // ── HR/HRV background lines ──
+      if (heartRates.length > 0) {
+        const hrLine = d3
+          .line<[Date, number] | null>()
+          .defined(Boolean)
+          .x(([time]) => currentXScale(time))
+          .y(([, rate]) => yHr(rate))
+        g.append('path')
+          .datum(preprocessData(heartRates, 10))
+          .attr('fill', 'none')
+          .attr('stroke', HR_COLOR)
+          .attr('stroke-width', 1.5)
+          .attr('pointer-events', 'none')
+          .attr('d', hrLine as never)
+      }
+
+      if (hrvData.length > 0) {
+        const hrvLine = d3
+          .line<[Date, number] | null>()
+          .defined(Boolean)
+          .x(([time]) => currentXScale(time))
+          .y(([, value]) => yHrv(value))
+        g.append('path')
+          .datum(preprocessData(hrvData, 10))
+          .attr('fill', 'none')
+          .attr('stroke', HRV_COLOR)
+          .attr('stroke-width', 1.5)
+          .attr('pointer-events', 'none')
+          .attr('d', hrvLine as never)
+      }
+
+      // ── Axes ──
+      g.append('g')
+        .attr('transform', `translate(0,${chartHeight})`)
+        .call(d3.axisBottom(currentXScale).ticks(8))
+        .selectAll('text')
+        .style('fill', 'currentColor')
+
+      if (heartRates.length > 0) {
+        g.append('g').call(d3.axisLeft(yHr).ticks(5)).selectAll('text').style('fill', HR_COLOR)
+      }
+
+      if (hrvData.length > 0) {
+        g.append('g')
+          .attr('transform', `translate(${chartWidth},0)`)
+          .call(d3.axisRight(yHrv).ticks(5))
+          .selectAll('text')
+          .style('fill', HRV_COLOR)
+      }
+    }
+
+    drawRef.current = draw
+    draw(d3.scaleTime().domain([effectiveViewStart, effectiveViewEnd]).range([0, chartWidth]))
+
+    if (zoomBehaviorRef.current) {
+      isProgrammaticZoom.current = true
+      svg.call(zoomBehaviorRef.current)
+      svg.call(
+        zoomBehaviorRef.current.transform,
+        computeHorizontalZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd, chartWidth),
+      )
+      isProgrammaticZoom.current = false
+    }
+  }, [
+    activityItems,
+    chartItems,
+    effectiveViewEnd,
+    effectiveViewStart,
+    heartRateQuery.data,
+    hrvQuery.data,
+    isItemHidden,
+    showTooltip,
+    hideTooltip,
+  ])
+
+  // Re-render on data/size change
+  useEffect(() => {
+    if (orientation === 'vertical') {
+      renderVerticalChart()
+    } else {
+      renderHorizontalChart()
+    }
+    const resizeObserver = new ResizeObserver(() => {
+      if (orientationRef.current === 'vertical') {
+        renderVerticalChart()
+      } else {
+        renderHorizontalChart()
+      }
+    })
+    if (containerRef.current) resizeObserver.observe(containerRef.current)
+    return () => resizeObserver.disconnect()
+  }, [orientation, renderVerticalChart, renderHorizontalChart])
+
+  // ── Zoom behavior — set up once per orientation ────────────────────────────
+
+  useEffect(() => {
+    if (!svgRef.current || !baseScaleRef.current) return
+    const svg = d3.select(svgRef.current)
+    cancelAnimationFrame(zoomRafRef.current)
+
+    if (orientation === 'vertical') {
+      const zoom = d3
+        .zoom<SVGSVGElement, unknown>()
+        .scaleExtent([0.1, 20])
+        .clickDistance(5)
+        .filter((event: Event) => event.type !== 'dblclick')
+        .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+          if (isProgrammaticZoom.current) return
+          cancelAnimationFrame(zoomRafRef.current)
+          zoomRafRef.current = requestAnimationFrame(() => {
+            const baseScale = baseScaleRef.current
+            if (!baseScale) return
+            const newY = event.transform.rescaleY(baseScale)
+            const newDomain = newY.domain() as [Date, Date]
+            drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, VERTICAL_CHART_HEIGHT]))
+          })
+        })
+        .on('end', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+          if (isProgrammaticZoom.current) return
+          const baseScale = baseScaleRef.current
+          if (!baseScale) return
+          const newY = event.transform.rescaleY(baseScale)
+          const newDomain = newY.domain() as [Date, Date]
+          handleZoom(newDomain[0], newDomain[1])
+        })
+
+      svg.call(zoom)
+      zoomBehaviorRef.current = zoom
+
+      const baseScale = baseScaleRef.current
+      if (baseScale) {
+        const t = computeVerticalZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd)
+        isProgrammaticZoom.current = true
+        svg.call(zoom.transform, t)
+        isProgrammaticZoom.current = false
+      }
+    } else {
+      const containerWidth = containerRef.current?.clientWidth ?? 800
+      const chartWidth = containerWidth - HORIZONTAL_MARGIN.left - HORIZONTAL_MARGIN.right
+
+      const zoom = d3
+        .zoom<SVGSVGElement, unknown>()
+        .scaleExtent([0.1, 50])
+        .clickDistance(5)
+        .filter((event: Event) => event.type !== 'dblclick')
+        .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+          if (isProgrammaticZoom.current) return
+          cancelAnimationFrame(zoomRafRef.current)
+          zoomRafRef.current = requestAnimationFrame(() => {
+            const baseScale = baseScaleRef.current
+            if (!baseScale) return
+            const newX = event.transform.rescaleX(baseScale)
+            const newDomain = newX.domain() as [Date, Date]
+            drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, chartWidth]))
+          })
+        })
+        .on('end', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+          if (isProgrammaticZoom.current) return
+          const baseScale = baseScaleRef.current
+          if (!baseScale) return
+          const newX = event.transform.rescaleX(baseScale)
+          const newDomain = newX.domain() as [Date, Date]
+          handleZoom(newDomain[0], newDomain[1])
+        })
+
+      svg.call(zoom)
+      zoomBehaviorRef.current = zoom
+
+      const baseScale = baseScaleRef.current
+      if (baseScale) {
+        const t = computeHorizontalZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd, chartWidth)
+        isProgrammaticZoom.current = true
+        svg.call(zoom.transform, t)
+        isProgrammaticZoom.current = false
+      }
+    }
+
+    svg.on('dblclick.zoom', () => handleResetToToday())
+
+    return () => {
+      cancelAnimationFrame(zoomRafRef.current)
+    }
+  }, [orientation, handleZoom, handleResetToToday, effectiveViewStart, effectiveViewEnd])
+
+  // ── UI state ───────────────────────────────────────────────────────────────
+
+  const isLoading =
+    activitiesQuery.isLoading || placesQuery.isLoading || tagsQuery.isLoading || productivityQuery.isLoading
+  const isError =
+    activitiesQuery.isError || placesQuery.isError || tagsQuery.isError || productivityQuery.isError
+
+  const mobileItems = [...chartItems].sort((a, b) => a.start.getTime() - b.start.getTime())
+
+  const viewLabel =
+    format(effectiveViewStart, 'MMM d') === format(effectiveViewEnd, 'MMM d') ?
+      format(effectiveViewStart, 'MMM d, yyyy')
+    : `${format(effectiveViewStart, 'MMM d')} – ${format(effectiveViewEnd, 'MMM d, yyyy')}`
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
-    <div class="timeline" ref={containerRef}>
+    <div class="timeline-view">
       <h1>Timeline</h1>
 
-      {/* Navigation controls */}
       <div class="timeline-controls">
         <div class="timeline-nav">
           <button class="nav-btn" onClick={() => handleJumpDays(-30)} title="Back 1 month">
@@ -670,66 +1622,83 @@ export const Timeline = () => {
             {'>>'}
           </button>
         </div>
-        {isFetching && !isLoading && <span class="timeline-fetching">Loading...</span>}
-      </div>
+        <span class="timeline-date-label">{viewLabel}</span>
+        {isFetching && !isLoading && <span class="timeline-fetching">Loading…</span>}
 
-      {/* Layer toggles */}
-      <div class="timeline-layers">
-        <label>
-          <input
-            type="checkbox"
-            checked={showHeartRate.value}
-            onChange={(e) => (showHeartRate.value = (e.target as HTMLInputElement).checked)}
-          />
-          <span style={{ color: colors.heartRate }}>Heart Rate</span>
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={showHrv.value}
-            onChange={(e) => (showHrv.value = (e.target as HTMLInputElement).checked)}
-          />
-          <span style={{ color: colors.hrv }}>HRV</span>
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={showProductivity.value}
-            onChange={(e) => (showProductivity.value = (e.target as HTMLInputElement).checked)}
-          />
-          <span>
-            Productivity <span style={{ color: colors.computer }}>●</span>
-            <span style={{ color: colors.mobile }}>●</span>
-          </span>
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={showTags.value}
-            onChange={(e) => (showTags.value = (e.target as HTMLInputElement).checked)}
-          />
-          <span style={{ opacity: 0.6 }}>Tags</span>
-        </label>
-      </div>
-
-      {/* Places legend */}
-      {showPlaces.value && uniquePlaceNames.length > 0 && (
-        <div class="timeline-legend">
-          <strong>Places:</strong>
-          {uniquePlaceNames.map((name) => (
-            <span key={name} class="legend-item">
-              <span class="legend-dot" style={{ backgroundColor: getPlaceColor(name, uniquePlaceNames) }} />
-              {name}
-            </span>
-          ))}
-          <span class="legend-item">
-            <span class="legend-dot" style={{ backgroundColor: colors.travel }} />
-            Travel
-          </span>
+        <div class="timeline-orientation-toggle">
+          <button
+            class={`orientation-btn${orientation === 'vertical' ? ' active' : ''}`}
+            onClick={() => setOrientation('vertical')}
+            title="Vertical (columns)"
+            type="button"
+          >
+            ☰
+          </button>
+          <button
+            class={`orientation-btn${orientation === 'horizontal' ? ' active' : ''}`}
+            onClick={() => setOrientation('horizontal')}
+            title="Horizontal (timeline)"
+            type="button"
+          >
+            ≡
+          </button>
         </div>
-      )}
+      </div>
 
-      {/* Overlap warnings */}
+      <div class="timeline-legend">
+        {(
+          [
+            { cat: 'sleep' as LegendCategory, color: activityColors.sleep!, label: 'Sleep' },
+            { cat: 'nap' as LegendCategory, color: activityColors.nap!, label: 'Nap' },
+            { cat: 'meditation' as LegendCategory, color: activityColors.meditation!, label: 'Meditation' },
+            { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
+            { cat: 'location' as LegendCategory, color: placeColorPalette[0]!, label: 'Location' },
+            { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
+            { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
+            ...(occasionalMetricItems.length > 0 ?
+              [{ cat: 'metrics' as LegendCategory, color: METRIC_COLOR, label: 'Metrics' }]
+            : []),
+            { cat: 'screentime' as LegendCategory, color: productivityColors[1]!, label: 'Screen Time' },
+            ...(showMusicColumn ?
+              [{ cat: 'music' as LegendCategory, color: MUSIC_COLOR, label: 'Music' }]
+            : []),
+          ] as { cat: LegendCategory; color: string; label: string }[]
+        ).map(({ cat, color, label }) => (
+          <button
+            key={cat}
+            class={`legend-item${hiddenCategories.has(cat) ? ' legend-item-hidden' : ''}`}
+            onClick={() => toggleCategory(cat)}
+            type="button"
+          >
+            <span class="legend-dot" style={{ background: color }} />
+            {label}
+          </button>
+        ))}
+        <span class="legend-separator" />
+        {orientation === 'vertical' && (
+          <>
+            <button
+              class={`legend-item${!showSparklineHR ? ' legend-item-hidden' : ''}`}
+              onClick={() => setShowSparklineHR((v) => !v)}
+              type="button"
+              title="Toggle HR sparklines on activities"
+            >
+              <span class="legend-dot" style={{ background: HR_COLOR }} />
+              HR
+            </button>
+            <button
+              class={`legend-item${!showSparklineHRV ? ' legend-item-hidden' : ''}`}
+              onClick={() => setShowSparklineHRV((v) => !v)}
+              type="button"
+              title="Toggle HRV sparklines on activities"
+            >
+              <span class="legend-dot" style={{ background: HRV_COLOR }} />
+              HRV
+            </button>
+          </>
+        )}
+      </div>
+
       {overlapWarnings.length > 0 && (
         <div class="timeline-overlap-warnings">
           <details>
@@ -744,643 +1713,434 @@ export const Timeline = () => {
                 </li>
               ))}
             </ul>
-            <p class="overlap-hint">
-              This may indicate duplicate tracking from different sources, or genuinely concurrent activities.
-              Check your data sources if unexpected.
-            </p>
           </details>
         </div>
       )}
 
-      {isLoading && <div class="loading">Loading...</div>}
-      {hasError && <div class="error">Error loading data</div>}
+      {isLoading && <div class="loading">Loading…</div>}
+      {isError && <div class="error">Error loading data</div>}
 
-      <TimelineChart
-        heartRates={showHeartRate.value ? heartRateQuery.data || [] : []}
-        hrvData={showHrv.value ? hrvQuery.data || [] : []}
-        activityLaneItems={showActivities.value ? activityLaneItems : []}
-        productivity={showProductivity.value ? productivityQuery.data || [] : []}
-        places={showPlaces.value ? places : []}
-        pointTags={showTags.value ? pointAndNonActivityTags : []}
-        tagIcons={tagIcons}
-        showPlacesSignal={showPlaces}
-        showActivitiesSignal={showActivities}
-        visibleStart={effectiveViewStart}
-        visibleEnd={effectiveViewEnd}
-        uniquePlaceNames={uniquePlaceNames}
-        onZoom={handleZoom}
-        chartWidth={chartWidth}
-        svgWidth={svgWidth}
-      />
+      {!isLoading && !isError && (
+        <>
+          {orientation === 'vertical' && (
+            <div class="timeline-column-headers" style={{ paddingLeft: `${VERTICAL_MARGIN.left}px` }}>
+              {columns.map((col, i) => (
+                <div key={col} style={{ flex: 1, paddingLeft: i === 0 ? '0' : '4px', textAlign: 'center' }}>
+                  {col}
+                </div>
+              ))}
+            </div>
+          )}
 
-      <p class="timeline-help">Scroll to zoom · Drag to pan · Double-click to reset</p>
+          <div class="timeline-chart-container" ref={containerRef}>
+            <svg ref={svgRef} />
+            <div class="timeline-tooltip" ref={tooltipRef} style={{ display: 'none' }} />
+          </div>
+
+          <p class="timeline-help">Scroll to zoom · Drag to pan · Double-click to reset</p>
+
+          <div class="timeline-list">
+            {mobileItems.length === 0 && <p class="loading">No data for this period</p>}
+            {mobileItems.map((item, idx) => {
+              const href =
+                item.entity_id && item.entity_type ?
+                  `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
+                : (item.href ?? undefined)
+              const Wrapper = href ? 'a' : 'div'
+              return (
+                <Wrapper
+                  class={`timeline-list-item${href ? ' clickable' : ''}`}
+                  key={idx}
+                  {...(href ? { href } : {})}
+                >
+                  <span class="list-dot" style={{ background: item.color }} />
+                  <span class="list-time">{item.tooltip.time}</span>
+                  <div class="list-content">
+                    <div class="list-title">{item.label}</div>
+                    {item.tooltip.details.map((d, i) => (
+                      <div class="list-detail" key={i}>
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+                </Wrapper>
+              )
+            })}
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
-// ── Chart Component ───────────────────────────────────────────────────────────
+// ── D3 drawing helpers (vertical mode) ───────────────────────────────────────
 
-interface TimelineChartProps {
-  heartRates: [Date, number][]
-  hrvData: [Date, number][]
-  activityLaneItems: ActivityLaneItem[]
-  productivity: ProductivityRecord[]
-  places: Place[]
-  pointTags: Tag[]
-  tagIcons: Record<string, string>
-  showPlacesSignal: Signal<boolean>
-  showActivitiesSignal: Signal<boolean>
-  visibleStart: Date
-  visibleEnd: Date
-  uniquePlaceNames: string[]
-  onZoom: (start: Date, end: Date) => void
-  chartWidth: number
-  svgWidth: number
+type ColumnDataEntry = {
+  column: Column
+  items: { item: ChartItem; lane: number }[]
+  laneCount: number
 }
 
-function TimelineChart({
-  heartRates,
-  hrvData,
-  activityLaneItems,
-  productivity,
-  places,
-  pointTags,
-  tagIcons,
-  showPlacesSignal,
-  showActivitiesSignal,
-  visibleStart,
-  visibleEnd,
-  uniquePlaceNames,
-  onZoom,
-  chartWidth,
-  svgWidth,
-}: TimelineChartProps) {
-  const chartContainerRef = useRef<HTMLDivElement>(null)
-  const svgRef = useRef<SVGSVGElement>(null)
-  const xAxisRef = useRef<SVGGElement>(null)
-  const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown>>()
-  const isProgrammaticZoom = useRef(false)
-  const zoomRafRef = useRef<number>(0)
+const MIN_ITEM_HEIGHT = 4
 
-  const [tooltip, setTooltip] = useState<TooltipState>({
-    content: { time: '', title: '' },
-    visible: false,
-    x: 0,
-    y: 0,
+const mergeSmallItems = (
+  packedItems: { item: ChartItem; lane: number }[],
+  yScale: d3.ScaleTime<number, number>,
+): { item: ChartItem; lane: number }[] => {
+  if (packedItems.length === 0) return packedItems
+
+  const sorted = [...packedItems].sort((a, b) => a.item.start.getTime() - b.item.start.getTime())
+  const anyTiny = sorted.some(({ item }) => {
+    const h = Math.abs(yScale(item.end) - yScale(item.start))
+    return h < MIN_ITEM_HEIGHT
   })
+  if (!anyTiny) return packedItems
 
-  // Stable base scale
-  const baseScale = useMemo(
-    () => d3.scaleTime().domain([getDefaultStart(), getDefaultEnd()]).range([0, chartWidth]),
-    [chartWidth],
-  )
+  const result: { item: ChartItem; lane: number }[] = []
+  let cluster: { item: ChartItem; lane: number }[] = []
 
-  const showTooltip = (event: MouseEvent, title: string, time: string, value?: string, warning?: string) => {
-    if (!chartContainerRef.current) return
-    const rect = chartContainerRef.current.getBoundingClientRect()
-    setTooltip({
-      content: { time, title, value, warning },
-      visible: true,
-      x: event.clientX - rect.left + 10,
-      y: event.clientY - rect.top - 10,
-    })
+  const flushCluster = () => {
+    if (cluster.length === 0) return
+    if (cluster.length === 1) {
+      result.push(cluster[0]!)
+    } else {
+      const items = cluster.map((c) => c.item)
+      const mergedStart = items.reduce((min, i) => (i.start < min ? i.start : min), items[0]!.start)
+      const mergedEnd = items.reduce((max, i) => (i.end > max ? i.end : max), items[0]!.end)
+      const first = items[0]!
+      const merged: ChartItem = {
+        color: first.color,
+        column: first.column,
+        end: mergedEnd,
+        isPoint: false,
+        label: `${items.length} items`,
+        start: mergedStart,
+        tooltip: {
+          details: items.map((i) => `${formatTime(i.start)} ${i.label}`),
+          time: `${formatTime(mergedStart)} – ${formatTime(mergedEnd)}`,
+          title: `${items.length} ${first.column}`,
+        },
+      }
+      result.push({ item: merged, lane: 0 })
+    }
+    cluster = []
   }
 
-  const hideTooltip = () => setTooltip((prev) => ({ ...prev, visible: false }))
-
-  // Time scale based on view range
-  const x = useMemo(
-    () => d3.scaleTime().domain([visibleStart, visibleEnd]).range([0, chartWidth]),
-    [visibleStart, visibleEnd, chartWidth],
-  )
-
-  // Heart rate y scale (left axis)
-  const yHr = d3.scaleLinear().domain([40, 200]).range([chartHeight, 0])
-
-  // HRV y scale (right axis)
-  const hrvExtent = d3.extent(hrvData, ([, v]) => v) as [number, number]
-  const hrvMin = hrvExtent[0] ?? 0
-  const hrvMax = hrvExtent[1] ?? 150
-  const hrvPadding = Math.max((hrvMax - hrvMin) * 0.2, 5)
-  const yHrv = d3
-    .scaleLinear()
-    .domain([Math.max(0, hrvMin - hrvPadding), hrvMax + hrvPadding])
-    .nice()
-    .range([chartHeight, 0])
-
-  // Pack activity lane items into sub-lanes for overlap handling
-  const packedActivityItems = useMemo(
-    () =>
-      packLanes(
-        activityLaneItems,
-        (i) => i.start,
-        (i) => i.end,
-      ),
-    [activityLaneItems],
-  )
-
-  // Pack point tags into sub-lanes for vertical stacking
-  const packedPointTags = useMemo(
-    () =>
-      packLanes(
-        pointTags,
-        (t) => t.start_time,
-        (t) => t.end_time,
-      ),
-    [pointTags],
-  )
-
-  // Midnight markers
-  const midnights = useMemo(() => {
-    const result: Date[] = []
-    const d = new Date(visibleStart)
-    d.setHours(0, 0, 0, 0)
-    if (d <= visibleStart) d.setDate(d.getDate() + 1)
-    while (d <= visibleEnd) {
-      result.push(new Date(d))
-      d.setDate(d.getDate() + 1)
+  for (const packed of sorted) {
+    const h = Math.abs(yScale(packed.item.end) - yScale(packed.item.start))
+    if (h >= MIN_ITEM_HEIGHT || (packed.item.isPoint && packed.item.icon)) {
+      flushCluster()
+      result.push(packed)
+      continue
     }
-    return result
-  }, [visibleStart, visibleEnd])
 
-  // D3 zoom setup
-  useEffect(() => {
-    if (!svgRef.current) return
-    const svg = d3.select(svgRef.current)
-
-    const zoom = d3
-      .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 50])
-      .filter((event) => event.type !== 'dblclick')
-      .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
-        if (isProgrammaticZoom.current) return
-        cancelAnimationFrame(zoomRafRef.current)
-        zoomRafRef.current = requestAnimationFrame(() => {
-          const newX = event.transform.rescaleX(baseScale)
-          const domain = newX.domain()
-          onZoom(domain[0], domain[1])
-        })
-      })
-
-    svg.call(zoom)
-    svg.on('wheel.zoom', function (event: WheelEvent) {
-      event.preventDefault()
-    })
-    zoomBehaviorRef.current = zoom
-
-    return () => {
-      cancelAnimationFrame(zoomRafRef.current)
-      svg.on('.zoom', null)
-    }
-  }, [baseScale, onZoom])
-
-  // Sync D3 zoom transform from navigation
-  useEffect(() => {
-    if (!svgRef.current || !zoomBehaviorRef.current) return
-    const transform = computeTransform(visibleStart, visibleEnd, baseScale, chartWidth)
-    isProgrammaticZoom.current = true
-    d3.select(svgRef.current).call(zoomBehaviorRef.current.transform, transform)
-    isProgrammaticZoom.current = false
-  }, [visibleStart, visibleEnd, baseScale, chartWidth])
-
-  // Update x-axis ticks
-  useEffect(() => {
-    if (!xAxisRef.current) return
-    const rangeMs = visibleEnd.getTime() - visibleStart.getTime()
-    const rangeHours = rangeMs / (1000 * 60 * 60)
-    const rangeDays = rangeHours / 24
-
-    let tickInterval: d3.TimeInterval
-    let tickFormat: string
-
-    if (rangeHours <= 1) {
-      tickInterval = d3.timeMinute.every(5)!
-      tickFormat = '%H:%M'
-    } else if (rangeHours <= 3) {
-      tickInterval = d3.timeMinute.every(15)!
-      tickFormat = '%H:%M'
-    } else if (rangeHours <= 6) {
-      tickInterval = d3.timeMinute.every(30)!
-      tickFormat = '%H:%M'
-    } else if (rangeHours <= 12) {
-      tickInterval = d3.timeHour.every(1)!
-      tickFormat = '%H:%M'
-    } else if (rangeHours <= 24) {
-      tickInterval = d3.timeHour.every(2)!
-      tickFormat = '%H:%M'
-    } else if (rangeHours <= 48) {
-      tickInterval = d3.timeHour.every(4)!
-      tickFormat = '%a %H'
-    } else if (rangeDays <= 7) {
-      tickInterval = d3.timeHour.every(12)!
-      tickFormat = '%a %H'
-    } else if (rangeDays <= 14) {
-      tickInterval = d3.timeDay.every(1)!
-      tickFormat = '%b %d'
-    } else if (rangeDays <= 31) {
-      tickInterval = d3.timeDay.every(2)!
-      tickFormat = '%b %d'
-    } else if (rangeDays <= 90) {
-      tickInterval = d3.timeWeek.every(1)!
-      tickFormat = '%b %d'
+    if (cluster.length === 0) {
+      cluster.push(packed)
     } else {
-      tickInterval = d3.timeWeek.every(2)!
-      tickFormat = '%b %d'
+      const clusterEnd = cluster.reduce(
+        (max, c) => (c.item.end > max ? c.item.end : max),
+        cluster[0]!.item.end,
+      )
+      const gapPx = yScale(packed.item.start) - yScale(clusterEnd)
+      if (gapPx <= MIN_ITEM_HEIGHT * 2) {
+        cluster.push(packed)
+      } else {
+        flushCluster()
+        cluster.push(packed)
+      }
     }
+  }
+  flushCluster()
 
-    d3.select(xAxisRef.current).call(
-      d3
-        .axisBottom(x)
-        .ticks(tickInterval)
-        .tickFormat((d) => d3.timeFormat(tickFormat)(d as Date)),
-    )
-  }, [visibleStart, visibleEnd, chartWidth])
+  return result
+}
 
-  const handleDoubleClick = useCallback(() => {
-    onZoom(getDefaultStart(), getDefaultEnd())
-  }, [onZoom])
+const stackIconPoints = (
+  items: { item: ChartItem; lane: number }[],
+): { item: ChartItem; lane: number; xOffset: number }[] => {
+  const iconPoints = items.filter((p) => p.item.isPoint && p.item.icon)
+  if (iconPoints.length <= 1) return items.map((p) => ({ ...p, xOffset: 0 }))
 
-  // Sub-lane height for activity lane
-  const activityLaneCount = Math.max(1, packedActivityItems.laneCount)
-  const activitySubLaneHeight = trackHeight / activityLaneCount
+  const byTime = new Map<number, { item: ChartItem; lane: number }[]>()
+  for (const p of iconPoints) {
+    const t = p.item.start.getTime()
+    const group = byTime.get(t) ?? []
+    group.push(p)
+    byTime.set(t, group)
+  }
 
-  return (
-    <div ref={chartContainerRef} class="timeline-chart-container">
-      {/* Tooltip */}
-      {tooltip.visible && (
-        <div class="timeline-tooltip" style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}>
-          <div class="tooltip-title">{tooltip.content.title}</div>
-          <div class="tooltip-time">{tooltip.content.time}</div>
-          {tooltip.content.value && <div class="tooltip-value">{tooltip.content.value}</div>}
-          {tooltip.content.warning && <div class="tooltip-warning">{tooltip.content.warning}</div>}
-        </div>
-      )}
+  const stackedSet = new Set<ChartItem>()
+  const offsetMap = new Map<ChartItem, number>()
+  const ICON_STEP = 18
 
-      <svg
-        ref={svgRef}
-        width={svgWidth}
-        height={CHART_HEIGHT}
-        style={{ color: 'currentColor', cursor: 'grab' }}
-        onDblClick={handleDoubleClick}
-      >
-        {/* Lane labels on the left */}
-        <g transform={`translate(0,${margin.top})`}>
-          {/* Activity lane label */}
-          <foreignObject x={5} y={trackActivity} width={margin.left - 10} height={trackHeight}>
-            <label
-              style={{
-                alignItems: 'center',
-                cursor: 'pointer',
-                display: 'flex',
-                fontSize: '12px',
-                gap: '4px',
-                height: '100%',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={showActivitiesSignal.value}
-                onChange={(e) => (showActivitiesSignal.value = (e.target as HTMLInputElement).checked)}
-              />
-              <span>Activity</span>
-            </label>
-          </foreignObject>
+  for (const group of byTime.values()) {
+    group.sort((a, b) => a.item.label.localeCompare(b.item.label))
+    for (let i = 0; i < group.length; i++) {
+      stackedSet.add(group[i]!.item)
+      offsetMap.set(group[i]!.item, i * ICON_STEP)
+    }
+  }
 
-          {/* Places lane label */}
-          <foreignObject x={5} y={trackPlaces} width={margin.left - 10} height={trackHeight}>
-            <label
-              style={{
-                alignItems: 'center',
-                cursor: 'pointer',
-                display: 'flex',
-                fontSize: '12px',
-                gap: '4px',
-                height: '100%',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={showPlacesSignal.value}
-                onChange={(e) => (showPlacesSignal.value = (e.target as HTMLInputElement).checked)}
-              />
-              <span>Location</span>
-            </label>
-          </foreignObject>
+  return items.map((p) => {
+    if (stackedSet.has(p.item)) {
+      return { item: p.item, lane: 0, xOffset: offsetMap.get(p.item) ?? 0 }
+    }
+    return { ...p, xOffset: 0 }
+  })
+}
 
-          {/* Tags lane label */}
-          <foreignObject x={5} y={trackTags} width={margin.left - 10} height={trackHeight}>
-            <span style={{ alignItems: 'center', display: 'flex', fontSize: '12px', height: '100%' }}>
-              Tags
-            </span>
-          </foreignObject>
-        </g>
+const drawColumnItems = (
+  chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
+  columnData: ColumnDataEntry[],
+  colWidth: number,
+  colGap: number,
+  colPadding: number,
+  yScale: d3.ScaleTime<number, number>,
+  showTooltip: (event: MouseEvent, item: ChartItem) => void,
+  hideTooltip: () => void,
+) => {
+  for (let colIdx = 0; colIdx < columnData.length; colIdx++) {
+    const { items: packedItems, laneCount } = columnData[colIdx]!
 
-        <g transform={`translate(${margin.left},${margin.top})`}>
-          {/* Clip path */}
-          <defs>
-            <clipPath id="chart-clip">
-              <rect x={0} y={0} width={chartWidth} height={chartHeight} />
-            </clipPath>
-          </defs>
+    const mergedItems = mergeSmallItems(packedItems, yScale)
+    const hasMerged = mergedItems.some((m) => m.item.label.endsWith(' items'))
+    const stackedItems = stackIconPoints(mergedItems)
 
-          {/* Lane separator lines */}
-          <line
-            x1={0}
-            y1={trackHeight}
-            x2={chartWidth}
-            y2={trackHeight}
-            stroke="currentColor"
-            opacity={0.2}
-          />
-          <line
-            x1={0}
-            y1={trackHeight * 2}
-            x2={chartWidth}
-            y2={trackHeight * 2}
-            stroke="currentColor"
-            opacity={0.2}
-          />
-          <line
-            x1={0}
-            y1={trackHeight * 3}
-            x2={chartWidth}
-            y2={trackHeight * 3}
-            stroke="currentColor"
-            opacity={0.2}
-          />
+    const colX = colIdx * colWidth + colGap
+    const usableWidth = colWidth - colGap * 2
 
-          {/* Midnight markers */}
-          {midnights.map((midnight) => {
-            const mx = x(midnight)
-            if (mx < 0 || mx > chartWidth) return null
-            return (
-              <g key={midnight.getTime()}>
-                <line
-                  x1={mx}
-                  y1={0}
-                  x2={mx}
-                  y2={chartHeight}
-                  stroke="currentColor"
-                  opacity={0.3}
-                  strokeWidth={1.5}
-                  strokeDasharray="6 3"
-                />
-                <text x={mx + 4} y={12} fill="currentColor" opacity={0.5} fontSize="10">
-                  {format(midnight, 'MMM d')}
-                </text>
-              </g>
-            )
-          })}
+    const hasStacked = stackedItems.some((s) => s.xOffset > 0)
+    const nonStackedLanes =
+      hasStacked ?
+        Math.max(1, ...stackedItems.filter((s) => s.xOffset === 0 && !s.item.isPoint).map((s) => s.lane + 1))
+      : laneCount
+    const effectiveLanes = hasMerged ? 1 : Math.max(nonStackedLanes, 1)
+    const laneWidth = (usableWidth - (effectiveLanes - 1) * colPadding) / effectiveLanes
 
-          {/* Clipped chart content */}
-          <g clip-path="url(#chart-clip)">
-            {/* ── Activity lane: unified activities + duration tags ── */}
-            {packedActivityItems.items.map(({ item, lane }) => {
-              const laneY = trackActivity + lane * activitySubLaneHeight
-              const laneH = activitySubLaneHeight - 1 // 1px gap between sub-lanes
-              const rectX = x(item.start)
-              const rectW = Math.max(0, x(item.end) - rectX)
-              const hasOverlap = !!item.overlapWarning
+    for (const { item, lane, xOffset } of stackedItems) {
+      const effectiveLane = hasMerged ? 0 : lane
+      drawItem(
+        chartGroup,
+        item,
+        effectiveLane,
+        colX,
+        laneWidth,
+        colPadding,
+        yScale,
+        showTooltip,
+        hideTooltip,
+        xOffset,
+      )
+    }
+  }
+}
 
-              return (
-                <g key={`activity-${item.id}`}>
-                  <rect
-                    x={rectX}
-                    y={laneY}
-                    width={rectW}
-                    height={laneH}
-                    fill={item.color}
-                    opacity={hasOverlap ? 0.45 : item.opacity}
-                    rx={2}
-                    style={{ cursor: 'pointer' }}
-                    onMouseEnter={(e) => {
-                      const details = [item.tooltipDetails]
-                      if (item.mergedAnnotations && item.mergedAnnotations.length > 0) {
-                        details.push(`Merged: ${item.mergedAnnotations.join(', ')}`)
-                      }
-                      showTooltip(
-                        e as unknown as MouseEvent,
-                        item.tooltipTitle,
-                        item.tooltipTime,
-                        details.filter(Boolean).join(' | '),
-                        item.overlapWarning,
-                      )
-                    }}
-                    onMouseLeave={hideTooltip}
-                  />
-                  {/* Overlap indicator: dashed border */}
-                  {hasOverlap && (
-                    <rect
-                      x={rectX}
-                      y={laneY}
-                      width={rectW}
-                      height={laneH}
-                      fill="none"
-                      stroke="#fbbf24"
-                      strokeWidth={1.5}
-                      strokeDasharray="4 2"
-                      rx={2}
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  )}
-                  {/* Label text if block is wide enough */}
-                  {rectW > 40 && (
-                    <text
-                      x={rectX + 4}
-                      y={laneY + laneH / 2 + 4}
-                      fill="white"
-                      fontSize={Math.min(11, laneH - 4)}
-                      style={{ pointerEvents: 'none' }}
-                    >
-                      {item.icon && isEmoji(item.icon) ? `${item.icon} ` : ''}
-                      {item.label}
-                    </text>
-                  )}
-                  {/* Icon for duration tags with image icons */}
-                  {item.icon && isUrl(item.icon) && rectW > 20 && (
-                    <image
-                      href={item.icon}
-                      x={rectX + 2}
-                      y={laneY + 2}
-                      width={Math.min(laneH - 4, 16)}
-                      height={Math.min(laneH - 4, 16)}
-                      style={{ pointerEvents: 'none' }}
-                    />
-                  )}
-                </g>
-              )
-            })}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SvgParent = d3.Selection<any, unknown, null, undefined>
 
-            {/* ── Productivity: thin bars at top of chart ── */}
-            {productivity
-              .filter((p) => !p.is_mobile)
-              .map((p, i) => (
-                <rect
-                  key={`computer-${i}`}
-                  x={x(p.start_time)}
-                  y={0}
-                  width={Math.max(0, x(p.end_time) - x(p.start_time))}
-                  height={4}
-                  fill={colors.computer}
-                />
-              ))}
-            {productivity
-              .filter((p) => p.is_mobile)
-              .map((p, i) => (
-                <rect
-                  key={`mobile-${i}`}
-                  x={x(p.start_time)}
-                  y={4}
-                  width={Math.max(0, x(p.end_time) - x(p.start_time))}
-                  height={4}
-                  fill={colors.mobile}
-                />
-              ))}
+const drawPointMarker = (
+  parent: SvgParent,
+  item: ChartItem,
+  cx: number,
+  cy: number,
+  size: number,
+  laneWidth: number,
+  x: number,
+  detailUrl: string | undefined,
+  showTooltip: (event: MouseEvent, item: ChartItem) => void,
+  hideTooltip: () => void,
+) => {
+  const cursor = detailUrl ? 'pointer' : 'default'
 
-            {/* ── Places lane ── */}
-            {showPlacesSignal.value &&
-              places.map((place, i) => (
-                <rect
-                  key={`place-${i}`}
-                  x={x(place.start_time)}
-                  y={trackPlaces}
-                  width={Math.max(0, x(place.end_time) - x(place.start_time))}
-                  height={trackHeight}
-                  fill={getPlaceColor(place.region, uniquePlaceNames)}
-                  opacity={0.7}
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={(e) =>
-                    showTooltip(
-                      e as unknown as MouseEvent,
-                      place.region || 'Unknown Location',
-                      `${format(place.start_time, 'HH:mm')} - ${format(place.end_time, 'HH:mm')}`,
-                      formatDuration(place.start_time, place.end_time),
-                    )
-                  }
-                  onMouseLeave={hideTooltip}
-                />
-              ))}
+  if (item.icon && isEmoji(item.icon)) {
+    parent
+      .append('text')
+      .attr('x', cx)
+      .attr('y', cy)
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '14px')
+      .attr('pointer-events', 'all')
+      .attr('cursor', cursor)
+      .text(item.icon)
+      .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+      .on('mouseleave', hideTooltip)
+    return
+  }
 
-            {/* ── Tags lane: vertically stacked icons ── */}
-            {packedPointTags.items.map(({ item: tag, lane }, i) => {
-              const icon = resolveTagIcon(tag, tagIcons)
-              const tx = x(tag.start_time)
-              // Stack icons vertically using lane assignment
-              const tagY = trackTags + 4 + lane * (TAG_ICON_SIZE + 2)
+  if (item.icon && isUrl(item.icon)) {
+    const imgSize = 14
+    parent
+      .append('image')
+      .attr('href', item.icon)
+      .attr('x', cx - imgSize / 2)
+      .attr('y', cy - imgSize / 2)
+      .attr('width', imgSize)
+      .attr('height', imgSize)
+      .attr('pointer-events', 'all')
+      .attr('cursor', cursor)
+      .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+      .on('mouseleave', hideTooltip)
+    return
+  }
 
-              if (icon && isEmoji(icon)) {
-                return (
-                  <text
-                    key={`tag-${i}`}
-                    x={tx}
-                    y={tagY + TAG_ICON_SIZE * 0.8}
-                    fontSize={TAG_ICON_SIZE}
-                    textAnchor="middle"
-                    style={{ cursor: 'pointer' }}
-                    onMouseEnter={(e) =>
-                      showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.start_time, 'HH:mm'))
-                    }
-                    onMouseLeave={hideTooltip}
-                  >
-                    {icon}
-                  </text>
-                )
-              }
+  parent
+    .append('polygon')
+    .attr('points', `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`)
+    .attr('fill', item.color)
+    .attr('opacity', 0.85)
+    .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+    .on('mouseleave', hideTooltip)
 
-              if (icon && isUrl(icon)) {
-                return (
-                  <image
-                    key={`tag-${i}`}
-                    href={icon}
-                    x={tx - TAG_ICON_SIZE / 2}
-                    y={tagY}
-                    width={TAG_ICON_SIZE}
-                    height={TAG_ICON_SIZE}
-                    style={{ cursor: 'pointer' }}
-                    onMouseEnter={(e) =>
-                      showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.start_time, 'HH:mm'))
-                    }
-                    onMouseLeave={hideTooltip}
-                  />
-                )
-              }
+  const labelX = x + 2 * size + 6
+  const availableWidth = laneWidth - 2 * size - 8
+  if (availableWidth > 20) {
+    const charWidth = 5.5
+    const maxChars = Math.floor(availableWidth / charWidth)
+    const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+    parent
+      .append('text')
+      .attr('x', labelX)
+      .attr('y', cy)
+      .attr('dy', '0.35em')
+      .attr('fill', item.color)
+      .attr('font-size', '0.6rem')
+      .attr('opacity', 0.8)
+      .attr('pointer-events', 'none')
+      .text(text)
+  }
+}
 
-              // No icon: show a small diamond marker
-              const dy = tagY + TAG_ICON_SIZE / 2
-              const s = 4
-              return (
-                <g
-                  key={`tag-${i}`}
-                  style={{ cursor: 'pointer' }}
-                  onMouseEnter={(e) =>
-                    showTooltip(e as unknown as MouseEvent, tag.tag, format(tag.start_time, 'HH:mm'))
-                  }
-                  onMouseLeave={hideTooltip}
-                >
-                  <polygon
-                    points={`${tx},${dy - s} ${tx + s},${dy} ${tx},${dy + s} ${tx - s},${dy}`}
-                    fill={colors.tags}
-                  />
-                  <text x={tx + s + 3} y={dy + 3} fill="currentColor" fontSize="9" opacity={0.6}>
-                    {tag.tag}
-                  </text>
-                </g>
-              )
-            })}
+const drawBlockOverlay = (
+  parent: SvgParent,
+  item: ChartItem,
+  x: number,
+  y1: number,
+  laneWidth: number,
+  blockHeight: number,
+) => {
+  if (item.icon && isEmoji(item.icon)) {
+    parent
+      .append('text')
+      .attr('x', x + laneWidth / 2)
+      .attr('y', y1 + blockHeight / 2)
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '14px')
+      .attr('pointer-events', 'none')
+      .text(item.icon)
+    return
+  }
 
-            {/* ── HRV Line ── */}
-            {hrvData.length > 0 && (
-              <path
-                fill="none"
-                stroke={colors.hrv}
-                strokeWidth="1.5"
-                d={
-                  d3
-                    .line<[Date, number] | null>()
-                    .defined(Boolean)
-                    .x(([time]) => x(time))
-                    .y(([, value]) => yHrv(value))(preprocessData(hrvData, 10)) || ''
-                }
-              />
-            )}
+  if (item.icon && isUrl(item.icon)) {
+    const imgSize = 14
+    parent
+      .append('image')
+      .attr('href', item.icon)
+      .attr('x', x + laneWidth / 2 - imgSize / 2)
+      .attr('y', y1 + blockHeight / 2 - imgSize / 2)
+      .attr('width', imgSize)
+      .attr('height', imgSize)
+      .attr('pointer-events', 'none')
+    return
+  }
 
-            {/* ── Heart Rate Line ── */}
-            {heartRates.length > 0 && (
-              <path
-                fill="none"
-                stroke={colors.heartRate}
-                strokeWidth="1.5"
-                d={
-                  d3
-                    .line<[Date, number] | null>()
-                    .defined(Boolean)
-                    .x(([time]) => x(time))
-                    .y(([, rate]) => yHr(rate))(preprocessData(heartRates, 10)) || ''
-                }
-              />
-            )}
-          </g>
+  if (blockHeight > 30) {
+    const fontSize = laneWidth > 100 ? '0.8rem' : '0.65rem'
+    const charWidth = laneWidth > 100 ? 7.5 : 6
+    const maxChars = Math.floor(laneWidth / charWidth)
+    const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+    parent
+      .append('text')
+      .attr('x', x + 4)
+      .attr('y', y1 + 14)
+      .attr('fill', 'white')
+      .attr('font-size', fontSize)
+      .attr('font-weight', '500')
+      .attr('pointer-events', 'none')
+      .text(text)
+  }
+}
 
-          {/* Y-axis for heart rate (left) */}
-          <g
-            ref={(g) => {
-              if (g) d3.select(g).call(d3.axisLeft(yHr)).selectAll('text').style('fill', colors.heartRate)
-            }}
-          />
+const drawItem = (
+  chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
+  item: ChartItem,
+  lane: number,
+  colX: number,
+  laneWidth: number,
+  colPadding: number,
+  yScale: d3.ScaleTime<number, number>,
+  showTooltip: (event: MouseEvent, item: ChartItem) => void,
+  hideTooltip: () => void,
+  xOffset = 0,
+) => {
+  const y1 = yScale(item.start)
+  const y2 = yScale(item.end)
+  const x = colX + lane * (laneWidth + colPadding) + xOffset
+  const blockHeight = Math.max(y2 - y1, 2)
 
-          {/* Y-axis for HRV (right) */}
-          <g
-            transform={`translate(${chartWidth},0)`}
-            ref={(g) => {
-              if (g)
-                d3.select(g).call(d3.axisRight(yHrv).ticks(6)).selectAll('text').style('fill', colors.hrv)
-            }}
-          />
+  const detailUrl =
+    item.entity_id && item.entity_type ?
+      `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
+    : (item.href ?? undefined)
 
-          {/* X-axis */}
-          <g ref={xAxisRef} transform={`translate(0,${chartHeight})`} />
-        </g>
-      </svg>
-    </div>
-  )
+  const parent: SvgParent =
+    detailUrl ? chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true') : chartGroup
+
+  if (item.isPoint) {
+    const size = Math.min(laneWidth / 2, 6)
+    drawPointMarker(parent, item, x + size + 2, y1, size, laneWidth, x, detailUrl, showTooltip, hideTooltip)
+    return
+  }
+
+  parent
+    .append('rect')
+    .attr('x', x)
+    .attr('y', y1)
+    .attr('width', laneWidth)
+    .attr('height', blockHeight)
+    .attr('rx', 3)
+    .attr('ry', 3)
+    .attr('fill', item.color)
+    .attr('opacity', 0.75)
+    .on('mouseenter', function (event: MouseEvent) {
+      d3.select(this).attr('opacity', 0.95)
+      showTooltip(event, item)
+    })
+    .on('mouseleave', function () {
+      d3.select(this).attr('opacity', 0.75)
+      hideTooltip()
+    })
+
+  drawBlockOverlay(parent, item, x, y1, laneWidth, blockHeight)
+}
+
+const drawNowLine = (
+  chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
+  chartWidth: number,
+  yScale: d3.ScaleTime<number, number>,
+) => {
+  const now = new Date()
+  const domain = yScale.domain()
+  if (now < domain[0]! || now > domain[1]!) return
+
+  const nowY = yScale(now)
+  chartGroup
+    .append('line')
+    .attr('x1', 0)
+    .attr('x2', chartWidth)
+    .attr('y1', nowY)
+    .attr('y2', nowY)
+    .attr('stroke', NOW_COLOR)
+    .attr('stroke-width', 1.5)
+    .attr('stroke-dasharray', '6,3')
+  chartGroup
+    .append('text')
+    .attr('x', chartWidth + 4)
+    .attr('y', nowY)
+    .attr('dy', '0.35em')
+    .attr('fill', NOW_COLOR)
+    .attr('font-size', '0.65rem')
+    .attr('font-weight', '600')
+    .text('Now')
 }
