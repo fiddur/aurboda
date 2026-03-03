@@ -1533,15 +1533,22 @@ export const Timeline = () => {
     } else {
       renderHorizontalChart()
     }
+    let resizeRaf = 0
     const resizeObserver = new ResizeObserver(() => {
-      if (orientationRef.current === 'vertical') {
-        renderVerticalChart()
-      } else {
-        renderHorizontalChart()
-      }
+      cancelAnimationFrame(resizeRaf)
+      resizeRaf = requestAnimationFrame(() => {
+        if (orientationRef.current === 'vertical') {
+          renderVerticalChart()
+        } else {
+          renderHorizontalChart()
+        }
+      })
     })
     if (containerRef.current) resizeObserver.observe(containerRef.current)
-    return () => resizeObserver.disconnect()
+    return () => {
+      cancelAnimationFrame(resizeRaf)
+      resizeObserver.disconnect()
+    }
   }, [orientation, renderVerticalChart, renderHorizontalChart])
 
   // ── Zoom behavior — set up once per orientation ────────────────────────────
