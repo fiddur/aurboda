@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db'
 import {
+  buildTagMappingUpdates,
   calculateDefaultHrZones,
   computeHrZoneSecs,
   getEffectiveHrZones,
   getSettings,
   getSettingsResponse,
+  getTagMappings,
   HrZoneThresholds,
+  setTagMapping,
   validateAndUpdateSettings,
 } from './settings'
 
@@ -14,6 +17,7 @@ import {
 vi.mock('../db', () => ({
   getOAuthToken: vi.fn(),
   getUserSettings: vi.fn(),
+  updateTagNameByKey: vi.fn(),
   upsertUserSettings: vi.fn(),
 }))
 
@@ -330,6 +334,122 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { item_icons: undefined })
+  })
+})
+
+describe('buildTagMappingUpdates', () => {
+  test('builds mapping update without icon', () => {
+    const result = buildTagMappingUpdates({}, 'tag_abc123', 'Coffee')
+
+    expect(result).toEqual({ tag_mappings: { tag_abc123: 'Coffee' } })
+    expect(result.item_icons).toBeUndefined()
+  })
+
+  test('builds mapping update with icon', () => {
+    const result = buildTagMappingUpdates({}, 'tag_abc123', 'Coffee', '☕')
+
+    expect(result).toEqual({
+      item_icons: { Coffee: '☕' },
+      tag_mappings: { tag_abc123: 'Coffee' },
+    })
+  })
+
+  test('preserves existing mappings and icons', () => {
+    const settings = {
+      item_icons: { Running: '🏃' },
+      tag_mappings: { tag_xyz: 'Running' },
+    }
+
+    const result = buildTagMappingUpdates(settings, 'tag_abc', 'Coffee', '☕')
+
+    expect(result.tag_mappings).toEqual({ tag_abc: 'Coffee', tag_xyz: 'Running' })
+    expect(result.item_icons).toEqual({ Coffee: '☕', Running: '🏃' })
+  })
+
+  test('clears icon when empty string is provided', () => {
+    const settings = {
+      item_icons: { Coffee: '☕', Running: '🏃' },
+      tag_mappings: { tag_abc: 'Coffee' },
+    }
+
+    const result = buildTagMappingUpdates(settings, 'tag_abc', 'Coffee', '')
+
+    expect(result.item_icons).toEqual({ Running: '🏃' })
+    expect(result.item_icons).not.toHaveProperty('Coffee')
+    expect(result.item_icons).not.toHaveProperty('tag_abc')
+  })
+
+  test('clears icon by both display name and tag_key', () => {
+    const settings = {
+      item_icons: { Coffee: '☕', tag_abc: '☕' },
+      tag_mappings: { tag_abc: 'Coffee' },
+    }
+
+    const result = buildTagMappingUpdates(settings, 'tag_abc', 'Coffee', '')
+
+    expect(result.item_icons).toEqual({})
+  })
+})
+
+describe('setTagMapping', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('sets mapping and returns new mappings', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({ tag_mappings: { existing: 'Existing' } })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.updateTagNameByKey).mockResolvedValue(1)
+
+    const result = await setTagMapping('testuser', 'tag_abc', 'Coffee', '☕')
+
+    expect(result).toEqual({ existing: 'Existing', tag_abc: 'Coffee' })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
+      item_icons: { Coffee: '☕' },
+      tag_mappings: { existing: 'Existing', tag_abc: 'Coffee' },
+    })
+    expect(db.updateTagNameByKey).toHaveBeenCalledWith('testuser', 'tag_abc', 'Coffee')
+  })
+
+  test('sets mapping without icon', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.updateTagNameByKey).mockResolvedValue(0)
+
+    const result = await setTagMapping('testuser', 'tag_abc', 'Coffee')
+
+    expect(result).toEqual({ tag_abc: 'Coffee' })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
+      tag_mappings: { tag_abc: 'Coffee' },
+    })
+  })
+})
+
+describe('getTagMappings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns mappings and icons from settings', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      item_icons: { Coffee: '☕' },
+      tag_mappings: { tag_abc: 'Coffee' },
+    })
+
+    const result = await getTagMappings('testuser')
+
+    expect(result).toEqual({
+      icons: { Coffee: '☕' },
+      mappings: { tag_abc: 'Coffee' },
+    })
+  })
+
+  test('returns empty objects when no settings', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+
+    const result = await getTagMappings('testuser')
+
+    expect(result).toEqual({ icons: {}, mappings: {} })
   })
 })
 

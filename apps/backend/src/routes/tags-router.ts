@@ -19,16 +19,10 @@ import {
   type UniqueTagsResponse,
 } from '@aurboda/api-spec'
 import { RequestHandler, Router } from 'express'
-import {
-  getProgrammaticTags,
-  getTagById,
-  getUniqueTags,
-  getUserSettings,
-  updateTagNameByKey,
-  upsertUserSettings,
-} from '../db'
+import { getProgrammaticTags, getTagById, getUniqueTags, getUserSettings } from '../db'
 import { addTag, deleteTag, deleteTagById, restoreTag } from '../services/mutations'
 import { queryTags, type SyncProvider } from '../services/queries'
+import { getTagMappings, setTagMapping } from '../services/settings'
 import { validateBody, validateQuery } from '../validation'
 
 export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: SyncProvider): Router => {
@@ -173,44 +167,17 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
       const { tag_key, name, icon } = req.body
       const user = req.user!
 
-      const settings = await getUserSettings(user)
-      const currentMappings = settings?.tag_mappings ?? {}
-      const newMappings = { ...currentMappings, [tag_key]: name }
+      const mapping = await setTagMapping(user, tag_key, name, icon)
 
-      // Handle icon: store in item_icons map, keyed by display name for easy lookup
-      const updates: { tag_mappings: Record<string, string>; item_icons?: Record<string, string> } = {
-        tag_mappings: newMappings,
-      }
-      if (icon !== undefined) {
-        const currentIcons = settings?.item_icons ?? {}
-        if (icon) {
-          updates.item_icons = { ...currentIcons, [name]: icon }
-        } else {
-          // Empty string clears the icon — remove entries for both old and new name
-          const newIcons = { ...currentIcons }
-          delete newIcons[name]
-          // Also remove icon for the tag_key in case it was stored that way
-          delete newIcons[tag_key]
-          updates.item_icons = newIcons
-        }
-      }
-
-      await upsertUserSettings(user, updates)
-      await updateTagNameByKey(user, tag_key, name)
-
-      res.json({ mapping: newMappings, success: true })
+      res.json({ mapping, success: true })
     },
   )
 
   // GET /tags/mappings - Get all tag mappings
   router.get<Record<string, never>, TagMappingsResponse>('/mappings', authMiddleware, async (req, res) => {
     const user = req.user!
-    const settings = await getUserSettings(user)
-    res.json({
-      icons: settings?.item_icons ?? {},
-      mappings: settings?.tag_mappings ?? {},
-      success: true,
-    })
+    const result = await getTagMappings(user)
+    res.json({ ...result, success: true })
   })
 
   return router

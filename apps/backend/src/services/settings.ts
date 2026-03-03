@@ -11,7 +11,7 @@ import {
   updateSettingsInputSchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
-import { getOAuthToken, getUserSettings, upsertUserSettings } from '../db'
+import { getOAuthToken, getUserSettings, updateTagNameByKey, upsertUserSettings } from '../db'
 import { getCentralDb } from './central-db'
 
 // Re-export types from api-spec for use by other modules
@@ -125,6 +125,68 @@ export const getEffectiveHrZones = async (
 export const getEffectiveGoals = (settings: UserSettings): Goal[] => {
   // If goals is undefined, return defaults. If empty array, return empty.
   return settings.goals ?? defaultGoals
+}
+
+/**
+ * Build the settings updates object for a tag mapping change.
+ * Handles both the mapping itself and any icon set/clear.
+ */
+export const buildTagMappingUpdates = (
+  currentSettings: UserSettings,
+  tagKey: string,
+  name: string,
+  icon?: string,
+): Partial<UserSettings> => {
+  const currentMappings = currentSettings.tag_mappings ?? {}
+  const updates: Partial<UserSettings> = {
+    tag_mappings: { ...currentMappings, [tagKey]: name },
+  }
+
+  if (icon !== undefined) {
+    const currentIcons = currentSettings.item_icons ?? {}
+    if (icon) {
+      updates.item_icons = { ...currentIcons, [name]: icon }
+    } else {
+      // Empty string clears the icon — remove entries for both display name and tag_key
+      const newIcons = { ...currentIcons }
+      delete newIcons[name]
+      delete newIcons[tagKey]
+      updates.item_icons = newIcons
+    }
+  }
+
+  return updates
+}
+
+/**
+ * Set a tag mapping (display name + optional icon) and rename existing tag records.
+ * Used by both REST API and MCP tools.
+ */
+export const setTagMapping = async (
+  user: string,
+  tagKey: string,
+  name: string,
+  icon?: string,
+): Promise<Record<string, string>> => {
+  const settings = await getSettings(user)
+  const updates = buildTagMappingUpdates(settings, tagKey, name, icon)
+  await upsertUserSettings(user, updates)
+  await updateTagNameByKey(user, tagKey, name)
+  return updates.tag_mappings!
+}
+
+/**
+ * Get tag mappings and icons for a user.
+ * Used by both REST API and MCP tools.
+ */
+export const getTagMappings = async (
+  user: string,
+): Promise<{ mappings: Record<string, string>; icons: Record<string, string> }> => {
+  const settings = await getSettings(user)
+  return {
+    icons: settings.item_icons ?? {},
+    mappings: settings.tag_mappings ?? {},
+  }
 }
 
 /**
