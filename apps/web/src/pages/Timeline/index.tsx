@@ -497,8 +497,6 @@ export const buildTooltipHtml = (item: ChartItem, music: string[], activities: A
 
 // ── Chart layout constants ────────────────────────────────────────────────────
 
-const VERTICAL_CHART_HEIGHT = 800
-const HORIZONTAL_CHART_HEIGHT = 500
 const HORIZONTAL_MARGIN = { bottom: 30, left: 60, right: 60, top: 10 }
 const VERTICAL_MARGIN = { bottom: 10, left: 60, right: 10, top: 30 }
 
@@ -506,10 +504,11 @@ const computeVerticalZoomTransform = (
   baseScale: d3.ScaleTime<number, number>,
   vStart: Date,
   vEnd: Date,
+  chartHeight: number,
 ): d3.ZoomTransform => {
   const by0 = baseScale(vStart)
   const by1 = baseScale(vEnd)
-  const k = VERTICAL_CHART_HEIGHT / (by1 - by0)
+  const k = chartHeight / (by1 - by0)
   return d3.zoomIdentity.translate(0, -k * by0).scale(k)
 }
 
@@ -542,6 +541,33 @@ export const Timeline = () => {
 
   const orientationRef = useRef(orientation)
   orientationRef.current = orientation
+
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [legendCollapsed, setLegendCollapsed] = useState(false)
+  const legendRef = useRef<HTMLDivElement>(null)
+
+  // Auto-collapse legend if it wraps to more than one row
+  useEffect(() => {
+    const el = legendRef.current
+    if (!el) return
+    // First render: measure if content height exceeds one-row height
+    const firstChild = el.firstElementChild as HTMLElement | null
+    if (!firstChild) return
+    const oneRowHeight = firstChild.getBoundingClientRect().height || 36
+    if (el.scrollHeight > oneRowHeight + 8) {
+      setLegendCollapsed(true)
+    }
+  }, []) // run once after mount
+
+  // Escape key exits fullscreen
+  useEffect(() => {
+    if (!isFullscreen) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullscreen(false)
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [isFullscreen])
 
   // ── Data queries ───────────────────────────────────────────────────────────
 
@@ -630,7 +656,7 @@ export const Timeline = () => {
   const heartRateQuery = useQuery({
     enabled: orientation === 'horizontal',
     placeholderData: keepPreviousData,
-    queryFn: () => fetchHeartRate(new Date(fromDate.value), new Date(toDate.value)),
+    queryFn: () => fetchHeartRate(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['timeline-hr', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
   })
@@ -638,7 +664,7 @@ export const Timeline = () => {
   const hrvQuery = useQuery({
     enabled: orientation === 'horizontal',
     placeholderData: keepPreviousData,
-    queryFn: () => fetchHrv(new Date(fromDate.value), new Date(toDate.value)),
+    queryFn: () => fetchHrv(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['timeline-hrv', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
   })
@@ -959,22 +985,21 @@ export const Timeline = () => {
     if (!svgRef.current || !containerRef.current) return
 
     const containerWidth = containerRef.current.clientWidth
+    const containerHeight = containerRef.current.clientHeight
     const margin = VERTICAL_MARGIN
     const chartWidth = containerWidth - margin.left - margin.right
+    const chartHeight = Math.max(200, containerHeight - margin.top - margin.bottom)
 
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
-    svg.attr('width', containerWidth).attr('height', VERTICAL_CHART_HEIGHT + margin.top + margin.bottom)
+    svg.attr('width', containerWidth).attr('height', containerHeight)
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
 
-    const baseScale = d3.scaleTime().domain(baseScaleDomain).range([0, VERTICAL_CHART_HEIGHT])
+    const baseScale = d3.scaleTime().domain(baseScaleDomain).range([0, chartHeight])
     baseScaleRef.current = baseScale
 
-    const yScale = d3
-      .scaleTime()
-      .domain([effectiveViewStart, effectiveViewEnd])
-      .range([0, VERTICAL_CHART_HEIGHT])
+    const yScale = d3.scaleTime().domain([effectiveViewStart, effectiveViewEnd]).range([0, chartHeight])
 
     const colWidth = chartWidth / columns.length
     const colGap = 4
@@ -986,7 +1011,7 @@ export const Timeline = () => {
       .attr('id', 'chart-clip')
       .append('rect')
       .attr('width', chartWidth)
-      .attr('height', VERTICAL_CHART_HEIGHT)
+      .attr('height', chartHeight)
 
     const chartGroup = g.append('g').attr('clip-path', 'url(#chart-clip)')
 
@@ -1126,7 +1151,7 @@ export const Timeline = () => {
       svg.call(zoomBehaviorRef.current)
       svg.call(
         zoomBehaviorRef.current.transform,
-        computeVerticalZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd),
+        computeVerticalZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd, chartHeight),
       )
       isProgrammaticZoom.current = false
     }
@@ -1150,9 +1175,10 @@ export const Timeline = () => {
     if (!svgRef.current || !containerRef.current) return
 
     const containerWidth = containerRef.current.clientWidth
+    const containerHeight = containerRef.current.clientHeight
     const margin = HORIZONTAL_MARGIN
     const chartWidth = containerWidth - margin.left - margin.right
-    const chartHeight = HORIZONTAL_CHART_HEIGHT - margin.top - margin.bottom
+    const chartHeight = Math.max(150, containerHeight - margin.top - margin.bottom)
 
     const TRACK_COUNT = 3
     const trackHeight = chartHeight / TRACK_COUNT
@@ -1163,7 +1189,7 @@ export const Timeline = () => {
 
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
-    svg.attr('width', containerWidth).attr('height', HORIZONTAL_CHART_HEIGHT)
+    svg.attr('width', containerWidth).attr('height', containerHeight)
 
     // Add defs once
     const defs = svg.append('defs')
@@ -1407,7 +1433,8 @@ export const Timeline = () => {
           .defined(Boolean)
           .x(([time]) => currentXScale(time))
           .y(([, rate]) => yHr(rate))
-        g.append('path')
+        clipped
+          .append('path')
           .datum(preprocessData(heartRates, 10))
           .attr('fill', 'none')
           .attr('stroke', HR_COLOR)
@@ -1422,7 +1449,8 @@ export const Timeline = () => {
           .defined(Boolean)
           .x(([time]) => currentXScale(time))
           .y(([, value]) => yHrv(value))
-        g.append('path')
+        clipped
+          .append('path')
           .datum(preprocessData(hrvData, 10))
           .attr('fill', 'none')
           .attr('stroke', HRV_COLOR)
@@ -1514,7 +1542,14 @@ export const Timeline = () => {
             if (!baseScale) return
             const newY = event.transform.rescaleY(baseScale)
             const newDomain = newY.domain() as [Date, Date]
-            drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, VERTICAL_CHART_HEIGHT]))
+            const h =
+              containerRef.current ?
+                Math.max(
+                  200,
+                  containerRef.current.clientHeight - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom,
+                )
+              : 800
+            drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, h]))
           })
         })
         .on('end', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
@@ -1531,7 +1566,11 @@ export const Timeline = () => {
 
       const baseScale = baseScaleRef.current
       if (baseScale) {
-        const t = computeVerticalZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd)
+        const hForZoom =
+          containerRef.current ?
+            Math.max(200, containerRef.current.clientHeight - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom)
+          : 800
+        const t = computeVerticalZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd, hForZoom)
         isProgrammaticZoom.current = true
         svg.call(zoom.transform, t)
         isProgrammaticZoom.current = false
@@ -1591,8 +1630,6 @@ export const Timeline = () => {
   const isError =
     activitiesQuery.isError || placesQuery.isError || tagsQuery.isError || productivityQuery.isError
 
-  const mobileItems = [...chartItems].sort((a, b) => a.start.getTime() - b.start.getTime())
-
   const viewLabel =
     format(effectiveViewStart, 'MMM d') === format(effectiveViewEnd, 'MMM d') ?
       format(effectiveViewStart, 'MMM d, yyyy')
@@ -1600,10 +1637,10 @@ export const Timeline = () => {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  return (
-    <div class="timeline-view">
-      <h1>Timeline</h1>
+  const hiddenCount = hiddenCategories.size
 
+  return (
+    <div class={`timeline-view${isFullscreen ? ' timeline-fullscreen' : ''}`}>
       <div class="timeline-controls">
         <div class="timeline-nav">
           <button class="nav-btn" onClick={() => handleJumpDays(-30)} title="Back 1 month">
@@ -1627,7 +1664,7 @@ export const Timeline = () => {
 
         <div class="timeline-orientation-toggle">
           <button
-            class={`orientation-btn${orientation === 'vertical' ? ' active' : ''}`}
+            class={`nav-btn${orientation === 'vertical' ? ' active' : ''}`}
             onClick={() => setOrientation('vertical')}
             title="Vertical (columns)"
             type="button"
@@ -1635,67 +1672,100 @@ export const Timeline = () => {
             ☰
           </button>
           <button
-            class={`orientation-btn${orientation === 'horizontal' ? ' active' : ''}`}
+            class={`nav-btn${orientation === 'horizontal' ? ' active' : ''}`}
             onClick={() => setOrientation('horizontal')}
             title="Horizontal (timeline)"
             type="button"
           >
             ≡
           </button>
+          <button
+            class="nav-btn timeline-fullscreen-btn"
+            onClick={() => setIsFullscreen((v) => !v)}
+            title={isFullscreen ? 'Exit full screen (Esc)' : 'Full screen'}
+            type="button"
+          >
+            {isFullscreen ? '⛶' : '⛶'}
+          </button>
         </div>
       </div>
 
-      <div class="timeline-legend">
-        {(
-          [
-            { cat: 'sleep' as LegendCategory, color: activityColors.sleep!, label: 'Sleep' },
-            { cat: 'nap' as LegendCategory, color: activityColors.nap!, label: 'Nap' },
-            { cat: 'meditation' as LegendCategory, color: activityColors.meditation!, label: 'Meditation' },
-            { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
-            { cat: 'location' as LegendCategory, color: placeColorPalette[0]!, label: 'Location' },
-            { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
-            { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
-            ...(occasionalMetricItems.length > 0 ?
-              [{ cat: 'metrics' as LegendCategory, color: METRIC_COLOR, label: 'Metrics' }]
-            : []),
-            { cat: 'screentime' as LegendCategory, color: productivityColors[1]!, label: 'Screen Time' },
-            ...(showMusicColumn ?
-              [{ cat: 'music' as LegendCategory, color: MUSIC_COLOR, label: 'Music' }]
-            : []),
-          ] as { cat: LegendCategory; color: string; label: string }[]
-        ).map(({ cat, color, label }) => (
-          <button
-            key={cat}
-            class={`legend-item${hiddenCategories.has(cat) ? ' legend-item-hidden' : ''}`}
-            onClick={() => toggleCategory(cat)}
-            type="button"
-          >
-            <span class="legend-dot" style={{ background: color }} />
-            {label}
-          </button>
-        ))}
-        <span class="legend-separator" />
-        {orientation === 'vertical' && (
-          <>
-            <button
-              class={`legend-item${!showSparklineHR ? ' legend-item-hidden' : ''}`}
-              onClick={() => setShowSparklineHR((v) => !v)}
-              type="button"
-              title="Toggle HR sparklines on activities"
-            >
-              <span class="legend-dot" style={{ background: HR_COLOR }} />
-              HR
-            </button>
-            <button
-              class={`legend-item${!showSparklineHRV ? ' legend-item-hidden' : ''}`}
-              onClick={() => setShowSparklineHRV((v) => !v)}
-              type="button"
-              title="Toggle HRV sparklines on activities"
-            >
-              <span class="legend-dot" style={{ background: HRV_COLOR }} />
-              HRV
-            </button>
-          </>
+      <div class={`timeline-legend-wrapper${legendCollapsed ? ' collapsed' : ''}`}>
+        <button
+          class="timeline-legend-toggle"
+          onClick={() => setLegendCollapsed((v) => !v)}
+          type="button"
+          title={legendCollapsed ? 'Show legend' : 'Hide legend'}
+        >
+          Legend{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ''}{' '}
+          <span class="dropdown-arrow">{legendCollapsed ? '▾' : '▴'}</span>
+        </button>
+        {!legendCollapsed && (
+          <div class="timeline-legend" ref={legendRef}>
+            {(
+              [
+                { cat: 'sleep' as LegendCategory, color: activityColors.sleep!, label: 'Sleep' },
+                { cat: 'nap' as LegendCategory, color: activityColors.nap!, label: 'Nap' },
+                {
+                  cat: 'meditation' as LegendCategory,
+                  color: activityColors.meditation!,
+                  label: 'Meditation',
+                },
+                { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
+                { cat: 'location' as LegendCategory, color: placeColorPalette[0]!, label: 'Location' },
+                {
+                  cat: 'calendar' as LegendCategory,
+                  color: tagSourceColors.calendar!,
+                  label: 'Calendar',
+                },
+                { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
+                ...(occasionalMetricItems.length > 0 ?
+                  [{ cat: 'metrics' as LegendCategory, color: METRIC_COLOR, label: 'Metrics' }]
+                : []),
+                {
+                  cat: 'screentime' as LegendCategory,
+                  color: productivityColors[1]!,
+                  label: 'Screen Time',
+                },
+                ...(showMusicColumn ?
+                  [{ cat: 'music' as LegendCategory, color: MUSIC_COLOR, label: 'Music' }]
+                : []),
+              ] as { cat: LegendCategory; color: string; label: string }[]
+            ).map(({ cat, color, label }) => (
+              <button
+                key={cat}
+                class={`legend-item${hiddenCategories.has(cat) ? ' legend-item-hidden' : ''}`}
+                onClick={() => toggleCategory(cat)}
+                type="button"
+              >
+                <span class="legend-dot" style={{ background: color }} />
+                {label}
+              </button>
+            ))}
+            <span class="legend-separator" />
+            {orientation === 'vertical' && (
+              <>
+                <button
+                  class={`legend-item${!showSparklineHR ? ' legend-item-hidden' : ''}`}
+                  onClick={() => setShowSparklineHR((v) => !v)}
+                  type="button"
+                  title="Toggle HR sparklines on activities"
+                >
+                  <span class="legend-dot" style={{ background: HR_COLOR }} />
+                  HR
+                </button>
+                <button
+                  class={`legend-item${!showSparklineHRV ? ' legend-item-hidden' : ''}`}
+                  onClick={() => setShowSparklineHRV((v) => !v)}
+                  type="button"
+                  title="Toggle HRV sparklines on activities"
+                >
+                  <span class="legend-dot" style={{ background: HRV_COLOR }} />
+                  HRV
+                </button>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -1738,35 +1808,6 @@ export const Timeline = () => {
           </div>
 
           <p class="timeline-help">Scroll to zoom · Drag to pan · Double-click to reset</p>
-
-          <div class="timeline-list">
-            {mobileItems.length === 0 && <p class="loading">No data for this period</p>}
-            {mobileItems.map((item, idx) => {
-              const href =
-                item.entity_id && item.entity_type ?
-                  `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
-                : (item.href ?? undefined)
-              const Wrapper = href ? 'a' : 'div'
-              return (
-                <Wrapper
-                  class={`timeline-list-item${href ? ' clickable' : ''}`}
-                  key={idx}
-                  {...(href ? { href } : {})}
-                >
-                  <span class="list-dot" style={{ background: item.color }} />
-                  <span class="list-time">{item.tooltip.time}</span>
-                  <div class="list-content">
-                    <div class="list-title">{item.label}</div>
-                    {item.tooltip.details.map((d, i) => (
-                      <div class="list-detail" key={i}>
-                        {d}
-                      </div>
-                    ))}
-                  </div>
-                </Wrapper>
-              )
-            })}
-          </div>
         </>
       )}
     </div>

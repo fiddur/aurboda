@@ -8,6 +8,7 @@ import { NotFound } from './pages/_404.jsx'
 import { AddData } from './pages/AddData/index.jsx'
 import { AdminSettings } from './pages/AdminSettings/index.jsx'
 import { Correlations } from './pages/Correlations/index.jsx'
+import { Data } from './pages/Data/index.jsx'
 import { ActivityWatchAndroidSource } from './pages/DataSources/ActivityWatchAndroidSource.jsx'
 import { ActivityWatchDesktopSource } from './pages/DataSources/ActivityWatchDesktopSource.jsx'
 import { AndroidAppSource } from './pages/DataSources/AndroidAppSource.jsx'
@@ -45,6 +46,7 @@ export function App() {
             <Route path="/goals" component={Goals} />
             <Route path="/hr-zones" component={HrZones} />
             <Route path="/timeline" component={Timeline} />
+            <Route path="/data" component={Data} />
             <Route path="/add" component={AddData} />
             <Route path="/detail/:type/:id" component={EntityDetail} />
             <Route path="/sleep" component={Sleep} />
