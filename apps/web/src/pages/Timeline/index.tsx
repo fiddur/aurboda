@@ -719,10 +719,8 @@ export const Timeline = () => {
   const baseScaleRef = useRef<d3.ScaleTime<number, number>>()
   const zoomRafRef = useRef<number>(0)
   const drawRef = useRef<((scale: d3.ScaleTime<number, number>) => void) | null>(null)
-  // Horizontal chart: stable references to avoid DOM rebuild during pan/zoom
-  const hContentGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
+  // Horizontal chart: stable reference for x-axis (updated in place, never rebuilt)
   const hAxisGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
-  const hBaseScaleRef = useRef<d3.ScaleTime<number, number> | null>(null)
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
@@ -1179,7 +1177,6 @@ export const Timeline = () => {
 
   // ── Horizontal chart rendering ─────────────────────────────────────────────
 
-  // eslint-disable-next-line complexity -- D3 drawing function; splitting would obscure data flow
   const renderHorizontalChart = useCallback(() => {
     if (!svgRef.current || !containerRef.current) return
 
@@ -1217,7 +1214,6 @@ export const Timeline = () => {
     const hFetchEnd = endOfDay(new Date(toDate.value))
     const baseScale = d3.scaleTime().domain([hFetchStart, hFetchEnd]).range([0, chartWidth])
     baseScaleRef.current = baseScale
-    hBaseScaleRef.current = baseScale
 
     const heartRates = heartRateQuery.data ?? []
     const hrvData = hrvQuery.data ?? []
@@ -1311,190 +1307,230 @@ export const Timeline = () => {
       .attr('transform', `translate(0,${chartHeight})`)
     hAxisGroupRef.current = xAxisGroup
 
-    // Clipped content group — items rendered at base-scale positions;
-    // a transform is applied during zoom/pan instead of recreating DOM nodes.
+    // Clipped content group — cleared and redrawn each frame (like vertical mode)
     const clipped = outerG.append('g').attr('clip-path', 'url(#h-chart-clip)')
-    const contentGroup = clipped.append('g').attr('class', 'h-content')
-    hContentGroupRef.current = contentGroup
+    const chartGroup = clipped.append('g').attr('class', 'h-content')
 
-    // Build all items using the base scale (native positions)
-    // ── Activity lane ──
-    for (const { item, lane } of packedActivityItems.items) {
-      const laneY = trackActivity + lane * activitySubLaneHeight
-      const laneH = activitySubLaneHeight - 1
-      const rx = baseScale(item.start)
-      const rw = Math.max(0, baseScale(item.end) - rx)
+    // Pre-process HR/HRV data once (expensive — don't repeat per frame)
+    const hrProcessed = heartRates.length > 0 ? preprocessData(heartRates, 10) : null
+    const hrvProcessed = hrvData.length > 0 ? preprocessData(hrvData, 10) : null
 
-      contentGroup
-        .append('rect')
-        .attr('x', rx)
-        .attr('y', laneY)
-        .attr('width', rw)
-        .attr('height', laneH)
-        .attr('fill', item.color)
-        .attr('opacity', 0.7)
-        .attr('rx', 2)
-        .attr('cursor', 'pointer')
-        .on('mouseenter', function (event: MouseEvent) {
-          d3.select(this).attr('opacity', 0.9)
-          showTooltip(event, item)
-        })
-        .on('mouseleave', function () {
-          d3.select(this).attr('opacity', 0.7)
-          hideTooltip()
-        })
-
-      if (item.icon && isEmoji(item.icon)) {
-        contentGroup
-          .append('text')
-          .attr('x', rx + rw / 2)
-          .attr('y', laneY + laneH / 2)
-          .attr('dy', '0.35em')
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '12px')
-          .attr('pointer-events', 'none')
-          .text(item.icon)
-      } else if (item.icon && isUrl(item.icon)) {
-        const imgSize = 12
-        contentGroup
-          .append('image')
-          .attr('href', item.icon)
-          .attr('x', rx + rw / 2 - imgSize / 2)
-          .attr('y', laneY + laneH / 2 - imgSize / 2)
-          .attr('width', imgSize)
-          .attr('height', imgSize)
-          .attr('pointer-events', 'none')
-      } else if (rw > 40) {
-        const maxChars = Math.floor(rw / 6)
-        const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
-        contentGroup
-          .append('text')
-          .attr('x', rx + 4)
-          .attr('y', laneY + Math.min(laneH * 0.6, 14))
-          .attr('fill', 'white')
-          .attr('font-size', '0.65rem')
-          .attr('pointer-events', 'none')
-          .text(text)
-      }
-    }
-
-    // ── Places lane ──
-    const placeItems = chartItems.filter((i) => i.column === 'Location')
-    for (const place of placeItems) {
-      const px = baseScale(place.start)
-      const pw = Math.max(0, baseScale(place.end) - px)
-      contentGroup
-        .append('rect')
-        .attr('x', px)
-        .attr('y', trackPlaces)
-        .attr('width', pw)
-        .attr('height', trackHeight)
-        .attr('fill', place.color)
-        .attr('opacity', 0.7)
-        .attr('cursor', 'pointer')
-        .on('mouseenter', function (event: MouseEvent) {
-          d3.select(this).attr('opacity', 0.9)
-          showTooltip(event, place)
-        })
-        .on('mouseleave', function () {
-          d3.select(this).attr('opacity', 0.7)
-          hideTooltip()
-        })
-    }
-
-    // ── Tags lane: stacked icons ──
-    for (const { item: tag, lane } of packedPointTags.items) {
-      const icon = tag.icon
-      const tx = baseScale(tag.start)
-      const tagY = trackTags + 4 + lane * (TAG_ICON_SIZE + 2)
-
-      if (icon && isEmoji(icon)) {
-        contentGroup
-          .append('text')
-          .attr('x', tx)
-          .attr('y', tagY + TAG_ICON_SIZE * 0.8)
-          .attr('font-size', TAG_ICON_SIZE)
-          .attr('text-anchor', 'middle')
-          .attr('cursor', 'pointer')
-          .text(icon)
-          .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
-          .on('mouseleave', hideTooltip)
-      } else if (icon && isUrl(icon)) {
-        contentGroup
-          .append('image')
-          .attr('href', icon)
-          .attr('x', tx - TAG_ICON_SIZE / 2)
-          .attr('y', tagY)
-          .attr('width', TAG_ICON_SIZE)
-          .attr('height', TAG_ICON_SIZE)
-          .attr('cursor', 'pointer')
-          .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
-          .on('mouseleave', hideTooltip)
-      } else {
-        contentGroup
-          .append('line')
-          .attr('x1', tx)
-          .attr('x2', tx)
-          .attr('y1', trackTags)
-          .attr('y2', trackTags + trackHeight)
-          .attr('stroke', tag.color)
-          .attr('stroke-width', 1.5)
-          .attr('stroke-dasharray', '3,2')
-          .attr('opacity', 0.6)
-          .attr('cursor', 'pointer')
-          .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
-          .on('mouseleave', hideTooltip)
-      }
-    }
-
-    // ── HR/HRV paths ──
-    if (heartRates.length > 0) {
-      const hrLine = d3
-        .line<[Date, number] | null>()
-        .defined(Boolean)
-        .x(([time]) => baseScale(time))
-        .y(([, rate]) => yHr(rate))
-      contentGroup
-        .append('path')
-        .datum(preprocessData(heartRates, 10))
-        .attr('fill', 'none')
-        .attr('stroke', HR_COLOR)
-        .attr('stroke-width', 1.5)
-        .attr('pointer-events', 'none')
-        .attr('d', hrLine as never)
-    }
-
-    if (hrvData.length > 0) {
-      const hrvLine = d3
-        .line<[Date, number] | null>()
-        .defined(Boolean)
-        .x(([time]) => baseScale(time))
-        .y(([, value]) => yHrv(value))
-      contentGroup
-        .append('path')
-        .datum(preprocessData(hrvData, 10))
-        .attr('fill', 'none')
-        .attr('stroke', HRV_COLOR)
-        .attr('stroke-width', 1.5)
-        .attr('pointer-events', 'none')
-        .attr('d', hrvLine as never)
-    }
-
-    // draw() now only updates the transform on the content group and refreshes the x-axis
+    // draw() clears and redraws all content using the current x-scale.
+    // This is fast because the browser batches DOM mutations into a single paint.
+    // eslint-disable-next-line complexity -- D3 visualization draw loop
     const draw = (currentXScale: d3.ScaleTime<number, number>) => {
-      const cg = hContentGroupRef.current
+      chartGroup.selectAll('*').remove()
       const ag = hAxisGroupRef.current
-      const bs = hBaseScaleRef.current
-      if (!cg || !ag || !bs) return
+      if (!ag) return
 
-      // Compute the transform that maps base-scale x positions to current-scale positions
-      const [d0, d1] = currentXScale.domain() as [Date, Date]
-      const [r0, r1] = bs.range() as [number, number]
-      const bx0 = bs(d0)
-      const bx1 = bs(d1)
-      const scale = (r1 - r0) / (bx1 - bx0)
-      const translate = r0 - bx0 * scale
-      cg.attr('transform', `translate(${translate},0) scale(${scale},1)`)
+      const domain = currentXScale.domain()
+      const domainStart = domain[0]!
+      const domainEnd = domain[1]!
+
+      // ── Time grid lines ──
+      const oneHourLater = new Date(domainStart.getTime() + 3600000)
+      const pixelsPerHour = Math.abs(currentXScale(oneHourLater) - currentXScale(domainStart))
+      let hourIntervalHours: number
+      if (pixelsPerHour >= 60) hourIntervalHours = 1
+      else if (pixelsPerHour >= 30) hourIntervalHours = 2
+      else if (pixelsPerHour >= 15) hourIntervalHours = 4
+      else if (pixelsPerHour >= 8) hourIntervalHours = 6
+      else if (pixelsPerHour >= 4) hourIntervalHours = 12
+      else hourIntervalHours = 24
+
+      const hours = d3.timeHour.range(domainStart, domainEnd)
+      const gridHours = hours.filter((d) => d.getHours() % hourIntervalHours === 0)
+      for (const h of gridHours) {
+        const hx = currentXScale(h)
+        chartGroup
+          .append('line')
+          .attr('x1', hx)
+          .attr('x2', hx)
+          .attr('y1', 0)
+          .attr('y2', chartHeight)
+          .attr('stroke', 'currentColor')
+          .attr('stroke-opacity', 0.1)
+      }
+
+      // Midnight separators
+      const midnights = d3.timeDay.range(domainStart, domainEnd)
+      for (const midnight of midnights) {
+        const mx = currentXScale(midnight)
+        chartGroup
+          .append('line')
+          .attr('x1', mx)
+          .attr('x2', mx)
+          .attr('y1', 0)
+          .attr('y2', chartHeight)
+          .attr('stroke', 'currentColor')
+          .attr('stroke-opacity', 0.3)
+          .attr('stroke-width', 1.5)
+          .attr('stroke-dasharray', '6,3')
+      }
+
+      // ── Activity lane ──
+      for (const { item, lane } of packedActivityItems.items) {
+        const laneY = trackActivity + lane * activitySubLaneHeight
+        const laneH = activitySubLaneHeight - 1
+        const rx = currentXScale(item.start)
+        const rw = Math.max(0, currentXScale(item.end) - rx)
+
+        chartGroup
+          .append('rect')
+          .attr('x', rx)
+          .attr('y', laneY)
+          .attr('width', rw)
+          .attr('height', laneH)
+          .attr('fill', item.color)
+          .attr('opacity', 0.7)
+          .attr('rx', 2)
+          .attr('cursor', 'pointer')
+          .on('mouseenter', function (event: MouseEvent) {
+            d3.select(this).attr('opacity', 0.9)
+            showTooltip(event, item)
+          })
+          .on('mouseleave', function () {
+            d3.select(this).attr('opacity', 0.7)
+            hideTooltip()
+          })
+
+        if (item.icon && isEmoji(item.icon)) {
+          chartGroup
+            .append('text')
+            .attr('x', rx + rw / 2)
+            .attr('y', laneY + laneH / 2)
+            .attr('dy', '0.35em')
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '12px')
+            .attr('pointer-events', 'none')
+            .text(item.icon)
+        } else if (item.icon && isUrl(item.icon)) {
+          const imgSize = 12
+          chartGroup
+            .append('image')
+            .attr('href', item.icon)
+            .attr('x', rx + rw / 2 - imgSize / 2)
+            .attr('y', laneY + laneH / 2 - imgSize / 2)
+            .attr('width', imgSize)
+            .attr('height', imgSize)
+            .attr('pointer-events', 'none')
+        } else if (rw > 40) {
+          const maxChars = Math.floor(rw / 6)
+          const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+          chartGroup
+            .append('text')
+            .attr('x', rx + 4)
+            .attr('y', laneY + Math.min(laneH * 0.6, 14))
+            .attr('fill', 'white')
+            .attr('font-size', '0.65rem')
+            .attr('pointer-events', 'none')
+            .text(text)
+        }
+      }
+
+      // ── Places lane ──
+      const placeItems = chartItems.filter((i) => i.column === 'Location')
+      for (const place of placeItems) {
+        const px = currentXScale(place.start)
+        const pw = Math.max(0, currentXScale(place.end) - px)
+        chartGroup
+          .append('rect')
+          .attr('x', px)
+          .attr('y', trackPlaces)
+          .attr('width', pw)
+          .attr('height', trackHeight)
+          .attr('fill', place.color)
+          .attr('opacity', 0.7)
+          .attr('cursor', 'pointer')
+          .on('mouseenter', function (event: MouseEvent) {
+            d3.select(this).attr('opacity', 0.9)
+            showTooltip(event, place)
+          })
+          .on('mouseleave', function () {
+            d3.select(this).attr('opacity', 0.7)
+            hideTooltip()
+          })
+      }
+
+      // ── Tags lane: stacked icons ──
+      for (const { item: tag, lane } of packedPointTags.items) {
+        const icon = tag.icon
+        const tx = currentXScale(tag.start)
+        const tagY = trackTags + 4 + lane * (TAG_ICON_SIZE + 2)
+
+        if (icon && isEmoji(icon)) {
+          chartGroup
+            .append('text')
+            .attr('x', tx)
+            .attr('y', tagY + TAG_ICON_SIZE * 0.8)
+            .attr('font-size', TAG_ICON_SIZE)
+            .attr('text-anchor', 'middle')
+            .attr('cursor', 'pointer')
+            .text(icon)
+            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
+            .on('mouseleave', hideTooltip)
+        } else if (icon && isUrl(icon)) {
+          chartGroup
+            .append('image')
+            .attr('href', icon)
+            .attr('x', tx - TAG_ICON_SIZE / 2)
+            .attr('y', tagY)
+            .attr('width', TAG_ICON_SIZE)
+            .attr('height', TAG_ICON_SIZE)
+            .attr('cursor', 'pointer')
+            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
+            .on('mouseleave', hideTooltip)
+        } else {
+          chartGroup
+            .append('line')
+            .attr('x1', tx)
+            .attr('x2', tx)
+            .attr('y1', trackTags)
+            .attr('y2', trackTags + trackHeight)
+            .attr('stroke', tag.color)
+            .attr('stroke-width', 1.5)
+            .attr('stroke-dasharray', '3,2')
+            .attr('opacity', 0.6)
+            .attr('cursor', 'pointer')
+            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
+            .on('mouseleave', hideTooltip)
+        }
+      }
+
+      // ── HR/HRV paths ──
+      if (hrProcessed) {
+        const hrLine = d3
+          .line<[Date, number] | null>()
+          .defined(Boolean)
+          .x(([time]) => currentXScale(time))
+          .y(([, rate]) => yHr(rate))
+        chartGroup
+          .append('path')
+          .datum(hrProcessed)
+          .attr('fill', 'none')
+          .attr('stroke', HR_COLOR)
+          .attr('stroke-width', 1.5)
+          .attr('pointer-events', 'none')
+          .attr('d', hrLine as never)
+      }
+      if (hrvProcessed) {
+        const hrvLine = d3
+          .line<[Date, number] | null>()
+          .defined(Boolean)
+          .x(([time]) => currentXScale(time))
+          .y(([, value]) => yHrv(value))
+        chartGroup
+          .append('path')
+          .datum(hrvProcessed)
+          .attr('fill', 'none')
+          .attr('stroke', HRV_COLOR)
+          .attr('stroke-width', 1.5)
+          .attr('pointer-events', 'none')
+          .attr('d', hrvLine as never)
+      }
+
+      // ── Now line ──
+      drawHorizontalNowLine(chartGroup, chartHeight, currentXScale)
 
       // Update x-axis in place
       ag.call(d3.axisBottom(currentXScale).ticks(8) as never)
@@ -1533,15 +1569,32 @@ export const Timeline = () => {
     } else {
       renderHorizontalChart()
     }
-    const resizeObserver = new ResizeObserver(() => {
-      if (orientationRef.current === 'vertical') {
-        renderVerticalChart()
-      } else {
-        renderHorizontalChart()
-      }
+    let resizeRaf = 0
+    let lastW = 0
+    let lastH = 0
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      const w = Math.round(entry.contentRect.width)
+      const h = Math.round(entry.contentRect.height)
+      // Skip if size hasn't actually changed (avoids render loop from SVG attr changes)
+      if (w === lastW && h === lastH) return
+      lastW = w
+      lastH = h
+      cancelAnimationFrame(resizeRaf)
+      resizeRaf = requestAnimationFrame(() => {
+        if (orientationRef.current === 'vertical') {
+          renderVerticalChart()
+        } else {
+          renderHorizontalChart()
+        }
+      })
     })
     if (containerRef.current) resizeObserver.observe(containerRef.current)
-    return () => resizeObserver.disconnect()
+    return () => {
+      cancelAnimationFrame(resizeRaf)
+      resizeObserver.disconnect()
+    }
   }, [orientation, renderVerticalChart, renderHorizontalChart])
 
   // ── Zoom behavior — set up once per orientation ────────────────────────────
@@ -2236,6 +2289,36 @@ const drawNowLine = (
     .attr('x', chartWidth + 4)
     .attr('y', nowY)
     .attr('dy', '0.35em')
+    .attr('fill', NOW_COLOR)
+    .attr('font-size', '0.65rem')
+    .attr('font-weight', '600')
+    .text('Now')
+}
+
+const drawHorizontalNowLine = (
+  chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
+  chartHeight: number,
+  xScale: d3.ScaleTime<number, number>,
+) => {
+  const now = new Date()
+  const domain = xScale.domain()
+  if (now < domain[0]! || now > domain[1]!) return
+
+  const nowX = xScale(now)
+  chartGroup
+    .append('line')
+    .attr('x1', nowX)
+    .attr('x2', nowX)
+    .attr('y1', 0)
+    .attr('y2', chartHeight)
+    .attr('stroke', NOW_COLOR)
+    .attr('stroke-width', 1.5)
+    .attr('stroke-dasharray', '6,3')
+  chartGroup
+    .append('text')
+    .attr('x', nowX)
+    .attr('y', -4)
+    .attr('text-anchor', 'middle')
     .attr('fill', NOW_COLOR)
     .attr('font-size', '0.65rem')
     .attr('font-weight', '600')
