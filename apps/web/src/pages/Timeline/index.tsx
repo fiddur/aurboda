@@ -719,6 +719,10 @@ export const Timeline = () => {
   const baseScaleRef = useRef<d3.ScaleTime<number, number>>()
   const zoomRafRef = useRef<number>(0)
   const drawRef = useRef<((scale: d3.ScaleTime<number, number>) => void) | null>(null)
+  // Horizontal chart: stable references to avoid DOM rebuild during pan/zoom
+  const hContentGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
+  const hAxisGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
+  const hBaseScaleRef = useRef<d3.ScaleTime<number, number> | null>(null)
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
@@ -968,7 +972,11 @@ export const Timeline = () => {
       tip.innerHTML = buildTooltipHtml(item, music, activities)
       tip.style.display = 'block'
       const x = event.clientX - containerRect.left + 12
-      const y = event.clientY - containerRect.top - 10
+      const yRaw = event.clientY - containerRect.top - 10
+      // Clamp so tooltip stays within the container vertically
+      const tipH = tip.scrollHeight
+      const yMax = containerRect.height - tipH - 4
+      const y = Math.min(yRaw, Math.max(yMax, 4))
       tip.style.left = `${Math.min(x, containerRect.width - 320)}px`
       tip.style.top = `${y}px`
     },
@@ -1171,6 +1179,7 @@ export const Timeline = () => {
 
   // ── Horizontal chart rendering ─────────────────────────────────────────────
 
+  // eslint-disable-next-line complexity -- D3 drawing function; splitting would obscure data flow
   const renderHorizontalChart = useCallback(() => {
     if (!svgRef.current || !containerRef.current) return
 
@@ -1202,11 +1211,13 @@ export const Timeline = () => {
       .attr('width', chartWidth)
       .attr('height', chartHeight)
 
-    const baseScale = d3
-      .scaleTime()
-      .domain([getDefaultViewStart(), getDefaultViewEnd()])
-      .range([0, chartWidth])
+    // Use the full fetch window as the base scale so items are positioned
+    // in "native" coordinates; zoom/pan applies a transform to this group.
+    const hFetchStart = startOfDay(new Date(fromDate.value))
+    const hFetchEnd = endOfDay(new Date(toDate.value))
+    const baseScale = d3.scaleTime().domain([hFetchStart, hFetchEnd]).range([0, chartWidth])
     baseScaleRef.current = baseScale
+    hBaseScaleRef.current = baseScale
 
     const heartRates = heartRateQuery.data ?? []
     const hrvData = hrvQuery.data ?? []
@@ -1239,244 +1250,256 @@ export const Timeline = () => {
     const activitySubLaneHeight =
       packedActivityItems.laneCount > 1 ? trackHeight / packedActivityItems.laneCount : trackHeight
 
-    // eslint-disable-next-line complexity -- D3 drawing function; splitting would obscure data flow
-    const draw = (currentXScale: d3.ScaleTime<number, number>) => {
-      // Only redraw the chart content group — axes and static elements survive
-      svg.selectAll('.chart-content').remove()
+    // Outer group for margin offset — static, never removed
+    const outerG = svg
+      .append('g')
+      .attr('class', 'chart-outer')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
 
-      const g = svg
+    // Static lane labels and separators (not affected by zoom/pan)
+    outerG
+      .append('line')
+      .attr('x1', 0)
+      .attr('x2', chartWidth)
+      .attr('y1', trackHeight)
+      .attr('y2', trackHeight)
+      .attr('stroke', 'currentColor')
+      .attr('stroke-opacity', 0.2)
+    outerG
+      .append('line')
+      .attr('x1', 0)
+      .attr('x2', chartWidth)
+      .attr('y1', trackHeight * 2)
+      .attr('y2', trackHeight * 2)
+      .attr('stroke', 'currentColor')
+      .attr('stroke-opacity', 0.2)
+
+    const laneLabels = [
+      { label: 'Activity', y: trackActivity },
+      { label: 'Location', y: trackPlaces },
+      { label: 'Tags', y: trackTags },
+    ]
+    for (const { label, y } of laneLabels) {
+      outerG
+        .append('text')
+        .attr('x', -margin.left + 4)
+        .attr('y', y + trackHeight / 2)
+        .attr('dy', '0.35em')
+        .attr('fill', 'currentColor')
+        .attr('font-size', '0.65rem')
+        .attr('opacity', 0.5)
+        .text(label)
+    }
+
+    // Static y-axes (HR/HRV — these don't move with pan)
+    if (heartRates.length > 0) {
+      outerG.append('g').call(d3.axisLeft(yHr).ticks(5)).selectAll('text').style('fill', HR_COLOR)
+    }
+    if (hrvData.length > 0) {
+      outerG
         .append('g')
-        .attr('class', 'chart-content')
-        .attr('transform', `translate(${margin.left},${margin.top})`)
+        .attr('transform', `translate(${chartWidth},0)`)
+        .call(d3.axisRight(yHrv).ticks(5))
+        .selectAll('text')
+        .style('fill', HRV_COLOR)
+    }
 
-      const clipped = g.append('g').attr('clip-path', 'url(#h-chart-clip)')
+    // X-axis group — updated in place on zoom
+    const xAxisGroup = outerG
+      .append('g')
+      .attr('class', 'h-x-axis')
+      .attr('transform', `translate(0,${chartHeight})`)
+    hAxisGroupRef.current = xAxisGroup
 
-      // Day boundary lines
-      const domain = currentXScale.domain()
-      const midnights = d3.timeDay.range(domain[0]!, domain[1]!)
-      for (const midnight of midnights) {
-        const mx = currentXScale(midnight)
-        g.append('line')
-          .attr('x1', mx)
-          .attr('x2', mx)
-          .attr('y1', 0)
-          .attr('y2', chartHeight)
-          .attr('stroke', 'currentColor')
-          .attr('stroke-opacity', 0.2)
-          .attr('stroke-dasharray', '4,2')
+    // Clipped content group — items rendered at base-scale positions;
+    // a transform is applied during zoom/pan instead of recreating DOM nodes.
+    const clipped = outerG.append('g').attr('clip-path', 'url(#h-chart-clip)')
+    const contentGroup = clipped.append('g').attr('class', 'h-content')
+    hContentGroupRef.current = contentGroup
 
-        g.append('text')
-          .attr('x', mx + 3)
-          .attr('y', -4)
-          .attr('fill', 'currentColor')
-          .attr('font-size', '0.65rem')
-          .attr('opacity', 0.5)
-          .text(format(midnight, 'EEE MMM d'))
-      }
+    // Build all items using the base scale (native positions)
+    // ── Activity lane ──
+    for (const { item, lane } of packedActivityItems.items) {
+      const laneY = trackActivity + lane * activitySubLaneHeight
+      const laneH = activitySubLaneHeight - 1
+      const rx = baseScale(item.start)
+      const rw = Math.max(0, baseScale(item.end) - rx)
 
-      // Lane separator lines
-      g.append('line')
-        .attr('x1', 0)
-        .attr('x2', chartWidth)
-        .attr('y1', trackHeight)
-        .attr('y2', trackHeight)
-        .attr('stroke', 'currentColor')
-        .attr('stroke-opacity', 0.2)
-      g.append('line')
-        .attr('x1', 0)
-        .attr('x2', chartWidth)
-        .attr('y1', trackHeight * 2)
-        .attr('y2', trackHeight * 2)
-        .attr('stroke', 'currentColor')
-        .attr('stroke-opacity', 0.2)
+      contentGroup
+        .append('rect')
+        .attr('x', rx)
+        .attr('y', laneY)
+        .attr('width', rw)
+        .attr('height', laneH)
+        .attr('fill', item.color)
+        .attr('opacity', 0.7)
+        .attr('rx', 2)
+        .attr('cursor', 'pointer')
+        .on('mouseenter', function (event: MouseEvent) {
+          d3.select(this).attr('opacity', 0.9)
+          showTooltip(event, item)
+        })
+        .on('mouseleave', function () {
+          d3.select(this).attr('opacity', 0.7)
+          hideTooltip()
+        })
 
-      // Lane labels
-      const laneLabels = [
-        { label: 'Activity', y: trackActivity },
-        { label: 'Location', y: trackPlaces },
-        { label: 'Tags', y: trackTags },
-      ]
-      for (const { label, y } of laneLabels) {
-        g.append('text')
-          .attr('x', -margin.left + 4)
-          .attr('y', y + trackHeight / 2)
+      if (item.icon && isEmoji(item.icon)) {
+        contentGroup
+          .append('text')
+          .attr('x', rx + rw / 2)
+          .attr('y', laneY + laneH / 2)
           .attr('dy', '0.35em')
-          .attr('fill', 'currentColor')
+          .attr('text-anchor', 'middle')
+          .attr('font-size', '12px')
+          .attr('pointer-events', 'none')
+          .text(item.icon)
+      } else if (item.icon && isUrl(item.icon)) {
+        const imgSize = 12
+        contentGroup
+          .append('image')
+          .attr('href', item.icon)
+          .attr('x', rx + rw / 2 - imgSize / 2)
+          .attr('y', laneY + laneH / 2 - imgSize / 2)
+          .attr('width', imgSize)
+          .attr('height', imgSize)
+          .attr('pointer-events', 'none')
+      } else if (rw > 40) {
+        const maxChars = Math.floor(rw / 6)
+        const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+        contentGroup
+          .append('text')
+          .attr('x', rx + 4)
+          .attr('y', laneY + Math.min(laneH * 0.6, 14))
+          .attr('fill', 'white')
           .attr('font-size', '0.65rem')
-          .attr('opacity', 0.5)
-          .text(label)
-      }
-
-      // ── Activity lane ──
-      for (const { item, lane } of packedActivityItems.items) {
-        const laneY = trackActivity + lane * activitySubLaneHeight
-        const laneH = activitySubLaneHeight - 1
-        const rx = currentXScale(item.start)
-        const rw = Math.max(0, currentXScale(item.end) - rx)
-
-        clipped
-          .append('rect')
-          .attr('x', rx)
-          .attr('y', laneY)
-          .attr('width', rw)
-          .attr('height', laneH)
-          .attr('fill', item.color)
-          .attr('opacity', 0.7)
-          .attr('rx', 2)
-          .attr('cursor', 'pointer')
-          .on('mouseenter', function (event: MouseEvent) {
-            d3.select(this).attr('opacity', 0.9)
-            showTooltip(event, item)
-          })
-          .on('mouseleave', function () {
-            d3.select(this).attr('opacity', 0.7)
-            hideTooltip()
-          })
-
-        if (rw > 40) {
-          const maxChars = Math.floor(rw / 6)
-          const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
-          clipped
-            .append('text')
-            .attr('x', rx + 4)
-            .attr('y', laneY + Math.min(laneH * 0.6, 14))
-            .attr('fill', 'white')
-            .attr('font-size', '0.65rem')
-            .attr('pointer-events', 'none')
-            .text(text)
-        }
-
-        if (item.icon && isEmoji(item.icon) && rw > 20) {
-          clipped
-            .append('text')
-            .attr('x', rx + rw / 2)
-            .attr('y', laneY + laneH / 2)
-            .attr('dy', '0.35em')
-            .attr('text-anchor', 'middle')
-            .attr('font-size', '12px')
-            .attr('pointer-events', 'none')
-            .text(item.icon)
-        }
-      }
-
-      // ── Places lane ──
-      const placeItems = chartItems.filter((i) => i.column === 'Location')
-      for (const place of placeItems) {
-        clipped
-          .append('rect')
-          .attr('x', currentXScale(place.start))
-          .attr('y', trackPlaces)
-          .attr('width', Math.max(0, currentXScale(place.end) - currentXScale(place.start)))
-          .attr('height', trackHeight)
-          .attr('fill', place.color)
-          .attr('opacity', 0.7)
-          .attr('cursor', 'pointer')
-          .on('mouseenter', function (event: MouseEvent) {
-            d3.select(this).attr('opacity', 0.9)
-            showTooltip(event, place)
-          })
-          .on('mouseleave', function () {
-            d3.select(this).attr('opacity', 0.7)
-            hideTooltip()
-          })
-      }
-
-      // ── Tags lane: stacked icons ──
-      for (const { item: tag, lane } of packedPointTags.items) {
-        const icon = tag.icon
-        const tx = currentXScale(tag.start)
-        const tagY = trackTags + 4 + lane * (TAG_ICON_SIZE + 2)
-
-        if (icon && isEmoji(icon)) {
-          clipped
-            .append('text')
-            .attr('x', tx)
-            .attr('y', tagY + TAG_ICON_SIZE * 0.8)
-            .attr('font-size', TAG_ICON_SIZE)
-            .attr('text-anchor', 'middle')
-            .attr('cursor', 'pointer')
-            .text(icon)
-            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
-            .on('mouseleave', hideTooltip)
-        } else if (icon && isUrl(icon)) {
-          clipped
-            .append('image')
-            .attr('href', icon)
-            .attr('x', tx - TAG_ICON_SIZE / 2)
-            .attr('y', tagY)
-            .attr('width', TAG_ICON_SIZE)
-            .attr('height', TAG_ICON_SIZE)
-            .attr('cursor', 'pointer')
-            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
-            .on('mouseleave', hideTooltip)
-        } else {
-          clipped
-            .append('line')
-            .attr('x1', tx)
-            .attr('x2', tx)
-            .attr('y1', trackTags)
-            .attr('y2', trackTags + trackHeight)
-            .attr('stroke', tag.color)
-            .attr('stroke-width', 1.5)
-            .attr('stroke-dasharray', '3,2')
-            .attr('opacity', 0.6)
-            .attr('cursor', 'pointer')
-            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
-            .on('mouseleave', hideTooltip)
-        }
-      }
-
-      // ── HR/HRV background lines ──
-      if (heartRates.length > 0) {
-        const hrLine = d3
-          .line<[Date, number] | null>()
-          .defined(Boolean)
-          .x(([time]) => currentXScale(time))
-          .y(([, rate]) => yHr(rate))
-        clipped
-          .append('path')
-          .datum(preprocessData(heartRates, 10))
-          .attr('fill', 'none')
-          .attr('stroke', HR_COLOR)
-          .attr('stroke-width', 1.5)
           .attr('pointer-events', 'none')
-          .attr('d', hrLine as never)
+          .text(text)
       }
+    }
 
-      if (hrvData.length > 0) {
-        const hrvLine = d3
-          .line<[Date, number] | null>()
-          .defined(Boolean)
-          .x(([time]) => currentXScale(time))
-          .y(([, value]) => yHrv(value))
-        clipped
-          .append('path')
-          .datum(preprocessData(hrvData, 10))
-          .attr('fill', 'none')
-          .attr('stroke', HRV_COLOR)
+    // ── Places lane ──
+    const placeItems = chartItems.filter((i) => i.column === 'Location')
+    for (const place of placeItems) {
+      const px = baseScale(place.start)
+      const pw = Math.max(0, baseScale(place.end) - px)
+      contentGroup
+        .append('rect')
+        .attr('x', px)
+        .attr('y', trackPlaces)
+        .attr('width', pw)
+        .attr('height', trackHeight)
+        .attr('fill', place.color)
+        .attr('opacity', 0.7)
+        .attr('cursor', 'pointer')
+        .on('mouseenter', function (event: MouseEvent) {
+          d3.select(this).attr('opacity', 0.9)
+          showTooltip(event, place)
+        })
+        .on('mouseleave', function () {
+          d3.select(this).attr('opacity', 0.7)
+          hideTooltip()
+        })
+    }
+
+    // ── Tags lane: stacked icons ──
+    for (const { item: tag, lane } of packedPointTags.items) {
+      const icon = tag.icon
+      const tx = baseScale(tag.start)
+      const tagY = trackTags + 4 + lane * (TAG_ICON_SIZE + 2)
+
+      if (icon && isEmoji(icon)) {
+        contentGroup
+          .append('text')
+          .attr('x', tx)
+          .attr('y', tagY + TAG_ICON_SIZE * 0.8)
+          .attr('font-size', TAG_ICON_SIZE)
+          .attr('text-anchor', 'middle')
+          .attr('cursor', 'pointer')
+          .text(icon)
+          .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
+          .on('mouseleave', hideTooltip)
+      } else if (icon && isUrl(icon)) {
+        contentGroup
+          .append('image')
+          .attr('href', icon)
+          .attr('x', tx - TAG_ICON_SIZE / 2)
+          .attr('y', tagY)
+          .attr('width', TAG_ICON_SIZE)
+          .attr('height', TAG_ICON_SIZE)
+          .attr('cursor', 'pointer')
+          .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
+          .on('mouseleave', hideTooltip)
+      } else {
+        contentGroup
+          .append('line')
+          .attr('x1', tx)
+          .attr('x2', tx)
+          .attr('y1', trackTags)
+          .attr('y2', trackTags + trackHeight)
+          .attr('stroke', tag.color)
           .attr('stroke-width', 1.5)
-          .attr('pointer-events', 'none')
-          .attr('d', hrvLine as never)
+          .attr('stroke-dasharray', '3,2')
+          .attr('opacity', 0.6)
+          .attr('cursor', 'pointer')
+          .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
+          .on('mouseleave', hideTooltip)
       }
+    }
 
-      // ── Axes ──
-      g.append('g')
-        .attr('transform', `translate(0,${chartHeight})`)
-        .call(d3.axisBottom(currentXScale).ticks(8))
+    // ── HR/HRV paths ──
+    if (heartRates.length > 0) {
+      const hrLine = d3
+        .line<[Date, number] | null>()
+        .defined(Boolean)
+        .x(([time]) => baseScale(time))
+        .y(([, rate]) => yHr(rate))
+      contentGroup
+        .append('path')
+        .datum(preprocessData(heartRates, 10))
+        .attr('fill', 'none')
+        .attr('stroke', HR_COLOR)
+        .attr('stroke-width', 1.5)
+        .attr('pointer-events', 'none')
+        .attr('d', hrLine as never)
+    }
+
+    if (hrvData.length > 0) {
+      const hrvLine = d3
+        .line<[Date, number] | null>()
+        .defined(Boolean)
+        .x(([time]) => baseScale(time))
+        .y(([, value]) => yHrv(value))
+      contentGroup
+        .append('path')
+        .datum(preprocessData(hrvData, 10))
+        .attr('fill', 'none')
+        .attr('stroke', HRV_COLOR)
+        .attr('stroke-width', 1.5)
+        .attr('pointer-events', 'none')
+        .attr('d', hrvLine as never)
+    }
+
+    // draw() now only updates the transform on the content group and refreshes the x-axis
+    const draw = (currentXScale: d3.ScaleTime<number, number>) => {
+      const cg = hContentGroupRef.current
+      const ag = hAxisGroupRef.current
+      const bs = hBaseScaleRef.current
+      if (!cg || !ag || !bs) return
+
+      // Compute the transform that maps base-scale x positions to current-scale positions
+      const [d0, d1] = currentXScale.domain() as [Date, Date]
+      const [r0, r1] = bs.range() as [number, number]
+      const bx0 = bs(d0)
+      const bx1 = bs(d1)
+      const scale = (r1 - r0) / (bx1 - bx0)
+      const translate = r0 - bx0 * scale
+      cg.attr('transform', `translate(${translate},0) scale(${scale},1)`)
+
+      // Update x-axis in place
+      ag.call(d3.axisBottom(currentXScale).ticks(8) as never)
         .selectAll('text')
         .style('fill', 'currentColor')
-
-      if (heartRates.length > 0) {
-        g.append('g').call(d3.axisLeft(yHr).ticks(5)).selectAll('text').style('fill', HR_COLOR)
-      }
-
-      if (hrvData.length > 0) {
-        g.append('g')
-          .attr('transform', `translate(${chartWidth},0)`)
-          .call(d3.axisRight(yHrv).ticks(5))
-          .selectAll('text')
-          .style('fill', HRV_COLOR)
-      }
     }
 
     drawRef.current = draw
@@ -1900,7 +1923,9 @@ const mergeSmallItems = (
 
   for (const packed of sorted) {
     const h = Math.abs(yScale(packed.item.end) - yScale(packed.item.start))
-    if (h >= MIN_ITEM_HEIGHT || (packed.item.isPoint && packed.item.icon)) {
+    // Keep items that are tall enough, or any item (block or point) that has an icon —
+    // icons are always shown regardless of height, so never merge them into a cluster.
+    if (h >= MIN_ITEM_HEIGHT || packed.item.icon) {
       flushCluster()
       result.push(packed)
       continue
