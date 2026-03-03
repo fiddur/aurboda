@@ -1664,20 +1664,51 @@ export const Timeline = () => {
 
         <div class="timeline-orientation-toggle">
           <button
-            class={`nav-btn${orientation === 'vertical' ? ' active' : ''}`}
-            onClick={() => setOrientation('vertical')}
-            title="Vertical (columns)"
+            class="nav-btn"
+            onClick={() => setOrientation(orientation === 'vertical' ? 'horizontal' : 'vertical')}
+            title={orientation === 'vertical' ? 'Switch to horizontal layout' : 'Switch to vertical layout'}
             type="button"
           >
-            ☰
-          </button>
-          <button
-            class={`nav-btn${orientation === 'horizontal' ? ' active' : ''}`}
-            onClick={() => setOrientation('horizontal')}
-            title="Horizontal (timeline)"
-            type="button"
-          >
-            ≡
+            {
+              orientation === 'vertical' ?
+                // Portrait screen → rotate to landscape
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  {/* Portrait screen */}
+                  <rect x="7" y="2" width="10" height="14" rx="2" />
+                  {/* Rotation arrow (clockwise, bottom-right) */}
+                  <path d="M19 17a7 7 0 0 1-7 5" />
+                  <polyline points="16 21 19 17 23 19" />
+                </svg>
+                // Landscape screen → rotate to portrait
+              : <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  {/* Landscape screen */}
+                  <rect x="2" y="7" width="14" height="10" rx="2" />
+                  {/* Rotation arrow (counter-clockwise, bottom-right) */}
+                  <path d="M17 19a7 7 0 0 1-5 -7" />
+                  <polyline points="21 16 17 19 19 23" />
+                </svg>
+
+            }
           </button>
           <button
             class="nav-btn timeline-fullscreen-btn"
