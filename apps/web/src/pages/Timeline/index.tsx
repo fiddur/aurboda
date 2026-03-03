@@ -722,7 +722,6 @@ export const Timeline = () => {
   // Horizontal chart: stable references to avoid DOM rebuild during pan/zoom
   const hContentGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
   const hAxisGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
-  const hBaseScaleRef = useRef<d3.ScaleTime<number, number> | null>(null)
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
@@ -1217,7 +1216,6 @@ export const Timeline = () => {
     const hFetchEnd = endOfDay(new Date(toDate.value))
     const baseScale = d3.scaleTime().domain([hFetchStart, hFetchEnd]).range([0, chartWidth])
     baseScaleRef.current = baseScale
-    hBaseScaleRef.current = baseScale
 
     const heartRates = heartRateQuery.data ?? []
     const hrvData = hrvQuery.data ?? []
@@ -1317,19 +1315,23 @@ export const Timeline = () => {
     const contentGroup = clipped.append('g').attr('class', 'h-content')
     hContentGroupRef.current = contentGroup
 
-    // Build all items using the base scale (native positions)
+    // Build all items — DOM nodes are created once, then repositioned in draw()
+    // Each element stores its source time as data-start / data-end attributes
+    // so draw() can reposition using the current x-scale without a group transform.
+
     // ── Activity lane ──
     for (const { item, lane } of packedActivityItems.items) {
       const laneY = trackActivity + lane * activitySubLaneHeight
       const laneH = activitySubLaneHeight - 1
-      const rx = baseScale(item.start)
-      const rw = Math.max(0, baseScale(item.end) - rx)
+      const startMs = item.start.getTime()
+      const endMs = item.end.getTime()
 
       contentGroup
         .append('rect')
-        .attr('x', rx)
+        .attr('class', 'h-span')
+        .attr('data-start', startMs)
+        .attr('data-end', endMs)
         .attr('y', laneY)
-        .attr('width', rw)
         .attr('height', laneH)
         .attr('fill', item.color)
         .attr('opacity', 0.7)
@@ -1347,7 +1349,9 @@ export const Timeline = () => {
       if (item.icon && isEmoji(item.icon)) {
         contentGroup
           .append('text')
-          .attr('x', rx + rw / 2)
+          .attr('class', 'h-span-mid')
+          .attr('data-start', startMs)
+          .attr('data-end', endMs)
           .attr('y', laneY + laneH / 2)
           .attr('dy', '0.35em')
           .attr('text-anchor', 'middle')
@@ -1358,36 +1362,40 @@ export const Timeline = () => {
         const imgSize = 12
         contentGroup
           .append('image')
+          .attr('class', 'h-span-mid')
+          .attr('data-start', startMs)
+          .attr('data-end', endMs)
+          .attr('data-offset', -imgSize / 2)
           .attr('href', item.icon)
-          .attr('x', rx + rw / 2 - imgSize / 2)
           .attr('y', laneY + laneH / 2 - imgSize / 2)
           .attr('width', imgSize)
           .attr('height', imgSize)
           .attr('pointer-events', 'none')
-      } else if (rw > 40) {
-        const maxChars = Math.floor(rw / 6)
-        const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+      } else {
         contentGroup
           .append('text')
-          .attr('x', rx + 4)
+          .attr('class', 'h-span-label')
+          .attr('data-start', startMs)
+          .attr('data-end', endMs)
           .attr('y', laneY + Math.min(laneH * 0.6, 14))
           .attr('fill', 'white')
           .attr('font-size', '0.65rem')
           .attr('pointer-events', 'none')
-          .text(text)
+          .attr('data-label', item.label)
       }
     }
 
     // ── Places lane ──
     const placeItems = chartItems.filter((i) => i.column === 'Location')
     for (const place of placeItems) {
-      const px = baseScale(place.start)
-      const pw = Math.max(0, baseScale(place.end) - px)
+      const startMs = place.start.getTime()
+      const endMs = place.end.getTime()
       contentGroup
         .append('rect')
-        .attr('x', px)
+        .attr('class', 'h-span')
+        .attr('data-start', startMs)
+        .attr('data-end', endMs)
         .attr('y', trackPlaces)
-        .attr('width', pw)
         .attr('height', trackHeight)
         .attr('fill', place.color)
         .attr('opacity', 0.7)
@@ -1405,13 +1413,14 @@ export const Timeline = () => {
     // ── Tags lane: stacked icons ──
     for (const { item: tag, lane } of packedPointTags.items) {
       const icon = tag.icon
-      const tx = baseScale(tag.start)
+      const startMs = tag.start.getTime()
       const tagY = trackTags + 4 + lane * (TAG_ICON_SIZE + 2)
 
       if (icon && isEmoji(icon)) {
         contentGroup
           .append('text')
-          .attr('x', tx)
+          .attr('class', 'h-point')
+          .attr('data-start', startMs)
           .attr('y', tagY + TAG_ICON_SIZE * 0.8)
           .attr('font-size', TAG_ICON_SIZE)
           .attr('text-anchor', 'middle')
@@ -1422,8 +1431,10 @@ export const Timeline = () => {
       } else if (icon && isUrl(icon)) {
         contentGroup
           .append('image')
+          .attr('class', 'h-point')
+          .attr('data-start', startMs)
+          .attr('data-offset', -TAG_ICON_SIZE / 2)
           .attr('href', icon)
-          .attr('x', tx - TAG_ICON_SIZE / 2)
           .attr('y', tagY)
           .attr('width', TAG_ICON_SIZE)
           .attr('height', TAG_ICON_SIZE)
@@ -1433,8 +1444,8 @@ export const Timeline = () => {
       } else {
         contentGroup
           .append('line')
-          .attr('x1', tx)
-          .attr('x2', tx)
+          .attr('class', 'h-point-line')
+          .attr('data-start', startMs)
           .attr('y1', trackTags)
           .attr('y2', trackTags + trackHeight)
           .attr('stroke', tag.color)
@@ -1447,54 +1458,102 @@ export const Timeline = () => {
       }
     }
 
-    // ── HR/HRV paths ──
-    if (heartRates.length > 0) {
-      const hrLine = d3
-        .line<[Date, number] | null>()
-        .defined(Boolean)
-        .x(([time]) => baseScale(time))
-        .y(([, rate]) => yHr(rate))
+    // ── HR/HRV paths — store processed data for redraw ──
+    const hrProcessed = heartRates.length > 0 ? preprocessData(heartRates, 10) : null
+    const hrvProcessed = hrvData.length > 0 ? preprocessData(hrvData, 10) : null
+
+    if (hrProcessed) {
       contentGroup
         .append('path')
-        .datum(preprocessData(heartRates, 10))
+        .attr('class', 'h-hr-path')
         .attr('fill', 'none')
         .attr('stroke', HR_COLOR)
         .attr('stroke-width', 1.5)
         .attr('pointer-events', 'none')
-        .attr('d', hrLine as never)
     }
 
-    if (hrvData.length > 0) {
-      const hrvLine = d3
-        .line<[Date, number] | null>()
-        .defined(Boolean)
-        .x(([time]) => baseScale(time))
-        .y(([, value]) => yHrv(value))
+    if (hrvProcessed) {
       contentGroup
         .append('path')
-        .datum(preprocessData(hrvData, 10))
+        .attr('class', 'h-hrv-path')
         .attr('fill', 'none')
         .attr('stroke', HRV_COLOR)
         .attr('stroke-width', 1.5)
         .attr('pointer-events', 'none')
-        .attr('d', hrvLine as never)
     }
 
-    // draw() now only updates the transform on the content group and refreshes the x-axis
+    // draw() repositions all elements using the current x-scale — no group transform
     const draw = (currentXScale: d3.ScaleTime<number, number>) => {
       const cg = hContentGroupRef.current
       const ag = hAxisGroupRef.current
-      const bs = hBaseScaleRef.current
-      if (!cg || !ag || !bs) return
+      if (!cg || !ag) return
 
-      // Compute the transform that maps base-scale x positions to current-scale positions
-      const [d0, d1] = currentXScale.domain() as [Date, Date]
-      const [r0, r1] = bs.range() as [number, number]
-      const bx0 = bs(d0)
-      const bx1 = bs(d1)
-      const scale = (r1 - r0) / (bx1 - bx0)
-      const translate = r0 - bx0 * scale
-      cg.attr('transform', `translate(${translate},0) scale(${scale},1)`)
+      // Span elements (rects): update x and width
+      cg.selectAll<SVGRectElement, unknown>('.h-span').each(function () {
+        const el = d3.select(this)
+        const x = currentXScale(new Date(+el.attr('data-start')!))
+        const w = Math.max(0, currentXScale(new Date(+el.attr('data-end')!)) - x)
+        el.attr('x', x).attr('width', w)
+      })
+
+      // Span midpoint elements (emoji text, images): position at center of span
+      cg.selectAll<SVGElement, unknown>('.h-span-mid').each(function () {
+        const el = d3.select(this)
+        const x0 = currentXScale(new Date(+el.attr('data-start')!))
+        const x1 = currentXScale(new Date(+el.attr('data-end')!))
+        const mid = (x0 + x1) / 2
+        const offset = +(el.attr('data-offset') ?? '0')
+        el.attr('x', mid + offset)
+      })
+
+      // Span labels (text): position at start + 4, truncate to fit
+      cg.selectAll<SVGTextElement, unknown>('.h-span-label').each(function () {
+        const el = d3.select(this)
+        const x0 = currentXScale(new Date(+el.attr('data-start')!))
+        const x1 = currentXScale(new Date(+el.attr('data-end')!))
+        const w = x1 - x0
+        el.attr('x', x0 + 4)
+        const label = el.attr('data-label') ?? ''
+        if (w > 40) {
+          const maxChars = Math.floor(w / 6)
+          el.text(label.length > maxChars ? label.slice(0, maxChars) + '…' : label).style('display', null)
+        } else {
+          el.style('display', 'none')
+        }
+      })
+
+      // Point elements (emoji text, images): position at start time
+      cg.selectAll<SVGElement, unknown>('.h-point').each(function () {
+        const el = d3.select(this)
+        const x = currentXScale(new Date(+el.attr('data-start')!))
+        const offset = +(el.attr('data-offset') ?? '0')
+        el.attr('x', x + offset)
+      })
+
+      // Point lines: update x1 and x2
+      cg.selectAll<SVGLineElement, unknown>('.h-point-line').each(function () {
+        const el = d3.select(this)
+        const x = currentXScale(new Date(+el.attr('data-start')!))
+        el.attr('x1', x).attr('x2', x)
+      })
+
+      // HR/HRV paths: regenerate path data with current scale
+      if (hrProcessed) {
+        const hrLine = d3
+          .line<[Date, number] | null>()
+          .defined(Boolean)
+          .x(([time]) => currentXScale(time))
+          .y(([, rate]) => yHr(rate))
+        cg.select('.h-hr-path').attr('d', hrLine(hrProcessed) as never)
+      }
+      if (hrvProcessed) {
+        const hrvLine = d3
+          .line<[Date, number] | null>()
+          .defined(Boolean)
+          .x(([time]) => currentXScale(time))
+          .y(([, value]) => yHrv(value))
+        cg.select('.h-hrv-path').attr('d', hrvLine(hrvProcessed) as never)
+      }
 
       // Update x-axis in place
       ag.call(d3.axisBottom(currentXScale).ticks(8) as never)
@@ -1534,7 +1593,17 @@ export const Timeline = () => {
       renderHorizontalChart()
     }
     let resizeRaf = 0
-    const resizeObserver = new ResizeObserver(() => {
+    let lastW = 0
+    let lastH = 0
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      const w = Math.round(entry.contentRect.width)
+      const h = Math.round(entry.contentRect.height)
+      // Skip if size hasn't actually changed (avoids render loop from SVG attr changes)
+      if (w === lastW && h === lastH) return
+      lastW = w
+      lastH = h
       cancelAnimationFrame(resizeRaf)
       resizeRaf = requestAnimationFrame(() => {
         if (orientationRef.current === 'vertical') {
