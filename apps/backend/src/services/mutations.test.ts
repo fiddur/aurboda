@@ -34,6 +34,11 @@ vi.mock('../db', () => ({
   upsertUserSettings: vi.fn(),
 }))
 
+// Mock notes service to avoid testing note-sync behavior here
+vi.mock('./notes', () => ({
+  syncNoteTimesForEntity: vi.fn().mockResolvedValue(undefined),
+}))
+
 describe('addTag', () => {
   beforeEach(() => {
     vi.clearAllMocks()
