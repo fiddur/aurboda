@@ -717,7 +717,7 @@ export const Timeline = () => {
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown>>()
   const isProgrammaticZoom = useRef(false)
   const baseScaleRef = useRef<d3.ScaleTime<number, number>>()
-  const zoomRafRef = useRef<number>(0)
+
   const drawRef = useRef<((scale: d3.ScaleTime<number, number>) => void) | null>(null)
   // Horizontal chart: stable reference for x-axis (updated in place, never rebuilt)
   const hAxisGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
@@ -1602,7 +1602,6 @@ export const Timeline = () => {
   useEffect(() => {
     if (!svgRef.current || !baseScaleRef.current) return
     const svg = d3.select(svgRef.current)
-    cancelAnimationFrame(zoomRafRef.current)
 
     if (orientation === 'vertical') {
       const zoom = d3
@@ -1612,21 +1611,15 @@ export const Timeline = () => {
         .filter((event: Event) => event.type !== 'dblclick')
         .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
           if (isProgrammaticZoom.current) return
-          cancelAnimationFrame(zoomRafRef.current)
-          zoomRafRef.current = requestAnimationFrame(() => {
-            const baseScale = baseScaleRef.current
-            if (!baseScale) return
-            const newY = event.transform.rescaleY(baseScale)
-            const newDomain = newY.domain() as [Date, Date]
-            const h =
-              containerRef.current ?
-                Math.max(
-                  200,
-                  containerRef.current.clientHeight - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom,
-                )
-              : 800
-            drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, h]))
-          })
+          const baseScale = baseScaleRef.current
+          if (!baseScale) return
+          const newY = event.transform.rescaleY(baseScale)
+          const newDomain = newY.domain() as [Date, Date]
+          const h =
+            containerRef.current ?
+              Math.max(200, containerRef.current.clientHeight - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom)
+            : 800
+          drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, h]))
         })
         .on('end', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
           if (isProgrammaticZoom.current) return
@@ -1662,14 +1655,11 @@ export const Timeline = () => {
         .filter((event: Event) => event.type !== 'dblclick')
         .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
           if (isProgrammaticZoom.current) return
-          cancelAnimationFrame(zoomRafRef.current)
-          zoomRafRef.current = requestAnimationFrame(() => {
-            const baseScale = baseScaleRef.current
-            if (!baseScale) return
-            const newX = event.transform.rescaleX(baseScale)
-            const newDomain = newX.domain() as [Date, Date]
-            drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, chartWidth]))
-          })
+          const baseScale = baseScaleRef.current
+          if (!baseScale) return
+          const newX = event.transform.rescaleX(baseScale)
+          const newDomain = newX.domain() as [Date, Date]
+          drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, chartWidth]))
         })
         .on('end', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
           if (isProgrammaticZoom.current) return
@@ -1693,10 +1683,6 @@ export const Timeline = () => {
     }
 
     svg.on('dblclick.zoom', () => handleResetToToday())
-
-    return () => {
-      cancelAnimationFrame(zoomRafRef.current)
-    }
   }, [orientation, handleZoom, handleResetToToday, effectiveViewStart, effectiveViewEnd])
 
   // ── UI state ───────────────────────────────────────────────────────────────
