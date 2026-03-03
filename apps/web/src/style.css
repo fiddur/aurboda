@@ -23,40 +23,49 @@ body {
   min-height: 100vh;
 }
 
+/* ── Header ────────────────────────────────────────────────── */
+
 header {
   background-color: #673ab8;
 }
 
-header nav {
+/* Desktop nav — shown by default, hidden on narrow screens */
+.nav-desktop {
   display: flex;
+  align-items: center;
 }
 
-header nav .spacer {
+.nav-desktop .spacer {
   flex: 1;
 }
 
-header a {
+.nav-desktop a {
   color: #fff;
   padding: 0.75rem;
   text-decoration: none;
+  white-space: nowrap;
 }
 
-header a.active {
+.nav-desktop a.active {
   background-color: #0005;
 }
 
-header a:hover {
+.nav-desktop a:hover {
   background-color: #0008;
 }
 
-/* Nav dropdown for Data Sources */
+/* Nav dropdown for Data Sources — desktop */
 .nav-dropdown {
   position: relative;
+  display: flex;
+  align-items: stretch;
 }
 
 .nav-dropdown .dropdown-toggle {
   cursor: pointer;
   user-select: none;
+  display: flex;
+  align-items: center;
 }
 
 .dropdown-arrow {
@@ -93,6 +102,165 @@ header a:hover {
   background-color: #0005;
 }
 
+/* Mobile nav bar — hidden by default, shown on narrow screens */
+.nav-mobile {
+  display: none;
+  align-items: center;
+  padding: 0 0.5rem;
+}
+
+.nav-mobile .spacer {
+  flex: 1;
+}
+
+.nav-mobile-home {
+  color: #fff;
+  padding: 0.75rem;
+  text-decoration: none;
+}
+
+.nav-mobile-home.active {
+  background-color: #0005;
+}
+
+.hamburger-btn {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 1.4rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.hamburger-btn:hover {
+  background-color: #0008;
+}
+
+/* Drawer backdrop */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 200;
+}
+
+/* Left drawer */
+.nav-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 280px;
+  background: #673ab8;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  overflow-y: auto;
+}
+
+.nav-drawer.open {
+  transform: translateX(0);
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.drawer-title {
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.drawer-close-btn {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  line-height: 1;
+}
+
+.drawer-close-btn:hover {
+  background-color: #0008;
+  border-radius: 4px;
+}
+
+.nav-drawer a {
+  color: #fff;
+  padding: 0.75rem 1rem;
+  text-decoration: none;
+  display: block;
+}
+
+.nav-drawer a.active {
+  background-color: #0005;
+}
+
+.nav-drawer a:hover {
+  background-color: #0008;
+}
+
+.drawer-section-toggle {
+  background: transparent;
+  border: none;
+  color: #fff;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.drawer-section-toggle:hover {
+  background-color: #0008;
+}
+
+.drawer-section-toggle.active {
+  background-color: #0005;
+}
+
+.drawer-sub-link {
+  padding-left: 2rem !important;
+  font-size: 0.9rem !important;
+  opacity: 0.9;
+}
+
+.drawer-spacer {
+  flex: 1;
+  min-height: 1rem;
+}
+
+/* ── Responsive: which nav to show ───────────────────────── */
+
+/*
+ * Switch to hamburger when the desktop nav would be too cramped.
+ * ~60em covers the approximate character width of all nav items.
+ */
+@media (max-width: 60em) {
+  .nav-desktop {
+    display: none;
+  }
+
+  .nav-mobile {
+    display: flex;
+  }
+}
+
+/* ── Main content ─────────────────────────────────────────── */
+
 main {
   flex: auto;
   display: flex;
@@ -100,11 +268,7 @@ main {
   text-align: left;
 }
 
-@media (max-width: 639px) {
-  main {
-    margin: 2rem;
-  }
-}
+/* ── Footer ───────────────────────────────────────────────── */
 
 .site-footer {
   text-align: right;
