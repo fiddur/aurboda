@@ -10,11 +10,16 @@ export const preprocessData = (
   data: [Date, number][],
   gapThresholdMinutes: number,
 ): ([Date, number] | null)[] => {
+  if (data.length === 0) return []
   const thresholdMs = gapThresholdMinutes * 60 * 1000
-  return data.reduce<([Date, number] | null)[]>((acc, curr) => {
-    const last = acc.at(-1)
-    return last && curr[0].getTime() - (last as [Date, number])[0].getTime() > thresholdMs ?
-        [...acc, null, curr]
-      : [...acc, curr]
-  }, [])
+  const result: ([Date, number] | null)[] = [data[0]!]
+  for (let i = 1; i < data.length; i++) {
+    const prev = data[i - 1]!
+    const curr = data[i]!
+    if (curr[0].getTime() - prev[0].getTime() > thresholdMs) {
+      result.push(null)
+    }
+    result.push(curr)
+  }
+  return result
 }
