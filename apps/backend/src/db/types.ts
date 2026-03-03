@@ -247,6 +247,10 @@ export interface Note {
   entity_type: EntityType
   entity_id: string
   content: string
+  /** Inherited from the parent entity's start_time. Null for metric notes (composite key). */
+  start_time?: Date
+  /** Inherited from the parent entity's end_time, if any. */
+  end_time?: Date
   created_at: Date
   updated_at: Date
 }

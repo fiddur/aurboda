@@ -15,6 +15,7 @@ import {
   placeSourceSchema,
   tagTextSchema,
 } from './common.js'
+import { commentSchema, noteSchema } from './notes.js'
 import { hrZoneSecsSchema } from './settings.js'
 
 /**
@@ -54,6 +55,7 @@ export type SessionSummary = z.infer<typeof sessionSummarySchema>
  */
 export const tagSummarySchema = z
   .object({
+    comments: z.array(commentSchema).optional().meta({ description: 'Comments attached to this tag' }),
     end_time: iso8601DateTimeSchema.optional(),
     start_time: iso8601DateTimeSchema,
     tag: tagTextSchema,
@@ -117,6 +119,9 @@ export const dailySummaryResultSchema = z
     date: dateOnlySchema,
     exercise_sessions: z.array(sessionSummarySchema),
     heart_rate: heartRateStatsSchema.nullable(),
+    notes: z.array(noteSchema).meta({
+      description: 'All notes whose time range overlaps this day, across all entity types',
+    }),
     oura_scores: ouraScoresSchema.nullable(),
     places: z.array(placeSummarySchema),
     productivity: productivitySummarySchema.nullable(),

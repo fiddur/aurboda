@@ -12,6 +12,7 @@ import {
   getDailyAggregates,
   getDailyAggregateValue,
   getNotesByEntityIds,
+  getNotesForTimeRange,
   getProductivity,
   getSleepSessions,
   getTags,
@@ -155,6 +156,7 @@ export interface OuraScores {
 export interface DailySummaryResult {
   date: string
   heart_rate: HeartRateStats | null
+  notes: NoteSummary[]
   steps: { total: number }
   sleep_sessions: SessionSummary[]
   exercise_sessions: SessionSummary[]
@@ -188,6 +190,19 @@ export interface PeriodSummaryResult {
 export interface CommentSummary {
   id: string
   content: string
+  start_time?: string
+  end_time?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface NoteSummary {
+  id: string
+  entity_type: 'activity' | 'tag' | 'productivity' | 'metric'
+  entity_id: string
+  content: string
+  start_time?: string
+  end_time?: string
   created_at: string
   updated_at: string
 }
@@ -205,7 +220,9 @@ const getCommentsMap = async (
       notes.map((n) => ({
         content: n.content,
         created_at: n.created_at.toISOString(),
+        end_time: n.end_time?.toISOString(),
         id: n.id,
+        start_time: n.start_time?.toISOString(),
         updated_at: n.updated_at.toISOString(),
       })),
     )
@@ -509,6 +526,7 @@ export async function getDailySummary(
     productivity,
     placeVisits,
     ouraMetrics,
+    dayNotes,
   ] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
@@ -523,6 +541,7 @@ export async function getDailySummary(
       start,
       end,
     ),
+    getNotesForTimeRange(user, start, end),
   ])
 
   // Calculate heart rate stats
@@ -608,10 +627,24 @@ export async function getDailySummary(
     }),
   )
 
+  // Fetch tag comments
+  const tagIds = tags.map((t) => t.id).filter((id): id is string => id !== undefined)
+  const tagCommentsMap = await getCommentsMap(user, 'tag', tagIds)
+
   return {
     date: date.toISOString().split('T')[0],
     exercise_sessions: exerciseSessionsWithHrZones,
     heart_rate: heartRateStats,
+    notes: dayNotes.map((n) => ({
+      content: n.content,
+      created_at: n.created_at.toISOString(),
+      end_time: n.end_time?.toISOString(),
+      entity_id: n.entity_id,
+      entity_type: n.entity_type,
+      id: n.id,
+      start_time: n.start_time?.toISOString(),
+      updated_at: n.updated_at.toISOString(),
+    })),
     oura_scores: ouraScores,
     places: placeVisits.map((p) => ({
       address: p.address,
@@ -640,7 +673,7 @@ export async function getDailySummary(
     }),
     steps: { total: totalSteps },
     tags: tags.map((t) => ({
-      comments: [],
+      comments: t.id ? (tagCommentsMap.get(t.id) ?? []) : [],
       end_time: t.end_time?.toISOString(),
       start_time: t.start_time.toISOString(),
       tag: t.tag,

@@ -20,6 +20,7 @@ vi.mock('../db', () => ({
   getDailyAggregates: vi.fn(),
   getLocations: vi.fn(),
   getNotesByEntityIds: vi.fn(),
+  getNotesForTimeRange: vi.fn(),
   getProductivity: vi.fn(),
   getSleepSessions: vi.fn(),
   getTags: vi.fn(),
@@ -84,6 +85,10 @@ describe('getDailySummary', () => {
     vi.clearAllMocks()
     // Default mock for getUserSettings - returns null so default HR zones are used
     vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    // Default: no notes overlapping the day
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([])
+    // Default: no notes for tags
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
   })
 
   test('aggregates all data sources for a day', async () => {

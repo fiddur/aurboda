@@ -127,6 +127,7 @@ export {
   deleteProductivityRecord,
   getAllProductivityForCategorization,
   getProductivity,
+  getProductivityById,
   insertProductivity,
   restoreProductivityRecord,
 } from './productivity'
@@ -148,8 +149,10 @@ export {
   getNoteById,
   getNotesByEntityIds,
   getNotesForEntity,
+  getNotesForTimeRange,
   insertNote,
   updateNote,
+  updateNoteTimesForEntity,
 } from './notes'
 
 // Lab results

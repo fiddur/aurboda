@@ -186,8 +186,10 @@ export const mapLastFmTagRuleRow = (row: QueryResultRow): LastFmTagRule => ({
 export const mapNoteRow = (row: QueryResultRow): Note => ({
   content: row.content,
   created_at: new Date(row.created_at),
+  end_time: row.end_time ? new Date(row.end_time) : undefined,
   entity_id: row.entity_id,
   entity_type: parseEntityType(row.entity_type),
   id: row.id,
+  start_time: row.start_time ? new Date(row.start_time) : undefined,
   updated_at: new Date(row.updated_at),
 })

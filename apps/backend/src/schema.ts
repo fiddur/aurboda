@@ -180,6 +180,8 @@ export const createTableStatements: Record<string, string> = {
       entity_type     VARCHAR(50) NOT NULL,
       entity_id       TEXT NOT NULL,
       content         TEXT NOT NULL,
+      start_time      TIMESTAMPTZ,
+      end_time        TIMESTAMPTZ,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -187,7 +189,8 @@ export const createTableStatements: Record<string, string> = {
 
   notes_indexes: `
     CREATE INDEX IF NOT EXISTS idx_notes_entity ON notes (entity_type, entity_id);
-    CREATE INDEX IF NOT EXISTS idx_notes_created ON notes (created_at DESC)
+    CREATE INDEX IF NOT EXISTS idx_notes_created ON notes (created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_notes_time ON notes (start_time, end_time)
   `,
 
   // OAuth tokens for third-party APIs
