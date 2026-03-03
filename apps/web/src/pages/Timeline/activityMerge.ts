@@ -7,6 +7,7 @@
  */
 import { format } from 'date-fns'
 import type { Activity, Tag } from '../../state/api'
+import { resolveItemIcon } from '../../utils/emojiLookup'
 import type { ChartItem } from './types'
 
 /** Maps a tag name to the activity_type values it should merge with. */
@@ -107,11 +108,13 @@ export const createDurationTagItem = (
   tag: Tag,
   existingItems: ChartItem[],
   overlaps: OverlapWarning[],
-  tagIcons: Record<string, string>,
+  itemIcons: Record<string, string>,
 ): ChartItem => {
   const tagEnd = tag.end_time!
   const icon =
-    tagIcons[tag.tag] ?? tagIcons[tag.tag.toLowerCase()] ?? (tag.tag_key ? tagIcons[tag.tag_key] : undefined)
+    itemIcons[tag.tag] ??
+    itemIcons[tag.tag.toLowerCase()] ??
+    (tag.tag_key ? itemIcons[tag.tag_key] : undefined)
 
   // Detect overlaps with existing activity items
   let overlapWarning: string | undefined
@@ -215,10 +218,22 @@ const buildActivityDetails = (
  *
  * Returns the items list and any overlap warnings for display in UI.
  */
+/**
+ * Resolve the icon key for an activity based on its type.
+ * - For exercise: "exercise:{TypeName}" (e.g. "exercise:Running")
+ * - For other activity types: "activity:{type}" (e.g. "activity:sleep")
+ */
+const getActivityIconKey = (a: Activity, getExerciseTypeName: (a: Activity) => string): string => {
+  if (a.activity_type === 'exercise') {
+    return `exercise:${getExerciseTypeName(a)}`
+  }
+  return `activity:${a.activity_type}`
+}
+
 export const buildActivityColumnItems = (
   activities: Activity[],
   tags: Tag[],
-  tagIcons: Record<string, string>,
+  itemIcons: Record<string, string>,
   activityColors: Record<string, string>,
   exerciseColor: (a: Activity) => string,
   getExerciseTypeName: (a: Activity) => string,
@@ -237,6 +252,10 @@ export const buildActivityColumnItems = (
     const end = a.end_time ?? new Date(a.start_time.getTime() + 60 * 60000)
     const details = buildActivityDetails(a, end, buildSleepDetails, scrobbles)
 
+    // Resolve icon from user overrides or defaults
+    const iconKey = getActivityIconKey(a, getExerciseTypeName)
+    const icon = resolveItemIcon(iconKey, itemIcons)
+
     items.push({
       activity_type: meta.actType,
       color: meta.color,
@@ -244,6 +263,7 @@ export const buildActivityColumnItems = (
       end,
       entity_id: a.id,
       entity_type: 'activity',
+      icon,
       isPoint: false,
       label: meta.label,
       start: a.start_time,
@@ -261,7 +281,7 @@ export const buildActivityColumnItems = (
   for (const tag of durationTags) {
     const merged = tryMergeTagIntoActivity(tag, items)
     if (!merged) {
-      items.push(createDurationTagItem(tag, items, overlaps, tagIcons))
+      items.push(createDurationTagItem(tag, items, overlaps, itemIcons))
     }
   }
 

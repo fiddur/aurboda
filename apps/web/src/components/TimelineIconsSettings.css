@@ -1,0 +1,169 @@
+.timeline-icons-section .section-description {
+  color: #666;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.icon-group {
+  margin-bottom: 1.5rem;
+}
+
+.icon-group h3 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+  color: #444;
+}
+
+.icon-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.icon-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 4px;
+}
+
+.icon-row:hover {
+  background: #f8f8f8;
+}
+
+.icon-row-label {
+  min-width: 160px;
+  font-size: 0.9rem;
+}
+
+.icon-row-field {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.icon-input {
+  width: 60px;
+  padding: 0.375rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.icon-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+.icon-input:disabled {
+  opacity: 0.6;
+}
+
+.icon-input::placeholder {
+  font-size: 1rem;
+}
+
+.icon-preview {
+  font-size: 1.2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.icon-preview img {
+  vertical-align: middle;
+  border-radius: 2px;
+}
+
+.icon-reset-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: #888;
+  line-height: 1;
+}
+
+.icon-reset-btn:hover {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.icon-status-saving {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #d1d5db;
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: icon-spin 0.6s linear infinite;
+}
+
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.icon-status-saved {
+  color: #22c55e;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.icon-status-error {
+  color: #dc2626;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .timeline-icons-section .section-description {
+    color: #aaa;
+  }
+
+  .icon-group h3 {
+    color: #bbb;
+  }
+
+  .icon-row:hover {
+    background: #2a2a2a;
+  }
+
+  .icon-input {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+  }
+
+  .icon-input::placeholder {
+    color: #888;
+  }
+
+  .icon-reset-btn {
+    border-color: #555;
+    color: #888;
+  }
+
+  .icon-reset-btn:hover {
+    background: #3f1919;
+    border-color: #ef4444;
+    color: #ef4444;
+  }
+}
+
+@media (max-width: 600px) {
+  .icon-row-label {
+    min-width: 100px;
+    font-size: 0.85rem;
+  }
+
+  .icon-input {
+    width: 50px;
+  }
+}

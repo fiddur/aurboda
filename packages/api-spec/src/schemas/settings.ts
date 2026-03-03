@@ -79,10 +79,27 @@ export const tagMappingsSchema = z.record(z.string(), z.string()).meta({
 
 /**
  * Tag icons schema (tag key or display name -> emoji/URL).
+ * @deprecated Use itemIconsSchema instead.
  */
 export const tagIconsSchema = z.record(z.string(), z.string()).meta({
   description: 'Tag icon mappings (tag key or display name -> emoji character or image URL)',
   id: 'TagIcons',
+})
+
+/**
+ * Item icons schema — unified icon mappings for all timeline items.
+ *
+ * Keys use a prefix convention:
+ * - Tag names or tag_keys: "Coffee", "meditation" (no prefix, backwards-compatible with tag_icons)
+ * - Activity types: "activity:sleep", "activity:nap", "activity:meditation"
+ * - Exercise types: "exercise:Running", "exercise:Biking", etc.
+ *
+ * Values are emoji characters or image URLs. An empty string explicitly clears the default icon.
+ */
+export const itemIconsSchema = z.record(z.string(), z.string()).meta({
+  description:
+    'Unified icon mappings for all timeline items (tags, activities, exercise types). Keys use prefix convention: activity:sleep, exercise:Running, or plain tag names.',
+  id: 'ItemIcons',
 })
 
 /**
@@ -133,8 +150,12 @@ export const updateSettingsInputSchema = z
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
     }),
+    item_icons: itemIconsSchema.nullable().optional().meta({
+      description:
+        'Unified icon mappings for all timeline items — tags, activities, exercise types (set to null to clear all)',
+    }),
     tag_icons: tagIconsSchema.nullable().optional().meta({
-      description: 'Tag icon mappings (set to null to clear all)',
+      description: 'Tag icon mappings (deprecated, use item_icons instead; set to null to clear all)',
     }),
     tag_mappings: tagMappingsSchema.nullable().optional().meta({
       description: 'Tag name mappings (set to null to clear all)',
@@ -164,7 +185,13 @@ export const userSettingsResponseSchema = baseResponseSchema
     oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
     rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),
-    tag_icons: tagIconsSchema.meta({ description: 'Tag icon mappings (tag key or name -> emoji/URL)' }),
+    item_icons: itemIconsSchema.meta({
+      description:
+        'Unified icon mappings for all timeline items — tags, activities, exercise types (tag key or name -> emoji/URL)',
+    }),
+    tag_icons: tagIconsSchema.meta({
+      description: 'Tag icon mappings (deprecated, use item_icons)',
+    }),
     tag_mappings: tagMappingsSchema.meta({ description: 'Tag name mappings from UUIDs to display names' }),
   })
   .meta({ id: 'UserSettingsResponse' })

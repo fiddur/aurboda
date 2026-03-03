@@ -177,21 +177,21 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
       const currentMappings = settings?.tag_mappings ?? {}
       const newMappings = { ...currentMappings, [tag_key]: name }
 
-      // Handle icon: store in tag_icons map, keyed by display name for easy lookup
-      const updates: { tag_mappings: Record<string, string>; tag_icons?: Record<string, string> } = {
+      // Handle icon: store in item_icons map, keyed by display name for easy lookup
+      const updates: { tag_mappings: Record<string, string>; item_icons?: Record<string, string> } = {
         tag_mappings: newMappings,
       }
       if (icon !== undefined) {
-        const currentIcons = settings?.tag_icons ?? {}
+        const currentIcons = settings?.item_icons ?? {}
         if (icon) {
-          updates.tag_icons = { ...currentIcons, [name]: icon }
+          updates.item_icons = { ...currentIcons, [name]: icon }
         } else {
           // Empty string clears the icon — remove entries for both old and new name
           const newIcons = { ...currentIcons }
           delete newIcons[name]
           // Also remove icon for the tag_key in case it was stored that way
           delete newIcons[tag_key]
-          updates.tag_icons = newIcons
+          updates.item_icons = newIcons
         }
       }
 
@@ -207,7 +207,7 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
     const user = req.user!
     const settings = await getUserSettings(user)
     res.json({
-      icons: settings?.tag_icons ?? {},
+      icons: settings?.item_icons ?? {},
       mappings: settings?.tag_mappings ?? {},
       success: true,
     })

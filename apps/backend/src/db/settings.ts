@@ -14,6 +14,7 @@ const topLevelRenames: Record<string, string> = {
   hrZoneStart: 'hr_zone_start',
   lastFmUsername: 'lastfm_username',
   rescueTimeKey: 'rescue_time_key',
+  tag_icons: 'item_icons',
   tagMappings: 'tag_mappings',
 }
 
@@ -146,8 +147,12 @@ export const upsertUserSettings = async (
   if (updates.rescue_time_key !== undefined) {
     merged.rescue_time_key = updates.rescue_time_key
   }
+  if (updates.item_icons !== undefined) {
+    merged.item_icons = updates.item_icons
+  }
   if (updates.tag_icons !== undefined) {
-    merged.tag_icons = updates.tag_icons
+    // Deprecated: merge tag_icons into item_icons for backwards compatibility
+    merged.item_icons = { ...(merged.item_icons ?? {}), ...updates.tag_icons }
   }
   if (updates.tag_mappings !== undefined) {
     merged.tag_mappings = updates.tag_mappings

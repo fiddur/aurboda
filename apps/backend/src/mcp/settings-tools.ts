@@ -79,18 +79,18 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
       const currentMappings = settings?.tag_mappings ?? {}
       const newMappings = { ...currentMappings, [tag_key]: name }
 
-      const updates: { tag_mappings: Record<string, string>; tag_icons?: Record<string, string> } = {
+      const updates: { tag_mappings: Record<string, string>; item_icons?: Record<string, string> } = {
         tag_mappings: newMappings,
       }
       if (icon !== undefined) {
-        const currentIcons = settings?.tag_icons ?? {}
+        const currentIcons = settings?.item_icons ?? {}
         if (icon) {
-          updates.tag_icons = { ...currentIcons, [name]: icon }
+          updates.item_icons = { ...currentIcons, [name]: icon }
         } else {
           const newIcons = { ...currentIcons }
           delete newIcons[name]
           delete newIcons[tag_key]
-          updates.tag_icons = newIcons
+          updates.item_icons = newIcons
         }
       }
 
@@ -105,7 +105,7 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
   server.tool('get_tag_mappings', 'Get all current tag mappings (tag key -> display name).', {}, async () => {
     const settings = await getUserSettings(user)
     return jsonResponse({
-      icons: settings?.tag_icons ?? {},
+      icons: settings?.item_icons ?? {},
       mappings: settings?.tag_mappings ?? {},
       success: true,
     })

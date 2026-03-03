@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
+import { TimelineIconsSettings } from '../../components/TimelineIconsSettings'
 import { fetchUserSettings, HrZoneThresholds, UpdateSettingsInput, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
@@ -206,6 +207,8 @@ export function Settings() {
           <p class="field-description">Using default thresholds (or age-based if birth date is set).</p>
         )}
       </section>
+
+      <TimelineIconsSettings />
 
       <section class="settings-section">
         <p class="section-description">
