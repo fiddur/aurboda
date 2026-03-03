@@ -1682,10 +1682,10 @@ export const Timeline = () => {
           <button
             class="nav-btn timeline-fullscreen-btn"
             onClick={() => setIsFullscreen((v) => !v)}
-            title={isFullscreen ? 'Exit full screen (Esc)' : 'Full screen'}
+            title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
             type="button"
           >
-            {isFullscreen ? '⛶' : '⛶'}
+            {isFullscreen ? '⤡' : '⛶'}
           </button>
         </div>
       </div>
