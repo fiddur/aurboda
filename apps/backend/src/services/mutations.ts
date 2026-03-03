@@ -30,6 +30,7 @@ import {
   isValidMetricOrCustom,
   metricToHealthConnectType,
 } from '../schema'
+import { syncNoteTimesForEntity } from './notes'
 
 // ============================================================================
 // Types
@@ -144,6 +145,13 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
       const extendedBySeconds = Math.round((newEndTime.getTime() - previousEnd.getTime()) / 1000)
 
       await updateTagEndTime(user, existingTag.external_id, newEndTime)
+
+      // Sync inherited times on any notes attached to this tag
+      if (existingTag.id) {
+        await syncNoteTimesForEntity(user, 'tag', existingTag.id, existingTag.start_time, newEndTime).catch(
+          (err) => console.error('Failed to sync note times for tag:', err),
+        )
+      }
 
       return {
         end_time: newEndTime.toISOString(),
@@ -411,6 +419,7 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
  * Validates that if both start_time and end_time are provided, end_time is after start_time.
  * Also validates against existing values if only one is provided.
  */
+// eslint-disable-next-line complexity -- note-sync adds one branch above the limit
 export async function updateActivity(
   user: string,
   id: string,
@@ -458,6 +467,11 @@ export async function updateActivity(
       success: false,
     }
   }
+
+  // Sync inherited times on any notes attached to this activity (best-effort)
+  syncNoteTimesForEntity(user, 'activity', id, updated.start_time, updated.end_time ?? undefined).catch(
+    (err) => console.error('Failed to sync note times for activity:', err),
+  )
 
   // Enqueue outbound sync if this is an aurboda-owned HC-syncable activity (best-effort)
   try {

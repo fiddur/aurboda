@@ -97,6 +97,33 @@ export const getProductivity = async (
   }))
 }
 
+export const getProductivityById = async (user: string, id: string): Promise<ProductivityRecord | null> => {
+  const result = await query(
+    user,
+    `SELECT id, source, start_time, end_time, activity, title, category, productivity, duration_sec, is_mobile, device_name, resolved_category
+     FROM productivity
+     WHERE id = $1 AND deleted_at IS NULL`,
+    [id],
+  )
+
+  if (result.rows.length === 0) return null
+  const row = result.rows[0]
+  return {
+    activity: row.activity,
+    category: row.category,
+    device_name: row.device_name || undefined,
+    duration_sec: row.duration_sec,
+    end_time: new Date(row.end_time),
+    id: row.id,
+    is_mobile: row.is_mobile,
+    productivity: row.productivity,
+    resolved_category: row.resolved_category || undefined,
+    source: row.source,
+    start_time: new Date(row.start_time),
+    title: row.title || undefined,
+  }
+}
+
 export const deleteProductivityRecord = async (user: string, id: string): Promise<boolean> => {
   const result = await query(
     user,

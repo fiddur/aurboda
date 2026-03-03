@@ -207,6 +207,9 @@ export const migrateSchema = async (user: string) => {
   // Migrate notes entity_id from UUID to TEXT (supports composite keys for metrics)
   if (existingTableNames.has('notes')) {
     await query(db, `ALTER TABLE notes ALTER COLUMN entity_id TYPE TEXT`)
+    // Add time columns so notes can be queried by time range (inherited from parent entity)
+    await query(db, `ALTER TABLE notes ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ`)
+    await query(db, `ALTER TABLE notes ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ`)
   }
 
   // Migrate source columns to support 'aurboda' (rename 'manual' -> 'aurboda' for new data)

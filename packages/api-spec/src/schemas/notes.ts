@@ -30,11 +30,17 @@ export const noteSchema = z
   .object({
     content: z.string().meta({ description: 'Note content (markdown)' }),
     created_at: iso8601DateTimeSchema.optional(),
+    end_time: iso8601DateTimeSchema.optional().meta({
+      description: 'End time inherited from the parent entity (if any)',
+    }),
     entity_id: z
       .string()
       .meta({ description: 'ID of the referenced entity (UUID for most types, composite key for metrics)' }),
     entity_type: entityTypeSchema,
     id: z.string().uuid().optional().meta({ description: 'Note ID' }),
+    start_time: iso8601DateTimeSchema.optional().meta({
+      description: 'Start time inherited from the parent entity',
+    }),
     updated_at: iso8601DateTimeSchema.optional(),
   })
   .meta({ id: 'Note' })
@@ -48,7 +54,13 @@ export const commentSchema = z
   .object({
     content: z.string().meta({ description: 'Comment content (markdown)' }),
     created_at: iso8601DateTimeSchema.optional(),
+    end_time: iso8601DateTimeSchema.optional().meta({
+      description: 'End time inherited from the parent entity (if any)',
+    }),
     id: z.string().uuid().optional().meta({ description: 'Comment/note ID' }),
+    start_time: iso8601DateTimeSchema.optional().meta({
+      description: 'Start time inherited from the parent entity',
+    }),
     updated_at: iso8601DateTimeSchema.optional(),
   })
   .meta({ description: 'A comment attached to an entity', id: 'Comment' })
