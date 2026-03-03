@@ -1,0 +1,269 @@
+/**
+ * Activity merge logic: unifies duration tags with matching activity types.
+ *
+ * When a duration tag (e.g. "Holosync") overlaps >50% with a matching activity
+ * (e.g. a meditation session from Oura), they are merged into one item instead
+ * of showing as duplicates.
+ */
+import { format } from 'date-fns'
+import type { Activity, Tag } from '../../state/api'
+import type { ChartItem } from './types'
+
+/** Maps a tag name to the activity_type values it should merge with. */
+export const TAG_ACTIVITY_MERGE_MAP: Record<string, string[]> = {
+  Breathwork: ['meditation'],
+  Holosync: ['meditation', 'nap'],
+  Meditation: ['meditation'],
+  YinYoga: ['meditation', 'exercise'],
+}
+
+/**
+ * Tag sources that should NOT be pulled into the Activity lane.
+ * These are always shown in the Tags column.
+ */
+export const EXCLUDED_TAG_SOURCES = new Set(['lastfm', 'lastfm-auto'])
+
+/** Tags that start with these prefixes should stay in the Tags column. */
+export const EXCLUDED_TAG_PREFIXES = ['computer:']
+
+/** Returns true if a tag (with end_time) should appear in the Activity lane. */
+export const isDurationTagActivityLike = (tag: Tag): boolean => {
+  if (!tag.end_time) return false
+  if (tag.source && EXCLUDED_TAG_SOURCES.has(tag.source)) return false
+  for (const prefix of EXCLUDED_TAG_PREFIXES) {
+    if (tag.tag.startsWith(prefix)) return false
+  }
+  return true
+}
+
+/**
+ * Overlap in minutes between two intervals.
+ */
+export const overlapMinutes = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): number => {
+  const start = Math.max(aStart.getTime(), bStart.getTime())
+  const end = Math.min(aEnd.getTime(), bEnd.getTime())
+  return Math.max(0, (end - start) / 60000)
+}
+
+/**
+ * Try to merge a duration tag into an existing activity chart item.
+ * Returns true if merged (the item is mutated in-place with an annotation).
+ */
+export const tryMergeTagIntoActivity = (tag: Tag, items: ChartItem[]): boolean => {
+  const tagEnd = tag.end_time!
+  const mergeableTypes = TAG_ACTIVITY_MERGE_MAP[tag.tag]
+  if (!mergeableTypes) return false
+
+  for (const item of items) {
+    if (!item.activity_type || !mergeableTypes.includes(item.activity_type)) continue
+    const overlap = overlapMinutes(tag.start_time, tagEnd, item.start, item.end)
+    const tagDuration = (tagEnd.getTime() - tag.start_time.getTime()) / 60000
+    if (overlap > tagDuration * 0.5) {
+      // Annotate the item tooltip with the merged tag name
+      item.tooltip.details.push(`Also tagged: ${tag.tag}`)
+      return true
+    }
+  }
+  return false
+}
+
+export interface OverlapWarning {
+  item1Label: string
+  item1Time: string
+  item2Label: string
+  item2Time: string
+  overlapMinutes: number
+}
+
+const formatTime = (d: Date) => format(d, 'HH:mm')
+
+const formatDuration = (start: Date, end: Date): string => {
+  const ms = end.getTime() - start.getTime()
+  const totalMin = Math.round(ms / 60000)
+  if (totalMin < 60) return `${totalMin}m`
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+/** Duration tag colors — tags that appear in the Activity column */
+export const DURATION_TAG_COLORS: Record<string, string> = {
+  Breathwork: '#a855f7',
+  Holosync: '#8b5cf6',
+  'Hot Bath': '#f97316',
+  Sauna: '#ef4444',
+  Sex: '#ec4899',
+  'Vocal Training': '#06b6d4',
+  YinYoga: '#a855f7',
+}
+
+const DURATION_TAG_DEFAULT_COLOR = '#f59e0b'
+
+/**
+ * Convert a duration tag into a ChartItem for the Activity column.
+ * Also detects overlaps with existing items and records warnings.
+ */
+export const createDurationTagItem = (
+  tag: Tag,
+  existingItems: ChartItem[],
+  overlaps: OverlapWarning[],
+  tagIcons: Record<string, string>,
+): ChartItem => {
+  const tagEnd = tag.end_time!
+  const icon =
+    tagIcons[tag.tag] ?? tagIcons[tag.tag.toLowerCase()] ?? (tag.tag_key ? tagIcons[tag.tag_key] : undefined)
+
+  // Detect overlaps with existing activity items
+  let overlapWarning: string | undefined
+  for (const item of existingItems) {
+    if (item.isPoint) continue
+    const mins = overlapMinutes(tag.start_time, tagEnd, item.start, item.end)
+    if (mins > 2) {
+      const warning: OverlapWarning = {
+        item1Label: tag.tag,
+        item1Time: `${formatTime(tag.start_time)} – ${formatTime(tagEnd)}`,
+        item2Label: item.label,
+        item2Time: item.tooltip.time,
+        overlapMinutes: Math.round(mins),
+      }
+      overlaps.push(warning)
+      overlapWarning = `Overlaps with ${item.label} by ${Math.round(mins)}m`
+    }
+  }
+
+  return {
+    activity_type: undefined,
+    color: DURATION_TAG_COLORS[tag.tag] ?? DURATION_TAG_DEFAULT_COLOR,
+    column: 'Activity',
+    end: tagEnd,
+    entity_id: tag.id,
+    entity_type: 'tag',
+    icon,
+    isPoint: false,
+    label: tag.tag,
+    start: tag.start_time,
+    tooltip: {
+      details: [formatDuration(tag.start_time, tagEnd), ...(overlapWarning ? [overlapWarning] : [])],
+      time: `${formatTime(tag.start_time)} – ${formatTime(tagEnd)}`,
+      title: tag.tag,
+    },
+  }
+}
+
+type ActivityMeta = {
+  label: string
+  color: string
+  actType: 'sleep' | 'nap' | 'meditation' | 'exercise'
+}
+
+/** Extract label, color, and activity type from an Activity. Returns null for unknown types. */
+const getActivityMeta = (
+  a: Activity,
+  activityColors: Record<string, string>,
+  exerciseColor: (a: Activity) => string,
+  getExerciseTypeName: (a: Activity) => string,
+): ActivityMeta | null => {
+  switch (a.activity_type) {
+    case 'sleep':
+      return { actType: 'sleep', color: activityColors.sleep ?? '#3b82f6', label: 'Sleep' }
+    case 'nap':
+      return { actType: 'nap', color: activityColors.nap ?? '#60a5fa', label: 'Nap' }
+    case 'meditation':
+      return {
+        actType: 'meditation',
+        color: activityColors.meditation ?? '#a855f7',
+        label: a.title || 'Meditation',
+      }
+    case 'exercise':
+      return { actType: 'exercise', color: exerciseColor(a), label: getExerciseTypeName(a) }
+    default:
+      return null
+  }
+}
+
+/** Build tooltip details for an activity item. */
+const buildActivityDetails = (
+  a: Activity,
+  end: Date,
+  buildSleepDetails: (a: Activity, end: Date) => string[],
+  scrobbles: { artist: string; recorded_at: Date; track: string }[],
+): string[] => {
+  const details: string[] =
+    a.activity_type === 'sleep' ?
+      buildSleepDetails(a, end)
+    : [formatDuration(a.start_time, end), ...(a.avg_hrv ? [`Avg HRV: ${a.avg_hrv} ms`] : [])]
+
+  if (a.notes) details.push(a.notes)
+
+  if (a.activity_type === 'meditation') {
+    const music = scrobbles
+      .filter((s) => {
+        const trackEnd = new Date(s.recorded_at.getTime() + 3.5 * 60 * 1000)
+        return s.recorded_at < end && trackEnd > a.start_time
+      })
+      .map((s) => `${s.artist} – ${s.track}`)
+    if (music.length > 0) details.push(`♪ ${music.slice(0, 3).join(', ')}`)
+  }
+
+  return details
+}
+
+/**
+ * Build the unified Activity column items from activities + duration tags.
+ * Activities are first; then duration tags are either merged into matching
+ * activities (same event, dual source) or added as separate items.
+ *
+ * Returns the items list and any overlap warnings for display in UI.
+ */
+export const buildActivityColumnItems = (
+  activities: Activity[],
+  tags: Tag[],
+  tagIcons: Record<string, string>,
+  activityColors: Record<string, string>,
+  exerciseColor: (a: Activity) => string,
+  getExerciseTypeName: (a: Activity) => string,
+  ouraByDate: Map<string, Record<string, number>>,
+  buildSleepDetails: (a: Activity, end: Date) => string[],
+  scrobbles: { artist: string; track: string; recorded_at: Date }[],
+): { items: ChartItem[]; overlaps: OverlapWarning[] } => {
+  const items: ChartItem[] = []
+  const overlaps: OverlapWarning[] = []
+
+  // 1. Convert activities to ChartItems
+  for (const a of activities) {
+    const meta = getActivityMeta(a, activityColors, exerciseColor, getExerciseTypeName)
+    if (!meta) continue
+
+    const end = a.end_time ?? new Date(a.start_time.getTime() + 60 * 60000)
+    const details = buildActivityDetails(a, end, buildSleepDetails, scrobbles)
+
+    items.push({
+      activity_type: meta.actType,
+      color: meta.color,
+      column: 'Activity',
+      end,
+      entity_id: a.id,
+      entity_type: 'activity',
+      isPoint: false,
+      label: meta.label,
+      start: a.start_time,
+      tooltip: {
+        details,
+        time: `${formatTime(a.start_time)} – ${formatTime(end)}`,
+        title: meta.label,
+      },
+    })
+  }
+
+  // 2. Handle duration tags
+  const durationTags = tags.filter(isDurationTagActivityLike)
+
+  for (const tag of durationTags) {
+    const merged = tryMergeTagIntoActivity(tag, items)
+    if (!merged) {
+      items.push(createDurationTagItem(tag, items, overlaps, tagIcons))
+    }
+  }
+
+  return { items, overlaps }
+}
