@@ -139,6 +139,36 @@ describe('getSettingsResponse', () => {
   })
 })
 
+describe('getSettingsResponse with item_icons', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns empty item_icons when none exist', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.success).toBe(true)
+    expect(result.item_icons).toEqual({})
+    // tag_icons should mirror item_icons for backwards compatibility
+    expect(result.tag_icons).toEqual({})
+  })
+
+  test('returns stored item_icons and mirrors to tag_icons', async () => {
+    const icons = { Coffee: '☕', 'activity:sleep': '😴' }
+    vi.mocked(db.getUserSettings).mockResolvedValue({ item_icons: icons })
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.success).toBe(true)
+    expect(result.item_icons).toEqual(icons)
+    expect(result.tag_icons).toEqual(icons)
+  })
+})
+
 describe('getSettingsResponse with tagMappings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -276,6 +306,30 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { tag_mappings: undefined })
+  })
+
+  test('updates item_icons with valid input', async () => {
+    const icons = { Coffee: '☕', 'activity:sleep': '😴', 'exercise:Running': '🏃' }
+    vi.mocked(db.getUserSettings).mockResolvedValue({ item_icons: icons })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({ item_icons: icons })
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { item_icons: icons })
+
+    expect(result.success).toBe(true)
+    expect(result.item_icons).toEqual(icons)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { item_icons: icons })
+  })
+
+  test('clears item_icons when set to null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({ item_icons: { Coffee: '☕' } })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { item_icons: null })
+
+    expect(result.success).toBe(true)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { item_icons: undefined })
   })
 })
 
