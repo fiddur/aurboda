@@ -31,6 +31,13 @@ import { packLanes } from '../../utils/lanePacking'
 import { buildActivityColumnItems, EXCLUDED_TAG_PREFIXES, EXCLUDED_TAG_SOURCES } from './activityMerge'
 import { categorizeMusic } from './categorizeMusic'
 import { drawActivitySparklines, parseBucketedData } from './drawActivitySparklines'
+import {
+  buildMusicTooltipHtml,
+  drawMusicSessions,
+  getMergeGapMs,
+  mergeScrobblesIntoSessions,
+  MUSIC_STAFF_HEIGHT,
+} from './drawMusicStaff'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import type { ChartItem, Column, Orientation } from './types'
 
@@ -986,6 +993,27 @@ export const Timeline = () => {
     if (tooltipRef.current) tooltipRef.current.style.display = 'none'
   }, [])
 
+  const showMusicTooltip = useCallback(
+    (
+      event: MouseEvent,
+      session: { start: Date; end: Date; scrobbles: { artist: string; track: string }[] },
+    ) => {
+      if (!tooltipRef.current || !containerRef.current) return
+      const tip = tooltipRef.current
+      const containerRect = containerRef.current.getBoundingClientRect()
+      tip.innerHTML = buildMusicTooltipHtml(session as Parameters<typeof buildMusicTooltipHtml>[0])
+      tip.style.display = 'block'
+      const x = event.clientX - containerRect.left + 12
+      const yRaw = event.clientY - containerRect.top - 10
+      const tipH = tip.scrollHeight
+      const yMax = containerRect.height - tipH - 4
+      const y = Math.min(yRaw, Math.max(yMax, 4))
+      tip.style.left = `${Math.min(x, containerRect.width - 320)}px`
+      tip.style.top = `${y}px`
+    },
+    [],
+  )
+
   // ── Vertical chart rendering ───────────────────────────────────────────────
 
   const renderVerticalChart = useCallback(() => {
@@ -1178,6 +1206,7 @@ export const Timeline = () => {
 
   // ── Horizontal chart rendering ─────────────────────────────────────────────
 
+  // eslint-disable-next-line complexity -- D3 visualization setup
   const renderHorizontalChart = useCallback(() => {
     if (!svgRef.current || !containerRef.current) return
 
@@ -1187,10 +1216,14 @@ export const Timeline = () => {
     const chartWidth = containerWidth - margin.left - margin.right
     const chartHeight = Math.max(150, containerHeight - margin.top - margin.bottom)
 
+    const hasMusic = scrobbles.length > 0
+    const musicTrackHeight = hasMusic ? MUSIC_STAFF_HEIGHT : 0
     const TRACK_COUNT = 2
-    const trackHeight = chartHeight / TRACK_COUNT
-    const trackActivity = 0
-    const trackPlaces = trackHeight
+    const remainingHeight = chartHeight - musicTrackHeight
+    const trackHeight = remainingHeight / TRACK_COUNT
+    const trackMusic = 0
+    const trackActivity = musicTrackHeight
+    const trackPlaces = musicTrackHeight + trackHeight
     const ICON_SIZE = 18
 
     const svg = d3.select(svgRef.current)
@@ -1218,7 +1251,7 @@ export const Timeline = () => {
     const heartRates = heartRateQuery.data ?? []
     const hrvData = hrvQuery.data ?? []
 
-    const yHr = d3.scaleLinear().domain([40, 200]).range([chartHeight, 0])
+    const yHr = d3.scaleLinear().domain([40, 200]).range([chartHeight, musicTrackHeight])
     const hrvExtent = d3.extent(hrvData, ([, v]) => v) as [number, number]
     const hrvMin = hrvExtent[0] ?? 0
     const hrvMax = hrvExtent[1] ?? 150
@@ -1227,7 +1260,7 @@ export const Timeline = () => {
       .scaleLinear()
       .domain([Math.max(0, hrvMin - hrvPadding), hrvMax + hrvPadding])
       .nice()
-      .range([chartHeight, 0])
+      .range([chartHeight, musicTrackHeight])
 
     // Combine activity items and all non-hidden tags (point and duration) into the activity lane
     const visibleActivityItems = activityItems.filter((i) => !isItemHidden(i))
@@ -1249,24 +1282,36 @@ export const Timeline = () => {
       .attr('transform', `translate(${margin.left},${margin.top})`)
 
     // Static lane labels and separators (not affected by zoom/pan)
+    if (hasMusic) {
+      outerG
+        .append('line')
+        .attr('x1', 0)
+        .attr('x2', chartWidth)
+        .attr('y1', musicTrackHeight)
+        .attr('y2', musicTrackHeight)
+        .attr('stroke', 'currentColor')
+        .attr('stroke-opacity', 0.2)
+    }
     outerG
       .append('line')
       .attr('x1', 0)
       .attr('x2', chartWidth)
-      .attr('y1', trackHeight)
-      .attr('y2', trackHeight)
+      .attr('y1', trackPlaces)
+      .attr('y2', trackPlaces)
       .attr('stroke', 'currentColor')
       .attr('stroke-opacity', 0.2)
 
     const laneLabels = [
+      ...(hasMusic ? [{ label: 'Music', y: trackMusic }] : []),
       { label: 'Activity', y: trackActivity },
       { label: 'Location', y: trackPlaces },
     ]
     for (const { label, y } of laneLabels) {
+      const laneHeight = label === 'Music' ? musicTrackHeight : trackHeight
       outerG
         .append('text')
         .attr('x', -margin.left + 4)
-        .attr('y', y + trackHeight / 2)
+        .attr('y', y + laneHeight / 2)
         .attr('dy', '0.35em')
         .attr('fill', 'currentColor')
         .attr('font-size', '0.65rem')
@@ -1353,6 +1398,13 @@ export const Timeline = () => {
           .attr('stroke-opacity', 0.3)
           .attr('stroke-width', 1.5)
           .attr('stroke-dasharray', '6,3')
+      }
+
+      // ── Music staff (sheet-music notation) ──
+      if (hasMusic) {
+        const mergeGapMs = getMergeGapMs(pixelsPerHour)
+        const sessions = mergeScrobblesIntoSessions(scrobbles, mergeGapMs)
+        drawMusicSessions(chartGroup, sessions, currentXScale, trackMusic, showMusicTooltip, hideTooltip)
       }
 
       // ── Helper: build detail URL for an item ──
@@ -1574,6 +1626,8 @@ export const Timeline = () => {
     heartRateQuery.data,
     hrvQuery.data,
     isItemHidden,
+    scrobbles,
+    showMusicTooltip,
     showTooltip,
     hideTooltip,
   ])

@@ -326,6 +326,16 @@
   font-style: italic;
 }
 
+.timeline-tooltip .tooltip-tracks {
+  max-height: 200px;
+  overflow-y: auto;
+  color: #ec4899;
+  font-style: italic;
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
 .timeline-tooltip .hr-zone-bar {
   display: flex;
   height: 8px;
