@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- large visualization component */
 import { metricUnits as builtinMetricUnits, type ScreentimeCategory } from '@aurboda/api-spec'
 import { signal, useSignalEffect } from '@preact/signals'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
@@ -528,6 +528,7 @@ const computeHorizontalZoomTransform = (
 
 // eslint-disable-next-line complexity -- D3 visualization component
 export const Timeline = () => {
+  const queryClient = useQueryClient()
   const effectiveViewStart = viewStart.value ?? getDefaultViewStart()
   const effectiveViewEnd = viewEnd.value ?? getDefaultViewEnd()
 
@@ -1186,12 +1187,11 @@ export const Timeline = () => {
     const chartWidth = containerWidth - margin.left - margin.right
     const chartHeight = Math.max(150, containerHeight - margin.top - margin.bottom)
 
-    const TRACK_COUNT = 3
+    const TRACK_COUNT = 2
     const trackHeight = chartHeight / TRACK_COUNT
     const trackActivity = 0
     const trackPlaces = trackHeight
-    const trackTags = 2 * trackHeight
-    const TAG_ICON_SIZE = 18
+    const ICON_SIZE = 18
 
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
@@ -1229,18 +1229,14 @@ export const Timeline = () => {
       .nice()
       .range([chartHeight, 0])
 
+    // Combine activity items and all non-hidden tags (point and duration) into the activity lane
     const visibleActivityItems = activityItems.filter((i) => !isItemHidden(i))
+    const visibleTagItems = chartItems.filter((i) => i.column === 'Tags / Events' && !isItemHidden(i))
+    const allActivityLaneItems = [...visibleActivityItems, ...visibleTagItems]
     const packedActivityItems = packLanes(
-      visibleActivityItems,
+      allActivityLaneItems,
       (i) => i.start,
-      (i) => i.end,
-    )
-
-    const pointTags = chartItems.filter((i) => i.column === 'Tags / Events' && i.isPoint)
-    const packedPointTags = packLanes(
-      pointTags,
-      (t) => t.start,
-      () => undefined,
+      (i) => (i.isPoint ? undefined : i.end),
     )
 
     const activitySubLaneHeight =
@@ -1261,19 +1257,10 @@ export const Timeline = () => {
       .attr('y2', trackHeight)
       .attr('stroke', 'currentColor')
       .attr('stroke-opacity', 0.2)
-    outerG
-      .append('line')
-      .attr('x1', 0)
-      .attr('x2', chartWidth)
-      .attr('y1', trackHeight * 2)
-      .attr('y2', trackHeight * 2)
-      .attr('stroke', 'currentColor')
-      .attr('stroke-opacity', 0.2)
 
     const laneLabels = [
       { label: 'Activity', y: trackActivity },
       { label: 'Location', y: trackPlaces },
-      { label: 'Tags', y: trackTags },
     ]
     for (const { label, y } of laneLabels) {
       outerG
@@ -1368,14 +1355,83 @@ export const Timeline = () => {
           .attr('stroke-dasharray', '6,3')
       }
 
-      // ── Activity lane ──
+      // ── Helper: build detail URL for an item ──
+      const getDetailUrl = (item: ChartItem): string | undefined =>
+        item.entity_id && item.entity_type ?
+          `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
+        : (item.href ?? undefined)
+
+      // ── Activity lane (activities + tags) ──
       for (const { item, lane } of packedActivityItems.items) {
         const laneY = trackActivity + lane * activitySubLaneHeight
         const laneH = activitySubLaneHeight - 1
         const rx = currentXScale(item.start)
+        const detailUrl = getDetailUrl(item)
+
+        if (item.isPoint) {
+          // Point tags/metrics: render as icon only in the activity lane
+          const icon = item.icon
+          const tagCx = rx
+          const tagCy = laneY + laneH / 2
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const parent: d3.Selection<any, unknown, null, undefined> =
+            detailUrl ?
+              chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true')
+            : chartGroup
+
+          if (icon && isEmoji(icon)) {
+            parent
+              .append('text')
+              .attr('x', tagCx)
+              .attr('y', tagCy)
+              .attr('dy', '0.35em')
+              .attr('font-size', ICON_SIZE)
+              .attr('text-anchor', 'middle')
+              .attr('cursor', detailUrl ? 'pointer' : 'default')
+              .text(icon)
+              .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+              .on('mouseleave', hideTooltip)
+          } else if (icon && isUrl(icon)) {
+            parent
+              .append('image')
+              .attr('href', icon)
+              .attr('x', tagCx - ICON_SIZE / 2)
+              .attr('y', tagCy - ICON_SIZE / 2)
+              .attr('width', ICON_SIZE)
+              .attr('height', ICON_SIZE)
+              .attr('cursor', detailUrl ? 'pointer' : 'default')
+              .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+              .on('mouseleave', hideTooltip)
+          } else {
+            // No icon: dashed vertical line
+            parent
+              .append('line')
+              .attr('x1', tagCx)
+              .attr('x2', tagCx)
+              .attr('y1', laneY)
+              .attr('y2', laneY + laneH)
+              .attr('stroke', item.color)
+              .attr('stroke-width', 1.5)
+              .attr('stroke-dasharray', '3,2')
+              .attr('opacity', 0.6)
+              .attr('cursor', detailUrl ? 'pointer' : 'default')
+              .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
+              .on('mouseleave', hideTooltip)
+          }
+          continue
+        }
+
+        // Duration items (activities, duration tags)
         const rw = Math.max(0, currentXScale(item.end) - rx)
 
-        chartGroup
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parent: d3.Selection<any, unknown, null, undefined> =
+          detailUrl ?
+            chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true')
+          : chartGroup
+
+        parent
           .append('rect')
           .attr('x', rx)
           .attr('y', laneY)
@@ -1384,7 +1440,7 @@ export const Timeline = () => {
           .attr('fill', item.color)
           .attr('opacity', 0.7)
           .attr('rx', 2)
-          .attr('cursor', 'pointer')
+          .attr('cursor', detailUrl ? 'pointer' : 'default')
           .on('mouseenter', function (event: MouseEvent) {
             d3.select(this).attr('opacity', 0.9)
             showTooltip(event, item)
@@ -1395,29 +1451,28 @@ export const Timeline = () => {
           })
 
         if (item.icon && isEmoji(item.icon)) {
-          chartGroup
+          parent
             .append('text')
             .attr('x', rx + rw / 2)
             .attr('y', laneY + laneH / 2)
             .attr('dy', '0.35em')
             .attr('text-anchor', 'middle')
-            .attr('font-size', '12px')
+            .attr('font-size', `${ICON_SIZE}px`)
             .attr('pointer-events', 'none')
             .text(item.icon)
         } else if (item.icon && isUrl(item.icon)) {
-          const imgSize = 12
-          chartGroup
+          parent
             .append('image')
             .attr('href', item.icon)
-            .attr('x', rx + rw / 2 - imgSize / 2)
-            .attr('y', laneY + laneH / 2 - imgSize / 2)
-            .attr('width', imgSize)
-            .attr('height', imgSize)
+            .attr('x', rx + rw / 2 - ICON_SIZE / 2)
+            .attr('y', laneY + laneH / 2 - ICON_SIZE / 2)
+            .attr('width', ICON_SIZE)
+            .attr('height', ICON_SIZE)
             .attr('pointer-events', 'none')
         } else if (rw > 40) {
           const maxChars = Math.floor(rw / 6)
           const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
-          chartGroup
+          parent
             .append('text')
             .attr('x', rx + 4)
             .attr('y', laneY + Math.min(laneH * 0.6, 14))
@@ -1433,7 +1488,13 @@ export const Timeline = () => {
       for (const place of placeItems) {
         const px = currentXScale(place.start)
         const pw = Math.max(0, currentXScale(place.end) - px)
-        chartGroup
+        const placeUrl = getDetailUrl(place)
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parent: d3.Selection<any, unknown, null, undefined> =
+          placeUrl ? chartGroup.append('a').attr('href', placeUrl).attr('data-clickable', 'true') : chartGroup
+
+        parent
           .append('rect')
           .attr('x', px)
           .attr('y', trackPlaces)
@@ -1441,7 +1502,7 @@ export const Timeline = () => {
           .attr('height', trackHeight)
           .attr('fill', place.color)
           .attr('opacity', 0.7)
-          .attr('cursor', 'pointer')
+          .attr('cursor', placeUrl ? 'pointer' : 'default')
           .on('mouseenter', function (event: MouseEvent) {
             d3.select(this).attr('opacity', 0.9)
             showTooltip(event, place)
@@ -1450,51 +1511,6 @@ export const Timeline = () => {
             d3.select(this).attr('opacity', 0.7)
             hideTooltip()
           })
-      }
-
-      // ── Tags lane: stacked icons ──
-      for (const { item: tag, lane } of packedPointTags.items) {
-        const icon = tag.icon
-        const tx = currentXScale(tag.start)
-        const tagY = trackTags + 4 + lane * (TAG_ICON_SIZE + 2)
-
-        if (icon && isEmoji(icon)) {
-          chartGroup
-            .append('text')
-            .attr('x', tx)
-            .attr('y', tagY + TAG_ICON_SIZE * 0.8)
-            .attr('font-size', TAG_ICON_SIZE)
-            .attr('text-anchor', 'middle')
-            .attr('cursor', 'pointer')
-            .text(icon)
-            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
-            .on('mouseleave', hideTooltip)
-        } else if (icon && isUrl(icon)) {
-          chartGroup
-            .append('image')
-            .attr('href', icon)
-            .attr('x', tx - TAG_ICON_SIZE / 2)
-            .attr('y', tagY)
-            .attr('width', TAG_ICON_SIZE)
-            .attr('height', TAG_ICON_SIZE)
-            .attr('cursor', 'pointer')
-            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
-            .on('mouseleave', hideTooltip)
-        } else {
-          chartGroup
-            .append('line')
-            .attr('x1', tx)
-            .attr('x2', tx)
-            .attr('y1', trackTags)
-            .attr('y2', trackTags + trackHeight)
-            .attr('stroke', tag.color)
-            .attr('stroke-width', 1.5)
-            .attr('stroke-dasharray', '3,2')
-            .attr('opacity', 0.6)
-            .attr('cursor', 'pointer')
-            .on('mouseenter', (event: MouseEvent) => showTooltip(event, tag))
-            .on('mouseleave', hideTooltip)
-        }
       }
 
       // ── HR/HRV paths ──
@@ -1723,6 +1739,37 @@ export const Timeline = () => {
         </div>
         <span class="timeline-date-label">{viewLabel}</span>
         {isFetching && !isLoading && <span class="timeline-fetching">Loading…</span>}
+        {!isFetching && !isLoading && (
+          <button
+            class="nav-btn timeline-refresh-btn"
+            onClick={() =>
+              queryClient.invalidateQueries({
+                predicate: (query) =>
+                  typeof query.queryKey[0] === 'string' &&
+                  (query.queryKey[0] as string).startsWith('timeline-'),
+              })
+            }
+            title="Refresh data"
+            type="button"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+              <path d="M21 21v-5h-5" />
+            </svg>
+          </button>
+        )}
 
         <div class="timeline-orientation-toggle">
           <button
@@ -1993,12 +2040,13 @@ const mergeSmallItems = (
 
 const stackIconPoints = (
   items: { item: ChartItem; lane: number }[],
+  usableWidth: number,
 ): { item: ChartItem; lane: number; xOffset: number }[] => {
-  const iconPoints = items.filter((p) => p.item.isPoint && p.item.icon)
-  if (iconPoints.length <= 1) return items.map((p) => ({ ...p, xOffset: 0 }))
+  const pointItems = items.filter((p) => p.item.isPoint)
+  if (pointItems.length <= 1) return items.map((p) => ({ ...p, xOffset: 0 }))
 
   const byTime = new Map<number, { item: ChartItem; lane: number }[]>()
-  for (const p of iconPoints) {
+  for (const p of pointItems) {
     const t = p.item.start.getTime()
     const group = byTime.get(t) ?? []
     group.push(p)
@@ -2007,13 +2055,16 @@ const stackIconPoints = (
 
   const stackedSet = new Set<ChartItem>()
   const offsetMap = new Map<ChartItem, number>()
-  const ICON_STEP = 18
 
   for (const group of byTime.values()) {
+    if (group.length <= 1) continue
     group.sort((a, b) => a.item.label.localeCompare(b.item.label))
+    // Adapt step size so all icons fit within the available column width
+    const maxStep = 18
+    const step = Math.min(maxStep, Math.max(8, Math.floor((usableWidth - 20) / group.length)))
     for (let i = 0; i < group.length; i++) {
       stackedSet.add(group[i]!.item)
-      offsetMap.set(group[i]!.item, i * ICON_STEP)
+      offsetMap.set(group[i]!.item, i * step)
     }
   }
 
@@ -2040,10 +2091,11 @@ const drawColumnItems = (
 
     const mergedItems = mergeSmallItems(packedItems, yScale)
     const hasMerged = mergedItems.some((m) => m.item.label.endsWith(' items'))
-    const stackedItems = stackIconPoints(mergedItems)
 
     const colX = colIdx * colWidth + colGap
     const usableWidth = colWidth - colGap * 2
+
+    const stackedItems = stackIconPoints(mergedItems, usableWidth)
 
     const hasStacked = stackedItems.some((s) => s.xOffset > 0)
     const nonStackedLanes =
@@ -2095,7 +2147,7 @@ const drawPointMarker = (
       .attr('y', cy)
       .attr('dy', '0.35em')
       .attr('text-anchor', 'middle')
-      .attr('font-size', '14px')
+      .attr('font-size', '18px')
       .attr('pointer-events', 'all')
       .attr('cursor', cursor)
       .text(item.icon)
@@ -2105,7 +2157,7 @@ const drawPointMarker = (
   }
 
   if (item.icon && isUrl(item.icon)) {
-    const imgSize = 14
+    const imgSize = 18
     parent
       .append('image')
       .attr('href', item.icon)
@@ -2162,14 +2214,14 @@ const drawBlockOverlay = (
       .attr('y', y1 + blockHeight / 2)
       .attr('dy', '0.35em')
       .attr('text-anchor', 'middle')
-      .attr('font-size', '14px')
+      .attr('font-size', '18px')
       .attr('pointer-events', 'none')
       .text(item.icon)
     return
   }
 
   if (item.icon && isUrl(item.icon)) {
-    const imgSize = 14
+    const imgSize = 18
     parent
       .append('image')
       .attr('href', item.icon)
