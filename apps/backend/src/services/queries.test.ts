@@ -3,6 +3,7 @@ import * as db from '../db'
 import { MetricType } from '../schema'
 import * as locationsService from './locations'
 import {
+  findSleepLocation,
   getDailySummary,
   getPeriodSummary,
   mergeProductivitySpans,
@@ -187,6 +188,22 @@ describe('getDailySummary', () => {
     // Sleep sessions
     expect(result.sleep_sessions).toHaveLength(1)
     expect(result.sleep_sessions[0].duration).toBe(480) // 8 hours in minutes
+    expect(result.sleep_sessions[0].sleep_date).toBe('2024-01-15') // woke up on this date
+    expect(result.sleep_sessions[0].sleep_location).toEqual({
+      lat: 59.33,
+      lon: 18.07,
+      name: 'Home',
+      source: 'named',
+    })
+
+    // Primary sleep = session that ended on this date
+    expect(result.primary_sleep).not.toBeNull()
+    expect(result.primary_sleep!.end_time).toBe('2024-01-15T07:00:00.000Z')
+    expect(result.primary_sleep!.sleep_date).toBe('2024-01-15')
+    expect(result.primary_sleep!.sleep_location?.name).toBe('Home')
+
+    // Evening sleep = no sleep started on Jan 15 that extends to Jan 16
+    expect(result.evening_sleep).toBeNull()
 
     // Exercise sessions
     expect(result.exercise_sessions).toHaveLength(1)
@@ -473,6 +490,247 @@ describe('getDailySummary', () => {
     expect(result.exercise_sessions[0].hr_zone_secs).toBeUndefined()
     // Should not have called getTimeSeries for the exercise session
     expect(db.getTimeSeries).toHaveBeenCalledTimes(2) // Only daily HR and steps
+  })
+
+  test('classifies overnight sleep as primary_sleep on wake-up date', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-03-08T06:23:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-03-07T22:01:00Z'),
+      },
+    ])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    // Query for March 8 — the date the user woke up
+    const result = await getDailySummary('testuser', new Date('2024-03-08'))
+
+    expect(result.primary_sleep).not.toBeNull()
+    expect(result.primary_sleep!.start_time).toBe('2024-03-07T22:01:00.000Z')
+    expect(result.primary_sleep!.end_time).toBe('2024-03-08T06:23:00.000Z')
+    expect(result.primary_sleep!.sleep_date).toBe('2024-03-08')
+    expect(result.evening_sleep).toBeNull()
+  })
+
+  test('classifies evening sleep that extends past midnight', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      // Morning sleep (primary) — woke up on Mar 8
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-03-08T06:23:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-03-07T22:01:00Z'),
+      },
+      // Evening sleep — fell asleep on Mar 8, wakes up Mar 9
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-03-09T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-03-08T22:30:00Z'),
+      },
+    ])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-03-08'))
+
+    // primary_sleep = ended on Mar 8
+    expect(result.primary_sleep).not.toBeNull()
+    expect(result.primary_sleep!.end_time).toBe('2024-03-08T06:23:00.000Z')
+    expect(result.primary_sleep!.sleep_date).toBe('2024-03-08')
+
+    // evening_sleep = started on Mar 8, ends Mar 9
+    expect(result.evening_sleep).not.toBeNull()
+    expect(result.evening_sleep!.start_time).toBe('2024-03-08T22:30:00.000Z')
+    expect(result.evening_sleep!.end_time).toBe('2024-03-09T07:00:00.000Z')
+    expect(result.evening_sleep!.sleep_date).toBe('2024-03-09')
+
+    // Both should appear in sleep_sessions
+    expect(result.sleep_sessions).toHaveLength(2)
+  })
+
+  test('returns null for primary_sleep and evening_sleep when no sleep data', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-03-08'))
+
+    expect(result.primary_sleep).toBeNull()
+    expect(result.evening_sleep).toBeNull()
+    expect(result.sleep_sessions).toHaveLength(0)
+  })
+
+  test('adds sleep_location from overlapping place visits', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-03-08T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-03-07T23:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([
+      {
+        duration_minutes: 300,
+        end_time: new Date('2024-03-08T08:00:00Z'),
+        lat: 57.7,
+        lon: 11.97,
+        name: 'Hökås',
+        source: 'named',
+        start_time: new Date('2024-03-07T22:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-03-08'))
+
+    expect(result.primary_sleep).not.toBeNull()
+    expect(result.primary_sleep!.sleep_location).toEqual({
+      lat: 57.7,
+      lon: 11.97,
+      name: 'Hökås',
+      source: 'named',
+    })
+  })
+
+  test('sleep_location picks the place with longest overlap', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-03-08T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-03-07T23:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([
+      // Short visit at Office before sleep
+      {
+        duration_minutes: 30,
+        end_time: new Date('2024-03-07T23:30:00Z'),
+        lat: 59.33,
+        lon: 18.07,
+        name: 'Office',
+        source: 'named',
+        start_time: new Date('2024-03-07T22:00:00Z'),
+      },
+      // Long stay at Home covering most of sleep
+      {
+        duration_minutes: 600,
+        end_time: new Date('2024-03-08T08:00:00Z'),
+        lat: 57.7,
+        lon: 11.97,
+        name: 'Home',
+        source: 'named',
+        start_time: new Date('2024-03-07T23:30:00Z'),
+      },
+    ])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-03-08'))
+
+    // Should pick Home (7.5h overlap) over Office (30min overlap)
+    expect(result.primary_sleep!.sleep_location!.name).toBe('Home')
+  })
+
+  test('sleep_location is undefined when no place visits overlap', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-03-08T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-03-07T23:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-03-08'))
+
+    expect(result.primary_sleep!.sleep_location).toBeUndefined()
+  })
+})
+
+describe('findSleepLocation', () => {
+  test('returns undefined when no place visits', () => {
+    const result = findSleepLocation(new Date('2024-03-07T23:00:00Z'), new Date('2024-03-08T07:00:00Z'), [])
+    expect(result).toBeUndefined()
+  })
+
+  test('returns the place with longest overlap', () => {
+    const result = findSleepLocation(new Date('2024-03-07T23:00:00Z'), new Date('2024-03-08T07:00:00Z'), [
+      {
+        duration_minutes: 30,
+        end_time: new Date('2024-03-07T23:30:00Z'),
+        lat: 59.33,
+        lon: 18.07,
+        name: 'Office',
+        source: 'named' as const,
+        start_time: new Date('2024-03-07T22:00:00Z'),
+      },
+      {
+        duration_minutes: 600,
+        end_time: new Date('2024-03-08T08:00:00Z'),
+        lat: 57.7,
+        lon: 11.97,
+        name: 'Home',
+        source: 'named' as const,
+        start_time: new Date('2024-03-07T23:30:00Z'),
+      },
+    ])
+    expect(result).toEqual({
+      lat: 57.7,
+      lon: 11.97,
+      name: 'Home',
+      source: 'named',
+    })
+  })
+
+  test('ignores places with no overlap', () => {
+    const result = findSleepLocation(new Date('2024-03-07T23:00:00Z'), new Date('2024-03-08T07:00:00Z'), [
+      {
+        duration_minutes: 120,
+        end_time: new Date('2024-03-07T20:00:00Z'),
+        lat: 59.33,
+        lon: 18.07,
+        name: 'Office',
+        source: 'named' as const,
+        start_time: new Date('2024-03-07T18:00:00Z'),
+      },
+    ])
+    expect(result).toBeUndefined()
   })
 })
 

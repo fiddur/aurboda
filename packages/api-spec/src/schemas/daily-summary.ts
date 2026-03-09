@@ -33,7 +33,48 @@ export const heartRateStatsSchema = z
 export type HeartRateStats = z.infer<typeof heartRateStatsSchema>
 
 /**
- * Session summary schema (for sleep, exercise, meditation).
+ * Sleep location schema — best-guess location where the person slept.
+ */
+export const sleepLocationSchema = z
+  .object({
+    lat: latSchema.optional(),
+    lon: lonSchema.optional(),
+    name: z.string().meta({ description: 'Location name', example: 'Home' }),
+    source: placeSourceSchema,
+  })
+  .meta({ id: 'SleepLocation', description: 'Best-guess location where the person slept' })
+
+export type SleepLocation = z.infer<typeof sleepLocationSchema>
+
+/**
+ * Sleep session summary schema — extends session summary with sleep-specific fields.
+ */
+export const sleepSessionSummarySchema = z
+  .object({
+    data: z.record(z.string(), z.unknown()).optional(),
+    duration: durationMinutesSchema.optional(),
+    end_time: iso8601DateTimeSchema.optional(),
+    sleep_date: dateOnlySchema.optional().meta({
+      description:
+        'The date this sleep "belongs to", using wake-up convention (the date the user woke up). E.g. sleep starting 2026-03-07T23:00Z and ending 2026-03-08T07:00Z has sleep_date 2026-03-08.',
+    }),
+    sleep_location: sleepLocationSchema.optional().meta({
+      description: 'Best-guess location where the person slept during this session',
+    }),
+    start_time: iso8601DateTimeSchema,
+    time_in_bed: durationMinutesSchema.optional().meta({
+      description: 'Total time in bed in minutes (end_time - start_time)',
+    }),
+    total_sleep: durationMinutesSchema.optional().meta({
+      description: 'Actual sleep time in minutes (excluding awake periods), from sleep stage data',
+    }),
+  })
+  .meta({ id: 'SleepSessionSummary', description: 'Sleep session with location and date attribution' })
+
+export type SleepSessionSummary = z.infer<typeof sleepSessionSummarySchema>
+
+/**
+ * Session summary schema (for exercise, meditation).
  */
 export const sessionSummarySchema = z
   .object({
@@ -105,7 +146,9 @@ export const ouraScoresSchema = z
     cardiovascular_age: z.number().nullable().meta({ description: 'Oura cardiovascular age' }),
     readiness_score: z.number().nullable().meta({ description: 'Oura readiness score (0-100)' }),
     resilience_score: z.number().nullable().meta({ description: 'Oura resilience score (0-100)' }),
-    sleep_score: z.number().nullable().meta({ description: 'Oura sleep score (0-100)' }),
+    sleep_score: z.number().nullable().meta({
+      description: 'Oura sleep score (0-100). Evaluates the primary_sleep session for this date.',
+    }),
   })
   .meta({ id: 'OuraScores' })
 
@@ -117,15 +160,29 @@ export type OuraScores = z.infer<typeof ouraScoresSchema>
 export const dailySummaryResultSchema = z
   .object({
     date: dateOnlySchema,
+    evening_sleep: sleepSessionSummarySchema.nullable().meta({
+      description:
+        'Sleep session that started on this date but continues into the next day (fell asleep tonight). Will appear as the primary_sleep on the next day. Null if no evening sleep was started.',
+    }),
     exercise_sessions: z.array(sessionSummarySchema),
     heart_rate: heartRateStatsSchema.nullable(),
     notes: z.array(noteSchema).meta({
       description: 'All notes whose time range overlaps this day, across all entity types',
     }),
-    oura_scores: ouraScoresSchema.nullable(),
+    oura_scores: ouraScoresSchema.nullable().meta({
+      description:
+        'Oura scores for this date. The sleep_score evaluates the primary_sleep session (the sleep the user woke up from on this date).',
+    }),
     places: z.array(placeSummarySchema),
+    primary_sleep: sleepSessionSummarySchema.nullable().meta({
+      description:
+        'The main sleep session for this date — the one the user woke up from on this date (following Oura convention). The oura_scores.sleep_score evaluates this session. Null if no primary sleep ended on this date.',
+    }),
     productivity: productivitySummarySchema.nullable(),
-    sleep_sessions: z.array(sessionSummarySchema),
+    sleep_sessions: z.array(sleepSessionSummarySchema).meta({
+      description:
+        'All sleep sessions overlapping this date (kept for backward compatibility). Prefer using primary_sleep and evening_sleep for unambiguous sleep attribution.',
+    }),
     steps: z.object({
       total: z.number().meta({ description: 'Total steps for the day' }),
     }),
