@@ -188,6 +188,7 @@ class HealthDataModelsTest {
     // These are the record types handled in OutboundSync.kt writeUpsertRecord()
     val expectedTypes =
       setOf(
+        "ActiveCaloriesBurnedRecord",
         "BodyFatRecord",
         "BodyWaterMassRecord",
         "BoneMassRecord",
