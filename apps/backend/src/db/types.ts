@@ -6,6 +6,7 @@
  */
 import type {
   ActivityType,
+  BiologicalSex,
   CustomMetricDefinition,
   DashboardConfig,
   DataSource,
@@ -332,6 +333,7 @@ export interface UserSettings {
   hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   lastfm_username?: string // Last.fm username for scrobble sync
   rescue_time_key?: string // RescueTime API key (personal token)
+  sex?: BiologicalSex // Biological sex for calorie calculation
   item_icons?: Record<string, string> // Unified icon mappings for all timeline items (tags, activities, exercise types)
   tag_icons?: Record<string, string> // Deprecated: tag-only icons (migrated to item_icons)
   tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names

@@ -91,7 +91,8 @@
 
 .form-field input[type='date'],
 .form-field input[type='password'],
-.form-field input[type='text'] {
+.form-field input[type='text'],
+.form-field select {
   padding: 0.5rem;
   font-size: 1rem;
   border: 1px solid #ccc;
@@ -100,7 +101,8 @@
   max-width: 300px;
 }
 
-.form-field input[type='date'] {
+.form-field input[type='date'],
+.form-field select {
   max-width: 200px;
 }
 
@@ -458,6 +460,7 @@
   .form-field input[type='date'],
   .form-field input[type='password'],
   .form-field input[type='text'],
+  .form-field select,
   .zone-input input[type='number'] {
     background: #333;
     border-color: #555;

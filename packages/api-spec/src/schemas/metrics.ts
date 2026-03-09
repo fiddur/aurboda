@@ -245,3 +245,48 @@ export const queryMetricsBucketedResponseSchema = baseResponseSchema
   .meta({ id: 'QueryMetricsBucketedResponse' })
 
 export type QueryMetricsBucketedResponse = z.infer<typeof queryMetricsBucketedResponseSchema>
+
+// =============================================================================
+// Calorie Recalculation
+// =============================================================================
+
+/**
+ * Recalculate calories request body.
+ * Computes calorie burn from HR data for the given time range.
+ */
+export const recalculateCaloriesBodySchema = z
+  .object({
+    end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+  })
+  .meta({
+    id: 'RecalculateCaloriesBody',
+    description: 'Recalculate calories burned from HR data for a time range.',
+  })
+
+export type RecalculateCaloriesBody = z.infer<typeof recalculateCaloriesBodySchema>
+
+/**
+ * Recalculate calories response.
+ */
+export const recalculateCaloriesResponseSchema = baseResponseSchema
+  .extend({
+    points_computed: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Total per-minute calorie points computed' }),
+    points_stored: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'New points stored (excluding already-computed)' }),
+    skipped_reason: z.string().optional().meta({ description: 'Reason computation was skipped, if any' }),
+    vo2_max_source: z
+      .enum(['measured', 'fallback'])
+      .optional()
+      .meta({ description: 'Whether measured VO2 max was used or age/sex fallback' }),
+  })
+  .meta({ id: 'RecalculateCaloriesResponse' })
+
+export type RecalculateCaloriesResponse = z.infer<typeof recalculateCaloriesResponseSchema>

@@ -143,6 +143,9 @@ export interface Scrobble extends Omit<ApiScrobble, 'recorded_at'> {
   recorded_at: Date
 }
 
+// Defined locally to avoid Zod type resolution issues with api-spec's z.infer<z.ZodEnum>
+export type BiologicalSex = 'male' | 'female'
+
 // Re-export API types that don't need Date conversion
 export type {
   ActivityCorrelation,

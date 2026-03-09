@@ -204,6 +204,29 @@ private suspend fun writeUpsertRecord(
 
   val record: Record =
     when (entry.hc_record_type) {
+      "ActiveCaloriesBurnedRecord" -> {
+        if (!hasWritePermission<ActiveCaloriesBurnedRecord>(
+            grantedPermissions,
+          )
+        ) {
+          return WriteResult.Skipped("no WRITE_ACTIVE_CALORIES_BURNED permission")
+        }
+        val value = payload.getDouble("value") ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
+        val startTime = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
+        // Per-minute calorie data: each record covers a 60-second window.
+        // If end_time is provided, use it; otherwise default to start + 60s.
+        val endTime = payload.getInstant("end_time") ?: startTime.plusSeconds(60)
+        ActiveCaloriesBurnedRecord(
+          energy =
+            androidx.health.connect.client.units.Energy
+              .kilocalories(value),
+          startTime = startTime,
+          startZoneOffset = ZoneOffset.systemDefault().rules.getOffset(startTime),
+          endTime = endTime,
+          endZoneOffset = ZoneOffset.systemDefault().rules.getOffset(endTime),
+          metadata = Metadata.manualEntry(clientRecordId),
+        )
+      }
       "WeightRecord" -> {
         if (!hasWritePermission<WeightRecord>(grantedPermissions)) return WriteResult.Skipped("no WRITE_WEIGHT permission")
         val value = payload.getDouble("value") ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")

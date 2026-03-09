@@ -969,6 +969,15 @@ fun HealthConnectScreen(
                   ktorHttpClient,
                   authToken,
                 )
+              Vo2MaxRecord::class ->
+                handlePostData(
+                  Vo2MaxRecordSerializable.fromRecordsList(classRecords),
+                  Vo2MaxRecordSerializable.serializer(),
+                  syncUrl,
+                  recordTypeSimpleName,
+                  ktorHttpClient,
+                  authToken,
+                )
               else -> {
                 Log.w("SendData", "No specific serialization for $recordTypeSimpleName. Skipping.")
                 PostResult.Success

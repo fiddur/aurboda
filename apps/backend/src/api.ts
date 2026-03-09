@@ -51,6 +51,7 @@ import { createScreentimeCategoriesRouter } from './routes/screentime-categories
 import { createSettingsRouter } from './routes/settings-router'
 import { createTagsRouter } from './routes/tags-router'
 import { createTrendsRouter } from './routes/trends-router'
+import { triggerCalorieComputation } from './services/calorie-computation'
 import { getCentralDb, initializeCentralDb } from './services/central-db'
 import { createDetectionTrigger, DetectionTrigger } from './services/detection-trigger'
 import { runDetectionForUser } from './services/detection-worker'
@@ -354,6 +355,8 @@ const main = async () => {
         syncLastFm: transformLastFmSyncResult,
         syncOura: transformOuraSyncResults,
         syncRescueTime: transformRescueTimeSyncResult,
+        triggerCalorieComputation: (user: string, start: Date, end: Date) =>
+          triggerCalorieComputation(user, start, end),
       },
       authMiddleware,
     ),
