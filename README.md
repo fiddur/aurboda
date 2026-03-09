@@ -11,7 +11,7 @@
 
 Your health, fitness, productivity, and location data is scattered across apps and services. Aurboda aggregates it all into one self-hosted platform, provides rich visualizations, and exposes everything to AI assistants via [MCP (Model Context Protocol)](https://modelcontextprotocol.io/).
 
-Currently in early development. No public signup, but self-hosting is straightforward via Docker.
+Currently in early development. No public signup, but self-hosting is straightforward via Docker. It was initiated as a personal (manually coded) hobby project but has grown with AI coding; take it or leave it.
 
 ---
 
