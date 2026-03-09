@@ -147,6 +147,9 @@ export const upsertUserSettings = async (
   if (updates.rescue_time_key !== undefined) {
     merged.rescue_time_key = updates.rescue_time_key
   }
+  if (updates.sex !== undefined) {
+    merged.sex = updates.sex
+  }
   if (updates.item_icons !== undefined) {
     merged.item_icons = updates.item_icons
   }
