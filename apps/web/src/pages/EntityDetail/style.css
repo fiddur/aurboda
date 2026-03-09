@@ -618,7 +618,8 @@
   border-radius: 4px;
   background: transparent;
   color: inherit;
-  width: 120px;
+  min-width: 120px;
+  width: auto;
 }
 
 .edit-value-input:focus {

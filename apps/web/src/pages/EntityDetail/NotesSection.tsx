@@ -4,8 +4,7 @@ import { marked } from 'marked'
 import { useCallback, useState } from 'preact/hooks'
 import { MarkdownEditor } from '../../components/MarkdownEditor/index.jsx'
 import { addNote, deleteNote, fetchNotes, type NoteData, updateNote } from '../../state/api'
-
-type EntityType = 'activity' | 'tag' | 'productivity' | 'metric'
+import type { EntityType } from './EntityActions'
 
 export const NotesSection = ({
   entityType,

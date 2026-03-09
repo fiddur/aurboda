@@ -1,25 +1,20 @@
 /**
  * Metric entity content with edit/delete support.
  *
- * Editing works by deleting the old data point and adding a new one,
- * since metric measurements are keyed by (metric, time, source).
+ * Editing works via upsert (add) then conditional delete:
+ * - If only value changed: addMetric upserts (backend uses ON CONFLICT DO UPDATE)
+ * - If time changed: addMetric creates new point, then old point is deleted
+ * This ensures data is never lost on partial failure.
  */
 import { useMutation } from '@tanstack/react-query'
-import { type ComponentType } from 'preact'
 import { useCallback, useState } from 'preact/hooks'
 import { addMetric, deleteMetricPoint } from '../../state/api'
-import type { EntityActionsProps } from './EntityActions'
+import { EntityActions } from './EntityActions'
 import { formatDateTimeLocal } from './format-utils'
 import { MetricDetail, type MetricDraft, parseMetricEntityId } from './MetricDetail'
 import { NotesSection } from './NotesSection'
 
-export const MetricContent = ({
-  entityId,
-  EntityActions,
-}: {
-  entityId: string
-  EntityActions: ComponentType<EntityActionsProps>
-}) => {
+export const MetricContent = ({ entityId }: { entityId: string }) => {
   const parsed = parseMetricEntityId(entityId)
   const isDeletable = parsed?.source === 'manual' || parsed?.source === 'aurboda'
 
@@ -35,6 +30,13 @@ export const MetricContent = ({
     setIsEditing(true)
   }, [parsed])
 
+  const handleDraftInit = useCallback(
+    (d: Partial<MetricDraft>) => {
+      if (isEditing) setDraft((prev) => ({ ...prev, ...d }))
+    },
+    [isEditing],
+  )
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!parsed) return
@@ -42,14 +44,21 @@ export const MetricContent = ({
       const newValue = parseFloat(draft.value)
       if (isNaN(newValue)) throw new Error('Invalid value')
 
-      // Delete old point, then add new one
-      await deleteMetricPoint(parsed.metric, parsed.time)
+      // Add/upsert the new point first so data is never lost on partial failure.
+      // Backend uses ON CONFLICT (time, metric, source) DO UPDATE, so if time
+      // hasn't changed this just updates the value in place.
       await addMetric({ metric: parsed.metric, time: newTime, value: newValue })
+
+      // Only delete the old point if the time actually changed, otherwise
+      // we'd delete the point we just upserted.
+      if (newTime !== parsed.time) {
+        await deleteMetricPoint(parsed.metric, parsed.time)
+      }
     },
     onSuccess: () => {
       setIsEditing(false)
-      // Navigate to the new entity ID since time may have changed
       const newTime = new Date(draft.time).toISOString()
+      // addMetric always stores with source='aurboda', regardless of original source
       const newEntityId = `${newTime}|${parsed!.metric}|aurboda`
       window.location.href = `/detail/metric/${encodeURIComponent(newEntityId)}`
     },
@@ -80,9 +89,7 @@ export const MetricContent = ({
         isEditing={isEditing}
         draft={draft}
         onDraftChange={setDraft}
-        onDraftInit={(d) => {
-          if (isEditing) setDraft((prev) => ({ ...prev, ...d }))
-        }}
+        onDraftInit={handleDraftInit}
       />
       <NotesSection entityType="metric" entityId={entityId} />
     </>

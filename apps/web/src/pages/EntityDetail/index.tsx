@@ -22,7 +22,7 @@ import {
 } from '../../state/api'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
-import { EntityActions } from './EntityActions'
+import { EntityActions, type EntityType } from './EntityActions'
 import { ExerciseDetail } from './ExerciseDetail'
 import { formatDateTimeLocal, formatTime } from './format-utils'
 import { MetricContent } from './MetricContent'
@@ -33,8 +33,6 @@ import { SleepDetail } from './SleepDetail'
 import { TagDetail } from './TagDetail'
 
 import './style.css'
-
-type EntityType = 'activity' | 'tag' | 'productivity' | 'metric'
 
 const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
   <div class="source-records">
@@ -379,7 +377,7 @@ export const EntityDetail = () => {
       {entityType === 'activity' && <ActivityContent entityId={entityId} />}
       {entityType === 'tag' && <TagContent entityId={entityId} />}
       {entityType === 'productivity' && <ProductivityContent entityId={entityId} />}
-      {entityType === 'metric' && <MetricContent entityId={entityId} EntityActions={EntityActions} />}
+      {entityType === 'metric' && <MetricContent entityId={entityId} />}
     </div>
   )
 }
