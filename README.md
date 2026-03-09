@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/web/public/screenshots/logo-light.jpg" alt="Aurboda" width="200" />
+  <img src="apps/web/public/logo.svg" alt="Aurboda" width="200" />
 </p>
 
 <h1 align="center">Aurboda</h1>
