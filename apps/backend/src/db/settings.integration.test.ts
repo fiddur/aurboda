@@ -245,4 +245,37 @@ describe('Settings Integration Tests', () => {
       expect(settings?.dashboard?.sections[1].collapsed).toBe(true)
     })
   })
+
+  describe('User Settings with sex', () => {
+    test('stores and retrieves sex', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { sex: 'male' })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.sex).toBe('male')
+    })
+
+    test('updates sex while preserving other settings', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { birth_date: '1990-01-15' })
+      await upsertUserSettings(user, { sex: 'female' })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.birth_date).toBe('1990-01-15')
+      expect(settings?.sex).toBe('female')
+    })
+
+    test('preserves sex when update does not include sex', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { sex: 'male' })
+      await upsertUserSettings(user, { birth_date: '2000-01-01' })
+
+      const settings = await getUserSettings(user)
+      expect(settings?.sex).toBe('male')
+      expect(settings?.birth_date).toBe('2000-01-01')
+    })
+  })
 })
