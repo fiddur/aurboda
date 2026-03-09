@@ -48,6 +48,17 @@ export const hrZoneSecsSchema = z
 export type HrZoneSecs = z.infer<typeof hrZoneSecsSchema>
 
 /**
+ * Biological sex schema (used for calorie calculation formulas).
+ */
+export const biologicalSexSchema = z.enum(['male', 'female']).meta({
+  description: 'Biological sex (used for calorie calculation formulas)',
+  example: 'male',
+  id: 'BiologicalSex',
+})
+
+export type BiologicalSex = z.infer<typeof biologicalSexSchema>
+
+/**
  * Birth date schema (YYYY-MM-DD format).
  */
 export const birthDateSchema = z.iso.date().meta({
@@ -132,6 +143,9 @@ export const updateSettingsInputSchema = z
     birth_date: birthDateSchema.nullable().optional().meta({
       description: 'Birth date (set to null to clear)',
     }),
+    sex: biologicalSexSchema.nullable().optional().meta({
+      description: 'Biological sex for calorie calculation (set to null to clear)',
+    }),
     calendars: calendarsSchema.nullable().optional().meta({
       description: 'Calendar ICS URL configurations (set to null to clear all)',
     }),
@@ -185,6 +199,7 @@ export const userSettingsResponseSchema = baseResponseSchema
     oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
     rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),
+    sex: biologicalSexSchema.nullable().meta({ description: 'Biological sex for calorie calculation' }),
     item_icons: itemIconsSchema.meta({
       description:
         'Unified icon mappings for all timeline items — tags, activities, exercise types (tag key or name -> emoji/URL)',

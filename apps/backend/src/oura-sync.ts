@@ -11,6 +11,7 @@ import { addMinutes, isFuture, subDays } from 'date-fns'
 import { getSyncState, getUserSettings, SyncState, upsertSyncState } from './db'
 import { ouraClient } from './oura'
 import { type OuraDataType, processOuraData } from './oura-process'
+import { triggerCalorieComputation } from './services/calorie-computation'
 
 // Re-export for consumers that import from oura-sync
 export { convertOuraSleepPhases, processOuraData, type OuraDataType } from './oura-process'
@@ -129,6 +130,11 @@ export const syncOuraDataType = async (
     }
 
     await processOuraData(user, dataType, data)
+
+    // Trigger calorie computation for data types that include HR samples
+    if ((dataType === 'sleep' || dataType === 'sessions') && data.length > 0) {
+      await triggerCalorieComputation(user, start, end)
+    }
 
     // Update sync state on success
     await upsertSyncState(user, {

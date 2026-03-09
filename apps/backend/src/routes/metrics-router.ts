@@ -26,12 +26,16 @@ import {
   type QueryMetricsQuery,
   queryMetricsQuerySchema,
   type QueryMetricsResponse,
+  type RecalculateCaloriesBody,
+  recalculateCaloriesBodySchema,
+  type RecalculateCaloriesResponse,
   type UpdateCustomMetricBody,
   updateCustomMetricBodySchema,
 } from '@aurboda/api-spec'
 import { RequestHandler, Router } from 'express'
 import { getUserSettings } from '../db'
 import { isValidMetricOrCustom, type MetricType, validMetrics } from '../schema'
+import { computeAndStoreCalories } from '../services/calorie-computation'
 import {
   addCustomMetric,
   addMetric,
@@ -148,6 +152,20 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
         return res.status(404).json({ error: result.error, success: false })
       }
       res.json({ data: result.data, success: true })
+    },
+  )
+
+  // POST /metrics/recalculate-calories - Recalculate calorie burn from HR data
+  router.post<Record<string, never>, RecalculateCaloriesResponse, RecalculateCaloriesBody>(
+    '/metrics/recalculate-calories',
+    authMiddleware,
+    validateBody(recalculateCaloriesBodySchema),
+    async (req, res) => {
+      const { start, end } = req.body
+      const user = req.user!
+
+      const result = await computeAndStoreCalories(user, new Date(start), new Date(end))
+      res.json({ ...result, success: true })
     },
   )
 

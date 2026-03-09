@@ -62,6 +62,7 @@
     <uses-permission android:name="android.permission.health.READ_WHEELCHAIR_PUSHES" />
 
     <!-- Write permissions for BLE sensor data and outbound sync -->
+    <uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.WRITE_BODY_FAT" />
     <uses-permission android:name="android.permission.health.WRITE_BODY_WATER_MASS" />
     <uses-permission android:name="android.permission.health.WRITE_BONE_MASS" />

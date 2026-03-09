@@ -213,6 +213,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     oura_configured: ouraConfigured,
     oura_connected: ouraToken !== null,
     rescue_time_key: settings.rescue_time_key ?? null,
+    sex: settings.sex ?? null,
     success: true,
     tag_icons: settings.item_icons ?? {},
     tag_mappings: settings.tag_mappings ?? {},
@@ -242,6 +243,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
       oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
       oura_connected: false,
       rescue_time_key: null,
+      sex: null,
       success: false,
       tag_icons: {},
       tag_mappings: {},
@@ -258,6 +260,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     'item_icons',
     'lastfm_username',
     'rescue_time_key',
+    'sex',
     'tag_icons',
     'tag_mappings',
   ] as const

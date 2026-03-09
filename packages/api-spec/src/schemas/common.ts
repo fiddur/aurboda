@@ -278,6 +278,13 @@ export const cumulativeMetrics: MetricType[] = [
 ]
 
 /**
+ * Trusted sources for cumulative metrics.
+ * health_connect_aggregate: deduplicated daily totals from Health Connect
+ * aurboda: computed values (e.g., calorie calculation from HR data)
+ */
+export const cumulativeSources: DataSource[] = ['health_connect_aggregate', 'aurboda']
+
+/**
  * Place visit source schema.
  */
 export const placeSourceSchema = z.enum(['named', 'detected', 'owntracks', 'unknown']).meta({

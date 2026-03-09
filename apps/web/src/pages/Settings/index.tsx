@@ -1,7 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 import { TimelineIconsSettings } from '../../components/TimelineIconsSettings'
-import { fetchUserSettings, HrZoneThresholds, UpdateSettingsInput, updateUserSettings } from '../../state/api'
+import {
+  BiologicalSex,
+  fetchUserSettings,
+  HrZoneThresholds,
+  UpdateSettingsInput,
+  updateUserSettings,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
 import { parseZoneValue, updateZoneThreshold, validateHrZoneThresholds } from '../../utils/settings'
@@ -43,15 +49,17 @@ export function Settings() {
 
   // Form state
   const [birthDate, setBirthDate] = useState<string>('')
+  const [sex, setSex] = useState<BiologicalSex | null>(null)
   const [hrZones, setHrZones] = useState<HrZoneThresholds | null>(null)
 
   // Save status for each section
-  const [birthDateStatus, setBirthDateStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [personalInfoStatus, setPersonalInfoStatus] = useState<SaveStatus>({ status: 'idle' })
   const [hrZonesStatus, setHrZonesStatus] = useState<SaveStatus>({ status: 'idle' })
 
   // Initialize form when data loads
   const initializeForm = () => {
     setBirthDate(userSettings?.birth_date ?? '')
+    setSex(userSettings?.sex ?? null)
     setHrZones(userSettings?.hr_zone_start ?? null)
   }
 
@@ -91,11 +99,18 @@ export function Settings() {
 
     // Validate format if not empty
     if (birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
-      setBirthDateStatus({ error: 'Invalid date format', status: 'error' })
+      setPersonalInfoStatus({ error: 'Invalid date format', status: 'error' })
       return
     }
 
-    saveSection({ birth_date: birthDate || null }, setBirthDateStatus)
+    saveSection({ birth_date: birthDate || null }, setPersonalInfoStatus)
+  }
+
+  const handleSexChange = (e: Event) => {
+    const value = (e.target as HTMLSelectElement).value
+    const newSex = value === '' ? null : (value as BiologicalSex)
+    setSex(newSex)
+    saveSection({ sex: newSex }, setPersonalInfoStatus)
   }
 
   const handleZoneChange = (zone: keyof HrZoneThresholds, value: string) => {
@@ -153,7 +168,7 @@ export function Settings() {
       <section class="settings-section">
         <div class="section-header-row">
           <h2>Personal Information</h2>
-          <SaveStatusIndicator saveStatus={birthDateStatus} />
+          <SaveStatusIndicator saveStatus={personalInfoStatus} />
         </div>
         <div class="form-field">
           <label for="birth-date">Birth Date</label>
@@ -166,6 +181,19 @@ export function Settings() {
           />
           <p class="field-description">
             Used to calculate age-based HR zone thresholds if custom zones are not set.
+          </p>
+        </div>
+
+        <div class="form-field">
+          <label for="sex">Biological Sex</label>
+          <select id="sex" value={sex ?? ''} onChange={handleSexChange}>
+            <option value="">Not set</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+          <p class="field-description">
+            Required for calorie burn estimation from heart rate data. Setting this enables automatic calorie
+            computation.
           </p>
         </div>
       </section>

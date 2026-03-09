@@ -5,9 +5,11 @@ import {
   addCustomMetricBodySchema,
   addMetricBodySchema,
   customMetricDefinitionSchema,
+  recalculateCaloriesBodySchema,
   updateCustomMetricBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
+import { computeAndStoreCalories } from '../services/calorie-computation'
 import {
   addCustomMetric,
   addMetric,
@@ -143,6 +145,17 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     async ({ metric }) => {
       const result = await deleteMetricData(user, metric)
       return jsonResponse(result)
+    },
+  )
+
+  // Tool: recalculate_calories
+  server.tool(
+    'recalculate_calories',
+    'Recalculate calories burned from HR data for a time range. Requires sex and birth_date in settings. Uses weight from Health Connect and VO2 max (measured or age/sex fallback).',
+    { ...recalculateCaloriesBodySchema.shape },
+    async ({ start, end }) => {
+      const result = await computeAndStoreCalories(user, new Date(start), new Date(end))
+      return jsonResponse({ ...result, success: true })
     },
   )
 }
