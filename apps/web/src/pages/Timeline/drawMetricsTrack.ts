@@ -188,6 +188,7 @@ const buildMetricsTooltipHtml = (
 ): string => {
   const startStr = formatTime(bucket.start)
   const endStr = formatTime(bucket.end)
+  const bucketMinutes = (bucket.end.getTime() - bucket.start.getTime()) / 60_000
 
   let html = `<div class="tooltip-title">Metrics</div>`
   html += `<div class="tooltip-time">${startStr} – ${endStr}</div>`
@@ -207,13 +208,15 @@ const buildMetricsTooltipHtml = (
   if (showSteps) {
     const steps = bucket.metrics.steps
     if (steps) {
-      html += `<div class="tooltip-detail" style="color:${STEPS_COLOR}">🚶 Steps: ${Math.round(steps.avg)}/bucket</div>`
+      const perMin = bucketMinutes > 0 ? steps.avg / bucketMinutes : 0
+      html += `<div class="tooltip-detail" style="color:${STEPS_COLOR}">🚶 Steps: ${perMin.toFixed(1)}/min</div>`
     }
   }
   if (showCalories) {
     const cal = bucket.metrics.calories_active
     if (cal) {
-      html += `<div class="tooltip-detail" style="color:${CALORIES_COLOR}">🔥 Calories: ${Math.round(cal.avg)} kcal/bucket</div>`
+      const perMin = bucketMinutes > 0 ? cal.avg / bucketMinutes : 0
+      html += `<div class="tooltip-detail" style="color:${CALORIES_COLOR}">🔥 Calories: ${perMin.toFixed(1)} kcal/min</div>`
     }
   }
 
