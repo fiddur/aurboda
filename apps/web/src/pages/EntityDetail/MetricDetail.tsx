@@ -1,14 +1,21 @@
 /**
  * Metric data point detail view.
+ * Supports read mode (plain text) and edit mode (input fields).
  */
 import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'preact/hooks'
 import {
   fetchCustomMetrics,
   fetchMetricTimeSeriesWithSource,
   type MetricDataPointWithSource,
 } from '../../state/api'
 import { formatDateTime } from './format-utils'
+
+export interface MetricDraft {
+  time: string // yyyy-MM-ddTHH:mm for datetime-local
+  value: string // string so input binding works naturally
+}
 
 /** Parse a metric entity ID (format: "iso_time|metric_name|source"). */
 export const parseMetricEntityId = (
@@ -27,7 +34,22 @@ export const parseMetricEntityId = (
 const formatMetricLabel = (metric: string): string =>
   metric.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
-export const MetricDetail = ({ entityId }: { entityId: string }) => {
+interface MetricDetailProps {
+  entityId: string
+  isEditing?: boolean
+  draft?: MetricDraft
+  onDraftChange?: (draft: MetricDraft) => void
+  /** Called once when the point loads, so parent can populate draft value. */
+  onDraftInit?: (partial: Partial<MetricDraft>) => void
+}
+
+export const MetricDetail = ({
+  entityId,
+  isEditing = false,
+  draft,
+  onDraftChange,
+  onDraftInit,
+}: MetricDetailProps) => {
   const parsed = parseMetricEntityId(entityId)
 
   const customMetricsQuery = useQuery({
@@ -50,6 +72,15 @@ export const MetricDetail = ({ entityId }: { entityId: string }) => {
     staleTime: 60_000,
   })
 
+  const point = pointQuery.data
+
+  // When point loads, populate draft value for editing
+  useEffect(() => {
+    if (point && onDraftInit) {
+      onDraftInit({ value: String(point.value) })
+    }
+  }, [point, onDraftInit])
+
   if (!parsed) {
     return <p class="error">Invalid metric reference</p>
   }
@@ -57,9 +88,52 @@ export const MetricDetail = ({ entityId }: { entityId: string }) => {
   const metricLabel = formatMetricLabel(parsed.metric)
   const customUnit = customMetricsQuery.data?.find((m) => m.name === parsed.metric)?.unit
   const unit = customUnit ?? (builtinMetricUnits as Record<string, string>)[parsed.metric] ?? ''
-  const point = pointQuery.data
   const time = new Date(parsed.time)
   const displayValue = point ? Number(point.value.toFixed(2)) : null
+
+  if (isEditing && draft && onDraftChange) {
+    return (
+      <div class="entity-info">
+        <div class="entity-meta">
+          <span class="entity-type-badge">metric</span>
+          <span class="entity-source">Source: {parsed.source}</span>
+        </div>
+
+        <h2>{metricLabel}</h2>
+
+        <div class="entity-fields">
+          <div class="field-row">
+            <span class="field-label">Time</span>
+            <span class="field-value">
+              <input
+                type="datetime-local"
+                class="edit-datetime-input"
+                value={draft.time}
+                onInput={(e) => onDraftChange({ ...draft, time: (e.target as HTMLInputElement).value })}
+              />
+            </span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Value</span>
+            <span class="field-value">
+              <input
+                type="number"
+                step="any"
+                class="edit-value-input"
+                value={draft.value}
+                onInput={(e) => onDraftChange({ ...draft, value: (e.target as HTMLInputElement).value })}
+              />
+              {unit && <span class="edit-value-unit">{unit}</span>}
+            </span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Metric</span>
+            <span class="field-value">{parsed.metric}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div class="entity-info">
