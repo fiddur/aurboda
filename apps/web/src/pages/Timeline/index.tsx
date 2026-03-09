@@ -10,8 +10,6 @@ import {
   fetchActivities,
   fetchBucketedMetrics,
   fetchCustomMetrics,
-  fetchHeartRate,
-  fetchHrv,
   fetchMetricTimeSeriesWithSource,
   fetchPlaces,
   fetchProductivity,
@@ -25,12 +23,20 @@ import {
   Tag,
   type MetricDataPointWithSource,
 } from '../../state/api'
-import { preprocessData } from '../../utils/chart'
+import { parseBucketedResponse } from '../../utils/chart'
 import { isEmoji, isUrl } from '../../utils/emojiLookup'
 import { packLanes } from '../../utils/lanePacking'
 import { buildActivityColumnItems, EXCLUDED_TAG_PREFIXES, EXCLUDED_TAG_SOURCES } from './activityMerge'
 import { categorizeMusic } from './categorizeMusic'
 import { drawActivitySparklines, parseBucketedData } from './drawActivitySparklines'
+import {
+  CALORIES_COLOR,
+  computeYScales,
+  drawMetricsTrack,
+  HR_COLOR,
+  HRV_COLOR,
+  STEPS_COLOR,
+} from './drawMetricsTrack'
 import {
   buildMusicTooltipHtml,
   drawMusicSessions,
@@ -157,8 +163,6 @@ const hrZoneColors: Record<number, string> = {
 const TAG_COLOR = '#8b5cf6'
 const METRIC_COLOR = '#14b8a6'
 const NOW_COLOR = '#ef4444'
-const HR_COLOR = '#ef4444'
-const HRV_COLOR = '#10b981'
 
 const OCCASIONAL_BUILTIN_METRICS = [
   'weight',
@@ -648,32 +652,17 @@ export const Timeline = () => {
     staleTime: 5 * 60 * 1000,
   })
 
-  const sparklineMetricsQuery = useQuery({
+  // Bucketed metrics: used for sparklines (vertical) and band/bar charts (horizontal)
+  const bucketedMetricsQuery = useQuery({
     placeholderData: keepPreviousData,
     queryFn: () =>
       fetchBucketedMetrics(
         subDays(fetchStart, 0.5),
         addDays(fetchEnd, 0.5),
-        ['heart_rate', 'hrv_rmssd'],
+        ['heart_rate', 'hrv_rmssd', 'steps', 'calories_active'],
         '5m',
       ),
-    queryKey: ['timeline-sparkline-metrics', fromDate.value, toDate.value],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const heartRateQuery = useQuery({
-    enabled: orientation === 'horizontal',
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchHeartRate(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-hr', fromDate.value, toDate.value],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const hrvQuery = useQuery({
-    enabled: orientation === 'horizontal',
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchHrv(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-hrv', fromDate.value, toDate.value],
+    queryKey: ['timeline-bucketed-metrics', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -770,8 +759,14 @@ export const Timeline = () => {
   )
 
   const sparklineBuckets = useMemo(
-    () => parseBucketedData(sparklineMetricsQuery.data),
-    [sparklineMetricsQuery.data],
+    () => parseBucketedData(bucketedMetricsQuery.data),
+    [bucketedMetricsQuery.data],
+  )
+
+  // Parsed bucketed metrics for horizontal mode band/bar charts
+  const horizontalMetricBuckets = useMemo(
+    () => parseBucketedResponse(bucketedMetricsQuery.data),
+    [bucketedMetricsQuery.data],
   )
 
   const uniquePlaceNames = useMemo(
@@ -821,6 +816,12 @@ export const Timeline = () => {
 
   const [showSparklineHR, setShowSparklineHR] = useState(true)
   const [showSparklineHRV, setShowSparklineHRV] = useState(true)
+
+  // Horizontal mode: metrics track toggles
+  const [showMetricsHR, setShowMetricsHR] = useState(true)
+  const [showMetricsHRV, setShowMetricsHRV] = useState(true)
+  const [showMetricsSteps, setShowMetricsSteps] = useState(true)
+  const [showMetricsCalories, setShowMetricsCalories] = useState(true)
 
   // Sync view state + orientation → URL hash
   useSignalEffect(() => {
@@ -915,7 +916,7 @@ export const Timeline = () => {
     productivityQuery.isFetching ||
     scrobblesQuery.isFetching ||
     occasionalMetricsQuery.isFetching ||
-    sparklineMetricsQuery.isFetching
+    bucketedMetricsQuery.isFetching
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -1206,7 +1207,6 @@ export const Timeline = () => {
 
   // ── Horizontal chart rendering ─────────────────────────────────────────────
 
-  // eslint-disable-next-line complexity -- D3 visualization setup
   const renderHorizontalChart = useCallback(() => {
     if (!svgRef.current || !containerRef.current) return
 
@@ -1218,12 +1218,14 @@ export const Timeline = () => {
 
     const hasMusic = scrobbles.length > 0
     const musicTrackHeight = hasMusic ? MUSIC_STAFF_HEIGHT : 0
-    const TRACK_COUNT = 2
-    const remainingHeight = chartHeight - musicTrackHeight
-    const trackHeight = remainingHeight / TRACK_COUNT
+    const LOCATION_TRACK_HEIGHT = 34
+    const remainingHeight = chartHeight - musicTrackHeight - LOCATION_TRACK_HEIGHT
+    const activityTrackHeight = Math.max(40, remainingHeight / 2)
+    const metricsTrackHeight = Math.max(40, remainingHeight / 2)
     const trackMusic = 0
     const trackActivity = musicTrackHeight
-    const trackPlaces = musicTrackHeight + trackHeight
+    const trackMetrics = musicTrackHeight + activityTrackHeight
+    const trackPlaces = chartHeight - LOCATION_TRACK_HEIGHT
     const ICON_SIZE = 18
 
     const svg = d3.select(svgRef.current)
@@ -1248,19 +1250,13 @@ export const Timeline = () => {
     const baseScale = d3.scaleTime().domain([hFetchStart, hFetchEnd]).range([0, chartWidth])
     baseScaleRef.current = baseScale
 
-    const heartRates = heartRateQuery.data ?? []
-    const hrvData = hrvQuery.data ?? []
+    // Bucketed metrics for band/bar charts in the metrics track
+    const metricBuckets = horizontalMetricBuckets
 
-    const yHr = d3.scaleLinear().domain([40, 200]).range([chartHeight, musicTrackHeight])
-    const hrvExtent = d3.extent(hrvData, ([, v]) => v) as [number, number]
-    const hrvMin = hrvExtent[0] ?? 0
-    const hrvMax = hrvExtent[1] ?? 150
-    const hrvPadding = Math.max((hrvMax - hrvMin) * 0.2, 5)
-    const yHrv = d3
-      .scaleLinear()
-      .domain([Math.max(0, hrvMin - hrvPadding), hrvMax + hrvPadding])
-      .nice()
-      .range([chartHeight, musicTrackHeight])
+    // Compute Y-scales once (stable per render, only depends on data, not zoom)
+    const metricsTrackBottom = trackMetrics + metricsTrackHeight
+    const metricsYScales =
+      metricBuckets.length > 0 ? computeYScales(metricBuckets, trackMetrics, metricsTrackBottom) : null
 
     // Combine activity items and all non-hidden tags (point and duration) into the activity lane
     const visibleActivityItems = activityItems.filter((i) => !isItemHidden(i))
@@ -1273,7 +1269,9 @@ export const Timeline = () => {
     )
 
     const activitySubLaneHeight =
-      packedActivityItems.laneCount > 1 ? trackHeight / packedActivityItems.laneCount : trackHeight
+      packedActivityItems.laneCount > 1 ?
+        activityTrackHeight / packedActivityItems.laneCount
+      : activityTrackHeight
 
     // Outer group for margin offset — static, never removed
     const outerG = svg
@@ -1292,6 +1290,16 @@ export const Timeline = () => {
         .attr('stroke', 'currentColor')
         .attr('stroke-opacity', 0.2)
     }
+    // Separator between activity and metrics tracks
+    outerG
+      .append('line')
+      .attr('x1', 0)
+      .attr('x2', chartWidth)
+      .attr('y1', trackMetrics)
+      .attr('y2', trackMetrics)
+      .attr('stroke', 'currentColor')
+      .attr('stroke-opacity', 0.2)
+    // Separator between metrics and location tracks
     outerG
       .append('line')
       .attr('x1', 0)
@@ -1301,35 +1309,22 @@ export const Timeline = () => {
       .attr('stroke', 'currentColor')
       .attr('stroke-opacity', 0.2)
 
-    const laneLabels = [
-      ...(hasMusic ? [{ label: 'Music', y: trackMusic }] : []),
-      { label: 'Activity', y: trackActivity },
-      { label: 'Location', y: trackPlaces },
+    const laneLabels: { label: string; y: number; height: number }[] = [
+      ...(hasMusic ? [{ height: musicTrackHeight, label: 'Music', y: trackMusic }] : []),
+      { height: activityTrackHeight, label: 'Activity', y: trackActivity },
+      { height: metricsTrackHeight, label: 'Metrics', y: trackMetrics },
+      { height: LOCATION_TRACK_HEIGHT, label: 'Location', y: trackPlaces },
     ]
-    for (const { label, y } of laneLabels) {
-      const laneHeight = label === 'Music' ? musicTrackHeight : trackHeight
+    for (const { label, y, height } of laneLabels) {
       outerG
         .append('text')
         .attr('x', -margin.left + 4)
-        .attr('y', y + laneHeight / 2)
+        .attr('y', y + height / 2)
         .attr('dy', '0.35em')
         .attr('fill', 'currentColor')
         .attr('font-size', '0.65rem')
         .attr('opacity', 0.5)
         .text(label)
-    }
-
-    // Static y-axes (HR/HRV — these don't move with pan)
-    if (heartRates.length > 0) {
-      outerG.append('g').call(d3.axisLeft(yHr).ticks(5)).selectAll('text').style('fill', HR_COLOR)
-    }
-    if (hrvData.length > 0) {
-      outerG
-        .append('g')
-        .attr('transform', `translate(${chartWidth},0)`)
-        .call(d3.axisRight(yHrv).ticks(5))
-        .selectAll('text')
-        .style('fill', HRV_COLOR)
     }
 
     // X-axis group — updated in place on zoom
@@ -1342,10 +1337,6 @@ export const Timeline = () => {
     // Clipped content group — cleared and redrawn each frame (like vertical mode)
     const clipped = outerG.append('g').attr('clip-path', 'url(#h-chart-clip)')
     const chartGroup = clipped.append('g').attr('class', 'h-content')
-
-    // Pre-process HR/HRV data once (expensive — don't repeat per frame)
-    const hrProcessed = heartRates.length > 0 ? preprocessData(heartRates, 10) : null
-    const hrvProcessed = hrvData.length > 0 ? preprocessData(hrvData, 10) : null
 
     // draw() clears and redraws all content using the current x-scale.
     // This is fast because the browser batches DOM mutations into a single paint.
@@ -1551,9 +1542,10 @@ export const Timeline = () => {
           .attr('x', px)
           .attr('y', trackPlaces)
           .attr('width', pw)
-          .attr('height', trackHeight)
+          .attr('height', LOCATION_TRACK_HEIGHT)
           .attr('fill', place.color)
           .attr('opacity', 0.7)
+          .attr('rx', 2)
           .attr('cursor', placeUrl ? 'pointer' : 'default')
           .on('mouseenter', function (event: MouseEvent) {
             d3.select(this).attr('opacity', 0.9)
@@ -1565,36 +1557,38 @@ export const Timeline = () => {
           })
       }
 
-      // ── HR/HRV paths ──
-      if (hrProcessed) {
-        const hrLine = d3
-          .line<[Date, number] | null>()
-          .defined(Boolean)
-          .x(([time]) => currentXScale(time))
-          .y(([, rate]) => yHr(rate))
-        chartGroup
-          .append('path')
-          .datum(hrProcessed)
-          .attr('fill', 'none')
-          .attr('stroke', HR_COLOR)
-          .attr('stroke-width', 1.5)
-          .attr('pointer-events', 'none')
-          .attr('d', hrLine as never)
-      }
-      if (hrvProcessed) {
-        const hrvLine = d3
-          .line<[Date, number] | null>()
-          .defined(Boolean)
-          .x(([time]) => currentXScale(time))
-          .y(([, value]) => yHrv(value))
-        chartGroup
-          .append('path')
-          .datum(hrvProcessed)
-          .attr('fill', 'none')
-          .attr('stroke', HRV_COLOR)
-          .attr('stroke-width', 1.5)
-          .attr('pointer-events', 'none')
-          .attr('d', hrvLine as never)
+      // ── Metrics track (HR/HRV band charts + steps/calories bars) ──
+      if (metricsYScales) {
+        drawMetricsTrack({
+          buckets: metricBuckets,
+          chartGroup,
+          chartWidth,
+          hideTooltip,
+          outerG,
+          pixelsPerHour,
+          showCalories: showMetricsCalories,
+          showHR: showMetricsHR,
+          showHRV: showMetricsHRV,
+          showSteps: showMetricsSteps,
+          showTooltipHtml: (event: MouseEvent, html: string) => {
+            if (!tooltipRef.current || !containerRef.current) return
+            const tip = tooltipRef.current
+            const containerRect = containerRef.current.getBoundingClientRect()
+            tip.innerHTML = html
+            tip.style.display = 'block'
+            const x = event.clientX - containerRect.left + 12
+            const yRaw = event.clientY - containerRect.top - 10
+            const tipH = tip.scrollHeight
+            const yMax = containerRect.height - tipH - 4
+            const y = Math.min(yRaw, Math.max(yMax, 4))
+            tip.style.left = `${Math.min(x, containerRect.width - 320)}px`
+            tip.style.top = `${y}px`
+          },
+          trackHeight: metricsTrackHeight,
+          trackY: trackMetrics,
+          xScale: currentXScale,
+          yScales: metricsYScales,
+        })
       }
 
       // ── Now line ──
@@ -1607,6 +1601,24 @@ export const Timeline = () => {
     }
 
     drawRef.current = draw
+
+    // ── Static HR/HRV y-axes (drawn once per render, not per zoom frame) ──
+    if (metricsYScales) {
+      outerG
+        .append('g')
+        .attr('class', 'metrics-y-axis')
+        .call(d3.axisLeft(metricsYScales.yHr).ticks(4))
+        .selectAll('text')
+        .style('fill', HR_COLOR)
+      outerG
+        .append('g')
+        .attr('class', 'metrics-y-axis')
+        .attr('transform', `translate(${chartWidth},0)`)
+        .call(d3.axisRight(metricsYScales.yHrv).ticks(4))
+        .selectAll('text')
+        .style('fill', HRV_COLOR)
+    }
+
     draw(d3.scaleTime().domain([effectiveViewStart, effectiveViewEnd]).range([0, chartWidth]))
 
     if (zoomBehaviorRef.current) {
@@ -1623,13 +1635,16 @@ export const Timeline = () => {
     chartItems,
     effectiveViewEnd,
     effectiveViewStart,
-    heartRateQuery.data,
-    hrvQuery.data,
+    horizontalMetricBuckets,
     isItemHidden,
     scrobbles,
     showMusicTooltip,
     showTooltip,
     hideTooltip,
+    showMetricsHR,
+    showMetricsHRV,
+    showMetricsSteps,
+    showMetricsCalories,
   ])
 
   // Re-render on data/size change
@@ -1956,6 +1971,46 @@ export const Timeline = () => {
                 >
                   <span class="legend-dot" style={{ background: HRV_COLOR }} />
                   HRV
+                </button>
+              </>
+            )}
+            {orientation === 'horizontal' && (
+              <>
+                <button
+                  class={`legend-item${!showMetricsHR ? ' legend-item-hidden' : ''}`}
+                  onClick={() => setShowMetricsHR((v) => !v)}
+                  type="button"
+                  title="Toggle heart rate band chart"
+                >
+                  <span class="legend-dot" style={{ background: HR_COLOR }} />
+                  HR
+                </button>
+                <button
+                  class={`legend-item${!showMetricsHRV ? ' legend-item-hidden' : ''}`}
+                  onClick={() => setShowMetricsHRV((v) => !v)}
+                  type="button"
+                  title="Toggle HRV band chart"
+                >
+                  <span class="legend-dot" style={{ background: HRV_COLOR }} />
+                  HRV
+                </button>
+                <button
+                  class={`legend-item${!showMetricsSteps ? ' legend-item-hidden' : ''}`}
+                  onClick={() => setShowMetricsSteps((v) => !v)}
+                  type="button"
+                  title="Toggle steps bar chart"
+                >
+                  <span class="legend-dot" style={{ background: STEPS_COLOR }} />
+                  Steps
+                </button>
+                <button
+                  class={`legend-item${!showMetricsCalories ? ' legend-item-hidden' : ''}`}
+                  onClick={() => setShowMetricsCalories((v) => !v)}
+                  type="button"
+                  title="Toggle active calories bar chart"
+                >
+                  <span class="legend-dot" style={{ background: CALORIES_COLOR }} />
+                  Calories
                 </button>
               </>
             )}
