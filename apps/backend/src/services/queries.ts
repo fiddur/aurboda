@@ -32,7 +32,7 @@ import {
   metricUnits,
 } from '../schema'
 import { classifyHrvByContext, getHrvContextWindows, HrvContext } from './hrv-context'
-import { getPlaceVisits } from './locations'
+import { getPlaceVisits, type PlaceVisit } from './locations'
 import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs, type HrZoneThresholds } from './settings'
 import { computeSleepMinutes } from './sleep-duration'
 
@@ -118,6 +118,24 @@ export interface SessionSummary {
   hr_zone_secs?: HrZoneSecs
 }
 
+export interface SleepLocation {
+  name: string
+  source: 'named' | 'detected' | 'owntracks' | 'unknown'
+  lat?: number
+  lon?: number
+}
+
+export interface SleepSessionSummary {
+  start_time: string
+  end_time?: string
+  duration?: number // minutes (actual sleep time or time in bed)
+  time_in_bed?: number // minutes
+  total_sleep?: number // minutes (from sleep stage data)
+  sleep_date?: string // YYYY-MM-DD — the date this sleep "belongs to" (wake-up convention)
+  sleep_location?: SleepLocation
+  data?: Record<string, unknown>
+}
+
 export interface TagSummary {
   id?: string
   tag: string
@@ -158,7 +176,9 @@ export interface DailySummaryResult {
   heart_rate: HeartRateStats | null
   notes: NoteSummary[]
   steps: { total: number }
-  sleep_sessions: SessionSummary[]
+  primary_sleep: SleepSessionSummary | null
+  evening_sleep: SleepSessionSummary | null
+  sleep_sessions: SleepSessionSummary[]
   exercise_sessions: SessionSummary[]
   tags: TagSummary[]
   productivity: ProductivitySummary | null
@@ -631,8 +651,44 @@ export async function getDailySummary(
   const tagIds = tags.map((t) => t.id).filter((id): id is string => id !== undefined)
   const tagCommentsMap = await getCommentsMap(user, 'tag', tagIds)
 
+  // Build sleep session summaries with sleep_date and sleep_location
+  const dateStr = date.toISOString().split('T')[0]
+  const sleepSessionSummaries: SleepSessionSummary[] = sleepSessions.map((s) => {
+    const timeInBed =
+      s.end_time ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60) : undefined
+    const totalSleep = computeSleepMinutes(s.data as Record<string, unknown> | undefined)
+
+    // sleep_date = wake-up date (end_time date), or start_time date if still sleeping
+    const sleepDate =
+      s.end_time ? s.end_time.toISOString().split('T')[0] : s.start_time.toISOString().split('T')[0]
+
+    // Find the best-guess sleep location from place visits overlapping the sleep window
+    const sleepLocation = findSleepLocation(s.start_time, s.end_time ?? end, placeVisits)
+
+    return {
+      data: s.data,
+      duration: totalSleep ?? timeInBed,
+      end_time: s.end_time?.toISOString(),
+      sleep_date: sleepDate,
+      sleep_location: sleepLocation,
+      start_time: s.start_time.toISOString(),
+      time_in_bed: timeInBed,
+      total_sleep: totalSleep,
+    }
+  })
+
+  // Classify sleep sessions:
+  // primary_sleep = session where the user woke up on this date (end_time is on this date)
+  // evening_sleep = session that started on this date but ends on the next day (or is ongoing)
+  const primarySleep = sleepSessionSummaries.find((s) => s.end_time && s.end_time.startsWith(dateStr)) ?? null
+  const eveningSleep =
+    sleepSessionSummaries.find(
+      (s) => s.start_time.startsWith(dateStr) && (!s.end_time || !s.end_time.startsWith(dateStr)),
+    ) ?? null
+
   return {
-    date: date.toISOString().split('T')[0],
+    date: dateStr,
+    evening_sleep: eveningSleep,
     exercise_sessions: exerciseSessionsWithHrZones,
     heart_rate: heartRateStats,
     notes: dayNotes.map((n) => ({
@@ -657,20 +713,9 @@ export async function getDailySummary(
       source: p.source,
       start_time: p.start_time.toISOString(),
     })),
+    primary_sleep: primarySleep,
     productivity: productivitySummary,
-    sleep_sessions: sleepSessions.map((s) => {
-      const timeInBed =
-        s.end_time ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60) : undefined
-      const totalSleep = computeSleepMinutes(s.data as Record<string, unknown> | undefined)
-      return {
-        data: s.data,
-        duration: totalSleep ?? timeInBed,
-        end_time: s.end_time?.toISOString(),
-        start_time: s.start_time.toISOString(),
-        time_in_bed: timeInBed,
-        total_sleep: totalSleep,
-      }
-    }),
+    sleep_sessions: sleepSessionSummaries,
     steps: { total: totalSteps },
     tags: tags.map((t) => ({
       comments: t.id ? (tagCommentsMap.get(t.id) ?? []) : [],
@@ -678,6 +723,40 @@ export async function getDailySummary(
       start_time: t.start_time.toISOString(),
       tag: t.tag,
     })),
+  }
+}
+
+/**
+ * Find the best-guess sleep location from place visits overlapping a sleep window.
+ * Returns the place with the longest overlap during the sleep window.
+ */
+export function findSleepLocation(
+  sleepStart: Date,
+  sleepEnd: Date,
+  placeVisits: PlaceVisit[],
+): SleepLocation | undefined {
+  let bestMatch: PlaceVisit | undefined
+  let bestOverlap = 0
+
+  for (const visit of placeVisits) {
+    // Calculate overlap between sleep window and visit
+    const overlapStart = Math.max(sleepStart.getTime(), visit.start_time.getTime())
+    const overlapEnd = Math.min(sleepEnd.getTime(), visit.end_time.getTime())
+    const overlap = overlapEnd - overlapStart
+
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap
+      bestMatch = visit
+    }
+  }
+
+  if (!bestMatch) return undefined
+
+  return {
+    lat: bestMatch.lat,
+    lon: bestMatch.lon,
+    name: bestMatch.name,
+    source: bestMatch.source,
   }
 }
 

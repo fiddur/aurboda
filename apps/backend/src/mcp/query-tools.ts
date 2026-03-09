@@ -90,7 +90,7 @@ Use cases:
   // Tool: get_daily_summary
   server.tool(
     'get_daily_summary',
-    'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, tags, productivity, and visited places. Also includes Oura scores (sleep_score, readiness_score, resilience_score, cardiovascular_age) when available.',
+    'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, tags, productivity, and visited places. Also includes Oura scores (sleep_score, readiness_score, resilience_score, cardiovascular_age) when available.\n\nSleep sessions are disambiguated: `primary_sleep` is the session the user woke up from on this date (following Oura convention), `evening_sleep` is the session started this evening that continues to the next day. Each sleep session includes `sleep_date` (the date it belongs to, using wake-up convention) and `sleep_location` (best-guess location). The `oura_scores.sleep_score` evaluates the `primary_sleep` session.',
     {
       date: dateOnlySchema.describe('Date in YYYY-MM-DD format (e.g., 2024-01-15)'),
     },
