@@ -1555,6 +1555,21 @@ export const Timeline = () => {
             d3.select(this).attr('opacity', 0.7)
             hideTooltip()
           })
+
+        // Place name label (when there's enough room)
+        if (pw > 30) {
+          const maxChars = Math.floor(pw / 6)
+          const text = place.label.length > maxChars ? place.label.slice(0, maxChars - 1) + '…' : place.label
+          parent
+            .append('text')
+            .attr('x', px + 4)
+            .attr('y', trackPlaces + LOCATION_TRACK_HEIGHT / 2)
+            .attr('dy', '0.35em')
+            .attr('fill', 'white')
+            .attr('font-size', '0.6rem')
+            .attr('pointer-events', 'none')
+            .text(text)
+        }
       }
 
       // ── Metrics track (HR/HRV band charts + steps/calories bars) ──

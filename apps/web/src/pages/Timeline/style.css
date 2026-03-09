@@ -447,12 +447,24 @@
     color: #fbbf24;
   }
 
-  /* Music notes and stems: boost visibility on dark backgrounds */
+  /* Music staff: boost visibility of all elements on dark backgrounds */
   .music-note {
     opacity: 0.75;
   }
 
   .music-stem {
     stroke-opacity: 0.75;
+  }
+
+  .music-staff-line {
+    stroke-opacity: 0.45;
+  }
+
+  .music-barline {
+    stroke-opacity: 0.6;
+  }
+
+  .music-clef {
+    opacity: 0.6;
   }
 }
