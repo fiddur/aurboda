@@ -33,6 +33,10 @@ export type {
   Place,
   ProductivityRecord,
   RawRecord,
+  Report,
+  ReportConfidence,
+  ReportEntry,
+  ReportFlag,
   ScreentimeCategory,
   ScreentimeCategoryInput,
   SyncState,
@@ -156,8 +160,18 @@ export {
   updateNoteTimesForEntity,
 } from './notes'
 
-// Lab results
+// Lab results (legacy)
 export { getLabResults, insertLabResult } from './lab-results'
+
+// Reports (structured lab results)
+export {
+  deleteReport,
+  getLatestMetricValue,
+  getReportById,
+  getReportEntryMetrics,
+  getReports,
+  insertReport,
+} from './reports'
 
 // OAuth
 export { getOAuthToken, upsertOAuthToken } from './oauth'
@@ -215,6 +229,8 @@ export {
   mapMcpSessionRow,
   mapNamedLocationRow,
   mapNoteRow,
+  mapReportEntryRow,
+  mapReportRow,
   mapSyncStateRow,
   mapTagRow,
   parseActivityType,

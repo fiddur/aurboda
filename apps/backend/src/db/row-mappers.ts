@@ -14,6 +14,10 @@ import type {
   McpSessionRecord,
   NamedLocation,
   Note,
+  Report,
+  ReportConfidence,
+  ReportEntry,
+  ReportFlag,
   SyncState,
   SyncStatus,
   Tag,
@@ -27,6 +31,7 @@ const VALID_DATA_SOURCES = [
   'aurboda',
   'health_connect',
   'health_connect_aggregate',
+  'lab_report',
   'oura',
   'garmin',
   'rescuetime',
@@ -192,4 +197,48 @@ export const mapNoteRow = (row: QueryResultRow): Note => ({
   id: row.id,
   start_time: row.start_time ? new Date(row.start_time) : undefined,
   updated_at: new Date(row.updated_at),
+})
+
+// ============================================================================
+// Report Row Mappers
+// ============================================================================
+
+const VALID_CONFIDENCES = ['measured', 'estimated', 'derived'] as const
+const VALID_REPORT_FLAGS = ['critical_low', 'low', 'normal', 'high', 'critical_high'] as const
+
+const parseConfidence = (value: unknown): ReportConfidence | undefined => {
+  if (typeof value === 'string' && (VALID_CONFIDENCES as readonly string[]).includes(value)) {
+    return value as ReportConfidence
+  }
+  return undefined
+}
+
+const parseReportFlag = (value: unknown): ReportFlag | undefined => {
+  if (typeof value === 'string' && (VALID_REPORT_FLAGS as readonly string[]).includes(value)) {
+    return value as ReportFlag
+  }
+  return undefined
+}
+
+export const mapReportEntryRow = (row: QueryResultRow): ReportEntry => ({
+  confidence: parseConfidence(row.confidence),
+  flag: parseReportFlag(row.flag),
+  id: row.id,
+  method: row.method ?? undefined,
+  metric: row.metric,
+  reference_high: row.reference_high ?? undefined,
+  reference_low: row.reference_low ?? undefined,
+  report_id: row.report_id,
+  unit: row.unit,
+  value: row.value,
+})
+
+export const mapReportRow = (row: QueryResultRow, entries: ReportEntry[]): Report => ({
+  created_at: new Date(row.created_at),
+  entries,
+  id: row.id,
+  location: row.location ?? undefined,
+  notes: row.notes ?? undefined,
+  report_date: new Date(row.report_date),
+  report_type: row.report_type,
 })
