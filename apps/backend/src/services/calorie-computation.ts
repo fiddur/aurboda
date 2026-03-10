@@ -8,7 +8,12 @@
 
 import type { BiologicalSex } from '@aurboda/api-spec'
 import { enqueueOutboundSync, getUserSettings } from '../db'
-import { getTimeSeries, getTimeSeriesWithSource, insertTimeSeries } from '../db/time-series'
+import {
+  deleteTimeSeriesBySource,
+  getTimeSeries,
+  getTimeSeriesWithSource,
+  insertTimeSeries,
+} from '../db/time-series'
 import type { TimeSeriesPoint } from '../db/types'
 import { isHealthConnectSyncableMetric, metricToHealthConnectType } from '../schema'
 import { computeCaloriesPerMinute, getVo2MaxFallback } from './calories'
@@ -61,6 +66,7 @@ export const computeAndStoreCalories = async (
   user: string,
   start: Date,
   end: Date,
+  options?: { force?: boolean },
 ): Promise<CalorieComputationResult> => {
   // 1. Get user settings
   const settings = await getUserSettings(user)
@@ -111,7 +117,12 @@ export const computeAndStoreCalories = async (
     }
   }
 
-  // 5. Check if aurboda calories already exist for this range to avoid recomputing
+  // 5. Delete existing aurboda calories if force-recomputing
+  if (options?.force) {
+    await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda', start, end)
+  }
+
+  // 6. Check if aurboda calories already exist for this range to avoid recomputing
   const existingCalories = await getTimeSeriesWithSource(user, 'calories_active', start, end)
   const existingAurbodaMinutes = new Set(
     existingCalories.filter((p) => p.source === 'aurboda').map((p) => Math.floor(p.time.getTime() / 60_000)),

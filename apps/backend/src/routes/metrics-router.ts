@@ -164,7 +164,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const { start, end } = req.body
       const user = req.user!
 
-      const result = await computeAndStoreCalories(user, new Date(start), new Date(end))
+      const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
       res.json({ ...result, success: true })
     },
   )

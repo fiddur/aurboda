@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
 import {
+  deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
   getTimeSeries,
@@ -570,6 +571,58 @@ describe('Time Series Integration Tests', () => {
       const result = await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T08:00:00Z'))
 
       expect(result).toBe(false)
+    })
+  })
+
+  describe('deleteTimeSeriesBySource', () => {
+    test('deletes only data matching source and time range', async () => {
+      const user = getTestUser()
+
+      // Use heart_rate (non-cumulative) so getTimeSeriesWithSource returns all sources
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'aurboda', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+        { metric: 'heart_rate', source: 'aurboda', time: new Date('2024-01-15T11:00:00Z'), value: 75 },
+        { metric: 'heart_rate', source: 'aurboda', time: new Date('2024-01-15T12:00:00Z'), value: 68 },
+        { metric: 'heart_rate', source: 'health_connect', time: new Date('2024-01-15T10:30:00Z'), value: 80 },
+      ])
+
+      // Delete only aurboda source within 10:00–12:00 (exclusive end)
+      const count = await deleteTimeSeriesBySource(
+        user,
+        'heart_rate',
+        'aurboda',
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T12:00:00Z'),
+      )
+
+      expect(count).toBe(2) // 10:00 and 11:00 deleted, 12:00 outside range (end exclusive)
+
+      const data = await getTimeSeriesWithSource(
+        user,
+        'heart_rate',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+
+      expect(data).toHaveLength(2)
+      // health_connect data preserved
+      expect(data.find((d) => d.source === 'health_connect')).toBeDefined()
+      // aurboda at 12:00 preserved (outside delete range)
+      expect(data.find((d) => d.source === 'aurboda' && d.value === 68)).toBeDefined()
+    })
+
+    test('returns 0 when no matching data exists', async () => {
+      const user = getTestUser()
+
+      const count = await deleteTimeSeriesBySource(
+        user,
+        'heart_rate',
+        'aurboda',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+
+      expect(count).toBe(0)
     })
   })
 
