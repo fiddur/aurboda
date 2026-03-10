@@ -59,6 +59,7 @@ export { getAllScrobbles, getScrobbles, insertRawRecord, type ScrobbleRecord } f
 
 // Time series
 export {
+  deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
   getDailyAggregates,

@@ -154,7 +154,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     'Recalculate calories burned from HR data for a time range. Requires sex and birth_date in settings. Uses weight from Health Connect and VO2 max (measured or age/sex fallback).',
     { ...recalculateCaloriesBodySchema.shape },
     async ({ start, end }) => {
-      const result = await computeAndStoreCalories(user, new Date(start), new Date(end))
+      const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
       return jsonResponse({ ...result, success: true })
     },
   )

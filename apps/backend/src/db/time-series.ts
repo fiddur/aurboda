@@ -251,6 +251,21 @@ export const deleteTimeSeriesMetric = async (user: string, metric: string): Prom
   return result.rowCount ?? 0
 }
 
+export const deleteTimeSeriesBySource = async (
+  user: string,
+  metric: string,
+  source: string,
+  start: Date,
+  end: Date,
+): Promise<number> => {
+  const result = await query(
+    user,
+    `DELETE FROM time_series WHERE metric = $1 AND source = $2 AND time >= $3 AND time < $4`,
+    [metric, source, start, end],
+  )
+  return result.rowCount ?? 0
+}
+
 export const getTimeSeriesBucketed = async (
   user: string,
   metrics: MetricType[],

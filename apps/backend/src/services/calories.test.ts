@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest'
 
-import { computeCaloriesForMinute, computeCaloriesPerMinute, getVo2MaxFallback } from './calories'
+import {
+  MAX_HOLD_MINUTES,
+  computeCaloriesForMinute,
+  computeCaloriesPerMinute,
+  getVo2MaxFallback,
+} from './calories'
 
 describe('getVo2MaxFallback', () => {
   test('returns age-appropriate fallback for male', () => {
@@ -95,6 +100,7 @@ describe('computeCaloriesPerMinute', () => {
 
   test('hold-last-value fills sparse data (5-minute intervals like Oura)', () => {
     // Oura sleep HR: one sample every 5 minutes
+    // Each sample holds for up to MAX_HOLD_MINUTES minutes
     const samples: [Date, number][] = [
       [new Date('2024-01-15T23:00:00Z'), 60],
       [new Date('2024-01-15T23:05:00Z'), 58],
@@ -102,18 +108,56 @@ describe('computeCaloriesPerMinute', () => {
     ]
     const result = computeCaloriesPerMinute({ ...baseParams, hr_samples: samples })
 
-    // Should produce 11 minute buckets (23:00 through 23:10)
+    // 23:00-23:04 from first sample (5 buckets), 23:05-23:09 from second (5 buckets),
+    // 23:10 from third (1 bucket) = 11 total
     expect(result).toHaveLength(11)
 
     // First minute uses HR 60
     expect(result[0].kcal).toBeCloseTo(computeCaloriesForMinute(60, 40, 100, 50, 'male'), 4)
 
-    // Minutes 1-4 (23:01-23:04) also use HR 60 (hold-last-value)
+    // Minutes 1-4 (23:01-23:04) also use HR 60 (hold-last-value within MAX_HOLD_MINUTES)
     expect(result[1].kcal).toBeCloseTo(result[0].kcal, 4)
     expect(result[4].kcal).toBeCloseTo(result[0].kcal, 4)
 
     // Minute 5 (23:05) uses HR 58
     expect(result[5].kcal).toBeCloseTo(computeCaloriesForMinute(58, 40, 100, 50, 'male'), 4)
+  })
+
+  test('skips minutes beyond MAX_HOLD_MINUTES gap', () => {
+    // Two readings 20 minutes apart — only the first MAX_HOLD_MINUTES should be filled
+    const samples: [Date, number][] = [
+      [new Date('2024-01-15T10:00:00Z'), 120],
+      [new Date('2024-01-15T10:20:00Z'), 130],
+    ]
+    const result = computeCaloriesPerMinute({ ...baseParams, hr_samples: samples })
+
+    // 10:00-10:04 from first sample (5 buckets) + 10:20 from second (1 bucket) = 6 total
+    // Minutes 10:05-10:19 are skipped (gap > MAX_HOLD_MINUTES)
+    expect(result).toHaveLength(MAX_HOLD_MINUTES + 1)
+    expect(result[0].time).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(result[MAX_HOLD_MINUTES - 1].time).toEqual(new Date('2024-01-15T10:04:00Z'))
+    expect(result[MAX_HOLD_MINUTES].time).toEqual(new Date('2024-01-15T10:20:00Z'))
+
+    // First bucket uses HR 120, last uses HR 130
+    expect(result[0].kcal).toBeCloseTo(computeCaloriesForMinute(120, 40, 100, 50, 'male'), 4)
+    expect(result[MAX_HOLD_MINUTES].kcal).toBeCloseTo(computeCaloriesForMinute(130, 40, 100, 50, 'male'), 4)
+  })
+
+  test('does not produce stale data for hours-long gaps', () => {
+    // Workout ends at 18:00, next reading at 23:00 (sleep)
+    const samples: [Date, number][] = [
+      [new Date('2024-01-15T18:00:00Z'), 150],
+      [new Date('2024-01-15T23:00:00Z'), 55],
+    ]
+    const result = computeCaloriesPerMinute({ ...baseParams, hr_samples: samples })
+
+    // Only MAX_HOLD_MINUTES from the first sample + 1 from the second
+    expect(result).toHaveLength(MAX_HOLD_MINUTES + 1)
+
+    // No stale 150bpm calories in the evening gap
+    const lastBeforeGap = result[MAX_HOLD_MINUTES - 1]
+    expect(lastBeforeGap.time).toEqual(new Date('2024-01-15T18:04:00Z'))
+    expect(result[MAX_HOLD_MINUTES].time).toEqual(new Date('2024-01-15T23:00:00Z'))
   })
 
   test('averages multiple HR samples within same minute', () => {

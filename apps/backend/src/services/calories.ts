@@ -17,6 +17,13 @@
 
 import type { BiologicalSex } from '@aurboda/api-spec'
 
+/**
+ * Maximum minutes a single HR reading can be held forward.
+ * If the gap between consecutive HR samples exceeds this, minutes beyond
+ * the threshold are skipped (no calorie data rather than stale data).
+ */
+export const MAX_HOLD_MINUTES = 5
+
 /** Default VO2 max fallback values by sex and age group (mL/kg/min). */
 const VO2_MAX_FALLBACK: Record<BiologicalSex, { age: number; value: number }[]> = {
   female: [
@@ -74,8 +81,8 @@ export interface CalorieDataPoint {
  * Compute per-minute calorie burn from heart rate samples.
  *
  * Uses hold-last-value interpolation for sparse data (e.g., Oura 5-minute HR):
- * a sample's HR value is assumed to persist until the next sample arrives.
- * Minutes without any HR coverage are skipped.
+ * a sample's HR value is assumed to persist for up to MAX_HOLD_MINUTES (5 min).
+ * Minutes beyond that gap are skipped — no calorie data rather than stale data.
  */
 export const computeCaloriesPerMinute = (params: CalorieCalcParams): CalorieDataPoint[] => {
   const { hr_samples, vo2_max, weight_kg, age_years, sex } = params
@@ -97,6 +104,7 @@ export const computeCaloriesPerMinute = (params: CalorieCalcParams): CalorieData
 
   // For each minute bucket, find the applicable HR (hold-last-value)
   let sampleIdx = 0
+  const maxHoldMs = MAX_HOLD_MINUTES * 60_000
 
   for (let minuteMs = startMinute; minuteMs <= endMinute; minuteMs += 60_000) {
     const bucketStart = minuteMs
@@ -111,7 +119,9 @@ export const computeCaloriesPerMinute = (params: CalorieCalcParams): CalorieData
     const hrValues: number[] = []
 
     // If the current sample is at or before this bucket, its value applies (hold-last-value)
-    if (hr_samples[sampleIdx][0].getTime() <= bucketStart) {
+    // BUT only if within MAX_HOLD_MINUTES of the bucket start
+    const lastSampleTime = hr_samples[sampleIdx][0].getTime()
+    if (lastSampleTime <= bucketStart && bucketStart - lastSampleTime < maxHoldMs) {
       hrValues.push(hr_samples[sampleIdx][1])
     }
 
