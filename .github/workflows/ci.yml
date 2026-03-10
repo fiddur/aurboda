@@ -27,6 +27,7 @@ jobs:
               - 'apps/backend/**'
               - 'apps/web/**'
               - 'packages/api-spec/**'
+              - 'scripts/**'
               - 'pnpm-lock.yaml'
               - '.github/workflows/ci.yml'
             android:
@@ -65,13 +66,8 @@ jobs:
       - name: Run backend tests with coverage
         run: pnpm --filter aurboda-backend test run --coverage
 
-      - name: Upload backend coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: apps/backend/coverage/coverage-final.json
-          flags: backend
-          fail_ci_if_error: false
+      - name: Check coverage against baseline
+        run: node scripts/check-coverage.mjs apps/backend/coverage/coverage-final.json apps/backend/coverage-baseline.json
 
       - name: Run web tests
         run: pnpm --filter aurboda-web test run
@@ -152,41 +148,3 @@ jobs:
             exit 1
           fi
           echo "✅ All jobs passed or were skipped"
-
-      - name: Check Codecov status (when backend ran)
-        if: needs.node.result == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo "⏳ Waiting for Codecov check runs..."
-          SHA="${{ github.event.pull_request.head.sha || github.sha }}"
-          CHECKS=("codecov/patch" "codecov/project")
-          MAX_ATTEMPTS=30
-          SLEEP=10
-
-          for check in "${CHECKS[@]}"; do
-            echo "  Waiting for $check..."
-            for ((i=1; i<=MAX_ATTEMPTS; i++)); do
-              RESULT=$(gh api "repos/${{ github.repository }}/commits/${SHA}/check-runs" \
-                --jq "[.check_runs[] | select(.name == \"$check\")] | last | {status: .status, conclusion: .conclusion}")
-              STATUS=$(echo "$RESULT" | jq -r '.status // empty')
-              CONCLUSION=$(echo "$RESULT" | jq -r '.conclusion // empty')
-
-              if [[ "$STATUS" == "completed" ]]; then
-                if [[ "$CONCLUSION" == "success" || "$CONCLUSION" == "neutral" ]]; then
-                  echo "  ✅ $check passed (conclusion: $CONCLUSION)"
-                  break
-                else
-                  echo "  ❌ $check failed (conclusion: $CONCLUSION)"
-                  exit 1
-                fi
-              fi
-
-              if [[ $i -eq $MAX_ATTEMPTS ]]; then
-                echo "  ⚠️ $check did not report within $((MAX_ATTEMPTS * SLEEP))s — skipping"
-                break
-              fi
-              sleep $SLEEP
-            done
-          done
-          echo "✅ Codecov checks verified"
