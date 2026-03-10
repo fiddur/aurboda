@@ -260,8 +260,8 @@ export const recalculateCaloriesBodySchema = z
     start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
   })
   .meta({
-    id: 'RecalculateCaloriesBody',
     description: 'Recalculate calories burned from HR data for a time range.',
+    id: 'RecalculateCaloriesBody',
   })
 
 export type RecalculateCaloriesBody = z.infer<typeof recalculateCaloriesBodySchema>
@@ -290,3 +290,37 @@ export const recalculateCaloriesResponseSchema = baseResponseSchema
   .meta({ id: 'RecalculateCaloriesResponse' })
 
 export type RecalculateCaloriesResponse = z.infer<typeof recalculateCaloriesResponseSchema>
+
+// =============================================================================
+// Latest Metric Value
+// =============================================================================
+
+/**
+ * Latest metric query — returns the most recent value for a metric regardless of age.
+ * Useful for lab data that may be months old (e.g., "what was last VO2 max?").
+ */
+export const latestMetricQuerySchema = z
+  .object({
+    metric: metricNameSchema,
+  })
+  .meta({
+    description: 'Query the most recent value for a metric regardless of age',
+    id: 'LatestMetricQuery',
+  })
+
+export type LatestMetricQuery = z.infer<typeof latestMetricQuerySchema>
+
+/**
+ * Latest metric response.
+ */
+export const latestMetricResponseSchema = baseResponseSchema
+  .extend({
+    metric: metricNameSchema.optional(),
+    source: z.string().optional().meta({ description: 'Data source of the latest value' }),
+    time: iso8601DateTimeSchema.optional().meta({ description: 'Timestamp of the latest value' }),
+    unit: z.string().optional().meta({ description: 'Unit of measurement' }),
+    value: z.number().optional().meta({ description: 'The most recent value' }),
+  })
+  .meta({ id: 'LatestMetricResponse' })
+
+export type LatestMetricResponse = z.infer<typeof latestMetricResponseSchema>

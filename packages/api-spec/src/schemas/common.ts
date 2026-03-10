@@ -127,6 +127,7 @@ export const dataSourceSchema = z
     'aurboda',
     'health_connect',
     'health_connect_aggregate',
+    'lab_report',
     'oura',
     'garmin',
     'rescuetime',

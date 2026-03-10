@@ -275,6 +275,36 @@ export interface LabResult {
 }
 
 // ============================================================================
+// Reports (structured lab results)
+// ============================================================================
+
+export type ReportConfidence = 'measured' | 'estimated' | 'derived'
+export type ReportFlag = 'critical_low' | 'low' | 'normal' | 'high' | 'critical_high'
+
+export interface ReportEntry {
+  id: string
+  report_id: string
+  metric: string
+  value: number
+  unit: string
+  method?: string
+  confidence?: ReportConfidence
+  reference_low?: number
+  reference_high?: number
+  flag?: ReportFlag
+}
+
+export interface Report {
+  id: string
+  report_type: string
+  report_date: Date
+  location?: string
+  notes?: string
+  created_at: Date
+  entries: ReportEntry[]
+}
+
+// ============================================================================
 // OAuth
 // ============================================================================
 

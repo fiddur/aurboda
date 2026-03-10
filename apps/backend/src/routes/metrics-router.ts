@@ -17,6 +17,7 @@ import {
   type DailySummaryResponse,
   type DeleteMetricQuery,
   deleteMetricQuerySchema,
+  type LatestMetricResponse,
   type PeriodSummaryQuery,
   periodSummaryQuerySchema,
   type PeriodSummaryResponse,
@@ -52,6 +53,7 @@ import {
   queryMetricsBucketed,
   type SyncProvider,
 } from '../services/queries'
+import { getLatestMetric } from '../services/reports'
 import { validateBody, validateQuery } from '../validation'
 
 const validBucketSizes = ['5m', '15m', '30m', '1h', '1d'] as const
@@ -165,6 +167,24 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const user = req.user!
 
       const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
+      res.json({ ...result, success: true })
+    },
+  )
+
+  // GET /metrics/latest/:metric - Get the most recent value for a metric regardless of age
+  router.get<{ metric: string }, LatestMetricResponse>(
+    '/metrics/latest/:metric',
+    authMiddleware,
+    async (req, res) => {
+      const { metric } = req.params
+      const user = req.user!
+
+      const result = await getLatestMetric(user, metric)
+
+      if (!result.success) {
+        return res.status(404).json({ error: result.error, success: false })
+      }
+
       res.json({ ...result, success: true })
     },
   )
