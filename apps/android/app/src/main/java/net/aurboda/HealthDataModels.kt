@@ -689,6 +689,25 @@ data class RestingHeartRateRecordSerializable(
   }
 }
 
+// --- VO2 Max Record ---
+@Serializable
+data class Vo2MaxRecordSerializable(
+  val time: String,
+  val vo2MillilitersPerMinuteKilogram: Double,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<Vo2MaxRecordSerializable> =
+      classRecords.filterIsInstance<Vo2MaxRecord>().map { record ->
+        Vo2MaxRecordSerializable(
+          time = record.time.toIsoString(),
+          vo2MillilitersPerMinuteKilogram = record.vo2MillilitersPerMinuteKilogram,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
 // Helper to format Instant to ISO 8601 String
 fun Instant.toIsoString(): String = this.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
@@ -718,6 +737,7 @@ fun Metadata.toSerializable(): HealthConnectRecordMetadata =
  */
 val writableRecordTypes: Set<KClass<out Record>> =
   setOf(
+    ActiveCaloriesBurnedRecord::class,
     BodyFatRecord::class,
     BodyWaterMassRecord::class,
     BoneMassRecord::class,

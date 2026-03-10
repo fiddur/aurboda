@@ -64,6 +64,7 @@ export interface SyncRouterDeps {
   deleteHealthConnectRecords: (user: string, externalIds: string[]) => Promise<number>
   processDailyAggregate: (user: string, aggregate: DailyAggregate) => Promise<void>
   processHealthConnectData: (user: string, recordType: string, data: HealthConnectRecord) => Promise<void>
+  triggerCalorieComputation: (user: string, start: Date, end: Date) => Promise<void>
   syncOura: (user: string, options: { fullResync?: boolean; startDate?: Date }) => Promise<OuraSyncResult[]>
   getOuraSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetOuraSyncState: (user: string, dataType?: string) => Promise<void>
@@ -476,6 +477,21 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       // Process each Health Connect record through the new schema
       for (const item of records) {
         await deps.processHealthConnectData(user, recordType, item)
+      }
+
+      // Trigger calorie computation when HR data is ingested
+      if (recordType === 'HeartRateRecord' && records.length > 0) {
+        const timestamps = records.flatMap((r) => {
+          const samples = r.samples as Array<{ time: string }> | undefined
+          if (samples) return samples.map((s) => new Date(s.time).getTime())
+          const t = r.startTime || r.time
+          return t ? [new Date(t as string).getTime()] : []
+        })
+        if (timestamps.length > 0) {
+          const start = new Date(Math.min(...timestamps))
+          const end = new Date(Math.max(...timestamps))
+          await deps.triggerCalorieComputation(user, start, end)
+        }
       }
 
       res.json({ success: true })

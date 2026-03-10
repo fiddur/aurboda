@@ -20,9 +20,11 @@ export const splitMetricsByCumulative = (
 interface SplitQueryOptions<T> {
   /** The metric names to query */
   metrics: string[]
-  /** Additional query parameters after the metrics array (e.g. start, end dates) */
+  /** Shared query parameters after the metrics array (e.g. start, end dates) */
   params: unknown[]
-  /** SQL for cumulative metrics (with source filter). $1 = metrics array, remaining = params */
+  /** Extra parameters appended only to the cumulative query (e.g. source filter values) */
+  cumulativeExtraParams?: unknown[]
+  /** SQL for cumulative metrics (with source filter). $1 = metrics array, remaining = params + cumulativeExtraParams */
   sqlCumulative: string
   /** SQL for non-cumulative metrics (all sources). $1 = metrics array, remaining = params */
   sqlNonCumulative: string
@@ -36,14 +38,20 @@ interface SplitQueryOptions<T> {
  * Run split queries for cumulative and non-cumulative metrics, combining results.
  *
  * The SQL templates should use $1 for the metrics array, with remaining placeholders
- * for the additional params (e.g. $2 for start, $3 for end).
+ * for the additional params (e.g. $2 for start, $3 for end). The cumulative SQL can
+ * reference additional placeholders for cumulativeExtraParams.
  */
 export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): Promise<T[]> => {
   const { cumulative, nonCumulative } = splitMetricsByCumulative(options.metrics)
   const results: T[] = []
 
   if (cumulative.length > 0) {
-    const result = await options.queryFn(options.sqlCumulative, [cumulative, ...options.params])
+    const extraParams = options.cumulativeExtraParams ?? []
+    const result = await options.queryFn(options.sqlCumulative, [
+      cumulative,
+      ...options.params,
+      ...extraParams,
+    ])
     results.push(...result.rows.map(options.mapRow))
   }
 

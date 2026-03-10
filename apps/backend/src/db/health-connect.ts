@@ -4,6 +4,7 @@
 import type { DataSource, MetricType } from '@aurboda/api-spec'
 import {
   cumulativeMetrics,
+  cumulativeSources,
   healthConnectActivityMapping,
   healthConnectMetricMapping,
   isValidMetric,
@@ -295,10 +296,10 @@ export const getDailyAggregateValue = async (
   const result = await query(
     user,
     `SELECT value FROM time_series
-     WHERE metric = $1 AND source = 'health_connect_aggregate'
+     WHERE metric = $1 AND source = ANY($4)
      AND time >= $2 AND time < $3
      LIMIT 1`,
-    [metric, start, end],
+    [metric, start, end, cumulativeSources],
   )
 
   if (result.rows.length === 0) return null

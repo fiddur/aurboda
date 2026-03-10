@@ -121,41 +121,29 @@ export const upsertUserSettings = async (
   // Get existing settings
   const existing = (await getUserSettings(user)) ?? {}
 
-  // Merge updates
+  // Merge updates — simple fields are copied directly when present
   const merged: UserSettings = { ...existing }
-  if (updates.birth_date !== undefined) {
-    merged.birth_date = updates.birth_date
+  const simpleFields = [
+    'birth_date',
+    'calendars',
+    'custom_metrics',
+    'dashboard',
+    'goals',
+    'hr_zone_start',
+    'item_icons',
+    'lastfm_username',
+    'rescue_time_key',
+    'sex',
+    'tag_mappings',
+  ] as const
+  for (const field of simpleFields) {
+    if (updates[field] !== undefined) {
+      ;(merged as Record<string, unknown>)[field] = updates[field]
+    }
   }
-  if (updates.calendars !== undefined) {
-    merged.calendars = updates.calendars
-  }
-  if (updates.custom_metrics !== undefined) {
-    merged.custom_metrics = updates.custom_metrics
-  }
-  if (updates.dashboard !== undefined) {
-    merged.dashboard = updates.dashboard
-  }
-  if (updates.goals !== undefined) {
-    merged.goals = updates.goals
-  }
-  if (updates.hr_zone_start !== undefined) {
-    merged.hr_zone_start = updates.hr_zone_start
-  }
-  if (updates.lastfm_username !== undefined) {
-    merged.lastfm_username = updates.lastfm_username
-  }
-  if (updates.rescue_time_key !== undefined) {
-    merged.rescue_time_key = updates.rescue_time_key
-  }
-  if (updates.item_icons !== undefined) {
-    merged.item_icons = updates.item_icons
-  }
+  // Deprecated: merge tag_icons into item_icons for backwards compatibility
   if (updates.tag_icons !== undefined) {
-    // Deprecated: merge tag_icons into item_icons for backwards compatibility
     merged.item_icons = { ...(merged.item_icons ?? {}), ...updates.tag_icons }
-  }
-  if (updates.tag_mappings !== undefined) {
-    merged.tag_mappings = updates.tag_mappings
   }
 
   // Check if settings row exists

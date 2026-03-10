@@ -9,6 +9,7 @@
 export {
   contextualHrvMetrics,
   cumulativeMetrics,
+  cumulativeSources,
   getMetricUnit,
   hrZoneMetrics,
   isContextualHrvMetric,
@@ -463,6 +464,7 @@ export const metricToHealthConnectType: Partial<Record<MetricType, string>> = {
   body_fat: 'BodyFatRecord',
   body_water_mass: 'BodyWaterMassRecord',
   bone_mass: 'BoneMassRecord',
+  calories_active: 'ActiveCaloriesBurnedRecord',
   heart_rate: 'HeartRateRecord',
   height: 'HeightRecord',
   hrv_rmssd: 'HeartRateVariabilityRmssdRecord',

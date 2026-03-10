@@ -28,6 +28,7 @@ describe('sync router', () => {
     syncLastFm: vi.fn().mockResolvedValue({ scrobbles_processed: 0, status: 'success', tags_created: 0 }),
     syncOura: vi.fn().mockResolvedValue({ success: true }),
     syncRescueTime: vi.fn().mockResolvedValue({ success: true }),
+    triggerCalorieComputation: vi.fn().mockResolvedValue(undefined),
   }
 
   // Simple auth middleware that sets req.user for tests
