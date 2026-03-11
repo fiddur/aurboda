@@ -17,7 +17,7 @@ export const registerActivityTools = (server: McpServer, user: string) => {
   // Tool: add_activity
   server.tool(
     'add_activity',
-    'Add an activity session (exercise, meditation, nap). Use this to log workouts or other activities.',
+    'Add an activity session (exercise, meditation, nap, rest). Use this to log workouts or other activities.',
     {
       ...addActivityBodySchema.shape,
       // Override enum with z.string() to allow handler-level validation with friendlier error message

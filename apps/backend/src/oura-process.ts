@@ -371,11 +371,29 @@ export const convertOuraSleepPhases = (phases: string | null, bedtimeStart: Date
   return stages
 }
 
-/** Map Oura sleep period type to Aurboda activity type. */
-const OURA_SLEEP_TYPE_MAP: Record<string, 'sleep' | 'nap' | 'meditation'> = {
+/** Minimum minutes of actual sleep stages (non-awake) for Oura short sleep to qualify as a nap. */
+const NAP_SLEEP_MINUTES_THRESHOLD = 15
+
+/** HC stage number for "awake". */
+const HC_STAGE_AWAKE = 1
+
+/**
+ * Compute total non-awake sleep time in minutes from HC-encoded sleep stages.
+ *
+ * Stages use Health Connect encoding where 1 = awake. All other stages
+ * (light=4, deep=5, REM=6, sleeping/unknown=2) count as actual sleep.
+ */
+export const computeSleepMinutes = (stages: SleepStage[]): number =>
+  stages.reduce((total, s) => {
+    if (s.stage === HC_STAGE_AWAKE) return total
+    const ms = new Date(s.endTime).getTime() - new Date(s.startTime).getTime()
+    return total + ms / 60_000
+  }, 0)
+
+/** Map Oura sleep period type to Aurboda activity type (for non-short-sleep types). */
+const OURA_SLEEP_TYPE_MAP: Record<string, 'sleep' | 'meditation'> = {
   long_sleep: 'sleep',
   rest: 'meditation',
-  sleep: 'nap',
 }
 
 /**
@@ -394,14 +412,27 @@ const processSleep = async (user: string, data: OuraSleepPeriodRaw[]) => {
       source: 'oura',
     })
 
-    const activityType = OURA_SLEEP_TYPE_MAP[record.type] ?? 'sleep'
     const stages = convertOuraSleepPhases(record.sleep_phase_5_min, bedtimeStart)
+
+    // For Oura short sleep (type "sleep"), classify based on actual sleep time:
+    // >= 15 min of sleep stages → nap, otherwise → rest.
+    const activityType =
+      record.type === 'sleep' ?
+        computeSleepMinutes(stages) >= NAP_SLEEP_MINUTES_THRESHOLD ?
+          'nap'
+        : 'rest'
+      : (OURA_SLEEP_TYPE_MAP[record.type] ?? 'sleep')
 
     const titleMap: Record<string, string> = {
       long_sleep: 'Sleep',
       rest: 'Rest',
-      sleep: 'Nap',
     }
+    const title =
+      record.type === 'sleep' ?
+        activityType === 'nap' ?
+          'Nap'
+        : 'Rest'
+      : (titleMap[record.type] ?? record.type)
 
     await insertActivity(user, {
       activity_type: activityType,
@@ -415,7 +446,7 @@ const processSleep = async (user: string, data: OuraSleepPeriodRaw[]) => {
       end_time: bedtimeEnd,
       source: 'oura',
       start_time: bedtimeStart,
-      title: titleMap[record.type] ?? record.type,
+      title,
     })
 
     // Extract HR and HRV interval data to time series

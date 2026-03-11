@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from './db'
 import {
   calculateRetryAfter,
+  computeSleepMinutes,
   convertOuraSleepPhases,
   isRateLimited,
   processOuraData,
@@ -150,6 +151,41 @@ describe('convertOuraSleepPhases', () => {
       { endTime: '2025-01-15T23:25:00.000Z', stage: 6, startTime: '2025-01-15T23:20:00.000Z' }, // REM 5min
       { endTime: '2025-01-15T23:30:00.000Z', stage: 1, startTime: '2025-01-15T23:25:00.000Z' }, // awake 5min
     ])
+  })
+})
+
+describe('computeSleepMinutes', () => {
+  test('returns 0 for empty stages', () => {
+    expect(computeSleepMinutes([])).toBe(0)
+  })
+
+  test('returns 0 when all stages are awake', () => {
+    expect(
+      computeSleepMinutes([
+        { endTime: '2025-01-15T23:10:00.000Z', stage: 1, startTime: '2025-01-15T23:00:00.000Z' },
+        { endTime: '2025-01-15T23:20:00.000Z', stage: 1, startTime: '2025-01-15T23:10:00.000Z' },
+      ]),
+    ).toBe(0)
+  })
+
+  test('sums non-awake stages correctly', () => {
+    expect(
+      computeSleepMinutes([
+        { endTime: '2025-01-15T23:10:00.000Z', stage: 1, startTime: '2025-01-15T23:00:00.000Z' }, // awake 10min
+        { endTime: '2025-01-15T23:25:00.000Z', stage: 4, startTime: '2025-01-15T23:10:00.000Z' }, // light 15min
+        { endTime: '2025-01-15T23:30:00.000Z', stage: 1, startTime: '2025-01-15T23:25:00.000Z' }, // awake 5min
+      ]),
+    ).toBe(15)
+  })
+
+  test('counts all sleep stage types (light, deep, REM)', () => {
+    expect(
+      computeSleepMinutes([
+        { endTime: '2025-01-15T23:10:00.000Z', stage: 4, startTime: '2025-01-15T23:00:00.000Z' }, // light 10min
+        { endTime: '2025-01-15T23:15:00.000Z', stage: 5, startTime: '2025-01-15T23:10:00.000Z' }, // deep 5min
+        { endTime: '2025-01-15T23:20:00.000Z', stage: 6, startTime: '2025-01-15T23:15:00.000Z' }, // REM 5min
+      ]),
+    ).toBe(20)
   })
 })
 
@@ -611,14 +647,34 @@ describe('processOuraData', () => {
       })
     })
 
-    test('processes short sleep as nap activity', async () => {
-      await processOuraData(user, 'sleep', [makeSleepRecord({ id: 'nap-1', type: 'sleep' })])
+    test('processes short sleep with >= 15 min of sleep stages as nap', async () => {
+      // Oura phases: '4422244' → awake, awake, light, light, light, awake, awake
+      // = 3 light epochs × 5 min = 15 min of actual sleep → qualifies as nap
+      await processOuraData(user, 'sleep', [
+        makeSleepRecord({ id: 'nap-1', sleep_phase_5_min: '4422244', type: 'sleep' }),
+      ])
 
       expect(db.insertActivity).toHaveBeenCalledWith(
         user,
         expect.objectContaining({
           activity_type: 'nap',
           title: 'Nap',
+        }),
+      )
+    })
+
+    test('processes short sleep with < 15 min of sleep stages as rest', async () => {
+      // Oura phases: '44124' → awake, awake, deep, light, awake
+      // = 2 sleep epochs × 5 min = 10 min of actual sleep → classified as rest
+      await processOuraData(user, 'sleep', [
+        makeSleepRecord({ id: 'rest-short-1', sleep_phase_5_min: '44124', type: 'sleep' }),
+      ])
+
+      expect(db.insertActivity).toHaveBeenCalledWith(
+        user,
+        expect.objectContaining({
+          activity_type: 'rest',
+          title: 'Rest',
         }),
       )
     })

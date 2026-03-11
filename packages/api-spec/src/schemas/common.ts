@@ -105,7 +105,7 @@ export const isContextualHrvMetric = (metric: MetricType): boolean =>
 /**
  * Valid activity types.
  */
-export const activityTypes = ['sleep', 'exercise', 'meditation', 'nap'] as const
+export const activityTypes = ['sleep', 'exercise', 'meditation', 'nap', 'rest'] as const
 
 /**
  * Activity types for activities table.

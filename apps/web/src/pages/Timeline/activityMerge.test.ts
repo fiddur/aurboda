@@ -150,6 +150,7 @@ describe('buildActivityColumnItems', () => {
     exercise: '#10b981',
     meditation: '#a855f7',
     nap: '#60a5fa',
+    rest: '#86efac',
     sleep: '#3b82f6',
   }
   const itemIcons: Record<string, string> = {}

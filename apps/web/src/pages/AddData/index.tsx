@@ -83,6 +83,7 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
           <option value="exercise">Exercise</option>
           <option value="meditation">Meditation</option>
           <option value="nap">Nap</option>
+          <option value="rest">Rest</option>
           <option value="sleep">Sleep</option>
         </select>
       </div>

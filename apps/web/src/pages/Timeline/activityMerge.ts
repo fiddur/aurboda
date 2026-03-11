@@ -156,7 +156,7 @@ export const createDurationTagItem = (
 type ActivityMeta = {
   label: string
   color: string
-  actType: 'sleep' | 'nap' | 'meditation' | 'exercise'
+  actType: 'sleep' | 'nap' | 'rest' | 'meditation' | 'exercise'
 }
 
 /** Extract label, color, and activity type from an Activity. Returns null for unknown types. */
@@ -171,6 +171,8 @@ const getActivityMeta = (
       return { actType: 'sleep', color: activityColors.sleep ?? '#3b82f6', label: 'Sleep' }
     case 'nap':
       return { actType: 'nap', color: activityColors.nap ?? '#60a5fa', label: 'Nap' }
+    case 'rest':
+      return { actType: 'rest', color: activityColors.rest ?? '#86efac', label: a.title || 'Rest' }
     case 'meditation':
       return {
         actType: 'meditation',

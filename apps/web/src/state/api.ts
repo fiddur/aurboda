@@ -92,7 +92,7 @@ import { API_URL } from '../config'
 import { auth } from './auth'
 
 // Frontend types with Date objects (converted from API string types)
-export type ActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap'
+export type ActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap' | 'rest'
 
 export interface SourceRecord {
   id: string
