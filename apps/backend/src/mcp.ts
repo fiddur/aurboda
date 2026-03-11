@@ -13,6 +13,7 @@ import { registerActivityTools } from './mcp/activity-tools'
 import { registerCorrelationTools } from './mcp/correlation-tools'
 import { registerLastFmTools } from './mcp/lastfm-tools'
 import { registerLocationTools } from './mcp/location-tools'
+import { registerMealTools } from './mcp/meal-tools'
 import { registerMetricTools } from './mcp/metric-tools'
 import { registerNoteTools } from './mcp/note-tools'
 import { registerQueryTools } from './mcp/query-tools'
@@ -81,6 +82,7 @@ export function createMcpRouter(
     registerCorrelationTools(server, user, sync)
     registerTrendTools(server, user)
     registerNoteTools(server, user)
+    registerMealTools(server, user)
     registerReportTools(server, user)
     registerScreentimeCategoryTools(server, user)
 

@@ -75,6 +75,7 @@ export const cleanTestDb = async (): Promise<void> => {
   const tables = [
     'report_entries',
     'reports',
+    'meals',
     'notes',
     'tags',
     'time_series',

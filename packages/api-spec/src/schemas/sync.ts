@@ -534,8 +534,8 @@ export const updateLastFmTagRuleBodySchema = z
       .meta({ description: 'Track name to match (for track or track_artist match type)' }),
   })
   .meta({
-    id: 'UpdateLastFmTagRuleBody',
     description: 'Partial update body for a Last.fm tag rule. Only provided fields are updated.',
+    id: 'UpdateLastFmTagRuleBody',
   })
 
 export type UpdateLastFmTagRuleBody = z.infer<typeof updateLastFmTagRuleBodySchema>

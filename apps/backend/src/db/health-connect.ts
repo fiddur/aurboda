@@ -12,9 +12,10 @@ import {
 } from '../schema'
 import { insertActivity } from './activities'
 import { query } from './connection'
+import { insertMeal } from './meals'
 import { insertRawRecord } from './raw-records'
 import { insertTimeSeries } from './time-series'
-import type { DailyAggregate, TimeSeriesPoint } from './types'
+import type { DailyAggregate, MealFoodItem, TimeSeriesPoint } from './types'
 
 /**
  * Process incoming Health Connect data and normalize into appropriate tables.
@@ -61,6 +62,11 @@ export const processHealthConnectData = async (
         value: data.diastolicInMmHg as number,
       },
     ])
+  }
+
+  // Normalize NutritionRecord to meals
+  if (recordType === 'NutritionRecord') {
+    await processNutritionRecord(user, data)
   }
 
   // Normalize to activities if applicable
@@ -171,6 +177,43 @@ function extractTimeSeriesPoints(
       value,
     },
   ]
+}
+
+// ============================================================================
+// NutritionRecord -> Meals
+// ============================================================================
+
+/**
+ * Map Health Connect meal type enum to a readable string.
+ * See: https://developer.android.com/reference/kotlin/androidx/health/connect/client/records/MealType
+ */
+const HC_MEAL_TYPES: Record<number, string> = {
+  1: 'breakfast',
+  2: 'lunch',
+  3: 'dinner',
+  4: 'snack',
+}
+
+/**
+ * Process a Health Connect NutritionRecord into our meals table.
+ */
+const processNutritionRecord = async (user: string, data: Record<string, unknown>) => {
+  const startTime = data.startTime as string | undefined
+  const mealType = data.mealType as number | undefined
+  const name = data.name as string | undefined
+
+  await insertMeal(user, {
+    calories: data.energyInKilocalories as number | undefined,
+    carbs: data.totalCarbohydrateInGrams as number | undefined,
+    fat: data.totalFatInGrams as number | undefined,
+    fiber: data.dietaryFiberInGrams as number | undefined,
+    food_items: data.foodItems ? (data.foodItems as MealFoodItem[]) : undefined,
+    meal_type: mealType ? HC_MEAL_TYPES[mealType] : undefined,
+    name,
+    protein: data.proteinInGrams as number | undefined,
+    source: 'health_connect',
+    time: new Date(startTime ?? (data.time as string)),
+  })
 }
 
 // ============================================================================

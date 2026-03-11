@@ -42,7 +42,7 @@ export const sleepLocationSchema = z
     name: z.string().meta({ description: 'Location name', example: 'Home' }),
     source: placeSourceSchema,
   })
-  .meta({ id: 'SleepLocation', description: 'Best-guess location where the person slept' })
+  .meta({ description: 'Best-guess location where the person slept', id: 'SleepLocation' })
 
 export type SleepLocation = z.infer<typeof sleepLocationSchema>
 
@@ -69,7 +69,7 @@ export const sleepSessionSummarySchema = z
       description: 'Actual sleep time in minutes (excluding awake periods), from sleep stage data',
     }),
   })
-  .meta({ id: 'SleepSessionSummary', description: 'Sleep session with location and date attribution' })
+  .meta({ description: 'Sleep session with location and date attribution', id: 'SleepSessionSummary' })
 
 export type SleepSessionSummary = z.infer<typeof sleepSessionSummarySchema>
 
