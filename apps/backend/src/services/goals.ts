@@ -10,7 +10,7 @@ import {
   type GoalProgress,
   type MetricType,
 } from '@aurboda/api-spec'
-import { getDailyAggregates, getDailyAggregateValue, getTimeSeries } from '../db'
+import { getDailyAggregates, getDailyAggregateValue, getRawDailySum, getTimeSeries } from '../db'
 import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones, getSettings } from './settings'
 
 /**
@@ -66,10 +66,12 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
       return values.reduce<number>((sum, v) => sum + (v ?? 0), 0)
     }
 
-    // Fall back to raw data if no aggregates exist
+    // Fall back to raw data from ALL sources if no aggregates exist.
+    // This may double-count but is better than showing 0.
+    return getRawDailySum(user, metric, start, end)
   }
 
-  // For non-cumulative metrics or fallback, use daily aggregates and sum them
+  // For non-cumulative metrics, use daily aggregates and sum them
   const dailyData = await getDailyAggregates(user, [metric], start, end)
   return dailyData.reduce((sum, day) => sum + day.sum, 0)
 }

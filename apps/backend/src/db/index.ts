@@ -67,6 +67,7 @@ export {
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
   getDailyAggregates,
+  getRawDailySum,
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesMultiMetric,

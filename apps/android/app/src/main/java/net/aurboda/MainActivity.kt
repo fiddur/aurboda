@@ -1014,6 +1014,26 @@ fun HealthConnectScreen(
 
   /** Perform fetch + send in one step, then process outbound sync (backend -> HC). */
   suspend fun syncNow(currentContext: Context) {
+    // Fetch and send daily aggregates for cumulative metrics (steps, distance, etc.)
+    try {
+      val aggregates = fetchDailyAggregates(healthConnectClient, grantedRecordTypes.toSet(), days = 7)
+      if (aggregates.isNotEmpty()) {
+        val success = sendDailyAggregates(aggregates, apiUrl, authToken, ktorHttpClient)
+        if (success) {
+          Log.d("SyncNow", "Sent ${aggregates.size} daily aggregates")
+          statusMessage = "Sent ${aggregates.size} daily aggregates."
+        } else {
+          Log.w("SyncNow", "Failed to send daily aggregates")
+          statusMessage = "Failed to send daily aggregates."
+        }
+      } else {
+        Log.d("SyncNow", "No daily aggregates to send")
+      }
+    } catch (e: Exception) {
+      Log.w("SyncNow", "Daily aggregate sync failed: ${e.message}", e)
+      statusMessage = "Daily aggregate sync error: ${e.message}"
+    }
+
     fetchHealthData(currentContext)
     if (healthRecords.isNotEmpty() || pendingDeletionIds.isNotEmpty()) {
       sendPendingDataToServer(currentContext)

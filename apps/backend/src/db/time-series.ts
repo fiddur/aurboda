@@ -89,6 +89,26 @@ export const getTimeSeriesWithSource = async (
   return result.rows.map((row) => ({ source: row.source, time: new Date(row.time), value: row.value }))
 }
 
+/**
+ * Get the sum of a metric across ALL sources for a date range.
+ * This is a last-resort fallback for cumulative metrics when no aggregate data exists.
+ * Note: may double-count if multiple apps contributed to Health Connect.
+ */
+export const getRawDailySum = async (
+  user: string,
+  metric: string,
+  start: Date,
+  end: Date,
+): Promise<number> => {
+  const result = await query(
+    user,
+    `SELECT COALESCE(SUM(value), 0) as total FROM time_series
+     WHERE metric = $1 AND time >= $2 AND time <= $3`,
+    [metric, start, end],
+  )
+  return Number(result.rows[0].total)
+}
+
 export const getTimeSeriesMultiMetric = async (
   user: string,
   metrics: MetricType[],
