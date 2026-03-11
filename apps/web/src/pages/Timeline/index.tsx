@@ -17,6 +17,7 @@ import {
   fetchScrobbles,
   fetchTagMappings,
   fetchTags,
+  fetchTrainingLoad,
   fetchUserSettings,
   Place,
   ProductivityRecord,
@@ -44,6 +45,7 @@ import {
   mergeScrobblesIntoSessions,
   MUSIC_STAFF_HEIGHT,
 } from './drawMusicStaff'
+import { CTL_COLOR, drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import type { ChartItem, Column, Orientation } from './types'
 
@@ -826,6 +828,16 @@ export const Timeline = () => {
   const [showMetricsHRV, setShowMetricsHRV] = useState(true)
   const [showMetricsSteps, setShowMetricsSteps] = useState(true)
   const [showMetricsCalories, setShowMetricsCalories] = useState(true)
+  const [showTrainingLoad, setShowTrainingLoad] = useState(false)
+
+  // Training load data (fetched when toggle is on, uses daily granularity)
+  const trainingLoadQuery = useQuery({
+    enabled: showTrainingLoad,
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryKey: ['timeline-training-load', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
+  })
 
   // Sync view state + orientation → URL hash
   useSignalEffect(() => {
@@ -1257,6 +1269,9 @@ export const Timeline = () => {
     // Bucketed metrics for band/bar charts in the metrics track
     const metricBuckets = horizontalMetricBuckets
 
+    // Training load data (daily points + workouts)
+    const trainingLoadData = trainingLoadQuery.data ?? null
+
     // Compute Y-scales once (stable per render, only depends on data, not zoom)
     const metricsTrackBottom = trackMetrics + metricsTrackHeight
     const metricsYScales =
@@ -1610,6 +1625,36 @@ export const Timeline = () => {
         })
       }
 
+      // ── Training load track (CTL/ATL/TSB overlaid on metrics area) ──
+      if (showTrainingLoad && trainingLoadData) {
+        drawTrainingLoadTrack({
+          bootstrapping: trainingLoadData.bootstrapping,
+          chartGroup,
+          chartWidth,
+          hideTooltip,
+          outerG,
+          points: trainingLoadData.points,
+          showTooltipHtml: (event: MouseEvent, html: string) => {
+            if (!tooltipRef.current || !containerRef.current) return
+            const tip = tooltipRef.current
+            const containerRect = containerRef.current.getBoundingClientRect()
+            tip.innerHTML = html
+            tip.style.display = 'block'
+            const x = event.clientX - containerRect.left + 12
+            const yRaw = event.clientY - containerRect.top - 10
+            const tipH = tip.scrollHeight
+            const yMax = containerRect.height - tipH - 4
+            const y = Math.min(yRaw, Math.max(yMax, 4))
+            tip.style.left = `${Math.min(x, containerRect.width - 320)}px`
+            tip.style.top = `${y}px`
+          },
+          trackHeight: metricsTrackHeight,
+          trackY: trackMetrics,
+          workouts: trainingLoadData.workouts,
+          xScale: currentXScale,
+        })
+      }
+
       // ── Now line ──
       drawHorizontalNowLine(chartGroup, chartHeight, currentXScale)
 
@@ -1664,6 +1709,8 @@ export const Timeline = () => {
     showMetricsHRV,
     showMetricsSteps,
     showMetricsCalories,
+    showTrainingLoad,
+    trainingLoadQuery.data,
   ])
 
   // Re-render on data/size change
@@ -2031,6 +2078,15 @@ export const Timeline = () => {
                 >
                   <span class="legend-dot" style={{ background: CALORIES_COLOR }} />
                   Calories
+                </button>
+                <button
+                  class={`legend-item${!showTrainingLoad ? ' legend-item-hidden' : ''}`}
+                  onClick={() => setShowTrainingLoad((v) => !v)}
+                  type="button"
+                  title="Toggle training load (Banister model: CTL/ATL/TSB)"
+                >
+                  <span class="legend-dot" style={{ background: CTL_COLOR }} />
+                  Training Load
                 </button>
               </>
             )}

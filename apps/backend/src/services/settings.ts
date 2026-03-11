@@ -217,6 +217,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     success: true,
     tag_icons: settings.item_icons ?? {},
     tag_mappings: settings.tag_mappings ?? {},
+    training_load: settings.training_load ?? null,
   }
 }
 
@@ -247,6 +248,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
       success: false,
       tag_icons: {},
       tag_mappings: {},
+      training_load: null,
     }
   }
 
@@ -263,6 +265,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     'sex',
     'tag_icons',
     'tag_mappings',
+    'training_load',
   ] as const
   const updates: Partial<UserSettings> = {}
   for (const field of settingsFields) {

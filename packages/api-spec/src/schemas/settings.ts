@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { baseResponseSchema, hrZoneSourceSchema } from './common.js'
 import { dashboardConfigSchema } from './dashboard.js'
 import { goalsSchema } from './goals.js'
+import { trainingLoadSettingsSchema } from './training-load.js'
 
 // Shared HR zone threshold field
 const hrZoneThresholdSchema = z.number().int().positive()
@@ -174,6 +175,9 @@ export const updateSettingsInputSchema = z
     tag_mappings: tagMappingsSchema.nullable().optional().meta({
       description: 'Tag name mappings (set to null to clear all)',
     }),
+    training_load: trainingLoadSettingsSchema.nullable().optional().meta({
+      description: 'Training load (Banister model) parameters (set to null to reset to defaults)',
+    }),
   })
   .meta({ id: 'UpdateSettingsInput' })
 
@@ -208,6 +212,9 @@ export const userSettingsResponseSchema = baseResponseSchema
       description: 'Tag icon mappings (deprecated, use item_icons)',
     }),
     tag_mappings: tagMappingsSchema.meta({ description: 'Tag name mappings from UUIDs to display names' }),
+    training_load: trainingLoadSettingsSchema
+      .nullable()
+      .meta({ description: 'Training load (Banister model) parameters (null = defaults)' }),
   })
   .meta({ id: 'UserSettingsResponse' })
 

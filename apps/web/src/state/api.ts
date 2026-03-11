@@ -73,6 +73,8 @@ import type {
   TagMappings,
   TagsQuery,
   TagsResponse,
+  TrainingLoadResponse,
+  TrainingLoadResult,
   TrendDisplayPeriod,
   TrendQuery,
   TrendResponse,
@@ -1214,4 +1216,20 @@ export const fetchDefaultScreentimeCategories = async (): Promise<CreateScreenti
     { headers: { Authorization: `Bearer ${token}` } },
   )
   return response.data.data ?? []
+}
+
+// ==========================================================================
+// Training Load API
+// ==========================================================================
+
+export const fetchTrainingLoad = async (start: Date, end: Date): Promise<TrainingLoadResult> => {
+  const { token } = auth.value
+  const response = await axios.get<TrainingLoadResponse>(`${API_URL}/training-load`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: {
+      end: end.toISOString(),
+      start: start.toISOString(),
+    },
+  })
+  return response.data.data!
 }

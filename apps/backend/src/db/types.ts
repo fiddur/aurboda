@@ -12,6 +12,7 @@ import type {
   DataSource,
   Goal,
   MetricType,
+  TrainingLoadSettings,
 } from '@aurboda/api-spec'
 
 // ============================================================================
@@ -399,6 +400,7 @@ export interface UserSettings {
   item_icons?: Record<string, string> // Unified icon mappings for all timeline items (tags, activities, exercise types)
   tag_icons?: Record<string, string> // Deprecated: tag-only icons (migrated to item_icons)
   tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names
+  training_load?: TrainingLoadSettings // Training load (Banister model) parameters
 }
 
 // ============================================================================
