@@ -26,30 +26,26 @@ export const trainingLoadSettingsSchema = z
       .max(250)
       .optional()
       .meta({ description: 'Maximum heart rate override (bpm). Falls back to observed max, then 220-age.' }),
-    hr_rest: z
-      .number()
-      .int()
-      .positive()
-      .max(120)
-      .optional()
-      .meta({
-        description: 'Resting heart rate override (bpm). Falls back to most recent resting HR metric.',
-      }),
+    hr_rest: z.number().int().positive().max(120).optional().meta({
+      description: 'Resting heart rate override (bpm). Falls back to most recent resting HR metric.',
+    }),
     k_factor: z
       .number()
       .positive()
-      .default(1.92)
-      .meta({ description: 'TRIMP sex-dependent constant (1.92 for males, 1.67 for females)' }),
+      .optional()
+      .meta({
+        description: 'TRIMP sex-dependent constant (1.92 for males, 1.67 for females). Defaults to 1.92.',
+      }),
     tau_acute: z
       .number()
       .positive()
-      .default(7)
-      .meta({ description: 'Acute (fatigue) time constant in days. Classic default: 7.' }),
+      .optional()
+      .meta({ description: 'Acute (fatigue) time constant in days. Defaults to 7.' }),
     tau_chronic: z
       .number()
       .positive()
-      .default(42)
-      .meta({ description: 'Chronic (fitness) time constant in days. Classic default: 42.' }),
+      .optional()
+      .meta({ description: 'Chronic (fitness) time constant in days. Defaults to 42.' }),
   })
   .meta({ id: 'TrainingLoadSettings', description: 'User-configurable training load parameters' })
 

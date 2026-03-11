@@ -27,6 +27,13 @@ const DEFAULT_K_MALE = 1.92
 const DEFAULT_K_FEMALE = 1.67
 const BOOTSTRAPPING_DAYS = 42 // CTL needs ~6 weeks to be meaningful
 
+/** Settings after resolving defaults — k_factor, tau_acute, tau_chronic are always set. */
+export interface ResolvedTrainingLoadSettings extends TrainingLoadSettings {
+  k_factor: number
+  tau_acute: number
+  tau_chronic: number
+}
+
 // ============================================================================
 // TRIMP Calculation
 // ============================================================================
@@ -157,7 +164,7 @@ export const getAverageHrForSession = (
 export const getEffectiveSettings = (
   userSettings: TrainingLoadSettings | undefined,
   sex: BiologicalSex | undefined,
-): TrainingLoadSettings => {
+): ResolvedTrainingLoadSettings => {
   const kDefault = sex === 'female' ? DEFAULT_K_FEMALE : DEFAULT_K_MALE
 
   return {
