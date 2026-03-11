@@ -10,6 +10,9 @@ import {
   addMetricBodySchema,
   type AddMetricResponse,
   type BucketSize,
+  type BulkMetricsBody,
+  bulkMetricsBodySchema,
+  type BulkMetricsResponse,
   type CustomMetricResponse,
   type CustomMetricsListResponse,
   type DailySummaryQuery,
@@ -40,6 +43,7 @@ import { computeAndStoreCalories } from '../services/calorie-computation'
 import {
   addCustomMetric,
   addMetric,
+  bulkAddMetrics,
   deleteCustomMetric,
   deleteMetric,
   deleteMetricData,
@@ -168,6 +172,27 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
 
       const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
       res.json({ ...result, success: true })
+    },
+  )
+
+  // POST /metrics/bulk - Bulk insert metric data points
+  router.post<Record<string, never>, BulkMetricsResponse, BulkMetricsBody>(
+    '/metrics/bulk',
+    authMiddleware,
+    validateBody(bulkMetricsBodySchema),
+    async (req, res) => {
+      const { data, source } = req.body
+      const user = req.user!
+
+      const items = data.map((item) => ({
+        metric: item.metric,
+        source: item.source,
+        time: new Date(item.time),
+        value: item.value,
+      }))
+
+      const result = await bulkAddMetrics(user, items, source)
+      res.json(result)
     },
   )
 
