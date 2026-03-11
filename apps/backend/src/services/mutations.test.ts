@@ -6,6 +6,7 @@ import {
   addCustomMetric,
   addMetric,
   addTag,
+  bulkAddMetrics,
   deleteActivity,
   deleteCustomMetric,
   deleteMetric,
@@ -683,6 +684,168 @@ describe('addMetric with custom metrics', () => {
     expect(result.success).toBe(false)
     expect(result.error).toContain('below minimum')
     expect(db.insertTimeSeries).not.toHaveBeenCalled()
+  })
+})
+
+describe('bulkAddMetrics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('inserts multiple built-in metrics in a single batch', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+      { metric: 'heart_rate', time: new Date('2024-01-15T10:05:00Z'), value: 75 },
+      { metric: 'weight', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+    ])
+
+    expect(result.success).toBe(true)
+    expect(result.inserted).toBe(3)
+    expect(result.errors).toHaveLength(0)
+
+    expect(db.insertTimeSeries).toHaveBeenCalledTimes(1)
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      {
+        metric: 'heart_rate',
+        source: 'aurboda',
+        time: new Date('2024-01-15T10:00:00Z'),
+        unit: 'bpm',
+        value: 72,
+      },
+      {
+        metric: 'heart_rate',
+        source: 'aurboda',
+        time: new Date('2024-01-15T10:05:00Z'),
+        unit: 'bpm',
+        value: 75,
+      },
+      {
+        metric: 'weight',
+        source: 'aurboda',
+        time: new Date('2024-01-15T08:00:00Z'),
+        unit: 'kg',
+        value: 75.5,
+      },
+    ])
+  })
+
+  test('collects per-item errors without failing the batch', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getUserSettings).mockResolvedValue({ custom_metrics: [] })
+
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+      { metric: 'invalid_metric', time: new Date('2024-01-15T10:05:00Z'), value: 42 },
+      { metric: 'weight', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+    ])
+
+    expect(result.success).toBe(true)
+    expect(result.inserted).toBe(2)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toEqual({
+      error: 'Invalid metric "invalid_metric"',
+      index: 1,
+    })
+  })
+
+  test('validates custom metric ranges', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      custom_metrics: [{ max_value: 10, min_value: 1, name: 'mood', unit: 'score' }],
+    })
+
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'mood', time: new Date('2024-01-15T10:00:00Z'), value: 5 },
+      { metric: 'mood', time: new Date('2024-01-15T11:00:00Z'), value: 15 },
+      { metric: 'mood', time: new Date('2024-01-15T12:00:00Z'), value: 0 },
+    ])
+
+    expect(result.success).toBe(true)
+    expect(result.inserted).toBe(1)
+    expect(result.errors).toHaveLength(2)
+    expect(result.errors[0].index).toBe(1)
+    expect(result.errors[0].error).toContain('exceeds maximum')
+    expect(result.errors[1].index).toBe(2)
+    expect(result.errors[1].error).toContain('below minimum')
+  })
+
+  test('uses default source when no per-item source specified', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+
+    await bulkAddMetrics(
+      'testuser',
+      [{ metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 }],
+      'oura',
+    )
+
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      expect.objectContaining({ source: 'oura' }),
+    ])
+  })
+
+  test('per-item source overrides default source', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+
+    await bulkAddMetrics(
+      'testuser',
+      [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+        { metric: 'heart_rate', time: new Date('2024-01-15T10:05:00Z'), value: 75 },
+      ],
+      'oura',
+    )
+
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      expect.objectContaining({ source: 'garmin' }),
+      expect.objectContaining({ source: 'oura' }),
+    ])
+  })
+
+  test('defaults source to aurboda when not specified', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+
+    await bulkAddMetrics('testuser', [
+      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+    ])
+
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      expect.objectContaining({ source: 'aurboda' }),
+    ])
+  })
+
+  test('does not call insertTimeSeries when all items are invalid', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({ custom_metrics: [] })
+
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'unknown1', time: new Date('2024-01-15T10:00:00Z'), value: 1 },
+      { metric: 'unknown2', time: new Date('2024-01-15T10:05:00Z'), value: 2 },
+    ])
+
+    expect(result.success).toBe(true)
+    expect(result.inserted).toBe(0)
+    expect(result.errors).toHaveLength(2)
+    expect(db.insertTimeSeries).not.toHaveBeenCalled()
+  })
+
+  test('calls getUserSettings only once for the entire batch', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      custom_metrics: [{ name: 'mood', unit: 'score' }],
+    })
+
+    await bulkAddMetrics('testuser', [
+      { metric: 'mood', time: new Date('2024-01-15T10:00:00Z'), value: 5 },
+      { metric: 'mood', time: new Date('2024-01-15T11:00:00Z'), value: 7 },
+      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+    ])
+
+    expect(db.getUserSettings).toHaveBeenCalledTimes(1)
   })
 })
 

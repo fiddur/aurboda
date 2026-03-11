@@ -4,6 +4,7 @@
 import {
   addCustomMetricBodySchema,
   addMetricBodySchema,
+  bulkMetricItemSchema,
   customMetricDefinitionSchema,
   recalculateCaloriesBodySchema,
   updateCustomMetricBodySchema,
@@ -13,6 +14,7 @@ import { computeAndStoreCalories } from '../services/calorie-computation'
 import {
   addCustomMetric,
   addMetric,
+  bulkAddMetrics,
   deleteCustomMetric,
   deleteMetric,
   deleteMetricData,
@@ -37,6 +39,37 @@ export const registerMetricTools = (server: McpServer, user: string) => {
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to add metric')
       }
+      return jsonResponse(result)
+    },
+  )
+
+  // Tool: add_metrics_bulk
+  server.tool(
+    'add_metrics_bulk',
+    'Bulk insert metric data points for efficient batch imports. Accepts up to 10,000 items per call. Each item requires metric, value, and time. Items with validation errors are skipped (not inserted), and their errors are returned separately.',
+    {
+      data: z.array(bulkMetricItemSchema).min(1).max(10_000).describe('Array of metric data points'),
+      source: z
+        .string()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe('Default data source for all items (defaults to "aurboda")'),
+    },
+    async ({ data, source }) => {
+      const items = data.map((item) => ({
+        metric: item.metric,
+        source: item.source,
+        time: parseOptionalDate(item.time) ?? new Date(),
+        value: item.value,
+      }))
+
+      const invalidTime = data.findIndex((item) => parseOptionalDate(item.time) === null)
+      if (invalidTime !== -1) {
+        return errorResponse(`Invalid time format at index ${invalidTime}. Use ISO 8601 format.`)
+      }
+
+      const result = await bulkAddMetrics(user, items, source)
       return jsonResponse(result)
     },
   )

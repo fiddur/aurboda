@@ -101,6 +101,73 @@ export const addMetricResponseSchema = baseResponseSchema
 export type AddMetricResponse = z.infer<typeof addMetricResponseSchema>
 
 // ============================================================================
+// Bulk Metric Insert
+// ============================================================================
+
+/**
+ * Single item within a bulk metric insert request.
+ */
+export const bulkMetricItemSchema = z
+  .object({
+    metric: metricNameSchema,
+    source: z.string().min(1).max(50).optional().meta({ description: 'Data source (defaults to "aurboda")' }),
+    time: iso8601DateTimeSchema.meta({ description: 'Measurement time (required for bulk inserts)' }),
+    value: metricValueSchema.meta({ example: 36.03 }),
+  })
+  .meta({ id: 'BulkMetricItem' })
+
+export type BulkMetricItem = z.infer<typeof bulkMetricItemSchema>
+
+/**
+ * Bulk metric insert request body.
+ * Accepts up to 10,000 metric data points per request.
+ */
+export const bulkMetricsBodySchema = z
+  .object({
+    data: z
+      .array(bulkMetricItemSchema)
+      .min(1)
+      .max(10_000)
+      .meta({ description: 'Array of metric data points (max 10,000 per request)' }),
+    source: z
+      .string()
+      .min(1)
+      .max(50)
+      .optional()
+      .meta({ description: 'Default data source for all items (defaults to "aurboda")' }),
+  })
+  .meta({
+    description: 'Bulk insert metric data points for efficient batch imports.',
+    id: 'BulkMetricsBody',
+  })
+
+export type BulkMetricsBody = z.infer<typeof bulkMetricsBodySchema>
+
+/**
+ * Per-item error in bulk insert response.
+ */
+export const bulkMetricErrorSchema = z
+  .object({
+    error: z.string().meta({ description: 'Error message' }),
+    index: z.number().int().meta({ description: 'Zero-based index of the failed item' }),
+  })
+  .meta({ id: 'BulkMetricError' })
+
+export type BulkMetricError = z.infer<typeof bulkMetricErrorSchema>
+
+/**
+ * Bulk metric insert response.
+ */
+export const bulkMetricsResponseSchema = baseResponseSchema
+  .extend({
+    errors: z.array(bulkMetricErrorSchema).optional().meta({ description: 'Per-item validation errors' }),
+    inserted: z.number().int().optional().meta({ description: 'Number of successfully inserted items' }),
+  })
+  .meta({ id: 'BulkMetricsResponse' })
+
+export type BulkMetricsResponse = z.infer<typeof bulkMetricsResponseSchema>
+
+// ============================================================================
 // Custom Metric Management
 // ============================================================================
 

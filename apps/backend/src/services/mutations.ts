@@ -5,7 +5,7 @@
  * They are used by both the MCP tools and the REST API.
  */
 
-import type { ActivityType, CustomMetricDefinition } from '@aurboda/api-spec'
+import type { ActivityType, CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
 import { randomUUID } from 'crypto'
 import {
   deleteActivity as dbDeleteActivity,
@@ -19,6 +19,7 @@ import {
   getUserSettings,
   insertTag,
   insertTimeSeries,
+  type TimeSeriesPoint,
   updateTagEndTime,
 } from '../db'
 import {
@@ -93,6 +94,24 @@ export interface AddActivityResult {
   title?: string
   notes?: string
   error?: string
+}
+
+export interface BulkMetricItem {
+  metric: string
+  value: number
+  time: Date
+  source?: string
+}
+
+export interface BulkMetricError {
+  index: number
+  error: string
+}
+
+export interface BulkAddMetricsResult {
+  success: boolean
+  inserted: number
+  errors: BulkMetricError[]
 }
 
 export interface DeleteActivityResult {
@@ -273,6 +292,62 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
     time: storedTime,
     unit: unit ?? '',
     value: input.value,
+  }
+}
+
+/**
+ * Bulk insert metric data points.
+ *
+ * Validates all items against built-in and custom metrics, collects per-item errors,
+ * and inserts all valid items in a single batch call to insertTimeSeries.
+ * Skips outbound Health Connect sync for bulk imports (historical data).
+ */
+export async function bulkAddMetrics(
+  user: string,
+  items: BulkMetricItem[],
+  defaultSource?: string,
+): Promise<BulkAddMetricsResult> {
+  const settings = await getUserSettings(user)
+  const customMetrics = settings?.custom_metrics ?? []
+
+  const errors: BulkMetricError[] = []
+  const validPoints: TimeSeriesPoint[] = []
+  const resolvedDefaultSource: DataSource = (defaultSource as DataSource) ?? 'aurboda'
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+
+    if (!isValidMetricOrCustom(item.metric, customMetrics)) {
+      errors.push({ error: `Invalid metric "${item.metric}"`, index: i })
+      continue
+    }
+
+    const rangeError = validateCustomMetricRange(customMetrics, item.metric, item.value)
+    if (rangeError) {
+      errors.push({ error: rangeError, index: i })
+      continue
+    }
+
+    const unit = getMetricUnit(item.metric, customMetrics)
+    const source: DataSource = (item.source as DataSource) ?? resolvedDefaultSource
+
+    validPoints.push({
+      metric: item.metric,
+      source,
+      time: item.time,
+      unit,
+      value: item.value,
+    })
+  }
+
+  if (validPoints.length > 0) {
+    await insertTimeSeries(user, validPoints)
+  }
+
+  return {
+    errors,
+    inserted: validPoints.length,
+    success: true,
   }
 }
 
