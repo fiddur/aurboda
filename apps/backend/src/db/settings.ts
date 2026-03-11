@@ -135,6 +135,7 @@ export const upsertUserSettings = async (
     'rescue_time_key',
     'sex',
     'tag_mappings',
+    'training_load',
   ] as const
   for (const field of simpleFields) {
     if (updates[field] !== undefined) {

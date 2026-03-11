@@ -22,6 +22,7 @@ import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools
 import { registerSettingsTools } from './mcp/settings-tools'
 import { registerSyncTools } from './mcp/sync-tools'
 import { registerTagTools } from './mcp/tag-tools'
+import { registerTrainingLoadTools } from './mcp/training-load-tools'
 import { registerTrendTools } from './mcp/trend-tools'
 import { ouraClient } from './oura'
 import { SyncProvider } from './services/queries'
@@ -80,6 +81,7 @@ export function createMcpRouter(
     registerSettingsTools(server, user)
     registerLocationTools(server, user)
     registerCorrelationTools(server, user, sync)
+    registerTrainingLoadTools(server, user)
     registerTrendTools(server, user)
     registerNoteTools(server, user)
     registerMealTools(server, user)

@@ -52,6 +52,7 @@ import { createReportsRouter } from './routes/reports-router'
 import { createScreentimeCategoriesRouter } from './routes/screentime-categories-router'
 import { createSettingsRouter } from './routes/settings-router'
 import { createTagsRouter } from './routes/tags-router'
+import { createTrainingLoadRouter } from './routes/training-load-router'
 import { createTrendsRouter } from './routes/trends-router'
 import { triggerCalorieComputation } from './services/calorie-computation'
 import { getCentralDb, initializeCentralDb } from './services/central-db'
@@ -447,6 +448,7 @@ const main = async () => {
   httpd.use(createSettingsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
+  httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))
   httpd.use('/screentime-categories', createScreentimeCategoriesRouter(authMiddleware))
   httpd.use(
