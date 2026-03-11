@@ -305,6 +305,38 @@ export interface Report {
 }
 
 // ============================================================================
+// Meals
+// ============================================================================
+
+export interface MealFoodItem {
+  name: string
+  quantity?: number
+  unit?: string
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  fiber?: number
+}
+
+export interface Meal {
+  id: string
+  source: string
+  meal_type?: string
+  name?: string
+  time: Date
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  fiber?: number
+  food_items?: MealFoodItem[]
+  micros?: Record<string, number>
+  notes?: string
+  created_at: Date
+}
+
+// ============================================================================
 // OAuth
 // ============================================================================
 

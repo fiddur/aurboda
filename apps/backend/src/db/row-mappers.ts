@@ -12,6 +12,8 @@ import type {
   GeocodeStatus,
   LastFmTagRule,
   McpSessionRecord,
+  Meal,
+  MealFoodItem,
   NamedLocation,
   Note,
   Report,
@@ -197,6 +199,27 @@ export const mapNoteRow = (row: QueryResultRow): Note => ({
   id: row.id,
   start_time: row.start_time ? new Date(row.start_time) : undefined,
   updated_at: new Date(row.updated_at),
+})
+
+// ============================================================================
+// Meal Row Mappers
+// ============================================================================
+
+export const mapMealRow = (row: QueryResultRow): Meal => ({
+  calories: row.calories ?? undefined,
+  carbs: row.carbs ?? undefined,
+  created_at: new Date(row.created_at),
+  fat: row.fat ?? undefined,
+  fiber: row.fiber ?? undefined,
+  food_items: row.food_items ? (row.food_items as MealFoodItem[]) : undefined,
+  id: row.id,
+  meal_type: row.meal_type ?? undefined,
+  micros: row.micros ? (row.micros as Record<string, number>) : undefined,
+  name: row.name ?? undefined,
+  notes: row.notes ?? undefined,
+  protein: row.protein ?? undefined,
+  source: row.source,
+  time: new Date(row.time),
 })
 
 // ============================================================================

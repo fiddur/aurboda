@@ -126,7 +126,6 @@ export const createTableStatements: Record<string, string> = {
   `,
 
   // GPS location data with PostGIS support
-
   locations: `
     CREATE TABLE IF NOT EXISTS locations (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -140,13 +139,13 @@ export const createTableStatements: Record<string, string> = {
       CONSTRAINT unique_location UNIQUE (source, time)
     )
   `,
-
   locations_indexes: `
     CREATE INDEX IF NOT EXISTS idx_locations_time ON locations (time DESC);
     CREATE INDEX IF NOT EXISTS idx_locations_geo ON locations USING GIST (location)
   `,
 
   // MCP session persistence for surviving backend restarts
+
   mcp_sessions: `
     CREATE TABLE IF NOT EXISTS mcp_sessions (
       session_id      UUID PRIMARY KEY,
@@ -159,6 +158,32 @@ export const createTableStatements: Record<string, string> = {
   mcp_sessions_indexes: `
     CREATE INDEX IF NOT EXISTS idx_mcp_sessions_username ON mcp_sessions (username);
     CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_activity ON mcp_sessions (last_activity)
+  `,
+
+  // Meal/nutrition data
+  meals: `
+    CREATE TABLE IF NOT EXISTS meals (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source          VARCHAR(50) NOT NULL DEFAULT 'manual',
+      meal_type       VARCHAR(50),
+      name            VARCHAR(255),
+      time            TIMESTAMPTZ NOT NULL,
+      calories        DOUBLE PRECISION,
+      protein         DOUBLE PRECISION,
+      carbs           DOUBLE PRECISION,
+      fat             DOUBLE PRECISION,
+      fiber           DOUBLE PRECISION,
+      food_items      JSONB,
+      micros          JSONB,
+      notes           TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
+  meals_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_meals_time ON meals (time DESC);
+    CREATE INDEX IF NOT EXISTS idx_meals_type_time ON meals (meal_type, time DESC);
+    CREATE INDEX IF NOT EXISTS idx_meals_source ON meals (source, time DESC)
   `,
 
   // User-defined named locations (detected and named via Aurboda)
@@ -425,6 +450,8 @@ export const tableCreationOrder = [
   'activities_indexes',
   'lastfm_tag_rules',
   'lastfm_tag_rules_indexes',
+  'meals',
+  'meals_indexes',
   'locations',
   'locations_indexes',
   'places',

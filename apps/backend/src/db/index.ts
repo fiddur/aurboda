@@ -24,6 +24,8 @@ export type {
   LastFmTagRuleInput,
   Location,
   McpSessionRecord,
+  Meal,
+  MealFoodItem,
   MergedActivity,
   MetricStats,
   NamedLocation,
@@ -161,6 +163,9 @@ export {
   updateNoteTimesForEntity,
 } from './notes'
 
+// Meals
+export { deleteMeal, getMealById, getMeals, insertMeal } from './meals'
+
 // Lab results (legacy)
 export { getLabResults, insertLabResult } from './lab-results'
 
@@ -228,6 +233,7 @@ export {
   mapDetectedLocationRow,
   mapLastFmTagRuleRow,
   mapMcpSessionRow,
+  mapMealRow,
   mapNamedLocationRow,
   mapNoteRow,
   mapReportEntryRow,

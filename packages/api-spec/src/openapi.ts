@@ -555,6 +555,42 @@ const openApiDocument = createDocument({
         tags: ['Sync'],
       },
     },
+
+    // --- Sync: Outbound (backend -> Health Connect) ---
+    '/sync/outbound': {
+      get: {
+        description:
+          'Get pending outbound sync entries. The Android app polls this to discover changes that need to be written to Health Connect.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: outboundSyncResponseSchema } },
+            description: 'Pending outbound sync entries',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get pending outbound sync entries',
+        tags: ['Sync'],
+      },
+    },
+
+    '/sync/outbound/ack': {
+      post: {
+        description:
+          'Acknowledge that outbound sync entries have been written to Health Connect. Optionally includes the Health Connect record ID for future reference.',
+        requestBody: {
+          content: { 'application/json': { schema: outboundSyncAckBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: outboundSyncAckResponseSchema } },
+            description: 'Acknowledgement result',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Acknowledge outbound sync entries',
+        tags: ['Sync'],
+      },
+    },
     '/sync/rescuetime': {
       post: {
         description:
@@ -574,42 +610,6 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Sync RescueTime data',
-        tags: ['Sync'],
-      },
-    },
-
-    // --- Sync: Outbound (backend -> Health Connect) ---
-
-    '/sync/outbound': {
-      get: {
-        description:
-          'Get pending outbound sync entries. The Android app polls this to discover changes that need to be written to Health Connect.',
-        responses: {
-          200: {
-            content: { 'application/json': { schema: outboundSyncResponseSchema } },
-            description: 'Pending outbound sync entries',
-          },
-        },
-        security: [{ bearerAuth: [] }],
-        summary: 'Get pending outbound sync entries',
-        tags: ['Sync'],
-      },
-    },
-    '/sync/outbound/ack': {
-      post: {
-        description:
-          'Acknowledge that outbound sync entries have been written to Health Connect. Optionally includes the Health Connect record ID for future reference.',
-        requestBody: {
-          content: { 'application/json': { schema: outboundSyncAckBodySchema } },
-        },
-        responses: {
-          200: {
-            content: { 'application/json': { schema: outboundSyncAckResponseSchema } },
-            description: 'Acknowledgement result',
-          },
-        },
-        security: [{ bearerAuth: [] }],
-        summary: 'Acknowledge outbound sync entries',
         tags: ['Sync'],
       },
     },

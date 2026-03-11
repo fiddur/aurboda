@@ -49,7 +49,7 @@ export const screentimeCategorySchema = z
     sort_order: z.number().int().meta({ description: 'Sort order for display' }),
     updated_at: z.string().optional().meta({ description: 'Last update timestamp' }),
   })
-  .meta({ id: 'ScreentimeCategory', description: 'A screentime categorization rule' })
+  .meta({ description: 'A screentime categorization rule', id: 'ScreentimeCategory' })
 
 export type ScreentimeCategory = z.infer<typeof screentimeCategorySchema>
 
@@ -75,7 +75,7 @@ export const createScreentimeCategoryBodySchema = z
     score: z.number().int().optional().meta({ description: 'Productivity score (-2 to 2)' }),
     sort_order: z.number().int().optional().meta({ description: 'Sort order' }),
   })
-  .meta({ id: 'CreateScreentimeCategoryBody', description: 'Create a screentime category' })
+  .meta({ description: 'Create a screentime category', id: 'CreateScreentimeCategoryBody' })
 
 export type CreateScreentimeCategoryBody = z.infer<typeof createScreentimeCategoryBodySchema>
 
@@ -92,7 +92,7 @@ export const updateScreentimeCategoryBodySchema = z
     score: z.number().int().optional().meta({ description: 'Productivity score (-2 to 2)' }),
     sort_order: z.number().int().optional().meta({ description: 'Sort order' }),
   })
-  .meta({ id: 'UpdateScreentimeCategoryBody', description: 'Update a screentime category' })
+  .meta({ description: 'Update a screentime category', id: 'UpdateScreentimeCategoryBody' })
 
 export type UpdateScreentimeCategoryBody = z.infer<typeof updateScreentimeCategoryBodySchema>
 
@@ -150,7 +150,7 @@ export const importAwCategoriesBodySchema = z
       description: 'ActivityWatch server URL to import from',
     }),
   })
-  .meta({ id: 'ImportAwCategoriesBody', description: 'Import categories from ActivityWatch' })
+  .meta({ description: 'Import categories from ActivityWatch', id: 'ImportAwCategoriesBody' })
 
 export type ImportAwCategoriesBody = z.infer<typeof importAwCategoriesBodySchema>
 

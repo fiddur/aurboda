@@ -143,9 +143,6 @@ export const updateSettingsInputSchema = z
     birth_date: birthDateSchema.nullable().optional().meta({
       description: 'Birth date (set to null to clear)',
     }),
-    sex: biologicalSexSchema.nullable().optional().meta({
-      description: 'Biological sex for calorie calculation (set to null to clear)',
-    }),
     calendars: calendarsSchema.nullable().optional().meta({
       description: 'Calendar ICS URL configurations (set to null to clear all)',
     }),
@@ -158,15 +155,18 @@ export const updateSettingsInputSchema = z
     hr_zone_start: hrZoneThresholdsSchema.nullable().optional().meta({
       description: 'Custom HR zone thresholds (set to null to clear)',
     }),
+    item_icons: itemIconsSchema.nullable().optional().meta({
+      description:
+        'Unified icon mappings for all timeline items — tags, activities, exercise types (set to null to clear all)',
+    }),
     lastfm_username: lastFmUsernameSchema.nullable().optional().meta({
       description: 'Last.fm username for scrobble sync (set to null to clear)',
     }),
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
     }),
-    item_icons: itemIconsSchema.nullable().optional().meta({
-      description:
-        'Unified icon mappings for all timeline items — tags, activities, exercise types (set to null to clear all)',
+    sex: biologicalSexSchema.nullable().optional().meta({
+      description: 'Biological sex for calorie calculation (set to null to clear)',
     }),
     tag_icons: tagIconsSchema.nullable().optional().meta({
       description: 'Tag icon mappings (deprecated, use item_icons instead; set to null to clear all)',
@@ -194,16 +194,16 @@ export const userSettingsResponseSchema = baseResponseSchema
     hr_zone_start_source: hrZoneSourceSchema.meta({
       description: 'Source of HR zone thresholds',
     }),
+    item_icons: itemIconsSchema.meta({
+      description:
+        'Unified icon mappings for all timeline items — tags, activities, exercise types (tag key or name -> emoji/URL)',
+    }),
     lastfm_configured: z.boolean().meta({ description: 'Whether Last.fm API key is configured on server' }),
     lastfm_username: z.string().nullable().meta({ description: 'Last.fm username for scrobble sync' }),
     oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
     rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),
     sex: biologicalSexSchema.nullable().meta({ description: 'Biological sex for calorie calculation' }),
-    item_icons: itemIconsSchema.meta({
-      description:
-        'Unified icon mappings for all timeline items — tags, activities, exercise types (tag key or name -> emoji/URL)',
-    }),
     tag_icons: tagIconsSchema.meta({
       description: 'Tag icon mappings (deprecated, use item_icons)',
     }),
