@@ -19,6 +19,7 @@ describe('type guards', () => {
     expect(parseActivityType('exercise')).toBe('exercise')
     expect(parseActivityType('meditation')).toBe('meditation')
     expect(parseActivityType('nap')).toBe('nap')
+    expect(parseActivityType('rest')).toBe('rest')
   })
 
   test('parseActivityType throws on invalid type', () => {

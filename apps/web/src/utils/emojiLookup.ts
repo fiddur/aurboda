@@ -10,6 +10,7 @@ export const DEFAULT_ITEM_ICONS: Record<string, string> = {
   // Activity types
   'activity:meditation': '🧘',
   'activity:nap': '💤',
+  'activity:rest': '😌',
   'activity:sleep': '😴',
 
   // Exercise types (keyed by display name from exerciseTypeNames)
@@ -128,6 +129,7 @@ const WORD_TO_EMOJI: Record<string, string> = {
   poop: '💩',
   rain: '🌧️',
   reading: '📖',
+  rest: '😌',
   restaurant: '🍽️',
   rice: '🍚',
   run: '🏃',

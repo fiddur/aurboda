@@ -66,6 +66,7 @@ const getDefaultViewEnd = () => endOfDay(new Date())
 type LegendCategory =
   | 'sleep'
   | 'nap'
+  | 'rest'
   | 'meditation'
   | 'exercise'
   | 'calendar'
@@ -148,6 +149,7 @@ const MUSIC_COLOR = '#ec4899'
 const activityColors: Record<string, string> = {
   meditation: '#a855f7',
   nap: '#60a5fa',
+  rest: '#86efac',
   sleep: '#3b82f6',
 }
 
@@ -324,6 +326,7 @@ const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = 
   metrics: (item) => item.column === 'Tags / Events' && item.color === METRIC_COLOR,
   music: (item) => item.column === 'Music',
   nap: (item) => item.column === 'Activity' && item.activity_type === 'nap',
+  rest: (item) => item.column === 'Activity' && item.activity_type === 'rest',
   screentime: (item) => item.column === 'Screen Time',
   sleep: (item) => item.column === 'Activity' && item.activity_type === 'sleep',
   tags: (item) =>
@@ -591,6 +594,7 @@ export const Timeline = () => {
         'exercise',
         'meditation',
         'nap',
+        'rest',
       ]),
     queryKey: ['timeline-activities', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
@@ -1930,6 +1934,7 @@ export const Timeline = () => {
               [
                 { cat: 'sleep' as LegendCategory, color: activityColors.sleep!, label: 'Sleep' },
                 { cat: 'nap' as LegendCategory, color: activityColors.nap!, label: 'Nap' },
+                { cat: 'rest' as LegendCategory, color: activityColors.rest!, label: 'Rest' },
                 {
                   cat: 'meditation' as LegendCategory,
                   color: activityColors.meditation!,

@@ -14,7 +14,12 @@ import { type OuraDataType, processOuraData } from './oura-process'
 import { triggerCalorieComputation } from './services/calorie-computation'
 
 // Re-export for consumers that import from oura-sync
-export { convertOuraSleepPhases, processOuraData, type OuraDataType } from './oura-process'
+export {
+  computeSleepMinutes,
+  convertOuraSleepPhases,
+  processOuraData,
+  type OuraDataType,
+} from './oura-process'
 
 /** Default start date for historical sync (90 days back) */
 const DEFAULT_SYNC_HISTORY_DAYS = 90

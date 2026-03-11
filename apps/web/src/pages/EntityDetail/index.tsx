@@ -118,7 +118,10 @@ const ActivityDetailDispatch = ({
   const musicEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
 
-  const isSleep = activity.activity_type === 'sleep' || activity.activity_type === 'nap'
+  const isSleep =
+    activity.activity_type === 'sleep' ||
+    activity.activity_type === 'nap' ||
+    activity.activity_type === 'rest'
   const isExercise = activity.activity_type === 'exercise'
   const hasSourceRecords = activity.source_records && activity.source_records.length > 1
 

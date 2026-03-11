@@ -148,13 +148,15 @@ Use cases:
   // Tool: query_activities
   server.tool(
     'query_activities',
-    'Query activities (sleep, exercise, meditation, nap) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata.',
+    'Query activities (sleep, exercise, meditation, nap, rest) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata.',
     {
       ...timeRangeQuerySchema.shape,
       types: z
         .array(activityTypeSchema)
         .optional()
-        .describe('Activity types to include. Defaults to all types (sleep, exercise, meditation, nap).'),
+        .describe(
+          'Activity types to include. Defaults to all types (sleep, exercise, meditation, nap, rest).',
+        ),
     },
     async ({ end, start, types }) => {
       const requestedTypes = types ?? [...activityTypes]

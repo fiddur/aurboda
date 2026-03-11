@@ -34,6 +34,7 @@ const ACTIVITY_COLORS: Record<string, string> = {
   exercise: '#10b981',
   meditation: '#a855f7',
   nap: '#60a5fa',
+  rest: '#86efac',
   sleep: '#3b82f6',
 }
 
@@ -58,6 +59,7 @@ const activityToItem = (a: Activity): DataItem => {
     a.activity_type === 'exercise' ? (a.title ?? 'Exercise')
     : a.activity_type === 'meditation' ? (a.title ?? 'Meditation')
     : a.activity_type === 'sleep' ? 'Sleep'
+    : a.activity_type === 'rest' ? 'Rest'
     : 'Nap'
   return {
     color: ACTIVITY_COLORS[a.activity_type] ?? '#6b7280',
@@ -154,7 +156,7 @@ export const Data = () => {
 
   const activitiesQuery = useQuery({
     placeholderData: keepPreviousData,
-    queryFn: () => fetchActivities(start, end, ['sleep', 'exercise', 'meditation', 'nap']),
+    queryFn: () => fetchActivities(start, end, ['sleep', 'exercise', 'meditation', 'nap', 'rest']),
     queryKey: ['data-activities', dateStr],
     staleTime: 5 * 60 * 1000,
   })
