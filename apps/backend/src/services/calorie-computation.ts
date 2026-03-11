@@ -39,9 +39,9 @@ const getLatestMetricValue = async (
   user: string,
   metric: string,
   beforeTime: Date,
+  lookbackDays = 90,
 ): Promise<number | null> => {
-  // Look back up to 90 days for the latest value
-  const lookbackStart = new Date(beforeTime.getTime() - 90 * 24 * 60 * 60 * 1000)
+  const lookbackStart = new Date(beforeTime.getTime() - lookbackDays * 24 * 60 * 60 * 1000)
   const data = await getTimeSeries(user, metric, lookbackStart, beforeTime)
   if (data.length === 0) return null
   // Return the most recent value
@@ -101,8 +101,8 @@ export const computeAndStoreCalories = async (
     }
   }
 
-  // 3. Get VO2 max (measured or fallback)
-  const measuredVo2Max = await getLatestMetricValue(user, 'vo2_max', end)
+  // 3. Get VO2 max (measured or fallback) — use 2-year lookback since VO2 max is measured infrequently
+  const measuredVo2Max = await getLatestMetricValue(user, 'vo2_max', end, 730)
   const vo2Max = measuredVo2Max ?? getVo2MaxFallback(sex, age)
   const vo2MaxSource = measuredVo2Max !== null ? 'measured' : 'fallback'
 
