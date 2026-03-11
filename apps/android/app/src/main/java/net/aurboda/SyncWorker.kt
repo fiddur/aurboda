@@ -3,12 +3,9 @@ package net.aurboda
 import android.content.Context
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.aggregate.AggregateMetric
 import androidx.health.connect.client.changes.DeletionChange
 import androidx.health.connect.client.changes.UpsertionChange
 import androidx.health.connect.client.records.*
-import androidx.health.connect.client.request.AggregateRequest
-import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -28,11 +25,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.KSerializer
-import net.aurboda.api.models.DailyAggregate
-import net.aurboda.api.models.DailyAggregatesBody
 import net.aurboda.widget.HrZoneWidgetProvider
-import java.time.LocalDate
-import java.time.ZoneId
 import java.util.concurrent.TimeUnit
 import kotlin.reflect.KClass
 
@@ -52,26 +45,6 @@ class SyncWorker(
       install(ContentNegotiation) { json(appJson) }
     }
   }
-
-  // Cumulative metrics with the record class they require permission for
-  private data class AggregatableMetric(
-    val aggregateMetric: AggregateMetric<*>,
-    val dailyMetric: DailyAggregate.Metric,
-    val recordClass: KClass<out Record>,
-  )
-
-  private val allAggregatableMetrics: List<AggregatableMetric> =
-    listOf(
-      AggregatableMetric(StepsRecord.COUNT_TOTAL, DailyAggregate.Metric.steps, StepsRecord::class),
-      AggregatableMetric(DistanceRecord.DISTANCE_TOTAL, DailyAggregate.Metric.distance, DistanceRecord::class),
-      AggregatableMetric(
-        ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
-        DailyAggregate.Metric.calories_active,
-        ActiveCaloriesBurnedRecord::class,
-      ),
-      AggregatableMetric(TotalCaloriesBurnedRecord.ENERGY_TOTAL, DailyAggregate.Metric.calories_total, TotalCaloriesBurnedRecord::class),
-      AggregatableMetric(FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL, DailyAggregate.Metric.floors_climbed, FloorsClimbedRecord::class),
-    )
 
   override suspend fun doWork(): Result {
     Log.d(TAG, "Starting background sync")
@@ -94,15 +67,11 @@ class SyncWorker(
     // Invalidate token if granted types changed since last sync
     invalidateTokenIfGrantedTypesChanged(grantedTypes)
 
-    // Filter aggregatable metrics to only those with granted permissions
-    val grantedTypeSet = grantedTypes.toSet()
-    val activeAggregateMetrics = allAggregatableMetrics.filter { it.recordClass in grantedTypeSet }
-
     return try {
       // Step 1: Fetch and send daily aggregates for cumulative metrics (deduplicated)
-      val aggregates = fetchDailyAggregates(activeAggregateMetrics, days = 7)
+      val aggregates = fetchDailyAggregates(healthConnectClient, grantedTypes.toSet(), days = 7)
       if (aggregates.isNotEmpty()) {
-        val aggregateSuccess = sendDailyAggregates(aggregates, credentials.apiUrl, credentials.authToken)
+        val aggregateSuccess = sendDailyAggregates(aggregates, credentials.apiUrl, credentials.authToken, httpClient)
         if (!aggregateSuccess) {
           Log.w(TAG, "Failed to send daily aggregates, will retry")
           return Result.retry()
@@ -517,98 +486,6 @@ class SyncWorker(
         .apply()
     } else {
       prefs.edit().putString(GRANTED_TYPES_KEY, currentNames).apply()
-    }
-  }
-
-  /**
-   * Fetch daily aggregates for cumulative metrics using Health Connect's aggregate() API.
-   * Only fetches for metrics that have granted permissions.
-   */
-  private suspend fun fetchDailyAggregates(
-    metrics: List<AggregatableMetric>,
-    days: Int = 7,
-  ): List<DailyAggregate> {
-    if (metrics.isEmpty()) return emptyList()
-
-    val aggregates = mutableListOf<DailyAggregate>()
-    val today = LocalDate.now()
-    val zoneId = ZoneId.systemDefault()
-
-    for (dayOffset in 0 until days) {
-      val date = today.minusDays(dayOffset.toLong())
-      val startTime = date.atStartOfDay(zoneId).toInstant()
-      val endTime = date.plusDays(1).atStartOfDay(zoneId).toInstant()
-
-      for ((metric, metricType, _) in metrics) {
-        try {
-          val request =
-            AggregateRequest(
-              metrics = setOf(metric),
-              timeRangeFilter = TimeRangeFilter.between(startTime, endTime),
-            )
-          val result = healthConnectClient.aggregate(request)
-
-          // Extract value based on metric type
-          val value: Double? =
-            when (metric) {
-              StepsRecord.COUNT_TOTAL -> result[StepsRecord.COUNT_TOTAL]?.toDouble()
-              DistanceRecord.DISTANCE_TOTAL -> result[DistanceRecord.DISTANCE_TOTAL]?.inMeters
-              ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL ->
-                result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
-              TotalCaloriesBurnedRecord.ENERGY_TOTAL ->
-                result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories
-              FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL ->
-                result[FloorsClimbedRecord.FLOORS_CLIMBED_TOTAL]
-              else -> null
-            }
-
-          if (value != null && value > 0) {
-            val dataOrigins = result.dataOrigins.map { it.packageName }
-            aggregates.add(
-              DailyAggregate(
-                date = date.toString(), // YYYY-MM-DD format
-                metric = metricType,
-                value = value,
-                dataOrigins = dataOrigins,
-              ),
-            )
-            Log.d(TAG, "Aggregate for $metricType on $date: $value from ${dataOrigins.size} sources")
-          }
-        } catch (e: Exception) {
-          Log.w(TAG, "Failed to fetch aggregate for $metricType on $date", e)
-        }
-      }
-    }
-
-    return aggregates
-  }
-
-  /**
-   * Send daily aggregates to the backend.
-   */
-  private suspend fun sendDailyAggregates(
-    aggregates: List<DailyAggregate>,
-    serverUrl: String,
-    authToken: String,
-  ): Boolean {
-    if (aggregates.isEmpty()) {
-      Log.d(TAG, "No aggregates to send")
-      return true
-    }
-
-    val postData = DailyAggregatesBody(data = aggregates)
-    return try {
-      val response =
-        httpClient.post("$serverUrl/sync/daily-aggregates") {
-          contentType(ContentType.Application.Json)
-          headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
-          setBody(postData)
-        }
-      Log.d(TAG, "Daily aggregates response: ${response.status}")
-      response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
-    } catch (e: Exception) {
-      Log.e(TAG, "Error posting daily aggregates", e)
-      false
     }
   }
 

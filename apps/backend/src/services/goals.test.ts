@@ -7,6 +7,7 @@ import * as settings from './settings'
 vi.mock('../db', () => ({
   getDailyAggregateValue: vi.fn(),
   getDailyAggregates: vi.fn(),
+  getRawDailySum: vi.fn(),
   getTimeSeries: vi.fn(),
 }))
 
@@ -63,7 +64,7 @@ describe('getGoalsProgress', () => {
     expect(db.getDailyAggregates).not.toHaveBeenCalled()
   })
 
-  test('falls back to getDailyAggregates when no aggregate value exists', async () => {
+  test('falls back to getRawDailySum when no aggregate value exists for cumulative metric', async () => {
     vi.mocked(settings.getSettings).mockResolvedValue({})
     vi.mocked(settings.getEffectiveGoals).mockReturnValue([
       { id: 'goal-1', metric: 'steps', min: 10000, window: '1d' },
@@ -71,14 +72,18 @@ describe('getGoalsProgress', () => {
 
     // No aggregate value exists
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
-    vi.mocked(db.getDailyAggregates).mockResolvedValue([
-      { avg: 4672, date: '2026-02-02', metric: 'steps', sum: 4672 },
-    ])
+    // getRawDailySum queries ALL sources as fallback
+    vi.mocked(db.getRawDailySum)
+      .mockResolvedValueOnce(4672) // current window
+      .mockResolvedValueOnce(4672) // losingTomorrow window
 
     const result = await getGoalsProgress('testuser')
 
     expect(result).toHaveLength(1)
     expect(result[0].current).toBe(4672)
+    // Should use getRawDailySum as fallback, not getDailyAggregates
+    expect(db.getRawDailySum).toHaveBeenCalled()
+    expect(db.getDailyAggregates).not.toHaveBeenCalled()
   })
 
   test('sums aggregate values across multiple days for 7d window', async () => {
