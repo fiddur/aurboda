@@ -13,6 +13,15 @@
  *   V  = VO2 max (mL/kg/min)
  *   W  = Weight (kg)
  *   A  = Age (years)
+ *
+ * The formula computes TOTAL caloric burn including BMR. To get active-only
+ * calories, we subtract a baseline computed at resting_hr * BASELINE_HR_MULTIPLIER
+ * using the same formula. This naturally zeroes out sleep and rest periods.
+ *
+ * The 1.2x multiplier was empirically validated against Oura sleep HR data:
+ * during actual sleep stages (light/deep/REM, excluding awake periods with
+ * 5-min margins), HR stays at or below resting_hr * 1.2, so this threshold
+ * produces 0 active calories during sleep.
  */
 
 import type { BiologicalSex } from '@aurboda/api-spec'
@@ -23,6 +32,17 @@ import type { BiologicalSex } from '@aurboda/api-spec'
  * the threshold are skipped (no calorie data rather than stale data).
  */
 export const MAX_HOLD_MINUTES = 5
+
+/**
+ * Multiplier applied to resting HR to compute the baseline HR threshold.
+ * The formula's output at this HR is subtracted from each minute's result
+ * to yield active-only calories. Empirically validated against sleep data:
+ * during actual sleep stages, HR stays at or below this threshold.
+ */
+export const BASELINE_HR_MULTIPLIER = 1.2
+
+/** Default resting HR when no measured value is available. */
+export const DEFAULT_RESTING_HR = 60
 
 /** Default VO2 max fallback values by sex and age group (mL/kg/min). */
 const VO2_MAX_FALLBACK: Record<BiologicalSex, { age: number; value: number }[]> = {
@@ -66,6 +86,8 @@ export interface CalorieCalcParams {
   age_years: number
   /** Biological sex */
   sex: BiologicalSex
+  /** Resting heart rate (bpm). Used to compute the baseline subtraction. */
+  resting_hr?: number
 }
 
 export interface CalorieDataPoint {
@@ -86,8 +108,14 @@ export interface CalorieDataPoint {
  */
 export const computeCaloriesPerMinute = (params: CalorieCalcParams): CalorieDataPoint[] => {
   const { hr_samples, vo2_max, weight_kg, age_years, sex } = params
+  const restingHr = params.resting_hr ?? DEFAULT_RESTING_HR
 
   if (hr_samples.length === 0) return []
+
+  // Compute the baseline: formula output at resting_hr * multiplier.
+  // This is subtracted from every minute to yield active-only calories.
+  const baselineHr = restingHr * BASELINE_HR_MULTIPLIER
+  const baselineKcal = computeTotalCaloriesForMinute(baselineHr, vo2_max, weight_kg, age_years, sex)
 
   // Determine time range
   const firstTime = hr_samples[0][0].getTime()
@@ -140,8 +168,9 @@ export const computeCaloriesPerMinute = (params: CalorieCalcParams): CalorieData
     // Average HR for this minute
     const avgHr = hrValues.reduce((a, b) => a + b, 0) / hrValues.length
 
-    // Apply formula (T = 1 minute)
-    const kcal = computeCaloriesForMinute(avgHr, vo2_max, weight_kg, age_years, sex)
+    // Active calories = total formula output minus baseline
+    const totalKcal = computeTotalCaloriesForMinute(avgHr, vo2_max, weight_kg, age_years, sex)
+    const kcal = Math.max(0, totalKcal - baselineKcal)
 
     results.push({
       end_time: new Date(bucketEnd),
@@ -154,10 +183,11 @@ export const computeCaloriesPerMinute = (params: CalorieCalcParams): CalorieData
 }
 
 /**
- * Compute calories burned in one minute given average HR and other parameters.
+ * Compute TOTAL calories burned in one minute (including BMR) given HR and parameters.
  * Returns 0 if the formula yields a negative value (very low HR).
+ * This is the raw formula — use computeCaloriesForMinute for active-only calories.
  */
-export const computeCaloriesForMinute = (
+export const computeTotalCaloriesForMinute = (
   avgHr: number,
   vo2Max: number,
   weightKg: number,
@@ -171,4 +201,24 @@ export const computeCaloriesForMinute = (
     raw = (0.45 * avgHr + 0.38 * vo2Max + 0.103 * weightKg + 0.274 * ageYears - 59.3954) / 4.184
   }
   return Math.max(0, raw)
+}
+
+/**
+ * Compute ACTIVE calories burned in one minute given HR, resting HR, and other parameters.
+ * Subtracts the formula's output at resting_hr * BASELINE_HR_MULTIPLIER as the zero-point.
+ * Returns 0 for HR at or below the baseline threshold (sleep, rest).
+ */
+export const computeCaloriesForMinute = (
+  avgHr: number,
+  vo2Max: number,
+  weightKg: number,
+  ageYears: number,
+  sex: BiologicalSex,
+  restingHr?: number,
+): number => {
+  const rhr = restingHr ?? DEFAULT_RESTING_HR
+  const baselineHr = rhr * BASELINE_HR_MULTIPLIER
+  const total = computeTotalCaloriesForMinute(avgHr, vo2Max, weightKg, ageYears, sex)
+  const baseline = computeTotalCaloriesForMinute(baselineHr, vo2Max, weightKg, ageYears, sex)
+  return Math.max(0, total - baseline)
 }
