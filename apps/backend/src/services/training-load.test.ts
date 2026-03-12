@@ -505,6 +505,7 @@ describe('computeTrainingLoad', () => {
     deleteImpulseBuckets: async () => 0,
     getActiveCalories: async () => [],
     getExercises: async () => [],
+    getHourlyCalorieSums: async () => [],
     getHrSamples: async () => [],
     getImpulseBuckets: async () => [],
     getLatestRestingHr: async () => 60,

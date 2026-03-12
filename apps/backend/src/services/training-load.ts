@@ -406,10 +406,12 @@ export const resolveHrRest = (
 export interface TrainingLoadDeps {
   /** Get exercise activities in a time range */
   getExercises: (user: string, start: Date, end: Date) => Promise<Activity[]>
-  /** Get HR time-series data in a time range (bucketed) */
+  /** Get HR time-series data in a time range (bucketed to 5-min) */
   getHrSamples: (user: string, start: Date, end: Date) => Promise<[Date, number][]>
-  /** Get active calorie time-series data */
+  /** Get active calorie time-series data (raw samples) */
   getActiveCalories: (user: string, start: Date, end: Date) => Promise<[Date, number][]>
+  /** Get active calories summed per hour (DB-level aggregation) */
+  getHourlyCalorieSums: (user: string, start: Date, end: Date) => Promise<[Date, number][]>
   /** Get pre-computed impulse buckets from time_series */
   getImpulseBuckets: (user: string, metric: string, start: Date, end: Date) => Promise<[Date, number][]>
   /** Write impulse buckets to time_series */
@@ -440,10 +442,85 @@ export interface TrainingLoadDeps {
 // Impulse Recomputation (Write Path)
 // ============================================================================
 
+/** Maximum chunk size for recomputation (7 days in ms). */
+const RECOMPUTE_CHUNK_MS = 7 * 24 * MS_PER_HOUR
+
+/**
+ * Recompute one chunk of impulse buckets [chunkStart, chunkEnd).
+ *
+ * Fetches exercises for the chunk, then HR samples per-exercise (bounded),
+ * and hourly calorie sums via DB-level aggregation. This keeps memory bounded
+ * regardless of how much raw data exists.
+ */
+const recomputeChunk = async (
+  deps: TrainingLoadDeps,
+  user: string,
+  chunkStart: Date,
+  chunkEnd: Date,
+  hrMax: number,
+  hrRest: number,
+  settings: ResolvedTrainingLoadSettings,
+): Promise<TimeSeriesPoint[]> => {
+  // Fetch exercises and hourly calorie sums for this chunk
+  const [exercises, hourlyCalories] = await Promise.all([
+    deps.getExercises(user, chunkStart, chunkEnd),
+    deps.getHourlyCalorieSums(user, chunkStart, chunkEnd),
+  ])
+
+  // For each exercise, fetch HR samples just for that session window
+  const training = new Map<string, number>()
+  for (const ex of exercises) {
+    const sessionEnd = ex.end_time ?? new Date(ex.start_time.getTime() + MS_PER_HOUR)
+    const hrSamples = await deps.getHrSamples(user, ex.start_time, sessionEnd)
+    processExercise(ex, hrSamples, hrMax, hrRest, settings.k_factor, training)
+  }
+
+  // Build activity impulse map from pre-bucketed hourly calorie sums
+  const activity = new Map<string, number>()
+  for (const [time, kcalSum] of hourlyCalories) {
+    const hourIso = floorToHour(time).toISOString()
+    activity.set(hourIso, (activity.get(hourIso) ?? 0) + kcalSum * settings.activity_impulse_scale)
+  }
+
+  // Build time series points
+  const points: TimeSeriesPoint[] = []
+
+  for (const [hourIso, value] of training) {
+    const hourDate = new Date(hourIso)
+    if (hourDate < chunkStart || hourDate >= chunkEnd) continue
+    if (value > 0) {
+      points.push({
+        metric: 'training_impulse',
+        source: 'aurboda',
+        time: hourDate,
+        unit: 'TRIMP',
+        value: Math.round(value * 100) / 100,
+      })
+    }
+  }
+
+  for (const [hourIso, value] of activity) {
+    const hourDate = new Date(hourIso)
+    if (hourDate < chunkStart || hourDate >= chunkEnd) continue
+    if (value > 0) {
+      points.push({
+        metric: 'activity_impulse',
+        source: 'aurboda',
+        time: hourDate,
+        unit: 'impulse',
+        value: Math.round(value * 100) / 100,
+      })
+    }
+  }
+
+  return points
+}
+
 /**
  * Recompute hourly impulse buckets for a user from `fromHour` to the last completed hour.
  *
- * Called after sync when new exercise or calorie data arrives.
+ * Processes in chunks of RECOMPUTE_CHUNK_MS to keep memory bounded.
+ * For each chunk: fetches exercises, HR per-exercise, hourly calorie sums.
  * Skips the current (incomplete) hour.
  */
 export const recomputeImpulseBuckets = async (
@@ -467,71 +544,34 @@ export const recomputeImpulseBuckets = async (
   const hrMax = resolveHrMax(settings.hr_max, maxObservedHr, userSettings.birth_date)
   const hrRest = resolveHrRest(settings.hr_rest, latestRestingHr)
 
-  // Fetch raw data for the recomputation range
-  const [exercises, hrSamples, calories] = await Promise.all([
-    deps.getExercises(user, fromHour, currentHour),
-    deps.getHrSamples(user, fromHour, currentHour),
-    deps.getActiveCalories(user, fromHour, currentHour),
-  ])
-
-  // Compute hourly impulses
-  const impulses = computeHourlyImpulses(
-    exercises,
-    hrSamples,
-    calories,
-    hrMax,
-    hrRest,
-    settings.k_factor,
-    settings.activity_impulse_scale,
-    fromHour,
-    currentHour,
-  )
-
-  // Delete old buckets in range and write new ones
+  // Delete old buckets in the full range upfront
   await Promise.all([
     deps.deleteImpulseBuckets(user, 'training_impulse', 'aurboda', fromHour, currentHour),
     deps.deleteImpulseBuckets(user, 'activity_impulse', 'aurboda', fromHour, currentHour),
   ])
 
-  const points: TimeSeriesPoint[] = []
+  // Process in chunks
+  let allPoints: TimeSeriesPoint[] = []
+  let chunkStart = fromHour
 
-  for (const [hourIso, value] of impulses.training) {
-    const hourDate = new Date(hourIso)
-    if (hourDate >= currentHour) continue // Skip current hour
-    if (value > 0) {
-      points.push({
-        metric: 'training_impulse',
-        source: 'aurboda',
-        time: hourDate,
-        unit: 'TRIMP',
-        value: Math.round(value * 100) / 100,
-      })
+  while (chunkStart < currentHour) {
+    const chunkEnd = new Date(Math.min(chunkStart.getTime() + RECOMPUTE_CHUNK_MS, currentHour.getTime()))
+    const chunkPoints = await recomputeChunk(deps, user, chunkStart, chunkEnd, hrMax, hrRest, settings)
+
+    if (chunkPoints.length > 0) {
+      // Write each chunk immediately to avoid accumulating in memory
+      await deps.writeImpulseBuckets(user, chunkPoints)
+      allPoints = allPoints.concat(chunkPoints)
     }
-  }
 
-  for (const [hourIso, value] of impulses.activity) {
-    const hourDate = new Date(hourIso)
-    if (hourDate >= currentHour) continue // Skip current hour
-    if (value > 0) {
-      points.push({
-        metric: 'activity_impulse',
-        source: 'aurboda',
-        time: hourDate,
-        unit: 'impulse',
-        value: Math.round(value * 100) / 100,
-      })
-    }
-  }
-
-  if (points.length > 0) {
-    await deps.writeImpulseBuckets(user, points)
+    chunkStart = chunkEnd
   }
 
   // Clear the watermark
   await deps.updateTrainingLoadSettings(user, { impulse_watermark: undefined })
 
   // Count distinct hours
-  const hours = new Set(points.map((p) => p.time.toISOString()))
+  const hours = new Set(allPoints.map((p) => p.time.toISOString()))
   return { hours_computed: hours.size }
 }
 
@@ -750,6 +790,12 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
 
   getExercises: async (user, start, end) => {
     return getActivities(user, 'exercise', start, end)
+  },
+
+  getHourlyCalorieSums: async (user, start, end) => {
+    const buckets = await getTimeSeriesBucketed(user, ['calories_active'], start, end, 60)
+    // getTimeSeriesBucketed returns avg — we need sum (avg × count)
+    return buckets.map((b) => [b.bucket_start, b.avg * b.count] as [Date, number])
   },
 
   getHrSamples: async (user, start, end) => {
