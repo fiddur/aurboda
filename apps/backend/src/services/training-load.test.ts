@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import type { Activity } from '../db/types'
+import type { Activity, TimeSeriesPoint } from '../db/types'
 import {
   calculateTrimp,
   computeHourlyImpulses,
@@ -11,6 +11,7 @@ import {
   getAverageHrForSession,
   getEffectiveSettings,
   getWorkoutTrimpForHour,
+  recomputeImpulseBuckets,
   resolveHrMax,
   resolveHrRest,
   type TrainingLoadDeps,
@@ -487,20 +488,24 @@ describe('resolveHrRest', () => {
 })
 
 // ============================================================================
+// Test helpers
+// ============================================================================
+
+const makeActivity = (id: string, startStr: string, endStr: string, title?: string): Activity => ({
+  activity_type: 'exercise',
+  data: {},
+  end_time: new Date(endStr),
+  id,
+  source: 'health_connect',
+  start_time: new Date(startStr),
+  title,
+})
+
+// ============================================================================
 // Full Computation (Integration with Mocked Dependencies)
 // ============================================================================
 
 describe('computeTrainingLoad', () => {
-  const makeActivity = (id: string, startStr: string, endStr: string, title?: string): Activity => ({
-    activity_type: 'exercise',
-    data: {},
-    end_time: new Date(endStr),
-    id,
-    source: 'health_connect',
-    start_time: new Date(startStr),
-    title,
-  })
-
   const makeDeps = (overrides: Partial<TrainingLoadDeps> = {}): TrainingLoadDeps => ({
     deleteImpulseBuckets: async () => 0,
     getActiveCalories: async () => [],
@@ -672,5 +677,129 @@ describe('computeTrainingLoad', () => {
 
     // Should have attempted to delete old buckets (recomputation triggered)
     expect(deleteImpulseBuckets).toHaveBeenCalled()
+  })
+})
+
+// ============================================================================
+// Recompute Impulse Buckets (chunked)
+// ============================================================================
+
+describe('recomputeImpulseBuckets', () => {
+  const makeDeps = (overrides: Partial<TrainingLoadDeps> = {}): TrainingLoadDeps => ({
+    deleteImpulseBuckets: async () => 0,
+    getActiveCalories: async () => [],
+    getExercises: async () => [],
+    getHourlyCalorieSums: async () => [],
+    getHrSamples: async () => [],
+    getImpulseBuckets: async () => [],
+    getLatestRestingHr: async () => 60,
+    getMaxObservedHr: async () => 190,
+    getUserSettings: async () => ({ birth_date: '1985-06-15', sex: 'male' as const }),
+    updateTrainingLoadSettings: async () => {},
+    writeImpulseBuckets: async () => {},
+    ...overrides,
+  })
+
+  test('returns 0 hours when fromHour is in the future', async () => {
+    const deps = makeDeps()
+    const futureHour = new Date(Date.now() + 2 * 3600_000)
+    const result = await recomputeImpulseBuckets(deps, 'testuser', futureHour)
+    expect(result.hours_computed).toBe(0)
+  })
+
+  test('computes training impulse from exercises with per-exercise HR', async () => {
+    const writtenPoints: TimeSeriesPoint[] = []
+    const updateSettings = vi.fn(async () => {})
+
+    const exerciseStart = new Date('2024-01-03T10:00:00Z')
+    const exerciseEnd = new Date('2024-01-03T11:00:00Z')
+
+    const deps = makeDeps({
+      getExercises: async (_, start, end) => {
+        // Only return exercise if the chunk overlaps
+        if (start <= exerciseStart && end >= exerciseEnd) {
+          return [makeActivity('ex1', '2024-01-03T10:00:00Z', '2024-01-03T11:00:00Z', 'Running')]
+        }
+        return []
+      },
+      getHrSamples: async (_, start) => {
+        // Return HR samples only when queried for the exercise window
+        if (start.getTime() === exerciseStart.getTime()) {
+          return [
+            [new Date('2024-01-03T10:00:00Z'), 150] as [Date, number],
+            [new Date('2024-01-03T10:30:00Z'), 160] as [Date, number],
+          ]
+        }
+        return []
+      },
+      updateTrainingLoadSettings: updateSettings,
+      writeImpulseBuckets: async (_, points) => {
+        writtenPoints.push(...points)
+      },
+    })
+
+    // Use a fromHour just before the exercise
+    const result = await recomputeImpulseBuckets(deps, 'testuser', new Date('2024-01-03T00:00:00Z'))
+
+    expect(result.hours_computed).toBeGreaterThan(0)
+
+    // Check that training_impulse points were written
+    const trainingPoints = writtenPoints.filter((p) => p.metric === 'training_impulse')
+    expect(trainingPoints.length).toBeGreaterThan(0)
+    expect(trainingPoints.some((p) => p.value > 0)).toBe(true)
+
+    // Watermark should be cleared
+    expect(updateSettings).toHaveBeenCalledWith('testuser', { impulse_watermark: undefined })
+  })
+
+  test('computes activity impulse from hourly calorie sums', async () => {
+    const writtenPoints: TimeSeriesPoint[] = []
+
+    const deps = makeDeps({
+      getHourlyCalorieSums: async () => [
+        [new Date('2024-01-03T10:00:00Z'), 200] as [Date, number],
+        [new Date('2024-01-03T14:00:00Z'), 150] as [Date, number],
+      ],
+      writeImpulseBuckets: async (_, points) => {
+        writtenPoints.push(...points)
+      },
+    })
+
+    const result = await recomputeImpulseBuckets(deps, 'testuser', new Date('2024-01-03T00:00:00Z'))
+
+    expect(result.hours_computed).toBeGreaterThan(0)
+    const activityPoints = writtenPoints.filter((p) => p.metric === 'activity_impulse')
+    expect(activityPoints.length).toBe(2)
+    expect(activityPoints.every((p) => p.value > 0)).toBe(true)
+  })
+
+  test('processes large ranges in chunks without loading all data at once', async () => {
+    const exerciseCalls: [Date, Date][] = []
+    const calorieCalls: [Date, Date][] = []
+
+    const deps = makeDeps({
+      getExercises: async (_, start, end) => {
+        exerciseCalls.push([start, end])
+        return []
+      },
+      getHourlyCalorieSums: async (_, start, end) => {
+        calorieCalls.push([start, end])
+        return []
+      },
+    })
+
+    // Recompute 30 days — should result in multiple chunks (7 days each = ~5 chunks)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600_000)
+    await recomputeImpulseBuckets(deps, 'testuser', floorToHour(thirtyDaysAgo))
+
+    // Each chunk should make its own getExercises and getHourlyCalorieSums calls
+    // 30 days / 7 days per chunk = ~5 chunks
+    expect(exerciseCalls.length).toBeGreaterThanOrEqual(4)
+    expect(calorieCalls.length).toBeGreaterThanOrEqual(4)
+
+    // Verify chunk boundaries don't overlap (each call has distinct start/end)
+    for (let i = 1; i < exerciseCalls.length; i++) {
+      expect(exerciseCalls[i]![0].getTime()).toBe(exerciseCalls[i - 1]![1].getTime())
+    }
   })
 })
