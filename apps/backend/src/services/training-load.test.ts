@@ -652,6 +652,31 @@ describe('computeTrainingLoad', () => {
     expect(postImpulse.some((p) => p.atl > 0)).toBe(true)
   })
 
+  test('computes live hour impulses when query includes current time', async () => {
+    // Query range that includes "now" — triggers mergeLiveHourImpulses
+    const now = new Date()
+    const currentHour = floorToHour(now)
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 3600_000)
+    const tomorrow = new Date(now.getTime() + 24 * 3600_000)
+
+    // Calorie sample within the current hour (must be >= currentHour)
+    const midHour = new Date(currentHour.getTime() + 30 * 60_000)
+
+    const getActiveCalories = vi.fn(async () => [[midHour, 50] as [Date, number]])
+
+    const deps = makeDeps({
+      getActiveCalories,
+      getExercises: async () => [],
+      getHrSamples: async () => [],
+    })
+
+    const result = await computeTrainingLoad(deps, 'testuser', oneWeekAgo, tomorrow)
+
+    // Should have fetched live data for current hour
+    expect(getActiveCalories).toHaveBeenCalled()
+    expect(result.points.length).toBeGreaterThan(0)
+  })
+
   test('triggers recomputation when watermark is set', async () => {
     const writeImpulseBuckets = vi.fn(async () => {})
     const deleteImpulseBuckets = vi.fn(async () => 0)
