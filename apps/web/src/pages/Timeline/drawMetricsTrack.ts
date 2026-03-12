@@ -5,9 +5,20 @@
  * - Steps and calories as bar charts behind the lines
  * - Crosshair tooltip on mouseover showing all metric values at that time
  */
+import type { RecoveryZones, TrainingLoadPoint, WorkoutTrimp } from '@aurboda/api-spec'
 import * as d3 from 'd3'
 import { format } from 'date-fns'
 import { type MetricBucketParsed, aggregateBuckets } from '../../utils/chart'
+import {
+  ACTIVITY_IMPULSE_COLOR,
+  ATL_COLOR,
+  CTL_COLOR,
+  findNearbyWorkouts,
+  findTrainingLoadPoint,
+  TRAINING_IMPULSE_COLOR,
+  TSB_FATIGUED_COLOR,
+  TSB_FRESH_COLOR,
+} from './drawTrainingLoadTrack'
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +59,12 @@ export interface MetricsTrackConfig {
   /** Tooltip callback — receives HTML content and mouse event. */
   showTooltipHtml: (event: MouseEvent, html: string) => void
   hideTooltip: () => void
+  /** Optional: training load points for combined tooltip. */
+  trainingLoadPoints?: TrainingLoadPoint[]
+  /** Optional: per-workout TRIMP scores for combined tooltip. */
+  trainingLoadWorkouts?: WorkoutTrimp[]
+  /** Optional: recovery zone thresholds for combined tooltip. */
+  trainingLoadZones?: RecoveryZones
 }
 
 // ── Bucket aggregation by zoom ────────────────────────────────────────────────
@@ -179,12 +196,62 @@ const drawBarChart = (
 
 const formatTime = (date: Date): string => format(date, 'HH:mm')
 
+/** Build training load section for the combined tooltip. */
+const buildTrainingLoadSection = (
+  bucketMid: Date,
+  points: TrainingLoadPoint[],
+  workouts?: WorkoutTrimp[],
+  zones?: RecoveryZones,
+): string => {
+  const point = findTrainingLoadPoint(points, bucketMid)
+  if (!point) return ''
+
+  let html = `<div class="tooltip-separator" style="border-top:1px solid rgba(128,128,128,0.3);margin:4px 0"></div>`
+  html += `<div class="tooltip-detail" style="color:${CTL_COLOR}">Fitness (CTL): ${point.ctl.toFixed(1)}</div>`
+  html += `<div class="tooltip-detail" style="color:${ATL_COLOR}">Fatigue (ATL): ${point.atl.toFixed(1)}</div>`
+
+  const tsbColor = point.tsb >= 0 ? TSB_FRESH_COLOR : TSB_FATIGUED_COLOR
+  const tsbLabel = point.tsb >= 0 ? 'Fresh' : 'Fatigued'
+  html += `<div class="tooltip-detail" style="color:${tsbColor}">Form (TSB): ${point.tsb >= 0 ? '+' : ''}${point.tsb.toFixed(1)} — ${tsbLabel}</div>`
+
+  if (point.training_impulse > 0) {
+    html += `<div class="tooltip-detail" style="color:${TRAINING_IMPULSE_COLOR}">Training: ${point.training_impulse.toFixed(1)}</div>`
+  }
+  if (point.activity_impulse > 0) {
+    html += `<div class="tooltip-detail" style="color:${ACTIVITY_IMPULSE_COLOR}">Activity: ${point.activity_impulse.toFixed(1)}</div>`
+  }
+
+  if (zones) {
+    let zoneName: string
+    if (point.atl < zones.balanced_min) zoneName = 'Undertrained'
+    else if (point.atl <= zones.balanced_max) zoneName = 'Balanced'
+    else if (point.atl <= zones.strained_max) zoneName = 'Strained'
+    else zoneName = 'Very Strained'
+    html += `<div class="tooltip-detail" style="opacity:0.7">Zone: ${zoneName}</div>`
+  }
+
+  if (workouts) {
+    const hourTime = new Date(point.time)
+    const nearbyWorkouts = findNearbyWorkouts(workouts, hourTime)
+    for (const w of nearbyWorkouts) {
+      const title = w.title ?? 'Workout'
+      const hrStr = w.avg_hr ? ` (${Math.round(w.avg_hr)} bpm avg)` : ''
+      html += `<div class="tooltip-detail" style="opacity:0.7">${title}: ${w.duration_minutes.toFixed(0)}min, TRIMP ${w.trimp.toFixed(0)}${hrStr}</div>`
+    }
+  }
+
+  return html
+}
+
 const buildMetricsTooltipHtml = (
   bucket: MetricBucketParsed,
   showHR: boolean,
   showHRV: boolean,
   showSteps: boolean,
   showCalories: boolean,
+  trainingLoadPoints?: TrainingLoadPoint[],
+  trainingLoadWorkouts?: WorkoutTrimp[],
+  trainingLoadZones?: RecoveryZones,
 ): string => {
   const startStr = formatTime(bucket.start)
   const endStr = formatTime(bucket.end)
@@ -218,6 +285,12 @@ const buildMetricsTooltipHtml = (
       const perMin = bucketMinutes > 0 ? cal.avg / bucketMinutes : 0
       html += `<div class="tooltip-detail" style="color:${CALORIES_COLOR}">🔥 Calories: ${perMin.toFixed(1)} kcal/min</div>`
     }
+  }
+
+  // Append training load section if available
+  if (trainingLoadPoints && trainingLoadPoints.length > 0) {
+    const bucketMid = new Date((bucket.start.getTime() + bucket.end.getTime()) / 2)
+    html += buildTrainingLoadSection(bucketMid, trainingLoadPoints, trainingLoadWorkouts, trainingLoadZones)
   }
 
   return html
@@ -300,6 +373,9 @@ const drawCrosshairOverlay = (
   showCalories: boolean,
   showTooltipHtml: (event: MouseEvent, html: string) => void,
   hideTooltip: () => void,
+  trainingLoadPoints?: TrainingLoadPoint[],
+  trainingLoadWorkouts?: WorkoutTrimp[],
+  trainingLoadZones?: RecoveryZones,
 ): void => {
   outerG.selectAll('.metrics-crosshair').remove()
 
@@ -354,7 +430,16 @@ const drawCrosshairOverlay = (
       }
 
       hairline.attr('x1', mx!).attr('x2', mx!).style('display', null)
-      const html = buildMetricsTooltipHtml(nearest, showHR, showHRV, showSteps, showCalories)
+      const html = buildMetricsTooltipHtml(
+        nearest,
+        showHR,
+        showHRV,
+        showSteps,
+        showCalories,
+        trainingLoadPoints,
+        trainingLoadWorkouts,
+        trainingLoadZones,
+      )
       showTooltipHtml(event, html)
     })
     .on('mouseleave', () => {
@@ -390,8 +475,10 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
     hideTooltip,
   } = config
 
-  if (rawBuckets.length === 0) return
-  if (!showHR && !showHRV && !showSteps && !showCalories) return
+  const hasMetrics = showHR || showHRV || showSteps || showCalories
+  const hasTrainingLoad = config.trainingLoadPoints && config.trainingLoadPoints.length > 0
+  if (rawBuckets.length === 0 && !hasTrainingLoad) return
+  if (!hasMetrics && !hasTrainingLoad) return
 
   const factor = getAggregationFactor(pixelsPerHour)
   const buckets = aggregateBuckets(rawBuckets, factor)
@@ -417,7 +504,7 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
     if (hrvBand.length > 1) drawBandChart(chartGroup, hrvBand, xScale, yHrv, HRV_COLOR)
   }
 
-  // Crosshair tooltip overlay
+  // Crosshair tooltip overlay (includes training load data in combined tooltip)
   drawCrosshairOverlay(
     outerG,
     xScale,
@@ -431,5 +518,8 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
     showCalories,
     showTooltipHtml,
     hideTooltip,
+    config.trainingLoadPoints,
+    config.trainingLoadWorkouts,
+    config.trainingLoadZones,
   )
 }
