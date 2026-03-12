@@ -1,34 +1,46 @@
+/* eslint-disable max-lines -- complex domain logic needs to stay in one file for cohesion */
 /**
  * Training load calculation using the Banister impulse-response model.
  *
+ * Architecture:
+ *  - Hourly impulse buckets are stored in time_series (training_impulse, activity_impulse).
+ *  - After sync, affected completed hours are recomputed and upserted.
+ *  - At query time, impulse buckets are fetched and the Banister EMA is run per-hour.
+ *  - The current (incomplete) hour is computed on-the-fly from raw data.
+ *
  * Computes:
- * - TRIMP (Training Impulse) for each workout from HR data
- * - ATL (Acute Training Load / fatigue) — 7-day exponential moving average
- * - CTL (Chronic Training Load / fitness) — 42-day exponential moving average
- * - TSB (Training Stress Balance / form) = CTL - ATL
+ *  - TRIMP (Training Impulse) for each workout from HR data
+ *  - ATL (Acute Training Load / fatigue) — 7-day hourly EMA
+ *  - CTL (Chronic Training Load / fitness) — 42-day hourly EMA
+ *  - TSB (Training Stress Balance / form) = CTL - ATL
  */
 
 import type {
   BiologicalSex,
+  RecoveryZones,
   TrainingLoadPoint,
   TrainingLoadResult,
   TrainingLoadSettings,
   WorkoutTrimp,
 } from '@aurboda/api-spec'
-import type { Activity } from '../db/types'
+import type { Activity, TimeSeriesPoint } from '../db/types'
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const DEFAULT_TAU_ACUTE = 7
-const DEFAULT_TAU_CHRONIC = 42
+const DEFAULT_TAU_ACUTE_DAYS = 7
+const DEFAULT_TAU_CHRONIC_DAYS = 42
 const DEFAULT_K_MALE = 1.92
 const DEFAULT_K_FEMALE = 1.67
+const DEFAULT_ACTIVITY_IMPULSE_SCALE = 0.1 // 100 kcal active → 10 impulse
+const HOURS_PER_DAY = 24
 const BOOTSTRAPPING_DAYS = 42 // CTL needs ~6 weeks to be meaningful
+const MS_PER_HOUR = 60 * 60 * 1000
 
 /** Settings after resolving defaults — k_factor, tau_acute, tau_chronic are always set. */
 export interface ResolvedTrainingLoadSettings extends TrainingLoadSettings {
+  activity_impulse_scale: number
   k_factor: number
   tau_acute: number
   tau_chronic: number
@@ -71,77 +83,46 @@ export const calculateTrimp = (params: TrimpCalcParams): number => {
 }
 
 // ============================================================================
-// Exponential Moving Average (Banister Model)
+// Hourly Impulse Bucket Computation
 // ============================================================================
 
-export interface LoadAccumulatorParams {
-  /** Daily TRIMP values, indexed by date string (YYYY-MM-DD) */
-  daily_trimps: Map<string, number>
-  /** Start date for the time series */
-  start_date: string
-  /** End date for the time series */
-  end_date: string
-  /** Acute time constant in days (default 7) */
-  tau_acute: number
-  /** Chronic time constant in days (default 42) */
-  tau_chronic: number
+/**
+ * Floor a date to the start of its hour.
+ */
+export const floorToHour = (date: Date): Date => {
+  const d = new Date(date)
+  d.setUTCMinutes(0, 0, 0)
+  return d
 }
 
 /**
- * Compute daily ATL, CTL, and TSB using the Banister exponential decay model.
- *
- * ATL(today) = ATL(yesterday) × e^(-1/τ_a) + TRIMP(today)
- * CTL(today) = CTL(yesterday) × e^(-1/τ_c) + TRIMP(today)
- * TSB(today) = CTL(today) - ATL(today)
+ * Get the start of the current (incomplete) hour.
  */
-export const computeTrainingLoadSeries = (params: LoadAccumulatorParams): TrainingLoadPoint[] => {
-  const { daily_trimps, start_date, end_date, tau_acute, tau_chronic } = params
+export const getCurrentHourStart = (): Date => floorToHour(new Date())
 
-  const decayAcute = Math.exp(-1 / tau_acute)
-  const decayChronic = Math.exp(-1 / tau_chronic)
-  const gainAcute = 1 - decayAcute // ~0.133 for τ=7
-  const gainChronic = 1 - decayChronic // ~0.024 for τ=42
+/**
+ * Compute TRIMP contribution of a workout to a specific hour.
+ *
+ * If a workout spans multiple hours, the TRIMP is split proportionally by
+ * the fraction of the workout's duration that falls in each hour.
+ */
+export const getWorkoutTrimpForHour = (
+  workoutStart: Date,
+  workoutEnd: Date,
+  totalTrimp: number,
+  hourStart: Date,
+): number => {
+  const hourEnd = new Date(hourStart.getTime() + MS_PER_HOUR)
+  const overlapStart = Math.max(workoutStart.getTime(), hourStart.getTime())
+  const overlapEnd = Math.min(workoutEnd.getTime(), hourEnd.getTime())
+  const overlapMs = overlapEnd - overlapStart
 
-  const points: TrainingLoadPoint[] = []
-  let atl = 0
-  let ctl = 0
+  if (overlapMs <= 0) return 0
 
-  // Iterate day by day from start to end
-  const current = new Date(start_date + 'T00:00:00Z')
-  const endDt = new Date(end_date + 'T00:00:00Z')
+  const totalMs = workoutEnd.getTime() - workoutStart.getTime()
+  if (totalMs <= 0) return 0
 
-  while (current <= endDt) {
-    const dateStr = current.toISOString().split('T')[0]
-    const dailyTrimp = daily_trimps.get(dateStr) ?? 0
-
-    // Banister EMA: load(n) = load(n-1) × e^(-1/τ) + TRIMP(n) × (1 - e^(-1/τ))
-    // The (1 - decay) gain factor normalizes so steady-state ≈ average daily TRIMP.
-    atl = atl * decayAcute + dailyTrimp * gainAcute
-    ctl = ctl * decayChronic + dailyTrimp * gainChronic
-    const tsb = ctl - atl
-
-    points.push({
-      atl: Math.round(atl * 100) / 100,
-      ctl: Math.round(ctl * 100) / 100,
-      daily_trimp: Math.round(dailyTrimp * 100) / 100,
-      date: dateStr,
-      tsb: Math.round(tsb * 100) / 100,
-    })
-
-    current.setUTCDate(current.getUTCDate() + 1)
-  }
-
-  return points
-}
-
-// ============================================================================
-// Data Extraction Helpers
-// ============================================================================
-
-export interface ExerciseWithHr {
-  activity: Activity
-  avg_hr: number
-  duration_minutes: number
+  return totalTrimp * (overlapMs / totalMs)
 }
 
 /**
@@ -153,14 +134,216 @@ export const getAverageHrForSession = (
   sessionEnd: Date,
   hrSamples: [Date, number][],
 ): number | null => {
-  // Find HR samples within the session window
   const sessionHr = hrSamples.filter(([t]) => t >= sessionStart && t <= sessionEnd)
-
   if (sessionHr.length === 0) return null
-
   const sum = sessionHr.reduce((acc, [, hr]) => acc + hr, 0)
   return sum / sessionHr.length
 }
+
+export interface HourlyImpulses {
+  /** training_impulse per hour: Map<hourIso, trimp> */
+  training: Map<string, number>
+  /** activity_impulse per hour: Map<hourIso, scaledCalories> */
+  activity: Map<string, number>
+  /** Workout details for the range */
+  workouts: WorkoutTrimp[]
+}
+
+/**
+ * Compute hourly impulse buckets from raw exercise and calorie data.
+ *
+ * For each completed hour in [start, end):
+ *  - training impulse = sum of TRIMP from exercises overlapping that hour
+ *  - activity impulse = sum of active calories in that hour × scale factor
+ */
+/**
+ * Process a single exercise session: compute TRIMP, build a WorkoutTrimp record,
+ * and distribute the TRIMP across overlapping hourly buckets.
+ */
+const processExercise = (
+  ex: Activity,
+  hrSamples: [Date, number][],
+  hrMax: number,
+  hrRest: number,
+  kFactor: number,
+  training: Map<string, number>,
+): WorkoutTrimp | null => {
+  const sessionEnd = ex.end_time ?? new Date(ex.start_time.getTime() + MS_PER_HOUR)
+  const durationMs = sessionEnd.getTime() - ex.start_time.getTime()
+  const durationMinutes = durationMs / 60_000
+  if (durationMinutes <= 0) return null
+
+  const avgHr = getAverageHrForSession(ex.start_time, sessionEnd, hrSamples)
+
+  const trimp =
+    avgHr && avgHr > hrRest ?
+      calculateTrimp({
+        avg_hr: avgHr,
+        duration_minutes: durationMinutes,
+        hr_max: hrMax,
+        hr_rest: hrRest,
+        k_factor: kFactor,
+      })
+    : durationMinutes * 0.5
+
+  // Distribute TRIMP across overlapping hours
+  let hourCursor = floorToHour(ex.start_time)
+  while (hourCursor < sessionEnd) {
+    const hourIso = hourCursor.toISOString()
+    const hourTrimp = getWorkoutTrimpForHour(ex.start_time, sessionEnd, trimp, hourCursor)
+    if (hourTrimp > 0) {
+      training.set(hourIso, (training.get(hourIso) ?? 0) + hourTrimp)
+    }
+    hourCursor = new Date(hourCursor.getTime() + MS_PER_HOUR)
+  }
+
+  const dateStr = ex.start_time.toISOString().split('T')[0]!
+  return {
+    activity_id: ex.id,
+    avg_hr: avgHr ?? undefined,
+    date: dateStr,
+    duration_minutes: Math.round(durationMinutes * 10) / 10,
+    end_time: sessionEnd.toISOString(),
+    start_time: ex.start_time.toISOString(),
+    title: ex.title ?? (ex.data?.exerciseType != null ? String(ex.data.exerciseType) : undefined),
+    trimp: Math.round(trimp * 100) / 100,
+  }
+}
+
+export const computeHourlyImpulses = (
+  exercises: Activity[],
+  hrSamples: [Date, number][],
+  caloriesSamples: [Date, number][],
+  hrMax: number,
+  hrRest: number,
+  kFactor: number,
+  activityScale: number,
+  start: Date,
+  end: Date,
+): HourlyImpulses => {
+  const training = new Map<string, number>()
+  const activity = new Map<string, number>()
+  const workouts: WorkoutTrimp[] = []
+
+  for (const ex of exercises) {
+    const workout = processExercise(ex, hrSamples, hrMax, hrRest, kFactor, training)
+    if (workout) workouts.push(workout)
+  }
+
+  // Aggregate active calories into hourly buckets
+  for (const [time, kcal] of caloriesSamples) {
+    if (time < start || time >= end) continue
+    const hourIso = floorToHour(time).toISOString()
+    activity.set(hourIso, (activity.get(hourIso) ?? 0) + kcal * activityScale)
+  }
+
+  return { activity, training, workouts }
+}
+
+// ============================================================================
+// Hourly Banister EMA
+// ============================================================================
+
+export interface HourlyLoadParams {
+  /** Hourly training impulse: Map<hourIso, value> */
+  trainingImpulses: Map<string, number>
+  /** Hourly activity impulse: Map<hourIso, value> */
+  activityImpulses: Map<string, number>
+  /** Start hour (inclusive) */
+  start: Date
+  /** End hour (inclusive) */
+  end: Date
+  /** Acute time constant in days (converted to hours internally) */
+  tauAcuteDays: number
+  /** Chronic time constant in days (converted to hours internally) */
+  tauChronicDays: number
+}
+
+/**
+ * Compute hourly ATL, CTL, TSB using Banister exponential decay.
+ *
+ * The tau values are in days but the EMA steps are hourly:
+ *   tau_hours = tau_days × 24
+ *   decay = e^(-1/tau_hours)
+ *   gain  = 1 - decay
+ *
+ * Each hour: load(h) = load(h-1) × decay + impulse(h) × gain
+ */
+export const computeHourlyLoadSeries = (params: HourlyLoadParams): TrainingLoadPoint[] => {
+  const { trainingImpulses, activityImpulses, start, end, tauAcuteDays, tauChronicDays } = params
+
+  const tauAcuteHours = tauAcuteDays * HOURS_PER_DAY
+  const tauChronicHours = tauChronicDays * HOURS_PER_DAY
+
+  const decayAcute = Math.exp(-1 / tauAcuteHours)
+  const decayChronic = Math.exp(-1 / tauChronicHours)
+  const gainAcute = 1 - decayAcute
+  const gainChronic = 1 - decayChronic
+
+  const points: TrainingLoadPoint[] = []
+  let atl = 0
+  let ctl = 0
+
+  let current = new Date(start)
+  while (current <= end) {
+    const hourIso = current.toISOString()
+    const ti = trainingImpulses.get(hourIso) ?? 0
+    const ai = activityImpulses.get(hourIso) ?? 0
+    const totalImpulse = ti + ai
+
+    atl = atl * decayAcute + totalImpulse * gainAcute
+    ctl = ctl * decayChronic + totalImpulse * gainChronic
+    const tsb = ctl - atl
+
+    points.push({
+      activity_impulse: Math.round(ai * 100) / 100,
+      atl: Math.round(atl * 100) / 100,
+      ctl: Math.round(ctl * 100) / 100,
+      time: hourIso,
+      training_impulse: Math.round(ti * 100) / 100,
+      tsb: Math.round(tsb * 100) / 100,
+    })
+
+    current = new Date(current.getTime() + MS_PER_HOUR)
+  }
+
+  return points
+}
+
+// ============================================================================
+// Recovery Zone Computation
+// ============================================================================
+
+/**
+ * Compute recovery zone thresholds from historical ATL/CTL data.
+ *
+ * Zones are based on ATL relative to the user's historical CTL:
+ *  - Undertrained: ATL < 0.8 × avg_CTL
+ *  - Balanced: 0.8 × avg_CTL ≤ ATL ≤ 1.3 × avg_CTL
+ *  - Strained: 1.3 × avg_CTL < ATL ≤ 1.7 × avg_CTL
+ *  - Very Strained: ATL > 1.7 × avg_CTL
+ *
+ * Returns null during bootstrapping when there isn't enough data.
+ */
+export const computeRecoveryZones = (points: TrainingLoadPoint[]): RecoveryZones | undefined => {
+  if (points.length < BOOTSTRAPPING_DAYS * HOURS_PER_DAY) return undefined
+
+  // Average CTL over all points
+  const totalCtl = points.reduce((sum, p) => sum + p.ctl, 0)
+  const avgCtl = totalCtl / points.length
+
+  if (avgCtl < 1) return undefined // Not enough training data
+
+  return {
+    balanced_max: Math.round(avgCtl * 1.3 * 100) / 100,
+    balanced_min: Math.round(avgCtl * 0.8 * 100) / 100,
+    strained_max: Math.round(avgCtl * 1.7 * 100) / 100,
+  }
+}
+
+// ============================================================================
+// Settings Helpers
+// ============================================================================
 
 /**
  * Get effective training load settings, filling defaults from user profile.
@@ -172,11 +355,12 @@ export const getEffectiveSettings = (
   const kDefault = sex === 'female' ? DEFAULT_K_FEMALE : DEFAULT_K_MALE
 
   return {
+    activity_impulse_scale: userSettings?.activity_impulse_scale ?? DEFAULT_ACTIVITY_IMPULSE_SCALE,
     hr_max: userSettings?.hr_max,
     hr_rest: userSettings?.hr_rest,
     k_factor: userSettings?.k_factor ?? kDefault,
-    tau_acute: userSettings?.tau_acute ?? DEFAULT_TAU_ACUTE,
-    tau_chronic: userSettings?.tau_chronic ?? DEFAULT_TAU_CHRONIC,
+    tau_acute: userSettings?.tau_acute ?? DEFAULT_TAU_ACUTE_DAYS,
+    tau_chronic: userSettings?.tau_chronic ?? DEFAULT_TAU_CHRONIC_DAYS,
   }
 }
 
@@ -191,7 +375,6 @@ export const resolveHrMax = (
   if (settingsHrMax) return settingsHrMax
   if (observedMaxHr && observedMaxHr > 100) return observedMaxHr
 
-  // Age-based fallback: 220 - age
   if (birthDate) {
     const birth = new Date(birthDate)
     const today = new Date()
@@ -201,7 +384,6 @@ export const resolveHrMax = (
     return 220 - age
   }
 
-  // Ultimate fallback
   return 190
 }
 
@@ -214,7 +396,6 @@ export const resolveHrRest = (
 ): number => {
   if (settingsHrRest) return settingsHrRest
   if (latestRestingHr && latestRestingHr > 30) return latestRestingHr
-  // Fallback
   return 60
 }
 
@@ -225,8 +406,22 @@ export const resolveHrRest = (
 export interface TrainingLoadDeps {
   /** Get exercise activities in a time range */
   getExercises: (user: string, start: Date, end: Date) => Promise<Activity[]>
-  /** Get HR time-series data in a time range */
+  /** Get HR time-series data in a time range (bucketed) */
   getHrSamples: (user: string, start: Date, end: Date) => Promise<[Date, number][]>
+  /** Get active calorie time-series data */
+  getActiveCalories: (user: string, start: Date, end: Date) => Promise<[Date, number][]>
+  /** Get pre-computed impulse buckets from time_series */
+  getImpulseBuckets: (user: string, metric: string, start: Date, end: Date) => Promise<[Date, number][]>
+  /** Write impulse buckets to time_series */
+  writeImpulseBuckets: (user: string, points: TimeSeriesPoint[]) => Promise<void>
+  /** Delete impulse buckets in a range (for recomputation) */
+  deleteImpulseBuckets: (
+    user: string,
+    metric: string,
+    source: string,
+    start: Date,
+    end: Date,
+  ) => Promise<number>
   /** Get the maximum observed HR value */
   getMaxObservedHr: (user: string) => Promise<number | undefined>
   /** Get the most recent resting HR */
@@ -237,19 +432,193 @@ export interface TrainingLoadDeps {
     sex?: BiologicalSex
     birth_date?: string
   }>
+  /** Update training load settings (for watermark) */
+  updateTrainingLoadSettings: (user: string, update: Partial<TrainingLoadSettings>) => Promise<void>
 }
 
 // ============================================================================
-// Main Computation
+// Impulse Recomputation (Write Path)
+// ============================================================================
+
+/**
+ * Recompute hourly impulse buckets for a user from `fromHour` to the last completed hour.
+ *
+ * Called after sync when new exercise or calorie data arrives.
+ * Skips the current (incomplete) hour.
+ */
+export const recomputeImpulseBuckets = async (
+  deps: TrainingLoadDeps,
+  user: string,
+  fromHour: Date,
+): Promise<{ hours_computed: number }> => {
+  const currentHour = getCurrentHourStart()
+
+  // Don't recompute if fromHour is in the future or the current hour
+  if (fromHour >= currentHour) return { hours_computed: 0 }
+
+  // Fetch user settings for TRIMP calculation parameters
+  const [userSettings, maxObservedHr, latestRestingHr] = await Promise.all([
+    deps.getUserSettings(user),
+    deps.getMaxObservedHr(user),
+    deps.getLatestRestingHr(user),
+  ])
+
+  const settings = getEffectiveSettings(userSettings.training_load, userSettings.sex)
+  const hrMax = resolveHrMax(settings.hr_max, maxObservedHr, userSettings.birth_date)
+  const hrRest = resolveHrRest(settings.hr_rest, latestRestingHr)
+
+  // Fetch raw data for the recomputation range
+  const [exercises, hrSamples, calories] = await Promise.all([
+    deps.getExercises(user, fromHour, currentHour),
+    deps.getHrSamples(user, fromHour, currentHour),
+    deps.getActiveCalories(user, fromHour, currentHour),
+  ])
+
+  // Compute hourly impulses
+  const impulses = computeHourlyImpulses(
+    exercises,
+    hrSamples,
+    calories,
+    hrMax,
+    hrRest,
+    settings.k_factor,
+    settings.activity_impulse_scale,
+    fromHour,
+    currentHour,
+  )
+
+  // Delete old buckets in range and write new ones
+  await Promise.all([
+    deps.deleteImpulseBuckets(user, 'training_impulse', 'aurboda', fromHour, currentHour),
+    deps.deleteImpulseBuckets(user, 'activity_impulse', 'aurboda', fromHour, currentHour),
+  ])
+
+  const points: TimeSeriesPoint[] = []
+
+  for (const [hourIso, value] of impulses.training) {
+    const hourDate = new Date(hourIso)
+    if (hourDate >= currentHour) continue // Skip current hour
+    if (value > 0) {
+      points.push({
+        metric: 'training_impulse',
+        source: 'aurboda',
+        time: hourDate,
+        unit: 'TRIMP',
+        value: Math.round(value * 100) / 100,
+      })
+    }
+  }
+
+  for (const [hourIso, value] of impulses.activity) {
+    const hourDate = new Date(hourIso)
+    if (hourDate >= currentHour) continue // Skip current hour
+    if (value > 0) {
+      points.push({
+        metric: 'activity_impulse',
+        source: 'aurboda',
+        time: hourDate,
+        unit: 'impulse',
+        value: Math.round(value * 100) / 100,
+      })
+    }
+  }
+
+  if (points.length > 0) {
+    await deps.writeImpulseBuckets(user, points)
+  }
+
+  // Clear the watermark
+  await deps.updateTrainingLoadSettings(user, { impulse_watermark: undefined })
+
+  // Count distinct hours
+  const hours = new Set(points.map((p) => p.time.toISOString()))
+  return { hours_computed: hours.size }
+}
+
+// ============================================================================
+// Main Query Helpers
+// ============================================================================
+
+/**
+ * Compute the current incomplete hour on-the-fly and merge into impulse maps.
+ */
+const mergeLiveHourImpulses = async (
+  deps: TrainingLoadDeps,
+  user: string,
+  queryEnd: Date,
+  currentHour: Date,
+  hrMax: number,
+  hrRest: number,
+  settings: ResolvedTrainingLoadSettings,
+  trainingImpulses: Map<string, number>,
+  activityImpulses: Map<string, number>,
+): Promise<void> => {
+  const now = new Date()
+  if (queryEnd < currentHour || now <= currentHour) return
+
+  const nextHour = new Date(currentHour.getTime() + MS_PER_HOUR)
+  const [exercises, hrSamples, calories] = await Promise.all([
+    deps.getExercises(user, currentHour, nextHour),
+    deps.getHrSamples(user, currentHour, nextHour),
+    deps.getActiveCalories(user, currentHour, nextHour),
+  ])
+
+  const liveImpulses = computeHourlyImpulses(
+    exercises,
+    hrSamples,
+    calories,
+    hrMax,
+    hrRest,
+    settings.k_factor,
+    settings.activity_impulse_scale,
+    currentHour,
+    nextHour,
+  )
+
+  for (const [hourIso, value] of liveImpulses.training) {
+    trainingImpulses.set(hourIso, (trainingImpulses.get(hourIso) ?? 0) + value)
+  }
+  for (const [hourIso, value] of liveImpulses.activity) {
+    activityImpulses.set(hourIso, (activityImpulses.get(hourIso) ?? 0) + value)
+  }
+}
+
+/**
+ * Build the workout list for the response (exercise sessions with TRIMP scores).
+ */
+const buildWorkoutList = async (
+  deps: TrainingLoadDeps,
+  user: string,
+  start: Date,
+  end: Date,
+  hrMax: number,
+  hrRest: number,
+  kFactor: number,
+): Promise<WorkoutTrimp[]> => {
+  const exercises = await deps.getExercises(user, start, end)
+  const hrSamples = await deps.getHrSamples(user, start, end)
+  const training = new Map<string, number>() // throwaway, just for reusing processExercise
+
+  const workoutList: WorkoutTrimp[] = []
+  for (const ex of exercises) {
+    const workout = processExercise(ex, hrSamples, hrMax, hrRest, kFactor, training)
+    if (workout) workoutList.push(workout)
+  }
+  return workoutList
+}
+
+// ============================================================================
+// Main Query (Read Path)
 // ============================================================================
 
 /**
  * Compute training load time series for a user and date range.
  *
- * Gathers exercise sessions, HR data, and user settings, then:
- * 1. Computes TRIMP for each workout
- * 2. Aggregates daily TRIMP totals
- * 3. Runs the Banister model to produce ATL/CTL/TSB
+ * 1. Check if impulse buckets need recomputation (watermark)
+ * 2. Fetch pre-computed hourly impulse buckets
+ * 3. Compute current incomplete hour from raw data
+ * 4. Run hourly Banister EMA → ATL, CTL, TSB
+ * 5. Compute recovery zones
  */
 export const computeTrainingLoad = async (
   deps: TrainingLoadDeps,
@@ -257,113 +626,97 @@ export const computeTrainingLoad = async (
   start: Date,
   end: Date,
 ): Promise<TrainingLoadResult> => {
-  // Gather all inputs
+  // Gather settings
   const [userSettings, maxObservedHr, latestRestingHr] = await Promise.all([
     deps.getUserSettings(user),
     deps.getMaxObservedHr(user),
     deps.getLatestRestingHr(user),
   ])
 
-  const effectiveSettings = getEffectiveSettings(userSettings.training_load, userSettings.sex)
+  const settings = getEffectiveSettings(userSettings.training_load, userSettings.sex)
+  const hrMax = resolveHrMax(settings.hr_max, maxObservedHr, userSettings.birth_date)
+  const hrRest = resolveHrRest(settings.hr_rest, latestRestingHr)
 
-  const hrMax = resolveHrMax(effectiveSettings.hr_max, maxObservedHr, userSettings.birth_date)
-  const hrRest = resolveHrRest(effectiveSettings.hr_rest, latestRestingHr)
+  // Check watermark — if dirty, recompute before querying
+  const watermark = userSettings.training_load?.impulse_watermark
+  if (watermark) {
+    const fromHour = floorToHour(new Date(watermark))
+    await recomputeImpulseBuckets(deps, user, fromHour)
+  }
 
-  // Extend the lookback period for the chronic load to have meaningful EMA values
-  // We need tau_chronic * 3 days of pre-history for CTL convergence
-  const lookbackDays = Math.ceil(effectiveSettings.tau_chronic * 3)
-  const extendedStart = new Date(start)
-  extendedStart.setUTCDate(extendedStart.getUTCDate() - lookbackDays)
+  // Extended range for EMA bootstrapping (3 × tau_chronic in hours)
+  const lookbackHours = Math.ceil(settings.tau_chronic * 3 * HOURS_PER_DAY)
+  const extendedStart = new Date(start.getTime() - lookbackHours * MS_PER_HOUR)
+  const extendedStartHour = floorToHour(extendedStart)
 
-  // Fetch exercises and HR data for the extended range
-  const [exercises, hrSamples] = await Promise.all([
-    deps.getExercises(user, extendedStart, end),
-    deps.getHrSamples(user, extendedStart, end),
+  const currentHour = getCurrentHourStart()
+  const effectiveEnd = end > currentHour ? currentHour : floorToHour(end)
+
+  // Fetch pre-computed impulse buckets for the extended range
+  const [trainingBuckets, activityBuckets] = await Promise.all([
+    deps.getImpulseBuckets(user, 'training_impulse', extendedStartHour, effectiveEnd),
+    deps.getImpulseBuckets(user, 'activity_impulse', extendedStartHour, effectiveEnd),
   ])
 
-  // Compute TRIMP for each workout
-  const workouts: WorkoutTrimp[] = []
-  for (const activity of exercises) {
-    const sessionEnd = activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60 * 1000) // 1h default
-    const durationMs = sessionEnd.getTime() - activity.start_time.getTime()
-    const durationMinutes = durationMs / 60_000
-
-    if (durationMinutes <= 0) continue
-
-    // Get average HR for this session
-    const avgHr = getAverageHrForSession(activity.start_time, sessionEnd, hrSamples)
-
-    let trimp: number
-    if (avgHr && avgHr > hrRest) {
-      trimp = calculateTrimp({
-        avg_hr: avgHr,
-        duration_minutes: durationMinutes,
-        hr_max: hrMax,
-        hr_rest: hrRest,
-        k_factor: effectiveSettings.k_factor,
-      })
-    } else {
-      // Fallback: use a simpler estimate based on duration alone
-      // Assume moderate intensity (~65% of reserve HR)
-      trimp = durationMinutes * 0.5
-    }
-
-    const dateStr = activity.start_time.toISOString().split('T')[0]
-
-    workouts.push({
-      activity_id: activity.id,
-      avg_hr: avgHr ?? undefined,
-      date: dateStr,
-      duration_minutes: Math.round(durationMinutes * 10) / 10,
-      end_time: sessionEnd.toISOString(),
-      start_time: activity.start_time.toISOString(),
-      title:
-        activity.title ??
-        (activity.data?.exerciseType != null ? String(activity.data.exerciseType) : undefined),
-      trimp: Math.round(trimp * 100) / 100,
-    })
+  // Build maps from stored buckets
+  const trainingImpulses = new Map<string, number>()
+  for (const [time, value] of trainingBuckets) {
+    trainingImpulses.set(floorToHour(time).toISOString(), value)
   }
 
-  // Aggregate daily TRIMP totals
-  const dailyTrimps = new Map<string, number>()
-  for (const w of workouts) {
-    dailyTrimps.set(w.date, (dailyTrimps.get(w.date) ?? 0) + w.trimp)
+  const activityImpulses = new Map<string, number>()
+  for (const [time, value] of activityBuckets) {
+    activityImpulses.set(floorToHour(time).toISOString(), value)
   }
 
-  // Compute training load series from extended start to end
-  const extendedStartStr = extendedStart.toISOString().split('T')[0]
-  const endStr = end.toISOString().split('T')[0]
-  const startStr = start.toISOString().split('T')[0]
+  // Compute current incomplete hour on-the-fly
+  await mergeLiveHourImpulses(
+    deps,
+    user,
+    end,
+    currentHour,
+    hrMax,
+    hrRest,
+    settings,
+    trainingImpulses,
+    activityImpulses,
+  )
 
-  const allPoints = computeTrainingLoadSeries({
-    daily_trimps: dailyTrimps,
-    end_date: endStr,
-    start_date: extendedStartStr,
-    tau_acute: effectiveSettings.tau_acute,
-    tau_chronic: effectiveSettings.tau_chronic,
+  // Run hourly Banister EMA
+  const allPoints = computeHourlyLoadSeries({
+    activityImpulses,
+    end: effectiveEnd,
+    start: extendedStartHour,
+    tauAcuteDays: settings.tau_acute,
+    tauChronicDays: settings.tau_chronic,
+    trainingImpulses,
   })
 
-  // Filter to only return points within the requested range
-  const points = allPoints.filter((p) => p.date >= startStr && p.date <= endStr)
+  // Filter to requested range
+  const startIso = floorToHour(start).toISOString()
+  const endIso = effectiveEnd.toISOString()
+  const points = allPoints.filter((p) => p.time >= startIso && p.time <= endIso)
 
-  // Filter workouts to requested range too
-  const rangeWorkouts = workouts.filter((w) => w.date >= startStr && w.date <= endStr)
+  // Fetch workouts in the requested range for the response
+  const workoutList = await buildWorkoutList(deps, user, start, end, hrMax, hrRest, settings.k_factor)
 
-  // Determine if we're in bootstrapping period
-  const daysWithData = new Set(workouts.map((w) => w.date)).size
-  const requestedDays = points.length
-  const bootstrapping = requestedDays < BOOTSTRAPPING_DAYS || daysWithData < 10
+  // Determine bootstrapping status
+  const totalHours = allPoints.length
+  const bootstrapping = totalHours < BOOTSTRAPPING_DAYS * HOURS_PER_DAY
+
+  // Compute recovery zones from the full extended series
+  const zones = computeRecoveryZones(allPoints)
 
   return {
     bootstrapping,
-    data_days: daysWithData,
     points,
     settings: {
-      ...effectiveSettings,
+      ...settings,
       hr_max: hrMax,
       hr_rest: hrRest,
     },
-    workouts: rangeWorkouts,
+    workouts: workoutList,
+    zones,
   }
 }
 
@@ -371,23 +724,41 @@ export const computeTrainingLoad = async (
 // Default Dependencies (using actual DB functions)
 // ============================================================================
 
-import { getActivities, getTimeSeries, getTimeSeriesBucketed, getTimeSeriesStats } from '../db'
+import {
+  deleteTimeSeriesBySource,
+  getActivities,
+  getTimeSeries,
+  getTimeSeriesBucketed,
+  getTimeSeriesStats,
+  insertTimeSeries,
+} from '../db'
+import { upsertUserSettings } from '../db/settings'
 import { getSettings } from './settings'
 
 /**
  * Create production dependencies for the training load computation.
  */
 export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
+  deleteImpulseBuckets: async (user, metric, source, start, end) => {
+    return deleteTimeSeriesBySource(user, metric, source, start, end)
+  },
+
+  getActiveCalories: async (user, start, end) => {
+    const samples = await getTimeSeries(user, 'calories_active', start, end)
+    return samples
+  },
+
   getExercises: async (user, start, end) => {
     return getActivities(user, 'exercise', start, end)
   },
 
   getHrSamples: async (user, start, end) => {
-    // Use 5-minute bucketed averages instead of raw samples (which can be millions
-    // of points over months). 5-minute resolution is sufficient for per-session
-    // average HR calculation used in TRIMP.
     const buckets = await getTimeSeriesBucketed(user, ['heart_rate'], start, end, 5)
     return buckets.map((b) => [b.bucket_start, b.avg] as [Date, number])
+  },
+
+  getImpulseBuckets: async (user, metric, start, end) => {
+    return getTimeSeries(user, metric, start, end)
   },
 
   getLatestRestingHr: async (user) => {
@@ -395,16 +766,12 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
     const samples = await getTimeSeries(user, 'resting_heart_rate', thirtyDaysAgo, now)
     if (samples.length === 0) return undefined
-    // Return the most recent value
     return samples[samples.length - 1][1]
   },
 
   getMaxObservedHr: async (user) => {
     const now = new Date()
     const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
-    // Use SQL MAX() aggregation instead of loading all raw samples — raw HR data
-    // can be millions of points over a year, which would overflow the stack with
-    // Math.max(...samples).
     const stats = await getTimeSeriesStats(user, ['heart_rate'], oneYearAgo, now)
     const hrStats = stats.find((s) => s.metric === 'heart_rate')
     if (!hrStats || hrStats.count === 0) return undefined
@@ -412,11 +779,18 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
   },
 
   getUserSettings: async (user) => {
-    const settings = await getSettings(user)
-    return {
-      birth_date: settings.birth_date,
-      sex: settings.sex,
-      training_load: settings.training_load,
-    }
+    const s = await getSettings(user)
+    return { birth_date: s.birth_date, sex: s.sex, training_load: s.training_load }
+  },
+
+  updateTrainingLoadSettings: async (user, update) => {
+    const current = await getSettings(user)
+    await upsertUserSettings(user, {
+      training_load: { ...current.training_load, ...update },
+    })
+  },
+
+  writeImpulseBuckets: async (user, points) => {
+    await insertTimeSeries(user, points)
   },
 })
