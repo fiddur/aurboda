@@ -828,7 +828,7 @@ export const Timeline = () => {
   const [showMetricsHRV, setShowMetricsHRV] = useState(true)
   const [showMetricsSteps, setShowMetricsSteps] = useState(true)
   const [showMetricsCalories, setShowMetricsCalories] = useState(true)
-  const [showTrainingLoad, setShowTrainingLoad] = useState(false)
+  const [showTrainingLoad, setShowTrainingLoad] = useState(true)
 
   // Training load data (fetched when toggle is on, uses daily granularity)
   const trainingLoadQuery = useQuery({

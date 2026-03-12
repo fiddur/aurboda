@@ -677,13 +677,6 @@ export const computeTrainingLoad = async (
   const hrMax = resolveHrMax(settings.hr_max, maxObservedHr, userSettings.birth_date)
   const hrRest = resolveHrRest(settings.hr_rest, latestRestingHr)
 
-  // Check watermark — if dirty, recompute before querying
-  const watermark = userSettings.training_load?.impulse_watermark
-  if (watermark) {
-    const fromHour = floorToHour(new Date(watermark))
-    await recomputeImpulseBuckets(deps, user, fromHour)
-  }
-
   // Extended range for EMA bootstrapping (3 × tau_chronic in hours)
   const lookbackHours = Math.ceil(settings.tau_chronic * 3 * HOURS_PER_DAY)
   const extendedStart = new Date(start.getTime() - lookbackHours * MS_PER_HOUR)
@@ -692,11 +685,28 @@ export const computeTrainingLoad = async (
   const currentHour = getCurrentHourStart()
   const effectiveEnd = end > currentHour ? currentHour : floorToHour(end)
 
+  // Check watermark — if dirty, recompute before querying
+  const watermark = userSettings.training_load?.impulse_watermark
+  if (watermark) {
+    const fromHour = floorToHour(new Date(watermark))
+    await recomputeImpulseBuckets(deps, user, fromHour)
+  }
+
   // Fetch pre-computed impulse buckets for the extended range
-  const [trainingBuckets, activityBuckets] = await Promise.all([
+  let [trainingBuckets, activityBuckets] = await Promise.all([
     deps.getImpulseBuckets(user, 'training_impulse', extendedStartHour, effectiveEnd),
     deps.getImpulseBuckets(user, 'activity_impulse', extendedStartHour, effectiveEnd),
   ])
+
+  // Auto-bootstrap: if no watermark was set and no impulse buckets exist,
+  // trigger a full recompute from the extended start range
+  if (!watermark && trainingBuckets.length === 0 && activityBuckets.length === 0) {
+    await recomputeImpulseBuckets(deps, user, extendedStartHour)
+    ;[trainingBuckets, activityBuckets] = await Promise.all([
+      deps.getImpulseBuckets(user, 'training_impulse', extendedStartHour, effectiveEnd),
+      deps.getImpulseBuckets(user, 'activity_impulse', extendedStartHour, effectiveEnd),
+    ])
+  }
 
   // Build maps from stored buckets
   const trainingImpulses = new Map<string, number>()
