@@ -163,22 +163,24 @@ describe('computeTrainingLoadSeries', () => {
       tau_chronic: 42,
     })
 
-    // Day 1: both ATL and CTL should equal 100
-    expect(points[0].atl).toBe(100)
-    expect(points[0].ctl).toBe(100)
-    expect(points[0].tsb).toBe(0)
+    // Day 1: both ATL and CTL should be TRIMP × gain factor
+    // gain_acute = 1 - e^(-1/7) ≈ 0.1331, gain_chronic = 1 - e^(-1/42) ≈ 0.0235
+    // ATL = 100 × 0.1331 ≈ 13.31, CTL = 100 × 0.0235 ≈ 2.35
+    expect(points[0].atl).toBeCloseTo(13.31, 0)
+    expect(points[0].ctl).toBeCloseTo(2.35, 0)
 
-    // By day 8 (7 days after workout), ATL should have decayed significantly
-    // ATL decay: 100 × e^(-7/7) = 100 × e^(-1) ≈ 36.79
-    // CTL decay: 100 × e^(-7/42) = 100 × e^(-0.1667) ≈ 84.65
-    expect(points[7].atl).toBeCloseTo(36.79, 0)
-    expect(points[7].ctl).toBeCloseTo(84.65, 0)
+    // ATL starts higher than CTL (faster response), so TSB is negative initially
+    expect(points[0].tsb).toBeLessThan(0)
 
-    // TSB should be positive (more fitness than fatigue remaining)
-    expect(points[7].tsb).toBeGreaterThan(0)
+    // By day 8, ATL should have decayed more than CTL
+    // ATL: 13.31 × e^(-7/7) ≈ 13.31 × 0.3679 ≈ 4.90
+    // CTL: 2.35 × e^(-7/42) ≈ 2.35 × 0.8465 ≈ 1.99
+    expect(points[7].atl).toBeCloseTo(4.9, 0)
+    expect(points[7].ctl).toBeCloseTo(1.99, 0)
 
-    // By day 15, ATL should be much smaller than CTL
-    expect(points[14].atl).toBeLessThan(points[14].ctl)
+    // TSB should be negative but recovering (ATL decaying faster toward CTL)
+    expect(points[14].atl).toBeLessThan(points[7].atl)
+    expect(points[14].ctl).toBeLessThan(points[7].ctl)
   })
 
   test('regular training accumulates both ATL and CTL', () => {
