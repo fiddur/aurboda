@@ -10,7 +10,7 @@ import {
   updateCustomMetricBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { computeAndStoreCalories } from '../services/calorie-computation'
+import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation'
 import {
   addCustomMetric,
   addMetric,
@@ -184,9 +184,13 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: recalculate_calories
   server.tool(
     'recalculate_calories',
-    'Recalculate calories burned from HR data for a time range. Requires sex and birth_date in settings. Uses weight from Health Connect and VO2 max (measured or age/sex fallback).',
-    { ...recalculateCaloriesBodySchema.shape },
+    'Recalculate calories burned from HR data for a time range. Requires sex and birth_date in settings. Uses weight from Health Connect and VO2 max (measured or age/sex fallback). Omit start/end to recompute all historical data.',
+    { ...recalculateCaloriesBodySchema.shape, end: z.string().optional(), start: z.string().optional() },
     async ({ start, end }) => {
+      if (!start || !end) {
+        const result = await computeAndStoreCaloriesAll(user)
+        return jsonResponse({ ...result, success: true })
+      }
       const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
       return jsonResponse({ ...result, success: true })
     },

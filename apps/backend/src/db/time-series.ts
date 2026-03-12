@@ -2,11 +2,24 @@
  * Time series data CRUD, bucketed aggregation, and statistics.
  */
 import format from 'pg-format'
-import { cumulativeMetrics, cumulativeSources, type MetricType, metricUnits } from '../schema'
+import {
+  aurbodaOnlyMetrics,
+  cumulativeMetrics,
+  cumulativeSources,
+  type MetricType,
+  metricUnits,
+} from '../schema'
 import { query } from './connection'
 import { querySplitByCumulative } from './cumulative-query'
 import { parseMetricType } from './row-mappers'
 import type { BucketedMetricData, DailyMetricAggregate, MetricStats, TimeSeriesPoint } from './types'
+
+/** Get the source filter for a single metric: aurboda-only, cumulative sources, or all sources (null). */
+const getSourceFilter = (metric: string): string[] | null => {
+  if (aurbodaOnlyMetrics.includes(metric as MetricType)) return ['aurboda']
+  if (cumulativeMetrics.includes(metric as MetricType)) return cumulativeSources
+  return null
+}
 
 export const insertTimeSeries = async (user: string, points: TimeSeriesPoint[]) => {
   if (points.length === 0) return
@@ -44,13 +57,11 @@ export const getTimeSeries = async (
   start: Date,
   end: Date,
 ): Promise<[Date, number][]> => {
-  // For cumulative metrics (steps, distance, etc.), only use aggregate source
-  // to avoid mixing raw readings with deduplicated daily totals
-  const isCumulative = cumulativeMetrics.includes(metric as MetricType)
+  const sources = getSourceFilter(metric)
 
   const result = await query(
     user,
-    isCumulative ?
+    sources ?
       `SELECT time, value FROM time_series
        WHERE metric = $1 AND time >= $2 AND time <= $3
          AND source = ANY($4)
@@ -58,7 +69,7 @@ export const getTimeSeries = async (
     : `SELECT time, value FROM time_series
        WHERE metric = $1 AND time >= $2 AND time <= $3
        ORDER BY time`,
-    isCumulative ? [metric, start, end, cumulativeSources] : [metric, start, end],
+    sources ? [metric, start, end, sources] : [metric, start, end],
   )
 
   return result.rows.map((row) => [new Date(row.time), row.value])
@@ -71,11 +82,11 @@ export const getTimeSeriesWithSource = async (
   start: Date,
   end: Date,
 ): Promise<{ time: Date; value: number; source: string }[]> => {
-  const isCumulative = cumulativeMetrics.includes(metric as MetricType)
+  const sources = getSourceFilter(metric)
 
   const result = await query(
     user,
-    isCumulative ?
+    sources ?
       `SELECT time, value, source FROM time_series
        WHERE metric = $1 AND time >= $2 AND time <= $3
          AND source = ANY($4)
@@ -83,7 +94,7 @@ export const getTimeSeriesWithSource = async (
     : `SELECT time, value, source FROM time_series
        WHERE metric = $1 AND time >= $2 AND time <= $3
        ORDER BY time`,
-    isCumulative ? [metric, start, end, cumulativeSources] : [metric, start, end],
+    sources ? [metric, start, end, sources] : [metric, start, end],
   )
 
   return result.rows.map((row) => ({ source: row.source, time: new Date(row.time), value: row.value }))
@@ -249,6 +260,24 @@ export const getDailyAggregates = async (
  * @param end - End of time range
  * @param bucketMinutes - Bucket size in minutes (e.g., 5, 15, 30, 60, 1440 for 1 day)
  */
+// ============================================================================
+// Time Range Discovery
+// ============================================================================
+
+/** Get the min and max time for a metric (across all sources). Returns null if no data exists. */
+export const getMetricTimeRange = async (
+  user: string,
+  metric: string,
+): Promise<{ min: Date; max: Date } | null> => {
+  const result = await query(
+    user,
+    `SELECT MIN(time) as min_time, MAX(time) as max_time FROM time_series WHERE metric = $1`,
+    [metric],
+  )
+  if (result.rows.length === 0 || result.rows[0].min_time === null) return null
+  return { max: new Date(result.rows[0].max_time), min: new Date(result.rows[0].min_time) }
+}
+
 // ============================================================================
 // Time Series Deletion (manual source only)
 // ============================================================================

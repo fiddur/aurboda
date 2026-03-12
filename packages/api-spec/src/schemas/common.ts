@@ -290,6 +290,16 @@ export const cumulativeMetrics: MetricType[] = [
 export const cumulativeSources: DataSource[] = ['health_connect_aggregate', 'aurboda']
 
 /**
+ * Metrics where 'aurboda' per-minute data should be used exclusively
+ * instead of mixing with 'health_connect_aggregate' daily totals.
+ *
+ * When aurboda computes per-minute values (e.g., calories from HR data),
+ * the daily aggregate from Health Connect is redundant and would produce
+ * nonsense if AVG'd with per-minute values in the same bucket.
+ */
+export const aurbodaOnlyMetrics: MetricType[] = ['calories_active']
+
+/**
  * Place visit source schema.
  */
 export const placeSourceSchema = z.enum(['named', 'detected', 'owntracks', 'unknown']).meta({

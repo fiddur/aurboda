@@ -10,6 +10,7 @@ import type { BiologicalSex } from '@aurboda/api-spec'
 import { enqueueOutboundSync, getUserSettings } from '../db'
 import {
   deleteTimeSeriesBySource,
+  getMetricTimeRange,
   getTimeSeries,
   getTimeSeriesWithSource,
   insertTimeSeries,
@@ -48,6 +49,45 @@ const getLatestMetricValue = async (
   return data[data.length - 1][1]
 }
 
+/** Queue outbound sync entries for calorie data points (best-effort). */
+const enqueueCalorieSync = async (
+  user: string,
+  points: { time: Date; end_time: Date; kcal: number }[],
+): Promise<void> => {
+  try {
+    if (!isHealthConnectSyncableMetric('calories_active')) return
+    const hcRecordType = metricToHealthConnectType.calories_active
+    if (!hcRecordType) return
+    for (const p of points) {
+      await enqueueOutboundSync(user, {
+        entity_id: `calories_active|${p.time.toISOString()}`,
+        entity_type: 'time_series',
+        hc_record_type: hcRecordType,
+        operation: 'insert',
+        payload: {
+          end_time: p.end_time.toISOString(),
+          metric: 'calories_active',
+          time: p.time.toISOString(),
+          unit: 'kcal',
+          value: p.kcal,
+        },
+      })
+    }
+  } catch (err) {
+    console.error('Failed to enqueue calorie outbound sync:', err)
+  }
+}
+
+const skippedResult = (
+  reason: string,
+  vo2MaxSource: 'measured' | 'fallback' = 'fallback',
+): CalorieComputationResult => ({
+  points_computed: 0,
+  points_stored: 0,
+  skipped_reason: reason,
+  vo2_max_source: vo2MaxSource,
+})
+
 export interface CalorieComputationResult {
   points_computed: number
   points_stored: number
@@ -68,76 +108,54 @@ export const computeAndStoreCalories = async (
   end: Date,
   options?: { force?: boolean },
 ): Promise<CalorieComputationResult> => {
-  // 1. Get user settings
+  // 1. Get user settings and validate required fields
   const settings = await getUserSettings(user)
-  if (!settings) {
-    return { points_computed: 0, points_stored: 0, skipped_reason: 'no settings', vo2_max_source: 'fallback' }
-  }
+  if (!settings) return skippedResult('no settings')
 
   const sex = settings.sex as BiologicalSex | undefined
-  if (!sex) {
-    return { points_computed: 0, points_stored: 0, skipped_reason: 'sex not set', vo2_max_source: 'fallback' }
-  }
-
-  if (!settings.birth_date) {
-    return {
-      points_computed: 0,
-      points_stored: 0,
-      skipped_reason: 'birth_date not set',
-      vo2_max_source: 'fallback',
-    }
-  }
+  if (!sex) return skippedResult('sex not set')
+  if (!settings.birth_date) return skippedResult('birth_date not set')
 
   const age = calculateAge(settings.birth_date)
 
   // 2. Get latest weight
   const weight = await getLatestMetricValue(user, 'weight', end)
-  if (weight === null) {
-    return {
-      points_computed: 0,
-      points_stored: 0,
-      skipped_reason: 'no weight data',
-      vo2_max_source: 'fallback',
-    }
-  }
+  if (weight === null) return skippedResult('no weight data')
 
   // 3. Get VO2 max (measured or fallback) — use 2-year lookback since VO2 max is measured infrequently
   const measuredVo2Max = await getLatestMetricValue(user, 'vo2_max', end, 730)
   const vo2Max = measuredVo2Max ?? getVo2MaxFallback(sex, age)
   const vo2MaxSource = measuredVo2Max !== null ? 'measured' : 'fallback'
 
-  // 4. Get HR data for the time range
-  const hrData = await getTimeSeries(user, 'heart_rate', start, end)
-  if (hrData.length === 0) {
-    return {
-      points_computed: 0,
-      points_stored: 0,
-      skipped_reason: 'no HR data',
-      vo2_max_source: vo2MaxSource,
-    }
-  }
+  // 4. Get resting HR (for baseline subtraction)
+  const restingHr = await getLatestMetricValue(user, 'resting_heart_rate', end)
 
-  // 5. Delete existing aurboda calories if force-recomputing
+  // 5. Get HR data for the time range
+  const hrData = await getTimeSeries(user, 'heart_rate', start, end)
+  if (hrData.length === 0) return skippedResult('no HR data', vo2MaxSource)
+
+  // 6. Delete existing aurboda calories if force-recomputing
   if (options?.force) {
     await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda', start, end)
   }
 
-  // 6. Check if aurboda calories already exist for this range to avoid recomputing
+  // 7. Check if aurboda calories already exist for this range to avoid recomputing
   const existingCalories = await getTimeSeriesWithSource(user, 'calories_active', start, end)
   const existingAurbodaMinutes = new Set(
     existingCalories.filter((p) => p.source === 'aurboda').map((p) => Math.floor(p.time.getTime() / 60_000)),
   )
 
-  // 6. Compute per-minute calories
+  // 8. Compute per-minute calories (active only, with baseline subtraction)
   const caloriePoints = computeCaloriesPerMinute({
     age_years: age,
     hr_samples: hrData,
+    resting_hr: restingHr ?? undefined,
     sex,
     vo2_max: vo2Max,
     weight_kg: weight,
   })
 
-  // 7. Filter out already-computed minutes
+  // 9. Filter out already-computed minutes
   const newPoints = caloriePoints.filter(
     (p) => !existingAurbodaMinutes.has(Math.floor(p.time.getTime() / 60_000)),
   )
@@ -151,7 +169,7 @@ export const computeAndStoreCalories = async (
     }
   }
 
-  // 8. Store as time_series
+  // 10. Store as time_series
   const timeSeriesPoints: TimeSeriesPoint[] = newPoints.map((p) => ({
     metric: 'calories_active',
     source: 'aurboda' as const,
@@ -161,35 +179,62 @@ export const computeAndStoreCalories = async (
   }))
   await insertTimeSeries(user, timeSeriesPoints)
 
-  // 9. Queue outbound sync for each point (best-effort)
-  try {
-    if (isHealthConnectSyncableMetric('calories_active')) {
-      const hcRecordType = metricToHealthConnectType.calories_active
-      if (hcRecordType) {
-        for (const p of newPoints) {
-          await enqueueOutboundSync(user, {
-            entity_id: `calories_active|${p.time.toISOString()}`,
-            entity_type: 'time_series',
-            hc_record_type: hcRecordType,
-            operation: 'insert',
-            payload: {
-              end_time: p.end_time.toISOString(),
-              metric: 'calories_active',
-              time: p.time.toISOString(),
-              unit: 'kcal',
-              value: p.kcal,
-            },
-          })
-        }
-      }
-    }
-  } catch (err) {
-    console.error('Failed to enqueue calorie outbound sync:', err)
-  }
+  // 11. Queue outbound sync (best-effort)
+  await enqueueCalorieSync(user, newPoints)
 
   return {
     points_computed: caloriePoints.length,
     points_stored: newPoints.length,
+    vo2_max_source: vo2MaxSource,
+  }
+}
+
+/**
+ * Recompute all calories_active data from scratch using the full HR data range.
+ * Processes in daily chunks to avoid memory issues. Deletes existing aurboda
+ * calorie data for each chunk before recomputing.
+ */
+export const computeAndStoreCaloriesAll = async (
+  user: string,
+): Promise<CalorieComputationResult & { days_processed: number }> => {
+  const range = await getMetricTimeRange(user, 'heart_rate')
+  if (!range) {
+    return {
+      days_processed: 0,
+      points_computed: 0,
+      points_stored: 0,
+      skipped_reason: 'no HR data found',
+      vo2_max_source: 'fallback',
+    }
+  }
+
+  let totalComputed = 0
+  let totalStored = 0
+  let daysProcessed = 0
+  let vo2MaxSource: 'measured' | 'fallback' = 'fallback'
+
+  // Process in daily chunks
+  const dayMs = 24 * 60 * 60 * 1000
+  let chunkStart = new Date(range.min)
+
+  while (chunkStart < range.max) {
+    const chunkEnd = new Date(Math.min(chunkStart.getTime() + dayMs, range.max.getTime() + 60_000))
+    const result = await computeAndStoreCalories(user, chunkStart, chunkEnd, { force: true })
+
+    totalComputed += result.points_computed
+    totalStored += result.points_stored
+    if (result.vo2_max_source === 'measured') vo2MaxSource = 'measured'
+    daysProcessed++
+
+    chunkStart = chunkEnd
+  }
+
+  console.log(`🔥 Full recompute: ${totalStored} calorie points across ${daysProcessed} days for ${user}`)
+
+  return {
+    days_processed: daysProcessed,
+    points_computed: totalComputed,
+    points_stored: totalStored,
     vo2_max_source: vo2MaxSource,
   }
 }
