@@ -22,6 +22,11 @@ export const TSB_FATIGUED_COLOR = '#ef4444' // red (TSB < 0)
 export const TRAINING_IMPULSE_COLOR = '#8b5cf6' // purple (exercise TRIMP)
 export const ACTIVITY_IMPULSE_COLOR = '#60a5fa' // light blue (activity calories)
 
+// ATL bar gradient: low → mid → high fatigue
+const ATL_BAR_LOW_COLOR = '#93c5fd' // light blue (low fatigue)
+const ATL_BAR_MID_COLOR = '#f97316' // orange (moderate fatigue)
+const ATL_BAR_HIGH_COLOR = '#dc2626' // red (high fatigue)
+
 // Zone band colors (semi-transparent)
 const ZONE_UNDERTRAINED_COLOR = 'rgba(59, 130, 246, 0.06)' // light blue tint
 const ZONE_BALANCED_COLOR = 'rgba(34, 197, 94, 0.06)' // light green tint
@@ -62,12 +67,10 @@ export interface TrainingLoadTrackConfig {
 // ── Y-scale computation ───────────────────────────────────────────────────────
 
 interface TrainingLoadYScales {
-  /** Scale for ATL/CTL (always >= 0). */
+  /** Scale for ATL/CTL (always >= 0). Used for fatigue bars too. */
   yLoad: d3.ScaleLinear<number, number>
   /** Scale for TSB (can be negative). */
   yTsb: d3.ScaleLinear<number, number>
-  /** Scale for impulse bars. */
-  yImpulse: d3.ScaleLinear<number, number>
 }
 
 const computeYScales = (
@@ -99,19 +102,7 @@ const computeYScales = (
     .domain([-maxTsbAbs * 1.2, maxTsbAbs * 1.2])
     .range([trackBottom, trackY])
 
-  // Impulse bar scale: max of stacked (training + activity) impulse
-  let maxImpulse = 10
-  for (const p of points) {
-    const total = p.training_impulse + p.activity_impulse
-    if (total > maxImpulse) maxImpulse = total
-  }
-
-  const yImpulse = d3
-    .scaleLinear()
-    .domain([0, maxImpulse * 1.2])
-    .range([trackBottom, trackY])
-
-  return { yImpulse, yLoad, yTsb }
+  return { yLoad, yTsb }
 }
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
@@ -220,8 +211,11 @@ const drawZoneBands = (
     .text('Strained')
 }
 
-/** Draw stacked impulse bars (training + activity) per hour. */
-const drawImpulseBars = (
+/**
+ * Draw ATL (fatigue) as filled bars per hour — Polar Recovery Status style.
+ * Bar height = ATL value. Color shifts from blue (low) to orange/red (high).
+ */
+const drawFatigueBars = (
   group: SvgGroup,
   points: TrainingLoadPoint[],
   xScale: d3.ScaleTime<number, number>,
@@ -233,46 +227,36 @@ const drawImpulseBars = (
   const nextHour = new Date(sampleTime.getTime() + MS_PER_HOUR)
   const barWidth = Math.max(1, Math.abs(xScale(nextHour) - xScale(sampleTime)) - 1)
 
+  // Find max ATL for color scaling
+  let maxAtl = 1
   for (const p of points) {
-    const total = p.training_impulse + p.activity_impulse
-    if (total <= 0) continue
+    if (p.atl > maxAtl) maxAtl = p.atl
+  }
+
+  // Color interpolation: low fatigue (blue) → high fatigue (orange-red)
+  const colorScale = d3
+    .scaleLinear<string>()
+    .domain([0, maxAtl * 0.5, maxAtl])
+    .range([ATL_BAR_LOW_COLOR, ATL_BAR_MID_COLOR, ATL_BAR_HIGH_COLOR])
+    .clamp(true)
+
+  for (const p of points) {
+    if (p.atl <= 0) continue
 
     const x = xScale(parseTime(p.time))
+    const barTop = yScale(p.atl)
+    const barHeight = trackBottom - barTop
+    if (barHeight <= 0) continue
 
-    // Activity impulse bar (bottom of stack)
-    if (p.activity_impulse > 0) {
-      const barTop = yScale(p.activity_impulse)
-      const barHeight = trackBottom - barTop
-      if (barHeight > 0) {
-        group
-          .append('rect')
-          .attr('x', x)
-          .attr('y', barTop)
-          .attr('width', barWidth)
-          .attr('height', barHeight)
-          .attr('fill', ACTIVITY_IMPULSE_COLOR)
-          .attr('opacity', 0.5)
-          .attr('pointer-events', 'none')
-      }
-    }
-
-    // Training impulse bar (top of stack, offset upward from activity)
-    if (p.training_impulse > 0) {
-      const stackBase = yScale(p.activity_impulse)
-      const barTop = yScale(total)
-      const barHeight = stackBase - barTop
-      if (barHeight > 0) {
-        group
-          .append('rect')
-          .attr('x', x)
-          .attr('y', barTop)
-          .attr('width', barWidth)
-          .attr('height', barHeight)
-          .attr('fill', TRAINING_IMPULSE_COLOR)
-          .attr('opacity', 0.5)
-          .attr('pointer-events', 'none')
-      }
-    }
+    group
+      .append('rect')
+      .attr('x', x)
+      .attr('y', barTop)
+      .attr('width', barWidth)
+      .attr('height', barHeight)
+      .attr('fill', colorScale(p.atl))
+      .attr('opacity', 0.4)
+      .attr('pointer-events', 'none')
   }
 }
 
@@ -530,13 +514,12 @@ const downsamplePoints = (
       )
 
     if (gapPx >= minPixelGap || atEnd) {
-      // Pick the point in [groupStart, i) with highest total impulse
+      // Pick the point in [groupStart, i) with highest ATL (shown as bars)
       let best = points[groupStart]!
-      let bestImpulse = best.training_impulse + best.activity_impulse
+      let bestAtl = best.atl
       for (let j = groupStart + 1; j < i; j++) {
-        const total = points[j]!.training_impulse + points[j]!.activity_impulse
-        if (total > bestImpulse) {
-          bestImpulse = total
+        if (points[j]!.atl > bestAtl) {
+          bestAtl = points[j]!.atl
           best = points[j]!
         }
       }
@@ -597,8 +580,8 @@ export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => 
     drawZoneBands(chartGroup, zones, yScales.yLoad, xStart, xEnd, trackY, trackBottom)
   }
 
-  // Draw impulse bars (behind curves)
-  drawImpulseBars(chartGroup, displayPoints, xScale, yScales.yImpulse, trackBottom)
+  // Draw ATL fatigue bars (behind curves)
+  drawFatigueBars(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom)
 
   // Draw CTL/ATL curves
   drawLoadCurves(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom, bootstrapping)
