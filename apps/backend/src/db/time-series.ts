@@ -100,6 +100,24 @@ export const getTimeSeriesWithSource = async (
   return result.rows.map((row) => ({ source: row.source, time: new Date(row.time), value: row.value }))
 }
 
+/** Get time series data for a specific metric and source, bypassing the cumulative source filter. */
+export const getTimeSeriesBySource = async (
+  user: string,
+  metric: string,
+  source: string,
+  start: Date,
+  end: Date,
+): Promise<[Date, number][]> => {
+  const result = await query(
+    user,
+    `SELECT time, value FROM time_series
+     WHERE metric = $1 AND source = $2 AND time >= $3 AND time <= $4
+     ORDER BY time`,
+    [metric, source, start, end],
+  )
+  return result.rows.map((row) => [new Date(row.time), row.value])
+}
+
 /**
  * Get the sum of a metric across ALL sources for a date range.
  * This is a last-resort fallback for cumulative metrics when no aggregate data exists.

@@ -12,12 +12,18 @@ import {
   deleteTimeSeriesBySource,
   getMetricTimeRange,
   getTimeSeries,
+  getTimeSeriesBySource,
   getTimeSeriesWithSource,
   insertTimeSeries,
 } from '../db/time-series'
 import type { TimeSeriesPoint } from '../db/types'
 import { isHealthConnectSyncableMetric, metricToHealthConnectType } from '../schema'
-import { computeCaloriesPerMinute, getVo2MaxFallback } from './calories'
+import {
+  type CalorieDataPoint,
+  computeCaloriesPerMinute,
+  computeGapFillPoints,
+  getVo2MaxFallback,
+} from './calories'
 
 /**
  * Calculate age from birth date string.
@@ -189,6 +195,117 @@ export const computeAndStoreCalories = async (
   }
 }
 
+export interface GapFillDayResult {
+  gap_minutes: number
+  residual_kcal: number
+  points_stored: number
+}
+
+/**
+ * Gap-fill calories for a single calendar day (UTC).
+ *
+ * After aurboda per-minute calories are computed from HR data, some minutes
+ * may have no HR coverage (e.g., Oura wrist off, no HR monitor worn).
+ * Oura/Health Connect may still capture movement-based calories for those periods.
+ *
+ * This function:
+ * 1. Reads the HC aggregate for the day
+ * 2. Reads existing aurboda calorie points for the day
+ * 3. Computes the residual (HC total - aurboda sum)
+ * 4. Distributes it evenly across minutes without HR coverage
+ * 5. Stores gap-fill points with source 'aurboda'
+ */
+export const gapFillCaloriesForDay = async (user: string, dayStartUtc: Date): Promise<GapFillDayResult> => {
+  const dayEndUtc = new Date(dayStartUtc.getTime() + 24 * 60 * 60 * 1000 - 1)
+
+  // 1. Get HC aggregate for this day (stored at midnight UTC with source 'health_connect_aggregate')
+  const hcData = await getTimeSeriesBySource(
+    user,
+    'calories_active',
+    'health_connect_aggregate',
+    dayStartUtc,
+    dayEndUtc,
+  )
+  if (hcData.length === 0) return { gap_minutes: 0, points_stored: 0, residual_kcal: 0 }
+
+  const hcAggregateKcal = hcData.reduce((sum, [, value]) => sum + value, 0)
+
+  // 2. Get existing aurboda calorie points for this day
+  const existingData = await getTimeSeriesBySource(user, 'calories_active', 'aurboda', dayStartUtc, dayEndUtc)
+  const aurbodaPoints: CalorieDataPoint[] = existingData.map(([time, value]) => ({
+    end_time: new Date(time.getTime() + 60_000),
+    kcal: value,
+    time,
+  }))
+
+  // 3. Compute gap-fill points
+  const result = computeGapFillPoints({
+    aurboda_points: aurbodaPoints,
+    day_start: dayStartUtc,
+    hc_aggregate_kcal: hcAggregateKcal,
+  })
+
+  if (result.points.length === 0) return { gap_minutes: 0, points_stored: 0, residual_kcal: 0 }
+
+  // 4. Store gap-fill points as aurboda source
+  const timeSeriesPoints: TimeSeriesPoint[] = result.points.map((p) => ({
+    metric: 'calories_active',
+    source: 'aurboda' as const,
+    time: p.time,
+    unit: 'kcal',
+    value: p.kcal,
+  }))
+  await insertTimeSeries(user, timeSeriesPoints)
+
+  return {
+    gap_minutes: result.gap_minutes,
+    points_stored: result.points.length,
+    residual_kcal: result.residual_kcal,
+  }
+}
+
+/**
+ * Gap-fill calories for all calendar days within a time range.
+ * Iterates day by day (UTC) and runs gap-fill for each.
+ */
+export const gapFillCaloriesForRange = async (
+  user: string,
+  start: Date,
+  end: Date,
+): Promise<{
+  days_processed: number
+  total_gap_minutes: number
+  total_points_stored: number
+  total_residual_kcal: number
+}> => {
+  // Align to UTC day boundaries
+  const dayMs = 24 * 60 * 60 * 1000
+  const firstDay = new Date(Math.floor(start.getTime() / dayMs) * dayMs)
+  const lastDay = new Date(Math.floor(end.getTime() / dayMs) * dayMs)
+
+  let daysProcessed = 0
+  let totalGapMinutes = 0
+  let totalPointsStored = 0
+  let totalResidualKcal = 0
+
+  for (let dayStart = firstDay.getTime(); dayStart <= lastDay.getTime(); dayStart += dayMs) {
+    const result = await gapFillCaloriesForDay(user, new Date(dayStart))
+    if (result.points_stored > 0) {
+      daysProcessed++
+      totalGapMinutes += result.gap_minutes
+      totalPointsStored += result.points_stored
+      totalResidualKcal += result.residual_kcal
+    }
+  }
+
+  return {
+    days_processed: daysProcessed,
+    total_gap_minutes: totalGapMinutes,
+    total_points_stored: totalPointsStored,
+    total_residual_kcal: totalResidualKcal,
+  }
+}
+
 /**
  * Recompute all calories_active data from scratch using the full HR data range.
  * Processes in daily chunks to avoid memory issues. Deletes existing aurboda
@@ -229,7 +346,16 @@ export const computeAndStoreCaloriesAll = async (
     chunkStart = chunkEnd
   }
 
-  console.log(`🔥 Full recompute: ${totalStored} calorie points across ${daysProcessed} days for ${user}`)
+  // Gap-fill from HC aggregate data for minutes without HR coverage
+  const gapFill = await gapFillCaloriesForRange(user, range.min, range.max)
+  totalStored += gapFill.total_points_stored
+
+  console.log(
+    `🔥 Full recompute: ${totalStored} calorie points across ${daysProcessed} days for ${user}` +
+      (gapFill.total_points_stored > 0 ?
+        ` (${gapFill.total_points_stored} gap-filled from HC aggregate)`
+      : ''),
+  )
 
   return {
     days_processed: daysProcessed,
@@ -242,6 +368,7 @@ export const computeAndStoreCaloriesAll = async (
 /**
  * Trigger calorie computation for a time range after HR data ingestion.
  * This is a best-effort operation that never throws.
+ * Also runs gap-filling to distribute HC aggregate residual into uncovered minutes.
  */
 export const triggerCalorieComputation = async (user: string, start: Date, end: Date): Promise<void> => {
   try {
@@ -250,6 +377,14 @@ export const triggerCalorieComputation = async (user: string, start: Date, end: 
       console.log(
         `🔥 Computed ${result.points_stored} calorie data points for ${user} ` +
           `(VO2max: ${result.vo2_max_source})`,
+      )
+    }
+    // Gap-fill from HC aggregate for days in the range
+    const gapFill = await gapFillCaloriesForRange(user, start, end)
+    if (gapFill.total_points_stored > 0) {
+      console.log(
+        `🔥 Gap-filled ${gapFill.total_points_stored} calorie points for ${user} ` +
+          `(${gapFill.total_residual_kcal.toFixed(0)} kcal residual across ${gapFill.days_processed} days)`,
       )
     }
   } catch (err) {
