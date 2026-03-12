@@ -54,6 +54,8 @@ export const validMetrics = [
   'hr_zone_3_sec',
   'hr_zone_4_sec',
   'hr_zone_5_sec',
+  'training_impulse',
+  'activity_impulse',
 ] as const
 
 export const metricTypeSchema = z.enum(validMetrics).meta({
@@ -209,6 +211,8 @@ export const metricUnits: Record<MetricType, string> = {
   sleep_total_score: 'score',
   spo2: 'percent',
   steps: 'count',
+  training_impulse: 'TRIMP',
+  activity_impulse: 'impulse',
   vo2_max: 'mL/kg/min',
   weight: 'kg',
 }

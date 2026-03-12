@@ -1652,6 +1652,7 @@ export const Timeline = () => {
           trackY: trackMetrics,
           workouts: trainingLoadData.workouts,
           xScale: currentXScale,
+          zones: trainingLoadData.zones ?? undefined,
         })
       }
 
