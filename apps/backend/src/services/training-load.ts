@@ -367,7 +367,7 @@ export const computeTrainingLoad = async (
 // Default Dependencies (using actual DB functions)
 // ============================================================================
 
-import { getActivities, getTimeSeries } from '../db'
+import { getActivities, getTimeSeries, getTimeSeriesBucketed, getTimeSeriesStats } from '../db'
 import { getSettings } from './settings'
 
 /**
@@ -379,7 +379,11 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
   },
 
   getHrSamples: async (user, start, end) => {
-    return getTimeSeries(user, 'heart_rate', start, end)
+    // Use 5-minute bucketed averages instead of raw samples (which can be millions
+    // of points over months). 5-minute resolution is sufficient for per-session
+    // average HR calculation used in TRIMP.
+    const buckets = await getTimeSeriesBucketed(user, ['heart_rate'], start, end, 5)
+    return buckets.map((b) => [b.bucket_start, b.avg] as [Date, number])
   },
 
   getLatestRestingHr: async (user) => {
@@ -394,9 +398,13 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
   getMaxObservedHr: async (user) => {
     const now = new Date()
     const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
-    const samples = await getTimeSeries(user, 'heart_rate', oneYearAgo, now)
-    if (samples.length === 0) return undefined
-    return Math.max(...samples.map(([, hr]) => hr))
+    // Use SQL MAX() aggregation instead of loading all raw samples — raw HR data
+    // can be millions of points over a year, which would overflow the stack with
+    // Math.max(...samples).
+    const stats = await getTimeSeriesStats(user, ['heart_rate'], oneYearAgo, now)
+    const hrStats = stats.find((s) => s.metric === 'heart_rate')
+    if (!hrStats || hrStats.count === 0) return undefined
+    return hrStats.max
   },
 
   getUserSettings: async (user) => {
