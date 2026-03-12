@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- D3 visualization with multiple drawing functions */
 /**
  * Draws the training load track in horizontal timeline mode.
  *
@@ -42,8 +41,6 @@ type SvgGroup = d3.Selection<any, unknown, null, undefined>
 export interface TrainingLoadTrackConfig {
   /** The SVG group to draw into (already clipped). */
   chartGroup: SvgGroup
-  /** The outer (static) group for crosshair overlay. */
-  outerG: SvgGroup
   /** Current x-scale (time -> pixels). */
   xScale: d3.ScaleTime<number, number>
   /** Hourly training load points. */
@@ -58,11 +55,6 @@ export interface TrainingLoadTrackConfig {
   trackY: number
   /** Height of the track in pixels. */
   trackHeight: number
-  /** Chart width in pixels. */
-  chartWidth: number
-  /** Tooltip callback. */
-  showTooltipHtml: (event: MouseEvent, html: string) => void
-  hideTooltip: () => void
 }
 
 // ── Y-scale computation ───────────────────────────────────────────────────────
@@ -122,9 +114,49 @@ const computeYScales = (
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
-const MS_PER_HOUR = 3600_000
+export const MS_PER_HOUR = 3600_000
 
 const parseTime = (timeStr: string): Date => new Date(timeStr)
+
+/**
+ * Find the training load point whose hour contains the given time.
+ * Floors the time to the hour, then looks for an exact match or nearest within 2 hours.
+ */
+export const findTrainingLoadPoint = (points: TrainingLoadPoint[], time: Date): TrainingLoadPoint | null => {
+  const timeMs = time.getTime()
+  const flooredHour = new Date(timeMs - (timeMs % MS_PER_HOUR))
+  const flooredIso = flooredHour.toISOString()
+
+  // Exact match first
+  for (const p of points) {
+    if (p.time === flooredIso) return p
+  }
+
+  // Fall back to nearest within 2 hours
+  let nearest: TrainingLoadPoint | null = null
+  let bestDist = Infinity
+  for (const p of points) {
+    const dist = Math.abs(timeMs - parseTime(p.time).getTime())
+    if (dist < bestDist) {
+      bestDist = dist
+      nearest = p
+    }
+  }
+
+  return nearest && bestDist <= 2 * MS_PER_HOUR ? nearest : null
+}
+
+/**
+ * Find workouts that overlap with a given hour.
+ */
+export const findNearbyWorkouts = (workouts: WorkoutTrimp[], hourTime: Date): WorkoutTrimp[] => {
+  const hourMs = hourTime.getTime()
+  return workouts.filter((w) => {
+    const wStart = new Date(w.start_time).getTime()
+    const wEnd = new Date(w.end_time).getTime()
+    return wStart <= hourMs + MS_PER_HOUR && wEnd >= hourMs
+  })
+}
 
 /** Draw recovery zone bands (horizontal stripes). */
 const drawZoneBands = (
@@ -439,7 +471,7 @@ const drawTsbLine = (
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
 
-const buildTrainingLoadTooltipHtml = (
+export const buildTrainingLoadTooltipHtml = (
   point: TrainingLoadPoint,
   workoutsNearby: WorkoutTrimp[],
   zones?: RecoveryZones,
@@ -480,94 +512,6 @@ const buildTrainingLoadTooltipHtml = (
   }
 
   return html
-}
-
-// ── Crosshair overlay ─────────────────────────────────────────────────────────
-
-const drawCrosshairOverlay = (
-  outerG: SvgGroup,
-  xScale: d3.ScaleTime<number, number>,
-  points: TrainingLoadPoint[],
-  workouts: WorkoutTrimp[],
-  zones: RecoveryZones | undefined,
-  trackY: number,
-  trackHeight: number,
-  chartWidth: number,
-  showTooltipHtml: (event: MouseEvent, html: string) => void,
-  hideTooltip: () => void,
-): void => {
-  outerG.selectAll('.training-load-crosshair').remove()
-
-  const crosshairGroup = outerG.append('g').attr('class', 'training-load-crosshair')
-  const trackBottom = trackY + trackHeight
-
-  const hairline = crosshairGroup
-    .append('line')
-    .attr('y1', trackY)
-    .attr('y2', trackBottom)
-    .attr('stroke', 'currentColor')
-    .attr('stroke-opacity', 0.4)
-    .attr('stroke-width', 0.75)
-    .attr('stroke-dasharray', '3,2')
-    .attr('pointer-events', 'none')
-    .style('display', 'none')
-
-  crosshairGroup
-    .append('rect')
-    .attr('x', 0)
-    .attr('y', trackY)
-    .attr('width', chartWidth)
-    .attr('height', trackHeight)
-    .attr('fill', 'transparent')
-    .attr('cursor', 'crosshair')
-    .on('mousemove', (event: MouseEvent) => {
-      const [mx] = d3.pointer(event)
-      const hoverTime = xScale.invert(mx!)
-
-      // Snap to the hour that contains the hover time (floor to hour)
-      const hoveredHourMs = hoverTime.getTime()
-      const flooredHour = new Date(hoveredHourMs - (hoveredHourMs % MS_PER_HOUR))
-      const flooredIso = flooredHour.toISOString()
-
-      // Find exact match for the floored hour, fall back to nearest
-      let nearest: TrainingLoadPoint | null = null
-      let bestDist = Infinity
-      for (const p of points) {
-        if (p.time === flooredIso) {
-          nearest = p
-          bestDist = 0
-          break
-        }
-        const dist = Math.abs(hoverTime.getTime() - parseTime(p.time).getTime())
-        if (dist < bestDist) {
-          bestDist = dist
-          nearest = p
-        }
-      }
-
-      if (!nearest || bestDist > 2 * MS_PER_HOUR) {
-        hairline.style('display', 'none')
-        hideTooltip()
-        return
-      }
-
-      hairline.attr('x1', mx!).attr('x2', mx!).style('display', null)
-
-      // Find workouts near this hour (within 1 hour)
-      const nearestTime = parseTime(nearest.time).getTime()
-      const nearbyWorkouts = workouts.filter((w) => {
-        const wStart = new Date(w.start_time).getTime()
-        const wEnd = new Date(w.end_time).getTime()
-        return wStart <= nearestTime + MS_PER_HOUR && wEnd >= nearestTime
-      })
-
-      const html = buildTrainingLoadTooltipHtml(nearest, nearbyWorkouts, zones)
-      showTooltipHtml(event, html)
-    })
-    .on('mouseleave', () => {
-      hairline.style('display', 'none')
-      hideTooltip()
-    })
 }
 
 // ── Downsampling ──────────────────────────────────────────────────────────────
@@ -619,20 +563,7 @@ const downsamplePoints = (
  * TSB line, zone bands, and an interactive crosshair overlay for tooltips.
  */
 export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => {
-  const {
-    chartGroup,
-    outerG,
-    xScale,
-    points,
-    workouts,
-    bootstrapping,
-    zones,
-    trackY,
-    trackHeight,
-    chartWidth,
-    showTooltipHtml,
-    hideTooltip,
-  } = config
+  const { chartGroup, xScale, points, bootstrapping, zones, trackY, trackHeight } = config
 
   if (points.length === 0) return
 
@@ -672,18 +603,4 @@ export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => 
 
   // Draw TSB line on top
   drawTsbLine(chartGroup, displayPoints, xScale, yScales.yTsb)
-
-  // Crosshair tooltip overlay (uses full points for accurate snapping)
-  drawCrosshairOverlay(
-    outerG,
-    xScale,
-    visiblePoints,
-    workouts,
-    zones,
-    trackY,
-    trackHeight,
-    chartWidth,
-    showTooltipHtml,
-    hideTooltip,
-  )
 }

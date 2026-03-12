@@ -1591,8 +1591,8 @@ export const Timeline = () => {
         }
       }
 
-      // ── Metrics track (HR/HRV band charts + steps/calories bars) ──
-      if (metricsYScales) {
+      // ── Metrics track (HR/HRV band charts + steps/calories bars + combined tooltip) ──
+      if (metricsYScales || (showTrainingLoad && trainingLoadData)) {
         drawMetricsTrack({
           buckets: metricBuckets,
           chartGroup,
@@ -1620,8 +1620,17 @@ export const Timeline = () => {
           },
           trackHeight: metricsTrackHeight,
           trackY: trackMetrics,
+          ...(metricsYScales ?
+            { yScales: metricsYScales }
+          : { yScales: computeYScales([], trackMetrics, trackMetrics + metricsTrackHeight) }),
           xScale: currentXScale,
-          yScales: metricsYScales,
+          ...(showTrainingLoad && trainingLoadData ?
+            {
+              trainingLoadPoints: trainingLoadData.points,
+              trainingLoadWorkouts: trainingLoadData.workouts,
+              trainingLoadZones: trainingLoadData.zones ?? undefined,
+            }
+          : {}),
         })
       }
 
@@ -1630,24 +1639,7 @@ export const Timeline = () => {
         drawTrainingLoadTrack({
           bootstrapping: trainingLoadData.bootstrapping,
           chartGroup,
-          chartWidth,
-          hideTooltip,
-          outerG,
           points: trainingLoadData.points,
-          showTooltipHtml: (event: MouseEvent, html: string) => {
-            if (!tooltipRef.current || !containerRef.current) return
-            const tip = tooltipRef.current
-            const containerRect = containerRef.current.getBoundingClientRect()
-            tip.innerHTML = html
-            tip.style.display = 'block'
-            const x = event.clientX - containerRect.left + 12
-            const yRaw = event.clientY - containerRect.top - 10
-            const tipH = tip.scrollHeight
-            const yMax = containerRect.height - tipH - 4
-            const y = Math.min(yRaw, Math.max(yMax, 4))
-            tip.style.left = `${Math.min(x, containerRect.width - 320)}px`
-            tip.style.top = `${y}px`
-          },
           trackHeight: metricsTrackHeight,
           trackY: trackMetrics,
           workouts: trainingLoadData.workouts,
