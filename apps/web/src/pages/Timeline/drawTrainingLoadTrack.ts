@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- D3 visualization with multiple drawing functions */
 /**
  * Draws the training load track in horizontal timeline mode.
  *
@@ -71,6 +72,8 @@ interface TrainingLoadYScales {
   yLoad: d3.ScaleLinear<number, number>
   /** Scale for TSB (can be negative). */
   yTsb: d3.ScaleLinear<number, number>
+  /** Scale for impulse bars (stacked training + activity). */
+  yImpulse: d3.ScaleLinear<number, number>
 }
 
 const computeYScales = (
@@ -102,7 +105,19 @@ const computeYScales = (
     .domain([-maxTsbAbs * 1.2, maxTsbAbs * 1.2])
     .range([trackBottom, trackY])
 
-  return { yLoad, yTsb }
+  // Impulse bar scale: max of stacked (training + activity) impulse
+  let maxImpulse = 1
+  for (const p of points) {
+    const total = p.training_impulse + p.activity_impulse
+    if (total > maxImpulse) maxImpulse = total
+  }
+
+  const yImpulse = d3
+    .scaleLinear()
+    .domain([0, maxImpulse * 1.2])
+    .range([trackBottom, trackY])
+
+  return { yImpulse, yLoad, yTsb }
 }
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
@@ -257,6 +272,62 @@ const drawFatigueBars = (
       .attr('fill', colorScale(p.atl))
       .attr('opacity', 0.4)
       .attr('pointer-events', 'none')
+  }
+}
+
+/** Draw stacked impulse bars (training + activity) per hour. */
+const drawImpulseBars = (
+  group: SvgGroup,
+  points: TrainingLoadPoint[],
+  xScale: d3.ScaleTime<number, number>,
+  yScale: d3.ScaleLinear<number, number>,
+  trackBottom: number,
+): void => {
+  // Compute bar width from x-scale (one hour)
+  const sampleTime = points[0] ? parseTime(points[0].time) : new Date()
+  const nextHour = new Date(sampleTime.getTime() + MS_PER_HOUR)
+  const barWidth = Math.max(1, Math.abs(xScale(nextHour) - xScale(sampleTime)) - 1)
+
+  for (const p of points) {
+    const total = p.training_impulse + p.activity_impulse
+    if (total <= 0) continue
+
+    const x = xScale(parseTime(p.time))
+
+    // Activity impulse bar (bottom of stack)
+    if (p.activity_impulse > 0) {
+      const barTop = yScale(p.activity_impulse)
+      const barHeight = trackBottom - barTop
+      if (barHeight > 0) {
+        group
+          .append('rect')
+          .attr('x', x)
+          .attr('y', barTop)
+          .attr('width', barWidth)
+          .attr('height', barHeight)
+          .attr('fill', ACTIVITY_IMPULSE_COLOR)
+          .attr('opacity', 0.5)
+          .attr('pointer-events', 'none')
+      }
+    }
+
+    // Training impulse bar (top of stack, offset upward from activity)
+    if (p.training_impulse > 0) {
+      const stackBase = yScale(p.activity_impulse)
+      const barTop = yScale(total)
+      const barHeight = stackBase - barTop
+      if (barHeight > 0) {
+        group
+          .append('rect')
+          .attr('x', x)
+          .attr('y', barTop)
+          .attr('width', barWidth)
+          .attr('height', barHeight)
+          .attr('fill', TRAINING_IMPULSE_COLOR)
+          .attr('opacity', 0.5)
+          .attr('pointer-events', 'none')
+      }
+    }
   }
 }
 
@@ -590,8 +661,11 @@ export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => 
     drawZoneBands(chartGroup, zones, yScales.yLoad, xStart, xEnd, trackY, trackBottom)
   }
 
-  // Draw ATL fatigue bars (behind curves)
+  // Draw ATL fatigue bars (behind everything else)
   drawFatigueBars(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom)
+
+  // Draw impulse bars (training + activity) on top of fatigue bars
+  drawImpulseBars(chartGroup, displayPoints, xScale, yScales.yImpulse, trackBottom)
 
   // Draw CTL/ATL curves
   drawLoadCurves(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom, bootstrapping)
