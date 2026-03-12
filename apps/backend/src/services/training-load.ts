@@ -99,6 +99,8 @@ export const computeTrainingLoadSeries = (params: LoadAccumulatorParams): Traini
 
   const decayAcute = Math.exp(-1 / tau_acute)
   const decayChronic = Math.exp(-1 / tau_chronic)
+  const gainAcute = 1 - decayAcute // ~0.133 for τ=7
+  const gainChronic = 1 - decayChronic // ~0.024 for τ=42
 
   const points: TrainingLoadPoint[] = []
   let atl = 0
@@ -112,8 +114,10 @@ export const computeTrainingLoadSeries = (params: LoadAccumulatorParams): Traini
     const dateStr = current.toISOString().split('T')[0]
     const dailyTrimp = daily_trimps.get(dateStr) ?? 0
 
-    atl = atl * decayAcute + dailyTrimp
-    ctl = ctl * decayChronic + dailyTrimp
+    // Banister EMA: load(n) = load(n-1) × e^(-1/τ) + TRIMP(n) × (1 - e^(-1/τ))
+    // The (1 - decay) gain factor normalizes so steady-state ≈ average daily TRIMP.
+    atl = atl * decayAcute + dailyTrimp * gainAcute
+    ctl = ctl * decayChronic + dailyTrimp * gainChronic
     const tsb = ctl - atl
 
     points.push({
