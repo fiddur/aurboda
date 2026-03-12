@@ -453,10 +453,20 @@ const drawCrosshairOverlay = (
       const [mx] = d3.pointer(event)
       const hoverTime = xScale.invert(mx!)
 
-      // Find nearest hourly point
+      // Snap to the hour that contains the hover time (floor to hour)
+      const hoveredHourMs = hoverTime.getTime()
+      const flooredHour = new Date(hoveredHourMs - (hoveredHourMs % MS_PER_HOUR))
+      const flooredIso = flooredHour.toISOString()
+
+      // Find exact match for the floored hour, fall back to nearest
       let nearest: TrainingLoadPoint | null = null
       let bestDist = Infinity
       for (const p of points) {
+        if (p.time === flooredIso) {
+          nearest = p
+          bestDist = 0
+          break
+        }
         const dist = Math.abs(hoverTime.getTime() - parseTime(p.time).getTime())
         if (dist < bestDist) {
           bestDist = dist
