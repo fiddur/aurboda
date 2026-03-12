@@ -58,7 +58,9 @@ COPY nginx.conf /etc/nginx/http.d/default.conf
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+ARG BUILD_SHA=unknown
 ENV NODE_ENV=production
+ENV BUILD_SHA=${BUILD_SHA}
 EXPOSE 80
 
 CMD ["/entrypoint.sh"]
