@@ -34,7 +34,6 @@ import { syncAllCalendars } from './ical-sync'
 import { createLastFmRouter } from './lastfm-router'
 import { syncLastFmData } from './lastfm-sync'
 import { createMcpRouter } from './mcp'
-import { createDbSessionStore } from './mcp-session-store'
 import { ouraClient } from './oura'
 import type { OuraDataType } from './oura-sync'
 import { syncAllOuraData, syncOuraDataType } from './oura-sync'
@@ -106,8 +105,8 @@ const main = async () => {
   httpd.use(cors({ origin: true }))
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
-  // Use database-backed session store for persistence across restarts
-  httpd.use('/mcp', createMcpRouter(auth, oura, syncProvider, { sessionStore: createDbSessionStore() }))
+  // Stateless mode — no session tracking needed (tools only, no subscriptions)
+  httpd.use('/mcp', createMcpRouter(auth, oura, syncProvider))
 
   httpd.use(json({ limit: '10mb' }))
 
@@ -149,6 +148,13 @@ const main = async () => {
   // ==========================================================================
   // Auth routes (stay here - tightly coupled to server setup)
   // ==========================================================================
+
+  httpd.get('/version', (_req, res) => {
+    res.json({
+      build_sha: process.env.BUILD_SHA ?? 'dev',
+      success: true,
+    })
+  })
 
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
     const signupMode = await centralDb.getSignupMode()
