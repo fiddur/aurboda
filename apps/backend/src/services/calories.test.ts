@@ -2,12 +2,14 @@ import { describe, expect, test } from 'vitest'
 
 import {
   BASELINE_HR_MULTIPLIER,
-  DEFAULT_RESTING_HR,
-  MAX_HOLD_MINUTES,
+  type CalorieDataPoint,
   computeCaloriesForMinute,
   computeCaloriesPerMinute,
+  computeGapFillPoints,
   computeTotalCaloriesForMinute,
+  DEFAULT_RESTING_HR,
   getVo2MaxFallback,
+  MAX_HOLD_MINUTES,
 } from './calories'
 
 describe('getVo2MaxFallback', () => {
@@ -286,5 +288,166 @@ describe('computeCaloriesPerMinute', () => {
       resting_hr: undefined,
     })
     expect(withResting[0].kcal).toBeCloseTo(withoutResting[0].kcal, 4)
+  })
+})
+
+describe('computeGapFillPoints', () => {
+  const dayStart = new Date('2024-01-15T00:00:00Z')
+
+  /** Helper to create a CalorieDataPoint at a given minute offset from day start. */
+  const makePoint = (minuteOffset: number, kcal: number): CalorieDataPoint => ({
+    end_time: new Date(dayStart.getTime() + (minuteOffset + 1) * 60_000),
+    kcal,
+    time: new Date(dayStart.getTime() + minuteOffset * 60_000),
+  })
+
+  test('returns empty result when HC aggregate is 0', () => {
+    const result = computeGapFillPoints({
+      aurboda_points: [makePoint(600, 5)],
+      day_start: dayStart,
+      hc_aggregate_kcal: 0,
+    })
+    expect(result.points).toHaveLength(0)
+    expect(result.gap_minutes).toBe(0)
+    expect(result.residual_kcal).toBe(0)
+  })
+
+  test('returns empty result when aurboda sum >= HC aggregate', () => {
+    // Aurboda computed more than HC thinks — nothing to distribute
+    const result = computeGapFillPoints({
+      aurboda_points: [makePoint(600, 10), makePoint(601, 10)],
+      day_start: dayStart,
+      hc_aggregate_kcal: 15,
+    })
+    expect(result.points).toHaveLength(0)
+    expect(result.residual_kcal).toBe(0)
+  })
+
+  test('returns empty result when no gap minutes exist (full coverage)', () => {
+    // 1440 points covering every minute of the day
+    const points = Array.from({ length: 1440 }, (_, i) => makePoint(i, 0.5))
+    const aurbodaSum = 1440 * 0.5 // 720 kcal
+
+    const result = computeGapFillPoints({
+      aurboda_points: points,
+      day_start: dayStart,
+      hc_aggregate_kcal: aurbodaSum + 100, // HC has more, but no gaps
+    })
+    expect(result.points).toHaveLength(0)
+    expect(result.gap_minutes).toBe(0)
+  })
+
+  test('distributes residual evenly across gap minutes', () => {
+    // 60 minutes of HR data (10:00-10:59), total 120 kcal
+    const points = Array.from({ length: 60 }, (_, i) => makePoint(600 + i, 2))
+
+    // HC says 220 kcal total, aurboda sum = 120, residual = 100 kcal
+    const result = computeGapFillPoints({
+      aurboda_points: points,
+      day_start: dayStart,
+      hc_aggregate_kcal: 220,
+    })
+
+    // 1440 - 60 = 1380 gap minutes
+    expect(result.gap_minutes).toBe(1380)
+    expect(result.residual_kcal).toBeCloseTo(100, 4)
+    expect(result.per_minute_kcal).toBeCloseTo(100 / 1380, 4)
+    expect(result.points).toHaveLength(1380)
+
+    // Total of gap-fill points should equal the residual
+    const gapTotal = result.points.reduce((sum, p) => sum + p.kcal, 0)
+    expect(gapTotal).toBeCloseTo(100, 2)
+  })
+
+  test('gap-fill points have correct time boundaries', () => {
+    // Single aurboda point at 10:00
+    const result = computeGapFillPoints({
+      aurboda_points: [makePoint(600, 5)],
+      day_start: dayStart,
+      hc_aggregate_kcal: 100,
+    })
+
+    // 1439 gap minutes (all except minute 600)
+    expect(result.gap_minutes).toBe(1439)
+
+    // Each point should be exactly 1 minute long
+    for (const p of result.points) {
+      expect(p.end_time.getTime() - p.time.getTime()).toBe(60_000)
+    }
+
+    // First gap point is at midnight
+    expect(result.points[0].time).toEqual(dayStart)
+
+    // Last gap point is at 23:59
+    const lastPoint = result.points[result.points.length - 1]
+    expect(lastPoint.time).toEqual(new Date('2024-01-15T23:59:00Z'))
+
+    // Minute 600 (10:00) should NOT be in gap-fill points
+    const gap600 = result.points.find((p) => p.time.getTime() === dayStart.getTime() + 600 * 60_000)
+    expect(gap600).toBeUndefined()
+  })
+
+  test('gap-fill points do not overlap with aurboda points', () => {
+    // Aurboda covers 08:00-08:59 and 17:00-17:29
+    const points = [
+      ...Array.from({ length: 60 }, (_, i) => makePoint(480 + i, 3)),
+      ...Array.from({ length: 30 }, (_, i) => makePoint(1020 + i, 4)),
+    ]
+
+    const result = computeGapFillPoints({
+      aurboda_points: points,
+      day_start: dayStart,
+      hc_aggregate_kcal: 500,
+    })
+
+    // 1440 - 60 - 30 = 1350 gap minutes
+    expect(result.gap_minutes).toBe(1350)
+
+    // No gap point should have the same minute as an aurboda point
+    const aurbodaMinutes = new Set(points.map((p) => p.time.getTime()))
+    for (const gapPoint of result.points) {
+      expect(aurbodaMinutes.has(gapPoint.time.getTime())).toBe(false)
+    }
+  })
+
+  test('realistic scenario: 8h sleep + 1h exercise, HC has movement data too', () => {
+    // Sleep 23:00 prev day → 07:00 (covered by HR, but 0 active kcal since below baseline)
+    // Exercise 17:00-17:59 (covered by HR, high active kcal)
+    // HC aggregate = 400 kcal (includes movement during uncovered hours)
+    const sleepPoints = Array.from({ length: 420 }, (_, i) => makePoint(i, 0)) // 00:00-06:59, 0 kcal each
+    const exercisePoints = Array.from({ length: 60 }, (_, i) => makePoint(1020 + i, 5)) // 17:00-17:59, 5 kcal each
+    const allPoints = [...sleepPoints, ...exercisePoints]
+    const aurbodaSum = 60 * 5 // 300 kcal (only exercise contributes)
+
+    const result = computeGapFillPoints({
+      aurboda_points: allPoints,
+      day_start: dayStart,
+      hc_aggregate_kcal: 400,
+    })
+
+    // 1440 - 420 - 60 = 960 gap minutes
+    expect(result.gap_minutes).toBe(960)
+    expect(result.residual_kcal).toBeCloseTo(100, 4) // 400 - 300 = 100 kcal
+    expect(result.per_minute_kcal).toBeCloseTo(100 / 960, 4)
+
+    // Total gap-fill + aurboda should approximate HC aggregate
+    const gapTotal = result.points.reduce((sum, p) => sum + p.kcal, 0)
+    expect(gapTotal + aurbodaSum).toBeCloseTo(400, 1)
+  })
+
+  test('handles very small residual correctly', () => {
+    // Only 1 kcal residual across 1000 gap minutes
+    const points = Array.from({ length: 440 }, (_, i) => makePoint(i, 0.1))
+    const aurbodaSum = 440 * 0.1 // 44 kcal
+
+    const result = computeGapFillPoints({
+      aurboda_points: points,
+      day_start: dayStart,
+      hc_aggregate_kcal: aurbodaSum + 1,
+    })
+
+    expect(result.gap_minutes).toBe(1000)
+    expect(result.residual_kcal).toBeCloseTo(1, 4)
+    expect(result.per_minute_kcal).toBeCloseTo(0.001, 4)
   })
 })

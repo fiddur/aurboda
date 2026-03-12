@@ -99,6 +99,89 @@ export interface CalorieDataPoint {
   kcal: number
 }
 
+export interface GapFillInput {
+  /** Start of the calendar day (midnight UTC) */
+  day_start: Date
+  /** Per-minute aurboda calorie points already computed for this day */
+  aurboda_points: CalorieDataPoint[]
+  /** HC aggregate total active calories for this day (from health_connect_aggregate source) */
+  hc_aggregate_kcal: number
+}
+
+export interface GapFillResult {
+  /** Gap-fill calorie points to store */
+  points: CalorieDataPoint[]
+  /** Number of gap minutes identified */
+  gap_minutes: number
+  /** Residual kcal distributed (hc_aggregate - aurboda_sum) */
+  residual_kcal: number
+  /** Per-minute kcal value used for gap-filling */
+  per_minute_kcal: number
+}
+
+/**
+ * Compute gap-fill calorie points for minutes without HR data.
+ *
+ * After computing per-minute active calories from HR data (aurboda source),
+ * some minutes in the day have no HR coverage (e.g., wrist off, no HR monitor).
+ * Oura/Health Connect may still capture movement-based calories for those periods.
+ *
+ * This function:
+ * 1. Finds the residual: HC aggregate total - sum of aurboda points
+ * 2. Identifies gap minutes in the day (no aurboda point exists)
+ * 3. Distributes the residual evenly across gap minutes
+ *
+ * Returns empty points if:
+ * - HC aggregate is not higher than aurboda sum (nothing to distribute)
+ * - No gap minutes exist (full HR coverage)
+ */
+export const computeGapFillPoints = (input: GapFillInput): GapFillResult => {
+  const { day_start, aurboda_points, hc_aggregate_kcal } = input
+  const emptyResult: GapFillResult = { gap_minutes: 0, per_minute_kcal: 0, points: [], residual_kcal: 0 }
+
+  // Sum of aurboda-computed calories for this day
+  const aurbodaSum = aurboda_points.reduce((sum, p) => sum + p.kcal, 0)
+
+  // Residual = what HC captured that we didn't
+  const residual = hc_aggregate_kcal - aurbodaSum
+  if (residual <= 0) return emptyResult
+
+  // Build a set of minutes already covered by aurboda
+  const coveredMinutes = new Set<number>()
+  for (const p of aurboda_points) {
+    coveredMinutes.add(Math.floor(p.time.getTime() / 60_000))
+  }
+
+  // Find gap minutes in the day (0..1439)
+  const dayStartMs = day_start.getTime()
+  const gapMinutes: number[] = []
+  for (let m = 0; m < 1440; m++) {
+    const minuteMs = dayStartMs + m * 60_000
+    const minuteKey = Math.floor(minuteMs / 60_000)
+    if (!coveredMinutes.has(minuteKey)) {
+      gapMinutes.push(minuteMs)
+    }
+  }
+
+  if (gapMinutes.length === 0) return emptyResult
+
+  // Distribute residual evenly across gap minutes
+  const perMinuteKcal = residual / gapMinutes.length
+
+  const points: CalorieDataPoint[] = gapMinutes.map((ms) => ({
+    end_time: new Date(ms + 60_000),
+    kcal: perMinuteKcal,
+    time: new Date(ms),
+  }))
+
+  return {
+    gap_minutes: gapMinutes.length,
+    per_minute_kcal: perMinuteKcal,
+    points,
+    residual_kcal: residual,
+  }
+}
+
 /**
  * Compute per-minute calorie burn from heart rate samples.
  *
