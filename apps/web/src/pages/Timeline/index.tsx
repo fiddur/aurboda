@@ -722,6 +722,8 @@ export const Timeline = () => {
   const baseScaleRef = useRef<d3.ScaleTime<number, number>>()
 
   const drawRef = useRef<((scale: d3.ScaleTime<number, number>) => void) | null>(null)
+  /** rAF handle for coalescing rapid zoom events into a single draw per frame. */
+  const zoomRafRef = useRef<number>(0)
   // Horizontal chart: stable reference for x-axis (updated in place, never rebuilt)
   const hAxisGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
 
@@ -1763,7 +1765,10 @@ export const Timeline = () => {
             containerRef.current ?
               Math.max(200, containerRef.current.clientHeight - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom)
             : 800
-          drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, h]))
+          cancelAnimationFrame(zoomRafRef.current)
+          zoomRafRef.current = requestAnimationFrame(() => {
+            drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, h]))
+          })
         })
         .on('end', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
           if (isProgrammaticZoom.current) return
@@ -1803,7 +1808,10 @@ export const Timeline = () => {
           if (!baseScale) return
           const newX = event.transform.rescaleX(baseScale)
           const newDomain = newX.domain() as [Date, Date]
-          drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, chartWidth]))
+          cancelAnimationFrame(zoomRafRef.current)
+          zoomRafRef.current = requestAnimationFrame(() => {
+            drawRef.current?.(d3.scaleTime().domain(newDomain).range([0, chartWidth]))
+          })
         })
         .on('end', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
           if (isProgrammaticZoom.current) return
@@ -1827,6 +1835,10 @@ export const Timeline = () => {
     }
 
     svg.on('dblclick.zoom', () => handleResetToToday())
+
+    return () => {
+      cancelAnimationFrame(zoomRafRef.current)
+    }
   }, [orientation, handleZoom, handleResetToToday, effectiveViewStart, effectiveViewEnd])
 
   // ── UI state ───────────────────────────────────────────────────────────────

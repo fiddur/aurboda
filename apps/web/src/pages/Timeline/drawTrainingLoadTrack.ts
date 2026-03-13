@@ -407,24 +407,6 @@ const drawLoadCurves = (
     .attr('stroke-opacity', bootstrapping ? 0.4 : 0.8)
     .attr('pointer-events', 'none')
     .attr('stroke-dasharray', bootstrapping ? '4,3' : 'none')
-
-  // ATL line (fatigue) - just a line, no area fill
-  const atlLine = d3
-    .line<TrainingLoadPoint>()
-    .x((d) => xScale(parseTime(d.time)))
-    .y((d) => yScale(d.atl))
-    .curve(d3.curveMonotoneX)
-
-  group
-    .append('path')
-    .datum(points)
-    .attr('d', atlLine)
-    .attr('fill', 'none')
-    .attr('stroke', ATL_COLOR)
-    .attr('stroke-width', 1.5)
-    .attr('stroke-opacity', bootstrapping ? 0.4 : 0.8)
-    .attr('pointer-events', 'none')
-    .attr('stroke-dasharray', bootstrapping ? '4,3' : 'none')
 }
 
 /** Draw TSB (form) as a color-coded line. */
