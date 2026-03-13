@@ -65,18 +65,33 @@ const getDefaultViewEnd = () => endOfDay(new Date())
 // ── URL hash helpers ──────────────────────────────────────────────────────────
 // Hash format: #from=2026-02-27T06:00&to=2026-02-27T18:00&hide=sleep,music&o=h
 
+// Top-level track toggles + sub-toggles, all stored in one flat Set.
 type LegendCategory =
-  | 'sleep'
-  | 'nap'
-  | 'rest'
+  // Top-level track toggles
+  | 'music'
+  | 'activity'
+  | 'metrics'
+  | 'location'
+  // Activity sub-toggles
+  | 'sleep_rest' // replaces sleep+nap+rest
   | 'meditation'
   | 'exercise'
-  | 'calendar'
   | 'tags'
-  | 'metrics'
-  | 'music'
-  | 'location'
-  | 'screentime'
+  | 'calendar'
+  | 'screentime' // vertical only
+  // Metrics sub-toggles
+  | 'hr'
+  | 'hrv'
+  | 'steps' // horizontal only
+  | 'calories' // horizontal only
+  | 'training_load' // horizontal only
+
+// Legacy category names for URL hash backward compatibility
+const LEGACY_CATEGORY_MAP: Record<string, LegendCategory> = {
+  nap: 'sleep_rest',
+  rest: 'sleep_rest',
+  sleep: 'sleep_rest',
+}
 
 /** Parse window.location.hash into view state. */
 const parseViewHash = (): {
@@ -94,7 +109,17 @@ const parseViewHash = (): {
   const oStr = params.get('o')
   const from = fromStr ? new Date(fromStr) : null
   const to = toStr ? new Date(toStr) : null
-  const hide = hideStr ? (hideStr.split(',').filter(Boolean) as LegendCategory[]) : []
+  const hide =
+    hideStr ?
+      ([
+        ...new Set(
+          hideStr
+            .split(',')
+            .filter(Boolean)
+            .map((c) => LEGACY_CATEGORY_MAP[c] ?? c),
+        ),
+      ] as LegendCategory[])
+    : []
   const orientation: Orientation | null =
     oStr === 'h' ? 'horizontal'
     : oStr === 'v' ? 'vertical'
@@ -321,18 +346,24 @@ const buildSleepDetails = (a: Activity, end: Date, ouraByDate: OuraSleepByDate):
 }
 
 const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = {
+  activity: (item) =>
+    item.column === 'Activity' || item.column === 'Tags / Events' || item.column === 'Screen Time',
   calendar: (item) => item.column === 'Tags / Events' && item.color === tagSourceColors.calendar,
+  calories: () => false, // metrics sub-toggles handled at draw level
   exercise: (item) => item.column === 'Activity' && item.activity_type === 'exercise',
+  hr: () => false,
+  hrv: () => false,
   location: (item) => item.column === 'Location',
   meditation: (item) => item.column === 'Activity' && item.activity_type === 'meditation',
-  metrics: (item) => item.column === 'Tags / Events' && item.color === METRIC_COLOR,
+  metrics: () => false, // metrics track controlled via sub-toggles at draw level
   music: (item) => item.column === 'Music',
-  nap: (item) => item.column === 'Activity' && item.activity_type === 'nap',
-  rest: (item) => item.column === 'Activity' && item.activity_type === 'rest',
   screentime: (item) => item.column === 'Screen Time',
-  sleep: (item) => item.column === 'Activity' && item.activity_type === 'sleep',
+  sleep_rest: (item) =>
+    item.column === 'Activity' && ['sleep', 'nap', 'rest'].includes(item.activity_type ?? ''),
+  steps: () => false,
   tags: (item) =>
     item.column === 'Tags / Events' && item.color !== tagSourceColors.calendar && item.color !== METRIC_COLOR,
+  training_load: () => false,
 }
 
 // ── Categorization helpers ────────────────────────────────────────────────────
@@ -822,19 +853,9 @@ export const Timeline = () => {
   const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
   hiddenCategoriesRef.current = hiddenCategories
 
-  const [showSparklineHR, setShowSparklineHR] = useState(true)
-  const [showSparklineHRV, setShowSparklineHRV] = useState(true)
-
-  // Horizontal mode: metrics track toggles
-  const [showMetricsHR, setShowMetricsHR] = useState(true)
-  const [showMetricsHRV, setShowMetricsHRV] = useState(true)
-  const [showMetricsSteps, setShowMetricsSteps] = useState(true)
-  const [showMetricsCalories, setShowMetricsCalories] = useState(true)
-  const [showTrainingLoad, setShowTrainingLoad] = useState(true)
-
   // Training load data (fetched when toggle is on, uses daily granularity)
   const trainingLoadQuery = useQuery({
-    enabled: showTrainingLoad,
+    enabled: !hiddenCategories.has('training_load'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['timeline-training-load', fromDate.value, toDate.value],
@@ -868,7 +889,13 @@ export const Timeline = () => {
 
   const isItemHidden = useCallback(
     (item: ChartItem): boolean => {
+      // If a parent track is hidden, all children are implicitly hidden
+      if (hiddenCategories.has('activity') && CATEGORY_MATCHERS.activity(item)) return true
+      if (hiddenCategories.has('location') && CATEGORY_MATCHERS.location(item)) return true
+      if (hiddenCategories.has('music') && CATEGORY_MATCHERS.music(item)) return true
+      // Check sub-toggles
       for (const cat of hiddenCategories) {
+        if (cat === 'activity' || cat === 'location' || cat === 'music' || cat === 'metrics') continue
         if (CATEGORY_MATCHERS[cat](item)) return true
       }
       return false
@@ -1166,7 +1193,9 @@ export const Timeline = () => {
         hideTooltip,
       )
 
-      if (sparklineBuckets.length > 0 && (showSparklineHR || showSparklineHRV)) {
+      const showSparkHR = !hiddenCategories.has('hr')
+      const showSparkHRV = !hiddenCategories.has('hrv')
+      if (sparklineBuckets.length > 0 && (showSparkHR || showSparkHRV)) {
         const getItemRect = (item: ChartItem): { x: number; width: number } | undefined => {
           for (let ci = 0; ci < columnData.length; ci++) {
             const cd = columnData[ci]!
@@ -1188,8 +1217,8 @@ export const Timeline = () => {
           chartItems,
           sparklineBuckets,
           currentYScale,
-          showSparklineHR,
-          showSparklineHRV,
+          showSparkHR,
+          showSparkHRV,
           getItemRect,
         )
       }
@@ -1217,14 +1246,14 @@ export const Timeline = () => {
     effectiveViewEnd,
     effectiveViewStart,
     sparklineBuckets,
-    showSparklineHR,
-    showSparklineHRV,
+    hiddenCategories,
     showTooltip,
     hideTooltip,
   ])
 
   // ── Horizontal chart rendering ─────────────────────────────────────────────
 
+  // eslint-disable-next-line complexity -- D3 horizontal layout with dynamic track visibility
   const renderHorizontalChart = useCallback(() => {
     if (!svgRef.current || !containerRef.current) return
 
@@ -1234,17 +1263,34 @@ export const Timeline = () => {
     const chartWidth = containerWidth - margin.left - margin.right
     const chartHeight = Math.max(150, containerHeight - margin.top - margin.bottom)
 
-    const hasMusic = scrobbles.length > 0
-    const musicTrackHeight = hasMusic ? MUSIC_STAFF_HEIGHT : 0
     const LOCATION_TRACK_HEIGHT = 34
-    const remainingHeight = chartHeight - musicTrackHeight - LOCATION_TRACK_HEIGHT
-    const activityTrackHeight = Math.max(40, remainingHeight / 2)
-    const metricsTrackHeight = Math.max(40, remainingHeight / 2)
-    const trackMusic = 0
-    const trackActivity = musicTrackHeight
-    const trackMetrics = musicTrackHeight + activityTrackHeight
-    const trackPlaces = chartHeight - LOCATION_TRACK_HEIGHT
     const ICON_SIZE = 18
+
+    // Dynamic track visibility based on legend state
+    const showMusicTrack = scrobbles.length > 0 && !hiddenCategories.has('music')
+    const showActivityTrack = !hiddenCategories.has('activity')
+    const showMetricsTrack = !hiddenCategories.has('metrics')
+    const showLocationTrack = !hiddenCategories.has('location')
+
+    const musicTrackHeight = showMusicTrack ? MUSIC_STAFF_HEIGHT : 0
+    const locationTrackHeight = showLocationTrack ? LOCATION_TRACK_HEIGHT : 0
+
+    const remainingHeight = chartHeight - musicTrackHeight - locationTrackHeight
+    const dynamicTrackCount = [showActivityTrack, showMetricsTrack].filter(Boolean).length
+    const dynamicTrackHeight = dynamicTrackCount > 0 ? remainingHeight / dynamicTrackCount : 0
+
+    const activityTrackHeight = showActivityTrack ? Math.max(40, dynamicTrackHeight) : 0
+    const metricsTrackHeight = showMetricsTrack ? Math.max(40, dynamicTrackHeight) : 0
+
+    // Compute Y positions dynamically
+    let nextY = 0
+    const trackMusic = nextY
+    nextY += musicTrackHeight
+    const trackActivity = nextY
+    nextY += activityTrackHeight
+    const trackMetrics = nextY
+    nextY += metricsTrackHeight
+    const trackPlaces = nextY
 
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
@@ -1301,40 +1347,27 @@ export const Timeline = () => {
       .attr('transform', `translate(${margin.left},${margin.top})`)
 
     // Static lane labels and separators (not affected by zoom/pan)
-    if (hasMusic) {
+    // Separator lines — only between visible tracks
+    const separatorYs: number[] = []
+    if (showMusicTrack && musicTrackHeight > 0) separatorYs.push(musicTrackHeight)
+    if (showActivityTrack && showMetricsTrack) separatorYs.push(trackMetrics)
+    if (showLocationTrack && locationTrackHeight > 0) separatorYs.push(trackPlaces)
+    for (const sy of separatorYs) {
       outerG
         .append('line')
         .attr('x1', 0)
         .attr('x2', chartWidth)
-        .attr('y1', musicTrackHeight)
-        .attr('y2', musicTrackHeight)
+        .attr('y1', sy)
+        .attr('y2', sy)
         .attr('stroke', 'currentColor')
         .attr('stroke-opacity', 0.2)
     }
-    // Separator between activity and metrics tracks
-    outerG
-      .append('line')
-      .attr('x1', 0)
-      .attr('x2', chartWidth)
-      .attr('y1', trackMetrics)
-      .attr('y2', trackMetrics)
-      .attr('stroke', 'currentColor')
-      .attr('stroke-opacity', 0.2)
-    // Separator between metrics and location tracks
-    outerG
-      .append('line')
-      .attr('x1', 0)
-      .attr('x2', chartWidth)
-      .attr('y1', trackPlaces)
-      .attr('y2', trackPlaces)
-      .attr('stroke', 'currentColor')
-      .attr('stroke-opacity', 0.2)
 
     const laneLabels: { label: string; y: number; height: number }[] = [
-      ...(hasMusic ? [{ height: musicTrackHeight, label: 'Music', y: trackMusic }] : []),
-      { height: activityTrackHeight, label: 'Activity', y: trackActivity },
-      { height: metricsTrackHeight, label: 'Metrics', y: trackMetrics },
-      { height: LOCATION_TRACK_HEIGHT, label: 'Location', y: trackPlaces },
+      ...(showMusicTrack ? [{ height: musicTrackHeight, label: 'Music', y: trackMusic }] : []),
+      ...(showActivityTrack ? [{ height: activityTrackHeight, label: 'Activity', y: trackActivity }] : []),
+      ...(showMetricsTrack ? [{ height: metricsTrackHeight, label: 'Metrics', y: trackMetrics }] : []),
+      ...(showLocationTrack ? [{ height: locationTrackHeight, label: 'Location', y: trackPlaces }] : []),
     ]
     for (const { label, y, height } of laneLabels) {
       outerG
@@ -1370,6 +1403,15 @@ export const Timeline = () => {
       const domain = currentXScale.domain()
       const domainStart = domain[0]!
       const domainEnd = domain[1]!
+      const domainStartMs = domainStart.getTime()
+      const domainEndMs = domainEnd.getTime()
+
+      // Viewport culling: skip items fully outside the visible domain
+      const isInViewport = (item: { start: Date; end: Date }) => {
+        const startMs = item.start.getTime()
+        const endMs = item.end.getTime()
+        return endMs >= domainStartMs && startMs <= domainEndMs
+      }
 
       // ── Time grid lines ──
       const oneHourLater = new Date(domainStart.getTime() + 3600000)
@@ -1413,10 +1455,19 @@ export const Timeline = () => {
       }
 
       // ── Music staff (sheet-music notation) ──
-      if (hasMusic) {
+      if (showMusicTrack) {
         const mergeGapMs = getMergeGapMs(pixelsPerHour)
-        const sessions = mergeScrobblesIntoSessions(scrobbles, mergeGapMs)
-        drawMusicSessions(chartGroup, sessions, currentXScale, trackMusic, showMusicTooltip, hideTooltip)
+        const allSessions = mergeScrobblesIntoSessions(scrobbles, mergeGapMs)
+        const sessions = allSessions.filter(isInViewport)
+        drawMusicSessions(
+          chartGroup,
+          sessions,
+          currentXScale,
+          trackMusic,
+          showMusicTooltip,
+          hideTooltip,
+          pixelsPerHour,
+        )
       }
 
       // ── Helper: build detail URL for an item ──
@@ -1427,6 +1478,7 @@ export const Timeline = () => {
 
       // ── Activity lane (activities + tags) ──
       for (const { item, lane } of packedActivityItems.items) {
+        if (!isInViewport(item)) continue
         const laneY = trackActivity + lane * activitySubLaneHeight
         const laneH = activitySubLaneHeight - 1
         const rx = currentXScale(item.start)
@@ -1550,6 +1602,7 @@ export const Timeline = () => {
       // ── Places lane ──
       const placeItems = chartItems.filter((i) => i.column === 'Location')
       for (const place of placeItems) {
+        if (!isInViewport(place)) continue
         const px = currentXScale(place.start)
         const pw = Math.max(0, currentXScale(place.end) - px)
         const placeUrl = getDetailUrl(place)
@@ -1594,7 +1647,12 @@ export const Timeline = () => {
       }
 
       // ── Metrics track (HR/HRV band charts + steps/calories bars + combined tooltip) ──
-      if (metricsYScales || (showTrainingLoad && trainingLoadData)) {
+      const showHR = !hiddenCategories.has('hr') && showMetricsTrack
+      const showHRV = !hiddenCategories.has('hrv') && showMetricsTrack
+      const showSteps = !hiddenCategories.has('steps') && showMetricsTrack
+      const showCalories = !hiddenCategories.has('calories') && showMetricsTrack
+      const showTL = !hiddenCategories.has('training_load') && showMetricsTrack
+      if (showMetricsTrack && (metricsYScales || (showTL && trainingLoadData))) {
         drawMetricsTrack({
           buckets: metricBuckets,
           chartGroup,
@@ -1602,10 +1660,10 @@ export const Timeline = () => {
           hideTooltip,
           outerG,
           pixelsPerHour,
-          showCalories: showMetricsCalories,
-          showHR: showMetricsHR,
-          showHRV: showMetricsHRV,
-          showSteps: showMetricsSteps,
+          showCalories,
+          showHR,
+          showHRV,
+          showSteps,
           showTooltipHtml: (event: MouseEvent, html: string) => {
             if (!tooltipRef.current || !containerRef.current) return
             const tip = tooltipRef.current
@@ -1626,7 +1684,7 @@ export const Timeline = () => {
             { yScales: metricsYScales }
           : { yScales: computeYScales([], trackMetrics, trackMetrics + metricsTrackHeight) }),
           xScale: currentXScale,
-          ...(showTrainingLoad && trainingLoadData ?
+          ...(showTL && trainingLoadData ?
             {
               trainingLoadPoints: trainingLoadData.points,
               trainingLoadWorkouts: trainingLoadData.workouts,
@@ -1637,7 +1695,7 @@ export const Timeline = () => {
       }
 
       // ── Training load track (CTL/ATL/TSB overlaid on metrics area) ──
-      if (showTrainingLoad && trainingLoadData) {
+      if (showMetricsTrack && showTL && trainingLoadData) {
         drawTrainingLoadTrack({
           bootstrapping: trainingLoadData.bootstrapping,
           chartGroup,
@@ -1662,7 +1720,7 @@ export const Timeline = () => {
     drawRef.current = draw
 
     // ── Static HR/HRV y-axes (drawn once per render, not per zoom frame) ──
-    if (metricsYScales) {
+    if (showMetricsTrack && metricsYScales) {
       outerG
         .append('g')
         .attr('class', 'metrics-y-axis')
@@ -1696,15 +1754,11 @@ export const Timeline = () => {
     effectiveViewStart,
     horizontalMetricBuckets,
     isItemHidden,
+    hiddenCategories,
     scrobbles,
     showMusicTooltip,
     showTooltip,
     hideTooltip,
-    showMetricsHR,
-    showMetricsHRV,
-    showMetricsSteps,
-    showMetricsCalories,
-    showTrainingLoad,
     trainingLoadQuery.data,
   ])
 
@@ -1982,119 +2036,117 @@ export const Timeline = () => {
         </button>
         {!legendCollapsed && (
           <div class="timeline-legend" ref={legendRef}>
-            {(
-              [
-                { cat: 'sleep' as LegendCategory, color: activityColors.sleep!, label: 'Sleep' },
-                { cat: 'nap' as LegendCategory, color: activityColors.nap!, label: 'Nap' },
-                { cat: 'rest' as LegendCategory, color: activityColors.rest!, label: 'Rest' },
+            {/* ── Music (top-level) ── */}
+            {showMusicColumn && (
+              <>
+                <button
+                  key="music"
+                  class={`legend-item${hiddenCategories.has('music') ? ' legend-item-hidden' : ''}`}
+                  onClick={() => toggleCategory('music')}
+                  type="button"
+                >
+                  <span class="legend-dot" style={{ background: MUSIC_COLOR }} />
+                  Music
+                </button>
+                <span class="legend-separator" />
+              </>
+            )}
+
+            {/* ── Activity group ── */}
+            <div class="legend-group">
+              <button
+                key="activity"
+                class={`legend-item legend-group-header${hiddenCategories.has('activity') ? ' legend-item-hidden' : ''}`}
+                onClick={() => toggleCategory('activity')}
+                type="button"
+              >
+                <span class="legend-dot" style={{ background: activityColors.sleep! }} />
+                Activity
+              </button>
+              {[
+                {
+                  cat: 'sleep_rest' as LegendCategory,
+                  color: activityColors.sleep!,
+                  label: 'Sleep/Nap/Rest',
+                },
                 {
                   cat: 'meditation' as LegendCategory,
                   color: activityColors.meditation!,
                   label: 'Meditation',
                 },
                 { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
-                { cat: 'location' as LegendCategory, color: placeColorPalette[0]!, label: 'Location' },
-                {
-                  cat: 'calendar' as LegendCategory,
-                  color: tagSourceColors.calendar!,
-                  label: 'Calendar',
-                },
                 { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
-                ...(occasionalMetricItems.length > 0 ?
-                  [{ cat: 'metrics' as LegendCategory, color: METRIC_COLOR, label: 'Metrics' }]
+                { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
+                ...(orientation === 'vertical' ?
+                  [
+                    {
+                      cat: 'screentime' as LegendCategory,
+                      color: productivityColors[1]!,
+                      label: 'Screen Time',
+                    },
+                  ]
                 : []),
-                {
-                  cat: 'screentime' as LegendCategory,
-                  color: productivityColors[1]!,
-                  label: 'Screen Time',
-                },
-                ...(showMusicColumn ?
-                  [{ cat: 'music' as LegendCategory, color: MUSIC_COLOR, label: 'Music' }]
-                : []),
-              ] as { cat: LegendCategory; color: string; label: string }[]
-            ).map(({ cat, color, label }) => (
+              ].map(({ cat, color, label }) => (
+                <button
+                  key={cat}
+                  class={`legend-item legend-sub-item${hiddenCategories.has('activity') ? ' legend-sub-item--disabled' : ''}${hiddenCategories.has(cat) ? ' legend-item-hidden' : ''}`}
+                  onClick={() => toggleCategory(cat)}
+                  type="button"
+                >
+                  <span class="legend-dot legend-dot-small" style={{ background: color }} />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <span class="legend-separator" />
+
+            {/* ── Metrics group ── */}
+            <div class="legend-group">
               <button
-                key={cat}
-                class={`legend-item${hiddenCategories.has(cat) ? ' legend-item-hidden' : ''}`}
-                onClick={() => toggleCategory(cat)}
+                key="metrics"
+                class={`legend-item legend-group-header${hiddenCategories.has('metrics') ? ' legend-item-hidden' : ''}`}
+                onClick={() => toggleCategory('metrics')}
                 type="button"
               >
-                <span class="legend-dot" style={{ background: color }} />
-                {label}
+                <span class="legend-dot" style={{ background: HR_COLOR }} />
+                Metrics
               </button>
-            ))}
+              {[
+                { cat: 'hr' as LegendCategory, color: HR_COLOR, label: 'HR' },
+                { cat: 'hrv' as LegendCategory, color: HRV_COLOR, label: 'HRV' },
+                ...(orientation === 'horizontal' ?
+                  [
+                    { cat: 'steps' as LegendCategory, color: STEPS_COLOR, label: 'Steps' },
+                    { cat: 'calories' as LegendCategory, color: CALORIES_COLOR, label: 'Calories' },
+                    { cat: 'training_load' as LegendCategory, color: CTL_COLOR, label: 'Training Load' },
+                  ]
+                : []),
+              ].map(({ cat, color, label }) => (
+                <button
+                  key={cat}
+                  class={`legend-item legend-sub-item${hiddenCategories.has('metrics') ? ' legend-sub-item--disabled' : ''}${hiddenCategories.has(cat) ? ' legend-item-hidden' : ''}`}
+                  onClick={() => toggleCategory(cat)}
+                  type="button"
+                >
+                  <span class="legend-dot legend-dot-small" style={{ background: color }} />
+                  {label}
+                </button>
+              ))}
+            </div>
+
             <span class="legend-separator" />
-            {orientation === 'vertical' && (
-              <>
-                <button
-                  class={`legend-item${!showSparklineHR ? ' legend-item-hidden' : ''}`}
-                  onClick={() => setShowSparklineHR((v) => !v)}
-                  type="button"
-                  title="Toggle HR sparklines on activities"
-                >
-                  <span class="legend-dot" style={{ background: HR_COLOR }} />
-                  HR
-                </button>
-                <button
-                  class={`legend-item${!showSparklineHRV ? ' legend-item-hidden' : ''}`}
-                  onClick={() => setShowSparklineHRV((v) => !v)}
-                  type="button"
-                  title="Toggle HRV sparklines on activities"
-                >
-                  <span class="legend-dot" style={{ background: HRV_COLOR }} />
-                  HRV
-                </button>
-              </>
-            )}
-            {orientation === 'horizontal' && (
-              <>
-                <button
-                  class={`legend-item${!showMetricsHR ? ' legend-item-hidden' : ''}`}
-                  onClick={() => setShowMetricsHR((v) => !v)}
-                  type="button"
-                  title="Toggle heart rate band chart"
-                >
-                  <span class="legend-dot" style={{ background: HR_COLOR }} />
-                  HR
-                </button>
-                <button
-                  class={`legend-item${!showMetricsHRV ? ' legend-item-hidden' : ''}`}
-                  onClick={() => setShowMetricsHRV((v) => !v)}
-                  type="button"
-                  title="Toggle HRV band chart"
-                >
-                  <span class="legend-dot" style={{ background: HRV_COLOR }} />
-                  HRV
-                </button>
-                <button
-                  class={`legend-item${!showMetricsSteps ? ' legend-item-hidden' : ''}`}
-                  onClick={() => setShowMetricsSteps((v) => !v)}
-                  type="button"
-                  title="Toggle steps bar chart"
-                >
-                  <span class="legend-dot" style={{ background: STEPS_COLOR }} />
-                  Steps
-                </button>
-                <button
-                  class={`legend-item${!showMetricsCalories ? ' legend-item-hidden' : ''}`}
-                  onClick={() => setShowMetricsCalories((v) => !v)}
-                  type="button"
-                  title="Toggle active calories bar chart"
-                >
-                  <span class="legend-dot" style={{ background: CALORIES_COLOR }} />
-                  Calories
-                </button>
-                <button
-                  class={`legend-item${!showTrainingLoad ? ' legend-item-hidden' : ''}`}
-                  onClick={() => setShowTrainingLoad((v) => !v)}
-                  type="button"
-                  title="Toggle training load (Banister model: CTL/ATL/TSB)"
-                >
-                  <span class="legend-dot" style={{ background: CTL_COLOR }} />
-                  Training Load
-                </button>
-              </>
-            )}
+
+            {/* ── Location (top-level) ── */}
+            <button
+              key="location"
+              class={`legend-item${hiddenCategories.has('location') ? ' legend-item-hidden' : ''}`}
+              onClick={() => toggleCategory('location')}
+              type="button"
+            >
+              <span class="legend-dot" style={{ background: placeColorPalette[0]! }} />
+              Location
+            </button>
           </div>
         )}
       </div>

@@ -219,6 +219,33 @@
   align-self: center;
 }
 
+/* ── Legend groups (Activity / Metrics) ────────────────────────── */
+
+.timeline-legend .legend-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.125rem;
+}
+
+.timeline-legend .legend-group-header {
+  font-weight: 600;
+}
+
+.timeline-legend .legend-dot-small {
+  width: 8px;
+  height: 8px;
+}
+
+.timeline-legend .legend-sub-item {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.3rem;
+}
+
+.timeline-legend .legend-sub-item--disabled {
+  opacity: 0.35;
+}
+
 /* ── Overlap warnings ──────────────────────────────────────────── */
 
 .timeline-overlap-warnings {

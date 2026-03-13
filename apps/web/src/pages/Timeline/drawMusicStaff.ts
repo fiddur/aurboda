@@ -187,6 +187,38 @@ const drawLedgerLines = (g: SvgParent, staffY: number, noteX: number, position: 
   }
 }
 
+/** Draw simplified colored bars for music sessions (used when zoomed out). */
+const drawSimplifiedMusicBars = (
+  chartGroup: SvgParent,
+  sessions: MusicSession[],
+  currentXScale: d3.ScaleTime<number, number>,
+  staffY: number,
+  showTooltip: (event: MouseEvent, session: MusicSession) => void,
+  hideTooltip: () => void,
+): void => {
+  const barHeight = MUSIC_STAFF_HEIGHT - 4
+  const barY = staffY + 2
+
+  for (const session of sessions) {
+    const sx = currentXScale(session.start)
+    const ex = currentXScale(session.end)
+    const sw = Math.max(2, ex - sx)
+
+    chartGroup
+      .append('rect')
+      .attr('x', sx)
+      .attr('y', barY)
+      .attr('width', sw)
+      .attr('height', barHeight)
+      .attr('fill', '#ec4899')
+      .attr('opacity', 0.5)
+      .attr('rx', 2)
+      .attr('cursor', 'default')
+      .on('mouseenter', (event: MouseEvent) => showTooltip(event, session))
+      .on('mouseleave', hideTooltip)
+  }
+}
+
 /** Draw all music sessions as sheet-music notation onto `chartGroup`. */
 export const drawMusicSessions = (
   chartGroup: SvgParent,
@@ -195,7 +227,14 @@ export const drawMusicSessions = (
   staffY: number,
   showTooltip: (event: MouseEvent, session: MusicSession) => void,
   hideTooltip: () => void,
+  pixelsPerHour?: number,
 ): void => {
+  // Simplified mode when zoomed out: colored bars instead of staff notation
+  if (pixelsPerHour !== undefined && pixelsPerHour < 20) {
+    drawSimplifiedMusicBars(chartGroup, sessions, currentXScale, staffY, showTooltip, hideTooltip)
+    return
+  }
+
   const topLineY = staffY + STAFF_TOP_PADDING
   const bottomLineY = topLineY + 4 * STAFF_LINE_SPACING
 
