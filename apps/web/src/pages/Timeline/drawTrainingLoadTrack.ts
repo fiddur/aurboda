@@ -73,16 +73,24 @@ const computeYScales = (
   trackY: number,
   trackBottom: number,
 ): TrainingLoadYScales => {
-  // Load scale: 0 to max(ATL, CTL)
-  let maxLoad = 10
+  // Load scale: tight domain around actual ATL/CTL range for better visual resolution.
+  // With a zero-anchored domain the curves compress into ~10% of the track when values
+  // are close (e.g. CTL 5.9–6.8).  A tight domain lets small variations fill the track.
+  let minLoad = Infinity
+  let maxLoad = -Infinity
   for (const p of points) {
+    if (p.atl < minLoad) minLoad = p.atl
+    if (p.ctl < minLoad) minLoad = p.ctl
     if (p.atl > maxLoad) maxLoad = p.atl
     if (p.ctl > maxLoad) maxLoad = p.ctl
   }
+  if (minLoad === Infinity) minLoad = 0
+  if (maxLoad === -Infinity) maxLoad = 10
+  const loadPadding = Math.max((maxLoad - minLoad) * 0.25, 1)
 
   const yLoad = d3
     .scaleLinear()
-    .domain([0, maxLoad * 1.15])
+    .domain([Math.max(0, minLoad - loadPadding), maxLoad + loadPadding])
     .range([trackBottom, trackY])
 
   // TSB scale: symmetric around 0
