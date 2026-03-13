@@ -7,7 +7,7 @@
  */
 
 import type { BiologicalSex } from '@aurboda/api-spec'
-import { enqueueOutboundSync, getUserSettings } from '../db'
+import { enqueueOutboundSync, getUserSettings, upsertUserSettings } from '../db'
 import {
   deleteTimeSeriesBySource,
   getMetricTimeRange,
@@ -24,6 +24,7 @@ import {
   computeGapFillPoints,
   getVo2MaxFallback,
 } from './calories'
+import { getSettings } from './settings'
 
 /**
  * Calculate age from birth date string.
@@ -81,6 +82,27 @@ const enqueueCalorieSync = async (
     }
   } catch (err) {
     console.error('Failed to enqueue calorie outbound sync:', err)
+  }
+}
+
+/**
+ * Invalidate training load impulse buckets so they get recomputed from
+ * the updated calorie data on next query.
+ *
+ * Sets impulse_watermark to the earliest of the given time and any existing
+ * watermark, ensuring recomputation covers the full affected range.
+ */
+const invalidateTrainingLoadImpulses = async (user: string, fromTime: Date): Promise<void> => {
+  try {
+    const settings = await getSettings(user)
+    const existingWatermark = settings.training_load?.impulse_watermark
+    const existingTime = existingWatermark ? new Date(existingWatermark) : null
+    const effectiveTime = existingTime && existingTime < fromTime ? existingTime : fromTime
+    await upsertUserSettings(user, {
+      training_load: { ...settings.training_load, impulse_watermark: effectiveTime.toISOString() },
+    })
+  } catch (err) {
+    console.error('Failed to invalidate training load impulses:', err)
   }
 }
 
@@ -188,6 +210,9 @@ export const computeAndStoreCalories = async (
   // 11. Queue outbound sync (best-effort)
   await enqueueCalorieSync(user, newPoints)
 
+  // 12. Invalidate training load impulse buckets so they recompute from new calorie data
+  await invalidateTrainingLoadImpulses(user, start)
+
   return {
     points_computed: caloriePoints.length,
     points_stored: newPoints.length,
@@ -256,6 +281,9 @@ export const gapFillCaloriesForDay = async (user: string, dayStartUtc: Date): Pr
     value: p.kcal,
   }))
   await insertTimeSeries(user, timeSeriesPoints)
+
+  // 5. Invalidate training load impulse buckets for this day
+  await invalidateTrainingLoadImpulses(user, dayStartUtc)
 
   return {
     gap_minutes: result.gap_minutes,
