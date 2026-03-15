@@ -664,15 +664,17 @@ export const fetchActivityImpact = async (
 export const fetchBucketedMetrics = async (
   start: Date,
   end: Date,
-  metrics: string[],
+  metrics?: string[],
   bucket: string = '1d',
+  exclude?: string[],
 ): Promise<QueryMetricsBucketedResponse> => {
   const { token } = auth.value
   const params: QueryMetricsBucketedQuery = {
     bucket: bucket as QueryMetricsBucketedQuery['bucket'],
     end: end.toISOString(),
-    metrics: metrics.join(','),
     start: start.toISOString(),
+    ...(metrics && { metrics: metrics.join(',') }),
+    ...(exclude && { exclude: exclude.join(',') }),
   }
   const response = await axios.get<QueryMetricsBucketedResponse>(`${API_URL}/metrics/bucketed`, {
     headers: { Authorization: `Bearer ${token}` },

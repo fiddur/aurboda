@@ -1,5 +1,9 @@
 /* eslint-disable max-lines -- large visualization component */
-import { metricUnits as builtinMetricUnits, type ScreentimeCategory } from '@aurboda/api-spec'
+import {
+  metricUnits as builtinMetricUnits,
+  type QueryMetricsBucketedResponse,
+  type ScreentimeCategory,
+} from '@aurboda/api-spec'
 import { signal, useSignalEffect } from '@preact/signals'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as d3 from 'd3'
@@ -10,7 +14,6 @@ import {
   fetchActivities,
   fetchBucketedMetrics,
   fetchCustomMetrics,
-  fetchMetricTimeSeriesWithSource,
   fetchPlaces,
   fetchProductivity,
   fetchScreentimeCategories,
@@ -22,7 +25,6 @@ import {
   Place,
   ProductivityRecord,
   Tag,
-  type MetricDataPointWithSource,
 } from '../../state/api'
 import { parseBucketedResponse } from '../../utils/chart'
 import { isEmoji, isUrl } from '../../utils/emojiLookup'
@@ -193,23 +195,24 @@ const TAG_COLOR = '#8b5cf6'
 const METRIC_COLOR = '#14b8a6'
 const NOW_COLOR = '#ef4444'
 
-const OCCASIONAL_BUILTIN_METRICS = [
-  'weight',
-  'body_fat',
-  'bone_mass',
-  'lean_body_mass',
-  'body_water_mass',
-  'height',
-  'blood_glucose',
-  'blood_pressure_systolic',
-  'blood_pressure_diastolic',
-  'body_temperature',
-  'basal_body_temperature',
-  'spo2',
-  'vo2_max',
-]
-
+/** Max data points per metric across the time range to be treated as "occasional" (shown as point markers). */
 const OCCASIONAL_METRIC_MAX_COUNT = 10
+
+/** Metrics to exclude from the unified bucketed query (fetched via separate endpoints). */
+const TIMELINE_EXCLUDED_METRICS = ['training_impulse', 'activity_impulse']
+
+/** Core metrics used for band/bar charts and sparklines. */
+const CORE_CHART_METRICS = new Set([
+  'heart_rate',
+  'hrv_rmssd',
+  'hrv_sleep',
+  'hrv_awake',
+  'hrv_activity',
+  'steps',
+  'calories_active',
+  'calories_total',
+  'calories_basal',
+])
 
 const tagSourceColors: Record<string, string> = {
   calendar: '#f59e0b',
@@ -317,10 +320,10 @@ const formatDuration = (start: Date, end: Date): string => {
 const escapeHtml = (str: string): string =>
   str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-type OuraSleepMetrics = Record<string, number>
-type OuraSleepByDate = Map<string, OuraSleepMetrics>
+type SleepMetrics = Record<string, number>
+type SleepMetricsByDate = Map<string, SleepMetrics>
 
-const buildSleepDetails = (a: Activity, end: Date, ouraByDate: OuraSleepByDate): string[] => {
+const buildSleepDetails = (a: Activity, end: Date, sleepByDate: SleepMetricsByDate): string[] => {
   const details: string[] = []
   details.push(`Bed: ${formatDuration(a.start_time, end)}`)
 
@@ -330,15 +333,16 @@ const buildSleepDetails = (a: Activity, end: Date, ouraByDate: OuraSleepByDate):
     details.push(`Sleep: ${m > 0 ? `${h}h ${m}m` : `${h}h`}`)
   }
 
-  const oura = ouraByDate.get(format(end, 'yyyy-MM-dd'))
-  if (oura) {
-    if (oura.sleep_score !== undefined) details.push(`ō score: ${Math.round(oura.sleep_score)}`)
-    if (oura.sleep_efficiency !== undefined)
-      details.push(`ō efficiency: ${Math.round(oura.sleep_efficiency)}%`)
-    if (oura.sleep_restfulness !== undefined)
-      details.push(`ō restfulness: ${Math.round(oura.sleep_restfulness)}`)
-    if (oura.sleep_deep_score !== undefined) details.push(`ō deep: ${Math.round(oura.sleep_deep_score)}`)
-    if (oura.sleep_rem_score !== undefined) details.push(`ō REM: ${Math.round(oura.sleep_rem_score)}`)
+  const sleepData = sleepByDate.get(format(end, 'yyyy-MM-dd'))
+  if (sleepData) {
+    if (sleepData.sleep_score !== undefined) details.push(`Score: ${Math.round(sleepData.sleep_score)}`)
+    if (sleepData.sleep_efficiency !== undefined)
+      details.push(`Efficiency: ${Math.round(sleepData.sleep_efficiency)}%`)
+    if (sleepData.sleep_restfulness !== undefined)
+      details.push(`Restfulness: ${Math.round(sleepData.sleep_restfulness)}`)
+    if (sleepData.sleep_deep_score !== undefined)
+      details.push(`Deep: ${Math.round(sleepData.sleep_deep_score)}`)
+    if (sleepData.sleep_rem_score !== undefined) details.push(`REM: ${Math.round(sleepData.sleep_rem_score)}`)
   }
 
   if (a.avg_hrv) details.push(`Avg HRV: ${a.avg_hrv} ms`)
@@ -420,36 +424,48 @@ const categorizeTags = (tags: Tag[], itemIcons: Record<string, string>): ChartIt
 const formatMetricLabel = (metric: string): string =>
   metric.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
+/**
+ * Extract occasional (sparse) metrics from bucketed data as point ChartItems.
+ * A metric is "occasional" if it has data in ≤ OCCASIONAL_METRIC_MAX_COUNT buckets
+ * and is not a core chart metric (HR, HRV, steps, calories).
+ */
 const categorizeOccasionalMetrics = (
-  dataPoints: MetricDataPointWithSource[],
+  data: QueryMetricsBucketedResponse | undefined,
   metricUnitsMap: Record<string, string>,
 ): ChartItem[] => {
-  if (!dataPoints || dataPoints.length === 0) return []
+  if (!data?.buckets?.length) return []
 
-  const metricCounts: Record<string, number> = {}
-  for (const dp of dataPoints) {
-    metricCounts[dp.metric] = (metricCounts[dp.metric] ?? 0) + 1
+  // Count how many buckets each metric appears in
+  const metricBucketCounts: Record<string, number> = {}
+  for (const bucket of data.buckets) {
+    for (const metric of Object.keys(bucket.metrics)) {
+      metricBucketCounts[metric] = (metricBucketCounts[metric] ?? 0) + 1
+    }
   }
 
+  // Find occasional metrics: sparse, non-core
   const occasionalMetrics = new Set(
-    Object.entries(metricCounts)
-      .filter(([, count]) => count <= OCCASIONAL_METRIC_MAX_COUNT)
+    Object.entries(metricBucketCounts)
+      .filter(([metric, count]) => count <= OCCASIONAL_METRIC_MAX_COUNT && !CORE_CHART_METRICS.has(metric))
       .map(([metric]) => metric),
   )
 
   if (occasionalMetrics.size === 0) return []
 
-  return dataPoints
-    .filter((dp) => occasionalMetrics.has(dp.metric))
-    .map((dp) => {
-      const unit = metricUnitsMap[dp.metric] ?? ''
-      const displayValue = Number(dp.value.toFixed(2))
-      const valueStr = `${displayValue}${unit ? ` ${unit}` : ''}`
-      const metricLabel = formatMetricLabel(dp.metric)
-      const end = new Date(dp.time.getTime() + 15 * 60000)
-      const entityId = `${dp.time.toISOString()}|${dp.metric}|${dp.source}`
+  const items: ChartItem[] = []
+  for (const bucket of data.buckets) {
+    const bucketStart = new Date(bucket.start)
+    for (const [metric, stats] of Object.entries(bucket.metrics)) {
+      if (!occasionalMetrics.has(metric)) continue
 
-      return {
+      const unit = metricUnitsMap[metric] ?? ''
+      const displayValue = Number(stats.avg.toFixed(2))
+      const valueStr = `${displayValue}${unit ? ` ${unit}` : ''}`
+      const metricLabel = formatMetricLabel(metric)
+      const end = new Date(bucketStart.getTime() + 15 * 60000)
+      const entityId = `${bucketStart.toISOString()}|${metric}`
+
+      items.push({
         color: METRIC_COLOR,
         column: 'Tags / Events' as Column,
         end,
@@ -457,14 +473,16 @@ const categorizeOccasionalMetrics = (
         entity_type: 'metric' as const,
         isPoint: true,
         label: `${metricLabel}: ${valueStr}`,
-        start: dp.time,
+        start: bucketStart,
         tooltip: {
-          details: [`Value: ${valueStr}`, `Source: ${dp.source}`, 'Metric measurement'],
-          time: formatTime(dp.time),
+          details: [`Value: ${valueStr}`, 'Metric measurement'],
+          time: formatTime(bucketStart),
           title: metricLabel,
         },
-      }
-    })
+      })
+    }
+  }
+  return items
 }
 
 const getResolvedColor = (p: ProductivityRecord, categories: ScreentimeCategory[]): string => {
@@ -672,19 +690,6 @@ export const Timeline = () => {
     staleTime: 30 * 60 * 1000,
   })
 
-  const ouraMetricsQuery = useQuery({
-    placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchBucketedMetrics(
-        subDays(fetchStart, 0.5),
-        addDays(fetchEnd, 0.5),
-        ['sleep_score', 'sleep_efficiency', 'sleep_restfulness', 'sleep_deep_score', 'sleep_rem_score'],
-        '1d',
-      ),
-    queryKey: ['timeline-oura-sleep', fromDate.value, toDate.value],
-    staleTime: 5 * 60 * 1000,
-  })
-
   const hasLastFm = Boolean(settingsQuery.data?.lastfm_username)
 
   const scrobblesQuery = useQuery({
@@ -695,7 +700,7 @@ export const Timeline = () => {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Bucketed metrics: used for sparklines (vertical) and band/bar charts (horizontal)
+  // Unified bucketed metrics: all metrics in one request
   // Scale bucket size with date range to avoid overwhelming the API on large ranges
   const metricBucketSize = useMemo(() => {
     const days = differenceInCalendarDays(fetchEnd, fetchStart)
@@ -711,8 +716,9 @@ export const Timeline = () => {
       fetchBucketedMetrics(
         subDays(fetchStart, 0.5),
         addDays(fetchEnd, 0.5),
-        ['heart_rate', 'hrv_rmssd', 'steps', 'calories_active'],
+        undefined,
         metricBucketSize,
+        TIMELINE_EXCLUDED_METRICS,
       ),
     queryKey: ['timeline-bucketed-metrics', fromDate.value, toDate.value, metricBucketSize],
     staleTime: 5 * 60 * 1000,
@@ -730,11 +736,6 @@ export const Timeline = () => {
     staleTime: 30 * 60 * 1000,
   })
 
-  const occasionalMetricNames = useMemo(() => {
-    const customNames = (customMetricsQuery.data ?? []).map((m) => m.name)
-    return [...OCCASIONAL_BUILTIN_METRICS, ...customNames]
-  }, [customMetricsQuery.data])
-
   const allMetricUnits = useMemo(() => {
     const units: Record<string, string> = { ...builtinMetricUnits }
     for (const m of customMetricsQuery.data ?? []) {
@@ -742,21 +743,6 @@ export const Timeline = () => {
     }
     return units
   }, [customMetricsQuery.data])
-
-  const occasionalMetricsQuery = useQuery({
-    enabled: occasionalMetricNames.length > 0,
-    placeholderData: keepPreviousData,
-    queryFn: async () => {
-      const start = subDays(fetchStart, 0.5)
-      const end = addDays(fetchEnd, 0.5)
-      const results = await Promise.all(
-        occasionalMetricNames.map((metric) => fetchMetricTimeSeriesWithSource(metric, start, end)),
-      )
-      return results.flat()
-    },
-    queryKey: ['timeline-occasional-metrics', fromDate.value, toDate.value, occasionalMetricNames],
-    staleTime: 5 * 60 * 1000,
-  })
 
   // ── Refs ───────────────────────────────────────────────────────────────────
 
@@ -787,18 +773,28 @@ export const Timeline = () => {
   const productivity = productivityQuery.data ?? []
   const scrobbles = scrobblesQuery.data ?? []
 
-  const ouraByDate = useMemo<OuraSleepByDate>(() => {
-    const map: OuraSleepByDate = new Map()
-    for (const bucket of ouraMetricsQuery.data?.buckets ?? []) {
-      const key = format(new Date(bucket.start), 'yyyy-MM-dd')
-      const metrics: OuraSleepMetrics = {}
-      for (const [metric, stats] of Object.entries(bucket.metrics)) {
-        metrics[metric] = stats.avg
+  // Extract sleep score metrics from unified bucketed data, keyed by date
+  const sleepMetricsByDate = useMemo<SleepMetricsByDate>(() => {
+    const map: SleepMetricsByDate = new Map()
+    const sleepMetricNames = [
+      'sleep_score',
+      'sleep_efficiency',
+      'sleep_restfulness',
+      'sleep_deep_score',
+      'sleep_rem_score',
+    ]
+    for (const bucket of bucketedMetricsQuery.data?.buckets ?? []) {
+      for (const name of sleepMetricNames) {
+        const stats = bucket.metrics[name]
+        if (!stats) continue
+        const key = format(new Date(bucket.start), 'yyyy-MM-dd')
+        const existing = map.get(key) ?? {}
+        existing[name] = stats.avg
+        map.set(key, existing)
       }
-      map.set(key, metrics)
     }
     return map
-  }, [ouraMetricsQuery.data])
+  }, [bucketedMetricsQuery.data])
 
   const itemIcons = useMemo<Record<string, string>>(() => {
     return tagMappingsQuery.data?.icons ?? {}
@@ -808,8 +804,8 @@ export const Timeline = () => {
   const showMusicColumn = musicItems.length > 0
 
   const occasionalMetricItems = useMemo(
-    () => categorizeOccasionalMetrics(occasionalMetricsQuery.data ?? [], allMetricUnits),
-    [occasionalMetricsQuery.data, allMetricUnits],
+    () => categorizeOccasionalMetrics(bucketedMetricsQuery.data, allMetricUnits),
+    [bucketedMetricsQuery.data, allMetricUnits],
   )
 
   const sparklineBuckets = useMemo(
@@ -838,11 +834,11 @@ export const Timeline = () => {
         activityColors,
         getExerciseColor,
         getExerciseTypeName,
-        ouraByDate,
-        (a, end) => buildSleepDetails(a, end, ouraByDate),
+        sleepMetricsByDate,
+        (a, end) => buildSleepDetails(a, end, sleepMetricsByDate),
         scrobbles,
       ),
-    [activities, tags, itemIcons, ouraByDate, scrobbles],
+    [activities, tags, itemIcons, sleepMetricsByDate, scrobbles],
   )
 
   // Tags that should stay in the Tags / Events column (not pulled into Activity)
@@ -975,7 +971,6 @@ export const Timeline = () => {
     tagsQuery.isFetching ||
     productivityQuery.isFetching ||
     scrobblesQuery.isFetching ||
-    occasionalMetricsQuery.isFetching ||
     bucketedMetricsQuery.isFetching
 
   // ── Navigation ─────────────────────────────────────────────────────────────

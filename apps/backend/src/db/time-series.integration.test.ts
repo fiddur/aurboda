@@ -11,6 +11,7 @@ import {
   deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
+  getDistinctMetrics,
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesWithSource,
@@ -303,7 +304,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T10:30:00Z'),
-        15, // 15-minute buckets
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(2)
@@ -342,7 +343,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate', 'hrv_rmssd'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T10:15:00Z'),
-        15,
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(2) // One bucket per metric
@@ -367,7 +368,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T11:00:00Z'),
-        15,
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(0)
@@ -385,7 +386,7 @@ describe('Time Series Integration Tests', () => {
         [],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T11:00:00Z'),
-        15,
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(0)
@@ -406,7 +407,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T10:10:00Z'),
-        5, // 5-minute buckets
+        '5 minutes',
       )
 
       expect(buckets).toHaveLength(2)
@@ -431,7 +432,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T12:00:00Z'),
-        60, // 1-hour buckets
+        '60 minutes',
       )
 
       expect(buckets).toHaveLength(2)
@@ -460,7 +461,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T00:00:00Z'),
         new Date('2024-01-17T00:00:00Z'),
-        1440, // 1-day buckets (24*60 minutes)
+        '1 day',
       )
 
       expect(buckets).toHaveLength(2)
@@ -487,7 +488,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T10:45:00Z'),
-        15,
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(2)
@@ -510,7 +511,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T10:15:00Z'),
-        15,
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(1)
@@ -678,6 +679,40 @@ describe('Time Series Integration Tests', () => {
       const count = await deleteTimeSeriesMetric(user, 'weight')
 
       expect(count).toBe(0)
+    })
+  })
+
+  describe('getDistinctMetrics', () => {
+    test('returns distinct metric names within time range', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'oura', time: new Date('2024-01-15T06:00:00Z'), value: 72 },
+        { metric: 'heart_rate', source: 'oura', time: new Date('2024-01-15T07:00:00Z'), value: 75 },
+        { metric: 'steps', source: 'health_connect', time: new Date('2024-01-15T06:00:00Z'), value: 100 },
+        { metric: 'weight', source: 'manual', time: new Date('2024-01-15T08:00:00Z'), value: 80 },
+        { metric: 'weight', source: 'manual', time: new Date('2024-01-20T08:00:00Z'), value: 80.5 },
+      ])
+
+      const metrics = await getDistinctMetrics(
+        user,
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-16T00:00:00Z'),
+      )
+
+      expect(metrics).toEqual(['heart_rate', 'steps', 'weight'])
+    })
+
+    test('returns empty array when no data in range', async () => {
+      const user = getTestUser()
+
+      const metrics = await getDistinctMetrics(
+        user,
+        new Date('2024-06-01T00:00:00Z'),
+        new Date('2024-06-02T00:00:00Z'),
+      )
+
+      expect(metrics).toEqual([])
     })
   })
 })

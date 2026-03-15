@@ -272,6 +272,37 @@ export const isValidMetricOrCustom = (
 ): boolean => isValidMetric(metric) || customMetrics.some((m) => m.name === metric)
 
 /**
+ * Aggregation type for metrics: 'sum' for cumulative totals, 'avg' for instantaneous values.
+ * Determines how values are combined in time buckets.
+ */
+export type MetricAggregation = 'avg' | 'sum'
+
+/**
+ * Metrics that should be summed when bucketed (cumulative totals).
+ * All other metrics default to averaging.
+ */
+export const sumMetrics: MetricType[] = [
+  'steps',
+  'distance',
+  'floors_climbed',
+  'calories_active',
+  'calories_total',
+  'calories_basal',
+  'hr_zone_0_sec',
+  'hr_zone_1_sec',
+  'hr_zone_2_sec',
+  'hr_zone_3_sec',
+  'hr_zone_4_sec',
+  'hr_zone_5_sec',
+  'training_impulse',
+  'activity_impulse',
+]
+
+/** Get the aggregation type for a metric (sum or avg). */
+export const getMetricAggregation = (metric: string): MetricAggregation =>
+  (sumMetrics as string[]).includes(metric) ? 'sum' : 'avg'
+
+/**
  * Cumulative metrics that are summed over a day and can have duplicate sources.
  */
 export const cumulativeMetrics: MetricType[] = [

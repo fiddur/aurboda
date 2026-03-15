@@ -803,13 +803,12 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
   },
 
   getHourlyCalorieSums: async (user, start, end) => {
-    const buckets = await getTimeSeriesBucketed(user, ['calories_active'], start, end, 60)
-    // getTimeSeriesBucketed returns avg — we need sum (avg × count)
-    return buckets.map((b) => [b.bucket_start, b.avg * b.count] as [Date, number])
+    const buckets = await getTimeSeriesBucketed(user, ['calories_active'], start, end, '60 minutes')
+    return buckets.map((b) => [b.bucket_start, b.sum] as [Date, number])
   },
 
   getHrSamples: async (user, start, end) => {
-    const buckets = await getTimeSeriesBucketed(user, ['heart_rate'], start, end, 5)
+    const buckets = await getTimeSeriesBucketed(user, ['heart_rate'], start, end, '5 minutes')
     return buckets.map((b) => [b.bucket_start, b.avg] as [Date, number])
   },
 

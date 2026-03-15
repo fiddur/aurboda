@@ -244,13 +244,19 @@ export type CustomMetricsListResponse = z.infer<typeof customMetricsListResponse
 // =============================================================================
 
 /**
- * Valid bucket sizes for aggregated queries.
+ * Bucket size for time-based aggregation.
+ * Format: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), M (months).
+ * Examples: '10s', '5m', '1h', '1d', '1M'
  */
-export const bucketSizeSchema = z.enum(['5m', '15m', '30m', '1h', '1d']).meta({
-  description: 'Bucket size for aggregation',
-  example: '15m',
-  id: 'BucketSize',
-})
+export const bucketSizeSchema = z
+  .string()
+  .regex(/^\d+[smhdM]$/, 'Must be {number}{unit} where unit is s, m, h, d, or M')
+  .meta({
+    description:
+      'Bucket size: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), M (months)',
+    example: '15m',
+    id: 'BucketSize',
+  })
 
 export type BucketSize = z.infer<typeof bucketSizeSchema>
 
@@ -263,6 +269,10 @@ export const bucketMetricStatsSchema = z
     count: z.number().int().meta({ description: 'Number of data points' }),
     max: z.number().meta({ description: 'Maximum value in bucket' }),
     min: z.number().meta({ description: 'Minimum value in bucket' }),
+    sum: z
+      .number()
+      .optional()
+      .meta({ description: 'Sum of values in bucket (present for cumulative metrics)' }),
   })
   .meta({ id: 'BucketMetricStats' })
 
@@ -286,12 +296,18 @@ export type MetricBucket = z.infer<typeof metricBucketSchema>
 
 /**
  * Query bucketed metrics request query.
+ * If metrics is omitted, returns all metrics with data in the time range.
+ * Use exclude to skip specific metrics when fetching all.
  */
 export const queryMetricsBucketedQuerySchema = timeRangeQuerySchema
   .extend({
-    bucket: bucketSizeSchema.meta({ description: 'Bucket size: "5m", "15m", "30m", "1h", or "1d"' }),
-    metrics: z.string().meta({
-      description: 'Comma-separated list of metrics',
+    bucket: bucketSizeSchema,
+    exclude: z.string().optional().meta({
+      description: 'Comma-separated list of metrics to exclude (useful when fetching all)',
+      example: 'training_impulse,activity_impulse',
+    }),
+    metrics: z.string().optional().meta({
+      description: 'Comma-separated list of metrics (omit to fetch all metrics with data in the range)',
       example: 'heart_rate,hrv_rmssd',
     }),
   })

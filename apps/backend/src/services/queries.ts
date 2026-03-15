@@ -11,6 +11,7 @@ import {
   getActivities,
   getDailyAggregates,
   getDailyAggregateValue,
+  getDistinctMetrics,
   getNotesByEntityIds,
   getNotesForTimeRange,
   getProductivity,
@@ -25,9 +26,11 @@ import {
 } from '../db'
 import {
   ActivityType,
+  getMetricAggregation,
   getMetricUnit,
   isContextualHrvMetric,
   isHrZoneMetric,
+  isValidMetricOrCustom,
   MetricType,
   metricUnits,
 } from '../schema'
@@ -69,9 +72,9 @@ export interface QueryMetricsResult {
 }
 
 /**
- * Valid bucket sizes for bucketed metrics queries.
+ * Bucket size string in {number}{unit} format (e.g., '5m', '10s', '1h', '1d', '1M').
  */
-export type BucketSize = '5m' | '15m' | '30m' | '1h' | '1d'
+export type BucketSize = string
 
 /**
  * Bucket statistics for a single metric.
@@ -81,6 +84,7 @@ export interface BucketMetricStats {
   min: number
   max: number
   count: number
+  sum?: number
 }
 
 /**
@@ -322,25 +326,40 @@ async function getContextualHrvData(
 }
 
 /**
- * Convert bucket size string to minutes.
+ * Parse a bucket size string like '5m', '10s', '1h', '1d', '1M' into:
+ * - interval: PostgreSQL interval string for date_bin() (e.g., '300 seconds')
+ * - ms: bucket duration in milliseconds (for in-memory bucketing)
  */
-const bucketSizeToMinutes: Record<BucketSize, number> = {
-  '1d': 1440,
-  '1h': 60,
-  '5m': 5,
-  '15m': 15,
-  '30m': 30,
+export const parseBucketSize = (bucket: string): { interval: string; ms: number } => {
+  const match = bucket.match(/^(\d+)([smhdM])$/)
+  if (!match) throw new Error(`Invalid bucket size: ${bucket}`)
+  const n = parseInt(match[1], 10)
+  const unit = match[2]
+  switch (unit) {
+    case 's':
+      return { interval: `${n} seconds`, ms: n * 1000 }
+    case 'm':
+      return { interval: `${n} minutes`, ms: n * 60 * 1000 }
+    case 'h':
+      return { interval: `${n} hours`, ms: n * 60 * 60 * 1000 }
+    case 'd':
+      return { interval: `${n} days`, ms: n * 24 * 60 * 60 * 1000 }
+    case 'M':
+      // Approximate months as 30 days for in-memory bucketing; PostgreSQL handles months properly
+      return { interval: `${n} months`, ms: n * 30 * 24 * 60 * 60 * 1000 }
+    default:
+      throw new Error(`Invalid bucket size unit: ${unit}`)
+  }
 }
 
 /**
  * Compute bucket start time for a given timestamp.
  */
-const getBucketStart = (time: Date, bucketMinutes: number, rangeStart: Date): Date => {
-  const msPerBucket = bucketMinutes * 60 * 1000
+const getBucketStart = (time: Date, bucketMs: number, rangeStart: Date): Date => {
   const startMs = rangeStart.getTime()
   const timeMs = time.getTime()
-  const bucketIndex = Math.floor((timeMs - startMs) / msPerBucket)
-  return new Date(startMs + bucketIndex * msPerBucket)
+  const bucketIndex = Math.floor((timeMs - startMs) / bucketMs)
+  return new Date(startMs + bucketIndex * bucketMs)
 }
 
 /**
@@ -359,15 +378,23 @@ const contextualHrvMetricToContext: Record<string, HrvContext> = {
 const computeContextualHrvBuckets = (
   hrvData: [Date, number][],
   metric: MetricType,
-  bucketMinutes: number,
+  bucketMs: number,
   rangeStart: Date,
-): { bucket_start: Date; metric: MetricType; avg: number; min: number; max: number; count: number }[] => {
+): {
+  bucket_start: Date
+  metric: MetricType
+  avg: number
+  min: number
+  max: number
+  count: number
+  sum: number
+}[] => {
   if (hrvData.length === 0) return []
 
   // Group data by bucket
   const bucketMap = new Map<string, number[]>()
   for (const [time, value] of hrvData) {
-    const bucketStart = getBucketStart(time, bucketMinutes, rangeStart)
+    const bucketStart = getBucketStart(time, bucketMs, rangeStart)
     const key = bucketStart.toISOString()
     if (!bucketMap.has(key)) {
       bucketMap.set(key, [])
@@ -376,50 +403,75 @@ const computeContextualHrvBuckets = (
   }
 
   // Compute aggregations for each bucket
-  return Array.from(bucketMap.entries()).map(([key, values]) => ({
-    avg: values.reduce((a, b) => a + b, 0) / values.length,
-    bucket_start: new Date(key),
-    count: values.length,
-    max: Math.max(...values),
-    metric,
-    min: Math.min(...values),
-  }))
+  return Array.from(bucketMap.entries()).map(([key, values]) => {
+    const sum = values.reduce((a, b) => a + b, 0)
+    return {
+      avg: sum / values.length,
+      bucket_start: new Date(key),
+      count: values.length,
+      max: Math.max(...values),
+      metric,
+      min: Math.min(...values),
+      sum,
+    }
+  })
 }
 
 /**
  * Query bucketed/aggregated time series data for multiple metrics.
  *
- * Returns pre-aggregated buckets with min/max/avg/count for each metric,
+ * Returns pre-aggregated buckets with min/max/avg/count/sum for each metric,
  * significantly reducing data size compared to raw time series queries.
+ * Sum is included for cumulative metrics (steps, calories, etc.).
  *
  * Supports contextual HRV metrics (hrv_sleep, hrv_activity, hrv_awake) which
  * are computed by filtering hrv_rmssd data by overlapping sleep/activity windows.
  *
  * @param user - The username
- * @param metrics - Array of metric types to query
+ * @param metrics - Specific metrics to query (omit for all metrics in range)
  * @param start - Start of time range
  * @param end - End of time range
- * @param bucket - Bucket size: '5m', '15m', '30m', '1h', or '1d'
+ * @param bucket - Bucket size string, e.g. '5m', '10s', '1h', '1d', '1M'
+ * @param options.exclude - Metrics to exclude (useful when fetching all)
+ * @param options.customMetrics - Custom metric definitions for validation
  */
 export async function queryMetricsBucketed(
   user: string,
-  metrics: MetricType[],
+  metrics: MetricType[] | undefined,
   start: Date,
   end: Date,
   bucket: BucketSize,
+  options: { customMetrics?: CustomMetricDefinition[]; exclude?: string[] } = {},
 ): Promise<QueryMetricsBucketedResult> {
-  const bucketMinutes = bucketSizeToMinutes[bucket]
+  const { interval, ms: bucketMs } = parseBucketSize(bucket)
+  const excludeSet = new Set(options.exclude ?? [])
+
+  // Resolve which metrics to query
+  let resolvedMetrics: MetricType[]
+  if (metrics && metrics.length > 0) {
+    resolvedMetrics = metrics.filter((m) => !excludeSet.has(m))
+  } else {
+    // Discover all metrics with data in the range
+    const available = await getDistinctMetrics(user, start, end)
+    resolvedMetrics = available.filter(
+      (m) => !excludeSet.has(m) && isValidMetricOrCustom(m, options.customMetrics),
+    ) as MetricType[]
+  }
+
+  if (resolvedMetrics.length === 0) {
+    return { bucket, buckets: [], end: end.toISOString(), start: start.toISOString() }
+  }
 
   // Separate regular metrics from contextual HRV metrics
-  const regularMetrics = metrics.filter((m) => !isContextualHrvMetric(m))
-  const contextualHrvMetricsRequested = metrics.filter(isContextualHrvMetric)
+  const regularMetrics = resolvedMetrics.filter((m) => !isContextualHrvMetric(m))
+  const contextualHrvMetricsRequested = resolvedMetrics.filter(isContextualHrvMetric)
 
   // Fetch regular bucketed data and contextual HRV data in parallel
   const needsContextualHrv = contextualHrvMetricsRequested.length > 0
   const [regularData, contextualHrvData] = await Promise.all([
-    regularMetrics.length > 0 ? getTimeSeriesBucketed(user, regularMetrics, start, end, bucketMinutes) : [],
+    regularMetrics.length > 0 ? getTimeSeriesBucketed(user, regularMetrics, start, end, interval) : [],
     needsContextualHrv ?
-      computeContextualHrvData(user, contextualHrvMetricsRequested, start, end, bucketMinutes)
+      computeContextualHrvData(user, contextualHrvMetricsRequested, start, end, bucketMs)
     : [],
   ])
 
@@ -431,7 +483,7 @@ export async function queryMetricsBucketed(
 
   for (const row of allData) {
     const bucketKey = row.bucket_start.toISOString()
-    const bucketEndMs = row.bucket_start.getTime() + bucketMinutes * 60 * 1000
+    const bucketEndMs = row.bucket_start.getTime() + bucketMs
     const bucketEnd = new Date(bucketEndMs).toISOString()
 
     if (!bucketMap.has(bucketKey)) {
@@ -443,12 +495,17 @@ export async function queryMetricsBucketed(
     }
 
     const bucketEntry = bucketMap.get(bucketKey)!
-    bucketEntry.metrics[row.metric] = {
+    const stats: BucketMetricStats = {
       avg: row.avg,
       count: row.count,
       max: row.max,
       min: row.min,
     }
+    // Include sum for cumulative metrics
+    if (getMetricAggregation(row.metric) === 'sum') {
+      stats.sum = row.sum
+    }
+    bucketEntry.metrics[row.metric] = stats
   }
 
   // Convert map to sorted array
@@ -473,9 +530,17 @@ async function computeContextualHrvData(
   metrics: MetricType[],
   start: Date,
   end: Date,
-  bucketMinutes: number,
+  bucketMs: number,
 ): Promise<
-  { bucket_start: Date; metric: MetricType; avg: number; min: number; max: number; count: number }[]
+  {
+    bucket_start: Date
+    metric: MetricType
+    avg: number
+    min: number
+    max: number
+    count: number
+    sum: number
+  }[]
 > {
   // Fetch raw HRV data and context windows in parallel
   const [hrvData, { sleepWindows, activityWindows }] = await Promise.all([
@@ -496,13 +561,14 @@ async function computeContextualHrvData(
     min: number
     max: number
     count: number
+    sum: number
   }[] = []
 
   for (const metric of metrics) {
     const context = contextualHrvMetricToContext[metric]
     if (context) {
       const contextData = classified[context]
-      const buckets = computeContextualHrvBuckets(contextData, metric, bucketMinutes, start)
+      const buckets = computeContextualHrvBuckets(contextData, metric, bucketMs, start)
       results.push(...buckets)
     }
   }
