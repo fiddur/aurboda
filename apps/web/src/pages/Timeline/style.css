@@ -290,6 +290,7 @@
 .timeline-chart-container svg {
   display: block;
   cursor: grab;
+  touch-action: none; /* prevent browser from intercepting touch gestures (d3-zoom handles them) */
 }
 
 .timeline-chart-container svg:active {

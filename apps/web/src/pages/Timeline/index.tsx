@@ -3,7 +3,7 @@ import { metricUnits as builtinMetricUnits, type ScreentimeCategory } from '@aur
 import { signal, useSignalEffect } from '@preact/signals'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as d3 from 'd3'
-import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
+import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import {
   Activity,
@@ -362,7 +362,12 @@ const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = 
     item.column === 'Activity' && ['sleep', 'nap', 'rest'].includes(item.activity_type ?? ''),
   steps: () => false,
   tags: (item) =>
-    item.column === 'Tags / Events' && item.color !== tagSourceColors.calendar && item.color !== METRIC_COLOR,
+    // Tags in Tags/Events column (excluding calendar and metrics)
+    (item.column === 'Tags / Events' &&
+      item.color !== tagSourceColors.calendar &&
+      item.color !== METRIC_COLOR) ||
+    // Duration tags promoted to Activity column (have entity_type 'tag' but no activity_type)
+    (item.column === 'Activity' && item.entity_type === 'tag' && !item.activity_type),
   training_load: () => false,
 }
 
@@ -519,8 +524,9 @@ const buildHrZoneBarHtml = (zones: Record<number, number>): string => {
 }
 
 export const buildTooltipHtml = (item: ChartItem, music: string[], activities: Activity[]): string => {
+  const datePrefix = format(item.start, 'EEE d MMM')
   let html = `<div class="tooltip-title">${escapeHtml(item.tooltip.title)}</div>`
-  html += `<div class="tooltip-time">${escapeHtml(item.tooltip.time)}</div>`
+  html += `<div class="tooltip-time">${escapeHtml(datePrefix)} · ${escapeHtml(item.tooltip.time)}</div>`
   for (const d of item.tooltip.details) {
     html += `<div class="tooltip-detail">${escapeHtml(d)}</div>`
   }
@@ -690,6 +696,15 @@ export const Timeline = () => {
   })
 
   // Bucketed metrics: used for sparklines (vertical) and band/bar charts (horizontal)
+  // Scale bucket size with date range to avoid overwhelming the API on large ranges
+  const metricBucketSize = useMemo(() => {
+    const days = differenceInCalendarDays(fetchEnd, fetchStart)
+    if (days > 90) return '1d'
+    if (days > 30) return '1h'
+    if (days > 7) return '15m'
+    return '5m'
+  }, [fetchStart, fetchEnd])
+
   const bucketedMetricsQuery = useQuery({
     placeholderData: keepPreviousData,
     queryFn: () =>
@@ -697,9 +712,9 @@ export const Timeline = () => {
         subDays(fetchStart, 0.5),
         addDays(fetchEnd, 0.5),
         ['heart_rate', 'hrv_rmssd', 'steps', 'calories_active'],
-        '5m',
+        metricBucketSize,
       ),
-    queryKey: ['timeline-bucketed-metrics', fromDate.value, toDate.value],
+    queryKey: ['timeline-bucketed-metrics', fromDate.value, toDate.value, metricBucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -1893,14 +1908,21 @@ export const Timeline = () => {
     return () => {
       cancelAnimationFrame(zoomRafRef.current)
     }
-  }, [orientation, handleZoom, handleResetToToday, effectiveViewStart, effectiveViewEnd])
+    // Intentionally omitting effectiveViewStart/End — zoom behavior re-setup only on orientation
+    // change; view position is handled by render functions
+  }, [orientation, handleZoom, handleResetToToday])
 
   // ── UI state ───────────────────────────────────────────────────────────────
 
-  const isLoading =
-    activitiesQuery.isLoading || placesQuery.isLoading || tagsQuery.isLoading || productivityQuery.isLoading
-  const isError =
-    activitiesQuery.isError || placesQuery.isError || tagsQuery.isError || productivityQuery.isError
+  const isInitialLoad =
+    activitiesQuery.isLoading && placesQuery.isLoading && tagsQuery.isLoading && productivityQuery.isLoading
+
+  const errorSources = [
+    activitiesQuery.isError && 'activities',
+    placesQuery.isError && 'places',
+    tagsQuery.isError && 'tags',
+    productivityQuery.isError && 'screen time',
+  ].filter(Boolean) as string[]
 
   const viewLabel =
     format(effectiveViewStart, 'MMM d') === format(effectiveViewEnd, 'MMM d') ?
@@ -1932,8 +1954,8 @@ export const Timeline = () => {
           </button>
         </div>
         <span class="timeline-date-label">{viewLabel}</span>
-        {isFetching && !isLoading && <span class="timeline-fetching">Loading…</span>}
-        {!isFetching && !isLoading && (
+        {isFetching && <span class="timeline-fetching">Loading…</span>}
+        {!isFetching && (
           <button
             class="nav-btn timeline-refresh-btn"
             onClick={() =>
@@ -2169,10 +2191,12 @@ export const Timeline = () => {
         </div>
       )}
 
-      {isLoading && <div class="loading">Loading…</div>}
-      {isError && <div class="error">Error loading data</div>}
+      {isInitialLoad && <div class="loading">Loading…</div>}
+      {errorSources.length > 0 && (
+        <div class="error">Failed to load {errorSources.join(', ')} — showing available data</div>
+      )}
 
-      {!isLoading && !isError && (
+      {!isInitialLoad && (
         <>
           {orientation === 'vertical' && (
             <div class="timeline-column-headers" style={{ paddingLeft: `${VERTICAL_MARGIN.left}px` }}>
@@ -2184,7 +2208,7 @@ export const Timeline = () => {
             </div>
           )}
 
-          <div class="timeline-chart-container" ref={containerRef}>
+          <div class="timeline-chart-container" ref={containerRef} onPointerDown={hideTooltip}>
             <svg ref={svgRef} />
             <div class="timeline-tooltip" ref={tooltipRef} style={{ display: 'none' }} />
           </div>
