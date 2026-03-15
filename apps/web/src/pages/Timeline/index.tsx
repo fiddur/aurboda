@@ -1914,10 +1914,15 @@ export const Timeline = () => {
 
   // ── UI state ───────────────────────────────────────────────────────────────
 
-  const isLoading =
-    activitiesQuery.isLoading || placesQuery.isLoading || tagsQuery.isLoading || productivityQuery.isLoading
-  const isError =
-    activitiesQuery.isError || placesQuery.isError || tagsQuery.isError || productivityQuery.isError
+  const isInitialLoad =
+    activitiesQuery.isLoading && placesQuery.isLoading && tagsQuery.isLoading && productivityQuery.isLoading
+
+  const errorSources = [
+    activitiesQuery.isError && 'activities',
+    placesQuery.isError && 'places',
+    tagsQuery.isError && 'tags',
+    productivityQuery.isError && 'screen time',
+  ].filter(Boolean) as string[]
 
   const viewLabel =
     format(effectiveViewStart, 'MMM d') === format(effectiveViewEnd, 'MMM d') ?
@@ -1949,8 +1954,8 @@ export const Timeline = () => {
           </button>
         </div>
         <span class="timeline-date-label">{viewLabel}</span>
-        {isFetching && !isLoading && <span class="timeline-fetching">Loading…</span>}
-        {!isFetching && !isLoading && (
+        {isFetching && <span class="timeline-fetching">Loading…</span>}
+        {!isFetching && (
           <button
             class="nav-btn timeline-refresh-btn"
             onClick={() =>
@@ -2186,10 +2191,12 @@ export const Timeline = () => {
         </div>
       )}
 
-      {isLoading && <div class="loading">Loading…</div>}
-      {isError && <div class="error">Error loading data</div>}
+      {isInitialLoad && <div class="loading">Loading…</div>}
+      {errorSources.length > 0 && (
+        <div class="error">Failed to load {errorSources.join(', ')} — showing available data</div>
+      )}
 
-      {!isLoading && !isError && (
+      {!isInitialLoad && (
         <>
           {orientation === 'vertical' && (
             <div class="timeline-column-headers" style={{ paddingLeft: `${VERTICAL_MARGIN.left}px` }}>
