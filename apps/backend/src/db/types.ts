@@ -64,6 +64,7 @@ export interface BucketedMetricData {
   min: number
   max: number
   count: number
+  sum: number
 }
 
 // ============================================================================

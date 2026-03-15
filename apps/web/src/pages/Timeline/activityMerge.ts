@@ -239,7 +239,7 @@ export const buildActivityColumnItems = (
   activityColors: Record<string, string>,
   exerciseColor: (a: Activity) => string,
   getExerciseTypeName: (a: Activity) => string,
-  ouraByDate: Map<string, Record<string, number>>,
+  sleepMetricsByDate: Map<string, Record<string, number>>,
   buildSleepDetails: (a: Activity, end: Date) => string[],
   scrobbles: { artist: string; track: string; recorded_at: Date }[],
 ): { items: ChartItem[]; overlaps: OverlapWarning[] } => {

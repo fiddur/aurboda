@@ -1012,6 +1012,7 @@ describe('queryMetricsBucketed', () => {
         max: 80,
         metric: 'heart_rate',
         min: 65,
+        sum: 0,
       },
       {
         avg: 78,
@@ -1020,6 +1021,7 @@ describe('queryMetricsBucketed', () => {
         max: 85,
         metric: 'heart_rate',
         min: 70,
+        sum: 0,
       },
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
@@ -1059,6 +1061,7 @@ describe('queryMetricsBucketed', () => {
         max: 80,
         metric: 'heart_rate',
         min: 65,
+        sum: 0,
       },
       {
         avg: 45,
@@ -1067,6 +1070,7 @@ describe('queryMetricsBucketed', () => {
         max: 60,
         metric: 'hrv_rmssd',
         min: 30,
+        sum: 0,
       },
       {
         avg: 78,
@@ -1075,6 +1079,7 @@ describe('queryMetricsBucketed', () => {
         max: 85,
         metric: 'heart_rate',
         min: 70,
+        sum: 0,
       },
       {
         avg: 42,
@@ -1083,6 +1088,7 @@ describe('queryMetricsBucketed', () => {
         max: 55,
         metric: 'hrv_rmssd',
         min: 28,
+        sum: 0,
       },
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
@@ -1129,6 +1135,7 @@ describe('queryMetricsBucketed', () => {
         max: 80,
         metric: 'heart_rate',
         min: 65,
+        sum: 0,
       },
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
@@ -1148,7 +1155,7 @@ describe('queryMetricsBucketed', () => {
       ['heart_rate'],
       expect.any(Date),
       expect.any(Date),
-      5,
+      '5 minutes',
     )
   })
 
@@ -1161,6 +1168,7 @@ describe('queryMetricsBucketed', () => {
         max: 80,
         metric: 'heart_rate',
         min: 65,
+        sum: 0,
       },
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
@@ -1180,7 +1188,7 @@ describe('queryMetricsBucketed', () => {
       ['heart_rate'],
       expect.any(Date),
       expect.any(Date),
-      60,
+      '1 hours',
     )
   })
 
@@ -1193,6 +1201,7 @@ describe('queryMetricsBucketed', () => {
         max: 120,
         metric: 'heart_rate',
         min: 55,
+        sum: 0,
       },
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
@@ -1212,7 +1221,7 @@ describe('queryMetricsBucketed', () => {
       ['heart_rate'],
       expect.any(Date),
       expect.any(Date),
-      1440,
+      '1 days',
     )
   })
 
@@ -1226,6 +1235,7 @@ describe('queryMetricsBucketed', () => {
         max: 80,
         metric: 'heart_rate',
         min: 65,
+        sum: 0,
       },
       {
         avg: 45,
@@ -1234,6 +1244,7 @@ describe('queryMetricsBucketed', () => {
         max: 60,
         metric: 'hrv_rmssd',
         min: 30,
+        sum: 0,
       },
       {
         avg: 78,
@@ -1242,6 +1253,7 @@ describe('queryMetricsBucketed', () => {
         max: 85,
         metric: 'heart_rate',
         min: 70,
+        sum: 0,
       },
       // No hrv_rmssd data for 06:15 bucket
     ]
@@ -1315,6 +1327,7 @@ describe('queryMetricsBucketed', () => {
         max: 80,
         metric: 'heart_rate' as MetricType,
         min: 65,
+        sum: 0,
       },
     ])
 

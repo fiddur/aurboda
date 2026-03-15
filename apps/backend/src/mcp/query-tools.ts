@@ -14,7 +14,6 @@ import {
 import { z } from 'zod'
 import { getCustomMetrics } from '../services/mutations'
 import {
-  type BucketSize,
   getDailySummary,
   getPeriodSummary,
   queryActivities,
@@ -53,35 +52,51 @@ export const registerQueryTools = (server: McpServer, user: string, sync?: SyncP
     'query_metrics_bucketed',
     `Query pre-aggregated health metrics in time buckets. Returns buckets with min/max/avg/count for each metric.
 Much more efficient than query_metrics for analysis - returns ~96 buckets for a day (15m intervals) instead of 30,000+ individual samples.
+Cumulative metrics (steps, calories, etc.) also include a 'sum' field.
+
+If metrics is omitted, returns ALL metrics with data in the time range.
+Use exclude to skip specific metrics when fetching all.
+
+Bucket size format: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), M (months).
+Examples: 10s, 5m, 1h, 1d, 1M
 
 Use cases:
 - Daily timeline analysis: "Show me HR/HRV patterns across the day"
 - Sleep quality analysis: "How did my HRV change during sleep?"
 - Exercise response: "Compare pre/during/post exercise HR"
-- Multi-day trends: "What's my average resting HR this week?" (use 1d bucket)`,
+- Multi-day trends: "What's my average resting HR this week?" (use 1d bucket)
+- All metrics overview: Omit metrics param to get everything`,
     {
       ...timeRangeQuerySchema.shape,
       bucket: bucketSizeSchema,
-      metrics: z.array(z.string()).describe(`Metrics to include. Valid metrics: ${validMetrics.join(', ')}`),
+      exclude: z.array(z.string()).optional().describe('Metrics to exclude (useful when fetching all)'),
+      metrics: z
+        .array(z.string())
+        .optional()
+        .describe(`Metrics to include (omit for all). Valid built-in metrics: ${validMetrics.join(', ')}`),
     },
-    async ({ bucket, end, metrics, start }) => {
+    async ({ bucket, end, exclude, metrics, start }) => {
       const customMetrics = await getCustomMetrics(user)
-      const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
-      if (invalidMetrics.length > 0) {
-        const customNames = customMetrics.map((m) => m.name)
-        const allMetrics = [...validMetrics, ...customNames]
-        return errorResponse(
-          `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${allMetrics.join(', ')}`,
-        )
+
+      // Validate specified metrics if provided
+      if (metrics) {
+        const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
+        if (invalidMetrics.length > 0) {
+          const customNames = customMetrics.map((m) => m.name)
+          const allMetrics = [...validMetrics, ...customNames]
+          return errorResponse(
+            `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${allMetrics.join(', ')}`,
+          )
+        }
       }
 
-      const validatedMetrics = metrics as MetricType[]
       const result = await queryMetricsBucketed(
         user,
-        validatedMetrics,
+        metrics as MetricType[] | undefined,
         new Date(start),
         new Date(end),
-        bucket as BucketSize,
+        bucket,
+        { customMetrics, exclude },
       )
       return jsonResponse(result)
     },

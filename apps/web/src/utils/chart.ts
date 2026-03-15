@@ -32,7 +32,7 @@ export const preprocessData = (
 export interface MetricBucketParsed {
   start: Date
   end: Date
-  metrics: Record<string, { avg: number; min: number; max: number; count: number }>
+  metrics: Record<string, { avg: number; min: number; max: number; count: number; sum?: number }>
 }
 
 /**
@@ -80,6 +80,8 @@ export const aggregateBuckets = (buckets: MetricBucketParsed[], factor: number):
     for (const name of metricNames) {
       let totalWeightedAvg = 0
       let totalCount = 0
+      let totalSum = 0
+      let hasSum = false
       let globalMin = Infinity
       let globalMax = -Infinity
 
@@ -88,6 +90,10 @@ export const aggregateBuckets = (buckets: MetricBucketParsed[], factor: number):
         if (!stats) continue
         totalWeightedAvg += stats.avg * stats.count
         totalCount += stats.count
+        if (stats.sum !== undefined) {
+          totalSum += stats.sum
+          hasSum = true
+        }
         if (stats.min < globalMin) globalMin = stats.min
         if (stats.max > globalMax) globalMax = stats.max
       }
@@ -98,6 +104,7 @@ export const aggregateBuckets = (buckets: MetricBucketParsed[], factor: number):
           count: totalCount,
           max: globalMax,
           min: globalMin,
+          ...(hasSum && { sum: totalSum }),
         }
       }
     }

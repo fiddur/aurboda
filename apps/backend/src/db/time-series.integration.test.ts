@@ -303,7 +303,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T10:30:00Z'),
-        15, // 15-minute buckets
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(2)
@@ -342,7 +342,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate', 'hrv_rmssd'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T10:15:00Z'),
-        15,
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(2) // One bucket per metric
@@ -367,7 +367,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T11:00:00Z'),
-        15,
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(0)
@@ -385,7 +385,7 @@ describe('Time Series Integration Tests', () => {
         [],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T11:00:00Z'),
-        15,
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(0)
@@ -406,7 +406,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T10:10:00Z'),
-        5, // 5-minute buckets
+        '5 minutes',
       )
 
       expect(buckets).toHaveLength(2)
@@ -431,7 +431,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T12:00:00Z'),
-        60, // 1-hour buckets
+        '60 minutes',
       )
 
       expect(buckets).toHaveLength(2)
@@ -460,7 +460,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T00:00:00Z'),
         new Date('2024-01-17T00:00:00Z'),
-        1440, // 1-day buckets (24*60 minutes)
+        '1 day',
       )
 
       expect(buckets).toHaveLength(2)
@@ -487,7 +487,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T10:45:00Z'),
-        15,
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(2)
@@ -510,7 +510,7 @@ describe('Time Series Integration Tests', () => {
         ['heart_rate'],
         new Date('2024-01-15T10:00:00Z'),
         new Date('2024-01-15T10:15:00Z'),
-        15,
+        '15 minutes',
       )
 
       expect(buckets).toHaveLength(1)

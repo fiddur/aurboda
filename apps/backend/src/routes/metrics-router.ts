@@ -9,7 +9,6 @@ import {
   type AddMetricBody,
   addMetricBodySchema,
   type AddMetricResponse,
-  type BucketSize,
   type BulkMetricsBody,
   bulkMetricsBodySchema,
   type BulkMetricsResponse,
@@ -60,8 +59,6 @@ import {
 import { getLatestMetric } from '../services/reports'
 import { validateBody, validateQuery } from '../validation'
 
-const validBucketSizes = ['5m', '15m', '30m', '1h', '1d'] as const
-
 export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider?: SyncProvider): Router => {
   const router = Router()
 
@@ -71,34 +68,34 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     authMiddleware,
     validateQuery(queryMetricsBucketedQuerySchema),
     async (req, res) => {
-      const { start, end, bucket, metrics: metricsParam } = req.query
+      const { start, end, bucket, metrics: metricsParam, exclude: excludeParam } = req.query
       const user = req.user!
 
       const settings = await getUserSettings(user)
       const customMetrics = settings?.custom_metrics ?? []
 
-      const metrics = metricsParam.split(',')
-      const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
-      if (invalidMetrics.length > 0) {
-        return res.status(400).json({
-          error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
-          success: false,
-        })
-      }
+      // Parse optional metrics and exclude lists
+      const metrics = metricsParam ? metricsParam.split(',') : undefined
+      const exclude = excludeParam ? excludeParam.split(',') : undefined
 
-      if (!validBucketSizes.includes(bucket)) {
-        return res.status(400).json({
-          error: `Invalid bucket size "${bucket}". Valid sizes are: ${validBucketSizes.join(', ')}`,
-          success: false,
-        })
+      // Validate specified metrics if provided
+      if (metrics) {
+        const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
+        if (invalidMetrics.length > 0) {
+          return res.status(400).json({
+            error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
+            success: false,
+          })
+        }
       }
 
       const result = await queryMetricsBucketed(
         user,
-        metrics as MetricType[],
+        metrics as MetricType[] | undefined,
         new Date(start),
         new Date(end),
-        bucket as BucketSize,
+        bucket,
+        { customMetrics, exclude },
       )
       res.json({ ...result, success: true })
     },

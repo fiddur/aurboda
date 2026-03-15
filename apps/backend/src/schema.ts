@@ -11,6 +11,7 @@ export {
   contextualHrvMetrics,
   cumulativeMetrics,
   cumulativeSources,
+  getMetricAggregation,
   getMetricUnit,
   hrZoneMetrics,
   isContextualHrvMetric,
@@ -18,10 +19,12 @@ export {
   isValidMetric,
   isValidMetricOrCustom,
   metricUnits,
+  sumMetrics,
   validMetrics,
   type ActivityType,
   type CustomMetricDefinition,
   type DataSource,
+  type MetricAggregation,
   type MetricType,
 } from '@aurboda/api-spec'
 
