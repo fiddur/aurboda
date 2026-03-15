@@ -520,9 +520,10 @@ export async function getDailySummary(
   date: Date,
   sync?: SyncProvider,
 ): Promise<DailySummaryResult> {
-  // Auto-sync data sources if sync provider is available
+  // Fire-and-forget: trigger background sync so data is fresh for the next request,
+  // but return current data immediately to avoid blocking on slow external APIs
   if (sync) {
-    await Promise.all([
+    void Promise.all([
       sync.syncOuraIfNeeded(user, 'tags'),
       sync.syncOuraIfNeeded(user, 'sessions'),
       sync.syncRescueTimeIfNeeded(user),
@@ -936,8 +937,9 @@ export async function queryTags(
   end: Date,
   sync?: SyncProvider,
 ): Promise<TagSummary[]> {
+  // Fire-and-forget: trigger background sync so data is fresh for the next request
   if (sync) {
-    await Promise.all([
+    void Promise.all([
       sync.syncOuraIfNeeded(user, 'tags'),
       sync.syncCalendarsIfNeeded(user),
       sync.syncLastFmIfNeeded(user),
@@ -1060,9 +1062,9 @@ export async function queryActivities(
   end: Date,
   sync?: SyncProvider,
 ): Promise<ActivityResult[]> {
-  // Auto-sync Oura sessions if meditation is requested
+  // Fire-and-forget: trigger background sync so meditation data is fresh for the next request
   if (sync && types.includes('meditation')) {
-    await sync.syncOuraIfNeeded(user, 'sessions')
+    void sync.syncOuraIfNeeded(user, 'sessions')
   }
 
   const activities = await getActivities(user, types, start, end)
@@ -1198,8 +1200,9 @@ export async function queryProductivity(
   end: Date,
   sync?: SyncProvider,
 ): Promise<ProductivityResult[]> {
+  // Fire-and-forget: trigger background sync so data is fresh for the next request
   if (sync) {
-    await sync.syncRescueTimeIfNeeded(user)
+    void sync.syncRescueTimeIfNeeded(user)
   }
 
   const productivity = await getProductivity(user, start, end)
