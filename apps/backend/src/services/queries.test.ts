@@ -7,6 +7,7 @@ import {
   getDailySummary,
   getPeriodSummary,
   mergeProductivitySpans,
+  parseBucketSize,
   queryActivities,
   queryMetrics,
   queryMetricsBucketed,
@@ -19,6 +20,7 @@ vi.mock('../db', () => ({
   getActivities: vi.fn(),
   getDailyAggregateValue: vi.fn(),
   getDailyAggregates: vi.fn(),
+  getDistinctMetrics: vi.fn(),
   getLocations: vi.fn(),
   getNotesByEntityIds: vi.fn(),
   getNotesForTimeRange: vi.fn(),
@@ -1396,6 +1398,179 @@ describe('queryMetricsBucketed', () => {
     // Should have no hrv_sleep buckets since HRV data is during awake hours
     const hrvSleepBuckets = result.buckets.filter((b) => b.metrics.hrv_sleep)
     expect(hrvSleepBuckets).toHaveLength(0)
+  })
+
+  test('discovers all metrics when metrics param is omitted', async () => {
+    vi.mocked(db.getDistinctMetrics).mockResolvedValue(['heart_rate', 'steps'])
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 60,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+        sum: 0,
+      },
+      {
+        avg: 100,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 12,
+        max: 200,
+        metric: 'steps',
+        min: 0,
+        sum: 1200,
+      },
+    ])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      undefined,
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:05:00Z'),
+      '5m',
+    )
+
+    expect(db.getDistinctMetrics).toHaveBeenCalledWith('testuser', expect.any(Date), expect.any(Date))
+    expect(result.buckets).toHaveLength(1)
+    expect(result.buckets[0].metrics.heart_rate).toBeDefined()
+    expect(result.buckets[0].metrics.steps).toBeDefined()
+  })
+
+  test('applies exclude filter to discovered metrics', async () => {
+    vi.mocked(db.getDistinctMetrics).mockResolvedValue(['heart_rate', 'steps', 'training_impulse'])
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 60,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+        sum: 0,
+      },
+    ])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      undefined,
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:05:00Z'),
+      '5m',
+      { exclude: ['training_impulse', 'steps'] },
+    )
+
+    // Only heart_rate should be queried (steps and training_impulse excluded)
+    expect(db.getTimeSeriesBucketed).toHaveBeenCalledWith(
+      'testuser',
+      ['heart_rate'],
+      expect.any(Date),
+      expect.any(Date),
+      '5 minutes',
+    )
+    expect(result.buckets).toHaveLength(1)
+    expect(result.buckets[0].metrics.heart_rate).toBeDefined()
+    expect(result.buckets[0].metrics.training_impulse).toBeUndefined()
+  })
+
+  test('includes sum for cumulative metrics', async () => {
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
+      {
+        avg: 100,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 12,
+        max: 200,
+        metric: 'steps',
+        min: 0,
+        sum: 1200,
+      },
+    ])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['steps'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:05:00Z'),
+      '5m',
+    )
+
+    expect(result.buckets).toHaveLength(1)
+    const steps = result.buckets[0]!.metrics.steps!
+    expect(steps).toBeDefined()
+    expect(steps.sum).toBe(1200)
+    expect(steps.avg).toBe(100)
+  })
+
+  test('omits sum for non-cumulative metrics', async () => {
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T06:00:00Z'),
+        count: 60,
+        max: 80,
+        metric: 'heart_rate',
+        min: 65,
+        sum: 4320,
+      },
+    ])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate'],
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:05:00Z'),
+      '5m',
+    )
+
+    expect(result.buckets).toHaveLength(1)
+    const hr = result.buckets[0]!.metrics.heart_rate!
+    expect(hr).toBeDefined()
+    expect(hr.sum).toBeUndefined()
+    expect(hr.avg).toBe(72)
+  })
+
+  test('returns empty buckets when no metrics discovered', async () => {
+    vi.mocked(db.getDistinctMetrics).mockResolvedValue([])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      undefined,
+      new Date('2024-01-15T06:00:00Z'),
+      new Date('2024-01-15T06:05:00Z'),
+      '5m',
+    )
+
+    expect(result.buckets).toHaveLength(0)
+  })
+})
+
+describe('parseBucketSize', () => {
+  test('parses seconds', () => {
+    expect(parseBucketSize('30s')).toEqual({ interval: '30 seconds', ms: 30000 })
+  })
+
+  test('parses minutes', () => {
+    expect(parseBucketSize('5m')).toEqual({ interval: '5 minutes', ms: 300000 })
+  })
+
+  test('parses hours', () => {
+    expect(parseBucketSize('1h')).toEqual({ interval: '1 hours', ms: 3600000 })
+  })
+
+  test('parses days', () => {
+    expect(parseBucketSize('1d')).toEqual({ interval: '1 days', ms: 86400000 })
+  })
+
+  test('parses months', () => {
+    expect(parseBucketSize('1M')).toEqual({ interval: '1 months', ms: 30 * 86400000 })
+  })
+
+  test('throws on invalid format', () => {
+    expect(() => parseBucketSize('abc')).toThrow('Invalid bucket size')
+  })
+
+  test('throws on empty string', () => {
+    expect(() => parseBucketSize('')).toThrow('Invalid bucket size')
   })
 })
 
