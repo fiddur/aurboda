@@ -50,6 +50,8 @@ import { computeSleepMinutes } from './sleep-duration'
 export interface SyncProvider {
   /** Sync Oura data if stale (tags, sessions, etc.) */
   syncOuraIfNeeded: (user: string, dataType: 'tags' | 'sessions') => Promise<void>
+  /** Sync Garmin data if stale */
+  syncGarminIfNeeded: (user: string, dataType: string) => Promise<void>
   /** Sync RescueTime productivity data if stale */
   syncRescueTimeIfNeeded: (user: string) => Promise<void>
   /** Sync calendar data if stale */

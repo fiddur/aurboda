@@ -54,9 +54,12 @@ export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
  */
 export const syncStatusQuerySchema = z
   .object({
-    provider: z.enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all']).optional().meta({
-      description: 'Provider to check (defaults to all)',
-    }),
+    provider: z
+      .enum(['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+      .optional()
+      .meta({
+        description: 'Provider to check (defaults to all)',
+      }),
   })
   .meta({ id: 'SyncStatusQuery' })
 
@@ -66,7 +69,7 @@ export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
  * Sync provider schema (for MCP).
  */
 export const syncProviderSchema = z
-  .enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+  .enum(['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
   .meta({
     description: 'Which provider to check',
   })
@@ -84,6 +87,18 @@ export const syncOuraBodySchema = z
   .meta({ id: 'SyncOuraBody' })
 
 export type SyncOuraBody = z.infer<typeof syncOuraBodySchema>
+
+/**
+ * Sync Garmin body schema.
+ */
+export const syncGarminBodySchema = z
+  .object({
+    full_resync: fullResyncSchema,
+    start_date: startDateSyncSchema,
+  })
+  .meta({ id: 'SyncGarminBody' })
+
+export type SyncGarminBody = z.infer<typeof syncGarminBodySchema>
 
 /**
  * Sync RescueTime body schema.
@@ -286,6 +301,45 @@ export const ouraSyncResultSchema = z
 export type OuraSyncResult = z.infer<typeof ouraSyncResultSchema>
 
 /**
+ * Garmin data types that can be synced.
+ */
+export const garminDataTypeSchema = z
+  .enum([
+    'dailySummary',
+    'heartRate',
+    'hrv',
+    'sleep',
+    'stress',
+    'bodyBattery',
+    'activities',
+    'spo2',
+    'respiration',
+    'trainingReadiness',
+    'intensityMinutes',
+  ])
+  .meta({
+    description: 'Garmin data type',
+    id: 'GarminDataType',
+  })
+
+export type GarminDataType = z.infer<typeof garminDataTypeSchema>
+
+/**
+ * Garmin sync result for a single data type.
+ */
+export const garminSyncResultSchema = z
+  .object({
+    data_type: garminDataTypeSchema,
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    records_processed: z.number().int().meta({ description: 'Number of records processed' }),
+    retry_after: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
+    status: syncResultStatusSchema,
+  })
+  .meta({ id: 'GarminSyncResult' })
+
+export type GarminSyncResult = z.infer<typeof garminSyncResultSchema>
+
+/**
  * RescueTime sync result.
  */
 export const rescueTimeSyncResultSchema = z
@@ -309,6 +363,28 @@ export const ouraSyncResponseSchema = baseResponseSchema
   .meta({ id: 'OuraSyncResponse' })
 
 export type OuraSyncResponse = z.infer<typeof ouraSyncResponseSchema>
+
+/**
+ * Garmin sync response with typed results.
+ */
+export const garminSyncResponseSchema = baseResponseSchema
+  .extend({
+    results: z.array(garminSyncResultSchema).optional().meta({ description: 'Sync results per data type' }),
+  })
+  .meta({ id: 'GarminSyncResponse' })
+
+export type GarminSyncResponse = z.infer<typeof garminSyncResponseSchema>
+
+/**
+ * Garmin sync status response.
+ */
+export const garminSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Garmin sync states' }),
+  })
+  .meta({ id: 'GarminSyncStatusResponse' })
+
+export type GarminSyncStatusResponse = z.infer<typeof garminSyncStatusResponseSchema>
 
 /**
  * RescueTime sync response with typed result.

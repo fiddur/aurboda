@@ -30,6 +30,8 @@ import {
   schemaInitialized,
   updateDetectedLocation,
 } from './db'
+import { garminClient } from './garmin'
+import { syncAllGarminData } from './garmin-sync'
 import { syncAllCalendars } from './ical-sync'
 import { createLastFmRouter } from './lastfm-router'
 import { syncLastFmData } from './lastfm-sync'
@@ -90,8 +92,12 @@ const main = async () => {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
 
+  // Create Garmin client (no server-side credentials needed - uses per-user session tokens)
+  const garmin = garminClient()
+
   // Create sync provider for auto-syncing data before queries
   const syncProvider = createSyncProvider({
+    garmin,
     getLastFmApiKey: () => centralDb.getLastFmApiKey(),
     oura,
   })
@@ -106,7 +112,7 @@ const main = async () => {
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
-  httpd.use('/mcp', createMcpRouter(auth, oura, syncProvider))
+  httpd.use('/mcp', createMcpRouter(auth, { garmin, oura, sync: syncProvider }))
 
   httpd.use(json({ limit: '10mb' }))
 
@@ -347,6 +353,7 @@ const main = async () => {
         deleteHealthConnectRecords,
         getActivityWatchSyncStates: (user) => transformSyncStates(user, 'activitywatch'),
         getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
+        getGarminSyncStates: (user) => transformSyncStates(user, 'garmin'),
         getLastFmApiKey: () => centralDb.getLastFmApiKey(),
         getLastFmSyncStates: (user) => transformSyncStates(user, 'lastfm'),
         getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
@@ -357,10 +364,18 @@ const main = async () => {
         processDailyAggregate,
         processHealthConnectData,
         resetCalendarSyncState: (user) => resetSyncState(user, 'calendar'),
+        resetGarminSyncState: (user, dataType) => resetSyncState(user, 'garmin', dataType),
         resetLastFmSyncState: (user) => resetSyncState(user, 'lastfm'),
         resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
         syncCalendars: (user, calendars) => syncAllCalendars(user, calendars),
+        syncGarmin: async (user, options) => {
+          const results = await syncAllGarminData(user, garmin, options)
+          return results.map((r) => ({
+            ...r,
+            retry_after: r.retry_after?.toISOString(),
+          }))
+        },
         syncLastFm: transformLastFmSyncResult,
         syncOura: transformOuraSyncResults,
         syncRescueTime: transformRescueTimeSyncResult,
@@ -375,6 +390,40 @@ const main = async () => {
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)
+
+  // Garmin Connect auth endpoints (login with credentials, tokens-only stored)
+  httpd.post('/auth/garmin/login', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { email, password } = req.body ?? {}
+
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and password are required', success: false })
+      return
+    }
+
+    try {
+      const result = await garmin.login(user, email, password)
+      if ('mfa_required' in result) {
+        res.json({ mfa_required: true, success: false })
+      } else {
+        res.json({ success: true })
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Login failed'
+      res.status(401).json({ error: message, success: false })
+    }
+  })
+
+  httpd.post('/auth/garmin/disconnect', authMiddleware, async (req, res) => {
+    const user = req.user!
+    try {
+      await garmin.disconnect(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Disconnect failed'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
 
   // ==========================================================================
   // Oura webhook push integration (admin-configurable via Web UI)

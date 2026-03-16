@@ -4,13 +4,16 @@
 import {
   outboundSyncAckItemSchema,
   syncCalendarsBodySchema,
+  syncGarminBodySchema,
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncProviderSchema,
   syncRescueTimeBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { ackOutboundSync, getAllSyncStates, getPendingOutboundSync } from '../db'
+import { ackOutboundSync, getAllSyncStates, getOAuthToken, getPendingOutboundSync } from '../db'
+import type { GarminClient } from '../garmin'
+import { syncAllGarminData } from '../garmin-sync'
 import { syncAllCalendars } from '../ical-sync'
 import { syncLastFmData } from '../lastfm-sync'
 import { ouraClient } from '../oura'
@@ -22,7 +25,12 @@ import { errorResponse, jsonResponse, type McpServer } from './helpers'
 
 type OuraClient = ReturnType<typeof ouraClient>
 
-export const registerSyncTools = (server: McpServer, user: string, oura?: OuraClient) => {
+export const registerSyncTools = (
+  server: McpServer,
+  user: string,
+  oura?: OuraClient,
+  garmin?: GarminClient,
+) => {
   // Tool: sync_oura
   server.tool(
     'sync_oura',
@@ -35,6 +43,43 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
 
       try {
         const results = await syncAllOuraData(user, oura, {
+          fullResync: full_resync,
+          startDate: start_date ? new Date(start_date) : undefined,
+        })
+
+        const summary = results.map((r) => ({
+          data_type: r.data_type,
+          error: r.error,
+          records_processed: r.records_processed,
+          status: r.status,
+        }))
+
+        return jsonResponse({ results: summary, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  // Tool: sync_garmin
+  server.tool(
+    'sync_garmin',
+    'Sync data from Garmin Connect. Fetches daily summary, heart rate, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness, and intensity minutes.',
+    { ...syncGarminBodySchema.shape },
+    async ({ full_resync, start_date }) => {
+      if (!garmin) {
+        return errorResponse('Garmin integration is not available.')
+      }
+
+      // Verify user has connected Garmin
+      const garminToken = await getOAuthToken(user, 'garmin')
+      if (!garminToken || !garminToken.access_token) {
+        return errorResponse('Garmin Connect is not connected. Please connect Garmin in Settings first.')
+      }
+
+      try {
+        const results = await syncAllGarminData(user, garmin, {
           fullResync: full_resync,
           startDate: start_date ? new Date(start_date) : undefined,
         })
@@ -150,34 +195,21 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
   )
 
   // Tool: get_sync_status
+  const syncProviders = ['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch'] as const
+
   server.tool(
     'get_sync_status',
-    'Get the current sync status for Oura, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors. ActivityWatch shows last push time per device.',
+    'Get the current sync status for Oura, Garmin, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors.',
     {
       provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
     },
     async ({ provider = 'all' }) => {
       try {
         const states: Record<string, unknown[]> = {}
+        const providers = provider === 'all' ? syncProviders : syncProviders.filter((p) => p === provider)
 
-        if (provider === 'all' || provider === 'oura') {
-          states.oura = await getAllSyncStates(user, 'oura')
-        }
-
-        if (provider === 'all' || provider === 'rescuetime') {
-          states.rescuetime = await getAllSyncStates(user, 'rescuetime')
-        }
-
-        if (provider === 'all' || provider === 'calendar') {
-          states.calendar = await getAllSyncStates(user, 'calendar')
-        }
-
-        if (provider === 'all' || provider === 'lastfm') {
-          states.lastfm = await getAllSyncStates(user, 'lastfm')
-        }
-
-        if (provider === 'all' || provider === 'activitywatch') {
-          states.activitywatch = await getAllSyncStates(user, 'activitywatch')
+        for (const p of providers) {
+          states[p] = await getAllSyncStates(user, p)
         }
 
         return jsonResponse({ states, success: true })
