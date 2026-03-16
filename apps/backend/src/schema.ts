@@ -428,7 +428,8 @@ export const createTableStatements: Record<string, string> = {
     )
   `,
   time_series_indexes: `
-    CREATE INDEX IF NOT EXISTS idx_time_series_metric_time ON time_series (metric, time DESC)
+    CREATE INDEX IF NOT EXISTS idx_time_series_metric_time ON time_series (metric, time DESC);
+    CREATE INDEX IF NOT EXISTS idx_time_series_metric_source_time ON time_series (metric, source, time DESC)
   `,
 
   // User settings (HR zones, birth date, etc.)

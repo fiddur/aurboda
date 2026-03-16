@@ -704,6 +704,88 @@ describe('computeTrainingLoad', () => {
     // Should have attempted to delete old buckets (recomputation triggered)
     expect(deleteImpulseBuckets).toHaveBeenCalled()
   })
+
+  test('uses cached observed_hr_max from settings instead of scanning', async () => {
+    const getMaxObservedHr = vi.fn(async () => 195)
+
+    const deps = makeDeps({
+      getMaxObservedHr,
+      getUserSettings: async () => ({
+        birth_date: '1985-06-15',
+        sex: 'male' as const,
+        training_load: { observed_hr_max: 192 },
+      }),
+    })
+
+    const result = await computeTrainingLoad(
+      deps,
+      'testuser',
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-01-07T00:00:00Z'),
+    )
+
+    // Should NOT call the expensive scan when cached value exists
+    expect(getMaxObservedHr).not.toHaveBeenCalled()
+    // Should use the cached value (192) for hr_max resolution
+    expect(result.settings.hr_max).toBe(192)
+  })
+
+  test('falls back to expensive scan when no cached observed_hr_max', async () => {
+    const getMaxObservedHr = vi.fn(async () => 195)
+    const updateTrainingLoadSettings = vi.fn(async () => {})
+
+    const deps = makeDeps({
+      getMaxObservedHr,
+      getUserSettings: async () => ({
+        birth_date: '1985-06-15',
+        sex: 'male' as const,
+      }),
+      updateTrainingLoadSettings,
+    })
+
+    const result = await computeTrainingLoad(
+      deps,
+      'testuser',
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-01-07T00:00:00Z'),
+    )
+
+    // Should call the expensive scan when no cached value
+    expect(getMaxObservedHr).toHaveBeenCalled()
+    expect(result.settings.hr_max).toBe(195)
+    // Should cache the result (fire-and-forget, but the mock captures it)
+    // Wait a tick for the fire-and-forget to resolve
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(updateTrainingLoadSettings).toHaveBeenCalledWith('testuser', { observed_hr_max: 195 })
+  })
+
+  test('does not cache observed_hr_max when value is <= 100', async () => {
+    const getMaxObservedHr = vi.fn(async () => 80)
+    const updateTrainingLoadSettings = vi.fn(async () => {})
+
+    const deps = makeDeps({
+      getMaxObservedHr,
+      getUserSettings: async () => ({
+        birth_date: '1985-06-15',
+        sex: 'male' as const,
+      }),
+      updateTrainingLoadSettings,
+    })
+
+    await computeTrainingLoad(
+      deps,
+      'testuser',
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-01-07T00:00:00Z'),
+    )
+
+    // Should NOT cache a low value (likely resting HR, not max)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(updateTrainingLoadSettings).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ observed_hr_max: expect.anything() }),
+    )
+  })
 })
 
 // ============================================================================
@@ -827,6 +909,46 @@ describe('recomputeImpulseBuckets', () => {
     for (let i = 1; i < exerciseCalls.length; i++) {
       expect(exerciseCalls[i]![0].getTime()).toBe(exerciseCalls[i - 1]![1].getTime())
     }
+  })
+
+  test('uses cached observed_hr_max and skips expensive scan', async () => {
+    const getMaxObservedHr = vi.fn(async () => 195)
+
+    const deps = makeDeps({
+      getMaxObservedHr,
+      getUserSettings: async () => ({
+        birth_date: '1985-06-15',
+        sex: 'male' as const,
+        training_load: { observed_hr_max: 188 },
+      }),
+    })
+
+    await recomputeImpulseBuckets(deps, 'testuser', new Date('2024-01-03T00:00:00Z'))
+
+    // Should NOT call the expensive scan when cached value exists
+    expect(getMaxObservedHr).not.toHaveBeenCalled()
+  })
+
+  test('caches observed_hr_max after expensive scan', async () => {
+    const getMaxObservedHr = vi.fn(async () => 195)
+    const updateSettings = vi.fn(async () => {})
+
+    const deps = makeDeps({
+      getMaxObservedHr,
+      getUserSettings: async () => ({
+        birth_date: '1985-06-15',
+        sex: 'male' as const,
+      }),
+      updateTrainingLoadSettings: updateSettings,
+    })
+
+    await recomputeImpulseBuckets(deps, 'testuser', new Date('2024-01-03T00:00:00Z'))
+
+    // Should call the expensive scan
+    expect(getMaxObservedHr).toHaveBeenCalled()
+    // Should cache the result and also clear watermark
+    expect(updateSettings).toHaveBeenCalledWith('testuser', { observed_hr_max: 195 })
+    expect(updateSettings).toHaveBeenCalledWith('testuser', { impulse_watermark: undefined })
   })
 })
 
