@@ -127,10 +127,15 @@ export const MS_PER_HOUR = 3600_000
 const parseTime = (timeStr: string): Date => new Date(timeStr)
 
 /**
- * Find the training load point whose hour contains the given time.
- * Floors the time to the hour, then looks for an exact match or nearest within 2 hours.
+ * Find the training load point nearest to the given time.
+ * Tries exact hour match first, then falls back to nearest within tolerance.
+ * Default tolerance is 2 hours; pass a larger value for weekly/daily bucketed data.
  */
-export const findTrainingLoadPoint = (points: TrainingLoadPoint[], time: Date): TrainingLoadPoint | null => {
+export const findTrainingLoadPoint = (
+  points: TrainingLoadPoint[],
+  time: Date,
+  maxDistanceMs: number = 2 * MS_PER_HOUR,
+): TrainingLoadPoint | null => {
   const timeMs = time.getTime()
   const flooredHour = new Date(timeMs - (timeMs % MS_PER_HOUR))
   const flooredIso = flooredHour.toISOString()
@@ -140,7 +145,7 @@ export const findTrainingLoadPoint = (points: TrainingLoadPoint[], time: Date): 
     if (p.time === flooredIso) return p
   }
 
-  // Fall back to nearest within 2 hours
+  // Fall back to nearest within tolerance
   let nearest: TrainingLoadPoint | null = null
   let bestDist = Infinity
   for (const p of points) {
@@ -151,7 +156,7 @@ export const findTrainingLoadPoint = (points: TrainingLoadPoint[], time: Date): 
     }
   }
 
-  return nearest && bestDist <= 2 * MS_PER_HOUR ? nearest : null
+  return nearest && bestDist <= maxDistanceMs ? nearest : null
 }
 
 /**

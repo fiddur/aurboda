@@ -69,8 +69,14 @@ export interface MetricsTrackConfig {
 
 // ── Bucket aggregation by zoom ────────────────────────────────────────────────
 
-/** Pick an aggregation factor based on pixels-per-hour (zoom level). */
-const getAggregationFactor = (pixelsPerHour: number): number => {
+/** Pick an aggregation factor based on pixels-per-hour and bucket size.
+ *  Only merges small (5m/15m) buckets — if buckets are already >= 1h, skip. */
+const getAggregationFactor = (pixelsPerHour: number, buckets: MetricBucketParsed[]): number => {
+  // If buckets are already large (>= 1 hour), don't aggregate further
+  if (buckets.length >= 2) {
+    const bucketMs = buckets[1]!.start.getTime() - buckets[0]!.start.getTime()
+    if (bucketMs >= 3600_000) return 1
+  }
   if (pixelsPerHour > 100) return 1 // 5m buckets as-is
   if (pixelsPerHour > 20) return 3 // merge to ~15m
   return 6 // merge to ~30m
@@ -202,8 +208,9 @@ const buildTrainingLoadSection = (
   points: TrainingLoadPoint[],
   workouts?: WorkoutTrimp[],
   zones?: RecoveryZones,
+  toleranceMs?: number,
 ): string => {
-  const point = findTrainingLoadPoint(points, bucketMid)
+  const point = findTrainingLoadPoint(points, bucketMid, toleranceMs)
   if (!point) return ''
 
   let html = `<div class="tooltip-separator" style="border-top:1px solid rgba(128,128,128,0.3);margin:4px 0"></div>`
@@ -252,7 +259,8 @@ const buildMetricsTooltipHtml = (
   trainingLoadPoints?: TrainingLoadPoint[],
   trainingLoadWorkouts?: WorkoutTrimp[],
   trainingLoadZones?: RecoveryZones,
-): string => {
+  trainingLoadToleranceMs?: number,
+): string | null => {
   const startStr = formatTime(bucket.start)
   const endStr = formatTime(bucket.end)
   const dateStr = format(bucket.start, 'EEE, MMM d')
@@ -263,39 +271,54 @@ const buildMetricsTooltipHtml = (
     : `${dateStr} ${startStr} – ${format(bucket.end, 'EEE, MMM d')} ${endStr}`
   let html = `<div class="tooltip-title">Metrics</div>`
   html += `<div class="tooltip-time">${timeRange}</div>`
+  let hasContent = false
 
   if (showHR) {
     const hr = bucket.metrics.heart_rate
     if (hr) {
       html += `<div class="tooltip-detail" style="color:${HR_COLOR}">❤ HR: ${Math.round(hr.avg)} bpm (${Math.round(hr.min)}–${Math.round(hr.max)})</div>`
+      hasContent = true
     }
   }
   if (showHRV) {
     const hrv = bucket.metrics.hrv_rmssd
     if (hrv) {
       html += `<div class="tooltip-detail" style="color:${HRV_COLOR}">♥ HRV: ${Math.round(hrv.avg)} ms (${Math.round(hrv.min)}–${Math.round(hrv.max)})</div>`
+      hasContent = true
     }
   }
   if (showSteps) {
     const steps = bucket.metrics.steps
     if (steps) {
       html += `<div class="tooltip-detail" style="color:${STEPS_COLOR}">🚶 Steps: ${steps.avg.toFixed(1)}/min</div>`
+      hasContent = true
     }
   }
   if (showCalories) {
     const cal = bucket.metrics.calories_active
     if (cal) {
       html += `<div class="tooltip-detail" style="color:${CALORIES_COLOR}">🔥 Calories: ${cal.avg.toFixed(1)} kcal/min</div>`
+      hasContent = true
     }
   }
 
-  // Append training load section if available
+  // Append training load section if available (with tolerance matching the bucket duration)
   if (trainingLoadPoints && trainingLoadPoints.length > 0) {
     const bucketMid = new Date((bucket.start.getTime() + bucket.end.getTime()) / 2)
-    html += buildTrainingLoadSection(bucketMid, trainingLoadPoints, trainingLoadWorkouts, trainingLoadZones)
+    const section = buildTrainingLoadSection(
+      bucketMid,
+      trainingLoadPoints,
+      trainingLoadWorkouts,
+      trainingLoadZones,
+      trainingLoadToleranceMs,
+    )
+    if (section) {
+      html += section
+      hasContent = true
+    }
   }
 
-  return html
+  return hasContent ? html : null
 }
 
 // ── Y-scale computation ───────────────────────────────────────────────────────
@@ -432,6 +455,8 @@ const drawCrosshairOverlay = (
       }
 
       hairline.attr('x1', mx!).attr('x2', mx!).style('display', null)
+      // Use bucket duration as tolerance for matching training load points
+      const tolerance = Math.max(2 * 3600_000, bucketDuration)
       const html = buildMetricsTooltipHtml(
         nearest,
         showHR,
@@ -441,7 +466,13 @@ const drawCrosshairOverlay = (
         trainingLoadPoints,
         trainingLoadWorkouts,
         trainingLoadZones,
+        tolerance,
       )
+      if (!html) {
+        hairline.style('display', 'none')
+        hideTooltip()
+        return
+      }
       showTooltipHtml(event, html)
     })
     .on('mouseleave', () => {
@@ -482,7 +513,7 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
   if (rawBuckets.length === 0 && !hasTrainingLoad) return
   if (!hasMetrics && !hasTrainingLoad) return
 
-  const factor = getAggregationFactor(pixelsPerHour)
+  const factor = getAggregationFactor(pixelsPerHour, rawBuckets)
   const buckets = aggregateBuckets(rawBuckets, factor)
   const trackBottom = trackY + trackHeight
 
