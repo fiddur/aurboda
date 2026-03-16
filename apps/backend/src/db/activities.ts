@@ -1,6 +1,7 @@
 /**
  * Activity CRUD operations and merge logic.
  */
+import format from 'pg-format'
 import type { ActivityType } from '../schema'
 import { query } from './connection'
 import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update'
@@ -178,6 +179,37 @@ export const insertActivity = async (user: string, activity: Activity) => {
       activity.notes,
       activity.data,
     ],
+  )
+}
+
+export const insertActivities = async (user: string, activities: Activity[]) => {
+  if (activities.length === 0) return
+
+  const values = activities.map((a) => [
+    a.id ?? null,
+    a.source,
+    a.activity_type,
+    a.start_time,
+    a.end_time ?? null,
+    a.title ?? null,
+    a.notes ?? null,
+    a.data ?? null,
+  ])
+
+  await query(
+    user,
+    format(
+      `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
+       SELECT COALESCE(v.id::uuid, gen_random_uuid()), v.source, v.activity_type, v.start_time, v.end_time, v.title, v.notes, v.data
+       FROM (VALUES %L) AS v(id, source, activity_type, start_time, end_time, title, notes, data)
+       ON CONFLICT (source, activity_type, start_time) DO UPDATE SET
+         end_time = EXCLUDED.end_time,
+         title = EXCLUDED.title,
+         notes = EXCLUDED.notes,
+         data = EXCLUDED.data
+       WHERE activities.deleted_at IS NULL`,
+      values,
+    ),
   )
 }
 

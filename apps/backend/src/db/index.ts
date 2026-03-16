@@ -191,6 +191,7 @@ export {
   deleteHealthConnectRecords,
   getDailyAggregateValue,
   processDailyAggregate,
+  processHealthConnectBatch,
   processHealthConnectData,
 } from './health-connect'
 
