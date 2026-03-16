@@ -639,12 +639,21 @@ const buildWorkoutList = async (
   kFactor: number,
 ): Promise<WorkoutTrimp[]> => {
   const exercises = await deps.getExercises(user, start, end)
-  const hrSamples = await deps.getHrSamples(user, start, end)
-  const training = new Map<string, number>() // throwaway, just for reusing processExercise
+  if (exercises.length === 0) return []
 
+  // Fetch HR samples per exercise session in parallel (not the whole range)
+  // — avoids pulling months of 5-minute HR data when only a few sessions need it
+  const hrPerExercise = await Promise.all(
+    exercises.map((ex) => {
+      const sessionEnd = ex.end_time ?? new Date(ex.start_time.getTime() + MS_PER_HOUR)
+      return deps.getHrSamples(user, ex.start_time, sessionEnd)
+    }),
+  )
+
+  const training = new Map<string, number>() // throwaway, just for reusing processExercise
   const workoutList: WorkoutTrimp[] = []
-  for (const ex of exercises) {
-    const workout = processExercise(ex, hrSamples, hrMax, hrRest, kFactor, training)
+  for (let i = 0; i < exercises.length; i++) {
+    const workout = processExercise(exercises[i]!, hrPerExercise[i]!, hrMax, hrRest, kFactor, training)
     if (workout) workoutList.push(workout)
   }
   return workoutList
@@ -766,6 +775,10 @@ export const computeTrainingLoad = async (
   const hrMax = resolveHrMax(settings.hr_max, maxObservedHr, userSettings.birth_date)
   const hrRest = resolveHrRest(settings.hr_rest, latestRestingHr)
 
+  // Start building the workout list early — it only needs settings, not impulse buckets.
+  // Runs in parallel with watermark recompute + impulse fetch + EMA.
+  const workoutListPromise = buildWorkoutList(deps, user, start, end, hrMax, hrRest, settings.k_factor)
+
   // Extended range for EMA bootstrapping (3 × tau_chronic in hours)
   const lookbackHours = Math.ceil(settings.tau_chronic * 3 * HOURS_PER_DAY)
   const extendedStart = new Date(start.getTime() - lookbackHours * MS_PER_HOUR)
@@ -837,8 +850,8 @@ export const computeTrainingLoad = async (
   const hourlyPoints = allPoints.filter((p) => p.time >= startIso && p.time <= endIso)
   const points = aggregateTrainingLoadPoints(hourlyPoints, bucketSize)
 
-  // Fetch workouts in the requested range for the response
-  const workoutList = await buildWorkoutList(deps, user, start, end, hrMax, hrRest, settings.k_factor)
+  // Await the workout list (started earlier, runs in parallel)
+  const workoutList = await workoutListPromise
 
   // Determine bootstrapping status
   const totalHours = allPoints.length
