@@ -11,6 +11,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { Request, Response, Router } from 'express'
 import { Auth } from './auth'
+import type { GarminClient } from './garmin'
 import { registerActivityTools } from './mcp/activity-tools'
 import { registerCorrelationTools } from './mcp/correlation-tools'
 import { registerLastFmTools } from './mcp/lastfm-tools'
@@ -31,21 +32,27 @@ import { SyncProvider } from './services/queries'
 
 type OuraClientType = ReturnType<typeof ouraClient>
 
-const createMcpServer = (user: string, oura?: OuraClientType, sync?: SyncProvider): McpServer => {
+interface McpDeps {
+  garmin?: GarminClient
+  oura?: OuraClientType
+  sync?: SyncProvider
+}
+
+const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   const server = new McpServer({
     name: 'aurboda',
     version: '1.0.0',
   })
 
-  registerQueryTools(server, user, sync)
+  registerQueryTools(server, user, deps.sync)
   registerTagTools(server, user)
   registerMetricTools(server, user)
   registerActivityTools(server, user)
-  registerSyncTools(server, user, oura)
+  registerSyncTools(server, user, deps.oura, deps.garmin)
   registerLastFmTools(server, user)
   registerSettingsTools(server, user)
   registerLocationTools(server, user)
-  registerCorrelationTools(server, user, sync)
+  registerCorrelationTools(server, user, deps.sync)
   registerTrainingLoadTools(server, user)
   registerTrendTools(server, user)
   registerNoteTools(server, user)
@@ -63,7 +70,7 @@ const createMcpServer = (user: string, oura?: OuraClientType, sync?: SyncProvide
  * persistence or tracking is needed — the server only exposes tools with
  * no server-initiated notifications.
  */
-export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncProvider): Router {
+export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
   const router = Router()
 
   const getAuthenticatedUser = (req: Request): string | null => {
@@ -87,7 +94,7 @@ export function createMcpRouter(auth: Auth, oura?: OuraClientType, sync?: SyncPr
       return
     }
 
-    const server = createMcpServer(user, oura, sync)
+    const server = createMcpServer(user, deps)
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     })
