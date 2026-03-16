@@ -173,6 +173,7 @@ export const dateOnlySchema = z.iso.date().meta({
  * Unit definitions for metrics.
  */
 export const metricUnits: Record<MetricType, string> = {
+  activity_impulse: 'impulse',
   basal_body_temperature: 'celsius',
   blood_glucose: 'mmol/L',
   blood_pressure_diastolic: 'mmHg',
@@ -216,7 +217,6 @@ export const metricUnits: Record<MetricType, string> = {
   spo2: 'percent',
   steps: 'count',
   training_impulse: 'TRIMP',
-  activity_impulse: 'impulse',
   stress_level: 'score',
   body_battery: 'score',
   training_readiness: 'score',

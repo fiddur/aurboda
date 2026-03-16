@@ -66,6 +66,10 @@ export const trainingLoadSettingsSchema = z
     k_factor: z.number().positive().optional().meta({
       description: 'TRIMP sex-dependent constant (1.92 for males, 1.67 for females). Defaults to 1.92.',
     }),
+    observed_hr_max: z.number().int().positive().max(250).optional().meta({
+      description:
+        'Cached maximum observed heart rate (bpm). Updated during impulse recomputation to avoid expensive 1-year scans.',
+    }),
     tau_acute: z
       .number()
       .positive()
@@ -77,7 +81,7 @@ export const trainingLoadSettingsSchema = z
       .optional()
       .meta({ description: 'Chronic (fitness) time constant in days. Defaults to 42.' }),
   })
-  .meta({ id: 'TrainingLoadSettings', description: 'User-configurable training load parameters' })
+  .meta({ description: 'User-configurable training load parameters', id: 'TrainingLoadSettings' })
 
 export type TrainingLoadSettings = z.infer<typeof trainingLoadSettingsSchema>
 
@@ -104,7 +108,7 @@ export const trainingLoadQuerySchema = z
     end: z.string().meta({ description: 'End date in ISO 8601 format' }),
     start: z.string().meta({ description: 'Start date in ISO 8601 format' }),
   })
-  .meta({ id: 'TrainingLoadQuery', description: 'Query parameters for training load time series' })
+  .meta({ description: 'Query parameters for training load time series', id: 'TrainingLoadQuery' })
 
 export type TrainingLoadQuery = z.infer<typeof trainingLoadQuerySchema>
 
@@ -120,7 +124,7 @@ export const getTrainingLoadInputSchema = z
     end: z.iso.datetime().meta({ description: 'End date-time in ISO 8601 format' }),
     start: z.iso.datetime().meta({ description: 'Start date-time in ISO 8601 format' }),
   })
-  .meta({ id: 'GetTrainingLoadInput', description: 'Input for computing training load time series' })
+  .meta({ description: 'Input for computing training load time series', id: 'GetTrainingLoadInput' })
 
 export type GetTrainingLoadInput = z.infer<typeof getTrainingLoadInputSchema>
 
@@ -141,7 +145,7 @@ export const workoutTrimpSchema = z
     title: z.string().optional().meta({ description: 'Workout title / exercise type' }),
     trimp: z.number().meta({ description: 'Training Impulse score for this workout' }),
   })
-  .meta({ id: 'WorkoutTrimp', description: 'TRIMP score for a single workout session' })
+  .meta({ description: 'TRIMP score for a single workout session', id: 'WorkoutTrimp' })
 
 export type WorkoutTrimp = z.infer<typeof workoutTrimpSchema>
 
@@ -163,7 +167,7 @@ export const trainingLoadPointSchema = z
       .number()
       .meta({ description: 'Training Stress Balance (form) = CTL - ATL, value at end of bucket' }),
   })
-  .meta({ id: 'TrainingLoadPoint', description: 'ATL, CTL, TSB, and impulse values per time bucket' })
+  .meta({ description: 'ATL, CTL, TSB, and impulse values per time bucket', id: 'TrainingLoadPoint' })
 
 export type TrainingLoadPoint = z.infer<typeof trainingLoadPointSchema>
 
@@ -210,7 +214,7 @@ export const trainingLoadResultSchema = z
       .optional()
       .meta({ description: 'Recovery zone thresholds (absent during bootstrapping)' }),
   })
-  .meta({ id: 'TrainingLoadResult', description: 'Training load computation result' })
+  .meta({ description: 'Training load computation result', id: 'TrainingLoadResult' })
 
 export type TrainingLoadResult = z.infer<typeof trainingLoadResultSchema>
 
