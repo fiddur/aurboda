@@ -1,6 +1,7 @@
 /**
  * Raw record storage for incoming health data.
  */
+import format from 'pg-format'
 import { query } from './connection'
 import type { RawRecord } from './types'
 
@@ -13,6 +14,24 @@ export const insertRawRecord = async (user: string, record: RawRecord) => {
        data = EXCLUDED.data,
        received_at = NOW()`,
     [record.source, record.record_type, record.external_id, record.recorded_at, record.data],
+  )
+}
+
+export const insertRawRecords = async (user: string, records: RawRecord[]) => {
+  if (records.length === 0) return
+
+  const values = records.map((r) => [r.source, r.record_type, r.external_id, r.recorded_at, r.data])
+
+  await query(
+    user,
+    format(
+      `INSERT INTO raw_records (source, record_type, external_id, recorded_at, data)
+       VALUES %L
+       ON CONFLICT (source, record_type, external_id) DO UPDATE SET
+         data = EXCLUDED.data,
+         received_at = NOW()`,
+      values,
+    ),
   )
 }
 

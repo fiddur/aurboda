@@ -19,6 +19,7 @@ describe('sync router', () => {
       .fn()
       .mockResolvedValue({ device_name: '', records_stored: 0, status: 'success' }),
     processDailyAggregate: vi.fn().mockResolvedValue(undefined),
+    processHealthConnectBatch: vi.fn().mockResolvedValue(undefined),
     processHealthConnectData: vi.fn().mockResolvedValue(undefined),
     resetCalendarSyncState: vi.fn().mockResolvedValue(undefined),
     resetLastFmSyncState: vi.fn().mockResolvedValue(undefined),
@@ -49,7 +50,7 @@ describe('sync router', () => {
   })
 
   describe('route ordering - specific routes before generic', () => {
-    test('POST /sync/daily-aggregates calls processDailyAggregate, not processHealthConnectData', async () => {
+    test('POST /sync/daily-aggregates calls processDailyAggregate, not processHealthConnectBatch', async () => {
       const app = createTestApp()
       const response = await request(app)
         .post('/sync/daily-aggregates')
@@ -59,10 +60,10 @@ describe('sync router', () => {
 
       expect(response.status).toBe(200)
       expect(mockDeps.processDailyAggregate).toHaveBeenCalledTimes(1)
-      expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
+      expect(mockDeps.processHealthConnectBatch).not.toHaveBeenCalled()
     })
 
-    test('POST /sync/oura calls syncOura, not processHealthConnectData', async () => {
+    test('POST /sync/oura calls syncOura, not processHealthConnectBatch', async () => {
       const app = createTestApp()
       const response = await request(app).post('/sync/oura').send({ full_resync: true })
 
@@ -71,48 +72,44 @@ describe('sync router', () => {
         fullResync: true,
         startDate: undefined,
       })
-      expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
+      expect(mockDeps.processHealthConnectBatch).not.toHaveBeenCalled()
     })
 
-    test('POST /sync/rescuetime calls syncRescueTime, not processHealthConnectData', async () => {
+    test('POST /sync/rescuetime calls syncRescueTime, not processHealthConnectBatch', async () => {
       const app = createTestApp()
       const response = await request(app).post('/sync/rescuetime').send({})
 
       expect(response.status).toBe(200)
       expect(mockDeps.syncRescueTime).toHaveBeenCalled()
-      expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
+      expect(mockDeps.processHealthConnectBatch).not.toHaveBeenCalled()
     })
 
-    test('POST /sync/HeartRateRecord calls processHealthConnectData (generic route)', async () => {
+    test('POST /sync/HeartRateRecord calls processHealthConnectBatch (generic route)', async () => {
       const app = createTestApp()
       const response = await request(app)
         .post('/sync/HeartRateRecord')
         .send({ data: [{ metadata: { id: '123' }, startTime: '2024-01-15T10:00:00Z' }] })
 
       expect(response.status).toBe(200)
-      expect(mockDeps.processHealthConnectData).toHaveBeenCalledWith(
-        'testuser',
-        'HeartRateRecord',
+      expect(mockDeps.processHealthConnectBatch).toHaveBeenCalledWith('testuser', 'HeartRateRecord', [
         expect.any(Object),
-      )
+      ])
       // Specific handlers should NOT be called
       expect(mockDeps.processDailyAggregate).not.toHaveBeenCalled()
       expect(mockDeps.syncOura).not.toHaveBeenCalled()
       expect(mockDeps.syncRescueTime).not.toHaveBeenCalled()
     })
 
-    test('POST /sync/WeightRecord calls processHealthConnectData (generic route)', async () => {
+    test('POST /sync/WeightRecord calls processHealthConnectBatch (generic route)', async () => {
       const app = createTestApp()
       const response = await request(app)
         .post('/sync/WeightRecord')
         .send({ data: [{ metadata: { id: '456' }, time: '2024-01-15T08:00:00Z' }] })
 
       expect(response.status).toBe(200)
-      expect(mockDeps.processHealthConnectData).toHaveBeenCalledWith(
-        'testuser',
-        'WeightRecord',
+      expect(mockDeps.processHealthConnectBatch).toHaveBeenCalledWith('testuser', 'WeightRecord', [
         expect.any(Object),
-      )
+      ])
     })
   })
 
@@ -222,7 +219,7 @@ describe('sync router', () => {
         .send({ data: ['id1'] })
 
       expect(response.status).toBe(200)
-      expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
+      expect(mockDeps.processHealthConnectBatch).not.toHaveBeenCalled()
     })
 
     test('POST /sync/deletions returns 400 for empty array', async () => {
@@ -249,7 +246,9 @@ describe('sync router', () => {
       const response = await request(app).post('/sync/SomeRecord').send({ data: singleRecord })
 
       expect(response.status).toBe(200)
-      expect(mockDeps.processHealthConnectData).toHaveBeenCalledWith('testuser', 'SomeRecord', singleRecord)
+      expect(mockDeps.processHealthConnectBatch).toHaveBeenCalledWith('testuser', 'SomeRecord', [
+        singleRecord,
+      ])
     })
 
     test('returns 400 for missing data field', async () => {
@@ -257,7 +256,7 @@ describe('sync router', () => {
       const response = await request(app).post('/sync/SomeRecord').send({})
 
       expect(response.status).toBe(400)
-      expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
+      expect(mockDeps.processHealthConnectBatch).not.toHaveBeenCalled()
     })
   })
 

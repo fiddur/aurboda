@@ -10,12 +10,12 @@ import {
   isValidMetric,
   metricUnits,
 } from '../schema'
-import { insertActivity } from './activities'
+import { insertActivities, insertActivity } from './activities'
 import { query } from './connection'
 import { insertMeal } from './meals'
-import { insertRawRecord } from './raw-records'
+import { insertRawRecord, insertRawRecords } from './raw-records'
 import { insertTimeSeries } from './time-series'
-import type { DailyAggregate, MealFoodItem, TimeSeriesPoint } from './types'
+import type { Activity, DailyAggregate, MealFoodItem, RawRecord, TimeSeriesPoint } from './types'
 
 /**
  * Process incoming Health Connect data and normalize into appropriate tables.
@@ -81,6 +81,103 @@ export const processHealthConnectData = async (
       start_time: new Date(data.startTime as string),
       title: data.title as string | undefined,
     })
+  }
+}
+
+/**
+ * Process a batch of Health Connect records efficiently using bulk inserts.
+ *
+ * Instead of inserting each record individually (2 queries per record),
+ * this collects all raw records, time series points, and activities across
+ * the batch and inserts each category in a single query.
+ *
+ * Meals (NutritionRecord) are still inserted individually since they're rare
+ * and don't support upsert.
+ */
+export const processHealthConnectBatch = async (
+  user: string,
+  recordType: string,
+  records: Record<string, unknown>[],
+) => {
+  if (records.length === 0) return
+
+  // Collect all inserts across the batch
+  const rawRecords: RawRecord[] = []
+  const allTimeSeriesPoints: TimeSeriesPoint[] = []
+  const activities: Activity[] = []
+  const mealRecords: Record<string, unknown>[] = []
+
+  for (const data of records) {
+    const externalId = (data.metadata as Record<string, unknown>)?.id as string | undefined
+
+    rawRecords.push({
+      data,
+      external_id: externalId,
+      record_type: recordType,
+      recorded_at: new Date((data.startTime || data.time) as string),
+      source: 'health_connect',
+    })
+
+    // Collect time_series points
+    const metric = healthConnectMetricMapping[recordType]
+    if (metric) {
+      const points = extractTimeSeriesPoints(recordType, metric, data)
+      allTimeSeriesPoints.push(...points)
+    }
+
+    // Collect blood pressure points
+    if (recordType === 'BloodPressureRecord') {
+      const time = new Date((data.time as string) || (data.startTime as string))
+      allTimeSeriesPoints.push(
+        {
+          metric: 'blood_pressure_systolic',
+          source: 'health_connect',
+          time,
+          value: data.systolicInMmHg as number,
+        },
+        {
+          metric: 'blood_pressure_diastolic',
+          source: 'health_connect',
+          time,
+          value: data.diastolicInMmHg as number,
+        },
+      )
+    }
+
+    // Collect meals for individual insertion
+    if (recordType === 'NutritionRecord') {
+      mealRecords.push(data)
+    }
+
+    // Collect activities
+    const activityType = healthConnectActivityMapping[recordType]
+    if (activityType) {
+      activities.push({
+        activity_type: activityType,
+        data,
+        end_time: data.endTime ? new Date(data.endTime as string) : undefined,
+        notes: data.notes as string | undefined,
+        source: 'health_connect',
+        start_time: new Date(data.startTime as string),
+        title: data.title as string | undefined,
+      })
+    }
+  }
+
+  // Bulk insert all collected data (one query per category)
+  await insertRawRecords(user, rawRecords)
+
+  if (allTimeSeriesPoints.length > 0) {
+    await insertTimeSeries(user, allTimeSeriesPoints)
+  }
+
+  if (activities.length > 0) {
+    await insertActivities(user, activities)
+  }
+
+  // Meals don't have upsert logic and are rare -- insert individually
+  for (const data of mealRecords) {
+    await processNutritionRecord(user, data)
   }
 }
 
