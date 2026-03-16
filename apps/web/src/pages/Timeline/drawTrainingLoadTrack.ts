@@ -72,10 +72,12 @@ const computeYScales = (
   points: TrainingLoadPoint[],
   trackY: number,
   trackBottom: number,
+  zones?: RecoveryZones,
 ): TrainingLoadYScales => {
   // Load scale: tight domain around actual ATL/CTL range for better visual resolution.
   // With a zero-anchored domain the curves compress into ~10% of the track when values
   // are close (e.g. CTL 5.9–6.8).  A tight domain lets small variations fill the track.
+  // Zone thresholds are also included so zone bands are always visible, not squished.
   let minLoad = Infinity
   let maxLoad = -Infinity
   for (const p of points) {
@@ -83,6 +85,11 @@ const computeYScales = (
     if (p.ctl < minLoad) minLoad = p.ctl
     if (p.atl > maxLoad) maxLoad = p.atl
     if (p.ctl > maxLoad) maxLoad = p.ctl
+  }
+  // Include zone thresholds in domain so zone bands are always visible
+  if (zones) {
+    if (zones.balanced_min < minLoad) minLoad = zones.balanced_min
+    if (zones.strained_max > maxLoad) maxLoad = zones.strained_max
   }
   if (minLoad === Infinity) minLoad = 0
   if (maxLoad === -Infinity) maxLoad = 10
@@ -518,7 +525,7 @@ export const buildTrainingLoadTooltipHtml = (
  * If points are pre-bucketed (daily/weekly), the gap between them reveals the bucket size.
  * Falls back to 1 hour for hourly or single-point data.
  */
-const inferBucketDuration = (points: TrainingLoadPoint[]): number => {
+export const inferBucketDuration = (points: TrainingLoadPoint[]): number => {
   if (points.length < 2) return MS_PER_HOUR
   const t0 = parseTime(points[0]!.time).getTime()
   const t1 = parseTime(points[1]!.time).getTime()
@@ -553,7 +560,7 @@ export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => 
 
   if (displayPoints.length === 0) return
 
-  const yScales = computeYScales(displayPoints, trackY, trackBottom)
+  const yScales = computeYScales(displayPoints, trackY, trackBottom, zones)
 
   // Draw zone bands first (behind everything)
   if (zones) {
