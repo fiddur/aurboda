@@ -276,11 +276,12 @@ const drawFatigueBars = (
   xScale: d3.ScaleTime<number, number>,
   yScale: d3.ScaleLinear<number, number>,
   trackBottom: number,
+  barDurationMs: number = MS_PER_HOUR,
 ): void => {
-  // Compute bar width from x-scale (one hour)
+  // Compute bar width from x-scale and bucket duration
   const sampleTime = points[0] ? parseTime(points[0].time) : new Date()
-  const nextHour = new Date(sampleTime.getTime() + MS_PER_HOUR)
-  const barWidth = Math.max(1, Math.abs(xScale(nextHour) - xScale(sampleTime)) - 1)
+  const nextTime = new Date(sampleTime.getTime() + barDurationMs)
+  const barWidth = Math.max(1, Math.abs(xScale(nextTime) - xScale(sampleTime)) - 1)
 
   // Find max ATL for color scaling
   let maxAtl = 1
@@ -315,18 +316,19 @@ const drawFatigueBars = (
   }
 }
 
-/** Draw stacked impulse bars (training + activity) per hour. */
+/** Draw stacked impulse bars (training + activity) per bucket. */
 const drawImpulseBars = (
   group: SvgGroup,
   points: TrainingLoadPoint[],
   xScale: d3.ScaleTime<number, number>,
   yScale: d3.ScaleLinear<number, number>,
   trackBottom: number,
+  barDurationMs: number = MS_PER_HOUR,
 ): void => {
-  // Compute bar width from x-scale (one hour)
+  // Compute bar width from x-scale and bucket duration
   const sampleTime = points[0] ? parseTime(points[0].time) : new Date()
-  const nextHour = new Date(sampleTime.getTime() + MS_PER_HOUR)
-  const barWidth = Math.max(1, Math.abs(xScale(nextHour) - xScale(sampleTime)) - 1)
+  const nextTime = new Date(sampleTime.getTime() + barDurationMs)
+  const barWidth = Math.max(1, Math.abs(xScale(nextTime) - xScale(sampleTime)) - 1)
 
   for (const p of points) {
     const total = p.training_impulse + p.activity_impulse
@@ -504,43 +506,69 @@ export const buildTrainingLoadTooltipHtml = (
   return html
 }
 
-// ── Downsampling ──────────────────────────────────────────────────────────────
+// ── Time-based bucketing ──────────────────────────────────────────────────────
+
+const MS_PER_DAY = 24 * MS_PER_HOUR
+const MS_PER_WEEK = 7 * MS_PER_DAY
 
 /**
- * Downsample hourly points for rendering when zoomed out far.
- * Groups consecutive hours and picks the one with highest combined impulse
- * from each group, preserving the ATL/CTL/TSB curves at reduced resolution.
+ * Choose bucket duration based on zoom level (pixelsPerHour).
+ * Returns the bucket duration in ms, or 0 to use raw hourly data.
  */
-const downsamplePoints = (
-  points: TrainingLoadPoint[],
-  xScale: d3.ScaleTime<number, number>,
-  minPixelGap: number,
-): TrainingLoadPoint[] => {
-  if (points.length <= 2) return points
+const chooseBucketDuration = (pixelsPerHour: number): number => {
+  if (pixelsPerHour >= 2) return 0 // hourly — no bucketing needed
+  if (pixelsPerHour >= 0.3) return MS_PER_DAY // daily buckets
+  return MS_PER_WEEK // weekly buckets
+}
+
+/**
+ * Bucket hourly training load points into time-based groups.
+ * For bars: sums impulses, takes peak ATL.
+ * For curves: takes the last point per bucket (most recent running average).
+ * Returns bucketed points placed at the bucket start time, plus the bucket duration in ms.
+ */
+const bucketPoints = (points: TrainingLoadPoint[], bucketMs: number): TrainingLoadPoint[] => {
+  if (points.length === 0 || bucketMs === 0) return points
+
+  const buckets = new Map<number, TrainingLoadPoint[]>()
+
+  for (const p of points) {
+    const t = parseTime(p.time).getTime()
+    // Floor to bucket boundary
+    const bucketKey = Math.floor(t / bucketMs) * bucketMs
+    let arr = buckets.get(bucketKey)
+    if (!arr) {
+      arr = []
+      buckets.set(bucketKey, arr)
+    }
+    arr.push(p)
+  }
 
   const result: TrainingLoadPoint[] = []
-  let groupStart = 0
+  const sortedKeys = [...buckets.keys()].sort((a, b) => a - b)
 
-  for (let i = 1; i <= points.length; i++) {
-    const atEnd = i === points.length
-    const gapPx =
-      atEnd ? Infinity : (
-        Math.abs(xScale(parseTime(points[i]!.time)) - xScale(parseTime(points[groupStart]!.time)))
-      )
+  for (const key of sortedKeys) {
+    const group = buckets.get(key)!
+    // Sum impulses across the bucket
+    let totalTrainingImpulse = 0
+    let totalActivityImpulse = 0
+    let peakAtl = 0
+    // Take the last point's running averages (CTL/ATL/TSB)
+    const last = group[group.length - 1]!
 
-    if (gapPx >= minPixelGap || atEnd) {
-      // Pick the point in [groupStart, i) with highest ATL (shown as bars)
-      let best = points[groupStart]!
-      let bestAtl = best.atl
-      for (let j = groupStart + 1; j < i; j++) {
-        if (points[j]!.atl > bestAtl) {
-          bestAtl = points[j]!.atl
-          best = points[j]!
-        }
-      }
-      result.push(best)
-      groupStart = i
+    for (const p of group) {
+      totalTrainingImpulse += p.training_impulse
+      totalActivityImpulse += p.activity_impulse
+      if (p.atl > peakAtl) peakAtl = p.atl
     }
+
+    result.push({
+      ...last,
+      activity_impulse: totalActivityImpulse,
+      atl: peakAtl,
+      time: new Date(key).toISOString(),
+      training_impulse: totalTrainingImpulse,
+    })
   }
 
   return result
@@ -570,8 +598,16 @@ export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => 
 
   if (visiblePoints.length === 0) return
 
-  // Downsample when zoomed out far (more than ~2000 visible points)
-  const displayPoints = downsamplePoints(visiblePoints, xScale, 2)
+  // Choose bucketing strategy based on zoom level
+  const oneHourLater = new Date(domain[0]!.getTime() + MS_PER_HOUR)
+  const pixelsPerHour = Math.abs(xScale(oneHourLater) - xScale(domain[0]!))
+  const bucketMs = chooseBucketDuration(pixelsPerHour)
+
+  // Bucket points for bars (summed impulses, peak ATL)
+  const displayPoints = bucketMs > 0 ? bucketPoints(visiblePoints, bucketMs) : visiblePoints
+
+  // For bar width: use bucket duration instead of 1 hour when bucketing
+  const barDurationMs = bucketMs > 0 ? bucketMs : MS_PER_HOUR
 
   const yScales = computeYScales(displayPoints, trackY, trackBottom)
 
@@ -583,10 +619,10 @@ export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => 
   }
 
   // Draw ATL fatigue bars (behind everything else)
-  drawFatigueBars(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom)
+  drawFatigueBars(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom, barDurationMs)
 
   // Draw impulse bars (training + activity) on top of fatigue bars
-  drawImpulseBars(chartGroup, displayPoints, xScale, yScales.yImpulse, trackBottom)
+  drawImpulseBars(chartGroup, displayPoints, xScale, yScales.yImpulse, trackBottom, barDurationMs)
 
   // Draw CTL/ATL curves
   drawLoadCurves(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom, bootstrapping)

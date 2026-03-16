@@ -825,6 +825,7 @@ export const Timeline = () => {
   )
 
   // Unified Activity column items (activities + merged duration tags)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- UI temporarily commented out, will be redesigned
   const { items: activityItems, overlaps: overlapWarnings } = useMemo(
     () =>
       buildActivityColumnItems(
@@ -1106,6 +1107,7 @@ export const Timeline = () => {
 
     const chartGroup = g.append('g').attr('clip-path', 'url(#chart-clip)')
 
+    // eslint-disable-next-line complexity -- D3 vertical layout draw loop
     const draw = (currentYScale: d3.ScaleTime<number, number>) => {
       chartGroup.selectAll('*').remove()
       g.selectAll('.hour-label').remove()
@@ -1154,9 +1156,19 @@ export const Timeline = () => {
         .attr('opacity', 0.6)
         .text((d) => format(d, 'HH:mm'))
 
-      const midnights = d3.timeDay.range(domainStart, domainEnd)
-      for (const midnight of midnights) {
-        const my = currentYScale(midnight)
+      // Time separators — adapt interval to zoom level
+      const separatorDates: Date[] =
+        pixelsPerHour >= 2 ? d3.timeDay.range(domainStart, domainEnd)
+        : pixelsPerHour >= 0.3 ? d3.timeMonday.range(domainStart, domainEnd)
+        : d3.timeMonth.range(domainStart, domainEnd)
+
+      const separatorLabelFormat =
+        pixelsPerHour >= 2 ? 'MMM d'
+        : pixelsPerHour >= 0.3 ? "'w'w MMM d"
+        : 'MMM yyyy'
+
+      for (const sep of separatorDates) {
+        const my = currentYScale(sep)
         chartGroup
           .append('line')
           .attr('x1', 0)
@@ -1178,7 +1190,7 @@ export const Timeline = () => {
           .attr('font-size', '0.65rem')
           .attr('font-weight', '600')
           .attr('opacity', 0.5)
-          .text(format(midnight, 'MMM d'))
+          .text(format(sep, separatorLabelFormat))
       }
 
       for (let i = 1; i < columns.length; i++) {
@@ -1448,10 +1460,17 @@ export const Timeline = () => {
           .attr('stroke-opacity', 0.1)
       }
 
-      // Midnight separators
-      const midnights = d3.timeDay.range(domainStart, domainEnd)
-      for (const midnight of midnights) {
-        const mx = currentXScale(midnight)
+      // Time separators — adapt interval to zoom level
+      // pixelsPerHour >= 2  → daily (midnight lines)
+      // pixelsPerHour >= 0.3 → weekly (Monday boundaries)
+      // otherwise           → monthly (1st of month)
+      const separatorDates: Date[] =
+        pixelsPerHour >= 2 ? d3.timeDay.range(domainStart, domainEnd)
+        : pixelsPerHour >= 0.3 ? d3.timeMonday.range(domainStart, domainEnd)
+        : d3.timeMonth.range(domainStart, domainEnd)
+
+      for (const sep of separatorDates) {
+        const mx = currentXScale(sep)
         chartGroup
           .append('line')
           .attr('x1', mx)
@@ -2168,6 +2187,7 @@ export const Timeline = () => {
         )}
       </div>
 
+      {/* Overlap warnings UI temporarily disabled — will be redesigned
       {overlapWarnings.length > 0 && (
         <div class="timeline-overlap-warnings">
           <details>
@@ -2185,32 +2205,29 @@ export const Timeline = () => {
           </details>
         </div>
       )}
+      */}
 
-      {isInitialLoad && <div class="loading">Loading…</div>}
       {errorSources.length > 0 && (
         <div class="error">Failed to load {errorSources.join(', ')} — showing available data</div>
       )}
 
-      {!isInitialLoad && (
-        <>
-          {orientation === 'vertical' && (
-            <div class="timeline-column-headers" style={{ paddingLeft: `${VERTICAL_MARGIN.left}px` }}>
-              {columns.map((col, i) => (
-                <div key={col} style={{ flex: 1, paddingLeft: i === 0 ? '0' : '4px', textAlign: 'center' }}>
-                  {col}
-                </div>
-              ))}
+      {orientation === 'vertical' && !isInitialLoad && (
+        <div class="timeline-column-headers" style={{ paddingLeft: `${VERTICAL_MARGIN.left}px` }}>
+          {columns.map((col, i) => (
+            <div key={col} style={{ flex: 1, paddingLeft: i === 0 ? '0' : '4px', textAlign: 'center' }}>
+              {col}
             </div>
-          )}
-
-          <div class="timeline-chart-container" ref={containerRef} onPointerDown={hideTooltip}>
-            <svg ref={svgRef} />
-            <div class="timeline-tooltip" ref={tooltipRef} style={{ display: 'none' }} />
-          </div>
-
-          <p class="timeline-help">Scroll to zoom · Drag to pan · Double-click to reset</p>
-        </>
+          ))}
+        </div>
       )}
+
+      <div class="timeline-chart-container" ref={containerRef} onPointerDown={hideTooltip}>
+        <svg ref={svgRef} />
+        {isInitialLoad && <div class="timeline-chart-loading">Loading…</div>}
+        <div class="timeline-tooltip" ref={tooltipRef} style={{ display: 'none' }} />
+      </div>
+
+      <p class="timeline-help">Scroll to zoom · Drag to pan · Double-click to reset</p>
     </div>
   )
 }

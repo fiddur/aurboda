@@ -293,6 +293,17 @@
   touch-action: none; /* prevent browser from intercepting touch gestures (d3-zoom handles them) */
 }
 
+.timeline-chart-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #888);
+  pointer-events: none;
+}
+
 .timeline-chart-container svg:active {
   cursor: grabbing;
 }
