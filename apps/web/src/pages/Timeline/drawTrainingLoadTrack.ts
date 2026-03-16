@@ -506,79 +506,28 @@ export const buildTrainingLoadTooltipHtml = (
   return html
 }
 
-// ── Time-based bucketing ──────────────────────────────────────────────────────
-
-const MS_PER_DAY = 24 * MS_PER_HOUR
-const MS_PER_WEEK = 7 * MS_PER_DAY
-
-/**
- * Choose bucket duration based on zoom level (pixelsPerHour).
- * Returns the bucket duration in ms, or 0 to use raw hourly data.
- */
-const chooseBucketDuration = (pixelsPerHour: number): number => {
-  if (pixelsPerHour >= 2) return 0 // hourly — no bucketing needed
-  if (pixelsPerHour >= 0.3) return MS_PER_DAY // daily buckets
-  return MS_PER_WEEK // weekly buckets
-}
-
-/**
- * Bucket hourly training load points into time-based groups.
- * For bars: sums impulses, takes peak ATL.
- * For curves: takes the last point per bucket (most recent running average).
- * Returns bucketed points placed at the bucket start time, plus the bucket duration in ms.
- */
-const bucketPoints = (points: TrainingLoadPoint[], bucketMs: number): TrainingLoadPoint[] => {
-  if (points.length === 0 || bucketMs === 0) return points
-
-  const buckets = new Map<number, TrainingLoadPoint[]>()
-
-  for (const p of points) {
-    const t = parseTime(p.time).getTime()
-    // Floor to bucket boundary
-    const bucketKey = Math.floor(t / bucketMs) * bucketMs
-    let arr = buckets.get(bucketKey)
-    if (!arr) {
-      arr = []
-      buckets.set(bucketKey, arr)
-    }
-    arr.push(p)
-  }
-
-  const result: TrainingLoadPoint[] = []
-  const sortedKeys = [...buckets.keys()].sort((a, b) => a - b)
-
-  for (const key of sortedKeys) {
-    const group = buckets.get(key)!
-    // Sum impulses across the bucket
-    let totalTrainingImpulse = 0
-    let totalActivityImpulse = 0
-    let peakAtl = 0
-    // Take the last point's running averages (CTL/ATL/TSB)
-    const last = group[group.length - 1]!
-
-    for (const p of group) {
-      totalTrainingImpulse += p.training_impulse
-      totalActivityImpulse += p.activity_impulse
-      if (p.atl > peakAtl) peakAtl = p.atl
-    }
-
-    result.push({
-      ...last,
-      activity_impulse: totalActivityImpulse,
-      atl: peakAtl,
-      time: new Date(key).toISOString(),
-      training_impulse: totalTrainingImpulse,
-    })
-  }
-
-  return result
-}
-
 // ── Main draw function ────────────────────────────────────────────────────────
 
 /**
- * Draw the training load track: hourly stacked impulse bars, CTL/ATL curves,
+ * Infer bucket duration from consecutive points.
+ * If points are pre-bucketed (daily/weekly), the gap between them reveals the bucket size.
+ * Falls back to 1 hour for hourly or single-point data.
+ */
+const inferBucketDuration = (points: TrainingLoadPoint[]): number => {
+  if (points.length < 2) return MS_PER_HOUR
+  const t0 = parseTime(points[0]!.time).getTime()
+  const t1 = parseTime(points[1]!.time).getTime()
+  const gap = Math.abs(t1 - t0)
+  // Snap to nearest standard bucket: 1h, 1d, 1w
+  if (gap >= 6 * 24 * MS_PER_HOUR) return 7 * 24 * MS_PER_HOUR // weekly
+  if (gap >= 12 * MS_PER_HOUR) return 24 * MS_PER_HOUR // daily
+  return MS_PER_HOUR
+}
+
+/**
+ * Draw the training load track: stacked impulse bars, CTL/ATL curves,
  * TSB line, zone bands, and an interactive crosshair overlay for tooltips.
+ * Points may be hourly, daily, or weekly (pre-bucketed by backend).
  */
 export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => {
   const { chartGroup, xScale, points, bootstrapping, zones, trackY, trackHeight } = config
@@ -587,27 +536,17 @@ export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => 
 
   const trackBottom = trackY + trackHeight
 
-  // Filter to visible range
+  // Filter to visible range (with one bucket of padding)
   const domain = xScale.domain()
-  const domainStartMs = domain[0]!.getTime() - MS_PER_HOUR
-  const domainEndMs = domain[1]!.getTime() + MS_PER_HOUR
-  const visiblePoints = points.filter((p) => {
+  const barDurationMs = inferBucketDuration(points)
+  const domainStartMs = domain[0]!.getTime() - barDurationMs
+  const domainEndMs = domain[1]!.getTime() + barDurationMs
+  const displayPoints = points.filter((p) => {
     const t = parseTime(p.time).getTime()
     return t >= domainStartMs && t <= domainEndMs
   })
 
-  if (visiblePoints.length === 0) return
-
-  // Choose bucketing strategy based on zoom level
-  const oneHourLater = new Date(domain[0]!.getTime() + MS_PER_HOUR)
-  const pixelsPerHour = Math.abs(xScale(oneHourLater) - xScale(domain[0]!))
-  const bucketMs = chooseBucketDuration(pixelsPerHour)
-
-  // Bucket points for bars (summed impulses, peak ATL)
-  const displayPoints = bucketMs > 0 ? bucketPoints(visiblePoints, bucketMs) : visiblePoints
-
-  // For bar width: use bucket duration instead of 1 hour when bucketing
-  const barDurationMs = bucketMs > 0 ? bucketMs : MS_PER_HOUR
+  if (displayPoints.length === 0) return
 
   const yScales = computeYScales(displayPoints, trackY, trackBottom)
 

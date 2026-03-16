@@ -88,8 +88,19 @@ export type TrainingLoadSettings = z.infer<typeof trainingLoadSettingsSchema>
 /**
  * Query parameters for the training load endpoint.
  */
+/**
+ * Valid bucket sizes for training load aggregation.
+ * Default is '1h' (hourly). Larger buckets reduce payload size for long ranges.
+ */
+export const trainingLoadBucketSizes = ['1h', '1d', '1w'] as const
+export type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
+
 export const trainingLoadQuerySchema = z
   .object({
+    bucket_size: z.enum(trainingLoadBucketSizes).optional().meta({
+      description:
+        "Aggregation bucket size: '1h' (default, hourly), '1d' (daily), '1w' (weekly). Larger buckets reduce response size for long date ranges.",
+    }),
     end: z.string().meta({ description: 'End date in ISO 8601 format' }),
     start: z.string().meta({ description: 'Start date in ISO 8601 format' }),
   })
@@ -102,6 +113,10 @@ export type TrainingLoadQuery = z.infer<typeof trainingLoadQuerySchema>
  */
 export const getTrainingLoadInputSchema = z
   .object({
+    bucket_size: z.enum(trainingLoadBucketSizes).optional().meta({
+      description:
+        "Aggregation bucket size: '1h' (default, hourly), '1d' (daily), '1w' (weekly). Larger buckets reduce response size for long date ranges.",
+    }),
     end: z.iso.datetime().meta({ description: 'End date-time in ISO 8601 format' }),
     start: z.iso.datetime().meta({ description: 'Start date-time in ISO 8601 format' }),
   })
@@ -131,20 +146,24 @@ export const workoutTrimpSchema = z
 export type WorkoutTrimp = z.infer<typeof workoutTrimpSchema>
 
 /**
- * A single hour's training load point.
+ * A single training load point (hourly, daily, or weekly depending on bucket_size).
  */
 export const trainingLoadPointSchema = z
   .object({
-    activity_impulse: z
+    activity_impulse: z.number().meta({
+      description: 'Activity impulse (scaled active calories) for this bucket — summed when aggregated',
+    }),
+    atl: z.number().meta({ description: 'Acute Training Load (fatigue) — peak ATL within the bucket' }),
+    ctl: z.number().meta({ description: 'Chronic Training Load (fitness) — value at end of bucket' }),
+    time: z.string().meta({ description: 'Bucket start time (ISO 8601)' }),
+    training_impulse: z
       .number()
-      .meta({ description: 'Activity impulse (scaled active calories) for this hour' }),
-    atl: z.number().meta({ description: 'Acute Training Load (fatigue) — 7-day hourly EMA' }),
-    ctl: z.number().meta({ description: 'Chronic Training Load (fitness) — 42-day hourly EMA' }),
-    time: z.string().meta({ description: 'Hour start time (ISO 8601)' }),
-    training_impulse: z.number().meta({ description: 'Training impulse (exercise TRIMP) for this hour' }),
-    tsb: z.number().meta({ description: 'Training Stress Balance (form) = CTL - ATL' }),
+      .meta({ description: 'Training impulse (exercise TRIMP) for this bucket — summed when aggregated' }),
+    tsb: z
+      .number()
+      .meta({ description: 'Training Stress Balance (form) = CTL - ATL, value at end of bucket' }),
   })
-  .meta({ id: 'TrainingLoadPoint', description: 'Hourly ATL, CTL, TSB, and impulse values' })
+  .meta({ id: 'TrainingLoadPoint', description: 'ATL, CTL, TSB, and impulse values per time bucket' })
 
 export type TrainingLoadPoint = z.infer<typeof trainingLoadPointSchema>
 
@@ -182,7 +201,9 @@ export const trainingLoadResultSchema = z
     bootstrapping: z
       .boolean()
       .meta({ description: 'True if < 6 weeks of data, meaning CTL may not yet be meaningful' }),
-    points: z.array(trainingLoadPointSchema).meta({ description: 'Hourly training load time series' }),
+    points: z
+      .array(trainingLoadPointSchema)
+      .meta({ description: 'Training load time series (granularity depends on bucket_size parameter)' }),
     settings: trainingLoadSettingsSchema.meta({ description: 'Effective settings used for computation' }),
     workouts: z.array(workoutTrimpSchema).meta({ description: 'Per-workout TRIMP scores in the range' }),
     zones: recoveryZonesSchema

@@ -865,12 +865,21 @@ export const Timeline = () => {
   const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
   hiddenCategoriesRef.current = hiddenCategories
 
-  // Training load data (fetched when toggle is on, uses daily granularity)
+  // Training load bucket size — scale with date range to avoid huge payloads
+  const trainingLoadBucketSize = useMemo(() => {
+    const days = differenceInCalendarDays(fetchEnd, fetchStart)
+    if (days > 90) return '1w' as const
+    if (days > 14) return '1d' as const
+    return '1h' as const
+  }, [fetchStart, fetchEnd])
+
+  // Training load data (fetched when toggle is on)
   const trainingLoadQuery = useQuery({
     enabled: !hiddenCategories.has('training_load'),
     placeholderData: keepPreviousData,
-    queryFn: () => fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-training-load', fromDate.value, toDate.value],
+    queryFn: () =>
+      fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), trainingLoadBucketSize),
+    queryKey: ['timeline-training-load', fromDate.value, toDate.value, trainingLoadBucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
