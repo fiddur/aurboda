@@ -7,6 +7,8 @@
 
 import { isBefore, subMinutes } from 'date-fns'
 import { getSyncState } from '../db'
+import type { GarminClient } from '../garmin'
+import { type GarminDataType, isRateLimited as isGarminRateLimited, syncGarminDataType } from '../garmin-sync'
 import { syncAllCalendars } from '../ical-sync'
 import { syncLastFmData } from '../lastfm-sync'
 import { ouraClient } from '../oura'
@@ -25,6 +27,8 @@ const DEFAULT_SYNC_THRESHOLD_MINUTES = 30
 type OuraClientType = ReturnType<typeof ouraClient>
 
 export interface SyncProviderConfig {
+  /** Garmin Connect client (optional - if not provided, Garmin sync is disabled) */
+  garmin?: GarminClient
   /** Callback to get the Last.fm API key (optional - if not provided, Last.fm sync is disabled) */
   getLastFmApiKey?: () => Promise<string | null>
   /** Oura API client (optional - if not provided, Oura sync is disabled) */
@@ -58,6 +62,29 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         await syncAllCalendars(user, settings.calendars)
       } catch (error) {
         console.error('Failed to auto-sync calendars:', error)
+      }
+    },
+
+    syncGarminIfNeeded: async (user: string, dataType: string): Promise<void> => {
+      if (!config.garmin) return
+
+      try {
+        const syncState = await getSyncState(user, 'garmin', dataType)
+
+        if (isGarminRateLimited(syncState)) {
+          console.log(`Garmin ${dataType} sync skipped - rate limited until ${syncState?.retry_after}`)
+          return
+        }
+
+        const thresholdTime = subMinutes(new Date(), threshold)
+        if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
+          return
+        }
+
+        console.log(`Auto-syncing Garmin ${dataType}...`)
+        await syncGarminDataType(user, config.garmin, dataType as GarminDataType)
+      } catch (error) {
+        console.error(`Failed to auto-sync Garmin ${dataType}:`, error)
       }
     },
 

@@ -641,9 +641,17 @@ export const Timeline = () => {
     return () => document.removeEventListener('keydown', handleKey)
   }, [isFullscreen])
 
+  // ── Toggle state (before queries so they can gate fetching) ─────────────
+  const [hiddenCategories, setHiddenCategories] = useState<Set<LegendCategory>>(
+    () => new Set(_initialHash.hide),
+  )
+  const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
+  hiddenCategoriesRef.current = hiddenCategories
+
   // ── Data queries ───────────────────────────────────────────────────────────
 
   const activitiesQuery = useQuery({
+    enabled: !hiddenCategories.has('activity'),
     placeholderData: keepPreviousData,
     queryFn: () =>
       fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), [
@@ -658,6 +666,7 @@ export const Timeline = () => {
   })
 
   const placesQuery = useQuery({
+    enabled: !hiddenCategories.has('location'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchPlaces(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['timeline-places', fromDate.value, toDate.value],
@@ -672,6 +681,7 @@ export const Timeline = () => {
   })
 
   const productivityQuery = useQuery({
+    enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchProductivity(fetchStart, fetchEnd),
     queryKey: ['timeline-productivity', fromDate.value, toDate.value],
@@ -679,6 +689,7 @@ export const Timeline = () => {
   })
 
   const screentimeCategoriesQuery = useQuery<ScreentimeCategory[]>({
+    enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
     queryFn: fetchScreentimeCategories,
     queryKey: ['screentime-categories'],
     staleTime: 30 * 60 * 1000,
@@ -693,7 +704,7 @@ export const Timeline = () => {
   const hasLastFm = Boolean(settingsQuery.data?.lastfm_username)
 
   const scrobblesQuery = useQuery({
-    enabled: hasLastFm,
+    enabled: hasLastFm && !hiddenCategories.has('music'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchScrobbles(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['timeline-scrobbles', fromDate.value, toDate.value],
@@ -711,6 +722,7 @@ export const Timeline = () => {
   }, [fetchStart, fetchEnd])
 
   const bucketedMetricsQuery = useQuery({
+    enabled: !hiddenCategories.has('metrics'),
     placeholderData: keepPreviousData,
     queryFn: () =>
       fetchBucketedMetrics(
@@ -858,12 +870,6 @@ export const Timeline = () => {
   )
 
   // ── Legend / filtering ─────────────────────────────────────────────────────
-
-  const [hiddenCategories, setHiddenCategories] = useState<Set<LegendCategory>>(
-    () => new Set(_initialHash.hide),
-  )
-  const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
-  hiddenCategoriesRef.current = hiddenCategories
 
   // Training load bucket size — scale with date range to avoid huge payloads
   const trainingLoadBucketSize = useMemo(() => {

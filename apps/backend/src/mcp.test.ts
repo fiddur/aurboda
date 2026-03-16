@@ -35,9 +35,15 @@ vi.mock('./services/mutations', () => ({
 vi.mock('./db', () => ({
   getAllSyncStates: vi.fn(),
   getDetectedLocations: vi.fn(),
+  getOAuthToken: vi.fn().mockResolvedValue(null),
   getProgrammaticTags: vi.fn().mockResolvedValue([]),
+  getSyncState: vi.fn().mockResolvedValue(null),
   getUniqueTags: vi.fn().mockResolvedValue([]),
   getUserSettings: vi.fn().mockResolvedValue(null),
+  insertActivity: vi.fn().mockResolvedValue(undefined),
+  insertRawRecord: vi.fn().mockResolvedValue(undefined),
+  insertTimeSeries: vi.fn().mockResolvedValue(undefined),
+  upsertSyncState: vi.fn().mockResolvedValue(undefined),
   upsertUserSettings: vi.fn(),
 }))
 
