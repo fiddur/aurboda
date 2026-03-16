@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 import type { Activity, TimeSeriesPoint } from '../db/types'
 import {
+  aggregateTrainingLoadPoints,
   calculateTrimp,
   computeHourlyImpulses,
   computeHourlyLoadSeries,
@@ -826,5 +827,105 @@ describe('recomputeImpulseBuckets', () => {
     for (let i = 1; i < exerciseCalls.length; i++) {
       expect(exerciseCalls[i]![0].getTime()).toBe(exerciseCalls[i - 1]![1].getTime())
     }
+  })
+})
+
+// ============================================================================
+// Bucket Aggregation
+// ============================================================================
+
+describe('aggregateTrainingLoadPoints', () => {
+  const makePoint = (
+    hourIso: string,
+    trainingImpulse: number,
+    activityImpulse: number,
+    atl: number,
+    ctl: number,
+    tsb: number,
+  ) => ({
+    activity_impulse: activityImpulse,
+    atl,
+    ctl,
+    time: hourIso,
+    training_impulse: trainingImpulse,
+    tsb,
+  })
+
+  test('returns points unchanged for 1h bucket size', () => {
+    const points = [
+      makePoint('2024-01-01T00:00:00.000Z', 10, 5, 3, 2, -1),
+      makePoint('2024-01-01T01:00:00.000Z', 0, 2, 3.1, 2.1, -1),
+    ]
+    const result = aggregateTrainingLoadPoints(points, '1h')
+    expect(result).toBe(points) // same reference, not a copy
+  })
+
+  test('returns empty array for empty input', () => {
+    expect(aggregateTrainingLoadPoints([], '1d')).toEqual([])
+  })
+
+  test('aggregates hourly points into daily buckets', () => {
+    const points = [
+      makePoint('2024-01-01T00:00:00.000Z', 10, 5, 2, 10, 8),
+      makePoint('2024-01-01T06:00:00.000Z', 20, 3, 5, 11, 6),
+      makePoint('2024-01-01T12:00:00.000Z', 0, 8, 4, 12, 8),
+      makePoint('2024-01-01T23:00:00.000Z', 5, 2, 3, 13, 10),
+      makePoint('2024-01-02T00:00:00.000Z', 15, 4, 6, 14, 8),
+      makePoint('2024-01-02T12:00:00.000Z', 0, 1, 5, 15, 10),
+    ]
+
+    const result = aggregateTrainingLoadPoints(points, '1d')
+    expect(result).toHaveLength(2)
+
+    // Day 1: sums impulses, peak ATL=5 (06:00), last CTL/TSB from 23:00
+    expect(result[0]!.time).toBe('2024-01-01T00:00:00.000Z')
+    expect(result[0]!.training_impulse).toBe(35) // 10+20+0+5
+    expect(result[0]!.activity_impulse).toBe(18) // 5+3+8+2
+    expect(result[0]!.atl).toBe(5) // peak
+    expect(result[0]!.ctl).toBe(13) // from 23:00 point
+    expect(result[0]!.tsb).toBe(10) // from 23:00 point
+
+    // Day 2: sums impulses, peak ATL=6, last CTL/TSB from 12:00
+    expect(result[1]!.time).toBe('2024-01-02T00:00:00.000Z')
+    expect(result[1]!.training_impulse).toBe(15) // 15+0
+    expect(result[1]!.activity_impulse).toBe(5) // 4+1
+    expect(result[1]!.atl).toBe(6) // peak
+    expect(result[1]!.ctl).toBe(15) // from 12:00 point
+    expect(result[1]!.tsb).toBe(10) // from 12:00 point
+  })
+
+  test('aggregates into weekly buckets', () => {
+    // Create points spanning 2 weeks
+    const points = [
+      // Week starting 2024-01-01 (Monday)
+      makePoint('2024-01-01T00:00:00.000Z', 10, 5, 3, 10, 7),
+      makePoint('2024-01-03T12:00:00.000Z', 20, 8, 7, 12, 5),
+      makePoint('2024-01-07T23:00:00.000Z', 5, 2, 4, 14, 10),
+      // Week starting 2024-01-08 (Monday)
+      makePoint('2024-01-08T06:00:00.000Z', 30, 10, 8, 16, 8),
+    ]
+
+    const result = aggregateTrainingLoadPoints(points, '1w')
+    expect(result).toHaveLength(2)
+
+    // Week 1: training=35, activity=15, peak ATL=7, last from Jan 7 23:00
+    expect(result[0]!.training_impulse).toBe(35)
+    expect(result[0]!.activity_impulse).toBe(15)
+    expect(result[0]!.atl).toBe(7)
+    expect(result[0]!.ctl).toBe(14)
+
+    // Week 2: single point
+    expect(result[1]!.training_impulse).toBe(30)
+    expect(result[1]!.atl).toBe(8)
+  })
+
+  test('rounds aggregated impulses to 2 decimal places', () => {
+    const points = [
+      makePoint('2024-01-01T00:00:00.000Z', 1.111, 2.222, 1, 1, 0),
+      makePoint('2024-01-01T12:00:00.000Z', 3.333, 4.444, 2, 2, 0),
+    ]
+    const result = aggregateTrainingLoadPoints(points, '1d')
+    expect(result[0]!.training_impulse).toBe(4.44) // 1.111+3.333=4.444 → rounded
+    expect(result[0]!.activity_impulse).toBe(6.67) // 2.222+4.444=6.666 → rounded
   })
 })

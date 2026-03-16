@@ -255,8 +255,14 @@ const buildMetricsTooltipHtml = (
 ): string => {
   const startStr = formatTime(bucket.start)
   const endStr = formatTime(bucket.end)
+  const dateStr = format(bucket.start, 'EEE, MMM d')
+  const isSameDay = format(bucket.start, 'yyyy-MM-dd') === format(bucket.end, 'yyyy-MM-dd')
+  const timeRange =
+    isSameDay ?
+      `${dateStr} ${startStr} – ${endStr}`
+    : `${dateStr} ${startStr} – ${format(bucket.end, 'EEE, MMM d')} ${endStr}`
   let html = `<div class="tooltip-title">Metrics</div>`
-  html += `<div class="tooltip-time">${startStr} – ${endStr}</div>`
+  html += `<div class="tooltip-time">${timeRange}</div>`
 
   if (showHR) {
     const hr = bucket.metrics.heart_rate

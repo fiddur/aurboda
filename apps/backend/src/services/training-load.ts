@@ -15,15 +15,18 @@
  *  - TSB (Training Stress Balance / form) = CTL - ATL
  */
 
-import type {
-  BiologicalSex,
-  RecoveryZones,
-  TrainingLoadPoint,
-  TrainingLoadResult,
-  TrainingLoadSettings,
-  WorkoutTrimp,
+import {
+  type BiologicalSex,
+  type RecoveryZones,
+  trainingLoadBucketSizes,
+  type TrainingLoadPoint,
+  type TrainingLoadResult,
+  type TrainingLoadSettings,
+  type WorkoutTrimp,
 } from '@aurboda/api-spec'
 import type { Activity, TimeSeriesPoint } from '../db/types'
+
+type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
 
 // ============================================================================
 // Constants
@@ -648,6 +651,90 @@ const buildWorkoutList = async (
 }
 
 // ============================================================================
+// Bucket Aggregation
+// ============================================================================
+
+const MS_PER_DAY = 24 * MS_PER_HOUR
+const MS_PER_WEEK = 7 * MS_PER_DAY
+
+const bucketSizeMs: Record<TrainingLoadBucketSize, number> = {
+  '1d': MS_PER_DAY,
+  '1h': MS_PER_HOUR,
+  '1w': MS_PER_WEEK,
+}
+
+/**
+ * Aggregate hourly training load points into larger time buckets.
+ *
+ * For each bucket:
+ * - training_impulse, activity_impulse: summed across all hours in the bucket
+ * - atl: peak value within the bucket (shows worst-case fatigue)
+ * - ctl, tsb: value from the last hour in the bucket (most recent EMA state)
+ * - time: floored to bucket boundary
+ */
+export const aggregateTrainingLoadPoints = (
+  points: TrainingLoadPoint[],
+  bucketSize: TrainingLoadBucketSize,
+): TrainingLoadPoint[] => {
+  if (bucketSize === '1h' || points.length === 0) return points
+
+  const durationMs = bucketSizeMs[bucketSize]
+  const buckets = new Map<number, TrainingLoadPoint[]>()
+
+  // Floor timestamp to bucket boundary.
+  // Daily: floor to UTC midnight. Weekly: floor to previous Monday 00:00 UTC.
+  const floorToBucket = (ms: number): number => {
+    if (bucketSize === '1w') {
+      const d = new Date(ms)
+      const day = d.getUTCDay() // 0=Sun, 1=Mon, ..., 6=Sat
+      const daysSinceMonday = (day + 6) % 7 // Mon=0, Tue=1, ..., Sun=6
+      const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - daysSinceMonday))
+      return monday.getTime()
+    }
+    return Math.floor(ms / durationMs) * durationMs
+  }
+
+  for (const p of points) {
+    const t = new Date(p.time).getTime()
+    const key = floorToBucket(t)
+    let arr = buckets.get(key)
+    if (!arr) {
+      arr = []
+      buckets.set(key, arr)
+    }
+    arr.push(p)
+  }
+
+  const result: TrainingLoadPoint[] = []
+  const sortedKeys = [...buckets.keys()].sort((a, b) => a - b)
+
+  for (const key of sortedKeys) {
+    const group = buckets.get(key)!
+    const last = group[group.length - 1]!
+    let totalTrainingImpulse = 0
+    let totalActivityImpulse = 0
+    let peakAtl = 0
+
+    for (const p of group) {
+      totalTrainingImpulse += p.training_impulse
+      totalActivityImpulse += p.activity_impulse
+      if (p.atl > peakAtl) peakAtl = p.atl
+    }
+
+    result.push({
+      activity_impulse: Math.round(totalActivityImpulse * 100) / 100,
+      atl: Math.round(peakAtl * 100) / 100,
+      ctl: last.ctl,
+      time: new Date(key).toISOString(),
+      training_impulse: Math.round(totalTrainingImpulse * 100) / 100,
+      tsb: last.tsb,
+    })
+  }
+
+  return result
+}
+
+// ============================================================================
 // Main Query (Read Path)
 // ============================================================================
 
@@ -658,13 +745,15 @@ const buildWorkoutList = async (
  * 2. Fetch pre-computed hourly impulse buckets
  * 3. Compute current incomplete hour from raw data
  * 4. Run hourly Banister EMA → ATL, CTL, TSB
- * 5. Compute recovery zones
+ * 5. Optionally aggregate into larger buckets (daily/weekly)
+ * 6. Compute recovery zones
  */
 export const computeTrainingLoad = async (
   deps: TrainingLoadDeps,
   user: string,
   start: Date,
   end: Date,
+  bucketSize: TrainingLoadBucketSize = '1h',
 ): Promise<TrainingLoadResult> => {
   // Gather settings
   const [userSettings, maxObservedHr, latestRestingHr] = await Promise.all([
@@ -742,10 +831,11 @@ export const computeTrainingLoad = async (
     trainingImpulses,
   })
 
-  // Filter to requested range
+  // Filter to requested range, then aggregate if needed
   const startIso = floorToHour(start).toISOString()
   const endIso = effectiveEnd.toISOString()
-  const points = allPoints.filter((p) => p.time >= startIso && p.time <= endIso)
+  const hourlyPoints = allPoints.filter((p) => p.time >= startIso && p.time <= endIso)
+  const points = aggregateTrainingLoadPoints(hourlyPoints, bucketSize)
 
   // Fetch workouts in the requested range for the response
   const workoutList = await buildWorkoutList(deps, user, start, end, hrMax, hrRest, settings.k_factor)

@@ -32,9 +32,9 @@ Parameters can be configured in user settings (training_load).
 Example: "Show my training load for the last 3 months"
 → start: 3 months ago, end: today`,
     { ...getTrainingLoadInputSchema.shape },
-    async ({ start, end }) => {
+    async ({ start, end, bucket_size }) => {
       try {
-        const result = await computeTrainingLoad(deps, user, new Date(start), new Date(end))
+        const result = await computeTrainingLoad(deps, user, new Date(start), new Date(end), bucket_size)
         return jsonResponse({ data: result, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
