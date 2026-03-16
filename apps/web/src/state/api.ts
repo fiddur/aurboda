@@ -32,6 +32,7 @@ import type {
   DashboardConfig,
   DashboardResponse,
   ExerciseTypeName,
+  GarminSyncResponse,
   Goal,
   GoalProgress,
   GoalsProgressResponse,
@@ -450,6 +451,40 @@ export const syncOura = async (fullResync?: boolean): Promise<OuraSyncResponse> 
   const { token } = auth.value
   const response = await axios.post<OuraSyncResponse>(
     `${API_URL}/sync/oura`,
+    { full_resync: fullResync },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+// Garmin Connect auth + sync
+export const connectGarmin = async (
+  email: string,
+  password: string,
+): Promise<{ success: boolean; mfa_required?: boolean; error?: string }> => {
+  const { token } = auth.value
+  const response = await axios.post(
+    `${API_URL}/auth/garmin/login`,
+    { email, password },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+export const disconnectGarmin = async (): Promise<{ success: boolean }> => {
+  const { token } = auth.value
+  const response = await axios.post(
+    `${API_URL}/auth/garmin/disconnect`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+export const syncGarmin = async (fullResync?: boolean): Promise<GarminSyncResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<GarminSyncResponse>(
+    `${API_URL}/sync/garmin`,
     { full_resync: fullResync },
     { headers: { Authorization: `Bearer ${token}` } },
   )

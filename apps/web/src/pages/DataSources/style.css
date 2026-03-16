@@ -324,6 +324,7 @@
 }
 
 .data-sources-page .form-field input[type='date'],
+.data-sources-page .form-field input[type='email'],
 .data-sources-page .form-field input[type='password'],
 .data-sources-page .form-field input[type='text'],
 .data-sources-page .form-field input[type='url'] {
@@ -431,6 +432,55 @@
 
 .data-sources-page .oura-sync-message.error {
   color: #f44336;
+}
+
+/* Garmin specific */
+.data-sources-page .garmin-connected-actions .connected-status {
+  margin-bottom: 0.75rem;
+}
+
+.data-sources-page .garmin-button-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.data-sources-page .disconnect-button {
+  background: transparent;
+  color: #f44336;
+  border: 1px solid #f44336;
+}
+
+.data-sources-page .disconnect-button:hover:not(:disabled) {
+  background: #f44336;
+  color: white;
+}
+
+.data-sources-page .garmin-sync-message {
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.data-sources-page .garmin-sync-message.done {
+  color: #4caf50;
+}
+
+.data-sources-page .garmin-sync-message.error {
+  color: #f44336;
+}
+
+.data-sources-page .garmin-login-form {
+  max-width: 400px;
+}
+
+.data-sources-page .garmin-login-form .connect-button {
+  margin-top: 0.5rem;
+}
+
+.data-sources-page .garmin-login-error {
+  color: #f44336;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
 }
 
 /* AW token */
@@ -648,6 +698,7 @@
   }
 
   .data-sources-page .form-field input[type='date'],
+  .data-sources-page .form-field input[type='email'],
   .data-sources-page .form-field input[type='password'],
   .data-sources-page .form-field input[type='text'],
   .data-sources-page .form-field input[type='url'] {
