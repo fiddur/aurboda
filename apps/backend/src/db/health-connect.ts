@@ -229,61 +229,78 @@ const processNutritionRecord = async (user: string, data: Record<string, unknown
  * @returns Number of raw records actually deleted.
  */
 export const deleteHealthConnectRecords = async (user: string, externalIds: string[]): Promise<number> => {
-  let deleted = 0
+  // Batch-delete all raw records in one query, returning their data for cleanup
+  const result = await query(
+    user,
+    `DELETE FROM raw_records
+     WHERE source = 'health_connect' AND external_id = ANY($1)
+     RETURNING record_type, data`,
+    [externalIds],
+  )
 
-  for (const externalId of externalIds) {
-    // Delete raw record and return its data for cleanup
-    const result = await query(
-      user,
-      `DELETE FROM raw_records
-       WHERE source = 'health_connect' AND external_id = $1
-       RETURNING record_type, data`,
-      [externalId],
-    )
+  const deleted = result.rows.length
+  if (deleted === 0) return 0
 
-    if (result.rows.length === 0) continue
-    deleted++
+  // Collect cleanup targets from the deleted records
+  const timeSeriesDeletes: { time: Date; metric: string }[] = []
+  const activityDeletes: { activityType: string; startTime: Date }[] = []
 
-    const { record_type: recordType, data } = result.rows[0] as {
-      record_type: string
-      data: Record<string, unknown>
-    }
+  for (const row of result.rows as { record_type: string; data: Record<string, unknown> }[]) {
+    const { record_type: recordType, data } = row
 
-    // Clean up time_series entries
+    // Collect time_series entries to clean up
     const metric = healthConnectMetricMapping[recordType]
     if (metric) {
       const points = extractTimeSeriesPoints(recordType, metric, data)
       for (const point of points) {
-        await query(
-          user,
-          `DELETE FROM time_series WHERE time = $1 AND metric = $2 AND source = 'health_connect'`,
-          [point.time, point.metric],
-        )
+        timeSeriesDeletes.push({ metric: point.metric, time: point.time })
       }
     }
 
-    // Clean up blood pressure entries (two metrics)
+    // Collect blood pressure entries (two metrics per record)
     if (recordType === 'BloodPressureRecord') {
       const time = new Date((data.time as string) || (data.startTime as string))
-      await query(
-        user,
-        `DELETE FROM time_series
-         WHERE time = $1 AND metric IN ('blood_pressure_systolic', 'blood_pressure_diastolic')
-           AND source = 'health_connect'`,
-        [time],
-      )
+      timeSeriesDeletes.push({ metric: 'blood_pressure_systolic', time })
+      timeSeriesDeletes.push({ metric: 'blood_pressure_diastolic', time })
     }
 
-    // Clean up activity entries
+    // Collect activity entries to clean up
     const activityType = healthConnectActivityMapping[recordType]
     if (activityType && data.startTime) {
-      await query(
-        user,
-        `DELETE FROM activities
-         WHERE source = 'health_connect' AND activity_type = $1 AND start_time = $2`,
-        [activityType, new Date(data.startTime as string)],
-      )
+      activityDeletes.push({ activityType, startTime: new Date(data.startTime as string) })
     }
+  }
+
+  // Batch-delete time_series entries using VALUES list
+  if (timeSeriesDeletes.length > 0) {
+    const params: unknown[] = []
+    const conditions = timeSeriesDeletes.map((d, i) => {
+      params.push(d.time, d.metric)
+      return `($${i * 2 + 1}::timestamptz, $${i * 2 + 2}::text)`
+    })
+    await query(
+      user,
+      `DELETE FROM time_series
+       WHERE source = 'health_connect'
+         AND (time, metric) IN (VALUES ${conditions.join(', ')})`,
+      params,
+    )
+  }
+
+  // Batch-delete activity entries using VALUES list
+  if (activityDeletes.length > 0) {
+    const params: unknown[] = []
+    const conditions = activityDeletes.map((d, i) => {
+      params.push(d.activityType, d.startTime)
+      return `($${i * 2 + 1}::text, $${i * 2 + 2}::timestamptz)`
+    })
+    await query(
+      user,
+      `DELETE FROM activities
+       WHERE source = 'health_connect'
+         AND (activity_type, start_time) IN (VALUES ${conditions.join(', ')})`,
+      params,
+    )
   }
 
   return deleted
