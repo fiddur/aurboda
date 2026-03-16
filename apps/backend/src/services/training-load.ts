@@ -536,12 +536,15 @@ export const recomputeImpulseBuckets = async (
   // Don't recompute if fromHour is in the future or the current hour
   if (fromHour >= currentHour) return { hours_computed: 0 }
 
-  // Fetch user settings for TRIMP calculation parameters
-  const [userSettings, maxObservedHr, latestRestingHr] = await Promise.all([
+  // Fetch user settings and latest resting HR in parallel.
+  // Use cached observed_hr_max to avoid the expensive 1-year scan.
+  const [userSettings, latestRestingHr] = await Promise.all([
     deps.getUserSettings(user),
-    deps.getMaxObservedHr(user),
     deps.getLatestRestingHr(user),
   ])
+
+  // Resolve max HR with caching (blocking write since recompute is already a write operation)
+  const maxObservedHr = await getOrCacheMaxObservedHr(deps, user, userSettings.training_load, false)
 
   const settings = getEffectiveSettings(userSettings.training_load, userSettings.sex)
   const hrMax = resolveHrMax(settings.hr_max, maxObservedHr, userSettings.birth_date)
@@ -748,6 +751,31 @@ export const aggregateTrainingLoadPoints = (
 // ============================================================================
 
 /**
+ * Resolve max observed HR using cached value from settings if available,
+ * falling back to the expensive 1-year `getTimeSeriesStats` scan.
+ * Caches the result in settings for future requests.
+ *
+ * @param fireAndForget - If true, cache write doesn't block. Used on the read path.
+ */
+const getOrCacheMaxObservedHr = async (
+  deps: TrainingLoadDeps,
+  user: string,
+  trainingLoadSettings: TrainingLoadSettings | undefined,
+  fireAndForget = true,
+): Promise<number | undefined> => {
+  const cached = trainingLoadSettings?.observed_hr_max
+  if (cached && cached > 100) return cached
+
+  const observed = await deps.getMaxObservedHr(user)
+  if (observed && observed > 100 && observed !== cached) {
+    const writePromise = deps.updateTrainingLoadSettings(user, { observed_hr_max: observed })
+    if (fireAndForget) writePromise.catch(() => {})
+    else await writePromise
+  }
+  return observed
+}
+
+/**
  * Compute training load time series for a user and date range.
  *
  * 1. Check if impulse buckets need recomputation (watermark)
@@ -764,12 +792,13 @@ export const computeTrainingLoad = async (
   end: Date,
   bucketSize: TrainingLoadBucketSize = '1h',
 ): Promise<TrainingLoadResult> => {
-  // Gather settings
-  const [userSettings, maxObservedHr, latestRestingHr] = await Promise.all([
+  // Gather settings and latest resting HR in parallel.
+  const [userSettings, latestRestingHr] = await Promise.all([
     deps.getUserSettings(user),
-    deps.getMaxObservedHr(user),
     deps.getLatestRestingHr(user),
   ])
+
+  const maxObservedHr = await getOrCacheMaxObservedHr(deps, user, userSettings.training_load)
 
   const settings = getEffectiveSettings(userSettings.training_load, userSettings.sex)
   const hrMax = resolveHrMax(settings.hr_max, maxObservedHr, userSettings.birth_date)
