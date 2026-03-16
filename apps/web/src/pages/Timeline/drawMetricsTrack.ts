@@ -15,6 +15,7 @@ import {
   CTL_COLOR,
   findNearbyWorkouts,
   findTrainingLoadPoint,
+  inferBucketDuration,
   TRAINING_IMPULSE_COLOR,
   TSB_FATIGUED_COLOR,
   TSB_FRESH_COLOR,
@@ -321,6 +322,44 @@ const buildMetricsTooltipHtml = (
   return hasContent ? html : null
 }
 
+/**
+ * Build a standalone training-load tooltip (no metric data).
+ * Used when metric buckets are empty but training load points exist.
+ */
+const buildTrainingLoadOnlyTooltipHtml = (
+  hoverTime: Date,
+  trainingLoadPoints: TrainingLoadPoint[],
+  trainingLoadWorkouts?: WorkoutTrimp[],
+  trainingLoadZones?: RecoveryZones,
+  toleranceMs?: number,
+): string | null => {
+  const point = findTrainingLoadPoint(trainingLoadPoints, hoverTime, toleranceMs)
+  if (!point) return null
+
+  // Build date header from the training load point's own time + bucket duration
+  const pointTime = new Date(point.time)
+  const bucketDuration = inferBucketDuration(trainingLoadPoints)
+  const bucketEnd = new Date(pointTime.getTime() + bucketDuration)
+  const dateStr = format(pointTime, 'EEE, MMM d')
+  const isSameDay = format(pointTime, 'yyyy-MM-dd') === format(bucketEnd, 'yyyy-MM-dd')
+  const timeRange =
+    isSameDay ?
+      `${dateStr} ${formatTime(pointTime)} – ${formatTime(bucketEnd)}`
+    : `${dateStr} – ${format(bucketEnd, 'EEE, MMM d')}`
+
+  let html = `<div class="tooltip-title">Training Load</div>`
+  html += `<div class="tooltip-time">${timeRange}</div>`
+
+  const section = buildTrainingLoadSection(
+    hoverTime,
+    trainingLoadPoints,
+    trainingLoadWorkouts,
+    trainingLoadZones,
+    toleranceMs,
+  )
+  return section ? html + section : null
+}
+
 // ── Y-scale computation ───────────────────────────────────────────────────────
 
 /** Extract maximum avg value from buckets for a given metric. */
@@ -430,6 +469,7 @@ const drawCrosshairOverlay = (
       const [mx] = d3.pointer(event)
       const hoverTime = xScale.invert(mx!)
 
+      // Try to find the nearest metric bucket
       let nearest: MetricBucketParsed | null = null
       let bestDist = Infinity
       for (const b of buckets) {
@@ -441,38 +481,49 @@ const drawCrosshairOverlay = (
         }
       }
 
-      if (!nearest) {
-        hairline.style('display', 'none')
-        hideTooltip()
-        return
+      // If we have a metric bucket match, check distance threshold
+      if (nearest) {
+        const bucketDuration = nearest.end.getTime() - nearest.start.getTime()
+        if (bestDist > bucketDuration * 2) {
+          nearest = null
+        }
       }
 
-      const bucketDuration = nearest.end.getTime() - nearest.start.getTime()
-      if (bestDist > bucketDuration * 2) {
-        hairline.style('display', 'none')
-        hideTooltip()
-        return
+      // Build tooltip: use metric bucket if available, otherwise training-load-only
+      let html: string | null = null
+      if (nearest) {
+        const bucketDuration = nearest.end.getTime() - nearest.start.getTime()
+        const tolerance = Math.max(2 * 3600_000, bucketDuration)
+        html = buildMetricsTooltipHtml(
+          nearest,
+          showHR,
+          showHRV,
+          showSteps,
+          showCalories,
+          trainingLoadPoints,
+          trainingLoadWorkouts,
+          trainingLoadZones,
+          tolerance,
+        )
+      } else if (trainingLoadPoints && trainingLoadPoints.length > 0) {
+        // No metric bucket — build a standalone training load tooltip
+        const tlBucketDuration = inferBucketDuration(trainingLoadPoints)
+        const tolerance = Math.max(2 * 3600_000, tlBucketDuration)
+        html = buildTrainingLoadOnlyTooltipHtml(
+          hoverTime,
+          trainingLoadPoints,
+          trainingLoadWorkouts,
+          trainingLoadZones,
+          tolerance,
+        )
       }
 
-      hairline.attr('x1', mx!).attr('x2', mx!).style('display', null)
-      // Use bucket duration as tolerance for matching training load points
-      const tolerance = Math.max(2 * 3600_000, bucketDuration)
-      const html = buildMetricsTooltipHtml(
-        nearest,
-        showHR,
-        showHRV,
-        showSteps,
-        showCalories,
-        trainingLoadPoints,
-        trainingLoadWorkouts,
-        trainingLoadZones,
-        tolerance,
-      )
       if (!html) {
         hairline.style('display', 'none')
         hideTooltip()
         return
       }
+      hairline.attr('x1', mx!).attr('x2', mx!).style('display', null)
       showTooltipHtml(event, html)
     })
     .on('mouseleave', () => {
