@@ -53,18 +53,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.headers
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.serialization.KSerializer
 import net.aurboda.ui.theme.AurbodaAppTheme
 import net.aurboda.update.DownloadState
 import net.aurboda.update.UpdateAvailableDialog
@@ -108,90 +100,6 @@ private fun setBackgroundSyncEnabled(
   }
 }
 
-fun Record.getPrimaryInstant(): Instant =
-  when (this) {
-    is StepsRecord -> this.endTime
-    is DistanceRecord -> this.endTime
-    is SpeedRecord -> this.endTime
-    is ActiveCaloriesBurnedRecord -> this.endTime
-    is TotalCaloriesBurnedRecord -> this.endTime
-    is PowerRecord -> this.endTime
-    is NutritionRecord -> this.endTime
-    is SleepSessionRecord -> this.startTime
-    is HeartRateVariabilityRmssdRecord -> this.time
-    is WeightRecord -> this.time
-    is LeanBodyMassRecord -> this.time
-    is BodyFatRecord -> this.time
-    is BoneMassRecord -> this.time
-    is ExerciseSessionRecord -> this.startTime
-    is HeartRateRecord -> this.startTime
-    is HeightRecord -> this.time
-    is BodyWaterMassRecord -> this.time
-    is BasalMetabolicRateRecord -> this.time
-    is CervicalMucusRecord -> this.time
-    is IntermenstrualBleedingRecord -> this.time
-    is MenstruationFlowRecord -> this.time
-    is MenstruationPeriodRecord -> this.startTime
-    is OvulationTestRecord -> this.time
-    is SexualActivityRecord -> this.time
-    is BasalBodyTemperatureRecord -> this.time
-    is HydrationRecord -> this.startTime
-    is RestingHeartRateRecord -> this.time
-    is BloodPressureRecord -> this.time
-    is BloodGlucoseRecord -> this.time
-    is OxygenSaturationRecord -> this.time
-    is BodyTemperatureRecord -> this.time
-    is RespiratoryRateRecord -> this.time
-    is FloorsClimbedRecord -> this.endTime
-    is CyclingPedalingCadenceRecord -> this.endTime
-    is ElevationGainedRecord -> this.endTime
-    is Vo2MaxRecord -> this.time
-    is WheelchairPushesRecord -> this.endTime
-    else -> this.metadata.lastModifiedTime
-  }
-
-fun getRecordSummary(record: Record): String =
-  when (record) {
-    is HeartRateVariabilityRmssdRecord -> "HRV: ${record.heartRateVariabilityMillis} ms"
-    is WeightRecord -> "Weight: ${record.weight.inKilograms} kg"
-    is StepsRecord -> "Steps: ${record.count}"
-    is ExerciseSessionRecord ->
-      "Exercise: ${record.title ?: record.exerciseType
-        .toString()
-        .lowercase()
-        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}"
-    is DistanceRecord -> "Distance: ${String.format("%.2f", record.distance.inMeters)}m"
-    is SpeedRecord -> "Speed: First sample ${String.format(
-      "%.2f",
-      record.samples
-        .firstOrNull()
-        ?.speed
-        ?.inMetersPerSecond ?: 0.0,
-    )} m/s"
-    is HeartRateRecord -> "HeartRate: ${record.samples.size} samples, first ${record.samples.firstOrNull()?.beatsPerMinute ?: "N/A"}bpm"
-    is ActiveCaloriesBurnedRecord -> "Active Cals: ${String.format("%.2f", record.energy.inKilocalories)} kcal"
-    is TotalCaloriesBurnedRecord -> "Total Cals: ${String.format("%.2f", record.energy.inKilocalories)} kcal"
-    is PowerRecord -> "Power: ${record.samples.size} samples, first ${String.format(
-      "%.2f",
-      record.samples
-        .firstOrNull()
-        ?.power
-        ?.inWatts ?: 0.0,
-    )}W"
-    is NutritionRecord -> "Nutrition: ${record.name ?: "Unnamed food"} (mealType=${record.mealType}, ${String.format(
-      "%.0f",
-      record.energy?.inKilocalories ?: 0.0,
-    )} kcal)"
-    is LeanBodyMassRecord -> "Lean Body Mass: ${String.format("%.2f", record.mass.inKilograms)} kg"
-    is BodyFatRecord -> "Body Fat: ${String.format("%.1f", record.percentage.value)}%%"
-    is SleepSessionRecord -> "Sleep: ${record.title ?: "Session"} (Stages: ${record.stages.size})"
-    is BoneMassRecord -> "Bone Mass: ${String.format("%.2f", record.mass.inKilograms)} kg"
-    is BodyWaterMassRecord -> "Body Water: ${String.format("%.2f", record.mass.inKilograms)} kg"
-    is HeightRecord -> "Height: ${String.format("%.2f", record.height.inMeters)} m"
-    is RestingHeartRateRecord -> "Resting HR: ${record.beatsPerMinute} bpm"
-    else -> record::class.simpleName ?: "Record"
-  }
-
 private fun saveChangesToken(
   context: Context,
   token: String?,
@@ -231,48 +139,6 @@ private fun invalidateTokenIfGrantedTypesChanged(
     prefs.edit().putString(GRANTED_TYPES_KEY, currentNames).apply()
   }
 }
-
-private const val SEND_DATA_TAG = "SendData"
-
-private suspend inline fun <reified T : Any> handlePostData(
-  dataList: List<T>,
-  itemSerializer: KSerializer<T>,
-  apiUrl: String,
-  recordTypeSimpleName: String,
-  httpClient: HttpClient,
-  authToken: String,
-): PostResult {
-  if (dataList.isEmpty()) {
-    Log.d(SEND_DATA_TAG, "No data to send for $recordTypeSimpleName")
-    return PostResult.Success
-  }
-  val postData = PostWrapper(dataList)
-  Log.d(SEND_DATA_TAG, "Posting $recordTypeSimpleName: ${dataList.size} records")
-  return postChunk(postData, apiUrl, authToken, httpClient, SEND_DATA_TAG)
-}
-
-/**
- * Post data in chunks to avoid 413 Request Entity Too Large errors.
- * HeartRateRecord can be very large (thousands of samples per record).
- */
-private suspend inline fun <reified T : Any> handlePostDataChunked(
-  dataList: List<T>,
-  itemSerializer: KSerializer<T>,
-  apiUrl: String,
-  recordTypeSimpleName: String,
-  httpClient: HttpClient,
-  authToken: String,
-  chunkSize: Int = 10,
-): PostResult =
-  postDataChunked(
-    dataList = dataList,
-    apiUrl = apiUrl,
-    authToken = authToken,
-    httpClient = httpClient,
-    chunkSize = chunkSize,
-    recordTypeName = recordTypeSimpleName,
-    logTag = SEND_DATA_TAG,
-  )
 
 class MainActivity : ComponentActivity() {
   companion object {
@@ -498,10 +364,7 @@ fun HealthConnectScreen(
     derivedStateOf { getCategoryStatuses(grantedPermissions) }
   }
 
-  var healthRecords by remember { mutableStateOf<List<Record>>(emptyList()) }
-  var pendingDeletionIds by remember { mutableStateOf<List<String>>(emptyList()) }
   var isProcessing by remember { mutableStateOf(false) }
-  var pendingTokenToPersist by remember { mutableStateOf<String?>(null) }
   var statusMessage by remember { mutableStateOf("Checking permissions...") }
   var backgroundSyncEnabled by remember { mutableStateOf(isBackgroundSyncEnabled(context)) }
   var showBatteryOptimizationDialog by remember { mutableStateOf(false) }
@@ -530,36 +393,41 @@ fun HealthConnectScreen(
     }
   val ktorHttpClient = remember { HttpClient(Android) { install(ContentNegotiation) { json(appJson) } } }
 
-  suspend fun fetchHealthData(currentActiveContext: Context) {
+  /**
+   * Sync Health Connect data incrementally: fetch and send page by page.
+   *
+   * For initial sync (no token): reads last 7 days per record type and sends each type immediately.
+   * For incremental sync (has token): processes each getChanges() page and sends immediately.
+   * Saves the changes token after each successful send so progress is never lost.
+   */
+  suspend fun syncHealthData(currentActiveContext: Context) {
     if (grantedRecordTypes.isEmpty()) {
-      statusMessage = "No permissions granted. Cannot fetch data."
-      Log.d("HealthConnectScreen", "fetchHealthData called but no granted types.")
+      statusMessage = "No permissions granted. Cannot sync."
+      Log.d("SyncData", "syncHealthData called but no granted types.")
       return
     }
     if (isProcessing) {
-      Log.d("HealthConnectScreen", "fetchHealthData called while already processing. Bailing.")
+      Log.d("SyncData", "syncHealthData called while already processing. Bailing.")
       return
     }
     isProcessing = true
-    statusMessage = "Fetching data from Health Connect..."
+    statusMessage = "Syncing..."
     val typesToFetch = grantedRecordTypes
-    Log.d("HealthConnectScreen", "Starting data fetch for ${typesToFetch.size} granted types...")
+    Log.d("SyncData", "Starting sync for ${typesToFetch.size} granted types...")
 
     // Invalidate token if the set of granted types has changed
     invalidateTokenIfGrantedTypesChanged(currentActiveContext, typesToFetch)
 
-    val localHealthRecords = mutableListOf<Record>()
-    val localDeletionIds = mutableListOf<String>()
-    var localPendingTokenToPersist: String? = null
-    var fetchSuccessful = true
-
     val lastTokenFromPrefs = loadChangesToken(currentActiveContext)
 
     if (lastTokenFromPrefs == null) {
-      Log.d("FetchData", "No token found. Performing initial fetch.")
+      // Initial sync: read last 7 days per record type and send each immediately
+      Log.d("SyncData", "No token found. Performing initial sync.")
       try {
         val sevenDaysAgo = ZonedDateTime.now().minusDays(7).toInstant()
         val now = Instant.now()
+        var totalSent = 0
+
         for (recordType: KClass<out Record> in typesToFetch) {
           try {
             @Suppress("UNCHECKED_CAST")
@@ -574,110 +442,99 @@ fun HealthConnectScreen(
               healthConnectClient
                 .readRecords(request)
                 .records
-                .filter { record ->
-                  // Skip records written by Aurboda (outbound sync + BLE sensors)
-                  val isOwnOrigin = record.metadata.dataOrigin.packageName == "net.aurboda"
-                  val isOutboundSync =
-                    record.metadata.clientRecordId
-                      ?.startsWith(OUTBOUND_SYNC_CLIENT_ID_PREFIX) == true
-                  !(isOwnOrigin || isOutboundSync)
-                }
+                .filterNotOwnOrigin()
+
             if (recordsOfType.isNotEmpty()) {
-              Log.d("FetchData", "Fetched ${recordsOfType.size} records of type ${recordType.simpleName} (after filtering)")
-              localHealthRecords.addAll(recordsOfType)
+              Log.d("SyncData", "Fetched ${recordsOfType.size} ${recordType.simpleName} records, sending...")
+              statusMessage = "Syncing ${recordType.simpleName}... ($totalSent records sent so far)"
+              val result = sendRecords(recordsOfType, apiUrl, authToken, ktorHttpClient, "SyncData")
+              if (!result.isSuccess) {
+                statusMessage = "Sync failed on ${recordType.simpleName}: ${result.errorMessage()}"
+                Log.w("SyncData", "Failed to send ${recordType.simpleName}: ${result.errorMessage()}")
+                isProcessing = false
+                return
+              }
+              totalSent += recordsOfType.size
             }
           } catch (e: Exception) {
-            Log.w("FetchData", "Error fetching ${recordType.simpleName}: ${e.message}")
+            Log.w("SyncData", "Error fetching ${recordType.simpleName}: ${e.message}")
           }
         }
-        Log.d("FetchData", "Initial fetch complete. Total ${localHealthRecords.size} records.")
-        if (localHealthRecords.isNotEmpty()) {
+
+        // All types sent successfully -- get and save the initial changes token
+        try {
           val initialToken = healthConnectClient.getChangesToken(ChangesTokenRequest(typesToFetch.toSet()))
-          localPendingTokenToPersist = initialToken
-          statusMessage = "Fetched ${localHealthRecords.size} initial records. Ready to send."
-        } else {
-          statusMessage = "No records found during initial fetch."
-          try {
-            val initialToken = healthConnectClient.getChangesToken(ChangesTokenRequest(typesToFetch.toSet()))
-            saveChangesToken(currentActiveContext, initialToken)
-            Log.d("FetchData", "Saved initial token (no data): ${initialToken.take(10)}...")
-          } catch (e: Exception) {
-            Log.e("FetchData", "Failed to get/save initial changes token.", e)
-            statusMessage = "Error initializing token."
-          }
+          saveChangesToken(currentActiveContext, initialToken)
+          Log.d("SyncData", "Initial sync complete. Sent $totalSent records. Token saved.")
+          statusMessage = if (totalSent > 0) "Synced $totalSent records." else "No records found."
+        } catch (e: Exception) {
+          Log.e("SyncData", "Failed to get/save initial changes token.", e)
+          statusMessage = "Sync completed but token error: ${e.message}"
         }
       } catch (e: Exception) {
-        Log.e("FetchData", "Error during initial data fetch.", e)
-        statusMessage = "Error fetching initial data: ${e.message}"
-        fetchSuccessful = false
+        Log.e("SyncData", "Error during initial sync.", e)
+        statusMessage = "Sync error: ${e.message}"
       }
     } else {
-      Log.d("FetchData", "Token found: ${lastTokenFromPrefs.take(10)}... Fetching changes.")
+      // Incremental sync: process each getChanges() page and send immediately
+      Log.d("SyncData", "Token found: ${lastTokenFromPrefs.take(10)}... Fetching changes.")
       try {
         var currentToken: String = lastTokenFromPrefs
-        var totalUpsertions = 0
         var hasMore = true
+        var pageNum = 0
+        var totalRecords = 0
+        var totalDeletions = 0
 
         while (hasMore) {
+          pageNum++
           val changesResponse = healthConnectClient.getChanges(currentToken)
+
           val upsertions =
             changesResponse.changes
               .mapNotNull { if (it is UpsertionChange) it.record else null }
-              .filter { record ->
-                // Skip records written by Aurboda (outbound sync + BLE sensors)
-                val isOwnOrigin = record.metadata.dataOrigin.packageName == "net.aurboda"
-                val isOutboundSync =
-                  record.metadata.clientRecordId
-                    ?.startsWith(OUTBOUND_SYNC_CLIENT_ID_PREFIX) == true
-                !(isOwnOrigin || isOutboundSync)
-              }
-          if (upsertions.isNotEmpty()) {
-            Log.d("FetchData", "Adding ${upsertions.size} upserted records (after filtering).")
-            localHealthRecords.addAll(upsertions)
-            totalUpsertions += upsertions.size
-          }
-          changesResponse.changes.forEach {
-            if (it is DeletionChange) {
-              localDeletionIds.add(it.recordId)
+              .filterNotOwnOrigin()
+
+          val deletionIds =
+            changesResponse.changes
+              .filterIsInstance<DeletionChange>()
+              .map { it.recordId }
+
+          if (upsertions.isNotEmpty() || deletionIds.isNotEmpty()) {
+            Log.d("SyncData", "Page $pageNum: ${upsertions.size} records, ${deletionIds.size} deletions")
+            statusMessage = "Syncing... ($totalRecords records, $totalDeletions deletions sent)"
+            val result = sendPage(upsertions, deletionIds, apiUrl, authToken, ktorHttpClient, "SyncData")
+            if (!result.isSuccess) {
+              statusMessage = "Sync failed on page $pageNum: ${result.errorMessage()}"
+              Log.w("SyncData", "Page $pageNum failed: ${result.errorMessage()}")
+              isProcessing = false
+              return
             }
+            totalRecords += upsertions.size
+            totalDeletions += deletionIds.size
           }
 
-          hasMore = changesResponse.hasMore
+          // Save intermediate token -- this page is permanently done
           currentToken = changesResponse.nextChangesToken
-
-          if (hasMore) {
-            statusMessage = "Fetching more data... ($totalUpsertions records so far)"
-          }
+          saveChangesToken(currentActiveContext, currentToken)
+          hasMore = changesResponse.hasMore
         }
 
-        localPendingTokenToPersist = currentToken
-        if (totalUpsertions == 0 && localDeletionIds.isEmpty()) {
-          statusMessage = "No new changes found."
-          saveChangesToken(currentActiveContext, localPendingTokenToPersist)
-          localPendingTokenToPersist = null
-        } else {
+        if (totalRecords > 0 || totalDeletions > 0) {
           val parts = mutableListOf<String>()
-          if (totalUpsertions > 0) parts.add("$totalUpsertions new/updated records")
-          if (localDeletionIds.isNotEmpty()) parts.add("${localDeletionIds.size} deletions")
-          statusMessage = "Fetched ${parts.joinToString(", ")}. Ready to send."
+          if (totalRecords > 0) parts.add("$totalRecords records")
+          if (totalDeletions > 0) parts.add("$totalDeletions deletions")
+          statusMessage = "Synced ${parts.joinToString(", ")}."
+          Log.d("SyncData", "Incremental sync complete: ${parts.joinToString(", ")} across $pageNum pages")
+        } else {
+          statusMessage = "Up to date."
+          Log.d("SyncData", "No new changes found")
         }
       } catch (e: Exception) {
-        Log.e("FetchData", "Error fetching changes.", e)
-        statusMessage = "Error fetching changes: ${e.message}"
-        fetchSuccessful = false
+        Log.e("SyncData", "Error during incremental sync.", e)
+        statusMessage = "Sync error: ${e.message}"
       }
     }
 
-    if (fetchSuccessful) {
-      healthRecords = localHealthRecords.sortedByDescending { it.getPrimaryInstant() }
-      pendingDeletionIds = localDeletionIds
-      pendingTokenToPersist = localPendingTokenToPersist
-    } else {
-      if (lastTokenFromPrefs != null) healthRecords = emptyList()
-      pendingDeletionIds = emptyList()
-      pendingTokenToPersist = null
-    }
-    Log.d("HealthConnectScreen", "Data fetch finished. status: $statusMessage")
     isProcessing = false
   }
 
@@ -697,18 +554,18 @@ fun HealthConnectScreen(
     rememberLauncherForActivityResult(
       contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) { _ ->
-      // Don't trust the launcher result — re-query actual permissions from system
+      // Don't trust the launcher result -- re-query actual permissions from system
       scope.launch {
         refreshPermissions()
         if (grantedRecordTypes.isNotEmpty()) {
-          fetchHealthData(context)
+          syncHealthData(context)
         } else {
           isProcessing = false
         }
       }
     }
 
-  suspend fun checkPermissionsAndFetchData(
+  suspend fun checkPermissionsAndSync(
     coroutineScope: CoroutineScope,
     currentContext: Context,
   ) {
@@ -718,301 +575,16 @@ fun HealthConnectScreen(
 
     if (grantedCount > 0) {
       statusMessage = "$grantedCount of ${allRecordTypes.size} data types authorized."
-      coroutineScope.launch { fetchHealthData(currentContext) }
+      coroutineScope.launch { syncHealthData(currentContext) }
     } else {
-      // No permissions at all — request everything
+      // No permissions at all -- request everything
       statusMessage = "No permissions granted. Requesting access..."
       isProcessing = false
       requestPermissionLauncher.launch(allPermissions.toTypedArray())
     }
   }
 
-  suspend fun sendPendingDataToServer(currentActiveContext: Context) {
-    if (healthRecords.isEmpty() && pendingDeletionIds.isEmpty()) {
-      statusMessage = "No records to send."
-      Log.d("SendData", "No records or deletions to send.")
-      return
-    }
-    if (isProcessing) {
-      Log.d("SendData", "sendPendingDataToServer called while already processing.")
-      return
-    }
-    isProcessing = true
-    var allPostsSuccessful = true
-
-    // Step 1: Send deletions to backend
-    if (pendingDeletionIds.isNotEmpty()) {
-      statusMessage = "Sending ${pendingDeletionIds.size} deletions..."
-      Log.d("SendData", "Sending ${pendingDeletionIds.size} deletion IDs to server")
-      val deletionResult =
-        try {
-          val response =
-            ktorHttpClient.post("$apiUrl/sync/deletions") {
-              contentType(ContentType.Application.Json)
-              headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
-              setBody(PostWrapper(pendingDeletionIds))
-            }
-          response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
-        } catch (e: Exception) {
-          Log.e("SendData", "Error posting deletions", e)
-          false
-        }
-      if (!deletionResult) {
-        allPostsSuccessful = false
-        statusMessage = "Failed to send deletions"
-        Log.w("SendData", "Failed to send deletions")
-      } else {
-        Log.d("SendData", "Deletions sent successfully")
-        pendingDeletionIds = emptyList()
-      }
-    }
-
-    // Step 2: Send raw records
-    if (allPostsSuccessful && healthRecords.isNotEmpty()) {
-      val recordsWithKnownSerializers =
-        healthRecords.filter {
-          when (it) {
-            is HeartRateVariabilityRmssdRecord, is WeightRecord, is HeartRateRecord,
-            is ExerciseSessionRecord, is SpeedRecord, is PowerRecord, is NutritionRecord,
-            is LeanBodyMassRecord, is BodyFatRecord, is SleepSessionRecord, is BoneMassRecord,
-            is BodyWaterMassRecord, is HeightRecord, is RestingHeartRateRecord,
-            is StepsRecord, is DistanceRecord, is ActiveCaloriesBurnedRecord,
-            is TotalCaloriesBurnedRecord, is FloorsClimbedRecord,
-            -> true
-            else -> false
-          }
-        }
-
-      statusMessage = "Sending ${recordsWithKnownSerializers.size} records to server..."
-
-      if (recordsWithKnownSerializers.isEmpty()) {
-        Log.d("SendData", "No records with known serializers to send.")
-      } else {
-        Log.d("SendData", "Sending ${recordsWithKnownSerializers.size} records.")
-
-        val groupedRecords = recordsWithKnownSerializers.groupBy { it::class }
-        for ((recordClass, classRecords) in groupedRecords) {
-          if (classRecords.isEmpty()) continue
-          val recordTypeSimpleName = recordClass.simpleName ?: "UnknownRecordType"
-          val syncUrl = "$apiUrl/sync/$recordTypeSimpleName"
-
-          val postResult =
-            when (recordClass) {
-              HeartRateVariabilityRmssdRecord::class ->
-                handlePostData(
-                  HrvRecordSerializable.fromRecordsList(classRecords),
-                  HrvRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              WeightRecord::class ->
-                handlePostData(
-                  WeightRecordSerializable.fromRecordsList(classRecords),
-                  WeightRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              HeartRateRecord::class ->
-                handlePostDataChunked(
-                  HeartRateRecordSerializable.fromRecordsList(classRecords),
-                  HeartRateRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              ExerciseSessionRecord::class ->
-                handlePostData(
-                  ExerciseSessionRecordSerializable.fromRecordsList(classRecords),
-                  ExerciseSessionRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              SpeedRecord::class ->
-                handlePostData(
-                  SpeedRecordSerializable.fromRecordsList(classRecords),
-                  SpeedRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              PowerRecord::class ->
-                handlePostData(
-                  PowerRecordSerializable.fromRecordsList(classRecords),
-                  PowerRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              NutritionRecord::class ->
-                handlePostData(
-                  NutritionRecordSerializable.fromRecordsList(classRecords),
-                  NutritionRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              LeanBodyMassRecord::class ->
-                handlePostData(
-                  LeanBodyMassRecordSerializable.fromRecordsList(classRecords),
-                  LeanBodyMassRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              BodyFatRecord::class ->
-                handlePostData(
-                  BodyFatRecordSerializable.fromRecordsList(classRecords),
-                  BodyFatRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              SleepSessionRecord::class ->
-                handlePostData(
-                  SleepSessionRecordSerializable.fromRecordsList(classRecords),
-                  SleepSessionRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              BoneMassRecord::class ->
-                handlePostData(
-                  BoneMassRecordSerializable.fromRecordsList(classRecords),
-                  BoneMassRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              BodyWaterMassRecord::class ->
-                handlePostData(
-                  BodyWaterMassRecordSerializable.fromRecordsList(classRecords),
-                  BodyWaterMassRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              HeightRecord::class ->
-                handlePostData(
-                  HeightRecordSerializable.fromRecordsList(classRecords),
-                  HeightRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              RestingHeartRateRecord::class ->
-                handlePostData(
-                  RestingHeartRateRecordSerializable.fromRecordsList(classRecords),
-                  RestingHeartRateRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              StepsRecord::class ->
-                handlePostData(
-                  StepsRecordSerializable.fromRecordsList(classRecords),
-                  StepsRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              DistanceRecord::class ->
-                handlePostData(
-                  DistanceRecordSerializable.fromRecordsList(classRecords),
-                  DistanceRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              ActiveCaloriesBurnedRecord::class ->
-                handlePostData(
-                  ActiveCaloriesBurnedRecordSerializable.fromRecordsList(classRecords),
-                  ActiveCaloriesBurnedRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              TotalCaloriesBurnedRecord::class ->
-                handlePostData(
-                  TotalCaloriesBurnedRecordSerializable.fromRecordsList(classRecords),
-                  TotalCaloriesBurnedRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              FloorsClimbedRecord::class ->
-                handlePostData(
-                  FloorsClimbedRecordSerializable.fromRecordsList(classRecords),
-                  FloorsClimbedRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              Vo2MaxRecord::class ->
-                handlePostData(
-                  Vo2MaxRecordSerializable.fromRecordsList(classRecords),
-                  Vo2MaxRecordSerializable.serializer(),
-                  syncUrl,
-                  recordTypeSimpleName,
-                  ktorHttpClient,
-                  authToken,
-                )
-              else -> {
-                Log.w("SendData", "No specific serialization for $recordTypeSimpleName. Skipping.")
-                PostResult.Success
-              }
-            }
-          if (!postResult.isSuccess) {
-            allPostsSuccessful = false
-            val errorDetail = postResult.errorMessage() ?: "Unknown error"
-            statusMessage = "Failed to send $recordTypeSimpleName: $errorDetail"
-            Log.w("SendData", "Post failed for $recordTypeSimpleName: $errorDetail")
-            break
-          }
-        }
-      }
-    }
-
-    if (allPostsSuccessful) {
-      if (pendingTokenToPersist != null) {
-        saveChangesToken(currentActiveContext, pendingTokenToPersist)
-        statusMessage = "Data sent successfully. Token updated."
-        Log.d("SendData", "All posts successful. Saved token: ${pendingTokenToPersist?.take(10)}...")
-        pendingTokenToPersist = null
-      } else {
-        statusMessage = "Data sent successfully."
-        Log.d("SendData", "All posts successful. No new token was pending to save.")
-      }
-      healthRecords = emptyList()
-      pendingDeletionIds = emptyList()
-    } else {
-      Log.w("SendData", "Not all posts successful. Pending records remain.")
-    }
-    isProcessing = false
-  }
-
-  /** Perform fetch + send in one step, then process outbound sync (backend -> HC). */
+  /** Perform full sync: aggregates + Health Connect data + outbound + ActivityWatch. */
   suspend fun syncNow(currentContext: Context) {
     // Fetch and send daily aggregates for cumulative metrics (steps, distance, etc.)
     try {
@@ -1021,23 +593,19 @@ fun HealthConnectScreen(
         val success = sendDailyAggregates(aggregates, apiUrl, authToken, ktorHttpClient)
         if (success) {
           Log.d("SyncNow", "Sent ${aggregates.size} daily aggregates")
-          statusMessage = "Sent ${aggregates.size} daily aggregates."
         } else {
           Log.w("SyncNow", "Failed to send daily aggregates")
           statusMessage = "Failed to send daily aggregates."
         }
-      } else {
-        Log.d("SyncNow", "No daily aggregates to send")
       }
     } catch (e: Exception) {
       Log.w("SyncNow", "Daily aggregate sync failed: ${e.message}", e)
       statusMessage = "Daily aggregate sync error: ${e.message}"
     }
 
-    fetchHealthData(currentContext)
-    if (healthRecords.isNotEmpty() || pendingDeletionIds.isNotEmpty()) {
-      sendPendingDataToServer(currentContext)
-    }
+    // Incremental Health Connect sync (fetch and send page by page)
+    syncHealthData(currentContext)
+
     // Process outbound sync: write backend changes to Health Connect
     try {
       val result =
@@ -1084,7 +652,7 @@ fun HealthConnectScreen(
 
   LaunchedEffect(Unit) {
     Log.d("HealthConnectScreen", "LaunchedEffect: Initial check")
-    checkPermissionsAndFetchData(this, context)
+    checkPermissionsAndSync(this, context)
     if (backgroundSyncEnabled) {
       SyncWorker.schedule(context)
     }
@@ -1099,11 +667,8 @@ fun HealthConnectScreen(
             scope.launch {
               // Re-check permissions in case user changed them in system settings
               refreshPermissions()
-              fetchHealthData(context)
-              // Always send pending data when app comes to foreground
-              if (healthRecords.isNotEmpty() || pendingDeletionIds.isNotEmpty()) {
-                sendPendingDataToServer(context)
-              }
+              // Incremental sync: fetch and send page by page
+              syncHealthData(context)
               // Process outbound sync: write backend changes to Health Connect
               try {
                 processOutboundSync(
@@ -1141,10 +706,6 @@ fun HealthConnectScreen(
         }
       }
     }
-  }
-
-  val pendingRecordCount by remember(healthRecords) {
-    derivedStateOf { healthRecords.size + pendingDeletionIds.size }
   }
 
   // --- UI ---
@@ -1190,14 +751,6 @@ fun HealthConnectScreen(
             "${grantedRecordTypes.size} of ${allRecordTypes.size} data types authorized",
             style = MaterialTheme.typography.bodyMedium,
           )
-
-          if (pendingRecordCount > 0) {
-            Text(
-              "$pendingRecordCount records pending",
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.primary,
-            )
-          }
 
           Row(
             verticalAlignment = Alignment.CenterVertically,
