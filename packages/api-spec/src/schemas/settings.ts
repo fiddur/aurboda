@@ -202,6 +202,9 @@ export const userSettingsResponseSchema = baseResponseSchema
       description:
         'Unified icon mappings for all timeline items — tags, activities, exercise types (tag key or name -> emoji/URL)',
     }),
+    garmin_connected: z
+      .boolean()
+      .meta({ description: 'Whether Garmin Connect is connected via stored session' }),
     lastfm_configured: z.boolean().meta({ description: 'Whether Last.fm API key is configured on server' }),
     lastfm_username: z.string().nullable().meta({ description: 'Last.fm username for scrobble sync' }),
     oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),

@@ -56,6 +56,10 @@ export const validMetrics = [
   'hr_zone_5_sec',
   'training_impulse',
   'activity_impulse',
+  'stress_level',
+  'body_battery',
+  'training_readiness',
+  'intensity_minutes',
 ] as const
 
 export const metricTypeSchema = z.enum(validMetrics).meta({
@@ -213,6 +217,10 @@ export const metricUnits: Record<MetricType, string> = {
   spo2: 'percent',
   steps: 'count',
   training_impulse: 'TRIMP',
+  stress_level: 'score',
+  body_battery: 'score',
+  training_readiness: 'score',
+  intensity_minutes: 'min',
   vo2_max: 'mL/kg/min',
   weight: 'kg',
 }

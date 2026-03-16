@@ -197,6 +197,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const { zones, source } = await getEffectiveHrZones(user)
   const ouraToken = await getOAuthToken(user, 'oura')
   const ouraConfigured = !!(process.env.OURA_CLIENT && process.env.OURA_SECRET)
+  const garminToken = await getOAuthToken(user, 'garmin')
   const lastFmApiKey = await getCentralDb().getLastFmApiKey()
   const lastFmConfigured = !!lastFmApiKey
 
@@ -204,6 +205,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     birth_date: settings.birth_date ?? null,
     calendars: settings.calendars ?? [],
     dashboard: settings.dashboard ?? null,
+    garmin_connected: garminToken !== null && garminToken.access_token !== '',
     goals: getEffectiveGoals(settings),
     hr_zone_start: zones,
     hr_zone_start_source: source,
@@ -235,6 +237,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
       calendars: [],
       dashboard: null,
       error: errorMessage,
+      garmin_connected: false,
       goals: defaultGoals,
       hr_zone_start: calculateDefaultHrZones(null),
       hr_zone_start_source: 'default',

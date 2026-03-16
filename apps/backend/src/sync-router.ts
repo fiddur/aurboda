@@ -5,6 +5,7 @@ import {
   outboundSyncAckBodySchema,
   syncActivityWatchBodySchema,
   syncCalendarsBodySchema,
+  syncGarminBodySchema,
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
@@ -17,6 +18,9 @@ import {
   type CalendarSyncStatusResponse,
   type DailyAggregate,
   type DailyAggregatesBody,
+  type GarminSyncResponse,
+  type GarminSyncResult,
+  type GarminSyncStatusResponse,
   type HealthConnectDeletionsBody,
   type HealthConnectRecord,
   type HealthConnectSyncBody,
@@ -35,6 +39,7 @@ import {
   type RescueTimeSyncStatusResponse,
   type SyncActivityWatchBody,
   type SyncCalendarsBody,
+  type SyncGarminBody,
   type SyncLastFmBody,
   type SyncOuraBody,
   type SyncRescueTimeBody,
@@ -73,6 +78,12 @@ export interface SyncRouterDeps {
   syncOura: (user: string, options: { fullResync?: boolean; startDate?: Date }) => Promise<OuraSyncResult[]>
   getOuraSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetOuraSyncState: (user: string, dataType?: string) => Promise<void>
+  syncGarmin: (
+    user: string,
+    options: { fullResync?: boolean; startDate?: Date },
+  ) => Promise<GarminSyncResult[]>
+  getGarminSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
+  resetGarminSyncState: (user: string, dataType?: string) => Promise<void>
   syncRescueTime: (
     user: string,
     apiKey: string,
@@ -192,6 +203,62 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
 
       try {
         await deps.resetOuraSyncState(user, dataType)
+        res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  // Garmin sync endpoints
+  router.post<ParamsDictionary, GarminSyncResponse, SyncGarminBody>(
+    '/garmin',
+    authMiddleware,
+    validateBody(syncGarminBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { full_resync, start_date } = req.body
+
+      try {
+        const results = await deps.syncGarmin(user, {
+          fullResync: full_resync,
+          startDate: start_date ? new Date(start_date) : undefined,
+        })
+
+        res.json({ results, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.get<ParamsDictionary, GarminSyncStatusResponse>(
+    '/garmin/status',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+
+      try {
+        const states = await deps.getGarminSyncStates(user)
+        res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.delete<ParamsDictionary, SyncResponse, unknown, { dataType?: string }>(
+    '/garmin/state',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const { dataType } = req.query
+
+      try {
+        await deps.resetGarminSyncState(user, dataType)
         res.json({ success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
