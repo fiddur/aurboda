@@ -106,6 +106,7 @@ export function DataSources() {
   const hasProductivity = (productivityQuery.data?.length ?? 0) > 0
   const hasLocations = (locationsQuery.data?.length ?? 0) > 0
   const isOuraConnected = settingsQuery.data?.oura_connected ?? false
+  const isGarminConnected = settingsQuery.data?.garmin_connected ?? false
   const isRescueTimeConfigured = !!settingsQuery.data?.rescue_time_key
   const hasLastfm = !!settingsQuery.data?.lastfm_username
   const hasCalendars = (settingsQuery.data?.calendars ?? []).length > 0
@@ -149,6 +150,13 @@ export function DataSources() {
       name: 'Oura Ring',
       path: '/data-sources/oura',
       statusText: isOuraConnected ? 'Connected' : 'Not connected',
+    },
+    {
+      dataTypes: 'Sleep, stress, body battery, HR, HRV, activities, SpO2, training readiness',
+      isConnected: isGarminConnected,
+      name: 'Garmin Connect',
+      path: '/data-sources/garmin',
+      statusText: isGarminConnected ? 'Connected' : 'Not connected',
     },
     {
       dataTypes: 'App and window usage on desktop',

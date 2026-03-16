@@ -14,6 +14,7 @@ import { ActivityWatchDesktopSource } from './pages/DataSources/ActivityWatchDes
 import { AndroidAppSource } from './pages/DataSources/AndroidAppSource.jsx'
 import { AurbodaSource } from './pages/DataSources/AurbodaSource.jsx'
 import { CalendarsSource } from './pages/DataSources/CalendarsSource.jsx'
+import { GarminSource } from './pages/DataSources/GarminSource.jsx'
 import { DataSources } from './pages/DataSources/index.jsx'
 import { LastFmSource } from './pages/DataSources/LastFmSource.jsx'
 import { OuraSource } from './pages/DataSources/OuraSource.jsx'
@@ -57,6 +58,7 @@ export function App() {
             <Route path="/data-sources/aurboda" component={AurbodaSource} />
             <Route path="/data-sources/android-app" component={AndroidAppSource} />
             <Route path="/data-sources/oura" component={OuraSource} />
+            <Route path="/data-sources/garmin" component={GarminSource} />
             <Route path="/data-sources/activitywatch-desktop" component={ActivityWatchDesktopSource} />
             <Route path="/data-sources/activitywatch-android" component={ActivityWatchAndroidSource} />
             <Route path="/data-sources/rescue-time" component={RescueTimeSource} />
