@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { query } from './connection.ts'
 import {
   ackOutboundSync,
   enqueueOutboundSync,
@@ -33,7 +34,10 @@ describe('Outbound Sync Queue Integration Tests', () => {
         entity_type: 'activity',
         hc_record_type: 'ExerciseSessionRecord',
         operation: 'insert',
-        payload: { activity_type: 'exercise', start_time: '2024-01-15T10:00:00Z' },
+        payload: {
+          activity_type: 'exercise',
+          start_time: '2024-01-15T10:00:00Z',
+        },
       })
 
       expect(id).toBeDefined()
@@ -98,7 +102,7 @@ describe('Outbound Sync Queue Integration Tests', () => {
   })
 
   describe('getPendingOutboundSync', () => {
-    test('returns entries ordered by creation time', async () => {
+    test('returns entries ordered newest-first', async () => {
       const user = getTestUser()
 
       await enqueueOutboundSync(user, {
@@ -119,8 +123,8 @@ describe('Outbound Sync Queue Integration Tests', () => {
 
       const pending = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(2)
-      expect(pending[0].entity_id).toBe('first')
-      expect(pending[1].entity_id).toBe('second')
+      expect(pending[0].entity_id).toBe('second')
+      expect(pending[1].entity_id).toBe('first')
     })
 
     test('respects limit', async () => {
@@ -144,6 +148,38 @@ describe('Outbound Sync Queue Integration Tests', () => {
       const user = getTestUser()
       const pending = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(0)
+    })
+
+    test('auto-expires entries older than 90 days', async () => {
+      const user = getTestUser()
+
+      // Create an entry and backdate it to 91 days ago
+      const oldId = await enqueueOutboundSync(user, {
+        entity_id: 'old-calorie',
+        entity_type: 'time_series',
+        hc_record_type: 'ActiveCaloriesBurnedRecord',
+        operation: 'insert',
+        payload: { value: 5.0 },
+      })
+      await query(
+        user,
+        `UPDATE outbound_sync_queue SET created_at = NOW() - INTERVAL '91 days' WHERE id = $1`,
+        [oldId],
+      )
+
+      // Create a recent entry
+      await enqueueOutboundSync(user, {
+        entity_id: 'recent-exercise',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      const pending = await getPendingOutboundSync(user)
+      // Only the recent entry should be returned; the old one should be auto-expired
+      expect(pending).toHaveLength(1)
+      expect(pending[0].entity_id).toBe('recent-exercise')
     })
   })
 
