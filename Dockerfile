@@ -3,7 +3,7 @@
 
 # Build stage - builds api-spec and web frontend
 FROM node:25-alpine AS builder
-RUN corepack enable && corepack prepare pnpm@10.15.1 --activate
+RUN npm install -g pnpm@10
 WORKDIR /app
 
 # Copy workspace files
@@ -30,7 +30,7 @@ FROM node:25-alpine
 RUN apk add --no-cache nginx
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@10.15.1 --activate
+RUN npm install -g pnpm@10
 
 WORKDIR /app
 

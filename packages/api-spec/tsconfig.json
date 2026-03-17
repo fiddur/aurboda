@@ -18,11 +18,5 @@
     "rewriteRelativeImportExtensions": true
   },
   "include": ["src/**/*"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "generated",
-    "src/openapi.ts",
-    "src/generate-html.ts"
-  ]
+  "exclude": ["node_modules", "dist", "generated", "src/openapi.ts", "src/generate-html.ts"]
 }

@@ -6,7 +6,7 @@ This repo aims to collect a user's self quantification data into a single useful
 
 1. Setup PostgreSQL (see below)
 2. Setup `.env` (see `.env.sample`)
-3. `corepack use && pnpm i`
+3. `pnpm i`
 
 ### Start web (for user creation and authorization)
 
