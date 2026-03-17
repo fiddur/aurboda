@@ -215,7 +215,7 @@ export function Home() {
         </div>
       </div>
 
-      <GuestHome canSignup={canSignup} />
+      <GuestHome canSignup={canSignup ?? false} />
     </div>
   )
 }

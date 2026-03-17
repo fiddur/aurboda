@@ -41,10 +41,5 @@
     "unicorn/no-instanceof-builtins": 2,
     "unicorn/error-message": 2
   },
-  "ignorePatterns": [
-    "**/generated/**",
-    "**/dist/**",
-    "**/node_modules/**",
-    "**/coverage/**"
-  ]
+  "ignorePatterns": ["**/generated/**", "**/dist/**", "**/node_modules/**", "**/coverage/**"]
 }

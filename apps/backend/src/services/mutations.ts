@@ -5,13 +5,9 @@
  * They are used by both the MCP tools and the REST API.
  */
 
-import type {
-  ActivityType,
-  CustomMetricDefinition,
-  DataSource,
-} from "@aurboda/api-spec";
+import type { ActivityType, CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
 
-import { randomUUID } from "node:crypto";
+import { randomUUID } from 'node:crypto'
 
 import {
   deleteActivity as dbDeleteActivity,
@@ -27,7 +23,7 @@ import {
   insertTimeSeries,
   type TimeSeriesPoint,
   updateTagEndTime,
-} from "../db/index.ts";
+} from '../db/index.ts'
 import {
   activityTypeToHealthConnectType,
   getMetricUnit,
@@ -36,113 +32,113 @@ import {
   isValidMetric,
   isValidMetricOrCustom,
   metricToHealthConnectType,
-} from "../schema.ts";
-import { syncNoteTimesForEntity } from "./notes.ts";
+} from '../schema.ts'
+import { syncNoteTimesForEntity } from './notes.ts'
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface AddTagInput {
-  tag: string;
-  start_time: Date;
-  end_time?: Date;
-  mergeSpan?: number;
+  tag: string
+  start_time: Date
+  end_time?: Date
+  mergeSpan?: number
 }
 
 export interface AddTagResult {
-  success: boolean;
-  id: string;
-  tag: string;
-  start_time: string;
-  end_time?: string;
-  merged?: boolean;
-  extendedBySeconds?: number;
+  success: boolean
+  id: string
+  tag: string
+  start_time: string
+  end_time?: string
+  merged?: boolean
+  extendedBySeconds?: number
 }
 
 export interface AddMetricInput {
-  metric: string;
-  value: number;
-  time: Date;
+  metric: string
+  value: number
+  time: Date
 }
 
 export interface AddMetricResult {
-  success: boolean;
-  error?: string;
-  metric: string;
-  value: number;
-  unit: string;
-  time: string;
-  entity_id?: string;
+  success: boolean
+  error?: string
+  metric: string
+  value: number
+  unit: string
+  time: string
+  entity_id?: string
 }
 
 export interface DeleteTagResult {
-  success: boolean;
-  deleted: boolean;
-  external_id: string;
+  success: boolean
+  deleted: boolean
+  external_id: string
 }
 
 export interface AddActivityInput {
-  activity_type: ActivityType;
-  start_time: Date;
-  end_time: Date;
-  title?: string;
-  notes?: string;
-  data?: Record<string, unknown>;
+  activity_type: ActivityType
+  start_time: Date
+  end_time: Date
+  title?: string
+  notes?: string
+  data?: Record<string, unknown>
 }
 
 export interface AddActivityResult {
-  success: boolean;
-  id?: string;
-  activity_type?: ActivityType;
-  start_time?: string;
-  end_time?: string;
-  title?: string;
-  notes?: string;
-  error?: string;
+  success: boolean
+  id?: string
+  activity_type?: ActivityType
+  start_time?: string
+  end_time?: string
+  title?: string
+  notes?: string
+  error?: string
 }
 
 export interface BulkMetricItem {
-  metric: string;
-  value: number;
-  time: Date;
-  source?: string;
+  metric: string
+  value: number
+  time: Date
+  source?: string
 }
 
 export interface BulkMetricError {
-  index: number;
-  error: string;
+  index: number
+  error: string
 }
 
 export interface BulkAddMetricsResult {
-  success: boolean;
-  inserted: number;
-  errors: BulkMetricError[];
+  success: boolean
+  inserted: number
+  errors: BulkMetricError[]
 }
 
 export interface DeleteActivityResult {
-  success: boolean;
-  deleted: boolean;
-  id: string;
+  success: boolean
+  deleted: boolean
+  id: string
 }
 
 export interface UpdateActivityInput {
-  start_time?: Date;
-  end_time?: Date;
-  title?: string;
-  notes?: string;
-  data?: Record<string, unknown>;
+  start_time?: Date
+  end_time?: Date
+  title?: string
+  notes?: string
+  data?: Record<string, unknown>
 }
 
 export interface UpdateActivityResult {
-  success: boolean;
-  id?: string;
-  activity_type?: ActivityType;
-  start_time?: string;
-  end_time?: string;
-  title?: string;
-  notes?: string;
-  error?: string;
+  success: boolean
+  id?: string
+  activity_type?: ActivityType
+  start_time?: string
+  end_time?: string
+  title?: string
+  notes?: string
+  error?: string
 }
 
 // ============================================================================
@@ -156,42 +152,26 @@ export interface UpdateActivityResult {
  * name if its end_time (or start_time for point-in-time tags) is within
  * mergeSpan seconds of the new start_time.
  */
-export async function addTag(
-  user: string,
-  input: AddTagInput,
-): Promise<AddTagResult> {
+export async function addTag(user: string, input: AddTagInput): Promise<AddTagResult> {
   // If mergeSpan is specified, check for a mergeable tag
   if (input.mergeSpan !== undefined) {
-    const existingTag = await findMergeableTag(
-      user,
-      input.tag,
-      input.start_time,
-      input.mergeSpan,
-    );
+    const existingTag = await findMergeableTag(user, input.tag, input.start_time, input.mergeSpan)
 
     if (existingTag && existingTag.external_id) {
       // Calculate the new end time - use new end_time if provided, otherwise use new start_time
-      const newEndTime = input.end_time ?? input.start_time;
+      const newEndTime = input.end_time ?? input.start_time
 
       // Calculate the time extension
-      const previousEnd = existingTag.end_time ?? existingTag.start_time;
-      const extendedBySeconds = Math.round(
-        (newEndTime.getTime() - previousEnd.getTime()) / 1000,
-      );
+      const previousEnd = existingTag.end_time ?? existingTag.start_time
+      const extendedBySeconds = Math.round((newEndTime.getTime() - previousEnd.getTime()) / 1000)
 
-      await updateTagEndTime(user, existingTag.external_id, newEndTime);
+      await updateTagEndTime(user, existingTag.external_id, newEndTime)
 
       // Sync inherited times on any notes attached to this tag
       if (existingTag.id) {
-        await syncNoteTimesForEntity(
-          user,
-          "tag",
-          existingTag.id,
-          existingTag.start_time,
-          newEndTime,
-        ).catch((err) =>
-          console.error("Failed to sync note times for tag:", err),
-        );
+        await syncNoteTimesForEntity(user, 'tag', existingTag.id, existingTag.start_time, newEndTime).catch(
+          (err) => console.error('Failed to sync note times for tag:', err),
+        )
       }
 
       return {
@@ -202,20 +182,20 @@ export async function addTag(
         start_time: existingTag.start_time.toISOString(),
         success: true,
         tag: existingTag.tag,
-      };
+      }
     }
   }
 
   // Create a new tag
-  const externalId = randomUUID();
+  const externalId = randomUUID()
 
   await insertTag(user, {
     end_time: input.end_time,
     external_id: externalId,
-    source: "aurboda",
+    source: 'aurboda',
     start_time: input.start_time,
     tag: input.tag,
-  });
+  })
 
   return {
     end_time: input.end_time?.toISOString(),
@@ -224,7 +204,7 @@ export async function addTag(
     success: true,
     tag: input.tag,
     ...(input.mergeSpan !== undefined ? { merged: false } : {}),
-  };
+  }
 }
 
 /** Validate custom metric value range; returns error string if invalid, null if ok. */
@@ -233,28 +213,25 @@ function validateCustomMetricRange(
   metric: string,
   value: number,
 ): string | null {
-  if (isValidMetric(metric)) return null;
-  const customDef = customMetrics.find((m) => m.name === metric);
-  if (!customDef) return null;
+  if (isValidMetric(metric)) return null
+  const customDef = customMetrics.find((m) => m.name === metric)
+  if (!customDef) return null
   if (customDef.min_value !== undefined && value < customDef.min_value) {
-    return `Value ${value} is below minimum ${customDef.min_value} for metric "${metric}".`;
+    return `Value ${value} is below minimum ${customDef.min_value} for metric "${metric}".`
   }
   if (customDef.max_value !== undefined && value > customDef.max_value) {
-    return `Value ${value} exceeds maximum ${customDef.max_value} for metric "${metric}".`;
+    return `Value ${value} exceeds maximum ${customDef.max_value} for metric "${metric}".`
   }
-  return null;
+  return null
 }
 
 /**
  * Add a manual health metric measurement.
  * Supports both built-in and custom metrics.
  */
-export async function addMetric(
-  user: string,
-  input: AddMetricInput,
-): Promise<AddMetricResult> {
-  const settings = await getUserSettings(user);
-  const customMetrics = settings?.custom_metrics ?? [];
+export async function addMetric(user: string, input: AddMetricInput): Promise<AddMetricResult> {
+  const settings = await getUserSettings(user)
+  const customMetrics = settings?.custom_metrics ?? []
 
   if (!isValidMetricOrCustom(input.metric, customMetrics)) {
     return {
@@ -262,74 +239,67 @@ export async function addMetric(
       metric: input.metric,
       success: false,
       time: input.time.toISOString(),
-      unit: "",
+      unit: '',
       value: input.value,
-    };
+    }
   }
 
-  const unit = getMetricUnit(input.metric, customMetrics);
+  const unit = getMetricUnit(input.metric, customMetrics)
 
-  const rangeError = validateCustomMetricRange(
-    customMetrics,
-    input.metric,
-    input.value,
-  );
+  const rangeError = validateCustomMetricRange(customMetrics, input.metric, input.value)
   if (rangeError) {
     return {
       error: rangeError,
       metric: input.metric,
       success: false,
       time: input.time.toISOString(),
-      unit: unit ?? "",
+      unit: unit ?? '',
       value: input.value,
-    };
+    }
   }
 
   await insertTimeSeries(user, [
     {
       metric: input.metric,
-      source: "aurboda",
+      source: 'aurboda',
       time: input.time,
       unit,
       value: input.value,
     },
-  ]);
+  ])
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
     if (isHealthConnectSyncableMetric(input.metric)) {
-      const hcRecordType =
-        metricToHealthConnectType[
-          input.metric as keyof typeof metricToHealthConnectType
-        ];
+      const hcRecordType = metricToHealthConnectType[input.metric as keyof typeof metricToHealthConnectType]
       if (hcRecordType) {
         await enqueueOutboundSync(user, {
           entity_id: `${input.metric}|${input.time.toISOString()}`,
-          entity_type: "time_series",
+          entity_type: 'time_series',
           hc_record_type: hcRecordType,
-          operation: "insert",
+          operation: 'insert',
           payload: {
             metric: input.metric,
             time: input.time.toISOString(),
             unit,
             value: input.value,
           },
-        });
+        })
       }
     }
   } catch (err) {
-    console.error("Failed to enqueue outbound sync for metric:", err);
+    console.error('Failed to enqueue outbound sync for metric:', err)
   }
 
-  const storedTime = input.time.toISOString();
+  const storedTime = input.time.toISOString()
   return {
     entity_id: `${storedTime}|${input.metric}|aurboda`,
     metric: input.metric,
     success: true,
     time: storedTime,
-    unit: unit ?? "",
+    unit: unit ?? '',
     value: input.value,
-  };
+  }
 }
 
 /**
@@ -344,35 +314,29 @@ export async function bulkAddMetrics(
   items: BulkMetricItem[],
   defaultSource?: string,
 ): Promise<BulkAddMetricsResult> {
-  const settings = await getUserSettings(user);
-  const customMetrics = settings?.custom_metrics ?? [];
+  const settings = await getUserSettings(user)
+  const customMetrics = settings?.custom_metrics ?? []
 
-  const errors: BulkMetricError[] = [];
-  const validPoints: TimeSeriesPoint[] = [];
-  const resolvedDefaultSource: DataSource =
-    (defaultSource as DataSource) ?? "aurboda";
+  const errors: BulkMetricError[] = []
+  const validPoints: TimeSeriesPoint[] = []
+  const resolvedDefaultSource: DataSource = (defaultSource as DataSource) ?? 'aurboda'
 
   for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+    const item = items[i]
 
     if (!isValidMetricOrCustom(item.metric, customMetrics)) {
-      errors.push({ error: `Invalid metric "${item.metric}"`, index: i });
-      continue;
+      errors.push({ error: `Invalid metric "${item.metric}"`, index: i })
+      continue
     }
 
-    const rangeError = validateCustomMetricRange(
-      customMetrics,
-      item.metric,
-      item.value,
-    );
+    const rangeError = validateCustomMetricRange(customMetrics, item.metric, item.value)
     if (rangeError) {
-      errors.push({ error: rangeError, index: i });
-      continue;
+      errors.push({ error: rangeError, index: i })
+      continue
     }
 
-    const unit = getMetricUnit(item.metric, customMetrics);
-    const source: DataSource =
-      (item.source as DataSource) ?? resolvedDefaultSource;
+    const unit = getMetricUnit(item.metric, customMetrics)
+    const source: DataSource = (item.source as DataSource) ?? resolvedDefaultSource
 
     validPoints.push({
       metric: item.metric,
@@ -380,34 +344,31 @@ export async function bulkAddMetrics(
       time: item.time,
       unit,
       value: item.value,
-    });
+    })
   }
 
   if (validPoints.length > 0) {
-    await insertTimeSeries(user, validPoints);
+    await insertTimeSeries(user, validPoints)
   }
 
   return {
     errors,
     inserted: validPoints.length,
     success: true,
-  };
+  }
 }
 
 /**
  * Delete a tag by its external ID.
  */
-export async function deleteTag(
-  user: string,
-  externalId: string,
-): Promise<DeleteTagResult> {
-  const deleted = await dbDeleteTag(user, externalId);
+export async function deleteTag(user: string, externalId: string): Promise<DeleteTagResult> {
+  const deleted = await dbDeleteTag(user, externalId)
 
   return {
     deleted,
     external_id: externalId,
     success: deleted,
-  };
+  }
 }
 
 /**
@@ -415,19 +376,16 @@ export async function deleteTag(
  *
  * Validates that end_time is after start_time.
  */
-export async function addActivity(
-  user: string,
-  input: AddActivityInput,
-): Promise<AddActivityResult> {
+export async function addActivity(user: string, input: AddActivityInput): Promise<AddActivityResult> {
   // Validate that endTime is after startTime
   if (input.end_time <= input.start_time) {
     return {
-      error: "end_time must be after start_time",
+      error: 'end_time must be after start_time',
       success: false,
-    };
+    }
   }
 
-  const id = randomUUID();
+  const id = randomUUID()
 
   await dbInsertActivity(user, {
     activity_type: input.activity_type,
@@ -435,24 +393,22 @@ export async function addActivity(
     end_time: input.end_time,
     id,
     notes: input.notes,
-    source: "aurboda",
+    source: 'aurboda',
     start_time: input.start_time,
     title: input.title,
-  });
+  })
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
     if (isHealthConnectSyncableActivity(input.activity_type)) {
       const hcRecordType =
-        activityTypeToHealthConnectType[
-          input.activity_type as keyof typeof activityTypeToHealthConnectType
-        ];
+        activityTypeToHealthConnectType[input.activity_type as keyof typeof activityTypeToHealthConnectType]
       if (hcRecordType) {
         await enqueueOutboundSync(user, {
           entity_id: id,
-          entity_type: "activity",
+          entity_type: 'activity',
           hc_record_type: hcRecordType,
-          operation: "insert",
+          operation: 'insert',
           payload: {
             activity_type: input.activity_type,
             data: input.data,
@@ -461,11 +417,11 @@ export async function addActivity(
             start_time: input.start_time.toISOString(),
             title: input.title,
           },
-        });
+        })
       }
     }
   } catch (err) {
-    console.error("Failed to enqueue outbound sync for activity:", err);
+    console.error('Failed to enqueue outbound sync for activity:', err)
   }
 
   return {
@@ -476,7 +432,7 @@ export async function addActivity(
     start_time: input.start_time.toISOString(),
     success: true,
     title: input.title,
-  };
+  }
 }
 
 // Re-export custom metric management functions
@@ -487,7 +443,7 @@ export {
   deleteMetricData,
   getCustomMetrics,
   updateCustomMetric,
-} from "./custom-metrics.ts";
+} from './custom-metrics.ts'
 export type {
   CustomMetricResult,
   DeleteCustomMetricResult,
@@ -495,51 +451,48 @@ export type {
   DeleteMetricResult,
   UpdateCustomMetricInput,
   UpdateCustomMetricResult,
-} from "./custom-metrics.ts";
+} from './custom-metrics.ts'
 
 /**
  * Delete an activity by its ID.
  */
-export async function deleteActivity(
-  user: string,
-  id: string,
-): Promise<DeleteActivityResult> {
+export async function deleteActivity(user: string, id: string): Promise<DeleteActivityResult> {
   // Look up the activity before deleting to check if it needs HC sync
-  const activity = await dbGetActivityById(user, id);
-  const deleted = await dbDeleteActivity(user, id);
+  const activity = await dbGetActivityById(user, id)
+  const deleted = await dbDeleteActivity(user, id)
 
   // Enqueue outbound delete if this was an aurboda-owned HC-syncable activity (best-effort)
   try {
     if (
       deleted &&
       activity &&
-      activity.source === "aurboda" &&
+      activity.source === 'aurboda' &&
       isHealthConnectSyncableActivity(activity.activity_type)
     ) {
       const hcRecordType =
         activityTypeToHealthConnectType[
           activity.activity_type as keyof typeof activityTypeToHealthConnectType
-        ];
-      const hcRecordId = await findHcRecordId(user, "activity", id);
+        ]
+      const hcRecordId = await findHcRecordId(user, 'activity', id)
       if (hcRecordType) {
         await enqueueOutboundSync(user, {
           entity_id: id,
-          entity_type: "activity",
+          entity_type: 'activity',
           hc_record_type: hcRecordType,
-          operation: "delete",
+          operation: 'delete',
           payload: { hc_record_id: hcRecordId },
-        });
+        })
       }
     }
   } catch (err) {
-    console.error("Failed to enqueue outbound sync for activity delete:", err);
+    console.error('Failed to enqueue outbound sync for activity delete:', err)
   }
 
   return {
     deleted,
     id,
     success: deleted,
-  };
+  }
 }
 
 /**
@@ -555,32 +508,30 @@ export async function updateActivity(
   input: UpdateActivityInput,
 ): Promise<UpdateActivityResult> {
   // First, get the existing activity to validate times
-  const existing = await dbGetActivityById(user, id);
+  const existing = await dbGetActivityById(user, id)
   if (!existing) {
     return {
-      error: "Activity not found",
+      error: 'Activity not found',
       id,
       success: false,
-    };
+    }
   }
 
   // Determine final start and end times
-  const finalStartTime = input.start_time ?? existing.start_time;
-  const finalEndTime = input.end_time ?? existing.end_time;
+  const finalStartTime = input.start_time ?? existing.start_time
+  const finalEndTime = input.end_time ?? existing.end_time
 
   // Validate that endTime is after startTime
   if (finalEndTime && finalEndTime <= finalStartTime) {
     return {
-      error: "end_time must be after start_time",
+      error: 'end_time must be after start_time',
       id,
       success: false,
-    };
+    }
   }
 
   // Merge new data fields into existing data (preserving fields not being updated)
-  const mergedData = input.data
-    ? { ...(existing.data as Record<string, unknown>), ...input.data }
-    : undefined;
+  const mergedData = input.data ? { ...(existing.data as Record<string, unknown>), ...input.data } : undefined
 
   const updated = await dbUpdateActivity(user, id, {
     data: mergedData,
@@ -588,43 +539,32 @@ export async function updateActivity(
     notes: input.notes,
     start_time: input.start_time,
     title: input.title,
-  });
+  })
 
   if (!updated) {
     return {
-      error: "Failed to update activity",
+      error: 'Failed to update activity',
       id,
       success: false,
-    };
+    }
   }
 
   // Sync inherited times on any notes attached to this activity (best-effort)
-  syncNoteTimesForEntity(
-    user,
-    "activity",
-    id,
-    updated.start_time,
-    updated.end_time ?? undefined,
-  ).catch((err) =>
-    console.error("Failed to sync note times for activity:", err),
-  );
+  syncNoteTimesForEntity(user, 'activity', id, updated.start_time, updated.end_time ?? undefined).catch(
+    (err) => console.error('Failed to sync note times for activity:', err),
+  )
 
   // Enqueue outbound sync if this is an aurboda-owned HC-syncable activity (best-effort)
   try {
-    if (
-      updated.source === "aurboda" &&
-      isHealthConnectSyncableActivity(updated.activity_type)
-    ) {
+    if (updated.source === 'aurboda' && isHealthConnectSyncableActivity(updated.activity_type)) {
       const hcRecordType =
-        activityTypeToHealthConnectType[
-          updated.activity_type as keyof typeof activityTypeToHealthConnectType
-        ];
+        activityTypeToHealthConnectType[updated.activity_type as keyof typeof activityTypeToHealthConnectType]
       if (hcRecordType) {
         await enqueueOutboundSync(user, {
           entity_id: id,
-          entity_type: "activity",
+          entity_type: 'activity',
           hc_record_type: hcRecordType,
-          operation: "update",
+          operation: 'update',
           payload: {
             activity_type: updated.activity_type,
             data: updated.data,
@@ -633,11 +573,11 @@ export async function updateActivity(
             start_time: updated.start_time.toISOString(),
             title: updated.title,
           },
-        });
+        })
       }
     }
   } catch (err) {
-    console.error("Failed to enqueue outbound sync for activity update:", err);
+    console.error('Failed to enqueue outbound sync for activity update:', err)
   }
 
   return {
@@ -648,7 +588,7 @@ export async function updateActivity(
     start_time: updated.start_time.toISOString(),
     success: true,
     title: updated.title,
-  };
+  }
 }
 
 // Re-export restore and delete-by-id functions
@@ -658,14 +598,9 @@ export {
   restoreActivity,
   restoreProductivity,
   restoreTag,
-} from "./restore.ts";
-export type { RestoreResult } from "./restore.ts";
+} from './restore.ts'
+export type { RestoreResult } from './restore.ts'
 
 // Re-export notes functions for backward compatibility
-export {
-  addNote,
-  deleteNoteById,
-  getNotesForEntity,
-  updateNoteContent,
-} from "./notes.ts";
-export type { AddNoteInput, NoteResult } from "./notes.ts";
+export { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from './notes.ts'
+export type { AddNoteInput, NoteResult } from './notes.ts'

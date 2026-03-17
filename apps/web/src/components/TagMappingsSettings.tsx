@@ -54,8 +54,8 @@ const IconPreview = ({ icon }: { icon: string }) => {
 function getBlurSavePayload(
   localValue: string | undefined,
   localIcon: string | undefined,
-  currentName: string | undefined,
-  currentIcon: string | undefined,
+  currentName: string | null | undefined,
+  currentIcon: string | null | undefined,
 ): { name: string; iconChanged: boolean } | null {
   if (localValue === undefined && localIcon === undefined) return null
 
@@ -156,7 +156,10 @@ function TagMappingRow({
         </span>
         <span class="tag-latest">
           Last: {date.toLocaleDateString()}{' '}
-          {date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+          {date.toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
         </span>
       </div>
 
