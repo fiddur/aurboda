@@ -58,7 +58,13 @@ const getLatestMetricValue = async (
   return data[data.length - 1][1]
 }
 
-/** Queue outbound sync entries for calorie data points (best-effort). */
+/**
+ * Queue outbound sync entries for calorie data points (best-effort).
+ *
+ * Only enqueues points from the last 24 hours to avoid flooding the outbound
+ * queue with historical recalculations. Health Connect benefits from recent
+ * calorie data but historical backfills would starve other outbound entries.
+ */
 const enqueueCalorieSync = async (
   user: string,
   points: { time: Date; end_time: Date; kcal: number }[],
@@ -67,7 +73,12 @@ const enqueueCalorieSync = async (
     if (!isHealthConnectSyncableMetric('calories_active')) return
     const hcRecordType = metricToHealthConnectType.calories_active
     if (!hcRecordType) return
-    for (const p of points) {
+
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const recentPoints = points.filter((p) => p.time >= cutoff)
+    if (recentPoints.length === 0) return
+
+    for (const p of recentPoints) {
       await enqueueOutboundSync(user, {
         entity_id: `calories_active|${p.time.toISOString()}`,
         entity_type: 'time_series',
@@ -101,7 +112,10 @@ const invalidateTrainingLoadImpulses = async (user: string, fromTime: Date): Pro
     const existingTime = existingWatermark ? new Date(existingWatermark) : null
     const effectiveTime = existingTime && existingTime < fromTime ? existingTime : fromTime
     await upsertUserSettings(user, {
-      training_load: { ...settings.training_load, impulse_watermark: effectiveTime.toISOString() },
+      training_load: {
+        ...settings.training_load,
+        impulse_watermark: effectiveTime.toISOString(),
+      },
     })
   } catch (err) {
     console.error('Failed to invalidate training load impulses:', err)
@@ -366,7 +380,9 @@ export const computeAndStoreCaloriesAll = async (
 
   while (chunkStart < range.max) {
     const chunkEnd = new Date(Math.min(chunkStart.getTime() + dayMs, range.max.getTime() + 60_000))
-    const result = await computeAndStoreCalories(user, chunkStart, chunkEnd, { force: true })
+    const result = await computeAndStoreCalories(user, chunkStart, chunkEnd, {
+      force: true,
+    })
 
     totalComputed += result.points_computed
     totalStored += result.points_stored

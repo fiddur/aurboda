@@ -68,17 +68,31 @@ export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSy
 }
 
 /**
- * Get all pending outbound sync entries.
- * Ordered by creation time (oldest first).
+ * Get pending outbound sync entries.
+ *
+ * Ordered newest-first so recent user actions (exercises, weight entries) are
+ * synced immediately instead of being starved by bulk historical data.
+ *
+ * Entries older than 90 days are auto-expired (marked 'failed') since Health
+ * Connect typically ignores data that old.
  */
 export const getPendingOutboundSync = async (user: string, limit = 100): Promise<OutboundSyncEntry[]> => {
+  // Auto-expire entries older than 90 days — HC won't accept them anyway
+  await query(
+    user,
+    `UPDATE outbound_sync_queue
+     SET status = 'failed'
+     WHERE status = 'pending' AND created_at < NOW() - INTERVAL '90 days'`,
+    [],
+  )
+
   const result = await query(
     user,
     `SELECT id, entity_type, entity_id, operation, hc_record_type, payload,
             hc_record_id, status, created_at, synced_at
      FROM outbound_sync_queue
      WHERE status = 'pending'
-     ORDER BY created_at ASC
+     ORDER BY created_at DESC
      LIMIT $1`,
     [limit],
   )

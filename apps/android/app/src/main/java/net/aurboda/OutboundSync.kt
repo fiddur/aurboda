@@ -522,6 +522,10 @@ suspend fun processOutboundSync(
         val reason = "${entry.hc_record_type}: ${result.reason}"
         skipReasons.add(reason)
         Log.w(TAG, "⚠️ Skipped entry ${entry.id} (${entry.hc_record_type}/${entry.operation}): ${result.reason}")
+        // Acknowledge skipped entries so they don't block the queue permanently.
+        // These are unrecoverable failures (missing permission, bad payload, unsupported type)
+        // that will never succeed on retry.
+        ackItems.add(OutboundSyncAckItemApi(id = entry.id))
       }
     }
   }
