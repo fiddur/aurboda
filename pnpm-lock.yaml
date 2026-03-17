@@ -65,6 +65,9 @@ importers:
       '@flow-js/garmin-connect':
         specifier: ^1.6.7
         version: 1.6.7
+      '@js-temporal/polyfill':
+        specifier: ^0.5.1
+        version: 0.5.1
       '@modelcontextprotocol/sdk':
         specifier: ^1.25.2
         version: 1.25.3(hono@4.11.6)(zod@4.3.6)

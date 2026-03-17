@@ -107,6 +107,15 @@ export const trainingLoadQuerySchema = z
     }),
     end: z.string().meta({ description: 'End date in ISO 8601 format' }),
     start: z.string().meta({ description: 'Start date in ISO 8601 format' }),
+    tz: z
+      .string()
+      .optional()
+      .meta({
+        description:
+          'IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). ' +
+          'Daily/weekly buckets align to local midnight/Monday. Defaults to UTC.',
+        example: 'Europe/Stockholm',
+      }),
   })
   .meta({ description: 'Query parameters for training load time series', id: 'TrainingLoadQuery' })
 
@@ -123,6 +132,15 @@ export const getTrainingLoadInputSchema = z
     }),
     end: z.iso.datetime().meta({ description: 'End date-time in ISO 8601 format' }),
     start: z.iso.datetime().meta({ description: 'Start date-time in ISO 8601 format' }),
+    tz: z
+      .string()
+      .optional()
+      .meta({
+        description:
+          'IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). ' +
+          'Daily/weekly buckets align to local midnight/Monday. Defaults to UTC.',
+        example: 'Europe/Stockholm',
+      }),
   })
   .meta({ description: 'Input for computing training load time series', id: 'GetTrainingLoadInput' })
 

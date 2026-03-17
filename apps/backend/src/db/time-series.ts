@@ -339,11 +339,15 @@ export const getTimeSeriesBucketed = async (
   start: Date,
   end: Date,
   interval: string,
+  tz: string = 'UTC',
 ): Promise<BucketedMetricData[]> => {
   if (metrics.length === 0) return []
 
+  // For timezone-aware bucketing, convert timestamps to local time before binning,
+  // then convert back. This ensures daily buckets align to local midnight (and
+  // handles DST correctly — spring-forward days are 23h, fall-back days are 25h).
   const bucketedSql = (sourceFilter: string) => `SELECT
-       date_bin($4::interval, time, $2) as bucket_start,
+       date_bin($4::interval, time AT TIME ZONE $5, ($2 AT TIME ZONE $5)::timestamp) AT TIME ZONE $5 as bucket_start,
        metric,
        AVG(value) as avg,
        MIN(value) as min,
@@ -369,9 +373,9 @@ export const getTimeSeriesBucketed = async (
     cumulativeExtraParams: [cumulativeSources],
     mapRow,
     metrics,
-    params: [start, end, interval],
+    params: [start, end, interval, tz],
     queryFn: (sql, params) => query(user, sql, params),
-    sqlCumulative: bucketedSql(`\n     AND source = ANY($5)`),
+    sqlCumulative: bucketedSql(`\n     AND source = ANY($6)`),
     sqlNonCumulative: bucketedSql(''),
   })
 

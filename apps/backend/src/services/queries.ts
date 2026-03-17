@@ -7,6 +7,7 @@
  */
 
 import type { CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
+import { Temporal } from '@js-temporal/polyfill'
 import {
   getActivities,
   getDailyAggregates,
@@ -356,8 +357,17 @@ export const parseBucketSize = (bucket: string): { interval: string; ms: number 
 
 /**
  * Compute bucket start time for a given timestamp.
+ * For buckets >= 1 day, uses Temporal for timezone-aware flooring (DST-correct).
  */
-const getBucketStart = (time: Date, bucketMs: number, rangeStart: Date): Date => {
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+const getBucketStart = (time: Date, bucketMs: number, rangeStart: Date, tz: string = 'UTC'): Date => {
+  // For daily+ buckets, floor to local midnight using Temporal (DST-correct)
+  if (bucketMs >= MS_PER_DAY) {
+    const instant = Temporal.Instant.fromEpochMilliseconds(time.getTime())
+    const localMidnight = instant.toZonedDateTimeISO(tz).startOfDay()
+    return new Date(localMidnight.epochMilliseconds)
+  }
+  // For sub-day buckets, use fixed-interval arithmetic (TZ doesn't affect sub-day boundaries)
   const startMs = rangeStart.getTime()
   const timeMs = time.getTime()
   const bucketIndex = Math.floor((timeMs - startMs) / bucketMs)
@@ -382,6 +392,7 @@ const computeContextualHrvBuckets = (
   metric: MetricType,
   bucketMs: number,
   rangeStart: Date,
+  tz: string = 'UTC',
 ): {
   bucket_start: Date
   metric: MetricType
@@ -396,7 +407,7 @@ const computeContextualHrvBuckets = (
   // Group data by bucket
   const bucketMap = new Map<string, number[]>()
   for (const [time, value] of hrvData) {
-    const bucketStart = getBucketStart(time, bucketMs, rangeStart)
+    const bucketStart = getBucketStart(time, bucketMs, rangeStart, tz)
     const key = bucketStart.toISOString()
     if (!bucketMap.has(key)) {
       bucketMap.set(key, [])
@@ -443,7 +454,7 @@ export async function queryMetricsBucketed(
   start: Date,
   end: Date,
   bucket: BucketSize,
-  options: { customMetrics?: CustomMetricDefinition[]; exclude?: string[] } = {},
+  options: { customMetrics?: CustomMetricDefinition[]; exclude?: string[]; tz?: string } = {},
 ): Promise<QueryMetricsBucketedResult> {
   const { interval, ms: bucketMs } = parseBucketSize(bucket)
   const excludeSet = new Set(options.exclude ?? [])
@@ -469,11 +480,12 @@ export async function queryMetricsBucketed(
   const contextualHrvMetricsRequested = resolvedMetrics.filter(isContextualHrvMetric)
 
   // Fetch regular bucketed data and contextual HRV data in parallel
+  const tz = options.tz ?? 'UTC'
   const needsContextualHrv = contextualHrvMetricsRequested.length > 0
   const [regularData, contextualHrvData] = await Promise.all([
-    regularMetrics.length > 0 ? getTimeSeriesBucketed(user, regularMetrics, start, end, interval) : [],
+    regularMetrics.length > 0 ? getTimeSeriesBucketed(user, regularMetrics, start, end, interval, tz) : [],
     needsContextualHrv ?
-      computeContextualHrvData(user, contextualHrvMetricsRequested, start, end, bucketMs)
+      computeContextualHrvData(user, contextualHrvMetricsRequested, start, end, bucketMs, tz)
     : [],
   ])
 
@@ -533,6 +545,7 @@ async function computeContextualHrvData(
   start: Date,
   end: Date,
   bucketMs: number,
+  tz: string = 'UTC',
 ): Promise<
   {
     bucket_start: Date
@@ -570,7 +583,7 @@ async function computeContextualHrvData(
     const context = contextualHrvMetricToContext[metric]
     if (context) {
       const contextData = classified[context]
-      const buckets = computeContextualHrvBuckets(contextData, metric, bucketMs, start)
+      const buckets = computeContextualHrvBuckets(contextData, metric, bucketMs, start, tz)
       results.push(...buckets)
     }
   }

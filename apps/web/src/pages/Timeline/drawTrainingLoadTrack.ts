@@ -385,7 +385,8 @@ const drawImpulseBars = (
   }
 }
 
-/** Draw CTL (fitness) area and ATL (fatigue) line. */
+/** Draw CTL (fitness) area and ATL (fatigue) line.
+ *  Points are anchored at the bucket midpoint for correct visual alignment. */
 const drawLoadCurves = (
   group: SvgGroup,
   points: TrainingLoadPoint[],
@@ -393,13 +394,17 @@ const drawLoadCurves = (
   yScale: d3.ScaleLinear<number, number>,
   trackBottom: number,
   bootstrapping: boolean,
+  barDurationMs: number,
 ): void => {
   if (points.length < 2) return
+
+  const halfBucket = barDurationMs / 2
+  const midX = (d: TrainingLoadPoint) => xScale(new Date(parseTime(d.time).getTime() + halfBucket))
 
   // CTL area (fitness) - filled below the line
   const ctlArea = d3
     .area<TrainingLoadPoint>()
-    .x((d) => xScale(parseTime(d.time)))
+    .x(midX)
     .y0(trackBottom)
     .y1((d) => yScale(d.ctl))
     .curve(d3.curveMonotoneX)
@@ -415,7 +420,7 @@ const drawLoadCurves = (
   // CTL line
   const ctlLine = d3
     .line<TrainingLoadPoint>()
-    .x((d) => xScale(parseTime(d.time)))
+    .x(midX)
     .y((d) => yScale(d.ctl))
     .curve(d3.curveMonotoneX)
 
@@ -431,21 +436,26 @@ const drawLoadCurves = (
     .attr('stroke-dasharray', bootstrapping ? '4,3' : 'none')
 }
 
-/** Draw TSB (form) as a color-coded line. */
+/** Draw TSB (form) as a color-coded line.
+ *  Points are anchored at the bucket midpoint for correct visual alignment. */
 const drawTsbLine = (
   group: SvgGroup,
   points: TrainingLoadPoint[],
   xScale: d3.ScaleTime<number, number>,
   yScale: d3.ScaleLinear<number, number>,
+  barDurationMs: number,
 ): void => {
   if (points.length < 2) return
+
+  const halfBucket = barDurationMs / 2
+  const midTime = (p: TrainingLoadPoint) => new Date(parseTime(p.time).getTime() + halfBucket)
 
   // Zero reference line
   const zeroY = yScale(0)
   group
     .append('line')
-    .attr('x1', xScale(parseTime(points[0]!.time)))
-    .attr('x2', xScale(parseTime(points[points.length - 1]!.time)))
+    .attr('x1', xScale(midTime(points[0]!)))
+    .attr('x2', xScale(midTime(points[points.length - 1]!)))
     .attr('y1', zeroY)
     .attr('y2', zeroY)
     .attr('stroke', 'currentColor')
@@ -462,9 +472,9 @@ const drawTsbLine = (
 
     group
       .append('line')
-      .attr('x1', xScale(parseTime(prev.time)))
+      .attr('x1', xScale(midTime(prev)))
       .attr('y1', yScale(prev.tsb))
-      .attr('x2', xScale(parseTime(curr.time)))
+      .attr('x2', xScale(midTime(curr)))
       .attr('y2', yScale(curr.tsb))
       .attr('stroke', color)
       .attr('stroke-width', 2)
@@ -575,9 +585,9 @@ export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => 
   // Draw impulse bars (training + activity) on top of fatigue bars
   drawImpulseBars(chartGroup, displayPoints, xScale, yScales.yImpulse, trackBottom, barDurationMs)
 
-  // Draw CTL/ATL curves
-  drawLoadCurves(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom, bootstrapping)
+  // Draw CTL/ATL curves (anchored at bucket midpoints)
+  drawLoadCurves(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom, bootstrapping, barDurationMs)
 
-  // Draw TSB line on top
-  drawTsbLine(chartGroup, displayPoints, xScale, yScales.yTsb)
+  // Draw TSB line on top (anchored at bucket midpoints)
+  drawTsbLine(chartGroup, displayPoints, xScale, yScales.yTsb, barDurationMs)
 }

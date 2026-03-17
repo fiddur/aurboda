@@ -68,7 +68,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     authMiddleware,
     validateQuery(queryMetricsBucketedQuerySchema),
     async (req, res) => {
-      const { start, end, bucket, metrics: metricsParam, exclude: excludeParam } = req.query
+      const { start, end, bucket, metrics: metricsParam, exclude: excludeParam, tz } = req.query
       const user = req.user!
 
       const settings = await getUserSettings(user)
@@ -95,7 +95,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
         new Date(start),
         new Date(end),
         bucket,
-        { customMetrics, exclude },
+        { customMetrics, exclude, tz },
       )
       res.json({ ...result, success: true })
     },

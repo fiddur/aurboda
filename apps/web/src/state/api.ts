@@ -695,6 +695,9 @@ export const fetchActivityImpact = async (
   return response.data.data!
 }
 
+/** Browser's IANA timezone (e.g. "Europe/Stockholm"), sent to the backend for TZ-aware bucketing. */
+const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
 // Fetch multiple metrics in time buckets (e.g. 1d for daily Oura scores)
 export const fetchBucketedMetrics = async (
   start: Date,
@@ -708,6 +711,7 @@ export const fetchBucketedMetrics = async (
     bucket: bucket as QueryMetricsBucketedQuery['bucket'],
     end: end.toISOString(),
     start: start.toISOString(),
+    tz: browserTz,
     ...(metrics && { metrics: metrics.join(',') }),
     ...(exclude && { exclude: exclude.join(',') }),
   }
@@ -1271,6 +1275,7 @@ export const fetchTrainingLoad = async (
       bucket_size: bucketSize,
       end: end.toISOString(),
       start: start.toISOString(),
+      tz: browserTz,
     },
   })
   return response.data.data!

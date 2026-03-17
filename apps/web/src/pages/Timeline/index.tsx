@@ -711,15 +711,16 @@ export const Timeline = () => {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Unified bucketed metrics: all metrics in one request
-  // Scale bucket size with date range to avoid overwhelming the API on large ranges
-  const metricBucketSize = useMemo(() => {
-    const days = differenceInCalendarDays(fetchEnd, fetchStart)
+  // Unified bucket size for all metrics + training load, derived from the visible view range
+  // (not the fetch range). This ensures zooming in gives finer-grained data.
+  const bucketSize = useMemo(() => {
+    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
+    if (days > 365) return '1w'
     if (days > 90) return '1d'
     if (days > 30) return '1h'
     if (days > 7) return '15m'
     return '5m'
-  }, [fetchStart, fetchEnd])
+  }, [effectiveViewStart, effectiveViewEnd])
 
   const bucketedMetricsQuery = useQuery({
     enabled: !hiddenCategories.has('metrics'),
@@ -729,10 +730,10 @@ export const Timeline = () => {
         subDays(fetchStart, 0.5),
         addDays(fetchEnd, 0.5),
         undefined,
-        metricBucketSize,
+        bucketSize,
         TIMELINE_EXCLUDED_METRICS,
       ),
-    queryKey: ['timeline-bucketed-metrics', fromDate.value, toDate.value, metricBucketSize],
+    queryKey: ['timeline-bucketed-metrics', fromDate.value, toDate.value, bucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -871,13 +872,14 @@ export const Timeline = () => {
 
   // ── Legend / filtering ─────────────────────────────────────────────────────
 
-  // Training load bucket size — scale with date range to avoid huge payloads
-  const trainingLoadBucketSize = useMemo(() => {
-    const days = differenceInCalendarDays(fetchEnd, fetchStart)
-    if (days > 90) return '1w' as const
-    if (days > 14) return '1d' as const
-    return '1h' as const
-  }, [fetchStart, fetchEnd])
+  // Training load uses the same unified bucket size as general metrics.
+  // The training load backend accepts '1h', '1d', '1w' — map the unified size accordingly.
+  const trainingLoadBucketSize = useMemo((): '1h' | '1d' | '1w' => {
+    if (bucketSize === '1w') return '1w'
+    if (bucketSize === '1d') return '1d'
+    // For sub-day metric buckets (5m, 15m, 1h), use hourly training load
+    return '1h'
+  }, [bucketSize])
 
   // Training load data (fetched when toggle is on)
   const trainingLoadQuery = useQuery({

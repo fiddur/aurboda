@@ -74,8 +74,12 @@ Use cases:
         .array(z.string())
         .optional()
         .describe(`Metrics to include (omit for all). Valid built-in metrics: ${validMetrics.join(', ')}`),
+      tz: z
+        .string()
+        .optional()
+        .describe('IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). Defaults to UTC.'),
     },
-    async ({ bucket, end, exclude, metrics, start }) => {
+    async ({ bucket, end, exclude, metrics, start, tz }) => {
       const customMetrics = await getCustomMetrics(user)
 
       // Validate specified metrics if provided
@@ -96,7 +100,7 @@ Use cases:
         new Date(start),
         new Date(end),
         bucket,
-        { customMetrics, exclude },
+        { customMetrics, exclude, tz },
       )
       return jsonResponse(result)
     },

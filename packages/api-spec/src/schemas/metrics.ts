@@ -310,6 +310,15 @@ export const queryMetricsBucketedQuerySchema = timeRangeQuerySchema
       description: 'Comma-separated list of metrics (omit to fetch all metrics with data in the range)',
       example: 'heart_rate,hrv_rmssd',
     }),
+    tz: z
+      .string()
+      .optional()
+      .meta({
+        description:
+          'IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). ' +
+          'Daily+ buckets align to local midnight. Defaults to UTC.',
+        example: 'Europe/Stockholm',
+      }),
   })
   .meta({ id: 'QueryMetricsBucketedQuery' })
 

@@ -24,6 +24,7 @@ import {
   type TrainingLoadSettings,
   type WorkoutTrimp,
 } from '@aurboda/api-spec'
+import { Temporal } from '@js-temporal/polyfill'
 import type { Activity, TimeSeriesPoint } from '../db/types'
 
 type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
@@ -666,15 +667,6 @@ const buildWorkoutList = async (
 // Bucket Aggregation
 // ============================================================================
 
-const MS_PER_DAY = 24 * MS_PER_HOUR
-const MS_PER_WEEK = 7 * MS_PER_DAY
-
-const bucketSizeMs: Record<TrainingLoadBucketSize, number> = {
-  '1d': MS_PER_DAY,
-  '1h': MS_PER_HOUR,
-  '1w': MS_PER_WEEK,
-}
-
 /**
  * Aggregate hourly training load points into larger time buckets.
  *
@@ -684,31 +676,39 @@ const bucketSizeMs: Record<TrainingLoadBucketSize, number> = {
  * - ctl, tsb: value from the last hour in the bucket (most recent EMA state)
  * - time: floored to bucket boundary
  */
+/**
+ * Floor a UTC epoch millisecond to the start of the local day or local Monday
+ * in the given IANA timezone. Uses Temporal for DST-correct bucketing
+ * (spring-forward days = 23h, fall-back days = 25h).
+ */
+export const floorToLocalBucket = (ms: number, bucketSize: '1d' | '1w', tz: string): number => {
+  const instant = Temporal.Instant.fromEpochMilliseconds(ms)
+  const zoned = instant.toZonedDateTimeISO(tz)
+
+  if (bucketSize === '1w') {
+    // Floor to local Monday 00:00
+    const dayOfWeek = zoned.dayOfWeek // 1=Mon, 7=Sun
+    const daysBack = dayOfWeek - 1
+    const monday = zoned.subtract({ days: daysBack }).startOfDay()
+    return monday.epochMilliseconds
+  }
+
+  // Floor to local midnight
+  return zoned.startOfDay().epochMilliseconds
+}
+
 export const aggregateTrainingLoadPoints = (
   points: TrainingLoadPoint[],
   bucketSize: TrainingLoadBucketSize,
+  tz: string = 'UTC',
 ): TrainingLoadPoint[] => {
   if (bucketSize === '1h' || points.length === 0) return points
 
-  const durationMs = bucketSizeMs[bucketSize]
   const buckets = new Map<number, TrainingLoadPoint[]>()
-
-  // Floor timestamp to bucket boundary.
-  // Daily: floor to UTC midnight. Weekly: floor to previous Monday 00:00 UTC.
-  const floorToBucket = (ms: number): number => {
-    if (bucketSize === '1w') {
-      const d = new Date(ms)
-      const day = d.getUTCDay() // 0=Sun, 1=Mon, ..., 6=Sat
-      const daysSinceMonday = (day + 6) % 7 // Mon=0, Tue=1, ..., Sun=6
-      const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - daysSinceMonday))
-      return monday.getTime()
-    }
-    return Math.floor(ms / durationMs) * durationMs
-  }
 
   for (const p of points) {
     const t = new Date(p.time).getTime()
-    const key = floorToBucket(t)
+    const key = floorToLocalBucket(t, bucketSize, tz)
     let arr = buckets.get(key)
     if (!arr) {
       arr = []
@@ -791,6 +791,7 @@ export const computeTrainingLoad = async (
   start: Date,
   end: Date,
   bucketSize: TrainingLoadBucketSize = '1h',
+  tz: string = 'UTC',
 ): Promise<TrainingLoadResult> => {
   // Gather settings and latest resting HR in parallel.
   const [userSettings, latestRestingHr] = await Promise.all([
@@ -877,7 +878,7 @@ export const computeTrainingLoad = async (
   const startIso = floorToHour(start).toISOString()
   const endIso = effectiveEnd.toISOString()
   const hourlyPoints = allPoints.filter((p) => p.time >= startIso && p.time <= endIso)
-  const points = aggregateTrainingLoadPoints(hourlyPoints, bucketSize)
+  const points = aggregateTrainingLoadPoints(hourlyPoints, bucketSize, tz)
 
   // Await the workout list (started earlier, runs in parallel)
   const workoutList = await workoutListPromise

@@ -18,7 +18,7 @@ export const createTrainingLoadRouter = (authMiddleware: RequestHandler): Router
     authMiddleware,
     validateQuery(trainingLoadQuerySchema),
     async (req, res) => {
-      const { start, end, bucket_size } = req.query
+      const { start, end, bucket_size, tz } = req.query
       const user = req.user!
 
       try {
@@ -30,7 +30,7 @@ export const createTrainingLoadRouter = (authMiddleware: RequestHandler): Router
           return
         }
 
-        const result = await computeTrainingLoad(deps, user, startDate, endDate, bucket_size)
+        const result = await computeTrainingLoad(deps, user, startDate, endDate, bucket_size, tz)
         res.json({ data: result, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
