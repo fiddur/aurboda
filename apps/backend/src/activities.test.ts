@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'vitest'
+
 import {
   findMergedGroupForActivity,
   mergeOverlappingActivities,
   type Activity,
   type MergedActivity,
-} from './db'
+} from './db/index.ts'
 
 describe('mergeOverlappingActivities', () => {
   const makeActivity = (overrides: Partial<Activity>): Activity => ({

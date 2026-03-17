@@ -10,8 +10,9 @@ import {
   updateActivityBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { addActivity, deleteActivity, restoreActivity, updateActivity } from '../services/mutations'
-import { errorResponse, jsonResponse, type McpServer } from './helpers'
+
+import { addActivity, deleteActivity, restoreActivity, updateActivity } from '../services/mutations.ts'
+import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerActivityTools = (server: McpServer, user: string) => {
   // Tool: add_activity

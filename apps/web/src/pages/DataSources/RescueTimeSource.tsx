@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useCallback, useState } from 'preact/hooks'
+
 import { ScreentimeCategoriesSettings } from '../../components/ScreentimeCategoriesSettings'
 import {
   fetchProductivity,
@@ -10,7 +11,6 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { DataTypesList, LoginRequired, type SaveStatus, SaveStatusIndicator, StatusBanner } from './shared'
-
 import './style.css'
 
 const DATA_TYPES = ['App usage', 'Website usage', 'Productivity scores', 'Time spent per category']

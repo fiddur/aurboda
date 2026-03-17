@@ -7,6 +7,7 @@
  */
 
 import type { EntityType as ApiEntityType } from '@aurboda/api-spec'
+
 import {
   deleteNote as dbDeleteNote,
   getNotesForEntity as dbGetNotesForEntity,
@@ -17,7 +18,7 @@ import {
   getProductivityById,
   getTagById,
   type EntityType,
-} from '../db'
+} from '../db/index.ts'
 
 export interface AddNoteInput {
   entity_type: EntityType

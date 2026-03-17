@@ -2,6 +2,7 @@ import { signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
+
 import {
   fetchActivityImpact,
   fetchBaseline,
@@ -15,7 +16,6 @@ import {
   type ProductivityCorrelation,
   type TagCorrelation,
 } from '../../state/api'
-
 import './style.css'
 
 // Period signal
@@ -275,9 +275,9 @@ export function Correlations() {
   const activityImpactQuery = useQuery({
     enabled: selectedActivity.value !== null,
     queryFn: () =>
-      selectedActivity.value ?
-        fetchActivityImpact(selectedActivity.value.name, selectedActivity.value.type, 90, 30)
-      : Promise.reject(),
+      selectedActivity.value
+        ? fetchActivityImpact(selectedActivity.value.name, selectedActivity.value.type, 90, 30)
+        : Promise.reject(),
     queryKey: ['activityImpact', selectedActivity.value?.name, selectedActivity.value?.type],
     staleTime: 5 * 60 * 1000,
   })
@@ -468,9 +468,9 @@ export function Correlations() {
                         )}
                         type="productivity"
                         extra={
-                          p.correlation_coefficient !== null ?
-                            `r=${p.correlation_coefficient.toFixed(2)}`
-                          : undefined
+                          p.correlation_coefficient !== null
+                            ? `r=${p.correlation_coefficient.toFixed(2)}`
+                            : undefined
                         }
                       />
                     ))}

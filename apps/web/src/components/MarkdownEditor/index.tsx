@@ -50,7 +50,7 @@ export const MarkdownEditor = ({ value, onChange, placeholder, rows = 4 }: Markd
         </button>
       </div>
 
-      {tab === 'write' ?
+      {tab === 'write' ? (
         <textarea
           class="md-editor-textarea"
           value={value}
@@ -58,7 +58,9 @@ export const MarkdownEditor = ({ value, onChange, placeholder, rows = 4 }: Markd
           placeholder={placeholder ?? 'Write a note (markdown supported)…'}
           rows={rows}
         />
-      : <div class="md-editor-preview" dangerouslySetInnerHTML={{ __html: rendered as string }} />}
+      ) : (
+        <div class="md-editor-preview" dangerouslySetInnerHTML={{ __html: rendered as string }} />
+      )}
     </div>
   )
 }

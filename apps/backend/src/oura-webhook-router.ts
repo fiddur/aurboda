@@ -6,8 +6,10 @@
  */
 
 import { Router } from 'express'
-import type { OuraDataType } from './oura-sync'
-import { ouraWebhookDataTypeMap, type OuraWebhookDataType } from './oura-webhook-api'
+
+import type { OuraDataType } from './oura-sync.ts'
+
+import { ouraWebhookDataTypeMap, type OuraWebhookDataType } from './oura-webhook-api.ts'
 
 const DEBOUNCE_MS = 5000
 

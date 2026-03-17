@@ -12,9 +12,10 @@ import {
   reportsQuerySchema,
   type ReportsResponse,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { addReport, deleteReportById, getReport, queryReports } from '../services/reports'
-import { validateBody, validateQuery } from '../validation'
+import { type RequestHandler, Router } from 'express'
+
+import { addReport, deleteReportById, getReport, queryReports } from '../services/reports.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()

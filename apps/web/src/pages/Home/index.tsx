@@ -1,7 +1,7 @@
 import { useEffect } from 'preact/hooks'
+
 import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
 import { Dashboard } from '../Dashboard'
-
 import './style.css'
 
 function GuestHome({ canSignup }: { canSignup: boolean }) {
@@ -58,18 +58,19 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
         </p>
         <p class="note">
           Currently in early development.{' '}
-          {canSignup ?
+          {canSignup ? (
             <>
               <a href="/signup">Sign up</a> to get started, or self-host your own instance.
             </>
-          : <>
+          ) : (
+            <>
               Signup is not available on this server. You can self-host or contact me through{' '}
               <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
                 reddit
               </a>
               .
             </>
-          }
+          )}
         </p>
       </section>
 

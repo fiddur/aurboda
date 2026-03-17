@@ -2,14 +2,15 @@
  * Restore (undo soft-delete) and additional delete-by-id services.
  */
 
+import type { DeleteActivityResult, DeleteTagResult } from './mutations.ts'
+
 import {
   deleteProductivityRecord as dbDeleteProductivityRecord,
   deleteTagById as dbDeleteTagById,
   restoreActivity as dbRestoreActivity,
   restoreProductivityRecord as dbRestoreProductivityRecord,
   restoreTag as dbRestoreTag,
-} from '../db'
-import type { DeleteActivityResult, DeleteTagResult } from './mutations'
+} from '../db/index.ts'
 
 export interface RestoreResult {
   success: boolean

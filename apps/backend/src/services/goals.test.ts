@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
-import { getGoalsProgress } from './goals'
-import * as settings from './settings'
+
+import * as db from '../db/index.ts'
+import { getGoalsProgress } from './goals.ts'
+import * as settings from './settings.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({

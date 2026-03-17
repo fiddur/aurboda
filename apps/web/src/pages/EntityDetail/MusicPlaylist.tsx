@@ -3,6 +3,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
+
 import { fetchScrobbles } from '../../state/api'
 
 interface MusicPlaylistProps {

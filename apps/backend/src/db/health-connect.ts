@@ -2,6 +2,9 @@
  * Health Connect data processing and daily aggregates.
  */
 import type { DataSource, MetricType } from '@aurboda/api-spec'
+
+import type { Activity, DailyAggregate, MealFoodItem, RawRecord, TimeSeriesPoint } from './types.ts'
+
 import {
   cumulativeMetrics,
   cumulativeSources,
@@ -9,13 +12,12 @@ import {
   healthConnectMetricMapping,
   isValidMetric,
   metricUnits,
-} from '../schema'
-import { insertActivities, insertActivity } from './activities'
-import { query } from './connection'
-import { insertMeal } from './meals'
-import { insertRawRecord, insertRawRecords } from './raw-records'
-import { insertTimeSeries } from './time-series'
-import type { Activity, DailyAggregate, MealFoodItem, RawRecord, TimeSeriesPoint } from './types'
+} from '../schema.ts'
+import { insertActivities, insertActivity } from './activities.ts'
+import { query } from './connection.ts'
+import { insertMeal } from './meals.ts'
+import { insertRawRecord, insertRawRecords } from './raw-records.ts'
+import { insertTimeSeries } from './time-series.ts'
 
 /**
  * Process incoming Health Connect data and normalize into appropriate tables.

@@ -10,7 +10,7 @@ import {
   DEFAULT_RESTING_HR,
   getVo2MaxFallback,
   MAX_HOLD_MINUTES,
-} from './calories'
+} from './calories.ts'
 
 describe('getVo2MaxFallback', () => {
   test('returns age-appropriate fallback for male', () => {

@@ -6,7 +6,9 @@
  */
 
 import type { ActivityType, CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
-import { randomUUID } from 'crypto'
+
+import { randomUUID } from 'node:crypto'
+
 import {
   deleteActivity as dbDeleteActivity,
   deleteTag as dbDeleteTag,
@@ -21,7 +23,7 @@ import {
   insertTimeSeries,
   type TimeSeriesPoint,
   updateTagEndTime,
-} from '../db'
+} from '../db/index.ts'
 import {
   activityTypeToHealthConnectType,
   getMetricUnit,
@@ -30,8 +32,8 @@ import {
   isValidMetric,
   isValidMetricOrCustom,
   metricToHealthConnectType,
-} from '../schema'
-import { syncNoteTimesForEntity } from './notes'
+} from '../schema.ts'
+import { syncNoteTimesForEntity } from './notes.ts'
 
 // ============================================================================
 // Types
@@ -436,7 +438,7 @@ export {
   deleteMetricData,
   getCustomMetrics,
   updateCustomMetric,
-} from './custom-metrics'
+} from './custom-metrics.ts'
 export type {
   CustomMetricResult,
   DeleteCustomMetricResult,
@@ -444,7 +446,7 @@ export type {
   DeleteMetricResult,
   UpdateCustomMetricInput,
   UpdateCustomMetricResult,
-} from './custom-metrics'
+} from './custom-metrics.ts'
 
 /**
  * Delete an activity by its ID.
@@ -524,8 +526,9 @@ export async function updateActivity(
   }
 
   // Merge new data fields into existing data (preserving fields not being updated)
-  const mergedData =
-    input.data ? { ...((existing.data as Record<string, unknown>) ?? {}), ...input.data } : undefined
+  const mergedData = input.data
+    ? { ...((existing.data as Record<string, unknown>) ?? {}), ...input.data }
+    : undefined
 
   const updated = await dbUpdateActivity(user, id, {
     data: mergedData,
@@ -592,9 +595,9 @@ export {
   restoreActivity,
   restoreProductivity,
   restoreTag,
-} from './restore'
-export type { RestoreResult } from './restore'
+} from './restore.ts'
+export type { RestoreResult } from './restore.ts'
 
 // Re-export notes functions for backward compatibility
-export { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from './notes'
-export type { AddNoteInput, NoteResult } from './notes'
+export { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from './notes.ts'
+export type { AddNoteInput, NoteResult } from './notes.ts'

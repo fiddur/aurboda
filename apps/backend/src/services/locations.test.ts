@@ -1,12 +1,13 @@
 import { describe, expect, test } from 'vitest'
+
 import {
   clusterStays,
   detectStays,
-  LocationPoint,
+  type LocationPoint,
   mergeShortUnknownVisits,
-  PlaceVisit,
-  Stay,
-} from './locations'
+  type PlaceVisit,
+  type Stay,
+} from './locations.ts'
 
 describe('detectStays', () => {
   const makePoint = (lat: number, lon: number, minutesOffset: number): LocationPoint => ({

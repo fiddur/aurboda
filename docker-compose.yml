@@ -7,7 +7,7 @@ services:
   aurboda:
     image: fiddur/aurboda:latest
     ports:
-      - "8080:80"
+      - '8080:80'
     environment:
       - PGHOST=postgres
       - PGPORT=5432
@@ -32,7 +32,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aurboda_service"]
+      test: ['CMD-SHELL', 'pg_isready -U aurboda_service']
       interval: 5s
       timeout: 5s
       retries: 5

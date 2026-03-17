@@ -3,9 +3,11 @@
  */
 
 import type { TrendChartConfig } from '@aurboda/api-spec'
+
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
+
 import { fetchTrend, type TrendResult } from '../../state/api'
 
 interface TrendChartWidgetProps {

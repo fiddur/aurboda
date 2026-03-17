@@ -35,10 +35,11 @@ import {
   type UpdateCustomMetricBody,
   updateCustomMetricBodySchema,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { getUserSettings } from '../db'
-import { isValidMetricOrCustom, type MetricType, validMetrics } from '../schema'
-import { computeAndStoreCalories } from '../services/calorie-computation'
+import { type RequestHandler, Router } from 'express'
+
+import { getUserSettings } from '../db/index.ts'
+import { isValidMetricOrCustom, type MetricType, validMetrics } from '../schema.ts'
+import { computeAndStoreCalories } from '../services/calorie-computation.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -48,16 +49,16 @@ import {
   deleteMetricData,
   getCustomMetrics,
   updateCustomMetric,
-} from '../services/mutations'
+} from '../services/mutations.ts'
 import {
   getDailySummary,
   getPeriodSummary,
   queryMetrics,
   queryMetricsBucketed,
   type SyncProvider,
-} from '../services/queries'
-import { getLatestMetric } from '../services/reports'
-import { validateBody, validateQuery } from '../validation'
+} from '../services/queries.ts'
+import { getLatestMetric } from '../services/reports.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider?: SyncProvider): Router => {
   const router = Router()

@@ -1,6 +1,8 @@
 import type { CreateScreentimeCategoryBody, ScreentimeCategory } from '@aurboda/api-spec'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
+
 import {
   createScreentimeCategory,
   deleteScreentimeCategory,
@@ -10,7 +12,6 @@ import {
   recategorizeScreentime,
   updateScreentimeCategory,
 } from '../../state/api'
-
 import './style.css'
 
 // ============================================================================
@@ -228,8 +229,11 @@ function CategoryRow({
           class="note-action-btn danger"
           onClick={() => {
             if (node.children.length > 0) {
-              if (!confirm(`Delete "${cat.name.join(' > ')}" and all its ${node.children.length} children?`))
+              if (
+                !confirm(`Delete "${cat.name.join(' > ')}" and all its ${node.children.length} children?`)
+              ) {
                 return
+              }
             }
             deleteMutation.mutate()
           }}
@@ -326,7 +330,7 @@ function AddCategoryForm({
           <option value="-1">-1 (Distracting)</option>
           <option value="-2">-2 (Very Distracting)</option>
         </select>
-        {color ?
+        {color ? (
           <label class="sc-color-label">
             <input
               type="color"
@@ -338,10 +342,11 @@ function AddCategoryForm({
               x
             </button>
           </label>
-        : <button type="button" class="sc-color-pick-btn" onClick={() => setColor('#888888')}>
+        ) : (
+          <button type="button" class="sc-color-pick-btn" onClick={() => setColor('#888888')}>
             Color
           </button>
-        }
+        )}
       </div>
       {createMutation.isError && <p class="sc-error">{(createMutation.error as Error).message}</p>}
       <button

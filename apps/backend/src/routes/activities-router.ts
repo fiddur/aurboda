@@ -20,8 +20,9 @@ import {
   updateActivityBodySchema,
   type UpdateActivityResponse,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { getActivityById, getOverlappingActivities } from '../db'
+import { type RequestHandler, Router } from 'express'
+
+import { getActivityById, getOverlappingActivities } from '../db/index.ts'
 import {
   addActivity,
   deleteActivity,
@@ -29,9 +30,9 @@ import {
   restoreActivity,
   restoreProductivity,
   updateActivity,
-} from '../services/mutations'
-import { queryActivities, queryProductivity, type SyncProvider } from '../services/queries'
-import { validateBody, validateQuery } from '../validation'
+} from '../services/mutations.ts'
+import { queryActivities, queryProductivity, type SyncProvider } from '../services/queries.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createActivitiesRouter = (
   authMiddleware: RequestHandler,
@@ -204,9 +205,8 @@ export const createActivitiesRouter = (
       const overlapping = await getOverlappingActivities(user, activity)
       const hasMultipleSources = overlapping.length > 1
 
-      const sourceRecords =
-        hasMultipleSources ?
-          overlapping.map((a) => {
+      const sourceRecords = hasMultipleSources
+        ? overlapping.map((a) => {
             const data = a.data as Record<string, unknown> | undefined
             return {
               data_origin: data?.dataOrigin as string | undefined,
@@ -220,13 +220,11 @@ export const createActivitiesRouter = (
           })
         : undefined
 
-      const mergedStartTime =
-        hasMultipleSources ?
-          new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))).toISOString()
+      const mergedStartTime = hasMultipleSources
+        ? new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))).toISOString()
         : undefined
-      const mergedEndTime =
-        hasMultipleSources ?
-          new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))).toISOString()
+      const mergedEndTime = hasMultipleSources
+        ? new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))).toISOString()
         : undefined
 
       // Compute merged fields from all sources (same rules as mergeOverlappingActivities)

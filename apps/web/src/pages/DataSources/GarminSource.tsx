@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
+
 import { connectGarmin, disconnectGarmin, fetchUserSettings, syncGarmin } from '../../state/api'
 import { auth } from '../../state/auth'
 import { DataTypesList, LoginRequired, StatusBanner } from './shared'
-
 import './style.css'
 
 const DATA_TYPES = [
@@ -121,9 +121,10 @@ export function GarminSource() {
 
         <DataTypesList types={DATA_TYPES} />
 
-        {isLoading ?
+        {isLoading ? (
           <div class="loading">Loading...</div>
-        : <>
+        ) : (
+          <>
             <StatusBanner
               connected={isConnected}
               label={isConnected ? 'Garmin Connect is connected' : 'Garmin Connect not connected'}
@@ -143,7 +144,7 @@ export function GarminSource() {
             <section class="settings-section">
               <h2>Connection</h2>
 
-              {isConnected ?
+              {isConnected ? (
                 <div class="garmin-connected-actions">
                   <p class="connected-status">Connected</p>
                   <div class="garmin-button-row">
@@ -166,7 +167,8 @@ export function GarminSource() {
                   </div>
                   {syncMessage && <p class={`garmin-sync-message ${syncStatus}`}>{syncMessage}</p>}
                 </div>
-              : <form class="garmin-login-form" onSubmit={handleLogin}>
+              ) : (
+                <form class="garmin-login-form" onSubmit={handleLogin}>
                   <div class="form-field">
                     <label for="garmin-email">Garmin Connect Email</label>
                     <input
@@ -204,10 +206,10 @@ export function GarminSource() {
                   </p>
                   {loginError && <p class="garmin-login-error">{loginError}</p>}
                 </form>
-              }
+              )}
             </section>
           </>
-        }
+        )}
       </div>
     </div>
   )

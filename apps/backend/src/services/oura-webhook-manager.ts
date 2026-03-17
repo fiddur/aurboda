@@ -9,13 +9,16 @@
  * when enabled.
  */
 
-import { randomBytes } from 'crypto'
 import type { NextFunction, Request, Response } from 'express'
-import type { OuraDataType } from '../oura-sync'
-import { createOuraWebhookApi } from '../oura-webhook-api'
-import { createOuraWebhookRouter, type OuraWebhookRouter } from '../oura-webhook-router'
-import type { CentralDb } from './central-db'
-import { createOuraWebhookService, type OuraWebhookService } from './oura-webhook-service'
+
+import { randomBytes } from 'node:crypto'
+
+import type { OuraDataType } from '../oura-sync.ts'
+import type { CentralDb } from './central-db.ts'
+
+import { createOuraWebhookApi } from '../oura-webhook-api.ts'
+import { createOuraWebhookRouter, type OuraWebhookRouter } from '../oura-webhook-router.ts'
+import { createOuraWebhookService, type OuraWebhookService } from './oura-webhook-service.ts'
 
 export interface OuraWebhookManagerDeps {
   centralDb: Pick<

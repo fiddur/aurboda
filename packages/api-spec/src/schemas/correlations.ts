@@ -3,7 +3,8 @@
  */
 
 import { z } from 'zod'
-import { createDataResponseSchema } from './common.js'
+
+import { createDataResponseSchema } from './common.ts'
 
 // ============================================================================
 // Common schemas

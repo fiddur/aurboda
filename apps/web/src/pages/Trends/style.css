@@ -337,17 +337,17 @@
   transition: all 0.2s;
 }
 
-.form-actions button[type="submit"] {
+.form-actions button[type='submit'] {
   background: #8b5cf6;
   color: #fff;
   border: none;
 }
 
-.form-actions button[type="submit"]:hover:not(:disabled) {
+.form-actions button[type='submit']:hover:not(:disabled) {
   background: #7c3aed;
 }
 
-.form-actions button[type="submit"]:disabled {
+.form-actions button[type='submit']:disabled {
   background: #d1d5db;
   cursor: not-allowed;
 }

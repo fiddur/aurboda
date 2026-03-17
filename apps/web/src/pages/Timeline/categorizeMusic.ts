@@ -1,4 +1,5 @@
 import { format } from 'date-fns'
+
 import type { Scrobble } from '../../state/api'
 import type { ChartItem } from './types'
 

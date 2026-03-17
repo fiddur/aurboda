@@ -2,7 +2,8 @@ import { json } from 'body-parser'
 import express from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { createOwnTracksRouter, OwnTracksDeps, parseBasicAuth } from './owntracks'
+
+import { createOwnTracksRouter, type OwnTracksDeps, parseBasicAuth } from './owntracks.ts'
 
 describe('parseBasicAuth', () => {
   test('parses valid Basic auth header', () => {

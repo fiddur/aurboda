@@ -18,12 +18,13 @@ import {
   type TagsResponse,
   type UniqueTagsResponse,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { getProgrammaticTags, getTagById, getUniqueTags, getUserSettings } from '../db'
-import { addTag, deleteTag, deleteTagById, restoreTag } from '../services/mutations'
-import { queryTags, type SyncProvider } from '../services/queries'
-import { getTagMappings, setTagMapping } from '../services/settings'
-import { validateBody, validateQuery } from '../validation'
+import { type RequestHandler, Router } from 'express'
+
+import { getProgrammaticTags, getTagById, getUniqueTags, getUserSettings } from '../db/index.ts'
+import { addTag, deleteTag, deleteTagById, restoreTag } from '../services/mutations.ts'
+import { queryTags, type SyncProvider } from '../services/queries.ts'
+import { getTagMappings, setTagMapping } from '../services/settings.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: SyncProvider): Router => {
   const router = Router()

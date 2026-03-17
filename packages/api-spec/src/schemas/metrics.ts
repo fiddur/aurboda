@@ -3,13 +3,14 @@
  */
 
 import { z } from 'zod'
+
 import {
   baseResponseSchema,
   customMetricDefinitionSchema,
   iso8601DateTimeSchema,
   metricTypeSchema,
   timeRangeQuerySchema,
-} from './common.js'
+} from './common.ts'
 
 // Shared metric value field
 const metricValueSchema = z.number().meta({ description: 'Metric value' })

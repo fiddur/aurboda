@@ -3,8 +3,9 @@
  */
 import { addTagBodySchema, deleteTagParamsSchema } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { addTag, deleteTag, restoreTag } from '../services/mutations'
-import { errorResponse, jsonResponse, type McpServer, parseOptionalDate } from './helpers'
+
+import { addTag, deleteTag, restoreTag } from '../services/mutations.ts'
+import { errorResponse, jsonResponse, type McpServer, parseOptionalDate } from './helpers.ts'
 
 export const registerTagTools = (server: McpServer, user: string) => {
   // Tool: add_tag

@@ -2,9 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { marked } from 'marked'
 import { useCallback, useState } from 'preact/hooks'
+
+import type { EntityType } from './EntityActions'
+
 import { MarkdownEditor } from '../../components/MarkdownEditor/index.jsx'
 import { addNote, deleteNote, fetchNotes, type NoteData, updateNote } from '../../state/api'
-import type { EntityType } from './EntityActions'
 
 export const NotesSection = ({
   entityType,
@@ -94,7 +96,7 @@ export const NotesSection = ({
         <div class="notes-list">
           {notes.map((note) => (
             <div key={note.id} class="note-item">
-              {editingId === note.id ?
+              {editingId === note.id ? (
                 <form onSubmit={handleUpdate} class="note-edit-form">
                   <MarkdownEditor value={editContent} onChange={setEditContent} rows={3} />
                   <div class="note-edit-actions">
@@ -106,7 +108,8 @@ export const NotesSection = ({
                     </button>
                   </div>
                 </form>
-              : <>
+              ) : (
+                <>
                   <div
                     class="note-content"
                     dangerouslySetInnerHTML={{ __html: marked.parse(note.content) as string }}
@@ -134,7 +137,7 @@ export const NotesSection = ({
                     </div>
                   </div>
                 </>
-              }
+              )}
             </div>
           ))}
         </div>

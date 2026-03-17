@@ -4,6 +4,8 @@
  * Provides REST API endpoints for managing Last.fm auto-tagging rules.
  */
 
+import type { ParamsDictionary } from 'express-serve-static-core'
+
 import {
   addLastFmTagRuleBodySchema,
   updateLastFmTagRuleBodySchema,
@@ -16,8 +18,8 @@ import {
   type UpdateLastFmTagRuleBody,
   type UpdateLastFmTagRuleResponse,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import type { ParamsDictionary } from 'express-serve-static-core'
+import { type RequestHandler, Router } from 'express'
+
 import {
   deleteLastFmTagRule,
   getLastFmTagRules,
@@ -26,9 +28,9 @@ import {
   updateLastFmTagRule,
   type LastFmMatchMode,
   type LastFmMatchType,
-} from './db'
-import { applyRuleRetroactively, cleanupRuleTags, retagAllScrobbles } from './lastfm-sync'
-import { validateBody } from './validation'
+} from './db/index.ts'
+import { applyRuleRetroactively, cleanupRuleTags, retagAllScrobbles } from './lastfm-sync.ts'
+import { validateBody } from './validation.ts'
 
 /**
  * Creates the Last.fm router with tag rules CRUD endpoints.

@@ -1,11 +1,12 @@
 import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } from '@aurboda/api-spec'
+
 import { defaultDashboardConfig } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
+
 import { DashboardEditor } from '../../components/DashboardEditor'
 import { WidgetRenderer } from '../../components/widgets'
 import { fetchDashboard, resetDashboard, saveDashboard } from '../../state/api'
-
 import './style.css'
 
 // Generate unique section ID
@@ -31,9 +32,7 @@ function DashboardSectionComponent({
 
   // Determine grid class based on section type
   const gridClass =
-    section.type === 'links' ? 'links-grid'
-    : section.type === 'charts' ? 'charts-grid'
-    : 'metrics-grid'
+    section.type === 'links' ? 'links-grid' : section.type === 'charts' ? 'charts-grid' : 'metrics-grid'
 
   return (
     <section class="metrics-section">
@@ -251,9 +250,9 @@ export function Dashboard() {
     const newDashboard: DashboardConfig = {
       ...dashboard,
       sections: dashboard.sections.map((section) =>
-        section.id === sectionId ?
-          { ...section, widgets: section.widgets.filter((w) => w.id !== widgetId) }
-        : section,
+        section.id === sectionId
+          ? { ...section, widgets: section.widgets.filter((w) => w.id !== widgetId) }
+          : section,
       ),
     }
     saveMutation.mutate(newDashboard)
@@ -312,9 +311,9 @@ export function Dashboard() {
 
     const widgetCount = section.widgets.length
     const message =
-      widgetCount > 0 ?
-        `Delete section "${section.title}" and its ${widgetCount} widget${widgetCount > 1 ? 's' : ''}?`
-      : `Delete section "${section.title}"?`
+      widgetCount > 0
+        ? `Delete section "${section.title}" and its ${widgetCount} widget${widgetCount > 1 ? 's' : ''}?`
+        : `Delete section "${section.title}"?`
 
     if (confirm(message)) {
       const newDashboard: DashboardConfig = {
@@ -337,7 +336,7 @@ export function Dashboard() {
       <div class="dashboard-header">
         <h1>Dashboard</h1>
         <div class="dashboard-actions">
-          {isEditing ?
+          {isEditing ? (
             <>
               <button class="btn-secondary" onClick={handleReset}>
                 Reset to Default
@@ -346,7 +345,8 @@ export function Dashboard() {
                 Done Editing
               </button>
             </>
-          : <button class="btn-edit" onClick={() => setIsEditing(true)} title="Edit Dashboard">
+          ) : (
+            <button class="btn-edit" onClick={() => setIsEditing(true)} title="Edit Dashboard">
               <svg
                 width="20"
                 height="20"
@@ -359,7 +359,7 @@ export function Dashboard() {
                 <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
               </svg>
             </button>
-          }
+          )}
         </div>
       </div>
 
@@ -381,9 +381,10 @@ export function Dashboard() {
 
         {/* Add Section button/form in edit mode */}
         {isEditing &&
-          (showAddSection ?
+          (showAddSection ? (
             <AddSectionForm onAdd={handleAddSection} onCancel={() => setShowAddSection(false)} />
-          : <div class="add-section-placeholder">
+          ) : (
+            <div class="add-section-placeholder">
               <button class="add-section-btn" onClick={() => setShowAddSection(true)}>
                 <svg
                   width="20"
@@ -397,7 +398,8 @@ export function Dashboard() {
                 </svg>
                 Add Section
               </button>
-            </div>)}
+            </div>
+          ))}
       </div>
 
       {/* Widget picker modal */}

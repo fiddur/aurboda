@@ -3,6 +3,7 @@
  */
 
 import type { DashboardWidget } from '@aurboda/api-spec'
+
 import { ActivitySummaryWidget } from './ActivitySummaryWidget'
 import { CorrelationWidget } from './CorrelationWidget'
 import { MetricCardWidget } from './MetricCardWidget'

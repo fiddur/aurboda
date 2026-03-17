@@ -39,7 +39,7 @@
   border-color: #3b82f6;
 }
 
-.date-nav input[type="date"] {
+.date-nav input[type='date'] {
   padding: 0.375rem 0.5rem;
   border: 1px solid #d1d5db;
   border-radius: 4px;
@@ -263,7 +263,8 @@
 }
 
 /* Loading and error states */
-.loading, .error {
+.loading,
+.error {
   text-align: center;
   padding: 2rem;
   color: #6b7280;
@@ -289,7 +290,7 @@
     background: #4b5563;
   }
 
-  .date-nav input[type="date"] {
+  .date-nav input[type='date'] {
     background: #374151;
     border-color: #4b5563;
     color: #e5e7eb;

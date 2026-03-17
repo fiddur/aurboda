@@ -1,5 +1,7 @@
-import * as d3 from 'd3'
+import type * as d3 from 'd3'
+
 import { format } from 'date-fns'
+
 import type { Scrobble } from '../../state/api'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -377,7 +379,7 @@ export const drawMusicSessions = (
 // ── Tooltip builder ───────────────────────────────────────────────────────────
 
 const escapeHtml = (text: string): string =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
 
 /** Build tooltip HTML for a music session. */
 export const buildMusicTooltipHtml = (session: MusicSession): string => {

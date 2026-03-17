@@ -11,8 +11,9 @@ import {
   updateSettingsInputSchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
-import { getOAuthToken, getUserSettings, updateTagNameByKey, upsertUserSettings } from '../db'
-import { getCentralDb } from './central-db'
+
+import { getOAuthToken, getUserSettings, updateTagNameByKey, upsertUserSettings } from '../db/index.ts'
+import { getCentralDb } from './central-db.ts'
 
 // Re-export types from api-spec for use by other modules
 export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
@@ -21,7 +22,7 @@ export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
 // Types
 // ============================================================================
 
-import type { UserSettings } from '../db/types'
+import type { UserSettings } from '../db/types.ts'
 export type { UserSettings }
 
 // Use UserSettingsResponse from api-spec but allow error field for validation failures

@@ -6,9 +6,11 @@
  * of showing as duplicates.
  */
 import { format } from 'date-fns'
+
 import type { Activity, Tag } from '../../state/api'
-import { resolveItemIcon } from '../../utils/emojiLookup'
 import type { ChartItem } from './types'
+
+import { resolveItemIcon } from '../../utils/emojiLookup'
 
 /** Maps a tag name to the activity_type values it should merge with. */
 export const TAG_ACTIVITY_MERGE_MAP: Record<string, string[]> = {
@@ -194,9 +196,9 @@ const buildActivityDetails = (
   scrobbles: { artist: string; recorded_at: Date; track: string }[],
 ): string[] => {
   const details: string[] =
-    a.activity_type === 'sleep' ?
-      buildSleepDetails(a, end)
-    : [formatDuration(a.start_time, end), ...(a.avg_hrv ? [`Avg HRV: ${a.avg_hrv} ms`] : [])]
+    a.activity_type === 'sleep'
+      ? buildSleepDetails(a, end)
+      : [formatDuration(a.start_time, end), ...(a.avg_hrv ? [`Avg HRV: ${a.avg_hrv} ms`] : [])]
 
   if (a.notes) details.push(a.notes)
 

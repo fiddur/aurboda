@@ -1,9 +1,10 @@
+import type { Tag } from './types.ts'
+
 /**
  * Tag CRUD operations and programmatic tag detection.
  */
-import { query } from './connection'
-import { mapTagRow } from './row-mappers'
-import type { Tag } from './types'
+import { query } from './connection.ts'
+import { mapTagRow } from './row-mappers.ts'
 
 export const insertTag = async (user: string, tag: Tag) => {
   await query(

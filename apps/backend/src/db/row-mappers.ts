@@ -1,10 +1,12 @@
+import type { QueryResultRow } from 'pg'
+
 /**
  * Row mapper functions for converting PostgreSQL rows to typed objects.
  *
  * Replaces inline `as Type` casts with validated type guards.
  */
 import { activityTypes, type ActivityType, type DataSource, type MetricType } from '@aurboda/api-spec'
-import type { QueryResultRow } from 'pg'
+
 import type {
   Activity,
   DetectedLocation,
@@ -23,7 +25,7 @@ import type {
   SyncState,
   SyncStatus,
   Tag,
-} from './types'
+} from './types.ts'
 
 // ============================================================================
 // Type Guards

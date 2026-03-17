@@ -2,11 +2,13 @@
  * Activity CRUD operations and merge logic.
  */
 import format from 'pg-format'
-import type { ActivityType } from '../schema'
-import { query } from './connection'
-import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update'
-import { mapActivityRow } from './row-mappers'
-import type { Activity, ActivityUpdate, MergedActivity } from './types'
+
+import type { ActivityType } from '../schema.ts'
+import type { Activity, ActivityUpdate, MergedActivity } from './types.ts'
+
+import { query } from './connection.ts'
+import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update.ts'
+import { mapActivityRow } from './row-mappers.ts'
 
 /**
  * Merge overlapping activities of the same type.

@@ -2,6 +2,7 @@
  * Productivity record detail view.
  */
 import type { ProductivityRecord } from '../../state/api'
+
 import { formatDuration, formatTime } from './format-utils'
 
 const productivityScoreLabel = (score: number | undefined | null): string => {

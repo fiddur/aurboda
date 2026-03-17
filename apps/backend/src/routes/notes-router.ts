@@ -14,9 +14,10 @@ import {
   type UpdateNoteBody,
   updateNoteBodySchema,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from '../services/mutations'
-import { validateBody, validateQuery } from '../validation'
+import { type RequestHandler, Router } from 'express'
+
+import { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from '../services/mutations.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()

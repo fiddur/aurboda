@@ -3,6 +3,7 @@
 ## Summary
 
 Add OpenAPI specifications with request/response schemas that generate:
+
 - **TypeScript types** for backend and web frontend
 - **Kotlin data classes** for Android app
 
@@ -16,11 +17,11 @@ Add OpenAPI specifications with request/response schemas that generate:
 
 ### Tooling
 
-| Purpose | Tool |
-|---------|------|
-| Zod → OpenAPI | `@asteasolutions/zod-to-openapi` |
-| OpenAPI → TypeScript | `@hey-api/openapi-ts` |
-| OpenAPI → Kotlin | `openapi-generator-cli` with `kotlinx_serialization` |
+| Purpose              | Tool                                                 |
+| -------------------- | ---------------------------------------------------- |
+| Zod → OpenAPI        | `@asteasolutions/zod-to-openapi`                     |
+| OpenAPI → TypeScript | `@hey-api/openapi-ts`                                |
+| OpenAPI → Kotlin     | `openapi-generator-cli` with `kotlinx_serialization` |
 
 ## Package Structure
 
@@ -51,47 +52,54 @@ nephelai/
 ## Implementation Phases
 
 ### Phase 1: Package Setup
+
 - Create `packages/api-spec` with dependencies
 - Update `pnpm-workspace.yaml` to include `packages/*`
 - Configure OpenAPI Generator for Kotlin
 
 ### Phase 2: Schema Extraction
+
 - Extract `validMetrics`, `MetricType`, `ActivityType` from `apps/backend/src/schema.ts`
 - Move Zod schemas from `apps/backend/src/services/settings.ts`
 - Convert response interfaces from `apps/backend/src/services/queries.ts` to Zod
 
 ### Phase 3: OpenAPI Generation
+
 - Write `openapi.ts` to register schemas and API paths
 - Generate `openapi.yaml`
 - Validate spec
 
 ### Phase 4: TypeScript Client
+
 - Generate TypeScript types with `@hey-api/openapi-ts`
 - Update `apps/web/src/state/api.ts` to use generated types
 - Remove duplicated interfaces
 
 ### Phase 5: Kotlin Models
+
 - Generate Kotlin data classes with `kotlinx_serialization`
 - Update Android app to use generated types
 - Replace manual data classes in `HealthDataModels.kt`
 
 ### Phase 6: Backend Integration
+
 - Use shared schemas for request validation in `api.ts`
 - Use shared schemas in `mcp.ts` for tool parameters
 
 ### Phase 7: CI/CD
+
 - Add `pnpm generate:api` to CI pipeline
 
 ## Key Files to Modify
 
-| File | Changes |
-|------|---------|
-| `pnpm-workspace.yaml` | Add `packages/*` |
-| `apps/backend/src/schema.ts` | Extract types to shared package |
-| `apps/backend/src/services/settings.ts` | Move Zod schemas to shared |
-| `apps/backend/src/services/queries.ts` | Convert interfaces to Zod |
-| `apps/web/src/state/api.ts` | Replace interfaces with imports |
-| `apps/android/.../HealthDataModels.kt` | Replace with generated |
+| File                                    | Changes                         |
+| --------------------------------------- | ------------------------------- |
+| `pnpm-workspace.yaml`                   | Add `packages/*`                |
+| `apps/backend/src/schema.ts`            | Extract types to shared package |
+| `apps/backend/src/services/settings.ts` | Move Zod schemas to shared      |
+| `apps/backend/src/services/queries.ts`  | Convert interfaces to Zod       |
+| `apps/web/src/state/api.ts`             | Replace interfaces with imports |
+| `apps/android/.../HealthDataModels.kt`  | Replace with generated          |
 
 ## Dependencies to Add
 

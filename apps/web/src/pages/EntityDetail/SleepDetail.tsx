@@ -3,7 +3,10 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { Activity, fetchBucketedMetrics } from '../../state/api'
+
+import type { Activity } from '../../state/api'
+
+import { fetchBucketedMetrics } from '../../state/api'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import {

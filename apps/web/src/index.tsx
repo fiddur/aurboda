@@ -2,6 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { render } from 'preact'
 import { LocationProvider, Route, Router } from 'preact-iso'
+
 import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
 import { NotFound } from './pages/_404.jsx'

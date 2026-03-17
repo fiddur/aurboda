@@ -18,6 +18,7 @@
 
 import { addSeconds } from 'date-fns'
 import { Client } from 'pg'
+
 import {
   initializeSchema,
   insertActivity,
@@ -26,10 +27,15 @@ import {
   insertRawRecord,
   insertTag,
   insertTimeSeries,
-  TimeSeriesPoint,
+  type TimeSeriesPoint,
   upsertOAuthToken,
-} from './db'
-import { DataSource, healthConnectActivityMapping, healthConnectMetricMapping, MetricType } from './schema'
+} from './db/index.ts'
+import {
+  type DataSource,
+  healthConnectActivityMapping,
+  healthConnectMetricMapping,
+  type MetricType,
+} from './schema.ts'
 
 const userDbName = (user: string) => `aurboda_${user}`
 

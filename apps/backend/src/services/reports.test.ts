@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
-import { addReport, deleteReportById, getLatestMetric, getReport, queryReports } from './reports'
+
+import * as db from '../db/index.ts'
+import { addReport, deleteReportById, getLatestMetric, getReport, queryReports } from './reports.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({

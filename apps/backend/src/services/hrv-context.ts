@@ -11,8 +11,15 @@
  * - hrv_awake: Everything else (resting but awake)
  */
 
-import { Activity, getActivities, getSleepSessions, getTimeSeries, TimeSeriesPoint } from '../db'
-import { MetricType } from '../schema'
+import type { MetricType } from '../schema.ts'
+
+import {
+  type Activity,
+  getActivities,
+  getSleepSessions,
+  getTimeSeries,
+  type TimeSeriesPoint,
+} from '../db/index.ts'
 
 export type HrvContext = 'sleep' | 'activity' | 'awake'
 

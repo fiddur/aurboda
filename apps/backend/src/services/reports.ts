@@ -6,6 +6,7 @@
  */
 
 import type { Confidence, ReportFlag } from '@aurboda/api-spec'
+
 import {
   deleteReport as dbDeleteReport,
   getLatestMetricValue as dbGetLatestMetricValue,
@@ -17,7 +18,7 @@ import {
   query,
   type Report,
   type ReportEntry,
-} from '../db'
+} from '../db/index.ts'
 
 // ============================================================================
 // Types

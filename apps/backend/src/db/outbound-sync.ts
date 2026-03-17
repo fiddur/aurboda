@@ -4,7 +4,7 @@
  * Manages the queue of changes that need to be pushed to Health Connect
  * from the Android app.
  */
-import { query } from './connection'
+import { query } from './connection.ts'
 
 // ============================================================================
 // Types

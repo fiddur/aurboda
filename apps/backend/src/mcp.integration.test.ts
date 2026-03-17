@@ -7,9 +7,10 @@
 import express from 'express'
 import request from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { createAuth } from './auth'
-import { createMcpRouter } from './mcp'
-import { cleanTestDb, startTestDb, stopTestDb } from './test/db-test-helper'
+
+import { createAuth } from './auth.ts'
+import { createMcpRouter } from './mcp.ts'
+import { cleanTestDb, startTestDb, stopTestDb } from './test/db-test-helper.ts'
 
 // Increase timeout for container startup
 const CONTAINER_TIMEOUT = 60_000

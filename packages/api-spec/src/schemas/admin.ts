@@ -3,7 +3,8 @@
  */
 
 import { z } from 'zod'
-import { baseResponseSchema, iso8601DateTimeSchema } from './common.js'
+
+import { baseResponseSchema, iso8601DateTimeSchema } from './common.ts'
 
 // ============================================================================
 // Signup Mode

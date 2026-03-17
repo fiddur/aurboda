@@ -2,17 +2,19 @@
  * Time series data CRUD, bucketed aggregation, and statistics.
  */
 import format from 'pg-format'
+
+import type { BucketedMetricData, DailyMetricAggregate, MetricStats, TimeSeriesPoint } from './types.ts'
+
 import {
   aurbodaOnlyMetrics,
   cumulativeMetrics,
   cumulativeSources,
   type MetricType,
   metricUnits,
-} from '../schema'
-import { query } from './connection'
-import { querySplitByCumulative } from './cumulative-query'
-import { parseMetricType } from './row-mappers'
-import type { BucketedMetricData, DailyMetricAggregate, MetricStats, TimeSeriesPoint } from './types'
+} from '../schema.ts'
+import { query } from './connection.ts'
+import { querySplitByCumulative } from './cumulative-query.ts'
+import { parseMetricType } from './row-mappers.ts'
 
 /** Get the source filter for a single metric: aurboda-only, cumulative sources, or all sources (null). */
 const getSourceFilter = (metric: string): string[] | null => {
@@ -61,12 +63,12 @@ export const getTimeSeries = async (
 
   const result = await query(
     user,
-    sources ?
-      `SELECT time, value FROM time_series
+    sources
+      ? `SELECT time, value FROM time_series
        WHERE metric = $1 AND time >= $2 AND time <= $3
          AND source = ANY($4)
        ORDER BY time`
-    : `SELECT time, value FROM time_series
+      : `SELECT time, value FROM time_series
        WHERE metric = $1 AND time >= $2 AND time <= $3
        ORDER BY time`,
     sources ? [metric, start, end, sources] : [metric, start, end],
@@ -86,12 +88,12 @@ export const getTimeSeriesWithSource = async (
 
   const result = await query(
     user,
-    sources ?
-      `SELECT time, value, source FROM time_series
+    sources
+      ? `SELECT time, value, source FROM time_series
        WHERE metric = $1 AND time >= $2 AND time <= $3
          AND source = ANY($4)
        ORDER BY time`
-    : `SELECT time, value, source FROM time_series
+      : `SELECT time, value, source FROM time_series
        WHERE metric = $1 AND time >= $2 AND time <= $3
        ORDER BY time`,
     sources ? [metric, start, end, sources] : [metric, start, end],

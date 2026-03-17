@@ -22,7 +22,8 @@ vi.mock('@flow-js/garmin-connect', () => ({
 }))
 
 import { GarminConnect } from '@flow-js/garmin-connect'
-import { garminClient, type GarminClientDeps } from './garmin'
+
+import { garminClient, type GarminClientDeps } from './garmin.ts'
 
 const testUser = 'test-user'
 const storedTokens = { oauth1: 'stored-token1', oauth2: 'stored-token2' }

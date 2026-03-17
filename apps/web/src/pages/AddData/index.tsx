@@ -3,9 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
+
 import { MetricPicker } from '../../components/MetricPicker'
 import { addActivity, addMetric, addNote, addTag, fetchUniqueTags, type ActivityType } from '../../state/api'
-
 import './style.css'
 
 type Tab = 'activity' | 'tag' | 'metric'
@@ -97,7 +97,7 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
           >
             {exerciseTypeNames.map((name) => (
               <option key={name} value={name}>
-                {name.replace(/_/g, ' ')}
+                {name.replaceAll('_', ' ')}
               </option>
             ))}
           </select>

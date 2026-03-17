@@ -1,20 +1,20 @@
 import 'leaflet/dist/leaflet.css'
 import './style.css'
-
 import { signal } from '@preact/signals'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import L from 'leaflet'
 import { useLocation } from 'preact-iso'
 import { useEffect, useRef, useState } from 'preact/hooks'
+
+import type { PlaceVisit, StoredDetectedLocation } from '../../state/api'
+
 import {
   addNamedLocation,
   fetchNamedLocations,
   fetchPlaceVisits,
   fetchStoredDetectedLocations,
-  PlaceVisit,
   promoteDetectedLocation,
-  StoredDetectedLocation,
 } from '../../state/api'
 
 // Fix Leaflet default marker icon path issue with bundlers

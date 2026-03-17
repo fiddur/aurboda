@@ -1,9 +1,10 @@
+import type { LastFmTagRule, LastFmTagRuleInput } from './types.ts'
+
 /**
  * Last.fm auto-tagging rules CRUD.
  */
-import { query } from './connection'
-import { mapLastFmTagRuleRow } from './row-mappers'
-import type { LastFmTagRule, LastFmTagRuleInput } from './types'
+import { query } from './connection.ts'
+import { mapLastFmTagRuleRow } from './row-mappers.ts'
 
 const LASTFM_RULE_COLUMNS = `id, rule_name, match_type, track_name, artist_name, match_mode, tag_name,
      merge_gap_seconds, artist_names, created_at`

@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
-import { deleteReport, getLatestMetricValue, getReportById, getReports, insertReport } from './reports'
-import { insertTimeSeries } from './time-series'
+
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { deleteReport, getLatestMetricValue, getReportById, getReports, insertReport } from './reports.ts'
+import { insertTimeSeries } from './time-series.ts'
 
 const CONTAINER_TIMEOUT = 60_000
 

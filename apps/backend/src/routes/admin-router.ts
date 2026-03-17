@@ -11,11 +11,13 @@ import {
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import type { CentralDb } from '../services/central-db'
-import type { InvitationAuth } from '../services/invitation'
-import type { OuraWebhookManager } from '../services/oura-webhook-manager'
-import { validateBody } from '../validation'
+import { type RequestHandler, Router } from 'express'
+
+import type { CentralDb } from '../services/central-db.ts'
+import type { InvitationAuth } from '../services/invitation.ts'
+import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+
+import { validateBody } from '../validation.ts'
 
 export const createAdminRouter = (
   authMiddleware: RequestHandler,

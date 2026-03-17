@@ -1,8 +1,9 @@
+import type { ScreentimeCategory, ScreentimeCategoryInput } from './types.ts'
+
 /**
  * Screentime category storage and retrieval.
  */
-import { query } from './connection'
-import type { ScreentimeCategory, ScreentimeCategoryInput } from './types'
+import { query } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): ScreentimeCategory => ({
   color: (row.color as string) || undefined,

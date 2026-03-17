@@ -3,6 +3,7 @@
 ## Overview
 
 Add support for standard Bluetooth Low Energy (BLE) health sensors to the Aurboda Android app:
+
 - **Heart Rate Monitors** (e.g., Polar H10) using the standard Heart Rate Profile (HRP)
 - **Step/Cadence Sensors** (e.g., Zwift Runpod) using the Running Speed and Cadence (RSC) profile
 
@@ -11,12 +12,14 @@ Data will flow both to Health Connect (for ecosystem compatibility) and directly
 ## BLE Protocol Details
 
 ### Heart Rate Profile (HRP)
+
 - **Service UUID:** `0x180D` (Heart Rate)
 - **Characteristic UUID:** `0x2A37` (Heart Rate Measurement)
 - Notifications provide HR in BPM, plus optional RR-intervals
 - Sample rate: typically 1Hz from sensor, we'll send every 5 seconds
 
 ### Running Speed and Cadence (RSC)
+
 - **Service UUID:** `0x1814` (Running Speed and Cadence)
 - **Characteristic UUID:** `0x2A53` (RSC Measurement)
 - Provides: instantaneous speed, instantaneous cadence, stride length, total distance
@@ -29,6 +32,7 @@ Data will flow both to Health Connect (for ecosystem compatibility) and directly
 ### Phase 1: Core BLE Infrastructure
 
 #### 1.1 Add BLE Permissions to Manifest
+
 ```xml
 <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
@@ -38,13 +42,17 @@ Data will flow both to Health Connect (for ecosystem compatibility) and directly
 ```
 
 #### 1.2 Create BLE Scanner Module
+
 **File:** `BleScanner.kt`
+
 - Scan for devices advertising HRP (0x180D) or RSC (0x1814) services
 - Return discovered devices with name, address, signal strength, and service type
 - Handle scan timeout and permissions
 
 #### 1.3 Create BLE Connection Manager
+
 **File:** `BleConnectionManager.kt`
+
 - Connect to a device by address
 - Discover services and characteristics
 - Subscribe to notifications (HR measurement, RSC measurement)
@@ -52,7 +60,9 @@ Data will flow both to Health Connect (for ecosystem compatibility) and directly
 - Parse characteristic data into domain objects
 
 #### 1.4 Create Data Models
+
 **File:** `BleSensorData.kt`
+
 ```kotlin
 data class HeartRateSample(
     val timestamp: Instant,
@@ -78,7 +88,9 @@ data class ConnectedDevice(
 ### Phase 2: Foreground Service
 
 #### 2.1 Create Sensor Foreground Service
+
 **File:** `SensorService.kt`
+
 - Foreground service with persistent notification
 - Manages BLE connections to HR and/or RSC devices
 - Buffers incoming data
@@ -87,11 +99,13 @@ data class ConnectedDevice(
 - Exposes state via StateFlow for UI observation
 
 #### 2.2 Service Notification
+
 - Show "Aurboda - Sensors Active" notification
 - Display current HR if connected
 - Action buttons: Stop, Open App
 
 #### 2.3 Service Lifecycle
+
 - Start when user connects to first device from Live screen
 - Stop when user explicitly stops or disconnects all devices
 - Survive app backgrounding
@@ -102,11 +116,14 @@ data class ConnectedDevice(
 ### Phase 3: Backend Integration
 
 #### 3.1 Extend Sync API
+
 **File:** `SyncApi.kt` (new or extend existing)
+
 - `POST /sync/heart-rate` - batch of HR samples
 - `POST /sync/steps` - step count update with timestamp range
 
 #### 3.2 Data Batching Logic
+
 - HR: Collect samples, send batch every 5 seconds
 - Steps: Accumulate from cadence, send delta every 30 seconds
 - Handle offline: queue and retry when connectivity returns
@@ -116,12 +133,16 @@ data class ConnectedDevice(
 ### Phase 4: Health Connect Integration
 
 #### 4.1 Add Health Connect Write Permissions
+
 Update manifest and permission requests:
+
 - `WRITE_HEART_RATE`
 - `WRITE_STEPS`
 
 #### 4.2 Health Connect Writer
+
 **File:** `HealthConnectWriter.kt`
+
 - Write HeartRateRecord with time series samples
 - Write StepsRecord with accumulated counts
 - Batch writes to avoid excessive API calls
@@ -131,7 +152,9 @@ Update manifest and permission requests:
 ### Phase 5: UI - Live Screen
 
 #### 5.1 Create Live Screen
+
 **File:** `LiveScreen.kt`
+
 - New tab in bottom navigation (4th tab: "Live")
 - Shows BLE scan results when no devices connected
 - Shows connected device status and live readings
@@ -139,6 +162,7 @@ Update manifest and permission requests:
 #### 5.2 UI Components
 
 **Device Scanner Section:**
+
 - "Scan for Devices" button
 - List of discovered devices with:
   - Device name (or "Unknown Device")
@@ -147,6 +171,7 @@ Update manifest and permission requests:
   - "Connect" button
 
 **Connected Devices Section:**
+
 - Heart Rate Card:
   - Device name
   - Current BPM (large font)
@@ -161,11 +186,14 @@ Update manifest and permission requests:
   - Disconnect button
 
 **Service Controls:**
+
 - Start/Stop service toggle
 - Service status indicator
 
 #### 5.3 State Management
+
 **File:** `LiveScreenState.kt`
+
 - Scanning state (idle, scanning, error)
 - Discovered devices list
 - Connected devices with live readings
@@ -176,10 +204,12 @@ Update manifest and permission requests:
 ### Phase 6: Navigation & Integration
 
 #### 6.1 Update Bottom Navigation
+
 - Add 4th tab: "Live" with appropriate icon (e.g., radio/bluetooth icon)
 - Update `MainScreen.kt` navigation
 
 #### 6.2 Update AppState
+
 - Add Live screen to navigation enum
 - Handle service state observation
 
@@ -222,16 +252,19 @@ app/src/main/java/net/aurboda/
 ## Testing Strategy
 
 ### Unit Tests
+
 - `HeartRateParser` - parse HR characteristic bytes
 - `RscParser` - parse RSC characteristic bytes
 - Data batching logic
 - Step accumulation from cadence
 
 ### Integration Tests
+
 - Mock BLE GATT for connection flow
 - Health Connect write operations
 
 ### Manual Testing
+
 - Real device testing with Polar H10 and Zwift Runpod
 - Background service persistence
 - Reconnection behavior
@@ -263,6 +296,7 @@ app/src/main/java/net/aurboda/
 ## Estimated Scope
 
 This is a significant feature addition involving:
+
 - New BLE infrastructure (scanner, connection manager, parsers)
 - Foreground service with notification
 - New API endpoints and sync logic

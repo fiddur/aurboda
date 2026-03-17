@@ -1,8 +1,9 @@
+import type { OAuthToken } from './types.ts'
+
 /**
  * OAuth token storage and retrieval.
  */
-import { query } from './connection'
-import type { OAuthToken } from './types'
+import { query } from './connection.ts'
 
 export const upsertOAuthToken = async (user: string, token: OAuthToken) => {
   await query(

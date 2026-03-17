@@ -3,9 +3,11 @@
  */
 
 import type { CorrelationConfig } from '@aurboda/api-spec'
+
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
+
 import { fetchActivityImpact, type ActivityImpactData } from '../../state/api'
 
 interface CorrelationWidgetProps {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { formatValue } from './sql'
+
+import { formatValue } from './sql.ts'
 
 describe('formatValue', () => {
   describe('arrays', () => {

@@ -5,8 +5,9 @@
  */
 import { addReportBodySchema, reportsQuerySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { addReport, deleteReportById, getLatestMetric, getReport, queryReports } from '../services/reports'
-import { errorResponse, jsonResponse, type McpServer } from './helpers'
+
+import { addReport, deleteReportById, getLatestMetric, getReport, queryReports } from '../services/reports.ts'
+import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerReportTools = (server: McpServer, user: string) => {
   // Tool: add_report

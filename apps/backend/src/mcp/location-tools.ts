@@ -8,15 +8,16 @@ import {
   updateNamedLocationBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { getDetectedLocations as getStoredDetectedLocations } from '../db'
+
+import { getDetectedLocations as getStoredDetectedLocations } from '../db/index.ts'
 import {
   deleteNamedLocation,
   getDetectedLocations,
   getNamedLocations,
   insertNamedLocation,
   updateNamedLocation,
-} from '../services/locations'
-import { errorResponse, jsonResponse, type McpServer } from './helpers'
+} from '../services/locations.ts'
+import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerLocationTools = (server: McpServer, user: string) => {
   // Tool: get_named_locations

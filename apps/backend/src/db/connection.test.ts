@@ -1,6 +1,8 @@
 import type { Client, QueryResult, QueryResultRow } from 'pg'
+
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { _isSchemaError, _runMigrationOnce, _setClientForUser, query } from './connection'
+
+import { _isSchemaError, _runMigrationOnce, _setClientForUser, query } from './connection.ts'
 
 describe('isSchemaError', () => {
   test('returns true for undefined_table (42P01)', () => {

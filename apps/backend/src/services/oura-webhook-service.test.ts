@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+
 import {
   createOuraWebhookService,
   DESIRED_SUBSCRIPTIONS_COUNT,
   type OuraWebhookServiceDeps,
-} from './oura-webhook-service'
+} from './oura-webhook-service.ts'
 
 describe('oura-webhook-service', () => {
   const createDeps = (): OuraWebhookServiceDeps => ({

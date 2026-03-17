@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+
 import {
   baseResponseSchema,
   createDataArrayResponseSchema,
@@ -10,8 +11,8 @@ import {
   iso8601DateTimeSchema,
   tagTextSchema,
   timeRangeQuerySchema,
-} from './common.js'
-import { commentSchema } from './notes.js'
+} from './common.ts'
+import { commentSchema } from './notes.ts'
 
 /**
  * Tag schema.

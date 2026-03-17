@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+
 import {
   activityTypeSchema,
   baseResponseSchema,
@@ -10,9 +11,9 @@ import {
   durationMinutesSchema,
   iso8601DateTimeSchema,
   timeRangeQuerySchema,
-} from './common.js'
-import { commentSchema } from './notes.js'
-import { hrZoneSecsSchema } from './settings.js'
+} from './common.ts'
+import { commentSchema } from './notes.ts'
+import { hrZoneSecsSchema } from './settings.ts'
 
 /**
  * Health Connect exercise types mapping.

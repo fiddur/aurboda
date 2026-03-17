@@ -3,7 +3,8 @@
  */
 
 import { z } from 'zod'
-import { baseResponseSchema } from './common.js'
+
+import { baseResponseSchema } from './common.ts'
 
 // =============================================================================
 // Widget Configuration Schemas

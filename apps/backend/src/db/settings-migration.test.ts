@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { migrateSettingsToSnakeCase } from './settings'
+
+import { migrateSettingsToSnakeCase } from './settings.ts'
 
 describe('migrateSettingsToSnakeCase', () => {
   test('returns null for already snake_case settings', () => {

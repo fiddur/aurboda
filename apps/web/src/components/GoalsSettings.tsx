@@ -1,9 +1,9 @@
 import { metricUnits, validMetrics } from '@aurboda/api-spec'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
+
 import { type Goal, updateUserSettings } from '../state/api'
 import { metricLabels } from '../utils/metricLabels'
-
 import './GoalsSettings.css'
 
 interface GoalsSettingsProps {
@@ -327,9 +327,10 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
         </p>
       )}
 
-      {localGoals.length === 0 ?
+      {localGoals.length === 0 ? (
         <p class="no-goals">No goals set. Click "+ Add Goal" to create one.</p>
-      : <div class="goals-list">
+      ) : (
+        <div class="goals-list">
           {localGoals.map((goal) => {
             const validationError = validateGoal({
               ...goal,
@@ -435,7 +436,7 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
             )
           })}
         </div>
-      }
+      )}
 
       {showDurationHelp && (
         <div class="duration-help">

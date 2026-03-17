@@ -6,7 +6,8 @@
  */
 
 import { z } from 'zod'
-import { baseResponseSchema } from './common.js'
+
+import { baseResponseSchema } from './common.ts'
 
 /**
  * Source type for trend calculation.

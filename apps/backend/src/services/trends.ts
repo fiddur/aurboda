@@ -15,7 +15,8 @@ import {
   type TrendResult,
   type TrendSourceType,
 } from '@aurboda/api-spec'
-import { query } from '../db'
+
+import { query } from '../db/index.ts'
 
 /**
  * Natural log of 2, used for EMA decay calculation.

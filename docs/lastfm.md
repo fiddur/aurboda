@@ -5,6 +5,7 @@
 ## Data Synced
 
 Scrobbles are stored as raw records with:
+
 - Track name, artist, album
 - MusicBrainz IDs (when available)
 - Timestamp
@@ -33,18 +34,18 @@ Rules define how scrobbles become tags. Each rule specifies what to match and wh
 
 ### Match Types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `track` | Match by track name | Track "Breathe" creates tag "meditation-music" |
-| `artist` | Match by artist name | Artist "Nils Frahm" creates tag "ambient" |
-| `track_artist` | Match by both track and artist | Specific track by specific artist |
+| Type           | Description                    | Example                                        |
+| -------------- | ------------------------------ | ---------------------------------------------- |
+| `track`        | Match by track name            | Track "Breathe" creates tag "meditation-music" |
+| `artist`       | Match by artist name           | Artist "Nils Frahm" creates tag "ambient"      |
+| `track_artist` | Match by both track and artist | Specific track by specific artist              |
 
 ### Match Modes
 
-| Mode | Description |
-|------|-------------|
-| `exact` | Case-insensitive exact match (default) |
-| `contains` | Substring match |
+| Mode       | Description                            |
+| ---------- | -------------------------------------- |
+| `exact`    | Case-insensitive exact match (default) |
+| `contains` | Substring match                        |
 
 ### Multiple Artists
 
@@ -98,6 +99,7 @@ Last.fm scrobbles are automatically synced when querying tags or the daily summa
 - **MCP:** `sync_lastfm()`
 
 Options:
+
 - `full_resync: true` -- Re-fetch historical data (default: last 30 days)
 - `start_date: "YYYY-MM-DD"` -- Start date for full resync
 

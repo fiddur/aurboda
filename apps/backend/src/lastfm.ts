@@ -93,8 +93,9 @@ export const lastfmClient = (apiKey: string) => {
 
         totalPages = parseInt(data.recenttracks['@attr'].totalPages, 10)
 
-        const tracks =
-          Array.isArray(data.recenttracks.track) ? data.recenttracks.track : [data.recenttracks.track]
+        const tracks = Array.isArray(data.recenttracks.track)
+          ? data.recenttracks.track
+          : [data.recenttracks.track]
 
         for (const track of tracks) {
           // Skip "now playing" tracks (they don't have a timestamp)

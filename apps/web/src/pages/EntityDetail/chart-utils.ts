@@ -2,6 +2,7 @@
  * Pure utility functions for chart tooltip interactions.
  */
 import type { SleepStage } from './sleep-utils'
+
 import { STAGE_LABELS } from './sleep-utils'
 
 /**

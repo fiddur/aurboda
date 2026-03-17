@@ -8,10 +8,12 @@
  */
 
 import { addMinutes, isFuture, subDays } from 'date-fns'
-import { getSyncState, getUserSettings, SyncState, upsertSyncState } from './db'
-import { ouraClient } from './oura'
-import { type OuraDataType, processOuraData } from './oura-process'
-import { triggerCalorieComputation } from './services/calorie-computation'
+
+import type { ouraClient } from './oura.ts'
+
+import { getSyncState, getUserSettings, type SyncState, upsertSyncState } from './db/index.ts'
+import { type OuraDataType, processOuraData } from './oura-process.ts'
+import { triggerCalorieComputation } from './services/calorie-computation.ts'
 
 // Re-export for consumers that import from oura-sync
 export {
@@ -19,7 +21,7 @@ export {
   convertOuraSleepPhases,
   processOuraData,
   type OuraDataType,
-} from './oura-process'
+} from './oura-process.ts'
 
 /** Default start date for historical sync (90 days back) */
 const DEFAULT_SYNC_HISTORY_DAYS = 90

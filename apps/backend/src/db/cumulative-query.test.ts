@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
-import { querySplitByCumulative, splitMetricsByCumulative } from './cumulative-query'
+
+import { querySplitByCumulative, splitMetricsByCumulative } from './cumulative-query.ts'
 
 describe('splitMetricsByCumulative', () => {
   test('splits metrics into cumulative and non-cumulative', () => {

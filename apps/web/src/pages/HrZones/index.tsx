@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'preact/hooks'
-import { fetchPeriodSummary, fetchUserSettings, HrZoneThresholds } from '../../state/api'
+
+import type { HrZoneThresholds } from '../../state/api'
+
+import { fetchPeriodSummary, fetchUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import {
   defaultHrZoneThresholds,
@@ -11,7 +14,6 @@ import {
   hrZoneColors,
   hrZoneWeeklyTargetMinutes,
 } from '../../utils/hrZones'
-
 import './style.css'
 
 interface HrZoneBarProps {

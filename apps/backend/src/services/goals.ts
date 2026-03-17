@@ -10,8 +10,9 @@ import {
   type GoalProgress,
   type MetricType,
 } from '@aurboda/api-spec'
-import { getDailyAggregates, getDailyAggregateValue, getRawDailySum, getTimeSeries } from '../db'
-import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones, getSettings } from './settings'
+
+import { getDailyAggregates, getDailyAggregateValue, getRawDailySum, getTimeSeries } from '../db/index.ts'
+import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones, getSettings } from './settings.ts'
 
 /**
  * Get all dates in a range (inclusive).
@@ -98,10 +99,7 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
     if (isCalendarBasedUnit(unit)) {
       // Calendar-based: "1d" = today only, "7d" = today + 6 previous days
       // Calculate days based on unit: d=days, w=weeks (7 days each), M=months (30 days each)
-      const daysInWindow =
-        unit === 'd' ? value
-        : unit === 'w' ? value * 7
-        : value * 30
+      const daysInWindow = unit === 'd' ? value : unit === 'w' ? value * 7 : value * 30
       windowStart = new Date(now)
       windowStart.setUTCHours(0, 0, 0, 0)
       windowStart.setUTCDate(windowStart.getUTCDate() - (daysInWindow - 1))

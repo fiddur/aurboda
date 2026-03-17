@@ -4,13 +4,17 @@
  * Route handlers are split into focused modules under routes/.
  * This file handles: server setup, middleware, auth routes, and router mounting.
  */
-import { type LoginResponse, type ServerStatusResponse, type SignupResponse } from '@aurboda/api-spec'
+import type { LoginResponse, ServerStatusResponse, SignupResponse } from '@aurboda/api-spec'
+
 import { json } from 'body-parser'
 import cors from 'cors'
-import express, { RequestHandler } from 'express'
+import express, { type RequestHandler } from 'express'
 import { Client } from 'pg'
-import { processActivityWatchEvents } from './activitywatch-sync'
-import { createAuth } from './auth'
+
+import type { OuraDataType } from './oura-sync.ts'
+
+import { processActivityWatchEvents } from './activitywatch-sync.ts'
+import { createAuth } from './auth.ts'
 import {
   ackOutboundSync,
   deleteHealthConnectRecords,
@@ -30,42 +34,41 @@ import {
   resetSyncState,
   schemaInitialized,
   updateDetectedLocation,
-} from './db'
-import { garminClient } from './garmin'
-import { syncAllGarminData } from './garmin-sync'
-import { syncAllCalendars } from './ical-sync'
-import { createLastFmRouter } from './lastfm-router'
-import { syncLastFmData } from './lastfm-sync'
-import { createMcpRouter } from './mcp'
-import { ouraClient } from './oura'
-import type { OuraDataType } from './oura-sync'
-import { syncAllOuraData, syncOuraDataType } from './oura-sync'
-import { createOwnTracksRouter } from './owntracks'
-import { syncRescueTimeData } from './rescuetime-sync'
-import { createActivitiesRouter } from './routes/activities-router'
-import { createAdminRouter } from './routes/admin-router'
-import { createCorrelationsRouter } from './routes/correlations-router'
-import { createDashboardRouter } from './routes/dashboard-router'
-import { createLocationsRouter } from './routes/locations-router'
-import { createMealsRouter } from './routes/meals-router'
-import { createMetricsRouter } from './routes/metrics-router'
-import { createNotesRouter } from './routes/notes-router'
-import { createReportsRouter } from './routes/reports-router'
-import { createScreentimeCategoriesRouter } from './routes/screentime-categories-router'
-import { createSettingsRouter } from './routes/settings-router'
-import { createTagsRouter } from './routes/tags-router'
-import { createTrainingLoadRouter } from './routes/training-load-router'
-import { createTrendsRouter } from './routes/trends-router'
-import { triggerCalorieComputation } from './services/calorie-computation'
-import { getCentralDb, initializeCentralDb } from './services/central-db'
-import { createDetectionTrigger, DetectionTrigger } from './services/detection-trigger'
-import { runDetectionForUser } from './services/detection-worker'
-import { createGeocodeQueue, GeocodeQueue } from './services/geocode-queue'
-import { createInvitationAuth } from './services/invitation'
-import { createOuraWebhookManager, type OuraWebhookManager } from './services/oura-webhook-manager'
-import { getSettings } from './services/settings'
-import { createSyncProvider } from './services/sync-provider'
-import { createSyncRouter } from './sync-router'
+} from './db/index.ts'
+import { syncAllGarminData } from './garmin-sync.ts'
+import { garminClient } from './garmin.ts'
+import { syncAllCalendars } from './ical-sync.ts'
+import { createLastFmRouter } from './lastfm-router.ts'
+import { syncLastFmData } from './lastfm-sync.ts'
+import { createMcpRouter } from './mcp.ts'
+import { syncAllOuraData, syncOuraDataType } from './oura-sync.ts'
+import { ouraClient } from './oura.ts'
+import { createOwnTracksRouter } from './owntracks.ts'
+import { syncRescueTimeData } from './rescuetime-sync.ts'
+import { createActivitiesRouter } from './routes/activities-router.ts'
+import { createAdminRouter } from './routes/admin-router.ts'
+import { createCorrelationsRouter } from './routes/correlations-router.ts'
+import { createDashboardRouter } from './routes/dashboard-router.ts'
+import { createLocationsRouter } from './routes/locations-router.ts'
+import { createMealsRouter } from './routes/meals-router.ts'
+import { createMetricsRouter } from './routes/metrics-router.ts'
+import { createNotesRouter } from './routes/notes-router.ts'
+import { createReportsRouter } from './routes/reports-router.ts'
+import { createScreentimeCategoriesRouter } from './routes/screentime-categories-router.ts'
+import { createSettingsRouter } from './routes/settings-router.ts'
+import { createTagsRouter } from './routes/tags-router.ts'
+import { createTrainingLoadRouter } from './routes/training-load-router.ts'
+import { createTrendsRouter } from './routes/trends-router.ts'
+import { triggerCalorieComputation } from './services/calorie-computation.ts'
+import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
+import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
+import { runDetectionForUser } from './services/detection-worker.ts'
+import { createGeocodeQueue, type GeocodeQueue } from './services/geocode-queue.ts'
+import { createInvitationAuth } from './services/invitation.ts'
+import { createOuraWebhookManager, type OuraWebhookManager } from './services/oura-webhook-manager.ts'
+import { getSettings } from './services/settings.ts'
+import { createSyncProvider } from './services/sync-provider.ts'
+import { createSyncRouter } from './sync-router.ts'
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -77,7 +80,9 @@ declare global {
 }
 
 const main = async () => {
-  const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
+  const unauthorized = Object.assign(new Error('Unauthorized'), {
+    status: 401,
+  })
   const forbidden = Object.assign(new Error('Forbidden'), { status: 403 })
 
   const sessionSecret = process.env.SESSION_SECRET ?? ''
@@ -119,11 +124,11 @@ const main = async () => {
 
   httpd.use((req, res, next) => {
     const sanitizedBody =
-      req.body && typeof req.body === 'object' ?
-        Object.fromEntries(
-          Object.entries(req.body).map(([k, v]) => (k === 'password' ? [k, '[REDACTED]'] : [k, v])),
-        )
-      : req.body
+      req.body && typeof req.body === 'object'
+        ? Object.fromEntries(
+            Object.entries(req.body).map(([k, v]) => (k === 'password' ? [k, '[REDACTED]'] : [k, v])),
+          )
+        : req.body
     console.log(req.path, sanitizedBody)
     next()
   })
@@ -186,7 +191,10 @@ const main = async () => {
     // In invite_only mode, require valid invitation token
     if (signupMode === 'invite_only') {
       if (!invitation || typeof invitation !== 'string') {
-        res.status(403).json({ error: 'An invitation is required to sign up', success: false })
+        res.status(403).json({
+          error: 'An invitation is required to sign up',
+          success: false,
+        })
         return
       }
       const validation = invitationAuth.validateInvitationToken(invitation)
@@ -198,7 +206,10 @@ const main = async () => {
     }
 
     if (!user || typeof user !== 'string' || !password || typeof password !== 'string') {
-      res.status(400).json({ error: 'Username and password are required', success: false })
+      res.status(400).json({
+        error: 'Username and password are required',
+        success: false,
+      })
       return
     }
 

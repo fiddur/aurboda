@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
+
 import { LastFmTagRulesSettings } from '../../components/LastFmTagRulesSettings'
 import { fetchUserSettings, type UpdateSettingsInput, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { DataTypesList, LoginRequired, type SaveStatus, SaveStatusIndicator, StatusBanner } from './shared'
-
 import './style.css'
 
 const DATA_TYPES = ['Music scrobbles', 'Auto-generated tags from listening rules']
@@ -94,12 +94,13 @@ export function LastFmSource() {
               <h2>Username</h2>
               <SaveStatusIndicator saveStatus={saveStatus} />
             </div>
-            {userSettings?.lastfm_configured === false ?
+            {userSettings?.lastfm_configured === false ? (
               <p class="field-description warning">
                 Last.fm API key is not configured on the server. Ask your administrator to configure the
                 Last.fm API key in Admin Settings.
               </p>
-            : <div class="form-field">
+            ) : (
+              <div class="form-field">
                 {isConfigured && <p class="connected-status">Configured</p>}
                 <input
                   type="text"
@@ -116,7 +117,7 @@ export function LastFmSource() {
                   . Saves automatically when you leave the field.
                 </p>
               </div>
-            }
+            )}
           </section>
         )}
       </div>

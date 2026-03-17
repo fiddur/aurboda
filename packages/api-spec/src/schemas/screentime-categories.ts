@@ -9,7 +9,8 @@
  */
 
 import { z } from 'zod'
-import { createDataArrayResponseSchema, createDataResponseSchema } from './common.js'
+
+import { createDataArrayResponseSchema, createDataResponseSchema } from './common.ts'
 
 /**
  * Rule type for screentime categories.

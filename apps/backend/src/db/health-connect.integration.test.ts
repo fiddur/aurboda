@@ -1,13 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
-import { query } from './connection'
+
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { query } from './connection.ts'
 import {
   deleteHealthConnectRecords,
   getDailyAggregateValue,
   processDailyAggregate,
   processHealthConnectData,
-} from './health-connect'
-import { getTimeSeries } from './time-series'
+} from './health-connect.ts'
+import { getTimeSeries } from './time-series.ts'
 
 const CONTAINER_TIMEOUT = 60_000
 

@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useState } from 'preact/hooks'
+
 import {
   fetchActivities,
   fetchPlaces,
@@ -10,7 +11,6 @@ import {
   type Place,
   type Tag,
 } from '../../state/api'
-
 import './style.css'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -56,11 +56,15 @@ const formatDuration = (start: Date, end: Date): string => {
 const activityToItem = (a: Activity): DataItem => {
   const end = a.end_time ?? new Date(a.start_time.getTime() + 60 * 60000)
   const label =
-    a.activity_type === 'exercise' ? (a.title ?? 'Exercise')
-    : a.activity_type === 'meditation' ? (a.title ?? 'Meditation')
-    : a.activity_type === 'sleep' ? 'Sleep'
-    : a.activity_type === 'rest' ? 'Rest'
-    : 'Nap'
+    a.activity_type === 'exercise'
+      ? (a.title ?? 'Exercise')
+      : a.activity_type === 'meditation'
+        ? (a.title ?? 'Meditation')
+        : a.activity_type === 'sleep'
+          ? 'Sleep'
+          : a.activity_type === 'rest'
+            ? 'Rest'
+            : 'Nap'
   return {
     color: ACTIVITY_COLORS[a.activity_type] ?? '#6b7280',
     detail: `${format(a.start_time, 'HH:mm')} – ${format(end, 'HH:mm')} · ${formatDuration(a.start_time, end)}`,
@@ -75,9 +79,8 @@ const activityToItem = (a: Activity): DataItem => {
 
 const tagToItem = (t: Tag): DataItem => ({
   color: TAG_COLOR,
-  detail:
-    t.end_time ?
-      `${format(t.start_time, 'HH:mm')} – ${format(t.end_time, 'HH:mm')} · ${formatDuration(t.start_time, t.end_time)}`
+  detail: t.end_time
+    ? `${format(t.start_time, 'HH:mm')} – ${format(t.end_time, 'HH:mm')} · ${formatDuration(t.start_time, t.end_time)}`
     : format(t.start_time, 'HH:mm'),
   end: t.end_time,
   entityId: t.id,
@@ -250,9 +253,9 @@ export const Data = () => {
           {allItems.length === 0 && <p class="data-status">No data for this day</p>}
           {allItems.map((item, i) => {
             const href =
-              item.entityId && item.entityType ?
-                `/detail/${item.entityType}/${encodeURIComponent(item.entityId)}`
-              : undefined
+              item.entityId && item.entityType
+                ? `/detail/${item.entityType}/${encodeURIComponent(item.entityId)}`
+                : undefined
             const El = href ? 'a' : 'div'
             return (
               <El key={i} class={`data-item${href ? ' clickable' : ''}`} {...(href ? { href } : {})}>

@@ -12,7 +12,8 @@ import {
   validMetrics,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { getCustomMetrics } from '../services/mutations'
+
+import { getCustomMetrics } from '../services/mutations.ts'
 import {
   getDailySummary,
   getPeriodSummary,
@@ -22,8 +23,14 @@ import {
   queryMetricsBucketed,
   queryProductivity,
   queryTags,
-} from '../services/queries'
-import { errorResponse, jsonResponse, type McpServer, metricDescription, type SyncProvider } from './helpers'
+} from '../services/queries.ts'
+import {
+  errorResponse,
+  jsonResponse,
+  type McpServer,
+  metricDescription,
+  type SyncProvider,
+} from './helpers.ts'
 
 export const registerQueryTools = (server: McpServer, user: string, sync?: SyncProvider) => {
   // Tool: query_metrics

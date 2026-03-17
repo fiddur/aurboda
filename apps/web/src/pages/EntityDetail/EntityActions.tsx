@@ -2,6 +2,7 @@
  * Entity action buttons (edit, delete, restore) shared across all entity detail views.
  */
 import { useMutation } from '@tanstack/react-query'
+
 import {
   deleteMetricPoint,
   restoreActivity,

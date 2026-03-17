@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+
 import {
   baseResponseSchema,
   createDataArrayResponseSchema,
@@ -11,7 +12,7 @@ import {
   iso8601DateTimeSchema,
   syncStatusSchema,
   timeRangeQuerySchema,
-} from './common.js'
+} from './common.ts'
 
 // Shared sync options fields
 const fullResyncSchema = z.boolean().optional().meta({

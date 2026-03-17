@@ -61,9 +61,15 @@
   margin: 0.5em 0 0.25em;
 }
 
-.md-editor-preview h1 { font-size: 1.25rem; }
-.md-editor-preview h2 { font-size: 1.1rem; }
-.md-editor-preview h3 { font-size: 1rem; }
+.md-editor-preview h1 {
+  font-size: 1.25rem;
+}
+.md-editor-preview h2 {
+  font-size: 1.1rem;
+}
+.md-editor-preview h3 {
+  font-size: 1rem;
+}
 
 .md-editor-preview p {
   margin: 0.5em 0;

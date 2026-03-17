@@ -11,17 +11,19 @@ import {
   syncRescueTimeBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { ackOutboundSync, getAllSyncStates, getOAuthToken, getPendingOutboundSync } from '../db'
-import type { GarminClient } from '../garmin'
-import { syncAllGarminData } from '../garmin-sync'
-import { syncAllCalendars } from '../ical-sync'
-import { syncLastFmData } from '../lastfm-sync'
-import { ouraClient } from '../oura'
-import { syncAllOuraData } from '../oura-sync'
-import { syncRescueTimeData } from '../rescuetime-sync'
-import { getCentralDb } from '../services/central-db'
-import { getSettings } from '../services/settings'
-import { errorResponse, jsonResponse, type McpServer } from './helpers'
+
+import type { GarminClient } from '../garmin.ts'
+import type { ouraClient } from '../oura.ts'
+
+import { ackOutboundSync, getAllSyncStates, getOAuthToken, getPendingOutboundSync } from '../db/index.ts'
+import { syncAllGarminData } from '../garmin-sync.ts'
+import { syncAllCalendars } from '../ical-sync.ts'
+import { syncLastFmData } from '../lastfm-sync.ts'
+import { syncAllOuraData } from '../oura-sync.ts'
+import { syncRescueTimeData } from '../rescuetime-sync.ts'
+import { getCentralDb } from '../services/central-db.ts'
+import { getSettings } from '../services/settings.ts'
+import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 type OuraClient = ReturnType<typeof ouraClient>
 

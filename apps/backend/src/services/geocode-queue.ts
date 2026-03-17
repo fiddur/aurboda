@@ -7,8 +7,10 @@
 
 import pg from 'pg'
 import * as PgBossModule from 'pg-boss'
-import { DetectedLocationUpdate } from '../db'
-import { reverseGeocode } from './geocoding'
+
+import type { DetectedLocationUpdate } from '../db/index.ts'
+
+import { reverseGeocode } from './geocoding.ts'
 
 // ============================================================================
 // Types

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
-import { MetricType } from '../schema'
-import * as locationsService from './locations'
+
+import type { MetricType } from '../schema.ts'
+
+import * as db from '../db/index.ts'
+import * as locationsService from './locations.ts'
 import {
   findSleepLocation,
   getDailySummary,
@@ -13,7 +15,7 @@ import {
   queryMetricsBucketed,
   queryProductivity,
   queryTags,
-} from './queries'
+} from './queries.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({

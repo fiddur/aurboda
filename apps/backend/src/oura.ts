@@ -1,7 +1,9 @@
+import type { Request, Response } from 'express'
+
 import axios from 'axios'
 import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture } from 'date-fns'
-import { Request, Response } from 'express'
-import { getOAuthToken, initializeSchema, schemaInitialized, Tag, upsertOAuthToken } from './db'
+
+import { getOAuthToken, initializeSchema, schemaInitialized, type Tag, upsertOAuthToken } from './db/index.ts'
 
 type OuraTag = {
   id: string
@@ -217,9 +219,9 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
             source: 'oura',
             start_time: new Date(tag.start_time),
             tag:
-              tag.tag_type_code && tagMappings && tag.tag_type_code in tagMappings ?
-                tagMappings[tag.tag_type_code]
-              : tag.custom_name || tag.tag_type_code || 'unknown',
+              tag.tag_type_code && tagMappings && tag.tag_type_code in tagMappings
+                ? tagMappings[tag.tag_type_code]
+                : tag.custom_name || tag.tag_type_code || 'unknown',
             tag_key: tag.tag_type_code ?? undefined,
           }),
         )

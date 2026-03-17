@@ -8,6 +8,7 @@
  */
 import { useMutation } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
+
 import { addMetric, deleteMetricPoint } from '../../state/api'
 import { EntityActions } from './EntityActions'
 import { formatDateTimeLocal } from './format-utils'

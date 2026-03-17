@@ -90,7 +90,9 @@ import type {
   UpdateSettingsInput,
   UserSettingsResponse,
 } from '@aurboda/api-spec'
+
 import axios from 'axios'
+
 import { API_URL } from '../config'
 import { auth } from './auth'
 

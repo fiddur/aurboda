@@ -3,6 +3,9 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+
+import type { ProductivityRecord } from '../db/types.ts'
+
 import {
   batchUpdateResolvedCategory,
   deleteProductivityRecord,
@@ -10,9 +13,8 @@ import {
   getProductivity,
   insertProductivity,
   restoreProductivityRecord,
-} from '../db'
-import type { ProductivityRecord } from '../db/types'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
+} from '../db/index.ts'
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 
 const CONTAINER_TIMEOUT = 60_000
 

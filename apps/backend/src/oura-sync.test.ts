@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from './db'
+
+import * as db from './db/index.ts'
 import {
   calculateRetryAfter,
   computeSleepMinutes,
@@ -7,7 +8,7 @@ import {
   isRateLimited,
   processOuraData,
   syncOuraDataType,
-} from './oura-sync'
+} from './oura-sync.ts'
 
 // Mock the db module
 vi.mock('./db', () => ({

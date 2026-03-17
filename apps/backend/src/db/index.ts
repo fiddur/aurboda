@@ -1,7 +1,7 @@
 /**
  * Barrel re-export for all database modules.
  *
- * All consumers can continue importing from './db' or '../db' unchanged.
+ * All consumers can continue importing from './db.ts' or '../db' unchanged.
  */
 
 // Types (interfaces & type aliases)
@@ -46,7 +46,7 @@ export type {
   Tag,
   TimeSeriesPoint,
   UserSettings,
-} from './types'
+} from './types.ts'
 
 // Connection & schema management
 export {
@@ -58,10 +58,10 @@ export {
   migrateSchema,
   query,
   schemaInitialized,
-} from './connection'
+} from './connection.ts'
 
 // Raw records
-export { getAllScrobbles, getScrobbles, insertRawRecord, type ScrobbleRecord } from './raw-records'
+export { getAllScrobbles, getScrobbles, insertRawRecord, type ScrobbleRecord } from './raw-records.ts'
 
 // Time series
 export {
@@ -77,7 +77,7 @@ export {
   getTimeSeriesStats,
   getTimeSeriesWithSource,
   insertTimeSeries,
-} from './time-series'
+} from './time-series.ts'
 
 // Activities
 export {
@@ -91,7 +91,7 @@ export {
   mergeOverlappingActivities,
   restoreActivity,
   updateActivity,
-} from './activities'
+} from './activities.ts'
 
 // Locations
 export {
@@ -110,7 +110,7 @@ export {
   insertPlace,
   updateDetectedLocation,
   updateNamedLocation,
-} from './locations'
+} from './locations.ts'
 
 // Tags
 export {
@@ -128,7 +128,7 @@ export {
   restoreTag,
   updateTagEndTime,
   updateTagNameByKey,
-} from './tags'
+} from './tags.ts'
 
 // Productivity
 export {
@@ -139,7 +139,7 @@ export {
   getProductivityById,
   insertProductivity,
   restoreProductivityRecord,
-} from './productivity'
+} from './productivity.ts'
 
 // Screentime categories
 export {
@@ -150,7 +150,7 @@ export {
   getScreentimeCategoryById,
   insertScreentimeCategory,
   updateScreentimeCategory,
-} from './screentime-categories'
+} from './screentime-categories.ts'
 
 // Notes
 export {
@@ -162,13 +162,13 @@ export {
   insertNote,
   updateNote,
   updateNoteTimesForEntity,
-} from './notes'
+} from './notes.ts'
 
 // Meals
-export { deleteMeal, getMealById, getMeals, insertMeal } from './meals'
+export { deleteMeal, getMealById, getMeals, insertMeal } from './meals.ts'
 
 // Lab results (legacy)
-export { getLabResults, insertLabResult } from './lab-results'
+export { getLabResults, insertLabResult } from './lab-results.ts'
 
 // Reports (structured lab results)
 export {
@@ -178,13 +178,13 @@ export {
   getReportEntryMetrics,
   getReports,
   insertReport,
-} from './reports'
+} from './reports.ts'
 
 // OAuth
-export { getOAuthToken, upsertOAuthToken } from './oauth'
+export { getOAuthToken, upsertOAuthToken } from './oauth.ts'
 
 // Sync state
-export { getAllSyncStates, getSyncState, resetSyncState, upsertSyncState } from './sync-state'
+export { getAllSyncStates, getSyncState, resetSyncState, upsertSyncState } from './sync-state.ts'
 
 // Health Connect
 export {
@@ -193,7 +193,7 @@ export {
   processDailyAggregate,
   processHealthConnectBatch,
   processHealthConnectData,
-} from './health-connect'
+} from './health-connect.ts'
 
 // Outbound sync queue
 export {
@@ -206,10 +206,10 @@ export {
   type OutboundSyncEntry,
   type OutboundSyncOperation,
   type OutboundSyncStatus,
-} from './outbound-sync'
+} from './outbound-sync.ts'
 
 // Settings
-export { getUserSettings, upsertUserSettings } from './settings'
+export { getUserSettings, upsertUserSettings } from './settings.ts'
 
 // Last.fm tag rules
 export {
@@ -217,7 +217,7 @@ export {
   getLastFmTagRules,
   insertLastFmTagRule,
   updateLastFmTagRule,
-} from './lastfm-rules'
+} from './lastfm-rules.ts'
 
 // MCP sessions
 export {
@@ -227,7 +227,7 @@ export {
   getMcpSessionsForUser,
   saveMcpSession,
   touchMcpSession,
-} from './mcp-sessions'
+} from './mcp-sessions.ts'
 
 // Row mappers (re-export for consumers that need them directly)
 export {
@@ -248,4 +248,4 @@ export {
   parseGeocodeStatus,
   parseMetricType,
   parseSyncStatus,
-} from './row-mappers'
+} from './row-mappers.ts'

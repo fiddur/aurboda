@@ -2,8 +2,9 @@
  * MCP training load tools.
  */
 import { getTrainingLoadInputSchema } from '@aurboda/api-spec'
-import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load'
-import { jsonResponse, type McpServer } from './helpers'
+
+import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load.ts'
+import { jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerTrainingLoadTools = (server: McpServer, user: string) => {
   const deps = createTrainingLoadDeps()

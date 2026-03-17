@@ -1,15 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
-import {
-  fetchAdminSettings,
-  generateInvitation,
-  InvitationResult,
-  SignupMode,
-  updateAdminSettings,
-} from '../../state/api'
-import { auth } from '../../state/auth'
 
+import type { InvitationResult, SignupMode } from '../../state/api'
+
+import { fetchAdminSettings, generateInvitation, updateAdminSettings } from '../../state/api'
+import { auth } from '../../state/auth'
 import './style.css'
 
 type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }
@@ -114,9 +110,7 @@ function IntegrationsSection() {
           <label for="lastfm-api-key">Last.fm API Key</label>
           <SaveStatusIndicator saveStatus={lastfmSaveStatus} />
         </div>
-        {settings?.lastfm_api_key_set ?
-          <p class="connected-status">Configured</p>
-        : null}
+        {settings?.lastfm_api_key_set ? <p class="connected-status">Configured</p> : null}
         <div class="api-key-input-row">
           <input
             id="lastfm-api-key"

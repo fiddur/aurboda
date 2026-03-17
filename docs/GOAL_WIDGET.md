@@ -6,6 +6,7 @@ against user-defined targets.
 ## Overview
 
 Users can set targets for any metric in the system. Goals have:
+
 - A **metric** (e.g., `hr_zone_2_sec`, `steps`, `distance`)
 - An optional **minimum** target value
 - An optional **maximum** target value (at least one of min/max required)
@@ -15,11 +16,11 @@ Progress is calculated as a rolling window from today backwards.
 
 ## Goal Examples
 
-| Metric | Min | Max | Meaning |
-|--------|-----|-----|---------|
-| HR Zone 2 | 150 min | - | At least 150 minutes per week |
-| HR Zone 5 | 5 min | 10 min | Between 5-10 minutes per week |
-| Steps | 70,000 | - | At least 70,000 steps per week |
+| Metric    | Min     | Max    | Meaning                        |
+| --------- | ------- | ------ | ------------------------------ |
+| HR Zone 2 | 150 min | -      | At least 150 minutes per week  |
+| HR Zone 5 | 5 min   | 10 min | Between 5-10 minutes per week  |
+| Steps     | 70,000  | -      | At least 70,000 steps per week |
 
 ## Default Goals
 
@@ -34,14 +35,14 @@ New users receive these default goals based on Huberman/Galpin recommendations
 
 The window duration uses standard duration notation:
 
-| Unit | Meaning | Example |
-|------|---------|---------|
-| `s` | seconds | `3600s` = 1 hour |
-| `m` | minutes | `30m` = 30 minutes |
-| `h` | hours | `24h` = 1 day |
-| `d` | days | `7d` = 1 week |
-| `w` | weeks | `2w` = 2 weeks |
-| `M` | months | `1M` = 1 month |
+| Unit | Meaning | Example            |
+| ---- | ------- | ------------------ |
+| `s`  | seconds | `3600s` = 1 hour   |
+| `m`  | minutes | `30m` = 30 minutes |
+| `h`  | hours   | `24h` = 1 day      |
+| `d`  | days    | `7d` = 1 week      |
+| `w`  | weeks   | `2w` = 2 weeks     |
+| `M`  | months  | `1M` = 1 month     |
 
 Default is `7d` (7 days rolling window).
 
@@ -54,11 +55,11 @@ these units.
 
 ```typescript
 interface WeeklyGoal {
-  id: string              // UUID for identification
-  metric: string          // Valid metric name (e.g., 'hr_zone_2_sec', 'steps')
-  min?: number            // Minimum target (at least one of min/max required)
-  max?: number            // Maximum target
-  window: string          // Duration string, default '7d'
+  id: string // UUID for identification
+  metric: string // Valid metric name (e.g., 'hr_zone_2_sec', 'steps')
+  min?: number // Minimum target (at least one of min/max required)
+  max?: number // Maximum target
+  window: string // Duration string, default '7d'
 }
 ```
 
@@ -85,6 +86,7 @@ Note: HR zone times are stored in seconds internally, displayed as minutes to us
 ### Rolling Window
 
 Progress is calculated over a rolling window ending at the current moment:
+
 - For a `7d` window: from `now - 7 days` to `now`
 - Uses the existing `getPeriodSummary` query with sum aggregation
 
@@ -93,6 +95,7 @@ Progress is calculated over a rolling window ending at the current moment:
 Shows how much value will "drop off" when the oldest day exits the window.
 
 For a 7-day window on January 15th:
+
 - Current window: Jan 9 - Jan 15
 - Tomorrow's window: Jan 10 - Jan 16
 - "Losing tomorrow": Sum of Jan 9th values for that metric
@@ -189,6 +192,7 @@ Displays goals with progress bars, stacked vertically.
 ### Bar Types
 
 #### Min-only goals (e.g., Steps min 70,000)
+
 - Bar fills from left to right
 - 100% = min value reached
 - Color changes when min is reached (e.g., gray → green)
@@ -200,6 +204,7 @@ Progress: 50,000 / 70,000 min
 ```
 
 #### Max-only goals
+
 - Bar fills from left to right
 - 100% = max value
 - Color changes when approaching max (e.g., green → yellow → red)
@@ -211,6 +216,7 @@ Progress: 7 / 10 max
 ```
 
 #### Min-max goals (e.g., Zone 5 min 5, max 10)
+
 - Bar fills from left to right
 - Vertical marker at min position
 - 100% = max value
@@ -234,6 +240,7 @@ Progress: 85,000 / 70,000 min (121%)
 ```
 
 The second row:
+
 - Starts from the left
 - Uses a slightly different shade or offset to indicate overflow
 - Shows the overflow percentage (amount over 100%)
@@ -256,6 +263,7 @@ GET /user/settings
 ```
 
 Response includes:
+
 ```json
 {
   "goals": [
@@ -304,6 +312,7 @@ GET /goals/progress
 ```
 
 Response:
+
 ```json
 {
   "goals": [
@@ -340,12 +349,12 @@ Returns current progress for all goals with losing-tomorrow calculations.
 
 ### Metric Units
 
-| Metric | Storage Unit | Display Unit | Conversion |
-|--------|--------------|--------------|------------|
-| hr_zone_*_sec | seconds | minutes | ÷ 60 |
-| steps | steps | steps | none |
-| distance | meters | km/miles | ÷ 1000 |
-| weight | kg | kg/lbs | varies |
+| Metric          | Storage Unit | Display Unit | Conversion |
+| --------------- | ------------ | ------------ | ---------- |
+| hr*zone*\*\_sec | seconds      | minutes      | ÷ 60       |
+| steps           | steps        | steps        | none       |
+| distance        | meters       | km/miles     | ÷ 1000     |
+| weight          | kg           | kg/lbs       | varies     |
 
 ### Aggregation
 

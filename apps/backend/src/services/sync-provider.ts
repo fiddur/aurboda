@@ -6,20 +6,26 @@
  */
 
 import { isBefore, subMinutes } from 'date-fns'
-import { getSyncState } from '../db'
-import type { GarminClient } from '../garmin'
-import { type GarminDataType, isRateLimited as isGarminRateLimited, syncGarminDataType } from '../garmin-sync'
-import { syncAllCalendars } from '../ical-sync'
-import { syncLastFmData } from '../lastfm-sync'
-import { ouraClient } from '../oura'
-import { isRateLimited as isOuraRateLimited, OuraDataType, syncOuraDataType } from '../oura-sync'
+
+import type { GarminClient } from '../garmin.ts'
+import type { ouraClient } from '../oura.ts'
+import type { SyncProvider } from './queries.ts'
+
+import { getSyncState } from '../db/index.ts'
+import {
+  type GarminDataType,
+  isRateLimited as isGarminRateLimited,
+  syncGarminDataType,
+} from '../garmin-sync.ts'
+import { syncAllCalendars } from '../ical-sync.ts'
+import { syncLastFmData } from '../lastfm-sync.ts'
+import { isRateLimited as isOuraRateLimited, type OuraDataType, syncOuraDataType } from '../oura-sync.ts'
 import {
   isRateLimited as isRescueTimeRateLimited,
   needsSync as rescueTimeNeedsSync,
   syncRescueTimeData,
-} from '../rescuetime-sync'
-import { SyncProvider } from './queries'
-import { getSettings } from './settings'
+} from '../rescuetime-sync.ts'
+import { getSettings } from './settings.ts'
 
 /** Default sync threshold - sync if last sync was more than 30 minutes ago */
 const DEFAULT_SYNC_THRESHOLD_MINUTES = 30

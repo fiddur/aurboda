@@ -9,8 +9,11 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import * as d3 from 'd3'
 import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+
+import type { Activity, Place, ProductivityRecord, Tag } from '../../state/api'
+import type { ChartItem, Column, Orientation } from './types'
+
 import {
-  Activity,
   fetchActivities,
   fetchBucketedMetrics,
   fetchCustomMetrics,
@@ -22,9 +25,6 @@ import {
   fetchTags,
   fetchTrainingLoad,
   fetchUserSettings,
-  Place,
-  ProductivityRecord,
-  Tag,
 } from '../../state/api'
 import { parseBucketedResponse } from '../../utils/chart'
 import { isEmoji, isUrl } from '../../utils/emojiLookup'
@@ -49,8 +49,6 @@ import {
 } from './drawMusicStaff'
 import { CTL_COLOR, drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
-import type { ChartItem, Column, Orientation } from './types'
-
 import './style.css'
 
 // ── Signals (module-level, persist across SPA navigations) ────────────────────
@@ -111,9 +109,8 @@ const parseViewHash = (): {
   const oStr = params.get('o')
   const from = fromStr ? new Date(fromStr) : null
   const to = toStr ? new Date(toStr) : null
-  const hide =
-    hideStr ?
-      ([
+  const hide = hideStr
+    ? ([
         ...new Set(
           hideStr
             .split(',')
@@ -122,10 +119,7 @@ const parseViewHash = (): {
         ),
       ] as LegendCategory[])
     : []
-  const orientation: Orientation | null =
-    oStr === 'h' ? 'horizontal'
-    : oStr === 'v' ? 'vertical'
-    : null
+  const orientation: Orientation | null = oStr === 'h' ? 'horizontal' : oStr === 'v' ? 'vertical' : null
   return {
     from: from && !isNaN(from.getTime()) ? from : null,
     hide,
@@ -318,7 +312,7 @@ const formatDuration = (start: Date, end: Date): string => {
 }
 
 const escapeHtml = (str: string): string =>
-  str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  str.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
 
 type SleepMetrics = Record<string, number>
 type SleepMetricsByDate = Map<string, SleepMetrics>
@@ -336,12 +330,15 @@ const buildSleepDetails = (a: Activity, end: Date, sleepByDate: SleepMetricsByDa
   const sleepData = sleepByDate.get(format(end, 'yyyy-MM-dd'))
   if (sleepData) {
     if (sleepData.sleep_score !== undefined) details.push(`Score: ${Math.round(sleepData.sleep_score)}`)
-    if (sleepData.sleep_efficiency !== undefined)
+    if (sleepData.sleep_efficiency !== undefined) {
       details.push(`Efficiency: ${Math.round(sleepData.sleep_efficiency)}%`)
-    if (sleepData.sleep_restfulness !== undefined)
+    }
+    if (sleepData.sleep_restfulness !== undefined) {
       details.push(`Restfulness: ${Math.round(sleepData.sleep_restfulness)}`)
-    if (sleepData.sleep_deep_score !== undefined)
+    }
+    if (sleepData.sleep_deep_score !== undefined) {
       details.push(`Deep: ${Math.round(sleepData.sleep_deep_score)}`)
+    }
     if (sleepData.sleep_rem_score !== undefined) details.push(`REM: ${Math.round(sleepData.sleep_rem_score)}`)
   }
 
@@ -413,8 +410,9 @@ const categorizeTags = (tags: Tag[], itemIcons: Record<string, string>): ChartIt
         label: t.tag,
         start: t.start_time,
         tooltip: {
-          details:
-            isPoint ? [`Point event${sourceLabel}`] : [formatDuration(t.start_time, end) + sourceLabel],
+          details: isPoint
+            ? [`Point event${sourceLabel}`]
+            : [formatDuration(t.start_time, end) + sourceLabel],
           time: isPoint ? formatTime(t.start_time) : `${formatTime(t.start_time)} – ${formatTime(end)}`,
           title: t.tag,
         },
@@ -422,7 +420,7 @@ const categorizeTags = (tags: Tag[], itemIcons: Record<string, string>): ChartIt
     })
 
 const formatMetricLabel = (metric: string): string =>
-  metric.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  metric.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
 
 /**
  * Extract occasional (sparse) metrics from bucketed data as point ChartItems.
@@ -1175,14 +1173,14 @@ export const Timeline = () => {
 
       // Time separators — adapt interval to zoom level
       const separatorDates: Date[] =
-        pixelsPerHour >= 2 ? d3.timeDay.range(domainStart, domainEnd)
-        : pixelsPerHour >= 0.3 ? d3.timeMonday.range(domainStart, domainEnd)
-        : d3.timeMonth.range(domainStart, domainEnd)
+        pixelsPerHour >= 2
+          ? d3.timeDay.range(domainStart, domainEnd)
+          : pixelsPerHour >= 0.3
+            ? d3.timeMonday.range(domainStart, domainEnd)
+            : d3.timeMonth.range(domainStart, domainEnd)
 
       const separatorLabelFormat =
-        pixelsPerHour >= 2 ? 'MMM d'
-        : pixelsPerHour >= 0.3 ? "'w'w MMM d"
-        : 'MMM yyyy'
+        pixelsPerHour >= 2 ? 'MMM d' : pixelsPerHour >= 0.3 ? "'w'w MMM d" : 'MMM yyyy'
 
       for (const sep of separatorDates) {
         const my = currentYScale(sep)
@@ -1375,9 +1373,9 @@ export const Timeline = () => {
     )
 
     const activitySubLaneHeight =
-      packedActivityItems.laneCount > 1 ?
-        activityTrackHeight / packedActivityItems.laneCount
-      : activityTrackHeight
+      packedActivityItems.laneCount > 1
+        ? activityTrackHeight / packedActivityItems.laneCount
+        : activityTrackHeight
 
     // Outer group for margin offset — static, never removed
     const outerG = svg
@@ -1482,9 +1480,11 @@ export const Timeline = () => {
       // pixelsPerHour >= 0.3 → weekly (Monday boundaries)
       // otherwise           → monthly (1st of month)
       const separatorDates: Date[] =
-        pixelsPerHour >= 2 ? d3.timeDay.range(domainStart, domainEnd)
-        : pixelsPerHour >= 0.3 ? d3.timeMonday.range(domainStart, domainEnd)
-        : d3.timeMonth.range(domainStart, domainEnd)
+        pixelsPerHour >= 2
+          ? d3.timeDay.range(domainStart, domainEnd)
+          : pixelsPerHour >= 0.3
+            ? d3.timeMonday.range(domainStart, domainEnd)
+            : d3.timeMonth.range(domainStart, domainEnd)
 
       for (const sep of separatorDates) {
         const mx = currentXScale(sep)
@@ -1518,9 +1518,9 @@ export const Timeline = () => {
 
       // ── Helper: build detail URL for an item ──
       const getDetailUrl = (item: ChartItem): string | undefined =>
-        item.entity_id && item.entity_type ?
-          `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
-        : (item.href ?? undefined)
+        item.entity_id && item.entity_type
+          ? `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
+          : (item.href ?? undefined)
 
       // ── Activity lane (activities + tags) ──
       for (const { item, lane } of packedActivityItems.items) {
@@ -1537,9 +1537,8 @@ export const Timeline = () => {
           const tagCy = laneY + laneH / 2
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const parent: d3.Selection<any, unknown, null, undefined> =
-            detailUrl ?
-              chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true')
+          const parent: d3.Selection<any, unknown, null, undefined> = detailUrl
+            ? chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true')
             : chartGroup
 
           if (icon && isEmoji(icon)) {
@@ -1588,9 +1587,8 @@ export const Timeline = () => {
         const rw = Math.max(0, currentXScale(item.end) - rx)
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const parent: d3.Selection<any, unknown, null, undefined> =
-          detailUrl ?
-            chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true')
+        const parent: d3.Selection<any, unknown, null, undefined> = detailUrl
+          ? chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true')
           : chartGroup
 
         parent
@@ -1654,8 +1652,9 @@ export const Timeline = () => {
         const placeUrl = getDetailUrl(place)
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const parent: d3.Selection<any, unknown, null, undefined> =
-          placeUrl ? chartGroup.append('a').attr('href', placeUrl).attr('data-clickable', 'true') : chartGroup
+        const parent: d3.Selection<any, unknown, null, undefined> = placeUrl
+          ? chartGroup.append('a').attr('href', placeUrl).attr('data-clickable', 'true')
+          : chartGroup
 
         parent
           .append('rect')
@@ -1726,17 +1725,17 @@ export const Timeline = () => {
           },
           trackHeight: metricsTrackHeight,
           trackY: trackMetrics,
-          ...(metricsYScales ?
-            { yScales: metricsYScales }
-          : { yScales: computeYScales([], trackMetrics, trackMetrics + metricsTrackHeight) }),
+          ...(metricsYScales
+            ? { yScales: metricsYScales }
+            : { yScales: computeYScales([], trackMetrics, trackMetrics + metricsTrackHeight) }),
           xScale: currentXScale,
-          ...(showTL && trainingLoadData ?
-            {
-              trainingLoadPoints: trainingLoadData.points,
-              trainingLoadWorkouts: trainingLoadData.workouts,
-              trainingLoadZones: trainingLoadData.zones ?? undefined,
-            }
-          : {}),
+          ...(showTL && trainingLoadData
+            ? {
+                trainingLoadPoints: trainingLoadData.points,
+                trainingLoadWorkouts: trainingLoadData.workouts,
+                trainingLoadZones: trainingLoadData.zones ?? undefined,
+              }
+            : {}),
         })
       }
 
@@ -1861,9 +1860,8 @@ export const Timeline = () => {
           if (!baseScale) return
           const newY = event.transform.rescaleY(baseScale)
           const newDomain = newY.domain() as [Date, Date]
-          const h =
-            containerRef.current ?
-              Math.max(200, containerRef.current.clientHeight - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom)
+          const h = containerRef.current
+            ? Math.max(200, containerRef.current.clientHeight - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom)
             : 800
           cancelAnimationFrame(zoomRafRef.current)
           zoomRafRef.current = requestAnimationFrame(() => {
@@ -1884,9 +1882,8 @@ export const Timeline = () => {
 
       const baseScale = baseScaleRef.current
       if (baseScale) {
-        const hForZoom =
-          containerRef.current ?
-            Math.max(200, containerRef.current.clientHeight - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom)
+        const hForZoom = containerRef.current
+          ? Math.max(200, containerRef.current.clientHeight - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom)
           : 800
         const t = computeVerticalZoomTransform(baseScale, effectiveViewStart, effectiveViewEnd, hForZoom)
         isProgrammaticZoom.current = true
@@ -1956,9 +1953,9 @@ export const Timeline = () => {
   ].filter(Boolean) as string[]
 
   const viewLabel =
-    format(effectiveViewStart, 'MMM d') === format(effectiveViewEnd, 'MMM d') ?
-      format(effectiveViewStart, 'MMM d, yyyy')
-    : `${format(effectiveViewStart, 'MMM d')} – ${format(effectiveViewEnd, 'MMM d, yyyy')}`
+    format(effectiveViewStart, 'MMM d') === format(effectiveViewEnd, 'MMM d')
+      ? format(effectiveViewStart, 'MMM d, yyyy')
+      : `${format(effectiveViewStart, 'MMM d')} – ${format(effectiveViewEnd, 'MMM d, yyyy')}`
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -2023,46 +2020,45 @@ export const Timeline = () => {
             title={orientation === 'vertical' ? 'Switch to horizontal layout' : 'Switch to vertical layout'}
             type="button"
           >
-            {
-              orientation === 'vertical' ?
-                // Portrait screen → rotate to landscape
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  {/* Portrait screen */}
-                  <rect x="7" y="2" width="10" height="14" rx="2" />
-                  {/* Rotation arrow (clockwise, bottom-right) */}
-                  <path d="M19 17a7 7 0 0 1-7 5" />
-                  <polyline points="16 21 19 17 23 19" />
-                </svg>
-                // Landscape screen → rotate to portrait
-              : <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  {/* Landscape screen */}
-                  <rect x="2" y="7" width="14" height="10" rx="2" />
-                  {/* Rotation arrow (counter-clockwise, bottom-right) */}
-                  <path d="M17 19a7 7 0 0 1-5 -7" />
-                  <polyline points="21 16 17 19 19 23" />
-                </svg>
-
-            }
+            {orientation === 'vertical' ? (
+              // Portrait screen → rotate to landscape
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                {/* Portrait screen */}
+                <rect x="7" y="2" width="10" height="14" rx="2" />
+                {/* Rotation arrow (clockwise, bottom-right) */}
+                <path d="M19 17a7 7 0 0 1-7 5" />
+                <polyline points="16 21 19 17 23 19" />
+              </svg>
+            ) : (
+              // Landscape screen → rotate to portrait
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                {/* Landscape screen */}
+                <rect x="2" y="7" width="14" height="10" rx="2" />
+                {/* Rotation arrow (counter-clockwise, bottom-right) */}
+                <path d="M17 19a7 7 0 0 1-5 -7" />
+                <polyline points="21 16 17 19 19 23" />
+              </svg>
+            )}
           </button>
           <button
             class="nav-btn timeline-fullscreen-btn"
@@ -2128,15 +2124,15 @@ export const Timeline = () => {
                 { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
                 { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
                 { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
-                ...(orientation === 'vertical' ?
-                  [
-                    {
-                      cat: 'screentime' as LegendCategory,
-                      color: productivityColors[1]!,
-                      label: 'Screen Time',
-                    },
-                  ]
-                : []),
+                ...(orientation === 'vertical'
+                  ? [
+                      {
+                        cat: 'screentime' as LegendCategory,
+                        color: productivityColors[1]!,
+                        label: 'Screen Time',
+                      },
+                    ]
+                  : []),
               ].map(({ cat, color, label }) => (
                 <button
                   key={cat}
@@ -2166,13 +2162,13 @@ export const Timeline = () => {
               {[
                 { cat: 'hr' as LegendCategory, color: HR_COLOR, label: 'HR' },
                 { cat: 'hrv' as LegendCategory, color: HRV_COLOR, label: 'HRV' },
-                ...(orientation === 'horizontal' ?
-                  [
-                    { cat: 'steps' as LegendCategory, color: STEPS_COLOR, label: 'Steps' },
-                    { cat: 'calories' as LegendCategory, color: CALORIES_COLOR, label: 'Calories' },
-                    { cat: 'training_load' as LegendCategory, color: CTL_COLOR, label: 'Training Load' },
-                  ]
-                : []),
+                ...(orientation === 'horizontal'
+                  ? [
+                      { cat: 'steps' as LegendCategory, color: STEPS_COLOR, label: 'Steps' },
+                      { cat: 'calories' as LegendCategory, color: CALORIES_COLOR, label: 'Calories' },
+                      { cat: 'training_load' as LegendCategory, color: CTL_COLOR, label: 'Training Load' },
+                    ]
+                  : []),
               ].map(({ cat, color, label }) => (
                 <button
                   key={cat}
@@ -2391,9 +2387,8 @@ const drawColumnItems = (
     const stackedItems = stackIconPoints(mergedItems, usableWidth)
 
     const hasStacked = stackedItems.some((s) => s.xOffset > 0)
-    const nonStackedLanes =
-      hasStacked ?
-        Math.max(1, ...stackedItems.filter((s) => s.xOffset === 0 && !s.item.isPoint).map((s) => s.lane + 1))
+    const nonStackedLanes = hasStacked
+      ? Math.max(1, ...stackedItems.filter((s) => s.xOffset === 0 && !s.item.isPoint).map((s) => s.lane + 1))
       : laneCount
     const effectiveLanes = hasMerged ? 1 : Math.max(nonStackedLanes, 1)
     const laneWidth = (usableWidth - (effectiveLanes - 1) * colPadding) / effectiveLanes
@@ -2561,12 +2556,13 @@ const drawItem = (
   const blockHeight = Math.max(y2 - y1, 2)
 
   const detailUrl =
-    item.entity_id && item.entity_type ?
-      `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
-    : (item.href ?? undefined)
+    item.entity_id && item.entity_type
+      ? `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
+      : (item.href ?? undefined)
 
-  const parent: SvgParent =
-    detailUrl ? chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true') : chartGroup
+  const parent: SvgParent = detailUrl
+    ? chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true')
+    : chartGroup
 
   if (item.isPoint) {
     const size = Math.min(laneWidth / 2, 6)

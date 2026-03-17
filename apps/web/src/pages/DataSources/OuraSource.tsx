@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
+
 import { TagMappingsSettings } from '../../components/TagMappingsSettings'
 import { API_URL } from '../../config'
 import { fetchUserSettings, syncOura } from '../../state/api'
 import { auth } from '../../state/auth'
-
 import './style.css'
 
 const DATA_TYPES = [
@@ -98,9 +98,10 @@ export function OuraSource() {
           </a>
         </div>
 
-        {isLoading ?
+        {isLoading ? (
           <div class="loading">Loading...</div>
-        : <>
+        ) : (
+          <>
             <div class={`status-banner ${isOuraConnected ? 'connected' : 'not-connected'}`}>
               <span class={`status-dot ${isOuraConnected ? 'connected' : 'not-connected'}`} />
               {isOuraConnected ? 'Oura Ring is connected' : 'Oura Ring not connected'}
@@ -109,7 +110,7 @@ export function OuraSource() {
             <section class="settings-section">
               <h2>Connection</h2>
 
-              {isOuraConnected ?
+              {isOuraConnected ? (
                 <div class="oura-connected-row">
                   <p class="connected-status">Connected</p>
                   <button
@@ -124,7 +125,7 @@ export function OuraSource() {
                     <span class={`oura-sync-message ${ouraSyncStatus}`}>{ouraSyncMessage}</span>
                   )}
                 </div>
-              : userSettings?.oura_configured === false ?
+              ) : userSettings?.oura_configured === false ? (
                 <>
                   <button type="button" class="connect-button" disabled>
                     Connect Oura
@@ -134,7 +135,8 @@ export function OuraSource() {
                     and OURA_SECRET environment variables.
                   </p>
                 </>
-              : <>
+              ) : (
+                <>
                   <button type="button" class="connect-button" onClick={handleConnectOura}>
                     Connect Oura
                   </button>
@@ -143,10 +145,10 @@ export function OuraSource() {
                     grant permission.
                   </p>
                 </>
-              }
+              )}
             </section>
           </>
-        }
+        )}
       </div>
 
       <TagMappingsSettings />

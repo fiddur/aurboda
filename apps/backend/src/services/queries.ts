@@ -7,7 +7,9 @@
  */
 
 import type { CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
+
 import { Temporal } from '@js-temporal/polyfill'
+
 import {
   getActivities,
   getDailyAggregates,
@@ -24,21 +26,21 @@ import {
   getTimeSeriesStats,
   getTimeSeriesWithSource,
   type ProductivityRecord,
-} from '../db'
+} from '../db/index.ts'
 import {
-  ActivityType,
+  type ActivityType,
   getMetricAggregation,
   getMetricUnit,
   isContextualHrvMetric,
   isHrZoneMetric,
   isValidMetricOrCustom,
-  MetricType,
+  type MetricType,
   metricUnits,
-} from '../schema'
-import { classifyHrvByContext, getHrvContextWindows, HrvContext } from './hrv-context'
-import { getPlaceVisits, type PlaceVisit } from './locations'
-import { computeHrZoneSecs, getEffectiveHrZones, HrZoneSecs, type HrZoneThresholds } from './settings'
-import { computeSleepMinutes } from './sleep-duration'
+} from '../schema.ts'
+import { classifyHrvByContext, getHrvContextWindows, type HrvContext } from './hrv-context.ts'
+import { getPlaceVisits, type PlaceVisit } from './locations.ts'
+import { computeHrZoneSecs, getEffectiveHrZones, type HrZoneSecs, type HrZoneThresholds } from './settings.ts'
+import { computeSleepMinutes } from './sleep-duration.ts'
 
 // ============================================================================
 // Types
@@ -484,9 +486,9 @@ export async function queryMetricsBucketed(
   const needsContextualHrv = contextualHrvMetricsRequested.length > 0
   const [regularData, contextualHrvData] = await Promise.all([
     regularMetrics.length > 0 ? getTimeSeriesBucketed(user, regularMetrics, start, end, interval, tz) : [],
-    needsContextualHrv ?
-      computeContextualHrvData(user, contextualHrvMetricsRequested, start, end, bucketMs, tz)
-    : [],
+    needsContextualHrv
+      ? computeContextualHrvData(user, contextualHrvMetricsRequested, start, end, bucketMs, tz)
+      : [],
   ])
 
   // Combine all data
@@ -649,14 +651,14 @@ export async function getDailySummary(
   // Calculate heart rate stats
   const heartRates = heartRateData.map(([, value]) => value)
   const heartRateStats: HeartRateStats | null =
-    heartRates.length > 0 ?
-      {
-        avg: Math.round(heartRates.reduce((a, b) => a + b, 0) / heartRates.length),
-        count: heartRates.length,
-        max: Math.max(...heartRates),
-        min: Math.min(...heartRates),
-      }
-    : null
+    heartRates.length > 0
+      ? {
+          avg: Math.round(heartRates.reduce((a, b) => a + b, 0) / heartRates.length),
+          count: heartRates.length,
+          max: Math.max(...heartRates),
+          min: Math.min(...heartRates),
+        }
+      : null
 
   // Get steps - prefer aggregate (deduplicated) over summing raw records
   const stepsAggregate = await getDailyAggregateValue(user, 'steps', date)
@@ -665,20 +667,20 @@ export async function getDailySummary(
 
   // Calculate productivity summary
   const productivitySummary: ProductivitySummary | null =
-    productivity.length > 0 ?
-      productivity.reduce(
-        (acc, record) => {
-          acc.total_duration_sec += record.duration_sec
-          if (record.productivity !== undefined && record.productivity !== null) {
-            if (record.productivity >= 1) acc.productive_sec += record.duration_sec
-            if (record.productivity >= 2) acc.very_productive_sec += record.duration_sec
-            if (record.productivity <= -1) acc.distracting_sec += record.duration_sec
-          }
-          return acc
-        },
-        { distracting_sec: 0, productive_sec: 0, total_duration_sec: 0, very_productive_sec: 0 },
-      )
-    : null
+    productivity.length > 0
+      ? productivity.reduce(
+          (acc, record) => {
+            acc.total_duration_sec += record.duration_sec
+            if (record.productivity !== undefined && record.productivity !== null) {
+              if (record.productivity >= 1) acc.productive_sec += record.duration_sec
+              if (record.productivity >= 2) acc.very_productive_sec += record.duration_sec
+              if (record.productivity <= -1) acc.distracting_sec += record.duration_sec
+            }
+            return acc
+          },
+          { distracting_sec: 0, productive_sec: 0, total_duration_sec: 0, very_productive_sec: 0 },
+        )
+      : null
 
   // Build Oura scores object (get first value for each metric if available)
   const sleepScoreData = ouraMetrics['sleep_score']
@@ -692,9 +694,8 @@ export async function getDailySummary(
     resilienceScoreData?.length ||
     cardiovascularAgeData?.length
 
-  const ouraScores: OuraScores | null =
-    hasAnyOuraData ?
-      {
+  const ouraScores: OuraScores | null = hasAnyOuraData
+    ? {
         cardiovascular_age: cardiovascularAgeData?.[0]?.[1] ?? null,
         readiness_score: readinessScoreData?.[0]?.[1] ?? null,
         resilience_score: resilienceScoreData?.[0]?.[1] ?? null,
@@ -710,8 +711,9 @@ export async function getDailySummary(
     exerciseSessions.map(async (s) => {
       const sessionSummary: SessionSummary = {
         data: s.data,
-        duration:
-          s.end_time ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60) : undefined,
+        duration: s.end_time
+          ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)
+          : undefined,
         end_time: s.end_time?.toISOString(),
         start_time: s.start_time.toISOString(),
         title: s.title,
@@ -736,13 +738,15 @@ export async function getDailySummary(
   // Build sleep session summaries with sleep_date and sleep_location
   const dateStr = date.toISOString().split('T')[0]
   const sleepSessionSummaries: SleepSessionSummary[] = sleepSessions.map((s) => {
-    const timeInBed =
-      s.end_time ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60) : undefined
+    const timeInBed = s.end_time
+      ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)
+      : undefined
     const totalSleep = computeSleepMinutes(s.data as Record<string, unknown> | undefined)
 
     // sleep_date = wake-up date (end_time date), or start_time date if still sleeping
-    const sleepDate =
-      s.end_time ? s.end_time.toISOString().split('T')[0] : s.start_time.toISOString().split('T')[0]
+    const sleepDate = s.end_time
+      ? s.end_time.toISOString().split('T')[0]
+      : s.start_time.toISOString().split('T')[0]
 
     // Find the best-guess sleep location from place visits overlapping the sleep window
     const sleepLocation = findSleepLocation(s.start_time, s.end_time ?? end, placeVisits)
@@ -1102,8 +1106,9 @@ async function enrichActivity(
     activity_type: a.activity_type,
     comments: a.id ? (commentsMap.get(a.id) ?? []) : [],
     data: a.data,
-    duration:
-      a.end_time ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60) : undefined,
+    duration: a.end_time
+      ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60)
+      : undefined,
     end_time: a.end_time?.toISOString(),
     id: 'source_ids' in a && a.source_ids ? `merged:${a.id}` : a.id,
     notes: a.notes,
@@ -1289,11 +1294,7 @@ export async function queryProductivity(
   const productivity = await getProductivity(user, start, end)
   const merged = mergeProductivitySpans(productivity)
   // Fetch comments for all source IDs so comments on any constituent record surface
-  const allIds = merged.flatMap((p) =>
-    p.source_ids.length > 0 ? p.source_ids
-    : p.id ? [p.id]
-    : [],
-  )
+  const allIds = merged.flatMap((p) => (p.source_ids.length > 0 ? p.source_ids : p.id ? [p.id] : []))
   const commentsMap = await getCommentsMap(user, 'productivity', allIds)
   return merged.map((p) => {
     // Collect comments from all source IDs for this merged span

@@ -20,16 +20,18 @@ import {
   hrvActivitiesQuerySchema,
   type HrvActivitiesResponse,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
+import { type RequestHandler, Router } from 'express'
+
+import type { SyncProvider } from '../services/queries.ts'
+
 import {
   getActivityImpact,
   getBaseline,
   getEventProbability,
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
-} from '../services/correlations'
-import { type SyncProvider } from '../services/queries'
-import { validateBody, validateQuery } from '../validation'
+} from '../services/correlations.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createCorrelationsRouter = (
   authMiddleware: RequestHandler,

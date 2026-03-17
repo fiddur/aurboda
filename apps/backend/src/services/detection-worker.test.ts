@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'vitest'
-import { DetectedLocation } from '../db'
+
+import type { DetectedLocation } from '../db/index.ts'
+import type { DetectedLocation as DetectedCluster } from './locations.ts'
+
 import {
   determineAllActions,
   determineClusterAction,
   haversineDistance,
   mergeClusterWithStored,
-} from './detection-worker'
-import { DetectedLocation as DetectedCluster } from './locations'
+} from './detection-worker.ts'
 
 describe('haversineDistance', () => {
   test('returns 0 for same point', () => {

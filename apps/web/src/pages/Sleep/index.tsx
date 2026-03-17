@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useEffect, useRef } from 'preact/hooks'
-import { fetchActivities, fetchPeriodSummary, fetchSleepScores, type Activity } from '../../state/api'
 
+import { fetchActivities, fetchPeriodSummary, fetchSleepScores, type Activity } from '../../state/api'
 import './style.css'
 
 // Date range signal (default 30 days)
@@ -209,11 +209,7 @@ function SleepDurationChart({ sleepSessions, height = 180 }: { sleepSessions: Ac
       .attr('y', (d) => y(d.hours))
       .attr('width', x.bandwidth())
       .attr('height', (d) => innerHeight - y(d.hours))
-      .attr('fill', (d) =>
-        d.hours >= 7 && d.hours <= 9 ? '#22c55e'
-        : d.hours < 6 ? '#ef4444'
-        : '#f59e0b',
-      )
+      .attr('fill', (d) => (d.hours >= 7 && d.hours <= 9 ? '#22c55e' : d.hours < 6 ? '#ef4444' : '#f59e0b'))
       .attr('rx', 2)
 
     // Average line
@@ -290,31 +286,30 @@ function StatCard({
   description?: string
 }) {
   const trendClass =
-    trend !== null && trend !== undefined ?
-      trend > 0 ? 'trend-positive'
-      : trend < 0 ? 'trend-negative'
-      : 'trend-neutral'
-    : ''
+    trend !== null && trend !== undefined
+      ? trend > 0
+        ? 'trend-positive'
+        : trend < 0
+          ? 'trend-negative'
+          : 'trend-neutral'
+      : ''
 
   return (
     <div class="stat-card">
       <div class="stat-label">{label}</div>
       <div class="stat-value">
-        {value !== null ?
+        {value !== null ? (
           <>
             {typeof value === 'number' ? value.toFixed(1) : value}
             {unit && <span class="stat-unit">{unit}</span>}
           </>
-        : <span class="no-data">--</span>}
+        ) : (
+          <span class="no-data">--</span>
+        )}
       </div>
       {trend !== null && trend !== undefined && (
         <div class={`stat-trend ${trendClass}`}>
-          {trend > 0 ?
-            '\u2191'
-          : trend < 0 ?
-            '\u2193'
-          : '\u2192'}{' '}
-          {Math.abs(trend).toFixed(1)}%
+          {trend > 0 ? '\u2191' : trend < 0 ? '\u2193' : '\u2192'} {Math.abs(trend).toFixed(1)}%
         </div>
       )}
       {description && <div class="stat-description">{description}</div>}
@@ -375,12 +370,12 @@ export function Sleep() {
   // Calculate average sleep duration (using total_sleep from API when available)
   const sessionsWithDuration = sleepSessions.filter((s) => s.end_time)
   const avgSleepDuration =
-    sessionsWithDuration.length > 0 ?
-      sessionsWithDuration.reduce(
-        (sum, s) => sum + (s.duration ?? (s.end_time!.getTime() - s.start_time.getTime()) / 60000) / 60,
-        0,
-      ) / sessionsWithDuration.length
-    : null
+    sessionsWithDuration.length > 0
+      ? sessionsWithDuration.reduce(
+          (sum, s) => sum + (s.duration ?? (s.end_time!.getTime() - s.start_time.getTime()) / 60000) / 60,
+          0,
+        ) / sessionsWithDuration.length
+      : null
 
   const handleDaysChange = (e: Event) => {
     const value = parseInt((e.target as HTMLSelectElement).value, 10)

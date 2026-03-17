@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+
 import {
   fetchActivities,
   fetchActivityWatchStatus,
@@ -9,7 +10,6 @@ import {
   fetchUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-
 import './style.css'
 
 interface DataSourceStatus {
@@ -196,9 +196,8 @@ export function Help() {
           <DataSourceCard
             name="Heart Rate & HRV"
             status={{
-              description:
-                hasHeartRate ?
-                  'Heart rate data detected in the last 7 days.'
+              description: hasHeartRate
+                ? 'Heart rate data detected in the last 7 days.'
                 : 'No heart rate data in the last 7 days.',
               hasData: hasHeartRate,
             }}
@@ -219,8 +218,9 @@ export function Help() {
           <DataSourceCard
             name="Sleep Tracking"
             status={{
-              description:
-                hasSleep ? 'Sleep data detected in the last 7 days.' : 'No sleep data in the last 7 days.',
+              description: hasSleep
+                ? 'Sleep data detected in the last 7 days.'
+                : 'No sleep data in the last 7 days.',
               hasData: hasSleep,
               isConfigured: isOuraConnected,
             }}
@@ -235,9 +235,8 @@ export function Help() {
           <DataSourceCard
             name="Exercise & Activities"
             status={{
-              description:
-                hasExercise ?
-                  'Exercise data detected in the last 7 days.'
+              description: hasExercise
+                ? 'Exercise data detected in the last 7 days.'
                 : 'No exercise data in the last 7 days.',
               hasData: hasExercise,
             }}
@@ -257,10 +256,9 @@ export function Help() {
           <DataSourceCard
             name="Oura Ring"
             status={{
-              description:
-                isOuraConnected ? 'Oura Ring is connected.' : (
-                  'Oura Ring not connected. Connect for sleep scores, readiness, and HRV.'
-                ),
+              description: isOuraConnected
+                ? 'Oura Ring is connected.'
+                : 'Oura Ring not connected. Connect for sleep scores, readiness, and HRV.',
               hasData: isOuraConnected,
             }}
             setupSteps={[
@@ -277,9 +275,8 @@ export function Help() {
           <DataSourceCard
             name="Location Tracking (OwnTracks)"
             status={{
-              description:
-                hasLocations ?
-                  'Location data detected in the last 7 days.'
+              description: hasLocations
+                ? 'Location data detected in the last 7 days.'
                 : 'No location data in the last 7 days.',
               hasData: hasLocations,
             }}
@@ -312,9 +309,11 @@ export function Help() {
             name="RescueTime"
             status={{
               description:
-                isRescueTimeConfigured && hasProductivity ? 'Screen time data detected in the last 7 days.'
-                : isRescueTimeConfigured ? 'RescueTime configured but no recent data synced.'
-                : 'RescueTime not configured.',
+                isRescueTimeConfigured && hasProductivity
+                  ? 'Screen time data detected in the last 7 days.'
+                  : isRescueTimeConfigured
+                    ? 'RescueTime configured but no recent data synced.'
+                    : 'RescueTime not configured.',
               hasData: isRescueTimeConfigured && hasProductivity,
               isConfigured: isRescueTimeConfigured,
             }}
@@ -332,10 +331,11 @@ export function Help() {
           <DataSourceCard
             name="ActivityWatch (Desktop)"
             status={{
-              description:
-                hasAwDesktop ? 'Desktop screen time data syncing.'
-                : hasActivityWatch ? 'ActivityWatch syncing, but no desktop data in the last 7 days.'
-                : 'ActivityWatch desktop not set up.',
+              description: hasAwDesktop
+                ? 'Desktop screen time data syncing.'
+                : hasActivityWatch
+                  ? 'ActivityWatch syncing, but no desktop data in the last 7 days.'
+                  : 'ActivityWatch desktop not set up.',
               hasData: hasAwDesktop,
             }}
             setupSteps={[
@@ -356,8 +356,9 @@ export function Help() {
           <DataSourceCard
             name="ActivityWatch (Mobile)"
             status={{
-              description:
-                hasAwMobile ? 'Mobile screen time data syncing.' : 'ActivityWatch mobile not set up.',
+              description: hasAwMobile
+                ? 'Mobile screen time data syncing.'
+                : 'ActivityWatch mobile not set up.',
               hasData: hasAwMobile,
             }}
             setupSteps={[

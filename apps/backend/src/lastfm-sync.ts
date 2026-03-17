@@ -6,6 +6,7 @@
  */
 
 import { subDays } from 'date-fns'
+
 import {
   findMergeableTag,
   getAllScrobbles,
@@ -19,9 +20,9 @@ import {
   type ScrobbleRecord,
   updateTagEndTime,
   upsertSyncState,
-} from './db'
-import { lastfmClient, type Scrobble } from './lastfm'
-import { groupIntoSessions, type TimestampedEvent } from './session-grouping'
+} from './db/index.ts'
+import { lastfmClient, type Scrobble } from './lastfm.ts'
+import { groupIntoSessions, type TimestampedEvent } from './session-grouping.ts'
 
 /** Default start date for historical sync (30 days back) */
 const DEFAULT_SYNC_HISTORY_DAYS = 30
@@ -81,9 +82,9 @@ export const matchesRule = (scrobble: Scrobble, rule: LastFmTagRule): boolean =>
 
       const normalize = (s: string) => s.toLowerCase().trim()
       const trackMatch =
-        rule.match_mode === 'exact' ?
-          normalize(scrobble.track) === normalize(rule.track_name)
-        : normalize(scrobble.track).includes(normalize(rule.track_name))
+        rule.match_mode === 'exact'
+          ? normalize(scrobble.track) === normalize(rule.track_name)
+          : normalize(scrobble.track).includes(normalize(rule.track_name))
       const artistMatch = matchesAnyArtist(scrobble.artist, names, rule.match_mode)
       return trackMatch && artistMatch
     }

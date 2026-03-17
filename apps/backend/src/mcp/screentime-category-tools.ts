@@ -3,6 +3,7 @@
  */
 import { createScreentimeCategoryBodySchema, updateScreentimeCategoryBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
+
 import {
   createCategory,
   fetchAwCategories,
@@ -11,8 +12,8 @@ import {
   modifyCategory,
   recategorizeAll,
   removeCategory,
-} from '../services/screentime-categories'
-import { errorResponse, jsonResponse, type McpServer } from './helpers'
+} from '../services/screentime-categories.ts'
+import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerScreentimeCategoryTools = (server: McpServer, user: string) => {
   // Tool: list_screentime_categories

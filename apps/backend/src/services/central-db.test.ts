@@ -1,6 +1,8 @@
-import pg from 'pg'
+import type pg from 'pg'
+
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { createCentralDb, type CentralDb, type SignupMode } from './central-db'
+
+import { createCentralDb, type CentralDb, type SignupMode } from './central-db.ts'
 
 // Mock pg.Client
 vi.mock('pg', () => {

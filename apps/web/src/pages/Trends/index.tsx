@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { useEffect, useRef, useState } from 'preact/hooks'
+
 import { MetricPicker } from '../../components/MetricPicker'
 import { TagPicker } from '../../components/TagPicker'
 import { fetchTrend, type FetchTrendParams, type TrendDisplayPeriod, type TrendResult } from '../../state/api'
@@ -13,7 +14,6 @@ import {
   updateSavedTrend,
   type SavedTrend,
 } from '../../state/savedTrends'
-
 import './style.css'
 
 // Chart component for trend history
@@ -161,9 +161,9 @@ function TrendChart({ data, color }: { data: { date: string; value: number }[]; 
         const d1 = parsedData[idx]
         if (!d0) return
         const nearest =
-          d1 && dateAtMouse.getTime() - d0.date.getTime() > d1.date.getTime() - dateAtMouse.getTime() ?
-            d1
-          : d0
+          d1 && dateAtMouse.getTime() - d0.date.getTime() > d1.date.getTime() - dateAtMouse.getTime()
+            ? d1
+            : d0
         const cx = x(nearest.date)
         const cy = y(nearest.value)
 
@@ -303,7 +303,7 @@ function TrendConfigForm({
             <option value="metric">Metric</option>
           </select>
         </label>
-        {sourceType === 'tag' ?
+        {sourceType === 'tag' ? (
           <label class="pattern-input">
             Tags
             <TagPicker
@@ -311,11 +311,12 @@ function TrendConfigForm({
               onChange={(tags) => setPattern(tags.join('|'))}
             />
           </label>
-        : <label class="pattern-input">
+        ) : (
+          <label class="pattern-input">
             Metric
             <MetricPicker value={pattern} onChange={setPattern} placeholder="Search metrics..." />
           </label>
-        }
+        )}
       </div>
 
       <div class="form-row">
