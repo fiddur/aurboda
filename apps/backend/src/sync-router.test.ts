@@ -1,7 +1,8 @@
 import express from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { createSyncRouter, SyncRouterDeps } from './sync-router'
+
+import { createSyncRouter, type SyncRouterDeps } from './sync-router.ts'
 
 describe('sync router', () => {
   const mockDeps: SyncRouterDeps = {

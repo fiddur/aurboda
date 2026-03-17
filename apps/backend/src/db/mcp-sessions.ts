@@ -1,9 +1,10 @@
+import type { McpSessionRecord } from './types.ts'
+
 /**
  * MCP session persistence across backend restarts.
  */
-import { query } from './connection'
-import { mapMcpSessionRow } from './row-mappers'
-import type { McpSessionRecord } from './types'
+import { query } from './connection.ts'
+import { mapMcpSessionRow } from './row-mappers.ts'
 
 /**
  * Save an MCP session to the database.

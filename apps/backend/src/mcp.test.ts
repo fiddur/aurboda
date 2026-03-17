@@ -1,11 +1,12 @@
 import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createAuth } from './auth'
-import * as db from './db'
-import { createMcpRouter } from './mcp'
-import * as mutations from './services/mutations'
-import * as queries from './services/queries'
+
+import { createAuth } from './auth.ts'
+import * as db from './db/index.ts'
+import { createMcpRouter } from './mcp.ts'
+import * as mutations from './services/mutations.ts'
+import * as queries from './services/queries.ts'
 
 // Mock the services
 vi.mock('./services/queries', () => ({

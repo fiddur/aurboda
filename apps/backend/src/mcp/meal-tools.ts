@@ -5,8 +5,9 @@
  */
 import { addMealBodySchema, mealsQuerySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { addMeal, deleteMealById, getMeal, queryMeals } from '../services/meals'
-import { errorResponse, jsonResponse, type McpServer } from './helpers'
+
+import { addMeal, deleteMealById, getMeal, queryMeals } from '../services/meals.ts'
+import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerMealTools = (server: McpServer, user: string) => {
   // Tool: add_meal

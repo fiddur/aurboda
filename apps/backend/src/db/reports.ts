@@ -4,9 +4,11 @@
  * Reports group related lab measurements (InBody, blood panels, etc.) with entries.
  */
 import format from 'pg-format'
-import { query } from './connection'
-import { mapReportEntryRow, mapReportRow } from './row-mappers'
-import type { Report, ReportEntry } from './types'
+
+import type { Report, ReportEntry } from './types.ts'
+
+import { query } from './connection.ts'
+import { mapReportEntryRow, mapReportRow } from './row-mappers.ts'
 
 const REPORT_COLUMNS = 'id, report_type, report_date, location, notes, created_at'
 const ENTRY_COLUMNS =

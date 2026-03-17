@@ -3,8 +3,9 @@
  */
 import { addNoteBodySchema, notesQuerySchema, updateNoteBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from '../services/mutations'
-import { errorResponse, jsonResponse, type McpServer } from './helpers'
+
+import { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from '../services/mutations.ts'
+import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerNoteTools = (server: McpServer, user: string) => {
   // Tool: add_note

@@ -6,7 +6,8 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
+
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
@@ -16,7 +17,7 @@ import {
   getTimeSeriesBucketed,
   getTimeSeriesWithSource,
   insertTimeSeries,
-} from './time-series'
+} from './time-series.ts'
 
 // Increase timeout for container startup
 const CONTAINER_TIMEOUT = 60_000

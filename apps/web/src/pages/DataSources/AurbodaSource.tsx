@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
+
 import { CustomMetricsSettings } from '../../components/CustomMetricsSettings'
 import { GoalsSettings } from '../../components/GoalsSettings'
 import { TagMappingsSettings } from '../../components/TagMappingsSettings'
 import { fetchMetricTimeSeries, fetchUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
-
 import './style.css'
 
 const DATA_TYPES = ['Tags', 'Custom metrics', 'Manual data entry', 'Goals', 'Notes', 'Calories (computed)']

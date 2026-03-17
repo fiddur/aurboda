@@ -1,13 +1,14 @@
 import { subDays } from 'date-fns'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from './db'
+
+import * as db from './db/index.ts'
 import {
   calculateRetryAfter,
   garminDataTypes,
   isRateLimited,
   syncAllGarminData,
   syncGarminDataType,
-} from './garmin-sync'
+} from './garmin-sync.ts'
 
 // Mock the db module (include all exports used by garmin-process.ts too)
 vi.mock('./db', () => ({
@@ -20,7 +21,7 @@ vi.mock('./db', () => ({
 
 // Mock garmin-process to avoid importing real db deps
 vi.mock('./garmin-process', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./garmin-process')>()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     processGarminData: vi.fn().mockResolvedValue(1),
@@ -175,7 +176,10 @@ describe('syncGarminDataType', () => {
     expect(db.upsertSyncState).toHaveBeenCalledWith(user, expect.objectContaining({ status: 'syncing' }))
     expect(db.upsertSyncState).toHaveBeenCalledWith(
       user,
-      expect.objectContaining({ last_sync_time: expect.any(Date), status: 'idle' }),
+      expect.objectContaining({
+        last_sync_time: expect.any(Date),
+        status: 'idle',
+      }),
     )
   })
 
@@ -215,7 +219,9 @@ describe('syncGarminDataType', () => {
     })
 
     const beforeCall = new Date()
-    await syncGarminDataType(user, mockGarmin as never, 'dailySummary', { fullResync: true })
+    await syncGarminDataType(user, mockGarmin as never, 'dailySummary', {
+      fullResync: true,
+    })
 
     expect(capturedDates.length).toBeGreaterThan(0)
     const daysDiff = (beforeCall.getTime() - capturedDates[0]!.getTime()) / (1000 * 60 * 60 * 24)

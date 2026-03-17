@@ -3,6 +3,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+
 import {
   bulkInsertScreentimeCategories,
   deleteAllScreentimeCategories,
@@ -11,8 +12,8 @@ import {
   getScreentimeCategoryById,
   insertScreentimeCategory,
   updateScreentimeCategory,
-} from '../db'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
+} from '../db/index.ts'
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 
 const CONTAINER_TIMEOUT = 60_000
 

@@ -1,9 +1,9 @@
 import { metricUnits } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
+
 import { fetchGoalsProgress, fetchUserSettings, type GoalProgress } from '../../state/api'
 import { auth } from '../../state/auth'
 import { metricLabels } from '../../utils/metricLabels'
-
 import './style.css'
 
 // Format value for display (e.g., seconds to hours:minutes)
@@ -190,9 +190,11 @@ export function Goals() {
       </div>
 
       <p class="goals-footer">
-        {allSameWindow ?
+        {allSameWindow ? (
           <>Rolling {goals[0]?.window ?? '7d'} window from today.</>
-        : <>Rolling windows from today.</>}{' '}
+        ) : (
+          <>Rolling windows from today.</>
+        )}{' '}
         <a href="/settings">Edit goals</a>
       </p>
     </div>

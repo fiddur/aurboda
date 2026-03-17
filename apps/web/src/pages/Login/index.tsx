@@ -1,7 +1,7 @@
 import { useLocation } from 'preact-iso'
 import { useEffect, useState } from 'preact/hooks'
-import { auth, ensureStatusLoaded, login, signupAllowed } from '../../state/auth'
 
+import { auth, ensureStatusLoaded, login, signupAllowed } from '../../state/auth'
 import './style.css'
 
 export function Login() {

@@ -8,6 +8,7 @@ import {
   genericCorrelationBodySchema,
   hrvCorrelationInputSchema,
 } from '@aurboda/api-spec'
+
 import {
   getActivityImpact,
   getBaseline,
@@ -16,8 +17,8 @@ import {
   getHrvActivitiesCorrelation,
   type OutcomeConfig,
   type TriggerCondition,
-} from '../services/correlations'
-import { jsonResponse, type McpServer, type SyncProvider } from './helpers'
+} from '../services/correlations.ts'
+import { jsonResponse, type McpServer, type SyncProvider } from './helpers.ts'
 
 export const registerCorrelationTools = (server: McpServer, user: string, sync?: SyncProvider) => {
   // Tool: get_baseline

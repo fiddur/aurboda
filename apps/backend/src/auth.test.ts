@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { createAuth } from './auth'
+
+import { createAuth } from './auth.ts'
 
 const VALID_SALT = 'test-secret-key-32-bytes-long!!!' // exactly 32 bytes
 

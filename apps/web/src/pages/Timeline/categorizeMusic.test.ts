@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest'
+
 import type { Scrobble } from '../../state/api'
+
 import { categorizeMusic } from './categorizeMusic'
 
 describe('categorizeMusic', () => {

@@ -6,8 +6,10 @@
  * - Crosshair tooltip on mouseover showing all metric values at that time
  */
 import type { RecoveryZones, TrainingLoadPoint, WorkoutTrimp } from '@aurboda/api-spec'
+
 import * as d3 from 'd3'
 import { format } from 'date-fns'
+
 import { type MetricBucketParsed, aggregateBuckets } from '../../utils/chart'
 import {
   ACTIVITY_IMPULSE_COLOR,
@@ -266,9 +268,8 @@ const buildMetricsTooltipHtml = (
   const endStr = formatTime(bucket.end)
   const dateStr = format(bucket.start, 'EEE, MMM d')
   const isSameDay = format(bucket.start, 'yyyy-MM-dd') === format(bucket.end, 'yyyy-MM-dd')
-  const timeRange =
-    isSameDay ?
-      `${dateStr} ${startStr} – ${endStr}`
+  const timeRange = isSameDay
+    ? `${dateStr} ${startStr} – ${endStr}`
     : `${dateStr} ${startStr} – ${format(bucket.end, 'EEE, MMM d')} ${endStr}`
   let html = `<div class="tooltip-title">Metrics</div>`
   html += `<div class="tooltip-time">${timeRange}</div>`
@@ -342,9 +343,8 @@ const buildTrainingLoadOnlyTooltipHtml = (
   const bucketEnd = new Date(pointTime.getTime() + bucketDuration)
   const dateStr = format(pointTime, 'EEE, MMM d')
   const isSameDay = format(pointTime, 'yyyy-MM-dd') === format(bucketEnd, 'yyyy-MM-dd')
-  const timeRange =
-    isSameDay ?
-      `${dateStr} ${formatTime(pointTime)} – ${formatTime(bucketEnd)}`
+  const timeRange = isSameDay
+    ? `${dateStr} ${formatTime(pointTime)} – ${formatTime(bucketEnd)}`
     : `${dateStr} – ${format(bucketEnd, 'EEE, MMM d')}`
 
   let html = `<div class="tooltip-title">Training Load</div>`

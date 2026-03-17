@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'vitest'
-import type { ScreentimeCategory } from '../db/types'
+
+import type { ScreentimeCategory } from '../db/types.ts'
+
 import {
   compileRules,
   convertAwCategories,
   getColorForCategory,
   getScoreForCategory,
   resolveCategory,
-} from './screentime-categories'
+} from './screentime-categories.ts'
 
 // ============================================================================
 // Test fixtures

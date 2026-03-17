@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { computeSleepMinutes } from './sleep-duration'
+
+import { computeSleepMinutes } from './sleep-duration.ts'
 
 describe('computeSleepMinutes', () => {
   test('returns undefined when data is undefined', () => {

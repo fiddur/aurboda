@@ -11,12 +11,12 @@ import {
   getNamedLocations,
   getDetectedLocations as getStoredDetectedLocations,
   insertNamedLocation,
-  NamedLocation,
-  NamedLocationInput,
+  type NamedLocation,
+  type NamedLocationInput,
   query,
-  DetectedLocation as StoredDetectedLocation,
+  type DetectedLocation as StoredDetectedLocation,
   updateNamedLocation,
-} from '../db'
+} from '../db/index.ts'
 
 // ============================================================================
 // Types
@@ -529,7 +529,7 @@ export {
   getNamedLocationById,
   getNamedLocations,
   insertNamedLocation,
-  NamedLocation,
-  NamedLocationInput,
+  type NamedLocation,
+  type NamedLocationInput,
   updateNamedLocation,
 }

@@ -1,9 +1,10 @@
+import type { SyncState } from './types.ts'
+
 /**
  * Sync state tracking for external data providers.
  */
-import { query } from './connection'
-import { mapSyncStateRow } from './row-mappers'
-import type { SyncState } from './types'
+import { query } from './connection.ts'
+import { mapSyncStateRow } from './row-mappers.ts'
 
 export const getSyncState = async (
   user: string,

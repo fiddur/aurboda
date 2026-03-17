@@ -7,6 +7,7 @@ import {
   updateLastFmTagRuleBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
+
 import {
   deleteLastFmTagRule,
   getLastFmTagRules,
@@ -15,9 +16,9 @@ import {
   updateLastFmTagRule,
   type LastFmMatchMode,
   type LastFmMatchType,
-} from '../db'
-import { applyRuleRetroactively, cleanupRuleTags, retagAllScrobbles } from '../lastfm-sync'
-import { errorResponse, jsonResponse, type McpServer } from './helpers'
+} from '../db/index.ts'
+import { applyRuleRetroactively, cleanupRuleTags, retagAllScrobbles } from '../lastfm-sync.ts'
+import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerLastFmTools = (server: McpServer, user: string) => {
   // Tool: query_scrobbles

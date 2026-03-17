@@ -4,9 +4,10 @@
  * Handles: /trends
  */
 import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { getTrend } from '../services/trends'
-import { validateQuery } from '../validation'
+import { type RequestHandler, Router } from 'express'
+
+import { getTrend } from '../services/trends.ts'
+import { validateQuery } from '../validation.ts'
 
 export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()

@@ -5,7 +5,8 @@
  */
 
 import axios from 'axios'
-import type { OuraDataType } from './oura-sync'
+
+import type { OuraDataType } from './oura-sync.ts'
 
 const OURA_WEBHOOK_BASE = 'https://api.ouraring.com/v2/webhook/subscription'
 

@@ -9,10 +9,11 @@ import {
   type UpdateDashboardInput,
   updateDashboardInputSchema,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { upsertUserSettings } from '../db'
-import { getSettings } from '../services/settings'
-import { validateBody } from '../validation'
+import { type RequestHandler, Router } from 'express'
+
+import { upsertUserSettings } from '../db/index.ts'
+import { getSettings } from '../services/settings.ts'
+import { validateBody } from '../validation.ts'
 
 export const createDashboardRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()

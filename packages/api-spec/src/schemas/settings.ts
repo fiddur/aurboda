@@ -3,10 +3,11 @@
  */
 
 import { z } from 'zod'
-import { baseResponseSchema, hrZoneSourceSchema } from './common.js'
-import { dashboardConfigSchema } from './dashboard.js'
-import { goalsSchema } from './goals.js'
-import { trainingLoadSettingsSchema } from './training-load.js'
+
+import { baseResponseSchema, hrZoneSourceSchema } from './common.ts'
+import { dashboardConfigSchema } from './dashboard.ts'
+import { goalsSchema } from './goals.ts'
+import { trainingLoadSettingsSchema } from './training-load.ts'
 
 // Shared HR zone threshold field
 const hrZoneThresholdSchema = z.number().int().positive()

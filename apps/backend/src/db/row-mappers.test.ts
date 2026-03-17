@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+
 import {
   mapActivityRow,
   mapDetectedLocationRow,
@@ -11,7 +12,7 @@ import {
   parseDataSource,
   parseGeocodeStatus,
   parseSyncStatus,
-} from './row-mappers'
+} from './row-mappers.ts'
 
 describe('type guards', () => {
   test('parseActivityType accepts valid types', () => {

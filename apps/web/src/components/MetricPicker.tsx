@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'preact/hooks'
+
 import { fetchCustomMetrics, type CustomMetricDefinition } from '../state/api'
 import { builtinDashboardMetricOptions, getMetricDisplayName } from '../utils/metricLabels'
-
 import './MetricPicker.css'
 
 interface MetricEntry {
@@ -100,9 +100,9 @@ export function MetricPicker({ value, onChange, placeholder = 'Search metrics...
   const displayValue = value ? getMetricDisplayName(value) : ''
   // Check custom metrics for display name too
   const customDisplayValue =
-    value && !displayValue.includes(value) ?
-      displayValue
-    : ((customMetrics ?? []).find((m) => m.name === value)?.description ?? displayValue)
+    value && !displayValue.includes(value)
+      ? displayValue
+      : ((customMetrics ?? []).find((m) => m.name === value)?.description ?? displayValue)
   const shownValue = isOpen ? inputValue : customDisplayValue || value
 
   return (

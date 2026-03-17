@@ -5,6 +5,7 @@
 import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'preact/hooks'
+
 import {
   fetchCustomMetrics,
   fetchMetricTimeSeriesWithSource,
@@ -32,7 +33,7 @@ export const parseMetricEntityId = (
 
 /** Map metric name to human-readable display label. */
 const formatMetricLabel = (metric: string): string =>
-  metric.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  metric.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
 
 interface MetricDetailProps {
   entityId: string
@@ -152,11 +153,11 @@ export const MetricDetail = ({
         <div class="field-row">
           <span class="field-label">Value</span>
           <span class="field-value">
-            {pointQuery.isLoading ?
-              'Loading...'
-            : displayValue !== null ?
-              `${displayValue}${unit ? ` ${unit}` : ''}`
-            : 'Not found'}
+            {pointQuery.isLoading
+              ? 'Loading...'
+              : displayValue !== null
+                ? `${displayValue}${unit ? ` ${unit}` : ''}`
+                : 'Not found'}
           </span>
         </div>
         <div class="field-row">

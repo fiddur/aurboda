@@ -2,8 +2,10 @@
  * Raw record storage for incoming health data.
  */
 import format from 'pg-format'
-import { query } from './connection'
-import type { RawRecord } from './types'
+
+import type { RawRecord } from './types.ts'
+
+import { query } from './connection.ts'
 
 export const insertRawRecord = async (user: string, record: RawRecord) => {
   await query(

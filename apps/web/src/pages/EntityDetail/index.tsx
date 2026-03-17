@@ -10,16 +10,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
-import {
-  Activity,
-  type ExerciseTypeName,
-  fetchActivityById,
-  fetchProductivity,
-  fetchTagById,
-  type ProductivityRecord,
-  SourceRecord,
-  updateActivity,
-} from '../../state/api'
+
+import type { Activity, ExerciseTypeName, ProductivityRecord, SourceRecord } from '../../state/api'
+
+import { fetchActivityById, fetchProductivity, fetchTagById, updateActivity } from '../../state/api'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
@@ -31,7 +25,6 @@ import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
 import { SleepDetail } from './SleepDetail'
 import { TagDetail } from './TagDetail'
-
 import './style.css'
 
 const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
@@ -193,12 +186,20 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   })
 
   const invalidate = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ['entity-detail', 'activity', entityId] }),
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: ['entity-detail', 'activity', entityId],
+      }),
     [queryClient, entityId],
   )
 
   const [isEditing, setIsEditing] = useState(false)
-  const emptyDraft: ActivityDraft = { end_time: '', notes: '', start_time: '', title: '' }
+  const emptyDraft: ActivityDraft = {
+    end_time: '',
+    notes: '',
+    start_time: '',
+    title: '',
+  }
   const [draft, setDraft] = useState<ActivityDraft>(emptyDraft)
 
   const isMergedActivity = Boolean(activity?.source_records && activity.source_records.length > 1)
@@ -221,11 +222,16 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       } = {}
       const orig = makeDraft(activity)
       if (draft.title !== orig.title) body.title = draft.title
-      if (draft.start_time !== orig.start_time) body.start_time = new Date(draft.start_time).toISOString()
-      if (draft.end_time !== orig.end_time) body.end_time = new Date(draft.end_time).toISOString()
+      if (draft.start_time !== orig.start_time) {
+        body.start_time = new Date(draft.start_time).toISOString()
+      }
+      if (draft.end_time !== orig.end_time) {
+        body.end_time = new Date(draft.end_time).toISOString()
+      }
       if (draft.notes !== orig.notes) body.notes = draft.notes
-      if (draft.exercise_type !== orig.exercise_type && draft.exercise_type)
+      if (draft.exercise_type !== orig.exercise_type && draft.exercise_type) {
         body.exercise_type = draft.exercise_type as ExerciseTypeName
+      }
       if (Object.keys(body).length === 0) return Promise.resolve()
       return updateActivity(rawEntityId, body)
     },
@@ -283,7 +289,10 @@ const TagContent = ({ entityId }: { entityId: string }) => {
   })
 
   const invalidate = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ['entity-detail', 'tag', entityId] }),
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: ['entity-detail', 'tag', entityId],
+      }),
     [queryClient, entityId],
   )
 
@@ -330,12 +339,17 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
   })
 
   const invalidate = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ['entity-detail', 'productivity', entityId] }),
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: ['entity-detail', 'productivity', entityId],
+      }),
     [queryClient, entityId],
   )
 
   if (isLoading) return <p class="loading">Loading...</p>
-  if (isError || !record) return <p class="error">Failed to load productivity record</p>
+  if (isError || !record) {
+    return <p class="error">Failed to load productivity record</p>
+  }
 
   const allEntityIds = record.source_ids
 

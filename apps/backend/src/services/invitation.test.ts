@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createInvitationAuth } from './invitation'
+
+import { createInvitationAuth } from './invitation.ts'
 
 const VALID_SALT = 'test-secret-key-32-bytes-long!!!' // exactly 32 bytes
 

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+
 import {
   fetchActivities,
   fetchActivityWatchStatus,
@@ -9,7 +10,6 @@ import {
   fetchUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-
 import './style.css'
 
 interface SourceInfo {
@@ -178,9 +178,11 @@ export function DataSources() {
       name: 'RescueTime',
       path: '/data-sources/rescue-time',
       statusText:
-        isRescueTimeConfigured && hasProductivity ? 'Data syncing'
-        : isRescueTimeConfigured ? 'Configured, no recent data'
-        : 'Not configured',
+        isRescueTimeConfigured && hasProductivity
+          ? 'Data syncing'
+          : isRescueTimeConfigured
+            ? 'Configured, no recent data'
+            : 'Not configured',
     },
     {
       dataTypes: 'Music scrobbles, auto-generated tags from listening',
@@ -201,9 +203,8 @@ export function DataSources() {
       isConnected: hasCalendars,
       name: 'Calendars (ICS)',
       path: '/data-sources/calendars',
-      statusText:
-        hasCalendars ?
-          `${settingsQuery.data?.calendars?.length} calendar(s) configured`
+      statusText: hasCalendars
+        ? `${settingsQuery.data?.calendars?.length} calendar(s) configured`
         : 'No calendars added',
     },
   ]

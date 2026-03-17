@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createOuraWebhookManager, type OuraWebhookManagerDeps } from './oura-webhook-manager'
+
+import { createOuraWebhookManager, type OuraWebhookManagerDeps } from './oura-webhook-manager.ts'
 
 describe('oura-webhook-manager', () => {
   const createDeps = (webHost = 'https://example.com'): OuraWebhookManagerDeps => ({

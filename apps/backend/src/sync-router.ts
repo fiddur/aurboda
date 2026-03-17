@@ -1,3 +1,5 @@
+import type { ParamsDictionary } from 'express-serve-static-core'
+
 import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
@@ -45,9 +47,9 @@ import {
   type SyncRescueTimeBody,
   type SyncResponse,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import type { ParamsDictionary } from 'express-serve-static-core'
-import { validateBody } from './validation'
+import { type RequestHandler, Router } from 'express'
+
+import { validateBody } from './validation.ts'
 
 /**
  * Dependencies for sync router - allows testing with mocks

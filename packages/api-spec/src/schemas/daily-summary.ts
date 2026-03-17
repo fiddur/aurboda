@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+
 import {
   addressSchema,
   createDataResponseSchema,
@@ -14,9 +15,9 @@ import {
   lonSchema,
   placeSourceSchema,
   tagTextSchema,
-} from './common.js'
-import { commentSchema, noteSchema } from './notes.js'
-import { hrZoneSecsSchema } from './settings.js'
+} from './common.ts'
+import { commentSchema, noteSchema } from './notes.ts'
+import { hrZoneSecsSchema } from './settings.ts'
 
 /**
  * Heart rate stats schema.

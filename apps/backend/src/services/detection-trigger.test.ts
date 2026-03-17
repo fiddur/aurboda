@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createDetectionTrigger, DetectionTriggerDeps } from './detection-trigger'
+
+import { createDetectionTrigger, type DetectionTriggerDeps } from './detection-trigger.ts'
 
 describe('createDetectionTrigger', () => {
   const createMockDeps = (): DetectionTriggerDeps => ({

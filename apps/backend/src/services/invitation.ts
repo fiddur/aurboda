@@ -5,7 +5,7 @@
  * time-limited invitation tokens.
  */
 
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 
 // ============================================================================
 // Types

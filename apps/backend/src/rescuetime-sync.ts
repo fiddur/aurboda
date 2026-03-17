@@ -6,10 +6,18 @@
  */
 
 import { addMinutes, isBefore, isFuture, subDays } from 'date-fns'
-import { getScreentimeCategories, getSyncState, insertProductivity, SyncState, upsertSyncState } from './db'
-import type { ProductivityRecord } from './db/types'
-import { rescuetimeClient } from './rescuetime'
-import { categorizeRecords, compileRules } from './services/screentime-categories'
+
+import type { ProductivityRecord } from './db/types.ts'
+
+import {
+  getScreentimeCategories,
+  getSyncState,
+  insertProductivity,
+  type SyncState,
+  upsertSyncState,
+} from './db/index.ts'
+import { rescuetimeClient } from './rescuetime.ts'
+import { categorizeRecords, compileRules } from './services/screentime-categories.ts'
 
 /** Default start date for historical sync (30 days back) */
 const DEFAULT_SYNC_HISTORY_DAYS = 30

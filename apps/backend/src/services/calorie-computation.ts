@@ -7,7 +7,10 @@
  */
 
 import type { BiologicalSex } from '@aurboda/api-spec'
-import { enqueueOutboundSync, getUserSettings, upsertUserSettings } from '../db'
+
+import type { TimeSeriesPoint } from '../db/types.ts'
+
+import { enqueueOutboundSync, getUserSettings, upsertUserSettings } from '../db/index.ts'
 import {
   deleteTimeSeriesBySource,
   getMetricTimeRange,
@@ -15,16 +18,15 @@ import {
   getTimeSeriesBySource,
   getTimeSeriesWithSource,
   insertTimeSeries,
-} from '../db/time-series'
-import type { TimeSeriesPoint } from '../db/types'
-import { isHealthConnectSyncableMetric, metricToHealthConnectType } from '../schema'
+} from '../db/time-series.ts'
+import { isHealthConnectSyncableMetric, metricToHealthConnectType } from '../schema.ts'
 import {
   type CalorieDataPoint,
   computeCaloriesPerMinute,
   computeGapFillPoints,
   getVo2MaxFallback,
-} from './calories'
-import { getSettings } from './settings'
+} from './calories.ts'
+import { getSettings } from './settings.ts'
 
 /**
  * Calculate age from birth date string.
@@ -380,9 +382,9 @@ export const computeAndStoreCaloriesAll = async (
 
   console.log(
     `🔥 Full recompute: ${totalStored} calorie points across ${daysProcessed} days for ${user}` +
-      (gapFill.total_points_stored > 0 ?
-        ` (${gapFill.total_points_stored} gap-filled from HC aggregate)`
-      : ''),
+      (gapFill.total_points_stored > 0
+        ? ` (${gapFill.total_points_stored} gap-filled from HC aggregate)`
+        : ''),
   )
 
   return {

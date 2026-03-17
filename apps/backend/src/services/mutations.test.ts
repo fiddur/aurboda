@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
-import { parseMetricEntityId, toMetricEntityId } from './metric-entity-id'
+
+import * as db from '../db/index.ts'
+import { parseMetricEntityId, toMetricEntityId } from './metric-entity-id.ts'
 import {
   addActivity,
   addCustomMetric,
@@ -15,7 +16,7 @@ import {
   getCustomMetrics,
   updateActivity,
   updateCustomMetric,
-} from './mutations'
+} from './mutations.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({

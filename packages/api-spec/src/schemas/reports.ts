@@ -6,12 +6,13 @@
  */
 
 import { z } from 'zod'
+
 import {
   baseResponseSchema,
   createDataArrayResponseSchema,
   createDataResponseSchema,
   iso8601DateTimeSchema,
-} from './common.js'
+} from './common.ts'
 
 // ============================================================================
 // Enums

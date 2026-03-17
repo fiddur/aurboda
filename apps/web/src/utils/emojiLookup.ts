@@ -186,7 +186,7 @@ export const suggestEmoji = (tagName: string): string | undefined => {
   if (WORD_TO_EMOJI[lower]) return WORD_TO_EMOJI[lower]
 
   // Try with underscores replaced by nothing
-  const noUnderscores = lower.replace(/_/g, '')
+  const noUnderscores = lower.replaceAll('_', '')
   if (WORD_TO_EMOJI[noUnderscores]) return WORD_TO_EMOJI[noUnderscores]
 
   // Try each word individually

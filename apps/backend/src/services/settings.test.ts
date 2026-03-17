@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
+
+import * as db from '../db/index.ts'
 import {
   buildTagMappingUpdates,
   calculateDefaultHrZones,
@@ -8,10 +9,10 @@ import {
   getSettings,
   getSettingsResponse,
   getTagMappings,
-  HrZoneThresholds,
+  type HrZoneThresholds,
   setTagMapping,
   validateAndUpdateSettings,
-} from './settings'
+} from './settings.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({

@@ -5,9 +5,17 @@
  * Separated from oura-sync.ts to keep file sizes manageable.
  */
 
-import { insertActivity, insertRawRecord, insertTag, insertTimeSeries, Tag, TimeSeriesPoint } from './db'
-import type { OuraSleepPeriodRaw } from './oura'
-import { MetricType } from './schema'
+import type { OuraSleepPeriodRaw } from './oura.ts'
+import type { MetricType } from './schema.ts'
+
+import {
+  insertActivity,
+  insertRawRecord,
+  insertTag,
+  insertTimeSeries,
+  type Tag,
+  type TimeSeriesPoint,
+} from './db/index.ts'
 
 /** Oura data types that can be synced */
 export type OuraDataType =
@@ -417,22 +425,22 @@ const processSleep = async (user: string, data: OuraSleepPeriodRaw[]) => {
     // For Oura short sleep (type "sleep"), classify based on actual sleep time:
     // >= 15 min of sleep stages → nap, otherwise → rest.
     const activityType =
-      record.type === 'sleep' ?
-        computeSleepMinutes(stages) >= NAP_SLEEP_MINUTES_THRESHOLD ?
-          'nap'
-        : 'rest'
-      : (OURA_SLEEP_TYPE_MAP[record.type] ?? 'sleep')
+      record.type === 'sleep'
+        ? computeSleepMinutes(stages) >= NAP_SLEEP_MINUTES_THRESHOLD
+          ? 'nap'
+          : 'rest'
+        : (OURA_SLEEP_TYPE_MAP[record.type] ?? 'sleep')
 
     const titleMap: Record<string, string> = {
       long_sleep: 'Sleep',
       rest: 'Rest',
     }
     const title =
-      record.type === 'sleep' ?
-        activityType === 'nap' ?
-          'Nap'
-        : 'Rest'
-      : (titleMap[record.type] ?? record.type)
+      record.type === 'sleep'
+        ? activityType === 'nap'
+          ? 'Nap'
+          : 'Rest'
+        : (titleMap[record.type] ?? record.type)
 
     await insertActivity(user, {
       activity_type: activityType,

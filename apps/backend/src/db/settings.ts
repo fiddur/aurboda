@@ -1,8 +1,9 @@
+import type { UserSettings } from './types.ts'
+
 /**
  * User settings storage and retrieval.
  */
-import { query } from './connection'
-import type { UserSettings } from './types'
+import { query } from './connection.ts'
 
 // ============================================================================
 // One-time migration from camelCase to snake_case JSONB keys
@@ -51,14 +52,13 @@ const migrateDashboardConfig = (dashboard: Record<string, unknown>): Record<stri
     ...dashboard,
     sections: sections.map((section: Record<string, unknown>) => ({
       ...section,
-      widgets:
-        Array.isArray(section.widgets) ?
-          (section.widgets as Array<Record<string, unknown>>).map((widget) => ({
+      widgets: Array.isArray(section.widgets)
+        ? (section.widgets as Array<Record<string, unknown>>).map((widget) => ({
             ...widget,
             config:
-              widget.config && typeof widget.config === 'object' ?
-                renameKeys(widget.config as Record<string, unknown>, widgetConfigRenames)
-              : widget.config,
+              widget.config && typeof widget.config === 'object'
+                ? renameKeys(widget.config as Record<string, unknown>, widgetConfigRenames)
+                : widget.config,
           }))
         : section.widgets,
     })),
@@ -144,7 +144,7 @@ export const upsertUserSettings = async (
   }
   // Deprecated: merge tag_icons into item_icons for backwards compatibility
   if (updates.tag_icons !== undefined) {
-    merged.item_icons = { ...(merged.item_icons ?? {}), ...updates.tag_icons }
+    merged.item_icons = { ...merged.item_icons, ...updates.tag_icons }
   }
 
   // Check if settings row exists

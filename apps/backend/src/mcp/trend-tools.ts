@@ -2,8 +2,9 @@
  * MCP trend analysis tools.
  */
 import { getTrendQuerySchema } from '@aurboda/api-spec'
-import { getTrend } from '../services/trends'
-import { jsonResponse, type McpServer } from './helpers'
+
+import { getTrend } from '../services/trends.ts'
+import { jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerTrendTools = (server: McpServer, user: string) => {
   // Tool: get_trend

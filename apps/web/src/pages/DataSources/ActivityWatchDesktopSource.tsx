@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useState } from 'preact/hooks'
+
 import { fetchProductivity, generateApiToken } from '../../state/api'
 import { auth } from '../../state/auth'
-
 import './style.css'
 
 const DATA_TYPES = ['App usage (desktop)', 'Window titles', 'Per-device tracking', 'Productivity categories']

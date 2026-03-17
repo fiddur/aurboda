@@ -11,7 +11,7 @@ import {
   insertMeal as dbInsertMeal,
   type Meal,
   type MealFoodItem,
-} from '../db'
+} from '../db/index.ts'
 
 // ============================================================================
 // Types

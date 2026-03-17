@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import type { GarminProcessDeps } from './garmin-process'
-import { processGarminData } from './garmin-process'
+import type { GarminProcessDeps } from './garmin-process.ts'
+
+import { processGarminData } from './garmin-process.ts'
 
 const mockDeps: GarminProcessDeps = {
   insertActivity: vi.fn().mockResolvedValue(undefined),

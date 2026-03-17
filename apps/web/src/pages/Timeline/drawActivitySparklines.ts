@@ -2,7 +2,9 @@
  * Draw HR and HRV sparkline overlays inside activity blocks on the Day view.
  */
 import type { QueryMetricsBucketedResponse } from '@aurboda/api-spec'
+
 import * as d3 from 'd3'
+
 import type { ChartItem } from './types'
 
 /** Metric bucket with parsed Date for the start timestamp. */

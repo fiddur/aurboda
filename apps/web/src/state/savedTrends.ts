@@ -1,4 +1,5 @@
 import { signal } from '@preact/signals'
+
 import type { FetchTrendParams } from './api'
 
 export interface SavedTrend {
@@ -62,9 +63,9 @@ const migrateParams = (params: FetchTrendParams & LegacyParams): FetchTrendParam
     source_type: rest.source_type ?? (sourceType as FetchTrendParams['source_type']),
     ...(rest.half_life_days == null && halfLifeDays != null ? { half_life_days: halfLifeDays } : {}),
     ...(rest.lookback_days == null && lookbackDays != null ? { lookback_days: lookbackDays } : {}),
-    ...(rest.display_period == null && displayPeriod != null ?
-      { display_period: displayPeriod as FetchTrendParams['display_period'] }
-    : {}),
+    ...(rest.display_period == null && displayPeriod != null
+      ? { display_period: displayPeriod as FetchTrendParams['display_period'] }
+      : {}),
   }
 }
 

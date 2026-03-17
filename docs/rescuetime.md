@@ -6,14 +6,14 @@
 
 Each record contains:
 
-| Field | Description |
-|-------|-------------|
-| `activity` | Application or website name (e.g., "VS Code", "Chrome - GitHub") |
-| `category` | Classification (e.g., "Software Development", "Social Media") |
-| `productivity` | Score from -2 to +2 (-2 = very distracting, 0 = neutral, +2 = very productive) |
-| `duration_sec` | Time spent in seconds |
-| `start_time` / `end_time` | Precise timestamps |
-| `is_mobile` | Whether the activity was on mobile |
+| Field                     | Description                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------ |
+| `activity`                | Application or website name (e.g., "VS Code", "Chrome - GitHub")               |
+| `category`                | Classification (e.g., "Software Development", "Social Media")                  |
+| `productivity`            | Score from -2 to +2 (-2 = very distracting, 0 = neutral, +2 = very productive) |
+| `duration_sec`            | Time spent in seconds                                                          |
+| `start_time` / `end_time` | Precise timestamps                                                             |
+| `is_mobile`               | Whether the activity was on mobile                                             |
 
 Data resolution is minute-level intervals from RescueTime's API.
 
@@ -36,6 +36,7 @@ No server-side configuration is needed. Each user provides their own RescueTime 
 - **MCP:** `sync_rescuetime()`
 
 Options:
+
 - `full_resync: true` -- Re-fetch historical data (default: last 30 days)
 - `start_date: "YYYY-MM-DD"` -- Start date for full resync
 

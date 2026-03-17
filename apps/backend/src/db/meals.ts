@@ -1,11 +1,12 @@
+import type { Meal, MealFoodItem } from './types.ts'
+
 /**
  * Meals CRUD operations.
  *
  * Meals store food intake data from various sources (Oura, Cronometer, MyFitnessPal, manual).
  */
-import { query } from './connection'
-import { mapMealRow } from './row-mappers'
-import type { Meal, MealFoodItem } from './types'
+import { query } from './connection.ts'
+import { mapMealRow } from './row-mappers.ts'
 
 const MEAL_COLUMNS =
   'id, source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, created_at'

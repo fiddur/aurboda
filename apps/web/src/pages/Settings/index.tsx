@@ -1,17 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
+
+import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../../state/api'
+
 import { TimelineIconsSettings } from '../../components/TimelineIconsSettings'
-import {
-  BiologicalSex,
-  fetchUserSettings,
-  HrZoneThresholds,
-  UpdateSettingsInput,
-  updateUserSettings,
-} from '../../state/api'
+import { fetchUserSettings, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
 import { parseZoneValue, updateZoneThreshold, validateHrZoneThresholds } from '../../utils/settings'
-
 import './style.css'
 
 type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }

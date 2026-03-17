@@ -1,3 +1,5 @@
+import type { QueryResultRow } from 'pg'
+
 /**
  * Helper for splitting metric queries by cumulative/non-cumulative type.
  *
@@ -9,7 +11,6 @@
  * daily totals must be excluded to avoid nonsense averages.
  */
 import { aurbodaOnlyMetrics, cumulativeMetrics, type MetricType } from '@aurboda/api-spec'
-import type { QueryResultRow } from 'pg'
 
 /**
  * Split a list of metric names into three groups:

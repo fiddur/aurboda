@@ -9,10 +9,10 @@ import {
   deleteExpiredMcpSessions,
   deleteMcpSession,
   getMcpSession,
-  McpSessionRecord,
+  type McpSessionRecord,
   saveMcpSession,
   touchMcpSession,
-} from './db'
+} from './db/index.ts'
 
 /**
  * Interface for MCP session persistence.

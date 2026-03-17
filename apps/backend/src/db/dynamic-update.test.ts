@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { buildDynamicUpdate } from './dynamic-update'
+
+import { buildDynamicUpdate } from './dynamic-update.ts'
 
 describe('buildDynamicUpdate', () => {
   test('builds a simple update with one field', () => {

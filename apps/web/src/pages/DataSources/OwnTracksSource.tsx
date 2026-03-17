@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+
 import { fetchPlaces } from '../../state/api'
 import { auth } from '../../state/auth'
-
 import './style.css'
 
 const DATA_TYPES = ['GPS location', 'Visited places', 'Geofence regions']

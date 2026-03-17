@@ -3,8 +3,10 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { LastFmTagRule, ScrobbleRecord } from './db'
-import type { Scrobble } from './lastfm'
+
+import type { LastFmTagRule, ScrobbleRecord } from './db/index.ts'
+import type { Scrobble } from './lastfm.ts'
+
 import {
   applyRuleRetroactively,
   applyTagRules,
@@ -13,7 +15,7 @@ import {
   retagAllScrobbles,
   scrobbleRecordToScrobble,
   syncLastFmData,
-} from './lastfm-sync'
+} from './lastfm-sync.ts'
 
 // Mock the db module
 vi.mock('./db', () => ({
@@ -47,8 +49,8 @@ import {
   insertTag,
   updateTagEndTime,
   upsertSyncState,
-} from './db'
-import { lastfmClient } from './lastfm'
+} from './db/index.ts'
+import { lastfmClient } from './lastfm.ts'
 
 describe('matchesRule', () => {
   const baseScrobble: Scrobble = {

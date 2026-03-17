@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+
 import { findNearest, findStageAtTime } from './chart-utils'
 
 describe('findNearest', () => {

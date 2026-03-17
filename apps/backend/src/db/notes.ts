@@ -1,9 +1,10 @@
+import type { EntityType, Note } from './types.ts'
+
 /**
  * Notes CRUD operations.
  */
-import { query } from './connection'
-import { mapNoteRow } from './row-mappers'
-import type { EntityType, Note } from './types'
+import { query } from './connection.ts'
+import { mapNoteRow } from './row-mappers.ts'
 
 const NOTE_COLUMNS = 'id, entity_type, entity_id, content, start_time, end_time, created_at, updated_at'
 

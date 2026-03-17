@@ -20,17 +20,18 @@ import {
   type UpdateNamedLocationBody,
   updateNamedLocationBodySchema,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { getDetectedLocations as getStoredDetectedLocations } from '../db'
+import { type RequestHandler, Router } from 'express'
+
+import { getDetectedLocations as getStoredDetectedLocations } from '../db/index.ts'
 import {
   deleteNamedLocation,
   getDetectedLocations,
   getNamedLocations,
   insertNamedLocation,
   updateNamedLocation,
-} from '../services/locations'
-import { queryLocations } from '../services/queries'
-import { validateBody, validateQuery } from '../validation'
+} from '../services/locations.ts'
+import { queryLocations } from '../services/queries.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createLocationsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()

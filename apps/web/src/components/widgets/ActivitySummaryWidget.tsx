@@ -3,8 +3,10 @@
  */
 
 import type { ActivitySummaryConfig } from '@aurboda/api-spec'
+
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+
 import { fetchActivities, type Activity } from '../../state/api'
 
 interface ActivitySummaryWidgetProps {
@@ -35,12 +37,12 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
   }, 0)
 
   const avgSleepHours =
-    sleepSessions.length > 0 ?
-      sleepSessions.reduce((sum: number, a: Activity) => {
-        if (!a.end_time) return sum
-        return sum + (a.end_time.getTime() - a.start_time.getTime()) / 3600000
-      }, 0) / sleepSessions.length
-    : null
+    sleepSessions.length > 0
+      ? sleepSessions.reduce((sum: number, a: Activity) => {
+          if (!a.end_time) return sum
+          return sum + (a.end_time.getTime() - a.start_time.getTime()) / 3600000
+        }, 0) / sleepSessions.length
+      : null
 
   const totalMeditationMinutes = meditationSessions.reduce((sum: number, a: Activity) => {
     if (!a.end_time) return sum

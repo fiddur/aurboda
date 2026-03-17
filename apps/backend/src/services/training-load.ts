@@ -15,17 +15,19 @@
  *  - TSB (Training Stress Balance / form) = CTL - ATL
  */
 
-import {
-  type BiologicalSex,
-  type RecoveryZones,
+import type {
+  BiologicalSex,
+  RecoveryZones,
+  TrainingLoadPoint,
+  TrainingLoadResult,
+  TrainingLoadSettings,
   trainingLoadBucketSizes,
-  type TrainingLoadPoint,
-  type TrainingLoadResult,
-  type TrainingLoadSettings,
-  type WorkoutTrimp,
+  WorkoutTrimp,
 } from '@aurboda/api-spec'
+
 import { Temporal } from '@js-temporal/polyfill'
-import type { Activity, TimeSeriesPoint } from '../db/types'
+
+import type { Activity, TimeSeriesPoint } from '../db/types.ts'
 
 type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
 
@@ -180,15 +182,15 @@ const processExercise = (
   const avgHr = getAverageHrForSession(ex.start_time, sessionEnd, hrSamples)
 
   const trimp =
-    avgHr && avgHr > hrRest ?
-      calculateTrimp({
-        avg_hr: avgHr,
-        duration_minutes: durationMinutes,
-        hr_max: hrMax,
-        hr_rest: hrRest,
-        k_factor: kFactor,
-      })
-    : durationMinutes * 0.5
+    avgHr && avgHr > hrRest
+      ? calculateTrimp({
+          avg_hr: avgHr,
+          duration_minutes: durationMinutes,
+          hr_max: hrMax,
+          hr_rest: hrRest,
+          k_factor: kFactor,
+        })
+      : durationMinutes * 0.5
 
   // Distribute TRIMP across overlapping hours
   let hourCursor = floorToHour(ex.start_time)
@@ -384,7 +386,9 @@ export const resolveHrMax = (
     const today = new Date()
     let age = today.getFullYear() - birth.getFullYear()
     const monthDiff = today.getMonth() - birth.getMonth()
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
     return 220 - age
   }
 
@@ -768,7 +772,9 @@ const getOrCacheMaxObservedHr = async (
 
   const observed = await deps.getMaxObservedHr(user)
   if (observed && observed > 100 && observed !== cached) {
-    const writePromise = deps.updateTrainingLoadSettings(user, { observed_hr_max: observed })
+    const writePromise = deps.updateTrainingLoadSettings(user, {
+      observed_hr_max: observed,
+    })
     if (fireAndForget) writePromise.catch(() => {})
     else await writePromise
   }
@@ -914,9 +920,9 @@ import {
   getTimeSeriesBucketed,
   getTimeSeriesStats,
   insertTimeSeries,
-} from '../db'
-import { upsertUserSettings } from '../db/settings'
-import { getSettings } from './settings'
+} from '../db/index.ts'
+import { upsertUserSettings } from '../db/settings.ts'
+import { getSettings } from './settings.ts'
 
 /**
  * Create production dependencies for the training load computation.
@@ -968,7 +974,11 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
 
   getUserSettings: async (user) => {
     const s = await getSettings(user)
-    return { birth_date: s.birth_date, sex: s.sex, training_load: s.training_load }
+    return {
+      birth_date: s.birth_date,
+      sex: s.sex,
+      training_load: s.training_load,
+    }
   },
 
   updateTrainingLoadSettings: async (user, update) => {

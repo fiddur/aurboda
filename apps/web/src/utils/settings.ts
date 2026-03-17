@@ -1,4 +1,5 @@
 import type { HrZoneThresholds, UpdateSettingsInput, UserSettingsResponse } from '../state/api'
+
 import { defaultHrZoneThresholds } from './hrZones'
 
 /**

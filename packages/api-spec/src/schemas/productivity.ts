@@ -3,13 +3,14 @@
  */
 
 import { z } from 'zod'
+
 import {
   createDataArrayResponseSchema,
   dataSourceSchema,
   iso8601DateTimeSchema,
   timeRangeQuerySchema,
-} from './common.js'
-import { commentSchema } from './notes.js'
+} from './common.ts'
+import { commentSchema } from './notes.ts'
 
 /**
  * Productivity record schema.

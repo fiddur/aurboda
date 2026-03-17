@@ -1,10 +1,12 @@
 import * as d3 from 'd3'
 import { addDays, isBefore, subDays } from 'date-fns'
 import { JSDOM } from 'jsdom'
-import { getActivities, getLocations, getTimeSeries } from './db'
-import { ouraClient } from './oura'
-import { rescuetimeClient } from './rescuetime'
-import { getSettings } from './services/settings'
+
+import type { ouraClient } from './oura.ts'
+
+import { getActivities, getLocations, getTimeSeries } from './db/index.ts'
+import { rescuetimeClient } from './rescuetime.ts'
+import { getSettings } from './services/settings.ts'
 
 export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   const now = new Date()
@@ -15,9 +17,8 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
 
   const { places } = await getLocations(user, start, end)
   const settings = await getSettings(user)
-  const rtData =
-    settings.rescue_time_key ?
-      await rescuetimeClient(settings.rescue_time_key).getIntervalData(start, end)
+  const rtData = settings.rescue_time_key
+    ? await rescuetimeClient(settings.rescue_time_key).getIntervalData(start, end)
     : []
   const ouraToken = await oura.getAccessToken(user)
   const tags = await oura.getTags(start, end, ouraToken, settings.tag_mappings)

@@ -4,9 +4,10 @@
  * Handles: /training-load
  */
 import { type TrainingLoadQuery, trainingLoadQuerySchema, type TrainingLoadResponse } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load'
-import { validateQuery } from '../validation'
+import { type RequestHandler, Router } from 'express'
+
+import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load.ts'
+import { validateQuery } from '../validation.ts'
 
 export const createTrainingLoadRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()

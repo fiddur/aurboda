@@ -10,6 +10,7 @@
  * - Crosshair overlay for tooltips
  */
 import type { RecoveryZones, TrainingLoadPoint, WorkoutTrimp } from '@aurboda/api-spec'
+
 import * as d3 from 'd3'
 import { format } from 'date-fns'
 

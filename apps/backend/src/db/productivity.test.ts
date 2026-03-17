@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { toPgArray } from './productivity'
+
+import { toPgArray } from './productivity.ts'
 
 describe('toPgArray', () => {
   test('converts single-element array', () => {

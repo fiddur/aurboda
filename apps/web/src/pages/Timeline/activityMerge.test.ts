@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+
 import type { Activity, Tag } from '../../state/api'
+import type { ChartItem } from './types'
+
 import {
   buildActivityColumnItems,
   EXCLUDED_TAG_PREFIXES,
@@ -8,7 +11,6 @@ import {
   overlapMinutes,
   tryMergeTagIntoActivity,
 } from './activityMerge'
-import type { ChartItem } from './types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

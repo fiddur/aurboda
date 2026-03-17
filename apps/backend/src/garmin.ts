@@ -10,7 +10,7 @@
 
 import { GarminConnect, type IGarminTokens } from '@flow-js/garmin-connect'
 
-import { getOAuthToken, upsertOAuthToken } from './db'
+import { getOAuthToken, upsertOAuthToken } from './db/index.ts'
 
 // ============================================================================
 // Types for Garmin API responses (from custom GET endpoints)

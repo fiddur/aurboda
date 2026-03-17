@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
-import { deleteMeal, getMealById, getMeals, insertMeal } from './meals'
+
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { deleteMeal, getMealById, getMeals, insertMeal } from './meals.ts'
 
 const CONTAINER_TIMEOUT = 60_000
 

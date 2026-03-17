@@ -4,7 +4,8 @@
 
 import axios from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { lastfmClient } from './lastfm'
+
+import { lastfmClient } from './lastfm.ts'
 
 vi.mock('axios')
 

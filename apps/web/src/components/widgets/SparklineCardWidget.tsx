@@ -3,10 +3,12 @@
  */
 
 import type { SparklineCardConfig } from '@aurboda/api-spec'
+
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useEffect, useRef } from 'preact/hooks'
+
 import {
   fetchHrv,
   fetchMetricTimeSeries,
@@ -97,14 +99,8 @@ function TrendIndicator({ value, inverse = false }: { value: number | null; inve
   if (value === null) return null
 
   const isPositive = inverse ? value < 0 : value > 0
-  const arrow =
-    value > 0 ? '\u2191'
-    : value < 0 ? '\u2193'
-    : '\u2192'
-  const className =
-    isPositive ? 'trend-positive'
-    : value === 0 ? 'trend-neutral'
-    : 'trend-negative'
+  const arrow = value > 0 ? '\u2191' : value < 0 ? '\u2193' : '\u2192'
+  const className = isPositive ? 'trend-positive' : value === 0 ? 'trend-neutral' : 'trend-negative'
 
   return (
     <span class={`trend-indicator ${className}`}>
@@ -197,17 +193,21 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
         {trend !== null && <TrendIndicator value={trend} />}
       </div>
       <div class="metric-value">
-        {isLoading ?
+        {isLoading ? (
           <span class="loading-placeholder">...</span>
-        : value !== null ?
+        ) : value !== null ? (
           <span class="value">{value.toFixed(1)}</span>
-        : <span class="no-data">No data</span>}
+        ) : (
+          <span class="no-data">No data</span>
+        )}
       </div>
       {subtitle && <div class="metric-subtitle">{subtitle}</div>}
       <div class="metric-sparkline">
-        {isLoading ?
+        {isLoading ? (
           <div class="sparkline-placeholder">Loading...</div>
-        : <SparklineChart data={sparklineData} color={color} />}
+        ) : (
+          <SparklineChart data={sparklineData} color={color} />
+        )}
       </div>
     </div>
   )

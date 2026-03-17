@@ -4,9 +4,9 @@
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
+
 import { fetchUserSettings, updateUserSettings } from '../state/api'
 import { DEFAULT_ITEM_ICONS, isEmoji, isUrl } from '../utils/emojiLookup'
-
 import './TimelineIconsSettings.css'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -22,12 +22,13 @@ interface IconRowProps {
 const IconPreview = ({ icon }: { icon: string }) => {
   if (!icon) return null
   if (isEmoji(icon)) return <span class="icon-preview">{icon}</span>
-  if (isUrl(icon))
+  if (isUrl(icon)) {
     return (
       <span class="icon-preview">
         <img src={icon} alt="icon" width="16" height="16" />
       </span>
     )
+  }
   return null
 }
 

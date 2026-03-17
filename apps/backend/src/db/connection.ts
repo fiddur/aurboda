@@ -3,7 +3,8 @@
  */
 import { Client, type QueryResultRow } from 'pg'
 import format from 'pg-format'
-import { createTableStatements, tableCreationOrder } from '../schema'
+
+import { createTableStatements, tableCreationOrder } from '../schema.ts'
 
 const dbByUser: Record<string, Client> = {}
 

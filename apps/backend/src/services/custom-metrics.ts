@@ -3,8 +3,14 @@
  */
 
 import type { CustomMetricDefinition } from '@aurboda/api-spec'
-import { deleteTimeSeriesMetric, deleteTimeSeriesPoint, getUserSettings, upsertUserSettings } from '../db'
-import { isValidMetric } from '../schema'
+
+import {
+  deleteTimeSeriesMetric,
+  deleteTimeSeriesPoint,
+  getUserSettings,
+  upsertUserSettings,
+} from '../db/index.ts'
+import { isValidMetric } from '../schema.ts'
 
 export interface CustomMetricResult {
   success: boolean

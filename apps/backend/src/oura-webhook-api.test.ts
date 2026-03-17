@@ -1,11 +1,12 @@
 import axios from 'axios'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+
 import {
   createOuraWebhookApi,
   OURA_DATA_TYPES,
   OURA_EVENT_TYPES,
   type OuraWebhookApiDeps,
-} from './oura-webhook-api'
+} from './oura-webhook-api.ts'
 
 vi.mock('axios')
 const mockedAxios = vi.mocked(axios)

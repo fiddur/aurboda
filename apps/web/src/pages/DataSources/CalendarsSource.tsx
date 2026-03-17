@@ -1,10 +1,11 @@
 import type { CalendarConfig } from '@aurboda/api-spec'
+
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
+
 import { fetchUserSettings, type UpdateSettingsInput, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { DataTypesList, LoginRequired, type SaveStatus, SaveStatusIndicator, StatusBanner } from './shared'
-
 import './style.css'
 
 const DATA_TYPES = ['Calendar events (imported as tags)', 'Event titles and times']

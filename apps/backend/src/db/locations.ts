@@ -1,9 +1,3 @@
-/**
- * Location, Place, Named Location, and Detected Location CRUD operations.
- */
-import { query } from './connection'
-import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update'
-import { mapDetectedLocationRow, mapNamedLocationRow } from './row-mappers'
 import type {
   DetectedLocation,
   DetectedLocationInput,
@@ -12,7 +6,14 @@ import type {
   NamedLocation,
   NamedLocationInput,
   Place,
-} from './types'
+} from './types.ts'
+
+/**
+ * Location, Place, Named Location, and Detected Location CRUD operations.
+ */
+import { query } from './connection.ts'
+import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update.ts'
+import { mapDetectedLocationRow, mapNamedLocationRow } from './row-mappers.ts'
 
 // ============================================================================
 // Raw Locations
@@ -248,14 +249,16 @@ export const updateDetectedLocation = async (
     })
   }
   if (updates.radius !== undefined) fields.push({ column: 'radius', value: updates.radius })
-  if (updates.total_minutes !== undefined)
+  if (updates.total_minutes !== undefined) {
     fields.push({ column: 'total_minutes', value: updates.total_minutes })
+  }
   if (updates.visit_count !== undefined) fields.push({ column: 'visit_count', value: updates.visit_count })
   if (updates.first_visit !== undefined) fields.push({ column: 'first_visit', value: updates.first_visit })
   if (updates.last_visit !== undefined) fields.push({ column: 'last_visit', value: updates.last_visit })
   if (updates.address !== undefined) fields.push({ column: 'address', value: updates.address })
-  if (updates.geocode_status !== undefined)
+  if (updates.geocode_status !== undefined) {
     fields.push({ column: 'geocode_status', value: updates.geocode_status })
+  }
 
   const update = buildDynamicUpdate('detected_locations', id, fields, {
     defaultClauses: ['updated_at = NOW()'],

@@ -1,8 +1,9 @@
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+
 /**
  * Shared helpers and schemas for MCP tool modules.
  */
 import { validMetrics } from '@aurboda/api-spec'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 /** Metric name description using validMetrics from api-spec. */
 export const metricDescription = `Metric name. Valid metrics: ${validMetrics.join(', ')}`
@@ -28,7 +29,7 @@ export const parseOptionalDate = (dateStr: string): Date | null => {
 }
 
 /** Optional sync provider dependency for tools that trigger auto-sync. */
-export type { SyncProvider } from '../services/queries'
+export type { SyncProvider } from '../services/queries.ts'
 
 /** Type alias for McpServer to avoid repetitive imports. */
 export type { McpServer }

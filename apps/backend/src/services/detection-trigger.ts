@@ -5,8 +5,8 @@
  * This prevents running detection on every single location update.
  */
 
-import { DetectedLocation } from '../db'
-import { GeocodeQueue } from './geocode-queue'
+import type { DetectedLocation } from '../db/index.ts'
+import type { GeocodeQueue } from './geocode-queue.ts'
 
 // ============================================================================
 // Types

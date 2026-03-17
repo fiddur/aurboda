@@ -2,6 +2,7 @@
  * Form for adding a new Last.fm auto-tagging rule.
  */
 import { useState } from 'preact/hooks'
+
 import {
   createLastFmTagRule,
   type AddLastFmTagRuleBody,
@@ -26,8 +27,9 @@ const validateRuleForm = (
   artistNames: string[],
 ): string | null => {
   if (needsTrack(matchType) && !trackName.trim()) return 'Track name is required'
-  if (needsArtist(matchType) && !artistNames.length && !artistName.trim())
+  if (needsArtist(matchType) && !artistNames.length && !artistName.trim()) {
     return 'At least one artist name is required'
+  }
   return null
 }
 

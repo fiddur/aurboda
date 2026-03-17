@@ -12,9 +12,10 @@ import {
   mealsQuerySchema,
   type MealsResponse,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { addMeal, deleteMealById, getMeal, queryMeals } from '../services/meals'
-import { validateBody, validateQuery } from '../validation'
+import { type RequestHandler, Router } from 'express'
+
+import { addMeal, deleteMealById, getMeal, queryMeals } from '../services/meals.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()

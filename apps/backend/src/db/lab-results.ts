@@ -1,8 +1,9 @@
+import type { LabResult } from './types.ts'
+
 /**
  * Lab results storage and retrieval.
  */
-import { query } from './connection'
-import type { LabResult } from './types'
+import { query } from './connection.ts'
 
 export const insertLabResult = async (user: string, result: LabResult) => {
   await query(

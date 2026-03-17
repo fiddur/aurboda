@@ -10,7 +10,8 @@ import {
   updateCustomMetricBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
-import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation'
+
+import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -20,8 +21,14 @@ import {
   deleteMetricData,
   getCustomMetrics,
   updateCustomMetric,
-} from '../services/mutations'
-import { errorResponse, jsonResponse, type McpServer, metricDescription, parseOptionalDate } from './helpers'
+} from '../services/mutations.ts'
+import {
+  errorResponse,
+  jsonResponse,
+  type McpServer,
+  metricDescription,
+  parseOptionalDate,
+} from './helpers.ts'
 
 export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: add_metric

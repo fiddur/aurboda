@@ -1,9 +1,10 @@
 import type { ProgrammaticTag } from '@aurboda/api-spec'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
+
 import { fetchProgrammaticTags, fetchTagMappings, setTagMapping } from '../state/api'
 import { isEmoji, isUrl, suggestEmoji } from '../utils/emojiLookup'
-
 import './TagMappingsSettings.css'
 
 // Helper to check if a string is a UUID
@@ -39,12 +40,13 @@ const RowStatusIndicator = ({ status }: { status: RowStatus }) => (
 const IconPreview = ({ icon }: { icon: string }) => {
   if (!icon) return null
   if (isEmoji(icon)) return <span class="tag-icon-preview">{icon}</span>
-  if (isUrl(icon))
+  if (isUrl(icon)) {
     return (
       <span class="tag-icon-preview">
         <img src={icon} alt="icon" width="16" height="16" />
       </span>
     )
+  }
   return null
 }
 
@@ -52,8 +54,8 @@ const IconPreview = ({ icon }: { icon: string }) => {
 function getBlurSavePayload(
   localValue: string | undefined,
   localIcon: string | undefined,
-  currentName: string | undefined,
-  currentIcon: string | undefined,
+  currentName: string | null | undefined,
+  currentIcon: string | null | undefined,
 ): { name: string; iconChanged: boolean } | null {
   if (localValue === undefined && localIcon === undefined) return null
 
@@ -154,7 +156,10 @@ function TagMappingRow({
         </span>
         <span class="tag-latest">
           Last: {date.toLocaleDateString()}{' '}
-          {date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+          {date.toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
         </span>
       </div>
 
@@ -257,9 +262,10 @@ export function TagMappingsSettings() {
         URLs. Changes save automatically when you leave the field.
       </p>
 
-      {!tags || tags.length === 0 ?
+      {!tags || tags.length === 0 ? (
         <p class="no-tags">No tags found. Tags will appear here after syncing data.</p>
-      : <div class="tag-mappings-list">
+      ) : (
+        <div class="tag-mappings-list">
           {tags.map((tag) => (
             <TagMappingRow
               key={tag.tag_key}
@@ -269,7 +275,7 @@ export function TagMappingsSettings() {
             />
           ))}
         </div>
-      }
+      )}
     </section>
   )
 }

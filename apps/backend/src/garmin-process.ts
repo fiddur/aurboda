@@ -8,8 +8,7 @@
 import type { IActivity } from '@flow-js/garmin-connect/dist/garmin/types/activity'
 import type { SleepData } from '@flow-js/garmin-connect/dist/garmin/types/sleep'
 
-import { insertActivity, insertRawRecord, insertTimeSeries } from './db'
-import type { Activity, RawRecord, TimeSeriesPoint } from './db/types'
+import type { Activity, RawRecord, TimeSeriesPoint } from './db/types.ts'
 import type {
   GarminBodyBatteryData,
   GarminDailySummary,
@@ -19,7 +18,9 @@ import type {
   GarminSpo2Data,
   GarminStressData,
   GarminTrainingReadiness,
-} from './garmin'
+} from './garmin.ts'
+
+import { insertActivity, insertRawRecord, insertTimeSeries } from './db/index.ts'
 
 // ============================================================================
 // Types

@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
+
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   ackOutboundSync,
   enqueueOutboundSync,
   failOutboundSync,
   findHcRecordId,
   getPendingOutboundSync,
-} from './outbound-sync'
+} from './outbound-sync.ts'
 
 const CONTAINER_TIMEOUT = 60_000
 

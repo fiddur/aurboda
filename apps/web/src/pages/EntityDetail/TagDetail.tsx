@@ -2,6 +2,7 @@
  * Tag detail view.
  */
 import type { Tag } from '../../state/api'
+
 import { formatDateTime, formatDuration, formatTime } from './format-utils'
 
 export const TagDetail = ({ tag }: { tag: Tag }) => {
@@ -21,9 +22,9 @@ export const TagDetail = ({ tag }: { tag: Tag }) => {
         <div class="field-row">
           <span class="field-label">Time</span>
           <span class="field-value">
-            {isPoint ?
-              formatDateTime(tag.start_time)
-            : `${formatDateTime(tag.start_time)} – ${formatTime(end!)}`}
+            {isPoint
+              ? formatDateTime(tag.start_time)
+              : `${formatDateTime(tag.start_time)} – ${formatTime(end!)}`}
           </span>
         </div>
         {!isPoint && (

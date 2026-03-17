@@ -7,4 +7,4 @@
  * - OpenAPI specification generator
  */
 
-export * from './schemas/index.js'
+export * from './schemas/index.ts'

@@ -6,12 +6,12 @@ Aurboda includes an MCP (Model Context Protocol) server that enables AI assistan
 
 The MCP server provides 4 tools for AI assistants:
 
-| Tool | Description |
-|------|-------------|
-| `query_metrics` | Query time series health data for a date range |
-| `get_daily_summary` | Get a comprehensive summary for a specific day |
-| `add_tag` | Add a manual tag/label to mark an activity or event |
-| `add_metric` | Add a manual health metric measurement |
+| Tool                | Description                                         |
+| ------------------- | --------------------------------------------------- |
+| `query_metrics`     | Query time series health data for a date range      |
+| `get_daily_summary` | Get a comprehensive summary for a specific day      |
+| `add_tag`           | Add a manual tag/label to mark an activity or event |
+| `add_metric`        | Add a manual health metric measurement              |
 
 ## Endpoint
 
@@ -37,11 +37,13 @@ Each MCP session is scoped to the authenticated user.
 Query health metrics for a time range. Returns time series data with timestamps and values.
 
 **Parameters:**
+
 - `metric` (required) - The metric name (see [Available Metrics](#available-metrics))
 - `start` (required) - Start date/time in ISO 8601 format (e.g., `2024-01-15T00:00:00Z`)
 - `end` (required) - End date/time in ISO 8601 format (e.g., `2024-01-15T23:59:59Z`)
 
 **Response:**
+
 ```json
 {
   "metric": "heart_rate",
@@ -59,9 +61,11 @@ Query health metrics for a time range. Returns time series data with timestamps 
 Get a comprehensive summary of health data for a specific day including heart rate statistics, steps, sleep sessions, exercise sessions, tags, productivity, and visited places.
 
 **Parameters:**
+
 - `date` (required) - Date in YYYY-MM-DD format (e.g., `2024-01-15`)
 
 **Response:**
+
 ```json
 {
   "date": "2024-01-15",
@@ -125,11 +129,13 @@ Get a comprehensive summary of health data for a specific day including heart ra
 Add a manual tag/label to mark an activity or event. Tags can have a start time and optional end time.
 
 **Parameters:**
+
 - `tag` (required) - The tag/label text (e.g., "coffee", "meditation", "headache")
 - `start_time` (required) - Start time in ISO 8601 format
 - `end_time` (optional) - End time in ISO 8601 format. Omit for point-in-time tags.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -145,11 +151,13 @@ Add a manual tag/label to mark an activity or event. Tags can have a start time 
 Add a manual health metric measurement. Use this to log data not captured automatically.
 
 **Parameters:**
+
 - `metric` (required) - The metric name (see [Available Metrics](#available-metrics))
 - `value` (required) - The metric value (e.g., 72 for heart rate, 75.5 for weight)
 - `time` (optional) - Measurement time in ISO 8601 format. Defaults to current time if omitted.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -164,34 +172,34 @@ Add a manual health metric measurement. Use this to log data not captured automa
 
 The following metrics are available for querying and manual entry:
 
-| Metric | Unit | Description |
-|--------|------|-------------|
-| `heart_rate` | bpm | Heart rate in beats per minute |
-| `resting_heart_rate` | bpm | Resting heart rate |
-| `hrv_rmssd` | ms | Heart rate variability (RMSSD) |
-| `weight` | kg | Body weight |
-| `body_fat` | percent | Body fat percentage |
-| `bone_mass` | kg | Bone mass |
-| `lean_body_mass` | kg | Lean body mass |
-| `body_water_mass` | kg | Body water mass |
-| `height` | m | Height in meters |
-| `steps` | count | Step count |
-| `distance` | m | Distance traveled |
-| `floors_climbed` | count | Floors climbed |
-| `calories_active` | kcal | Active calories burned |
-| `calories_total` | kcal | Total calories burned |
-| `calories_basal` | kcal | Basal metabolic calories |
-| `spo2` | percent | Blood oxygen saturation |
-| `respiratory_rate` | breaths/min | Respiratory rate |
-| `body_temperature` | celsius | Body temperature |
-| `basal_body_temperature` | celsius | Basal body temperature |
-| `blood_glucose` | mmol/L | Blood glucose level |
-| `blood_pressure_systolic` | mmHg | Systolic blood pressure |
-| `blood_pressure_diastolic` | mmHg | Diastolic blood pressure |
-| `vo2_max` | mL/kg/min | VO2 max |
-| `readiness_score` | score | Readiness score (0-100) |
-| `resilience_score` | score | Resilience score (0-100) |
-| `productivity_score` | score | Productivity score (0-100) |
+| Metric                     | Unit        | Description                    |
+| -------------------------- | ----------- | ------------------------------ |
+| `heart_rate`               | bpm         | Heart rate in beats per minute |
+| `resting_heart_rate`       | bpm         | Resting heart rate             |
+| `hrv_rmssd`                | ms          | Heart rate variability (RMSSD) |
+| `weight`                   | kg          | Body weight                    |
+| `body_fat`                 | percent     | Body fat percentage            |
+| `bone_mass`                | kg          | Bone mass                      |
+| `lean_body_mass`           | kg          | Lean body mass                 |
+| `body_water_mass`          | kg          | Body water mass                |
+| `height`                   | m           | Height in meters               |
+| `steps`                    | count       | Step count                     |
+| `distance`                 | m           | Distance traveled              |
+| `floors_climbed`           | count       | Floors climbed                 |
+| `calories_active`          | kcal        | Active calories burned         |
+| `calories_total`           | kcal        | Total calories burned          |
+| `calories_basal`           | kcal        | Basal metabolic calories       |
+| `spo2`                     | percent     | Blood oxygen saturation        |
+| `respiratory_rate`         | breaths/min | Respiratory rate               |
+| `body_temperature`         | celsius     | Body temperature               |
+| `basal_body_temperature`   | celsius     | Basal body temperature         |
+| `blood_glucose`            | mmol/L      | Blood glucose level            |
+| `blood_pressure_systolic`  | mmHg        | Systolic blood pressure        |
+| `blood_pressure_diastolic` | mmHg        | Diastolic blood pressure       |
+| `vo2_max`                  | mL/kg/min   | VO2 max                        |
+| `readiness_score`          | score       | Readiness score (0-100)        |
+| `resilience_score`         | score       | Resilience score (0-100)       |
+| `productivity_score`       | score       | Productivity score (0-100)     |
 
 ## Session Management
 

@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+
 import { ScreentimeCategoriesSettings } from '../../components/ScreentimeCategoriesSettings'
 import { fetchProductivity } from '../../state/api'
 import { auth } from '../../state/auth'
-
 import './style.css'
 
 const DATA_TYPES = ['App usage (mobile)', 'Per-app screen time', 'Productivity categories']

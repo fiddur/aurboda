@@ -3,7 +3,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { groupIntoSessions, type TimestampedEvent } from './session-grouping'
+
+import { groupIntoSessions, type TimestampedEvent } from './session-grouping.ts'
 
 const event = (isoTime: string): TimestampedEvent => ({ timestamp: new Date(isoTime) })
 

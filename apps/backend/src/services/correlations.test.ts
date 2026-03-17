@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
+
+import * as db from '../db/index.ts'
 import {
   getActivityImpact,
   getBaseline,
   getEventProbability,
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
-} from './correlations'
-import * as locations from './locations'
-import * as queries from './queries'
+} from './correlations.ts'
+import * as locations from './locations.ts'
+import * as queries from './queries.ts'
 
 // Mock db module
 vi.mock('../db', () => ({

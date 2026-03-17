@@ -9,10 +9,11 @@ import {
   updateSettingsInputSchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { getGoalsProgress } from '../services/goals'
-import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings'
-import { validateBody } from '../validation'
+import { type RequestHandler, Router } from 'express'
+
+import { getGoalsProgress } from '../services/goals.ts'
+import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings.ts'
+import { validateBody } from '../validation.ts'
 
 export const createSettingsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()

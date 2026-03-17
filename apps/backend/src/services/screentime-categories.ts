@@ -10,6 +10,9 @@
  * - Categories with rule_type 'none' never match directly (but children can)
  */
 import type { AwCategory, CreateScreentimeCategoryBody } from '@aurboda/api-spec'
+
+import type { ScreentimeCategory, ScreentimeCategoryInput } from '../db/types.ts'
+
 import {
   batchUpdateResolvedCategory,
   bulkInsertScreentimeCategories,
@@ -20,8 +23,7 @@ import {
   getScreentimeCategoryById,
   insertScreentimeCategory,
   updateScreentimeCategory,
-} from '../db'
-import type { ScreentimeCategory, ScreentimeCategoryInput } from '../db/types'
+} from '../db/index.ts'
 
 // ============================================================================
 // Category Resolution

@@ -2,8 +2,10 @@
  * Productivity data storage and retrieval (RescueTime, ActivityWatch, etc.)
  */
 import format from 'pg-format'
-import { query } from './connection'
-import type { ProductivityRecord } from './types'
+
+import type { ProductivityRecord } from './types.ts'
+
+import { query } from './connection.ts'
 
 /**
  * Convert a JS string array to a PostgreSQL array literal.
@@ -23,7 +25,7 @@ export const toPgArray = (arr: string[] | null | undefined): string | null => {
   const escaped = arr.map((s) => {
     // Quote the element if it contains special chars, is empty, or looks like a keyword
     if (s === '' || /[{},"\\\s]/.test(s) || s.toUpperCase() === 'NULL') {
-      return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
+      return '"' + s.replaceAll('\\', '\\\\').replaceAll('"', '\\"') + '"'
     }
     return s
   })

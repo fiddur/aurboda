@@ -1,5 +1,6 @@
 import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+
 import { auth, logout } from '../state/auth'
 
 const DATA_SOURCE_LINKS = [
@@ -89,7 +90,7 @@ export function Header() {
         <a href="/" class={url === '/' ? 'active' : undefined}>
           Home
         </a>
-        {isLoggedIn ?
+        {isLoggedIn ? (
           <>
             {NAV_LINKS.map((link) => (
               <a key={link.href} href={link.href} class={url === link.href ? 'active' : undefined}>
@@ -127,10 +128,11 @@ export function Header() {
               Logout
             </a>
           </>
-        : <a href="/login" class={url === '/login' ? 'active' : undefined}>
+        ) : (
+          <a href="/login" class={url === '/login' ? 'active' : undefined}>
             Login
           </a>
-        }
+        )}
       </nav>
 
       {/* ── Mobile nav bar (hamburger) ───────────────────────── */}
@@ -161,7 +163,7 @@ export function Header() {
             ✕
           </button>
         </div>
-        {isLoggedIn ?
+        {isLoggedIn ? (
           <>
             <a href="/" class={url === '/' ? 'active' : undefined} onClick={closeDrawer}>
               Home
@@ -212,10 +214,11 @@ export function Header() {
               Logout
             </a>
           </>
-        : <a href="/login" class={url === '/login' ? 'active' : undefined} onClick={closeDrawer}>
+        ) : (
+          <a href="/login" class={url === '/login' ? 'active' : undefined} onClick={closeDrawer}>
             Login
           </a>
-        }
+        )}
       </nav>
     </header>
   )

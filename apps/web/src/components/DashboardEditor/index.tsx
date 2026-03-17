@@ -3,10 +3,11 @@
  */
 
 import type { DashboardWidget, SectionType } from '@aurboda/api-spec'
+
 import { useState } from 'preact/hooks'
+
 import { getMetricDisplayName } from '../../utils/metricLabels'
 import { MetricPicker } from '../MetricPicker'
-
 import './style.css'
 
 interface DashboardEditorProps {
@@ -242,19 +243,20 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
             </div>
             <div class="form-group">
               <label>{(configValues.source_type as string) === 'metric' ? 'Metric' : 'Pattern'}</label>
-              {(configValues.source_type as string) === 'metric' ?
+              {(configValues.source_type as string) === 'metric' ? (
                 <MetricPicker
                   value={(configValues.pattern as string) ?? ''}
                   onChange={(metric) => updateConfig('pattern', metric)}
                   placeholder="Search metrics..."
                 />
-              : <input
+              ) : (
+                <input
                   type="text"
                   value={(configValues.pattern as string) ?? ''}
                   onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
                   placeholder="e.g., coffee, exercise"
                 />
-              }
+              )}
             </div>
             <div class="form-group">
               <label>Display Period</label>
@@ -354,7 +356,7 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
         </div>
 
         <div class="modal-content">
-          {!selectedTemplate ?
+          {!selectedTemplate ? (
             <div class="widget-picker">
               {availableTemplates.map((template) => (
                 <button
@@ -367,7 +369,8 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 </button>
               ))}
             </div>
-          : <div class="widget-config">
+          ) : (
+            <div class="widget-config">
               <button class="back-btn" onClick={() => setSelectedTemplate(null)}>
                 <svg
                   width="16"
@@ -383,7 +386,7 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
               </button>
               {renderConfigForm()}
             </div>
-          }
+          )}
         </div>
 
         {selectedTemplate && (

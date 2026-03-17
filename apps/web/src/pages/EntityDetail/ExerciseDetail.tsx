@@ -3,7 +3,10 @@
  */
 import { exerciseTypeNames } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, fetchMetricTimeSeries } from '../../state/api'
+
+import type { Activity } from '../../state/api'
+
+import { fetchMetricTimeSeries } from '../../state/api'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 
@@ -48,7 +51,7 @@ const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
   )
 }
 
-const formatExerciseTypeName = (name: string): string => name.replace(/_/g, ' ')
+const formatExerciseTypeName = (name: string): string => name.replaceAll('_', ' ')
 
 /** Read-only display of exercise stats (type, calories, HRV, HR zones). */
 const ExerciseStats = ({
@@ -116,9 +119,9 @@ export const ExerciseDetail = ({
   })
 
   const totalCalories =
-    caloriesQuery.data && caloriesQuery.data.length > 0 ?
-      Math.round(caloriesQuery.data.reduce((sum, [, val]) => sum + val, 0))
-    : undefined
+    caloriesQuery.data && caloriesQuery.data.length > 0
+      ? Math.round(caloriesQuery.data.reduce((sum, [, val]) => sum + val, 0))
+      : undefined
 
   return (
     <>

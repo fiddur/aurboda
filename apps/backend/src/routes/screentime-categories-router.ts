@@ -12,6 +12,7 @@ import {
   updateScreentimeCategoryBodySchema,
 } from '@aurboda/api-spec'
 import { type RequestHandler, Router } from 'express'
+
 import {
   createCategory,
   fetchAwCategories,
@@ -21,8 +22,8 @@ import {
   modifyCategory,
   recategorizeAll,
   removeCategory,
-} from '../services/screentime-categories'
-import { validateBody } from '../validation'
+} from '../services/screentime-categories.ts'
+import { validateBody } from '../validation.ts'
 
 export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()

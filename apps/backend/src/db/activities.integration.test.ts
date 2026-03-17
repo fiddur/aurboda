@@ -1,6 +1,7 @@
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
+
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   deleteActivity,
   getActivities,
@@ -9,7 +10,7 @@ import {
   getSleepSessions,
   insertActivity,
   updateActivity,
-} from './activities'
+} from './activities.ts'
 
 // Increase timeout for container startup
 const CONTAINER_TIMEOUT = 60_000

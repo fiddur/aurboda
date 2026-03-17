@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
+
 import {
   deleteLastFmTagRule,
   fetchLastFmTagRules,
@@ -12,7 +13,6 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { AddRuleForm } from './AddRuleForm'
-
 import './style.css'
 
 type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }
@@ -42,8 +42,9 @@ const validateRuleForm = (
   artistNames: string[],
 ): string | null => {
   if (needsTrack(matchType) && !trackName.trim()) return 'Track name is required'
-  if (needsArtist(matchType) && !artistNames.length && !artistName.trim())
+  if (needsArtist(matchType) && !artistNames.length && !artistName.trim()) {
     return 'At least one artist name is required'
+  }
   return null
 }
 
@@ -73,8 +74,8 @@ function getArtistUpdates(
   editArtistName: string,
 ): Partial<UpdateLastFmTagRuleBody> {
   if (editArtistNames.length > 0) {
-    return artistNamesChanged(editArtistNames, rule.artist_names ?? []) ?
-        { artist_names: editArtistNames }
+    return artistNamesChanged(editArtistNames, rule.artist_names ?? [])
+      ? { artist_names: editArtistNames }
       : {}
   }
   return editArtistName.trim() !== (rule.artist_name ?? '') ? { artist_name: editArtistName.trim() } : {}
@@ -417,9 +418,10 @@ export function LastFmTagRulesSettings() {
         be created at the scrobble time.
       </p>
 
-      {isLoading ?
+      {isLoading ? (
         <p class="loading">Loading rules...</p>
-      : <>
+      ) : (
+        <>
           {/* Existing rules */}
           {rulesList.length > 0 && (
             <div class="rules-list">
@@ -437,7 +439,7 @@ export function LastFmTagRulesSettings() {
           {/* Add new rule form */}
           <AddRuleForm onRuleAdded={invalidateRules} setSaveStatus={setSaveStatus} />
         </>
-      }
+      )}
     </section>
   )
 }

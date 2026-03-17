@@ -2,16 +2,17 @@
  * Unit tests for the notes service.
  * Tests time-inheritance logic (getEntityTimes) and all exported functions.
  */
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
+
+import * as db from '../db/index.ts'
 import {
   addNote,
   deleteNoteById,
   getNotesForEntity,
   syncNoteTimesForEntity,
   updateNoteContent,
-} from './notes'
+} from './notes.ts'
 
 vi.mock('../db', () => ({
   deleteNote: vi.fn(),
