@@ -51,8 +51,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '25'
-          cache: 'pnpm'
+          node-version: "25"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install
@@ -64,13 +64,13 @@ jobs:
         run: pnpm check
 
       - name: Run backend tests with coverage
-        run: pnpm --filter aurboda-backend test run --coverage
+        run: pnpm --filter aurboda-backend test -- --coverage
 
       - name: Check coverage against baseline
         run: node scripts/check-coverage.mjs apps/backend/coverage/coverage-final.json apps/backend/coverage-baseline.json
 
       - name: Run web tests
-        run: pnpm --filter aurboda-web test run
+        run: pnpm --filter aurboda-web test
 
       - name: Build web
         run: pnpm --filter aurboda-web build
@@ -92,8 +92,8 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -107,8 +107,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '25'
-          cache: 'pnpm'
+          node-version: "25"
+          cache: "pnpm"
 
       - name: Install api-spec dependencies
         run: pnpm --filter @aurboda/api-spec install
