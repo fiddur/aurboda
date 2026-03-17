@@ -8,31 +8,29 @@ const mockBossSend = vi.fn()
 const mockBossWork = vi.fn()
 const mockBossOn = vi.fn()
 
-vi.mock('pg-boss', () => ({
-  PgBoss: vi.fn().mockImplementation(() => ({
-    createQueue: mockBossCreateQueue,
-    on: mockBossOn,
-    send: mockBossSend,
-    start: mockBossStart,
-    stop: mockBossStop,
-    work: mockBossWork,
-  })),
-}))
+vi.mock('pg-boss', () => {
+  const MockPgBoss = vi.fn()
+  MockPgBoss.prototype.createQueue = mockBossCreateQueue
+  MockPgBoss.prototype.on = mockBossOn
+  MockPgBoss.prototype.send = mockBossSend
+  MockPgBoss.prototype.start = mockBossStart
+  MockPgBoss.prototype.stop = mockBossStop
+  MockPgBoss.prototype.work = mockBossWork
+  return { PgBoss: MockPgBoss }
+})
 
 // Mock pg
 const mockPgConnect = vi.fn()
 const mockPgEnd = vi.fn()
 const mockPgQuery = vi.fn()
 
-vi.mock('pg', () => ({
-  default: {
-    Client: vi.fn().mockImplementation(() => ({
-      connect: mockPgConnect,
-      end: mockPgEnd,
-      query: mockPgQuery,
-    })),
-  },
-}))
+vi.mock('pg', () => {
+  const MockClient = vi.fn()
+  MockClient.prototype.connect = mockPgConnect
+  MockClient.prototype.end = mockPgEnd
+  MockClient.prototype.query = mockPgQuery
+  return { default: { Client: MockClient } }
+})
 
 // Mock geocoding
 vi.mock('./geocoding', () => ({

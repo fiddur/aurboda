@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the GarminConnect class from the library
-const mockGarminConnect = {
+const mockGarminConnect = vi.hoisted(() => ({
   exportToken: vi.fn().mockReturnValue({ oauth1: 'token1', oauth2: 'token2' }),
   get: vi.fn().mockResolvedValue({}),
   getActivities: vi.fn().mockResolvedValue([]),
@@ -15,11 +15,13 @@ const mockGarminConnect = {
   getUserSettings: vi.fn().mockResolvedValue({ userData: {} }),
   loadToken: vi.fn(),
   login: vi.fn().mockResolvedValue(undefined),
-}
-
-vi.mock('@flow-js/garmin-connect', () => ({
-  GarminConnect: vi.fn().mockImplementation(() => mockGarminConnect),
 }))
+
+vi.mock('@flow-js/garmin-connect', () => {
+  const MockGarminConnect = vi.fn()
+  Object.assign(MockGarminConnect.prototype, mockGarminConnect)
+  return { GarminConnect: MockGarminConnect }
+})
 
 import { GarminConnect } from '@flow-js/garmin-connect'
 
@@ -49,9 +51,15 @@ describe('garminClient', () => {
       const client = garminClient(deps)
       const result = await client.login(testUser, 'user@example.com', 'secret')
 
-      expect(GarminConnect).toHaveBeenCalledWith({ password: 'secret', username: 'user@example.com' })
+      expect(GarminConnect).toHaveBeenCalledWith({
+        password: 'secret',
+        username: 'user@example.com',
+      })
       expect(mockGarminConnect.login).toHaveBeenCalled()
-      expect(result).toEqual({ success: true, tokens: { oauth1: 'token1', oauth2: 'token2' } })
+      expect(result).toEqual({
+        success: true,
+        tokens: { oauth1: 'token1', oauth2: 'token2' },
+      })
     })
 
     it('stores tokens after successful login', async () => {
@@ -159,7 +167,11 @@ describe('garminClient', () => {
 
   describe('getHrv', () => {
     it('restores session, fetches HRV via get, and saves session', async () => {
-      const hrvData = { calendarDate: '2024-06-15', lastNightAvg: 42, weeklyAvg: 45 }
+      const hrvData = {
+        calendarDate: '2024-06-15',
+        lastNightAvg: 42,
+        weeklyAvg: 45,
+      }
       mockGarminConnect.get.mockResolvedValueOnce(hrvData)
 
       const client = garminClient(deps)
@@ -232,7 +244,10 @@ describe('garminClient', () => {
 
   describe('getRespiration', () => {
     it('restores session, fetches respiration via get, and saves session', async () => {
-      const respData = { avgWakingRespirationValue: 16, calendarDate: '2024-06-15' }
+      const respData = {
+        avgWakingRespirationValue: 16,
+        calendarDate: '2024-06-15',
+      }
       mockGarminConnect.get.mockResolvedValueOnce(respData)
 
       const client = garminClient(deps)
@@ -248,7 +263,11 @@ describe('garminClient', () => {
 
   describe('getTrainingReadiness', () => {
     it('restores session, fetches training readiness via get, and saves session', async () => {
-      const trData = { calendarDate: '2024-06-15', level: 'HIGH', overallScore: 75 }
+      const trData = {
+        calendarDate: '2024-06-15',
+        level: 'HIGH',
+        overallScore: 75,
+      }
       mockGarminConnect.get.mockResolvedValueOnce(trData)
 
       const client = garminClient(deps)

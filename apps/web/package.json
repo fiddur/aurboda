@@ -8,7 +8,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest",
+    "test": "vitest run",
     "lint": "oxlint -c ../../.oxlintrc.json",
     "fix": "oxfmt . && oxlint -c ../../.oxlintrc.json --fix",
     "typecheck": "tsgo --noEmit",
@@ -33,7 +33,7 @@
     "@types/d3": "^7.4.3",
     "@types/leaflet": "^1.9.21",
     "vite": "^7.1.7",
-    "vitest": "^3.2.4"
+    "vitest": "^4"
   },
   "packageManager": "pnpm@10.15.1+sha512.34e538c329b5553014ca8e8f4535997f96180a1d0f614339357449935350d924e22f8614682191264ec33d1462ac21561aff97f6bb18065351c162c7e8f6de67"
 }

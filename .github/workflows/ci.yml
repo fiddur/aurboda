@@ -64,13 +64,13 @@ jobs:
         run: pnpm check
 
       - name: Run backend tests with coverage
-        run: pnpm --filter aurboda-backend test run --coverage
+        run: pnpm --filter aurboda-backend exec vitest run --coverage
 
       - name: Check coverage against baseline
         run: node scripts/check-coverage.mjs apps/backend/coverage/coverage-final.json apps/backend/coverage-baseline.json
 
       - name: Run web tests
-        run: pnpm --filter aurboda-web test run
+        run: pnpm --filter aurboda-web test
 
       - name: Build web
         run: pnpm --filter aurboda-web build
