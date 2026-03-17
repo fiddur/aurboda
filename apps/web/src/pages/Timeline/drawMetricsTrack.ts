@@ -468,24 +468,24 @@ const drawCrosshairOverlay = (
     .on('mousemove', (event: MouseEvent) => {
       const [mx] = d3.pointer(event)
       const hoverTime = xScale.invert(mx!)
+      const hoverMs = hoverTime.getTime()
 
-      // Try to find the nearest metric bucket
+      // Binary search for the bucket containing hoverTime (start <= hoverTime < end)
       let nearest: MetricBucketParsed | null = null
-      let bestDist = Infinity
-      for (const b of buckets) {
-        const mid = (b.start.getTime() + b.end.getTime()) / 2
-        const dist = Math.abs(hoverTime.getTime() - mid)
-        if (dist < bestDist) {
-          bestDist = dist
-          nearest = b
-        }
-      }
-
-      // If we have a metric bucket match, check distance threshold
-      if (nearest) {
-        const bucketDuration = nearest.end.getTime() - nearest.start.getTime()
-        if (bestDist > bucketDuration * 2) {
-          nearest = null
+      if (buckets.length > 0) {
+        let lo = 0
+        let hi = buckets.length - 1
+        while (lo <= hi) {
+          const mid = (lo + hi) >>> 1
+          const b = buckets[mid]!
+          if (hoverMs < b.start.getTime()) {
+            hi = mid - 1
+          } else if (hoverMs >= b.end.getTime()) {
+            lo = mid + 1
+          } else {
+            nearest = b
+            break
+          }
         }
       }
 
