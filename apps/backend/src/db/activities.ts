@@ -200,7 +200,8 @@ export const insertActivities = async (user: string, activities: Activity[]) => 
     user,
     format(
       `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
-       SELECT COALESCE(v.id::uuid, gen_random_uuid()), v.source, v.activity_type, v.start_time, v.end_time, v.title, v.notes, v.data
+       SELECT COALESCE(v.id::uuid, gen_random_uuid()), v.source, v.activity_type,
+              v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.notes, v.data::jsonb
        FROM (VALUES %L) AS v(id, source, activity_type, start_time, end_time, title, notes, data)
        ON CONFLICT (source, activity_type, start_time) DO UPDATE SET
          end_time = EXCLUDED.end_time,
