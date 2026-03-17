@@ -9,10 +9,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "lint": "oxlint",
-    "fix": "oxfmt . && oxlint --fix",
+    "lint": "oxlint -c ../../.oxlintrc.json",
+    "fix": "oxfmt . && oxlint -c ../../.oxlintrc.json --fix",
     "typecheck": "tsgo --noEmit",
-    "check": "tsgo --noEmit && oxlint"
+    "check": "tsgo --noEmit && oxlint -c ../../.oxlintrc.json"
   },
   "dependencies": {
     "@aurboda/api-spec": "workspace:*",
