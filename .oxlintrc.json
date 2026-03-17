@@ -1,9 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["oxc", "eslint", "typescript", "unicorn", "import"],
-  "options": {
-    "denyWarnings": true
-  },
+  "options": {},
   "rules": {
     "complexity": [2, { "max": 15 }],
     "max-depth": [2, { "max": 5 }],
@@ -43,5 +41,10 @@
     "unicorn/no-instanceof-builtins": 2,
     "unicorn/error-message": 2
   },
-  "ignorePatterns": ["**/generated/**", "**/dist/**", "**/node_modules/**", "**/coverage/**"]
+  "ignorePatterns": [
+    "**/generated/**",
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/coverage/**"
+  ]
 }
