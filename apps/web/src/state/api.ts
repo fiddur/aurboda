@@ -297,9 +297,10 @@ export const fetchProductivityById = async (id: string): Promise<ProductivityRec
   }
 }
 
-// Fetch distinct app names with their categories and usage stats
+// Fetch distinct app/title combinations with their categories and usage stats
 export interface DistinctApp {
   activity: string
+  title?: string
   resolved_category?: string[]
   total_duration_sec: number
   record_count: number

@@ -247,8 +247,8 @@ function MatchedAppList({
         rule_regex: newRegex,
         rule_type: newRegex ? 'regex' : 'none',
       })
-      // Recategorize in background
-      void recategorizeScreentime()
+      // Wait for recategorization so the lists reflect the change immediately
+      await recategorizeScreentime()
     },
     onSuccess: () => {
       setRemovingApp(null)
@@ -275,8 +275,11 @@ function MatchedAppList({
       </h3>
       <div class="app-list">
         {apps.map((app) => (
-          <div key={app.activity} class="app-row">
-            <span class="app-name">{app.activity}</span>
+          <div key={`${app.activity}\x00${app.title ?? ''}`} class="app-row">
+            <div class="app-name-col">
+              <span class="app-name">{app.activity}</span>
+              {app.title && <span class="app-title">{app.title}</span>}
+            </div>
             <div class="app-row-right">
               <span class="app-stats">
                 {formatDuration(app.total_duration_sec)} &middot; {app.record_count} records
@@ -324,8 +327,8 @@ function UncategorizedAppList({
         rule_regex: newRegex,
         rule_type: 'regex',
       })
-      // Recategorize in background
-      void recategorizeScreentime()
+      // Wait for recategorization so lists reflect the change immediately
+      await recategorizeScreentime()
     },
     onSuccess: () => {
       setAddingApp(null)
@@ -336,7 +339,7 @@ function UncategorizedAppList({
     onError: () => setAddingApp(null),
   })
 
-  const title =
+  const headerTitle =
     total > apps.length ? `Uncategorized apps (showing ${apps.length} of ${total})` : 'Uncategorized apps'
 
   if (total === 0) {
@@ -351,12 +354,15 @@ function UncategorizedAppList({
   return (
     <div class="category-section">
       <h3>
-        {title} <span class="count-badge">{total}</span>
+        {headerTitle} <span class="count-badge">{total}</span>
       </h3>
       <div class="app-list">
         {apps.map((app) => (
-          <div key={app.activity} class="app-row">
-            <span class="app-name">{app.activity}</span>
+          <div key={`${app.activity}\x00${app.title ?? ''}`} class="app-row">
+            <div class="app-name-col">
+              <span class="app-name">{app.activity}</span>
+              {app.title && <span class="app-title">{app.title}</span>}
+            </div>
             <div class="app-row-right">
               <span class="app-stats">
                 {formatDuration(app.total_duration_sec)} &middot; {app.record_count} records
