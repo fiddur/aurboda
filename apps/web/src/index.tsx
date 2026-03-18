@@ -28,6 +28,8 @@ import { HrZones } from './pages/HrZones/index.jsx'
 import { Login } from './pages/Login/index.jsx'
 import { MetricMeta } from './pages/MetricMeta/index.jsx'
 import { Places } from './pages/Places/index.jsx'
+import { CategoryDetail } from './pages/ScreentimeCategories/CategoryDetail.jsx'
+import { ScreentimeCategories } from './pages/ScreentimeCategories/index.jsx'
 import { Settings } from './pages/Settings/index.jsx'
 import { Signup } from './pages/Signup/index.jsx'
 import { Sleep } from './pages/Sleep/index.jsx'
@@ -70,6 +72,8 @@ export function App() {
             <Route path="/data-sources/lastfm" component={LastFmSource} />
             <Route path="/data-sources/owntracks" component={OwnTracksSource} />
             <Route path="/data-sources/calendars" component={CalendarsSource} />
+            <Route path="/screentime-categories/:id" component={CategoryDetail} />
+            <Route path="/screentime-categories" component={ScreentimeCategories} />
             <Route path="/settings" component={Settings} />
             <Route path="/admin" component={AdminSettings} />
             <Route path="/help" component={DataSources} />

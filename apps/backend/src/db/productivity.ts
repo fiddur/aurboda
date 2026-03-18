@@ -174,6 +174,32 @@ export const batchUpdateResolvedCategory = async (
 }
 
 /**
+ * Get distinct app names with their resolved categories.
+ * Returns unique (activity, resolved_category) pairs, useful for category management UI.
+ */
+export const getDistinctApps = async (
+  user: string,
+): Promise<
+  Array<{ activity: string; resolved_category?: string[]; total_duration_sec: number; record_count: number }>
+> => {
+  const result = await query(
+    user,
+    `SELECT activity, resolved_category, SUM(duration_sec)::int AS total_duration_sec, COUNT(*)::int AS record_count
+     FROM productivity
+     WHERE deleted_at IS NULL
+     GROUP BY activity, resolved_category
+     ORDER BY SUM(duration_sec) DESC`,
+  )
+
+  return result.rows.map((row) => ({
+    activity: row.activity,
+    record_count: row.record_count,
+    resolved_category: row.resolved_category || undefined,
+    total_duration_sec: row.total_duration_sec,
+  }))
+}
+
+/**
  * Get all non-deleted productivity records (for recategorization).
  * Returns only id, activity, and title to minimize memory usage.
  */

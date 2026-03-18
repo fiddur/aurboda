@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useCallback, useState } from 'preact/hooks'
 
-import { ScreentimeCategoriesSettings } from '../../components/ScreentimeCategoriesSettings'
 import {
   fetchProductivity,
   fetchUserSettings,
@@ -139,7 +138,11 @@ export function RescueTimeSource() {
         )}
       </div>
 
-      <ScreentimeCategoriesSettings />
+      <section class="settings-section">
+        <a href="/screentime-categories" class="manage-link">
+          Manage screentime categories
+        </a>
+      </section>
     </div>
   )
 }
