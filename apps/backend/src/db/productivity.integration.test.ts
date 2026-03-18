@@ -555,6 +555,30 @@ describe('Productivity Integration Tests', () => {
       expect(rows).toHaveLength(0)
     })
 
+    test('handles uncategorized records (null resolved_category)', async () => {
+      const user = getTestUser()
+      await insertProductivity(user, [
+        makeRecord({
+          activity: 'plasmashell',
+          duration_sec: 600,
+          end_time: new Date('2024-01-15T10:10:00Z'),
+          start_time: new Date('2024-01-15T10:00:00Z'),
+        }),
+      ])
+
+      const rows = await getProductivityBucketed(
+        user,
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-16T00:00:00Z'),
+        '1 hours',
+        'UTC',
+      )
+
+      expect(rows).toHaveLength(1)
+      expect(rows[0].resolved_category).toBeNull()
+      expect(rows[0].total_sec).toBe(600)
+    })
+
     test('excludes soft-deleted records', async () => {
       const user = getTestUser()
       await insertProductivity(user, [
