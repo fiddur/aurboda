@@ -56,6 +56,9 @@ private const val RR_BUFFER_MIN_SIZE = 30 // Minimum intervals for HRV calculati
 private const val RR_BUFFER_MAX_SIZE = 300 // Maximum intervals (~5 minutes at 60bpm)
 private const val CHART_HISTORY_DURATION_MS = 5 * 60 * 1000L // 5 minutes of chart history
 private const val ONE_MINUTE_MS = 60_000L
+private const val RECONNECT_BASE_DELAY_MS = 2_000L
+private const val RECONNECT_MAX_DELAY_MS = 60_000L
+private const val RECONNECT_MAX_ATTEMPTS = 20
 
 /**
  * Data point for chart display with timestamp.
@@ -209,6 +212,10 @@ class SensorService : Service() {
   private var syncJob: Job? = null
   private var phoneStepJob: Job? = null
 
+  // Auto-reconnect tracking
+  private val reconnectJobs = mutableMapOf<String, Job>()
+  private val reconnectAttempts = mutableMapOf<String, Int>()
+
   // Phone step counter
   private var phoneStepCounter: PhoneStepCounter? = null
 
@@ -264,12 +271,22 @@ class SensorService : Service() {
       ACTION_DISCONNECT -> {
         val deviceAddress = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
         if (deviceAddress != null) {
+          // Cancel any pending reconnect for this device
+          cancelReconnect(deviceAddress)
           disconnectDevice(deviceAddress)
         } else {
+          // Cancel all reconnects
+          reconnectJobs.values.forEach { it.cancel() }
+          reconnectJobs.clear()
+          reconnectAttempts.clear()
           disconnectAll()
         }
       }
       ACTION_STOP -> {
+        // Cancel all reconnects before stopping
+        reconnectJobs.values.forEach { it.cancel() }
+        reconnectJobs.clear()
+        reconnectAttempts.clear()
         stopSensorService()
       }
       ACTION_START_PHONE_STEPS -> {
@@ -278,8 +295,22 @@ class SensorService : Service() {
       ACTION_STOP_PHONE_STEPS -> {
         stopPhoneStepCounter()
       }
+      ACTION_AUTO_RECONNECT -> {
+        reconnectSavedDevices()
+      }
+      ACTION_TOGGLE_AUTO_RECONNECT -> {
+        val deviceAddress = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
+        val enabled = intent.getBooleanExtra(EXTRA_AUTO_RECONNECT_ENABLED, false)
+        if (deviceAddress != null) {
+          handleAutoReconnectToggle(deviceAddress, enabled)
+        }
+      }
+      null -> {
+        // Service restarted by system (START_STICKY) -- must satisfy foreground contract
+        reconnectSavedDevices()
+      }
     }
-    return START_NOT_STICKY
+    return START_STICKY
   }
 
   override fun onBind(intent: Intent?): IBinder? = null
@@ -353,6 +384,7 @@ class SensorService : Service() {
           phoneStepsText != null -> append(phoneStepsText)
           state.hasConnectedDevices -> append("${state.connectedDevices.size} sensor(s) connected")
           state.isConnecting -> append("Connecting...")
+          reconnectJobs.isNotEmpty() -> append("Reconnecting to ${reconnectJobs.size} device(s)...")
           else -> append("Ready")
         }
       }
@@ -375,7 +407,32 @@ class SensorService : Service() {
     notificationManager.notify(NOTIFICATION_ID, notification)
   }
 
-  private fun connectToDevice(deviceAddress: String) {
+  private fun reconnectSavedDevices() {
+    val savedDevices = AutoReconnectPrefs.getSavedDevices(this)
+    if (savedDevices.isNotEmpty()) {
+      Log.d(TAG, "Auto-reconnecting to ${savedDevices.size} saved device(s)")
+      if (!_serviceState.value.isRunning) {
+        startForegroundWithNotification()
+      }
+      savedDevices.forEach { saved ->
+        connectToDevice(saved.address, autoConnect = true)
+      }
+    } else {
+      Log.d(TAG, "No saved devices to auto-reconnect")
+      if (!_serviceState.value.hasConnectedDevices && !_serviceState.value.isConnecting) {
+        // Must satisfy foreground contract before stopping
+        if (!_serviceState.value.isRunning) {
+          startForegroundWithNotification()
+        }
+        stopSensorService()
+      }
+    }
+  }
+
+  private fun connectToDevice(
+    deviceAddress: String,
+    autoConnect: Boolean = false,
+  ) {
     // Don't connect if already connected or connecting to this device
     if (connectionManagers.containsKey(deviceAddress)) {
       Log.w(TAG, "Already connected to device: $deviceAddress")
@@ -386,7 +443,7 @@ class SensorService : Service() {
       return
     }
 
-    Log.d(TAG, "Connecting to device: $deviceAddress")
+    Log.d(TAG, "Connecting to device: $deviceAddress (autoConnect=$autoConnect)")
     updateState { it.copy(connectingDevices = it.connectingDevices + deviceAddress) }
 
     val manager = BleConnectionManager(this)
@@ -400,6 +457,8 @@ class SensorService : Service() {
 
           when (state) {
             is BleConnectionState.Connected -> {
+              // Reset reconnect counter on successful connection
+              reconnectAttempts.remove(deviceAddress)
               updateState { it.copy(connectingDevices = it.connectingDevices - deviceAddress) }
               startDataCollection(manager, deviceAddress)
               startSyncLoop()
@@ -410,6 +469,7 @@ class SensorService : Service() {
             is BleConnectionState.Error -> {
               Log.e(TAG, "Connection error for $deviceAddress: ${state.message}")
               updateState { it.copy(connectingDevices = it.connectingDevices - deviceAddress) }
+              // Reconnect will be handled by handleDeviceDisconnected when Disconnected follows
             }
             else -> {}
           }
@@ -494,7 +554,7 @@ class SensorService : Service() {
     connectionManagers[deviceAddress] = manager
     deviceJobs[deviceAddress] = jobs
 
-    manager.connect(deviceAddress)
+    manager.connect(deviceAddress, autoConnect = autoConnect)
   }
 
   private fun updateDeviceState(
@@ -550,11 +610,99 @@ class SensorService : Service() {
     }
     updateNotification()
 
-    // Stop service if no devices connected
-    if (connectionManagers.isEmpty() && _serviceState.value.connectingDevices.isEmpty()) {
-      Log.d(TAG, "No devices connected, stopping service")
+    // Check if we should auto-reconnect
+    val shouldAutoReconnect = AutoReconnectPrefs.isAutoReconnectEnabled(this, deviceAddress)
+    if (shouldAutoReconnect) {
+      Log.d(TAG, "Auto-reconnect enabled for $deviceAddress, scheduling reconnect")
+      scheduleReconnect(deviceAddress)
+      return
+    }
+
+    // Stop service if no devices connected, no reconnects pending, and no phone step counter
+    if (connectionManagers.isEmpty() &&
+      _serviceState.value.connectingDevices.isEmpty() &&
+      reconnectJobs.isEmpty() &&
+      !_serviceState.value.phoneStepCounterActive
+    ) {
+      Log.d(TAG, "No devices connected and no reconnects pending, stopping service")
       stopSensorService()
     }
+  }
+
+  private fun scheduleReconnect(deviceAddress: String) {
+    // Cancel any existing reconnect job for this device
+    reconnectJobs[deviceAddress]?.cancel()
+
+    val attempt = (reconnectAttempts[deviceAddress] ?: 0) + 1
+    reconnectAttempts[deviceAddress] = attempt
+
+    if (attempt > RECONNECT_MAX_ATTEMPTS) {
+      Log.w(TAG, "Max reconnect attempts ($RECONNECT_MAX_ATTEMPTS) reached for $deviceAddress")
+      reconnectAttempts.remove(deviceAddress)
+      reconnectJobs.remove(deviceAddress)
+      // Stop service if nothing else is active
+      if (connectionManagers.isEmpty() &&
+        _serviceState.value.connectingDevices.isEmpty() &&
+        reconnectJobs.isEmpty() &&
+        !_serviceState.value.phoneStepCounterActive
+      ) {
+        stopSensorService()
+      }
+      return
+    }
+
+    // Exponential backoff: 2s, 4s, 8s, 16s, 32s, 60s, 60s, ...
+    val delayMs =
+      (RECONNECT_BASE_DELAY_MS * (1L shl (attempt - 1).coerceAtMost(5)))
+        .coerceAtMost(RECONNECT_MAX_DELAY_MS)
+
+    Log.d(TAG, "Scheduling reconnect #$attempt for $deviceAddress in ${delayMs}ms")
+
+    reconnectJobs[deviceAddress] =
+      serviceScope.launch {
+        delay(delayMs)
+        // Only reconnect if still in the saved list and BLE is enabled
+        if (AutoReconnectPrefs.isAutoReconnectEnabled(this@SensorService, deviceAddress) &&
+          isBleEnabled(this@SensorService)
+        ) {
+          reconnectJobs.remove(deviceAddress)
+          Log.d(TAG, "Attempting reconnect #$attempt for $deviceAddress")
+          connectToDevice(deviceAddress, autoConnect = true)
+        } else {
+          reconnectJobs.remove(deviceAddress)
+          Log.d(TAG, "Skipping reconnect for $deviceAddress (removed from auto-reconnect or BLE disabled)")
+          reconnectAttempts.remove(deviceAddress)
+        }
+      }
+  }
+
+  private fun cancelReconnect(deviceAddress: String) {
+    reconnectJobs[deviceAddress]?.cancel()
+    reconnectJobs.remove(deviceAddress)
+    reconnectAttempts.remove(deviceAddress)
+  }
+
+  private fun handleAutoReconnectToggle(
+    deviceAddress: String,
+    enabled: Boolean,
+  ) {
+    val deviceState = _serviceState.value.connectedDevices[deviceAddress]
+    if (enabled && deviceState != null) {
+      val saved =
+        SavedDevice(
+          address = deviceAddress,
+          name = deviceState.device.name,
+          type = deviceState.device.type,
+        )
+      AutoReconnectPrefs.addDevice(this, saved)
+      Log.d(TAG, "Auto-reconnect enabled for ${saved.name} ($deviceAddress)")
+    } else {
+      AutoReconnectPrefs.removeDevice(this, deviceAddress)
+      cancelReconnect(deviceAddress)
+      Log.d(TAG, "Auto-reconnect disabled for $deviceAddress")
+    }
+    // Notify UI by emitting updated state (force re-read of prefs)
+    updateState { it.copy() }
   }
 
   private fun startDataCollection(
@@ -1211,7 +1359,10 @@ class SensorService : Service() {
     }
 
     // Stop service if nothing else is running
-    if (!_serviceState.value.hasConnectedDevices && !_serviceState.value.isConnecting) {
+    if (!_serviceState.value.hasConnectedDevices &&
+      !_serviceState.value.isConnecting &&
+      reconnectJobs.isEmpty()
+    ) {
       stopSensorService()
     } else {
       updateNotification()
@@ -1229,6 +1380,11 @@ class SensorService : Service() {
   private fun cleanup() {
     syncJob?.cancel()
     phoneStepJob?.cancel()
+
+    // Cancel all reconnect jobs
+    reconnectJobs.values.forEach { it.cancel() }
+    reconnectJobs.clear()
+    reconnectAttempts.clear()
 
     // Stop phone step counter
     phoneStepCounter?.stopMonitoring()
@@ -1266,7 +1422,10 @@ class SensorService : Service() {
     const val ACTION_STOP = "net.aurboda.action.STOP_SENSOR_SERVICE"
     const val ACTION_START_PHONE_STEPS = "net.aurboda.action.START_PHONE_STEPS"
     const val ACTION_STOP_PHONE_STEPS = "net.aurboda.action.STOP_PHONE_STEPS"
+    const val ACTION_AUTO_RECONNECT = "net.aurboda.action.AUTO_RECONNECT"
+    const val ACTION_TOGGLE_AUTO_RECONNECT = "net.aurboda.action.TOGGLE_AUTO_RECONNECT"
     const val EXTRA_DEVICE_ADDRESS = "device_address"
+    const val EXTRA_AUTO_RECONNECT_ENABLED = "auto_reconnect_enabled"
 
     private val _serviceState = MutableStateFlow(SensorServiceState())
     val serviceState: StateFlow<SensorServiceState> = _serviceState.asStateFlow()
@@ -1323,6 +1482,28 @@ class SensorService : Service() {
       val intent =
         Intent(context, SensorService::class.java).apply {
           action = ACTION_STOP
+        }
+      context.startService(intent)
+    }
+
+    fun autoReconnect(context: Context) {
+      val intent =
+        Intent(context, SensorService::class.java).apply {
+          action = ACTION_AUTO_RECONNECT
+        }
+      context.startForegroundService(intent)
+    }
+
+    fun toggleAutoReconnect(
+      context: Context,
+      deviceAddress: String,
+      enabled: Boolean,
+    ) {
+      val intent =
+        Intent(context, SensorService::class.java).apply {
+          action = ACTION_TOGGLE_AUTO_RECONNECT
+          putExtra(EXTRA_DEVICE_ADDRESS, deviceAddress)
+          putExtra(EXTRA_AUTO_RECONNECT_ENABLED, enabled)
         }
       context.startService(intent)
     }
