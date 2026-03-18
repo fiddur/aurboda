@@ -426,6 +426,24 @@ const main = async () => {
     }
   })
 
+  httpd.post('/auth/garmin/mfa', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { mfa_code } = req.body ?? {}
+
+    if (!mfa_code) {
+      res.status(400).json({ error: 'MFA code is required', success: false })
+      return
+    }
+
+    try {
+      await garmin.verifyMfa(user, mfa_code)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'MFA verification failed'
+      res.status(401).json({ error: message, success: false })
+    }
+  })
+
   httpd.post('/auth/garmin/disconnect', authMiddleware, async (req, res) => {
     const user = req.user!
     try {
