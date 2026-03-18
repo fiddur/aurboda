@@ -76,7 +76,15 @@ export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSy
  * Entries older than 90 days are auto-expired (marked 'failed') since Health
  * Connect typically ignores data that old.
  */
-export const getPendingOutboundSync = async (user: string, limit = 100): Promise<OutboundSyncEntry[]> => {
+export interface PendingOutboundSyncResult {
+  entries: OutboundSyncEntry[]
+  total_pending: number
+}
+
+export const getPendingOutboundSync = async (
+  user: string,
+  limit = 100,
+): Promise<PendingOutboundSyncResult> => {
   // Auto-expire entries older than 90 days — HC won't accept them anyway
   await query(
     user,
@@ -85,6 +93,14 @@ export const getPendingOutboundSync = async (user: string, limit = 100): Promise
      WHERE status = 'pending' AND created_at < NOW() - INTERVAL '90 days'`,
     [],
   )
+
+  // Get total pending count and entries in a single round-trip
+  const countResult = await query(
+    user,
+    `SELECT COUNT(*)::int AS total FROM outbound_sync_queue WHERE status = 'pending'`,
+    [],
+  )
+  const total_pending = (countResult.rows[0]?.total as number) ?? 0
 
   const result = await query(
     user,
@@ -97,7 +113,10 @@ export const getPendingOutboundSync = async (user: string, limit = 100): Promise
     [limit],
   )
 
-  return result.rows.map(mapOutboundSyncRow)
+  return {
+    entries: result.rows.map(mapOutboundSyncRow),
+    total_pending,
+  }
 }
 
 /**

@@ -43,7 +43,7 @@ describe('Outbound Sync Queue Integration Tests', () => {
       expect(id).toBeDefined()
       expect(typeof id).toBe('string')
 
-      const pending = await getPendingOutboundSync(user)
+      const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(1)
       expect(pending[0].entity_id).toBe('activity-123')
       expect(pending[0].operation).toBe('insert')
@@ -71,7 +71,7 @@ describe('Outbound Sync Queue Integration Tests', () => {
         payload: { start_time: '2024-01-15T10:30:00Z' },
       })
 
-      const pending = await getPendingOutboundSync(user)
+      const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(1)
       expect(pending[0].operation).toBe('update')
     })
@@ -95,7 +95,7 @@ describe('Outbound Sync Queue Integration Tests', () => {
         payload: {},
       })
 
-      const pending = await getPendingOutboundSync(user)
+      const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(1)
       expect(pending[0].operation).toBe('delete')
     })
@@ -121,13 +121,13 @@ describe('Outbound Sync Queue Integration Tests', () => {
         payload: {},
       })
 
-      const pending = await getPendingOutboundSync(user)
+      const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(2)
       expect(pending[0].entity_id).toBe('second')
       expect(pending[1].entity_id).toBe('first')
     })
 
-    test('respects limit', async () => {
+    test('respects limit and returns total_pending', async () => {
       const user = getTestUser()
 
       for (let i = 0; i < 5; i++) {
@@ -140,14 +140,16 @@ describe('Outbound Sync Queue Integration Tests', () => {
         })
       }
 
-      const pending = await getPendingOutboundSync(user, 3)
+      const { entries: pending, total_pending } = await getPendingOutboundSync(user, 3)
       expect(pending).toHaveLength(3)
+      expect(total_pending).toBe(5)
     })
 
     test('returns empty array when no pending entries', async () => {
       const user = getTestUser()
-      const pending = await getPendingOutboundSync(user)
+      const { entries: pending, total_pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(0)
+      expect(total_pending).toBe(0)
     })
 
     test('auto-expires entries older than 90 days', async () => {
@@ -176,10 +178,50 @@ describe('Outbound Sync Queue Integration Tests', () => {
         payload: {},
       })
 
-      const pending = await getPendingOutboundSync(user)
+      const { entries: pending } = await getPendingOutboundSync(user)
       // Only the recent entry should be returned; the old one should be auto-expired
       expect(pending).toHaveLength(1)
       expect(pending[0].entity_id).toBe('recent-exercise')
+    })
+
+    test('total_pending reflects count after auto-expiry', async () => {
+      const user = getTestUser()
+
+      // Create an entry and backdate it to 91 days ago
+      const oldId = await enqueueOutboundSync(user, {
+        entity_id: 'old-entry',
+        entity_type: 'time_series',
+        hc_record_type: 'ActiveCaloriesBurnedRecord',
+        operation: 'insert',
+        payload: { value: 5.0 },
+      })
+      await query(
+        user,
+        `UPDATE outbound_sync_queue SET created_at = NOW() - INTERVAL '91 days' WHERE id = $1`,
+        [oldId],
+      )
+
+      // Create two recent entries
+      await enqueueOutboundSync(user, {
+        entity_id: 'recent-1',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+      await enqueueOutboundSync(user, {
+        entity_id: 'recent-2',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      const { entries, total_pending } = await getPendingOutboundSync(user, 1)
+      // Should only return 1 due to limit, but total_pending should be 2
+      // (the old entry was auto-expired)
+      expect(entries).toHaveLength(1)
+      expect(total_pending).toBe(2)
     })
   })
 
@@ -199,7 +241,7 @@ describe('Outbound Sync Queue Integration Tests', () => {
       expect(ok).toBe(true)
 
       // Should no longer be in pending
-      const pending = await getPendingOutboundSync(user)
+      const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(0)
     })
 
@@ -242,7 +284,7 @@ describe('Outbound Sync Queue Integration Tests', () => {
       expect(ok).toBe(true)
 
       // Should no longer be in pending
-      const pending = await getPendingOutboundSync(user)
+      const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(0)
     })
   })
