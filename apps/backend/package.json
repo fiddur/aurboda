@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@aurboda/api-spec": "workspace:*",
-    "@flow-js/garmin-connect": "^1.6.7",
+    "@flow-js/garmin-connect": "github:fiddur/garmin-connect#feat/mfa-support",
     "@js-temporal/polyfill": "^0.5.1",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "axios": "^1.11.0",

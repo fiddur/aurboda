@@ -1,6 +1,6 @@
 # Garmin Connect
 
-[Garmin Connect](https://connect.garmin.com/) provides fitness and health data from Garmin wearable devices (watches, fitness trackers). Aurboda syncs data by scraping the Garmin Connect web API using the `@flow-js/garmin-connect` library, since Garmin's official API requires a partner license.
+[Garmin Connect](https://connect.garmin.com/) provides fitness and health data from Garmin wearable devices (watches, fitness trackers). Aurboda syncs data by scraping the Garmin Connect web API using a [fork of `@flow-js/garmin-connect`](https://github.com/fiddur/garmin-connect) with MFA support, since Garmin's official API requires a partner license.
 
 ## Data Synced
 
@@ -29,11 +29,10 @@ No server-side admin configuration is needed. Unlike Oura (which requires OAuth 
 1. Go to **Settings > Data Sources > Garmin Connect**
 2. Enter your Garmin Connect **email** and **password**
 3. Click **Connect**
-4. If successful, Settings will show "Connected"
+4. If your account has MFA (multi-factor authentication) enabled, Garmin will send a verification code to your email. Enter the code in the form that appears and click **Verify Code**.
+5. If successful, Settings will show "Connected"
 
 **Important:** Your Garmin credentials are used only for the initial authentication and are **never stored** on the server. Only the resulting OAuth session tokens are persisted, which allow continued access without re-entering credentials.
-
-If Garmin requires MFA (multi-factor authentication), you'll be prompted accordingly.
 
 ## Sync
 
@@ -70,5 +69,5 @@ This removes the stored session tokens. You'll need to re-enter your credentials
 
 - **No webhook/push support:** Garmin's official webhook API requires a partner license. Sync is pull-based only.
 - **Session expiry:** Garmin Connect sessions may expire, requiring the user to re-authenticate by entering credentials again.
-- **MFA:** If Garmin MFA is enabled, the current implementation may not fully support the MFA flow.
+- **MFA timeout:** The MFA verification code must be entered within 5 minutes of submitting credentials. If the session expires, start the login flow again.
 - **Rate limiting:** Garmin's unofficial API has undocumented rate limits. The day-by-day iteration with delays helps, but full resyncs of 90+ days may encounter limits.

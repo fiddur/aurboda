@@ -510,6 +510,16 @@ export const connectGarmin = async (
   return response.data
 }
 
+export const verifyGarminMfa = async (mfaCode: string): Promise<{ success: boolean; error?: string }> => {
+  const { token } = auth.value
+  const response = await axios.post(
+    `${API_URL}/auth/garmin/mfa`,
+    { mfa_code: mfaCode },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
 export const disconnectGarmin = async (): Promise<{ success: boolean }> => {
   const { token } = auth.value
   const response = await axios.post(
