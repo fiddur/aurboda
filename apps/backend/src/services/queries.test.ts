@@ -2050,7 +2050,13 @@ describe('queryTags with comments', () => {
   test('attaches comments when notes exist', async () => {
     const tagId = 'tag-id-1'
     vi.mocked(db.getTags).mockResolvedValue([
-      { id: tagId, source: 'manual', start_time: new Date('2024-01-15T08:00:00Z'), tag: 'coffee' },
+      {
+        external_id: 'ext-1',
+        id: tagId,
+        source: 'manual',
+        start_time: new Date('2024-01-15T08:00:00Z'),
+        tag: 'coffee',
+      },
     ])
 
     const notesMap = new Map([
@@ -2080,13 +2086,39 @@ describe('queryTags with comments', () => {
 
   test('returns empty comments array when no notes exist', async () => {
     vi.mocked(db.getTags).mockResolvedValue([
-      { id: 'tag-1', source: 'manual', start_time: new Date('2024-01-15T08:00:00Z'), tag: 'coffee' },
+      {
+        external_id: 'ext-tag-1',
+        id: 'tag-1',
+        source: 'manual',
+        start_time: new Date('2024-01-15T08:00:00Z'),
+        tag: 'coffee',
+      },
     ])
     vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
 
     const result = await queryTags('testuser', new Date('2024-01-15'), new Date('2024-01-16'))
 
     expect(result[0].comments).toEqual([])
+  })
+
+  test('includes external_id in response', async () => {
+    vi.mocked(db.getTags).mockResolvedValue([
+      {
+        external_id: 'ext-abc-123',
+        id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T08:00:00Z'),
+        tag: 'coffee',
+      },
+      { id: 'tag-2', source: 'manual', start_time: new Date('2024-01-15T09:00:00Z'), tag: 'tea' },
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+
+    const result = await queryTags('testuser', new Date('2024-01-15'), new Date('2024-01-16'))
+
+    expect(result).toHaveLength(2)
+    expect(result[0].external_id).toBe('ext-abc-123')
+    expect(result[1].external_id).toBeUndefined()
   })
 })
 
