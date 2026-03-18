@@ -28,6 +28,9 @@ export interface MergedProductivitySpan {
 /**
  * Merge adjacent/overlapping productivity records that share the same category.
  * Adjacent records within MERGE_GAP_MS are merged into a single span.
+ *
+ * Uncategorized records that overlap with categorized spans are excluded to avoid
+ * giant background blobs covering the entire day on the timeline.
  */
 export const mergeProductivitySpans = (productivity: ProductivityRecord[]): MergedProductivitySpan[] => {
   if (productivity.length === 0) return []
@@ -35,33 +38,62 @@ export const mergeProductivitySpans = (productivity: ProductivityRecord[]): Merg
   // Sort by start time
   const sorted = [...productivity].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 
-  const spans: MergedProductivitySpan[] = []
-  // Track open spans per group key
-  const openSpans = new Map<string, MergedProductivitySpan>()
+  // Phase 1: Build categorized spans first
+  const categorizedSpans: MergedProductivitySpan[] = []
+  const categorizedOpenSpans = new Map<string, MergedProductivitySpan>()
+  const uncategorizedRecords: ProductivityRecord[] = []
 
   for (const record of sorted) {
     const key = productivityGroupKey(record)
-    const open = openSpans.get(key)
+    if (key === '') {
+      uncategorizedRecords.push(record)
+      continue
+    }
 
+    const open = categorizedOpenSpans.get(key)
     if (open && record.start_time.getTime() <= open.end.getTime() + MERGE_GAP_MS) {
-      // Extend the existing span
       if (record.end_time > open.end) open.end = record.end_time
       open.records.push(record)
     } else {
-      // Close the previous span for this group (if any) and start a new one
-      if (open) spans.push(open)
-      const newSpan: MergedProductivitySpan = {
+      if (open) categorizedSpans.push(open)
+      categorizedOpenSpans.set(key, {
         end: record.end_time,
         groupKey: key,
         records: [record],
         start: record.start_time,
-      }
-      openSpans.set(key, newSpan)
+      })
     }
   }
+  for (const span of categorizedOpenSpans.values()) categorizedSpans.push(span)
 
-  // Close all remaining open spans
-  for (const span of openSpans.values()) spans.push(span)
+  // Phase 2: Filter uncategorized records — exclude those fully covered by a categorized span
+  const isFullyCovered = (record: ProductivityRecord): boolean => {
+    const rs = record.start_time.getTime()
+    const re = record.end_time.getTime()
+    return categorizedSpans.some((span) => span.start.getTime() <= rs && span.end.getTime() >= re)
+  }
 
-  return spans.sort((a, b) => a.start.getTime() - b.start.getTime())
+  const visibleUncategorized = uncategorizedRecords.filter((r) => !isFullyCovered(r))
+
+  // Phase 3: Merge the remaining uncategorized records
+  const uncategorizedSpans: MergedProductivitySpan[] = []
+  let openUncat: MergedProductivitySpan | null = null
+
+  for (const record of visibleUncategorized) {
+    if (openUncat && record.start_time.getTime() <= openUncat.end.getTime() + MERGE_GAP_MS) {
+      if (record.end_time > openUncat.end) openUncat.end = record.end_time
+      openUncat.records.push(record)
+    } else {
+      if (openUncat) uncategorizedSpans.push(openUncat)
+      openUncat = {
+        end: record.end_time,
+        groupKey: '',
+        records: [record],
+        start: record.start_time,
+      }
+    }
+  }
+  if (openUncat) uncategorizedSpans.push(openUncat)
+
+  return [...categorizedSpans, ...uncategorizedSpans].sort((a, b) => a.start.getTime() - b.start.getTime())
 }
