@@ -11,9 +11,11 @@ import { useCallback, useState } from 'preact/hooks'
 
 import {
   type DistinctApp,
+  type FetchTrendParams,
   fetchDistinctApps,
   fetchScreentimeCategories,
   fetchScreentimeCategoryById,
+  fetchTrend,
   fetchUserSettings,
   recategorizeScreentime,
   updateScreentimeCategory,
@@ -21,6 +23,7 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { isEmoji, isUrl, suggestEmoji } from '../../utils/emojiLookup'
+import { MiniTrendChart } from '../TagMeta/MiniTrendChart'
 import './style.css'
 
 // ============================================================================
@@ -385,6 +388,57 @@ function UncategorizedAppList({
 }
 
 // ============================================================================
+// Trend section
+// ============================================================================
+
+function CategoryTrendSection({ categoryPath, color }: { categoryPath: string; color: string }) {
+  const [lookback, setLookback] = useState(90)
+
+  const trendParams: FetchTrendParams = {
+    display_period: 'daily',
+    half_life_days: 15,
+    lookback_days: lookback,
+    pattern: categoryPath,
+    source_type: 'productivity_category',
+  }
+
+  const trendQuery = useQuery({
+    queryFn: () => fetchTrend(trendParams),
+    queryKey: ['trend', trendParams],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  return (
+    <div class="category-section">
+      <div class="category-trend-header">
+        <h3>Time trend</h3>
+        <select
+          class="category-trend-lookback"
+          value={lookback}
+          onChange={(e) => setLookback(Number((e.target as HTMLSelectElement).value))}
+        >
+          <option value="30">30 days</option>
+          <option value="90">90 days</option>
+          <option value="180">6 months</option>
+          <option value="365">1 year</option>
+        </select>
+      </div>
+      {trendQuery.isLoading && <p class="loading">Loading trend...</p>}
+      {trendQuery.error && <p class="sc-empty">No trend data available</p>}
+      {trendQuery.data && (
+        <>
+          <div class="category-trend-value">
+            <span class="category-trend-number">{trendQuery.data.current_value.toFixed(1)}</span>
+            <span class="category-trend-unit">{trendQuery.data.display_unit}</span>
+          </div>
+          <MiniTrendChart data={trendQuery.data.history} color={color} />
+        </>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
 // Category info fields
 // ============================================================================
 
@@ -572,6 +626,7 @@ export function CategoryDetail() {
         totalTime={totalTime}
         onIconSaved={invalidateIcons}
       />
+      <CategoryTrendSection categoryPath={category.name.join(' > ')} color={category.color ?? '#673ab8'} />
       <ChildCategoriesList children={children} distinctApps={distinctApps} icons={icons} />
       <MatchedAppList apps={matchedApps} category={category} onAppRemoved={invalidateAll} />
       <UncategorizedAppList
