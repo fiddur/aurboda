@@ -174,6 +174,47 @@ export const batchUpdateResolvedCategory = async (
 }
 
 /**
+ * Get distinct app/title combinations with their resolved categories and usage stats.
+ *
+ * Groups by (activity, title, resolved_category) so that e.g. "firefox" opened to
+ * a Netflix page appears separately from "firefox" opened to GitHub — making it
+ * clear why a browser app shows up under a particular category.
+ *
+ * Useful for category management UI: shows what's matched and what isn't, with
+ * enough context to understand why.
+ */
+export const getDistinctApps = async (
+  user: string,
+): Promise<
+  Array<{
+    activity: string
+    title?: string
+    resolved_category?: string[]
+    total_duration_sec: number
+    record_count: number
+  }>
+> => {
+  const result = await query(
+    user,
+    `SELECT activity, title, resolved_category,
+            SUM(duration_sec)::int AS total_duration_sec,
+            COUNT(*)::int AS record_count
+     FROM productivity
+     WHERE deleted_at IS NULL
+     GROUP BY activity, title, resolved_category
+     ORDER BY SUM(duration_sec) DESC`,
+  )
+
+  return result.rows.map((row) => ({
+    activity: row.activity,
+    record_count: row.record_count,
+    resolved_category: row.resolved_category || undefined,
+    title: row.title || undefined,
+    total_duration_sec: row.total_duration_sec,
+  }))
+}
+
+/**
  * Get all non-deleted productivity records (for recategorization).
  * Returns only id, activity, and title to minimize memory usage.
  */

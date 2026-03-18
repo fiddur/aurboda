@@ -4,7 +4,13 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { MetricPicker } from '../../components/MetricPicker'
 import { TagPicker } from '../../components/TagPicker'
-import { fetchTrend, type FetchTrendParams, type TrendDisplayPeriod, type TrendResult } from '../../state/api'
+import {
+  fetchScreentimeCategories,
+  fetchTrend,
+  type FetchTrendParams,
+  type TrendDisplayPeriod,
+  type TrendResult,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import {
   addSavedTrend,
@@ -236,6 +242,26 @@ const LOOKBACK_OPTIONS = [
   { label: 'All time', value: 3650 }, // 10 years as "all time"
 ]
 
+// Simple category picker using a select of all screentime categories
+function CategoryPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { data: categories = [] } = useQuery({
+    queryFn: fetchScreentimeCategories,
+    queryKey: ['screentime-categories'],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  return (
+    <select value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
+      <option value="">Select a category...</option>
+      {categories.map((cat) => (
+        <option key={cat.id} value={cat.name.join(' > ')}>
+          {cat.name.join(' > ')}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 // Form for configuring a trend
 // eslint-disable-next-line complexity -- TODO: refactor
 function TrendConfigForm({
@@ -252,7 +278,9 @@ function TrendConfigForm({
   submitLabel?: string
 }) {
   const [name, setName] = useState(initialValues?.name ?? '')
-  const [sourceType, setSourceType] = useState<'tag' | 'metric'>(initialValues?.params.source_type ?? 'tag')
+  const [sourceType, setSourceType] = useState<'tag' | 'metric' | 'productivity_category'>(
+    initialValues?.params.source_type ?? 'tag',
+  )
   const [pattern, setPattern] = useState(initialValues?.params.pattern ?? '')
   const [halfLifeDays, setHalfLifeDays] = useState(initialValues?.params.half_life_days ?? 15)
   const [lookbackDays, setLookbackDays] = useState(initialValues?.params.lookback_days ?? 90)
@@ -297,10 +325,15 @@ function TrendConfigForm({
           Source Type
           <select
             value={sourceType}
-            onChange={(e) => setSourceType((e.target as HTMLSelectElement).value as 'tag' | 'metric')}
+            onChange={(e) =>
+              setSourceType(
+                (e.target as HTMLSelectElement).value as 'tag' | 'metric' | 'productivity_category',
+              )
+            }
           >
             <option value="tag">Tag</option>
             <option value="metric">Metric</option>
+            <option value="productivity_category">Screentime Category</option>
           </select>
         </label>
         {sourceType === 'tag' ? (
@@ -310,6 +343,11 @@ function TrendConfigForm({
               selectedTags={pattern ? pattern.split('|').filter(Boolean) : []}
               onChange={(tags) => setPattern(tags.join('|'))}
             />
+          </label>
+        ) : sourceType === 'productivity_category' ? (
+          <label class="pattern-input">
+            Category
+            <CategoryPicker value={pattern} onChange={setPattern} />
           </label>
         ) : (
           <label class="pattern-input">

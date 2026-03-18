@@ -8,6 +8,7 @@ import { formatDateTime, formatDuration, formatTime } from './format-utils'
 export const TagDetail = ({ tag }: { tag: Tag }) => {
   const end = tag.end_time
   const isPoint = !end
+  const tagMetaKey = tag.tag_key ?? tag.tag
 
   return (
     <div class="entity-info">
@@ -16,7 +17,11 @@ export const TagDetail = ({ tag }: { tag: Tag }) => {
         {tag.source && <span class="entity-source">Source: {tag.source}</span>}
       </div>
 
-      <h2>{tag.tag}</h2>
+      <h2>
+        <a href={`/tag/${encodeURIComponent(tagMetaKey)}`} class="entity-meta-link">
+          {tag.tag}
+        </a>
+      </h2>
 
       <div class="entity-fields">
         <div class="field-row">

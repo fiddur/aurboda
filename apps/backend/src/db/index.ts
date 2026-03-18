@@ -135,6 +135,7 @@ export {
   batchUpdateResolvedCategory,
   deleteProductivityRecord,
   getAllProductivityForCategorization,
+  getDistinctApps,
   getProductivity,
   getProductivityById,
   insertProductivity,
@@ -206,6 +207,7 @@ export {
   type OutboundSyncEntry,
   type OutboundSyncOperation,
   type OutboundSyncStatus,
+  type PendingOutboundSyncResult,
 } from './outbound-sync.ts'
 
 // Settings

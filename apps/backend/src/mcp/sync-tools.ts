@@ -231,7 +231,7 @@ export const registerSyncTools = (
     },
     async ({ limit }) => {
       try {
-        const entries = await getPendingOutboundSync(user, limit)
+        const { entries, total_pending } = await getPendingOutboundSync(user, limit)
         return jsonResponse({
           count: entries.length,
           data: entries.map((e) => ({
@@ -240,6 +240,7 @@ export const registerSyncTools = (
             synced_at: e.synced_at?.toISOString(),
           })),
           success: true,
+          total_pending,
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'

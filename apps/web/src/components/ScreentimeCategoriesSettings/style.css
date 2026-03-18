@@ -50,6 +50,15 @@
   font-size: 0.9rem;
 }
 
+.sc-name-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.sc-name-link:hover {
+  color: #673ab8;
+}
+
 .sc-regex {
   font-size: 0.8rem;
   color: #6b7280;

@@ -49,6 +49,7 @@ import {
 } from './drawMusicStaff'
 import { CTL_COLOR, drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
+import { mergeProductivitySpans } from './productivityMerge'
 import './style.css'
 
 // ── Signals (module-level, persist across SPA navigations) ────────────────────
@@ -496,33 +497,68 @@ const getResolvedColor = (p: ProductivityRecord, categories: ScreentimeCategory[
   return getProductivityColor(p.productivity)
 }
 
+const resolveCategoryIcon = (
+  resolvedCategory: string[] | undefined,
+  itemIcons: Record<string, string>,
+): string | undefined => {
+  if (!resolvedCategory || resolvedCategory.length === 0) return undefined
+  // Walk from deepest to shallowest category, looking for an icon
+  for (let depth = resolvedCategory.length; depth > 0; depth--) {
+    const path = resolvedCategory.slice(0, depth).join(' > ')
+    const icon = itemIcons[`category:${path}`]
+    if (icon) return icon
+  }
+  return undefined
+}
+
 const categorizeProductivity = (
   productivity: ProductivityRecord[],
   categories: ScreentimeCategory[],
-): ChartItem[] =>
-  productivity.map((p) => {
-    const categoryLabel = p.resolved_category?.join(' > ') || p.category || ''
+  itemIcons: Record<string, string>,
+): ChartItem[] => {
+  const spans = mergeProductivitySpans(productivity)
+
+  return spans.map((span) => {
+    const isCategorized = span.groupKey !== ''
+    const representative = span.records[0]
+    const label = isCategorized
+      ? (span.groupKey.split(' > ').pop() ?? span.groupKey)
+      : span.records.length === 1
+        ? representative.activity
+        : `${span.records.length} screen time`
+
+    // Build tooltip details listing constituent apps
+    const uniqueApps = [...new Set(span.records.map((r) => r.activity))]
+    const tooltipApps =
+      uniqueApps.length <= 4
+        ? uniqueApps.join(', ')
+        : `${uniqueApps.slice(0, 3).join(', ')} +${uniqueApps.length - 3}`
+
     return {
-      color: getResolvedColor(p, categories),
+      color: getResolvedColor(representative, categories),
       column: 'Screen Time' as Column,
-      end: p.end_time,
-      entity_id: p.id,
+      end: span.end,
+      entity_id: span.records.length === 1 ? representative.id : undefined,
       entity_type: 'productivity' as const,
+      icon: resolveCategoryIcon(representative.resolved_category, itemIcons),
       isPoint: false,
-      label: p.activity,
-      start: p.start_time,
+      label,
+      start: span.start,
       tooltip: {
         details: [
-          categoryLabel,
-          p.title ? `Title: ${p.title}` : '',
-          formatDuration(p.start_time, p.end_time),
-          p.productivity != null ? `Score: ${p.productivity}` : '',
+          isCategorized ? span.groupKey : '',
+          span.records.length > 1
+            ? `${span.records.length} records: ${tooltipApps}`
+            : representative.activity,
+          span.records.length === 1 && representative.title ? `Title: ${representative.title}` : '',
+          formatDuration(span.start, span.end),
         ].filter(Boolean),
-        time: `${formatTime(p.start_time)} – ${formatTime(p.end_time)}`,
-        title: p.activity,
+        time: `${formatTime(span.start)} – ${formatTime(span.end)}`,
+        title: label,
       },
     }
   })
+}
 
 // ── Tooltip HTML builder ──────────────────────────────────────────────────────
 
@@ -940,7 +976,7 @@ export const Timeline = () => {
       ...activityItems,
       ...categorizeLocations(places, uniquePlaceNames),
       ...categorizeTags(nonActivityTags, itemIcons),
-      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? []),
+      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
       ...occasionalMetricItems,
       ...musicItems,
     ],

@@ -180,7 +180,82 @@ const calculateMetricTrend = async (
 }
 
 /**
- * Get the trend for a tag pattern or metric.
+ * Calculate the EMA-weighted trend for time spent in a productivity category.
+ *
+ * Aggregates daily total duration (in hours) of productivity records whose
+ * resolved_category path starts with the given category path, then applies EMA.
+ * Pattern is the category path joined by ' > ', e.g. "Work > Programming".
+ */
+const calculateProductivityCategoryTrend = async (
+  user: string,
+  categoryPath: string,
+  halfLifeDays: number,
+  lookbackDays: number,
+  displayPeriod: TrendDisplayPeriod,
+): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
+  const multiplier = displayPeriodMultipliers[displayPeriod]
+
+  // Convert "Work > Programming" to a PostgreSQL array prefix match.
+  // We use array_to_string to convert resolved_category to a string that starts with the path.
+  const result = await query(
+    user,
+    `
+    WITH date_range AS (
+      SELECT generate_series(
+        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
+        CURRENT_DATE,
+        '1 day'
+      )::date AS day
+    ),
+    daily_values AS (
+      SELECT
+        d.day,
+        t.daily_hours
+      FROM date_range d
+      LEFT JOIN (
+        SELECT
+          date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
+          SUM(duration_sec) / 3600.0 as daily_hours
+        FROM productivity
+        WHERE deleted_at IS NULL
+          AND resolved_category IS NOT NULL
+          AND array_to_string(resolved_category, ' > ') LIKE $1 || '%'
+          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+        GROUP BY 1
+      ) t ON d.day = t.day
+    ),
+    ema_calc AS (
+      SELECT
+        dv.day,
+        $4::float * SUM(COALESCE(dv2.daily_hours, 0) * EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)) /
+        NULLIF(SUM(EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)), 0) as ema_value
+      FROM daily_values dv
+      CROSS JOIN LATERAL (
+        SELECT day, daily_hours
+        FROM daily_values
+        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * LEAST($2::integer, 90)
+      ) dv2
+      GROUP BY dv.day
+    )
+    SELECT day, COALESCE(ema_value, 0) as ema_value
+    FROM ema_calc
+    ORDER BY day
+    `,
+    [categoryPath, lookbackDays, LN2, multiplier, halfLifeDays],
+  )
+
+  const history: TrendHistoryPoint[] = result.rows.map((row) => ({
+    date: row.day.toISOString().split('T')[0],
+    value: Number(row.ema_value),
+  }))
+
+  const currentValue = history.length > 0 ? history[history.length - 1].value : 0
+
+  return { currentValue, history }
+}
+
+/**
+ * Get the trend for a tag pattern, metric, or productivity category.
  */
 export const getTrend = async (user: string, input: GetTrendInput): Promise<TrendResult> => {
   const {
@@ -212,6 +287,26 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       current_value: currentValue,
       display_period: displayPeriod,
       display_unit: displayUnits[displayPeriod],
+      half_life_days: halfLifeDays,
+      history,
+      lookback_days: lookbackDays,
+      pattern,
+      source_type: sourceType,
+    }
+  } else if (sourceType === 'productivity_category') {
+    const { currentValue, history } = await calculateProductivityCategoryTrend(
+      user,
+      pattern,
+      halfLifeDays,
+      lookbackDays,
+      displayPeriod,
+    )
+
+    return {
+      aggregation: 'sum',
+      current_value: currentValue,
+      display_period: displayPeriod,
+      display_unit: `hours ${displayUnits[displayPeriod]}`,
       half_life_days: halfLifeDays,
       history,
       lookback_days: lookbackDays,
