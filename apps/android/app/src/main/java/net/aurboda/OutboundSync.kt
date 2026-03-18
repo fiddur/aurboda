@@ -56,6 +56,7 @@ data class OutboundSyncResponseApi(
   val success: Boolean,
   val data: List<OutboundSyncEntryApi>? = null,
   val error: String? = null,
+  val total_pending: Int? = null,
 )
 
 @Serializable
@@ -80,6 +81,11 @@ data class OutboundSyncAckResponseApi(
 // API Client
 // ============================================================================
 
+data class OutboundSyncFetchResult(
+  val entries: List<OutboundSyncEntryApi> = emptyList(),
+  val totalPending: Int = 0,
+)
+
 /**
  * Fetch pending outbound sync entries from the backend.
  */
@@ -87,7 +93,7 @@ suspend fun fetchOutboundSyncEntries(
   apiUrl: String,
   authToken: String,
   httpClient: HttpClient,
-): List<OutboundSyncEntryApi> {
+): OutboundSyncFetchResult {
   return try {
     val response =
       httpClient.get("$apiUrl/sync/outbound") {
@@ -95,22 +101,23 @@ suspend fun fetchOutboundSyncEntries(
       }
     if (response.status != HttpStatusCode.OK) {
       Log.e(TAG, "🚫 Failed to fetch outbound sync: HTTP ${response.status.value}")
-      return emptyList()
+      return OutboundSyncFetchResult()
     }
     val body = response.bodyAsText()
     val parsed = appJson.decodeFromString<OutboundSyncResponseApi>(body)
     if (!parsed.success) {
       Log.e(TAG, "🚫 Outbound sync response error: ${parsed.error}")
-      return emptyList()
+      return OutboundSyncFetchResult()
     }
     val entries = parsed.data ?: emptyList()
+    val totalPending = parsed.total_pending ?: entries.size
     if (entries.isNotEmpty()) {
-      Log.d(TAG, "📥 Fetched ${entries.size} pending outbound sync entries")
+      Log.d(TAG, "📥 Fetched ${entries.size} pending outbound sync entries ($totalPending total in queue)")
     }
-    entries
+    OutboundSyncFetchResult(entries = entries, totalPending = totalPending)
   } catch (e: Exception) {
     Log.e(TAG, "🚫 Error fetching outbound sync entries", e)
-    emptyList()
+    OutboundSyncFetchResult()
   }
 }
 
@@ -476,11 +483,12 @@ private suspend fun deleteHealthConnectRecord(
 
 /**
  * Process all pending outbound sync entries:
- * 1. Fetch pending entries from backend
+ * 1. Fetch pending entries from backend (page by page)
  * 2. Write each to Health Connect
  * 3. Acknowledge successful writes
+ * 4. Repeat until queue is drained
  *
- * @return true if all entries were processed successfully (or none pending)
+ * @return cumulative result across all pages
  */
 data class OutboundSyncResult(
   val fetched: Int = 0,
@@ -489,7 +497,11 @@ data class OutboundSyncResult(
   val acknowledged: Boolean = true,
   val error: String? = null,
   val skipReasons: List<String> = emptyList(),
+  val pagesProcessed: Int = 0,
 )
+
+/** Maximum number of pages to process in a single sync pass to avoid runaway loops. */
+private const val MAX_OUTBOUND_SYNC_PAGES = 50
 
 suspend fun processOutboundSync(
   apiUrl: String,
@@ -498,60 +510,79 @@ suspend fun processOutboundSync(
   healthConnectClient: HealthConnectClient,
   grantedPermissions: Set<String>,
 ): OutboundSyncResult {
-  val entries = fetchOutboundSyncEntries(apiUrl, authToken, httpClient)
-  if (entries.isEmpty()) return OutboundSyncResult()
+  var totalFetched = 0
+  var totalWritten = 0
+  var totalSkipped = 0
+  var allAcknowledged = true
+  val allSkipReasons = mutableListOf<String>()
+  var pagesProcessed = 0
 
-  Log.d(TAG, "🔄 Processing ${entries.size} outbound sync entries")
+  for (page in 1..MAX_OUTBOUND_SYNC_PAGES) {
+    val fetchResult = fetchOutboundSyncEntries(apiUrl, authToken, httpClient)
+    val entries = fetchResult.entries
+    if (entries.isEmpty()) break
 
-  val ackItems = mutableListOf<OutboundSyncAckItemApi>()
-  var skipped = 0
-  val skipReasons = mutableListOf<String>()
+    pagesProcessed++
+    totalFetched += entries.size
+    Log.d(TAG, "🔄 Processing page $page: ${entries.size} entries (${fetchResult.totalPending} total pending)")
 
-  for (entry in entries) {
-    when (val result = writeToHealthConnect(entry, healthConnectClient, grantedPermissions)) {
-      is WriteResult.Success -> {
-        ackItems.add(
-          OutboundSyncAckItemApi(
-            id = entry.id,
-            hc_record_id = if (result.recordId == "deleted") null else result.recordId,
-          ),
-        )
-      }
-      is WriteResult.Skipped -> {
-        skipped++
-        val reason = "${entry.hc_record_type}: ${result.reason}"
-        skipReasons.add(reason)
-        Log.w(TAG, "⚠️ Skipped entry ${entry.id} (${entry.hc_record_type}/${entry.operation}): ${result.reason}")
-        // Acknowledge skipped entries so they don't block the queue permanently.
-        // These are unrecoverable failures (missing permission, bad payload, unsupported type)
-        // that will never succeed on retry.
-        ackItems.add(OutboundSyncAckItemApi(id = entry.id))
+    val ackItems = mutableListOf<OutboundSyncAckItemApi>()
+    var pageSkipped = 0
+
+    for (entry in entries) {
+      when (val result = writeToHealthConnect(entry, healthConnectClient, grantedPermissions)) {
+        is WriteResult.Success -> {
+          ackItems.add(
+            OutboundSyncAckItemApi(
+              id = entry.id,
+              hc_record_id = if (result.recordId == "deleted") null else result.recordId,
+            ),
+          )
+        }
+        is WriteResult.Skipped -> {
+          pageSkipped++
+          val reason = "${entry.hc_record_type}: ${result.reason}"
+          allSkipReasons.add(reason)
+          Log.w(TAG, "⚠️ Skipped entry ${entry.id} (${entry.hc_record_type}/${entry.operation}): ${result.reason}")
+          // Acknowledge skipped entries so they don't block the queue permanently.
+          // These are unrecoverable failures (missing permission, bad payload, unsupported type)
+          // that will never succeed on retry.
+          ackItems.add(OutboundSyncAckItemApi(id = entry.id))
+        }
       }
     }
+
+    totalWritten += ackItems.size - pageSkipped
+    totalSkipped += pageSkipped
+
+    if (ackItems.isNotEmpty()) {
+      val ackSuccess = acknowledgeOutboundSync(ackItems, apiUrl, authToken, httpClient)
+      if (ackSuccess) {
+        Log.d(TAG, "✅ Page $page complete: ${ackItems.size}/${entries.size} entries synced")
+      } else {
+        Log.w(TAG, "⚠️ Outbound sync page $page: wrote to HC but failed to acknowledge")
+        allAcknowledged = false
+        break
+      }
+    }
+
+    // If we processed fewer entries than the total pending, there are more pages
+    val remaining = fetchResult.totalPending - entries.size
+    if (remaining <= 0) break
+    Log.d(TAG, "📋 $remaining more entries remaining in queue, fetching next page...")
   }
 
-  if (ackItems.isNotEmpty()) {
-    val ackSuccess = acknowledgeOutboundSync(ackItems, apiUrl, authToken, httpClient)
-    if (ackSuccess) {
-      Log.d(TAG, "✅ Outbound sync complete: ${ackItems.size}/${entries.size} entries synced")
-    } else {
-      Log.w(TAG, "⚠️ Outbound sync: wrote to HC but failed to acknowledge")
-      return OutboundSyncResult(
-        fetched = entries.size,
-        written = ackItems.size,
-        skipped = skipped,
-        acknowledged = false,
-        skipReasons = skipReasons,
-      )
-    }
+  if (pagesProcessed > 0) {
+    Log.d(TAG, "✅ Outbound sync finished: $totalWritten written, $totalSkipped skipped across $pagesProcessed pages")
   }
 
   return OutboundSyncResult(
-    fetched = entries.size,
-    written = ackItems.size,
-    skipped = skipped,
-    acknowledged = true,
-    skipReasons = skipReasons,
+    fetched = totalFetched,
+    written = totalWritten,
+    skipped = totalSkipped,
+    acknowledged = allAcknowledged,
+    skipReasons = allSkipReasons,
+    pagesProcessed = pagesProcessed,
   )
 }
 

@@ -14,7 +14,7 @@ describe('sync router', () => {
     getLastFmApiKey: vi.fn().mockResolvedValue('test-lastfm-key'),
     getLastFmSyncStates: vi.fn().mockResolvedValue([]),
     getOuraSyncStates: vi.fn().mockResolvedValue([]),
-    getPendingOutboundSync: vi.fn().mockResolvedValue([]),
+    getPendingOutboundSync: vi.fn().mockResolvedValue({ entries: [], total_pending: 0 }),
     getRescueTimeSyncStates: vi.fn().mockResolvedValue([]),
     getSettings: vi.fn().mockResolvedValue({ rescue_time_key: 'test-key' }),
     processActivityWatchEvents: vi

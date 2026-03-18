@@ -69,6 +69,9 @@ export const outboundSyncResponseSchema = baseResponseSchema
     data: z.array(outboundSyncEntrySchema).optional().meta({
       description: 'Pending outbound sync entries',
     }),
+    total_pending: z.number().int().optional().meta({
+      description: 'Total number of pending entries in the queue (for pagination)',
+    }),
   })
   .meta({ id: 'OutboundSyncResponse' })
 

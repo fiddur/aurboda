@@ -67,6 +67,11 @@ interface OutboundSyncEntry {
   synced_at?: Date
 }
 
+interface PendingOutboundSyncResult {
+  entries: OutboundSyncEntry[]
+  total_pending: number
+}
+
 export interface SyncRouterDeps {
   deleteHealthConnectRecords: (user: string, externalIds: string[]) => Promise<number>
   processDailyAggregate: (user: string, aggregate: DailyAggregate) => Promise<void>
@@ -120,7 +125,7 @@ export interface SyncRouterDeps {
   ) => Promise<ActivityWatchSyncResult>
   getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   // Outbound sync (Health Connect write-back)
-  getPendingOutboundSync: (user: string, limit?: number) => Promise<OutboundSyncEntry[]>
+  getPendingOutboundSync: (user: string, limit?: number) => Promise<PendingOutboundSyncResult>
   ackOutboundSync: (user: string, id: string, hcRecordId?: string) => Promise<boolean>
 }
 
@@ -491,13 +496,13 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     const user = req.user!
 
     try {
-      const entries = await deps.getPendingOutboundSync(user)
+      const { entries, total_pending } = await deps.getPendingOutboundSync(user)
       const data = entries.map((e) => ({
         ...e,
         created_at: e.created_at.toISOString(),
         synced_at: e.synced_at?.toISOString(),
       }))
-      res.json({ data, success: true })
+      res.json({ data, success: true, total_pending })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       res.status(500).json({ error: message, success: false })

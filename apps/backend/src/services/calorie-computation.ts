@@ -61,24 +61,24 @@ const getLatestMetricValue = async (
 /**
  * Queue outbound sync entries for calorie data points (best-effort).
  *
- * Only enqueues points from the last 24 hours to avoid flooding the outbound
- * queue with historical recalculations. Health Connect benefits from recent
- * calorie data but historical backfills would starve other outbound entries.
+ * When `skipSync` is true (used during full historical recomputes), no entries
+ * are queued to avoid flooding the outbound queue with thousands of old data
+ * points that would starve more important entries (exercises, weight, etc.).
+ *
+ * For normal incremental computation (triggered by new HR data), all new
+ * calorie points are queued regardless of their timestamp.
  */
-const enqueueCalorieSync = async (
+export const enqueueCalorieSync = async (
   user: string,
   points: { time: Date; end_time: Date; kcal: number }[],
 ): Promise<void> => {
   try {
+    if (points.length === 0) return
     if (!isHealthConnectSyncableMetric('calories_active')) return
     const hcRecordType = metricToHealthConnectType.calories_active
     if (!hcRecordType) return
 
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
-    const recentPoints = points.filter((p) => p.time >= cutoff)
-    if (recentPoints.length === 0) return
-
-    for (const p of recentPoints) {
+    for (const p of points) {
       await enqueueOutboundSync(user, {
         entity_id: `calories_active|${p.time.toISOString()}`,
         entity_type: 'time_series',
@@ -150,7 +150,7 @@ export const computeAndStoreCalories = async (
   user: string,
   start: Date,
   end: Date,
-  options?: { force?: boolean },
+  options?: { force?: boolean; skipSync?: boolean },
 ): Promise<CalorieComputationResult> => {
   // 1. Get user settings and validate required fields
   const settings = await getUserSettings(user)
@@ -223,8 +223,10 @@ export const computeAndStoreCalories = async (
   }))
   await insertTimeSeries(user, timeSeriesPoints)
 
-  // 11. Queue outbound sync (best-effort)
-  await enqueueCalorieSync(user, newPoints)
+  // 11. Queue outbound sync (best-effort, skipped during full historical recomputes)
+  if (!options?.skipSync) {
+    await enqueueCalorieSync(user, newPoints)
+  }
 
   // 12. Invalidate training load impulse buckets so they recompute from new calorie data
   await invalidateTrainingLoadImpulses(user, start)
@@ -382,6 +384,7 @@ export const computeAndStoreCaloriesAll = async (
     const chunkEnd = new Date(Math.min(chunkStart.getTime() + dayMs, range.max.getTime() + 60_000))
     const result = await computeAndStoreCalories(user, chunkStart, chunkEnd, {
       force: true,
+      skipSync: true,
     })
 
     totalComputed += result.points_computed
