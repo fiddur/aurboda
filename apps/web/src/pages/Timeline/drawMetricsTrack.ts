@@ -5,12 +5,16 @@
  * - Steps and calories as bar charts behind the lines
  * - Crosshair tooltip on mouseover showing all metric values at that time
  */
-import type { RecoveryZones, TrainingLoadPoint, WorkoutTrimp } from '@aurboda/api-spec'
+import type { RecoveryZones, ScreentimeCategory, TrainingLoadPoint, WorkoutTrimp } from '@aurboda/api-spec'
 
 import * as d3 from 'd3'
 import { format } from 'date-fns'
 
+import type { ScreentimeBucketParsed } from '../../state/api'
+
 import { type MetricBucketParsed, aggregateBuckets } from '../../utils/chart'
+import { type BarLayoutResult, slotPixels } from './barLayout'
+import { buildScreentimeTooltipHtml, findScreentimeBucket } from './drawScreentimeTrack'
 import {
   ACTIVITY_IMPULSE_COLOR,
   ATL_COLOR,
@@ -68,6 +72,15 @@ export interface MetricsTrackConfig {
   trainingLoadWorkouts?: WorkoutTrimp[]
   /** Optional: recovery zone thresholds for combined tooltip. */
   trainingLoadZones?: RecoveryZones
+  /** Bar layout for side-by-side rendering. */
+  barLayout?: BarLayoutResult
+  /** Slot IDs for steps and calories in the bar layout. */
+  stepsSlotId?: string
+  caloriesSlotId?: string
+  /** Screentime bucketed data for combined tooltip. */
+  screentimeBuckets?: ScreentimeBucketParsed[]
+  /** Screentime categories for tooltip rendering. */
+  screentimeCategories?: ScreentimeCategory[]
 }
 
 // ── Bucket aggregation by zoom ────────────────────────────────────────────────
@@ -166,7 +179,7 @@ const drawBandChart = (
     .attr('pointer-events', 'none')
 }
 
-/** Draw bar charts for steps or calories. */
+/** Draw bar charts for steps or calories, with optional slot positioning. */
 const drawBarChart = (
   group: SvgGroup,
   buckets: MetricBucketParsed[],
@@ -176,14 +189,28 @@ const drawBarChart = (
   trackBottom: number,
   color: string,
   opacity: number,
+  barLayout?: BarLayoutResult,
+  slotId?: string,
 ): void => {
   for (const bucket of buckets) {
     const stats = bucket.metrics[metricName]
     if (!stats) continue
 
-    const x = xScale(bucket.start)
-    const xEnd = xScale(bucket.end)
-    const barWidth = Math.max(1, xEnd - x - 0.5)
+    const bucketX = xScale(bucket.start)
+    const bucketEnd = xScale(bucket.end)
+    const bucketWidth = Math.abs(bucketEnd - bucketX)
+
+    let x: number
+    let barWidth: number
+    if (barLayout && slotId) {
+      const slot = slotPixels(bucketX, bucketWidth, barLayout.getOffset(slotId), barLayout.slotWidth)
+      x = slot.x
+      barWidth = slot.width
+    } else {
+      x = bucketX
+      barWidth = Math.max(1, bucketWidth - 0.5)
+    }
+
     const barTop = yScale(stats.avg)
     const barHeight = trackBottom - barTop
 
@@ -440,6 +467,8 @@ const drawCrosshairOverlay = (
   trainingLoadPoints?: TrainingLoadPoint[],
   trainingLoadWorkouts?: WorkoutTrimp[],
   trainingLoadZones?: RecoveryZones,
+  screentimeBuckets?: ScreentimeBucketParsed[],
+  screentimeCategories?: ScreentimeCategory[],
 ): void => {
   outerG.selectAll('.metrics-crosshair').remove()
 
@@ -518,6 +547,17 @@ const drawCrosshairOverlay = (
         )
       }
 
+      // Append screentime section if available
+      if (screentimeBuckets && screentimeCategories) {
+        const stBucket = findScreentimeBucket(screentimeBuckets, hoverTime)
+        if (stBucket) {
+          const stHtml = buildScreentimeTooltipHtml(stBucket, screentimeCategories)
+          if (stHtml) {
+            html = (html ?? '') + stHtml
+          }
+        }
+      }
+
       if (!html) {
         hairline.style('display', 'none')
         hideTooltip()
@@ -572,10 +612,32 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
 
   // Draw bars first (behind lines)
   if (showSteps) {
-    drawBarChart(chartGroup, buckets, 'steps', xScale, ySteps, trackBottom, STEPS_COLOR, 0.25)
+    drawBarChart(
+      chartGroup,
+      buckets,
+      'steps',
+      xScale,
+      ySteps,
+      trackBottom,
+      STEPS_COLOR,
+      0.25,
+      config.barLayout,
+      config.stepsSlotId,
+    )
   }
   if (showCalories) {
-    drawBarChart(chartGroup, buckets, 'calories_active', xScale, yCal, trackBottom, CALORIES_COLOR, 0.2)
+    drawBarChart(
+      chartGroup,
+      buckets,
+      'calories_active',
+      xScale,
+      yCal,
+      trackBottom,
+      CALORIES_COLOR,
+      0.2,
+      config.barLayout,
+      config.caloriesSlotId,
+    )
   }
 
   // Draw band charts
@@ -588,7 +650,7 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
     if (hrvBand.length > 1) drawBandChart(chartGroup, hrvBand, xScale, yHrv, HRV_COLOR)
   }
 
-  // Crosshair tooltip overlay (includes training load data in combined tooltip)
+  // Crosshair tooltip overlay (includes training load + screentime data in combined tooltip)
   drawCrosshairOverlay(
     outerG,
     xScale,
@@ -605,5 +667,7 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
     config.trainingLoadPoints,
     config.trainingLoadWorkouts,
     config.trainingLoadZones,
+    config.screentimeBuckets,
+    config.screentimeCategories,
   )
 }

@@ -1320,6 +1320,51 @@ export async function queryProductivity(
 }
 
 /**
+ * Assemble raw bucketed productivity rows into screentime buckets with category breakdown.
+ */
+export const assembleScreentimeBuckets = (
+  rows: Array<{
+    bucket_start: Date
+    resolved_category: string[] | null
+    total_sec: number
+  }>,
+  bucketMs: number,
+): Array<{
+  start: string
+  end: string
+  total_sec: number
+  categories: Array<{ path: string[]; total_sec: number }>
+}> => {
+  const bucketMap = new Map<
+    string,
+    { start: Date; categories: Array<{ path: string[]; total_sec: number }>; total_sec: number }
+  >()
+
+  for (const row of rows) {
+    const key = row.bucket_start.toISOString()
+    let entry = bucketMap.get(key)
+    if (!entry) {
+      entry = { categories: [], start: row.bucket_start, total_sec: 0 }
+      bucketMap.set(key, entry)
+    }
+    entry.total_sec += row.total_sec
+    entry.categories.push({
+      path: row.resolved_category ?? [],
+      total_sec: row.total_sec,
+    })
+  }
+
+  return [...bucketMap.values()]
+    .sort((a, b) => a.start.getTime() - b.start.getTime())
+    .map((b) => ({
+      categories: b.categories.sort((a, c) => c.total_sec - a.total_sec),
+      end: new Date(b.start.getTime() + bucketMs).toISOString(),
+      start: b.start.toISOString(),
+      total_sec: b.total_sec,
+    }))
+}
+
+/**
  * Query locations/places for a time range.
  */
 export async function queryLocations(user: string, start: Date, end: Date): Promise<PlaceSummary[]> {
