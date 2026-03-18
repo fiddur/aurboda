@@ -40,6 +40,25 @@ const getTitleHref = (record: ProductivityRecord, categories: ScreentimeCategory
   return '/screentime-categories'
 }
 
+/**
+ * Resolve the effective productivity score for a record.
+ * Walks the resolved_category path from deepest to shallowest, returning the
+ * first category score found. Falls back to the record's own productivity field.
+ */
+const resolveProductivityScore = (
+  record: ProductivityRecord,
+  categories: ScreentimeCategory[],
+): number | undefined | null => {
+  if (record.resolved_category && record.resolved_category.length > 0 && categories.length > 0) {
+    for (let depth = record.resolved_category.length; depth > 0; depth--) {
+      const path = record.resolved_category.slice(0, depth)
+      const cat = findCategoryByPath(categories, path)
+      if (cat?.score !== undefined) return cat.score
+    }
+  }
+  return record.productivity
+}
+
 export const ProductivityDetail = ({
   record,
   categories = [],
@@ -109,7 +128,9 @@ export const ProductivityDetail = ({
         )}
         <div class="field-row">
           <span class="field-label">Productivity</span>
-          <span class="field-value">{productivityScoreLabel(record.productivity)}</span>
+          <span class="field-value">
+            {productivityScoreLabel(resolveProductivityScore(record, categories))}
+          </span>
         </div>
         {record.source_ids && record.source_ids.length > 1 && (
           <div class="field-row">
