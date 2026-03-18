@@ -147,6 +147,7 @@ export interface SleepSessionSummary {
 
 export interface TagSummary {
   id?: string
+  external_id?: string
   tag: string
   start_time: string
   end_time?: string
@@ -1037,6 +1038,7 @@ export async function queryTags(
   return tags.map((t) => ({
     comments: t.id ? (commentsMap.get(t.id) ?? []) : [],
     end_time: t.end_time?.toISOString(),
+    external_id: t.external_id,
     id: t.id,
     source: t.source,
     start_time: t.start_time.toISOString(),
