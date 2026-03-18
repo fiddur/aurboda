@@ -1,5 +1,4 @@
-import { json } from 'body-parser'
-import express from 'express'
+import express, { json } from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 

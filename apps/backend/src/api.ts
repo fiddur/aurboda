@@ -6,9 +6,8 @@
  */
 import type { LoginResponse, ServerStatusResponse, SignupResponse } from '@aurboda/api-spec'
 
-import { json } from 'body-parser'
 import cors from 'cors'
-import express, { type RequestHandler } from 'express'
+import express, { json, type RequestHandler } from 'express'
 import { Client } from 'pg'
 
 import type { OuraDataType } from './oura-sync.ts'

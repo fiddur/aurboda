@@ -8,7 +8,10 @@
  * blob in oauth_tokens. Credentials are never stored.
  */
 
-import { GarminConnect, type IGarminTokens } from '@flow-js/garmin-connect'
+import type { IGarminTokens } from '@flow-js/garmin-connect'
+
+import garminConnectPkg from '@flow-js/garmin-connect'
+const { GarminConnect } = garminConnectPkg
 
 import { getOAuthToken, upsertOAuthToken } from './db/index.ts'
 
@@ -165,7 +168,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
    * Restore a GarminConnect instance from stored tokens for a user.
    * Throws if no tokens are stored.
    */
-  const restoreSession = async (user: string): Promise<GarminConnect> => {
+  const restoreSession = async (user: string): Promise<InstanceType<typeof GarminConnect>> => {
     const stored = await deps.getOAuthToken(user, 'garmin')
     if (!stored) throw new Error('User has no Garmin session. Please connect Garmin first.')
 
@@ -176,7 +179,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
   }
 
   /** Persist the current GarminConnect session tokens for a user. */
-  const saveSession = async (user: string, gc: GarminConnect): Promise<void> => {
+  const saveSession = async (user: string, gc: InstanceType<typeof GarminConnect>): Promise<void> => {
     const tokens = gc.exportToken()
     await deps.upsertOAuthToken(user, {
       access_token: JSON.stringify(tokens),
