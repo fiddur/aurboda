@@ -216,7 +216,9 @@ function CategoryRow({
     <div class="sc-row" style={{ paddingLeft: `${indent + 8}px` }}>
       <div class="sc-info">
         {cat.color && <span class="sc-color-dot" style={{ background: cat.color }} />}
-        <span class="sc-name">{displayName}</span>
+        <a href={`/screentime-categories/${cat.id}`} class="sc-name sc-name-link">
+          {displayName}
+        </a>
         {cat.rule_regex && <code class="sc-regex">{cat.rule_regex}</code>}
         {cat.score !== undefined && <span class="sc-score">{productivityScoreLabel(cat.score)}</span>}
       </div>

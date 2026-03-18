@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 
-import { ScreentimeCategoriesSettings } from '../../components/ScreentimeCategoriesSettings'
 import { fetchProductivity } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -104,7 +103,11 @@ export function ActivityWatchAndroidSource() {
         )}
       </div>
 
-      <ScreentimeCategoriesSettings />
+      <section class="settings-section">
+        <a href="/screentime-categories" class="manage-link">
+          Manage screentime categories
+        </a>
+      </section>
     </div>
   )
 }

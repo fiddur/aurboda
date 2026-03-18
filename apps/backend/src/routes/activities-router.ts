@@ -22,7 +22,12 @@ import {
 } from '@aurboda/api-spec'
 import { type RequestHandler, Router } from 'express'
 
-import { getActivityById, getOverlappingActivities } from '../db/index.ts'
+import {
+  getActivityById,
+  getDistinctApps,
+  getOverlappingActivities,
+  getProductivityById,
+} from '../db/index.ts'
 import {
   addActivity,
   deleteActivity,
@@ -286,6 +291,39 @@ export const createActivitiesRouter = (
     }
 
     res.json({ success: true })
+  })
+
+  // GET /productivity/apps - Get distinct app names with their categories
+  router.get('/productivity/apps', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const apps = await getDistinctApps(user)
+    res.json({ data: apps, success: true })
+  })
+
+  // GET /productivity/:id - Get a single productivity record by ID
+  router.get<{ id: string }>('/productivity/:id', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const record = await getProductivityById(user, req.params.id)
+    if (!record) {
+      return res.status(404).json({ error: 'Productivity record not found', success: false })
+    }
+    res.json({
+      data: {
+        activity: record.activity,
+        category: record.category,
+        device_name: record.device_name,
+        duration_sec: record.duration_sec,
+        end_time: record.end_time.toISOString(),
+        id: record.id,
+        is_mobile: record.is_mobile,
+        productivity: record.productivity,
+        resolved_category: record.resolved_category,
+        source: record.source,
+        start_time: record.start_time.toISOString(),
+        title: record.title,
+      },
+      success: true,
+    })
   })
 
   // DELETE /productivity/:id - Soft-delete a productivity record

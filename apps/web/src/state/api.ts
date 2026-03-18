@@ -278,6 +278,42 @@ export const fetchProductivity = async (start: Date, end: Date): Promise<Product
   }))
 }
 
+// Fetch a single productivity record by ID
+export const fetchProductivityById = async (id: string): Promise<ProductivityRecord | null> => {
+  const { token } = auth.value
+  try {
+    const response = await axios.get<{ data: ApiProductivityRecord; success: boolean }>(
+      `${API_URL}/productivity/${id}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    const record = response.data.data
+    return {
+      ...record,
+      end_time: new Date(record.end_time),
+      start_time: new Date(record.start_time),
+    }
+  } catch {
+    return null
+  }
+}
+
+// Fetch distinct app names with their categories and usage stats
+export interface DistinctApp {
+  activity: string
+  resolved_category?: string[]
+  total_duration_sec: number
+  record_count: number
+}
+
+export const fetchDistinctApps = async (): Promise<DistinctApp[]> => {
+  const { token } = auth.value
+  const response = await axios.get<{ data: DistinctApp[]; success: boolean }>(
+    `${API_URL}/productivity/apps`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data ?? []
+}
+
 // Fetch location/place data for the specified date range
 export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
   const { token } = auth.value
@@ -1197,6 +1233,18 @@ export const fetchScreentimeCategories = async (): Promise<ScreentimeCategory[]>
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data.data ?? []
+}
+
+export const fetchScreentimeCategoryById = async (id: string): Promise<ScreentimeCategory | null> => {
+  const { token } = auth.value
+  try {
+    const response = await axios.get<ScreentimeCategoryResponse>(`${API_URL}/screentime-categories/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return response.data.data ?? null
+  } catch {
+    return null
+  }
 }
 
 export const createScreentimeCategory = async (

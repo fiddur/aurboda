@@ -11,9 +11,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
-import type { Activity, ExerciseTypeName, ProductivityRecord, SourceRecord } from '../../state/api'
+import type { Activity, ExerciseTypeName, SourceRecord } from '../../state/api'
 
-import { fetchActivityById, fetchProductivity, fetchTagById, updateActivity } from '../../state/api'
+import {
+  fetchActivityById,
+  fetchProductivityById,
+  fetchScreentimeCategories,
+  fetchTagById,
+  updateActivity,
+} from '../../state/api'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
@@ -328,14 +334,15 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
     isLoading,
     isError,
   } = useQuery({
-    queryFn: async (): Promise<ProductivityRecord | null> => {
-      const dayEnd = new Date()
-      dayEnd.setHours(23, 59, 59, 999)
-      const records = await fetchProductivity(new Date(Date.now() - 7 * 86400000), dayEnd)
-      return records.find((r) => r.id === entityId || r.source_ids?.includes(entityId)) ?? null
-    },
+    queryFn: () => fetchProductivityById(entityId),
     queryKey: ['entity-detail', 'productivity', entityId],
     staleTime: 60_000,
+  })
+
+  const { data: categories = [] } = useQuery({
+    queryFn: fetchScreentimeCategories,
+    queryKey: ['screentime-categories'],
+    staleTime: 5 * 60 * 1000,
   })
 
   const invalidate = useCallback(
@@ -368,7 +375,7 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
         onSave={() => {}}
         isSaving={false}
       />
-      <ProductivityDetail record={record} />
+      <ProductivityDetail record={record} categories={categories} />
       <NotesSection entityType="productivity" entityId={entityId} allEntityIds={allEntityIds} />
     </>
   )

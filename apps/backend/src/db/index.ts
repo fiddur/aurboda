@@ -135,6 +135,7 @@ export {
   batchUpdateResolvedCategory,
   deleteProductivityRecord,
   getAllProductivityForCategorization,
+  getDistinctApps,
   getProductivity,
   getProductivityById,
   insertProductivity,

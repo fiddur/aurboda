@@ -160,6 +160,12 @@ export function ActivityWatchDesktopSource() {
           </div>
         </section>
       </div>
+
+      <section class="settings-section">
+        <a href="/screentime-categories" class="manage-link">
+          Manage screentime categories
+        </a>
+      </section>
     </div>
   )
 }
