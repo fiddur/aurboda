@@ -366,7 +366,7 @@ describe('Productivity Integration Tests', () => {
   // ==========================================================================
 
   describe('getDistinctApps', () => {
-    test('returns distinct apps with categories and stats', async () => {
+    test('returns distinct apps with categories, titles, and stats', async () => {
       const user = getTestUser()
       await insertProductivity(user, [
         makeRecord({
@@ -375,6 +375,7 @@ describe('Productivity Integration Tests', () => {
           end_time: new Date('2024-01-15T10:05:00Z'),
           resolved_category: ['Work', 'Programming'],
           start_time: new Date('2024-01-15T10:00:00Z'),
+          title: 'main.ts — myproject',
         }),
         makeRecord({
           activity: 'vscode',
@@ -382,6 +383,7 @@ describe('Productivity Integration Tests', () => {
           end_time: new Date('2024-01-15T10:15:00Z'),
           resolved_category: ['Work', 'Programming'],
           start_time: new Date('2024-01-15T10:05:00Z'),
+          title: 'main.ts — myproject',
         }),
         makeRecord({
           activity: 'firefox',
@@ -396,14 +398,47 @@ describe('Productivity Integration Tests', () => {
 
       // Sorted by total duration desc, so vscode (900s) first
       expect(apps[0].activity).toBe('vscode')
+      expect(apps[0].title).toBe('main.ts — myproject')
       expect(apps[0].resolved_category).toEqual(['Work', 'Programming'])
       expect(apps[0].total_duration_sec).toBe(900)
       expect(apps[0].record_count).toBe(2)
 
       expect(apps[1].activity).toBe('firefox')
+      expect(apps[1].title).toBeUndefined()
       expect(apps[1].resolved_category).toBeUndefined()
       expect(apps[1].total_duration_sec).toBe(120)
       expect(apps[1].record_count).toBe(1)
+    })
+
+    test('groups separately by title (e.g. browser with different window titles)', async () => {
+      const user = getTestUser()
+      await insertProductivity(user, [
+        makeRecord({
+          activity: 'firefox',
+          duration_sec: 300,
+          end_time: new Date('2024-01-15T10:05:00Z'),
+          resolved_category: ['Media', 'TV'],
+          start_time: new Date('2024-01-15T10:00:00Z'),
+          title: 'Netflix - Mozilla Firefox',
+        }),
+        makeRecord({
+          activity: 'firefox',
+          duration_sec: 200,
+          end_time: new Date('2024-01-15T10:08:20Z'),
+          resolved_category: ['Work'],
+          start_time: new Date('2024-01-15T10:05:00Z'),
+          title: 'GitHub - Mozilla Firefox',
+        }),
+      ])
+
+      const apps = await getDistinctApps(user)
+      // Same app with different titles and categories = two entries
+      expect(apps).toHaveLength(2)
+      const activities = apps.map((a) => a.activity)
+      expect(activities).toEqual(['firefox', 'firefox'])
+      const titles = apps.map((a) => a.title)
+      expect(titles).toContain('Netflix - Mozilla Firefox')
+      expect(titles).toContain('GitHub - Mozilla Firefox')
     })
 
     test('groups separately by resolved_category', async () => {
@@ -415,6 +450,7 @@ describe('Productivity Integration Tests', () => {
           end_time: new Date('2024-01-15T10:05:00Z'),
           resolved_category: ['Work'],
           start_time: new Date('2024-01-15T10:00:00Z'),
+          title: 'GitHub',
         }),
         makeRecord({
           activity: 'firefox',
@@ -422,11 +458,12 @@ describe('Productivity Integration Tests', () => {
           end_time: new Date('2024-01-15T10:08:20Z'),
           resolved_category: ['Media', 'Social Media'],
           start_time: new Date('2024-01-15T10:05:00Z'),
+          title: 'Twitter',
         }),
       ])
 
       const apps = await getDistinctApps(user)
-      // Same app with different categories = two entries
+      // Same app with different titles/categories = two entries
       expect(apps).toHaveLength(2)
     })
 

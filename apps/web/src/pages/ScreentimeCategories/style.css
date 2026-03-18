@@ -219,9 +219,25 @@
   border-bottom: none;
 }
 
+.app-name-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
 .app-name {
   font-weight: 500;
   color: #374151;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-title {
+  font-size: 0.75rem;
+  color: #9ca3af;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -331,6 +347,10 @@
 
   .app-name {
     color: #d1d5db;
+  }
+
+  .app-title {
+    color: #6b7280;
   }
 
   .child-category-card {
