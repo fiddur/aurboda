@@ -26,10 +26,12 @@ import { Goals } from './pages/Goals/index.jsx'
 import { Home } from './pages/Home/index.jsx'
 import { HrZones } from './pages/HrZones/index.jsx'
 import { Login } from './pages/Login/index.jsx'
+import { MetricMeta } from './pages/MetricMeta/index.jsx'
 import { Places } from './pages/Places/index.jsx'
 import { Settings } from './pages/Settings/index.jsx'
 import { Signup } from './pages/Signup/index.jsx'
 import { Sleep } from './pages/Sleep/index.jsx'
+import { TagMeta } from './pages/TagMeta/index.jsx'
 import { Timeline } from './pages/Timeline/index.jsx'
 import { Trends } from './pages/Trends/index.jsx'
 import { queryClient } from './state/queryClient.js'
@@ -51,6 +53,8 @@ export function App() {
             <Route path="/data" component={Data} />
             <Route path="/add" component={AddData} />
             <Route path="/detail/:type/:id" component={EntityDetail} />
+            <Route path="/tag/:tagKey" component={TagMeta} />
+            <Route path="/metric/:metricName" component={MetricMeta} />
             <Route path="/sleep" component={Sleep} />
             <Route path="/correlations" component={Correlations} />
             <Route path="/trends" component={Trends} />

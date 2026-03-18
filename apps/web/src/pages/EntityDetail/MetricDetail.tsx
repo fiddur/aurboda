@@ -100,7 +100,11 @@ export const MetricDetail = ({
           <span class="entity-source">Source: {parsed.source}</span>
         </div>
 
-        <h2>{metricLabel}</h2>
+        <h2>
+          <a href={`/metric/${encodeURIComponent(parsed.metric)}`} class="entity-meta-link">
+            {metricLabel}
+          </a>
+        </h2>
 
         <div class="entity-fields">
           <div class="field-row">
@@ -143,7 +147,11 @@ export const MetricDetail = ({
         <span class="entity-source">Source: {parsed.source}</span>
       </div>
 
-      <h2>{metricLabel}</h2>
+      <h2>
+        <a href={`/metric/${encodeURIComponent(parsed.metric)}`} class="entity-meta-link">
+          {metricLabel}
+        </a>
+      </h2>
 
       <div class="entity-fields">
         <div class="field-row">
