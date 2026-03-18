@@ -144,7 +144,7 @@ describe('mergeProductivitySpans', () => {
     expect(spans[0].records).toHaveLength(2)
   })
 
-  test('handles mixed categorized and uncategorized interleaved records', () => {
+  test('excludes uncategorized records fully covered by categorized spans', () => {
     const records = [
       makeRecord({
         activity: 'vscode',
@@ -152,6 +152,7 @@ describe('mergeProductivitySpans', () => {
         resolved_category: ['Work'],
         start_time: t(10, 0),
       }),
+      // plasmashell 10:10-10:15 is fully inside Work 10:00-11:00
       makeRecord({ activity: 'plasmashell', end_time: t(10, 15), start_time: t(10, 10) }),
       makeRecord({
         activity: 'vscode',
@@ -162,15 +163,31 @@ describe('mergeProductivitySpans', () => {
     ]
     const spans = mergeProductivitySpans(records)
 
-    // Work records merge together, plasmashell is separate
+    // plasmashell is excluded because it's fully covered by the Work span
+    expect(spans).toHaveLength(1)
+    expect(spans[0].groupKey).toBe('Work')
+    expect(spans[0].records).toHaveLength(2)
+    expect(spans[0].start).toEqual(t(10, 0))
+    expect(spans[0].end).toEqual(t(11, 0))
+  })
+
+  test('keeps uncategorized records not covered by any categorized span', () => {
+    const records = [
+      makeRecord({
+        activity: 'vscode',
+        end_time: t(10, 30),
+        resolved_category: ['Work'],
+        start_time: t(10, 0),
+      }),
+      // plasmashell 11:00-11:15 is outside the Work span
+      makeRecord({ activity: 'plasmashell', end_time: t(11, 15), start_time: t(11, 0) }),
+    ]
+    const spans = mergeProductivitySpans(records)
+
     expect(spans).toHaveLength(2)
     const workSpan = spans.find((s) => s.groupKey === 'Work')!
-    expect(workSpan.records).toHaveLength(2)
-    expect(workSpan.start).toEqual(t(10, 0))
-    expect(workSpan.end).toEqual(t(11, 0))
-
+    expect(workSpan).toBeDefined()
     const uncatSpan = spans.find((s) => s.groupKey === '')!
-    expect(uncatSpan.records).toHaveLength(1)
     expect(uncatSpan.records[0].activity).toBe('plasmashell')
   })
 
