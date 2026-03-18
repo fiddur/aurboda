@@ -106,12 +106,13 @@ export const tagIconsSchema = z.record(z.string(), z.string()).meta({
  * - Tag names or tag_keys: "Coffee", "meditation" (no prefix, backwards-compatible with tag_icons)
  * - Activity types: "activity:sleep", "activity:nap", "activity:meditation"
  * - Exercise types: "exercise:Running", "exercise:Biking", etc.
+ * - Screentime categories: "category:Work", "category:Work > Programming"
  *
  * Values are emoji characters or image URLs. An empty string explicitly clears the default icon.
  */
 export const itemIconsSchema = z.record(z.string(), z.string()).meta({
   description:
-    'Unified icon mappings for all timeline items (tags, activities, exercise types). Keys use prefix convention: activity:sleep, exercise:Running, or plain tag names.',
+    'Unified icon mappings for all timeline items (tags, activities, exercise types, screentime categories). Keys use prefix convention: activity:sleep, exercise:Running, category:Work > Programming, or plain tag names.',
   id: 'ItemIcons',
 })
 
