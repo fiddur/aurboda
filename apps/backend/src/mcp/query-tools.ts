@@ -202,6 +202,54 @@ Use cases:
     },
   )
 
+  // Tool: query_productivity_bucketed
+  server.tool(
+    'query_productivity_bucketed',
+    'Query screentime/productivity data bucketed by time interval, grouped by category. Returns stacked duration per category per bucket. Useful for visualizing time spent on different activities over time.',
+    {
+      bucket: bucketSizeSchema,
+      end: timeRangeQuerySchema.shape.end,
+      start: timeRangeQuerySchema.shape.start,
+      tz: z
+        .string()
+        .optional()
+        .describe('IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). Defaults to UTC.'),
+    },
+    async ({ bucket, end, start, tz }) => {
+      const { interval, ms: bucketMs } = (await import('../services/queries.ts')).parseBucketSize(bucket)
+      const rows = await (
+        await import('../db/index.ts')
+      ).getProductivityBucketed(user, new Date(start), new Date(end), interval, tz ?? 'UTC')
+
+      const bucketMap = new Map<
+        string,
+        { start: Date; categories: Array<{ path: string[]; total_sec: number }>; total_sec: number }
+      >()
+
+      for (const row of rows) {
+        const key = row.bucket_start.toISOString()
+        let b = bucketMap.get(key)
+        if (!b) {
+          b = { categories: [], start: row.bucket_start, total_sec: 0 }
+          bucketMap.set(key, b)
+        }
+        b.total_sec += row.total_sec
+        b.categories.push({ path: row.resolved_category ?? [], total_sec: row.total_sec })
+      }
+
+      const buckets = [...bucketMap.values()]
+        .sort((a, b) => a.start.getTime() - b.start.getTime())
+        .map((b) => ({
+          categories: b.categories.sort((a, c) => c.total_sec - a.total_sec),
+          end: new Date(b.start.getTime() + bucketMs).toISOString(),
+          start: b.start.toISOString(),
+          total_sec: b.total_sec,
+        }))
+
+      return jsonResponse({ bucket, buckets, end, start, success: true })
+    },
+  )
+
   // Tool: query_locations
   server.tool(
     'query_locations',

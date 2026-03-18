@@ -14,6 +14,8 @@ import type { RecoveryZones, TrainingLoadPoint, WorkoutTrimp } from '@aurboda/ap
 import * as d3 from 'd3'
 import { format } from 'date-fns'
 
+import type { BarLayoutResult } from './barLayout'
+
 // ── Colors ────────────────────────────────────────────────────────────────────
 
 export const CTL_COLOR = '#3b82f6' // blue (fitness)
@@ -56,6 +58,11 @@ export interface TrainingLoadTrackConfig {
   trackY: number
   /** Height of the track in pixels. */
   trackHeight: number
+  /** Bar layout for side-by-side rendering. */
+  barLayout?: BarLayoutResult
+  /** Slot IDs for the training load bars in the layout. */
+  fatigueSlotId?: string
+  impulseSlotId?: string
 }
 
 // ── Y-scale computation ───────────────────────────────────────────────────────
@@ -290,11 +297,15 @@ const drawFatigueBars = (
   yScale: d3.ScaleLinear<number, number>,
   trackBottom: number,
   barDurationMs: number = MS_PER_HOUR,
+  barLayout?: BarLayoutResult,
+  slotId?: string,
 ): void => {
   // Compute bar width from x-scale and bucket duration
   const sampleTime = points[0] ? parseTime(points[0].time) : new Date()
   const nextTime = new Date(sampleTime.getTime() + barDurationMs)
-  const barWidth = Math.max(1, Math.abs(xScale(nextTime) - xScale(sampleTime)) - 1)
+  const fullBarWidth = Math.max(1, Math.abs(xScale(nextTime) - xScale(sampleTime)) - 1)
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- barLayout could be missing
+  const barWidth = barLayout && slotId ? fullBarWidth * barLayout.slotWidth : fullBarWidth
 
   // Find max ATL for color scaling
   let maxAtl = 1
@@ -312,7 +323,9 @@ const drawFatigueBars = (
   for (const p of points) {
     if (p.atl <= 0) continue
 
-    const x = xScale(parseTime(p.time))
+    const baseX = xScale(parseTime(p.time))
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- barLayout could be missing
+    const x = barLayout && slotId ? baseX + fullBarWidth * barLayout.getOffset(slotId) : baseX
     const barTop = yScale(p.atl)
     const barHeight = trackBottom - barTop
     if (barHeight <= 0) continue
@@ -337,17 +350,23 @@ const drawImpulseBars = (
   yScale: d3.ScaleLinear<number, number>,
   trackBottom: number,
   barDurationMs: number = MS_PER_HOUR,
+  barLayout?: BarLayoutResult,
+  slotId?: string,
 ): void => {
   // Compute bar width from x-scale and bucket duration
   const sampleTime = points[0] ? parseTime(points[0].time) : new Date()
   const nextTime = new Date(sampleTime.getTime() + barDurationMs)
-  const barWidth = Math.max(1, Math.abs(xScale(nextTime) - xScale(sampleTime)) - 1)
+  const fullBarWidth = Math.max(1, Math.abs(xScale(nextTime) - xScale(sampleTime)) - 1)
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- barLayout could be missing
+  const barWidth = barLayout && slotId ? fullBarWidth * barLayout.slotWidth : fullBarWidth
 
   for (const p of points) {
     const total = p.training_impulse + p.activity_impulse
     if (total <= 0) continue
 
-    const x = xScale(parseTime(p.time))
+    const baseX = xScale(parseTime(p.time))
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- barLayout could be missing
+    const x = barLayout && slotId ? baseX + fullBarWidth * barLayout.getOffset(slotId) : baseX
 
     // Activity impulse bar (bottom of stack)
     if (p.activity_impulse > 0) {
@@ -581,10 +600,28 @@ export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => 
   }
 
   // Draw ATL fatigue bars (behind everything else)
-  drawFatigueBars(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom, barDurationMs)
+  drawFatigueBars(
+    chartGroup,
+    displayPoints,
+    xScale,
+    yScales.yLoad,
+    trackBottom,
+    barDurationMs,
+    config.barLayout,
+    config.fatigueSlotId,
+  )
 
   // Draw impulse bars (training + activity) on top of fatigue bars
-  drawImpulseBars(chartGroup, displayPoints, xScale, yScales.yImpulse, trackBottom, barDurationMs)
+  drawImpulseBars(
+    chartGroup,
+    displayPoints,
+    xScale,
+    yScales.yImpulse,
+    trackBottom,
+    barDurationMs,
+    config.barLayout,
+    config.impulseSlotId,
+  )
 
   // Draw CTL/ATL curves (anchored at bucket midpoints)
   drawLoadCurves(chartGroup, displayPoints, xScale, yScales.yLoad, trackBottom, bootstrapping, barDurationMs)

@@ -12,6 +12,7 @@ import {
   getAllProductivityForCategorization,
   getDistinctApps,
   getProductivity,
+  getProductivityBucketed,
   insertProductivity,
   restoreProductivityRecord,
 } from '../db/index.ts'
@@ -486,6 +487,100 @@ describe('Productivity Integration Tests', () => {
       const user = getTestUser()
       const apps = await getDistinctApps(user)
       expect(apps).toHaveLength(0)
+    })
+  })
+
+  // ==========================================================================
+  // getProductivityBucketed
+  // ==========================================================================
+
+  describe('getProductivityBucketed', () => {
+    test('buckets records by hour with category breakdown', async () => {
+      const user = getTestUser()
+      await insertProductivity(user, [
+        makeRecord({
+          activity: 'vscode',
+          duration_sec: 1800,
+          end_time: new Date('2024-01-15T10:30:00Z'),
+          resolved_category: ['Work', 'Programming'],
+          start_time: new Date('2024-01-15T10:00:00Z'),
+        }),
+        makeRecord({
+          activity: 'slack',
+          duration_sec: 600,
+          end_time: new Date('2024-01-15T10:40:00Z'),
+          resolved_category: ['Work', 'Communication'],
+          start_time: new Date('2024-01-15T10:30:00Z'),
+        }),
+        makeRecord({
+          activity: 'netflix',
+          duration_sec: 3600,
+          end_time: new Date('2024-01-15T12:00:00Z'),
+          resolved_category: ['Media', 'TV'],
+          start_time: new Date('2024-01-15T11:00:00Z'),
+        }),
+      ])
+
+      const rows = await getProductivityBucketed(
+        user,
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-16T00:00:00Z'),
+        '1 hours',
+        'UTC',
+      )
+
+      // Should have rows for 10:00 bucket (2 categories) and 11:00 bucket (1 category)
+      expect(rows.length).toBeGreaterThanOrEqual(3)
+
+      const hour10 = rows.filter((r) => r.bucket_start.getUTCHours() === 10)
+      expect(hour10).toHaveLength(2)
+      const totalSec10 = hour10.reduce((s, r) => s + r.total_sec, 0)
+      expect(totalSec10).toBe(2400) // 1800 + 600
+
+      const hour11 = rows.filter((r) => r.bucket_start.getUTCHours() === 11)
+      expect(hour11).toHaveLength(1)
+      expect(hour11[0].total_sec).toBe(3600)
+      expect(hour11[0].resolved_category).toEqual(['Media', 'TV'])
+    })
+
+    test('returns empty array when no records', async () => {
+      const user = getTestUser()
+      const rows = await getProductivityBucketed(
+        user,
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-16T00:00:00Z'),
+        '1 hours',
+        'UTC',
+      )
+      expect(rows).toHaveLength(0)
+    })
+
+    test('excludes soft-deleted records', async () => {
+      const user = getTestUser()
+      await insertProductivity(user, [
+        makeRecord({
+          activity: 'vscode',
+          duration_sec: 300,
+          end_time: new Date('2024-01-15T10:05:00Z'),
+          start_time: new Date('2024-01-15T10:00:00Z'),
+        }),
+      ])
+
+      const records = await getProductivity(
+        user,
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+      await deleteProductivityRecord(user, records[0].id!)
+
+      const rows = await getProductivityBucketed(
+        user,
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-16T00:00:00Z'),
+        '1 hours',
+        'UTC',
+      )
+      expect(rows).toHaveLength(0)
     })
   })
 

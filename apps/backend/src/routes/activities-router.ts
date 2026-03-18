@@ -16,6 +16,9 @@ import {
   type ProductivityQuery,
   productivityQuerySchema,
   type ProductivityResponse,
+  type ScreentimeBucketedQuery,
+  screentimeBucketedQuerySchema,
+  type ScreentimeBucketedResponse,
   type UpdateActivityBody,
   updateActivityBodySchema,
   type UpdateActivityResponse,
@@ -26,6 +29,7 @@ import {
   getActivityById,
   getDistinctApps,
   getOverlappingActivities,
+  getProductivityBucketed,
   getProductivityById,
 } from '../db/index.ts'
 import {
@@ -36,7 +40,12 @@ import {
   restoreProductivity,
   updateActivity,
 } from '../services/mutations.ts'
-import { queryActivities, queryProductivity, type SyncProvider } from '../services/queries.ts'
+import {
+  parseBucketSize,
+  queryActivities,
+  queryProductivity,
+  type SyncProvider,
+} from '../services/queries.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createActivitiesRouter = (
@@ -292,6 +301,57 @@ export const createActivitiesRouter = (
 
     res.json({ success: true })
   })
+
+  // GET /productivity/bucketed - Get screentime bucketed by time and category
+  router.get<Record<string, never>, ScreentimeBucketedResponse, unknown, ScreentimeBucketedQuery>(
+    '/productivity/bucketed',
+    authMiddleware,
+    validateQuery(screentimeBucketedQuerySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { start, end, bucket, tz } = req.query
+      const { interval, ms: bucketMs } = parseBucketSize(bucket)
+
+      const rows = await getProductivityBucketed(user, new Date(start), new Date(end), interval, tz ?? 'UTC')
+
+      // Group rows into buckets
+      const bucketMap = new Map<
+        string,
+        { start: Date; categories: Array<{ path: string[]; total_sec: number }>; total_sec: number }
+      >()
+
+      for (const row of rows) {
+        const key = row.bucket_start.toISOString()
+        let entry = bucketMap.get(key)
+        if (!entry) {
+          entry = { categories: [], start: row.bucket_start, total_sec: 0 }
+          bucketMap.set(key, entry)
+        }
+        entry.total_sec += row.total_sec
+        entry.categories.push({
+          path: row.resolved_category ?? [],
+          total_sec: row.total_sec,
+        })
+      }
+
+      const buckets = [...bucketMap.values()]
+        .sort((a, b) => a.start.getTime() - b.start.getTime())
+        .map((b) => ({
+          categories: b.categories.sort((a, c) => c.total_sec - a.total_sec),
+          end: new Date(b.start.getTime() + bucketMs).toISOString(),
+          start: b.start.toISOString(),
+          total_sec: b.total_sec,
+        }))
+
+      res.json({
+        bucket: req.query.bucket,
+        buckets,
+        end,
+        start,
+        success: true,
+      })
+    },
+  )
 
   // GET /productivity/apps - Get distinct app names with their categories
   router.get('/productivity/apps', authMiddleware, async (req, res) => {
