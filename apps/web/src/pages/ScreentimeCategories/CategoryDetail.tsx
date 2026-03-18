@@ -227,6 +227,34 @@ function CategoryIconEditor({
   )
 }
 
+/** Aggregate DistinctApp rows by app name, summing durations and counts. */
+interface AggregatedApp {
+  activity: string
+  total_duration_sec: number
+  record_count: number
+  title_count: number
+}
+
+const aggregateByAppName = (apps: DistinctApp[]): AggregatedApp[] => {
+  const map = new Map<string, AggregatedApp>()
+  for (const app of apps) {
+    const existing = map.get(app.activity)
+    if (existing) {
+      existing.total_duration_sec += app.total_duration_sec
+      existing.record_count += app.record_count
+      existing.title_count += 1
+    } else {
+      map.set(app.activity, {
+        activity: app.activity,
+        record_count: app.record_count,
+        title_count: 1,
+        total_duration_sec: app.total_duration_sec,
+      })
+    }
+  }
+  return [...map.values()].sort((a, b) => b.total_duration_sec - a.total_duration_sec)
+}
+
 function MatchedAppList({
   apps,
   category,
@@ -238,6 +266,8 @@ function MatchedAppList({
 }) {
   const queryClient = useQueryClient()
   const [removingApp, setRemovingApp] = useState<string | null>(null)
+
+  const aggregated = aggregateByAppName(apps)
 
   const removeMutation = useMutation({
     mutationFn: async (appName: string) => {
@@ -262,7 +292,7 @@ function MatchedAppList({
     onError: () => setRemovingApp(null),
   })
 
-  if (apps.length === 0) {
+  if (aggregated.length === 0) {
     return (
       <div class="category-section">
         <h3>Matched apps</h3>
@@ -274,18 +304,16 @@ function MatchedAppList({
   return (
     <div class="category-section">
       <h3>
-        Matched apps <span class="count-badge">{apps.length}</span>
+        Matched apps <span class="count-badge">{aggregated.length}</span>
       </h3>
       <div class="app-list">
-        {apps.map((app) => (
-          <div key={`${app.activity}\x00${app.title ?? ''}`} class="app-row">
-            <div class="app-name-col">
-              <span class="app-name">{app.activity}</span>
-              {app.title && <span class="app-title">{app.title}</span>}
-            </div>
+        {aggregated.map((app) => (
+          <div key={app.activity} class="app-row">
+            <span class="app-name">{app.activity}</span>
             <div class="app-row-right">
               <span class="app-stats">
                 {formatDuration(app.total_duration_sec)} &middot; {app.record_count} records
+                {app.title_count > 1 && ` · ${app.title_count} titles`}
               </span>
               {category.rule_regex && (
                 <button
