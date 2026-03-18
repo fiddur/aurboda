@@ -306,6 +306,147 @@ function MatchedAppList({
   )
 }
 
+/**
+ * Extract a short keyword from a window title for use as a matching term.
+ * E.g. "Threads - NaturalCycles - Slack — Mozilla Firefox" → "Slack"
+ * Splits on common separators and picks the shortest meaningful segment.
+ */
+const suggestTitleKeyword = (title: string): string | undefined => {
+  const parts = title
+    .split(/\s[—–\-|]\s|:\s/)
+    .map((p) => p.trim())
+    .filter((p) => p.length >= 2 && p.length <= 40)
+  if (parts.length === 0) return undefined
+  // Prefer shorter segments (more likely to be an app/site name), but not the browser name
+  const browserNames = [
+    'mozilla firefox',
+    'google chrome',
+    'chromium',
+    'gnu emacs',
+    'safari',
+    'microsoft edge',
+  ]
+  const filtered = parts.filter((p) => !browserNames.includes(p.toLowerCase()))
+  if (filtered.length === 0) return parts[0]
+  return filtered.reduce((a, b) => (a.length <= b.length ? a : b))
+}
+
+/** Confirmation dialog for adding an app/title to a category. */
+function AddConfirmDialog({
+  app,
+  category,
+  onConfirm,
+  onCancel,
+  isPending,
+}: {
+  app: DistinctApp
+  category: ScreentimeCategory
+  onConfirm: (term: string) => void
+  onCancel: () => void
+  isPending: boolean
+}) {
+  const titleKeyword = app.title ? suggestTitleKeyword(app.title) : undefined
+  const [customTerm, setCustomTerm] = useState('')
+  const [selectedOption, setSelectedOption] = useState<'app' | 'title' | 'custom'>(
+    titleKeyword ? 'title' : 'app',
+  )
+
+  const getSelectedTerm = (): string => {
+    switch (selectedOption) {
+      case 'app':
+        return app.activity
+      case 'title':
+        return titleKeyword ?? app.activity
+      case 'custom':
+        return customTerm.trim()
+    }
+  }
+
+  const selectedTerm = getSelectedTerm()
+
+  return (
+    <div class="add-confirm-backdrop" onClick={onCancel}>
+      <div class="add-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+        <h4>Add to {category.name.join(' > ')}</h4>
+        <p class="add-confirm-desc">
+          Choose what to match. The term will be added to the category's matching rule.
+        </p>
+
+        <div class="add-confirm-options">
+          <label class="add-confirm-option">
+            <input
+              type="radio"
+              name="match-type"
+              checked={selectedOption === 'app'}
+              onChange={() => setSelectedOption('app')}
+            />
+            <div>
+              <strong>App name</strong> — matches all <em>{app.activity}</em> usage
+              <div class="add-confirm-preview">
+                <code>{escapeRegexChars(app.activity)}</code>
+              </div>
+            </div>
+          </label>
+
+          {titleKeyword && (
+            <label class="add-confirm-option">
+              <input
+                type="radio"
+                name="match-type"
+                checked={selectedOption === 'title'}
+                onChange={() => setSelectedOption('title')}
+              />
+              <div>
+                <strong>Title keyword</strong> — matches windows containing <em>{titleKeyword}</em>
+                <div class="add-confirm-preview">
+                  <code>{escapeRegexChars(titleKeyword)}</code>
+                </div>
+              </div>
+            </label>
+          )}
+
+          <label class="add-confirm-option">
+            <input
+              type="radio"
+              name="match-type"
+              checked={selectedOption === 'custom'}
+              onChange={() => setSelectedOption('custom')}
+            />
+            <div>
+              <strong>Custom term</strong>
+              {selectedOption === 'custom' && (
+                <div class="add-confirm-custom-input">
+                  <input
+                    type="text"
+                    value={customTerm}
+                    onInput={(e) => setCustomTerm((e.target as HTMLInputElement).value)}
+                    placeholder="Type a matching term..."
+                    autoFocus
+                  />
+                </div>
+              )}
+            </div>
+          </label>
+        </div>
+
+        <div class="add-confirm-actions">
+          <button
+            type="button"
+            class="app-action-btn add"
+            onClick={() => onConfirm(selectedTerm)}
+            disabled={isPending || !selectedTerm}
+          >
+            {isPending ? 'Adding...' : `Add "${selectedTerm}"`}
+          </button>
+          <button type="button" class="app-action-btn" onClick={onCancel} disabled={isPending}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function UncategorizedAppList({
   apps,
   category,
@@ -318,13 +459,12 @@ function UncategorizedAppList({
   onAppAdded: () => void
 }) {
   const queryClient = useQueryClient()
-  const [addingApp, setAddingApp] = useState<string | null>(null)
+  const [confirmingApp, setConfirmingApp] = useState<DistinctApp | null>(null)
 
   const addMutation = useMutation({
-    mutationFn: async (appName: string) => {
-      setAddingApp(appName)
+    mutationFn: async (term: string) => {
       const currentTerms = parseRegexTerms(category.rule_regex ?? '')
-      const newTerms = [...currentTerms, appName]
+      const newTerms = [...currentTerms, term]
       const newRegex = buildRegex(newTerms)
       await updateScreentimeCategory(category.id, {
         rule_regex: newRegex,
@@ -334,12 +474,11 @@ function UncategorizedAppList({
       await recategorizeScreentime()
     },
     onSuccess: () => {
-      setAddingApp(null)
+      setConfirmingApp(null)
       onAppAdded()
       queryClient.invalidateQueries({ queryKey: ['screentime-categories'] })
       queryClient.invalidateQueries({ queryKey: ['productivity-apps'] })
     },
-    onError: () => setAddingApp(null),
   })
 
   const headerTitle =
@@ -373,16 +512,24 @@ function UncategorizedAppList({
               <button
                 type="button"
                 class="app-action-btn add"
-                onClick={() => addMutation.mutate(app.activity)}
-                disabled={addingApp === app.activity}
-                title={`Add "${app.activity}" to ${category.name.join(' > ')}`}
+                onClick={() => setConfirmingApp(app)}
+                title={`Add to ${category.name.join(' > ')}`}
               >
-                {addingApp === app.activity ? '...' : 'Add here'}
+                Add here
               </button>
             </div>
           </div>
         ))}
       </div>
+      {confirmingApp && (
+        <AddConfirmDialog
+          app={confirmingApp}
+          category={category}
+          onConfirm={(term) => addMutation.mutate(term)}
+          onCancel={() => setConfirmingApp(null)}
+          isPending={addMutation.isPending}
+        />
+      )}
     </div>
   )
 }
