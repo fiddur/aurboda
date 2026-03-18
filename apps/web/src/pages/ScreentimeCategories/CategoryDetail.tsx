@@ -1,20 +1,31 @@
 /**
  * Category detail/info page.
- * Shows category details, matched apps, child categories, and links back to management.
+ * Shows category details, icon editing, matched apps (with remove),
+ * child categories, and uncategorized apps (with add-to-category).
  */
 import type { ScreentimeCategory } from '@aurboda/api-spec'
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
+import { useCallback, useState } from 'preact/hooks'
 
 import {
   type DistinctApp,
   fetchDistinctApps,
   fetchScreentimeCategories,
   fetchScreentimeCategoryById,
+  fetchUserSettings,
+  recategorizeScreentime,
+  updateScreentimeCategory,
+  updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { isEmoji, isUrl, suggestEmoji } from '../../utils/emojiLookup'
 import './style.css'
+
+// ============================================================================
+// Helpers
+// ============================================================================
 
 const productivityScoreLabel = (score: number | undefined): string => {
   if (score === undefined) return 'Inherited from parent'
@@ -34,6 +45,27 @@ const formatDuration = (totalSec: number): string => {
   if (hours > 0) return `${hours}h ${minutes}m`
   return `${minutes}m`
 }
+
+/** Build the item_icons key for a category. */
+const categoryIconKey = (name: string[]): string => `category:${name.join(' > ')}`
+
+/**
+ * Parse a pipe-separated regex into individual terms.
+ * E.g. "GitHub|Stack Overflow|vscode" -> ["GitHub", "Stack Overflow", "vscode"]
+ */
+const parseRegexTerms = (regex: string): string[] =>
+  regex
+    .split('|')
+    .map((t) => t.trim())
+    .filter(Boolean)
+
+/**
+ * Build a pipe-separated regex from terms.
+ * Escapes regex special chars in each term so they match literally.
+ */
+const escapeRegexChars = (s: string): string => s.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const buildRegex = (terms: string[]): string => terms.map(escapeRegexChars).join('|')
 
 /** Find child categories of the given category. */
 const getChildren = (categories: ScreentimeCategory[], parent: ScreentimeCategory): ScreentimeCategory[] =>
@@ -65,6 +97,10 @@ const getAllMatchedApps = (apps: DistinctApp[], categoryName: string[]): Distinc
 /** Get uncategorized apps (no resolved_category). */
 const getUncategorizedApps = (apps: DistinctApp[]): DistinctApp[] =>
   apps.filter((app) => !app.resolved_category)
+
+// ============================================================================
+// Sub-components
+// ============================================================================
 
 function CategoryBreadcrumb({
   categories,
@@ -100,12 +136,134 @@ function CategoryBreadcrumb({
   )
 }
 
-function AppList({ apps, title, emptyText }: { apps: DistinctApp[]; title: string; emptyText: string }) {
+function IconPreview({ icon }: { icon: string }) {
+  if (!icon) return null
+  if (isEmoji(icon)) return <span class="category-icon-preview">{icon}</span>
+  if (isUrl(icon)) {
+    return (
+      <span class="category-icon-preview">
+        <img src={icon} alt="icon" width="24" height="24" />
+      </span>
+    )
+  }
+  return null
+}
+
+function CategoryIconEditor({
+  categoryName,
+  currentIcon,
+  onSaved,
+}: {
+  categoryName: string[]
+  currentIcon: string
+  onSaved: () => void
+}) {
+  const [iconValue, setIconValue] = useState<string | undefined>(undefined)
+  const shownIcon = iconValue ?? currentIcon
+
+  // Suggest emoji based on the leaf category name
+  const leafName = categoryName[categoryName.length - 1] ?? ''
+  const suggested = !shownIcon ? suggestEmoji(leafName) : undefined
+
+  const saveMutation = useMutation({
+    mutationFn: async (icon: string) => {
+      // Read current settings, merge our icon, save back
+      const settings = await fetchUserSettings()
+      const currentIcons = settings.item_icons ?? {}
+      const key = categoryIconKey(categoryName)
+      const newIcons = { ...currentIcons }
+      if (icon) {
+        newIcons[key] = icon
+      } else {
+        delete newIcons[key]
+      }
+      await updateUserSettings({ item_icons: newIcons })
+    },
+    onSuccess: () => {
+      onSaved()
+    },
+  })
+
+  const handleBlur = () => {
+    if (iconValue === undefined) return
+    if (iconValue === currentIcon) return
+    saveMutation.mutate(iconValue)
+  }
+
+  return (
+    <div class="field-row">
+      <span class="field-label">Icon</span>
+      <span class="field-value">
+        <div class="category-icon-edit-row">
+          <input
+            type="text"
+            value={shownIcon}
+            onInput={(e) => setIconValue((e.target as HTMLInputElement).value)}
+            onBlur={handleBlur}
+            placeholder="Emoji or image URL..."
+            class="category-icon-input"
+          />
+          <IconPreview icon={shownIcon} />
+          {suggested && !shownIcon && (
+            <button
+              type="button"
+              class="category-icon-suggestion"
+              onClick={() => {
+                setIconValue(suggested)
+                saveMutation.mutate(suggested)
+              }}
+              title={`Suggested: ${suggested}`}
+            >
+              {suggested}?
+            </button>
+          )}
+          {saveMutation.isPending && <span class="category-save-status">Saving...</span>}
+        </div>
+      </span>
+    </div>
+  )
+}
+
+function MatchedAppList({
+  apps,
+  category,
+  onAppRemoved,
+}: {
+  apps: DistinctApp[]
+  category: ScreentimeCategory
+  onAppRemoved: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [removingApp, setRemovingApp] = useState<string | null>(null)
+
+  const removeMutation = useMutation({
+    mutationFn: async (appName: string) => {
+      setRemovingApp(appName)
+      const currentTerms = parseRegexTerms(category.rule_regex ?? '')
+      // Remove terms that match this app name (case-insensitive comparison)
+      const newTerms = currentTerms.filter((t) => t.toLowerCase() !== appName.toLowerCase())
+      const newRegex = newTerms.length > 0 ? buildRegex(newTerms) : undefined
+      await updateScreentimeCategory(category.id, {
+        rule_regex: newRegex,
+        rule_type: newRegex ? 'regex' : 'none',
+      })
+      // Recategorize in background
+      void recategorizeScreentime()
+    },
+    onSuccess: () => {
+      setRemovingApp(null)
+      onAppRemoved()
+      queryClient.invalidateQueries({ queryKey: ['screentime-categories'] })
+      queryClient.invalidateQueries({ queryKey: ['productivity-apps'] })
+    },
+    onError: () => setRemovingApp(null),
+  })
+
   if (apps.length === 0) {
     return (
       <div class="category-section">
-        <h3>{title}</h3>
-        <p class="sc-empty">{emptyText}</p>
+        <h3>Matched apps</h3>
+        <p class="sc-empty">No apps match this category directly.</p>
       </div>
     )
   }
@@ -113,15 +271,28 @@ function AppList({ apps, title, emptyText }: { apps: DistinctApp[]; title: strin
   return (
     <div class="category-section">
       <h3>
-        {title} <span class="count-badge">{apps.length}</span>
+        Matched apps <span class="count-badge">{apps.length}</span>
       </h3>
       <div class="app-list">
         {apps.map((app) => (
           <div key={app.activity} class="app-row">
             <span class="app-name">{app.activity}</span>
-            <span class="app-stats">
-              {formatDuration(app.total_duration_sec)} &middot; {app.record_count} records
-            </span>
+            <div class="app-row-right">
+              <span class="app-stats">
+                {formatDuration(app.total_duration_sec)} &middot; {app.record_count} records
+              </span>
+              {category.rule_regex && (
+                <button
+                  type="button"
+                  class="app-action-btn danger"
+                  onClick={() => removeMutation.mutate(app.activity)}
+                  disabled={removingApp === app.activity}
+                  title={`Remove "${app.activity}" from this category`}
+                >
+                  {removingApp === app.activity ? '...' : 'Remove'}
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -129,10 +300,183 @@ function AppList({ apps, title, emptyText }: { apps: DistinctApp[]; title: strin
   )
 }
 
+function UncategorizedAppList({
+  apps,
+  category,
+  total,
+  onAppAdded,
+}: {
+  apps: DistinctApp[]
+  category: ScreentimeCategory
+  total: number
+  onAppAdded: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [addingApp, setAddingApp] = useState<string | null>(null)
+
+  const addMutation = useMutation({
+    mutationFn: async (appName: string) => {
+      setAddingApp(appName)
+      const currentTerms = parseRegexTerms(category.rule_regex ?? '')
+      const newTerms = [...currentTerms, appName]
+      const newRegex = buildRegex(newTerms)
+      await updateScreentimeCategory(category.id, {
+        rule_regex: newRegex,
+        rule_type: 'regex',
+      })
+      // Recategorize in background
+      void recategorizeScreentime()
+    },
+    onSuccess: () => {
+      setAddingApp(null)
+      onAppAdded()
+      queryClient.invalidateQueries({ queryKey: ['screentime-categories'] })
+      queryClient.invalidateQueries({ queryKey: ['productivity-apps'] })
+    },
+    onError: () => setAddingApp(null),
+  })
+
+  const title =
+    total > apps.length ? `Uncategorized apps (showing ${apps.length} of ${total})` : 'Uncategorized apps'
+
+  if (total === 0) {
+    return (
+      <div class="category-section">
+        <h3>Uncategorized apps</h3>
+        <p class="sc-empty">All apps are categorized!</p>
+      </div>
+    )
+  }
+
+  return (
+    <div class="category-section">
+      <h3>
+        {title} <span class="count-badge">{total}</span>
+      </h3>
+      <div class="app-list">
+        {apps.map((app) => (
+          <div key={app.activity} class="app-row">
+            <span class="app-name">{app.activity}</span>
+            <div class="app-row-right">
+              <span class="app-stats">
+                {formatDuration(app.total_duration_sec)} &middot; {app.record_count} records
+              </span>
+              <button
+                type="button"
+                class="app-action-btn add"
+                onClick={() => addMutation.mutate(app.activity)}
+                disabled={addingApp === app.activity}
+                title={`Add "${app.activity}" to ${category.name.join(' > ')}`}
+              >
+                {addingApp === app.activity ? '...' : 'Add here'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Category info fields
+// ============================================================================
+
+function CategoryFields({
+  category,
+  currentIcon,
+  totalTime,
+  onIconSaved,
+}: {
+  category: ScreentimeCategory
+  currentIcon: string
+  totalTime: number
+  onIconSaved: () => void
+}) {
+  return (
+    <div class="category-details">
+      <div class="entity-fields">
+        <CategoryIconEditor categoryName={category.name} currentIcon={currentIcon} onSaved={onIconSaved} />
+        {category.rule_regex && (
+          <div class="field-row">
+            <span class="field-label">Matching rule</span>
+            <span class="field-value">
+              <code>{category.rule_regex}</code>
+            </span>
+          </div>
+        )}
+        {!category.rule_regex && category.rule_type === 'none' && (
+          <div class="field-row">
+            <span class="field-label">Matching rule</span>
+            <span class="field-value muted">Grouping only (no direct matching)</span>
+          </div>
+        )}
+        <div class="field-row">
+          <span class="field-label">Productivity</span>
+          <span class="field-value">{productivityScoreLabel(category.score)}</span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Total tracked time</span>
+          <span class="field-value">{formatDuration(totalTime)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Children list
+// ============================================================================
+
+function ChildCategoriesList({
+  children,
+  distinctApps,
+  icons,
+}: {
+  children: ScreentimeCategory[]
+  distinctApps: DistinctApp[]
+  icons: Record<string, string>
+}) {
+  if (children.length === 0) return null
+
+  return (
+    <div class="category-section">
+      <h3>
+        Sub-categories <span class="count-badge">{children.length}</span>
+      </h3>
+      <div class="children-list">
+        {children.map((child) => {
+          const childIcon = icons[categoryIconKey(child.name)] ?? ''
+          const childTime = getAllMatchedApps(distinctApps, child.name).reduce(
+            (sum, a) => sum + a.total_duration_sec,
+            0,
+          )
+          return (
+            <a key={child.id} href={`/screentime-categories/${child.id}`} class="child-category-card">
+              {childIcon && isEmoji(childIcon) ? (
+                <span class="child-icon">{childIcon}</span>
+              ) : (
+                child.color && <span class="sc-color-dot" style={{ background: child.color }} />
+              )}
+              <span class="child-name">{child.name[child.name.length - 1]}</span>
+              {childTime > 0 && <span class="child-stats">{formatDuration(childTime)}</span>}
+            </a>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Main component
+// ============================================================================
+
 export function CategoryDetail() {
   const { params } = useRoute()
   const categoryId = params.id
   const isLoggedIn = auth.value.token
+  const queryClient = useQueryClient()
 
   const { data: category, isLoading: categoryLoading } = useQuery({
     enabled: !!isLoggedIn && !!categoryId,
@@ -153,6 +497,23 @@ export function CategoryDetail() {
     queryKey: ['productivity-apps'],
     staleTime: 5 * 60 * 1000,
   })
+
+  const { data: userSettings } = useQuery({
+    enabled: !!isLoggedIn,
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const invalidateAll = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['screentime-category', categoryId] })
+    queryClient.invalidateQueries({ queryKey: ['screentime-categories'] })
+    queryClient.invalidateQueries({ queryKey: ['productivity-apps'] })
+  }, [queryClient, categoryId])
+
+  const invalidateIcons = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+  }, [queryClient])
 
   if (!isLoggedIn) {
     return (
@@ -184,80 +545,34 @@ export function CategoryDetail() {
   const allMatched = getAllMatchedApps(distinctApps, category.name)
   const uncategorized = getUncategorizedApps(distinctApps)
   const totalTime = allMatched.reduce((sum, a) => sum + a.total_duration_sec, 0)
+  const icons = userSettings?.item_icons ?? {}
+  const currentIcon = icons[categoryIconKey(category.name)] ?? ''
 
   return (
     <div class="data-sources-page">
       <CategoryBreadcrumb categories={allCategories} category={category} />
 
       <div class="category-header">
-        {category.color && <span class="category-color-swatch" style={{ background: category.color }} />}
-        <h1>{category.name.join(' > ')}</h1>
+        {currentIcon && isEmoji(currentIcon) && <span class="category-header-icon">{currentIcon}</span>}
+        {category.color && !currentIcon && (
+          <span class="category-color-swatch" style={{ background: category.color }} />
+        )}
+        <h1>{category.name[category.name.length - 1]}</h1>
       </div>
 
-      {/* Category details */}
-      <div class="category-details">
-        <div class="entity-fields">
-          {category.rule_regex && (
-            <div class="field-row">
-              <span class="field-label">Matching rule</span>
-              <span class="field-value">
-                <code>{category.rule_regex}</code>
-              </span>
-            </div>
-          )}
-          {!category.rule_regex && category.rule_type === 'none' && (
-            <div class="field-row">
-              <span class="field-label">Matching rule</span>
-              <span class="field-value muted">Grouping only (no direct matching)</span>
-            </div>
-          )}
-          <div class="field-row">
-            <span class="field-label">Productivity</span>
-            <span class="field-value">{productivityScoreLabel(category.score)}</span>
-          </div>
-          <div class="field-row">
-            <span class="field-label">Case insensitive</span>
-            <span class="field-value">{category.ignore_case ? 'Yes' : 'No'}</span>
-          </div>
-          <div class="field-row">
-            <span class="field-label">Total tracked time</span>
-            <span class="field-value">{formatDuration(totalTime)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Child categories */}
-      {children.length > 0 && (
-        <div class="category-section">
-          <h3>
-            Sub-categories <span class="count-badge">{children.length}</span>
-          </h3>
-          <div class="children-list">
-            {children.map((child) => {
-              const childTime = getAllMatchedApps(distinctApps, child.name).reduce(
-                (sum, a) => sum + a.total_duration_sec,
-                0,
-              )
-              return (
-                <a key={child.id} href={`/screentime-categories/${child.id}`} class="child-category-card">
-                  {child.color && <span class="sc-color-dot" style={{ background: child.color }} />}
-                  <span class="child-name">{child.name[child.name.length - 1]}</span>
-                  {childTime > 0 && <span class="child-stats">{formatDuration(childTime)}</span>}
-                </a>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Matched apps */}
-      <AppList apps={matchedApps} title="Matched apps" emptyText="No apps match this category directly." />
-
-      {/* Uncategorized apps (helpful for assigning) */}
-      <AppList
-        apps={uncategorized.slice(0, 20)}
-        title={`Uncategorized apps${uncategorized.length > 20 ? ` (showing 20 of ${uncategorized.length})` : ''}`}
-        emptyText="All apps are categorized!"
+      <CategoryFields
+        category={category}
+        currentIcon={currentIcon}
+        totalTime={totalTime}
+        onIconSaved={invalidateIcons}
+      />
+      <ChildCategoriesList children={children} distinctApps={distinctApps} icons={icons} />
+      <MatchedAppList apps={matchedApps} category={category} onAppRemoved={invalidateAll} />
+      <UncategorizedAppList
+        apps={uncategorized.slice(0, 30)}
+        category={category}
+        total={uncategorized.length}
+        onAppAdded={invalidateAll}
       />
 
       <div class="category-footer">
