@@ -41,6 +41,7 @@ import {
   updateActivity,
 } from '../services/mutations.ts'
 import {
+  assembleScreentimeBuckets,
   parseBucketSize,
   queryActivities,
   queryProductivity,
@@ -313,35 +314,7 @@ export const createActivitiesRouter = (
       const { interval, ms: bucketMs } = parseBucketSize(bucket)
 
       const rows = await getProductivityBucketed(user, new Date(start), new Date(end), interval, tz ?? 'UTC')
-
-      // Group rows into buckets
-      const bucketMap = new Map<
-        string,
-        { start: Date; categories: Array<{ path: string[]; total_sec: number }>; total_sec: number }
-      >()
-
-      for (const row of rows) {
-        const key = row.bucket_start.toISOString()
-        let entry = bucketMap.get(key)
-        if (!entry) {
-          entry = { categories: [], start: row.bucket_start, total_sec: 0 }
-          bucketMap.set(key, entry)
-        }
-        entry.total_sec += row.total_sec
-        entry.categories.push({
-          path: row.resolved_category ?? [],
-          total_sec: row.total_sec,
-        })
-      }
-
-      const buckets = [...bucketMap.values()]
-        .sort((a, b) => a.start.getTime() - b.start.getTime())
-        .map((b) => ({
-          categories: b.categories.sort((a, c) => c.total_sec - a.total_sec),
-          end: new Date(b.start.getTime() + bucketMs).toISOString(),
-          start: b.start.toISOString(),
-          total_sec: b.total_sec,
-        }))
+      const buckets = assembleScreentimeBuckets(rows, bucketMs)
 
       res.json({
         bucket: req.query.bucket,
