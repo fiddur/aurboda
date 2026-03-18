@@ -12,7 +12,7 @@ import { baseResponseSchema } from './common.ts'
 /**
  * Source type for trend calculation.
  */
-export const trendSourceTypeSchema = z.enum(['tag', 'metric']).meta({
+export const trendSourceTypeSchema = z.enum(['tag', 'metric', 'productivity_category']).meta({
   description: 'Type of data source for trend calculation',
   example: 'tag',
   id: 'TrendSourceType',

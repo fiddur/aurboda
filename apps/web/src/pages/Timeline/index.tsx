@@ -496,9 +496,24 @@ const getResolvedColor = (p: ProductivityRecord, categories: ScreentimeCategory[
   return getProductivityColor(p.productivity)
 }
 
+const resolveCategoryIcon = (
+  resolvedCategory: string[] | undefined,
+  itemIcons: Record<string, string>,
+): string | undefined => {
+  if (!resolvedCategory || resolvedCategory.length === 0) return undefined
+  // Walk from deepest to shallowest category, looking for an icon
+  for (let depth = resolvedCategory.length; depth > 0; depth--) {
+    const path = resolvedCategory.slice(0, depth).join(' > ')
+    const icon = itemIcons[`category:${path}`]
+    if (icon) return icon
+  }
+  return undefined
+}
+
 const categorizeProductivity = (
   productivity: ProductivityRecord[],
   categories: ScreentimeCategory[],
+  itemIcons: Record<string, string>,
 ): ChartItem[] =>
   productivity.map((p) => {
     const categoryLabel = p.resolved_category?.join(' > ') || p.category || ''
@@ -508,6 +523,7 @@ const categorizeProductivity = (
       end: p.end_time,
       entity_id: p.id,
       entity_type: 'productivity' as const,
+      icon: resolveCategoryIcon(p.resolved_category, itemIcons),
       isPoint: false,
       label: p.activity,
       start: p.start_time,
@@ -940,7 +956,7 @@ export const Timeline = () => {
       ...activityItems,
       ...categorizeLocations(places, uniquePlaceNames),
       ...categorizeTags(nonActivityTags, itemIcons),
-      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? []),
+      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
       ...occasionalMetricItems,
       ...musicItems,
     ],

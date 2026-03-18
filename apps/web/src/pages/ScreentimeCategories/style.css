@@ -144,6 +144,46 @@
   gap: 0.5rem;
 }
 
+/* Trend section */
+.category-trend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.category-trend-header h3 {
+  margin: 0;
+}
+
+.category-trend-lookback {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.category-trend-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.category-trend-number {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.category-trend-unit {
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
 .count-badge {
   display: inline-flex;
   align-items: center;

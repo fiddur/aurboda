@@ -130,6 +130,28 @@ describe('getTrend', () => {
     expect(result.history[1].date).toBe('2026-02-02')
   })
 
+  test('returns trend data for productivity_category', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        { day: new Date('2026-01-15'), ema_value: 2.3 },
+        { day: new Date('2026-02-02'), ema_value: 3.1 },
+      ],
+    } as never)
+
+    const result = await getTrend('testuser', {
+      display_period: 'daily',
+      pattern: 'Work > Programming',
+      source_type: 'productivity_category',
+    })
+
+    expect(result.source_type).toBe('productivity_category')
+    expect(result.pattern).toBe('Work > Programming')
+    expect(result.aggregation).toBe('sum')
+    expect(result.display_unit).toBe('hours per day')
+    expect(result.current_value).toBe(3.1)
+    expect(result.history).toHaveLength(2)
+  })
+
   test('uses sum aggregation for metrics when specified', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ day: new Date('2026-02-02'), ema_value: 150.0 }],
