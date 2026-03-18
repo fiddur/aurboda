@@ -1,7 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 
-import { connectGarmin, disconnectGarmin, fetchUserSettings, syncGarmin } from '../../state/api'
+import {
+  connectGarmin,
+  disconnectGarmin,
+  fetchUserSettings,
+  syncGarmin,
+  verifyGarminMfa,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import { DataTypesList, LoginRequired, StatusBanner } from './shared'
 import './style.css'
@@ -20,6 +26,138 @@ const DATA_TYPES = [
   'Intensity minutes',
 ]
 
+type LoginStatus = 'idle' | 'loading' | 'mfa' | 'mfa_loading' | 'error'
+
+function GarminMfaForm({ onCancel, onSuccess }: { onCancel: () => void; onSuccess: () => void }) {
+  const [mfaCode, setMfaCode] = useState('')
+  const [status, setStatus] = useState<'idle' | 'loading'>('idle')
+  const [error, setError] = useState('')
+
+  const handleSubmit = useCallback(
+    async (e: Event) => {
+      e.preventDefault()
+      if (!mfaCode) return
+
+      setStatus('loading')
+      setError('')
+      try {
+        const result = await verifyGarminMfa(mfaCode)
+        if (result.success) {
+          onSuccess()
+        } else {
+          setStatus('idle')
+          setError(result.error ?? 'Verification failed')
+        }
+      } catch (err) {
+        setStatus('idle')
+        setError(err instanceof Error ? err.message : 'Verification failed')
+      }
+    },
+    [mfaCode, onSuccess],
+  )
+
+  return (
+    <form class="garmin-login-form" onSubmit={handleSubmit}>
+      <p class="field-description">
+        Garmin has sent a verification code to your email. Enter it below to complete login.
+      </p>
+      <div class="form-field">
+        <label for="garmin-mfa-code">Verification Code</label>
+        <input
+          id="garmin-mfa-code"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="one-time-code"
+          value={mfaCode}
+          onInput={(e) => setMfaCode((e.target as HTMLInputElement).value)}
+          placeholder="Enter code from email"
+          required
+          disabled={status === 'loading'}
+        />
+      </div>
+      <button type="submit" class="connect-button" disabled={status === 'loading' || !mfaCode}>
+        {status === 'loading' ? 'Verifying...' : 'Verify Code'}
+      </button>
+      <button type="button" class="connect-button disconnect-button" onClick={onCancel}>
+        Cancel
+      </button>
+      {error && <p class="garmin-login-error">{error}</p>}
+    </form>
+  )
+}
+
+function GarminLoginForm({ onMfaRequired, onSuccess }: { onMfaRequired: () => void; onSuccess: () => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = useCallback(
+    async (e: Event) => {
+      e.preventDefault()
+      if (!email || !password) return
+
+      setLoading(true)
+      setError('')
+      try {
+        const result = await connectGarmin(email, password)
+        if (result.success) {
+          setEmail('')
+          setPassword('')
+          onSuccess()
+        } else if (result.mfa_required) {
+          onMfaRequired()
+        } else {
+          setError(result.error ?? 'Login failed')
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Login failed')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [email, password, onSuccess, onMfaRequired],
+  )
+
+  return (
+    <form class="garmin-login-form" onSubmit={handleSubmit}>
+      <div class="form-field">
+        <label for="garmin-email">Garmin Connect Email</label>
+        <input
+          id="garmin-email"
+          type="email"
+          value={email}
+          onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
+          placeholder="your-email@example.com"
+          required
+          disabled={loading}
+        />
+      </div>
+      <div class="form-field">
+        <label for="garmin-password">Password</label>
+        <input
+          id="garmin-password"
+          type="password"
+          value={password}
+          onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
+          placeholder="Your Garmin password"
+          required
+          disabled={loading}
+        />
+      </div>
+      <button type="submit" class="connect-button" disabled={loading || !email || !password}>
+        {loading ? 'Connecting...' : 'Connect Garmin'}
+      </button>
+      <p class="field-description">
+        Your credentials are used only to authenticate with Garmin and are never stored on the server. Only
+        session tokens are saved.
+      </p>
+      {error && <p class="garmin-login-error">{error}</p>}
+    </form>
+  )
+}
+
 export function GarminSource() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
@@ -32,11 +170,7 @@ export function GarminSource() {
 
   const isConnected = userSettings?.garmin_connected ?? false
 
-  // Login form state
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loginStatus, setLoginStatus] = useState<'idle' | 'loading' | 'error'>('idle')
-  const [loginError, setLoginError] = useState('')
+  const [loginStatus, setLoginStatus] = useState<LoginStatus>('idle')
 
   // Disconnect state
   const [disconnecting, setDisconnecting] = useState(false)
@@ -45,34 +179,10 @@ export function GarminSource() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [syncMessage, setSyncMessage] = useState('')
 
-  const handleLogin = useCallback(
-    async (e: Event) => {
-      e.preventDefault()
-      if (!email || !password) return
-
-      setLoginStatus('loading')
-      setLoginError('')
-      try {
-        const result = await connectGarmin(email, password)
-        if (result.success) {
-          setEmail('')
-          setPassword('')
-          setLoginStatus('idle')
-          await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
-        } else if (result.mfa_required) {
-          setLoginStatus('error')
-          setLoginError('Garmin requires multi-factor authentication, which is not yet supported.')
-        } else {
-          setLoginStatus('error')
-          setLoginError(result.error ?? 'Login failed')
-        }
-      } catch (err) {
-        setLoginStatus('error')
-        setLoginError(err instanceof Error ? err.message : 'Login failed')
-      }
-    },
-    [email, password, queryClient],
-  )
+  const handleLoginSuccess = useCallback(async () => {
+    setLoginStatus('idle')
+    await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+  }, [queryClient])
 
   const handleDisconnect = useCallback(async () => {
     setDisconnecting(true)
@@ -167,45 +277,10 @@ export function GarminSource() {
                   </div>
                   {syncMessage && <p class={`garmin-sync-message ${syncStatus}`}>{syncMessage}</p>}
                 </div>
+              ) : loginStatus === 'mfa' ? (
+                <GarminMfaForm onCancel={() => setLoginStatus('idle')} onSuccess={handleLoginSuccess} />
               ) : (
-                <form class="garmin-login-form" onSubmit={handleLogin}>
-                  <div class="form-field">
-                    <label for="garmin-email">Garmin Connect Email</label>
-                    <input
-                      id="garmin-email"
-                      type="email"
-                      value={email}
-                      onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
-                      placeholder="your-email@example.com"
-                      required
-                      disabled={loginStatus === 'loading'}
-                    />
-                  </div>
-                  <div class="form-field">
-                    <label for="garmin-password">Password</label>
-                    <input
-                      id="garmin-password"
-                      type="password"
-                      value={password}
-                      onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-                      placeholder="Your Garmin password"
-                      required
-                      disabled={loginStatus === 'loading'}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    class="connect-button"
-                    disabled={loginStatus === 'loading' || !email || !password}
-                  >
-                    {loginStatus === 'loading' ? 'Connecting...' : 'Connect Garmin'}
-                  </button>
-                  <p class="field-description">
-                    Your credentials are used only to authenticate with Garmin and are never stored on the
-                    server. Only session tokens are saved.
-                  </p>
-                  {loginError && <p class="garmin-login-error">{loginError}</p>}
-                </form>
+                <GarminLoginForm onMfaRequired={() => setLoginStatus('mfa')} onSuccess={handleLoginSuccess} />
               )}
             </section>
           </>
