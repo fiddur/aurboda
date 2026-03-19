@@ -207,6 +207,7 @@ Detailed documentation for specific features and data processing pipelines:
 
 - [Timeline](docs/features/timeline.md) -- Multi-track interactive day view with activities, metrics, music, location, and more
 - [Dashboard](docs/features/dashboard.md) -- Customizable widget-based home page with metric cards, sparklines, trends, and more
+- [HR Zones](docs/features/hr-zones.md) -- Heart rate zone tracking with Galpin/Huberman weekly targets
 - [Active Calorie Computation](docs/features/calories.md) -- HR-based calculation, gap-fill, source filtering
 
 ---
