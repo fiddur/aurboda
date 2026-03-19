@@ -315,6 +315,52 @@ export const fetchDistinctApps = async (): Promise<DistinctApp[]> => {
   return response.data.data ?? []
 }
 
+// Fetch screentime bucketed by time and category
+export interface ScreentimeBucketCategory {
+  path: string[]
+  total_sec: number
+}
+
+export interface ScreentimeBucketParsed {
+  start: Date
+  end: Date
+  total_sec: number
+  categories: ScreentimeBucketCategory[]
+}
+
+export const fetchScreentimeBucketed = async (
+  start: Date,
+  end: Date,
+  bucket: string,
+  tz?: string,
+): Promise<ScreentimeBucketParsed[]> => {
+  const { token } = auth.value
+  const params: Record<string, string> = {
+    bucket,
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  if (tz) params.tz = tz
+  const response = await axios.get<{
+    buckets?: Array<{
+      start: string
+      end: string
+      total_sec: number
+      categories: ScreentimeBucketCategory[]
+    }>
+    success: boolean
+  }>(`${API_URL}/productivity/bucketed`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+  return (response.data.buckets ?? []).map((b) => ({
+    categories: b.categories,
+    end: new Date(b.end),
+    start: new Date(b.start),
+    total_sec: b.total_sec,
+  }))
+}
+
 // Fetch location/place data for the specified date range
 export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
   const { token } = auth.value
@@ -505,6 +551,16 @@ export const connectGarmin = async (
   const response = await axios.post(
     `${API_URL}/auth/garmin/login`,
     { email, password },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+export const verifyGarminMfa = async (mfaCode: string): Promise<{ success: boolean; error?: string }> => {
+  const { token } = auth.value
+  const response = await axios.post(
+    `${API_URL}/auth/garmin/mfa`,
+    { mfa_code: mfaCode },
     { headers: { Authorization: `Bearer ${token}` } },
   )
   return response.data

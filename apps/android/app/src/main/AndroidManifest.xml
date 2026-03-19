@@ -19,6 +19,9 @@
     <!-- Activity recognition for phone step counter (Android 10+) -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
+    <!-- Auto-reconnect BLE devices after boot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
     <!-- Alphabetically Sorted Health Permissions -->
@@ -140,6 +143,16 @@
             android:name=".ble.SensorService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Auto-reconnect BLE devices on boot and Bluetooth state change -->
+        <receiver
+            android:name=".ble.BleAutoConnectReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
         <!-- FileProvider for APK installation -->
         <provider

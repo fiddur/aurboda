@@ -215,6 +215,51 @@ export const getDistinctApps = async (
 }
 
 /**
+ * A single row from the bucketed productivity query.
+ */
+export interface ProductivityBucketRow {
+  bucket_start: Date
+  resolved_category: string[] | null
+  total_sec: number
+  record_count: number
+}
+
+/**
+ * Get productivity records bucketed by time interval, grouped by resolved_category.
+ * Used for the horizontal timeline stacked bar chart.
+ *
+ * Uses date_bin with timezone support for DST-correct bucket alignment.
+ */
+export const getProductivityBucketed = async (
+  user: string,
+  start: Date,
+  end: Date,
+  interval: string,
+  tz: string = 'UTC',
+): Promise<ProductivityBucketRow[]> => {
+  const result = await query(
+    user,
+    `SELECT
+       date_bin($3::interval, start_time AT TIME ZONE $4, ($1 AT TIME ZONE $4)::timestamp) AT TIME ZONE $4 AS bucket_start,
+       resolved_category,
+       SUM(duration_sec)::int AS total_sec,
+       COUNT(*)::int AS record_count
+     FROM productivity
+     WHERE start_time >= $1 AND start_time < $2 AND deleted_at IS NULL
+     GROUP BY bucket_start, resolved_category
+     ORDER BY bucket_start`,
+    [start, end, interval, tz],
+  )
+
+  return result.rows.map((row) => ({
+    bucket_start: new Date(row.bucket_start as string),
+    record_count: row.record_count as number,
+    resolved_category: row.resolved_category || null,
+    total_sec: row.total_sec as number,
+  }))
+}
+
+/**
  * Get all non-deleted productivity records (for recategorization).
  * Returns only id, activity, and title to minimize memory usage.
  */

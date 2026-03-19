@@ -202,6 +202,31 @@ Use cases:
     },
   )
 
+  // Tool: query_productivity_bucketed
+  server.tool(
+    'query_productivity_bucketed',
+    'Query screentime/productivity data bucketed by time interval, grouped by category. Returns stacked duration per category per bucket. Useful for visualizing time spent on different activities over time.',
+    {
+      bucket: bucketSizeSchema,
+      end: timeRangeQuerySchema.shape.end,
+      start: timeRangeQuerySchema.shape.start,
+      tz: z
+        .string()
+        .optional()
+        .describe('IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). Defaults to UTC.'),
+    },
+    async ({ bucket, end, start, tz }) => {
+      const { interval, ms: bucketMs } = (await import('../services/queries.ts')).parseBucketSize(bucket)
+      const { assembleScreentimeBuckets } = await import('../services/queries.ts')
+      const rows = await (
+        await import('../db/index.ts')
+      ).getProductivityBucketed(user, new Date(start), new Date(end), interval, tz ?? 'UTC')
+
+      const buckets = assembleScreentimeBuckets(rows, bucketMs)
+      return jsonResponse({ bucket, buckets, end, start, success: true })
+    },
+  )
+
   // Tool: query_locations
   server.tool(
     'query_locations',

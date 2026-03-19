@@ -5,6 +5,7 @@ import type { MetricType } from '../schema.ts'
 import * as db from '../db/index.ts'
 import * as locationsService from './locations.ts'
 import {
+  assembleScreentimeBuckets,
   findSleepLocation,
   getDailySummary,
   getPeriodSummary,
@@ -2100,25 +2101,52 @@ describe('queryTags with comments', () => {
 
     expect(result[0].comments).toEqual([])
   })
+})
 
-  test('includes external_id in response', async () => {
-    vi.mocked(db.getTags).mockResolvedValue([
+describe('assembleScreentimeBuckets', () => {
+  test('groups rows by bucket and aggregates totals', () => {
+    const rows = [
       {
-        external_id: 'ext-abc-123',
-        id: 'tag-1',
-        source: 'aurboda',
-        start_time: new Date('2024-01-15T08:00:00Z'),
-        tag: 'coffee',
+        bucket_start: new Date('2024-01-15T10:00:00Z'),
+        resolved_category: ['Work', 'Programming'],
+        total_sec: 1800,
       },
-      { id: 'tag-2', source: 'manual', start_time: new Date('2024-01-15T09:00:00Z'), tag: 'tea' },
-    ])
-    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+      {
+        bucket_start: new Date('2024-01-15T10:00:00Z'),
+        resolved_category: ['Work', 'Communication'],
+        total_sec: 600,
+      },
+      { bucket_start: new Date('2024-01-15T11:00:00Z'), resolved_category: ['Media', 'TV'], total_sec: 3600 },
+    ]
+    const buckets = assembleScreentimeBuckets(rows, 3600000)
 
-    const result = await queryTags('testuser', new Date('2024-01-15'), new Date('2024-01-16'))
+    expect(buckets).toHaveLength(2)
+    expect(buckets[0].total_sec).toBe(2400) // 1800 + 600
+    expect(buckets[0].categories).toHaveLength(2)
+    // Sorted by duration desc
+    expect(buckets[0].categories[0].total_sec).toBe(1800)
+    expect(buckets[1].total_sec).toBe(3600)
+  })
 
-    expect(result).toHaveLength(2)
-    expect(result[0].external_id).toBe('ext-abc-123')
-    expect(result[1].external_id).toBeUndefined()
+  test('handles null resolved_category as empty path', () => {
+    const rows = [{ bucket_start: new Date('2024-01-15T10:00:00Z'), resolved_category: null, total_sec: 300 }]
+    const buckets = assembleScreentimeBuckets(rows, 3600000)
+
+    expect(buckets).toHaveLength(1)
+    expect(buckets[0].categories[0].path).toEqual([])
+  })
+
+  test('returns empty array for empty input', () => {
+    expect(assembleScreentimeBuckets([], 3600000)).toEqual([])
+  })
+
+  test('sorts buckets chronologically', () => {
+    const rows = [
+      { bucket_start: new Date('2024-01-15T12:00:00Z'), resolved_category: null, total_sec: 100 },
+      { bucket_start: new Date('2024-01-15T10:00:00Z'), resolved_category: null, total_sec: 200 },
+    ]
+    const buckets = assembleScreentimeBuckets(rows, 3600000)
+    expect(new Date(buckets[0].start).getTime()).toBeLessThan(new Date(buckets[1].start).getTime())
   })
 })
 

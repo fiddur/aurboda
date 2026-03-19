@@ -137,7 +137,7 @@ export interface GarminDailySummary {
 // Login result types
 // ============================================================================
 
-export interface GarminLoginResult {
+export interface GarminLoginSuccess {
   success: true
   tokens: IGarminTokens
 }
@@ -146,7 +146,7 @@ export interface GarminMfaRequired {
   mfa_required: true
 }
 
-export type LoginResult = GarminLoginResult | GarminMfaRequired
+export type LoginResult = GarminLoginSuccess | GarminMfaRequired
 
 // ============================================================================
 // Client factory
@@ -158,6 +158,16 @@ export interface GarminClientDeps {
 }
 
 const defaultDeps: GarminClientDeps = { getOAuthToken, upsertOAuthToken }
+
+/**
+ * Pending MFA sessions, keyed by user.
+ * Holds a live GarminConnect instance between login() and verifyMfa().
+ * Entries are cleaned up on completion, timeout, or disconnect.
+ */
+const pendingMfaSessions = new Map<string, { gc: InstanceType<typeof GarminConnect>; createdAt: number }>()
+
+/** Max time (ms) a pending MFA session is kept before being discarded. */
+const MFA_SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
 /**
  * Creates a Garmin Connect API client.
@@ -294,12 +304,59 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
     /**
      * Login with Garmin credentials. Returns tokens on success or indicates MFA required.
      * Credentials are used only for this call and never stored.
+     *
+     * When MFA is required, the GarminConnect instance is kept alive in
+     * `pendingMfaSessions` so that `verifyMfa()` can complete the flow.
      */
-
     async login(user: string, email: string, password: string): Promise<LoginResult> {
+      // Clean up any stale pending session for this user
+      pendingMfaSessions.delete(user)
+
       const gc = new GarminConnect({ password, username: email })
-      await gc.login()
-      // If we reach here, login succeeded (no MFA or MFA was not enabled)
+      const result = await gc.login()
+
+      if (result.type === 'success') {
+        const tokens = gc.exportToken()
+        await saveSession(user, gc)
+        return { success: true, tokens }
+      }
+
+      // MFA required — park the instance for verifyMfa()
+      pendingMfaSessions.set(user, { gc, createdAt: Date.now() })
+
+      // Schedule cleanup so we don't leak memory if verifyMfa() is never called
+      setTimeout(() => {
+        const entry = pendingMfaSessions.get(user)
+        if (entry && entry.createdAt <= Date.now() - MFA_SESSION_TTL_MS) {
+          pendingMfaSessions.delete(user)
+        }
+      }, MFA_SESSION_TTL_MS + 1000)
+
+      return { mfa_required: true }
+    },
+
+    /**
+     * Complete MFA verification after login() returned { mfa_required: true }.
+     *
+     * @param user     Aurboda user id
+     * @param mfaCode  The code from the user's email/SMS
+     */
+    async verifyMfa(user: string, mfaCode: string): Promise<GarminLoginSuccess> {
+      const entry = pendingMfaSessions.get(user)
+      if (!entry) {
+        throw new Error('No pending MFA session. Please start login again.')
+      }
+
+      if (Date.now() - entry.createdAt > MFA_SESSION_TTL_MS) {
+        pendingMfaSessions.delete(user)
+        throw new Error('MFA session expired. Please start login again.')
+      }
+
+      const { gc } = entry
+
+      await gc.verifyMfa(mfaCode)
+      pendingMfaSessions.delete(user)
+
       const tokens = gc.exportToken()
       await saveSession(user, gc)
       return { success: true, tokens }

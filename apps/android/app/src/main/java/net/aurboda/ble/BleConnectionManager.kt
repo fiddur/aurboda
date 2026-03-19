@@ -355,8 +355,18 @@ class BleConnectionManager(
     }
   }
 
+  /**
+   * Connect to a BLE device.
+   * @param deviceAddress MAC address of the device
+   * @param autoConnect When true, uses the Android BLE autoConnect mode which passively waits
+   *   for the device to become available. Best for reconnecting to known devices in the background.
+   *   When false, attempts an immediate direct connection (faster when device is nearby and advertising).
+   */
   @SuppressLint("MissingPermission")
-  fun connect(deviceAddress: String) {
+  fun connect(
+    deviceAddress: String,
+    autoConnect: Boolean = false,
+  ) {
     if (_connectionState.value is BleConnectionState.Connected ||
       _connectionState.value is BleConnectionState.Connecting
     ) {
@@ -376,8 +386,8 @@ class BleConnectionManager(
       val device = adapter.getRemoteDevice(deviceAddress)
       connectedDevice = device
       _connectionState.value = BleConnectionState.Connecting
-      Log.d(TAG, "Connecting to device: $deviceAddress")
-      bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+      Log.d(TAG, "Connecting to device: $deviceAddress (autoConnect=$autoConnect)")
+      bluetoothGatt = device.connectGatt(context, autoConnect, gattCallback, BluetoothDevice.TRANSPORT_LE)
     } catch (e: IllegalArgumentException) {
       Log.e(TAG, "Invalid device address: $deviceAddress", e)
       _connectionState.value = BleConnectionState.Error("Invalid device address")

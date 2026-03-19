@@ -20,6 +20,7 @@ import {
   fetchPlaces,
   fetchProductivity,
   fetchScreentimeCategories,
+  fetchScreentimeBucketed,
   fetchScrobbles,
   fetchTagMappings,
   fetchTags,
@@ -30,6 +31,7 @@ import { parseBucketedResponse } from '../../utils/chart'
 import { isEmoji, isUrl } from '../../utils/emojiLookup'
 import { packLanes } from '../../utils/lanePacking'
 import { buildActivityColumnItems, EXCLUDED_TAG_PREFIXES, EXCLUDED_TAG_SOURCES } from './activityMerge'
+import { computeBarLayout, type BarSlot } from './barLayout'
 import { categorizeMusic } from './categorizeMusic'
 import { drawActivitySparklines, parseBucketedData } from './drawActivitySparklines'
 import {
@@ -47,6 +49,7 @@ import {
   mergeScrobblesIntoSessions,
   MUSIC_STAFF_HEIGHT,
 } from './drawMusicStaff'
+import { drawScreentimeBars, SCREENTIME_COLOR } from './drawScreentimeTrack'
 import { CTL_COLOR, drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import { mergeProductivitySpans } from './productivityMerge'
@@ -86,6 +89,7 @@ type LegendCategory =
   | 'steps' // horizontal only
   | 'calories' // horizontal only
   | 'training_load' // horizontal only
+  | 'screen_time_h' // horizontal only — screentime stacked bar
 
 // Legacy category names for URL hash backward compatibility
 const LEGACY_CATEGORY_MAP: Record<string, LegendCategory> = {
@@ -370,6 +374,7 @@ const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = 
       item.color !== METRIC_COLOR) ||
     // Duration tags promoted to Activity column (have entity_type 'tag' but no activity_type)
     (item.column === 'Activity' && item.entity_type === 'tag' && !item.activity_type),
+  screen_time_h: () => false, // horizontal screentime bar controlled at draw level
   training_load: () => false,
 }
 
@@ -906,12 +911,14 @@ export const Timeline = () => {
 
   // ── Legend / filtering ─────────────────────────────────────────────────────
 
-  // Training load uses the same unified bucket size as general metrics.
-  // The training load backend accepts '1h', '1d', '1w' — map the unified size accordingly.
-  const trainingLoadBucketSize = useMemo((): '1h' | '1d' | '1w' => {
+  // Unified bar bucket size — all bar-shaped data (training load, steps, calories, screentime)
+  // uses the same bucket size so they align visually side by side.
+  // Training load backend only supports '1h', '1d', '1w', which constrains the minimum.
+  // Line charts (HR/HRV) still use the finer `bucketSize` for smooth rendering.
+  const barBucketSize = useMemo((): '1h' | '1d' | '1w' => {
     if (bucketSize === '1w') return '1w'
     if (bucketSize === '1d') return '1d'
-    // For sub-day metric buckets (5m, 15m, 1h), use hourly training load
+    // For sub-day views, all bars use hourly buckets
     return '1h'
   }, [bucketSize])
 
@@ -919,9 +926,18 @@ export const Timeline = () => {
   const trainingLoadQuery = useQuery({
     enabled: !hiddenCategories.has('training_load'),
     placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), trainingLoadBucketSize),
-    queryKey: ['timeline-training-load', fromDate.value, toDate.value, trainingLoadBucketSize],
+    queryFn: () => fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
+    queryKey: ['timeline-training-load', fromDate.value, toDate.value, barBucketSize],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Screentime bucketed data (for horizontal stacked bar chart)
+  // Uses the same barBucketSize so it aligns with steps/calories/training load
+  const screentimeBucketedQuery = useQuery({
+    enabled: !hiddenCategories.has('screen_time_h') && !hiddenCategories.has('metrics'),
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchScreentimeBucketed(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
+    queryKey: ['timeline-screentime-bucketed', fromDate.value, toDate.value, barBucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -1733,7 +1749,21 @@ export const Timeline = () => {
       const showSteps = !hiddenCategories.has('steps') && showMetricsTrack
       const showCalories = !hiddenCategories.has('calories') && showMetricsTrack
       const showTL = !hiddenCategories.has('training_load') && showMetricsTrack
-      if (showMetricsTrack && (metricsYScales || (showTL && trainingLoadData))) {
+      const showScreentimeH = !hiddenCategories.has('screen_time_h') && showMetricsTrack
+      const screentimeBuckets = screentimeBucketedQuery.data ?? []
+      const screentimeHasData = screentimeBuckets.length > 0
+
+      // Compute the bar layout for side-by-side bars
+      const barSlots: BarSlot[] = [
+        { id: 'fatigue', visible: showTL && !!trainingLoadData },
+        { id: 'impulse', visible: showTL && !!trainingLoadData },
+        { id: 'screentime', visible: showScreentimeH && screentimeHasData },
+        { id: 'steps', visible: showSteps },
+        { id: 'calories', visible: showCalories },
+      ]
+      const barLayout = computeBarLayout(barSlots)
+
+      if (showMetricsTrack && (metricsYScales || (showTL && trainingLoadData) || screentimeHasData)) {
         drawMetricsTrack({
           buckets: metricBuckets,
           chartGroup,
@@ -1765,6 +1795,16 @@ export const Timeline = () => {
             ? { yScales: metricsYScales }
             : { yScales: computeYScales([], trackMetrics, trackMetrics + metricsTrackHeight) }),
           xScale: currentXScale,
+          barBucketMs: barBucketSize === '1w' ? 7 * 86400000 : barBucketSize === '1d' ? 86400000 : 3600000,
+          barLayout,
+          caloriesSlotId: 'calories',
+          stepsSlotId: 'steps',
+          ...(showScreentimeH && screentimeHasData
+            ? {
+                screentimeBuckets,
+                screentimeCategories: screentimeCategoriesQuery.data ?? [],
+              }
+            : {}),
           ...(showTL && trainingLoadData
             ? {
                 trainingLoadPoints: trainingLoadData.points,
@@ -1778,14 +1818,31 @@ export const Timeline = () => {
       // ── Training load track (CTL/ATL/TSB overlaid on metrics area) ──
       if (showMetricsTrack && showTL && trainingLoadData) {
         drawTrainingLoadTrack({
+          barLayout,
           bootstrapping: trainingLoadData.bootstrapping,
           chartGroup,
+          fatigueSlotId: 'fatigue',
+          impulseSlotId: 'impulse',
           points: trainingLoadData.points,
           trackHeight: metricsTrackHeight,
           trackY: trackMetrics,
           workouts: trainingLoadData.workouts,
           xScale: currentXScale,
           zones: trainingLoadData.zones ?? undefined,
+        })
+      }
+
+      // ── Screentime stacked bar chart ──
+      if (showMetricsTrack && showScreentimeH && screentimeHasData) {
+        drawScreentimeBars({
+          barLayout,
+          buckets: screentimeBuckets,
+          categories: screentimeCategoriesQuery.data ?? [],
+          chartGroup,
+          slotId: 'screentime',
+          trackHeight: metricsTrackHeight,
+          trackY: trackMetrics,
+          xScale: currentXScale,
         })
       }
 
@@ -2203,6 +2260,11 @@ export const Timeline = () => {
                       { cat: 'steps' as LegendCategory, color: STEPS_COLOR, label: 'Steps' },
                       { cat: 'calories' as LegendCategory, color: CALORIES_COLOR, label: 'Calories' },
                       { cat: 'training_load' as LegendCategory, color: CTL_COLOR, label: 'Training Load' },
+                      {
+                        cat: 'screen_time_h' as LegendCategory,
+                        color: SCREENTIME_COLOR,
+                        label: 'Screen Time',
+                      },
                     ]
                   : []),
               ].map(({ cat, color, label }) => (

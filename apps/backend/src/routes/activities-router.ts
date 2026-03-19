@@ -16,6 +16,9 @@ import {
   type ProductivityQuery,
   productivityQuerySchema,
   type ProductivityResponse,
+  type ScreentimeBucketedQuery,
+  screentimeBucketedQuerySchema,
+  type ScreentimeBucketedResponse,
   type UpdateActivityBody,
   updateActivityBodySchema,
   type UpdateActivityResponse,
@@ -26,6 +29,7 @@ import {
   getActivityById,
   getDistinctApps,
   getOverlappingActivities,
+  getProductivityBucketed,
   getProductivityById,
 } from '../db/index.ts'
 import {
@@ -36,7 +40,13 @@ import {
   restoreProductivity,
   updateActivity,
 } from '../services/mutations.ts'
-import { queryActivities, queryProductivity, type SyncProvider } from '../services/queries.ts'
+import {
+  assembleScreentimeBuckets,
+  parseBucketSize,
+  queryActivities,
+  queryProductivity,
+  type SyncProvider,
+} from '../services/queries.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createActivitiesRouter = (
@@ -292,6 +302,29 @@ export const createActivitiesRouter = (
 
     res.json({ success: true })
   })
+
+  // GET /productivity/bucketed - Get screentime bucketed by time and category
+  router.get<Record<string, never>, ScreentimeBucketedResponse, unknown, ScreentimeBucketedQuery>(
+    '/productivity/bucketed',
+    authMiddleware,
+    validateQuery(screentimeBucketedQuerySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { start, end, bucket, tz } = req.query
+      const { interval, ms: bucketMs } = parseBucketSize(bucket)
+
+      const rows = await getProductivityBucketed(user, new Date(start), new Date(end), interval, tz ?? 'UTC')
+      const buckets = assembleScreentimeBuckets(rows, bucketMs)
+
+      res.json({
+        bucket: req.query.bucket,
+        buckets,
+        end,
+        start,
+        success: true,
+      })
+    },
+  )
 
   // GET /productivity/apps - Get distinct app names with their categories
   router.get('/productivity/apps', authMiddleware, async (req, res) => {

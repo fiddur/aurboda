@@ -137,6 +137,8 @@ export {
   getAllProductivityForCategorization,
   getDistinctApps,
   getProductivity,
+  type ProductivityBucketRow,
+  getProductivityBucketed,
   getProductivityById,
   insertProductivity,
   restoreProductivityRecord,
