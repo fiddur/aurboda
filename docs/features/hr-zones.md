@@ -4,14 +4,14 @@ Aurboda tracks time spent in six heart rate zones during exercise, with weekly t
 
 ## The Six Zones
 
-| Zone | Name      | Color       | Description                     |
-| ---- | --------- | ----------- | ------------------------------- |
-| 0    | Rest      | Gray        | Below Zone 1 threshold          |
-| 1    | Warm-up   | Light blue  | Light activity, ~50% of max HR  |
-| 2    | Aerobic   | Green       | Steady-state cardio, ~60% of max HR |
-| 3    | Tempo     | Amber       | Comfortably hard, ~70% of max HR |
-| 4    | Threshold | Orange      | Hard effort, ~80% of max HR    |
-| 5    | Max effort| Red         | All-out sprints, ~90% of max HR |
+| Zone | Name       | Color      | Description                         |
+| ---- | ---------- | ---------- | ----------------------------------- |
+| 0    | Rest       | Gray       | Below Zone 1 threshold              |
+| 1    | Warm-up    | Light blue | Light activity, ~50% of max HR      |
+| 2    | Aerobic    | Green      | Steady-state cardio, ~60% of max HR |
+| 3    | Tempo      | Amber      | Comfortably hard, ~70% of max HR    |
+| 4    | Threshold  | Orange     | Hard effort, ~80% of max HR         |
+| 5    | Max effort | Red        | All-out sprints, ~90% of max HR     |
 
 Zone boundaries are defined by BPM thresholds. Everything below the Zone 1 threshold counts as Zone 0 (rest); everything at or above the Zone 5 threshold counts as Zone 5 (max effort).
 
@@ -42,14 +42,14 @@ You can always see which mode is active in Settings. The "Reset to defaults" but
 
 The HR Zones page displays progress toward weekly targets based on the **Galpin/Huberman protocol** -- exercise science recommendations for cardiovascular health and longevity:
 
-| Zone | Weekly target | Rationale |
-| ---- | ------------- | --------- |
-| 0    | --            | Not targeted |
-| 1    | 60 min        | Warm-up and recovery |
+| Zone | Weekly target | Rationale                                               |
+| ---- | ------------- | ------------------------------------------------------- |
+| 0    | --            | Not targeted                                            |
+| 1    | 60 min        | Warm-up and recovery                                    |
 | 2    | **200 min**   | Aerobic base building -- the cornerstone recommendation |
-| 3    | 60 min        | Tempo and lactate threshold work |
-| 4    | 30 min        | High-intensity threshold training |
-| 5    | **10 min**    | Brief max-effort intervals (sprints, VO2 max work) |
+| 3    | 60 min        | Tempo and lactate threshold work                        |
+| 4    | 30 min        | High-intensity threshold training                       |
+| 5    | **10 min**    | Brief max-effort intervals (sprints, VO2 max work)      |
 
 The key takeaway is 150-200 minutes per week in Zone 2 (easy, conversational-pace cardio) and 5-10 minutes per week in Zone 5 (all-out effort). These targets are also available as default Goals (see [Goals](goals.md)).
 
@@ -96,12 +96,12 @@ The Android home screen widget shows goal progress including zone targets. It up
 
 HR zone tracking requires **heart rate data during exercise**. This can come from:
 
-| Source | HR granularity | Zone accuracy |
-| --- | --- | --- |
-| BLE chest strap (Polar H10, etc.) via Android app | ~1 second | Excellent |
-| Health Connect (smartwatch HR) | Varies (1-60 seconds) | Good |
-| Oura Ring | ~5 minutes | Approximate |
-| Garmin Connect | ~15 seconds | Good |
+| Source                                            | HR granularity        | Zone accuracy |
+| ------------------------------------------------- | --------------------- | ------------- |
+| BLE chest strap (Polar H10, etc.) via Android app | ~1 second             | Excellent     |
+| Health Connect (smartwatch HR)                    | Varies (1-60 seconds) | Good          |
+| Oura Ring                                         | ~5 minutes            | Approximate   |
+| Garmin Connect                                    | ~15 seconds           | Good          |
 
 You also need exercise sessions recorded (from any source) so the system knows which HR data corresponds to a workout versus resting.
 

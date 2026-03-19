@@ -70,6 +70,7 @@ The music track only appears when you have Last.fm configured.
 ### Heart Rate and HRV
 
 In **horizontal mode**, these appear as ribbon charts in the Metrics lane:
+
 - **Heart rate** as a red band showing the average with a min-max area fill (range 40-200 bpm).
 - **HRV** as a green/teal band with a dynamic range.
 

@@ -8,11 +8,11 @@ The Trends page lets you configure and save multiple trend cards. Trends also ap
 
 EMA is a weighted average where recent data counts more than old data. The **half-life** controls how quickly old data fades:
 
-| Half-life | Label | Behavior |
-|---|---|---|
-| **7 days** | Quick | Responds fast to changes. A week of new behavior dominates. Good for daily habits like coffee. |
-| **15 days** | Responsive | Balanced default. Smooths out noise but reflects changes within ~2 weeks. |
-| **30 days** | Stable | Very smooth line. Short-term spikes are flattened. Good for slow-moving things like weight. |
+| Half-life   | Label      | Behavior                                                                                       |
+| ----------- | ---------- | ---------------------------------------------------------------------------------------------- |
+| **7 days**  | Quick      | Responds fast to changes. A week of new behavior dominates. Good for daily habits like coffee. |
+| **15 days** | Responsive | Balanced default. Smooths out noise but reflects changes within ~2 weeks.                      |
+| **30 days** | Stable     | Very smooth line. Short-term spikes are flattened. Good for slow-moving things like weight.    |
 
 After one half-life, old data has 50% weight. After two half-lives, 25%. After three, 12.5%. So a 15-day half-life means data from 45 days ago has essentially no influence.
 
@@ -41,15 +41,15 @@ The trend value is shown as "hours per day" (or per week/month).
 
 When adding or editing a trend, you can configure:
 
-| Option | Choices | What it does |
-|---|---|---|
-| **Name** | Free text | Display name for the trend card. Defaults to the pattern if blank. |
-| **Source type** | Tag, Metric, Screentime Category | What data to trend. |
-| **Pattern** | Tag picker (multi-select), Metric picker, or Category picker | What to match. Tags support regex with multiple selections joined by `\|`. |
-| **Half-life** | 7 (Quick), 15 (Responsive), 30 (Stable) | How quickly old data fades. See table above. |
-| **Lookback** | 30 days to 5 years, or All time | How far back the chart extends. |
-| **Display as** | Per day, Per week, Per month | Rate normalization. Same data, different scale. |
-| **Aggregation** | Average, Sum (metrics only) | Whether to average or total daily metric values. |
+| Option          | Choices                                                      | What it does                                                               |
+| --------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| **Name**        | Free text                                                    | Display name for the trend card. Defaults to the pattern if blank.         |
+| **Source type** | Tag, Metric, Screentime Category                             | What data to trend.                                                        |
+| **Pattern**     | Tag picker (multi-select), Metric picker, or Category picker | What to match. Tags support regex with multiple selections joined by `\|`. |
+| **Half-life**   | 7 (Quick), 15 (Responsive), 30 (Stable)                      | How quickly old data fades. See table above.                               |
+| **Lookback**    | 30 days to 5 years, or All time                              | How far back the chart extends.                                            |
+| **Display as**  | Per day, Per week, Per month                                 | Rate normalization. Same data, different scale.                            |
+| **Aggregation** | Average, Sum (metrics only)                                  | Whether to average or total daily metric values.                           |
 
 ## The Trends Page
 
@@ -64,11 +64,11 @@ The `/trends` page shows a grid of your saved trend cards. Each card displays:
 
 New users start with three presets:
 
-| Name | Type | Pattern | Half-life | Display |
-|---|---|---|---|---|
-| Painkillers | Tag | `pain_killer\|painkiller\|ibuprofen` | 15 days | Per month |
-| Coffee | Tag | `coffee` | 7 days | Per day |
-| Weight | Metric | `weight` | 14 days | Per day |
+| Name        | Type   | Pattern                              | Half-life | Display   |
+| ----------- | ------ | ------------------------------------ | --------- | --------- |
+| Painkillers | Tag    | `pain_killer\|painkiller\|ibuprofen` | 15 days   | Per month |
+| Coffee      | Tag    | `coffee`                             | 7 days    | Per day   |
+| Weight      | Metric | `weight`                             | 14 days   | Per day   |
 
 You can add, edit, or remove trends freely. The "Reset" button restores the defaults.
 
@@ -96,11 +96,11 @@ Trend charts can be added as widgets on the Dashboard. Configure the source type
 
 Trends work with whatever data you have:
 
-| Source type | Needs |
-|---|---|
-| Tags | Any tags -- manual, Oura, calendar imports, Last.fm auto-tags |
-| Metrics | Time series data from any source (Oura, Garmin, Health Connect, manual) |
-| Screentime | Productivity data from RescueTime or ActivityWatch |
+| Source type | Needs                                                                   |
+| ----------- | ----------------------------------------------------------------------- |
+| Tags        | Any tags -- manual, Oura, calendar imports, Last.fm auto-tags           |
+| Metrics     | Time series data from any source (Oura, Garmin, Health Connect, manual) |
+| Screentime  | Productivity data from RescueTime or ActivityWatch                      |
 
 The more historical data you have, the more useful long lookback periods become. A 30-day lookback with only 10 days of data will look sparse.
 

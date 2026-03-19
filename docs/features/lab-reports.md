@@ -18,15 +18,15 @@ Each report has:
 
 Each entry in a report stores:
 
-| Field | Description | Example |
-|---|---|---|
-| **Metric** | What was measured (free-form name) | `body_fat`, `ferritin`, `calcium` |
-| **Value** | The numeric result | `18.5`, `45.0`, `97.2` |
-| **Unit** | Measurement unit | `%`, `ng/mL`, `mg%` |
-| **Method** | How it was measured (optional) | `bia_segmental`, `blood_draw`, `hair_analysis` |
-| **Confidence** | Measurement reliability (optional) | `measured`, `estimated`, `derived` |
-| **Reference low/high** | Normal range (optional) | `30.0` - `400.0` for ferritin |
-| **Flag** | Out-of-range indicator (optional, auto-derived) | `normal`, `low`, `high`, `critical_low`, `critical_high` |
+| Field                  | Description                                     | Example                                                  |
+| ---------------------- | ----------------------------------------------- | -------------------------------------------------------- |
+| **Metric**             | What was measured (free-form name)              | `body_fat`, `ferritin`, `calcium`                        |
+| **Value**              | The numeric result                              | `18.5`, `45.0`, `97.2`                                   |
+| **Unit**               | Measurement unit                                | `%`, `ng/mL`, `mg%`                                      |
+| **Method**             | How it was measured (optional)                  | `bia_segmental`, `blood_draw`, `hair_analysis`           |
+| **Confidence**         | Measurement reliability (optional)              | `measured`, `estimated`, `derived`                       |
+| **Reference low/high** | Normal range (optional)                         | `30.0` - `400.0` for ferritin                            |
+| **Flag**               | Out-of-range indicator (optional, auto-derived) | `normal`, `low`, `high`, `critical_low`, `critical_high` |
 
 ### Automatic Flag Derivation
 
@@ -50,13 +50,13 @@ When a report is deleted, the corresponding time-series entries are cleanly remo
 
 ## Common Report Types
 
-| Type | Typical Metrics | Typical Method |
-|---|---|---|
-| **InBody scan** | weight, body_fat, bmi, skeletal_muscle_mass, ecw_ratio | bia_segmental |
-| **Blood panel** | ferritin, iron, b12, vitamin_d, testosterone, cortisol | blood_draw |
-| **Hair mineral analysis** | calcium, magnesium, sodium, potassium, zinc, copper | hair_analysis |
-| **DEXA scan** | body_fat, bone_density, lean_body_mass | dexa |
-| **Lipid panel** | total_cholesterol, ldl, hdl, triglycerides | blood_draw |
+| Type                      | Typical Metrics                                        | Typical Method |
+| ------------------------- | ------------------------------------------------------ | -------------- |
+| **InBody scan**           | weight, body_fat, bmi, skeletal_muscle_mass, ecw_ratio | bia_segmental  |
+| **Blood panel**           | ferritin, iron, b12, vitamin_d, testosterone, cortisol | blood_draw     |
+| **Hair mineral analysis** | calcium, magnesium, sodium, potassium, zinc, copper    | hair_analysis  |
+| **DEXA scan**             | body_fat, bone_density, lean_body_mass                 | dexa           |
+| **Lipid panel**           | total_cholesterol, ldl, hdl, triglycerides             | blood_draw     |
 
 Report types are completely free-form -- use any label that makes sense for your tests.
 
@@ -64,22 +64,22 @@ Report types are completely free-form -- use any label that makes sense for your
 
 ### MCP Tools
 
-| Tool | Description |
-|---|---|
-| `add_report` | Create a report with entries. All entries are written through to metrics. |
-| `get_report` | Fetch a single report with all entries. |
-| `query_reports` | List reports, optionally filtered by type and date range. |
-| `delete_report` | Delete a report and its write-through metric data. |
+| Tool                | Description                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| `add_report`        | Create a report with entries. All entries are written through to metrics.           |
+| `get_report`        | Fetch a single report with all entries.                                             |
+| `query_reports`     | List reports, optionally filtered by type and date range.                           |
+| `delete_report`     | Delete a report and its write-through metric data.                                  |
 | `get_latest_metric` | Get the most recent value for any metric (useful for "what was my last ferritin?"). |
 
 ### REST API
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/reports` | Create a report with entries |
-| `GET` | `/reports` | Query reports (filter by type, date range) |
-| `GET` | `/reports/:id` | Get a single report |
-| `DELETE` | `/reports/:id` | Delete a report and metric data |
+| Method   | Path           | Description                                |
+| -------- | -------------- | ------------------------------------------ |
+| `POST`   | `/reports`     | Create a report with entries               |
+| `GET`    | `/reports`     | Query reports (filter by type, date range) |
+| `GET`    | `/reports/:id` | Get a single report                        |
+| `DELETE` | `/reports/:id` | Delete a report and metric data            |
 
 ## Known Limitations
 

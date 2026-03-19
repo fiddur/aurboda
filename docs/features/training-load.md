@@ -38,12 +38,12 @@ Training stress from general daily movement (active calories). Converted from ca
 
 Once you have about 6 weeks of training data, recovery zones appear as colored horizontal bands on the Timeline. They classify your current fatigue relative to your historical fitness:
 
-| Zone | Meaning | Visual |
-|---|---|---|
-| **Undertrained** | Not training enough to maintain current fitness | Blue tint |
-| **Balanced** | Optimal training range | Green tint |
-| **Strained** | Elevated fatigue, risk of overreaching | Orange tint |
-| **Very Strained** | Very high fatigue, high overtraining risk | Red tint |
+| Zone              | Meaning                                         | Visual      |
+| ----------------- | ----------------------------------------------- | ----------- |
+| **Undertrained**  | Not training enough to maintain current fitness | Blue tint   |
+| **Balanced**      | Optimal training range                          | Green tint  |
+| **Strained**      | Elevated fatigue, risk of overreaching          | Orange tint |
+| **Very Strained** | Very high fatigue, high overtraining risk       | Red tint    |
 
 Zone boundaries are based on your average CTL: balanced is 0.8x to 1.3x, strained is 1.3x to 1.7x, very strained is above 1.7x.
 
@@ -73,26 +73,26 @@ This is because the 42-day CTL time constant needs approximately 42 days of data
 
 Training load settings can be adjusted in user settings:
 
-| Setting | Default | Description |
-|---|---|---|
-| **Max HR** | Auto-detected | Overrides the maximum heart rate used for TRIMP calculation. Falls back to: highest observed HR in the last year, then 220 - age, then 190 bpm. |
-| **Resting HR** | Auto-detected | Overrides resting HR. Falls back to: most recent resting HR metric, then 60 bpm. |
-| **Acute time constant** | 7 days | Controls how quickly the fatigue (ATL) EMA responds. Lower = more responsive. |
-| **Chronic time constant** | 42 days | Controls how quickly the fitness (CTL) EMA responds. Lower = more responsive. |
-| **Activity impulse scale** | 0.1 | Converts active calories to impulse units. |
+| Setting                    | Default       | Description                                                                                                                                     |
+| -------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Max HR**                 | Auto-detected | Overrides the maximum heart rate used for TRIMP calculation. Falls back to: highest observed HR in the last year, then 220 - age, then 190 bpm. |
+| **Resting HR**             | Auto-detected | Overrides resting HR. Falls back to: most recent resting HR metric, then 60 bpm.                                                                |
+| **Acute time constant**    | 7 days        | Controls how quickly the fatigue (ATL) EMA responds. Lower = more responsive.                                                                   |
+| **Chronic time constant**  | 42 days       | Controls how quickly the fitness (CTL) EMA responds. Lower = more responsive.                                                                   |
+| **Activity impulse scale** | 0.1           | Converts active calories to impulse units.                                                                                                      |
 
 The TRIMP formula uses a sex-dependent weighting constant (k-factor): 1.92 for males, 1.67 for females. This is automatically selected based on your biological sex setting.
 
 ## What Data It Needs
 
-| Input | Source | Used for |
-|---|---|---|
-| Exercise sessions | Oura, Garmin, Health Connect | TRIMP calculation (with HR data) |
-| Heart rate during exercise | Any HR source overlapping exercise sessions | Accurate TRIMP scoring |
-| Active calories | Health Connect aggregate, HR-computed | Activity impulse |
-| Resting heart rate | Oura, Garmin, Health Connect | TRIMP baseline |
-| Max heart rate | Observed from data, or manual setting | TRIMP scaling |
-| Biological sex | User settings | TRIMP k-factor selection |
+| Input                      | Source                                      | Used for                         |
+| -------------------------- | ------------------------------------------- | -------------------------------- |
+| Exercise sessions          | Oura, Garmin, Health Connect                | TRIMP calculation (with HR data) |
+| Heart rate during exercise | Any HR source overlapping exercise sessions | Accurate TRIMP scoring           |
+| Active calories            | Health Connect aggregate, HR-computed       | Activity impulse                 |
+| Resting heart rate         | Oura, Garmin, Health Connect                | TRIMP baseline                   |
+| Max heart rate             | Observed from data, or manual setting       | TRIMP scaling                    |
+| Biological sex             | User settings                               | TRIMP k-factor selection         |
 
 Training load works with just exercise sessions (using duration fallback), but is most accurate with heart rate data during workouts.
 

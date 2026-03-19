@@ -30,7 +30,6 @@ import {
   queryMetricsQuerySchema,
   type QueryMetricsResponse,
   type RecalculateCaloriesBody,
-  recalculateCaloriesBodySchema,
   type RecalculateCaloriesResponse,
   type UpdateCustomMetricBody,
   updateCustomMetricBodySchema,
@@ -39,7 +38,7 @@ import { type RequestHandler, Router } from 'express'
 
 import { getUserSettings } from '../db/index.ts'
 import { isValidMetricOrCustom, type MetricType, validMetrics } from '../schema.ts'
-import { computeAndStoreCalories } from '../services/calorie-computation.ts'
+import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -160,13 +159,30 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
   )
 
   // POST /metrics/recalculate-calories - Recalculate calorie burn from HR data
-  router.post<Record<string, never>, RecalculateCaloriesResponse, RecalculateCaloriesBody>(
+  // With start/end: synchronous range recompute. Without: async full recompute.
+  router.post<Record<string, never>, RecalculateCaloriesResponse, Partial<RecalculateCaloriesBody>>(
     '/metrics/recalculate-calories',
     authMiddleware,
-    validateBody(recalculateCaloriesBodySchema),
     async (req, res) => {
       const { start, end } = req.body
       const user = req.user!
+
+      if (!start || !end) {
+        // Full recompute runs async — fire and forget
+        computeAndStoreCaloriesAll(user).then(
+          (result) =>
+            console.log(
+              `🔥 Async calorie recompute done for ${user}: ${result.points_stored} points across ${result.days_processed} days`,
+            ),
+          (error) => console.error(`🔥 Async calorie recompute failed for ${user}:`, error),
+        )
+        return res.json({
+          points_computed: 0,
+          points_stored: 0,
+          skipped_reason: 'full recomputation started in background',
+          success: true,
+        })
+      }
 
       const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
       res.json({ ...result, success: true })
