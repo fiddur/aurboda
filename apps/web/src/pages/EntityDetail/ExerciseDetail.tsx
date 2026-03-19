@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { Activity } from '../../state/api'
 
 import { fetchMetricTimeSeries } from '../../state/api'
+import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 
@@ -60,6 +61,18 @@ export const resolveExerciseType = (activity: Activity): string | undefined => {
     (data?.exerciseTypeName as string | undefined) ??
     (typeof data?.exerciseType === 'number' ? getExerciseTypeName(data.exerciseType) : undefined)
   )
+}
+
+/** Resolve exercise icon from item_icons based on activity data. */
+const resolveExerciseIcon = (
+  activity: Activity,
+  itemIcons: Record<string, string>,
+): { exerciseType: string | undefined; displayName: string | undefined; icon: string | undefined } => {
+  const exerciseType = resolveExerciseType(activity)
+  const displayName = exerciseType ? formatExerciseTypeName(exerciseType) : undefined
+  const iconKey = displayName ? `exercise:${displayName}` : 'activity:exercise'
+  const icon = resolveItemIcon(iconKey, itemIcons)
+  return { displayName, exerciseType, icon }
 }
 
 /** Exercise type selector for edit mode. */
@@ -131,16 +144,18 @@ export const ExerciseDetail = ({
   isEditing,
   draft,
   onDraftChange,
+  itemIcons,
 }: {
   activity: Activity
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (d: ActivityDraft) => void
+  itemIcons: Record<string, string>
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
-  const exerciseType = resolveExerciseType(activity)
+  const { exerciseType, displayName, icon } = resolveExerciseIcon(activity, itemIcons)
 
   const caloriesQuery = useQuery({
     queryFn: () => fetchMetricTimeSeries('calories_active', displayStart, displayEnd),
@@ -164,13 +179,15 @@ export const ExerciseDetail = ({
         </div>
 
         <EditableActivityFields
-          title={activity.title || (exerciseType ? formatExerciseTypeName(exerciseType) : 'Exercise')}
+          title={activity.title || (displayName ?? 'Exercise')}
           displayStart={displayStart}
           displayEnd={displayEnd}
           notes={activity.notes}
           isEditing={isEditing}
           draft={draft}
           onDraftChange={onDraftChange}
+          icon={icon}
+          titleHref={exerciseType ? `/exercise/${encodeURIComponent(exerciseType)}` : undefined}
         />
 
         {isEditing && (

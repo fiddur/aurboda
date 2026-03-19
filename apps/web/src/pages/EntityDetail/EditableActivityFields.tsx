@@ -2,6 +2,7 @@
  * Shared component that renders activity title, time, duration, and notes
  * in either read mode (plain text) or edit mode (input fields).
  */
+import { IconPreview } from '../../components/IconPreview'
 import { formatDateTime, formatDuration, formatTime } from './format-utils'
 
 export interface ActivityDraft {
@@ -22,6 +23,10 @@ interface EditableActivityFieldsProps {
   onDraftChange: (draft: ActivityDraft) => void
   /** Label for the duration row (e.g. "In Bed" for sleep). Defaults to "Duration". */
   durationLabel?: string
+  /** Icon (emoji or URL) to display next to the title. */
+  icon?: string
+  /** Optional link URL for the title. */
+  titleHref?: string
 }
 
 export const EditableActivityFields = ({
@@ -33,6 +38,8 @@ export const EditableActivityFields = ({
   draft,
   onDraftChange,
   durationLabel = 'Duration',
+  icon,
+  titleHref,
 }: EditableActivityFieldsProps) => {
   if (isEditing) {
     const draftStart = new Date(draft.start_time)
@@ -91,9 +98,20 @@ export const EditableActivityFields = ({
     )
   }
 
+  const titleContent = titleHref ? (
+    <a href={titleHref} class="entity-meta-link">
+      {title}
+    </a>
+  ) : (
+    title
+  )
+
   return (
     <>
-      <h2>{title}</h2>
+      <h2 class="entity-title-with-icon">
+        {icon && <IconPreview icon={icon} size={28} />}
+        {titleContent}
+      </h2>
 
       <div class="entity-fields">
         <div class="field-row">

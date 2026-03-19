@@ -1,14 +1,20 @@
+import type { Tag } from '../../state/api'
+
 /**
  * Tag detail view.
  */
-import type { Tag } from '../../state/api'
-
+import { IconPreview } from '../../components/IconPreview'
+import { resolveItemIcon, suggestEmoji } from '../../utils/emojiLookup'
 import { formatDateTime, formatDuration, formatTime } from './format-utils'
 
-export const TagDetail = ({ tag }: { tag: Tag }) => {
+export const TagDetail = ({ tag, itemIcons }: { tag: Tag; itemIcons: Record<string, string> }) => {
   const end = tag.end_time
   const isPoint = !end
   const tagMetaKey = tag.tag_key ?? tag.tag
+  const icon =
+    resolveItemIcon(tag.tag, itemIcons) ??
+    (tag.tag_key ? resolveItemIcon(tag.tag_key, itemIcons) : undefined) ??
+    suggestEmoji(tag.tag)
 
   return (
     <div class="entity-info">
@@ -17,7 +23,8 @@ export const TagDetail = ({ tag }: { tag: Tag }) => {
         {tag.source && <span class="entity-source">Source: {tag.source}</span>}
       </div>
 
-      <h2>
+      <h2 class="entity-title-with-icon">
+        {icon && <IconPreview icon={icon} size={28} />}
         <a href={`/tag/${encodeURIComponent(tagMetaKey)}`} class="entity-meta-link">
           {tag.tag}
         </a>

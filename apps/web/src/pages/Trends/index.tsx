@@ -278,7 +278,7 @@ function TrendConfigForm({
   submitLabel?: string
 }) {
   const [name, setName] = useState(initialValues?.name ?? '')
-  const [sourceType, setSourceType] = useState<'tag' | 'metric' | 'productivity_category'>(
+  const [sourceType, setSourceType] = useState<'tag' | 'metric' | 'productivity_category' | 'activity_type'>(
     initialValues?.params.source_type ?? 'tag',
   )
   const [pattern, setPattern] = useState(initialValues?.params.pattern ?? '')

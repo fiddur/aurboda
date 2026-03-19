@@ -5,6 +5,8 @@ import type { ScreentimeCategory } from '@aurboda/api-spec'
 
 import type { ProductivityRecord } from '../../state/api'
 
+import { IconPreview } from '../../components/IconPreview'
+import { resolveItemIcon } from '../../utils/emojiLookup'
 import { formatDuration, formatTime } from './format-utils'
 
 const productivityScoreLabel = (score: number | undefined | null): string => {
@@ -59,14 +61,32 @@ const resolveProductivityScore = (
   return record.productivity
 }
 
+/** Resolve icon for a productivity record by walking its category path. */
+const resolveCategoryIcon = (
+  record: ProductivityRecord,
+  categories: ScreentimeCategory[],
+  itemIcons: Record<string, string>,
+): string | undefined => {
+  if (!record.resolved_category || record.resolved_category.length === 0) return undefined
+  for (let depth = record.resolved_category.length; depth > 0; depth--) {
+    const path = record.resolved_category.slice(0, depth).join(' > ')
+    const icon = resolveItemIcon(`category:${path}`, itemIcons)
+    if (icon) return icon
+  }
+  return undefined
+}
+
 export const ProductivityDetail = ({
   record,
   categories = [],
+  itemIcons = {},
 }: {
   record: ProductivityRecord
   categories?: ScreentimeCategory[]
+  itemIcons?: Record<string, string>
 }) => {
   const titleHref = getTitleHref(record, categories)
+  const icon = resolveCategoryIcon(record, categories, itemIcons)
 
   return (
     <div class="entity-info">
@@ -75,7 +95,8 @@ export const ProductivityDetail = ({
         {record.is_mobile && <span class="entity-source">Mobile</span>}
       </div>
 
-      <h2>
+      <h2 class="entity-title-with-icon">
+        {icon && <IconPreview icon={icon} size={28} />}
         <a href={titleHref} class="entity-title-link">
           {record.activity}
         </a>

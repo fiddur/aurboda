@@ -12,11 +12,13 @@ import { baseResponseSchema } from './common.ts'
 /**
  * Source type for trend calculation.
  */
-export const trendSourceTypeSchema = z.enum(['tag', 'metric', 'productivity_category']).meta({
-  description: 'Type of data source for trend calculation',
-  example: 'tag',
-  id: 'TrendSourceType',
-})
+export const trendSourceTypeSchema = z
+  .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
+  .meta({
+    description: 'Type of data source for trend calculation',
+    example: 'tag',
+    id: 'TrendSourceType',
+  })
 
 export type TrendSourceType = z.infer<typeof trendSourceTypeSchema>
 
