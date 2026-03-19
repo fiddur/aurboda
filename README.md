@@ -205,6 +205,7 @@ Replace `:latest` with `:develop` in docker-compose.yml to use development build
 
 Detailed documentation for specific features and data processing pipelines:
 
+- [Timeline](docs/features/timeline.md) -- Multi-track interactive day view with activities, metrics, music, location, and more
 - [Active Calorie Computation](docs/features/calories.md) -- HR-based calculation, gap-fill, source filtering
 
 ---
