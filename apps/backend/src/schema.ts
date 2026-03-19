@@ -8,6 +8,7 @@
 // Re-export common types from shared api-spec package
 export {
   aurbodaOnlyMetrics,
+  aurbodaOnlySources,
   contextualHrvMetrics,
   cumulativeMetrics,
   cumulativeSources,

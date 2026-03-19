@@ -395,6 +395,7 @@ export interface UserSettings {
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
   custom_metrics?: CustomMetricDefinition[] // User-defined custom metric types
   dashboard?: DashboardConfig // Custom dashboard configuration
+  device_timezone?: string // IANA timezone from the Android device (e.g. "Europe/Stockholm")
   goals?: Goal[] // User-defined goals for tracking metrics
   hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   lastfm_username?: string // Last.fm username for scrobble sync

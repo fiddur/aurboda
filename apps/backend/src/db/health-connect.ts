@@ -410,10 +410,81 @@ export const deleteHealthConnectRecords = async (user: string, externalIds: stri
 // ============================================================================
 
 /**
+ * Convert a date string (YYYY-MM-DD) to midnight in the given IANA timezone, returned as UTC.
+ * E.g., "2026-03-18" + "Europe/Stockholm" (CET, UTC+1) → 2026-03-17T23:00:00Z
+ *
+ * Falls back to UTC midnight if timezone is invalid or missing.
+ */
+export const localMidnightToUtc = (dateStr: string, timezone?: string): Date => {
+  if (!timezone) {
+    const time = new Date(dateStr)
+    time.setUTCHours(0, 0, 0, 0)
+    return time
+  }
+
+  try {
+    // Parse the date components to avoid Date constructor timezone ambiguity
+    const [y, m, d] = dateStr.split('-').map(Number)
+
+    // Use Intl.DateTimeFormat to find the UTC offset for this date in this timezone.
+    // Create a UTC date at midnight, then find what UTC time corresponds to local midnight.
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+
+    // Binary-search approach: start from UTC midnight of the target date,
+    // then adjust based on the timezone offset.
+    // A simpler approach: construct a date string with timezone and parse it.
+    const utcGuess = new Date(Date.UTC(y, m - 1, d, 0, 0, 0))
+
+    // Get what local time this UTC time corresponds to
+    const parts = formatter.formatToParts(utcGuess)
+    const localHour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0)
+    const localDay = Number(parts.find((p) => p.type === 'day')?.value ?? d)
+    const localMonth = Number(parts.find((p) => p.type === 'month')?.value ?? m)
+
+    // Calculate offset: if UTC midnight shows as local 01:00 on same day, offset is +1h
+    // So local midnight is 1 hour before UTC midnight → UTC 23:00 previous day
+    let offsetMs: number
+    if (localDay === d && localMonth === m) {
+      // Same day: offset in hours is localHour
+      offsetMs = localHour * 60 * 60 * 1000
+    } else if (localDay > d || localMonth > m) {
+      // Crossed to next day: offset is positive and large (e.g., UTC+12)
+      offsetMs = localHour * 60 * 60 * 1000 + 24 * 60 * 60 * 1000
+    } else {
+      // Crossed to previous day: offset is negative (e.g., UTC-12)
+      offsetMs = (localHour - 24) * 60 * 60 * 1000
+    }
+
+    // Local midnight = UTC midnight - offset
+    return new Date(utcGuess.getTime() - offsetMs)
+  } catch {
+    // Invalid timezone: fall back to UTC midnight
+    const time = new Date(dateStr)
+    time.setUTCHours(0, 0, 0, 0)
+    return time
+  }
+}
+
+/**
  * Process a daily aggregate from Health Connect.
  * Stores deduplicated daily totals for cumulative metrics.
+ *
+ * When timezone is provided, the aggregate is stored at local midnight
+ * converted to UTC, ensuring correct day alignment for gap-fill.
  */
-export const processDailyAggregate = async (user: string, aggregate: DailyAggregate) => {
+export const processDailyAggregate = async (
+  user: string,
+  aggregate: DailyAggregate & { timezone?: string },
+): Promise<string | undefined> => {
   if (!isValidMetric(aggregate.metric)) {
     console.warn(`Invalid metric in daily aggregate: ${aggregate.metric}`)
     return
@@ -425,9 +496,8 @@ export const processDailyAggregate = async (user: string, aggregate: DailyAggreg
     return
   }
 
-  // Parse the date and set to midnight UTC
-  const time = new Date(aggregate.date)
-  time.setUTCHours(0, 0, 0, 0)
+  // Convert date to local midnight in the device's timezone (or UTC midnight if no timezone)
+  const time = localMidnightToUtc(aggregate.date, aggregate.timezone)
 
   await query(
     user,
@@ -436,6 +506,8 @@ export const processDailyAggregate = async (user: string, aggregate: DailyAggreg
      ON CONFLICT (time, metric, source) DO UPDATE SET value = EXCLUDED.value`,
     [time, metric, aggregate.value, metricUnits[metric]],
   )
+
+  return aggregate.timezone
 }
 
 /**

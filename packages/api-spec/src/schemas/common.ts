@@ -131,6 +131,7 @@ export const dataSourceSchema = z
   .enum([
     'activitywatch',
     'aurboda',
+    'aurboda_gap_fill',
     'health_connect',
     'health_connect_aggregate',
     'lab_report',
@@ -329,7 +330,7 @@ export const cumulativeMetrics: MetricType[] = [
 export const cumulativeSources: DataSource[] = ['health_connect_aggregate', 'aurboda']
 
 /**
- * Metrics where 'aurboda' per-minute data should be used exclusively
+ * Metrics where aurboda-computed per-minute data should be used exclusively
  * instead of mixing with 'health_connect_aggregate' daily totals.
  *
  * When aurboda computes per-minute values (e.g., calories from HR data),
@@ -337,6 +338,13 @@ export const cumulativeSources: DataSource[] = ['health_connect_aggregate', 'aur
  * nonsense if AVG'd with per-minute values in the same bucket.
  */
 export const aurbodaOnlyMetrics: MetricType[] = ['calories_active']
+
+/**
+ * Sources used for aurboda-only metrics: HR-computed values and gap-fill estimates.
+ * Gap-fill uses a separate source so HR computation can detect and replace gap-filled
+ * minutes when real HR data arrives later.
+ */
+export const aurbodaOnlySources: DataSource[] = ['aurboda', 'aurboda_gap_fill']
 
 /**
  * Place visit source schema.
