@@ -11,7 +11,9 @@ import {
   getScreentimeCategories,
   getScreentimeCategoryById,
   insertScreentimeCategory,
+  moveScreentimeCategory,
   updateScreentimeCategory,
+  upsertScreentimeCategory,
 } from '../db/index.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 
@@ -319,6 +321,138 @@ describe('Screentime Categories Integration Tests', () => {
       expect(result[0].sort_order).toBe(0)
       expect(result[1].sort_order).toBe(1)
       expect(result[2].sort_order).toBe(2)
+    })
+  })
+
+  // ========================================================================
+  // upsertScreentimeCategory
+  // ========================================================================
+
+  describe('upsertScreentimeCategory', () => {
+    test('creates a new category with specified UUID', async () => {
+      const user = getTestUser()
+      const id = '11111111-1111-1111-1111-111111111111'
+      const result = await upsertScreentimeCategory(user, id, {
+        name: ['Test'],
+        rule_type: 'none',
+      })
+
+      expect(result.id).toBe(id)
+      expect(result.name).toEqual(['Test'])
+    })
+
+    test('updates existing category on conflict', async () => {
+      const user = getTestUser()
+      const created = await insertScreentimeCategory(user, {
+        name: ['Original'],
+        rule_type: 'none',
+      })
+
+      const result = await upsertScreentimeCategory(user, created.id, {
+        name: ['Updated'],
+        rule_regex: 'test',
+        rule_type: 'regex',
+      })
+
+      expect(result.id).toBe(created.id)
+      expect(result.name).toEqual(['Updated'])
+      expect(result.rule_regex).toBe('test')
+      expect(result.rule_type).toBe('regex')
+    })
+
+    test('preserves exclude_from_screentime flag', async () => {
+      const user = getTestUser()
+      const id = '22222222-2222-2222-2222-222222222222'
+      const result = await upsertScreentimeCategory(user, id, {
+        exclude_from_screentime: true,
+        name: ['Excluded'],
+        rule_type: 'none',
+      })
+
+      expect(result.exclude_from_screentime).toBe(true)
+    })
+  })
+
+  // ========================================================================
+  // moveScreentimeCategory
+  // ========================================================================
+
+  describe('moveScreentimeCategory', () => {
+    test('moves a top-level category under a parent', async () => {
+      const user = getTestUser()
+      await insertScreentimeCategory(user, { name: ['Work'], rule_type: 'none' })
+      const child = await insertScreentimeCategory(user, { name: ['Programming'], rule_type: 'none' })
+
+      const result = await moveScreentimeCategory(user, child.id, ['Work'])
+      expect(result.updated).toBe(1)
+
+      const moved = await getScreentimeCategoryById(user, child.id)
+      expect(moved!.name).toEqual(['Work', 'Programming'])
+    })
+
+    test('moves a child category to top level', async () => {
+      const user = getTestUser()
+      await insertScreentimeCategory(user, { name: ['Work'], rule_type: 'none' })
+      const child = await insertScreentimeCategory(user, {
+        name: ['Work', 'Programming'],
+        rule_type: 'none',
+      })
+
+      const result = await moveScreentimeCategory(user, child.id, null)
+      expect(result.updated).toBe(1)
+
+      const moved = await getScreentimeCategoryById(user, child.id)
+      expect(moved!.name).toEqual(['Programming'])
+    })
+
+    test('cascades to children when moving a parent', async () => {
+      const user = getTestUser()
+      await insertScreentimeCategory(user, { name: ['Media'], rule_type: 'none' })
+      const work = await insertScreentimeCategory(user, { name: ['Work'], rule_type: 'none' })
+      const prog = await insertScreentimeCategory(user, {
+        name: ['Work', 'Programming'],
+        rule_type: 'none',
+      })
+      const aw = await insertScreentimeCategory(user, {
+        name: ['Work', 'Programming', 'ActivityWatch'],
+        rule_type: 'none',
+      })
+
+      // Move Work under Media
+      const result = await moveScreentimeCategory(user, work.id, ['Media'])
+      expect(result.updated).toBe(3) // Work + Programming + ActivityWatch
+
+      const movedWork = await getScreentimeCategoryById(user, work.id)
+      expect(movedWork!.name).toEqual(['Media', 'Work'])
+
+      const movedProg = await getScreentimeCategoryById(user, prog.id)
+      expect(movedProg!.name).toEqual(['Media', 'Work', 'Programming'])
+
+      const movedAw = await getScreentimeCategoryById(user, aw.id)
+      expect(movedAw!.name).toEqual(['Media', 'Work', 'Programming', 'ActivityWatch'])
+    })
+
+    test('returns 0 updated for non-existent category', async () => {
+      const user = getTestUser()
+      const result = await moveScreentimeCategory(user, '99999999-9999-9999-9999-999999999999', null)
+      expect(result.updated).toBe(0)
+    })
+
+    test('moves category with no children', async () => {
+      const user = getTestUser()
+      await insertScreentimeCategory(user, { name: ['Media'], rule_type: 'none' })
+      const cat = await insertScreentimeCategory(user, {
+        name: ['Work'],
+        rule_type: 'regex',
+        rule_regex: 'test',
+      })
+
+      const result = await moveScreentimeCategory(user, cat.id, ['Media'])
+      expect(result.updated).toBe(1)
+
+      const moved = await getScreentimeCategoryById(user, cat.id)
+      expect(moved!.name).toEqual(['Media', 'Work'])
+      expect(moved!.rule_regex).toBe('test') // Other fields preserved
     })
   })
 })

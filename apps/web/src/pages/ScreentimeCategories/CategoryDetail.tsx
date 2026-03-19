@@ -1,7 +1,9 @@
 /**
- * Category detail/info page.
- * Shows category details, icon editing, matched apps (with remove),
- * child categories, and uncategorized apps (with add-to-category).
+ * Category detail/edit page.
+ *
+ * Serves as both the view and edit page for a screentime category.
+ * All fields auto-save on blur. Also handles creation of new categories
+ * when navigating to a UUID that doesn't exist yet.
  */
 import type { ScreentimeCategory } from '@aurboda/api-spec'
 
@@ -17,9 +19,11 @@ import {
   fetchScreentimeCategoryById,
   fetchTrend,
   fetchUserSettings,
+  moveScreentimeCategory,
   recategorizeScreentime,
   updateScreentimeCategory,
   updateUserSettings,
+  upsertScreentimeCategory,
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { isEmoji, isUrl, suggestEmoji } from '../../utils/emojiLookup'
@@ -30,18 +34,6 @@ import './style.css'
 // Helpers
 // ============================================================================
 
-const productivityScoreLabel = (score: number | undefined): string => {
-  if (score === undefined) return 'Inherited from parent'
-  const labels: Record<number, string> = {
-    [-2]: 'Very Distracting',
-    [-1]: 'Distracting',
-    0: 'Neutral',
-    1: 'Productive',
-    2: 'Very Productive',
-  }
-  return labels[score] ?? `${score}`
-}
-
 const formatDuration = (totalSec: number): string => {
   const hours = Math.floor(totalSec / 3600)
   const minutes = Math.floor((totalSec % 3600) / 60)
@@ -49,28 +41,17 @@ const formatDuration = (totalSec: number): string => {
   return `${minutes}m`
 }
 
-/** Build the item_icons key for a category. */
 const categoryIconKey = (name: string[]): string => `category:${name.join(' > ')}`
 
-/**
- * Parse a pipe-separated regex into individual terms.
- * E.g. "GitHub|Stack Overflow|vscode" -> ["GitHub", "Stack Overflow", "vscode"]
- */
 const parseRegexTerms = (regex: string): string[] =>
   regex
     .split('|')
     .map((t) => t.trim())
     .filter(Boolean)
 
-/**
- * Build a pipe-separated regex from terms.
- * Escapes regex special chars in each term so they match literally.
- */
 const escapeRegexChars = (s: string): string => s.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
 const buildRegex = (terms: string[]): string => terms.map(escapeRegexChars).join('|')
 
-/** Find child categories of the given category. */
 const getChildren = (categories: ScreentimeCategory[], parent: ScreentimeCategory): ScreentimeCategory[] =>
   categories.filter(
     (c) =>
@@ -78,13 +59,11 @@ const getChildren = (categories: ScreentimeCategory[], parent: ScreentimeCategor
       c.name.slice(0, parent.name.length).join(' > ') === parent.name.join(' > '),
   )
 
-/** Check if a resolved_category path matches or is a child of this category. */
 const matchesCategory = (resolved: string[] | undefined, categoryName: string[]): boolean => {
   if (!resolved || resolved.length < categoryName.length) return false
   return categoryName.every((seg, i) => resolved[i] === seg)
 }
 
-/** Get apps that match this specific category (not child categories). */
 const getMatchedApps = (apps: DistinctApp[], categoryName: string[]): DistinctApp[] =>
   apps.filter(
     (app) =>
@@ -93,51 +72,142 @@ const getMatchedApps = (apps: DistinctApp[], categoryName: string[]): DistinctAp
       matchesCategory(app.resolved_category, categoryName),
   )
 
-/** Get apps that match this category or any of its children. */
 const getAllMatchedApps = (apps: DistinctApp[], categoryName: string[]): DistinctApp[] =>
   apps.filter((app) => matchesCategory(app.resolved_category, categoryName))
 
-/** Get uncategorized apps (no resolved_category). */
 const getUncategorizedApps = (apps: DistinctApp[]): DistinctApp[] =>
   apps.filter((app) => !app.resolved_category)
 
 // ============================================================================
-// Sub-components
+// Auto-save field component
 // ============================================================================
 
-function CategoryBreadcrumb({
-  categories,
-  category,
+function AutoSaveText({
+  label,
+  value,
+  onSave,
+  placeholder,
+  mono,
 }: {
-  categories: ScreentimeCategory[]
-  category: ScreentimeCategory
+  label: string
+  value: string
+  onSave: (v: string) => void
+  placeholder?: string
+  mono?: boolean
 }) {
-  const segments = category.name
+  const [local, setLocal] = useState(value)
+  const handleBlur = () => {
+    if (local !== value) onSave(local)
+  }
 
   return (
-    <nav class="category-breadcrumb">
-      <a href="/screentime-categories">Categories</a>
-      {segments.map((segment, i) => {
-        const path = segments.slice(0, i + 1)
-        const parentCat = categories.find((c) => c.name.join(' > ') === path.join(' > '))
-        const isLast = i === segments.length - 1
-
-        return (
-          <span key={i}>
-            <span class="breadcrumb-separator">&gt;</span>
-            {isLast ? (
-              <span class="breadcrumb-current">{segment}</span>
-            ) : parentCat ? (
-              <a href={`/screentime-categories/${parentCat.id}`}>{segment}</a>
-            ) : (
-              <span>{segment}</span>
-            )}
-          </span>
-        )
-      })}
-    </nav>
+    <div class="field-row">
+      <span class="field-label">{label}</span>
+      <span class="field-value">
+        <input
+          type="text"
+          value={local}
+          onInput={(e) => setLocal((e.target as HTMLInputElement).value)}
+          onBlur={handleBlur}
+          placeholder={placeholder}
+          class={`auto-save-input${mono ? ' mono' : ''}`}
+        />
+      </span>
+    </div>
   )
 }
+
+function AutoSaveSelect({
+  label,
+  value,
+  onSave,
+  options,
+}: {
+  label: string
+  value: string
+  onSave: (v: string) => void
+  options: Array<{ value: string; label: string }>
+}) {
+  return (
+    <div class="field-row">
+      <span class="field-label">{label}</span>
+      <span class="field-value">
+        <select
+          value={value}
+          onChange={(e) => onSave((e.target as HTMLSelectElement).value)}
+          class="auto-save-select"
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </span>
+    </div>
+  )
+}
+
+function AutoSaveCheckbox({
+  label,
+  checked,
+  onSave,
+}: {
+  label: string
+  checked: boolean
+  onSave: (v: boolean) => void
+}) {
+  return (
+    <div class="field-row">
+      <span class="field-label">{label}</span>
+      <span class="field-value">
+        <label class="auto-save-checkbox">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(e) => onSave((e.target as HTMLInputElement).checked)}
+          />
+        </label>
+      </span>
+    </div>
+  )
+}
+
+function AutoSaveColor({
+  label,
+  value,
+  onSave,
+}: {
+  label: string
+  value: string
+  onSave: (v: string) => void
+}) {
+  return (
+    <div class="field-row">
+      <span class="field-label">{label}</span>
+      <span class="field-value">
+        <div class="auto-save-color-row">
+          <input
+            type="color"
+            value={value || '#888888'}
+            onInput={(e) => onSave((e.target as HTMLInputElement).value)}
+            class="auto-save-color-input"
+          />
+          {value && (
+            <button type="button" class="sc-clear-btn" onClick={() => onSave('')} title="Clear (inherit)">
+              x
+            </button>
+          )}
+          {!value && <span class="muted">Inherited from parent</span>}
+        </div>
+      </span>
+    </div>
+  )
+}
+
+// ============================================================================
+// Icon editor (reused from previous implementation)
+// ============================================================================
 
 function IconPreview({ icon }: { icon: string }) {
   if (!icon) return null
@@ -163,14 +233,11 @@ function CategoryIconEditor({
 }) {
   const [iconValue, setIconValue] = useState<string | undefined>(undefined)
   const shownIcon = iconValue ?? currentIcon
-
-  // Suggest emoji based on the leaf category name
   const leafName = categoryName[categoryName.length - 1] ?? ''
   const suggested = !shownIcon ? suggestEmoji(leafName) : undefined
 
   const saveMutation = useMutation({
     mutationFn: async (icon: string) => {
-      // Read current settings, merge our icon, save back
       const settings = await fetchUserSettings()
       const currentIcons = settings.item_icons ?? {}
       const key = categoryIconKey(categoryName)
@@ -182,14 +249,11 @@ function CategoryIconEditor({
       }
       await updateUserSettings({ item_icons: newIcons })
     },
-    onSuccess: () => {
-      onSaved()
-    },
+    onSuccess: onSaved,
   })
 
   const handleBlur = () => {
-    if (iconValue === undefined) return
-    if (iconValue === currentIcon) return
+    if (iconValue === undefined || iconValue === currentIcon) return
     saveMutation.mutate(iconValue)
   }
 
@@ -220,14 +284,163 @@ function CategoryIconEditor({
               {suggested}?
             </button>
           )}
-          {saveMutation.isPending && <span class="category-save-status">Saving...</span>}
         </div>
       </span>
     </div>
   )
 }
 
-/** Aggregate DistinctApp rows by app name, summing durations and counts. */
+// ============================================================================
+// Parent selector (for reparenting)
+// ============================================================================
+
+function ParentSelector({
+  category,
+  allCategories,
+  onMoved,
+}: {
+  category: ScreentimeCategory
+  allCategories: ScreentimeCategory[]
+  onMoved: () => void
+}) {
+  const queryClient = useQueryClient()
+  const currentParentPath = category.name.slice(0, -1)
+  const currentParentKey = currentParentPath.join(' > ') || '__top__'
+
+  // Exclude self and descendants
+  const isDescendant = (cat: ScreentimeCategory): boolean =>
+    cat.name.length >= category.name.length && category.name.every((s, i) => s === cat.name[i])
+
+  const availableParents = allCategories.filter((c) => !isDescendant(c))
+
+  const moveMutation = useMutation({
+    mutationFn: async (newParentId: string | null) => {
+      await moveScreentimeCategory(category.id, newParentId)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['screentime-categories'] })
+      queryClient.invalidateQueries({ queryKey: ['screentime-category', category.id] })
+      onMoved()
+    },
+  })
+
+  const handleChange = (value: string) => {
+    if (value === currentParentKey) return
+    const newParentId = value === '__top__' ? null : value
+    moveMutation.mutate(newParentId)
+  }
+
+  return (
+    <AutoSaveSelect
+      label="Parent"
+      value={currentParentKey}
+      onSave={handleChange}
+      options={[
+        { label: 'Top level', value: '__top__' },
+        ...availableParents.map((c) => ({
+          label: c.name.join(' > '),
+          value: c.id,
+        })),
+      ]}
+    />
+  )
+}
+
+// ============================================================================
+// Editable fields section
+// ============================================================================
+
+function EditableFields({
+  category,
+  allCategories,
+  currentIcon,
+  totalTime,
+  onFieldSaved,
+  onIconSaved,
+  onMoved,
+}: {
+  category: ScreentimeCategory
+  allCategories: ScreentimeCategory[]
+  currentIcon: string
+  totalTime: number
+  onFieldSaved: () => void
+  onIconSaved: () => void
+  onMoved: () => void
+}) {
+  const saveField = (field: string, value: unknown) => {
+    const body: Record<string, unknown> = { [field]: value }
+    // If changing regex, also update rule_type
+    if (field === 'rule_regex') {
+      body.rule_type = value ? 'regex' : 'none'
+    }
+    updateScreentimeCategory(category.id, body).then(onFieldSaved)
+  }
+
+  const saveName = (leafName: string) => {
+    if (!leafName.trim()) return
+    const newName = [...category.name.slice(0, -1), leafName.trim()]
+    updateScreentimeCategory(category.id, { name: newName }).then(onFieldSaved)
+  }
+
+  return (
+    <div class="category-details">
+      <div class="entity-fields">
+        <CategoryIconEditor categoryName={category.name} currentIcon={currentIcon} onSaved={onIconSaved} />
+        <AutoSaveText
+          label="Name"
+          value={category.name[category.name.length - 1]}
+          onSave={saveName}
+          placeholder="Category name"
+        />
+        <ParentSelector category={category} allCategories={allCategories} onMoved={onMoved} />
+        <AutoSaveText
+          label="Matching rule"
+          value={category.rule_regex ?? ''}
+          onSave={(v) => saveField('rule_regex', v || undefined)}
+          placeholder="Regex pattern (e.g. Slack|Discord)"
+          mono
+        />
+        <AutoSaveColor
+          label="Color"
+          value={category.color ?? ''}
+          onSave={(v) => saveField('color', v || undefined)}
+        />
+        <AutoSaveSelect
+          label="Productivity"
+          value={category.score !== undefined ? String(category.score) : ''}
+          onSave={(v) => saveField('score', v !== '' ? parseInt(v, 10) : undefined)}
+          options={[
+            { label: 'Inherit from parent', value: '' },
+            { label: 'Very Productive (2)', value: '2' },
+            { label: 'Productive (1)', value: '1' },
+            { label: 'Neutral (0)', value: '0' },
+            { label: 'Distracting (-1)', value: '-1' },
+            { label: 'Very Distracting (-2)', value: '-2' },
+          ]}
+        />
+        <AutoSaveCheckbox
+          label="Ignore case"
+          checked={category.ignore_case}
+          onSave={(v) => saveField('ignore_case', v)}
+        />
+        <AutoSaveCheckbox
+          label="Exclude from screen time"
+          checked={category.exclude_from_screentime ?? false}
+          onSave={(v) => saveField('exclude_from_screentime', v)}
+        />
+        <div class="field-row">
+          <span class="field-label">Total tracked time</span>
+          <span class="field-value">{formatDuration(totalTime)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Matched / Uncategorized app lists (kept from previous implementation)
+// ============================================================================
+
 interface AggregatedApp {
   activity: string
   total_duration_sec: number
@@ -266,21 +479,18 @@ function MatchedAppList({
 }) {
   const queryClient = useQueryClient()
   const [removingApp, setRemovingApp] = useState<string | null>(null)
-
   const aggregated = aggregateByAppName(apps)
 
   const removeMutation = useMutation({
     mutationFn: async (appName: string) => {
       setRemovingApp(appName)
       const currentTerms = parseRegexTerms(category.rule_regex ?? '')
-      // Remove terms that match this app name (case-insensitive comparison)
       const newTerms = currentTerms.filter((t) => t.toLowerCase() !== appName.toLowerCase())
       const newRegex = newTerms.length > 0 ? buildRegex(newTerms) : undefined
       await updateScreentimeCategory(category.id, {
         rule_regex: newRegex,
         rule_type: newRegex ? 'regex' : 'none',
       })
-      // Wait for recategorization so the lists reflect the change immediately
       await recategorizeScreentime()
     },
     onSuccess: () => {
@@ -292,14 +502,7 @@ function MatchedAppList({
     onError: () => setRemovingApp(null),
   })
 
-  if (aggregated.length === 0) {
-    return (
-      <div class="category-section">
-        <h3>Matched apps</h3>
-        <p class="sc-empty">No apps match this category directly.</p>
-      </div>
-    )
-  }
+  if (aggregated.length === 0) return null
 
   return (
     <div class="category-section">
@@ -334,18 +537,93 @@ function MatchedAppList({
   )
 }
 
-/**
- * Extract a short keyword from a window title for use as a matching term.
- * E.g. "Threads - NaturalCycles - Slack — Mozilla Firefox" → "Slack"
- * Splits on common separators and picks the shortest meaningful segment.
- */
+// Simplified uncategorized list (the AddConfirmDialog is imported from the previous version)
+function UncategorizedAppList({
+  apps,
+  category,
+  total,
+  onAppAdded,
+}: {
+  apps: DistinctApp[]
+  category: ScreentimeCategory
+  total: number
+  onAppAdded: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [confirmingApp, setConfirmingApp] = useState<DistinctApp | null>(null)
+
+  const addMutation = useMutation({
+    mutationFn: async (term: string) => {
+      const currentTerms = parseRegexTerms(category.rule_regex ?? '')
+      const newTerms = [...currentTerms, term]
+      const newRegex = buildRegex(newTerms)
+      await updateScreentimeCategory(category.id, { rule_regex: newRegex, rule_type: 'regex' })
+      await recategorizeScreentime()
+    },
+    onSuccess: () => {
+      setConfirmingApp(null)
+      onAppAdded()
+      queryClient.invalidateQueries({ queryKey: ['screentime-categories'] })
+      queryClient.invalidateQueries({ queryKey: ['productivity-apps'] })
+    },
+  })
+
+  if (total === 0) return null
+
+  const headerTitle =
+    total > apps.length ? `Uncategorized apps (showing ${apps.length} of ${total})` : 'Uncategorized apps'
+
+  return (
+    <div class="category-section">
+      <h3>
+        {headerTitle} <span class="count-badge">{total}</span>
+      </h3>
+      <div class="app-list">
+        {apps.map((app) => (
+          <div key={`${app.activity}\x00${app.title ?? ''}`} class="app-row">
+            <div class="app-name-col">
+              <span class="app-name">{app.activity}</span>
+              {app.title && <span class="app-title">{app.title}</span>}
+            </div>
+            <div class="app-row-right">
+              <span class="app-stats">
+                {formatDuration(app.total_duration_sec)} &middot; {app.record_count} records
+              </span>
+              <button
+                type="button"
+                class="app-action-btn add"
+                onClick={() => setConfirmingApp(app)}
+                title={`Add to ${category.name.join(' > ')}`}
+              >
+                Add here
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {confirmingApp && (
+        <AddConfirmDialog
+          app={confirmingApp}
+          category={category}
+          onConfirm={(term) => addMutation.mutate(term)}
+          onCancel={() => setConfirmingApp(null)}
+          isPending={addMutation.isPending}
+        />
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// Add confirm dialog (kept from previous version)
+// ============================================================================
+
 const suggestTitleKeyword = (title: string): string | undefined => {
   const parts = title
     .split(/\s[—–\-|]\s|:\s/)
     .map((p) => p.trim())
     .filter((p) => p.length >= 2 && p.length <= 40)
   if (parts.length === 0) return undefined
-  // Prefer shorter segments (more likely to be an app/site name), but not the browser name
   const browserNames = [
     'mozilla firefox',
     'google chrome',
@@ -359,7 +637,6 @@ const suggestTitleKeyword = (title: string): string | undefined => {
   return filtered.reduce((a, b) => (a.length <= b.length ? a : b))
 }
 
-/** Confirmation dialog for adding an app/title to a category. */
 function AddConfirmDialog({
   app,
   category,
@@ -399,7 +676,6 @@ function AddConfirmDialog({
         <p class="add-confirm-desc">
           Choose what to match. The term will be added to the category's matching rule.
         </p>
-
         <div class="add-confirm-options">
           <label class="add-confirm-option">
             <input
@@ -415,7 +691,6 @@ function AddConfirmDialog({
               </div>
             </div>
           </label>
-
           {titleKeyword && (
             <label class="add-confirm-option">
               <input
@@ -432,7 +707,6 @@ function AddConfirmDialog({
               </div>
             </label>
           )}
-
           <label class="add-confirm-option">
             <input
               type="radio"
@@ -456,7 +730,6 @@ function AddConfirmDialog({
             </div>
           </label>
         </div>
-
         <div class="add-confirm-actions">
           <button
             type="button"
@@ -471,93 +744,6 @@ function AddConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-function UncategorizedAppList({
-  apps,
-  category,
-  total,
-  onAppAdded,
-}: {
-  apps: DistinctApp[]
-  category: ScreentimeCategory
-  total: number
-  onAppAdded: () => void
-}) {
-  const queryClient = useQueryClient()
-  const [confirmingApp, setConfirmingApp] = useState<DistinctApp | null>(null)
-
-  const addMutation = useMutation({
-    mutationFn: async (term: string) => {
-      const currentTerms = parseRegexTerms(category.rule_regex ?? '')
-      const newTerms = [...currentTerms, term]
-      const newRegex = buildRegex(newTerms)
-      await updateScreentimeCategory(category.id, {
-        rule_regex: newRegex,
-        rule_type: 'regex',
-      })
-      // Wait for recategorization so lists reflect the change immediately
-      await recategorizeScreentime()
-    },
-    onSuccess: () => {
-      setConfirmingApp(null)
-      onAppAdded()
-      queryClient.invalidateQueries({ queryKey: ['screentime-categories'] })
-      queryClient.invalidateQueries({ queryKey: ['productivity-apps'] })
-    },
-  })
-
-  const headerTitle =
-    total > apps.length ? `Uncategorized apps (showing ${apps.length} of ${total})` : 'Uncategorized apps'
-
-  if (total === 0) {
-    return (
-      <div class="category-section">
-        <h3>Uncategorized apps</h3>
-        <p class="sc-empty">All apps are categorized!</p>
-      </div>
-    )
-  }
-
-  return (
-    <div class="category-section">
-      <h3>
-        {headerTitle} <span class="count-badge">{total}</span>
-      </h3>
-      <div class="app-list">
-        {apps.map((app) => (
-          <div key={`${app.activity}\x00${app.title ?? ''}`} class="app-row">
-            <div class="app-name-col">
-              <span class="app-name">{app.activity}</span>
-              {app.title && <span class="app-title">{app.title}</span>}
-            </div>
-            <div class="app-row-right">
-              <span class="app-stats">
-                {formatDuration(app.total_duration_sec)} &middot; {app.record_count} records
-              </span>
-              <button
-                type="button"
-                class="app-action-btn add"
-                onClick={() => setConfirmingApp(app)}
-                title={`Add to ${category.name.join(' > ')}`}
-              >
-                Add here
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-      {confirmingApp && (
-        <AddConfirmDialog
-          app={confirmingApp}
-          category={category}
-          onConfirm={(term) => addMutation.mutate(term)}
-          onCancel={() => setConfirmingApp(null)}
-          isPending={addMutation.isPending}
-        />
-      )}
     </div>
   )
 }
@@ -614,52 +800,6 @@ function CategoryTrendSection({ categoryPath, color }: { categoryPath: string; c
 }
 
 // ============================================================================
-// Category info fields
-// ============================================================================
-
-function CategoryFields({
-  category,
-  currentIcon,
-  totalTime,
-  onIconSaved,
-}: {
-  category: ScreentimeCategory
-  currentIcon: string
-  totalTime: number
-  onIconSaved: () => void
-}) {
-  return (
-    <div class="category-details">
-      <div class="entity-fields">
-        <CategoryIconEditor categoryName={category.name} currentIcon={currentIcon} onSaved={onIconSaved} />
-        {category.rule_regex && (
-          <div class="field-row">
-            <span class="field-label">Matching rule</span>
-            <span class="field-value">
-              <code>{category.rule_regex}</code>
-            </span>
-          </div>
-        )}
-        {!category.rule_regex && category.rule_type === 'none' && (
-          <div class="field-row">
-            <span class="field-label">Matching rule</span>
-            <span class="field-value muted">Grouping only (no direct matching)</span>
-          </div>
-        )}
-        <div class="field-row">
-          <span class="field-label">Productivity</span>
-          <span class="field-value">{productivityScoreLabel(category.score)}</span>
-        </div>
-        <div class="field-row">
-          <span class="field-label">Total tracked time</span>
-          <span class="field-value">{formatDuration(totalTime)}</span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ============================================================================
 // Children list
 // ============================================================================
 
@@ -704,6 +844,138 @@ function ChildCategoriesList({
 }
 
 // ============================================================================
+// Breadcrumb
+// ============================================================================
+
+function CategoryBreadcrumb({
+  categories,
+  category,
+}: {
+  categories: ScreentimeCategory[]
+  category: ScreentimeCategory
+}) {
+  const segments = category.name
+
+  return (
+    <nav class="category-breadcrumb">
+      <a href="/screentime-categories">Categories</a>
+      {segments.map((segment, i) => {
+        const path = segments.slice(0, i + 1)
+        const parentCat = categories.find((c) => c.name.join(' > ') === path.join(' > '))
+        const isLast = i === segments.length - 1
+
+        return (
+          <span key={i}>
+            <span class="breadcrumb-separator">&gt;</span>
+            {isLast ? (
+              <span class="breadcrumb-current">{segment}</span>
+            ) : parentCat ? (
+              <a href={`/screentime-categories/${parentCat.id}`}>{segment}</a>
+            ) : (
+              <span>{segment}</span>
+            )}
+          </span>
+        )
+      })}
+    </nav>
+  )
+}
+
+// ============================================================================
+// New category creation mode
+// ============================================================================
+
+function NewCategoryPage({ categoryId }: { categoryId: string }) {
+  const queryClient = useQueryClient()
+  const [name, setName] = useState('')
+  const [created, setCreated] = useState(false)
+
+  // Parse parent from URL query string
+  const urlParams = new URLSearchParams(window.location.search)
+  const parentId = urlParams.get('parent')
+
+  const { data: allCategories = [] } = useQuery({
+    queryFn: fetchScreentimeCategories,
+    queryKey: ['screentime-categories'],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const parent = parentId ? allCategories.find((c) => c.id === parentId) : undefined
+
+  const createMutation = useMutation({
+    mutationFn: async (leafName: string) => {
+      const parentPath = parent ? parent.name : []
+      await upsertScreentimeCategory(categoryId, {
+        name: [...parentPath, leafName],
+      })
+    },
+    onSuccess: () => {
+      setCreated(true)
+      queryClient.invalidateQueries({ queryKey: ['screentime-categories'] })
+      queryClient.invalidateQueries({ queryKey: ['screentime-category', categoryId] })
+    },
+  })
+
+  if (created) {
+    // Category was created — re-render will load the real detail page
+    return (
+      <div class="data-sources-page">
+        <p class="loading">Loading...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div class="data-sources-page">
+      <nav class="category-breadcrumb">
+        <a href="/screentime-categories">Categories</a>
+        <span class="breadcrumb-separator">&gt;</span>
+        <span class="breadcrumb-current">New category</span>
+      </nav>
+
+      <h1>New Category</h1>
+
+      <div class="category-details">
+        <div class="entity-fields">
+          {parent && (
+            <div class="field-row">
+              <span class="field-label">Parent</span>
+              <span class="field-value">{parent.name.join(' > ')}</span>
+            </div>
+          )}
+          <div class="field-row">
+            <span class="field-label">Name</span>
+            <span class="field-value">
+              <input
+                type="text"
+                value={name}
+                onInput={(e) => setName((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && name.trim()) createMutation.mutate(name.trim())
+                }}
+                placeholder="Category name"
+                class="auto-save-input"
+                autoFocus
+              />
+            </span>
+          </div>
+        </div>
+        <div style={{ marginTop: '1rem' }}>
+          <button
+            type="button"
+            class="note-action-btn"
+            onClick={() => createMutation.mutate(name.trim())}
+            disabled={!name.trim() || createMutation.isPending}
+          >
+            {createMutation.isPending ? 'Creating...' : 'Create'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
 // Main component
 // ============================================================================
 
@@ -727,7 +999,7 @@ export function CategoryDetail() {
   })
 
   const { data: distinctApps = [] } = useQuery({
-    enabled: !!isLoggedIn,
+    enabled: !!isLoggedIn && !!category,
     queryFn: fetchDistinctApps,
     queryKey: ['productivity-apps'],
     staleTime: 5 * 60 * 1000,
@@ -766,15 +1038,39 @@ export function CategoryDetail() {
     )
   }
 
+  // If category not found, show creation mode (client-generated UUID)
   if (!category) {
-    return (
-      <div class="data-sources-page">
-        <p class="error">Category not found.</p>
-        <a href="/screentime-categories">Back to categories</a>
-      </div>
-    )
+    return <NewCategoryPage categoryId={categoryId} />
   }
 
+  return (
+    <ExistingCategoryPage
+      category={category}
+      allCategories={allCategories}
+      distinctApps={distinctApps}
+      userSettings={userSettings}
+      onFieldSaved={invalidateAll}
+      onIconSaved={invalidateIcons}
+    />
+  )
+}
+
+/** Render an existing category's detail/edit page. */
+function ExistingCategoryPage({
+  category,
+  allCategories,
+  distinctApps,
+  userSettings,
+  onFieldSaved,
+  onIconSaved,
+}: {
+  category: ScreentimeCategory
+  allCategories: ScreentimeCategory[]
+  distinctApps: DistinctApp[]
+  userSettings?: { item_icons?: Record<string, string> }
+  onFieldSaved: () => void
+  onIconSaved: () => void
+}) {
   const children = getChildren(allCategories, category)
   const matchedApps = getMatchedApps(distinctApps, category.name)
   const allMatched = getAllMatchedApps(distinctApps, category.name)
@@ -795,25 +1091,28 @@ export function CategoryDetail() {
         <h1>{category.name[category.name.length - 1]}</h1>
       </div>
 
-      <CategoryFields
+      <EditableFields
         category={category}
+        allCategories={allCategories}
         currentIcon={currentIcon}
         totalTime={totalTime}
-        onIconSaved={invalidateIcons}
+        onFieldSaved={onFieldSaved}
+        onIconSaved={onIconSaved}
+        onMoved={onFieldSaved}
       />
       <CategoryTrendSection categoryPath={category.name.join(' > ')} color={category.color ?? '#673ab8'} />
       <ChildCategoriesList children={children} distinctApps={distinctApps} icons={icons} />
-      <MatchedAppList apps={matchedApps} category={category} onAppRemoved={invalidateAll} />
+      <MatchedAppList apps={matchedApps} category={category} onAppRemoved={onFieldSaved} />
       <UncategorizedAppList
         apps={uncategorized.slice(0, 30)}
         category={category}
         total={uncategorized.length}
-        onAppAdded={invalidateAll}
+        onAppAdded={onFieldSaved}
       />
 
       <div class="category-footer">
         <a href="/screentime-categories" class="manage-link">
-          Manage all categories
+          Back to all categories
         </a>
       </div>
     </div>

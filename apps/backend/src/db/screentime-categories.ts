@@ -69,6 +69,82 @@ export const insertScreentimeCategory = async (
   return mapRow(result.rows[0])
 }
 
+/**
+ * Upsert a category by ID. Creates if it doesn't exist, updates if it does.
+ * Used by PUT /screentime-categories/:id for client-generated UUIDs.
+ */
+export const upsertScreentimeCategory = async (
+  user: string,
+  id: string,
+  input: ScreentimeCategoryInput,
+): Promise<ScreentimeCategory> => {
+  const result = await query(
+    user,
+    `INSERT INTO screentime_categories (id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (id) DO UPDATE SET
+       name = EXCLUDED.name,
+       rule_type = EXCLUDED.rule_type,
+       rule_regex = EXCLUDED.rule_regex,
+       ignore_case = EXCLUDED.ignore_case,
+       color = EXCLUDED.color,
+       score = EXCLUDED.score,
+       exclude_from_screentime = EXCLUDED.exclude_from_screentime,
+       sort_order = EXCLUDED.sort_order,
+       updated_at = NOW()
+     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, created_at, updated_at`,
+    [
+      id,
+      input.name,
+      input.rule_type ?? 'none',
+      input.rule_regex || null,
+      input.ignore_case ?? true,
+      input.color || null,
+      input.score ?? null,
+      input.exclude_from_screentime ?? false,
+      input.sort_order ?? 0,
+    ],
+  )
+
+  return mapRow(result.rows[0])
+}
+
+/**
+ * Move a category to a new parent. Updates the category's name path and
+ * all its children's name paths to reflect the new parent.
+ */
+export const moveScreentimeCategory = async (
+  user: string,
+  id: string,
+  newParentName: string[] | null,
+): Promise<{ updated: number }> => {
+  const cat = await getScreentimeCategoryById(user, id)
+  if (!cat) return { updated: 0 }
+
+  const leafName = cat.name[cat.name.length - 1]
+  const newName = newParentName ? [...newParentName, leafName] : [leafName]
+  const oldNameLength = cat.name.length
+
+  // Update the category itself
+  await query(user, `UPDATE screentime_categories SET name = $1, updated_at = NOW() WHERE id = $2`, [
+    newName,
+    id,
+  ])
+
+  // Update all children: replace the old prefix with the new prefix
+  const childResult = await query(
+    user,
+    `UPDATE screentime_categories
+     SET name = $1 || name[$2:]
+       , updated_at = NOW()
+     WHERE id != $3
+       AND name[1:$4] = $5`,
+    [newName, oldNameLength + 1, id, oldNameLength, cat.name],
+  )
+
+  return { updated: 1 + (childResult.rowCount ?? 0) }
+}
+
 export const updateScreentimeCategory = async (
   user: string,
   id: string,
