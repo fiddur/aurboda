@@ -32,13 +32,13 @@ Each table covers a different category of data:
 
 Every row displays:
 
-| Column | What it means |
-|---|---|
-| **HRV** | Your average HRV during or around that activity (in ms) |
-| **Delta HRV** | Difference from your baseline. Positive (green) = better than usual |
-| **HR** | Your average heart rate during or around that activity (in bpm) |
-| **Delta HR** | Difference from baseline. Negative (green) = lower than usual, which is typically better |
-| **Samples** | Total minutes of HR/HRV data collected |
+| Column        | What it means                                                                            |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| **HRV**       | Your average HRV during or around that activity (in ms)                                  |
+| **Delta HRV** | Difference from your baseline. Positive (green) = better than usual                      |
+| **HR**        | Your average heart rate during or around that activity (in bpm)                          |
+| **Delta HR**  | Difference from baseline. Negative (green) = lower than usual, which is typically better |
+| **Samples**   | Total minutes of HR/HRV data collected                                                   |
 
 ### Activity Impact Detail
 
@@ -76,6 +76,7 @@ The most powerful analysis tool. It supports compound triggers (multiple conditi
 ### Compound Triggers
 
 You can combine multiple conditions with AND logic. Each trigger can specify:
+
 - **What to match**: An activity type, tag, productivity category, or app name (regex patterns).
 - **Minimum count**: How many times the trigger must occur within the window (default: 1).
 - **Window**: Rolling window in days to count occurrences (default: 1 day).
@@ -100,12 +101,12 @@ Configurable time windows (e.g., 24h, 48h, 7d) determine how far after the trigg
 
 Correlation analysis requires **HRV and heart rate data** as the baseline metric. This comes from Oura, Garmin, or Health Connect. The richer your data, the more meaningful the correlations:
 
-| For correlating with... | You need... |
-|---|---|
-| Activities | Exercise/sleep/meditation data from Oura, Garmin, or Health Connect |
-| Locations | Place visits from OwnTracks |
-| Productivity | Screen time data from RescueTime or ActivityWatch |
-| Tags | Any tags -- manual, Oura, calendar imports, Last.fm auto-tags |
+| For correlating with... | You need...                                                         |
+| ----------------------- | ------------------------------------------------------------------- |
+| Activities              | Exercise/sleep/meditation data from Oura, Garmin, or Health Connect |
+| Locations               | Place visits from OwnTracks                                         |
+| Productivity            | Screen time data from RescueTime or ActivityWatch                   |
+| Tags                    | Any tags -- manual, Oura, calendar imports, Last.fm auto-tags       |
 
 Minimum data requirements vary by category: activities need at least 1 occurrence, tags need at least 2, locations need 30+ minutes of overlap, and productivity categories need 10+ minutes.
 
@@ -120,12 +121,12 @@ Different categories sample HRV from different time windows:
 
 ## Statistical Methods
 
-| Method | Used for | Description |
-|---|---|---|
-| **Pearson correlation (r)** | Productivity categories | Measures linear correlation between productivity score and HRV. Range: -1 to 1. |
-| **Delta from baseline** | All categories | Simple difference between the activity's mean HRV/HR and your overall baseline. |
-| **Relative risk** | Event probability, generic correlation | Ratio of P(outcome given trigger) to P(outcome without trigger). |
-| **Chi-squared test** | Event probability, generic correlation | Tests whether the trigger-outcome association is statistically significant. |
+| Method                      | Used for                               | Description                                                                     |
+| --------------------------- | -------------------------------------- | ------------------------------------------------------------------------------- |
+| **Pearson correlation (r)** | Productivity categories                | Measures linear correlation between productivity score and HRV. Range: -1 to 1. |
+| **Delta from baseline**     | All categories                         | Simple difference between the activity's mean HRV/HR and your overall baseline. |
+| **Relative risk**           | Event probability, generic correlation | Ratio of P(outcome given trigger) to P(outcome without trigger).                |
+| **Chi-squared test**        | Event probability, generic correlation | Tests whether the trigger-outcome association is statistically significant.     |
 
 ## Known Limitations
 

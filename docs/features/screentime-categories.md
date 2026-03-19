@@ -35,6 +35,7 @@ Removes the category and all its children. Triggers recategorization.
 ### Load defaults
 
 Pre-built categories compatible with ActivityWatch:
+
 - **Work** (green, Very Productive) -- with subcategories for Programming, Image, Video, Audio, 3D
 - **Media** (red, Distracting) -- with Games, Video, Social Media, Music
 - **Comms** (cyan, Neutral) -- with IM and Email
@@ -77,11 +78,11 @@ When clicking a screen time record, the detail page shows the resolved category 
 
 Screen time data from at least one source:
 
-| Source | What it provides |
-|---|---|
-| **RescueTime** | App and website usage with built-in productivity scores. Categories override RescueTime's own scoring. |
-| **ActivityWatch Desktop** | Window-level app usage from desktop. Pushed via agent script. |
-| **ActivityWatch Android** | App usage from Android phone. |
+| Source                    | What it provides                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **RescueTime**            | App and website usage with built-in productivity scores. Categories override RescueTime's own scoring. |
+| **ActivityWatch Desktop** | Window-level app usage from desktop. Pushed via agent script.                                          |
+| **ActivityWatch Android** | App usage from Android phone.                                                                          |
 
 Categories apply equally to data from all sources.
 
