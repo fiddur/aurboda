@@ -209,6 +209,7 @@ Detailed documentation for specific features and data processing pipelines:
 - [Dashboard](docs/features/dashboard.md) -- Customizable widget-based home page with metric cards, sparklines, trends, and more
 - [HR Zones](docs/features/hr-zones.md) -- Heart rate zone tracking with Galpin/Huberman weekly targets
 - [Correlation Analysis](docs/features/correlations.md) -- Statistical correlations, activity impact, event probability
+- [Trends (EMA)](docs/features/trends.md) -- Exponential Moving Average smoothing for tags, metrics, and screen time
 - [Active Calorie Computation](docs/features/calories.md) -- HR-based calculation, gap-fill, source filtering
 
 ---
