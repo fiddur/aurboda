@@ -205,6 +205,15 @@ Replace `:latest` with `:develop` in docker-compose.yml to use development build
 
 Detailed documentation for specific features and data processing pipelines:
 
+- [Timeline](docs/features/timeline.md) -- Multi-track interactive day view with activities, metrics, music, location, and more
+- [Dashboard](docs/features/dashboard.md) -- Customizable widget-based home page with metric cards, sparklines, trends, and more
+- [HR Zones](docs/features/hr-zones.md) -- Heart rate zone tracking with Galpin/Huberman weekly targets
+- [Correlation Analysis](docs/features/correlations.md) -- Statistical correlations, activity impact, event probability
+- [Trends (EMA)](docs/features/trends.md) -- Exponential Moving Average smoothing for tags, metrics, and screen time
+- [Goals](docs/features/goals.md) -- Rolling-window health targets with "losing tomorrow" calculations
+- [Sleep Analysis](docs/features/sleep.md) -- Sleep quality tracking, hypnogram, Oura scores, sleep location
+- [Screentime Categories](docs/features/screentime-categories.md) -- Hierarchical app categorization with productivity scoring
+- [Training Load](docs/features/training-load.md) -- Banister model fitness/fatigue tracking (CTL/ATL/TSB)
 - [Active Calorie Computation](docs/features/calories.md) -- HR-based calculation, gap-fill, source filtering
 
 ---
