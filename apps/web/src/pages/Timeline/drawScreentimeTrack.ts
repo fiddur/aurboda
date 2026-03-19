@@ -107,17 +107,16 @@ export const drawScreentimeBars = (config: DrawScreentimeConfig): void => {
 
   const trackBottom = trackY + trackHeight
 
-  // Compute max total_sec across all buckets for Y-scale
-  let maxSec = 1
-  for (const b of buckets) {
-    if (b.total_sec > maxSec) maxSec = b.total_sec
-  }
+  // Y-scale: 0 at bottom, bucket duration at top.
+  // For 1h buckets, 3600 sec = full track height. 57 min = 95% height.
+  const bucketDurationSec =
+    buckets.length >= 2
+      ? (buckets[1].end.getTime() - buckets[1].start.getTime()) / 1000
+      : buckets[0]
+        ? (buckets[0].end.getTime() - buckets[0].start.getTime()) / 1000
+        : 3600
 
-  // Y-scale: 0 at bottom to maxSec at top (with 10% headroom)
-  const yScale = d3
-    .scaleLinear()
-    .domain([0, maxSec * 1.1])
-    .range([trackBottom, trackY])
+  const yScale = d3.scaleLinear().domain([0, bucketDurationSec]).range([trackBottom, trackY])
 
   const slotOffset = barLayout.getOffset(slotId)
 
