@@ -81,6 +81,12 @@ export interface MetricsTrackConfig {
   screentimeBuckets?: ScreentimeBucketParsed[]
   /** Screentime categories for tooltip rendering. */
   screentimeCategories?: ScreentimeCategory[]
+  /**
+   * Target bar bucket size in ms. When set, steps/calories bars are re-aggregated
+   * to this bucket size so they align with training load and screentime bars.
+   * Defaults to native bucket size (no forced aggregation).
+   */
+  barBucketMs?: number
 }
 
 // ── Bucket aggregation by zoom ────────────────────────────────────────────────
@@ -96,6 +102,17 @@ const getAggregationFactor = (pixelsPerHour: number, buckets: MetricBucketParsed
   if (pixelsPerHour > 100) return 1 // 5m buckets as-is
   if (pixelsPerHour > 20) return 3 // merge to ~15m
   return 6 // merge to ~30m
+}
+
+/**
+ * Compute the aggregation factor to bring metric buckets to the target bar bucket size.
+ * E.g., if buckets are 5m and target is 1h (3600000ms), factor = 12.
+ */
+const computeBarAggregationFactor = (buckets: MetricBucketParsed[], barBucketMs?: number): number => {
+  if (!barBucketMs || buckets.length < 2) return 1
+  const bucketMs = buckets[1]!.start.getTime() - buckets[0]!.start.getTime()
+  if (bucketMs >= barBucketMs) return 1
+  return Math.round(barBucketMs / bucketMs)
 }
 
 // ── Gap detection ─────────────────────────────────────────────────────────────
@@ -574,6 +591,65 @@ const drawCrosshairOverlay = (
 
 // ── Main draw function ────────────────────────────────────────────────────────
 
+/** Draw bar charts (steps/calories) and band charts (HR/HRV). */
+const drawBarAndBandCharts = (
+  chartGroup: SvgGroup,
+  barBuckets: MetricBucketParsed[],
+  lineBuckets: MetricBucketParsed[],
+  xScale: d3.ScaleTime<number, number>,
+  yScales: MetricsYScales,
+  trackBottom: number,
+  showSteps: boolean,
+  showCalories: boolean,
+  showHR: boolean,
+  showHRV: boolean,
+  barLayout?: BarLayoutResult,
+  stepsSlotId?: string,
+  caloriesSlotId?: string,
+): void => {
+  const { yCal, yHr, yHrv, ySteps } = yScales
+
+  // Draw bars first (behind lines), using coarser bar buckets
+  if (showSteps) {
+    drawBarChart(
+      chartGroup,
+      barBuckets,
+      'steps',
+      xScale,
+      ySteps,
+      trackBottom,
+      STEPS_COLOR,
+      0.25,
+      barLayout,
+      stepsSlotId,
+    )
+  }
+  if (showCalories) {
+    drawBarChart(
+      chartGroup,
+      barBuckets,
+      'calories_active',
+      xScale,
+      yCal,
+      trackBottom,
+      CALORIES_COLOR,
+      0.2,
+      barLayout,
+      caloriesSlotId,
+    )
+  }
+
+  // Draw band charts (using finer line buckets)
+  if (showHR) {
+    const hrBand = extractBandData(lineBuckets, 'heart_rate')
+    if (hrBand.length > 1) drawBandChart(chartGroup, hrBand, xScale, yHr, HR_COLOR)
+  }
+  if (showHRV) {
+    const hrvBand = extractBandData(lineBuckets, 'hrv_rmssd')
+    if (hrvBand.length > 1) drawBandChart(chartGroup, hrvBand, xScale, yHrv, HRV_COLOR)
+  }
+}
+
 /**
  * Draw the metrics track: bars for steps/calories, then band charts for HR/HRV,
  * and an interactive crosshair overlay for tooltips.
@@ -601,54 +677,36 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
 
   const hasMetrics = showHR || showHRV || showSteps || showCalories
   const hasTrainingLoad = config.trainingLoadPoints && config.trainingLoadPoints.length > 0
-  if (rawBuckets.length === 0 && !hasTrainingLoad) return
-  if (!hasMetrics && !hasTrainingLoad) return
+  const hasScreentime = config.screentimeBuckets && config.screentimeBuckets.length > 0
+  if (rawBuckets.length === 0 && !hasTrainingLoad && !hasScreentime) return
+  if (!hasMetrics && !hasTrainingLoad && !hasScreentime) return
 
-  const factor = getAggregationFactor(pixelsPerHour, rawBuckets)
-  const buckets = aggregateBuckets(rawBuckets, factor)
+  // Aggregate for line charts (HR/HRV) — finer granularity
+  const lineFactor = getAggregationFactor(pixelsPerHour, rawBuckets)
+  const buckets = aggregateBuckets(rawBuckets, lineFactor)
+
+  // Aggregate for bar charts (steps/calories) — coarser, matching barBucketMs
+  const barFactor = computeBarAggregationFactor(rawBuckets, config.barBucketMs)
+  const barBuckets = barFactor !== lineFactor ? aggregateBuckets(rawBuckets, barFactor) : buckets
+
   const trackBottom = trackY + trackHeight
 
-  const { yCal, yHr, yHrv, ySteps } = yScales
-
-  // Draw bars first (behind lines)
-  if (showSteps) {
-    drawBarChart(
-      chartGroup,
-      buckets,
-      'steps',
-      xScale,
-      ySteps,
-      trackBottom,
-      STEPS_COLOR,
-      0.25,
-      config.barLayout,
-      config.stepsSlotId,
-    )
-  }
-  if (showCalories) {
-    drawBarChart(
-      chartGroup,
-      buckets,
-      'calories_active',
-      xScale,
-      yCal,
-      trackBottom,
-      CALORIES_COLOR,
-      0.2,
-      config.barLayout,
-      config.caloriesSlotId,
-    )
-  }
-
-  // Draw band charts
-  if (showHR) {
-    const hrBand = extractBandData(buckets, 'heart_rate')
-    if (hrBand.length > 1) drawBandChart(chartGroup, hrBand, xScale, yHr, HR_COLOR)
-  }
-  if (showHRV) {
-    const hrvBand = extractBandData(buckets, 'hrv_rmssd')
-    if (hrvBand.length > 1) drawBandChart(chartGroup, hrvBand, xScale, yHrv, HRV_COLOR)
-  }
+  // Draw bars and band charts (extracted to reduce complexity)
+  drawBarAndBandCharts(
+    chartGroup,
+    barBuckets,
+    buckets,
+    xScale,
+    yScales,
+    trackBottom,
+    showSteps,
+    showCalories,
+    showHR,
+    showHRV,
+    config.barLayout,
+    config.stepsSlotId,
+    config.caloriesSlotId,
+  )
 
   // Crosshair tooltip overlay (includes training load + screentime data in combined tooltip)
   drawCrosshairOverlay(
