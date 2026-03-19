@@ -107,17 +107,8 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
   router.patch<{ id: string }>('/:id/move', authMiddleware, async (req, res) => {
     const user = req.user!
     const { new_parent_id } = req.body as { new_parent_id: string | null }
-    try {
-      const result = await moveCategoryToParent(user, req.params.id, new_parent_id)
-      if (result.updated === 0) {
-        res.status(404).json({ error: 'Category not found', success: false })
-        return
-      }
-      res.json({ success: true, updated: result.updated })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Move failed'
-      res.status(400).json({ error: message, success: false })
-    }
+    const result = await moveCategoryToParent(user, req.params.id, new_parent_id)
+    res.json({ success: result.updated > 0, updated: result.updated })
   })
 
   // DELETE /:id - Delete a category and its children

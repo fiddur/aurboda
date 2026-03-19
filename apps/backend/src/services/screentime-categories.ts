@@ -236,13 +236,10 @@ export const upsertCategory = async (user: string, id: string, input: Screentime
 }
 
 export const moveCategoryToParent = async (user: string, id: string, newParentId: string | null) => {
-  // Resolve the new parent's name path
-  let newParentName: string[] | null = null
-  if (newParentId) {
-    const parent = await getScreentimeCategoryById(user, newParentId)
-    if (!parent) throw new Error('Parent category not found')
-    newParentName = parent.name
-  }
+  // Resolve the new parent's name path (null = move to top level)
+  const newParentName = newParentId
+    ? ((await getScreentimeCategoryById(user, newParentId))?.name ?? null)
+    : null
 
   const result = await moveScreentimeCategory(user, id, newParentName)
 
