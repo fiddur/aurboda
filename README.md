@@ -211,6 +211,9 @@ Detailed documentation for specific features and data processing pipelines:
 - [Correlation Analysis](docs/features/correlations.md) -- Statistical correlations, activity impact, event probability
 - [Trends (EMA)](docs/features/trends.md) -- Exponential Moving Average smoothing for tags, metrics, and screen time
 - [Goals](docs/features/goals.md) -- Rolling-window health targets with "losing tomorrow" calculations
+- [Sleep Analysis](docs/features/sleep.md) -- Sleep quality tracking, hypnogram, Oura scores, sleep location
+- [Screentime Categories](docs/features/screentime-categories.md) -- Hierarchical app categorization with productivity scoring
+- [Training Load](docs/features/training-load.md) -- Banister model fitness/fatigue tracking (CTL/ATL/TSB)
 - [Active Calorie Computation](docs/features/calories.md) -- HR-based calculation, gap-fill, source filtering
 
 ---
