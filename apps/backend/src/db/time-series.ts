@@ -7,6 +7,7 @@ import type { BucketedMetricData, DailyMetricAggregate, MetricStats, TimeSeriesP
 
 import {
   aurbodaOnlyMetrics,
+  aurbodaOnlySources,
   cumulativeMetrics,
   cumulativeSources,
   type MetricType,
@@ -18,7 +19,7 @@ import { parseMetricType } from './row-mappers.ts'
 
 /** Get the source filter for a single metric: aurboda-only, cumulative sources, or all sources (null). */
 const getSourceFilter = (metric: string): string[] | null => {
-  if (aurbodaOnlyMetrics.includes(metric as MetricType)) return ['aurboda']
+  if (aurbodaOnlyMetrics.includes(metric as MetricType)) return aurbodaOnlySources
   if (cumulativeMetrics.includes(metric as MetricType)) return cumulativeSources
   return null
 }
@@ -305,7 +306,7 @@ export const getMetricTimeRange = async (
 export const deleteTimeSeriesPoint = async (user: string, metric: string, time: Date): Promise<boolean> => {
   const result = await query(
     user,
-    `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source IN ('manual', 'aurboda')`,
+    `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source IN ('manual', 'aurboda', 'aurboda_gap_fill')`,
     [metric, time],
   )
   return (result.rowCount ?? 0) > 0
@@ -314,7 +315,7 @@ export const deleteTimeSeriesPoint = async (user: string, metric: string, time: 
 export const deleteTimeSeriesMetric = async (user: string, metric: string): Promise<number> => {
   const result = await query(
     user,
-    `DELETE FROM time_series WHERE metric = $1 AND source IN ('manual', 'aurboda')`,
+    `DELETE FROM time_series WHERE metric = $1 AND source IN ('manual', 'aurboda', 'aurboda_gap_fill')`,
     [metric],
   )
   return result.rowCount ?? 0

@@ -103,6 +103,7 @@ suspend fun fetchDailyAggregates(
               metric = metricType,
               value = value,
               dataOrigins = dataOrigins,
+              timezone = zoneId.id, // IANA timezone for correct day boundary alignment
             ),
           )
           Log.d(TAG, "Aggregate for $metricType on $date: $value from ${dataOrigins.size} sources")

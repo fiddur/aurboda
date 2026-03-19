@@ -10,6 +10,7 @@ import type { BiologicalSex } from '@aurboda/api-spec'
 
 import type { TimeSeriesPoint } from '../db/types.ts'
 
+import { localMidnightToUtc } from '../db/health-connect.ts'
 import { enqueueOutboundSync, getUserSettings, upsertUserSettings } from '../db/index.ts'
 import {
   deleteTimeSeriesBySource,
@@ -181,6 +182,7 @@ export const computeAndStoreCalories = async (
   // 6. Delete existing aurboda calories if force-recomputing
   if (options?.force) {
     await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda', start, end)
+    await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda_gap_fill', start, end)
   }
 
   // 7. Check if aurboda calories already exist for this range to avoid recomputing
@@ -213,7 +215,14 @@ export const computeAndStoreCalories = async (
     }
   }
 
-  // 10. Store as time_series
+  // 10. Delete stale gap-fill points for minutes that now have HR-computed values
+  if (newPoints.length > 0) {
+    const rangeStart = newPoints[0].time
+    const rangeEnd = new Date(newPoints[newPoints.length - 1].time.getTime() + 60_000)
+    await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda_gap_fill', rangeStart, rangeEnd)
+  }
+
+  // 11. Store as time_series
   const timeSeriesPoints: TimeSeriesPoint[] = newPoints.map((p) => ({
     metric: 'calories_active',
     source: 'aurboda' as const,
@@ -223,12 +232,12 @@ export const computeAndStoreCalories = async (
   }))
   await insertTimeSeries(user, timeSeriesPoints)
 
-  // 11. Queue outbound sync (best-effort, skipped during full historical recomputes)
+  // 12. Queue outbound sync (best-effort, skipped during full historical recomputes)
   if (!options?.skipSync) {
     await enqueueCalorieSync(user, newPoints)
   }
 
-  // 12. Invalidate training load impulse buckets so they recompute from new calorie data
+  // 13. Invalidate training load impulse buckets so they recompute from new calorie data
   await invalidateTrainingLoadImpulses(user, start)
 
   return {
@@ -253,10 +262,11 @@ export interface GapFillDayResult {
  *
  * This function:
  * 1. Reads the HC aggregate for the day
- * 2. Reads existing aurboda calorie points for the day
- * 3. Computes the residual (HC total - aurboda sum)
- * 4. Distributes it evenly across minutes without HR coverage
- * 5. Stores gap-fill points with source 'aurboda'
+ * 2. Deletes existing gap-fill points for the day (idempotent re-run)
+ * 3. Reads existing HR-computed aurboda calorie points for the day
+ * 4. Computes the residual (HC total - aurboda sum)
+ * 5. Distributes it evenly across minutes without HR coverage
+ * 6. Stores gap-fill points with source 'aurboda_gap_fill'
  */
 export const gapFillCaloriesForDay = async (user: string, dayStartUtc: Date): Promise<GapFillDayResult> => {
   const dayEndUtc = new Date(dayStartUtc.getTime() + 24 * 60 * 60 * 1000 - 1)
@@ -273,7 +283,10 @@ export const gapFillCaloriesForDay = async (user: string, dayStartUtc: Date): Pr
 
   const hcAggregateKcal = hcData.reduce((sum, [, value]) => sum + value, 0)
 
-  // 2. Get existing aurboda calorie points for this day
+  // 2. Delete existing gap-fill points for this day (makes re-runs idempotent)
+  await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda_gap_fill', dayStartUtc, dayEndUtc)
+
+  // 3. Get existing HR-computed aurboda calorie points for this day
   const existingData = await getTimeSeriesBySource(user, 'calories_active', 'aurboda', dayStartUtc, dayEndUtc)
   const aurbodaPoints: CalorieDataPoint[] = existingData.map(([time, value]) => ({
     end_time: new Date(time.getTime() + 60_000),
@@ -281,7 +294,7 @@ export const gapFillCaloriesForDay = async (user: string, dayStartUtc: Date): Pr
     time,
   }))
 
-  // 3. Compute gap-fill points
+  // 4. Compute gap-fill points
   const result = computeGapFillPoints({
     aurboda_points: aurbodaPoints,
     day_start: dayStartUtc,
@@ -290,17 +303,17 @@ export const gapFillCaloriesForDay = async (user: string, dayStartUtc: Date): Pr
 
   if (result.points.length === 0) return { gap_minutes: 0, points_stored: 0, residual_kcal: 0 }
 
-  // 4. Store gap-fill points as aurboda source
+  // 5. Store gap-fill points with separate source for identification
   const timeSeriesPoints: TimeSeriesPoint[] = result.points.map((p) => ({
     metric: 'calories_active',
-    source: 'aurboda' as const,
+    source: 'aurboda_gap_fill' as const,
     time: p.time,
     unit: 'kcal',
     value: p.kcal,
   }))
   await insertTimeSeries(user, timeSeriesPoints)
 
-  // 5. Invalidate training load impulse buckets for this day
+  // 6. Invalidate training load impulse buckets for this day
   await invalidateTrainingLoadImpulses(user, dayStartUtc)
 
   return {
@@ -311,8 +324,38 @@ export const gapFillCaloriesForDay = async (user: string, dayStartUtc: Date): Pr
 }
 
 /**
+ * Get the user's device timezone from settings, or undefined if not set.
+ */
+const getDeviceTimezone = async (user: string): Promise<string | undefined> => {
+  const settings = await getUserSettings(user)
+  return (settings?.device_timezone as string) ?? undefined
+}
+
+/**
+ * Get the local-timezone day start (as UTC) for a given UTC timestamp.
+ * If no timezone is available, falls back to UTC day boundaries.
+ */
+const getLocalDayStart = (utcTime: Date, timezone?: string): Date => {
+  if (!timezone) {
+    const dayMs = 24 * 60 * 60 * 1000
+    return new Date(Math.floor(utcTime.getTime() / dayMs) * dayMs)
+  }
+
+  // Use localMidnightToUtc with the date string in the target timezone
+  const formatter = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const localDateStr = formatter.format(utcTime) // "YYYY-MM-DD" format
+  return localMidnightToUtc(localDateStr, timezone)
+}
+
+/**
  * Gap-fill calories for all calendar days within a time range.
- * Iterates day by day (UTC) and runs gap-fill for each.
+ * Uses the device timezone (from user settings) for day boundary alignment,
+ * matching how the Android app computes daily aggregates.
  */
 export const gapFillCaloriesForRange = async (
   user: string,
@@ -324,10 +367,12 @@ export const gapFillCaloriesForRange = async (
   total_points_stored: number
   total_residual_kcal: number
 }> => {
-  // Align to UTC day boundaries
+  const timezone = await getDeviceTimezone(user)
+
+  // Get the local-timezone day boundaries
   const dayMs = 24 * 60 * 60 * 1000
-  const firstDay = new Date(Math.floor(start.getTime() / dayMs) * dayMs)
-  const lastDay = new Date(Math.floor(end.getTime() / dayMs) * dayMs)
+  const firstDay = getLocalDayStart(start, timezone)
+  const lastDay = getLocalDayStart(end, timezone)
 
   let daysProcessed = 0
   let totalGapMinutes = 0

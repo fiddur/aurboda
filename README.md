@@ -201,6 +201,14 @@ Replace `:latest` with `:develop` in docker-compose.yml to use development build
 
 ---
 
+## Feature Documentation
+
+Detailed documentation for specific features and data processing pipelines:
+
+- [Active Calorie Computation](docs/features/calories.md) -- HR-based calculation, gap-fill, source filtering
+
+---
+
 ## Architecture
 
 ```
