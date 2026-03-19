@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- large visualization component */
 import {
+  getExerciseTypeName as getExerciseTypeNameFromValue,
   metricUnits as builtinMetricUnits,
   type QueryMetricsBucketedResponse,
   type ScreentimeCategory,
@@ -269,38 +270,16 @@ const getTagColor = (tag: Tag): string => tagSourceColors[tag.source ?? 'default
 const getProductivityColor = (score: number | undefined): string =>
   productivityColors[score ?? 0] ?? productivityColors[0]!
 
-const exerciseTypeNames: Record<number, string> = {
-  0: 'Workout',
-  8: 'Biking',
-  10: 'Boot Camp',
-  13: 'Calisthenics',
-  16: 'Dancing',
-  25: 'Elliptical',
-  34: 'HIIT',
-  35: 'Hiking',
-  37: 'Ice Skating',
-  48: 'Pilates',
-  51: 'Rock Climbing',
-  53: 'Rowing',
-  56: 'Running',
-  57: 'Treadmill',
-  66: 'Soccer',
-  68: 'Stair Climbing',
-  70: 'Strength Training',
-  71: 'Stretching',
-  74: 'Swimming (Open Water)',
-  75: 'Swimming (Pool)',
-  79: 'Walking',
-  81: 'Weightlifting',
-  83: 'Yoga',
-}
+const formatExerciseType = (name: string): string => name.replaceAll('_', ' ')
 
 const getExerciseTypeName = (activity: Activity): string => {
-  const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseType as
-    | number
-    | undefined
-  if (exerciseType !== undefined && exerciseTypeNames[exerciseType]) {
-    return exerciseTypeNames[exerciseType]
+  const data = activity.data as Record<string, unknown> | undefined
+  const typeName = data?.exerciseTypeName as string | undefined
+  if (typeName) return formatExerciseType(typeName)
+  const typeValue = data?.exerciseType as number | undefined
+  if (typeValue !== undefined) {
+    const name = getExerciseTypeNameFromValue(typeValue)
+    if (name) return formatExerciseType(name)
   }
   return activity.title || 'Workout'
 }
