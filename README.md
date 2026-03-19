@@ -214,6 +214,8 @@ Detailed documentation for specific features and data processing pipelines:
 - [Sleep Analysis](docs/features/sleep.md) -- Sleep quality tracking, hypnogram, Oura scores, sleep location
 - [Screentime Categories](docs/features/screentime-categories.md) -- Hierarchical app categorization with productivity scoring
 - [Training Load](docs/features/training-load.md) -- Banister model fitness/fatigue tracking (CTL/ATL/TSB)
+- [Places & Location Tracking](docs/features/places.md) -- Auto-detected locations, geocoding, visit tracking
+- [Lab Reports](docs/features/lab-reports.md) -- Structured lab results with metric write-through
 - [Active Calorie Computation](docs/features/calories.md) -- HR-based calculation, gap-fill, source filtering
 
 ---
