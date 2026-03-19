@@ -304,6 +304,7 @@ export interface DistinctApp {
   resolved_category?: string[]
   total_duration_sec: number
   record_count: number
+  last_seen?: string
 }
 
 export const fetchDistinctApps = async (): Promise<DistinctApp[]> => {

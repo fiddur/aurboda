@@ -282,6 +282,27 @@
   color: #6b7280;
 }
 
+/* Uncategorized apps search */
+.uncategorized-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.uncategorized-filter-count {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+.uncategorized-more {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  font-style: italic;
+  margin-top: 0.5rem;
+}
+
 /* Children list */
 .children-list {
   display: flex;
