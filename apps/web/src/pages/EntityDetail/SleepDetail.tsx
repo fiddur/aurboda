@@ -7,6 +7,7 @@ import { format } from 'date-fns'
 import type { Activity } from '../../state/api'
 
 import { fetchBucketedMetrics } from '../../state/api'
+import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import {
@@ -70,15 +71,18 @@ export const SleepDetail = ({
   isEditing,
   draft,
   onDraftChange,
+  itemIcons,
 }: {
   activity: Activity
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (d: ActivityDraft) => void
+  itemIcons: Record<string, string>
 }) => {
   const end = activity.end_time ?? new Date(activity.start_time.getTime() + 8 * 60 * 60000)
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd = activity.merged_end_time ?? end
+  const icon = resolveItemIcon(`activity:${activity.activity_type}`, itemIcons)
   const stages = parseSleepStages(activity.data as Record<string, unknown> | undefined)
   const sleepMinutes = resolveSleepMinutes(activity.total_sleep, stages)
 
@@ -113,6 +117,7 @@ export const SleepDetail = ({
           draft={draft}
           onDraftChange={onDraftChange}
           durationLabel="In Bed"
+          icon={icon}
         />
 
         {!isEditing && (

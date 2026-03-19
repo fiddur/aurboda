@@ -22,6 +22,7 @@ import { OuraSource } from './pages/DataSources/OuraSource.jsx'
 import { OwnTracksSource } from './pages/DataSources/OwnTracksSource.jsx'
 import { RescueTimeSource } from './pages/DataSources/RescueTimeSource.jsx'
 import { EntityDetail } from './pages/EntityDetail/index.jsx'
+import { ExerciseMeta } from './pages/ExerciseMeta/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
 import { Home } from './pages/Home/index.jsx'
 import { HrZones } from './pages/HrZones/index.jsx'
@@ -56,6 +57,7 @@ export function App() {
             <Route path="/add" component={AddData} />
             <Route path="/detail/:type/:id" component={EntityDetail} />
             <Route path="/tag/:tagKey" component={TagMeta} />
+            <Route path="/exercise/:type" component={ExerciseMeta} />
             <Route path="/metric/:metricName" component={MetricMeta} />
             <Route path="/sleep" component={Sleep} />
             <Route path="/correlations" component={Correlations} />

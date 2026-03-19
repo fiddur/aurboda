@@ -8,6 +8,7 @@
 
 import {
   displayPeriodMultipliers,
+  exerciseTypes,
   isValidMetric,
   type MetricType,
   type TrendDisplayPeriod,
@@ -255,7 +256,86 @@ const calculateProductivityCategoryTrend = async (
 }
 
 /**
- * Get the trend for a tag pattern, metric, or productivity category.
+ * Calculate the EMA-weighted trend for a specific exercise type (or activity type).
+ *
+ * Queries the activities table for exercises matching either exerciseTypeName (string)
+ * or exerciseType (numeric HC value). Counts occurrences per day and sums duration in hours.
+ * Pattern is the exercise type name (e.g. "yoga", "running").
+ */
+const calculateActivityTypeTrend = async (
+  user: string,
+  pattern: string,
+  halfLifeDays: number,
+  lookbackDays: number,
+  displayPeriod: TrendDisplayPeriod,
+): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
+  const multiplier = displayPeriodMultipliers[displayPeriod]
+
+  const result = await query(
+    user,
+    `
+    WITH date_range AS (
+      SELECT generate_series(
+        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
+        CURRENT_DATE,
+        '1 day'
+      )::date AS day
+    ),
+    daily_values AS (
+      SELECT
+        d.day,
+        t.daily_hours
+      FROM date_range d
+      LEFT JOIN (
+        SELECT
+          date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
+          SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 as daily_hours
+        FROM activities
+        WHERE activity_type = 'exercise'
+          AND deleted_at IS NULL
+          AND (data->>'exerciseTypeName' = $1 OR data->>'exerciseType' = $6)
+          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+        GROUP BY 1
+      ) t ON d.day = t.day
+    ),
+    ema_calc AS (
+      SELECT
+        dv.day,
+        $4::float * SUM(COALESCE(dv2.daily_hours, 0) * EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)) /
+        NULLIF(SUM(EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)), 0) as ema_value
+      FROM daily_values dv
+      CROSS JOIN LATERAL (
+        SELECT day, daily_hours
+        FROM daily_values
+        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * LEAST($2::integer, 90)
+      ) dv2
+      GROUP BY dv.day
+    )
+    SELECT day, COALESCE(ema_value, 0) as ema_value
+    FROM ema_calc
+    ORDER BY day
+    `,
+    [pattern, lookbackDays, LN2, multiplier, halfLifeDays, getExerciseTypeValueStr(pattern)],
+  )
+
+  const history: TrendHistoryPoint[] = result.rows.map((row) => ({
+    date: row.day.toISOString().split('T')[0],
+    value: Number(row.ema_value),
+  }))
+
+  const currentValue = history.length > 0 ? history[history.length - 1].value : 0
+
+  return { currentValue, history }
+}
+
+/** Get the numeric exercise type value as a string for SQL matching, or empty string if unknown. */
+const getExerciseTypeValueStr = (name: string): string => {
+  const value = exerciseTypes[name as keyof typeof exerciseTypes]
+  return value !== undefined ? String(value) : ''
+}
+
+/**
+ * Get the trend for a tag pattern, metric, productivity category, or activity type.
  */
 export const getTrend = async (user: string, input: GetTrendInput): Promise<TrendResult> => {
   const {
@@ -287,6 +367,26 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       current_value: currentValue,
       display_period: displayPeriod,
       display_unit: displayUnits[displayPeriod],
+      half_life_days: halfLifeDays,
+      history,
+      lookback_days: lookbackDays,
+      pattern,
+      source_type: sourceType,
+    }
+  } else if (sourceType === 'activity_type') {
+    const { currentValue, history } = await calculateActivityTypeTrend(
+      user,
+      pattern,
+      halfLifeDays,
+      lookbackDays,
+      displayPeriod,
+    )
+
+    return {
+      aggregation: 'sum',
+      current_value: currentValue,
+      display_period: displayPeriod,
+      display_unit: `hours ${displayUnits[displayPeriod]}`,
       half_life_days: halfLifeDays,
       history,
       lookback_days: lookbackDays,

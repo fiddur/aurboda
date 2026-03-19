@@ -18,8 +18,10 @@ import {
   fetchProductivityById,
   fetchScreentimeCategories,
   fetchTagById,
+  fetchTagMappings,
   updateActivity,
 } from '../../state/api'
+import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
@@ -57,16 +59,19 @@ const GenericActivityDetail = ({
   isEditing,
   draft,
   onDraftChange,
+  itemIcons,
 }: {
   activity: Activity
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (d: ActivityDraft) => void
+  itemIcons: Record<string, string>
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
   const exerciseType = resolveExerciseType(activity)
+  const icon = resolveItemIcon(`activity:${activity.activity_type}`, itemIcons)
 
   return (
     <div class="entity-info">
@@ -83,6 +88,7 @@ const GenericActivityDetail = ({
         isEditing={isEditing}
         draft={draft}
         onDraftChange={onDraftChange}
+        icon={icon}
       />
 
       {!isEditing && activity.avg_hrv !== undefined && (
@@ -105,11 +111,13 @@ const ActivityDetailDispatch = ({
   isEditing,
   draft,
   onDraftChange,
+  itemIcons,
 }: {
   activity: Activity
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (d: ActivityDraft) => void
+  itemIcons: Record<string, string>
 }) => {
   const musicStart = activity.merged_start_time ?? activity.start_time
   const musicEnd =
@@ -129,7 +137,13 @@ const ActivityDetailDispatch = ({
       )}
 
       {isSleep && (
-        <SleepDetail activity={activity} isEditing={isEditing} draft={draft} onDraftChange={onDraftChange} />
+        <SleepDetail
+          activity={activity}
+          isEditing={isEditing}
+          draft={draft}
+          onDraftChange={onDraftChange}
+          itemIcons={itemIcons}
+        />
       )}
       {isExercise && (
         <ExerciseDetail
@@ -137,6 +151,7 @@ const ActivityDetailDispatch = ({
           isEditing={isEditing}
           draft={draft}
           onDraftChange={onDraftChange}
+          itemIcons={itemIcons}
         />
       )}
       {!isSleep && !isExercise && (
@@ -145,6 +160,7 @@ const ActivityDetailDispatch = ({
           isEditing={isEditing}
           draft={draft}
           onDraftChange={onDraftChange}
+          itemIcons={itemIcons}
         />
       )}
 
@@ -186,6 +202,13 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     queryKey: ['entity-detail', 'activity', entityId],
     staleTime: 60_000,
   })
+
+  const { data: mappingsData } = useQuery({
+    queryFn: fetchTagMappings,
+    queryKey: ['tag-mappings'],
+    staleTime: 30 * 60 * 1000,
+  })
+  const itemIcons = mappingsData?.icons ?? {}
 
   const invalidate = useCallback(
     () =>
@@ -271,6 +294,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         isEditing={isEditing}
         draft={draft}
         onDraftChange={setDraft}
+        itemIcons={itemIcons}
       />
       <NotesSection entityType="activity" entityId={rawEntityId} allEntityIds={allEntityIds} />
     </>
@@ -289,6 +313,13 @@ const TagContent = ({ entityId }: { entityId: string }) => {
     queryKey: ['entity-detail', 'tag', entityId],
     staleTime: 60_000,
   })
+
+  const { data: mappingsData } = useQuery({
+    queryFn: fetchTagMappings,
+    queryKey: ['tag-mappings'],
+    staleTime: 30 * 60 * 1000,
+  })
+  const itemIcons = mappingsData?.icons ?? {}
 
   const invalidate = useCallback(
     () =>
@@ -316,7 +347,7 @@ const TagContent = ({ entityId }: { entityId: string }) => {
         onSave={() => {}}
         isSaving={false}
       />
-      <TagDetail tag={tag} />
+      <TagDetail tag={tag} itemIcons={itemIcons} />
       <NotesSection entityType="tag" entityId={entityId} />
     </>
   )
@@ -340,6 +371,13 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
     queryKey: ['screentime-categories'],
     staleTime: 5 * 60 * 1000,
   })
+
+  const { data: mappingsData } = useQuery({
+    queryFn: fetchTagMappings,
+    queryKey: ['tag-mappings'],
+    staleTime: 30 * 60 * 1000,
+  })
+  const itemIcons = mappingsData?.icons ?? {}
 
   const invalidate = useCallback(
     () =>
@@ -371,7 +409,7 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
         onSave={() => {}}
         isSaving={false}
       />
-      <ProductivityDetail record={record} categories={categories} />
+      <ProductivityDetail record={record} categories={categories} itemIcons={itemIcons} />
       <NotesSection entityType="productivity" entityId={entityId} allEntityIds={allEntityIds} />
     </>
   )
