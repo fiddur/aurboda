@@ -538,19 +538,20 @@ function MatchedAppList({
 }
 
 // Simplified uncategorized list (the AddConfirmDialog is imported from the previous version)
+const MAX_UNCATEGORIZED_SHOWN = 30
+
 function UncategorizedAppList({
   apps,
   category,
-  total,
   onAppAdded,
 }: {
   apps: DistinctApp[]
   category: ScreentimeCategory
-  total: number
   onAppAdded: () => void
 }) {
   const queryClient = useQueryClient()
   const [confirmingApp, setConfirmingApp] = useState<DistinctApp | null>(null)
+  const [search, setSearch] = useState('')
 
   const addMutation = useMutation({
     mutationFn: async (term: string) => {
@@ -568,18 +569,42 @@ function UncategorizedAppList({
     },
   })
 
-  if (total === 0) return null
+  if (apps.length === 0) return null
 
-  const headerTitle =
-    total > apps.length ? `Uncategorized apps (showing ${apps.length} of ${total})` : 'Uncategorized apps'
+  // Filter by search term (case-insensitive match on activity + title)
+  const lowerSearch = search.toLowerCase()
+  const filtered = search
+    ? apps.filter(
+        (app) =>
+          app.activity.toLowerCase().includes(lowerSearch) ||
+          (app.title && app.title.toLowerCase().includes(lowerSearch)),
+      )
+    : apps
+
+  const shown = filtered.slice(0, MAX_UNCATEGORIZED_SHOWN)
+  const hiddenCount = filtered.length - shown.length
 
   return (
     <div class="category-section">
       <h3>
-        {headerTitle} <span class="count-badge">{total}</span>
+        Uncategorized apps <span class="count-badge">{apps.length}</span>
       </h3>
+      <div class="uncategorized-search">
+        <input
+          type="text"
+          value={search}
+          onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
+          placeholder="Search apps..."
+          class="auto-save-input"
+        />
+        {search && filtered.length !== apps.length && (
+          <span class="uncategorized-filter-count">
+            {filtered.length} match{filtered.length !== 1 ? 'es' : ''}
+          </span>
+        )}
+      </div>
       <div class="app-list">
-        {apps.map((app) => (
+        {shown.map((app) => (
           <div key={`${app.activity}\x00${app.title ?? ''}`} class="app-row">
             <div class="app-name-col">
               <span class="app-name">{app.activity}</span>
@@ -601,6 +626,9 @@ function UncategorizedAppList({
           </div>
         ))}
       </div>
+      {hiddenCount > 0 && (
+        <p class="uncategorized-more">{hiddenCount} more — refine your search to see them</p>
+      )}
       {confirmingApp && (
         <AddConfirmDialog
           app={confirmingApp}
@@ -1103,12 +1131,7 @@ function ExistingCategoryPage({
       <CategoryTrendSection categoryPath={category.name.join(' > ')} color={category.color ?? '#673ab8'} />
       <ChildCategoriesList children={children} distinctApps={distinctApps} icons={icons} />
       <MatchedAppList apps={matchedApps} category={category} onAppRemoved={onFieldSaved} />
-      <UncategorizedAppList
-        apps={uncategorized.slice(0, 30)}
-        category={category}
-        total={uncategorized.length}
-        onAppAdded={onFieldSaved}
-      />
+      <UncategorizedAppList apps={uncategorized} category={category} onAppAdded={onFieldSaved} />
 
       <div class="category-footer">
         <a href="/screentime-categories" class="manage-link">

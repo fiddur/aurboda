@@ -192,21 +192,24 @@ export const getDistinctApps = async (
     resolved_category?: string[]
     total_duration_sec: number
     record_count: number
+    last_seen: Date
   }>
 > => {
   const result = await query(
     user,
     `SELECT activity, title, resolved_category,
             SUM(duration_sec)::int AS total_duration_sec,
-            COUNT(*)::int AS record_count
+            COUNT(*)::int AS record_count,
+            MAX(start_time) AS last_seen
      FROM productivity
      WHERE deleted_at IS NULL
      GROUP BY activity, title, resolved_category
-     ORDER BY SUM(duration_sec) DESC`,
+     ORDER BY MAX(start_time) DESC`,
   )
 
   return result.rows.map((row) => ({
     activity: row.activity,
+    last_seen: new Date(row.last_seen as string),
     record_count: row.record_count,
     resolved_category: row.resolved_category || undefined,
     title: row.title || undefined,
