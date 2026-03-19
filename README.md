@@ -11,7 +11,40 @@
 
 Your health, fitness, productivity, and location data is scattered across apps and services. Aurboda aggregates it all into one self-hosted platform, provides rich visualizations, and exposes everything to AI assistants via [MCP (Model Context Protocol)](https://modelcontextprotocol.io/).
 
-Currently in early development. No public signup, but self-hosting is straightforward via Docker. It was initiated as a personal (manually coded) hobby project but has grown with AI coding; take it or leave it.
+No public signup, but self-hosting is straightforward via Docker. It was initiated as a personal (manually coded) hobby project but has grown with AI coding; take it or leave it.
+
+### Features
+
+- [**Timeline**](docs/features/timeline.md) -- Multi-track interactive day view: activities, tags, metrics, screen time, music, and location
+- [**Dashboard**](docs/features/dashboard.md) -- Customizable widget-based home page with metric cards, sparklines, trends, and correlations
+- [**HR Zones**](docs/features/hr-zones.md) -- Weekly heart rate zone tracking with Huberman/Galpin protocol targets
+- [**Correlation Analysis**](docs/features/correlations.md) -- Pearson coefficients, chi-squared tests, relative risk, activity impact timelines
+- [**Trends (EMA)**](docs/features/trends.md) -- Exponential Moving Average smoothing for tags, metrics, and screen time
+- [**Goals**](docs/features/goals.md) -- Rolling-window health targets with "losing tomorrow" calculations
+- [**Sleep Analysis**](docs/features/sleep.md) -- Sleep quality tracking, hypnogram, Oura scores, sleep location detection
+- [**Screentime Categories**](docs/features/screentime-categories.md) -- Hierarchical app categorization with productivity scoring
+- [**Training Load**](docs/features/training-load.md) -- Banister model fitness/fatigue tracking (CTL/ATL/TSB)
+- [**Places**](docs/features/places.md) -- GPS location history, auto-detected locations, visit tracking with PostGIS
+- [**Lab Reports**](docs/features/lab-reports.md) -- Structured lab results with metric write-through and reference ranges
+- [**Active Calorie Computation**](docs/features/calories.md) -- HR-based calculation with gap-fill from Health Connect
+- **MCP Integration** -- Full AI assistant access via [Model Context Protocol](docs/mcp-server.md) (50+ tools)
+
+### Data Sources
+
+| Source | What it provides | Docs |
+|---|---|---|
+| [**Android Health Connect**](docs/health-connect.md) | Heart rate, HRV, sleep, exercise (80+ types), steps, weight, SpO2, VO2 max, calories, and more | Push from Android app |
+| **BLE Sensors** | Real-time heart rate, HRV (Polar H10, etc.) and steps (Zwift RunPod, etc.) | Live via Android app |
+| [**Oura Ring**](docs/oura.md) | Sleep stages/scores, readiness, resilience, cardiovascular age, HRV, heart rate, meditation, tags | Pull (API) + Push (webhooks) |
+| [**Garmin Connect**](docs/garmin.md) | Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness | Pull (session-based) |
+| [**OwnTracks**](docs/owntracks.md) | GPS locations, geofences, place visits | Push (HTTP mode) |
+| [**RescueTime**](docs/rescuetime.md) | App/website usage, productivity scores, categories | Pull (API) |
+| [**ActivityWatch**](docs/activitywatch.md) | App/window usage per device (desktop and Android) | Push (agent script) |
+| [**Last.fm**](docs/lastfm.md) | Music scrobbles with auto-generated tags from configurable rules | Pull (API) |
+| [**Calendars (ICS)**](docs/calendars.md) | Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.) | Pull (ICS fetch) |
+| **Manual Entry** | Any metric, tag, activity, or note | Web UI, REST API, or MCP |
+
+See [docs/data-sources.md](docs/data-sources.md) for setup overview.
 
 ---
 
@@ -98,45 +131,6 @@ The companion Android app syncs data from Health Connect (40+ record types inclu
 
 ---
 
-## Data Sources
-
-Aurboda aggregates data from a wide range of sources. Each source has its own sync method and data types.
-
-<p align="center">
-  <img src="apps/web/public/screenshots/data-sources.jpg" alt="Data sources configuration page" width="400" />
-</p>
-
-| Source                     | What it provides                                                                                                                                        | Sync method                          |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| **Android Health Connect** | Heart rate, HRV, sleep, exercise (80+ types), steps, weight, body composition, SpO2, respiratory rate, blood glucose, blood pressure, VO2 max, calories | Push from Android app (every 15 min) |
-| **BLE Heart Rate Sensors** | Real-time heart rate and HRV (e.g. Polar H10)                                                                                                           | Live via Android app                 |
-| **BLE Step Sensors**       | Real-time cadence and steps (e.g. Zwift RunPod)                                                                                                         | Live via Android app                 |
-| **Oura Ring**              | Sleep stages/scores/efficiency, readiness, resilience, cardiovascular age, HRV, heart rate, meditation, user tags                                       | Pull (API) + Push (webhooks)         |
-| **OwnTracks**              | GPS locations, geofences, place visits                                                                                                                  | Push (HTTP mode)                     |
-| **RescueTime**             | App/website usage, productivity scores, categories                                                                                                      | Pull (API)                           |
-| **ActivityWatch**          | App/window usage per device (desktop and Android)                                                                                                       | Push (agent script)                  |
-| **Last.fm**                | Music scrobbles with auto-generated tags from configurable rules                                                                                        | Pull (API)                           |
-| **Calendars (ICS)**        | Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)                                                                    | Pull (ICS fetch)                     |
-| **Manual Entry**           | Any metric, tag, activity, or note                                                                                                                      | Web UI, REST API, or MCP             |
-
-See [docs/data-sources.md](docs/data-sources.md) for detailed setup instructions for each source.
-
-### Data Source Setup
-
-| Source                 | Setup                                                                                                                                |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Android Health Connect | Install the [Android APK](https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk), enter your server URL, and log in |
-| BLE Heart Rate Sensors | Pair Bluetooth heart rate monitors via the app's Live screen                                                                         |
-| BLE Step Sensors       | Pair Bluetooth running pods via the app's Live screen                                                                                |
-| OwnTracks              | [OwnTracks setup guide](docs/owntracks.md) (JSON HTTP mode)                                                                          |
-| Oura                   | Connect via OAuth in user settings. Requires `OURA_CLIENT` and `OURA_SECRET` env vars.                                               |
-| RescueTime             | Configure API key in user settings. Get key from [RescueTime API settings](https://www.rescuetime.com/anapi/manage).                 |
-| ActivityWatch          | Desktop agent script or Android companion app. See [docs/activitywatch.md](docs/activitywatch.md).                                   |
-| Last.fm                | Configure API key in admin settings, username in user settings. See [docs/lastfm.md](docs/lastfm.md).                                |
-| Calendars              | Add ICS URLs in user settings. See [docs/calendars.md](docs/calendars.md).                                                           |
-
----
-
 ## Quick Start (Docker)
 
 ```bash
@@ -179,44 +173,6 @@ To change default port, modify `"8080:80"` to `"YOUR_PORT:80"` in docker-compose
 ### Development Builds
 
 Replace `:latest` with `:develop` in docker-compose.yml to use development builds.
-
----
-
-## Key Capabilities
-
-| Feature                  | Description                                                                                              |
-| ------------------------ | -------------------------------------------------------------------------------------------------------- |
-| **Timeline**             | Multi-layer chronological view: activities, tags, metrics, screen time, music, and location              |
-| **Dashboard**            | Configurable widget-based dashboard with metric cards, sparklines, trend charts, and correlation widgets |
-| **HR Zones**             | Weekly heart rate zone tracking with goals based on Huberman/Galpin protocols                            |
-| **Sleep Analysis**       | Sleep stage breakdowns, scores, efficiency, latency, and sleep location detection                        |
-| **Trends (EMA)**         | Exponential Moving Average charts for any metric or tag, with configurable smoothing                     |
-| **Correlation Analysis** | Pearson coefficients, chi-squared tests, relative risk ratios between any data types                     |
-| **Goals**                | Rolling-window health goals with "losing tomorrow" calculations                                          |
-| **Places**               | GPS location history, auto-detected locations, visit tracking with PostGIS                               |
-| **Productivity**         | Screen time tracking with productivity scoring and hierarchical categories                               |
-| **Lab Results**          | Structured storage for blood work with reference ranges                                                  |
-| **Notes**                | Markdown notes and comments attachable to any entity                                                     |
-| **MCP Integration**      | Full AI assistant access to query, analyze, and correlate your health data                               |
-
----
-
-## Feature Documentation
-
-Detailed documentation for specific features and data processing pipelines:
-
-- [Timeline](docs/features/timeline.md) -- Multi-track interactive day view with activities, metrics, music, location, and more
-- [Dashboard](docs/features/dashboard.md) -- Customizable widget-based home page with metric cards, sparklines, trends, and more
-- [HR Zones](docs/features/hr-zones.md) -- Heart rate zone tracking with Galpin/Huberman weekly targets
-- [Correlation Analysis](docs/features/correlations.md) -- Statistical correlations, activity impact, event probability
-- [Trends (EMA)](docs/features/trends.md) -- Exponential Moving Average smoothing for tags, metrics, and screen time
-- [Goals](docs/features/goals.md) -- Rolling-window health targets with "losing tomorrow" calculations
-- [Sleep Analysis](docs/features/sleep.md) -- Sleep quality tracking, hypnogram, Oura scores, sleep location
-- [Screentime Categories](docs/features/screentime-categories.md) -- Hierarchical app categorization with productivity scoring
-- [Training Load](docs/features/training-load.md) -- Banister model fitness/fatigue tracking (CTL/ATL/TSB)
-- [Places & Location Tracking](docs/features/places.md) -- Auto-detected locations, geocoding, visit tracking
-- [Lab Reports](docs/features/lab-reports.md) -- Structured lab results with metric write-through
-- [Active Calorie Computation](docs/features/calories.md) -- HR-based calculation, gap-fill, source filtering
 
 ---
 
