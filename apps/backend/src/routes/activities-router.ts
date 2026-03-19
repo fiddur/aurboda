@@ -31,6 +31,7 @@ import {
   getOverlappingActivities,
   getProductivityBucketed,
   getProductivityById,
+  getTimeSeries,
 } from '../db/index.ts'
 import {
   addActivity,
@@ -47,7 +48,97 @@ import {
   queryProductivity,
   type SyncProvider,
 } from '../services/queries.ts'
+import { computeHrZoneSecs, getEffectiveHrZones } from '../services/settings.ts'
 import { validateBody, validateQuery } from '../validation.ts'
+
+/** Compute HR zone seconds and avg HRV for an exercise activity time range. */
+const computeExerciseMetrics = async (
+  user: string,
+  start: Date,
+  end: Date,
+): Promise<{ hr_zone_secs?: Record<number, number>; avg_hrv?: number }> => {
+  const [hrData, { zones: hrZones }, hrvData] = await Promise.all([
+    getTimeSeries(user, 'heart_rate', start, end),
+    getEffectiveHrZones(user),
+    getTimeSeries(user, 'hrv_rmssd', start, end),
+  ])
+
+  return {
+    avg_hrv:
+      hrvData.length > 0
+        ? Math.round(hrvData.reduce((sum, [, v]) => sum + v, 0) / hrvData.length)
+        : undefined,
+    hr_zone_secs: hrData.length > 0 ? computeHrZoneSecs(hrData, hrZones) : undefined,
+  }
+}
+
+type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
+
+/** Build the merged activity detail response. */
+const buildMergedResponse = async (
+  user: string,
+  activity: NonNullable<ActivityRow>,
+  exerciseMetrics: { hr_zone_secs?: Record<number, number>; avg_hrv?: number },
+) => {
+  const overlapping = await getOverlappingActivities(user, activity)
+  const hasMultipleSources = overlapping.length > 1
+
+  const sourceRecords = hasMultipleSources
+    ? overlapping.map((a) => {
+        const data = a.data as Record<string, unknown> | undefined
+        return {
+          data_origin: data?.dataOrigin as string | undefined,
+          end_time: a.end_time?.toISOString(),
+          exercise_type_name: data?.exerciseTypeName as string | undefined,
+          id: a.id!,
+          source: a.source,
+          start_time: a.start_time.toISOString(),
+          title: a.title,
+        }
+      })
+    : undefined
+
+  const mergedStartTime = hasMultipleSources
+    ? new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))).toISOString()
+    : undefined
+  const mergedEndTime = hasMultipleSources
+    ? new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))).toISOString()
+    : undefined
+
+  const sorted = [...overlapping].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+  const mergedTitle = sorted.find((a) => a.title)?.title ?? activity.title
+  const mergedNotes =
+    sorted
+      .map((a) => a.notes)
+      .filter(Boolean)
+      .join('\n') || activity.notes
+  const mergedData = sorted.reduce<Record<string, unknown>>(
+    (acc, a) => (a.data ? { ...acc, ...a.data } : acc),
+    {},
+  )
+
+  // For merged exercise, recompute HR zones using full merged time range
+  let metrics = exerciseMetrics
+  if (activity.activity_type === 'exercise' && mergedStartTime && mergedEndTime) {
+    metrics = await computeExerciseMetrics(user, new Date(mergedStartTime), new Date(mergedEndTime))
+  }
+
+  return {
+    activity_type: activity.activity_type,
+    avg_hrv: metrics.avg_hrv,
+    data: Object.keys(mergedData).length > 0 ? mergedData : activity.data,
+    end_time: activity.end_time?.toISOString(),
+    hr_zone_secs: metrics.hr_zone_secs,
+    id: activity.id,
+    merged_end_time: mergedEndTime,
+    merged_start_time: mergedStartTime,
+    notes: mergedNotes,
+    source: activity.source,
+    source_records: sourceRecords,
+    start_time: activity.start_time.toISOString(),
+    title: mergedTitle,
+  }
+}
 
 export const createActivitiesRouter = (
   authMiddleware: RequestHandler,
@@ -215,71 +306,27 @@ export const createActivitiesRouter = (
       return res.status(404).json({ error: 'Activity not found', success: false })
     }
 
+    // Compute HR zones and avg HRV for exercise activities
+    let exerciseMetrics: { hr_zone_secs?: Record<number, number>; avg_hrv?: number } = {}
+    if (activity.activity_type === 'exercise' && activity.end_time) {
+      exerciseMetrics = await computeExerciseMetrics(user, activity.start_time, activity.end_time)
+    }
+
     // For merged: prefix, fetch overlapping activities and return merged view
     if (isMerged && !activity.deleted_at) {
-      const overlapping = await getOverlappingActivities(user, activity)
-      const hasMultipleSources = overlapping.length > 1
-
-      const sourceRecords = hasMultipleSources
-        ? overlapping.map((a) => {
-            const data = a.data as Record<string, unknown> | undefined
-            return {
-              data_origin: data?.dataOrigin as string | undefined,
-              end_time: a.end_time?.toISOString(),
-              exercise_type_name: data?.exerciseTypeName as string | undefined,
-              id: a.id!,
-              source: a.source,
-              start_time: a.start_time.toISOString(),
-              title: a.title,
-            }
-          })
-        : undefined
-
-      const mergedStartTime = hasMultipleSources
-        ? new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))).toISOString()
-        : undefined
-      const mergedEndTime = hasMultipleSources
-        ? new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))).toISOString()
-        : undefined
-
-      // Compute merged fields from all sources (same rules as mergeOverlappingActivities)
-      const sorted = [...overlapping].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
-      const mergedTitle = sorted.find((a) => a.title)?.title ?? activity.title
-      const mergedNotes =
-        sorted
-          .map((a) => a.notes)
-          .filter(Boolean)
-          .join('\n') || activity.notes
-      const mergedData = sorted.reduce<Record<string, unknown>>(
-        (acc, a) => (a.data ? { ...acc, ...a.data } : acc),
-        {},
-      )
-
-      return res.json({
-        data: {
-          activity_type: activity.activity_type,
-          data: Object.keys(mergedData).length > 0 ? mergedData : activity.data,
-          end_time: activity.end_time?.toISOString(),
-          id: activity.id,
-          merged_end_time: mergedEndTime,
-          merged_start_time: mergedStartTime,
-          notes: mergedNotes,
-          source: activity.source,
-          source_records: sourceRecords,
-          start_time: activity.start_time.toISOString(),
-          title: mergedTitle,
-        },
-        success: true,
-      })
+      const data = await buildMergedResponse(user, activity, exerciseMetrics)
+      return res.json({ data, success: true })
     }
 
     // Plain UUID: return raw single activity (no overlap lookup)
     res.json({
       data: {
         activity_type: activity.activity_type,
+        avg_hrv: exerciseMetrics.avg_hrv,
         data: activity.data,
         deleted_at: activity.deleted_at?.toISOString(),
         end_time: activity.end_time?.toISOString(),
+        hr_zone_secs: exerciseMetrics.hr_zone_secs,
         id: activity.id,
         notes: activity.notes,
         source: activity.source,

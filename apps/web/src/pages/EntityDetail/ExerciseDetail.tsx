@@ -127,12 +127,14 @@ export const ExerciseDetail = ({
     <>
       <div class="entity-info">
         <div class="entity-meta">
-          <span class="entity-type-badge">{activity.activity_type}</span>
+          <span class="entity-type-badge">
+            {exerciseType ? formatExerciseTypeName(exerciseType) : activity.activity_type}
+          </span>
           {activity.source && <span class="entity-source">Source: {activity.source}</span>}
         </div>
 
         <EditableActivityFields
-          title={activity.title || exerciseType || 'Exercise'}
+          title={activity.title || (exerciseType ? formatExerciseTypeName(exerciseType) : 'Exercise')}
           displayStart={displayStart}
           displayEnd={displayEnd}
           notes={activity.notes}
