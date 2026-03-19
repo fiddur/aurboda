@@ -20,8 +20,10 @@ import {
   importFromActivityWatch,
   listCategories,
   modifyCategory,
+  moveCategoryToParent,
   recategorizeAll,
   removeCategory,
+  upsertCategory,
 } from '../services/screentime-categories.ts'
 import { validateBody } from '../validation.ts'
 
@@ -62,8 +64,30 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
     res.status(201).json({ data: category, success: true })
   })
 
-  // PUT /:id - Update a category
+  // PUT /:id - Upsert a category (create with client-generated UUID or full update)
   router.put<{ id: string }>(
+    '/:id',
+    authMiddleware,
+    validateBody(createScreentimeCategoryBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const body = req.body as CreateScreentimeCategoryBody
+      const category = await upsertCategory(user, req.params.id, {
+        color: body.color,
+        exclude_from_screentime: body.exclude_from_screentime,
+        ignore_case: body.ignore_case ?? true,
+        name: body.name,
+        rule_regex: body.rule_regex,
+        rule_type: body.rule_type ?? 'none',
+        score: body.score,
+        sort_order: body.sort_order,
+      })
+      res.json({ data: category, success: true })
+    },
+  )
+
+  // PATCH /:id - Partial update a category
+  router.patch<{ id: string }>(
     '/:id',
     authMiddleware,
     validateBody(updateScreentimeCategoryBodySchema),
@@ -78,6 +102,14 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
       res.json({ data: category, success: true })
     },
   )
+
+  // PATCH /:id/move - Move a category to a new parent
+  router.patch<{ id: string }>('/:id/move', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { new_parent_id } = req.body as { new_parent_id: string | null }
+    const result = await moveCategoryToParent(user, req.params.id, new_parent_id)
+    res.json({ success: result.updated > 0, updated: result.updated })
+  })
 
   // DELETE /:id - Delete a category and its children
   router.delete<{ id: string }>('/:id', authMiddleware, async (req, res) => {

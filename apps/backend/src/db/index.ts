@@ -152,7 +152,9 @@ export {
   getScreentimeCategories,
   getScreentimeCategoryById,
   insertScreentimeCategory,
+  moveScreentimeCategory,
   updateScreentimeCategory,
+  upsertScreentimeCategory,
 } from './screentime-categories.ts'
 
 // Notes
