@@ -39,9 +39,15 @@ interface TopLevelCategory {
   children: Array<{ path: string[]; total_sec: number }>
 }
 
+/**
+ * Aggregate bucket categories to top-level for the stacked bar.
+ * When capSec is provided and the total exceeds it (multi-device overlap),
+ * all durations are scaled down proportionally so the total equals capSec.
+ */
 const aggregateToTopLevel = (
   bucket: ScreentimeBucketParsed,
   categories: ScreentimeCategory[],
+  capSec?: number,
 ): TopLevelCategory[] => {
   const map = new Map<string, TopLevelCategory>()
   let uncategorizedSec = 0
@@ -75,8 +81,24 @@ const aggregateToTopLevel = (
     })
   }
 
+  const result = [...map.values()]
+
+  // Cap at bucket duration when multi-device overlap inflates the total
+  if (capSec) {
+    const rawTotal = result.reduce((s, c) => s + c.total_sec, 0)
+    if (rawTotal > capSec) {
+      const scale = capSec / rawTotal
+      for (const cat of result) {
+        cat.total_sec = Math.round(cat.total_sec * scale)
+        for (const child of cat.children) {
+          child.total_sec = Math.round(child.total_sec * scale)
+        }
+      }
+    }
+  }
+
   // Sort by duration descending (biggest at bottom of stack)
-  return [...map.values()].sort((a, b) => b.total_sec - a.total_sec)
+  return result.sort((a, b) => b.total_sec - a.total_sec)
 }
 
 /** Format seconds as compact duration (e.g. "2h 15m", "45m"). */
@@ -130,7 +152,7 @@ export const drawScreentimeBars = (config: DrawScreentimeConfig): void => {
     const { x: barX, width: barWidth } = slotPixels(bucketX, bucketWidth, slotOffset, barLayout.slotWidth)
     if (barWidth < 1) continue
 
-    const topLevels = aggregateToTopLevel(bucket, categories)
+    const topLevels = aggregateToTopLevel(bucket, categories, bucketDurationSec)
 
     // Draw stacked segments bottom-up
     let stackY = trackBottom
@@ -165,12 +187,20 @@ export const buildScreentimeTooltipHtml = (
 ): string | null => {
   if (bucket.total_sec <= 0) return null
 
-  const topLevels = aggregateToTopLevel(bucket, categories)
+  const bucketDurationSec = (bucket.end.getTime() - bucket.start.getTime()) / 1000
+  const rawTotal = bucket.total_sec
+  const isCapped = rawTotal > bucketDurationSec
+  const cappedTotal = isCapped ? bucketDurationSec : rawTotal
+  const topLevels = aggregateToTopLevel(bucket, categories, bucketDurationSec)
 
   let html = '<div class="tooltip-separator"></div>'
   html += '<div class="tooltip-title">Screen Time</div>'
   html += `<div class="tooltip-time">${format(bucket.start, 'HH:mm')} – ${format(bucket.end, 'HH:mm')}</div>`
-  html += `<div class="tooltip-detail"><strong>Total</strong> <span>${formatSec(bucket.total_sec)}</span></div>`
+  html += `<div class="tooltip-detail"><strong>Total</strong> <span>${formatSec(cappedTotal)}</span>`
+  if (isCapped) {
+    html += ` <span style="font-size:11px;color:#9ca3af">(multi-device: ${formatSec(rawTotal)})</span>`
+  }
+  html += '</div>'
 
   for (const cat of topLevels) {
     html += `<div class="tooltip-detail" style="padding-left:8px">`
