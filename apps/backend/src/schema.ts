@@ -371,6 +371,7 @@ export const createTableStatements: Record<string, string> = {
       ignore_case     BOOLEAN DEFAULT TRUE,
       color           VARCHAR(20),
       score           SMALLINT,
+      exclude_from_screentime BOOLEAN DEFAULT FALSE,
       sort_order      INTEGER DEFAULT 0,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()

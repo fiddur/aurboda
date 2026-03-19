@@ -30,6 +30,10 @@ export const screentimeCategorySchema = z
       .optional()
       .meta({ description: 'Hex color (e.g. "#22c55e"). Inherited from parent if not set.' }),
     created_at: z.string().optional().meta({ description: 'Creation timestamp' }),
+    exclude_from_screentime: z.boolean().optional().meta({
+      description:
+        'When true, records matching this category are excluded from screen time summaries and timelines. Useful for idle/background apps like plasmashell.',
+    }),
     id: z.string().uuid().meta({ description: 'Category ID' }),
     ignore_case: z.boolean().meta({ description: 'Whether regex matching is case-insensitive' }),
     name: z
@@ -60,6 +64,10 @@ export type ScreentimeCategory = z.infer<typeof screentimeCategorySchema>
 export const createScreentimeCategoryBodySchema = z
   .object({
     color: z.string().optional().meta({ description: 'Hex color (e.g. "#22c55e")' }),
+    exclude_from_screentime: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Exclude from screen time summaries and timelines' }),
     ignore_case: z
       .boolean()
       .optional()
@@ -86,6 +94,10 @@ export type CreateScreentimeCategoryBody = z.infer<typeof createScreentimeCatego
 export const updateScreentimeCategoryBodySchema = z
   .object({
     color: z.string().optional().meta({ description: 'Hex color' }),
+    exclude_from_screentime: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Exclude from screen time summaries and timelines' }),
     ignore_case: z.boolean().optional().meta({ description: 'Case-insensitive regex matching' }),
     name: z.array(z.string()).min(1).optional().meta({ description: 'Hierarchical category path' }),
     rule_regex: z.string().optional().meta({ description: 'Regex pattern' }),

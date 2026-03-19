@@ -102,12 +102,14 @@ function CategoryRow({
   const [editColor, setEditColor] = useState(cat.color ?? '')
   const [editScore, setEditScore] = useState<string>(cat.score !== undefined ? String(cat.score) : '')
   const [editIgnoreCase, setEditIgnoreCase] = useState(cat.ignore_case)
+  const [editExclude, setEditExclude] = useState(cat.exclude_from_screentime ?? false)
 
   const updateMutation = useMutation({
     mutationFn: () => {
       const newName = [...cat.name.slice(0, -1), editName.trim()]
       return updateScreentimeCategory(cat.id, {
         color: editColor || undefined,
+        exclude_from_screentime: editExclude,
         ignore_case: editIgnoreCase,
         name: newName,
         rule_regex: editRegex || undefined,
@@ -126,7 +128,6 @@ function CategoryRow({
     onSuccess: onDeleted,
   })
 
-  const displayName = cat.name[cat.name.length - 1]
   const indent = node.depth * 24
 
   if (isEditing) {
@@ -192,6 +193,14 @@ function CategoryRow({
               />
               Ignore case
             </label>
+            <label class="sc-case-label">
+              <input
+                type="checkbox"
+                checked={editExclude}
+                onChange={(e) => setEditExclude((e.target as HTMLInputElement).checked)}
+              />
+              Exclude from screen time
+            </label>
           </div>
         </div>
         <div class="sc-actions">
@@ -213,6 +222,40 @@ function CategoryRow({
   }
 
   return (
+    <CategoryRowView
+      cat={cat}
+      indent={indent}
+      onEdit={() => setIsEditing(true)}
+      onDelete={() => {
+        if (node.children.length > 0) {
+          if (!confirm(`Delete "${cat.name.join(' > ')}" and all its ${node.children.length} children?`)) {
+            return
+          }
+        }
+        deleteMutation.mutate()
+      }}
+      isDeleting={deleteMutation.isPending}
+    />
+  )
+}
+
+/** Display mode for a category row (extracted to reduce CategoryRow complexity). */
+function CategoryRowView({
+  cat,
+  indent,
+  onEdit,
+  onDelete,
+  isDeleting,
+}: {
+  cat: ScreentimeCategory
+  indent: number
+  onEdit: () => void
+  onDelete: () => void
+  isDeleting: boolean
+}) {
+  const displayName = cat.name[cat.name.length - 1]
+
+  return (
     <div class="sc-row" style={{ paddingLeft: `${indent + 8}px` }}>
       <div class="sc-info">
         {cat.color && <span class="sc-color-dot" style={{ background: cat.color }} />}
@@ -220,28 +263,15 @@ function CategoryRow({
           {displayName}
         </a>
         {cat.rule_regex && <code class="sc-regex">{cat.rule_regex}</code>}
+        {cat.exclude_from_screentime && <span class="sc-excluded-badge">excluded</span>}
         {cat.score !== undefined && <span class="sc-score">{productivityScoreLabel(cat.score)}</span>}
       </div>
       <div class="sc-actions">
-        <button type="button" class="note-action-btn" onClick={() => setIsEditing(true)}>
+        <button type="button" class="note-action-btn" onClick={onEdit}>
           Edit
         </button>
-        <button
-          type="button"
-          class="note-action-btn danger"
-          onClick={() => {
-            if (node.children.length > 0) {
-              if (
-                !confirm(`Delete "${cat.name.join(' > ')}" and all its ${node.children.length} children?`)
-              ) {
-                return
-              }
-            }
-            deleteMutation.mutate()
-          }}
-          disabled={deleteMutation.isPending}
-        >
-          {deleteMutation.isPending ? '...' : 'Delete'}
+        <button type="button" class="note-action-btn danger" onClick={onDelete} disabled={isDeleting}>
+          {isDeleting ? '...' : 'Delete'}
         </button>
       </div>
     </div>

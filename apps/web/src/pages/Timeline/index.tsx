@@ -49,7 +49,7 @@ import {
   mergeScrobblesIntoSessions,
   MUSIC_STAFF_HEIGHT,
 } from './drawMusicStaff'
-import { drawScreentimeBars, SCREENTIME_COLOR } from './drawScreentimeTrack'
+import { drawScreentimeBars, isExcludedCategory, SCREENTIME_COLOR } from './drawScreentimeTrack'
 import { CTL_COLOR, drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import { mergeProductivitySpans } from './productivityMerge'
@@ -521,7 +521,14 @@ const categorizeProductivity = (
   categories: ScreentimeCategory[],
   itemIcons: Record<string, string>,
 ): ChartItem[] => {
-  const spans = mergeProductivitySpans(productivity)
+  // Filter out records matching excluded categories (e.g. plasmashell/idle)
+  const filtered = productivity.filter(
+    (p) =>
+      !p.resolved_category ||
+      p.resolved_category.length === 0 ||
+      !isExcludedCategory(p.resolved_category, categories),
+  )
+  const spans = mergeProductivitySpans(filtered)
 
   return spans.map((span) => {
     const isCategorized = span.groupKey !== ''
