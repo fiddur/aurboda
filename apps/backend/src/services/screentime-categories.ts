@@ -22,7 +22,9 @@ import {
   getScreentimeCategories,
   getScreentimeCategoryById,
   insertScreentimeCategory,
+  moveScreentimeCategory,
   updateScreentimeCategory,
+  upsertScreentimeCategory,
 } from '../db/index.ts'
 
 // ============================================================================
@@ -219,6 +221,39 @@ export const removeCategory = async (user: string, id: string) => {
 }
 
 export const getCategoryById = async (user: string, id: string) => getScreentimeCategoryById(user, id)
+
+export const upsertCategory = async (user: string, id: string, input: ScreentimeCategoryInput) => {
+  const result = await upsertScreentimeCategory(user, id, input)
+
+  // Recategorize if the category has a rule
+  if (input.rule_type === 'regex' && input.rule_regex) {
+    recategorizeAll(user).catch((err) => {
+      console.error(`Recategorization failed for user ${user}:`, err)
+    })
+  }
+
+  return result
+}
+
+export const moveCategoryToParent = async (user: string, id: string, newParentId: string | null) => {
+  // Resolve the new parent's name path
+  let newParentName: string[] | null = null
+  if (newParentId) {
+    const parent = await getScreentimeCategoryById(user, newParentId)
+    if (!parent) throw new Error('Parent category not found')
+    newParentName = parent.name
+  }
+
+  const result = await moveScreentimeCategory(user, id, newParentName)
+
+  if (result.updated > 0) {
+    recategorizeAll(user).catch((err) => {
+      console.error(`Recategorization after move failed for user ${user}:`, err)
+    })
+  }
+
+  return result
+}
 
 // ============================================================================
 // Import from ActivityWatch
