@@ -39,8 +39,21 @@ interface TopLevelCategory {
   children: Array<{ path: string[]; total_sec: number }>
 }
 
+/** Check if a category path matches an excluded category (or has an excluded ancestor). */
+export const isExcludedCategory = (path: string[], categories: ScreentimeCategory[]): boolean => {
+  for (let depth = path.length; depth > 0; depth--) {
+    const subpath = path.slice(0, depth)
+    const cat = categories.find(
+      (c) => c.name.length === subpath.length && c.name.every((s, i) => s === subpath[i]),
+    )
+    if (cat?.exclude_from_screentime) return true
+  }
+  return false
+}
+
 /**
  * Aggregate bucket categories to top-level for the stacked bar.
+ * Categories with exclude_from_screentime are skipped.
  * When capSec is provided and the total exceeds it (multi-device overlap),
  * all durations are scaled down proportionally so the total equals capSec.
  */
@@ -53,6 +66,8 @@ const aggregateToTopLevel = (
   let uncategorizedSec = 0
 
   for (const cat of bucket.categories) {
+    // Skip excluded categories
+    if (cat.path.length > 0 && isExcludedCategory(cat.path, categories)) continue
     if (cat.path.length === 0) {
       uncategorizedSec += cat.total_sec
       continue
@@ -188,17 +203,17 @@ export const buildScreentimeTooltipHtml = (
   if (bucket.total_sec <= 0) return null
 
   const bucketDurationSec = (bucket.end.getTime() - bucket.start.getTime()) / 1000
-  const rawTotal = bucket.total_sec
-  const isCapped = rawTotal > bucketDurationSec
-  const cappedTotal = isCapped ? bucketDurationSec : rawTotal
   const topLevels = aggregateToTopLevel(bucket, categories, bucketDurationSec)
+  const effectiveTotal = topLevels.reduce((s, c) => s + c.total_sec, 0)
+
+  if (effectiveTotal <= 0) return null
 
   let html = '<div class="tooltip-separator"></div>'
   html += '<div class="tooltip-title">Screen Time</div>'
   html += `<div class="tooltip-time">${format(bucket.start, 'HH:mm')} – ${format(bucket.end, 'HH:mm')}</div>`
-  html += `<div class="tooltip-detail"><strong>Total</strong> <span>${formatSec(cappedTotal)}</span>`
-  if (isCapped) {
-    html += ` <span style="font-size:11px;color:#9ca3af">(multi-device: ${formatSec(rawTotal)})</span>`
+  html += `<div class="tooltip-detail"><strong>Total</strong> <span>${formatSec(effectiveTotal)}</span>`
+  if (bucket.total_sec > effectiveTotal + 60) {
+    html += ` <span style="font-size:11px;color:#9ca3af">(excl. ${formatSec(bucket.total_sec - effectiveTotal)})</span>`
   }
   html += '</div>'
 

@@ -8,6 +8,7 @@ import { query } from './connection.ts'
 const mapRow = (row: Record<string, unknown>): ScreentimeCategory => ({
   color: (row.color as string) || undefined,
   created_at: new Date(row.created_at as string),
+  exclude_from_screentime: (row.exclude_from_screentime as boolean) || undefined,
   id: row.id as string,
   ignore_case: row.ignore_case as boolean,
   name: row.name as string[],
@@ -21,7 +22,7 @@ const mapRow = (row: Record<string, unknown>): ScreentimeCategory => ({
 export const getScreentimeCategories = async (user: string): Promise<ScreentimeCategory[]> => {
   const result = await query(
     user,
-    `SELECT id, name, rule_type, rule_regex, ignore_case, color, score, sort_order, created_at, updated_at
+    `SELECT id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, created_at, updated_at
      FROM screentime_categories
      ORDER BY sort_order, name`,
   )
@@ -35,7 +36,7 @@ export const getScreentimeCategoryById = async (
 ): Promise<ScreentimeCategory | null> => {
   const result = await query(
     user,
-    `SELECT id, name, rule_type, rule_regex, ignore_case, color, score, sort_order, created_at, updated_at
+    `SELECT id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, created_at, updated_at
      FROM screentime_categories
      WHERE id = $1`,
     [id],
@@ -50,9 +51,9 @@ export const insertScreentimeCategory = async (
 ): Promise<ScreentimeCategory> => {
   const result = await query(
     user,
-    `INSERT INTO screentime_categories (name, rule_type, rule_regex, ignore_case, color, score, sort_order)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, sort_order, created_at, updated_at`,
+    `INSERT INTO screentime_categories (name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, created_at, updated_at`,
     [
       input.name,
       input.rule_type,
@@ -60,6 +61,7 @@ export const insertScreentimeCategory = async (
       input.ignore_case ?? true,
       input.color || null,
       input.score ?? null,
+      input.exclude_from_screentime ?? false,
       input.sort_order ?? 0,
     ],
   )
@@ -99,6 +101,10 @@ export const updateScreentimeCategory = async (
   if (input.score !== undefined) {
     fields.push(`score = $${paramIndex++}`)
     values.push(input.score)
+  }
+  if (input.exclude_from_screentime !== undefined) {
+    fields.push(`exclude_from_screentime = $${paramIndex++}`)
+    values.push(input.exclude_from_screentime)
   }
   if (input.sort_order !== undefined) {
     fields.push(`sort_order = $${paramIndex++}`)
@@ -165,9 +171,9 @@ export const bulkInsertScreentimeCategories = async (
 
   for (let i = 0; i < categories.length; i++) {
     const c = categories[i]
-    const offset = i * 7
+    const offset = i * 8
     valueClauses.push(
-      `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`,
+      `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`,
     )
     params.push(
       c.name,
@@ -176,15 +182,16 @@ export const bulkInsertScreentimeCategories = async (
       c.ignore_case ?? true,
       c.color || null,
       c.score ?? null,
+      c.exclude_from_screentime ?? false,
       c.sort_order ?? i,
     )
   }
 
   const result = await query(
     user,
-    `INSERT INTO screentime_categories (name, rule_type, rule_regex, ignore_case, color, score, sort_order)
+    `INSERT INTO screentime_categories (name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order)
      VALUES ${valueClauses.join(', ')}
-     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, sort_order, created_at, updated_at`,
+     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, created_at, updated_at`,
     params,
   )
 

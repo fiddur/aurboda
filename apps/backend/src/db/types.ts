@@ -224,6 +224,7 @@ export interface ScreentimeCategory {
   ignore_case: boolean
   color?: string
   score?: number
+  exclude_from_screentime?: boolean
   sort_order: number
   created_at: Date
   updated_at: Date
@@ -236,6 +237,7 @@ export interface ScreentimeCategoryInput {
   ignore_case?: boolean
   color?: string
   score?: number
+  exclude_from_screentime?: boolean
   sort_order?: number
 }
 
