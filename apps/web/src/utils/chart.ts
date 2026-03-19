@@ -114,3 +114,95 @@ export const aggregateBuckets = (buckets: MetricBucketParsed[], factor: number):
 
   return result
 }
+
+/**
+ * Aggregate buckets into time-aligned windows (e.g., align to hour boundaries).
+ * Unlike `aggregateBuckets` which groups by consecutive index, this groups buckets
+ * by which target window they fall into, ensuring alignment with other data sources
+ * (screentime, training load) that use clean time boundaries.
+ *
+ * @param buckets - Pre-sorted array of metric buckets
+ * @param windowMs - Target window size in ms (e.g. 3600000 for 1 hour)
+ * @returns Aggregated buckets aligned to window boundaries
+ */
+export const aggregateBucketsAligned = (
+  buckets: MetricBucketParsed[],
+  windowMs: number,
+): MetricBucketParsed[] => {
+  if (buckets.length === 0) return []
+
+  const result: MetricBucketParsed[] = []
+  let currentWindowStart = Math.floor(buckets[0]!.start.getTime() / windowMs) * windowMs
+  let chunk: MetricBucketParsed[] = []
+
+  for (const bucket of buckets) {
+    const bucketWindowStart = Math.floor(bucket.start.getTime() / windowMs) * windowMs
+
+    if (bucketWindowStart !== currentWindowStart) {
+      // Flush the previous window
+      if (chunk.length > 0) {
+        result.push(
+          mergeBucketChunk(chunk, new Date(currentWindowStart), new Date(currentWindowStart + windowMs)),
+        )
+      }
+      currentWindowStart = bucketWindowStart
+      chunk = []
+    }
+    chunk.push(bucket)
+  }
+
+  // Flush the last window
+  if (chunk.length > 0) {
+    result.push(
+      mergeBucketChunk(chunk, new Date(currentWindowStart), new Date(currentWindowStart + windowMs)),
+    )
+  }
+
+  return result
+}
+
+/** Merge a chunk of buckets into a single bucket with given start/end boundaries. */
+const mergeBucketChunk = (chunk: MetricBucketParsed[], start: Date, end: Date): MetricBucketParsed => {
+  const merged: MetricBucketParsed = { end, metrics: {}, start }
+
+  const metricNames = new Set<string>()
+  for (const b of chunk) {
+    for (const name of Object.keys(b.metrics)) {
+      metricNames.add(name)
+    }
+  }
+
+  for (const name of metricNames) {
+    let totalWeightedAvg = 0
+    let totalCount = 0
+    let totalSum = 0
+    let hasSum = false
+    let globalMin = Infinity
+    let globalMax = -Infinity
+
+    for (const b of chunk) {
+      const stats = b.metrics[name]
+      if (!stats) continue
+      totalWeightedAvg += stats.avg * stats.count
+      totalCount += stats.count
+      if (stats.sum !== undefined) {
+        totalSum += stats.sum
+        hasSum = true
+      }
+      if (stats.min < globalMin) globalMin = stats.min
+      if (stats.max > globalMax) globalMax = stats.max
+    }
+
+    if (totalCount > 0) {
+      merged.metrics[name] = {
+        avg: totalWeightedAvg / totalCount,
+        count: totalCount,
+        max: globalMax,
+        min: globalMin,
+        ...(hasSum && { sum: totalSum }),
+      }
+    }
+  }
+
+  return merged
+}

@@ -12,7 +12,7 @@ import { format } from 'date-fns'
 
 import type { ScreentimeBucketParsed } from '../../state/api'
 
-import { type MetricBucketParsed, aggregateBuckets } from '../../utils/chart'
+import { type MetricBucketParsed, aggregateBuckets, aggregateBucketsAligned } from '../../utils/chart'
 import { type BarLayoutResult, slotPixels } from './barLayout'
 import { buildScreentimeTooltipHtml, findScreentimeBucket } from './drawScreentimeTrack'
 import {
@@ -105,14 +105,13 @@ const getAggregationFactor = (pixelsPerHour: number, buckets: MetricBucketParsed
 }
 
 /**
- * Compute the aggregation factor to bring metric buckets to the target bar bucket size.
- * E.g., if buckets are 5m and target is 1h (3600000ms), factor = 12.
+ * Check if bar buckets need time-aligned aggregation.
+ * Returns true if the native bucket size is smaller than the target bar bucket size.
  */
-const computeBarAggregationFactor = (buckets: MetricBucketParsed[], barBucketMs?: number): number => {
-  if (!barBucketMs || buckets.length < 2) return 1
+const needsBarAggregation = (buckets: MetricBucketParsed[], barBucketMs?: number): boolean => {
+  if (!barBucketMs || buckets.length < 2) return false
   const bucketMs = buckets[1]!.start.getTime() - buckets[0]!.start.getTime()
-  if (bucketMs >= barBucketMs) return 1
-  return Math.round(barBucketMs / bucketMs)
+  return bucketMs < barBucketMs
 }
 
 // ── Gap detection ─────────────────────────────────────────────────────────────
@@ -427,6 +426,7 @@ export const computeYScales = (
   buckets: MetricBucketParsed[],
   trackY: number,
   trackBottom: number,
+  barBuckets?: MetricBucketParsed[],
 ): MetricsYScales => {
   // HR: fixed domain
   const yHr = d3.scaleLinear().domain([40, 200]).range([trackBottom, trackY])
@@ -449,15 +449,16 @@ export const computeYScales = (
     .nice()
     .range([trackBottom, trackY])
 
-  // Steps: dynamic domain
-  const stepsMax = getMetricMax(buckets, 'steps', 1000)
+  // Steps: dynamic domain (use bar-aggregated data for correct scale)
+  const barData = barBuckets ?? buckets
+  const stepsMax = getMetricMax(barData, 'steps', 1000)
   const ySteps = d3
     .scaleLinear()
     .domain([0, stepsMax * 1.1])
     .range([trackBottom, trackY])
 
-  // Calories: dynamic domain
-  const calMax = getMetricMax(buckets, 'calories_active', 100)
+  // Calories: dynamic domain (use bar-aggregated data for correct scale)
+  const calMax = getMetricMax(barData, 'calories_active', 100)
   const yCal = d3
     .scaleLinear()
     .domain([0, calMax * 1.1])
@@ -466,12 +467,50 @@ export const computeYScales = (
   return { yCal, yHr, yHrv, ySteps }
 }
 
+// ── Crosshair helpers ─────────────────────────────────────────────────────────
+
+/** Binary search for the bucket containing the given timestamp. */
+const findBucketAt = (bs: MetricBucketParsed[], timeMs: number): MetricBucketParsed | null => {
+  let lo = 0
+  let hi = bs.length - 1
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1
+    const b = bs[mid]!
+    if (timeMs < b.start.getTime()) hi = mid - 1
+    else if (timeMs >= b.end.getTime()) lo = mid + 1
+    else return b
+  }
+  return null
+}
+
+/**
+ * Build a tooltip bucket by merging bar-aligned data (for calories/steps time range)
+ * with fine-grained line data (for precise HR/HRV values).
+ */
+const buildTooltipBucket = (
+  barBucket: MetricBucketParsed | null,
+  lineBucket: MetricBucketParsed | null,
+): MetricBucketParsed | null => {
+  const base = barBucket ?? lineBucket
+  if (!base) return null
+  if (!barBucket || !lineBucket || barBucket === lineBucket) return base
+  return {
+    ...barBucket,
+    metrics: {
+      ...barBucket.metrics,
+      ...(lineBucket.metrics.heart_rate && { heart_rate: lineBucket.metrics.heart_rate }),
+      ...(lineBucket.metrics.hrv_rmssd && { hrv_rmssd: lineBucket.metrics.hrv_rmssd }),
+    },
+  }
+}
+
 // ── Crosshair overlay ─────────────────────────────────────────────────────────
 
 const drawCrosshairOverlay = (
   outerG: SvgGroup,
   xScale: d3.ScaleTime<number, number>,
   buckets: MetricBucketParsed[],
+  barBuckets: MetricBucketParsed[],
   trackY: number,
   trackHeight: number,
   chartWidth: number,
@@ -516,32 +555,18 @@ const drawCrosshairOverlay = (
       const hoverTime = xScale.invert(mx!)
       const hoverMs = hoverTime.getTime()
 
-      // Binary search for the bucket containing hoverTime (start <= hoverTime < end)
-      let nearest: MetricBucketParsed | null = null
-      if (buckets.length > 0) {
-        let lo = 0
-        let hi = buckets.length - 1
-        while (lo <= hi) {
-          const mid = (lo + hi) >>> 1
-          const b = buckets[mid]!
-          if (hoverMs < b.start.getTime()) {
-            hi = mid - 1
-          } else if (hoverMs >= b.end.getTime()) {
-            lo = mid + 1
-          } else {
-            nearest = b
-            break
-          }
-        }
-      }
+      // Find the bar-aligned bucket (for time header + calories/steps) and fine bucket (for HR/HRV)
+      const barBucket = barBuckets.length > 0 ? findBucketAt(barBuckets, hoverMs) : null
+      const lineBucket = buckets.length > 0 ? findBucketAt(buckets, hoverMs) : null
+      const tooltipBucket = buildTooltipBucket(barBucket, lineBucket)
 
       // Build tooltip: use metric bucket if available, otherwise training-load-only
       let html: string | null = null
-      if (nearest) {
-        const bucketDuration = nearest.end.getTime() - nearest.start.getTime()
+      if (tooltipBucket) {
+        const bucketDuration = tooltipBucket.end.getTime() - tooltipBucket.start.getTime()
         const tolerance = Math.max(2 * 3600_000, bucketDuration)
         html = buildMetricsTooltipHtml(
-          nearest,
+          tooltipBucket,
           showHR,
           showHRV,
           showSteps,
@@ -685,9 +710,10 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
   const lineFactor = getAggregationFactor(pixelsPerHour, rawBuckets)
   const buckets = aggregateBuckets(rawBuckets, lineFactor)
 
-  // Aggregate for bar charts (steps/calories) — coarser, matching barBucketMs
-  const barFactor = computeBarAggregationFactor(rawBuckets, config.barBucketMs)
-  const barBuckets = barFactor !== lineFactor ? aggregateBuckets(rawBuckets, barFactor) : buckets
+  // Aggregate for bar charts (steps/calories) — time-aligned to match screentime/training load
+  const barBuckets = needsBarAggregation(rawBuckets, config.barBucketMs)
+    ? aggregateBucketsAligned(rawBuckets, config.barBucketMs!)
+    : buckets
 
   const trackBottom = trackY + trackHeight
 
@@ -713,6 +739,7 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
     outerG,
     xScale,
     buckets,
+    barBuckets,
     trackY,
     trackHeight,
     chartWidth,

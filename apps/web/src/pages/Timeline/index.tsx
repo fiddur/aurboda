@@ -27,7 +27,7 @@ import {
   fetchTrainingLoad,
   fetchUserSettings,
 } from '../../state/api'
-import { parseBucketedResponse } from '../../utils/chart'
+import { aggregateBucketsAligned, parseBucketedResponse } from '../../utils/chart'
 import { isEmoji, isUrl } from '../../utils/emojiLookup'
 import { packLanes } from '../../utils/lanePacking'
 import { buildActivityColumnItems, EXCLUDED_TAG_PREFIXES, EXCLUDED_TAG_SOURCES } from './activityMerge'
@@ -1418,8 +1418,18 @@ export const Timeline = () => {
 
     // Compute Y-scales once (stable per render, only depends on data, not zoom)
     const metricsTrackBottom = trackMetrics + metricsTrackHeight
+    // Pre-compute bar-aggregated buckets for Y-scale computation (so calorie/steps scales
+    // match the actual bar values, not the finer line-chart bucket peaks)
+    const barBucketMs = barBucketSize === '1w' ? 7 * 86400000 : barBucketSize === '1d' ? 86400000 : 3600000
+    const barAggBuckets =
+      metricBuckets.length >= 2 &&
+      metricBuckets[1]!.start.getTime() - metricBuckets[0]!.start.getTime() < barBucketMs
+        ? aggregateBucketsAligned(metricBuckets, barBucketMs)
+        : metricBuckets
     const metricsYScales =
-      metricBuckets.length > 0 ? computeYScales(metricBuckets, trackMetrics, metricsTrackBottom) : null
+      metricBuckets.length > 0
+        ? computeYScales(metricBuckets, trackMetrics, metricsTrackBottom, barAggBuckets)
+        : null
 
     // Combine activity items and all non-hidden tags (point and duration) into the activity lane
     const visibleActivityItems = activityItems.filter((i) => !isItemHidden(i))
@@ -1802,7 +1812,7 @@ export const Timeline = () => {
             ? { yScales: metricsYScales }
             : { yScales: computeYScales([], trackMetrics, trackMetrics + metricsTrackHeight) }),
           xScale: currentXScale,
-          barBucketMs: barBucketSize === '1w' ? 7 * 86400000 : barBucketSize === '1d' ? 86400000 : 3600000,
+          barBucketMs,
           barLayout,
           caloriesSlotId: 'calories',
           stepsSlotId: 'steps',
