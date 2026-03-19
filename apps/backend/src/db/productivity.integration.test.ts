@@ -397,18 +397,20 @@ describe('Productivity Integration Tests', () => {
       const apps = await getDistinctApps(user)
       expect(apps).toHaveLength(2)
 
-      // Sorted by total duration desc, so vscode (900s) first
-      expect(apps[0].activity).toBe('vscode')
-      expect(apps[0].title).toBe('main.ts — myproject')
-      expect(apps[0].resolved_category).toEqual(['Work', 'Programming'])
-      expect(apps[0].total_duration_sec).toBe(900)
-      expect(apps[0].record_count).toBe(2)
+      // Sorted by last_seen desc, so firefox (10:15) first, vscode (10:05) second
+      expect(apps[0].activity).toBe('firefox')
+      expect(apps[0].title).toBeUndefined()
+      expect(apps[0].resolved_category).toBeUndefined()
+      expect(apps[0].total_duration_sec).toBe(120)
+      expect(apps[0].record_count).toBe(1)
+      expect(apps[0].last_seen).toBeDefined()
 
-      expect(apps[1].activity).toBe('firefox')
-      expect(apps[1].title).toBeUndefined()
-      expect(apps[1].resolved_category).toBeUndefined()
-      expect(apps[1].total_duration_sec).toBe(120)
-      expect(apps[1].record_count).toBe(1)
+      expect(apps[1].activity).toBe('vscode')
+      expect(apps[1].title).toBe('main.ts — myproject')
+      expect(apps[1].resolved_category).toEqual(['Work', 'Programming'])
+      expect(apps[1].total_duration_sec).toBe(900)
+      expect(apps[1].record_count).toBe(2)
+      expect(apps[1].last_seen).toBeDefined()
     })
 
     test('groups separately by title (e.g. browser with different window titles)', async () => {
