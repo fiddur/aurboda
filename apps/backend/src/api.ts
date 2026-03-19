@@ -33,6 +33,7 @@ import {
   resetSyncState,
   schemaInitialized,
   updateDetectedLocation,
+  upsertUserSettings,
 } from './db/index.ts'
 import { syncAllGarminData } from './garmin-sync.ts'
 import { garminClient } from './garmin.ts'
@@ -393,6 +394,8 @@ const main = async () => {
         syncRescueTime: transformRescueTimeSyncResult,
         triggerCalorieComputation: (user: string, start: Date, end: Date) =>
           triggerCalorieComputation(user, start, end),
+        upsertUserSettings: (user: string, settings: Record<string, unknown>) =>
+          upsertUserSettings(user, settings),
       },
       authMiddleware,
     ),

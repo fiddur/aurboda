@@ -148,11 +148,24 @@ export const dailyAggregateSchema = z
     data_origins: z.array(z.string()).meta({ description: 'Contributing app package names' }),
     date: dateOnlySchema,
     metric: z.enum(cumulativeMetrics).meta({ description: 'Cumulative metric type' }),
+    timezone: z
+      .string()
+      .meta({
+        description: 'IANA timezone of the device when the aggregate was computed (e.g. "Europe/Stockholm")',
+        example: 'Europe/Stockholm',
+      })
+      .optional(),
     value: z.number().meta({ description: 'Aggregated value for the day' }),
   })
   .meta({ id: 'DailyAggregate' })
 
-export type DailyAggregate = z.infer<typeof dailyAggregateSchema>
+export interface DailyAggregate {
+  data_origins: string[]
+  date: string
+  metric: (typeof cumulativeMetrics)[number]
+  timezone?: string
+  value: number
+}
 
 /**
  * Daily aggregates request body schema.

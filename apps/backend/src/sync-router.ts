@@ -74,7 +74,8 @@ interface PendingOutboundSyncResult {
 
 export interface SyncRouterDeps {
   deleteHealthConnectRecords: (user: string, externalIds: string[]) => Promise<number>
-  processDailyAggregate: (user: string, aggregate: DailyAggregate) => Promise<void>
+  processDailyAggregate: (user: string, aggregate: DailyAggregate) => Promise<string | undefined>
+  upsertUserSettings: (user: string, settings: Record<string, unknown>) => Promise<unknown>
   processHealthConnectBatch: (
     user: string,
     recordType: string,
@@ -158,8 +159,15 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
           `dates ${dates[0]}..${dates[dates.length - 1]}`,
       )
 
+      let deviceTimezone: string | undefined
       for (const aggregate of data) {
-        await deps.processDailyAggregate(user, aggregate)
+        const tz = await deps.processDailyAggregate(user, aggregate)
+        if (tz) deviceTimezone = tz
+      }
+
+      // Store the device timezone in user settings for gap-fill day boundary alignment
+      if (deviceTimezone) {
+        await deps.upsertUserSettings(user, { device_timezone: deviceTimezone })
       }
 
       res.json({ success: true })

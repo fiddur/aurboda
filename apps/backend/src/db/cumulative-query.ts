@@ -10,7 +10,7 @@ import type { QueryResultRow } from 'pg'
  * when aurboda computes per-minute values, the health_connect_aggregate
  * daily totals must be excluded to avoid nonsense averages.
  */
-import { aurbodaOnlyMetrics, cumulativeMetrics, type MetricType } from '@aurboda/api-spec'
+import { aurbodaOnlyMetrics, aurbodaOnlySources, cumulativeMetrics, type MetricType } from '@aurboda/api-spec'
 
 /**
  * Split a list of metric names into three groups:
@@ -54,8 +54,8 @@ interface SplitQueryOptions<T> {
  * for the additional params (e.g. $2 for start, $3 for end). The cumulative SQL can
  * reference additional placeholders for cumulativeExtraParams.
  *
- * Aurboda-only metrics reuse the cumulative SQL template but with ['aurboda'] as the
- * source filter instead of the standard cumulativeSources.
+ * Aurboda-only metrics reuse the cumulative SQL template but with aurbodaOnlySources
+ * (HR-computed + gap-fill) as the source filter instead of the standard cumulativeSources.
  */
 export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): Promise<T[]> => {
   const { aurbodaOnly, cumulative, nonCumulative } = splitMetricsByCumulative(options.metrics)
@@ -72,11 +72,12 @@ export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): 
   }
 
   if (aurbodaOnly.length > 0) {
-    // Use the same cumulative SQL template but with 'aurboda' as the only source
+    // Use the same cumulative SQL template but with aurbodaOnlySources (HR-computed + gap-fill)
     const extraParams = options.cumulativeExtraParams ?? []
-    // Replace the cumulativeSources param with just ['aurboda']
+    // Replace the cumulativeSources param with aurbodaOnlySources
     // The cumulativeExtraParams[0] is the sources array, so we override it
-    const aurbodaExtraParams = extraParams.length > 0 ? [['aurboda'], ...extraParams.slice(1)] : [['aurboda']]
+    const aurbodaExtraParams =
+      extraParams.length > 0 ? [aurbodaOnlySources, ...extraParams.slice(1)] : [aurbodaOnlySources]
     const result = await options.queryFn(options.sqlCumulative, [
       aurbodaOnly,
       ...options.params,
