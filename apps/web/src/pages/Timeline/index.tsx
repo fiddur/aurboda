@@ -911,12 +911,14 @@ export const Timeline = () => {
 
   // ── Legend / filtering ─────────────────────────────────────────────────────
 
-  // Training load uses the same unified bucket size as general metrics.
-  // The training load backend accepts '1h', '1d', '1w' — map the unified size accordingly.
-  const trainingLoadBucketSize = useMemo((): '1h' | '1d' | '1w' => {
+  // Unified bar bucket size — all bar-shaped data (training load, steps, calories, screentime)
+  // uses the same bucket size so they align visually side by side.
+  // Training load backend only supports '1h', '1d', '1w', which constrains the minimum.
+  // Line charts (HR/HRV) still use the finer `bucketSize` for smooth rendering.
+  const barBucketSize = useMemo((): '1h' | '1d' | '1w' => {
     if (bucketSize === '1w') return '1w'
     if (bucketSize === '1d') return '1d'
-    // For sub-day metric buckets (5m, 15m, 1h), use hourly training load
+    // For sub-day views, all bars use hourly buckets
     return '1h'
   }, [bucketSize])
 
@@ -924,18 +926,18 @@ export const Timeline = () => {
   const trainingLoadQuery = useQuery({
     enabled: !hiddenCategories.has('training_load'),
     placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), trainingLoadBucketSize),
-    queryKey: ['timeline-training-load', fromDate.value, toDate.value, trainingLoadBucketSize],
+    queryFn: () => fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
+    queryKey: ['timeline-training-load', fromDate.value, toDate.value, barBucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
   // Screentime bucketed data (for horizontal stacked bar chart)
+  // Uses the same barBucketSize so it aligns with steps/calories/training load
   const screentimeBucketedQuery = useQuery({
     enabled: !hiddenCategories.has('screen_time_h') && !hiddenCategories.has('metrics'),
     placeholderData: keepPreviousData,
-    queryFn: () => fetchScreentimeBucketed(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), bucketSize),
-    queryKey: ['timeline-screentime-bucketed', fromDate.value, toDate.value, bucketSize],
+    queryFn: () => fetchScreentimeBucketed(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
+    queryKey: ['timeline-screentime-bucketed', fromDate.value, toDate.value, barBucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -1793,6 +1795,7 @@ export const Timeline = () => {
             ? { yScales: metricsYScales }
             : { yScales: computeYScales([], trackMetrics, trackMetrics + metricsTrackHeight) }),
           xScale: currentXScale,
+          barBucketMs: barBucketSize === '1w' ? 7 * 86400000 : barBucketSize === '1d' ? 86400000 : 3600000,
           barLayout,
           caloriesSlotId: 'calories',
           stepsSlotId: 'steps',
