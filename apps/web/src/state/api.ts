@@ -1314,9 +1314,24 @@ export const createScreentimeCategory = async (
   return response.data.data!
 }
 
+/** Partial update (PATCH) — used for auto-save on individual fields. */
 export const updateScreentimeCategory = async (
   id: string,
   body: UpdateScreentimeCategoryBody,
+): Promise<ScreentimeCategory> => {
+  const { token } = auth.value
+  const response = await axios.patch<ScreentimeCategoryResponse>(
+    `${API_URL}/screentime-categories/${id}`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data!
+}
+
+/** Full upsert (PUT) — used for creating with client-generated UUID. */
+export const upsertScreentimeCategory = async (
+  id: string,
+  body: CreateScreentimeCategoryBody,
 ): Promise<ScreentimeCategory> => {
   const { token } = auth.value
   const response = await axios.put<ScreentimeCategoryResponse>(
@@ -1325,6 +1340,16 @@ export const updateScreentimeCategory = async (
     { headers: { Authorization: `Bearer ${token}` } },
   )
   return response.data.data!
+}
+
+/** Move a category to a new parent (or top level if null). */
+export const moveScreentimeCategory = async (id: string, newParentId: string | null): Promise<void> => {
+  const { token } = auth.value
+  await axios.patch(
+    `${API_URL}/screentime-categories/${id}/move`,
+    { new_parent_id: newParentId },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
 }
 
 export const deleteScreentimeCategory = async (id: string): Promise<void> => {
