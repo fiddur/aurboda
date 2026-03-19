@@ -191,12 +191,19 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: recalculate_calories
   server.tool(
     'recalculate_calories',
-    'Recalculate calories burned from HR data for a time range. Requires sex and birth_date in settings. Uses weight from Health Connect and VO2 max (measured or age/sex fallback). Omit start/end to recompute all historical data.',
+    'Recalculate calories burned from HR data for a time range. Requires sex and birth_date in settings. Uses weight from Health Connect and VO2 max (measured or age/sex fallback). Omit start/end to recompute all historical data. Full recomputes run asynchronously and return immediately.',
     { ...recalculateCaloriesBodySchema.shape, end: z.string().optional(), start: z.string().optional() },
     async ({ start, end }) => {
       if (!start || !end) {
-        const result = await computeAndStoreCaloriesAll(user)
-        return jsonResponse({ ...result, success: true })
+        // Full recompute runs async — fire and forget, return immediately
+        computeAndStoreCaloriesAll(user).then(
+          (result) =>
+            console.log(
+              `🔥 Async calorie recompute done for ${user}: ${result.points_stored} points across ${result.days_processed} days`,
+            ),
+          (error) => console.error(`🔥 Async calorie recompute failed for ${user}:`, error),
+        )
+        return jsonResponse({ started: true, message: 'Full calorie recomputation started in background' })
       }
       const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
       return jsonResponse({ ...result, success: true })

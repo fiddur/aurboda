@@ -66,11 +66,11 @@ A clickable navigation tile with a colored icon and label. Links to any page in 
 
 Widgets are organized into sections, each with a title and a layout type:
 
-| Section type | Layout | Best for |
-|---|---|---|
-| **Metrics** | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries |
-| **Charts** | Single column, full width | Trend charts, correlation charts |
-| **Links** | Responsive grid of smaller tiles (minimum 140px wide) | Quick-link navigation |
+| Section type | Layout                                                        | Best for                                     |
+| ------------ | ------------------------------------------------------------- | -------------------------------------------- |
+| **Metrics**  | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries |
+| **Charts**   | Single column, full width                                     | Trend charts, correlation charts             |
+| **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                        |
 
 Sections are collapsible -- click the section header to toggle between expanded and collapsed. On wide screens, multiple sections can appear side by side.
 
@@ -97,16 +97,16 @@ When adding a Metric Card or Sparkline Card, the metric picker shows a searchabl
 
 The dashboard works with whatever data sources you have connected. Widgets gracefully handle missing data -- a metric card with no data simply shows no value. The more sources you connect, the more useful the dashboard becomes:
 
-| Widget content | Data sources |
-|---|---|
-| HRV and resting HR baselines | Oura, Garmin, or Health Connect |
-| Sleep score | Oura |
-| Readiness score | Oura |
-| Steps | Garmin or Health Connect |
-| Zone 2 minutes | Any source providing HR during exercise |
-| Activity summary | Any activity source |
-| Trend charts | Depends on what you're trending (tags, metrics) |
-| Correlation impact | HRV data + the activity/tag you're analyzing |
+| Widget content               | Data sources                                    |
+| ---------------------------- | ----------------------------------------------- |
+| HRV and resting HR baselines | Oura, Garmin, or Health Connect                 |
+| Sleep score                  | Oura                                            |
+| Readiness score              | Oura                                            |
+| Steps                        | Garmin or Health Connect                        |
+| Zone 2 minutes               | Any source providing HR during exercise         |
+| Activity summary             | Any activity source                             |
+| Trend charts                 | Depends on what you're trending (tags, metrics) |
+| Correlation impact           | HRV data + the activity/tag you're analyzing    |
 
 ## Known Limitations
 

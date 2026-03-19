@@ -14,11 +14,11 @@ Progress is the sum of the metric over the rolling window. For a 7-day window, t
 
 ### Examples
 
-| Goal | Metric | Min | Max | Window | Meaning |
-|---|---|---|---|---|---|
-| Zone 2 cardio | HR Zone 2 | 150 min | -- | 7d | At least 150 minutes of aerobic cardio per week |
-| Zone 5 intensity | HR Zone 5 | 5 min | 10 min | 7d | 5-10 minutes of max-effort work per week |
-| Weekly steps | Steps | 70,000 | -- | 7d | At least 70,000 steps per week (~10k/day) |
+| Goal             | Metric    | Min     | Max    | Window | Meaning                                         |
+| ---------------- | --------- | ------- | ------ | ------ | ----------------------------------------------- |
+| Zone 2 cardio    | HR Zone 2 | 150 min | --     | 7d     | At least 150 minutes of aerobic cardio per week |
+| Zone 5 intensity | HR Zone 5 | 5 min   | 10 min | 7d     | 5-10 minutes of max-effort work per week        |
+| Weekly steps     | Steps     | 70,000  | --     | 7d     | At least 70,000 steps per week (~10k/day)       |
 
 ## Default Goals
 
@@ -60,11 +60,11 @@ Goals are configured under **Data Sources > Aurboda (Web/API)** in the web UI.
 
 For each goal you can set:
 
-| Field | Description |
-|---|---|
-| **Metric** | Dropdown of all available metrics (60+ options) |
-| **Min** | Minimum target. For time-based metrics (HR zones), enter in minutes (stored as seconds internally) |
-| **Max** | Maximum target. Same display conversion. At least one of min or max required. |
+| Field      | Description                                                                                                                       |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Metric** | Dropdown of all available metrics (60+ options)                                                                                   |
+| **Min**    | Minimum target. For time-based metrics (HR zones), enter in minutes (stored as seconds internally)                                |
+| **Max**    | Maximum target. Same display conversion. At least one of min or max required.                                                     |
 | **Window** | Rolling window duration. Default `7d`. Supports: `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks), `M` (months) |
 
 Goals can be **drag-reordered** -- the order determines how they appear on the Goals page and in the Android widget. Changes save automatically.
@@ -87,14 +87,14 @@ The Android home screen widget shows the same goal progress as the web page. Eac
 
 Goals work with any metric in the system. The metric must have data within the rolling window for progress to appear. Common metric sources:
 
-| Metric type | Typical source |
-|---|---|
+| Metric type     | Typical source                                                |
+| --------------- | ------------------------------------------------------------- |
 | HR Zone minutes | Computed from exercise HR data (Oura, Garmin, Health Connect) |
-| Steps | Garmin, Health Connect |
-| Distance | Health Connect |
-| Calories | Computed from HR data or Health Connect |
-| Sleep score | Oura |
-| Weight | Manual entry, Health Connect |
+| Steps           | Garmin, Health Connect                                        |
+| Distance        | Health Connect                                                |
+| Calories        | Computed from HR data or Health Connect                       |
+| Sleep score     | Oura                                                          |
+| Weight          | Manual entry, Health Connect                                  |
 
 ## Known Limitations
 
