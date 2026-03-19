@@ -437,5 +437,22 @@ describe('Screentime Categories Integration Tests', () => {
       const result = await moveScreentimeCategory(user, '99999999-9999-9999-9999-999999999999', null)
       expect(result.updated).toBe(0)
     })
+
+    test('moves category with no children', async () => {
+      const user = getTestUser()
+      await insertScreentimeCategory(user, { name: ['Media'], rule_type: 'none' })
+      const cat = await insertScreentimeCategory(user, {
+        name: ['Work'],
+        rule_type: 'regex',
+        rule_regex: 'test',
+      })
+
+      const result = await moveScreentimeCategory(user, cat.id, ['Media'])
+      expect(result.updated).toBe(1)
+
+      const moved = await getScreentimeCategoryById(user, cat.id)
+      expect(moved!.name).toEqual(['Media', 'Work'])
+      expect(moved!.rule_regex).toBe('test') // Other fields preserved
+    })
   })
 })
