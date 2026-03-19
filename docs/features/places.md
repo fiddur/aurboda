@@ -23,12 +23,12 @@ Between consecutive visits, **transit** entries appear as dashed connectors show
 
 ### Source Types
 
-| Source | Color | Description |
-|---|---|---|
-| **Named** | Green | Locations you've named (e.g., "Home", "Gym") |
-| **Detected** | Orange | Automatically detected frequent locations with geocoded addresses |
-| **OwnTracks** | Blue | Identified by OwnTracks geofence regions |
-| **Unknown** | Gray | Unidentified locations, shown as "Somewhere" |
+| Source        | Color  | Description                                                       |
+| ------------- | ------ | ----------------------------------------------------------------- |
+| **Named**     | Green  | Locations you've named (e.g., "Home", "Gym")                      |
+| **Detected**  | Orange | Automatically detected frequent locations with geocoded addresses |
+| **OwnTracks** | Blue   | Identified by OwnTracks geofence regions                          |
+| **Unknown**   | Gray   | Unidentified locations, shown as "Somewhere"                      |
 
 ### Map
 
