@@ -205,6 +205,13 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
+  if (existingTableNames.has('screentime_categories')) {
+    await query(
+      db,
+      `ALTER TABLE screentime_categories ADD COLUMN IF NOT EXISTS exclude_from_screentime BOOLEAN DEFAULT FALSE`,
+    )
+  }
+
   // Migrate notes entity_id from UUID to TEXT (supports composite keys for metrics)
   if (existingTableNames.has('notes')) {
     await query(db, `ALTER TABLE notes ALTER COLUMN entity_id TYPE TEXT`)
