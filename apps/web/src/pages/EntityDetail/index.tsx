@@ -23,7 +23,7 @@ import {
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
-import { ExerciseDetail } from './ExerciseDetail'
+import { ExerciseDetail, resolveExerciseType } from './ExerciseDetail'
 import { formatDateTimeLocal, formatTime } from './format-utils'
 import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
@@ -66,9 +66,7 @@ const GenericActivityDetail = ({
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
-  const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseTypeName as
-    | string
-    | undefined
+  const exerciseType = resolveExerciseType(activity)
 
   return (
     <div class="entity-info">
@@ -163,9 +161,7 @@ const makeDraft = (activity: Activity): ActivityDraft => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
-  const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseTypeName as
-    | string
-    | undefined
+  const exerciseType = resolveExerciseType(activity)
   return {
     end_time: formatDateTimeLocal(displayEnd),
     exercise_type: exerciseType,

@@ -120,6 +120,15 @@ export const exerciseTypeSchema = z
 
 export const isValidExerciseType = (name: string): name is ExerciseTypeName => name in exerciseTypes
 
+/** Reverse lookup: Health Connect exercise type integer → exercise type name. */
+const exerciseTypesByValue = Object.fromEntries(
+  Object.entries(exerciseTypes).map(([name, value]) => [value, name]),
+) as Record<number, ExerciseTypeName>
+
+/** Get the exercise type name from its Health Connect integer value, or undefined if unknown. */
+export const getExerciseTypeName = (value: number): ExerciseTypeName | undefined =>
+  exerciseTypesByValue[value]
+
 export const getExerciseTypeValue = (name: ExerciseTypeName): number => exerciseTypes[name]
 
 /**

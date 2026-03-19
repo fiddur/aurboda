@@ -1,7 +1,7 @@
 /**
  * Exercise-specific detail view with HR chart and HR zone bar.
  */
-import { exerciseTypeNames } from '@aurboda/api-spec'
+import { exerciseTypeNames, getExerciseTypeName } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
 import type { Activity } from '../../state/api'
@@ -52,6 +52,38 @@ const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
 }
 
 const formatExerciseTypeName = (name: string): string => name.replaceAll('_', ' ')
+
+/** Resolve exercise type name from activity data (supports both string name and numeric HC value). */
+export const resolveExerciseType = (activity: Activity): string | undefined => {
+  const data = activity.data as Record<string, unknown> | undefined
+  return (
+    (data?.exerciseTypeName as string | undefined) ??
+    (typeof data?.exerciseType === 'number' ? getExerciseTypeName(data.exerciseType) : undefined)
+  )
+}
+
+/** Exercise type selector for edit mode. */
+const ExerciseTypeSelect = ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
+  <div class="entity-fields" style={{ marginTop: '0.5rem' }}>
+    <div class="field-row">
+      <span class="field-label">Exercise Type</span>
+      <span class="field-value">
+        <select
+          class="edit-datetime-input"
+          value={value}
+          onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
+        >
+          <option value="">-- Select --</option>
+          {exerciseTypeNames.map((name) => (
+            <option key={name} value={name}>
+              {formatExerciseTypeName(name)}
+            </option>
+          ))}
+        </select>
+      </span>
+    </div>
+  </div>
+)
 
 /** Read-only display of exercise stats (type, calories, HRV, HR zones). */
 const ExerciseStats = ({
@@ -108,9 +140,7 @@ export const ExerciseDetail = ({
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
-  const exerciseType = (activity.data as Record<string, unknown> | undefined)?.exerciseTypeName as
-    | string
-    | undefined
+  const exerciseType = resolveExerciseType(activity)
 
   const caloriesQuery = useQuery({
     queryFn: () => fetchMetricTimeSeries('calories_active', displayStart, displayEnd),
@@ -144,27 +174,10 @@ export const ExerciseDetail = ({
         />
 
         {isEditing && (
-          <div class="entity-fields" style={{ marginTop: '0.5rem' }}>
-            <div class="field-row">
-              <span class="field-label">Exercise Type</span>
-              <span class="field-value">
-                <select
-                  class="edit-datetime-input"
-                  value={draft.exercise_type ?? exerciseType ?? ''}
-                  onChange={(e) =>
-                    onDraftChange({ ...draft, exercise_type: (e.target as HTMLSelectElement).value })
-                  }
-                >
-                  <option value="">-- Select --</option>
-                  {exerciseTypeNames.map((name) => (
-                    <option key={name} value={name}>
-                      {formatExerciseTypeName(name)}
-                    </option>
-                  ))}
-                </select>
-              </span>
-            </div>
-          </div>
+          <ExerciseTypeSelect
+            value={draft.exercise_type ?? exerciseType ?? ''}
+            onChange={(value) => onDraftChange({ ...draft, exercise_type: value })}
+          />
         )}
 
         {!isEditing && (
