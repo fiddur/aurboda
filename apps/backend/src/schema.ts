@@ -213,6 +213,7 @@ export const createTableStatements: Record<string, string> = {
       entity_type     VARCHAR(50) NOT NULL,
       entity_id       TEXT NOT NULL,
       content         TEXT NOT NULL,
+      source          VARCHAR(50),
       start_time      TIMESTAMPTZ,
       end_time        TIMESTAMPTZ,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),

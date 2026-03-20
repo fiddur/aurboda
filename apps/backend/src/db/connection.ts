@@ -218,6 +218,8 @@ export const migrateSchema = async (user: string) => {
     // Add time columns so notes can be queried by time range (inherited from parent entity)
     await query(db, `ALTER TABLE notes ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ`)
     await query(db, `ALTER TABLE notes ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ`)
+    // Add source column to distinguish synced notes from user-created ones
+    await query(db, `ALTER TABLE notes ADD COLUMN IF NOT EXISTS source VARCHAR(50)`)
   }
 
   // Migrate source columns to support 'aurboda' (rename 'manual' -> 'aurboda' for new data)
