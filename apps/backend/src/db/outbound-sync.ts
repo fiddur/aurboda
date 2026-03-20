@@ -22,6 +22,8 @@ export interface OutboundSyncEntry {
   payload: Record<string, unknown>
   hc_record_id?: string
   status: OutboundSyncStatus
+  fail_count: number
+  fail_reason?: string
   created_at: Date
   synced_at?: Date
 }
@@ -105,7 +107,7 @@ export const getPendingOutboundSync = async (
   const result = await query(
     user,
     `SELECT id, entity_type, entity_id, operation, hc_record_type, payload,
-            hc_record_id, status, created_at, synced_at
+            hc_record_id, status, fail_count, fail_reason, created_at, synced_at
      FROM outbound_sync_queue
      WHERE status = 'pending'
      ORDER BY created_at DESC
@@ -172,6 +174,78 @@ export const findHcRecordId = async (
 }
 
 // ============================================================================
+// Failure Reporting & Retry
+// ============================================================================
+
+const MAX_RETRIES = 5
+
+/**
+ * Report a sync failure for an outbound sync entry.
+ *
+ * Increments fail_count and stores the failure reason. If fail_count reaches
+ * MAX_RETRIES, marks the entry as 'failed'. Otherwise keeps it 'pending' for retry.
+ */
+export const reportSyncFailure = async (
+  user: string,
+  id: string,
+  reason: string,
+): Promise<{ retrying: boolean; fail_count: number }> => {
+  const result = await query(
+    user,
+    `UPDATE outbound_sync_queue
+     SET fail_count = fail_count + 1,
+         fail_reason = $2,
+         status = CASE WHEN fail_count + 1 >= $3 THEN 'failed' ELSE 'pending' END
+     WHERE id = $1 AND status = 'pending'
+     RETURNING fail_count`,
+    [id, reason, MAX_RETRIES],
+  )
+
+  if (result.rows.length === 0) {
+    return { fail_count: 0, retrying: false }
+  }
+
+  const fail_count = result.rows[0].fail_count as number
+  return { fail_count, retrying: fail_count < MAX_RETRIES }
+}
+
+/**
+ * Re-queue a failed or synced outbound sync entry for retry.
+ *
+ * Resets the entry back to 'pending' with fail_count = 0 and clears fail_reason.
+ */
+export const requeueOutboundSync = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE outbound_sync_queue
+     SET status = 'pending', fail_count = 0, fail_reason = NULL, synced_at = NULL
+     WHERE id = $1 AND status IN ('failed', 'synced')`,
+    [id],
+  )
+
+  return (result.rowCount ?? 0) > 0
+}
+
+/**
+ * Get outbound sync history including completed and failed entries.
+ *
+ * Returns ALL entries regardless of status, ordered by created_at DESC.
+ */
+export const getOutboundSyncHistory = async (user: string, limit = 50): Promise<OutboundSyncEntry[]> => {
+  const result = await query(
+    user,
+    `SELECT id, entity_type, entity_id, operation, hc_record_type, payload,
+            hc_record_id, status, fail_count, fail_reason, created_at, synced_at
+     FROM outbound_sync_queue
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [limit],
+  )
+
+  return result.rows.map(mapOutboundSyncRow)
+}
+
+// ============================================================================
 // Row Mapper
 // ============================================================================
 
@@ -179,6 +253,8 @@ const mapOutboundSyncRow = (row: Record<string, unknown>): OutboundSyncEntry => 
   created_at: new Date(row.created_at as string),
   entity_id: row.entity_id as string,
   entity_type: row.entity_type as string,
+  fail_count: (row.fail_count as number) ?? 0,
+  fail_reason: (row.fail_reason as string) ?? undefined,
   hc_record_id: (row.hc_record_id as string) ?? undefined,
   hc_record_type: row.hc_record_type as string,
   id: row.id as string,

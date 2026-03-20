@@ -253,6 +253,8 @@ export const createTableStatements: Record<string, string> = {
       payload         JSONB NOT NULL,
       hc_record_id    VARCHAR(255),
       status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+      fail_count      INT NOT NULL DEFAULT 0,
+      fail_reason     TEXT,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       synced_at       TIMESTAMPTZ
     )

@@ -620,11 +620,13 @@ fun HealthConnectScreen(
         val parts = mutableListOf<String>()
         if (result.written > 0) parts.add("${result.written} written to HC")
         if (result.skipped > 0) parts.add("${result.skipped} skipped")
+        if (result.transientFailures > 0) parts.add("${result.transientFailures} transient failures")
         if (!result.acknowledged) parts.add("ack failed")
         val msg = "Outbound: ${parts.joinToString(", ")} (of ${result.fetched} pending)"
+        val details = result.skipReasons + result.failReasons
         statusMessage =
-          if (result.skipReasons.isNotEmpty()) {
-            "$msg\n${result.skipReasons.joinToString("\n")}"
+          if (details.isNotEmpty()) {
+            "$msg\n${details.joinToString("\n")}"
           } else {
             msg
           }
