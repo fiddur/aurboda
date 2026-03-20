@@ -6,8 +6,8 @@ import type { Tag } from './types.ts'
 import { query } from './connection.ts'
 import { mapTagRow } from './row-mappers.ts'
 
-export const insertTag = async (user: string, tag: Tag) => {
-  await query(
+export const insertTag = async (user: string, tag: Tag): Promise<string> => {
+  const result = await query(
     user,
     `INSERT INTO tags (source, external_id, tag, tag_key, start_time, end_time)
      VALUES ($1, $2, $3, $4, $5, $6)
@@ -16,9 +16,11 @@ export const insertTag = async (user: string, tag: Tag) => {
        tag_key = COALESCE(EXCLUDED.tag_key, tags.tag_key),
        start_time = EXCLUDED.start_time,
        end_time = EXCLUDED.end_time
-     WHERE tags.deleted_at IS NULL`,
+     WHERE tags.deleted_at IS NULL
+     RETURNING id`,
     [tag.source, tag.external_id, tag.tag, tag.tag_key, tag.start_time, tag.end_time],
   )
+  return result.rows[0].id as string
 }
 
 export const getTags = async (user: string, start: Date, end: Date): Promise<Tag[]> => {

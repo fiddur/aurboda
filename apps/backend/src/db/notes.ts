@@ -1,3 +1,5 @@
+import type { DataSource } from '@aurboda/api-spec'
+
 import type { EntityType, Note } from './types.ts'
 
 /**
@@ -6,7 +8,8 @@ import type { EntityType, Note } from './types.ts'
 import { query } from './connection.ts'
 import { mapNoteRow } from './row-mappers.ts'
 
-const NOTE_COLUMNS = 'id, entity_type, entity_id, content, start_time, end_time, created_at, updated_at'
+const NOTE_COLUMNS =
+  'id, entity_type, entity_id, content, source, start_time, end_time, created_at, updated_at'
 
 export const insertNote = async (
   user: string,
@@ -131,4 +134,45 @@ export const getNotesForTimeRange = async (user: string, start: Date, end: Date)
 export const deleteNote = async (user: string, id: string): Promise<boolean> => {
   const result = await query(user, `DELETE FROM notes WHERE id = $1`, [id])
   return (result.rowCount ?? 0) > 0
+}
+
+/**
+ * Upsert a note from an external sync source.
+ * If a note with the same entity + source already exists, update its content.
+ * If the content is empty/null, delete the synced note (comment was removed upstream).
+ */
+export const upsertSyncedNote = async (
+  user: string,
+  entityType: EntityType,
+  entityId: string,
+  source: DataSource,
+  content: string | undefined,
+  startTime?: Date,
+  endTime?: Date,
+): Promise<void> => {
+  if (!content) {
+    // Remove synced note if comment was cleared upstream
+    await query(user, `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source = $3`, [
+      entityType,
+      entityId,
+      source,
+    ])
+    return
+  }
+
+  const result = await query(
+    user,
+    `UPDATE notes SET content = $1, start_time = $5, end_time = $6, updated_at = NOW()
+     WHERE entity_type = $2 AND entity_id = $3 AND source = $4`,
+    [content, entityType, entityId, source, startTime ?? null, endTime ?? null],
+  )
+
+  if ((result.rowCount ?? 0) === 0) {
+    await query(
+      user,
+      `INSERT INTO notes (entity_type, entity_id, content, source, start_time, end_time)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [entityType, entityId, content, source, startTime ?? null, endTime ?? null],
+    )
+  }
 }

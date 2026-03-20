@@ -252,6 +252,8 @@ export interface Note {
   entity_type: EntityType
   entity_id: string
   content: string
+  /** Data source that created this note (e.g. 'oura'). Null for user-created notes. */
+  source?: DataSource
   /** Inherited from the parent entity's start_time. Null for metric notes (composite key). */
   start_time?: Date
   /** Inherited from the parent entity's end_time, if any. */

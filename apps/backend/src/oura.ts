@@ -5,12 +5,16 @@ import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture } from 'dat
 
 import { getOAuthToken, initializeSchema, schemaInitialized, type Tag, upsertOAuthToken } from './db/index.ts'
 
+/** Tag with optional Oura comment, used during sync processing. */
+export type OuraTagWithComment = Tag & { comment?: string }
+
 type OuraTag = {
   id: string
   tag_type_code: string | null
   start_time: string
   end_time: string
   custom_name: string | null
+  comment: string | null
 }
 
 type OuraSession = {
@@ -209,11 +213,12 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
       end: Date,
       token: string,
       tagMappings?: Record<string, string>,
-    ): Promise<Tag[]> {
+    ): Promise<OuraTagWithComment[]> {
       const data: OuraTag[] = await getGeneric('enhanced_tag', start, end, token)
       const tags = data
         .map(
-          (tag): Tag => ({
+          (tag): OuraTagWithComment => ({
+            comment: tag.comment ?? undefined,
             end_time: tag.end_time ? new Date(tag.end_time) : undefined,
             external_id: tag.id,
             source: 'oura',

@@ -5,7 +5,7 @@
  * Separated from oura-sync.ts to keep file sizes manageable.
  */
 
-import type { OuraSleepPeriodRaw } from './oura.ts'
+import type { OuraSleepPeriodRaw, OuraTagWithComment } from './oura.ts'
 import type { MetricType } from './schema.ts'
 
 import {
@@ -13,8 +13,8 @@ import {
   insertRawRecord,
   insertTag,
   insertTimeSeries,
-  type Tag,
   type TimeSeriesPoint,
+  upsertSyncedNote,
 } from './db/index.ts'
 
 /** Oura data types that can be synced */
@@ -475,7 +475,7 @@ const processSleep = async (user: string, data: OuraSleepPeriodRaw[]) => {
 /**
  * Process Oura tag data.
  */
-const processTags = async (user: string, data: Tag[]) => {
+const processTags = async (user: string, data: OuraTagWithComment[]) => {
   for (const record of data) {
     await insertRawRecord(user, {
       data: record as unknown as Record<string, unknown>,
@@ -485,7 +485,9 @@ const processTags = async (user: string, data: Tag[]) => {
       source: 'oura',
     })
 
-    await insertTag(user, record)
+    const tagId = await insertTag(user, record)
+
+    await upsertSyncedNote(user, 'tag', tagId, 'oura', record.comment, record.start_time, record.end_time)
   }
 }
 
@@ -523,7 +525,7 @@ export const processOuraData = async (
       await processSleep(user, data as OuraSleepPeriodRaw[])
       break
     case 'tags':
-      await processTags(user, data as Tag[])
+      await processTags(user, data as OuraTagWithComment[])
       break
   }
 }

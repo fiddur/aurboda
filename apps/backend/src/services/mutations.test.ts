@@ -47,7 +47,7 @@ describe('addTag', () => {
   })
 
   test('creates a tag with start time only', async () => {
-    vi.mocked(db.insertTag).mockResolvedValue(undefined)
+    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
 
     const result = await addTag('testuser', {
       start_time: new Date('2024-01-15T10:00:00Z'),
@@ -70,7 +70,7 @@ describe('addTag', () => {
   })
 
   test('creates a tag with start and end time', async () => {
-    vi.mocked(db.insertTag).mockResolvedValue(undefined)
+    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
 
     const result = await addTag('testuser', {
       end_time: new Date('2024-01-15T11:00:00Z'),
@@ -92,7 +92,7 @@ describe('addTag', () => {
   })
 
   test('does not include merged field when mergeSpan not specified', async () => {
-    vi.mocked(db.insertTag).mockResolvedValue(undefined)
+    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
 
     const result = await addTag('testuser', {
       start_time: new Date('2024-01-15T10:00:00Z'),
@@ -107,7 +107,7 @@ describe('addTag', () => {
 
   test('creates new tag with merged: false when no mergeable tag found', async () => {
     vi.mocked(db.findMergeableTag).mockResolvedValue(undefined)
-    vi.mocked(db.insertTag).mockResolvedValue(undefined)
+    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
 
     const result = await addTag('testuser', {
       mergeSpan: 180,

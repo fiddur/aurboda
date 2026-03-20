@@ -167,6 +167,7 @@ export {
   insertNote,
   updateNote,
   updateNoteTimesForEntity,
+  upsertSyncedNote,
 } from './notes.ts'
 
 // Meals

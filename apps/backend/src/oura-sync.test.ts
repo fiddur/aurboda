@@ -16,9 +16,10 @@ vi.mock('./db', () => ({
   getUserSettings: vi.fn(),
   insertActivity: vi.fn(),
   insertRawRecord: vi.fn(),
-  insertTag: vi.fn(),
+  insertTag: vi.fn().mockResolvedValue('tag-uuid-123'),
   insertTimeSeries: vi.fn(),
   upsertSyncState: vi.fn(),
+  upsertSyncedNote: vi.fn(),
 }))
 
 describe('calculateRetryAfter', () => {
@@ -818,6 +819,55 @@ describe('processOuraData', () => {
       await processOuraData(user, 'tags', data)
 
       expect(db.insertTag).toHaveBeenCalledWith(user, data[0])
+    })
+
+    test('upserts synced note when tag has a comment', async () => {
+      const data = [
+        {
+          comment: 'Felt great after this',
+          end_time: new Date('2025-01-01T08:05:00Z'),
+          external_id: 'tag-4',
+          source: 'oura' as const,
+          start_time: new Date('2025-01-01T08:00:00Z'),
+          tag: 'Morning Coffee',
+        },
+      ]
+
+      await processOuraData(user, 'tags', data)
+
+      expect(db.upsertSyncedNote).toHaveBeenCalledWith(
+        user,
+        'tag',
+        'tag-uuid-123',
+        'oura',
+        'Felt great after this',
+        new Date('2025-01-01T08:00:00Z'),
+        new Date('2025-01-01T08:05:00Z'),
+      )
+    })
+
+    test('calls upsertSyncedNote with undefined when tag has no comment', async () => {
+      const data = [
+        {
+          end_time: new Date('2025-01-01T08:05:00Z'),
+          external_id: 'tag-5',
+          source: 'oura' as const,
+          start_time: new Date('2025-01-01T08:00:00Z'),
+          tag: 'Morning Coffee',
+        },
+      ]
+
+      await processOuraData(user, 'tags', data)
+
+      expect(db.upsertSyncedNote).toHaveBeenCalledWith(
+        user,
+        'tag',
+        'tag-uuid-123',
+        'oura',
+        undefined,
+        new Date('2025-01-01T08:00:00Z'),
+        new Date('2025-01-01T08:05:00Z'),
+      )
     })
   })
 })
