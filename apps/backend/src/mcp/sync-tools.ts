@@ -15,7 +15,14 @@ import { z } from 'zod'
 import type { GarminClient } from '../garmin.ts'
 import type { ouraClient } from '../oura.ts'
 
-import { ackOutboundSync, getAllSyncStates, getOAuthToken, getPendingOutboundSync } from '../db/index.ts'
+import {
+  ackOutboundSync,
+  getAllSyncStates,
+  getOAuthToken,
+  getOutboundSyncHistory,
+  getPendingOutboundSync,
+  requeueOutboundSync,
+} from '../db/index.ts'
 import { syncAllGarminData } from '../garmin-sync.ts'
 import { syncAllCalendars } from '../ical-sync.ts'
 import { syncLastFmData } from '../lastfm-sync.ts'
@@ -267,6 +274,50 @@ export const registerSyncTools = (
           if (ok) acknowledged++
         }
         return jsonResponse({ acknowledged, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  // Tool: requeue_outbound_sync
+  server.tool(
+    'requeue_outbound_sync',
+    'Re-queue a failed or synced outbound sync entry for retry to Health Connect.',
+    {
+      id: z.string().uuid().describe('The outbound sync queue entry ID to re-queue'),
+    },
+    async ({ id }) => {
+      try {
+        const requeued = await requeueOutboundSync(user, id)
+        return jsonResponse({ requeued, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  // Tool: get_outbound_sync_history
+  server.tool(
+    'get_outbound_sync_history',
+    'Get outbound sync history including completed and failed entries. Shows fail_count and fail_reason for debugging sync issues.',
+    {
+      limit: z.number().int().min(1).max(500).optional().describe('Max entries to return (default 50)'),
+    },
+    async ({ limit }) => {
+      try {
+        const entries = await getOutboundSyncHistory(user, limit)
+        return jsonResponse({
+          count: entries.length,
+          data: entries.map((e) => ({
+            ...e,
+            created_at: e.created_at.toISOString(),
+            synced_at: e.synced_at?.toISOString(),
+          })),
+          success: true,
+        })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })

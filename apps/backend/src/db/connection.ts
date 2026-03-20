@@ -212,6 +212,14 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
+  if (existingTableNames.has('outbound_sync_queue')) {
+    await query(
+      db,
+      `ALTER TABLE outbound_sync_queue ADD COLUMN IF NOT EXISTS fail_count INT NOT NULL DEFAULT 0`,
+    )
+    await query(db, `ALTER TABLE outbound_sync_queue ADD COLUMN IF NOT EXISTS fail_reason TEXT`)
+  }
+
   // Migrate notes entity_id from UUID to TEXT (supports composite keys for metrics)
   if (existingTableNames.has('notes')) {
     await query(db, `ALTER TABLE notes ALTER COLUMN entity_id TYPE TEXT`)

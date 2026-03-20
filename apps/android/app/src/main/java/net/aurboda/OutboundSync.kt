@@ -7,6 +7,7 @@ import androidx.health.connect.client.records.*
 import androidx.health.connect.client.records.metadata.Metadata
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.headers
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -15,6 +16,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -75,6 +77,17 @@ data class OutboundSyncAckResponseApi(
   val success: Boolean,
   val acknowledged: Int? = null,
   val error: String? = null,
+)
+
+@Serializable
+data class OutboundSyncFailItemApi(
+  val id: String,
+  val reason: String,
+)
+
+@Serializable
+data class OutboundSyncFailBody(
+  val entries: List<OutboundSyncFailItemApi>,
 )
 
 // ============================================================================
@@ -151,17 +164,50 @@ suspend fun acknowledgeOutboundSync(
   }
 }
 
+/**
+ * Best-effort report of transient sync failures to the backend.
+ * If reporting fails, the entries stay pending and will retry on next sync.
+ */
+suspend fun reportOutboundSyncFailures(
+  entries: List<OutboundSyncFailItemApi>,
+  apiUrl: String,
+  authToken: String,
+  httpClient: HttpClient,
+): Boolean {
+  if (entries.isEmpty()) return true
+  return try {
+    val url = "$apiUrl/sync/outbound/fail"
+    val response =
+      httpClient.post(url) {
+        header("Authorization", "Bearer $authToken")
+        contentType(ContentType.Application.Json)
+        setBody(OutboundSyncFailBody(entries = entries))
+      }
+    response.status.isSuccess()
+  } catch (e: Exception) {
+    // Best-effort — if we can't report, the entries stay pending and will retry next sync
+    Log.w(TAG, "⚠️ Could not report sync failures to backend: ${e.message}")
+    false
+  }
+}
+
 // ============================================================================
 // Health Connect Record Builder
 // ============================================================================
 
-/** Result of a write attempt — either a record ID or a skip reason. */
+/** Result of a write attempt — either a record ID, a permanent skip, or a transient failure. */
 sealed class WriteResult {
   data class Success(
     val recordId: String,
   ) : WriteResult()
 
+  /** Permanent failure — will be acked to clear the queue. */
   data class Skipped(
+    val reason: String,
+  ) : WriteResult()
+
+  /** Transient failure — will NOT be acked, entry stays pending for retry. */
+  data class TransientFailure(
     val reason: String,
   ) : WriteResult()
 }
@@ -192,7 +238,7 @@ suspend fun writeToHealthConnect(
     }
   } catch (e: Exception) {
     Log.e(TAG, "🚫 Failed to write ${entry.hc_record_type} to Health Connect: ${e.message}", e)
-    WriteResult.Skipped("exception: ${e.message}")
+    WriteResult.TransientFailure("exception: ${e.message}")
   }
 
 /**
@@ -494,9 +540,11 @@ data class OutboundSyncResult(
   val fetched: Int = 0,
   val written: Int = 0,
   val skipped: Int = 0,
+  val transientFailures: Int = 0,
   val acknowledged: Boolean = true,
   val error: String? = null,
   val skipReasons: List<String> = emptyList(),
+  val failReasons: List<String> = emptyList(),
   val pagesProcessed: Int = 0,
 )
 
@@ -513,8 +561,10 @@ suspend fun processOutboundSync(
   var totalFetched = 0
   var totalWritten = 0
   var totalSkipped = 0
+  var totalTransientFailures = 0
   var allAcknowledged = true
   val allSkipReasons = mutableListOf<String>()
+  val allFailReasons = mutableListOf<String>()
   var pagesProcessed = 0
 
   for (page in 1..MAX_OUTBOUND_SYNC_PAGES) {
@@ -527,7 +577,9 @@ suspend fun processOutboundSync(
     Log.d(TAG, "🔄 Processing page $page: ${entries.size} entries (${fetchResult.totalPending} total pending)")
 
     val ackItems = mutableListOf<OutboundSyncAckItemApi>()
+    val failItems = mutableListOf<OutboundSyncFailItemApi>()
     var pageSkipped = 0
+    var pageTransientFailures = 0
 
     for (entry in entries) {
       when (val result = writeToHealthConnect(entry, healthConnectClient, grantedPermissions)) {
@@ -549,21 +601,34 @@ suspend fun processOutboundSync(
           // that will never succeed on retry.
           ackItems.add(OutboundSyncAckItemApi(id = entry.id))
         }
+        is WriteResult.TransientFailure -> {
+          pageTransientFailures++
+          val reason = "${entry.hc_record_type}: ${result.reason}"
+          allFailReasons.add(reason)
+          Log.e(TAG, "🚫 Transient failure for entry ${entry.id} (${entry.hc_record_type}/${entry.operation}): ${result.reason}")
+          failItems.add(OutboundSyncFailItemApi(id = entry.id, reason = result.reason))
+        }
       }
     }
 
     totalWritten += ackItems.size - pageSkipped
     totalSkipped += pageSkipped
+    totalTransientFailures += pageTransientFailures
 
     if (ackItems.isNotEmpty()) {
       val ackSuccess = acknowledgeOutboundSync(ackItems, apiUrl, authToken, httpClient)
       if (ackSuccess) {
-        Log.d(TAG, "✅ Page $page complete: ${ackItems.size}/${entries.size} entries synced")
+        Log.d(TAG, "✅ Page $page complete: ${ackItems.size}/${entries.size} entries acked")
       } else {
         Log.w(TAG, "⚠️ Outbound sync page $page: wrote to HC but failed to acknowledge")
         allAcknowledged = false
         break
       }
+    }
+
+    // Best-effort report transient failures so backend can track them
+    if (failItems.isNotEmpty()) {
+      reportOutboundSyncFailures(failItems, apiUrl, authToken, httpClient)
     }
 
     // If we processed fewer entries than the total pending, there are more pages
@@ -573,15 +638,17 @@ suspend fun processOutboundSync(
   }
 
   if (pagesProcessed > 0) {
-    Log.d(TAG, "✅ Outbound sync finished: $totalWritten written, $totalSkipped skipped across $pagesProcessed pages")
+    Log.d(TAG, "✅ Outbound sync finished: $totalWritten written, $totalSkipped skipped, $totalTransientFailures transient failures across $pagesProcessed pages")
   }
 
   return OutboundSyncResult(
     fetched = totalFetched,
     written = totalWritten,
     skipped = totalSkipped,
+    transientFailures = totalTransientFailures,
     acknowledged = allAcknowledged,
     skipReasons = allSkipReasons,
+    failReasons = allFailReasons,
     pagesProcessed = pagesProcessed,
   )
 }
