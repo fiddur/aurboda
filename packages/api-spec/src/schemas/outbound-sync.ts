@@ -41,6 +41,8 @@ export const outboundSyncEntrySchema = z
     created_at: iso8601DateTimeSchema.meta({ description: 'When the change was queued' }),
     entity_id: z.string().meta({ description: 'ID of the entity that changed' }),
     entity_type: z.string().meta({ description: 'Type of entity (activity, time_series)' }),
+    fail_count: z.number().int().meta({ description: 'Number of times sync has failed for this entry' }),
+    fail_reason: z.string().optional().meta({ description: 'Reason for the most recent sync failure' }),
     hc_record_id: z.string().optional().meta({ description: 'Health Connect record ID (set after sync)' }),
     hc_record_type: z
       .string()
@@ -117,3 +119,76 @@ export const outboundSyncAckResponseSchema = baseResponseSchema
   .meta({ id: 'OutboundSyncAckResponse' })
 
 export type OutboundSyncAckResponse = z.infer<typeof outboundSyncAckResponseSchema>
+
+// ============================================================================
+// Fail Reporting
+// ============================================================================
+
+/**
+ * Single fail item for reporting a sync failure.
+ */
+export const outboundSyncFailItemSchema = z
+  .object({
+    id: z.string().uuid().meta({ description: 'Sync queue entry ID that failed' }),
+    reason: z.string().meta({ description: 'Reason for the failure' }),
+  })
+  .meta({ id: 'OutboundSyncFailItem' })
+
+export type OutboundSyncFailItem = z.infer<typeof outboundSyncFailItemSchema>
+
+/**
+ * Request body for POST /sync/outbound/fail - report sync failures.
+ */
+export const outboundSyncFailBodySchema = z
+  .object({
+    entries: z.array(outboundSyncFailItemSchema).min(1).meta({
+      description: 'List of sync entries that failed',
+    }),
+  })
+  .meta({ description: 'Report outbound sync failures from Health Connect', id: 'OutboundSyncFailBody' })
+
+export type OutboundSyncFailBody = z.infer<typeof outboundSyncFailBodySchema>
+
+/**
+ * Response for POST /sync/outbound/fail.
+ */
+export const outboundSyncFailResponseSchema = baseResponseSchema
+  .extend({
+    reported: z.number().int().optional().meta({
+      description: 'Number of failures reported',
+    }),
+  })
+  .meta({ id: 'OutboundSyncFailResponse' })
+
+export type OutboundSyncFailResponse = z.infer<typeof outboundSyncFailResponseSchema>
+
+// ============================================================================
+// Requeue
+// ============================================================================
+
+/**
+ * Request body for POST /sync/outbound/requeue - re-queue a failed/synced entry.
+ */
+export const outboundSyncRequeueBodySchema = z
+  .object({
+    id: z.string().uuid().meta({ description: 'Sync queue entry ID to re-queue' }),
+  })
+  .meta({
+    description: 'Re-queue a failed or synced outbound sync entry for retry',
+    id: 'OutboundSyncRequeueBody',
+  })
+
+export type OutboundSyncRequeueBody = z.infer<typeof outboundSyncRequeueBodySchema>
+
+/**
+ * Response for POST /sync/outbound/requeue.
+ */
+export const outboundSyncRequeueResponseSchema = baseResponseSchema
+  .extend({
+    requeued: z.boolean().optional().meta({
+      description: 'Whether the entry was successfully re-queued',
+    }),
+  })
+  .meta({ id: 'OutboundSyncRequeueResponse' })
+
+export type OutboundSyncRequeueResponse = z.infer<typeof outboundSyncRequeueResponseSchema>

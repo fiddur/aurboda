@@ -7,7 +7,10 @@ import {
   enqueueOutboundSync,
   failOutboundSync,
   findHcRecordId,
+  getOutboundSyncHistory,
   getPendingOutboundSync,
+  reportSyncFailure,
+  requeueOutboundSync,
 } from './outbound-sync.ts'
 
 const CONTAINER_TIMEOUT = 60_000
@@ -286,6 +289,232 @@ describe('Outbound Sync Queue Integration Tests', () => {
       // Should no longer be in pending
       const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(0)
+    })
+  })
+
+  describe('reportSyncFailure', () => {
+    test('increments fail_count and keeps entry pending', async () => {
+      const user = getTestUser()
+
+      const id = await enqueueOutboundSync(user, {
+        entity_id: 'activity-123',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      const result = await reportSyncFailure(user, id, 'Health Connect unavailable')
+      expect(result.fail_count).toBe(1)
+      expect(result.retrying).toBe(true)
+
+      // Entry should still be pending
+      const { entries: pending } = await getPendingOutboundSync(user)
+      expect(pending).toHaveLength(1)
+      expect(pending[0].fail_count).toBe(1)
+      expect(pending[0].fail_reason).toBe('Health Connect unavailable')
+    })
+
+    test('marks entry as failed after MAX_RETRIES', async () => {
+      const user = getTestUser()
+
+      const id = await enqueueOutboundSync(user, {
+        entity_id: 'activity-123',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      // Report failures up to the max (5)
+      for (let i = 1; i <= 4; i++) {
+        const result = await reportSyncFailure(user, id, `Failure ${i}`)
+        expect(result.fail_count).toBe(i)
+        expect(result.retrying).toBe(true)
+      }
+
+      // 5th failure should mark as failed
+      const result = await reportSyncFailure(user, id, 'Final failure')
+      expect(result.fail_count).toBe(5)
+      expect(result.retrying).toBe(false)
+
+      // Entry should no longer be pending
+      const { entries: pending } = await getPendingOutboundSync(user)
+      expect(pending).toHaveLength(0)
+    })
+
+    test('returns zero fail_count for non-existent entry', async () => {
+      const user = getTestUser()
+      const result = await reportSyncFailure(user, '00000000-0000-0000-0000-000000000000', 'error')
+      expect(result.fail_count).toBe(0)
+      expect(result.retrying).toBe(false)
+    })
+  })
+
+  describe('requeueOutboundSync', () => {
+    test('resets a failed entry back to pending', async () => {
+      const user = getTestUser()
+
+      const id = await enqueueOutboundSync(user, {
+        entity_id: 'activity-123',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      await failOutboundSync(user, id)
+
+      // Should not be pending
+      const { entries: before } = await getPendingOutboundSync(user)
+      expect(before).toHaveLength(0)
+
+      // Requeue it
+      const ok = await requeueOutboundSync(user, id)
+      expect(ok).toBe(true)
+
+      // Should be pending again with reset fail_count
+      const { entries: after } = await getPendingOutboundSync(user)
+      expect(after).toHaveLength(1)
+      expect(after[0].fail_count).toBe(0)
+      expect(after[0].fail_reason).toBeUndefined()
+    })
+
+    test('resets a synced entry back to pending', async () => {
+      const user = getTestUser()
+
+      const id = await enqueueOutboundSync(user, {
+        entity_id: 'activity-123',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      await ackOutboundSync(user, id, 'hc-record-abc')
+
+      const ok = await requeueOutboundSync(user, id)
+      expect(ok).toBe(true)
+
+      const { entries: pending } = await getPendingOutboundSync(user)
+      expect(pending).toHaveLength(1)
+      expect(pending[0].status).toBe('pending')
+    })
+
+    test('returns false for a pending entry', async () => {
+      const user = getTestUser()
+
+      const id = await enqueueOutboundSync(user, {
+        entity_id: 'activity-123',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      const ok = await requeueOutboundSync(user, id)
+      expect(ok).toBe(false)
+    })
+  })
+
+  describe('getOutboundSyncHistory', () => {
+    test('returns all entries regardless of status', async () => {
+      const user = getTestUser()
+
+      const id1 = await enqueueOutboundSync(user, {
+        entity_id: 'activity-1',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+      await ackOutboundSync(user, id1, 'hc-1')
+
+      const id2 = await enqueueOutboundSync(user, {
+        entity_id: 'activity-2',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+      await failOutboundSync(user, id2)
+
+      await enqueueOutboundSync(user, {
+        entity_id: 'activity-3',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      const history = await getOutboundSyncHistory(user)
+      expect(history).toHaveLength(3)
+
+      const statuses = history.map((e) => e.status)
+      expect(statuses).toContain('synced')
+      expect(statuses).toContain('failed')
+      expect(statuses).toContain('pending')
+    })
+
+    test('returns entries ordered newest-first', async () => {
+      const user = getTestUser()
+
+      await enqueueOutboundSync(user, {
+        entity_id: 'first',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      await enqueueOutboundSync(user, {
+        entity_id: 'second',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      const history = await getOutboundSyncHistory(user)
+      expect(history).toHaveLength(2)
+      expect(history[0].entity_id).toBe('second')
+      expect(history[1].entity_id).toBe('first')
+    })
+
+    test('respects limit parameter', async () => {
+      const user = getTestUser()
+
+      for (let i = 0; i < 5; i++) {
+        await enqueueOutboundSync(user, {
+          entity_id: `item-${i}`,
+          entity_type: 'activity',
+          hc_record_type: 'ExerciseSessionRecord',
+          operation: 'insert',
+          payload: {},
+        })
+      }
+
+      const history = await getOutboundSyncHistory(user, 3)
+      expect(history).toHaveLength(3)
+    })
+
+    test('includes fail_count and fail_reason', async () => {
+      const user = getTestUser()
+
+      const id = await enqueueOutboundSync(user, {
+        entity_id: 'activity-fail',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      await reportSyncFailure(user, id, 'Connection timeout')
+
+      const history = await getOutboundSyncHistory(user)
+      expect(history).toHaveLength(1)
+      expect(history[0].fail_count).toBe(1)
+      expect(history[0].fail_reason).toBe('Connection timeout')
     })
   })
 

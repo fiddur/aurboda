@@ -5,6 +5,12 @@ import {
   healthConnectDeletionsBodySchema,
   healthConnectSyncBodySchema,
   outboundSyncAckBodySchema,
+  outboundSyncFailBodySchema,
+  outboundSyncRequeueBodySchema,
+  type OutboundSyncFailBody,
+  type OutboundSyncFailResponse,
+  type OutboundSyncRequeueBody,
+  type OutboundSyncRequeueResponse,
   syncActivityWatchBodySchema,
   syncCalendarsBodySchema,
   syncGarminBodySchema,
@@ -63,6 +69,8 @@ interface OutboundSyncEntry {
   payload: Record<string, unknown>
   hc_record_id?: string
   status: 'pending' | 'synced' | 'failed'
+  fail_count: number
+  fail_reason?: string
   created_at: Date
   synced_at?: Date
 }
@@ -128,6 +136,13 @@ export interface SyncRouterDeps {
   // Outbound sync (Health Connect write-back)
   getPendingOutboundSync: (user: string, limit?: number) => Promise<PendingOutboundSyncResult>
   ackOutboundSync: (user: string, id: string, hcRecordId?: string) => Promise<boolean>
+  reportSyncFailure: (
+    user: string,
+    id: string,
+    reason: string,
+  ) => Promise<{ retrying: boolean; fail_count: number }>
+  requeueOutboundSync: (user: string, id: string) => Promise<boolean>
+  getOutboundSyncHistory: (user: string, limit?: number) => Promise<OutboundSyncEntry[]>
 }
 
 /**
@@ -533,6 +548,71 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
           if (ok) acknowledged++
         }
         res.json({ acknowledged, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  // Report sync failures from the Android app (best-effort)
+  router.post<ParamsDictionary, OutboundSyncFailResponse, OutboundSyncFailBody>(
+    '/outbound/fail',
+    authMiddleware,
+    validateBody(outboundSyncFailBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { entries } = req.body
+
+      try {
+        let reported = 0
+        for (const entry of entries) {
+          const result = await deps.reportSyncFailure(user, entry.id, entry.reason)
+          if (result.fail_count > 0) reported++
+        }
+        res.json({ reported, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  // Re-queue a failed or synced outbound sync entry for retry
+  router.post<ParamsDictionary, OutboundSyncRequeueResponse, OutboundSyncRequeueBody>(
+    '/outbound/requeue',
+    authMiddleware,
+    validateBody(outboundSyncRequeueBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { id } = req.body
+
+      try {
+        const requeued = await deps.requeueOutboundSync(user, id)
+        res.json({ requeued, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  // Get outbound sync history including completed and failed entries
+  router.get<ParamsDictionary, OutboundSyncResponse>(
+    '/outbound/history',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined
+
+      try {
+        const entries = await deps.getOutboundSyncHistory(user, limit)
+        const data = entries.map((e) => ({
+          ...e,
+          created_at: e.created_at.toISOString(),
+          synced_at: e.synced_at?.toISOString(),
+        }))
+        res.json({ data, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message, success: false })
