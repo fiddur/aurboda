@@ -901,12 +901,13 @@ export const Timeline = () => {
   // uses the same bucket size so they align visually side by side.
   // Training load backend only supports '1h', '1d', '1w', which constrains the minimum.
   // Line charts (HR/HRV) still use the finer `bucketSize` for smooth rendering.
+  // Target max ~50 bars visible: '1h' up to 2 days, '1d' up to 50 days, '1w' beyond.
   const barBucketSize = useMemo((): '1h' | '1d' | '1w' => {
-    if (bucketSize === '1w') return '1w'
-    if (bucketSize === '1d') return '1d'
-    // For sub-day views, all bars use hourly buckets
+    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
+    if (days > 50) return '1w'
+    if (days > 2) return '1d'
     return '1h'
-  }, [bucketSize])
+  }, [effectiveViewStart, effectiveViewEnd])
 
   // Training load data (fetched when toggle is on)
   const trainingLoadQuery = useQuery({
