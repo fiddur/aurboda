@@ -736,14 +736,14 @@ export const Timeline = () => {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Unified bucket size for all metrics + training load, derived from the visible view range
-  // (not the fetch range). This ensures zooming in gives finer-grained data.
+  // Unified bucket size for line-chart metrics, derived from the visible view range
+  // (not the fetch range). Thresholds chosen to keep under ~500 data points.
   const bucketSize = useMemo(() => {
     const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
-    if (days > 365) return '1w'
-    if (days > 90) return '1d'
-    if (days > 30) return '1h'
-    if (days > 7) return '15m'
+    if (days > 500) return '1w'
+    if (days > 21) return '1d'
+    if (days > 5) return '1h'
+    if (days > 1) return '15m'
     return '5m'
   }, [effectiveViewStart, effectiveViewEnd])
 
