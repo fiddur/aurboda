@@ -126,6 +126,7 @@ export {
   insertTag,
   isProgrammaticTag,
   restoreTag,
+  updateTag,
   updateTagEndTime,
   updateTagNameByKey,
 } from './tags.ts'

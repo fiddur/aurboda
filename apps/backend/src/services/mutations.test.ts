@@ -16,6 +16,7 @@ import {
   getCustomMetrics,
   updateActivity,
   updateCustomMetric,
+  updateTag,
 } from './mutations.ts'
 
 // Mock the db module
@@ -27,11 +28,13 @@ vi.mock('../db', () => ({
   enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
   findMergeableTag: vi.fn(),
   getActivityById: vi.fn(),
+  getTagById: vi.fn(),
   getUserSettings: vi.fn(),
   insertActivity: vi.fn(),
   insertTag: vi.fn(),
   insertTimeSeries: vi.fn(),
   updateActivity: vi.fn(),
+  updateTag: vi.fn(),
   updateTagEndTime: vi.fn(),
   upsertUserSettings: vi.fn(),
 }))
@@ -150,7 +153,7 @@ describe('addTag', () => {
     expect(result.success).toBe(true)
     expect(result.merged).toBe(true)
     expect(result.extendedBySeconds).toBe(60) // From 09:59:00 to 10:00:00
-    expect(result.id).toBe('existing-tag-id')
+    expect(result.id).toBe('db-id')
     expect(result.start_time).toBe('2024-01-15T09:00:00.000Z') // Original start
     expect(result.end_time).toBe('2024-01-15T10:00:00.000Z') // New end
 
@@ -1396,6 +1399,79 @@ describe('parseMetricEntityId', () => {
       metric: 'weight',
       source: 'aurboda',
       time,
+    })
+  })
+})
+
+describe('updateTag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns error when tag not found', async () => {
+    vi.mocked(db.getTagById).mockResolvedValue(null)
+
+    const result = await updateTag('testuser', 'nonexistent-id', {
+      start_time: new Date('2024-01-15T10:00:00Z'),
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Tag not found')
+  })
+
+  test('updates start_time', async () => {
+    vi.mocked(db.getTagById).mockResolvedValue({
+      id: 'tag-id',
+      source: 'aurboda',
+      start_time: new Date('2024-01-15T09:00:00Z'),
+      end_time: new Date('2024-01-15T10:00:00Z'),
+      tag: 'test',
+    })
+    vi.mocked(db.updateTag).mockResolvedValue(true)
+
+    const result = await updateTag('testuser', 'tag-id', {
+      start_time: new Date('2024-01-15T08:00:00Z'),
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.updateTag).toHaveBeenCalledWith('testuser', 'tag-id', {
+      start_time: new Date('2024-01-15T08:00:00Z'),
+    })
+  })
+
+  test('rejects end_time before start_time', async () => {
+    vi.mocked(db.getTagById).mockResolvedValue({
+      id: 'tag-id',
+      source: 'aurboda',
+      start_time: new Date('2024-01-15T10:00:00Z'),
+      tag: 'test',
+    })
+
+    const result = await updateTag('testuser', 'tag-id', {
+      end_time: new Date('2024-01-15T09:00:00Z'),
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('end_time must be after start_time')
+  })
+
+  test('clears end_time with null', async () => {
+    vi.mocked(db.getTagById).mockResolvedValue({
+      id: 'tag-id',
+      source: 'aurboda',
+      start_time: new Date('2024-01-15T09:00:00Z'),
+      end_time: new Date('2024-01-15T10:00:00Z'),
+      tag: 'test',
+    })
+    vi.mocked(db.updateTag).mockResolvedValue(true)
+
+    const result = await updateTag('testuser', 'tag-id', {
+      end_time: null,
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.updateTag).toHaveBeenCalledWith('testuser', 'tag-id', {
+      end_time: null,
     })
   })
 })

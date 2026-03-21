@@ -98,6 +98,20 @@ export const addTagResponseSchema = baseResponseSchema
 export type AddTagResponse = z.infer<typeof addTagResponseSchema>
 
 /**
+ * Update tag request body.
+ */
+export const updateTagBodySchema = z
+  .object({
+    end_time: iso8601DateTimeSchema.nullable().optional().meta({
+      description: 'End time (null to clear, omit to keep unchanged)',
+    }),
+    start_time: iso8601DateTimeSchema.optional().meta({ description: 'Start time' }),
+  })
+  .meta({ id: 'UpdateTagBody', description: 'Body for updating a tag' })
+
+export type UpdateTagBody = z.infer<typeof updateTagBodySchema>
+
+/**
  * Delete tag params.
  */
 export const deleteTagParamsSchema = z
