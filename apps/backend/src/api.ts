@@ -56,6 +56,7 @@ import { createLocationsRouter } from './routes/locations-router.ts'
 import { createMealsRouter } from './routes/meals-router.ts'
 import { createMetricsRouter } from './routes/metrics-router.ts'
 import { createNotesRouter } from './routes/notes-router.ts'
+import { createOAuthRouter } from './routes/oauth-router.ts'
 import { createReportsRouter } from './routes/reports-router.ts'
 import { createScreentimeCategoriesRouter } from './routes/screentime-categories-router.ts'
 import { createSettingsRouter } from './routes/settings-router.ts'
@@ -119,9 +120,12 @@ const main = async () => {
   // CORS must come first for preflight requests
   httpd.use(cors({ origin: true }))
 
+  // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
+  httpd.use(createOAuthRouter({ centralDb, loginToUserDb, webHost }))
+
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
-  httpd.use('/mcp', createMcpRouter(auth, { garmin, oura, sync: syncProvider }))
+  httpd.use('/mcp', createMcpRouter(auth, { centralDb, garmin, oura, sync: syncProvider }))
 
   httpd.use(json({ limit: '10mb' }))
 

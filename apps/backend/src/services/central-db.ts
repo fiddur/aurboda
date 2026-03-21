@@ -38,6 +38,36 @@ export interface OuraWebhookSubscription {
   updated_at: Date
 }
 
+export interface OAuthClient {
+  client_id: string
+  client_name: string
+  redirect_uris: string[]
+  token_endpoint_auth_method: string
+  created_at: Date
+}
+
+export interface OAuthAuthorizationCode {
+  code: string
+  client_id: string
+  username: string
+  redirect_uri: string
+  code_challenge: string
+  code_challenge_method: string
+  expires_at: Date
+  used: boolean
+}
+
+export interface OAuthToken {
+  token: string
+  token_type: 'access' | 'refresh'
+  client_id: string
+  username: string
+  expires_at: Date
+  revoked: boolean
+  parent_token: string | null
+  created_at: Date
+}
+
 export interface CentralDbDeps {
   getClient: () => Promise<pg.Client>
 }
@@ -66,6 +96,14 @@ export interface CentralDb {
   getOuraWebhookSubscriptions: () => Promise<OuraWebhookSubscription[]>
   deleteOuraWebhookSubscription: (ouraSubscriptionId: string) => Promise<boolean>
   deleteAllOuraWebhookSubscriptions: () => Promise<number>
+  createOAuthClient: (client: Omit<OAuthClient, 'created_at'>) => Promise<void>
+  getOAuthClient: (clientId: string) => Promise<OAuthClient | null>
+  saveAuthorizationCode: (code: Omit<OAuthAuthorizationCode, 'used'>) => Promise<void>
+  consumeAuthorizationCode: (code: string) => Promise<OAuthAuthorizationCode | null>
+  saveOAuthToken: (token: OAuthToken) => Promise<void>
+  getOAuthToken: (token: string) => Promise<OAuthToken | null>
+  revokeOAuthToken: (token: string) => Promise<boolean>
+  cleanupExpiredOAuth: () => Promise<void>
 }
 
 // ============================================================================
@@ -159,6 +197,42 @@ const CREATE_OURA_WEBHOOK_SUBSCRIPTIONS_TABLE = `
     expiration_time TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`
+
+const CREATE_OAUTH_CLIENTS_TABLE = `
+  CREATE TABLE IF NOT EXISTS oauth_clients (
+    client_id VARCHAR(255) PRIMARY KEY,
+    client_name VARCHAR(255) NOT NULL,
+    redirect_uris JSONB NOT NULL DEFAULT '[]',
+    token_endpoint_auth_method VARCHAR(50) NOT NULL DEFAULT 'none',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`
+
+const CREATE_OAUTH_AUTHORIZATION_CODES_TABLE = `
+  CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
+    code VARCHAR(255) PRIMARY KEY,
+    client_id VARCHAR(255) NOT NULL REFERENCES oauth_clients(client_id),
+    username VARCHAR(255) NOT NULL,
+    redirect_uri TEXT NOT NULL,
+    code_challenge VARCHAR(255) NOT NULL,
+    code_challenge_method VARCHAR(10) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN NOT NULL DEFAULT FALSE
+  )
+`
+
+const CREATE_OAUTH_TOKENS_TABLE = `
+  CREATE TABLE IF NOT EXISTS oauth_tokens (
+    token VARCHAR(255) PRIMARY KEY,
+    token_type VARCHAR(10) NOT NULL CHECK (token_type IN ('access', 'refresh')),
+    client_id VARCHAR(255) NOT NULL REFERENCES oauth_clients(client_id),
+    username VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked BOOLEAN NOT NULL DEFAULT FALSE,
+    parent_token VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW()
   )
 `
 
@@ -270,6 +344,9 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_ADMINS_TABLE)
       await client.query(CREATE_OURA_USER_MAPPINGS_TABLE)
       await client.query(CREATE_OURA_WEBHOOK_SUBSCRIPTIONS_TABLE)
+      await client.query(CREATE_OAUTH_CLIENTS_TABLE)
+      await client.query(CREATE_OAUTH_AUTHORIZATION_CODES_TABLE)
+      await client.query(CREATE_OAUTH_TOKENS_TABLE)
 
       // Set default signup_mode if not exists
       await client.query(
@@ -359,6 +436,101 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
            data_type = $2, event_type = $3, callback_url = $4, expiration_time = $5, updated_at = NOW()`,
         [sub.oura_subscription_id, sub.data_type, sub.event_type, sub.callback_url, sub.expiration_time],
       )
+    },
+
+    createOAuthClient: async (client_data: Omit<OAuthClient, 'created_at'>): Promise<void> => {
+      const client = await getClient()
+      await client.query(
+        `INSERT INTO oauth_clients (client_id, client_name, redirect_uris, token_endpoint_auth_method)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          client_data.client_id,
+          client_data.client_name,
+          JSON.stringify(client_data.redirect_uris),
+          client_data.token_endpoint_auth_method,
+        ],
+      )
+    },
+
+    getOAuthClient: async (clientId: string): Promise<OAuthClient | null> => {
+      const client = await getClient()
+      const result = await client.query(
+        'SELECT client_id, client_name, redirect_uris, token_endpoint_auth_method, created_at FROM oauth_clients WHERE client_id = $1',
+        [clientId],
+      )
+      if (result.rows.length === 0) return null
+      return result.rows[0]
+    },
+
+    saveAuthorizationCode: async (code: Omit<OAuthAuthorizationCode, 'used'>): Promise<void> => {
+      const client = await getClient()
+      await client.query(
+        `INSERT INTO oauth_authorization_codes (code, client_id, username, redirect_uri, code_challenge, code_challenge_method, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          code.code,
+          code.client_id,
+          code.username,
+          code.redirect_uri,
+          code.code_challenge,
+          code.code_challenge_method,
+          code.expires_at,
+        ],
+      )
+    },
+
+    consumeAuthorizationCode: async (code: string): Promise<OAuthAuthorizationCode | null> => {
+      const client = await getClient()
+      const result = await client.query(
+        `UPDATE oauth_authorization_codes
+         SET used = TRUE
+         WHERE code = $1 AND used = FALSE AND expires_at > NOW()
+         RETURNING code, client_id, username, redirect_uri, code_challenge, code_challenge_method, expires_at, used`,
+        [code],
+      )
+      if (result.rows.length === 0) return null
+      return result.rows[0]
+    },
+
+    saveOAuthToken: async (token: OAuthToken): Promise<void> => {
+      const client = await getClient()
+      await client.query(
+        `INSERT INTO oauth_tokens (token, token_type, client_id, username, expires_at, revoked, parent_token)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          token.token,
+          token.token_type,
+          token.client_id,
+          token.username,
+          token.expires_at,
+          token.revoked,
+          token.parent_token,
+        ],
+      )
+    },
+
+    getOAuthToken: async (token: string): Promise<OAuthToken | null> => {
+      const client = await getClient()
+      const result = await client.query(
+        `SELECT token, token_type, client_id, username, expires_at, revoked, parent_token, created_at
+         FROM oauth_tokens
+         WHERE token = $1 AND revoked = FALSE AND expires_at > NOW()`,
+        [token],
+      )
+      if (result.rows.length === 0) return null
+      return result.rows[0]
+    },
+
+    revokeOAuthToken: async (token: string): Promise<boolean> => {
+      const client = await getClient()
+      const result = await client.query('UPDATE oauth_tokens SET revoked = TRUE WHERE token = $1', [token])
+      return (result.rowCount ?? 0) > 0
+    },
+
+    cleanupExpiredOAuth: async (): Promise<void> => {
+      const client = await getClient()
+      await client.query('DELETE FROM oauth_authorization_codes WHERE expires_at < NOW()')
+      await client.query('DELETE FROM oauth_tokens WHERE expires_at < NOW()')
     },
   }
 }
