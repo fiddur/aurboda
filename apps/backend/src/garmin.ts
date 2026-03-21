@@ -312,8 +312,18 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
       // Clean up any stale pending session for this user
       pendingMfaSessions.delete(user)
 
+      console.log(`🔑 Garmin login attempt for user=${user}, email=${email}`)
       const gc = new GarminConnect({ password, username: email })
-      const result = await gc.login()
+
+      let result
+      try {
+        result = await gc.login()
+      } catch (error) {
+        console.error(`🔑 Garmin login threw for user=${user}, email=${email}:`, error)
+        throw error
+      }
+
+      console.log(`🔑 Garmin login result for user=${user}: type=${result.type}`)
 
       if (result.type === 'success') {
         const tokens = gc.exportToken()
