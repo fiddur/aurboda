@@ -23,12 +23,42 @@ The MCP server is available at `/mcp` and uses the Streamable HTTP transport:
 
 ## Authentication
 
-The MCP server uses the same Bearer token authentication as the REST API:
+The MCP server supports two authentication methods:
 
-1. Obtain a token via `POST /api/v2/login`
+### OAuth 2.1 (for Claude.ai Custom Connectors)
+
+The server implements OAuth 2.1 with PKCE (S256) for clients that support it, such as Claude.ai custom connectors.
+
+**Discovery:** `GET /.well-known/oauth-authorization-server` returns the authorization server metadata.
+
+**OAuth endpoints:**
+
+| Endpoint        | Method | Description                                |
+| --------------- | ------ | ------------------------------------------ |
+| `/register`     | POST   | Dynamic client registration (RFC 7591)     |
+| `/authorize`    | GET    | Serves login form with OAuth params        |
+| `/authorize`    | POST   | Handles login + redirects with auth code   |
+| `/token`        | POST   | Exchanges auth code or refresh token       |
+
+**Supported grants:** `authorization_code` (with PKCE S256), `refresh_token`
+
+**Token lifetimes:** Access tokens expire after 1 hour, refresh tokens after 30 days.
+
+**Connecting Claude.ai:**
+
+1. In Claude.ai, add a custom connector with the MCP URL: `https://aurboda.net/mcp`
+2. Claude.ai will auto-discover the OAuth endpoints via `/.well-known/oauth-authorization-server`
+3. On first use, you will be redirected to sign in with your Aurboda credentials
+4. Claude.ai handles token refresh automatically
+
+### Bearer Token (for Claude Desktop / API clients)
+
+For direct API access, use the existing AES-256-GCM Bearer token:
+
+1. Obtain a token via `POST /api/login`
 2. Include the token in the `Authorization` header: `Authorization: Bearer <token>`
 
-Each MCP session is scoped to the authenticated user.
+Both authentication methods are supported simultaneously. Each MCP session is scoped to the authenticated user.
 
 ## Tools
 
@@ -200,16 +230,6 @@ The following metrics are available for querying and manual entry:
 | `readiness_score`          | score       | Readiness score (0-100)        |
 | `resilience_score`         | score       | Resilience score (0-100)       |
 | `productivity_score`       | score       | Productivity score (0-100)     |
-
-## Session Management
-
-The MCP server maintains per-user sessions:
-
-- Sessions are created on the first request with a valid token
-- The session ID is returned in the `Mcp-Session-Id` response header
-- Include the session ID in subsequent requests via the `Mcp-Session-Id` header
-- Sessions are isolated per user - a user cannot access another user's session
-- Use `DELETE /mcp` to explicitly end a session
 
 ## Connecting with Claude Desktop
 

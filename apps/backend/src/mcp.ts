@@ -14,6 +14,7 @@ import { type Request, type Response, Router } from 'express'
 import type { Auth } from './auth.ts'
 import type { GarminClient } from './garmin.ts'
 import type { ouraClient } from './oura.ts'
+import type { CentralDb } from './services/central-db.ts'
 import type { SyncProvider } from './services/queries.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
@@ -31,10 +32,12 @@ import { registerSyncTools } from './mcp/sync-tools.ts'
 import { registerTagTools } from './mcp/tag-tools.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
+import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
 
 type OuraClientType = ReturnType<typeof ouraClient>
 
 interface McpDeps {
+  centralDb?: CentralDb
   garmin?: GarminClient
   oura?: OuraClientType
   sync?: SyncProvider
@@ -75,13 +78,20 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
 export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
   const router = Router()
 
-  const getAuthenticatedUser = (req: Request): string | null => {
+  const getAuthenticatedUser = async (req: Request): Promise<string | null> => {
     const authHeader = req.headers.authorization
     if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
       return null
     }
+    const token = authHeader.slice('Bearer '.length)
+
+    // Try OAuth access token first (prefixed with aur_at_)
+    if (isOAuthAccessToken(token) && deps.centralDb) {
+      return validateAccessToken({ centralDb: deps.centralDb }, token)
+    }
+
+    // Fall back to existing AES-256-GCM token
     try {
-      const token = authHeader.slice('Bearer '.length)
       return auth.getUsernameFromToken(token)
     } catch {
       return null
@@ -90,7 +100,7 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
 
   // POST /mcp - Handle JSON-RPC requests (stateless: fresh server per request)
   router.post('/', async (req: Request, res: Response) => {
-    const user = getAuthenticatedUser(req)
+    const user = await getAuthenticatedUser(req)
     if (!user) {
       res.status(401).json({ error: 'Unauthorized' })
       return
