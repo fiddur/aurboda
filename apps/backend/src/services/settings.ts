@@ -279,6 +279,13 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     }
   }
 
+  // Shallow-merge dict fields so partial updates don't wipe existing entries.
+  // e.g. updating one exercise icon shouldn't delete all tag icons.
+  if (updates.item_icons) {
+    const current = await getSettings(user)
+    updates.item_icons = { ...current.item_icons, ...updates.item_icons }
+  }
+
   // Apply updates
   await updateSettingsInternal(user, updates)
 
