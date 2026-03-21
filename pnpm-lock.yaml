@@ -31,7 +31,7 @@ importers:
         version: link:../../packages/api-spec
       '@flow-js/garmin-connect':
         specifier: github:fiddur/garmin-connect#feat/mfa-support
-        version: https://codeload.github.com/fiddur/garmin-connect/tar.gz/ce57803e93a4ccbf8fa9aaecab8bcdaa82da04fb
+        version: https://codeload.github.com/fiddur/garmin-connect/tar.gz/1265b8f29f3e05f364fe3d84109d310418908d86(undici@7.19.2)
       '@js-temporal/polyfill':
         specifier: ^0.5.1
         version: 0.5.1
@@ -655,8 +655,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@flow-js/garmin-connect@https://codeload.github.com/fiddur/garmin-connect/tar.gz/ce57803e93a4ccbf8fa9aaecab8bcdaa82da04fb':
-    resolution: {tarball: https://codeload.github.com/fiddur/garmin-connect/tar.gz/ce57803e93a4ccbf8fa9aaecab8bcdaa82da04fb}
+  '@flow-js/garmin-connect@https://codeload.github.com/fiddur/garmin-connect/tar.gz/1265b8f29f3e05f364fe3d84109d310418908d86':
+    resolution: {tarball: https://codeload.github.com/fiddur/garmin-connect/tar.gz/1265b8f29f3e05f364fe3d84109d310418908d86}
     version: 1.6.7
 
   '@grpc/grpc-js@1.14.3':
@@ -1628,6 +1628,13 @@ packages:
   asynckit@0.4.0:
     resolution: {integrity: sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==}
 
+  axios-cookiejar-support@6.0.5:
+    resolution: {integrity: sha512-ldPOQCJWB0ipugkTNVB8QRl/5L2UgfmVNVQtS9en1JQJ1wW588PqAmymnwmmgc12HLDzDtsJ28xE2ppj4rD4ng==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      axios: '>=0.20.0'
+      tough-cookie: '>=4.0.0'
+
   axios@1.13.2:
     resolution: {integrity: sha512-VPk9ebNqPcy5lRGuSlKx752IlDatOjT9paPlm8A7yOuW2Fbvp4X3JznJtT4f0GzGLLiWE9W8onz51SqLYwzGaA==}
 
@@ -2441,6 +2448,16 @@ packages:
 
   html-escaper@2.0.2:
     resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
+
+  http-cookie-agent@7.0.3:
+    resolution: {integrity: sha512-EeZo7CGhfqPW6R006rJa4QtZZUpBygDa2HZH3DJqsTzTjyRE6foDBVQIv/pjVsxHC8z2GIdbB1Hvn9SRorP3WQ==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      tough-cookie: ^4.0.0 || ^5.0.0 || ^6.0.0
+      undici: ^7.0.0
+    peerDependenciesMeta:
+      undici:
+        optional: true
 
   http-errors@2.0.1:
     resolution: {integrity: sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==}
@@ -3338,8 +3355,15 @@ packages:
   tldts-core@6.1.86:
     resolution: {integrity: sha512-Je6p7pkk+KMzMv2XXKmAE3McmolOQFdxkKw0R8EYNr7sELW46JqnNeTX8ybPiQgvg1ymCoF8LXs5fzFaZvJPTA==}
 
+  tldts-core@7.0.27:
+    resolution: {integrity: sha512-YQ7uPjgWUibIK6DW5lrKujGwUKhLevU4hcGbP5O6TcIUb+oTjJYJVWPS4nZsIHrEEEG6myk/oqAJUEQmpZrHsg==}
+
   tldts@6.1.86:
     resolution: {integrity: sha512-WMi/OQ2axVTf/ykqCQgXiIct+mSQDFdH2fkwhPwgEwvJ1kSzZRiinb0zF2Xb8u4+OqPChmyI6MEu4EezNJz+FQ==}
+    hasBin: true
+
+  tldts@7.0.27:
+    resolution: {integrity: sha512-I4FZcVFcqCRuT0ph6dCDpPuO4Xgzvh+spkcTr1gK7peIvxWauoloVO0vuy1FQnijT63ss6AsHB6+OIM4aXHbPg==}
     hasBin: true
 
   tmp@0.2.5:
@@ -3356,6 +3380,10 @@ packages:
 
   tough-cookie@5.1.2:
     resolution: {integrity: sha512-FVDYdxtnj0G6Qm/DhNPSb8Ju59ULcup3tuJxkFb5K8Bv2pUXILbf0xZWU8PX8Ov19OXljbUyveOFwRMwkXzO+A==}
+    engines: {node: '>=16'}
+
+  tough-cookie@6.0.1:
+    resolution: {integrity: sha512-LktZQb3IeoUWB9lqR5EWTHgW/VTITCXg4D21M+lvybRVdylLrRMnqaIONLVb5mav8vM19m44HIcGq4qASeu2Qw==}
     engines: {node: '>=16'}
 
   tr46@0.0.3:
@@ -3980,18 +4008,21 @@ snapshots:
   '@esbuild/win32-x64@0.27.4':
     optional: true
 
-  '@flow-js/garmin-connect@https://codeload.github.com/fiddur/garmin-connect/tar.gz/ce57803e93a4ccbf8fa9aaecab8bcdaa82da04fb':
+  '@flow-js/garmin-connect@https://codeload.github.com/fiddur/garmin-connect/tar.gz/1265b8f29f3e05f364fe3d84109d310418908d86(undici@7.19.2)':
     dependencies:
       app-root-path: 3.1.0
       axios: 1.13.3
+      axios-cookiejar-support: 6.0.5(axios@1.13.3)(tough-cookie@6.0.1)(undici@7.19.2)
       crypto: 1.0.1
       form-data: 4.0.5
       lodash: 4.17.23
       luxon: 3.7.2
       oauth-1.0a: 2.2.6
       qs: 6.14.1
+      tough-cookie: 6.0.1
     transitivePeerDependencies:
       - debug
+      - undici
 
   '@grpc/grpc-js@1.14.3':
     dependencies:
@@ -4905,6 +4936,14 @@ snapshots:
 
   asynckit@0.4.0: {}
 
+  axios-cookiejar-support@6.0.5(axios@1.13.3)(tough-cookie@6.0.1)(undici@7.19.2):
+    dependencies:
+      axios: 1.13.3
+      http-cookie-agent: 7.0.3(tough-cookie@6.0.1)(undici@7.19.2)
+      tough-cookie: 6.0.1
+    transitivePeerDependencies:
+      - undici
+
   axios@1.13.2:
     dependencies:
       follow-redirects: 1.15.11
@@ -5813,6 +5852,13 @@ snapshots:
       whatwg-encoding: 3.1.1
 
   html-escaper@2.0.2: {}
+
+  http-cookie-agent@7.0.3(tough-cookie@6.0.1)(undici@7.19.2):
+    dependencies:
+      agent-base: 7.1.4
+      tough-cookie: 6.0.1
+    optionalDependencies:
+      undici: 7.19.2
 
   http-errors@2.0.1:
     dependencies:
@@ -6841,9 +6887,15 @@ snapshots:
 
   tldts-core@6.1.86: {}
 
+  tldts-core@7.0.27: {}
+
   tldts@6.1.86:
     dependencies:
       tldts-core: 6.1.86
+
+  tldts@7.0.27:
+    dependencies:
+      tldts-core: 7.0.27
 
   tmp@0.2.5: {}
 
@@ -6858,6 +6910,10 @@ snapshots:
   tough-cookie@5.1.2:
     dependencies:
       tldts: 6.1.86
+
+  tough-cookie@6.0.1:
+    dependencies:
+      tldts: 7.0.27
 
   tr46@0.0.3: {}
 
