@@ -736,14 +736,14 @@ export const Timeline = () => {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Unified bucket size for all metrics + training load, derived from the visible view range
-  // (not the fetch range). This ensures zooming in gives finer-grained data.
+  // Unified bucket size for line-chart metrics, derived from the visible view range
+  // (not the fetch range). Thresholds chosen to keep under ~500 data points.
   const bucketSize = useMemo(() => {
     const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
-    if (days > 365) return '1w'
-    if (days > 90) return '1d'
-    if (days > 30) return '1h'
-    if (days > 7) return '15m'
+    if (days > 500) return '1w'
+    if (days > 21) return '1d'
+    if (days > 5) return '1h'
+    if (days > 1) return '15m'
     return '5m'
   }, [effectiveViewStart, effectiveViewEnd])
 
@@ -901,12 +901,13 @@ export const Timeline = () => {
   // uses the same bucket size so they align visually side by side.
   // Training load backend only supports '1h', '1d', '1w', which constrains the minimum.
   // Line charts (HR/HRV) still use the finer `bucketSize` for smooth rendering.
+  // Target max ~50 bars visible: '1h' up to 2 days, '1d' up to 50 days, '1w' beyond.
   const barBucketSize = useMemo((): '1h' | '1d' | '1w' => {
-    if (bucketSize === '1w') return '1w'
-    if (bucketSize === '1d') return '1d'
-    // For sub-day views, all bars use hourly buckets
+    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
+    if (days > 50) return '1w'
+    if (days > 2) return '1d'
     return '1h'
-  }, [bucketSize])
+  }, [effectiveViewStart, effectiveViewEnd])
 
   // Training load data (fetched when toggle is on)
   const trainingLoadQuery = useQuery({
