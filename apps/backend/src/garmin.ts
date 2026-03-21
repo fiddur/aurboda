@@ -352,23 +352,29 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
      * @param mfaCode  The code from the user's email/SMS
      */
     async verifyMfa(user: string, mfaCode: string): Promise<GarminLoginSuccess> {
+      console.log(`🔑 Garmin MFA verify for user=${user}`)
       const entry = pendingMfaSessions.get(user)
       if (!entry) {
+        console.error(`🔑 Garmin MFA: no pending session for user=${user}`)
         throw new Error('No pending MFA session. Please start login again.')
       }
 
       if (Date.now() - entry.createdAt > MFA_SESSION_TTL_MS) {
         pendingMfaSessions.delete(user)
+        console.error(`🔑 Garmin MFA: session expired for user=${user}`)
         throw new Error('MFA session expired. Please start login again.')
       }
 
       const { gc } = entry
 
+      console.log(`🔑 Garmin MFA: calling verifyMfa on GarminConnect...`)
       await gc.verifyMfa(mfaCode)
+      console.log(`🔑 Garmin MFA: verification succeeded for user=${user}`)
       pendingMfaSessions.delete(user)
 
       const tokens = gc.exportToken()
       await saveSession(user, gc)
+      console.log(`🔑 Garmin MFA: tokens saved for user=${user}`)
       return { success: true, tokens }
     },
   }

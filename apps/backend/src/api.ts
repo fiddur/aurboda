@@ -453,6 +453,7 @@ const main = async () => {
       await garmin.verifyMfa(user, mfa_code)
       res.json({ success: true })
     } catch (error) {
+      console.error(`🔑 Garmin MFA endpoint error for user=${user}:`, error)
       const message = error instanceof Error ? error.message : 'MFA verification failed'
       res.status(401).json({ error: message, success: false })
     }
