@@ -20,6 +20,7 @@ import {
   fetchTagById,
   fetchTagMappings,
   updateActivity,
+  updateTag,
 } from '../../state/api'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
@@ -32,7 +33,7 @@ import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
 import { SleepDetail } from './SleepDetail'
-import { TagDetail } from './TagDetail'
+import { type TagDraft, TagDetail } from './TagDetail'
 import './style.css'
 
 const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
@@ -329,6 +330,41 @@ const TagContent = ({ entityId }: { entityId: string }) => {
     [queryClient, entityId],
   )
 
+  const [isEditing, setIsEditing] = useState(false)
+  const emptyDraft: TagDraft = { end_time: '', start_time: '' }
+  const [draft, setDraft] = useState<TagDraft>(emptyDraft)
+
+  const startEditing = useCallback(() => {
+    if (!tag) return
+    setDraft({
+      end_time: tag.end_time ? formatDateTimeLocal(tag.end_time) : '',
+      start_time: formatDateTimeLocal(tag.start_time),
+    })
+    setIsEditing(true)
+  }, [tag])
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      if (!tag) return Promise.resolve()
+      const body: { start_time?: string; end_time?: string | null } = {}
+      const origStart = formatDateTimeLocal(tag.start_time)
+      const origEnd = tag.end_time ? formatDateTimeLocal(tag.end_time) : ''
+
+      if (draft.start_time !== origStart) {
+        body.start_time = new Date(draft.start_time).toISOString()
+      }
+      if (draft.end_time !== origEnd) {
+        body.end_time = draft.end_time ? new Date(draft.end_time).toISOString() : null
+      }
+      if (Object.keys(body).length === 0) return Promise.resolve()
+      return updateTag(entityId, body)
+    },
+    onSuccess: () => {
+      setIsEditing(false)
+      invalidate()
+    },
+  })
+
   if (isLoading) return <p class="loading">Loading...</p>
   if (isError || !tag) return <p class="error">Failed to load tag</p>
 
@@ -339,15 +375,24 @@ const TagContent = ({ entityId }: { entityId: string }) => {
         entityId={entityId}
         isDeleted={Boolean(tag.deleted_at)}
         onMutationSuccess={invalidate}
-        canEdit={false}
+        canEdit={true}
         isMerged={false}
-        isEditing={false}
-        onStartEditing={() => {}}
-        onCancelEditing={() => {}}
-        onSave={() => {}}
-        isSaving={false}
+        isEditing={isEditing}
+        onStartEditing={startEditing}
+        onCancelEditing={() => {
+          setIsEditing(false)
+          setDraft(emptyDraft)
+        }}
+        onSave={() => saveMutation.mutate()}
+        isSaving={saveMutation.isPending}
       />
-      <TagDetail tag={tag} itemIcons={itemIcons} />
+      <TagDetail
+        tag={tag}
+        itemIcons={itemIcons}
+        isEditing={isEditing}
+        draft={draft}
+        onDraftChange={setDraft}
+      />
       <NotesSection entityType="tag" entityId={entityId} />
     </>
   )

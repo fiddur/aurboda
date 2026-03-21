@@ -1158,6 +1158,16 @@ export const fetchTagById = async (id: string): Promise<Tag> => {
   }
 }
 
+export const updateTag = async (
+  id: string,
+  body: { start_time?: string; end_time?: string | null },
+): Promise<void> => {
+  const { token } = auth.value
+  await axios.patch(`${API_URL}/tags/id/${id}`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 // ============================================================================
 // Notes
 // ============================================================================

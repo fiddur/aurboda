@@ -221,12 +221,10 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
     const { client_name, redirect_uris, token_endpoint_auth_method } = req.body
 
     if (!client_name || !redirect_uris || !Array.isArray(redirect_uris) || redirect_uris.length === 0) {
-      res
-        .status(400)
-        .json({
-          error: 'invalid_client_metadata',
-          error_description: 'client_name and redirect_uris are required',
-        })
+      res.status(400).json({
+        error: 'invalid_client_metadata',
+        error_description: 'client_name and redirect_uris are required',
+      })
       return
     }
 
