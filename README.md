@@ -5,10 +5,6 @@
 <h1 align="center">Aurboda</h1>
 <h3 align="center">Self-Hosted Self-Quantification Aggregator</h3>
 
-<p align="center">
-  <a href="https://codecov.io/gh/fiddur/aurboda"><img src="https://codecov.io/gh/fiddur/aurboda/graph/badge.svg?flag=backend" alt="Backend Coverage" /></a>
-</p>
-
 Your health, fitness, productivity, and location data is scattered across apps and services. Aurboda aggregates it all into one self-hosted platform, provides rich visualizations, and exposes everything to AI assistants via [MCP (Model Context Protocol)](https://modelcontextprotocol.io/).
 
 No public signup, but self-hosting is straightforward via Docker. It was initiated as a personal (manually coded) hobby project but has grown with AI coding; take it or leave it.
@@ -173,39 +169,6 @@ To change default port, modify `"8080:80"` to `"YOUR_PORT:80"` in docker-compose
 ### Development Builds
 
 Replace `:latest` with `:develop` in docker-compose.yml to use development builds.
-
----
-
-## Architecture
-
-```
-                         +------------------+
-                         |   Android App    |
-                         | (Health Connect, |
-                         |  BLE sensors)    |
-                         +--------+---------+
-                                  |
-+------------------+     +--------v---------+     +------------------+
-|  OwnTracks       +---->|     Backend      |<----+    Web UI        |
-|  ActivityWatch   |     |  (REST API + MCP)|     |   (Preact)       |
-|  Oura (webhooks) |     +--------+---------+     +------------------+
-+------------------+         ^    |
-                             |    |
-+------------------+         |    v
-|  Oura (API)      +---------+ +------------------+
-|  RescueTime      |           |   PostgreSQL     |
-|  Last.fm         |           |   (PostGIS)      |
-|  Calendars (ICS) +---------+ +------------------+
-+------------------+
-```
-
-**Components:**
-
-- `apps/backend` -- Node.js/TypeScript API server with MCP support
-- `apps/web` -- Preact-based visualization dashboard
-- `apps/android` -- Kotlin/Jetpack Compose Health Connect client with BLE support
-- `packages/api-spec` -- Shared Zod schemas, OpenAPI spec, generated TypeScript types and Kotlin models
-- Database: PostgreSQL with PostGIS, per-user database isolation
 
 ---
 
