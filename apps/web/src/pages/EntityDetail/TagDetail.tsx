@@ -1,13 +1,30 @@
 import type { Tag } from '../../state/api'
 
 /**
- * Tag detail view.
+ * Tag detail view with optional edit mode for start/end times.
  */
 import { IconPreview } from '../../components/IconPreview'
 import { resolveItemIcon, suggestEmoji } from '../../utils/emojiLookup'
-import { formatDateTime, formatDuration, formatTime } from './format-utils'
+import { formatDateTime, formatDateTimeLocal, formatDuration, formatTime } from './format-utils'
 
-export const TagDetail = ({ tag, itemIcons }: { tag: Tag; itemIcons: Record<string, string> }) => {
+export interface TagDraft {
+  start_time: string // yyyy-MM-ddTHH:mm for datetime-local
+  end_time: string
+}
+
+export const TagDetail = ({
+  tag,
+  itemIcons,
+  isEditing = false,
+  draft,
+  onDraftChange,
+}: {
+  tag: Tag
+  itemIcons: Record<string, string>
+  isEditing?: boolean
+  draft?: TagDraft
+  onDraftChange?: (d: TagDraft) => void
+}) => {
   const end = tag.end_time
   const isPoint = !end
   const tagMetaKey = tag.tag_key ?? tag.tag
@@ -15,6 +32,83 @@ export const TagDetail = ({ tag, itemIcons }: { tag: Tag; itemIcons: Record<stri
     resolveItemIcon(tag.tag, itemIcons) ??
     (tag.tag_key ? resolveItemIcon(tag.tag_key, itemIcons) : undefined) ??
     suggestEmoji(tag.tag)
+
+  if (isEditing && draft && onDraftChange) {
+    const draftStart = new Date(draft.start_time)
+    const draftEnd = draft.end_time ? new Date(draft.end_time) : undefined
+    const hasDraftEnd = Boolean(draft.end_time)
+    const draftDuration =
+      hasDraftEnd && !isNaN(draftStart.getTime()) && !isNaN(draftEnd!.getTime())
+        ? formatDuration(draftStart, draftEnd!)
+        : undefined
+
+    return (
+      <div class="entity-info">
+        <div class="entity-meta">
+          <span class="entity-type-badge">tag</span>
+          {tag.source && <span class="entity-source">Source: {tag.source}</span>}
+        </div>
+
+        <h2 class="entity-title-with-icon">
+          {icon && <IconPreview icon={icon} size={28} />}
+          {tag.tag}
+        </h2>
+
+        <div class="entity-fields">
+          <div class="field-row">
+            <span class="field-label">Start</span>
+            <span class="field-value">
+              <input
+                type="datetime-local"
+                class="edit-datetime-input"
+                value={draft.start_time}
+                onInput={(e) => onDraftChange({ ...draft, start_time: (e.target as HTMLInputElement).value })}
+              />
+            </span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">End</span>
+            <span class="field-value">
+              {hasDraftEnd ? (
+                <input
+                  type="datetime-local"
+                  class="edit-datetime-input"
+                  value={draft.end_time}
+                  onInput={(e) => onDraftChange({ ...draft, end_time: (e.target as HTMLInputElement).value })}
+                />
+              ) : (
+                <button
+                  class="btn-secondary"
+                  type="button"
+                  onClick={() =>
+                    onDraftChange({ ...draft, end_time: formatDateTimeLocal(new Date()) })
+                  }
+                >
+                  Set end time
+                </button>
+              )}
+              {hasDraftEnd && (
+                <button
+                  class="btn-secondary"
+                  type="button"
+                  style={{ marginLeft: '0.5rem' }}
+                  onClick={() => onDraftChange({ ...draft, end_time: '' })}
+                >
+                  Clear
+                </button>
+              )}
+            </span>
+          </div>
+          {draftDuration && (
+            <div class="field-row">
+              <span class="field-label">Duration</span>
+              <span class="field-value">{draftDuration}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div class="entity-info">

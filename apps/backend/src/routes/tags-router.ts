@@ -17,11 +17,13 @@ import {
   tagsQuerySchema,
   type TagsResponse,
   type UniqueTagsResponse,
+  type UpdateTagBody,
+  updateTagBodySchema,
 } from '@aurboda/api-spec'
 import { type RequestHandler, Router } from 'express'
 
 import { getProgrammaticTags, getTagById, getUniqueTags, getUserSettings } from '../db/index.ts'
-import { addTag, deleteTag, deleteTagById, restoreTag } from '../services/mutations.ts'
+import { addTag, deleteTag, deleteTagById, restoreTag, updateTag } from '../services/mutations.ts'
 import { queryTags, type SyncProvider } from '../services/queries.ts'
 import { getTagMappings, setTagMapping } from '../services/settings.ts'
 import { validateBody, validateQuery } from '../validation.ts'
@@ -102,6 +104,29 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
       success: true,
     })
   })
+
+  // PATCH /tags/id/:id - Update a tag's times
+  router.patch<{ id: string }, unknown, UpdateTagBody>(
+    '/id/:id',
+    authMiddleware,
+    validateBody(updateTagBodySchema),
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
+      const { start_time, end_time } = req.body
+
+      const result = await updateTag(user, id, {
+        end_time: end_time === null ? null : end_time ? new Date(end_time) : undefined,
+        start_time: start_time ? new Date(start_time) : undefined,
+      })
+
+      if (!result.success) {
+        return res.status(result.error === 'Tag not found' ? 404 : 400).json(result)
+      }
+
+      res.json({ success: true })
+    },
+  )
 
   // DELETE /tags/id/:id - Soft-delete a tag by UUID (not external_id)
   router.delete<{ id: string }>('/id/:id', authMiddleware, async (req, res) => {
