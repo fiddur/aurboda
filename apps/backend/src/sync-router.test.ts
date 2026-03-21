@@ -305,4 +305,303 @@ describe('sync router', () => {
       expect(mockDeps.processActivityWatchEvents).toHaveBeenCalledWith('testuser', events, '', undefined)
     })
   })
+
+  describe('garmin endpoints', () => {
+    test('POST /sync/garmin calls syncGarmin', async () => {
+      const app = createTestApp()
+      const response = await request(app).post('/sync/garmin').send({})
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.syncGarmin).toHaveBeenCalledWith('testuser', {
+        fullResync: undefined,
+        startDate: undefined,
+      })
+    })
+
+    test('POST /sync/garmin passes full_resync and start_date', async () => {
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/sync/garmin')
+        .send({ full_resync: true, start_date: '2024-01-01' })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.syncGarmin).toHaveBeenCalledWith('testuser', {
+        fullResync: true,
+        startDate: new Date('2024-01-01'),
+      })
+    })
+
+    test('GET /sync/garmin/status returns sync states', async () => {
+      const mockStates = [
+        {
+          error_message: null,
+          last_sync_time: '2024-01-15T10:00:00Z',
+          provider: 'garmin',
+          retry_after: null,
+          status: 'idle' as const,
+        },
+      ]
+      vi.mocked(mockDeps.getGarminSyncStates).mockResolvedValueOnce(mockStates)
+
+      const app = createTestApp()
+      const response = await request(app).get('/sync/garmin/status')
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ states: mockStates, success: true })
+    })
+
+    test('DELETE /sync/garmin/state resets sync state', async () => {
+      const app = createTestApp()
+      const response = await request(app).delete('/sync/garmin/state').query({ dataType: 'dailySummary' })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.resetGarminSyncState).toHaveBeenCalledWith('testuser', 'dailySummary')
+    })
+  })
+
+  describe('calendar endpoints', () => {
+    test('POST /sync/calendars returns 400 when no calendars configured', async () => {
+      vi.mocked(mockDeps.getSettings).mockResolvedValueOnce({})
+
+      const app = createTestApp()
+      const response = await request(app).post('/sync/calendars').send({})
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toContain('No calendars configured')
+    })
+
+    test('POST /sync/calendars calls syncCalendars', async () => {
+      vi.mocked(mockDeps.getSettings).mockResolvedValueOnce({
+        calendars: [{ name: 'Work', url: 'https://example.com/cal.ics' }],
+      })
+
+      const app = createTestApp()
+      const response = await request(app).post('/sync/calendars').send({ full_resync: true })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.syncCalendars).toHaveBeenCalledWith(
+        'testuser',
+        [{ name: 'Work', url: 'https://example.com/cal.ics' }],
+        { fullResync: true },
+      )
+    })
+
+    test('GET /sync/calendars/status returns sync states', async () => {
+      vi.mocked(mockDeps.getCalendarSyncStates).mockResolvedValueOnce([])
+
+      const app = createTestApp()
+      const response = await request(app).get('/sync/calendars/status')
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ states: [], success: true })
+    })
+
+    test('DELETE /sync/calendars/state resets sync state', async () => {
+      const app = createTestApp()
+      const response = await request(app).delete('/sync/calendars/state')
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.resetCalendarSyncState).toHaveBeenCalledWith('testuser')
+    })
+  })
+
+  describe('lastfm endpoints', () => {
+    test('POST /sync/lastfm returns 400 when API key not configured', async () => {
+      vi.mocked(mockDeps.getLastFmApiKey).mockResolvedValueOnce(null)
+
+      const app = createTestApp()
+      const response = await request(app).post('/sync/lastfm').send({})
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toContain('Last.fm API key not configured')
+    })
+
+    test('POST /sync/lastfm returns 400 when username not configured', async () => {
+      vi.mocked(mockDeps.getSettings).mockResolvedValueOnce({})
+
+      const app = createTestApp()
+      const response = await request(app).post('/sync/lastfm').send({})
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toContain('Last.fm username not configured')
+    })
+
+    test('POST /sync/lastfm calls syncLastFm', async () => {
+      vi.mocked(mockDeps.getSettings).mockResolvedValueOnce({ lastfm_username: 'testfm' })
+
+      const app = createTestApp()
+      const response = await request(app).post('/sync/lastfm').send({ full_resync: true })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.syncLastFm).toHaveBeenCalledWith('testuser', 'test-lastfm-key', 'testfm', {
+        fullResync: true,
+        startDate: undefined,
+      })
+    })
+
+    test('GET /sync/lastfm/status returns sync states', async () => {
+      vi.mocked(mockDeps.getLastFmSyncStates).mockResolvedValueOnce([])
+
+      const app = createTestApp()
+      const response = await request(app).get('/sync/lastfm/status')
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ states: [], success: true })
+    })
+
+    test('DELETE /sync/lastfm/state resets sync state', async () => {
+      const app = createTestApp()
+      const response = await request(app).delete('/sync/lastfm/state')
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.resetLastFmSyncState).toHaveBeenCalledWith('testuser')
+    })
+  })
+
+  describe('outbound sync endpoints', () => {
+    test('GET /sync/outbound returns pending entries', async () => {
+      const now = new Date('2024-01-15T10:00:00Z')
+      vi.mocked(mockDeps.getPendingOutboundSync).mockResolvedValueOnce({
+        entries: [
+          {
+            created_at: now,
+            entity_id: 'ent-1',
+            entity_type: 'time_series',
+            id: '550e8400-e29b-41d4-a716-446655440000',
+            payload: { metric: 'steps', value: 1000 },
+            status: 'pending',
+          },
+        ],
+        total_pending: 1,
+      })
+
+      const app = createTestApp()
+      const response = await request(app).get('/sync/outbound')
+
+      expect(response.status).toBe(200)
+      expect(response.body.success).toBe(true)
+      expect(response.body.total_pending).toBe(1)
+      expect(response.body.data).toHaveLength(1)
+      expect(response.body.data[0].created_at).toBe('2024-01-15T10:00:00.000Z')
+    })
+
+    test('POST /sync/outbound/ack acknowledges entries', async () => {
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/sync/outbound/ack')
+        .send({
+          entries: [{ id: '550e8400-e29b-41d4-a716-446655440000', hc_record_id: 'hc-123' }],
+        })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ acknowledged: 1, success: true })
+      expect(mockDeps.ackOutboundSync).toHaveBeenCalledWith(
+        'testuser',
+        '550e8400-e29b-41d4-a716-446655440000',
+        'hc-123',
+      )
+    })
+
+    test('POST /sync/outbound/ack returns 400 for empty entries', async () => {
+      const app = createTestApp()
+      const response = await request(app).post('/sync/outbound/ack').send({ entries: [] })
+
+      expect(response.status).toBe(400)
+      expect(mockDeps.ackOutboundSync).not.toHaveBeenCalled()
+    })
+
+    test('POST /sync/outbound/ack returns 400 for invalid id', async () => {
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/sync/outbound/ack')
+        .send({ entries: [{ id: 'not-a-uuid' }] })
+
+      expect(response.status).toBe(400)
+      expect(mockDeps.ackOutboundSync).not.toHaveBeenCalled()
+    })
+
+    test('POST /sync/outbound/fail reports failures', async () => {
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/sync/outbound/fail')
+        .send({
+          entries: [{ id: '550e8400-e29b-41d4-a716-446655440000', reason: 'HC write failed' }],
+        })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ reported: 1, success: true })
+      expect(mockDeps.reportSyncFailure).toHaveBeenCalledWith(
+        'testuser',
+        '550e8400-e29b-41d4-a716-446655440000',
+        'HC write failed',
+      )
+    })
+
+    test('POST /sync/outbound/fail returns 400 for missing reason', async () => {
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/sync/outbound/fail')
+        .send({
+          entries: [{ id: '550e8400-e29b-41d4-a716-446655440000' }],
+        })
+
+      expect(response.status).toBe(400)
+      expect(mockDeps.reportSyncFailure).not.toHaveBeenCalled()
+    })
+
+    test('POST /sync/outbound/requeue re-queues entry', async () => {
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/sync/outbound/requeue')
+        .send({ id: '550e8400-e29b-41d4-a716-446655440000' })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ requeued: true, success: true })
+      expect(mockDeps.requeueOutboundSync).toHaveBeenCalledWith(
+        'testuser',
+        '550e8400-e29b-41d4-a716-446655440000',
+      )
+    })
+
+    test('POST /sync/outbound/requeue returns 400 for invalid id', async () => {
+      const app = createTestApp()
+      const response = await request(app).post('/sync/outbound/requeue').send({ id: 'not-a-uuid' })
+
+      expect(response.status).toBe(400)
+      expect(mockDeps.requeueOutboundSync).not.toHaveBeenCalled()
+    })
+
+    test('GET /sync/outbound/history returns history', async () => {
+      const now = new Date('2024-01-15T10:00:00Z')
+      vi.mocked(mockDeps.getOutboundSyncHistory).mockResolvedValueOnce([
+        {
+          created_at: now,
+          entity_id: 'ent-1',
+          entity_type: 'time_series',
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          payload: {},
+          status: 'synced',
+          synced_at: now,
+        },
+      ])
+
+      const app = createTestApp()
+      const response = await request(app).get('/sync/outbound/history').query({ limit: '10' })
+
+      expect(response.status).toBe(200)
+      expect(response.body.success).toBe(true)
+      expect(response.body.data).toHaveLength(1)
+      expect(mockDeps.getOutboundSyncHistory).toHaveBeenCalledWith('testuser', 10)
+    })
+
+    test('GET /sync/outbound/history defaults limit to undefined', async () => {
+      vi.mocked(mockDeps.getOutboundSyncHistory).mockResolvedValueOnce([])
+
+      const app = createTestApp()
+      const response = await request(app).get('/sync/outbound/history')
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.getOutboundSyncHistory).toHaveBeenCalledWith('testuser', undefined)
+    })
+  })
 })
