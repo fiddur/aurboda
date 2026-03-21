@@ -115,7 +115,11 @@ const ExerciseStats = ({
       <div class="entity-fields">
         <div class="field-row">
           <span class="field-label">Exercise Type</span>
-          <span class="field-value">{formatExerciseTypeName(exerciseType)}</span>
+          <span class="field-value">
+            <a href={`/exercise/${encodeURIComponent(exerciseType)}`} class="entity-meta-link">
+              {formatExerciseTypeName(exerciseType)}
+            </a>
+          </span>
         </div>
       </div>
     )}
@@ -172,9 +176,13 @@ export const ExerciseDetail = ({
     <>
       <div class="entity-info">
         <div class="entity-meta">
-          <span class="entity-type-badge">
-            {exerciseType ? formatExerciseTypeName(exerciseType) : activity.activity_type}
-          </span>
+          {exerciseType ? (
+            <a href={`/exercise/${encodeURIComponent(exerciseType)}`} class="entity-type-badge">
+              {formatExerciseTypeName(exerciseType)}
+            </a>
+          ) : (
+            <span class="entity-type-badge">{activity.activity_type}</span>
+          )}
           {activity.source && <span class="entity-source">Source: {activity.source}</span>}
         </div>
 
@@ -187,7 +195,6 @@ export const ExerciseDetail = ({
           draft={draft}
           onDraftChange={onDraftChange}
           icon={icon}
-          titleHref={exerciseType ? `/exercise/${encodeURIComponent(exerciseType)}` : undefined}
         />
 
         {isEditing && (

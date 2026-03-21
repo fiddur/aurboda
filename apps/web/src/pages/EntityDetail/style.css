@@ -61,6 +61,11 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  text-decoration: none;
+}
+
+a.entity-type-badge:hover {
+  background: #7c4dcd;
 }
 
 .entity-source {

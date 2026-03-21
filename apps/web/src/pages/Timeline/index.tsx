@@ -2173,7 +2173,7 @@ export const Timeline = () => {
         {!legendCollapsed && (
           <div class="timeline-legend" ref={legendRef}>
             {/* ── Music (top-level) ── */}
-            {showMusicColumn && (
+            {hasLastFm && (
               <>
                 <button
                   key="music"
