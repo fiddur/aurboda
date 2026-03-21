@@ -430,6 +430,7 @@ const main = async () => {
         res.json({ success: true })
       }
     } catch (error) {
+      console.error(`🔑 Garmin login endpoint error for user=${user}:`, error)
       const message = error instanceof Error ? error.message : 'Login failed'
       res.status(401).json({ error: message, success: false })
     }
