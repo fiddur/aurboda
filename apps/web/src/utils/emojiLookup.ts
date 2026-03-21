@@ -48,10 +48,16 @@ export const resolveItemIcon = (key: string, userIcons: Record<string, string>):
     // Empty string means user explicitly cleared the icon
     return userIcons[key] || undefined
   }
+
+  // Case-insensitive fallback for user icons (keys may differ in casing between pages)
+  const lower = key.toLowerCase()
+  for (const [k, v] of Object.entries(userIcons)) {
+    if (k.toLowerCase() === lower) return v || undefined
+  }
+
   if (DEFAULT_ITEM_ICONS[key]) return DEFAULT_ITEM_ICONS[key]
 
   // Case-insensitive fallback for defaults (exercise type names may differ in casing)
-  const lower = key.toLowerCase()
   for (const [k, v] of Object.entries(DEFAULT_ITEM_ICONS)) {
     if (k.toLowerCase() === lower) return v
   }
