@@ -31,7 +31,7 @@ importers:
         version: link:../../packages/api-spec
       '@flow-js/garmin-connect':
         specifier: github:fiddur/garmin-connect#feat/mfa-support
-        version: https://codeload.github.com/fiddur/garmin-connect/tar.gz/1265b8f29f3e05f364fe3d84109d310418908d86(undici@7.19.2)
+        version: https://codeload.github.com/fiddur/garmin-connect/tar.gz/b967c055efdfa7da2fe16b9bf8bb9426a2c9a9de(undici@7.19.2)
       '@js-temporal/polyfill':
         specifier: ^0.5.1
         version: 0.5.1
@@ -655,8 +655,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@flow-js/garmin-connect@https://codeload.github.com/fiddur/garmin-connect/tar.gz/1265b8f29f3e05f364fe3d84109d310418908d86':
-    resolution: {tarball: https://codeload.github.com/fiddur/garmin-connect/tar.gz/1265b8f29f3e05f364fe3d84109d310418908d86}
+  '@flow-js/garmin-connect@https://codeload.github.com/fiddur/garmin-connect/tar.gz/b967c055efdfa7da2fe16b9bf8bb9426a2c9a9de':
+    resolution: {tarball: https://codeload.github.com/fiddur/garmin-connect/tar.gz/b967c055efdfa7da2fe16b9bf8bb9426a2c9a9de}
     version: 1.6.7
 
   '@grpc/grpc-js@1.14.3':
@@ -4008,7 +4008,7 @@ snapshots:
   '@esbuild/win32-x64@0.27.4':
     optional: true
 
-  '@flow-js/garmin-connect@https://codeload.github.com/fiddur/garmin-connect/tar.gz/1265b8f29f3e05f364fe3d84109d310418908d86(undici@7.19.2)':
+  '@flow-js/garmin-connect@https://codeload.github.com/fiddur/garmin-connect/tar.gz/b967c055efdfa7da2fe16b9bf8bb9426a2c9a9de(undici@7.19.2)':
     dependencies:
       app-root-path: 3.1.0
       axios: 1.13.3
