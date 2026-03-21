@@ -124,6 +124,39 @@ export const findMergeableTag = async (
 }
 
 /**
+ * Update a tag's start_time and/or end_time by database ID.
+ */
+export const updateTag = async (
+  user: string,
+  id: string,
+  updates: { start_time?: Date; end_time?: Date | null },
+): Promise<boolean> => {
+  const setClauses: string[] = []
+  const params: unknown[] = []
+  let paramIndex = 1
+
+  if (updates.start_time !== undefined) {
+    setClauses.push(`start_time = $${paramIndex++}`)
+    params.push(updates.start_time)
+  }
+  if (updates.end_time !== undefined) {
+    setClauses.push(`end_time = $${paramIndex++}`)
+    params.push(updates.end_time)
+  }
+
+  if (setClauses.length === 0) return true
+
+  params.push(id)
+  const result = await query(
+    user,
+    `UPDATE tags SET ${setClauses.join(', ')} WHERE id = $${paramIndex} AND deleted_at IS NULL`,
+    params,
+  )
+
+  return (result.rowCount ?? 0) > 0
+}
+
+/**
  * Update the end_time of an existing tag.
  */
 export const updateTagEndTime = async (user: string, externalId: string, endTime: Date): Promise<boolean> => {

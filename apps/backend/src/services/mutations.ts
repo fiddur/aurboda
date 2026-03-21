@@ -19,9 +19,11 @@ import {
   findHcRecordId,
   findMergeableTag,
   getUserSettings,
+  getTagById,
   insertTag,
   insertTimeSeries,
   type TimeSeriesPoint,
+  updateTag as dbUpdateTag,
   updateTagEndTime,
 } from '../db/index.ts'
 import {
@@ -177,7 +179,7 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
       return {
         end_time: newEndTime.toISOString(),
         extendedBySeconds,
-        id: existingTag.external_id,
+        id: existingTag.id!,
         merged: true,
         start_time: existingTag.start_time.toISOString(),
         success: true,
@@ -189,7 +191,7 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
   // Create a new tag
   const externalId = randomUUID()
 
-  await insertTag(user, {
+  const dbId = await insertTag(user, {
     end_time: input.end_time,
     external_id: externalId,
     source: 'aurboda',
@@ -199,12 +201,43 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
 
   return {
     end_time: input.end_time?.toISOString(),
-    id: externalId,
+    id: dbId,
     start_time: input.start_time.toISOString(),
     success: true,
     tag: input.tag,
     ...(input.mergeSpan !== undefined ? { merged: false } : {}),
   }
+}
+
+export interface UpdateTagInput {
+  start_time?: Date
+  end_time?: Date | null
+}
+
+export interface UpdateTagResult {
+  success: boolean
+  error?: string
+}
+
+export async function updateTag(user: string, id: string, input: UpdateTagInput): Promise<UpdateTagResult> {
+  const existing = await getTagById(user, id)
+  if (!existing) {
+    return { error: 'Tag not found', success: false }
+  }
+
+  const finalStartTime = input.start_time ?? existing.start_time
+  const finalEndTime = input.end_time === null ? undefined : (input.end_time ?? existing.end_time)
+
+  if (finalEndTime && finalEndTime <= finalStartTime) {
+    return { error: 'end_time must be after start_time', success: false }
+  }
+
+  const updates: { start_time?: Date; end_time?: Date | null } = {}
+  if (input.start_time !== undefined) updates.start_time = input.start_time
+  if (input.end_time !== undefined) updates.end_time = input.end_time
+
+  await dbUpdateTag(user, id, updates)
+  return { success: true }
 }
 
 /** Validate custom metric value range; returns error string if invalid, null if ok. */

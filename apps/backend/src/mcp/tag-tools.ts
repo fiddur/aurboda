@@ -1,10 +1,10 @@
 /**
  * MCP tag management tools.
  */
-import { addTagBodySchema, deleteTagParamsSchema } from '@aurboda/api-spec'
+import { addTagBodySchema, deleteTagParamsSchema, updateTagBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { addTag, deleteTag, restoreTag } from '../services/mutations.ts'
+import { addTag, deleteTag, restoreTag, updateTag } from '../services/mutations.ts'
 import { errorResponse, jsonResponse, type McpServer, parseOptionalDate } from './helpers.ts'
 
 export const registerTagTools = (server: McpServer, user: string) => {
@@ -30,6 +30,20 @@ export const registerTagTools = (server: McpServer, user: string) => {
         mergeSpan: merge_span,
         start_time: startDate,
         tag,
+      })
+      return jsonResponse(result)
+    },
+  )
+
+  // Tool: update_tag
+  server.tool(
+    'update_tag',
+    "Update a tag's start and/or end time.",
+    { id: z.string().uuid().describe('The ID of the tag to update'), ...updateTagBodySchema.shape },
+    async ({ id, start_time, end_time }) => {
+      const result = await updateTag(user, id, {
+        end_time: end_time === null ? null : end_time ? new Date(end_time) : undefined,
+        start_time: start_time ? new Date(start_time) : undefined,
       })
       return jsonResponse(result)
     },
