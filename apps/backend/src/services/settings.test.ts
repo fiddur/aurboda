@@ -326,6 +326,25 @@ describe('validateAndUpdateSettings', () => {
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { item_icons: icons })
   })
 
+  test('merges partial item_icons with existing icons', async () => {
+    const existingIcons = { Coffee: '☕', 'exercise:Running': '🏃' }
+    vi.mocked(db.getUserSettings).mockResolvedValue({ item_icons: existingIcons })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({
+      item_icons: { ...existingIcons, 'exercise:Yoga': '🧘' },
+    })
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', {
+      item_icons: { 'exercise:Yoga': '🧘' },
+    })
+
+    expect(result.success).toBe(true)
+    // Should merge new icon with existing ones, not replace
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
+      item_icons: { Coffee: '☕', 'exercise:Running': '🏃', 'exercise:Yoga': '🧘' },
+    })
+  })
+
   test('clears item_icons when set to null', async () => {
     vi.mocked(db.getUserSettings).mockResolvedValue({ item_icons: { Coffee: '☕' } })
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})
