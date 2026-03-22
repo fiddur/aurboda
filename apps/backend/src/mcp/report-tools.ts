@@ -3,10 +3,17 @@
  *
  * Provides tools for creating, querying, and deleting structured lab reports.
  */
-import { addReportBodySchema, reportsQuerySchema } from '@aurboda/api-spec'
+import { addReportBodySchema, reportsQuerySchema, updateReportBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { addReport, deleteReportById, getLatestMetric, getReport, queryReports } from '../services/reports.ts'
+import {
+  addReport,
+  deleteReportById,
+  getLatestMetric,
+  getReport,
+  queryReports,
+  updateReport,
+} from '../services/reports.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerReportTools = (server: McpServer, user: string) => {
@@ -52,6 +59,20 @@ export const registerReportTools = (server: McpServer, user: string) => {
         report_type: params.report_type,
         start: params.start,
       })
+      return jsonResponse(result)
+    },
+  )
+
+  // Tool: update_report
+  server.tool(
+    'update_report',
+    'Update a lab report. Can modify metadata (report_type, date, location, notes) and/or replace all entries. When entries are provided, they fully replace existing entries. Flags are auto-derived from reference ranges if not set.',
+    { id: z.string().uuid().describe('The report ID to update'), ...updateReportBodySchema.shape },
+    async ({ id, ...params }) => {
+      const result = await updateReport(user, id, params)
+      if (!result.success) {
+        return errorResponse(result.error ?? 'Report not found')
+      }
       return jsonResponse(result)
     },
   )

@@ -14,7 +14,7 @@ import {
 } from '../../state/api'
 import { parseMetricEntityId } from './MetricDetail'
 
-export type EntityType = 'activity' | 'tag' | 'productivity' | 'metric'
+export type EntityType = 'activity' | 'tag' | 'productivity' | 'metric' | 'report'
 
 export interface EntityActionsProps {
   entityType: EntityType

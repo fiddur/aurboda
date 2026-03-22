@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
-import { addReport, deleteReportById, getLatestMetric, getReport, queryReports } from './reports.ts'
+import {
+  addReport,
+  deleteReportById,
+  getLatestMetric,
+  getReport,
+  queryReports,
+  updateReport,
+} from './reports.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
@@ -13,6 +20,8 @@ vi.mock('../db', () => ({
   insertReport: vi.fn(),
   insertTimeSeries: vi.fn(),
   query: vi.fn(),
+  updateNoteTimesForEntity: vi.fn(),
+  updateReport: vi.fn(),
 }))
 
 const mockInsertReport = vi.mocked(db.insertReport)
@@ -23,6 +32,8 @@ const mockDeleteReport = vi.mocked(db.deleteReport)
 const mockGetReportEntryMetrics = vi.mocked(db.getReportEntryMetrics)
 const mockGetLatestMetricValue = vi.mocked(db.getLatestMetricValue)
 const mockQuery = vi.mocked(db.query)
+const mockUpdateReport = vi.mocked(db.updateReport)
+const mockUpdateNoteTimesForEntity = vi.mocked(db.updateNoteTimesForEntity)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -95,6 +106,13 @@ describe('addReport', () => {
         value: 17.5,
       },
     ])
+
+    // DB insertReport should NOT receive value/unit in entries (those go only to time_series)
+    const insertCall = mockInsertReport.mock.calls[0][1]
+    for (const entry of insertCall.entries) {
+      expect(entry).not.toHaveProperty('value')
+      expect(entry).not.toHaveProperty('unit')
+    }
   })
 
   test('auto-derives flag from reference range when not set', async () => {
@@ -109,8 +127,8 @@ describe('addReport', () => {
         reference_high: e.reference_high,
         reference_low: e.reference_low,
         report_id: 'report-1',
-        unit: e.unit,
-        value: e.value,
+        unit: 'ng/mL',
+        value: 45,
       })),
       id: 'report-1',
       report_date: input.report_date,
@@ -258,5 +276,150 @@ describe('getLatestMetric', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('No data found')
+  })
+})
+
+describe('updateReport', () => {
+  const existingReport = {
+    created_at: new Date('2025-05-08T10:00:00Z'),
+    entries: [
+      { id: 'e1', metric: 'weight', report_id: 'r1', unit: 'kg', value: 99.5 },
+      { id: 'e2', metric: 'body_fat', report_id: 'r1', unit: '%', value: 17.5 },
+    ],
+    id: 'r1',
+    location: 'Genki gym',
+    report_date: new Date('2025-05-08T09:23:00Z'),
+    report_type: 'inbody',
+  }
+
+  test('updates metadata only — cleans and re-inserts time_series', async () => {
+    mockGetReportById.mockResolvedValue(existingReport)
+    mockGetReportEntryMetrics.mockResolvedValue([
+      { metric: 'weight', report_date: new Date('2025-05-08T09:23:00Z') },
+      { metric: 'body_fat', report_date: new Date('2025-05-08T09:23:00Z') },
+    ])
+    mockUpdateReport.mockResolvedValue({
+      ...existingReport,
+      location: 'New location',
+    })
+    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
+
+    const result = await updateReport('testuser', 'r1', { location: 'New location' })
+
+    expect(result.success).toBe(true)
+    expect(mockUpdateReport).toHaveBeenCalledWith('testuser', 'r1', { location: 'New location' })
+
+    // Should clean old time_series and re-insert
+    expect(mockQuery).toHaveBeenCalledWith(
+      'testuser',
+      `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source = 'lab_report'`,
+      ['weight', new Date('2025-05-08T09:23:00Z')],
+    )
+    expect(mockInsertTimeSeries).toHaveBeenCalled()
+  })
+
+  test('replaces entries and updates time_series', async () => {
+    mockGetReportById.mockResolvedValue(existingReport)
+    mockGetReportEntryMetrics.mockResolvedValue([
+      { metric: 'weight', report_date: new Date('2025-05-08T09:23:00Z') },
+      { metric: 'body_fat', report_date: new Date('2025-05-08T09:23:00Z') },
+    ])
+    const updatedReport = {
+      ...existingReport,
+      entries: [
+        { id: 'e3', metric: 'weight', report_id: 'r1', unit: 'kg', value: 100 },
+        { id: 'e4', metric: 'skeletal_muscle_mass', report_id: 'r1', unit: 'kg', value: 45 },
+      ],
+    }
+    mockUpdateReport.mockResolvedValue(updatedReport)
+    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
+
+    const result = await updateReport('testuser', 'r1', {
+      entries: [
+        { metric: 'weight', unit: 'kg', value: 100 },
+        { metric: 'skeletal_muscle_mass', unit: 'kg', value: 45 },
+      ],
+    })
+
+    expect(result.success).toBe(true)
+
+    // DB updateReport should NOT receive value/unit in entries
+    const updateCall = mockUpdateReport.mock.calls[0][2]
+    for (const entry of updateCall.entries!) {
+      expect(entry).not.toHaveProperty('value')
+      expect(entry).not.toHaveProperty('unit')
+    }
+
+    // New time_series entries should be inserted
+    expect(mockInsertTimeSeries).toHaveBeenCalledWith('testuser', [
+      {
+        metric: 'weight',
+        source: 'lab_report',
+        time: new Date('2025-05-08T09:23:00Z'),
+        unit: 'kg',
+        value: 100,
+      },
+      {
+        metric: 'skeletal_muscle_mass',
+        source: 'lab_report',
+        time: new Date('2025-05-08T09:23:00Z'),
+        unit: 'kg',
+        value: 45,
+      },
+    ])
+  })
+
+  test('updates date — syncs note times', async () => {
+    mockGetReportById.mockResolvedValue(existingReport)
+    mockGetReportEntryMetrics.mockResolvedValue([
+      { metric: 'weight', report_date: new Date('2025-05-08T09:23:00Z') },
+    ])
+    mockUpdateReport.mockResolvedValue({
+      ...existingReport,
+      report_date: new Date('2025-06-01T10:00:00Z'),
+      entries: [{ id: 'e1', metric: 'weight', report_id: 'r1', unit: 'kg', value: 99.5 }],
+    })
+    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
+
+    const result = await updateReport('testuser', 'r1', { date: '2025-06-01T10:00:00Z' })
+
+    expect(result.success).toBe(true)
+
+    // Should sync note times for the new date
+    expect(mockUpdateNoteTimesForEntity).toHaveBeenCalledWith(
+      'testuser',
+      'report',
+      'r1',
+      new Date('2025-06-01T10:00:00Z'),
+      undefined,
+    )
+  })
+
+  test('returns error for nonexistent report', async () => {
+    mockGetReportById.mockResolvedValue(null)
+
+    const result = await updateReport('testuser', 'nonexistent', { location: 'New' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Report not found')
+  })
+
+  test('auto-derives flags on new entries', async () => {
+    mockGetReportById.mockResolvedValue(existingReport)
+    mockGetReportEntryMetrics.mockResolvedValue([
+      { metric: 'weight', report_date: new Date('2025-05-08T09:23:00Z') },
+    ])
+    mockUpdateReport.mockResolvedValue({
+      ...existingReport,
+      entries: [{ id: 'e1', metric: 'ferritin', report_id: 'r1', unit: 'ng/mL', value: 15 }],
+    })
+    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
+
+    await updateReport('testuser', 'r1', {
+      entries: [{ metric: 'ferritin', reference_high: 200, reference_low: 20, unit: 'ng/mL', value: 15 }],
+    })
+
+    const updateCall = mockUpdateReport.mock.calls[0][2]
+    expect(updateCall.entries![0].flag).toBe('low') // 15 is below 20
   })
 })

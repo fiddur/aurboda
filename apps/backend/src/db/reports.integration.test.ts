@@ -1,10 +1,67 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { deleteReport, getLatestMetricValue, getReportById, getReports, insertReport } from './reports.ts'
+import {
+  deleteReport,
+  getLatestMetricValue,
+  getReportById,
+  getReports,
+  insertReport,
+  updateReport,
+} from './reports.ts'
 import { insertTimeSeries } from './time-series.ts'
 
 const CONTAINER_TIMEOUT = 60_000
+
+/** Helper: insert a report AND its time_series data (since values live in time_series). */
+const insertReportWithTimeSeries = async (
+  user: string,
+  input: {
+    report_type: string
+    report_date: Date
+    location?: string
+    notes?: string
+    entries: Array<{
+      metric: string
+      value: number
+      unit: string
+      method?: string
+      confidence?: string
+      reference_low?: number
+      reference_high?: number
+      flag?: string
+    }>
+  },
+) => {
+  const report = await insertReport(user, {
+    entries: input.entries.map((e) => ({
+      confidence: e.confidence,
+      flag: e.flag,
+      method: e.method,
+      metric: e.metric,
+      reference_high: e.reference_high,
+      reference_low: e.reference_low,
+    })),
+    location: input.location,
+    notes: input.notes,
+    report_date: input.report_date,
+    report_type: input.report_type,
+  })
+
+  await insertTimeSeries(
+    user,
+    input.entries.map((e) => ({
+      metric: e.metric,
+      source: 'lab_report' as const,
+      time: input.report_date,
+      unit: e.unit,
+      value: e.value,
+    })),
+  )
+
+  // Re-fetch to get values from the join
+  return (await getReportById(user, report.id))!
+}
 
 describe('Reports Integration Tests', () => {
   beforeAll(async () => {
@@ -20,10 +77,10 @@ describe('Reports Integration Tests', () => {
   })
 
   describe('insertReport', () => {
-    test('creates a report with entries and returns generated IDs', async () => {
+    test('creates a report with entry metadata and returns generated IDs', async () => {
       const user = getTestUser()
 
-      const report = await insertReport(user, {
+      const report = await insertReportWithTimeSeries(user, {
         entries: [
           { confidence: 'measured', method: 'bia_segmental', metric: 'weight', unit: 'kg', value: 99.5 },
           { confidence: 'measured', method: 'bia_segmental', metric: 'body_fat', unit: '%', value: 17.5 },
@@ -43,17 +100,19 @@ describe('Reports Integration Tests', () => {
       expect(report.created_at).toBeInstanceOf(Date)
       expect(report.entries).toHaveLength(3)
 
-      // Entries should have generated IDs
+      // Entries should have generated IDs and values from time_series
       for (const entry of report.entries) {
         expect(entry.id).toBeDefined()
         expect(entry.report_id).toBe(report.id)
+        expect(entry.value).toBeDefined()
+        expect(entry.unit).toBeDefined()
       }
     })
 
     test('creates a report with minimal fields', async () => {
       const user = getTestUser()
 
-      const report = await insertReport(user, {
+      const report = await insertReportWithTimeSeries(user, {
         entries: [{ metric: 'ferritin', unit: 'ng/mL', value: 45 }],
         report_date: new Date('2025-03-15T08:00:00Z'),
         report_type: 'blood_panel',
@@ -71,7 +130,7 @@ describe('Reports Integration Tests', () => {
     test('stores reference range and flag on entries', async () => {
       const user = getTestUser()
 
-      const report = await insertReport(user, {
+      const report = await insertReportWithTimeSeries(user, {
         entries: [
           {
             confidence: 'measured',
@@ -93,13 +152,26 @@ describe('Reports Integration Tests', () => {
       expect(entry.reference_high).toBe(0.39)
       expect(entry.flag).toBe('normal')
     })
+
+    test('entry values come from time_series join', async () => {
+      const user = getTestUser()
+
+      const report = await insertReportWithTimeSeries(user, {
+        entries: [{ metric: 'weight', unit: 'kg', value: 99.5 }],
+        report_date: new Date('2025-05-08T09:23:00Z'),
+        report_type: 'inbody',
+      })
+
+      expect(report.entries[0].value).toBe(99.5)
+      expect(report.entries[0].unit).toBe('kg')
+    })
   })
 
   describe('getReportById', () => {
     test('retrieves report by ID with entries', async () => {
       const user = getTestUser()
 
-      const created = await insertReport(user, {
+      const created = await insertReportWithTimeSeries(user, {
         entries: [
           { metric: 'weight', unit: 'kg', value: 99.5 },
           { metric: 'body_fat', unit: '%', value: 17.5 },
@@ -127,12 +199,12 @@ describe('Reports Integration Tests', () => {
     test('returns all reports ordered by date descending', async () => {
       const user = getTestUser()
 
-      await insertReport(user, {
+      await insertReportWithTimeSeries(user, {
         entries: [{ metric: 'weight', unit: 'kg', value: 100 }],
         report_date: new Date('2024-12-15T10:00:00Z'),
         report_type: 'inbody',
       })
-      await insertReport(user, {
+      await insertReportWithTimeSeries(user, {
         entries: [{ metric: 'weight', unit: 'kg', value: 99.5 }],
         report_date: new Date('2025-05-08T09:23:00Z'),
         report_type: 'inbody',
@@ -147,12 +219,12 @@ describe('Reports Integration Tests', () => {
     test('filters by report_type', async () => {
       const user = getTestUser()
 
-      await insertReport(user, {
+      await insertReportWithTimeSeries(user, {
         entries: [{ metric: 'weight', unit: 'kg', value: 99.5 }],
         report_date: new Date('2025-05-08T09:23:00Z'),
         report_type: 'inbody',
       })
-      await insertReport(user, {
+      await insertReportWithTimeSeries(user, {
         entries: [{ metric: 'ferritin', unit: 'ng/mL', value: 45 }],
         report_date: new Date('2025-03-15T08:00:00Z'),
         report_type: 'blood_panel',
@@ -167,12 +239,12 @@ describe('Reports Integration Tests', () => {
     test('filters by date range', async () => {
       const user = getTestUser()
 
-      await insertReport(user, {
+      await insertReportWithTimeSeries(user, {
         entries: [{ metric: 'weight', unit: 'kg', value: 100 }],
         report_date: new Date('2024-06-01T10:00:00Z'),
         report_type: 'inbody',
       })
-      await insertReport(user, {
+      await insertReportWithTimeSeries(user, {
         entries: [{ metric: 'weight', unit: 'kg', value: 99.5 }],
         report_date: new Date('2025-05-08T09:23:00Z'),
         report_type: 'inbody',
@@ -196,7 +268,7 @@ describe('Reports Integration Tests', () => {
     test('includes entries for each report', async () => {
       const user = getTestUser()
 
-      await insertReport(user, {
+      await insertReportWithTimeSeries(user, {
         entries: [
           { metric: 'weight', unit: 'kg', value: 99.5 },
           { metric: 'body_fat', unit: '%', value: 17.5 },
@@ -216,7 +288,7 @@ describe('Reports Integration Tests', () => {
     test('deletes report and its entries via CASCADE', async () => {
       const user = getTestUser()
 
-      const report = await insertReport(user, {
+      const report = await insertReportWithTimeSeries(user, {
         entries: [
           { metric: 'weight', unit: 'kg', value: 99.5 },
           { metric: 'body_fat', unit: '%', value: 17.5 },
@@ -236,6 +308,92 @@ describe('Reports Integration Tests', () => {
       const user = getTestUser()
       const deleted = await deleteReport(user, '00000000-0000-0000-0000-000000000000')
       expect(deleted).toBe(false)
+    })
+  })
+
+  describe('updateReport', () => {
+    test('updates metadata fields', async () => {
+      const user = getTestUser()
+
+      const report = await insertReportWithTimeSeries(user, {
+        entries: [{ metric: 'weight', unit: 'kg', value: 99.5 }],
+        location: 'Genki gym',
+        report_date: new Date('2025-05-08T09:23:00Z'),
+        report_type: 'inbody',
+      })
+
+      const updated = await updateReport(user, report.id, {
+        location: 'New gym',
+        notes: 'Updated notes',
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated!.location).toBe('New gym')
+      expect(updated!.notes).toBe('Updated notes')
+      expect(updated!.report_type).toBe('inbody') // unchanged
+      expect(updated!.entries).toHaveLength(1) // unchanged
+    })
+
+    test('replaces entries', async () => {
+      const user = getTestUser()
+
+      const report = await insertReportWithTimeSeries(user, {
+        entries: [
+          { metric: 'weight', unit: 'kg', value: 99.5 },
+          { metric: 'body_fat', unit: '%', value: 17.5 },
+        ],
+        report_date: new Date('2025-05-08T09:23:00Z'),
+        report_type: 'inbody',
+      })
+
+      // Insert new time_series for the replacement entries
+      await insertTimeSeries(user, [
+        {
+          metric: 'skeletal_muscle_mass',
+          source: 'lab_report',
+          time: new Date('2025-05-08T09:23:00Z'),
+          unit: 'kg',
+          value: 45,
+        },
+      ])
+
+      const updated = await updateReport(user, report.id, {
+        entries: [{ metric: 'weight' }, { metric: 'skeletal_muscle_mass', confidence: 'measured' }],
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated!.entries).toHaveLength(2)
+      const metrics = updated!.entries.map((e) => e.metric).sort()
+      expect(metrics).toEqual(['skeletal_muscle_mass', 'weight'])
+    })
+
+    test('clears nullable fields with null', async () => {
+      const user = getTestUser()
+
+      const report = await insertReportWithTimeSeries(user, {
+        entries: [{ metric: 'weight', unit: 'kg', value: 99.5 }],
+        location: 'Genki gym',
+        notes: 'Some notes',
+        report_date: new Date('2025-05-08T09:23:00Z'),
+        report_type: 'inbody',
+      })
+
+      const updated = await updateReport(user, report.id, {
+        location: null,
+        notes: null,
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated!.location).toBeUndefined()
+      expect(updated!.notes).toBeUndefined()
+    })
+
+    test('returns null for nonexistent report', async () => {
+      const user = getTestUser()
+      const result = await updateReport(user, '00000000-0000-0000-0000-000000000000', {
+        location: 'New',
+      })
+      expect(result).toBeNull()
     })
   })
 
@@ -280,7 +438,7 @@ describe('Reports Integration Tests', () => {
     test('supports arbitrary report_type strings', async () => {
       const user = getTestUser()
 
-      const report = await insertReport(user, {
+      const report = await insertReportWithTimeSeries(user, {
         entries: [
           { confidence: 'measured', method: 'hair_analysis', metric: 'calcium', unit: 'mg%', value: 42 },
           { confidence: 'measured', method: 'hair_analysis', metric: 'magnesium', unit: 'mg%', value: 6.2 },

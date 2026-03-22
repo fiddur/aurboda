@@ -137,6 +137,36 @@ export const addReportBodySchema = z
 export type AddReportBody = z.infer<typeof addReportBodySchema>
 
 /**
+ * Update report request body — all fields optional (PATCH semantics).
+ * When entries is provided, it fully replaces all existing entries.
+ */
+export const updateReportBodySchema = z
+  .object({
+    date: iso8601DateTimeSchema.optional().meta({ description: 'New date/time of the report' }),
+    entries: z
+      .array(reportEntrySchema.omit({ id: true }))
+      .min(1)
+      .optional()
+      .meta({
+        description: 'Replacement entries (fully replaces all existing entries when provided)',
+      }),
+    location: z
+      .string()
+      .max(255)
+      .optional()
+      .nullable()
+      .meta({ description: 'Where the test was performed (null to clear)' }),
+    notes: z.string().optional().nullable().meta({ description: 'Contextual notes (null to clear)' }),
+    report_type: z.string().min(1).max(100).optional().meta({ description: 'Type of report' }),
+  })
+  .meta({
+    description: 'Update a lab report — metadata and/or entries',
+    id: 'UpdateReportBody',
+  })
+
+export type UpdateReportBody = z.infer<typeof updateReportBodySchema>
+
+/**
  * Reports query schema — filter by type and/or date range.
  */
 export const reportsQuerySchema = z
@@ -177,3 +207,12 @@ export type ReportsResponse = z.infer<typeof reportsResponseSchema>
 export const deleteReportResponseSchema = baseResponseSchema.meta({ id: 'DeleteReportResponse' })
 
 export type DeleteReportResponse = z.infer<typeof deleteReportResponseSchema>
+
+/**
+ * Update report response.
+ */
+export const updateReportResponseSchema = createDataResponseSchema(reportSchema).meta({
+  id: 'UpdateReportResponse',
+})
+
+export type UpdateReportResponse = z.infer<typeof updateReportResponseSchema>

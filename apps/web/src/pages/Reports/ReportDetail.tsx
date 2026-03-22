@@ -1,4 +1,5 @@
 import type { Confidence, ReportEntry, ReportFlag } from '@aurboda/api-spec'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
@@ -6,6 +7,7 @@ import { useState } from 'preact/hooks'
 
 import { ReferenceRangeBar } from '../../components/ReferenceRangeBar'
 import { deleteReport, fetchReport } from '../../state/api'
+import { NotesSection } from '../EntityDetail/NotesSection'
 import './ReportDetail.css'
 
 const formatType = (type: string): string =>
@@ -103,7 +105,11 @@ export function ReportDetail() {
   const id = params.id as string
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const { data: report, isLoading, error } = useQuery({
+  const {
+    data: report,
+    isLoading,
+    error,
+  } = useQuery({
     queryFn: () => fetchReport(id),
     queryKey: ['report', id],
     staleTime: 5 * 60 * 1000,
@@ -117,9 +123,19 @@ export function ReportDetail() {
     },
   })
 
-  if (isLoading) return <div class="report-detail-page"><p class="loading">Loading report...</p></div>
+  if (isLoading) {
+    return (
+      <div class="report-detail-page">
+        <p class="loading">Loading report...</p>
+      </div>
+    )
+  }
   if (error || !report) {
-    return <div class="report-detail-page"><p class="error">Report not found</p></div>
+    return (
+      <div class="report-detail-page">
+        <p class="error">Report not found</p>
+      </div>
+    )
   }
 
   return (
@@ -138,7 +154,9 @@ export function ReportDetail() {
       </header>
 
       <section class="report-entries-section">
-        <h2>{report.entries.length} {report.entries.length === 1 ? 'Entry' : 'Entries'}</h2>
+        <h2>
+          {report.entries.length} {report.entries.length === 1 ? 'Entry' : 'Entries'}
+        </h2>
 
         {/* Desktop table view */}
         <div class="report-entries-table">
@@ -161,13 +179,11 @@ export function ReportDetail() {
         </div>
       </section>
 
+      <NotesSection entityType="report" entityId={id} />
+
       <section class="report-detail-actions">
         {!confirmDelete ? (
-          <button
-            type="button"
-            class="btn-danger"
-            onClick={() => setConfirmDelete(true)}
-          >
+          <button type="button" class="btn-danger" onClick={() => setConfirmDelete(true)}>
             Delete Report
           </button>
         ) : (
@@ -181,11 +197,7 @@ export function ReportDetail() {
             >
               {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
             </button>
-            <button
-              type="button"
-              class="btn-secondary"
-              onClick={() => setConfirmDelete(false)}
-            >
+            <button type="button" class="btn-secondary" onClick={() => setConfirmDelete(false)}>
               Cancel
             </button>
           </div>

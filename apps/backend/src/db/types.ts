@@ -245,7 +245,7 @@ export interface ScreentimeCategoryInput {
 // Notes
 // ============================================================================
 
-export type EntityType = 'activity' | 'tag' | 'productivity' | 'metric'
+export type EntityType = 'activity' | 'tag' | 'productivity' | 'metric' | 'report'
 
 export interface Note {
   id: string

@@ -11,10 +11,13 @@ import {
   type ReportsQuery,
   reportsQuerySchema,
   type ReportsResponse,
+  type UpdateReportBody,
+  updateReportBodySchema,
+  type UpdateReportResponse,
 } from '@aurboda/api-spec'
 import { type RequestHandler, Router } from 'express'
 
-import { addReport, deleteReportById, getReport, queryReports } from '../services/reports.ts'
+import { addReport, deleteReportById, getReport, queryReports, updateReport } from '../services/reports.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
@@ -66,6 +69,31 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
 
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })
+      }
+
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  // PATCH /reports/:id - Update a report
+  router.patch<{ id: string }, UpdateReportResponse, UpdateReportBody>(
+    '/:id',
+    authMiddleware,
+    validateBody(updateReportBodySchema),
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
+
+      const result = await updateReport(user, id, {
+        date: req.body.date,
+        entries: req.body.entries,
+        location: req.body.location,
+        notes: req.body.notes,
+        report_type: req.body.report_type,
+      })
+
+      if (!result.success) {
+        return res.status(404).json({ error: result.error, success: false })
       }
 
       res.json({ data: result.data, success: true })

@@ -16,6 +16,7 @@ import {
   updateNoteTimesForEntity as dbUpdateNoteTimesForEntity,
   getActivityById,
   getProductivityById,
+  getReportById,
   getTagById,
   type EntityType,
 } from '../db/index.ts'
@@ -70,6 +71,11 @@ async function getEntityTimes(
       // Metric entity_id is a composite key; time is encoded in the key itself.
       // We don't set inherited times for metric notes.
       return undefined
+    case 'report': {
+      const report = await getReportById(user, entityId)
+      if (!report) return undefined
+      return { start_time: report.report_date }
+    }
   }
 }
 

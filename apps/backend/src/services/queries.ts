@@ -227,7 +227,7 @@ export interface CommentSummary {
 
 export interface NoteSummary {
   id: string
-  entity_type: 'activity' | 'tag' | 'productivity' | 'metric'
+  entity_type: 'activity' | 'tag' | 'productivity' | 'metric' | 'report'
   entity_id: string
   content: string
   start_time?: string
