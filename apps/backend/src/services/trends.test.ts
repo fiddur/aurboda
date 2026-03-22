@@ -109,7 +109,7 @@ describe('getTrend', () => {
 
     const result = await getTrend('testuser', {
       aggregation: 'mean',
-      custom_metrics: [{ name: 'fissure_pain', type: 'number', unit: 'score' }],
+      custom_metrics: [{ name: 'fissure_pain', unit: 'score' }],
       pattern: 'fissure_pain',
       source_type: 'metric',
     })
@@ -122,7 +122,7 @@ describe('getTrend', () => {
   test('throws error for invalid custom metric name', async () => {
     await expect(
       getTrend('testuser', {
-        custom_metrics: [{ name: 'fissure_pain', type: 'number', unit: 'score' }],
+        custom_metrics: [{ name: 'fissure_pain', unit: 'score' }],
         pattern: 'totally_unknown',
         source_type: 'metric',
       }),
