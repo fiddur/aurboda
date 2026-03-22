@@ -27,8 +27,8 @@ export function ReferenceRangeBar({ value, reference_low, reference_high, flag }
   }
 
   // Calculate display range: extend 30% beyond reference bounds
-  const low = reference_low ?? (reference_high! - Math.abs(reference_high!) * 0.5)
-  const high = reference_high ?? (reference_low! + Math.abs(reference_low!) * 0.5)
+  const low = reference_low ?? reference_high! - Math.abs(reference_high!) * 0.5
+  const high = reference_high ?? reference_low! + Math.abs(reference_low!) * 0.5
   const span = high - low
   const padding = span * 0.3
   const displayMin = low - padding
@@ -43,7 +43,10 @@ export function ReferenceRangeBar({ value, reference_low, reference_high, flag }
   const markerColor = flag ? (FLAG_COLORS[flag] ?? '#6b7280') : '#6b7280'
 
   return (
-    <div class="ref-range-bar" title={`Value: ${value}, Range: ${reference_low ?? '—'}–${reference_high ?? '—'}`}>
+    <div
+      class="ref-range-bar"
+      title={`Value: ${value}, Range: ${reference_low ?? '—'}–${reference_high ?? '—'}`}
+    >
       <div class="ref-range-track">
         {/* Warning zones */}
         <div class="ref-range-zone ref-range-low" style={{ left: 0, width: `${lowPct}%` }} />
