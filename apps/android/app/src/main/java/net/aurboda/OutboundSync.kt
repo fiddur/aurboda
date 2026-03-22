@@ -210,6 +210,9 @@ sealed class WriteResult {
   data class TransientFailure(
     val reason: String,
   ) : WriteResult()
+
+  /** Health Connect API quota exceeded — stop all writes immediately. */
+  data object RateLimited : WriteResult()
 }
 
 /**
@@ -237,8 +240,17 @@ suspend fun writeToHealthConnect(
       }
     }
   } catch (e: Exception) {
-    Log.e(TAG, "🚫 Failed to write ${entry.hc_record_type} to Health Connect: ${e.message}", e)
-    WriteResult.TransientFailure("exception: ${e.message}")
+    val msg = e.message ?: ""
+    val causeMsg = e.cause?.message ?: ""
+    if (msg.contains("quota exceeded", ignoreCase = true) ||
+      causeMsg.contains("quota exceeded", ignoreCase = true)
+    ) {
+      Log.w(TAG, "⚠️ Health Connect API quota exceeded, stopping outbound sync")
+      WriteResult.RateLimited
+    } else {
+      Log.e(TAG, "🚫 Failed to write ${entry.hc_record_type} to Health Connect: ${e.message}", e)
+      WriteResult.TransientFailure("exception: ${e.message}")
+    }
   }
 
 /**
@@ -566,6 +578,7 @@ suspend fun processOutboundSync(
   val allSkipReasons = mutableListOf<String>()
   val allFailReasons = mutableListOf<String>()
   var pagesProcessed = 0
+  var rateLimited = false
 
   for (page in 1..MAX_OUTBOUND_SYNC_PAGES) {
     val fetchResult = fetchOutboundSyncEntries(apiUrl, authToken, httpClient)
@@ -608,6 +621,14 @@ suspend fun processOutboundSync(
           Log.e(TAG, "🚫 Transient failure for entry ${entry.id} (${entry.hc_record_type}/${entry.operation}): ${result.reason}")
           failItems.add(OutboundSyncFailItemApi(id = entry.id, reason = result.reason))
         }
+        is WriteResult.RateLimited -> {
+          rateLimited = true
+          val reason = "${entry.hc_record_type}: API quota exceeded"
+          allFailReasons.add(reason)
+          Log.w(TAG, "⚠️ Rate limited on entry ${entry.id} (${entry.hc_record_type}), stopping outbound sync")
+          failItems.add(OutboundSyncFailItemApi(id = entry.id, reason = "API call quota exceeded"))
+          break // Stop processing entries in this page
+        }
       }
     }
 
@@ -629,6 +650,12 @@ suspend fun processOutboundSync(
     // Best-effort report transient failures so backend can track them
     if (failItems.isNotEmpty()) {
       reportOutboundSyncFailures(failItems, apiUrl, authToken, httpClient)
+    }
+
+    // Stop fetching more pages if rate limited — remaining entries will retry next sync cycle
+    if (rateLimited) {
+      Log.w(TAG, "⚠️ Health Connect API quota exceeded, deferring remaining entries to next sync cycle")
+      break
     }
 
     // If we processed fewer entries than the total pending, there are more pages

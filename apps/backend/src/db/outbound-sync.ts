@@ -110,7 +110,9 @@ export const getPendingOutboundSync = async (
             hc_record_id, status, fail_count, fail_reason, created_at, synced_at
      FROM outbound_sync_queue
      WHERE status = 'pending'
-     ORDER BY created_at DESC
+     ORDER BY
+       CASE WHEN entity_type = 'activity' THEN 0 ELSE 1 END,
+       created_at DESC
      LIMIT $1`,
     [limit],
   )
