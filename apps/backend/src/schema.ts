@@ -519,6 +519,8 @@ export const healthConnectMetricMapping: Record<string, MetricType | null> = {
   TotalCaloriesBurnedRecord: 'calories_total',
   Vo2MaxRecord: 'vo2_max',
   WeightRecord: 'weight',
+  SpeedRecord: 'speed',
+  PowerRecord: 'power',
 }
 
 /**
