@@ -185,6 +185,7 @@ export {
   getReportEntryMetrics,
   getReports,
   insertReport,
+  updateReport,
 } from './reports.ts'
 
 // OAuth

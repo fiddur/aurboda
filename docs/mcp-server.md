@@ -4,14 +4,20 @@ Aurboda includes an MCP (Model Context Protocol) server that enables AI assistan
 
 ## Overview
 
-The MCP server provides 4 tools for AI assistants:
+The MCP server provides tools for AI assistants. Core tools include:
 
-| Tool                | Description                                         |
-| ------------------- | --------------------------------------------------- |
-| `query_metrics`     | Query time series health data for a date range      |
-| `get_daily_summary` | Get a comprehensive summary for a specific day      |
-| `add_tag`           | Add a manual tag/label to mark an activity or event |
-| `add_metric`        | Add a manual health metric measurement              |
+| Tool                | Description                                              |
+| ------------------- | -------------------------------------------------------- |
+| `query_metrics`     | Query time series health data for a date range           |
+| `get_daily_summary` | Get a comprehensive summary for a specific day           |
+| `add_tag`           | Add a manual tag/label to mark an activity or event      |
+| `add_metric`        | Add a manual health metric measurement                   |
+| `add_report`        | Create a structured lab report with grouped measurements |
+| `update_report`     | Update a lab report's metadata and/or entries            |
+| `get_report`        | Fetch a single lab report by ID                          |
+| `query_reports`     | List lab reports with optional type/date filters         |
+| `delete_report`     | Delete a lab report and its metric data                  |
+| `get_latest_metric` | Get the most recent value for any metric                 |
 
 ## Endpoint
 
@@ -33,12 +39,12 @@ The server implements OAuth 2.1 with PKCE (S256) for clients that support it, su
 
 **OAuth endpoints:**
 
-| Endpoint        | Method | Description                                |
-| --------------- | ------ | ------------------------------------------ |
-| `/register`     | POST   | Dynamic client registration (RFC 7591)     |
-| `/authorize`    | GET    | Serves login form with OAuth params        |
-| `/authorize`    | POST   | Handles login + redirects with auth code   |
-| `/token`        | POST   | Exchanges auth code or refresh token       |
+| Endpoint     | Method | Description                              |
+| ------------ | ------ | ---------------------------------------- |
+| `/register`  | POST   | Dynamic client registration (RFC 7591)   |
+| `/authorize` | GET    | Serves login form with OAuth params      |
+| `/authorize` | POST   | Handles login + redirects with auth code |
+| `/token`     | POST   | Exchanges auth code or refresh token     |
 
 **Supported grants:** `authorization_code` (with PKCE S256), `refresh_token`
 

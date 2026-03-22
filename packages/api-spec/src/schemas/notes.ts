@@ -14,7 +14,7 @@ import {
 /**
  * Valid entity types for notes and soft-delete references.
  */
-export const entityTypes = ['activity', 'tag', 'productivity', 'metric'] as const
+export const entityTypes = ['activity', 'tag', 'productivity', 'metric', 'report'] as const
 
 export const entityTypeSchema = z.enum(entityTypes).meta({
   description: 'Entity type for polymorphic references',

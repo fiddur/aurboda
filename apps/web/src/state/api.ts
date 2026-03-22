@@ -90,6 +90,7 @@ import type {
   UpdateCustomMetricBody,
   UpdateLastFmTagRuleBody,
   UpdateLastFmTagRuleResponse,
+  UpdateReportBody,
   UpdateScreentimeCategoryBody,
   UpdateSettingsInput,
   UserSettingsResponse,
@@ -1484,6 +1485,14 @@ export const fetchReport = async (id: string): Promise<Report> => {
 export const createReport = async (body: AddReportBody): Promise<Report> => {
   const { token } = auth.value
   const response = await axios.post<ReportResponse>(`${API_URL}/reports`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return mapReport(response.data.data!)
+}
+
+export const updateReport = async (id: string, body: UpdateReportBody): Promise<Report> => {
+  const { token } = auth.value
+  const response = await axios.patch<ReportResponse>(`${API_URL}/reports/${id}`, body, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return mapReport(response.data.data!)

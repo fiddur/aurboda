@@ -1,8 +1,9 @@
 /**
  * Reports service — CRUD operations for structured lab reports.
  *
- * Reports group related measurements (InBody scans, blood panels, etc.)
- * and write through to the time_series table for metric queries.
+ * Reports group related measurements (InBody scans, blood panels, etc.).
+ * Entry values/units are stored in time_series (source='lab_report') as the single source of truth.
+ * report_entries stores only lab-specific metadata (reference ranges, flags, etc.).
  */
 
 import type { Confidence, ReportFlag } from '@aurboda/api-spec'
@@ -13,9 +14,11 @@ import {
   getReportById as dbGetReportById,
   getReports as dbGetReports,
   insertReport as dbInsertReport,
+  updateReport as dbUpdateReport,
   getReportEntryMetrics,
   insertTimeSeries,
   query,
+  updateNoteTimesForEntity,
   type Report,
   type ReportEntry,
 } from '../db/index.ts'
@@ -41,6 +44,14 @@ export interface AddReportInput {
   location?: string
   notes?: string
   entries: AddReportEntryInput[]
+}
+
+export interface UpdateReportInput {
+  report_type?: string
+  date?: string // ISO 8601
+  location?: string | null
+  notes?: string | null
+  entries?: AddReportEntryInput[]
 }
 
 interface ReportEntryResponse {
@@ -113,6 +124,44 @@ const deriveFlag = (value: number, referenceLow?: number, referenceHigh?: number
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/** Extract metadata-only entries (no value/unit) for the DB layer. */
+const toDbEntries = (entries: AddReportEntryInput[]) =>
+  entries.map((e) => ({
+    confidence: e.confidence,
+    flag: e.flag,
+    method: e.method,
+    metric: e.metric,
+    reference_high: e.reference_high,
+    reference_low: e.reference_low,
+  }))
+
+/** Build time_series points from entries + date. */
+const toTimeSeriesPoints = (entries: AddReportEntryInput[], time: Date) =>
+  entries.map((entry) => ({
+    metric: entry.metric,
+    source: 'lab_report' as const,
+    time,
+    unit: entry.unit,
+    value: entry.value,
+  }))
+
+/** Clean up all lab_report time_series entries for a given set of metrics/dates. */
+const cleanupTimeSeries = async (
+  user: string,
+  entryMetrics: Array<{ metric: string; report_date: Date }>,
+): Promise<void> => {
+  for (const { metric, report_date } of entryMetrics) {
+    await query(user, `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source = 'lab_report'`, [
+      metric,
+      report_date,
+    ])
+  }
+}
+
+// ============================================================================
 // Formatters
 // ============================================================================
 
@@ -145,7 +194,7 @@ const formatReport = (report: Report): ReportResponse => ({
 /**
  * Create a new report with entries.
  * Auto-derives flags from reference ranges if not set.
- * Writes through each entry to time_series with source 'lab_report'.
+ * Writes entry values to time_series with source 'lab_report'.
  */
 export async function addReport(user: string, input: AddReportInput): Promise<ReportResult> {
   const reportDate = new Date(input.date)
@@ -156,24 +205,17 @@ export async function addReport(user: string, input: AddReportInput): Promise<Re
     flag: e.flag ?? deriveFlag(e.value, e.reference_low, e.reference_high),
   }))
 
-  // Insert report + entries
+  // Insert report + entry metadata (no value/unit — those go to time_series)
   const report = await dbInsertReport(user, {
-    entries,
+    entries: toDbEntries(entries),
     location: input.location,
     notes: input.notes,
     report_date: reportDate,
     report_type: input.report_type,
   })
 
-  // Write-through to time_series
-  const timeSeriesPoints = report.entries.map((entry) => ({
-    metric: entry.metric,
-    source: 'lab_report' as const,
-    time: reportDate,
-    unit: entry.unit,
-    value: entry.value,
-  }))
-
+  // Write values to time_series (single source of truth for metric values)
+  const timeSeriesPoints = toTimeSeriesPoints(entries, reportDate)
   if (timeSeriesPoints.length > 0) {
     await insertTimeSeries(user, timeSeriesPoints)
   }
@@ -209,7 +251,70 @@ export async function queryReports(
 }
 
 /**
- * Delete a report and its write-through metrics.
+ * Update a report's metadata and/or entries.
+ * When entries are provided, they fully replace existing entries.
+ * Maintains time_series consistency (cleanup old, insert new).
+ */
+export async function updateReport(
+  user: string,
+  id: string,
+  input: UpdateReportInput,
+): Promise<ReportResult> {
+  // 1. Fetch existing report
+  const existing = await dbGetReportById(user, id)
+  if (!existing) {
+    return { error: 'Report not found', success: false }
+  }
+
+  // 2. Get old entry metrics for time_series cleanup
+  const oldEntryMetrics = await getReportEntryMetrics(user, id)
+
+  // 3. Process new entries if provided: auto-derive flags
+  const processedEntries = input.entries?.map((e) => ({
+    ...e,
+    flag: e.flag ?? deriveFlag(e.value, e.reference_low, e.reference_high),
+  }))
+
+  // 4. Build DB update input (entries without value/unit)
+  const dbInput: Parameters<typeof dbUpdateReport>[2] = {}
+  if (input.report_type !== undefined) dbInput.report_type = input.report_type
+  if (input.date !== undefined) dbInput.report_date = new Date(input.date)
+  if (input.location !== undefined) dbInput.location = input.location
+  if (input.notes !== undefined) dbInput.notes = input.notes
+  if (processedEntries !== undefined) dbInput.entries = toDbEntries(processedEntries)
+
+  const updated = await dbUpdateReport(user, id, dbInput)
+  if (!updated) {
+    return { error: 'Report not found', success: false }
+  }
+
+  // 5. Time_series maintenance: clean old, insert new
+  await cleanupTimeSeries(user, oldEntryMetrics)
+
+  const newDate = input.date ? new Date(input.date) : existing.report_date
+  const currentEntries =
+    processedEntries ??
+    input.entries ??
+    existing.entries.map((e) => ({
+      metric: e.metric,
+      unit: e.unit,
+      value: e.value,
+    }))
+  const timeSeriesPoints = toTimeSeriesPoints(currentEntries as AddReportEntryInput[], newDate)
+  if (timeSeriesPoints.length > 0) {
+    await insertTimeSeries(user, timeSeriesPoints)
+  }
+
+  // 6. Sync note times if date changed
+  if (input.date && new Date(input.date).getTime() !== existing.report_date.getTime()) {
+    await updateNoteTimesForEntity(user, 'report', id, new Date(input.date), undefined)
+  }
+
+  return { data: formatReport(updated), success: true }
+}
+
+/**
+ * Delete a report and its time_series metrics.
  */
 export async function deleteReportById(
   user: string,
@@ -233,14 +338,8 @@ export async function deleteReportById(
     return { error: 'Report not found', success: false }
   }
 
-  // Clean up write-through time_series data
-  // We delete by exact (time, metric, source='lab_report') to avoid removing data from other sources
-  for (const { metric, report_date } of entryMetrics) {
-    await query(user, `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source = 'lab_report'`, [
-      metric,
-      report_date,
-    ])
-  }
+  // Clean up time_series data
+  await cleanupTimeSeries(user, entryMetrics)
 
   return { success: true }
 }

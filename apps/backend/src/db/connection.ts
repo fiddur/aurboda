@@ -230,6 +230,12 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE notes ADD COLUMN IF NOT EXISTS source VARCHAR(50)`)
   }
 
+  // Drop NOT NULL on report_entries value/unit — values now live in time_series
+  if (existingTableNames.has('report_entries')) {
+    await query(db, `ALTER TABLE report_entries ALTER COLUMN value DROP NOT NULL`)
+    await query(db, `ALTER TABLE report_entries ALTER COLUMN unit DROP NOT NULL`)
+  }
+
   // Migrate source columns to support 'aurboda' (rename 'manual' -> 'aurboda' for new data)
   // Note: existing 'manual' data is preserved; new entries use 'aurboda'
 

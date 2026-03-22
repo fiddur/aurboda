@@ -2,6 +2,8 @@
  * Reports CRUD operations.
  *
  * Reports group related lab measurements (InBody, blood panels, etc.) with entries.
+ * Entry values/units live in the time_series table (source='lab_report');
+ * report_entries stores only lab-specific metadata (reference ranges, flags, etc.).
  */
 import format from 'pg-format'
 
@@ -11,8 +13,14 @@ import { query } from './connection.ts'
 import { mapReportEntryRow, mapReportRow } from './row-mappers.ts'
 
 const REPORT_COLUMNS = 'id, report_type, report_date, location, notes, created_at'
-const ENTRY_COLUMNS =
-  'id, report_id, metric, value, unit, method, confidence, reference_low, reference_high, flag'
+
+/** Columns for reading entries — joins with time_series to get value/unit. */
+const ENTRY_SELECT = `re.id, re.report_id, re.metric, re.method, re.confidence,
+       re.reference_low, re.reference_high, re.flag,
+       ts.value, ts.unit`
+
+/** Columns for inserting entries — metadata only, no value/unit. */
+const ENTRY_INSERT_COLUMNS = 'report_id, metric, method, confidence, reference_low, reference_high, flag'
 
 interface InsertReportInput {
   report_type: string
@@ -21,8 +29,6 @@ interface InsertReportInput {
   notes?: string
   entries: Array<{
     metric: string
-    value: number
-    unit: string
     method?: string
     confidence?: string
     reference_low?: number
@@ -31,12 +37,59 @@ interface InsertReportInput {
   }>
 }
 
+/** Fetch entries for a single report, joining with time_series for value/unit. */
+const fetchEntriesForReport = async (
+  user: string,
+  reportId: string,
+  reportDate: Date,
+): Promise<ReportEntry[]> => {
+  const entriesResult = await query(
+    user,
+    `SELECT ${ENTRY_SELECT}
+     FROM report_entries re
+     LEFT JOIN time_series ts
+       ON ts.metric = re.metric AND ts.time = $2 AND ts.source = 'lab_report'
+     WHERE re.report_id = $1
+     ORDER BY re.metric`,
+    [reportId, reportDate],
+  )
+  return entriesResult.rows.map(mapReportEntryRow)
+}
+
+/** Bulk-insert entry metadata (no value/unit — those go to time_series). */
+const insertEntryMetadata = async (
+  user: string,
+  reportId: string,
+  entries: InsertReportInput['entries'],
+): Promise<void> => {
+  if (entries.length === 0) return
+
+  const values = entries.map((e) => [
+    reportId,
+    e.metric,
+    e.method ?? null,
+    e.confidence ?? null,
+    e.reference_low ?? null,
+    e.reference_high ?? null,
+    e.flag ?? null,
+  ])
+
+  await query(
+    user,
+    format(
+      `INSERT INTO report_entries (${ENTRY_INSERT_COLUMNS})
+       VALUES %L`,
+      values,
+    ),
+  )
+}
+
 /**
  * Insert a report with all its entries in a single operation.
  * Returns the full report with generated IDs.
+ * Note: caller is responsible for inserting corresponding time_series data.
  */
 export const insertReport = async (user: string, input: InsertReportInput): Promise<Report> => {
-  // Insert the report header
   const reportResult = await query(
     user,
     `INSERT INTO reports (report_type, report_date, location, notes)
@@ -48,38 +101,9 @@ export const insertReport = async (user: string, input: InsertReportInput): Prom
   const reportRow = reportResult.rows[0]
   const reportId = reportRow.id as string
 
-  // Insert entries in bulk
-  if (input.entries.length > 0) {
-    const values = input.entries.map((e) => [
-      reportId,
-      e.metric,
-      e.value,
-      e.unit,
-      e.method ?? null,
-      e.confidence ?? null,
-      e.reference_low ?? null,
-      e.reference_high ?? null,
-      e.flag ?? null,
-    ])
+  await insertEntryMetadata(user, reportId, input.entries)
 
-    await query(
-      user,
-      format(
-        `INSERT INTO report_entries (report_id, metric, value, unit, method, confidence, reference_low, reference_high, flag)
-         VALUES %L`,
-        values,
-      ),
-    )
-  }
-
-  // Fetch entries back to get generated IDs
-  const entriesResult = await query(
-    user,
-    `SELECT ${ENTRY_COLUMNS} FROM report_entries WHERE report_id = $1 ORDER BY metric`,
-    [reportId],
-  )
-
-  const entries = entriesResult.rows.map(mapReportEntryRow)
+  const entries = await fetchEntriesForReport(user, reportId, input.report_date)
   return mapReportRow(reportRow, entries)
 }
 
@@ -91,14 +115,10 @@ export const getReportById = async (user: string, id: string): Promise<Report | 
 
   if (reportResult.rows.length === 0) return null
 
-  const entriesResult = await query(
-    user,
-    `SELECT ${ENTRY_COLUMNS} FROM report_entries WHERE report_id = $1 ORDER BY metric`,
-    [id],
-  )
-
-  const entries = entriesResult.rows.map(mapReportEntryRow)
-  return mapReportRow(reportResult.rows[0], entries)
+  const reportRow = reportResult.rows[0]
+  const reportDate = new Date(reportRow.report_date)
+  const entries = await fetchEntriesForReport(user, id, reportDate)
+  return mapReportRow(reportRow, entries)
 }
 
 interface QueryReportsFilter {
@@ -136,12 +156,23 @@ export const getReports = async (user: string, filter: QueryReportsFilter): Prom
 
   if (reportResult.rows.length === 0) return []
 
-  // Fetch all entries for these reports in one query
+  // Fetch all entries for these reports in one query, joining with time_series
   const reportIds = reportResult.rows.map((r) => r.id as string)
+
   const entriesResult = await query(
     user,
     format(
-      `SELECT ${ENTRY_COLUMNS} FROM report_entries WHERE report_id IN (%L) ORDER BY report_id, metric`,
+      `SELECT ${ENTRY_SELECT}
+       FROM report_entries re
+       LEFT JOIN LATERAL (
+         SELECT ts.value, ts.unit
+         FROM time_series ts
+         JOIN reports r ON r.id = re.report_id
+         WHERE ts.metric = re.metric AND ts.time = r.report_date AND ts.source = 'lab_report'
+         LIMIT 1
+       ) ts ON true
+       WHERE re.report_id IN (%L)
+       ORDER BY re.report_id, re.metric`,
       reportIds,
     ),
   )
@@ -168,7 +199,7 @@ export const deleteReport = async (user: string, id: string): Promise<boolean> =
 }
 
 /**
- * Get the metrics from a report's entries (needed for cleaning up write-through time_series data).
+ * Get the metrics from a report's entries (needed for cleaning up time_series data).
  */
 export const getReportEntryMetrics = async (
   user: string,
@@ -215,4 +246,81 @@ export const getLatestMetricValue = async (
     unit: row.unit as string,
     value: row.value as number,
   }
+}
+
+// ============================================================================
+// Update Report
+// ============================================================================
+
+interface UpdateReportInput {
+  report_type?: string
+  report_date?: Date
+  location?: string | null
+  notes?: string | null
+  entries?: Array<{
+    metric: string
+    method?: string
+    confidence?: string
+    reference_low?: number
+    reference_high?: number
+    flag?: string
+  }>
+}
+
+/**
+ * Update a report's metadata and/or replace its entries.
+ * Returns the updated report, or null if not found.
+ * Note: caller is responsible for updating corresponding time_series data.
+ */
+export const updateReport = async (
+  user: string,
+  id: string,
+  input: UpdateReportInput,
+): Promise<Report | null> => {
+  // Build dynamic UPDATE for metadata fields
+  const setClauses: string[] = []
+  const params: unknown[] = []
+  let paramIdx = 1
+
+  if (input.report_type !== undefined) {
+    setClauses.push(`report_type = $${paramIdx++}`)
+    params.push(input.report_type)
+  }
+  if (input.report_date !== undefined) {
+    setClauses.push(`report_date = $${paramIdx++}`)
+    params.push(input.report_date)
+  }
+  if (input.location !== undefined) {
+    setClauses.push(`location = $${paramIdx++}`)
+    params.push(input.location)
+  }
+  if (input.notes !== undefined) {
+    setClauses.push(`notes = $${paramIdx++}`)
+    params.push(input.notes)
+  }
+
+  // Update metadata if any fields changed
+  if (setClauses.length > 0) {
+    const updateResult = await query(
+      user,
+      `UPDATE reports SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING ${REPORT_COLUMNS}`,
+      [...params, id],
+    )
+    if (updateResult.rows.length === 0) return null
+  }
+
+  // Replace entries if provided
+  if (input.entries !== undefined) {
+    // Verify report exists if we didn't do an update above
+    if (setClauses.length === 0) {
+      const exists = await query(user, `SELECT id FROM reports WHERE id = $1`, [id])
+      if (exists.rows.length === 0) return null
+    }
+
+    await query(user, `DELETE FROM report_entries WHERE report_id = $1`, [id])
+    await insertEntryMetadata(user, id, input.entries)
+  }
+
+  // Return the full updated report
+  return getReportById(user, id)
 }
