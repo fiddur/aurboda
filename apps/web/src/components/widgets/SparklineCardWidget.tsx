@@ -11,6 +11,7 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import {
   fetchHrv,
+  fetchHrvSleep,
   fetchMetricTimeSeries,
   fetchPeriodSummary,
   fetchReadinessScores,
@@ -116,6 +117,7 @@ interface SparklineCardWidgetProps {
 // Map metric names to display titles
 const metricTitles: Record<string, string> = {
   hrv_rmssd: 'HRV',
+  hrv_sleep: 'HRV (Sleep)',
   readiness_score: 'Readiness Score',
   resting_heart_rate: 'Resting HR',
   sleep_score: 'Sleep Score',
@@ -125,6 +127,7 @@ const metricTitles: Record<string, string> = {
 // Map metric names to API fetch functions
 const metricFetchers: Record<string, (start: Date, end: Date) => Promise<[Date, number][]>> = {
   hrv_rmssd: fetchHrv,
+  hrv_sleep: fetchHrvSleep,
   readiness_score: fetchReadinessScores,
   resting_heart_rate: fetchRestingHeartRate,
   sleep_score: fetchSleepScores,
@@ -134,6 +137,7 @@ const metricFetchers: Record<string, (start: Date, end: Date) => Promise<[Date, 
 // Map widget metric to API metric name for period summary
 const metricToApiMetric: Record<string, string> = {
   hrv_rmssd: 'hrv_rmssd',
+  hrv_sleep: 'hrv_sleep',
   readiness_score: 'readiness_score',
   resting_heart_rate: 'resting_heart_rate',
   sleep_score: 'sleep_score',

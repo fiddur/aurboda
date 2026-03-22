@@ -26,6 +26,8 @@ export const builtinDashboardMetrics = [
   'zone2_weekly',
   'weight',
   'body_fat',
+  // Contextual HRV metrics
+  'hrv_sleep',
   // Raw metrics
   'hrv_rmssd',
   'resting_heart_rate',

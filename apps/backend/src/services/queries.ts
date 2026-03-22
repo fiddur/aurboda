@@ -904,9 +904,14 @@ export async function getPeriodSummary(
   start: Date,
   end: Date,
 ): Promise<PeriodSummaryResult> {
-  // Separate HR zone metrics from regular metrics
-  const regularMetrics = metrics.filter((m) => !isHrZoneMetric(m as MetricType))
+  // Separate special metric types from regular metrics
+  const regularMetrics = metrics.filter(
+    (m) => !isHrZoneMetric(m as MetricType) && !isContextualHrvMetric(m as MetricType),
+  )
   const hrZoneMetricsRequested = metrics.filter((m) => isHrZoneMetric(m as MetricType)) as MetricType[]
+  const contextualHrvMetricsRequested = metrics.filter((m) =>
+    isContextualHrvMetric(m as MetricType),
+  ) as MetricType[]
 
   // Calculate period length for previous period comparison
   const periodMs = end.getTime() - start.getTime()
@@ -914,11 +919,12 @@ export async function getPeriodSummary(
   const prevEnd = new Date(start.getTime() - 1)
 
   // Fetch current and previous period stats in parallel (for regular metrics)
-  const [currentStats, previousStats, dailyAggregates, hrZoneStats] = await Promise.all([
+  const [currentStats, previousStats, dailyAggregates, hrZoneStats, contextualHrvStats] = await Promise.all([
     getTimeSeriesStats(user, regularMetrics, start, end),
     getTimeSeriesStats(user, regularMetrics, prevStart, prevEnd),
     getDailyAggregates(user, regularMetrics, start, end),
     computeHrZoneStats(user, hrZoneMetricsRequested, start, end),
+    computeContextualHrvStats(user, contextualHrvMetricsRequested, start, end, prevStart, prevEnd),
   ])
 
   // Calculate days in period for completeness calculation
@@ -1002,8 +1008,8 @@ export async function getPeriodSummary(
     })
   }
 
-  // Add HR zone stats
-  metricsWithTrends.push(...hrZoneStats)
+  // Add HR zone stats and contextual HRV stats
+  metricsWithTrends.push(...hrZoneStats, ...contextualHrvStats)
 
   return {
     end: end.toISOString(),
@@ -1012,6 +1018,113 @@ export async function getPeriodSummary(
     start: start.toISOString(),
   }
 }
+
+/**
+ * Compute period summary stats for contextual HRV metrics (hrv_sleep, hrv_activity, hrv_awake).
+ * These are computed by filtering hrv_rmssd data by overlapping sleep/activity windows.
+ */
+async function computeContextualHrvStats(
+  user: string,
+  metrics: MetricType[],
+  start: Date,
+  end: Date,
+  prevStart: Date,
+  prevEnd: Date,
+): Promise<PeriodMetricStats[]> {
+  if (metrics.length === 0) return []
+
+  // Fetch current and previous period data in parallel
+  const [currentData, previousData] = await Promise.all([
+    getClassifiedHrvData(user, start, end),
+    getClassifiedHrvData(user, prevStart, prevEnd),
+  ])
+
+  return metrics.map((metric) => {
+    const context = contextualHrvMetricToContext[metric]
+    if (!context) {
+      return emptyPeriodMetricStats(metric)
+    }
+
+    const values = currentData[context]
+    const prevValues = previousData[context]
+
+    if (values.length === 0) {
+      return emptyPeriodMetricStats(metric)
+    }
+
+    const nums = values.map(([, v]) => v)
+    const avg = nums.reduce((a, b) => a + b, 0) / nums.length
+    const min = Math.min(...nums)
+    const max = Math.max(...nums)
+    const variance = nums.reduce((sum, v) => sum + (v - avg) ** 2, 0) / nums.length
+    const stddev = Math.sqrt(variance)
+
+    // Previous period comparison
+    let changeFromPrevious: number | null = null
+    if (prevValues.length > 0) {
+      const prevNums = prevValues.map(([, v]) => v)
+      const prevAvg = prevNums.reduce((a, b) => a + b, 0) / prevNums.length
+      if (prevAvg !== 0) {
+        changeFromPrevious = ((avg - prevAvg) / prevAvg) * 100
+      }
+    }
+
+    // Outliers
+    const outlierThreshold = stddev * 2
+    const outliers: { type: 'high' | 'low'; value: number }[] = []
+    if (stddev > 0) {
+      if (max > avg + outlierThreshold) outliers.push({ type: 'high', value: max })
+      if (min < avg - outlierThreshold) outliers.push({ type: 'low', value: min })
+    }
+
+    return {
+      avg: Math.round(avg * 100) / 100,
+      change_from_previous_period_percent:
+        changeFromPrevious !== null ? Math.round(changeFromPrevious * 10) / 10 : null,
+      completeness_percent: values.length > 0 ? 100 : 0,
+      count: values.length,
+      max: Math.round(max * 100) / 100,
+      metric,
+      min: Math.round(min * 100) / 100,
+      outliers: outliers.length > 0 ? outliers : undefined,
+      stddev: Math.round(stddev * 100) / 100,
+      trend_per_day: null,
+      unit: metricUnits[metric] ?? 'ms',
+    }
+  })
+}
+
+/**
+ * Get HRV data classified by context (sleep/activity/awake) for a time range.
+ */
+async function getClassifiedHrvData(
+  user: string,
+  start: Date,
+  end: Date,
+): Promise<Record<HrvContext, [Date, number][]>> {
+  const [hrvData, { sleepWindows, activityWindows }] = await Promise.all([
+    getTimeSeries(user, 'hrv_rmssd', start, end),
+    getHrvContextWindows(user, start, end),
+  ])
+
+  if (hrvData.length === 0) return { activity: [], awake: [], sleep: [] }
+
+  return classifyHrvByContext(hrvData, sleepWindows, activityWindows)
+}
+
+const emptyPeriodMetricStats = (metric: string): PeriodMetricStats => ({
+  avg: 0,
+  change_from_previous_period_percent: null,
+  completeness_percent: 0,
+  count: 0,
+  max: 0,
+  metric,
+  min: 0,
+  outliers: undefined,
+  stddev: 0,
+  trend_per_day: null,
+  unit: metricUnits[metric as MetricType] ?? 'ms',
+})
 
 /**
  * Query tags for a time range.
