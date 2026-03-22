@@ -1,0 +1,130 @@
+.report-entries-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.report-entries-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.report-entries-editor-header label {
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+.btn-add-entry {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8rem;
+  background: transparent;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.btn-add-entry:hover {
+  border-color: #673ab8;
+  color: #673ab8;
+}
+
+.report-entry-form {
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.report-entry-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.report-entry-form-number {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #9ca3af;
+}
+
+.report-entry-remove {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+
+.report-entry-remove:hover {
+  color: #dc2626;
+}
+
+.btn-secondary-link {
+  padding: 0.5rem 1.5rem;
+  font-size: 0.9rem;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  border-radius: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+}
+
+.btn-secondary-link:hover {
+  background: #f3f4f6;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .report-entries-editor-header label {
+    color: #d1d5db;
+  }
+
+  .btn-add-entry {
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+
+  .btn-add-entry:hover {
+    border-color: #a78bfa;
+    color: #a78bfa;
+  }
+
+  .report-entry-form {
+    background: #111827;
+    border-color: #374151;
+  }
+
+  .report-entry-form-number {
+    color: #6b7280;
+  }
+
+  .report-entry-remove:hover {
+    color: #f87171;
+  }
+
+  .btn-secondary-link {
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .btn-secondary-link:hover {
+    background: #374151;
+  }
+}
+
+@media (max-width: 639px) {
+  .report-entry-form .form-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}

@@ -21,6 +21,7 @@ const NAV_LINKS = [
   { href: '/hr-zones', label: 'HR Zones' },
   { href: '/timeline', label: 'Timeline' },
   { href: '/data', label: 'Data' },
+  { href: '/reports', label: 'Reports' },
   { href: '/add', label: '+ Add' },
   { href: '/trends', label: 'Trends' },
   { href: '/places', label: 'Places' },
