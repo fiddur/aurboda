@@ -33,7 +33,6 @@ import {
   getMetricUnit,
   isContextualHrvMetric,
   isHrZoneMetric,
-  isValidMetricOrCustom,
   type MetricType,
   metricUnits,
 } from '../schema.ts'
@@ -469,9 +468,7 @@ export async function queryMetricsBucketed(
   } else {
     // Discover all metrics with data in the range
     const available = await getDistinctMetrics(user, start, end)
-    resolvedMetrics = available.filter(
-      (m) => !excludeSet.has(m) && isValidMetricOrCustom(m, options.customMetrics),
-    ) as MetricType[]
+    resolvedMetrics = available.filter((m) => !excludeSet.has(m)) as MetricType[]
   }
 
   if (resolvedMetrics.length === 0) {

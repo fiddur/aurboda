@@ -36,8 +36,9 @@ import {
 } from '@aurboda/api-spec'
 import { type RequestHandler, Router } from 'express'
 
+import type { MetricType } from '../schema.ts'
+
 import { getUserSettings } from '../db/index.ts'
-import { isValidMetricOrCustom, type MetricType, validMetrics } from '../schema.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
 import {
   addCustomMetric,
@@ -77,17 +78,6 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       // Parse optional metrics and exclude lists
       const metrics = metricsParam ? metricsParam.split(',') : undefined
       const exclude = excludeParam ? excludeParam.split(',') : undefined
-
-      // Validate specified metrics if provided
-      if (metrics) {
-        const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
-        if (invalidMetrics.length > 0) {
-          return res.status(400).json({
-            error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
-            success: false,
-          })
-        }
-      }
 
       const result = await queryMetricsBucketed(
         user,
@@ -268,13 +258,6 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const settings = await getUserSettings(user)
       const customMetrics = settings?.custom_metrics ?? []
 
-      if (!isValidMetricOrCustom(metric, customMetrics)) {
-        return res.status(400).json({
-          error: `Invalid metric "${metric}". Valid metrics are: ${validMetrics.join(', ')}`,
-          success: false,
-        })
-      }
-
       const result = await queryMetrics(user, metric, new Date(start), new Date(end), customMetrics)
       res.json({ ...result, success: true })
     },
@@ -319,17 +302,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const { start, end, metrics: metricsParam } = req.query
       const user = req.user!
 
-      const settings = await getUserSettings(user)
-      const customMetrics = settings?.custom_metrics ?? []
-
       const metrics = metricsParam.split(',')
-      const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
-      if (invalidMetrics.length > 0) {
-        return res.status(400).json({
-          error: `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${validMetrics.join(', ')}`,
-          success: false,
-        })
-      }
 
       const summary = await getPeriodSummary(user, metrics, new Date(start), new Date(end))
       res.json({ ...summary, success: true })

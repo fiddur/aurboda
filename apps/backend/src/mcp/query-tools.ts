@@ -6,7 +6,6 @@ import {
   activityTypeSchema,
   bucketSizeSchema,
   dateOnlySchema,
-  isValidMetricOrCustom,
   type MetricType,
   timeRangeQuerySchema,
   validMetrics,
@@ -43,11 +42,6 @@ export const registerQueryTools = (server: McpServer, user: string, sync?: SyncP
     },
     async ({ end, metric, start }) => {
       const customMetrics = await getCustomMetrics(user)
-      if (!isValidMetricOrCustom(metric, customMetrics)) {
-        const customNames = customMetrics.map((m) => m.name)
-        const allMetrics = [...validMetrics, ...customNames]
-        return errorResponse(`Invalid metric "${metric}". Valid metrics are: ${allMetrics.join(', ')}`)
-      }
 
       const result = await queryMetrics(user, metric, new Date(start), new Date(end), customMetrics)
       return jsonResponse(result)
@@ -88,18 +82,6 @@ Use cases:
     },
     async ({ bucket, end, exclude, metrics, start, tz }) => {
       const customMetrics = await getCustomMetrics(user)
-
-      // Validate specified metrics if provided
-      if (metrics) {
-        const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
-        if (invalidMetrics.length > 0) {
-          const customNames = customMetrics.map((m) => m.name)
-          const allMetrics = [...validMetrics, ...customNames]
-          return errorResponse(
-            `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${allMetrics.join(', ')}`,
-          )
-        }
-      }
 
       const result = await queryMetricsBucketed(
         user,
@@ -145,16 +127,6 @@ Use cases:
       metrics: z.array(z.string()).describe(`Metrics to include. Valid metrics: ${validMetrics.join(', ')}`),
     },
     async ({ end, metrics, start }) => {
-      const customMetrics = await getCustomMetrics(user)
-      const invalidMetrics = metrics.filter((m) => !isValidMetricOrCustom(m, customMetrics))
-      if (invalidMetrics.length > 0) {
-        const customNames = customMetrics.map((m) => m.name)
-        const allMetrics = [...validMetrics, ...customNames]
-        return errorResponse(
-          `Invalid metrics: ${invalidMetrics.join(', ')}. Valid metrics are: ${allMetrics.join(', ')}`,
-        )
-      }
-
       const summary = await getPeriodSummary(user, metrics as string[], new Date(start), new Date(end))
       return jsonResponse(summary)
     },
