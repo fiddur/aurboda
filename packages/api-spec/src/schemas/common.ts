@@ -60,6 +60,8 @@ export const validMetrics = [
   'body_battery',
   'training_readiness',
   'intensity_minutes',
+  'speed',
+  'power',
 ] as const
 
 export const metricTypeSchema = z.enum(validMetrics).meta({
@@ -224,6 +226,8 @@ export const metricUnits: Record<MetricType, string> = {
   intensity_minutes: 'min',
   vo2_max: 'mL/kg/min',
   weight: 'kg',
+  speed: 'm/s',
+  power: 'W',
 }
 
 /**

@@ -25,6 +25,8 @@
 | RespiratoryRateRecord           | `respiratory_rate`                                    |
 | Vo2MaxRecord                    | `vo2_max`                                             |
 | BasalMetabolicRateRecord        | `calories_basal`                                      |
+| SpeedRecord                     | `speed` (m/s, from exercise samples)                  |
+| PowerRecord                     | `power` (watts, from exercise samples)                |
 
 ### Cumulative Metrics (daily aggregates)
 

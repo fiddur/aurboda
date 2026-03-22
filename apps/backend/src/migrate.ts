@@ -121,13 +121,21 @@ function extractTimeSeriesPoints(
   metric: MetricType,
   data: Record<string, unknown>,
 ): TimeSeriesPoint[] {
-  // Records with samples (HeartRateRecord, etc.)
+  // Records with samples (HeartRateRecord, SpeedRecord, PowerRecord, etc.)
   if (data.samples && Array.isArray(data.samples)) {
-    return (data.samples as { time: string; beatsPerMinute?: number }[]).map((sample) => ({
+    const sampleValueField: Record<string, string> = {
+      HeartRateRecord: 'beatsPerMinute',
+      SpeedRecord: 'speedInMetersPerSecond',
+      PowerRecord: 'powerInWatts',
+    }
+    const field = sampleValueField[recordType]
+    if (!field) return []
+
+    return (data.samples as { time: string; [key: string]: unknown }[]).map((sample) => ({
       metric,
       source: 'health_connect' as DataSource,
       time: new Date(sample.time),
-      value: sample.beatsPerMinute || 0,
+      value: (sample[field] as number) || 0,
     }))
   }
 
