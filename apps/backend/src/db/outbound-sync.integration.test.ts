@@ -105,29 +105,40 @@ describe('Outbound Sync Queue Integration Tests', () => {
   })
 
   describe('getPendingOutboundSync', () => {
-    test('returns entries ordered newest-first', async () => {
+    test('returns entries ordered by priority then newest-first', async () => {
       const user = getTestUser()
 
       await enqueueOutboundSync(user, {
-        entity_id: 'first',
-        entity_type: 'activity',
-        hc_record_type: 'ExerciseSessionRecord',
-        operation: 'insert',
-        payload: {},
-      })
-
-      await enqueueOutboundSync(user, {
-        entity_id: 'second',
+        entity_id: 'ts-first',
         entity_type: 'time_series',
         hc_record_type: 'WeightRecord',
         operation: 'insert',
         payload: {},
       })
 
+      await enqueueOutboundSync(user, {
+        entity_id: 'ts-second',
+        entity_type: 'time_series',
+        hc_record_type: 'HeightRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
+      await enqueueOutboundSync(user, {
+        entity_id: 'activity-first',
+        entity_type: 'activity',
+        hc_record_type: 'ExerciseSessionRecord',
+        operation: 'insert',
+        payload: {},
+      })
+
       const { entries: pending } = await getPendingOutboundSync(user)
-      expect(pending).toHaveLength(2)
-      expect(pending[0].entity_id).toBe('second')
-      expect(pending[1].entity_id).toBe('first')
+      expect(pending).toHaveLength(3)
+      // Activities are prioritized over time_series
+      expect(pending[0].entity_id).toBe('activity-first')
+      // Within same entity_type, newest-first
+      expect(pending[1].entity_id).toBe('ts-second')
+      expect(pending[2].entity_id).toBe('ts-first')
     })
 
     test('respects limit and returns total_pending', async () => {
