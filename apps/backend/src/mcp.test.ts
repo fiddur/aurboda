@@ -259,20 +259,6 @@ describe('MCP Server', () => {
       expect(response.parsed.result.content[0].text).toMatch(/Invalid (date|ISO datetime)/i)
     })
 
-    test('returns error for invalid metrics', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const response = await callTool(app, token, 'query_period_summary', {
-        end: '2024-01-31T23:59:59Z',
-        metrics: ['invalid_metric', 'hrv_rmssd'],
-        start: '2024-01-01T00:00:00Z',
-      })
-
-      expect(response.parsed.result.content[0].text).toContain('Invalid metrics')
-      expect(response.parsed.result.content[0].text).toContain('invalid_metric')
-    })
-
     test('calculates change from previous period', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')

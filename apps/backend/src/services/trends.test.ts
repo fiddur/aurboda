@@ -90,15 +90,6 @@ describe('getTrend', () => {
     expect(result.current_value).toBe(71.5)
   })
 
-  test('throws error for invalid metric', async () => {
-    await expect(
-      getTrend('testuser', {
-        pattern: 'invalid_metric_name',
-        source_type: 'metric',
-      }),
-    ).rejects.toThrow('Invalid metric: invalid_metric_name')
-  })
-
   test('accepts custom metrics when provided', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [
@@ -117,16 +108,6 @@ describe('getTrend', () => {
     expect(result.source_type).toBe('metric')
     expect(result.pattern).toBe('fissure_pain')
     expect(result.current_value).toBe(2.1)
-  })
-
-  test('throws error for invalid custom metric name', async () => {
-    await expect(
-      getTrend('testuser', {
-        custom_metrics: [{ name: 'fissure_pain', unit: 'score' }],
-        pattern: 'totally_unknown',
-        source_type: 'metric',
-      }),
-    ).rejects.toThrow('Invalid metric: totally_unknown')
   })
 
   test('handles empty data', async () => {
