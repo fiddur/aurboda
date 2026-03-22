@@ -6,6 +6,7 @@
 import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/api-spec'
 import { type RequestHandler, Router } from 'express'
 
+import { getUserSettings } from '../db/index.ts'
 import { getTrend } from '../services/trends.ts'
 import { validateQuery } from '../validation.ts'
 
@@ -25,8 +26,12 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
       const lookbackDays = lookback_days ? parseInt(lookback_days, 10) : undefined
 
       try {
+        const settings = await getUserSettings(user)
+        const customMetrics = settings?.custom_metrics ?? []
+
         const result = await getTrend(user, {
           aggregation,
+          custom_metrics: customMetrics,
           display_period,
           half_life_days: halfLifeDays,
           lookback_days: lookbackDays,
