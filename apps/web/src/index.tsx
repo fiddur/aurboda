@@ -22,6 +22,9 @@ import { OuraSource } from './pages/DataSources/OuraSource.jsx'
 import { OwnTracksSource } from './pages/DataSources/OwnTracksSource.jsx'
 import { RescueTimeSource } from './pages/DataSources/RescueTimeSource.jsx'
 import { EntityDetail } from './pages/EntityDetail/index.jsx'
+import { AddReport } from './pages/Reports/AddReport.jsx'
+import { ReportDetail } from './pages/Reports/ReportDetail.jsx'
+import { Reports } from './pages/Reports/index.jsx'
 import { ExerciseMeta } from './pages/ExerciseMeta/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
 import { Home } from './pages/Home/index.jsx'
@@ -55,6 +58,9 @@ export function App() {
             <Route path="/timeline" component={Timeline} />
             <Route path="/data" component={Data} />
             <Route path="/add" component={AddData} />
+            <Route path="/reports/add" component={AddReport} />
+            <Route path="/reports/:id" component={ReportDetail} />
+            <Route path="/reports" component={Reports} />
             <Route path="/detail/:type/:id" component={EntityDetail} />
             <Route path="/tag/:tagKey" component={TagMeta} />
             <Route path="/exercise/:type" component={ExerciseMeta} />

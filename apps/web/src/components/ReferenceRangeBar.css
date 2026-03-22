@@ -1,0 +1,79 @@
+.ref-range-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 120px;
+  max-width: 200px;
+}
+
+.ref-range-track {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: #f3f4f6;
+  overflow: visible;
+}
+
+.ref-range-zone {
+  position: absolute;
+  top: 0;
+  height: 100%;
+}
+
+.ref-range-low {
+  background: #fef3c7;
+  border-radius: 5px 0 0 5px;
+}
+
+.ref-range-normal {
+  background: #d1fae5;
+}
+
+.ref-range-high {
+  background: #fef3c7;
+  border-radius: 0 5px 5px 0;
+}
+
+.ref-range-marker {
+  position: absolute;
+  top: -2px;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  transform: translateX(-2px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.ref-range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.65rem;
+  color: #9ca3af;
+}
+
+.ref-range-label-spacer {
+  flex: 1;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .ref-range-track {
+    background: #374151;
+  }
+
+  .ref-range-low {
+    background: #78350f;
+  }
+
+  .ref-range-normal {
+    background: #064e3b;
+  }
+
+  .ref-range-high {
+    background: #78350f;
+  }
+
+  .ref-range-labels {
+    color: #6b7280;
+  }
+}

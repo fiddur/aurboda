@@ -10,6 +10,7 @@ import type {
   AddActivityBody,
   AddActivityResponse,
   AddCustomMetricBody,
+  AddReportBody,
   AddLastFmTagRuleBody,
   AddLastFmTagRuleResponse,
   AddMetricBody,
@@ -64,6 +65,9 @@ import type {
   QueryMetricsBucketedResponse,
   QueryMetricsQuery,
   QueryMetricsResponse,
+  Report as ApiReport,
+  ReportResponse,
+  ReportsResponse,
   ScreentimeCategory,
   ScreentimeCategoryListResponse,
   ScreentimeCategoryResponse,
@@ -147,6 +151,13 @@ export interface Tag extends Omit<ApiTag, 'start_time' | 'end_time'> {
 export interface Scrobble extends Omit<ApiScrobble, 'recorded_at'> {
   recorded_at: Date
 }
+
+export interface Report extends Omit<ApiReport, 'date' | 'created_at'> {
+  date: Date
+  created_at?: Date
+}
+
+export type { AddReportBody, Confidence, ReportEntry, ReportFlag } from '@aurboda/api-spec'
 
 // Defined locally to avoid Zod type resolution issues with api-spec's z.infer<z.ZodEnum>
 export type BiologicalSex = 'male' | 'female'
@@ -1437,4 +1448,50 @@ export const fetchTrainingLoad = async (
     },
   })
   return response.data.data!
+}
+
+// ==========================================================================
+// Reports API
+// ==========================================================================
+
+const mapReport = (r: ApiReport): Report => ({
+  ...r,
+  created_at: r.created_at ? new Date(r.created_at) : undefined,
+  date: new Date(r.date),
+})
+
+export const fetchReports = async (params?: {
+  report_type?: string
+  start?: string
+  end?: string
+}): Promise<Report[]> => {
+  const { token } = auth.value
+  const response = await axios.get<ReportsResponse>(`${API_URL}/reports`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+  return (response.data.data ?? []).map(mapReport)
+}
+
+export const fetchReport = async (id: string): Promise<Report> => {
+  const { token } = auth.value
+  const response = await axios.get<ReportResponse>(`${API_URL}/reports/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return mapReport(response.data.data!)
+}
+
+export const createReport = async (body: AddReportBody): Promise<Report> => {
+  const { token } = auth.value
+  const response = await axios.post<ReportResponse>(`${API_URL}/reports`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return mapReport(response.data.data!)
+}
+
+export const deleteReport = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/reports/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
