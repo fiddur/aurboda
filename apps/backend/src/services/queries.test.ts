@@ -1001,6 +1001,162 @@ describe('getPeriodSummary', () => {
     expect(zone1).toBeDefined()
     expect(zone1!.avg).toBeGreaterThan(0)
   })
+
+  test('computes contextual HRV stats from classified HRV data', async () => {
+    // No regular metrics
+    vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+
+    // HRV data during sleep hours
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T01:00:00Z'), 40],
+      [new Date('2024-01-15T02:00:00Z'), 45],
+      [new Date('2024-01-15T03:00:00Z'), 50],
+      [new Date('2024-01-15T04:00:00Z'), 55],
+    ])
+
+    // Sleep session covering the HRV data
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+
+    // No exercise
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await getPeriodSummary(
+      'testuser',
+      ['hrv_sleep'],
+      new Date('2024-01-15'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metrics).toHaveLength(1)
+    const hrvSleep = result.metrics[0]
+    expect(hrvSleep.metric).toBe('hrv_sleep')
+    expect(hrvSleep.avg).toBe(47.5)
+    expect(hrvSleep.min).toBe(40)
+    expect(hrvSleep.max).toBe(55)
+    expect(hrvSleep.count).toBe(4)
+    expect(hrvSleep.unit).toBe('ms')
+  })
+
+  test('computes contextual HRV with previous period comparison', async () => {
+    vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+
+    // Current period: HRV during sleep = avg 50
+    // Previous period: HRV during sleep = avg 40
+    // -> +25% change
+    vi.mocked(db.getTimeSeries)
+      .mockResolvedValueOnce([
+        // Current period hrv_rmssd
+        [new Date('2024-01-15T02:00:00Z'), 45],
+        [new Date('2024-01-15T03:00:00Z'), 55],
+      ])
+      .mockResolvedValueOnce([
+        // Previous period hrv_rmssd
+        [new Date('2024-01-14T02:00:00Z'), 35],
+        [new Date('2024-01-14T03:00:00Z'), 45],
+      ])
+
+    // Sleep sessions for both periods
+    vi.mocked(db.getSleepSessions)
+      .mockResolvedValueOnce([
+        {
+          activity_type: 'sleep',
+          end_time: new Date('2024-01-15T07:00:00Z'),
+          source: 'oura',
+          start_time: new Date('2024-01-15T00:00:00Z'),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          activity_type: 'sleep',
+          end_time: new Date('2024-01-14T07:00:00Z'),
+          source: 'oura',
+          start_time: new Date('2024-01-14T00:00:00Z'),
+        },
+      ])
+
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await getPeriodSummary(
+      'testuser',
+      ['hrv_sleep'],
+      new Date('2024-01-15'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metrics).toHaveLength(1)
+    expect(result.metrics[0].change_from_previous_period_percent).toBe(25)
+  })
+
+  test('returns zero stats for contextual HRV with no matching data', async () => {
+    vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await getPeriodSummary(
+      'testuser',
+      ['hrv_sleep'],
+      new Date('2024-01-15'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metrics).toHaveLength(1)
+    expect(result.metrics[0].metric).toBe('hrv_sleep')
+    expect(result.metrics[0].count).toBe(0)
+    expect(result.metrics[0].avg).toBe(0)
+  })
+
+  test('mixes regular metrics with contextual HRV metrics', async () => {
+    // Regular metric stats for heart_rate
+    vi.mocked(db.getTimeSeriesStats).mockResolvedValue([
+      { avg: 72, count: 100, max: 150, metric: 'heart_rate', min: 55, stddev: 15, unit: 'bpm' },
+    ])
+    vi.mocked(db.getDailyAggregates).mockResolvedValue([])
+
+    // HRV data during sleep
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-15T02:00:00Z'), 42],
+      [new Date('2024-01-15T03:00:00Z'), 48],
+    ])
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-01-15T00:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+
+    const result = await getPeriodSummary(
+      'testuser',
+      ['heart_rate', 'hrv_sleep'],
+      new Date('2024-01-15'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+
+    expect(result.metrics).toHaveLength(2)
+
+    const heartRate = result.metrics.find((m) => m.metric === 'heart_rate')
+    const hrvSleep = result.metrics.find((m) => m.metric === 'hrv_sleep')
+
+    expect(heartRate).toBeDefined()
+    expect(heartRate!.avg).toBe(72)
+    expect(hrvSleep).toBeDefined()
+    expect(hrvSleep!.avg).toBe(45)
+    expect(hrvSleep!.count).toBe(2)
+  })
 })
 
 describe('queryMetricsBucketed', () => {
