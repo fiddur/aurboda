@@ -7,9 +7,10 @@
  */
 
 import {
+  type CustomMetricDefinition,
   displayPeriodMultipliers,
   exerciseTypes,
-  isValidMetric,
+  isValidMetricOrCustom,
   type MetricType,
   type TrendDisplayPeriod,
   type TrendHistoryPoint,
@@ -27,6 +28,7 @@ const LN2 = 0.693147
 
 export interface GetTrendInput {
   aggregation?: 'count' | 'mean' | 'sum'
+  custom_metrics?: CustomMetricDefinition[]
   display_period?: TrendDisplayPeriod
   half_life_days?: number
   lookback_days?: number
@@ -340,6 +342,7 @@ const getExerciseTypeValueStr = (name: string): string => {
 export const getTrend = async (user: string, input: GetTrendInput): Promise<TrendResult> => {
   const {
     aggregation = 'count',
+    custom_metrics: customMetrics = [],
     display_period: displayPeriod = 'monthly',
     half_life_days: halfLifeDays = 15,
     lookback_days: lookbackDays = 90,
@@ -415,7 +418,7 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
     }
   } else {
     // Metric source
-    if (!isValidMetric(pattern)) {
+    if (!isValidMetricOrCustom(pattern, customMetrics)) {
       throw new Error(`Invalid metric: ${pattern}`)
     }
 

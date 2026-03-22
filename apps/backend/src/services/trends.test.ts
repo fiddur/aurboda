@@ -99,6 +99,36 @@ describe('getTrend', () => {
     ).rejects.toThrow('Invalid metric: invalid_metric_name')
   })
 
+  test('accepts custom metrics when provided', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        { day: new Date('2026-01-20'), ema_value: 3.5 },
+        { day: new Date('2026-02-02'), ema_value: 2.1 },
+      ],
+    } as never)
+
+    const result = await getTrend('testuser', {
+      aggregation: 'mean',
+      custom_metrics: [{ name: 'fissure_pain', type: 'number', unit: 'score' }],
+      pattern: 'fissure_pain',
+      source_type: 'metric',
+    })
+
+    expect(result.source_type).toBe('metric')
+    expect(result.pattern).toBe('fissure_pain')
+    expect(result.current_value).toBe(2.1)
+  })
+
+  test('throws error for invalid custom metric name', async () => {
+    await expect(
+      getTrend('testuser', {
+        custom_metrics: [{ name: 'fissure_pain', type: 'number', unit: 'score' }],
+        pattern: 'totally_unknown',
+        source_type: 'metric',
+      }),
+    ).rejects.toThrow('Invalid metric: totally_unknown')
+  })
+
   test('handles empty data', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [],
