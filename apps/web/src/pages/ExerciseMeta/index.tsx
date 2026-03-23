@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useEffect, useState } from 'preact/hooks'
 
+import { IconInput } from '../../components/IconInput'
 import { IconPreview } from '../../components/IconPreview'
 import { fetchTagMappings, fetchTrend, type FetchTrendParams, updateUserSettings } from '../../state/api'
 import { resolveItemIcon } from '../../utils/emojiLookup'
@@ -92,13 +93,7 @@ function ExerciseIconSettings({ exerciseType, currentIcon }: { exerciseType: str
         <label>
           <span class="tag-meta-field-label">Icon</span>
           <div class="tag-meta-icon-row">
-            <input
-              type="text"
-              value={shownIcon}
-              onInput={(e) => setIconValue((e.target as HTMLInputElement).value)}
-              placeholder="Emoji or image URL..."
-            />
-            <IconPreview icon={shownIcon} />
+            <IconInput value={shownIcon} onChange={setIconValue} previewClass="tag-meta-icon-preview" />
           </div>
         </label>
       </div>

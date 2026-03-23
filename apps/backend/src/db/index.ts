@@ -220,6 +220,9 @@ export {
   type PendingOutboundSyncResult,
 } from './outbound-sync.ts'
 
+// Uploaded icons
+export { deleteIcon, getIcon, insertIcon } from './icons.ts'
+
 // Settings
 export { getUserSettings, upsertUserSettings } from './settings.ts'
 

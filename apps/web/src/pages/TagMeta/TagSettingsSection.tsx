@@ -6,9 +6,9 @@ import type { ProgrammaticTag } from '@aurboda/api-spec'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
 
+import { IconInput } from '../../components/IconInput'
 import { setTagMapping } from '../../state/api'
 import { suggestEmoji } from '../../utils/emojiLookup'
-import { TagIconPreview } from './TagIconPreview'
 
 interface TagSettingsSectionProps {
   tagInfo: ProgrammaticTag | undefined
@@ -87,23 +87,12 @@ export function TagSettingsSection({
         <label>
           <span class="tag-meta-field-label">Icon</span>
           <div class="tag-meta-icon-row">
-            <input
-              type="text"
+            <IconInput
               value={shownIcon}
-              onInput={(e) => setIconValue((e.target as HTMLInputElement).value)}
-              placeholder="Emoji or image URL..."
+              onChange={setIconValue}
+              suggestedEmoji={suggested}
+              previewClass="tag-meta-icon-preview"
             />
-            <TagIconPreview icon={shownIcon} />
-            {suggested && !shownIcon && (
-              <button
-                type="button"
-                class="tag-meta-emoji-suggest"
-                onClick={() => setIconValue(suggested)}
-                title={`Suggested: ${suggested}`}
-              >
-                {suggested}?
-              </button>
-            )}
           </div>
         </label>
         {tagInfo?.is_programmatic && effectiveTagKey !== currentName && (

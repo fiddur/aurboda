@@ -1,0 +1,37 @@
+.icon-upload-btn {
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 4px;
+  background: var(--bg-secondary, #f5f5f5);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.icon-upload-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #e8e8e8);
+}
+
+.icon-upload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.icon-suggestion-btn {
+  padding: 2px 6px;
+  font-size: 0.85rem;
+  border: 1px dashed var(--border-color, #ccc);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.icon-suggestion-btn:hover {
+  opacity: 1;
+}
+
+.icon-upload-error {
+  color: var(--color-error, #e53e3e);
+  font-size: 0.75rem;
+}

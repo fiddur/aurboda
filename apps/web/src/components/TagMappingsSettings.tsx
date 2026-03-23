@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
 
 import { fetchProgrammaticTags, fetchTagMappings, setTagMapping } from '../state/api'
-import { isEmoji, isUrl, suggestEmoji } from '../utils/emojiLookup'
+import { suggestEmoji } from '../utils/emojiLookup'
+import { IconInput } from './IconInput'
 import './TagMappingsSettings.css'
 
 // Helper to check if a string is a UUID
@@ -36,19 +37,6 @@ const RowStatusIndicator = ({ status }: { status: RowStatus }) => (
     )}
   </span>
 )
-
-const IconPreview = ({ icon }: { icon: string }) => {
-  if (!icon) return null
-  if (isEmoji(icon)) return <span class="tag-icon-preview">{icon}</span>
-  if (isUrl(icon)) {
-    return (
-      <span class="tag-icon-preview">
-        <img src={icon} alt="icon" width="16" height="16" />
-      </span>
-    )
-  }
-  return null
-}
 
 /** Determine what changed vs server state and return the name to save, or null if no save needed. */
 function getBlurSavePayload(
@@ -178,27 +166,18 @@ function TagMappingRow({
       </div>
 
       <div class="tag-icon-field">
-        <input
-          type="text"
+        <IconInput
           value={displayIcon}
-          onInput={(e) => setLocalIcon((e.target as HTMLInputElement).value)}
+          onChange={setLocalIcon}
           onBlur={() => void handleBlur()}
           placeholder="Icon"
-          title="Emoji character or image URL"
-          class="tag-icon-input"
+          inputClass="tag-icon-input"
+          previewClass="tag-icon-preview"
+          size={16}
+          suggestedEmoji={suggestedEmoji}
+          onAcceptSuggestion={() => void handleAcceptSuggestion()}
           disabled={status === 'saving'}
         />
-        <IconPreview icon={displayIcon} />
-        {suggestedEmoji && !displayIcon && (
-          <button
-            type="button"
-            class="tag-icon-suggestion"
-            onClick={handleAcceptSuggestion}
-            title={`Suggested: ${suggestedEmoji}`}
-          >
-            {suggestedEmoji}?
-          </button>
-        )}
       </div>
 
       {isProgrammatic && (

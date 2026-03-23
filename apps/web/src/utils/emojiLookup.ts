@@ -232,3 +232,8 @@ export const isUrl = (str: string): boolean => {
     return false
   }
 }
+
+/**
+ * Check if a string is a path to an uploaded icon.
+ */
+export const isIconPath = (str: string): boolean => str.startsWith('/api/icons/')

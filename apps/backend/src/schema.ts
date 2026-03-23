@@ -437,6 +437,16 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_time_series_metric_source_time ON time_series (metric, source, time DESC)
   `,
 
+  // Uploaded icon images (stored as binary blobs)
+  uploaded_icons: `
+    CREATE TABLE IF NOT EXISTS uploaded_icons (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      content_type    VARCHAR(50) NOT NULL,
+      data            BYTEA NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
   // User settings (HR zones, birth date, etc.)
   user_settings: `
     CREATE TABLE IF NOT EXISTS user_settings (
@@ -484,6 +494,7 @@ export const tableCreationOrder = [
   'report_entries_indexes',
   'oauth_tokens',
   'sync_state',
+  'uploaded_icons',
   'user_settings',
   'notes',
   'notes_indexes',

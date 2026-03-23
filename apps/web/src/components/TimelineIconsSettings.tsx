@@ -6,7 +6,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 
 import { fetchUserSettings, updateUserSettings } from '../state/api'
-import { DEFAULT_ITEM_ICONS, isEmoji, isUrl } from '../utils/emojiLookup'
+import { DEFAULT_ITEM_ICONS } from '../utils/emojiLookup'
+import { IconInput } from './IconInput'
 import './TimelineIconsSettings.css'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -17,19 +18,6 @@ interface IconRowProps {
   currentIcon: string | undefined
   defaultIcon: string | undefined
   onSave: (key: string, icon: string) => Promise<void>
-}
-
-const IconPreview = ({ icon }: { icon: string }) => {
-  if (!icon) return null
-  if (isEmoji(icon)) return <span class="icon-preview">{icon}</span>
-  if (isUrl(icon)) {
-    return (
-      <span class="icon-preview">
-        <img src={icon} alt="icon" width="16" height="16" />
-      </span>
-    )
-  }
-  return null
 }
 
 function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowProps) {
@@ -66,14 +54,26 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
     }
   }
 
+  const handleIconChange = async (value: string) => {
+    // If it's an uploaded icon path, save immediately
+    if (value.startsWith('/api/icons/')) {
+      setStatus('saving')
+      try {
+        await onSave(iconKey, value)
+        setLocalValue(undefined)
+        setStatus('saved')
+      } catch {
+        setStatus('error')
+      }
+    } else {
+      setLocalValue(value)
+    }
+  }
+
   const handleReset = async () => {
     if (isDefault) return
     setStatus('saving')
     try {
-      // Save empty string to clear the user override; the DB migration
-      // stores '' which resolveItemIcon interprets as "no icon" — but for
-      // a reset we actually want to *remove* the key so the default kicks in.
-      // The parent handler already handles this by deleting the key.
       await onSave(iconKey, '')
       setLocalValue(undefined)
       setStatus('saved')
@@ -86,17 +86,16 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
     <div class="icon-row">
       <span class="icon-row-label">{label}</span>
       <div class="icon-row-field">
-        <input
-          type="text"
-          value={displayValue}
-          onInput={(e) => setLocalValue((e.target as HTMLInputElement).value)}
+        <IconInput
+          value={effectiveIcon}
+          onChange={(v) => void handleIconChange(v)}
           onBlur={() => void handleBlur()}
           placeholder={defaultIcon || 'none'}
-          title="Emoji character or image URL"
-          class="icon-input"
+          inputClass="icon-input"
+          previewClass="icon-preview"
+          size={16}
           disabled={status === 'saving'}
         />
-        <IconPreview icon={effectiveIcon} />
         {!isDefault && (
           <button
             type="button"
@@ -217,7 +216,7 @@ export function TimelineIconsSettings() {
       <h2>Timeline Icons</h2>
       <p class="section-description">
         Customize the icons shown on the timeline for activities and exercise types. Icons can be emoji
-        characters or image URLs. Default emojis are shown as placeholders.
+        characters, image URLs, or uploaded images. Default emojis are shown as placeholders.
       </p>
 
       <IconGroup title="Activities" items={ACTIVITY_ITEMS} userIcons={userIcons} onSave={handleSave} />
