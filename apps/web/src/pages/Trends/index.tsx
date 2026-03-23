@@ -545,13 +545,13 @@ export function Trends() {
 
   return (
     <div class="trends-page">
-      <header class="page-header">
+      <div class="page-header">
         <h1>Trends</h1>
         <p class="page-description">
           Time-weighted averages using Exponential Moving Average (EMA). Recent data is weighted more heavily,
           with the half-life controlling how quickly older data loses influence.
         </p>
-      </header>
+      </div>
 
       <section class="saved-trends">
         <div class="section-header">

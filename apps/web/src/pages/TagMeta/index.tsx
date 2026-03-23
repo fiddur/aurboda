@@ -63,7 +63,7 @@ function TagHeader({
   shownName: string
 }) {
   return (
-    <header class="tag-meta-header">
+    <div class="tag-meta-header">
       <div class="tag-meta-title-row">
         {shownIcon ? <TagIconPreview icon={shownIcon} /> : <span class="tag-meta-icon-placeholder">?</span>}
         <h1>{shownName}</h1>
@@ -76,7 +76,7 @@ function TagHeader({
           <span class="tag-meta-stat">Last: {new Date(tagInfo.latest_time).toLocaleDateString()}</span>
         </div>
       )}
-    </header>
+    </div>
   )
 }
 
