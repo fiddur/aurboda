@@ -10,10 +10,12 @@ import { useState } from 'preact/hooks'
 import {
   fetchCustomMetrics,
   fetchMetricTimeSeries,
+  fetchMetricTimeSeriesWithSource,
   fetchTrend,
   updateCustomMetric,
   type CustomMetricDefinition,
   type FetchTrendParams,
+  type MetricDataPointWithSource,
 } from '../../state/api'
 import { MiniTrendChart } from '../TagMeta/MiniTrendChart'
 import './style.css'
@@ -35,6 +37,77 @@ const formatMetricLabel = (metric: string): string =>
 const formatValue = (value: number): string => {
   if (Number.isInteger(value)) return String(value)
   return value.toFixed(2)
+}
+
+/** Format a data source name for display. */
+const formatSourceLabel = (source: string): string =>
+  source.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
+
+function SourceFilteredChart({ metric, unit, lookback }: { metric: string; unit: string; lookback: number }) {
+  const [selectedSource, setSelectedSource] = useState<string | null>(null)
+
+  const end = new Date()
+  const start = new Date(end.getTime() - lookback * 86400000)
+
+  const { data, isLoading } = useQuery({
+    queryFn: () => fetchMetricTimeSeriesWithSource(metric, start, end),
+    queryKey: ['metric-with-source', metric, lookback],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  if (isLoading) return <p class="loading">Loading...</p>
+  if (!data || data.length === 0) return <p class="metric-meta-empty">No data available</p>
+
+  // Extract unique sources
+  const sources = [...new Set(data.map((d) => d.source))].sort()
+
+  // Only show this section if there are multiple sources
+  if (sources.length < 2) return null
+
+  // Filter data by selected source
+  const filtered: MetricDataPointWithSource[] = selectedSource
+    ? data.filter((d) => d.source === selectedSource)
+    : data
+
+  // Convert to chart data format
+  const chartData: { date: string; value: number }[] = filtered.map((d) => ({
+    date: d.time.toISOString().split('T')[0],
+    value: d.value,
+  }))
+
+  return (
+    <section class="metric-meta-section">
+      <h2>By Source</h2>
+      <div class="source-filter-chips">
+        <button
+          type="button"
+          class={`source-chip ${selectedSource === null ? 'active' : ''}`}
+          onClick={() => setSelectedSource(null)}
+        >
+          All ({data.length})
+        </button>
+        {sources.map((source) => {
+          const count = data.filter((d) => d.source === source).length
+          return (
+            <button
+              type="button"
+              key={source}
+              class={`source-chip ${selectedSource === source ? 'active' : ''}`}
+              onClick={() => setSelectedSource(selectedSource === source ? null : source)}
+            >
+              {formatSourceLabel(source)} ({count})
+            </button>
+          )
+        })}
+      </div>
+      {chartData.length >= 2 && <MiniTrendChart data={chartData} color="#2563eb" />}
+      {chartData.length < 2 && chartData.length > 0 && (
+        <p class="metric-meta-empty">
+          {formatValue(chartData[0].value)} {unit} ({chartData[0].date})
+        </p>
+      )}
+    </section>
+  )
 }
 
 function RecentValues({ metric, unit }: { metric: string; unit: string }) {
@@ -295,6 +368,9 @@ export function MetricMeta() {
           </>
         )}
       </section>
+
+      {/* Source-filtered chart (only shown when multiple sources exist) */}
+      <SourceFilteredChart metric={metricName} unit={unit} lookback={lookback} />
 
       {/* Recent values */}
       <section class="metric-meta-section">

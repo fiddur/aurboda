@@ -1,5 +1,5 @@
 .report-detail-page {
-  max-width: 900px;
+  max-width: 960px;
   width: 100%;
   margin: 0 auto;
   padding: 2rem;
@@ -72,7 +72,7 @@
 
 .report-entries-table-header {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1.2fr 1.5fr;
+  grid-template-columns: 1.5fr 1.2fr 1.2fr 1.5fr;
   padding: 0.75rem 1rem;
   background: #f9fafb;
   font-size: 0.8rem;
@@ -82,13 +82,22 @@
   letter-spacing: 0.03em;
 }
 
+.report-entries-table-header.with-comparison {
+  grid-template-columns: 1.5fr 1.2fr 80px 1.2fr 1.5fr;
+}
+
 .report-entry-row {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1.2fr 1.5fr;
+  grid-template-columns: 1.5fr 1.2fr 1.2fr 1.5fr;
   padding: 0.75rem 1rem;
   border-top: 1px solid #f3f4f6;
   align-items: center;
   font-size: 0.9rem;
+}
+
+/* When sparkline column is present (has comparison data) */
+.report-entries-table-header.with-comparison ~ .report-entry-row {
+  grid-template-columns: 1.5fr 1.2fr 80px 1.2fr 1.5fr;
 }
 
 .report-entry-row:hover {
@@ -106,6 +115,9 @@
 }
 
 .report-entry-value {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
   font-weight: 600;
   color: #1f2937;
 }
@@ -114,6 +126,31 @@
   font-weight: 400;
   color: #6b7280;
   font-size: 0.85rem;
+}
+
+/* Delta indicator */
+.report-entry-delta {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.report-entry-delta.delta-up {
+  color: #059669;
+}
+
+.report-entry-delta.delta-down {
+  color: #dc2626;
+}
+
+.report-entry-delta.delta-neutral {
+  color: #6b7280;
+}
+
+/* Sparkline column */
+.report-entry-sparkline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .report-entry-badges {
@@ -142,7 +179,7 @@
 .report-entry-card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .report-entry-card-metric {
@@ -152,10 +189,22 @@
   font-size: 0.95rem;
 }
 
+.report-entry-card-value-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.125rem;
+}
+
 .report-entry-card-value {
   font-weight: 600;
   font-size: 0.95rem;
   color: #1f2937;
+}
+
+.report-entry-card-sparkline {
+  display: flex;
+  justify-content: center;
 }
 
 .report-entry-card-badges {
@@ -330,6 +379,18 @@
   }
 
   .report-entry-unit {
+    color: #9ca3af;
+  }
+
+  .report-entry-delta.delta-up {
+    color: #34d399;
+  }
+
+  .report-entry-delta.delta-down {
+    color: #f87171;
+  }
+
+  .report-entry-delta.delta-neutral {
     color: #9ca3af;
   }
 
