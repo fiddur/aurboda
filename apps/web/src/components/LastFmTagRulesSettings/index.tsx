@@ -12,6 +12,7 @@ import {
   type UpdateLastFmTagRuleBody,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { ConfirmButton } from '../ConfirmButton'
 import { SaveCancelRow } from '../SaveCancelRow'
 import { type SaveStatus, SaveStatusIndicator } from '../SaveStatusIndicator'
 import { SettingsSection } from '../SettingsSection'
@@ -312,15 +313,10 @@ function EditableRuleRow({
 }) {
   const [isEditing, setIsEditing] = useState(false)
 
-  const handleDelete = async () => {
-    if (!confirm(`Delete rule "${rule.rule_name}"?`)) return
-    try {
-      await deleteLastFmTagRule(rule.id)
-      onDeleted()
-    } catch {
-      // Error will be visible via the parent's status
-    }
-  }
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteLastFmTagRule(rule.id),
+    onSuccess: onDeleted,
+  })
 
   if (isEditing) {
     return (
@@ -355,9 +351,14 @@ function EditableRuleRow({
         <button type="button" class="edit-rule-button" onClick={() => setIsEditing(true)}>
           Edit
         </button>
-        <button type="button" class="remove-rule-button" onClick={handleDelete}>
-          Delete
-        </button>
+        <ConfirmButton
+          label="Delete"
+          confirmMessage={`Delete rule "${rule.rule_name}"?`}
+          onConfirm={() => deleteMutation.mutate()}
+          isPending={deleteMutation.isPending}
+          pendingLabel="Deleting..."
+          buttonClass="remove-rule-button"
+        />
       </div>
     </div>
   )

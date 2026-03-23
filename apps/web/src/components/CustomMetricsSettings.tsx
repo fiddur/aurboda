@@ -8,6 +8,7 @@ import {
   updateCustomMetric,
   type CustomMetricDefinition,
 } from '../state/api'
+import { ConfirmButton } from './ConfirmButton'
 import { SettingsSection } from './SettingsSection'
 
 const CustomMetricRow = ({
@@ -117,14 +118,14 @@ const CustomMetricRow = ({
         <button type="button" class="note-action-btn" onClick={() => setIsEditing(true)}>
           Edit
         </button>
-        <button
-          type="button"
-          class="note-action-btn danger"
-          onClick={() => deleteMutation.mutate()}
-          disabled={deleteMutation.isPending}
-        >
-          {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-        </button>
+        <ConfirmButton
+          label="Delete"
+          confirmMessage={`Delete metric "${metric.name}"?`}
+          onConfirm={() => deleteMutation.mutate()}
+          isPending={deleteMutation.isPending}
+          pendingLabel="Deleting..."
+          buttonClass="note-action-btn danger"
+        />
       </div>
     </div>
   )
