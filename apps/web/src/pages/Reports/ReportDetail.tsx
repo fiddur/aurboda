@@ -258,14 +258,14 @@ export function ReportDetail() {
         <a href="/reports">&larr; All Reports</a>
       </div>
 
-      <header class="report-detail-header">
+      <div class="report-detail-header">
         <h1>{formatType(report.report_type)}</h1>
         <div class="report-detail-meta">
           <span class="report-detail-date">{format(report.date, 'yyyy-MM-dd HH:mm')}</span>
           {report.location && <span class="report-detail-location">{report.location}</span>}
         </div>
         {report.notes && <p class="report-detail-notes">{report.notes}</p>}
-      </header>
+      </div>
 
       <section class="report-entries-section">
         <h2>

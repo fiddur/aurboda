@@ -143,12 +143,12 @@ export function ExerciseMeta() {
 
   return (
     <div class="tag-meta-page">
-      <header class="tag-meta-header">
+      <div class="tag-meta-header">
         <div class="tag-meta-title-row">
           {icon ? <IconPreview icon={icon} /> : <span class="tag-meta-icon-placeholder">?</span>}
           <h1>{displayName}</h1>
         </div>
-      </header>
+      </div>
 
       <ExerciseIconSettings exerciseType={exerciseType} currentIcon={icon} />
 

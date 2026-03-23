@@ -307,7 +307,7 @@ export function MetricMeta() {
 
   return (
     <div class="metric-meta-page">
-      <header class="metric-meta-header">
+      <div class="metric-meta-header">
         <h1>{label}</h1>
         <div class="metric-meta-subtitle">
           <code>{metricName}</code>
@@ -315,7 +315,7 @@ export function MetricMeta() {
           {isBuiltIn && <span class="metric-meta-type-badge">Built-in</span>}
           {customMetric && <span class="metric-meta-type-badge custom">Custom</span>}
         </div>
-      </header>
+      </div>
 
       {/* Custom metric settings */}
       {customMetric && (
