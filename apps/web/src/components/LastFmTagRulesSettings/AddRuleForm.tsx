@@ -3,14 +3,14 @@
  */
 import { useState } from 'preact/hooks'
 
+import type { SaveStatus } from '../SaveStatusIndicator'
+
 import {
   createLastFmTagRule,
   type AddLastFmTagRuleBody,
   type LastFmMatchMode,
   type LastFmMatchType,
 } from '../../state/api'
-
-type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }
 
 const getErrorMessage = (err: unknown): string => (err instanceof Error ? err.message : 'Failed to save')
 

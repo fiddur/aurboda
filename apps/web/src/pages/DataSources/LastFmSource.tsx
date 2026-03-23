@@ -92,7 +92,7 @@ export function LastFmSource() {
           <section class="settings-section">
             <div class="section-header-row">
               <h2>Username</h2>
-              <SaveStatusIndicator saveStatus={saveStatus} />
+              <SaveStatusIndicator state={saveStatus} />
             </div>
             {userSettings?.lastfm_configured === false ? (
               <p class="field-description warning">

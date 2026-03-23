@@ -101,7 +101,7 @@ export function CalendarsSource() {
           <section class="settings-section">
             <div class="section-header-row">
               <h2>Calendars</h2>
-              <SaveStatusIndicator saveStatus={saveStatus} />
+              <SaveStatusIndicator state={saveStatus} />
             </div>
 
             {(userSettings?.calendars ?? []).length > 0 && (

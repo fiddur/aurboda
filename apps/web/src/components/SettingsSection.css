@@ -1,0 +1,57 @@
+.settings-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.settings-section .section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.settings-section .section-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.settings-section .section-description {
+  color: #666;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+  font-size: 0.9rem;
+}
+
+.settings-section .loading {
+  color: #888;
+  font-style: italic;
+}
+
+.settings-section .no-data {
+  color: #888;
+  font-style: italic;
+  padding: 1rem;
+  text-align: center;
+  background: #f8f8f8;
+  border-radius: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .settings-section {
+    border-bottom-color: #444;
+  }
+
+  .settings-section .section-description {
+    color: #aaa;
+  }
+
+  .settings-section .loading {
+    color: #aaa;
+  }
+
+  .settings-section .no-data {
+    color: #aaa;
+    background: #2a2a2a;
+  }
+}

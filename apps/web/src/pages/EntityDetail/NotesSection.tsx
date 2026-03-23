@@ -6,6 +6,7 @@ import { useCallback, useState } from 'preact/hooks'
 import type { EntityType } from './EntityActions'
 
 import { MarkdownEditor } from '../../components/MarkdownEditor/index.jsx'
+import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { addNote, deleteNote, fetchNotes, type NoteData, updateNote } from '../../state/api'
 
 export const NotesSection = ({
@@ -75,15 +76,6 @@ export const NotesSection = ({
     setEditContent(note.content)
   }, [])
 
-  const handleUpdate = useCallback(
-    (e: Event) => {
-      e.preventDefault()
-      if (!editingId || !editContent.trim()) return
-      updateMutation.mutate({ content: editContent, id: editingId })
-    },
-    [editingId, editContent, updateMutation],
-  )
-
   const notes = notesQuery.data ?? []
 
   return (
@@ -97,17 +89,17 @@ export const NotesSection = ({
           {notes.map((note) => (
             <div key={note.id} class="note-item">
               {editingId === note.id ? (
-                <form onSubmit={handleUpdate} class="note-edit-form">
+                <div class="note-edit-form">
                   <MarkdownEditor value={editContent} onChange={setEditContent} rows={3} />
-                  <div class="note-edit-actions">
-                    <button type="submit" class="btn-primary" disabled={updateMutation.isPending}>
-                      Save
-                    </button>
-                    <button type="button" class="btn-secondary" onClick={() => setEditingId(null)}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+                  <SaveCancelRow
+                    onSave={() => {
+                      if (!editingId || !editContent.trim()) return
+                      updateMutation.mutate({ content: editContent, id: editingId })
+                    }}
+                    onCancel={() => setEditingId(null)}
+                    isPending={updateMutation.isPending}
+                  />
+                </div>
               ) : (
                 <>
                   <div

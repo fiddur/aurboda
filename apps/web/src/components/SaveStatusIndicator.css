@@ -1,0 +1,81 @@
+/* Compact variant — inline spinner/checkmark/error icon */
+.save-status-indicator.compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.save-status-indicator .status-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #e0e0e0;
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: save-status-spin 0.6s linear infinite;
+}
+
+.save-status-indicator .status-checkmark {
+  color: #22c55e;
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.save-status-indicator .status-error-icon {
+  color: #dc2626;
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+/* Text variant — readable messages */
+.save-status-indicator.text {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.save-status-indicator.text.saving {
+  color: #888;
+}
+
+.save-status-indicator.text.saved {
+  color: #4caf50;
+}
+
+.save-status-indicator.text.error {
+  color: #f44336;
+}
+
+@keyframes save-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .save-status-indicator .status-spinner {
+    border-color: #555;
+    border-top-color: #a78bfa;
+  }
+
+  .save-status-indicator .status-checkmark {
+    color: #4ade80;
+  }
+
+  .save-status-indicator .status-error-icon {
+    color: #ef4444;
+  }
+
+  .save-status-indicator.text.saving {
+    color: #aaa;
+  }
+
+  .save-status-indicator.text.saved {
+    color: #4ade80;
+  }
+
+  .save-status-indicator.text.error {
+    color: #ef4444;
+  }
+}

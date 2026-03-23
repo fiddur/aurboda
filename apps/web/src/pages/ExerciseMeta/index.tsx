@@ -4,10 +4,12 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
-import { useEffect, useState } from 'preact/hooks'
+import { useState } from 'preact/hooks'
 
 import { IconInput } from '../../components/IconInput'
 import { IconPreview } from '../../components/IconPreview'
+import { SaveCancelRow } from '../../components/SaveCancelRow'
+import { useSaveStatus } from '../../components/SaveStatusIndicator'
 import { fetchTagMappings, fetchTrend, type FetchTrendParams, updateUserSettings } from '../../state/api'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { MiniTrendChart } from '../TagMeta/MiniTrendChart'
@@ -59,7 +61,7 @@ function ExerciseTrendSection({ exerciseType, lookback }: { exerciseType: string
 function ExerciseIconSettings({ exerciseType, currentIcon }: { exerciseType: string; currentIcon: string }) {
   const queryClient = useQueryClient()
   const [iconValue, setIconValue] = useState<string | undefined>(undefined)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveStatus, setSaveStatus] = useSaveStatus(3000)
 
   const displayName = formatExerciseTypeName(exerciseType)
   const iconKey = `exercise:${displayName}`
@@ -68,20 +70,14 @@ function ExerciseIconSettings({ exerciseType, currentIcon }: { exerciseType: str
     mutationFn: async (icon: string) => {
       await updateUserSettings({ item_icons: { [iconKey]: icon } })
     },
-    onError: () => setSaveStatus('error'),
+    onError: () => setSaveStatus({ status: 'error' }),
     onSuccess: () => {
-      setSaveStatus('saved')
+      setSaveStatus({ status: 'saved' })
       queryClient.invalidateQueries({ queryKey: ['tag-mappings'] })
       queryClient.invalidateQueries({ queryKey: ['userSettings'] })
       setIconValue(undefined)
     },
   })
-
-  useEffect(() => {
-    if (saveStatus !== 'saved') return
-    const timer = setTimeout(() => setSaveStatus('idle'), 3000)
-    return () => clearTimeout(timer)
-  }, [saveStatus])
 
   const shownIcon = iconValue ?? currentIcon
   const hasChanges = iconValue !== undefined && iconValue !== currentIcon
@@ -98,24 +94,16 @@ function ExerciseIconSettings({ exerciseType, currentIcon }: { exerciseType: str
         </label>
       </div>
       {hasChanges && (
-        <div class="tag-meta-save-row">
-          <button
-            type="button"
-            class="btn-primary"
-            onClick={() => {
-              setSaveStatus('saving')
-              saveMutation.mutate(iconValue ?? '')
-            }}
-            disabled={saveMutation.isPending}
-          >
-            {saveMutation.isPending ? 'Saving...' : 'Save'}
-          </button>
-          <button type="button" class="btn-secondary" onClick={() => setIconValue(undefined)}>
-            Cancel
-          </button>
-          {saveStatus === 'saved' && <span class="tag-meta-status-saved">Saved</span>}
-          {saveStatus === 'error' && <span class="tag-meta-status-error">Failed to save</span>}
-        </div>
+        <SaveCancelRow
+          onSave={() => {
+            setSaveStatus({ status: 'saving' })
+            saveMutation.mutate(iconValue ?? '')
+          }}
+          onCancel={() => setIconValue(undefined)}
+          isPending={saveMutation.isPending}
+          saveStatus={saveStatus}
+          saveStatusVariant="compact"
+        />
       )}
     </section>
   )

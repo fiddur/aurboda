@@ -3,8 +3,9 @@ import type { Confidence, ReportEntry, ReportFlag } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
-import { useMemo, useState } from 'preact/hooks'
+import { useMemo } from 'preact/hooks'
 
+import { ConfirmButton } from '../../components/ConfirmButton'
 import { ReferenceRangeBar } from '../../components/ReferenceRangeBar'
 import { SparklineChart } from '../../components/SparklineChart'
 import { deleteReport, fetchReport, fetchReports, type Report } from '../../state/api'
@@ -205,8 +206,6 @@ export function ReportDetail() {
   const { route } = useLocation()
   const queryClient = useQueryClient()
   const id = params.id as string
-  const [confirmDelete, setConfirmDelete] = useState(false)
-
   const {
     data: report,
     isLoading,
@@ -307,26 +306,14 @@ export function ReportDetail() {
       <NotesSection entityType="report" entityId={id} />
 
       <section class="report-detail-actions">
-        {!confirmDelete ? (
-          <button type="button" class="btn-danger" onClick={() => setConfirmDelete(true)}>
-            Delete Report
-          </button>
-        ) : (
-          <div class="report-delete-confirm">
-            <span>Delete this report and its metric data?</span>
-            <button
-              type="button"
-              class="btn-danger"
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
-            </button>
-            <button type="button" class="btn-secondary" onClick={() => setConfirmDelete(false)}>
-              Cancel
-            </button>
-          </div>
-        )}
+        <ConfirmButton
+          label="Delete Report"
+          confirmMessage="Delete this report and its metric data?"
+          confirmLabel="Confirm Delete"
+          onConfirm={() => deleteMutation.mutate()}
+          isPending={deleteMutation.isPending}
+          pendingLabel="Deleting..."
+        />
       </section>
     </div>
   )

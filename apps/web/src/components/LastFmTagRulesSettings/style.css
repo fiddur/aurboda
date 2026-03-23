@@ -1,8 +1,3 @@
-.lastfm-rules-section .loading {
-  color: #666;
-  font-style: italic;
-}
-
 .rules-list {
   display: flex;
   flex-direction: column;
@@ -244,10 +239,6 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .lastfm-rules-section .loading {
-    color: #aaa;
-  }
-
   .rule-item {
     border-color: #444;
   }

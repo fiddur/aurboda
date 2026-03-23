@@ -12,22 +12,14 @@ import {
   type UpdateLastFmTagRuleBody,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { ConfirmButton } from '../ConfirmButton'
+import { SaveCancelRow } from '../SaveCancelRow'
+import { type SaveStatus, SaveStatusIndicator } from '../SaveStatusIndicator'
+import { SettingsSection } from '../SettingsSection'
 import { AddRuleForm } from './AddRuleForm'
 import './style.css'
 
-type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }
-
 const getErrorMessage = (err: unknown): string => (err instanceof Error ? err.message : 'Failed to save')
-
-function SaveIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
-  if (saveStatus.status === 'idle') return null
-  const messages: Record<string, string> = {
-    error: saveStatus.error ?? 'Error',
-    saved: 'Rule saved',
-    saving: 'Saving...',
-  }
-  return <span class={`save-indicator ${saveStatus.status}`}>{messages[saveStatus.status]}</span>
-}
 
 const needsTrack = (matchType: LastFmMatchType): boolean =>
   matchType === 'track' || matchType === 'track_artist'
@@ -300,19 +292,11 @@ function RuleEditForm({
         </div>
       </div>
 
-      <div class="rule-edit-actions">
-        <button
-          type="button"
-          class="connect-button"
-          onClick={() => updateMutation.mutate()}
-          disabled={!canSave || updateMutation.isPending}
-        >
-          {updateMutation.isPending ? 'Saving...' : 'Save'}
-        </button>
-        <button type="button" class="cancel-button" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
+      <SaveCancelRow
+        onSave={() => updateMutation.mutate()}
+        onCancel={onCancel}
+        isPending={!canSave || updateMutation.isPending}
+      />
       {updateMutation.isError && <p class="rule-edit-error">{getErrorMessage(updateMutation.error)}</p>}
     </div>
   )
@@ -329,15 +313,10 @@ function EditableRuleRow({
 }) {
   const [isEditing, setIsEditing] = useState(false)
 
-  const handleDelete = async () => {
-    if (!confirm(`Delete rule "${rule.rule_name}"?`)) return
-    try {
-      await deleteLastFmTagRule(rule.id)
-      onDeleted()
-    } catch {
-      // Error will be visible via the parent's status
-    }
-  }
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteLastFmTagRule(rule.id),
+    onSuccess: onDeleted,
+  })
 
   if (isEditing) {
     return (
@@ -372,9 +351,14 @@ function EditableRuleRow({
         <button type="button" class="edit-rule-button" onClick={() => setIsEditing(true)}>
           Edit
         </button>
-        <button type="button" class="remove-rule-button" onClick={handleDelete}>
-          Delete
-        </button>
+        <ConfirmButton
+          label="Delete"
+          confirmMessage={`Delete rule "${rule.rule_name}"?`}
+          onConfirm={() => deleteMutation.mutate()}
+          isPending={deleteMutation.isPending}
+          pendingLabel="Deleting..."
+          buttonClass="remove-rule-button"
+        />
       </div>
     </div>
   )
@@ -408,38 +392,30 @@ export function LastFmTagRulesSettings() {
   const rulesList = rules ?? []
 
   return (
-    <section class="settings-section lastfm-rules-section">
-      <div class="section-header-row">
-        <h2>Last.fm Auto-Tagging Rules</h2>
-        <SaveIndicator saveStatus={saveStatus} />
-      </div>
-      <p class="section-description">
-        Create rules to automatically tag your listening sessions. When a scrobble matches a rule, a tag will
-        be created at the scrobble time.
-      </p>
-
-      {isLoading ? (
-        <p class="loading">Loading rules...</p>
-      ) : (
-        <>
-          {/* Existing rules */}
-          {rulesList.length > 0 && (
-            <div class="rules-list">
-              {rulesList.map((rule) => (
-                <EditableRuleRow
-                  key={rule.id}
-                  rule={rule}
-                  onDeleted={invalidateRules}
-                  onUpdated={invalidateRules}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Add new rule form */}
-          <AddRuleForm onRuleAdded={invalidateRules} setSaveStatus={setSaveStatus} />
-        </>
+    <SettingsSection
+      title="Last.fm Auto-Tagging Rules"
+      class="lastfm-rules-section"
+      description="Create rules to automatically tag your listening sessions. When a scrobble matches a rule, a tag will be created at the scrobble time."
+      headerExtra={<SaveStatusIndicator state={saveStatus} />}
+      isLoading={isLoading}
+      loadingMessage="Loading rules..."
+    >
+      {/* Existing rules */}
+      {rulesList.length > 0 && (
+        <div class="rules-list">
+          {rulesList.map((rule) => (
+            <EditableRuleRow
+              key={rule.id}
+              rule={rule}
+              onDeleted={invalidateRules}
+              onUpdated={invalidateRules}
+            />
+          ))}
+        </div>
       )}
-    </section>
+
+      {/* Add new rule form */}
+      <AddRuleForm onRuleAdded={invalidateRules} setSaveStatus={setSaveStatus} />
+    </SettingsSection>
   )
 }

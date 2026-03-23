@@ -1,19 +1,7 @@
 /**
  * Shared components for data source pages — save status indicators, status banners, etc.
  */
-
-export type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; error?: string }
-
-export function SaveStatusIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
-  if (saveStatus.status === 'idle') return null
-  return (
-    <>
-      {saveStatus.status === 'saving' && <span class="save-indicator saving">Saving...</span>}
-      {saveStatus.status === 'saved' && <span class="save-indicator saved">Saved</span>}
-      {saveStatus.status === 'error' && <span class="save-indicator error">{saveStatus.error}</span>}
-    </>
-  )
-}
+export { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 
 export function StatusBanner({ connected, label }: { connected: boolean; label: string }) {
   return (
