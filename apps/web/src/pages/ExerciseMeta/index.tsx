@@ -8,7 +8,8 @@ import { useState } from 'preact/hooks'
 
 import { IconInput } from '../../components/IconInput'
 import { IconPreview } from '../../components/IconPreview'
-import { SaveStatusIndicator, useSaveStatus } from '../../components/SaveStatusIndicator'
+import { SaveCancelRow } from '../../components/SaveCancelRow'
+import { useSaveStatus } from '../../components/SaveStatusIndicator'
 import { fetchTagMappings, fetchTrend, type FetchTrendParams, updateUserSettings } from '../../state/api'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { MiniTrendChart } from '../TagMeta/MiniTrendChart'
@@ -93,23 +94,16 @@ function ExerciseIconSettings({ exerciseType, currentIcon }: { exerciseType: str
         </label>
       </div>
       {hasChanges && (
-        <div class="tag-meta-save-row">
-          <button
-            type="button"
-            class="btn-primary"
-            onClick={() => {
-              setSaveStatus({ status: 'saving' })
-              saveMutation.mutate(iconValue ?? '')
-            }}
-            disabled={saveMutation.isPending}
-          >
-            {saveMutation.isPending ? 'Saving...' : 'Save'}
-          </button>
-          <button type="button" class="btn-secondary" onClick={() => setIconValue(undefined)}>
-            Cancel
-          </button>
-          <SaveStatusIndicator state={saveStatus} variant="compact" />
-        </div>
+        <SaveCancelRow
+          onSave={() => {
+            setSaveStatus({ status: 'saving' })
+            saveMutation.mutate(iconValue ?? '')
+          }}
+          onCancel={() => setIconValue(undefined)}
+          isPending={saveMutation.isPending}
+          saveStatus={saveStatus}
+          saveStatusVariant="compact"
+        />
       )}
     </section>
   )

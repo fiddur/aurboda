@@ -12,6 +12,7 @@ import {
   type UpdateLastFmTagRuleBody,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { SaveCancelRow } from '../SaveCancelRow'
 import { type SaveStatus, SaveStatusIndicator } from '../SaveStatusIndicator'
 import { SettingsSection } from '../SettingsSection'
 import { AddRuleForm } from './AddRuleForm'
@@ -290,19 +291,11 @@ function RuleEditForm({
         </div>
       </div>
 
-      <div class="rule-edit-actions">
-        <button
-          type="button"
-          class="connect-button"
-          onClick={() => updateMutation.mutate()}
-          disabled={!canSave || updateMutation.isPending}
-        >
-          {updateMutation.isPending ? 'Saving...' : 'Save'}
-        </button>
-        <button type="button" class="cancel-button" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
+      <SaveCancelRow
+        onSave={() => updateMutation.mutate()}
+        onCancel={onCancel}
+        isPending={!canSave || updateMutation.isPending}
+      />
       {updateMutation.isError && <p class="rule-edit-error">{getErrorMessage(updateMutation.error)}</p>}
     </div>
   )

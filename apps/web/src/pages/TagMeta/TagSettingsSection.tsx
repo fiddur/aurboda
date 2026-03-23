@@ -7,7 +7,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { IconInput } from '../../components/IconInput'
-import { SaveStatusIndicator, useSaveStatus } from '../../components/SaveStatusIndicator'
+import { SaveCancelRow } from '../../components/SaveCancelRow'
+import { useSaveStatus } from '../../components/SaveStatusIndicator'
 import { setTagMapping } from '../../state/api'
 import { suggestEmoji } from '../../utils/emojiLookup'
 
@@ -97,22 +98,16 @@ export function TagSettingsSection({
         )}
       </div>
       {hasChanges && (
-        <div class="tag-meta-save-row">
-          <button type="button" class="btn-primary" onClick={handleSave} disabled={saveMutation.isPending}>
-            {saveMutation.isPending ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            type="button"
-            class="btn-secondary"
-            onClick={() => {
-              setDisplayName(undefined)
-              setIconValue(undefined)
-            }}
-          >
-            Cancel
-          </button>
-          <SaveStatusIndicator state={saveStatus} variant="compact" />
-        </div>
+        <SaveCancelRow
+          onSave={handleSave}
+          onCancel={() => {
+            setDisplayName(undefined)
+            setIconValue(undefined)
+          }}
+          isPending={saveMutation.isPending}
+          saveStatus={saveStatus}
+          saveStatusVariant="compact"
+        />
       )}
     </section>
   )
