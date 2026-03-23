@@ -19,14 +19,16 @@ export const _setClientForUser = (user: string, client: Client) => {
 }
 
 /**
- * Check if an error is a PostgreSQL schema error (missing table or column).
- * Only these errors should trigger automatic migration retry.
+ * Check if an error is a PostgreSQL schema error that migration can fix.
+ * Includes missing tables/columns and NOT NULL violations (from columns
+ * that became nullable but the migration hasn't run yet).
  * @internal Exported for testing.
  */
 export const _isSchemaError = (error: unknown): boolean => {
   if (!(error instanceof Error)) return false
   const code = (error as Error & { code?: string }).code
-  return code === '42P01' || code === '42703' // undefined_table, undefined_column
+  // 42P01 = undefined_table, 42703 = undefined_column, 23502 = not_null_violation
+  return code === '42P01' || code === '42703' || code === '23502'
 }
 
 const migrationInProgress: Record<string, Promise<void> | undefined> = {}
