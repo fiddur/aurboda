@@ -29,7 +29,7 @@ import {
   fetchUserSettings,
 } from '../../state/api'
 import { aggregateBucketsAligned, parseBucketedResponse } from '../../utils/chart'
-import { isEmoji, isUrl } from '../../utils/emojiLookup'
+import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import { packLanes } from '../../utils/lanePacking'
 import { buildActivityColumnItems, EXCLUDED_TAG_PREFIXES, EXCLUDED_TAG_SOURCES } from './activityMerge'
 import { computeBarLayout, type BarSlot } from './barLayout'
@@ -1602,7 +1602,7 @@ export const Timeline = () => {
               .text(icon)
               .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
               .on('mouseleave', hideTooltip)
-          } else if (icon && isUrl(icon)) {
+          } else if (icon && (isUrl(icon) || isIconPath(icon))) {
             parent
               .append('image')
               .attr('href', icon)
@@ -1669,7 +1669,7 @@ export const Timeline = () => {
             .attr('font-size', `${ICON_SIZE}px`)
             .attr('pointer-events', 'none')
             .text(item.icon)
-        } else if (item.icon && isUrl(item.icon)) {
+        } else if (item.icon && (isUrl(item.icon) || isIconPath(item.icon))) {
           parent
             .append('image')
             .attr('href', item.icon)
@@ -2539,7 +2539,7 @@ const drawPointMarker = (
     return
   }
 
-  if (item.icon && isUrl(item.icon)) {
+  if (item.icon && (isUrl(item.icon) || isIconPath(item.icon))) {
     const imgSize = 18
     parent
       .append('image')
@@ -2603,7 +2603,7 @@ const drawBlockOverlay = (
     return
   }
 
-  if (item.icon && isUrl(item.icon)) {
+  if (item.icon && (isUrl(item.icon) || isIconPath(item.icon))) {
     const imgSize = 18
     parent
       .append('image')

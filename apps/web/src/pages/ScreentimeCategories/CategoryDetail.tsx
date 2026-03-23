@@ -26,7 +26,7 @@ import {
   upsertScreentimeCategory,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { isEmoji, isUrl, suggestEmoji } from '../../utils/emojiLookup'
+import { isEmoji, isIconPath, isUrl, suggestEmoji } from '../../utils/emojiLookup'
 import { MiniTrendChart } from '../TagMeta/MiniTrendChart'
 import './style.css'
 
@@ -212,7 +212,7 @@ function AutoSaveColor({
 function IconPreview({ icon }: { icon: string }) {
   if (!icon) return null
   if (isEmoji(icon)) return <span class="category-icon-preview">{icon}</span>
-  if (isUrl(icon)) {
+  if (isUrl(icon) || isIconPath(icon)) {
     return (
       <span class="category-icon-preview">
         <img src={icon} alt="icon" width="24" height="24" />

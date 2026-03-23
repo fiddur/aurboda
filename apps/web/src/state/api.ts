@@ -559,6 +559,19 @@ export const updateUserSettings = async (params: UpdateSettingsInput): Promise<U
   return response.data
 }
 
+// Upload an icon image, returns { id, url }
+export const uploadIcon = async (file: File): Promise<{ id: string; url: string }> => {
+  const { token } = auth.value
+  const formData = new FormData()
+  formData.append('icon', file)
+  const response = await axios.post<{ id: string; success: boolean; url: string }>(
+    `${API_URL}/icons`,
+    formData,
+    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' } },
+  )
+  return { id: response.data.id, url: response.data.url }
+}
+
 // Trigger Oura sync
 export const syncOura = async (fullResync?: boolean): Promise<OuraSyncResponse> => {
   const { token } = auth.value

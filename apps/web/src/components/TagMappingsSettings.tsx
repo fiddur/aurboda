@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
 
 import { fetchProgrammaticTags, fetchTagMappings, setTagMapping } from '../state/api'
-import { isEmoji, isUrl, suggestEmoji } from '../utils/emojiLookup'
+import { isEmoji, isIconPath, isUrl, suggestEmoji } from '../utils/emojiLookup'
 import './TagMappingsSettings.css'
 
 // Helper to check if a string is a UUID
@@ -40,7 +40,7 @@ const RowStatusIndicator = ({ status }: { status: RowStatus }) => (
 const IconPreview = ({ icon }: { icon: string }) => {
   if (!icon) return null
   if (isEmoji(icon)) return <span class="tag-icon-preview">{icon}</span>
-  if (isUrl(icon)) {
+  if (isUrl(icon) || isIconPath(icon)) {
     return (
       <span class="tag-icon-preview">
         <img src={icon} alt="icon" width="16" height="16" />

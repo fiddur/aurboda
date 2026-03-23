@@ -3,10 +3,10 @@
  * Allows configuring emojis for activity types, exercise types, and tags.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
-import { fetchUserSettings, updateUserSettings } from '../state/api'
-import { DEFAULT_ITEM_ICONS, isEmoji, isUrl } from '../utils/emojiLookup'
+import { fetchUserSettings, updateUserSettings, uploadIcon } from '../state/api'
+import { DEFAULT_ITEM_ICONS, isEmoji, isIconPath, isUrl } from '../utils/emojiLookup'
 import './TimelineIconsSettings.css'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -22,7 +22,7 @@ interface IconRowProps {
 const IconPreview = ({ icon }: { icon: string }) => {
   if (!icon) return null
   if (isEmoji(icon)) return <span class="icon-preview">{icon}</span>
-  if (isUrl(icon)) {
+  if (isUrl(icon) || isIconPath(icon)) {
     return (
       <span class="icon-preview">
         <img src={icon} alt="icon" width="16" height="16" />
@@ -35,6 +35,7 @@ const IconPreview = ({ icon }: { icon: string }) => {
 function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowProps) {
   const [localValue, setLocalValue] = useState<string | undefined>(undefined)
   const [status, setStatus] = useState<SaveStatus>('idle')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (status !== 'saved') return
@@ -59,6 +60,18 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
     setStatus('saving')
     try {
       await onSave(iconKey, trimmed)
+      setLocalValue(undefined)
+      setStatus('saved')
+    } catch {
+      setStatus('error')
+    }
+  }
+
+  const handleFileUpload = async (file: File) => {
+    setStatus('saving')
+    try {
+      const { url } = await uploadIcon(file)
+      await onSave(iconKey, url)
       setLocalValue(undefined)
       setStatus('saved')
     } catch {
@@ -97,6 +110,25 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
           disabled={status === 'saving'}
         />
         <IconPreview icon={effectiveIcon} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = (e.target as HTMLInputElement).files?.[0]
+            if (file) void handleFileUpload(file)
+          }}
+        />
+        <button
+          type="button"
+          class="icon-upload-btn"
+          onClick={() => fileInputRef.current?.click()}
+          title="Upload icon image"
+          disabled={status === 'saving'}
+        >
+          Upload
+        </button>
         {!isDefault && (
           <button
             type="button"
