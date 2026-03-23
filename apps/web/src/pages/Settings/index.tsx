@@ -3,6 +3,7 @@ import { useCallback, useState } from 'preact/hooks'
 
 import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../../state/api'
 
+import { SettingsSection } from '../../components/SettingsSection'
 import { TimelineIconsSettings } from '../../components/TimelineIconsSettings'
 import { fetchUserSettings, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -161,11 +162,10 @@ export function Settings() {
     <div class="settings-page">
       <h1>Settings</h1>
 
-      <section class="settings-section">
-        <div class="section-header-row">
-          <h2>Personal Information</h2>
-          <SaveStatusIndicator saveStatus={personalInfoStatus} />
-        </div>
+      <SettingsSection
+        title="Personal Information"
+        headerExtra={<SaveStatusIndicator saveStatus={personalInfoStatus} />}
+      >
         <div class="form-field">
           <label for="birth-date">Birth Date</label>
           <input
@@ -192,18 +192,13 @@ export function Settings() {
             computation.
           </p>
         </div>
-      </section>
+      </SettingsSection>
 
-      <section class="settings-section">
-        <div class="section-header-row">
-          <h2>HR Zone Thresholds</h2>
-          <SaveStatusIndicator saveStatus={hrZonesStatus} />
-        </div>
-        <p class="section-description">
-          Customize the heart rate thresholds for each zone. These values represent the starting BPM for each
-          zone. Changes save automatically.
-        </p>
-
+      <SettingsSection
+        title="HR Zone Thresholds"
+        description="Customize the heart rate thresholds for each zone. These values represent the starting BPM for each zone. Changes save automatically."
+        headerExtra={<SaveStatusIndicator saveStatus={hrZonesStatus} />}
+      >
         <div class="hr-zones-form">
           {([1, 2, 3, 4, 5] as const).map((zone) => (
             <div class="zone-input" key={zone}>
@@ -230,7 +225,7 @@ export function Settings() {
         {hrZones === null && (
           <p class="field-description">Using default thresholds (or age-based if birth date is set).</p>
         )}
-      </section>
+      </SettingsSection>
 
       <TimelineIconsSettings />
 

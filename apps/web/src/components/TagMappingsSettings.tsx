@@ -6,6 +6,7 @@ import { useEffect, useState } from 'preact/hooks'
 import { fetchProgrammaticTags, fetchTagMappings, setTagMapping } from '../state/api'
 import { suggestEmoji } from '../utils/emojiLookup'
 import { IconInput } from './IconInput'
+import { SettingsSection } from './SettingsSection'
 import './TagMappingsSettings.css'
 
 // Helper to check if a string is a UUID
@@ -217,44 +218,30 @@ export function TagMappingsSettings() {
     await mutation.mutateAsync({ icon, name, tagKey })
   }
 
-  if (isLoading) {
-    return (
-      <section class="settings-section tag-mappings-section">
-        <h2>Tag Mappings</h2>
-        <p class="loading">Loading tags...</p>
-      </section>
-    )
-  }
-
   const unmappedCount = tags?.filter((t) => t.is_programmatic && !t.current_name).length ?? 0
   const icons = mappingsData?.icons ?? {}
 
   return (
-    <section class="settings-section tag-mappings-section">
-      <div class="section-header">
-        <h2>Tag Mappings</h2>
-        {unmappedCount > 0 && <span class="unmapped-badge">{unmappedCount} unnamed</span>}
+    <SettingsSection
+      title="Tag Mappings"
+      class="tag-mappings-section"
+      description="Set display names for programmatic tags and icons for any tag. Icons can be emoji characters or image URLs. Changes save automatically when you leave the field."
+      headerExtra={unmappedCount > 0 && <span class="unmapped-badge">{unmappedCount} unnamed</span>}
+      isLoading={isLoading}
+      loadingMessage="Loading tags..."
+      isEmpty={!tags || tags.length === 0}
+      emptyMessage="No tags found. Tags will appear here after syncing data."
+    >
+      <div class="tag-mappings-list">
+        {(tags ?? []).map((tag) => (
+          <TagMappingRow
+            key={tag.tag_key}
+            tag={tag}
+            currentIcon={icons[tag.current_name ?? ''] ?? icons[tag.tag_key]}
+            onSave={handleSave}
+          />
+        ))}
       </div>
-
-      <p class="section-description">
-        Set display names for programmatic tags and icons for any tag. Icons can be emoji characters or image
-        URLs. Changes save automatically when you leave the field.
-      </p>
-
-      {!tags || tags.length === 0 ? (
-        <p class="no-tags">No tags found. Tags will appear here after syncing data.</p>
-      ) : (
-        <div class="tag-mappings-list">
-          {tags.map((tag) => (
-            <TagMappingRow
-              key={tag.tag_key}
-              tag={tag}
-              currentIcon={icons[tag.current_name ?? ''] ?? icons[tag.tag_key]}
-              onSave={handleSave}
-            />
-          ))}
-        </div>
-      )}
-    </section>
+    </SettingsSection>
   )
 }

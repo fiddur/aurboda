@@ -1,9 +1,3 @@
-.timeline-icons-section .section-description {
-  color: #666;
-  margin-bottom: 1rem;
-  line-height: 1.5;
-}
-
 .icon-group {
   margin-bottom: 1.5rem;
 }
@@ -123,10 +117,6 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .timeline-icons-section .section-description {
-    color: #aaa;
-  }
-
   .icon-group h3 {
     color: #bbb;
   }

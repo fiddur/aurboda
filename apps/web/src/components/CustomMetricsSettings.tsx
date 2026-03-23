@@ -8,6 +8,7 @@ import {
   updateCustomMetric,
   type CustomMetricDefinition,
 } from '../state/api'
+import { SettingsSection } from './SettingsSection'
 
 const CustomMetricRow = ({
   metric,
@@ -167,13 +168,10 @@ export function CustomMetricsSettings() {
   })
 
   return (
-    <section class="settings-section">
-      <h2>Custom Metrics</h2>
-      <p class="section-description">
-        Define custom metrics to track any numeric data. Custom metrics appear in the metric picker and can be
-        used in trends and dashboards.
-      </p>
-
+    <SettingsSection
+      title="Custom Metrics"
+      description="Define custom metrics to track any numeric data. Custom metrics appear in the metric picker and can be used in trends and dashboards."
+    >
       {(metrics ?? []).length > 0 && (
         <div class="custom-metrics-list">
           {(metrics ?? []).map((m) => (
@@ -237,6 +235,6 @@ export function CustomMetricsSettings() {
           {addMutation.isPending ? 'Adding...' : 'Add Metric'}
         </button>
       </div>
-    </section>
+    </SettingsSection>
   )
 }

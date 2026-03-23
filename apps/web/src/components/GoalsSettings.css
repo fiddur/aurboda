@@ -1,14 +1,3 @@
-.goals-section .section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.goals-section .section-header h2 {
-  margin: 0;
-}
-
 .add-goal-button {
   background: #673ab8;
   color: white;

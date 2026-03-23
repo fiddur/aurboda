@@ -12,6 +12,7 @@ import {
   type UpdateLastFmTagRuleBody,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { SettingsSection } from '../SettingsSection'
 import { AddRuleForm } from './AddRuleForm'
 import './style.css'
 
@@ -408,38 +409,30 @@ export function LastFmTagRulesSettings() {
   const rulesList = rules ?? []
 
   return (
-    <section class="settings-section lastfm-rules-section">
-      <div class="section-header-row">
-        <h2>Last.fm Auto-Tagging Rules</h2>
-        <SaveIndicator saveStatus={saveStatus} />
-      </div>
-      <p class="section-description">
-        Create rules to automatically tag your listening sessions. When a scrobble matches a rule, a tag will
-        be created at the scrobble time.
-      </p>
-
-      {isLoading ? (
-        <p class="loading">Loading rules...</p>
-      ) : (
-        <>
-          {/* Existing rules */}
-          {rulesList.length > 0 && (
-            <div class="rules-list">
-              {rulesList.map((rule) => (
-                <EditableRuleRow
-                  key={rule.id}
-                  rule={rule}
-                  onDeleted={invalidateRules}
-                  onUpdated={invalidateRules}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Add new rule form */}
-          <AddRuleForm onRuleAdded={invalidateRules} setSaveStatus={setSaveStatus} />
-        </>
+    <SettingsSection
+      title="Last.fm Auto-Tagging Rules"
+      class="lastfm-rules-section"
+      description="Create rules to automatically tag your listening sessions. When a scrobble matches a rule, a tag will be created at the scrobble time."
+      headerExtra={<SaveIndicator saveStatus={saveStatus} />}
+      isLoading={isLoading}
+      loadingMessage="Loading rules..."
+    >
+      {/* Existing rules */}
+      {rulesList.length > 0 && (
+        <div class="rules-list">
+          {rulesList.map((rule) => (
+            <EditableRuleRow
+              key={rule.id}
+              rule={rule}
+              onDeleted={invalidateRules}
+              onUpdated={invalidateRules}
+            />
+          ))}
+        </div>
       )}
-    </section>
+
+      {/* Add new rule form */}
+      <AddRuleForm onRuleAdded={invalidateRules} setSaveStatus={setSaveStatus} />
+    </SettingsSection>
   )
 }

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 import { fetchUserSettings, updateUserSettings } from '../state/api'
 import { DEFAULT_ITEM_ICONS } from '../utils/emojiLookup'
 import { IconInput } from './IconInput'
+import { SettingsSection } from './SettingsSection'
 import './TimelineIconsSettings.css'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -202,25 +203,15 @@ export function TimelineIconsSettings() {
     [settings, queryClient],
   )
 
-  if (isLoading) {
-    return (
-      <section class="settings-section timeline-icons-section">
-        <h2>Timeline Icons</h2>
-        <p class="loading">Loading...</p>
-      </section>
-    )
-  }
-
   return (
-    <section class="settings-section timeline-icons-section">
-      <h2>Timeline Icons</h2>
-      <p class="section-description">
-        Customize the icons shown on the timeline for activities and exercise types. Icons can be emoji
-        characters, image URLs, or uploaded images. Default emojis are shown as placeholders.
-      </p>
-
+    <SettingsSection
+      title="Timeline Icons"
+      class="timeline-icons-section"
+      description="Customize the icons shown on the timeline for activities and exercise types. Icons can be emoji characters, image URLs, or uploaded images. Default emojis are shown as placeholders."
+      isLoading={isLoading}
+    >
       <IconGroup title="Activities" items={ACTIVITY_ITEMS} userIcons={userIcons} onSave={handleSave} />
       <IconGroup title="Exercise Types" items={EXERCISE_ITEMS} userIcons={userIcons} onSave={handleSave} />
-    </section>
+    </SettingsSection>
   )
 }

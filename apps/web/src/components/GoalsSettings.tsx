@@ -4,6 +4,7 @@ import { useState } from 'preact/hooks'
 
 import { type Goal, updateUserSettings } from '../state/api'
 import { metricLabels } from '../utils/metricLabels'
+import { SettingsSection } from './SettingsSection'
 import './GoalsSettings.css'
 
 interface GoalsSettingsProps {
@@ -304,19 +305,18 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
   }
 
   return (
-    <section class="settings-section goals-section">
-      <div class="section-header">
-        <h2>Goals</h2>
+    <SettingsSection
+      title="Goals"
+      class="goals-section"
+      description="Set targets for metrics over a rolling time window. Goals are saved automatically when valid. Drag goals to reorder them for the widget."
+      headerExtra={
         <button type="button" class="add-goal-button" onClick={handleAddGoal}>
           + Add Goal
         </button>
-      </div>
-
-      <p class="section-description">
-        Set targets for metrics over a rolling time window. Goals are saved automatically when valid. Drag
-        goals to reorder them for the widget.
-      </p>
-
+      }
+      isEmpty={localGoals.length === 0}
+      emptyMessage={'No goals set. Click "+ Add Goal" to create one.'}
+    >
       {saveStatus.status === 'saving' && <p class="save-status saving">Saving...</p>}
       {saveStatus.status === 'saved' && saveStatus.time && (
         <p class="save-status saved">Saved {formatSavedTime(saveStatus.time)}</p>
@@ -327,116 +327,110 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
         </p>
       )}
 
-      {localGoals.length === 0 ? (
-        <p class="no-goals">No goals set. Click "+ Add Goal" to create one.</p>
-      ) : (
-        <div class="goals-list">
-          {localGoals.map((goal) => {
-            const validationError = validateGoal({
-              ...goal,
-              window: goal.window || '7d',
-            } as Goal)
-            const isInvalid = validationError !== null
+      <div class="goals-list">
+        {localGoals.map((goal) => {
+          const validationError = validateGoal({
+            ...goal,
+            window: goal.window || '7d',
+          } as Goal)
+          const isInvalid = validationError !== null
 
-            return (
-              <div
-                class={`goal-row ${isInvalid ? 'invalid' : ''} ${goal.isNew ? 'new' : ''} ${draggedId === goal.id ? 'dragging' : ''} ${dragOverId === goal.id ? 'drag-over' : ''}`}
-                key={goal.id}
-                draggable={!goal.isNew}
-                onDragStart={(e) => handleDragStart(e, goal.id)}
-                onDragOver={(e) => handleDragOver(e, goal.id)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, goal.id)}
-                onDragEnd={handleDragEnd}
-              >
-                <div class="drag-handle" title="Drag to reorder">
-                  ⋮⋮
-                </div>
-
-                <div class="goal-field metric-field">
-                  <label>Metric</label>
-                  <select
-                    value={goal.metric}
-                    onChange={(e) => handleMetricChange(goal.id, (e.target as HTMLSelectElement).value)}
-                  >
-                    {validMetrics.map((metric) => (
-                      <option key={metric} value={metric}>
-                        {metricLabels[metric] ?? metric}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div
-                  class={`goal-field min-field ${goal.min === undefined && goal.max === undefined ? 'field-error' : ''}`}
-                >
-                  <label>Min</label>
-                  <div class="input-with-unit">
-                    <input
-                      type="number"
-                      value={toDisplayValue(goal.metric, goal.min)}
-                      onInput={(e) => handleFieldChange(goal.id, 'min', (e.target as HTMLInputElement).value)}
-                      onBlur={() => handleFieldBlur(goal.id)}
-                      placeholder="-"
-                    />
-                    <span class="unit">{getDisplayUnit(goal.metric)}</span>
-                  </div>
-                </div>
-
-                <div
-                  class={`goal-field max-field ${goal.min === undefined && goal.max === undefined ? 'field-error' : ''}`}
-                >
-                  <label>Max</label>
-                  <div class="input-with-unit">
-                    <input
-                      type="number"
-                      value={toDisplayValue(goal.metric, goal.max)}
-                      onInput={(e) => handleFieldChange(goal.id, 'max', (e.target as HTMLInputElement).value)}
-                      onBlur={() => handleFieldBlur(goal.id)}
-                      placeholder="-"
-                    />
-                    <span class="unit">{getDisplayUnit(goal.metric)}</span>
-                  </div>
-                </div>
-
-                <div class="goal-field window-field">
-                  <label>
-                    Window{' '}
-                    <button
-                      type="button"
-                      class="info-button"
-                      onClick={() => setShowDurationHelp(!showDurationHelp)}
-                      aria-label="Duration format help"
-                    >
-                      i
-                    </button>
-                  </label>
-                  <input
-                    type="text"
-                    value={goal.window}
-                    onInput={(e) =>
-                      handleFieldChange(goal.id, 'window', (e.target as HTMLInputElement).value)
-                    }
-                    onBlur={() => handleFieldBlur(goal.id)}
-                    placeholder="7d"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  class="delete-goal-button"
-                  onClick={() => handleDeleteGoal(goal.id)}
-                  aria-label="Delete goal"
-                >
-                  ×
-                </button>
-
-                {isInvalid && <div class="validation-error">{validationError}</div>}
+          return (
+            <div
+              class={`goal-row ${isInvalid ? 'invalid' : ''} ${goal.isNew ? 'new' : ''} ${draggedId === goal.id ? 'dragging' : ''} ${dragOverId === goal.id ? 'drag-over' : ''}`}
+              key={goal.id}
+              draggable={!goal.isNew}
+              onDragStart={(e) => handleDragStart(e, goal.id)}
+              onDragOver={(e) => handleDragOver(e, goal.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, goal.id)}
+              onDragEnd={handleDragEnd}
+            >
+              <div class="drag-handle" title="Drag to reorder">
+                ⋮⋮
               </div>
-            )
-          })}
-        </div>
-      )}
+
+              <div class="goal-field metric-field">
+                <label>Metric</label>
+                <select
+                  value={goal.metric}
+                  onChange={(e) => handleMetricChange(goal.id, (e.target as HTMLSelectElement).value)}
+                >
+                  {validMetrics.map((metric) => (
+                    <option key={metric} value={metric}>
+                      {metricLabels[metric] ?? metric}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div
+                class={`goal-field min-field ${goal.min === undefined && goal.max === undefined ? 'field-error' : ''}`}
+              >
+                <label>Min</label>
+                <div class="input-with-unit">
+                  <input
+                    type="number"
+                    value={toDisplayValue(goal.metric, goal.min)}
+                    onInput={(e) => handleFieldChange(goal.id, 'min', (e.target as HTMLInputElement).value)}
+                    onBlur={() => handleFieldBlur(goal.id)}
+                    placeholder="-"
+                  />
+                  <span class="unit">{getDisplayUnit(goal.metric)}</span>
+                </div>
+              </div>
+
+              <div
+                class={`goal-field max-field ${goal.min === undefined && goal.max === undefined ? 'field-error' : ''}`}
+              >
+                <label>Max</label>
+                <div class="input-with-unit">
+                  <input
+                    type="number"
+                    value={toDisplayValue(goal.metric, goal.max)}
+                    onInput={(e) => handleFieldChange(goal.id, 'max', (e.target as HTMLInputElement).value)}
+                    onBlur={() => handleFieldBlur(goal.id)}
+                    placeholder="-"
+                  />
+                  <span class="unit">{getDisplayUnit(goal.metric)}</span>
+                </div>
+              </div>
+
+              <div class="goal-field window-field">
+                <label>
+                  Window{' '}
+                  <button
+                    type="button"
+                    class="info-button"
+                    onClick={() => setShowDurationHelp(!showDurationHelp)}
+                    aria-label="Duration format help"
+                  >
+                    i
+                  </button>
+                </label>
+                <input
+                  type="text"
+                  value={goal.window}
+                  onInput={(e) => handleFieldChange(goal.id, 'window', (e.target as HTMLInputElement).value)}
+                  onBlur={() => handleFieldBlur(goal.id)}
+                  placeholder="7d"
+                />
+              </div>
+
+              <button
+                type="button"
+                class="delete-goal-button"
+                onClick={() => handleDeleteGoal(goal.id)}
+                aria-label="Delete goal"
+              >
+                ×
+              </button>
+
+              {isInvalid && <div class="validation-error">{validationError}</div>}
+            </div>
+          )
+        })}
+      </div>
 
       {showDurationHelp && (
         <div class="duration-help">
@@ -451,6 +445,6 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
           <p>Examples: 7d (7 days), 2w (2 weeks), 1M (1 month)</p>
         </div>
       )}
-    </section>
+    </SettingsSection>
   )
 }
