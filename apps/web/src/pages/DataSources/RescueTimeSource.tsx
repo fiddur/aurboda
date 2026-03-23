@@ -115,7 +115,7 @@ export function RescueTimeSource() {
           <section class="settings-section">
             <div class="section-header-row">
               <h2>API Key</h2>
-              <SaveStatusIndicator saveStatus={saveStatus} />
+              <SaveStatusIndicator state={saveStatus} />
             </div>
             {isConfigured && <p class="connected-status">Configured</p>}
             <div class="form-field">

@@ -3,6 +3,7 @@ import { useCallback, useState } from 'preact/hooks'
 
 import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../../state/api'
 
+import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { SettingsSection } from '../../components/SettingsSection'
 import { TimelineIconsSettings } from '../../components/TimelineIconsSettings'
 import { fetchUserSettings, updateUserSettings } from '../../state/api'
@@ -10,29 +11,6 @@ import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
 import { parseZoneValue, updateZoneThreshold, validateHrZoneThresholds } from '../../utils/settings'
 import './style.css'
-
-type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }
-
-const formatSavedTime = (time: Date): string => {
-  const now = new Date()
-  const diffSec = Math.floor((now.getTime() - time.getTime()) / 1000)
-  if (diffSec < 5) return 'just now'
-  if (diffSec < 60) return `${diffSec} seconds ago`
-  const diffMin = Math.floor(diffSec / 60)
-  if (diffMin < 60) return `${diffMin} minute${diffMin > 1 ? 's' : ''} ago`
-  return time.toLocaleTimeString()
-}
-
-function SaveStatusIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
-  if (saveStatus.status === 'idle') return null
-  return (
-    <span class={`save-indicator ${saveStatus.status}`}>
-      {saveStatus.status === 'saving' && 'Saving...'}
-      {saveStatus.status === 'saved' && saveStatus.time && `Saved ${formatSavedTime(saveStatus.time)}`}
-      {saveStatus.status === 'error' && (saveStatus.error ?? 'Error saving')}
-    </span>
-  )
-}
 
 export function Settings() {
   const isLoggedIn = auth.value.token
@@ -164,7 +142,7 @@ export function Settings() {
 
       <SettingsSection
         title="Personal Information"
-        headerExtra={<SaveStatusIndicator saveStatus={personalInfoStatus} />}
+        headerExtra={<SaveStatusIndicator state={personalInfoStatus} />}
       >
         <div class="form-field">
           <label for="birth-date">Birth Date</label>
@@ -197,7 +175,7 @@ export function Settings() {
       <SettingsSection
         title="HR Zone Thresholds"
         description="Customize the heart rate thresholds for each zone. These values represent the starting BPM for each zone. Changes save automatically."
-        headerExtra={<SaveStatusIndicator saveStatus={hrZonesStatus} />}
+        headerExtra={<SaveStatusIndicator state={hrZonesStatus} />}
       >
         <div class="hr-zones-form">
           {([1, 2, 3, 4, 5] as const).map((zone) => (

@@ -4,6 +4,7 @@ import { useState } from 'preact/hooks'
 
 import { type Goal, updateUserSettings } from '../state/api'
 import { metricLabels } from '../utils/metricLabels'
+import { type SaveStatus, SaveStatusIndicator } from './SaveStatusIndicator'
 import { SettingsSection } from './SettingsSection'
 import './GoalsSettings.css'
 
@@ -82,9 +83,7 @@ interface LocalGoal extends Omit<Goal, 'min' | 'max' | 'window'> {
 
 export function GoalsSettings({ goals }: GoalsSettingsProps) {
   const queryClient = useQueryClient()
-  const [saveStatus, setSaveStatus] = useState<{ status: 'idle' | 'saving' | 'saved'; time?: Date }>({
-    status: 'idle',
-  })
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
   const [showDurationHelp, setShowDurationHelp] = useState(false)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
@@ -294,16 +293,6 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
     setDragOverId(null)
   }
 
-  const formatSavedTime = (time: Date): string => {
-    const now = new Date()
-    const diffSec = Math.floor((now.getTime() - time.getTime()) / 1000)
-    if (diffSec < 5) return 'just now'
-    if (diffSec < 60) return `${diffSec} seconds ago`
-    const diffMin = Math.floor(diffSec / 60)
-    if (diffMin < 60) return `${diffMin} minute${diffMin > 1 ? 's' : ''} ago`
-    return time.toLocaleTimeString()
-  }
-
   return (
     <SettingsSection
       title="Goals"
@@ -317,10 +306,7 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       isEmpty={localGoals.length === 0}
       emptyMessage={'No goals set. Click "+ Add Goal" to create one.'}
     >
-      {saveStatus.status === 'saving' && <p class="save-status saving">Saving...</p>}
-      {saveStatus.status === 'saved' && saveStatus.time && (
-        <p class="save-status saved">Saved {formatSavedTime(saveStatus.time)}</p>
-      )}
+      <SaveStatusIndicator state={saveStatus} />
       {mutation.isError && (
         <p class="save-status error">
           Error: {mutation.error instanceof Error ? mutation.error.message : 'Failed to save'}

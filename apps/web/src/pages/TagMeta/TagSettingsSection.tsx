@@ -4,9 +4,10 @@
 import type { ProgrammaticTag } from '@aurboda/api-spec'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'preact/hooks'
+import { useState } from 'preact/hooks'
 
 import { IconInput } from '../../components/IconInput'
+import { SaveStatusIndicator, useSaveStatus } from '../../components/SaveStatusIndicator'
 import { setTagMapping } from '../../state/api'
 import { suggestEmoji } from '../../utils/emojiLookup'
 
@@ -27,14 +28,14 @@ export function TagSettingsSection({
   const queryClient = useQueryClient()
   const [displayName, setDisplayName] = useState<string | undefined>(undefined)
   const [iconValue, setIconValue] = useState<string | undefined>(undefined)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveStatus, setSaveStatus] = useSaveStatus(3000)
 
   const saveMutation = useMutation({
     mutationFn: ({ name, icon }: { name: string; icon?: string }) =>
       setTagMapping(effectiveTagKey, name, icon),
-    onError: () => setSaveStatus('error'),
+    onError: () => setSaveStatus({ status: 'error' }),
     onSuccess: () => {
-      setSaveStatus('saved')
+      setSaveStatus({ status: 'saved' })
       queryClient.invalidateQueries({ queryKey: ['programmaticTags'] })
       queryClient.invalidateQueries({ queryKey: ['tag-mappings'] })
       queryClient.invalidateQueries({ queryKey: ['userSettings'] })
@@ -43,13 +44,6 @@ export function TagSettingsSection({
     },
   })
 
-  // Clear saved indicator
-  useEffect(() => {
-    if (saveStatus !== 'saved') return
-    const timer = setTimeout(() => setSaveStatus('idle'), 3000)
-    return () => clearTimeout(timer)
-  }, [saveStatus])
-
   const suggested = suggestEmoji(currentName)
   const shownIcon = iconValue ?? currentIcon
   const shownName = displayName ?? currentName
@@ -57,7 +51,7 @@ export function TagSettingsSection({
   const handleSave = () => {
     const name = (displayName ?? currentName).trim()
     if (!name) return
-    setSaveStatus('saving')
+    setSaveStatus({ status: 'saving' })
     const iconChanged = iconValue !== undefined && iconValue !== currentIcon
     saveMutation.mutate({ icon: iconChanged ? iconValue : undefined, name })
   }
@@ -117,8 +111,7 @@ export function TagSettingsSection({
           >
             Cancel
           </button>
-          {saveStatus === 'saved' && <span class="tag-meta-status-saved">Saved</span>}
-          {saveStatus === 'error' && <span class="tag-meta-status-error">Failed to save</span>}
+          <SaveStatusIndicator state={saveStatus} variant="compact" />
         </div>
       )}
     </section>

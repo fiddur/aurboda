@@ -6,6 +6,7 @@ import { useEffect, useState } from 'preact/hooks'
 import { fetchProgrammaticTags, fetchTagMappings, setTagMapping } from '../state/api'
 import { suggestEmoji } from '../utils/emojiLookup'
 import { IconInput } from './IconInput'
+import { SaveStatusIndicator, useSaveStatus } from './SaveStatusIndicator'
 import { SettingsSection } from './SettingsSection'
 import './TagMappingsSettings.css'
 
@@ -20,24 +21,6 @@ const formatTagKey = (tagKey: string): string => {
   }
   return tagKey
 }
-
-type RowStatus = 'idle' | 'saving' | 'saved' | 'error'
-
-const RowStatusIndicator = ({ status }: { status: RowStatus }) => (
-  <span class="row-status">
-    {status === 'saving' && <span class="status-saving" title="Saving..." />}
-    {status === 'saved' && (
-      <span class="status-saved" title="Saved">
-        &#10003;
-      </span>
-    )}
-    {status === 'error' && (
-      <span class="status-error" title="Failed to save">
-        !
-      </span>
-    )}
-  </span>
-)
 
 /** Determine what changed vs server state and return the name to save, or null if no save needed. */
 function getBlurSavePayload(
@@ -70,17 +53,10 @@ function TagMappingRow({
 }) {
   const [localValue, setLocalValue] = useState<string | undefined>(undefined)
   const [localIcon, setLocalIcon] = useState<string | undefined>(undefined)
-  const [status, setStatus] = useState<RowStatus>('idle')
+  const [status, setStatus] = useSaveStatus(3000)
   const [suggestedEmoji, setSuggestedEmoji] = useState<string | undefined>(undefined)
 
   const isProgrammatic = tag.is_programmatic
-
-  // Clear saved indicator after 3 seconds
-  useEffect(() => {
-    if (status !== 'saved') return
-    const timer = setTimeout(() => setStatus('idle'), 3000)
-    return () => clearTimeout(timer)
-  }, [status])
 
   const displayValue = localValue ?? tag.current_name ?? ''
   const displayIcon = localIcon ?? currentIcon ?? ''
@@ -105,14 +81,14 @@ function TagMappingRow({
       return
     }
 
-    setStatus('saving')
+    setStatus({ status: 'saving' })
     try {
       await onSave(tag.tag_key, payload.name, payload.iconChanged ? localIcon : undefined)
       setLocalValue(undefined)
       setLocalIcon(undefined)
-      setStatus('saved')
+      setStatus({ status: 'saved' })
     } catch {
-      setStatus('error')
+      setStatus({ status: 'error' })
     }
   }
 
@@ -123,15 +99,15 @@ function TagMappingRow({
     if (!name) return
 
     setSuggestedEmoji(undefined)
-    setStatus('saving')
+    setStatus({ status: 'saving' })
     try {
       await onSave(tag.tag_key, name, suggestedEmoji)
       setLocalValue(undefined)
       setLocalIcon(undefined)
-      setStatus('saved')
+      setStatus({ status: 'saved' })
     } catch {
       setLocalIcon(suggestedEmoji)
-      setStatus('error')
+      setStatus({ status: 'error' })
     }
   }
 
@@ -160,10 +136,10 @@ function TagMappingRow({
           onBlur={() => void handleBlur()}
           placeholder={isProgrammatic ? 'Enter display name...' : undefined}
           class={isUnmapped ? 'unmapped' : ''}
-          disabled={status === 'saving' || !isProgrammatic}
+          disabled={status.status === 'saving' || !isProgrammatic}
           readOnly={!isProgrammatic}
         />
-        <RowStatusIndicator status={status} />
+        <SaveStatusIndicator state={status} variant="compact" />
       </div>
 
       <div class="tag-icon-field">
@@ -177,7 +153,7 @@ function TagMappingRow({
           size={16}
           suggestedEmoji={suggestedEmoji}
           onAcceptSuggestion={() => void handleAcceptSuggestion()}
-          disabled={status === 'saving'}
+          disabled={status.status === 'saving'}
         />
       </div>
 

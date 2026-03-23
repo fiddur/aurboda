@@ -3,15 +3,14 @@
  * Allows configuring emojis for activity types, exercise types, and tags.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
+import { useCallback, useMemo, useState } from 'preact/hooks'
 
 import { fetchUserSettings, updateUserSettings } from '../state/api'
 import { DEFAULT_ITEM_ICONS } from '../utils/emojiLookup'
 import { IconInput } from './IconInput'
+import { SaveStatusIndicator, useSaveStatus } from './SaveStatusIndicator'
 import { SettingsSection } from './SettingsSection'
 import './TimelineIconsSettings.css'
-
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 interface IconRowProps {
   iconKey: string
@@ -23,13 +22,7 @@ interface IconRowProps {
 
 function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowProps) {
   const [localValue, setLocalValue] = useState<string | undefined>(undefined)
-  const [status, setStatus] = useState<SaveStatus>('idle')
-
-  useEffect(() => {
-    if (status !== 'saved') return
-    const timer = setTimeout(() => setStatus('idle'), 3000)
-    return () => clearTimeout(timer)
-  }, [status])
+  const [status, setStatus] = useSaveStatus(3000)
 
   const displayValue = localValue ?? currentIcon ?? ''
   const isDefault = currentIcon === undefined
@@ -45,26 +38,26 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
       return
     }
 
-    setStatus('saving')
+    setStatus({ status: 'saving' })
     try {
       await onSave(iconKey, trimmed)
       setLocalValue(undefined)
-      setStatus('saved')
+      setStatus({ status: 'saved' })
     } catch {
-      setStatus('error')
+      setStatus({ status: 'error' })
     }
   }
 
   const handleIconChange = async (value: string) => {
     // If it's an uploaded icon path, save immediately
     if (value.startsWith('/api/icons/')) {
-      setStatus('saving')
+      setStatus({ status: 'saving' })
       try {
         await onSave(iconKey, value)
         setLocalValue(undefined)
-        setStatus('saved')
+        setStatus({ status: 'saved' })
       } catch {
-        setStatus('error')
+        setStatus({ status: 'error' })
       }
     } else {
       setLocalValue(value)
@@ -73,13 +66,13 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
 
   const handleReset = async () => {
     if (isDefault) return
-    setStatus('saving')
+    setStatus({ status: 'saving' })
     try {
       await onSave(iconKey, '')
       setLocalValue(undefined)
-      setStatus('saved')
+      setStatus({ status: 'saved' })
     } catch {
-      setStatus('error')
+      setStatus({ status: 'error' })
     }
   }
 
@@ -95,7 +88,7 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
           inputClass="icon-input"
           previewClass="icon-preview"
           size={16}
-          disabled={status === 'saving'}
+          disabled={status.status === 'saving'}
         />
         {!isDefault && (
           <button
@@ -107,9 +100,7 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
             x
           </button>
         )}
-        {status === 'saving' && <span class="icon-status-saving" />}
-        {status === 'saved' && <span class="icon-status-saved">&#10003;</span>}
-        {status === 'error' && <span class="icon-status-error">!</span>}
+        <SaveStatusIndicator state={status} variant="compact" />
       </div>
     </div>
   )

@@ -12,23 +12,12 @@ import {
   type UpdateLastFmTagRuleBody,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { type SaveStatus, SaveStatusIndicator } from '../SaveStatusIndicator'
 import { SettingsSection } from '../SettingsSection'
 import { AddRuleForm } from './AddRuleForm'
 import './style.css'
 
-type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }
-
 const getErrorMessage = (err: unknown): string => (err instanceof Error ? err.message : 'Failed to save')
-
-function SaveIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
-  if (saveStatus.status === 'idle') return null
-  const messages: Record<string, string> = {
-    error: saveStatus.error ?? 'Error',
-    saved: 'Rule saved',
-    saving: 'Saving...',
-  }
-  return <span class={`save-indicator ${saveStatus.status}`}>{messages[saveStatus.status]}</span>
-}
 
 const needsTrack = (matchType: LastFmMatchType): boolean =>
   matchType === 'track' || matchType === 'track_artist'
@@ -413,7 +402,7 @@ export function LastFmTagRulesSettings() {
       title="Last.fm Auto-Tagging Rules"
       class="lastfm-rules-section"
       description="Create rules to automatically tag your listening sessions. When a scrobble matches a rule, a tag will be created at the scrobble time."
-      headerExtra={<SaveIndicator saveStatus={saveStatus} />}
+      headerExtra={<SaveStatusIndicator state={saveStatus} />}
       isLoading={isLoading}
       loadingMessage="Loading rules..."
     >
