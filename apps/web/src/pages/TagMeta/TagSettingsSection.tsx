@@ -4,11 +4,11 @@
 import type { ProgrammaticTag } from '@aurboda/api-spec'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
-import { setTagMapping, uploadIcon } from '../../state/api'
+import { IconInput } from '../../components/IconInput'
+import { setTagMapping } from '../../state/api'
 import { suggestEmoji } from '../../utils/emojiLookup'
-import { TagIconPreview } from './TagIconPreview'
 
 interface TagSettingsSectionProps {
   tagInfo: ProgrammaticTag | undefined
@@ -28,8 +28,6 @@ export function TagSettingsSection({
   const [displayName, setDisplayName] = useState<string | undefined>(undefined)
   const [iconValue, setIconValue] = useState<string | undefined>(undefined)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const [uploadError, setUploadError] = useState<string | undefined>(undefined)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const saveMutation = useMutation({
     mutationFn: ({ name, icon }: { name: string; icon?: string }) =>
@@ -64,16 +62,6 @@ export function TagSettingsSection({
     saveMutation.mutate({ icon: iconChanged ? iconValue : undefined, name })
   }
 
-  const handleFileUpload = async (file: File) => {
-    setUploadError(undefined)
-    try {
-      const { url } = await uploadIcon(file)
-      setIconValue(url)
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Upload failed')
-    }
-  }
-
   const hasChanges =
     (displayName !== undefined && displayName !== currentName) ||
     (iconValue !== undefined && iconValue !== currentIcon)
@@ -99,42 +87,12 @@ export function TagSettingsSection({
         <label>
           <span class="tag-meta-field-label">Icon</span>
           <div class="tag-meta-icon-row">
-            <input
-              type="text"
+            <IconInput
               value={shownIcon}
-              onInput={(e) => setIconValue((e.target as HTMLInputElement).value)}
-              placeholder="Emoji or image URL..."
+              onChange={setIconValue}
+              suggestedEmoji={suggested}
+              previewClass="tag-meta-icon-preview"
             />
-            <TagIconPreview icon={shownIcon} />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const file = (e.target as HTMLInputElement).files?.[0]
-                if (file) void handleFileUpload(file)
-              }}
-            />
-            <button
-              type="button"
-              class="tag-meta-emoji-suggest"
-              onClick={() => fileInputRef.current?.click()}
-              title="Upload icon image"
-            >
-              Upload
-            </button>
-            {suggested && !shownIcon && (
-              <button
-                type="button"
-                class="tag-meta-emoji-suggest"
-                onClick={() => setIconValue(suggested)}
-                title={`Suggested: ${suggested}`}
-              >
-                {suggested}?
-              </button>
-            )}
-            {uploadError && <span class="tag-meta-status-error">{uploadError}</span>}
           </div>
         </label>
         {tagInfo?.is_programmatic && effectiveTagKey !== currentName && (

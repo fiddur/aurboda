@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
+import { IconInput } from '../../components/IconInput'
 import {
   type DistinctApp,
   type FetchTrendParams,
@@ -26,7 +27,7 @@ import {
   upsertScreentimeCategory,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { isEmoji, isIconPath, isUrl, suggestEmoji } from '../../utils/emojiLookup'
+import { isEmoji, suggestEmoji } from '../../utils/emojiLookup'
 import { MiniTrendChart } from '../TagMeta/MiniTrendChart'
 import './style.css'
 
@@ -205,23 +206,6 @@ function AutoSaveColor({
   )
 }
 
-// ============================================================================
-// Icon editor (reused from previous implementation)
-// ============================================================================
-
-function IconPreview({ icon }: { icon: string }) {
-  if (!icon) return null
-  if (isEmoji(icon)) return <span class="category-icon-preview">{icon}</span>
-  if (isUrl(icon) || isIconPath(icon)) {
-    return (
-      <span class="category-icon-preview">
-        <img src={icon} alt="icon" width="24" height="24" />
-      </span>
-    )
-  }
-  return null
-}
-
 function CategoryIconEditor({
   categoryName,
   currentIcon,
@@ -262,28 +246,15 @@ function CategoryIconEditor({
       <span class="field-label">Icon</span>
       <span class="field-value">
         <div class="category-icon-edit-row">
-          <input
-            type="text"
+          <IconInput
             value={shownIcon}
-            onInput={(e) => setIconValue((e.target as HTMLInputElement).value)}
+            onChange={setIconValue}
             onBlur={handleBlur}
-            placeholder="Emoji or image URL..."
-            class="category-icon-input"
+            inputClass="category-icon-input"
+            previewClass="category-icon-preview"
+            suggestedEmoji={suggested}
+            onAcceptSuggestion={(emoji) => saveMutation.mutate(emoji)}
           />
-          <IconPreview icon={shownIcon} />
-          {suggested && !shownIcon && (
-            <button
-              type="button"
-              class="category-icon-suggestion"
-              onClick={() => {
-                setIconValue(suggested)
-                saveMutation.mutate(suggested)
-              }}
-              title={`Suggested: ${suggested}`}
-            >
-              {suggested}?
-            </button>
-          )}
         </div>
       </span>
     </div>

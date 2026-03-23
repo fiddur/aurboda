@@ -3,10 +3,11 @@
  * Allows configuring emojis for activity types, exercise types, and tags.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 
-import { fetchUserSettings, updateUserSettings, uploadIcon } from '../state/api'
-import { DEFAULT_ITEM_ICONS, isEmoji, isIconPath, isUrl } from '../utils/emojiLookup'
+import { fetchUserSettings, updateUserSettings } from '../state/api'
+import { DEFAULT_ITEM_ICONS } from '../utils/emojiLookup'
+import { IconInput } from './IconInput'
 import './TimelineIconsSettings.css'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -19,23 +20,9 @@ interface IconRowProps {
   onSave: (key: string, icon: string) => Promise<void>
 }
 
-const IconPreview = ({ icon }: { icon: string }) => {
-  if (!icon) return null
-  if (isEmoji(icon)) return <span class="icon-preview">{icon}</span>
-  if (isUrl(icon) || isIconPath(icon)) {
-    return (
-      <span class="icon-preview">
-        <img src={icon} alt="icon" width="16" height="16" />
-      </span>
-    )
-  }
-  return null
-}
-
 function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowProps) {
   const [localValue, setLocalValue] = useState<string | undefined>(undefined)
   const [status, setStatus] = useState<SaveStatus>('idle')
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (status !== 'saved') return
@@ -67,15 +54,19 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
     }
   }
 
-  const handleFileUpload = async (file: File) => {
-    setStatus('saving')
-    try {
-      const { url } = await uploadIcon(file)
-      await onSave(iconKey, url)
-      setLocalValue(undefined)
-      setStatus('saved')
-    } catch {
-      setStatus('error')
+  const handleIconChange = async (value: string) => {
+    // If it's an uploaded icon path, save immediately
+    if (value.startsWith('/api/icons/')) {
+      setStatus('saving')
+      try {
+        await onSave(iconKey, value)
+        setLocalValue(undefined)
+        setStatus('saved')
+      } catch {
+        setStatus('error')
+      }
+    } else {
+      setLocalValue(value)
     }
   }
 
@@ -83,10 +74,6 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
     if (isDefault) return
     setStatus('saving')
     try {
-      // Save empty string to clear the user override; the DB migration
-      // stores '' which resolveItemIcon interprets as "no icon" — but for
-      // a reset we actually want to *remove* the key so the default kicks in.
-      // The parent handler already handles this by deleting the key.
       await onSave(iconKey, '')
       setLocalValue(undefined)
       setStatus('saved')
@@ -99,36 +86,16 @@ function IconRow({ iconKey, label, currentIcon, defaultIcon, onSave }: IconRowPr
     <div class="icon-row">
       <span class="icon-row-label">{label}</span>
       <div class="icon-row-field">
-        <input
-          type="text"
-          value={displayValue}
-          onInput={(e) => setLocalValue((e.target as HTMLInputElement).value)}
+        <IconInput
+          value={effectiveIcon}
+          onChange={(v) => void handleIconChange(v)}
           onBlur={() => void handleBlur()}
           placeholder={defaultIcon || 'none'}
-          title="Emoji character or image URL"
-          class="icon-input"
+          inputClass="icon-input"
+          previewClass="icon-preview"
+          size={16}
           disabled={status === 'saving'}
         />
-        <IconPreview icon={effectiveIcon} />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const file = (e.target as HTMLInputElement).files?.[0]
-            if (file) void handleFileUpload(file)
-          }}
-        />
-        <button
-          type="button"
-          class="icon-upload-btn"
-          onClick={() => fileInputRef.current?.click()}
-          title="Upload icon image"
-          disabled={status === 'saving'}
-        >
-          Upload
-        </button>
         {!isDefault && (
           <button
             type="button"
@@ -249,7 +216,7 @@ export function TimelineIconsSettings() {
       <h2>Timeline Icons</h2>
       <p class="section-description">
         Customize the icons shown on the timeline for activities and exercise types. Icons can be emoji
-        characters or image URLs. Default emojis are shown as placeholders.
+        characters, image URLs, or uploaded images. Default emojis are shown as placeholders.
       </p>
 
       <IconGroup title="Activities" items={ACTIVITY_ITEMS} userIcons={userIcons} onSave={handleSave} />
