@@ -63,17 +63,63 @@
   text-align: center;
 }
 
+.home .screenshots figure.narrow {
+  max-width: 180px;
+}
+
 .home .screenshots img {
   max-width: 280px;
   height: auto;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.home .screenshots figure.narrow img {
+  max-width: 180px;
+}
+
+.home .screenshots img:hover {
+  transform: scale(1.03);
 }
 
 .home .screenshots figcaption {
   font-size: 0.875rem;
   color: #666;
   margin-top: 0.5rem;
+}
+
+.home .data-sources-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin: 1rem 0;
+}
+
+.home .data-sources-table th,
+.home .data-sources-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.home .data-sources-table th {
+  font-weight: 600;
+  border-bottom: 2px solid #673ab8;
+}
+
+.home .data-sources-table td:first-child {
+  white-space: nowrap;
+}
+
+.home .legal {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #ddd;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -83,6 +129,16 @@
 
   .home .screenshots img {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .home .data-sources-table th,
+  .home .data-sources-table td {
+    border-color: #444;
+  }
+
+  .home .legal {
+    color: #aaa;
+    border-color: #444;
   }
 }
 
