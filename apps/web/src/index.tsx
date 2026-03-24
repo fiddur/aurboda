@@ -29,6 +29,7 @@ import { HrZones } from './pages/HrZones/index.jsx'
 import { Login } from './pages/Login/index.jsx'
 import { MetricMeta } from './pages/MetricMeta/index.jsx'
 import { Places } from './pages/Places/index.jsx'
+import { Privacy } from './pages/Privacy/index.jsx'
 import { AddReport } from './pages/Reports/AddReport.jsx'
 import { Reports } from './pages/Reports/index.jsx'
 import { ReportDetail } from './pages/Reports/ReportDetail.jsx'
@@ -38,6 +39,7 @@ import { Settings } from './pages/Settings/index.jsx'
 import { Signup } from './pages/Signup/index.jsx'
 import { Sleep } from './pages/Sleep/index.jsx'
 import { TagMeta } from './pages/TagMeta/index.jsx'
+import { Terms } from './pages/Terms/index.jsx'
 import { Timeline } from './pages/Timeline/index.jsx'
 import { Trends } from './pages/Trends/index.jsx'
 import { queryClient } from './state/queryClient.js'
@@ -53,6 +55,8 @@ export function App() {
             <Route path="/" component={Home} />
             <Route path="/login" component={Login} />
             <Route path="/signup" component={Signup} />
+            <Route path="/privacy" component={Privacy} />
+            <Route path="/terms" component={Terms} />
             <Route path="/goals" component={Goals} />
             <Route path="/hr-zones" component={HrZones} />
             <Route path="/timeline" component={Timeline} />
