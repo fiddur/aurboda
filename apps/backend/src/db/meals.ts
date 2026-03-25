@@ -116,6 +116,23 @@ export interface UpdateMealInput {
   sensitivities?: string[] | null
 }
 
+// Fields that map directly from input to SQL column (no serialization needed)
+const SIMPLE_UPDATE_FIELDS = [
+  'meal_type',
+  'name',
+  'time',
+  'calories',
+  'protein',
+  'carbs',
+  'fat',
+  'fiber',
+  'notes',
+  'sensitivities',
+] as const
+
+// Fields that need JSON.stringify for non-null values
+const JSONB_UPDATE_FIELDS = ['food_items', 'micros'] as const
+
 /**
  * Update a meal by ID. Only provided fields are changed.
  * Returns null if the meal was not found.
@@ -125,25 +142,19 @@ export const updateMeal = async (user: string, id: string, input: UpdateMealInpu
   const params: unknown[] = []
   let paramIdx = 1
 
-  const addField = (column: string, value: unknown, serialize?: boolean) => {
-    setClauses.push(`${column} = $${paramIdx++}`)
-    params.push(serialize ? JSON.stringify(value) : value)
+  for (const field of SIMPLE_UPDATE_FIELDS) {
+    if (input[field] !== undefined) {
+      setClauses.push(`${field} = $${paramIdx++}`)
+      params.push(input[field])
+    }
   }
 
-  if (input.meal_type !== undefined) addField('meal_type', input.meal_type)
-  if (input.name !== undefined) addField('name', input.name)
-  if (input.time !== undefined) addField('time', input.time)
-  if (input.calories !== undefined) addField('calories', input.calories)
-  if (input.protein !== undefined) addField('protein', input.protein)
-  if (input.carbs !== undefined) addField('carbs', input.carbs)
-  if (input.fat !== undefined) addField('fat', input.fat)
-  if (input.fiber !== undefined) addField('fiber', input.fiber)
-  if (input.food_items !== undefined)
-    {addField('food_items', input.food_items === null ? null : input.food_items, input.food_items !== null)}
-  if (input.micros !== undefined)
-    {addField('micros', input.micros === null ? null : input.micros, input.micros !== null)}
-  if (input.notes !== undefined) addField('notes', input.notes)
-  if (input.sensitivities !== undefined) addField('sensitivities', input.sensitivities)
+  for (const field of JSONB_UPDATE_FIELDS) {
+    if (input[field] !== undefined) {
+      setClauses.push(`${field} = $${paramIdx++}`)
+      params.push(input[field] === null ? null : JSON.stringify(input[field]))
+    }
+  }
 
   if (setClauses.length === 0) {
     return getMealById(user, id)
