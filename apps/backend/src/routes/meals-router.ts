@@ -28,17 +28,15 @@ const checkLogCompleted = async (user: string, start?: string): Promise<boolean 
 }
 
 const handleQueryMeals: RequestHandler = async (req, res) => {
-  const { meal_type, start, end } = req.query as MealsQuery
+  const { meal_type, start, end } = req.query as Record<string, string | undefined>
   const user = req.user!
   const result = await queryMeals(user, { end, meal_type, start })
   const log_completed = await checkLogCompleted(user, start)
   res.json({ data: result.data, log_completed, success: true })
 }
 
-const handleGetMeal: RequestHandler = async (req, res) => {
-  const { id } = req.params
-  const user = req.user!
-  const result = await getMeal(user, id)
+const handleGetMeal: RequestHandler<{ id: string }> = async (req, res) => {
+  const result = await getMeal(req.user!, req.params.id)
   if (!result.success) return res.status(404).json({ error: result.error, success: false })
   res.json({ data: result.data, success: true })
 }
