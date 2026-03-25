@@ -207,6 +207,33 @@ describe('Meals Integration Tests', () => {
     })
   })
 
+  describe('sensitivities', () => {
+    test('round-trips sensitivities through TEXT[]', async () => {
+      const user = getTestUser()
+
+      const meal = await insertMeal(user, {
+        meal_type: 'dinner',
+        sensitivities: ['gluten', 'dairy', 'red_meat'],
+        time: new Date('2025-06-15T18:00:00Z'),
+      })
+
+      expect(meal.sensitivities).toEqual(['gluten', 'dairy', 'red_meat'])
+
+      const found = await getMealById(user, meal.id)
+      expect(found!.sensitivities).toEqual(['gluten', 'dairy', 'red_meat'])
+    })
+
+    test('returns undefined when no sensitivities set', async () => {
+      const user = getTestUser()
+
+      const meal = await insertMeal(user, {
+        time: new Date('2025-06-15T12:00:00Z'),
+      })
+
+      expect(meal.sensitivities).toBeUndefined()
+    })
+  })
+
   describe('JSONB storage', () => {
     test('round-trips food_items through JSONB', async () => {
       const user = getTestUser()

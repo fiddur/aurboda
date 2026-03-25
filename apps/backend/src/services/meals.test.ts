@@ -70,6 +70,30 @@ describe('addMeal', () => {
     expect(result.data!.micros).toEqual({ iron: 3.2 })
   })
 
+  test('creates a meal with sensitivities', async () => {
+    mockInsertMeal.mockResolvedValue({
+      created_at: new Date('2025-06-15T10:00:00Z'),
+      id: 'meal-3',
+      meal_type: 'dinner',
+      sensitivities: ['gluten', 'dairy'],
+      source: 'manual',
+      time: new Date('2025-06-15T18:00:00Z'),
+    })
+
+    const result = await addMeal('testuser', {
+      meal_type: 'dinner',
+      sensitivities: ['gluten', 'dairy'],
+      time: '2025-06-15T18:00:00Z',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.data!.sensitivities).toEqual(['gluten', 'dairy'])
+    expect(mockInsertMeal).toHaveBeenCalledWith(
+      'testuser',
+      expect.objectContaining({ sensitivities: ['gluten', 'dairy'] }),
+    )
+  })
+
   test('creates a meal with minimal fields', async () => {
     mockInsertMeal.mockResolvedValue({
       created_at: new Date('2025-06-15T10:00:00Z'),

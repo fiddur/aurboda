@@ -339,6 +339,7 @@ export interface Meal {
   food_items?: MealFoodItem[]
   micros?: Record<string, number>
   notes?: string
+  sensitivities?: string[]
   created_at: Date
 }
 
@@ -405,6 +406,8 @@ export interface UserSettings {
   sex?: BiologicalSex // Biological sex for calorie calculation
   item_icons?: Record<string, string> // Unified icon mappings for all timeline items (tags, activities, exercise types)
   tag_icons?: Record<string, string> // Deprecated: tag-only icons (migrated to item_icons)
+  meal_slots?: Array<{ name: string; default_hour: number }> // Meal slots for quick-logging
+  sensitivity_areas?: string[] // Sensitivity areas to track in meals
   tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names
   training_load?: TrainingLoadSettings // Training load (Banister model) parameters
 }

@@ -9,7 +9,7 @@ import { query } from './connection.ts'
 import { mapMealRow } from './row-mappers.ts'
 
 const MEAL_COLUMNS =
-  'id, source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, created_at'
+  'id, source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, sensitivities, created_at'
 
 export interface InsertMealInput {
   source?: string
@@ -24,6 +24,7 @@ export interface InsertMealInput {
   food_items?: MealFoodItem[]
   micros?: Record<string, number>
   notes?: string
+  sensitivities?: string[]
 }
 
 /**
@@ -32,8 +33,8 @@ export interface InsertMealInput {
 export const insertMeal = async (user: string, input: InsertMealInput): Promise<Meal> => {
   const result = await query(
     user,
-    `INSERT INTO meals (source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO meals (source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, sensitivities)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING ${MEAL_COLUMNS}`,
     [
       input.source ?? 'manual',
@@ -48,6 +49,7 @@ export const insertMeal = async (user: string, input: InsertMealInput): Promise<
       input.food_items ? JSON.stringify(input.food_items) : null,
       input.micros ? JSON.stringify(input.micros) : null,
       input.notes ?? null,
+      input.sensitivities ?? null,
     ],
   )
 

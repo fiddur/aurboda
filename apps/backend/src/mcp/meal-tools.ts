@@ -27,6 +27,7 @@ export const registerMealTools = (server: McpServer, user: string) => {
         name: params.name,
         notes: params.notes,
         protein: params.protein,
+        sensitivities: params.sensitivities,
         source: params.source,
         time: params.time,
       })

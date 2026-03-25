@@ -67,6 +67,7 @@ export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
         name: req.body.name,
         notes: req.body.notes,
         protein: req.body.protein,
+        sensitivities: req.body.sensitivities,
         source: req.body.source,
         time: req.body.time,
       })

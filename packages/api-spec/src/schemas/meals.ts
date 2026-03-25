@@ -84,6 +84,10 @@ export const mealSchema = z
       .meta({ description: 'Meal name/description (e.g., "Rye bread with peanut butter and banana")' }),
     notes: z.string().optional().meta({ description: 'Free text notes' }),
     protein: z.number().optional().meta({ description: 'Total protein in grams' }),
+    sensitivities: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Sensitivity areas flagged for this meal (e.g., "gluten", "dairy", "red_meat")' }),
     source: z
       .string()
       .max(50)
@@ -117,6 +121,10 @@ export const addMealBodySchema = z
     name: z.string().max(255).optional().meta({ description: 'Meal name/description' }),
     notes: z.string().optional().meta({ description: 'Free text notes' }),
     protein: z.number().optional().meta({ description: 'Total protein in grams' }),
+    sensitivities: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Sensitivity areas flagged for this meal (e.g., "gluten", "dairy", "red_meat")' }),
     source: z.string().max(50).optional().meta({ description: 'Data source' }),
     time: iso8601DateTimeSchema.meta({ description: 'When the meal was consumed' }),
   })

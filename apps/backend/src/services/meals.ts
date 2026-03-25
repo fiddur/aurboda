@@ -41,6 +41,7 @@ export interface AddMealInput {
   food_items?: FoodItemInput[]
   micros?: Record<string, number>
   notes?: string
+  sensitivities?: string[]
 }
 
 interface MealResponse {
@@ -57,6 +58,7 @@ interface MealResponse {
   food_items?: MealFoodItem[]
   micros?: Record<string, number>
   notes?: string
+  sensitivities?: string[]
   created_at: string
 }
 
@@ -89,6 +91,7 @@ const formatMeal = (meal: Meal): MealResponse => ({
   name: meal.name,
   notes: meal.notes,
   protein: meal.protein,
+  sensitivities: meal.sensitivities,
   source: meal.source,
   time: meal.time.toISOString(),
 })
@@ -114,6 +117,7 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
     name: input.name,
     notes: input.notes,
     protein: input.protein,
+    sensitivities: input.sensitivities,
     source: input.source,
     time: mealTime,
   })
