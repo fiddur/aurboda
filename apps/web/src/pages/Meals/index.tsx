@@ -196,6 +196,13 @@ function OtherMeals({
 
 const todayISO = () => formatISO(new Date(), { representation: 'date' })
 
+const getOtherMeals = (meals: Meal[], slots: MealSlot[]): Meal[] => {
+  const slotTypes = new Set(slots.map((s) => s.name.toLowerCase()))
+  return meals
+    .filter((m) => !slotTypes.has(m.meal_type ?? ''))
+    .sort((a, b) => a.time.getTime() - b.time.getTime())
+}
+
 /** Hook to manage meal mutations with optimistic updates. */
 function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
   const queryClient = useQueryClient()
@@ -317,9 +324,8 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     queryKey: ['userSettings'],
   })
 
-  const mealSlots: MealSlot[] =
-    settings?.meal_slots && settings.meal_slots.length > 0 ? settings.meal_slots : DEFAULT_MEAL_SLOTS
-  const sensitivityAreas: string[] = settings?.sensitivity_areas ?? []
+  const mealSlots = settings?.meal_slots?.length ? settings.meal_slots : DEFAULT_MEAL_SLOTS
+  const sensitivityAreas = settings?.sensitivity_areas ?? []
 
   const selectedDate = new Date(dayKey)
   const dayStart = startOfDay(selectedDate)
@@ -346,10 +352,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     toggleCompletedMutation,
   } = useMealMutations(mealsQueryKey, meals)
 
-  const slotTypes = new Set(mealSlots.map((s) => s.name.toLowerCase()))
-  const otherMeals = (meals ?? [])
-    .filter((m) => !slotTypes.has(m.meal_type ?? ''))
-    .sort((a, b) => a.time.getTime() - b.time.getTime())
+  const otherMeals = getOtherMeals(meals ?? [], mealSlots)
 
   if (!isLoggedIn) return <p>Please log in to use meal tracking.</p>
   if (isLoading) return <p class="loading">Loading...</p>
