@@ -406,6 +406,7 @@ export interface UserSettings {
   sex?: BiologicalSex // Biological sex for calorie calculation
   item_icons?: Record<string, string> // Unified icon mappings for all timeline items (tags, activities, exercise types)
   tag_icons?: Record<string, string> // Deprecated: tag-only icons (migrated to item_icons)
+  food_sensitivity_map?: Record<string, string[]> // Food item name -> sensitivity areas
   meal_slots?: Array<{ name: string; default_hour: number }> // Meal slots for quick-logging
   sensitivity_areas?: string[] // Sensitivity areas to track in meals
   tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names

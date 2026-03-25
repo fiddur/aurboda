@@ -481,6 +481,7 @@ export const tableCreationOrder = [
   'lastfm_tag_rules_indexes',
   'meals',
   'meals_indexes',
+  'meal_log_completed',
   'locations',
   'locations_indexes',
   'places',

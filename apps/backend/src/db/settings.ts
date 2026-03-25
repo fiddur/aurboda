@@ -130,6 +130,7 @@ export const upsertUserSettings = async (
     'dashboard',
     'goals',
     'hr_zone_start',
+    'food_sensitivity_map',
     'item_icons',
     'lastfm_username',
     'meal_slots',

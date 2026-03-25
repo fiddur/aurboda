@@ -167,6 +167,16 @@ export const sensitivityAreasSchema = z.array(z.string().min(1)).meta({
 })
 
 /**
+ * Food-to-sensitivity mapping.
+ * Maps exact food item names to sensitivity areas they contain.
+ * E.g., { "Toasted rye bread": ["gluten"], "Milk": ["dairy"] }
+ */
+export const foodSensitivityMapSchema = z.record(z.string(), z.array(z.string())).meta({
+  id: 'FoodSensitivityMap',
+  description: 'Mapping from food item names to sensitivity areas they contain',
+})
+
+/**
  * Update settings input schema.
  */
 export const updateSettingsInputSchema = z
@@ -189,6 +199,9 @@ export const updateSettingsInputSchema = z
     item_icons: itemIconsSchema.nullable().optional().meta({
       description:
         'Unified icon mappings for all timeline items — tags, activities, exercise types (set to null to clear all)',
+    }),
+    food_sensitivity_map: foodSensitivityMapSchema.nullable().optional().meta({
+      description: 'Food-to-sensitivity mapping (set to null to clear)',
     }),
     meal_slots: mealSlotsSchema.nullable().optional().meta({
       description: 'Configured meal slots for quick-logging (set to null to clear)',
@@ -241,6 +254,7 @@ export const userSettingsResponseSchema = baseResponseSchema
     garmin_connected: z
       .boolean()
       .meta({ description: 'Whether Garmin Connect is connected via stored session' }),
+    food_sensitivity_map: foodSensitivityMapSchema.meta({ description: 'Food-to-sensitivity mapping' }),
     meal_slots: mealSlotsSchema.meta({ description: 'Configured meal slots for quick-logging' }),
     lastfm_configured: z.boolean().meta({ description: 'Whether Last.fm API key is configured on server' }),
     lastfm_username: z.string().nullable().meta({ description: 'Last.fm username for scrobble sync' }),
