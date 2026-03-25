@@ -27,67 +27,45 @@ const checkLogCompleted = async (user: string, start?: string): Promise<boolean 
   return completed.includes(dateStr)
 }
 
+const handleQueryMeals: RequestHandler = async (req, res) => {
+  const { meal_type, start, end } = req.query as MealsQuery
+  const user = req.user!
+  const result = await queryMeals(user, { end, meal_type, start })
+  const log_completed = await checkLogCompleted(user, start)
+  res.json({ data: result.data, log_completed, success: true })
+}
+
+const handleGetMeal: RequestHandler = async (req, res) => {
+  const { id } = req.params
+  const user = req.user!
+  const result = await getMeal(user, id)
+  if (!result.success) return res.status(404).json({ error: result.error, success: false })
+  res.json({ data: result.data, success: true })
+}
+
+const handleUpsertMeal: RequestHandler = async (req, res) => {
+  const user = req.user!
+  const result = await addMeal(user, { ...req.body })
+  if (!result.success) return res.status(400).json({ error: result.error, success: false })
+  res.json({ data: result.data, success: true })
+}
+
 export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()
 
-  // GET /meals - Query meals with optional filters
-  router.get<Record<string, never>, MealsResponse & { log_completed?: boolean }, unknown, MealsQuery>(
-    '/',
-    authMiddleware,
-    validateQuery(mealsQuerySchema),
-    async (req, res) => {
-      const { meal_type, start, end } = req.query
-      const user = req.user!
+  router.get('/', authMiddleware, validateQuery(mealsQuerySchema), handleQueryMeals)
 
-      const result = await queryMeals(user, { end, meal_type, start })
-      const log_completed = await checkLogCompleted(user, start)
-
-      res.json({ data: result.data, log_completed, success: true })
-    },
-  )
-
-  // --- Log completion endpoints (before /:id to avoid route conflict) ---
-
-  // PUT /meals/log-completed/:date
+  // Log completion (before /:id to avoid route conflict)
   router.put<{ date: string }>('/log-completed/:date', authMiddleware, async (req, res) => {
-    const user = req.user!
-    await setMealLogCompleted(user, req.params.date)
+    await setMealLogCompleted(req.user!, req.params.date)
     res.json({ success: true })
   })
-
-  // DELETE /meals/log-completed/:date
   router.delete<{ date: string }>('/log-completed/:date', authMiddleware, async (req, res) => {
-    const user = req.user!
-    await unsetMealLogCompleted(user, req.params.date)
+    await unsetMealLogCompleted(req.user!, req.params.date)
     res.json({ success: true })
   })
 
-  // GET /meals/:id - Get a single meal
-  router.get<{ id: string }, MealResponse>('/:id', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const user = req.user!
-
-    const result = await getMeal(user, id)
-
-    if (!result.success) {
-      return res.status(404).json({ error: result.error, success: false })
-    }
-
-    res.json({ data: result.data, success: true })
-  })
-
-  // PUT /meals - Upsert a meal (idempotent — client provides ID)
-  // POST /meals - Create a meal (backwards-compatible, server generates ID)
-  const handleUpsertMeal: RequestHandler = async (req, res) => {
-    const user = req.user!
-    const result = await addMeal(user, { ...req.body })
-
-    if (!result.success) {
-      return res.status(400).json({ error: result.error, success: false })
-    }
-
-    res.json({ data: result.data, success: true })
-  }
+  router.get('/:id', authMiddleware, handleGetMeal)
 
   const upsertMiddleware = [authMiddleware, validateBody(addMealBodySchema), handleUpsertMeal]
   router.put('/', ...upsertMiddleware)
