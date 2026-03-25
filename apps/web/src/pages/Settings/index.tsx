@@ -3,6 +3,7 @@ import { useCallback, useState } from 'preact/hooks'
 
 import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../../state/api'
 
+import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { SettingsSection } from '../../components/SettingsSection'
 import { TimelineIconsSettings } from '../../components/TimelineIconsSettings'
@@ -204,6 +205,8 @@ export function Settings() {
           <p class="field-description">Using default thresholds (or age-based if birth date is set).</p>
         )}
       </SettingsSection>
+
+      <MealPreferencesSettings />
 
       <TimelineIconsSettings />
 

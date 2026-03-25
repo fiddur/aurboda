@@ -65,6 +65,11 @@ import type {
   QueryMetricsBucketedResponse,
   QueryMetricsQuery,
   QueryMetricsResponse,
+  Meal as ApiMeal,
+  AddMealBody,
+  MealResponse,
+  MealsResponse,
+  MealsQuery,
   Report as ApiReport,
   ReportResponse,
   ReportsResponse,
@@ -151,6 +156,11 @@ export interface Tag extends Omit<ApiTag, 'start_time' | 'end_time'> {
 
 export interface Scrobble extends Omit<ApiScrobble, 'recorded_at'> {
   recorded_at: Date
+}
+
+export interface Meal extends Omit<ApiMeal, 'time' | 'created_at'> {
+  time: Date
+  created_at?: Date
 }
 
 export interface Report extends Omit<ApiReport, 'date' | 'created_at'> {
@@ -1514,6 +1524,40 @@ export const updateReport = async (id: string, body: UpdateReportBody): Promise<
 export const deleteReport = async (id: string): Promise<void> => {
   const { token } = auth.value
   await axios.delete(`${API_URL}/reports/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// ==========================================================================
+// Meals API
+// ==========================================================================
+
+const mapMeal = (m: ApiMeal): Meal => ({
+  ...m,
+  created_at: m.created_at ? new Date(m.created_at) : undefined,
+  time: new Date(m.time),
+})
+
+export const fetchMeals = async (params?: MealsQuery): Promise<Meal[]> => {
+  const { token } = auth.value
+  const response = await axios.get<MealsResponse>(`${API_URL}/meals`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+  return (response.data.data ?? []).map(mapMeal)
+}
+
+export const addMealApi = async (body: AddMealBody): Promise<Meal> => {
+  const { token } = auth.value
+  const response = await axios.post<MealResponse>(`${API_URL}/meals`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return mapMeal(response.data.data!)
+}
+
+export const deleteMealApi = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/meals/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
