@@ -139,9 +139,9 @@ export const updateMeal = async (user: string, id: string, input: UpdateMealInpu
   if (input.fat !== undefined) addField('fat', input.fat)
   if (input.fiber !== undefined) addField('fiber', input.fiber)
   if (input.food_items !== undefined)
-    addField('food_items', input.food_items === null ? null : input.food_items, input.food_items !== null)
+    {addField('food_items', input.food_items === null ? null : input.food_items, input.food_items !== null)}
   if (input.micros !== undefined)
-    addField('micros', input.micros === null ? null : input.micros, input.micros !== null)
+    {addField('micros', input.micros === null ? null : input.micros, input.micros !== null)}
   if (input.notes !== undefined) addField('notes', input.notes)
   if (input.sensitivities !== undefined) addField('sensitivities', input.sensitivities)
 

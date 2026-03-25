@@ -28,9 +28,48 @@ const DEFAULT_MEAL_SLOTS: MealSlot[] = [
 
 const formatHour = (hour: number): string => `${hour}:00`
 
-/** Find the existing meal for a slot on the selected day. */
-const findMealForSlot = (meals: Meal[], slotName: string): Meal | undefined =>
-  meals.find((m) => m.meal_type === slotName.toLowerCase())
+const formatMealType = (type?: string): string =>
+  type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Meal'
+
+/** Find all meals for a slot on the selected day (there could be multiple). */
+const findMealsForSlot = (meals: Meal[], slotName: string): Meal[] =>
+  meals.filter((m) => m.meal_type === slotName.toLowerCase())
+
+/** Meal detail display — food items, name, sensitivities, notes. */
+function MealDetails({ meal }: { meal: Meal }) {
+  const hasFoodItems = meal.food_items && meal.food_items.length > 0
+  const hasSensitivities = meal.sensitivities && meal.sensitivities.length > 0
+  const hasCalories = meal.calories !== undefined
+
+  if (!meal.name && !hasFoodItems && !hasSensitivities && !meal.notes && !hasCalories) return null
+
+  return (
+    <div class="meal-details">
+      {meal.name && <div class="meal-name">{meal.name}</div>}
+      {hasFoodItems && (
+        <div class="food-items">
+          {meal.food_items!.map((item, i) => (
+            <span key={i} class="food-item-chip">
+              {item.name}
+            </span>
+          ))}
+        </div>
+      )}
+      {hasSensitivities && (
+        <div class="meal-sensitivities">
+          {meal.sensitivities!.map((s) => (
+            <span key={s} class="sensitivity-chip">
+              {s}
+            </span>
+          ))}
+        </div>
+      )}
+      {hasCalories && <span class="meal-calories">{meal.calories} kcal</span>}
+      {meal.notes && <div class="meal-notes">{meal.notes}</div>}
+      {meal.source && meal.source !== 'manual' && <span class="meal-source">via {meal.source}</span>}
+    </div>
+  )
+}
 
 export function Meals() {
   const isLoggedIn = auth.value.token
@@ -62,30 +101,21 @@ export function Meals() {
 
   const invalidateMeals = () => queryClient.invalidateQueries({ queryKey: ['meals'] })
 
-  // Create a new meal for a slot
   const addMutation = useMutation({ mutationFn: addMealApi, onSuccess: invalidateMeals })
-
-  // Update an existing meal
   const updateMutation = useMutation({
     mutationFn: ({ id, ...body }: { id: string } & Parameters<typeof updateMealApi>[1]) =>
       updateMealApi(id, body),
     onSuccess: invalidateMeals,
   })
-
-  // Delete a meal
   const deleteMutation = useMutation({ mutationFn: deleteMealApi, onSuccess: invalidateMeals })
 
   /** Toggle a sensitivity for a slot. Creates the meal if it doesn't exist yet. */
-  const handleToggleSensitivity = (slot: MealSlot, area: string) => {
-    const existing = findMealForSlot(meals ?? [], slot.name)
-
-    if (existing) {
-      // Update existing meal
-      const current = existing.sensitivities ?? []
+  const handleToggleSensitivity = (slot: MealSlot, area: string, existingMeal?: Meal) => {
+    if (existingMeal) {
+      const current = existingMeal.sensitivities ?? []
       const next = current.includes(area) ? current.filter((s) => s !== area) : [...current, area]
-      updateMutation.mutate({ id: existing.id!, sensitivities: next })
+      updateMutation.mutate({ id: existingMeal.id!, sensitivities: next })
     } else {
-      // Create new meal at default hour
       const mealTime = new Date(selectedDate)
       mealTime.setHours(slot.default_hour, 0, 0, 0)
       addMutation.mutate({
@@ -97,17 +127,13 @@ export function Meals() {
     }
   }
 
-  /** Change the hour for an existing meal. */
   const handleChangeHour = (meal: Meal, hour: number) => {
     const newTime = new Date(meal.time)
     newTime.setHours(hour, 0, 0, 0)
     updateMutation.mutate({ id: meal.id!, time: newTime.toISOString() })
   }
 
-  /** Navigate to previous day. */
   const goBack = () => setSelectedDate((d) => subDays(d, 1))
-
-  /** Navigate to next day (not beyond today). */
   const goForward = () =>
     setSelectedDate((d) => {
       const next = new Date(d)
@@ -116,6 +142,12 @@ export function Meals() {
     })
 
   const isToday = dayKey === format(new Date(), 'yyyy-MM-dd')
+
+  // Find meals that don't belong to any configured slot
+  const slotTypes = new Set(mealSlots.map((s) => s.name.toLowerCase()))
+  const otherMeals = (meals ?? [])
+    .filter((m) => !slotTypes.has(m.meal_type ?? ''))
+    .sort((a, b) => a.time.getTime() - b.time.getTime())
 
   if (!isLoggedIn) {
     return (
@@ -149,41 +181,87 @@ export function Meals() {
       {isLoading ? (
         <p class="loading">Loading...</p>
       ) : (
-        <div class="meal-slots">
-          {mealSlots.map((slot) => {
-            const meal = findMealForSlot(meals ?? [], slot.name)
-            const sensitivities = meal?.sensitivities ?? []
-            const mealHour = meal ? meal.time.getHours() : slot.default_hour
-            const hours = [slot.default_hour - 1, slot.default_hour, slot.default_hour + 1].filter(
-              (h) => h >= 0 && h <= 23,
-            )
+        <>
+          <div class="meal-slots">
+            {mealSlots.map((slot) => {
+              const slotMeals = findMealsForSlot(meals ?? [], slot.name)
+              // Use the first meal for the quick-log checkboxes
+              const primaryMeal = slotMeals[0]
+              const sensitivities = primaryMeal?.sensitivities ?? []
+              const mealHour = primaryMeal ? primaryMeal.time.getHours() : slot.default_hour
+              const hours = [slot.default_hour - 1, slot.default_hour, slot.default_hour + 1].filter(
+                (h) => h >= 0 && h <= 23,
+              )
 
-            return (
-              <div key={slot.name} class={`meal-slot-row ${meal ? 'has-meal' : ''}`}>
-                <div class="slot-top">
-                  <span class="slot-name">{slot.name}</span>
+              return (
+                <div key={slot.name} class={`meal-slot-row ${primaryMeal ? 'has-meal' : ''}`}>
+                  <div class="slot-top">
+                    <span class="slot-name">{slot.name}</span>
 
-                  <div class="time-selector">
-                    {hours.map((h) => (
-                      <button
-                        key={h}
-                        type="button"
-                        class={`time-btn ${mealHour === h ? 'active' : ''}`}
-                        onClick={() => {
-                          if (meal) {
-                            handleChangeHour(meal, h)
+                    <div class="time-selector">
+                      {hours.map((h) => (
+                        <button
+                          key={h}
+                          type="button"
+                          class={`time-btn ${mealHour === h ? 'active' : ''}`}
+                          onClick={() => {
+                            if (primaryMeal) handleChangeHour(primaryMeal, h)
+                          }}
+                          disabled={!primaryMeal && h !== slot.default_hour}
+                          title={
+                            !primaryMeal
+                              ? 'Log a meal first to change the time'
+                              : `Set time to ${formatHour(h)}`
                           }
-                          // If no meal yet, the hour will be used when first sensitivity is checked
-                        }}
-                        disabled={!meal && h !== slot.default_hour}
-                        title={!meal ? 'Log a meal first to change the time' : `Set time to ${formatHour(h)}`}
-                      >
-                        {formatHour(h)}
-                      </button>
-                    ))}
+                        >
+                          {formatHour(h)}
+                        </button>
+                      ))}
+                    </div>
+
+                    {primaryMeal && (
+                      <ConfirmButton
+                        label="Delete"
+                        confirmMessage="Delete this meal?"
+                        onConfirm={() => deleteMutation.mutate(primaryMeal.id!)}
+                        isPending={deleteMutation.isPending}
+                        pendingLabel="Deleting..."
+                        buttonClass="btn-danger-small"
+                      />
+                    )}
                   </div>
 
-                  {meal && (
+                  {sensitivityAreas.length > 0 && (
+                    <div class="sensitivity-checks">
+                      {sensitivityAreas.map((area) => (
+                        <label key={area} class="sensitivity-label">
+                          <input
+                            type="checkbox"
+                            checked={sensitivities.includes(area)}
+                            onChange={() => handleToggleSensitivity(slot, area, primaryMeal)}
+                          />
+                          {area}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  {slotMeals.map((meal) => (
+                    <MealDetails key={meal.id} meal={meal} />
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+
+          {otherMeals.length > 0 && (
+            <div class="other-meals">
+              <h2>Other</h2>
+              {otherMeals.map((meal) => (
+                <div key={meal.id} class="meal-slot-row has-meal">
+                  <div class="slot-top">
+                    <span class="slot-name">{formatMealType(meal.meal_type)}</span>
+                    <span class="meal-time">{format(meal.time, 'HH:mm')}</span>
                     <ConfirmButton
                       label="Delete"
                       confirmMessage="Delete this meal?"
@@ -192,29 +270,13 @@ export function Meals() {
                       pendingLabel="Deleting..."
                       buttonClass="btn-danger-small"
                     />
-                  )}
-                </div>
-
-                {sensitivityAreas.length > 0 && (
-                  <div class="sensitivity-checks">
-                    {sensitivityAreas.map((area) => (
-                      <label key={area} class="sensitivity-label">
-                        <input
-                          type="checkbox"
-                          checked={sensitivities.includes(area)}
-                          onChange={() => handleToggleSensitivity(slot, area)}
-                        />
-                        {area}
-                      </label>
-                    ))}
                   </div>
-                )}
-
-                {meal?.name && <div class="meal-name">{meal.name}</div>}
-              </div>
-            )
-          })}
-        </div>
+                  <MealDetails meal={meal} />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {(addMutation.isError || updateMutation.isError) && (
