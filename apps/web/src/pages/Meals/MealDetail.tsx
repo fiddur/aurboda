@@ -4,8 +4,94 @@ import { useLocation, useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
-import { deleteMealApi, fetchMeal, updateMealApi } from '../../state/api'
+import { deleteMealApi, fetchMeal, type Meal, updateMealApi } from '../../state/api'
 import './MealDetail.css'
+
+interface EditState {
+  name?: string
+  time?: string
+  notes?: string
+}
+
+function EditableField({
+  label,
+  value,
+  editing,
+  editValue,
+  onEdit,
+  type = 'text',
+  placeholder,
+}: {
+  label: string
+  value: string
+  editing: boolean
+  editValue: string
+  onEdit: (v: string) => void
+  type?: string
+  placeholder?: string
+}) {
+  return (
+    <div class="detail-row">
+      <label>{label}</label>
+      {editing ? (
+        <input
+          type={type}
+          value={editValue}
+          placeholder={placeholder}
+          onInput={(e) => onEdit((e.target as HTMLInputElement).value)}
+        />
+      ) : (
+        <span class="detail-value">{value || '—'}</span>
+      )}
+    </div>
+  )
+}
+
+function MealInfoRows({ meal }: { meal: Meal }) {
+  return (
+    <>
+      {meal.food_items && meal.food_items.length > 0 && (
+        <div class="detail-row">
+          <label>Food Items</label>
+          <div class="detail-food-items">
+            {meal.food_items.map((item, i) => (
+              <span key={i} class="detail-food-chip">
+                {item.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {meal.sensitivities && meal.sensitivities.length > 0 && (
+        <div class="detail-row">
+          <label>Sensitivities</label>
+          <div class="detail-sensitivities">
+            {meal.sensitivities.map((s) => (
+              <span key={s} class="detail-sensitivity-chip">
+                {s}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {meal.calories !== undefined && (
+        <div class="detail-row">
+          <label>Calories</label>
+          <span class="detail-value">{meal.calories} kcal</span>
+        </div>
+      )}
+
+      {meal.source && (
+        <div class="detail-row">
+          <label>Source</label>
+          <span class="detail-value">{meal.source}</span>
+        </div>
+      )}
+    </>
+  )
+}
 
 export function MealDetail() {
   const { params } = useRoute()
@@ -18,7 +104,7 @@ export function MealDetail() {
     queryKey: ['meal', id],
   })
 
-  const [editing, setEditing] = useState<{ name?: string; time?: string; notes?: string } | null>(null)
+  const [editing, setEditing] = useState<EditState | null>(null)
 
   const updateMutation = useMutation({
     mutationFn: (body: Parameters<typeof updateMealApi>[1]) => updateMealApi(id, body),
@@ -37,24 +123,20 @@ export function MealDetail() {
     },
   })
 
-  if (isLoading) {
-    return (
+  if (isLoading)
+    {return (
       <div class="meal-detail-page">
         <p class="loading">Loading...</p>
       </div>
-    )
-  }
-  if (!meal) {
-    return (
+    )}
+  if (!meal)
+    {return (
       <div class="meal-detail-page">
         <p>Meal not found.</p>
       </div>
-    )
-  }
+    )}
 
   const isEditing = editing !== null
-
-  // Editing values with fallback to meal values
   const editName = editing?.name ?? meal.name ?? ''
   const editTime = editing?.time ?? format(meal.time, "yyyy-MM-dd'T'HH:mm")
   const editNotes = editing?.notes ?? meal.notes ?? ''
@@ -109,32 +191,23 @@ export function MealDetail() {
           <span class="detail-value">{meal.meal_type ?? '—'}</span>
         </div>
 
-        <div class="detail-row">
-          <label>Time</label>
-          {isEditing ? (
-            <input
-              type="datetime-local"
-              value={editTime}
-              onInput={(e) => setEditing({ ...editing, time: (e.target as HTMLInputElement).value })}
-            />
-          ) : (
-            <span class="detail-value">{format(meal.time, 'yyyy-MM-dd HH:mm')}</span>
-          )}
-        </div>
+        <EditableField
+          label="Time"
+          value={format(meal.time, 'yyyy-MM-dd HH:mm')}
+          editing={isEditing}
+          editValue={editTime}
+          onEdit={(v) => setEditing({ ...editing, time: v })}
+          type="datetime-local"
+        />
 
-        <div class="detail-row">
-          <label>Name</label>
-          {isEditing ? (
-            <input
-              type="text"
-              value={editName}
-              placeholder="Meal name/description"
-              onInput={(e) => setEditing({ ...editing, name: (e.target as HTMLInputElement).value })}
-            />
-          ) : (
-            <span class="detail-value">{meal.name || '—'}</span>
-          )}
-        </div>
+        <EditableField
+          label="Name"
+          value={meal.name ?? ''}
+          editing={isEditing}
+          editValue={editName}
+          onEdit={(v) => setEditing({ ...editing, name: v })}
+          placeholder="Meal name/description"
+        />
 
         <div class="detail-row">
           <label>Notes</label>
@@ -150,45 +223,7 @@ export function MealDetail() {
           )}
         </div>
 
-        {meal.food_items && meal.food_items.length > 0 && (
-          <div class="detail-row">
-            <label>Food Items</label>
-            <div class="detail-food-items">
-              {meal.food_items.map((item, i) => (
-                <span key={i} class="detail-food-chip">
-                  {item.name}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {meal.sensitivities && meal.sensitivities.length > 0 && (
-          <div class="detail-row">
-            <label>Sensitivities</label>
-            <div class="detail-sensitivities">
-              {meal.sensitivities.map((s) => (
-                <span key={s} class="detail-sensitivity-chip">
-                  {s}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {meal.calories !== undefined && (
-          <div class="detail-row">
-            <label>Calories</label>
-            <span class="detail-value">{meal.calories} kcal</span>
-          </div>
-        )}
-
-        {meal.source && (
-          <div class="detail-row">
-            <label>Source</label>
-            <span class="detail-value">{meal.source}</span>
-          </div>
-        )}
+        <MealInfoRows meal={meal} />
       </div>
     </div>
   )
