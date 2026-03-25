@@ -51,20 +51,23 @@ const handleDeleteMeal: RequestHandler<{ id: string }> = async (req, res) => {
   res.json({ success: true })
 }
 
+const handleSetLogCompleted: RequestHandler<{ date: string }> = async (req, res) => {
+  await setMealLogCompleted(req.user!, req.params.date)
+  res.json({ success: true })
+}
+
+const handleUnsetLogCompleted: RequestHandler<{ date: string }> = async (req, res) => {
+  await unsetMealLogCompleted(req.user!, req.params.date)
+  res.json({ success: true })
+}
+
 export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()
 
   router.get('/', authMiddleware, validateQuery(mealsQuerySchema), handleQueryMeals)
 
-  // Log completion (before /:id to avoid route conflict)
-  router.put<{ date: string }>('/log-completed/:date', authMiddleware, async (req, res) => {
-    await setMealLogCompleted(req.user!, req.params.date)
-    res.json({ success: true })
-  })
-  router.delete<{ date: string }>('/log-completed/:date', authMiddleware, async (req, res) => {
-    await unsetMealLogCompleted(req.user!, req.params.date)
-    res.json({ success: true })
-  })
+  router.put('/log-completed/:date', authMiddleware, handleSetLogCompleted)
+  router.delete('/log-completed/:date', authMiddleware, handleUnsetLogCompleted)
 
   router.get('/:id', authMiddleware, handleGetMeal)
 
