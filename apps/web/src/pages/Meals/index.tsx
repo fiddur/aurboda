@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay } from 'date-fns'
-import { useCallback, useRef, useState } from 'preact/hooks'
+import { useCallback, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { DateNav } from '../../components/DateNav'
@@ -198,9 +198,6 @@ export function Meals() {
   const queryClient = useQueryClient()
 
   const [dayKey, setDayKey] = useState(() => formatISO(new Date(), { representation: 'date' }))
-  // Track slots with in-flight creation to prevent duplicates
-  const pendingCreates = useRef(new Set<string>())
-  // Track which slots have active mutations for the spinner
   const [savingSlots, setSavingSlots] = useState(new Set<string>())
 
   const { data: settings } = useQuery({
@@ -252,18 +249,11 @@ export function Meals() {
 
   const invalidateMeals = () => queryClient.invalidateQueries({ queryKey: ['meals'] })
 
-  const addMutation = useMutation({
+  // PUT is idempotent — safe to retry, no duplicate risk
+  const upsertMutation = useMutation({
     mutationFn: addMealApi,
-    onSuccess: (newMeal) => {
-      pendingCreates.current.delete(newMeal.meal_type ?? '')
-      // Replace the optimistic placeholder with the real meal
-      optimisticUpdate((old) => old.map((m) => (m.id === `pending-${newMeal.meal_type}` ? newMeal : m)))
-      invalidateMeals()
-    },
-    onError: (_err, variables) => {
-      const slotName = variables.meal_type ?? ''
-      pendingCreates.current.delete(slotName)
-      markSlotSaving(slotName, false)
+    onSettled: (_data, _err, variables) => {
+      if (variables.meal_type) markSlotSaving(variables.meal_type, false)
       invalidateMeals()
     },
   })
@@ -272,7 +262,6 @@ export function Meals() {
     mutationFn: ({ id, ...body }: { id: string; sensitivities?: string[]; time?: string }) =>
       updateMealApi(id, body),
     onSettled: (_data, _err, variables) => {
-      // Find the meal's slot to clear saving indicator
       const meal = (meals ?? []).find((m) => m.id === variables.id)
       if (meal?.meal_type) markSlotSaving(meal.meal_type, false)
       invalidateMeals()
@@ -291,38 +280,21 @@ export function Meals() {
     markSlotSaving(slotName, true)
 
     if (existingMeal) {
-      // Update existing meal optimistically
       const current = existingMeal.sensitivities ?? []
       const next = current.includes(area) ? current.filter((s) => s !== area) : [...current, area]
       optimisticUpdate((old) =>
         old.map((m) => (m.id === existingMeal.id ? { ...m, sensitivities: next } : m)),
       )
       updateMutation.mutate({ id: existingMeal.id!, sensitivities: next })
-    } else if (pendingCreates.current.has(slotName)) {
-      // A create is already in flight for this slot — update the optimistic placeholder
-      optimisticUpdate((old) =>
-        old.map((m) => {
-          if (m.id !== `pending-${slotName}`) return m
-          const current = m.sensitivities ?? []
-          const next = current.includes(area) ? current.filter((s) => s !== area) : [...current, area]
-          return { ...m, sensitivities: next }
-        }),
-      )
-      // The real meal will arrive from addMutation.onSuccess and we'll reconcile
     } else {
-      // Create new meal — add optimistic placeholder and guard against duplicates
-      pendingCreates.current.add(slotName)
+      // Create new meal with client-generated UUID — PUT is idempotent
+      const id = crypto.randomUUID()
       const mealTime = new Date(selectedDate)
       mealTime.setHours(slot.default_hour, 0, 0, 0)
-      const placeholder: Meal = {
-        id: `pending-${slotName}`,
-        meal_type: slotName,
-        sensitivities: [area],
-        source: 'manual',
-        time: mealTime,
-      }
+      const placeholder: Meal = { id, meal_type: slotName, sensitivities: [area], source: 'manual', time: mealTime }
       optimisticUpdate((old) => [...old, placeholder])
-      addMutation.mutate({
+      upsertMutation.mutate({
+        id,
         meal_type: slotName,
         sensitivities: [area],
         source: 'manual',
@@ -399,7 +371,7 @@ export function Meals() {
             </label>
           </div>
 
-          {(addMutation.isError || updateMutation.isError) && (
+          {(upsertMutation.isError || updateMutation.isError) && (
             <p class="error-message">Something went wrong. Please try again.</p>
           )}
         </>

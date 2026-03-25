@@ -16,21 +16,7 @@ export const registerMealTools = (server: McpServer, user: string) => {
     'Add a meal record with optional nutrition details. Supports food items, macros (calories, protein, carbs, fat, fiber), and micronutrients.',
     { ...addMealBodySchema.shape },
     async (params) => {
-      const result = await addMeal(user, {
-        calories: params.calories,
-        carbs: params.carbs,
-        fat: params.fat,
-        fiber: params.fiber,
-        food_items: params.food_items,
-        meal_type: params.meal_type,
-        micros: params.micros,
-        name: params.name,
-        notes: params.notes,
-        protein: params.protein,
-        sensitivities: params.sensitivities,
-        source: params.source,
-        time: params.time,
-      })
+      const result = await addMeal(user, { ...params })
       return jsonResponse(result)
     },
   )

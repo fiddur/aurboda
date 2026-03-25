@@ -4,7 +4,6 @@
  * Handles: /meals/*
  */
 import {
-  type AddMealBody,
   addMealBodySchema,
   type DeleteMealResponse,
   type MealResponse,
@@ -80,37 +79,22 @@ export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
     res.json({ data: result.data, success: true })
   })
 
-  // POST /meals - Create a new meal
-  router.post<Record<string, never>, MealResponse, AddMealBody>(
-    '/',
-    authMiddleware,
-    validateBody(addMealBodySchema),
-    async (req, res) => {
-      const user = req.user!
+  // PUT /meals - Upsert a meal (idempotent — client provides ID)
+  // POST /meals - Create a meal (backwards-compatible, server generates ID)
+  const handleUpsertMeal: RequestHandler = async (req, res) => {
+    const user = req.user!
+    const result = await addMeal(user, { ...req.body })
 
-      const result = await addMeal(user, {
-        calories: req.body.calories,
-        carbs: req.body.carbs,
-        fat: req.body.fat,
-        fiber: req.body.fiber,
-        food_items: req.body.food_items,
-        meal_type: req.body.meal_type,
-        micros: req.body.micros,
-        name: req.body.name,
-        notes: req.body.notes,
-        protein: req.body.protein,
-        sensitivities: req.body.sensitivities,
-        source: req.body.source,
-        time: req.body.time,
-      })
+    if (!result.success) {
+      return res.status(400).json({ error: result.error, success: false })
+    }
 
-      if (!result.success) {
-        return res.status(400).json({ error: result.error, success: false })
-      }
+    res.json({ data: result.data, success: true })
+  }
 
-      res.json({ data: result.data, success: true })
-    },
-  )
+  const upsertMiddleware = [authMiddleware, validateBody(addMealBodySchema), handleUpsertMeal]
+  router.put('/', ...upsertMiddleware)
+  router.post('/', ...upsertMiddleware)
 
   // PATCH /meals/:id - Update a meal
   router.patch<{ id: string }, MealResponse, UpdateMealBody>(

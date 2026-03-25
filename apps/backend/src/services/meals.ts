@@ -8,7 +8,7 @@ import {
   deleteMeal as dbDeleteMeal,
   getMealById as dbGetMealById,
   getMeals as dbGetMeals,
-  insertMeal as dbInsertMeal,
+  upsertMeal as dbUpsertMeal,
   updateMeal as dbUpdateMeal,
   type Meal,
   type MealFoodItem,
@@ -30,6 +30,7 @@ interface FoodItemInput {
 }
 
 export interface AddMealInput {
+  id?: string
   time: string // ISO 8601
   meal_type?: string
   name?: string
@@ -122,7 +123,8 @@ const formatMeal = (meal: Meal): MealResponse => ({
 export async function addMeal(user: string, input: AddMealInput): Promise<MealResult> {
   const mealTime = new Date(input.time)
 
-  const meal = await dbInsertMeal(user, {
+  const meal = await dbUpsertMeal(user, {
+    id: input.id,
     calories: input.calories,
     carbs: input.carbs,
     fat: input.fat,

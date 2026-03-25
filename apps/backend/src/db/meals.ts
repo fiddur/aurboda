@@ -12,6 +12,7 @@ const MEAL_COLUMNS =
   'id, source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, sensitivities, created_at'
 
 export interface InsertMealInput {
+  id?: string
   source?: string
   meal_type?: string
   name?: string
@@ -28,33 +29,53 @@ export interface InsertMealInput {
 }
 
 /**
- * Insert a meal record.
+ * Upsert a meal record.
+ * If `id` is provided, inserts with that ID or updates on conflict.
+ * This makes the operation idempotent — retries with the same ID are safe.
  */
-export const insertMeal = async (user: string, input: InsertMealInput): Promise<Meal> => {
-  const result = await query(
-    user,
-    `INSERT INTO meals (source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, sensitivities)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-     RETURNING ${MEAL_COLUMNS}`,
-    [
-      input.source ?? 'manual',
-      input.meal_type ?? null,
-      input.name ?? null,
-      input.time,
-      input.calories ?? null,
-      input.protein ?? null,
-      input.carbs ?? null,
-      input.fat ?? null,
-      input.fiber ?? null,
-      input.food_items ? JSON.stringify(input.food_items) : null,
-      input.micros ? JSON.stringify(input.micros) : null,
-      input.notes ?? null,
-      input.sensitivities ?? null,
-    ],
-  )
+export const upsertMeal = async (user: string, input: InsertMealInput): Promise<Meal> => {
+  const commonParams = [
+    input.source ?? 'manual',
+    input.meal_type ?? null,
+    input.name ?? null,
+    input.time,
+    input.calories ?? null,
+    input.protein ?? null,
+    input.carbs ?? null,
+    input.fat ?? null,
+    input.fiber ?? null,
+    input.food_items ? JSON.stringify(input.food_items) : null,
+    input.micros ? JSON.stringify(input.micros) : null,
+    input.notes ?? null,
+    input.sensitivities ?? null,
+  ]
 
+  const result = input.id
+    ? await query(
+        user,
+        `INSERT INTO meals (id, source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, sensitivities)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         ON CONFLICT (id) DO UPDATE SET
+           source = EXCLUDED.source, meal_type = EXCLUDED.meal_type, name = EXCLUDED.name,
+           time = EXCLUDED.time, calories = EXCLUDED.calories, protein = EXCLUDED.protein,
+           carbs = EXCLUDED.carbs, fat = EXCLUDED.fat, fiber = EXCLUDED.fiber,
+           food_items = EXCLUDED.food_items, micros = EXCLUDED.micros,
+           notes = EXCLUDED.notes, sensitivities = EXCLUDED.sensitivities
+         RETURNING ${MEAL_COLUMNS}`,
+        [input.id, ...commonParams],
+      )
+    : await query(
+        user,
+        `INSERT INTO meals (source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, sensitivities)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING ${MEAL_COLUMNS}`,
+        commonParams,
+      )
   return mapMealRow(result.rows[0])
 }
+
+/** @deprecated Use upsertMeal instead. Kept for backwards compatibility. */
+export const insertMeal = upsertMeal
 
 /**
  * Get a single meal by ID.
