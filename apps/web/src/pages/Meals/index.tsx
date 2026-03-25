@@ -1,9 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { format, startOfDay, endOfDay, subDays } from 'date-fns'
+import { endOfDay, format, startOfDay, subDays } from 'date-fns'
 import { useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
-import { addMealApi, deleteMealApi, fetchMeals, fetchUserSettings, type Meal } from '../../state/api'
+import {
+  addMealApi,
+  deleteMealApi,
+  fetchMeals,
+  fetchUserSettings,
+  type Meal,
+  updateMealApi,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
 
@@ -21,17 +28,16 @@ const DEFAULT_MEAL_SLOTS: MealSlot[] = [
 
 const formatHour = (hour: number): string => `${hour}:00`
 
-const formatMealType = (type?: string): string =>
-  type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Meal'
+/** Find the existing meal for a slot on the selected day. */
+const findMealForSlot = (meals: Meal[], slotName: string): Meal | undefined =>
+  meals.find((m) => m.meal_type === slotName.toLowerCase())
 
 export function Meals() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
 
-  // Date state for history
-  const [historyDate, setHistoryDate] = useState(() => new Date())
+  const [selectedDate, setSelectedDate] = useState(() => new Date())
 
-  // Fetch user settings for meal slots and sensitivity areas
   const { data: settings } = useQuery({
     enabled: !!isLoggedIn,
     queryFn: fetchUserSettings,
@@ -40,94 +46,76 @@ export function Meals() {
 
   const mealSlots: MealSlot[] =
     settings?.meal_slots && settings.meal_slots.length > 0 ? settings.meal_slots : DEFAULT_MEAL_SLOTS
-
   const sensitivityAreas: string[] = settings?.sensitivity_areas ?? []
 
-  // Quick-log state per slot
-  const [slotState, setSlotState] = useState<
-    Record<string, { hour: number; sensitivities: Set<string>; name: string }>
-  >({})
+  // Fetch meals for the selected day
+  const dayStart = startOfDay(selectedDate)
+  const dayEnd = endOfDay(selectedDate)
+  const dayKey = format(selectedDate, 'yyyy-MM-dd')
 
-  const getSlotState = (slot: MealSlot) =>
-    slotState[slot.name] ?? {
-      hour: slot.default_hour,
-      sensitivities: new Set<string>(),
-      name: '',
-    }
-
-  const updateSlotState = (
-    slotName: string,
-    update: Partial<{ hour: number; sensitivities: Set<string>; name: string }>,
-  ) => {
-    setSlotState((prev) => ({
-      ...prev,
-      [slotName]: { ...getSlotState({ name: slotName, default_hour: 0 }), ...prev[slotName], ...update },
-    }))
-  }
-
-  // Fetch meals for history
-  const historyStart = startOfDay(historyDate)
-  const historyEnd = endOfDay(historyDate)
-
-  const { data: meals, isLoading: mealsLoading } = useQuery({
+  const { data: meals, isLoading } = useQuery({
     enabled: !!isLoggedIn,
-    queryFn: () =>
-      fetchMeals({
-        start: historyStart.toISOString(),
-        end: historyEnd.toISOString(),
-      }),
-    queryKey: ['meals', format(historyDate, 'yyyy-MM-dd')],
+    queryFn: () => fetchMeals({ start: dayStart.toISOString(), end: dayEnd.toISOString() }),
+    queryKey: ['meals', dayKey],
     staleTime: 30_000,
   })
 
-  // Add meal mutation
-  const addMutation = useMutation({
-    mutationFn: addMealApi,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['meals'] })
-    },
+  const invalidateMeals = () => queryClient.invalidateQueries({ queryKey: ['meals'] })
+
+  // Create a new meal for a slot
+  const addMutation = useMutation({ mutationFn: addMealApi, onSuccess: invalidateMeals })
+
+  // Update an existing meal
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Parameters<typeof updateMealApi>[1]) =>
+      updateMealApi(id, body),
+    onSuccess: invalidateMeals,
   })
 
-  // Delete meal mutation
-  const deleteMutation = useMutation({
-    mutationFn: deleteMealApi,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['meals'] })
-    },
-  })
+  // Delete a meal
+  const deleteMutation = useMutation({ mutationFn: deleteMealApi, onSuccess: invalidateMeals })
 
-  const handleLog = (slot: MealSlot) => {
-    const state = getSlotState(slot)
-    const mealTime = new Date()
-    mealTime.setHours(state.hour, 0, 0, 0)
+  /** Toggle a sensitivity for a slot. Creates the meal if it doesn't exist yet. */
+  const handleToggleSensitivity = (slot: MealSlot, area: string) => {
+    const existing = findMealForSlot(meals ?? [], slot.name)
 
-    addMutation.mutate({
-      meal_type: slot.name.toLowerCase(),
-      name: state.name || undefined,
-      sensitivities: [...state.sensitivities],
-      source: 'manual',
-      time: mealTime.toISOString(),
-    })
-
-    // Reset slot state after logging
-    setSlotState((prev) => {
-      const next = { ...prev }
-      delete next[slot.name]
-      return next
-    })
-  }
-
-  const toggleSensitivity = (slotName: string, area: string) => {
-    const state = getSlotState({ name: slotName, default_hour: 0 })
-    const current = slotState[slotName]?.sensitivities ?? state.sensitivities
-    const next = new Set(current)
-    if (next.has(area)) {
-      next.delete(area)
+    if (existing) {
+      // Update existing meal
+      const current = existing.sensitivities ?? []
+      const next = current.includes(area) ? current.filter((s) => s !== area) : [...current, area]
+      updateMutation.mutate({ id: existing.id!, sensitivities: next })
     } else {
-      next.add(area)
+      // Create new meal at default hour
+      const mealTime = new Date(selectedDate)
+      mealTime.setHours(slot.default_hour, 0, 0, 0)
+      addMutation.mutate({
+        meal_type: slot.name.toLowerCase(),
+        sensitivities: [area],
+        source: 'manual',
+        time: mealTime.toISOString(),
+      })
     }
-    updateSlotState(slotName, { sensitivities: next })
   }
+
+  /** Change the hour for an existing meal. */
+  const handleChangeHour = (meal: Meal, hour: number) => {
+    const newTime = new Date(meal.time)
+    newTime.setHours(hour, 0, 0, 0)
+    updateMutation.mutate({ id: meal.id!, time: newTime.toISOString() })
+  }
+
+  /** Navigate to previous day. */
+  const goBack = () => setSelectedDate((d) => subDays(d, 1))
+
+  /** Navigate to next day (not beyond today). */
+  const goForward = () =>
+    setSelectedDate((d) => {
+      const next = new Date(d)
+      next.setDate(next.getDate() + 1)
+      return next > new Date() ? d : next
+    })
+
+  const isToday = dayKey === format(new Date(), 'yyyy-MM-dd')
 
   if (!isLoggedIn) {
     return (
@@ -137,144 +125,101 @@ export function Meals() {
     )
   }
 
-  const sorted = [...(meals ?? [])].sort((a, b) => a.time.getTime() - b.time.getTime())
-
   return (
     <div class="meals-page">
-      <h1>Meals</h1>
-
-      {/* Quick-log section */}
-      <section class="quick-log-section">
-        <h2>Quick Log</h2>
-
-        {sensitivityAreas.length === 0 && (
-          <p class="config-hint">
-            Configure your sensitivity areas and meal slots in <a href="/settings">Settings</a>.
-          </p>
-        )}
-
-        {mealSlots.map((slot) => {
-          const state = getSlotState(slot)
-          const hours = [slot.default_hour - 1, slot.default_hour, slot.default_hour + 1].filter(
-            (h) => h >= 0 && h <= 23,
-          )
-
-          return (
-            <div key={slot.name} class="meal-slot-row">
-              <span class="slot-name">{slot.name}</span>
-
-              <div class="time-selector">
-                {hours.map((h) => (
-                  <button
-                    key={h}
-                    type="button"
-                    class={`time-btn ${state.hour === h ? 'active' : ''}`}
-                    onClick={() => updateSlotState(slot.name, { hour: h })}
-                  >
-                    {formatHour(h)}
-                  </button>
-                ))}
-              </div>
-
-              <div class="sensitivity-checks">
-                {sensitivityAreas.map((area) => (
-                  <label key={area} class="sensitivity-label">
-                    <input
-                      type="checkbox"
-                      checked={state.sensitivities.has(area)}
-                      onChange={() => toggleSensitivity(slot.name, area)}
-                    />
-                    {area}
-                  </label>
-                ))}
-              </div>
-
-              <input
-                type="text"
-                class="meal-name-input"
-                placeholder="Name (optional)"
-                value={state.name}
-                onInput={(e) => updateSlotState(slot.name, { name: (e.target as HTMLInputElement).value })}
-              />
-
-              <button
-                type="button"
-                class="btn-primary log-btn"
-                onClick={() => handleLog(slot)}
-                disabled={addMutation.isPending}
-              >
-                Log
-              </button>
-            </div>
-          )
-        })}
-
-        {addMutation.isError && <p class="error-message">Failed to log meal. Please try again.</p>}
-      </section>
-
-      {/* Meal history section */}
-      <section class="meal-history-section">
-        <div class="history-header">
-          <h2>History</h2>
-          <div class="date-nav">
-            <button type="button" class="btn-secondary" onClick={() => setHistoryDate((d) => subDays(d, 1))}>
-              &larr;
-            </button>
-            <span class="history-date">{format(historyDate, 'EEE, MMM d')}</span>
-            <button
-              type="button"
-              class="btn-secondary"
-              onClick={() =>
-                setHistoryDate((d) => {
-                  const next = new Date(d)
-                  next.setDate(next.getDate() + 1)
-                  return next > new Date() ? d : next
-                })
-              }
-              disabled={format(historyDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')}
-            >
-              &rarr;
-            </button>
-          </div>
+      <div class="meals-header">
+        <h1>Meals</h1>
+        <div class="date-nav">
+          <button type="button" class="btn-secondary" onClick={goBack}>
+            &larr;
+          </button>
+          <span class="history-date">{isToday ? 'Today' : format(selectedDate, 'EEE, MMM d')}</span>
+          <button type="button" class="btn-secondary" onClick={goForward} disabled={isToday}>
+            &rarr;
+          </button>
         </div>
+      </div>
 
-        {mealsLoading ? (
-          <p class="loading">Loading meals...</p>
-        ) : sorted.length === 0 ? (
-          <p class="no-data">No meals logged for this day.</p>
-        ) : (
-          <div class="meals-list">
-            {sorted.map((meal: Meal) => (
-              <div key={meal.id} class="meal-card">
-                <div class="meal-card-header">
-                  <span class="meal-type">{formatMealType(meal.meal_type)}</span>
-                  <span class="meal-time">{format(meal.time, 'HH:mm')}</span>
+      {sensitivityAreas.length === 0 && (
+        <p class="config-hint">
+          Configure your sensitivity areas and meal slots in <a href="/settings">Settings</a>.
+        </p>
+      )}
+
+      {isLoading ? (
+        <p class="loading">Loading...</p>
+      ) : (
+        <div class="meal-slots">
+          {mealSlots.map((slot) => {
+            const meal = findMealForSlot(meals ?? [], slot.name)
+            const sensitivities = meal?.sensitivities ?? []
+            const mealHour = meal ? meal.time.getHours() : slot.default_hour
+            const hours = [slot.default_hour - 1, slot.default_hour, slot.default_hour + 1].filter(
+              (h) => h >= 0 && h <= 23,
+            )
+
+            return (
+              <div key={slot.name} class={`meal-slot-row ${meal ? 'has-meal' : ''}`}>
+                <div class="slot-top">
+                  <span class="slot-name">{slot.name}</span>
+
+                  <div class="time-selector">
+                    {hours.map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        class={`time-btn ${mealHour === h ? 'active' : ''}`}
+                        onClick={() => {
+                          if (meal) {
+                            handleChangeHour(meal, h)
+                          }
+                          // If no meal yet, the hour will be used when first sensitivity is checked
+                        }}
+                        disabled={!meal && h !== slot.default_hour}
+                        title={!meal ? 'Log a meal first to change the time' : `Set time to ${formatHour(h)}`}
+                      >
+                        {formatHour(h)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {meal && (
+                    <ConfirmButton
+                      label="Delete"
+                      confirmMessage="Delete this meal?"
+                      onConfirm={() => deleteMutation.mutate(meal.id!)}
+                      isPending={deleteMutation.isPending}
+                      pendingLabel="Deleting..."
+                      buttonClass="btn-danger-small"
+                    />
+                  )}
                 </div>
-                {meal.name && <div class="meal-name">{meal.name}</div>}
-                {meal.sensitivities && meal.sensitivities.length > 0 && (
-                  <div class="meal-sensitivities">
-                    {meal.sensitivities.map((s) => (
-                      <span key={s} class="sensitivity-chip">
-                        {s}
-                      </span>
+
+                {sensitivityAreas.length > 0 && (
+                  <div class="sensitivity-checks">
+                    {sensitivityAreas.map((area) => (
+                      <label key={area} class="sensitivity-label">
+                        <input
+                          type="checkbox"
+                          checked={sensitivities.includes(area)}
+                          onChange={() => handleToggleSensitivity(slot, area)}
+                        />
+                        {area}
+                      </label>
                     ))}
                   </div>
                 )}
-                {meal.notes && <div class="meal-notes">{meal.notes}</div>}
-                <div class="meal-card-actions">
-                  <ConfirmButton
-                    label="Delete"
-                    confirmMessage="Delete this meal?"
-                    onConfirm={() => deleteMutation.mutate(meal.id!)}
-                    isPending={deleteMutation.isPending}
-                    pendingLabel="Deleting..."
-                  />
-                </div>
+
+                {meal?.name && <div class="meal-name">{meal.name}</div>}
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+            )
+          })}
+        </div>
+      )}
+
+      {(addMutation.isError || updateMutation.isError) && (
+        <p class="error-message">Something went wrong. Please try again.</p>
+      )}
     </div>
   )
 }

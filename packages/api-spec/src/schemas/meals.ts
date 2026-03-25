@@ -136,6 +136,35 @@ export const addMealBodySchema = z
 export type AddMealBody = z.infer<typeof addMealBodySchema>
 
 /**
+ * Update meal request body — all fields optional.
+ */
+export const updateMealBodySchema = z
+  .object({
+    calories: z.number().nullable().optional().meta({ description: 'Total energy in kcal' }),
+    carbs: z.number().nullable().optional().meta({ description: 'Total carbohydrates in grams' }),
+    fat: z.number().nullable().optional().meta({ description: 'Total fat in grams' }),
+    fiber: z.number().nullable().optional().meta({ description: 'Total dietary fiber in grams' }),
+    food_items: z.array(foodItemSchema).nullable().optional().meta({ description: 'Individual food items' }),
+    meal_type: mealTypeSchema.optional().meta({ description: 'Type of meal' }),
+    micros: z.record(z.string(), z.number()).nullable().optional().meta({ description: 'Micronutrients' }),
+    name: z.string().max(255).nullable().optional().meta({ description: 'Meal name/description' }),
+    notes: z.string().nullable().optional().meta({ description: 'Free text notes' }),
+    protein: z.number().nullable().optional().meta({ description: 'Total protein in grams' }),
+    sensitivities: z
+      .array(z.string())
+      .nullable()
+      .optional()
+      .meta({ description: 'Sensitivity areas flagged for this meal' }),
+    time: iso8601DateTimeSchema.optional().meta({ description: 'When the meal was consumed' }),
+  })
+  .meta({
+    description: 'Update a meal record — only provided fields are changed',
+    id: 'UpdateMealBody',
+  })
+
+export type UpdateMealBody = z.infer<typeof updateMealBodySchema>
+
+/**
  * Meals query schema — filter by date range and/or meal type.
  */
 export const mealsQuerySchema = z

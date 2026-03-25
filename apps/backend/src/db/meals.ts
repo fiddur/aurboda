@@ -101,6 +101,65 @@ export const getMeals = async (user: string, filter: QueryMealsFilter): Promise<
   return result.rows.map(mapMealRow)
 }
 
+export interface UpdateMealInput {
+  meal_type?: string
+  name?: string | null
+  time?: Date
+  calories?: number | null
+  protein?: number | null
+  carbs?: number | null
+  fat?: number | null
+  fiber?: number | null
+  food_items?: MealFoodItem[] | null
+  micros?: Record<string, number> | null
+  notes?: string | null
+  sensitivities?: string[] | null
+}
+
+/**
+ * Update a meal by ID. Only provided fields are changed.
+ * Returns null if the meal was not found.
+ */
+export const updateMeal = async (user: string, id: string, input: UpdateMealInput): Promise<Meal | null> => {
+  const setClauses: string[] = []
+  const params: unknown[] = []
+  let paramIdx = 1
+
+  const addField = (column: string, value: unknown, serialize?: boolean) => {
+    setClauses.push(`${column} = $${paramIdx++}`)
+    params.push(serialize ? JSON.stringify(value) : value)
+  }
+
+  if (input.meal_type !== undefined) addField('meal_type', input.meal_type)
+  if (input.name !== undefined) addField('name', input.name)
+  if (input.time !== undefined) addField('time', input.time)
+  if (input.calories !== undefined) addField('calories', input.calories)
+  if (input.protein !== undefined) addField('protein', input.protein)
+  if (input.carbs !== undefined) addField('carbs', input.carbs)
+  if (input.fat !== undefined) addField('fat', input.fat)
+  if (input.fiber !== undefined) addField('fiber', input.fiber)
+  if (input.food_items !== undefined)
+    addField('food_items', input.food_items === null ? null : input.food_items, input.food_items !== null)
+  if (input.micros !== undefined)
+    addField('micros', input.micros === null ? null : input.micros, input.micros !== null)
+  if (input.notes !== undefined) addField('notes', input.notes)
+  if (input.sensitivities !== undefined) addField('sensitivities', input.sensitivities)
+
+  if (setClauses.length === 0) {
+    return getMealById(user, id)
+  }
+
+  params.push(id)
+  const result = await query(
+    user,
+    `UPDATE meals SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING ${MEAL_COLUMNS}`,
+    params,
+  )
+
+  if (result.rows.length === 0) return null
+  return mapMealRow(result.rows[0])
+}
+
 /**
  * Delete a meal by ID.
  * Returns true if the meal was found and deleted.

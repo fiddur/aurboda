@@ -11,10 +11,12 @@ import {
   type MealsQuery,
   mealsQuerySchema,
   type MealsResponse,
+  type UpdateMealBody,
+  updateMealBodySchema,
 } from '@aurboda/api-spec'
 import { type RequestHandler, Router } from 'express'
 
-import { addMeal, deleteMealById, getMeal, queryMeals } from '../services/meals.ts'
+import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from '../services/meals.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
@@ -74,6 +76,25 @@ export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
 
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })
+      }
+
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  // PATCH /meals/:id - Update a meal
+  router.patch<{ id: string }, MealResponse, UpdateMealBody>(
+    '/:id',
+    authMiddleware,
+    validateBody(updateMealBodySchema),
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
+
+      const result = await updateMealById(user, id, req.body)
+
+      if (!result.success) {
+        return res.status(404).json({ error: result.error, success: false })
       }
 
       res.json({ data: result.data, success: true })

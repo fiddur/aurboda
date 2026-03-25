@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
-import { addMeal, deleteMealById, getMeal, queryMeals } from './meals.ts'
+import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from './meals.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
@@ -9,12 +9,14 @@ vi.mock('../db', () => ({
   getMealById: vi.fn(),
   getMeals: vi.fn(),
   insertMeal: vi.fn(),
+  updateMeal: vi.fn(),
 }))
 
 const mockInsertMeal = vi.mocked(db.insertMeal)
 const mockGetMealById = vi.mocked(db.getMealById)
 const mockGetMeals = vi.mocked(db.getMeals)
 const mockDeleteMeal = vi.mocked(db.deleteMeal)
+const mockUpdateMeal = vi.mocked(db.updateMeal)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -190,6 +192,40 @@ describe('deleteMealById', () => {
     mockDeleteMeal.mockResolvedValue(false)
 
     const result = await deleteMealById('testuser', 'nonexistent')
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Meal not found')
+  })
+})
+
+describe('updateMealById', () => {
+  test('updates meal sensitivities', async () => {
+    mockUpdateMeal.mockResolvedValue({
+      created_at: new Date('2025-06-15T10:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'dinner',
+      sensitivities: ['gluten', 'dairy'],
+      source: 'manual',
+      time: new Date('2025-06-15T18:00:00Z'),
+    })
+
+    const result = await updateMealById('testuser', 'meal-1', {
+      sensitivities: ['gluten', 'dairy'],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.data!.sensitivities).toEqual(['gluten', 'dairy'])
+    expect(mockUpdateMeal).toHaveBeenCalledWith(
+      'testuser',
+      'meal-1',
+      expect.objectContaining({ sensitivities: ['gluten', 'dairy'] }),
+    )
+  })
+
+  test('returns error when meal not found', async () => {
+    mockUpdateMeal.mockResolvedValue(null)
+
+    const result = await updateMealById('testuser', 'nonexistent', { sensitivities: [] })
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Meal not found')

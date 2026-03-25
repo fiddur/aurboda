@@ -70,6 +70,7 @@ import type {
   MealResponse,
   MealsResponse,
   MealsQuery,
+  UpdateMealBody,
   Report as ApiReport,
   ReportResponse,
   ReportsResponse,
@@ -1550,6 +1551,14 @@ export const fetchMeals = async (params?: MealsQuery): Promise<Meal[]> => {
 export const addMealApi = async (body: AddMealBody): Promise<Meal> => {
   const { token } = auth.value
   const response = await axios.post<MealResponse>(`${API_URL}/meals`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return mapMeal(response.data.data!)
+}
+
+export const updateMealApi = async (id: string, body: UpdateMealBody): Promise<Meal> => {
+  const { token } = auth.value
+  const response = await axios.patch<MealResponse>(`${API_URL}/meals/${id}`, body, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return mapMeal(response.data.data!)
