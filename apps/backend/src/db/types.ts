@@ -314,6 +314,9 @@ export interface Report {
 // Meals
 // ============================================================================
 
+export type NutrientValue = number | { value: number; unit: string }
+export type Micros = Record<string, NutrientValue>
+
 export interface MealFoodItem {
   name: string
   quantity?: number
@@ -323,6 +326,7 @@ export interface MealFoodItem {
   carbs?: number
   fat?: number
   fiber?: number
+  micros?: Micros
 }
 
 export interface Meal {
@@ -337,7 +341,7 @@ export interface Meal {
   fat?: number
   fiber?: number
   food_items?: MealFoodItem[]
-  micros?: Record<string, number>
+  micros?: Micros
   notes?: string
   sensitivities?: string[]
   created_at: Date

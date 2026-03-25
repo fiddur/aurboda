@@ -12,6 +12,7 @@ import {
   updateMeal as dbUpdateMeal,
   type Meal,
   type MealFoodItem,
+  type Micros,
 } from '../db/index.ts'
 
 // ============================================================================
@@ -41,7 +42,7 @@ export interface AddMealInput {
   fat?: number
   fiber?: number
   food_items?: FoodItemInput[]
-  micros?: Record<string, number>
+  micros?: Micros
   notes?: string
   sensitivities?: string[]
 }
@@ -56,7 +57,7 @@ export interface UpdateMealInput {
   fat?: number | null
   fiber?: number | null
   food_items?: FoodItemInput[] | null
-  micros?: Record<string, number> | null
+  micros?: Micros | null
   notes?: string | null
   sensitivities?: string[] | null
 }
@@ -73,7 +74,7 @@ interface MealResponse {
   fat?: number
   fiber?: number
   food_items?: MealFoodItem[]
-  micros?: Record<string, number>
+  micros?: Micros
   notes?: string
   sensitivities?: string[]
   created_at: string

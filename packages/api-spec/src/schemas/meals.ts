@@ -31,6 +31,39 @@ export const mealTypeSchema = z.string().min(1).max(50).meta({
 export type MealType = z.infer<typeof mealTypeSchema>
 
 // ============================================================================
+// Nutrient Value
+// ============================================================================
+
+/**
+ * A nutrient measurement with explicit unit.
+ * Supports both simple numbers (legacy, unit implied by key) and structured { value, unit }.
+ */
+export const nutrientValueSchema = z
+  .object({
+    unit: z.string().max(10).meta({ description: 'Unit of measurement (e.g., "mg", "µg", "g", "IU")' }),
+    value: z.number().meta({ description: 'Numeric value' }),
+  })
+  .meta({ description: 'A nutrient measurement with value and unit', id: 'NutrientValue' })
+
+export type NutrientValue = z.infer<typeof nutrientValueSchema>
+
+/**
+ * Micronutrient record — maps nutrient name to either a plain number (legacy)
+ * or a structured { value, unit } for explicit unit tracking.
+ *
+ * Keys are normalized nutrient names without units: "b1_thiamine", "vitamin_c", "iron".
+ */
+export const microsSchema = z
+  .record(z.string(), z.union([z.number(), nutrientValueSchema]))
+  .optional()
+  .meta({
+    description:
+      'Micronutrients as key-value pairs. Values can be plain numbers (legacy) or { value, unit } for explicit units.',
+  })
+
+export type Micros = z.infer<typeof microsSchema>
+
+// ============================================================================
 // Food Item
 // ============================================================================
 
@@ -43,14 +76,15 @@ export const foodItemSchema = z
     carbs: z.number().optional().meta({ description: 'Carbohydrates in grams' }),
     fat: z.number().optional().meta({ description: 'Fat in grams' }),
     fiber: z.number().optional().meta({ description: 'Dietary fiber in grams' }),
+    micros: microsSchema.meta({ description: 'Micronutrients for this food item' }),
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     protein: z.number().optional().meta({ description: 'Protein in grams' }),
     quantity: z.number().optional().meta({ description: 'Quantity consumed' }),
     unit: z
       .string()
-      .max(30)
+      .max(100)
       .optional()
-      .meta({ description: 'Unit for quantity (e.g., "g", "ml", "serving")' }),
+      .meta({ description: 'Unit for quantity (e.g., "g", "ml", "large slice", "full recipe")' }),
   })
   .meta({ description: 'An individual food item within a meal', id: 'FoodItem' })
 
@@ -73,10 +107,9 @@ export const mealSchema = z
     food_items: z.array(foodItemSchema).optional().meta({ description: 'Individual food items' }),
     id: z.string().uuid().optional().meta({ description: 'Meal ID' }),
     meal_type: mealTypeSchema.optional().meta({ description: 'Type of meal' }),
-    micros: z
-      .record(z.string(), z.number())
-      .optional()
-      .meta({ description: 'Micronutrients as key-value pairs (e.g., {"vitamin_c": 45, "iron": 8})' }),
+    micros: microsSchema.meta({
+      description: 'Micronutrients — keys are nutrient names, values are numbers (legacy) or { value, unit }',
+    }),
     name: z
       .string()
       .max(255)
@@ -119,10 +152,7 @@ export const addMealBodySchema = z
     fiber: z.number().optional().meta({ description: 'Total dietary fiber in grams' }),
     food_items: z.array(foodItemSchema).optional().meta({ description: 'Individual food items in the meal' }),
     meal_type: mealTypeSchema.optional().meta({ description: 'Type of meal' }),
-    micros: z
-      .record(z.string(), z.number())
-      .optional()
-      .meta({ description: 'Micronutrients as key-value pairs' }),
+    micros: microsSchema.meta({ description: 'Micronutrients' }),
     name: z.string().max(255).optional().meta({ description: 'Meal name/description' }),
     notes: z.string().optional().meta({ description: 'Free text notes' }),
     protein: z.number().optional().meta({ description: 'Total protein in grams' }),
@@ -151,7 +181,7 @@ export const updateMealBodySchema = z
     fiber: z.number().nullable().optional().meta({ description: 'Total dietary fiber in grams' }),
     food_items: z.array(foodItemSchema).nullable().optional().meta({ description: 'Individual food items' }),
     meal_type: mealTypeSchema.optional().meta({ description: 'Type of meal' }),
-    micros: z.record(z.string(), z.number()).nullable().optional().meta({ description: 'Micronutrients' }),
+    micros: microsSchema.nullable().meta({ description: 'Micronutrients' }),
     name: z.string().max(255).nullable().optional().meta({ description: 'Meal name/description' }),
     notes: z.string().nullable().optional().meta({ description: 'Free text notes' }),
     protein: z.number().nullable().optional().meta({ description: 'Total protein in grams' }),
