@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay } from 'date-fns'
 import { useLocation } from 'preact-iso'
-import { useCallback, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { DateNav } from '../../components/DateNav'
@@ -54,6 +54,16 @@ function FoodItemChip({
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
+
+  // Close on click outside
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('click', handler, true)
+    return () => document.removeEventListener('click', handler, true)
+  }, [open])
 
   const hasMappings = mappedSensitivities.length > 0
 
@@ -436,17 +446,19 @@ function MealsContent({ dayKey }: { dayKey: string }) {
   const foodMapMutation = useMutation({
     mutationFn: (newMap: Record<string, string[]>) => updateUserSettings({ food_sensitivity_map: newMap }),
     onSuccess: (result) => queryClient.setQueryData(['userSettings'], result),
+    onError: () => queryClient.invalidateQueries({ queryKey: ['userSettings'] }),
   })
 
   const handleToggleFoodMapping = (foodItem: string, area: string, checked: boolean) => {
     const current = foodSensitivityMap[foodItem] ?? []
     const next = checked ? [...current, area] : current.filter((s) => s !== area)
-    const newMap = { ...foodSensitivityMap, [foodItem]: next.length > 0 ? next : undefined }
-    // Clean up entries with empty arrays
-    const cleaned = Object.fromEntries(Object.entries(newMap).filter(([, v]) => v && v.length > 0)) as Record<
-      string,
-      string[]
-    >
+    const cleaned = Object.fromEntries(
+      Object.entries({ ...foodSensitivityMap, [foodItem]: next }).filter(([, v]) => v.length > 0),
+    ) as Record<string, string[]>
+    // Optimistic update — reflect immediately in UI
+    queryClient.setQueryData(['userSettings'], (old: Record<string, unknown> | undefined) =>
+      old ? { ...old, food_sensitivity_map: cleaned } : old,
+    )
     foodMapMutation.mutate(cleaned)
   }
 
