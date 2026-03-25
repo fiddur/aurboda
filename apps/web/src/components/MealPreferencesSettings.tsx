@@ -3,7 +3,6 @@ import { useState } from 'preact/hooks'
 
 import { fetchUserSettings, updateUserSettings } from '../state/api'
 import { auth } from '../state/auth'
-import { SaveCancelRow } from './SaveCancelRow'
 import { type SaveStatus, SaveStatusIndicator } from './SaveStatusIndicator'
 import { SettingsSection } from './SettingsSection'
 import './MealPreferencesSettings.css'
@@ -23,32 +22,20 @@ export function MealPreferencesSettings() {
     queryKey: ['userSettings'],
   })
 
-  // Local state
-  const [slots, setSlots] = useState<MealSlot[] | null>(null)
-  const [areas, setAreas] = useState<string[] | null>(null)
   const [newArea, setNewArea] = useState('')
   const [newSlotName, setNewSlotName] = useState('')
   const [newSlotHour, setNewSlotHour] = useState('12')
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
 
-  // Initialize from settings on first load
-  const effectiveSlots = slots ?? settings?.meal_slots ?? []
-  const effectiveAreas = areas ?? settings?.sensitivity_areas ?? []
+  const currentSlots: MealSlot[] = settings?.meal_slots ?? []
+  const currentAreas: string[] = settings?.sensitivity_areas ?? []
 
-  const hasChanges = slots !== null || areas !== null
-
+  // Save immediately on any change
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      const params: Record<string, unknown> = {}
-      if (slots !== null) params.meal_slots = slots
-      if (areas !== null) params.sensitivity_areas = areas
-      return updateUserSettings(params)
-    },
+    mutationFn: updateUserSettings,
     onSuccess: (result) => {
       queryClient.setQueryData(['userSettings'], result)
       setSaveStatus({ status: 'saved', time: new Date() })
-      setSlots(null)
-      setAreas(null)
     },
     onError: (err) => {
       setSaveStatus({
@@ -58,46 +45,46 @@ export function MealPreferencesSettings() {
     },
   })
 
-  const handleSave = () => {
+  const saveAreas = (areas: string[]) => {
     setSaveStatus({ status: 'saving' })
-    saveMutation.mutate()
+    saveMutation.mutate({ sensitivity_areas: areas })
   }
 
-  const handleCancel = () => {
-    setSlots(null)
-    setAreas(null)
-    setSaveStatus({ status: 'idle' })
+  const saveSlots = (slots: MealSlot[]) => {
+    setSaveStatus({ status: 'saving' })
+    saveMutation.mutate({ meal_slots: slots })
   }
 
-  // Sensitivity areas
+  // Sensitivity areas — save on each action
   const addArea = () => {
     const trimmed = newArea.trim()
-    if (!trimmed || effectiveAreas.includes(trimmed)) return
-    setAreas([...effectiveAreas, trimmed])
+    if (!trimmed || currentAreas.includes(trimmed)) return
+    saveAreas([...currentAreas, trimmed])
     setNewArea('')
   }
 
   const removeArea = (area: string) => {
-    setAreas(effectiveAreas.filter((a) => a !== area))
+    saveAreas(currentAreas.filter((a) => a !== area))
   }
 
-  // Meal slots
+  // Meal slots — save on each action
   const addSlot = () => {
     const trimmed = newSlotName.trim()
     const hour = parseInt(newSlotHour, 10)
     if (!trimmed || isNaN(hour) || hour < 0 || hour > 23) return
-    if (effectiveSlots.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())) return
-    setSlots([...effectiveSlots, { name: trimmed, default_hour: hour }])
+    if (currentSlots.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())) return
+    saveSlots([...currentSlots, { name: trimmed, default_hour: hour }])
     setNewSlotName('')
     setNewSlotHour('12')
   }
 
   const removeSlot = (name: string) => {
-    setSlots(effectiveSlots.filter((s) => s.name !== name))
+    saveSlots(currentSlots.filter((s) => s.name !== name))
   }
 
   const updateSlotHour = (name: string, hour: number) => {
-    setSlots(effectiveSlots.map((s) => (s.name === name ? { ...s, default_hour: hour } : s)))
+    if (isNaN(hour) || hour < 0 || hour > 23) return
+    saveSlots(currentSlots.map((s) => (s.name === name ? { ...s, default_hour: hour } : s)))
   }
 
   return (
@@ -115,7 +102,7 @@ export function MealPreferencesSettings() {
         </p>
 
         <div class="area-list">
-          {effectiveAreas.map((area) => (
+          {currentAreas.map((area) => (
             <div key={area} class="area-chip">
               <span>{area}</span>
               <button
@@ -150,7 +137,7 @@ export function MealPreferencesSettings() {
         <p class="subsection-desc">Define your typical meal times for the quick-log UI.</p>
 
         <div class="slots-list">
-          {effectiveSlots.map((slot) => (
+          {currentSlots.map((slot) => (
             <div key={slot.name} class="slot-row">
               <span class="slot-label">{slot.name}</span>
               <label class="slot-hour-label">
@@ -160,7 +147,7 @@ export function MealPreferencesSettings() {
                   min="0"
                   max="23"
                   value={slot.default_hour}
-                  onInput={(e) =>
+                  onChange={(e) =>
                     updateSlotHour(slot.name, parseInt((e.target as HTMLInputElement).value, 10))
                   }
                   class="slot-hour-input"
@@ -194,10 +181,6 @@ export function MealPreferencesSettings() {
           </button>
         </div>
       </div>
-
-      {hasChanges && (
-        <SaveCancelRow onSave={handleSave} onCancel={handleCancel} isPending={saveMutation.isPending} />
-      )}
     </SettingsSection>
   )
 }
