@@ -23,7 +23,7 @@ export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()
 
   // GET /meals - Query meals with optional filters
-  router.get<Record<string, never>, MealsResponse, unknown, MealsQuery>(
+  router.get<Record<string, never>, MealsResponse & { log_completed?: boolean }, unknown, MealsQuery>(
     '/',
     authMiddleware,
     validateQuery(mealsQuerySchema),
