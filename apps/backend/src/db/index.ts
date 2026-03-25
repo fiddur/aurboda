@@ -27,6 +27,7 @@ export type {
   Meal,
   MealFoodItem,
   MergedActivity,
+  Micros,
   MetricStats,
   NamedLocation,
   NamedLocationInput,

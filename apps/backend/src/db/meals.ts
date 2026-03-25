@@ -1,4 +1,4 @@
-import type { Meal, MealFoodItem } from './types.ts'
+import type { Meal, MealFoodItem, Micros } from './types.ts'
 
 /**
  * Meals CRUD operations.
@@ -23,7 +23,7 @@ export interface InsertMealInput {
   fat?: number
   fiber?: number
   food_items?: MealFoodItem[]
-  micros?: Record<string, number>
+  micros?: Micros
   notes?: string
   sensitivities?: string[]
 }
@@ -132,7 +132,7 @@ export interface UpdateMealInput {
   fat?: number | null
   fiber?: number | null
   food_items?: MealFoodItem[] | null
-  micros?: Record<string, number> | null
+  micros?: Micros | null
   notes?: string | null
   sensitivities?: string[] | null
 }
