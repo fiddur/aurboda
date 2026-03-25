@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { addDays, endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useState } from 'preact/hooks'
 
 import { DateNav } from '../../components/DateNav'
