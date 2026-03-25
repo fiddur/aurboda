@@ -93,6 +93,7 @@ function MealInfoRows({ meal }: { meal: Meal }) {
   )
 }
 
+// eslint-disable-next-line complexity -- detail page with edit mode and multiple data sections
 export function MealDetail() {
   const { params } = useRoute()
   const { route } = useLocation()
