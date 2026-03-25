@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { deleteMeal, getMealById, getMeals, insertMeal } from './meals.ts'
+import { deleteMeal, getMealById, getMeals, insertMeal, updateMeal } from './meals.ts'
 
 const CONTAINER_TIMEOUT = 60_000
 
@@ -204,6 +204,80 @@ describe('Meals Integration Tests', () => {
       const user = getTestUser()
       const deleted = await deleteMeal(user, '00000000-0000-0000-0000-000000000000')
       expect(deleted).toBe(false)
+    })
+  })
+
+  describe('sensitivities', () => {
+    test('round-trips sensitivities through TEXT[]', async () => {
+      const user = getTestUser()
+
+      const meal = await insertMeal(user, {
+        meal_type: 'dinner',
+        sensitivities: ['gluten', 'dairy', 'red_meat'],
+        time: new Date('2025-06-15T18:00:00Z'),
+      })
+
+      expect(meal.sensitivities).toEqual(['gluten', 'dairy', 'red_meat'])
+
+      const found = await getMealById(user, meal.id)
+      expect(found!.sensitivities).toEqual(['gluten', 'dairy', 'red_meat'])
+    })
+
+    test('returns undefined when no sensitivities set', async () => {
+      const user = getTestUser()
+
+      const meal = await insertMeal(user, {
+        time: new Date('2025-06-15T12:00:00Z'),
+      })
+
+      expect(meal.sensitivities).toBeUndefined()
+    })
+  })
+
+  describe('updateMeal', () => {
+    test('updates sensitivities on an existing meal', async () => {
+      const user = getTestUser()
+
+      const meal = await insertMeal(user, {
+        meal_type: 'dinner',
+        sensitivities: ['gluten'],
+        time: new Date('2025-06-15T18:00:00Z'),
+      })
+
+      const updated = await updateMeal(user, meal.id, {
+        sensitivities: ['gluten', 'dairy', 'red_meat'],
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated!.sensitivities).toEqual(['gluten', 'dairy', 'red_meat'])
+      expect(updated!.meal_type).toBe('dinner')
+    })
+
+    test('updates time without changing other fields', async () => {
+      const user = getTestUser()
+
+      const meal = await insertMeal(user, {
+        meal_type: 'lunch',
+        name: 'Salad',
+        sensitivities: ['dairy'],
+        time: new Date('2025-06-15T12:00:00Z'),
+      })
+
+      const updated = await updateMeal(user, meal.id, {
+        time: new Date('2025-06-15T13:00:00Z'),
+      })
+
+      expect(updated!.time).toEqual(new Date('2025-06-15T13:00:00Z'))
+      expect(updated!.name).toBe('Salad')
+      expect(updated!.sensitivities).toEqual(['dairy'])
+    })
+
+    test('returns null for non-existent meal', async () => {
+      const user = getTestUser()
+      const result = await updateMeal(user, '00000000-0000-0000-0000-000000000000', {
+        sensitivities: ['gluten'],
+      })
+      expect(result).toBeNull()
     })
   })
 

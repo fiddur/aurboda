@@ -9,6 +9,7 @@ import {
   getMealById as dbGetMealById,
   getMeals as dbGetMeals,
   insertMeal as dbInsertMeal,
+  updateMeal as dbUpdateMeal,
   type Meal,
   type MealFoodItem,
 } from '../db/index.ts'
@@ -41,6 +42,22 @@ export interface AddMealInput {
   food_items?: FoodItemInput[]
   micros?: Record<string, number>
   notes?: string
+  sensitivities?: string[]
+}
+
+export interface UpdateMealInput {
+  time?: string
+  meal_type?: string
+  name?: string | null
+  calories?: number | null
+  protein?: number | null
+  carbs?: number | null
+  fat?: number | null
+  fiber?: number | null
+  food_items?: FoodItemInput[] | null
+  micros?: Record<string, number> | null
+  notes?: string | null
+  sensitivities?: string[] | null
 }
 
 interface MealResponse {
@@ -57,6 +74,7 @@ interface MealResponse {
   food_items?: MealFoodItem[]
   micros?: Record<string, number>
   notes?: string
+  sensitivities?: string[]
   created_at: string
 }
 
@@ -89,6 +107,7 @@ const formatMeal = (meal: Meal): MealResponse => ({
   name: meal.name,
   notes: meal.notes,
   protein: meal.protein,
+  sensitivities: meal.sensitivities,
   source: meal.source,
   time: meal.time.toISOString(),
 })
@@ -114,9 +133,28 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
     name: input.name,
     notes: input.notes,
     protein: input.protein,
+    sensitivities: input.sensitivities,
     source: input.source,
     time: mealTime,
   })
+
+  return { data: formatMeal(meal), success: true }
+}
+
+/**
+ * Update an existing meal record.
+ */
+export async function updateMealById(user: string, id: string, input: UpdateMealInput): Promise<MealResult> {
+  const meal = await dbUpdateMeal(user, id, {
+    ...input,
+    food_items: input.food_items === null ? null : input.food_items,
+    micros: input.micros === null ? null : input.micros,
+    time: input.time ? new Date(input.time) : undefined,
+  })
+
+  if (!meal) {
+    return { error: 'Meal not found', success: false }
+  }
 
   return { data: formatMeal(meal), success: true }
 }

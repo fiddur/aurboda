@@ -181,6 +181,7 @@ export const createTableStatements: Record<string, string> = {
       food_items      JSONB,
       micros          JSONB,
       notes           TEXT,
+      sensitivities   TEXT[],
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,

@@ -3,10 +3,10 @@
  *
  * Provides tools for adding, querying, and deleting meal/nutrition records.
  */
-import { addMealBodySchema, mealsQuerySchema } from '@aurboda/api-spec'
+import { addMealBodySchema, mealsQuerySchema, updateMealBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { addMeal, deleteMealById, getMeal, queryMeals } from '../services/meals.ts'
+import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from '../services/meals.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerMealTools = (server: McpServer, user: string) => {
@@ -27,6 +27,7 @@ export const registerMealTools = (server: McpServer, user: string) => {
         name: params.name,
         notes: params.notes,
         protein: params.protein,
+        sensitivities: params.sensitivities,
         source: params.source,
         time: params.time,
       })
@@ -56,6 +57,20 @@ export const registerMealTools = (server: McpServer, user: string) => {
     { id: z.string().uuid().describe('The meal ID to delete') },
     async ({ id }) => {
       const result = await deleteMealById(user, id)
+      if (!result.success) {
+        return errorResponse(result.error ?? 'Meal not found')
+      }
+      return jsonResponse(result)
+    },
+  )
+
+  // Tool: update_meal
+  server.tool(
+    'update_meal',
+    'Update an existing meal record. Only provided fields are changed.',
+    { id: z.string().uuid().describe('The meal ID to update'), ...updateMealBodySchema.shape },
+    async ({ id, ...params }) => {
+      const result = await updateMealById(user, id, params)
       if (!result.success) {
         return errorResponse(result.error ?? 'Meal not found')
       }

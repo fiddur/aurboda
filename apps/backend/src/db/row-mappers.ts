@@ -221,6 +221,7 @@ export const mapMealRow = (row: QueryResultRow): Meal => ({
   name: row.name ?? undefined,
   notes: row.notes ?? undefined,
   protein: row.protein ?? undefined,
+  sensitivities: row.sensitivities ?? undefined,
   source: row.source,
   time: new Date(row.time),
 })

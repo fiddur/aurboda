@@ -207,6 +207,10 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
+  if (existingTableNames.has('meals')) {
+    await query(db, `ALTER TABLE meals ADD COLUMN IF NOT EXISTS sensitivities TEXT[]`)
+  }
+
   if (existingTableNames.has('screentime_categories')) {
     await query(
       db,

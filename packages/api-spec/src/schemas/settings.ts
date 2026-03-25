@@ -139,6 +139,34 @@ export const calendarsSchema = z.array(calendarConfigSchema).meta({
 export type TagMappings = z.infer<typeof tagMappingsSchema>
 
 /**
+ * A configured meal slot for quick-logging.
+ */
+export const mealSlotSchema = z
+  .object({
+    default_hour: z.number().int().min(0).max(23).meta({ description: 'Default hour of day (0-23)' }),
+    name: z.string().min(1).meta({ description: 'Meal slot name (e.g., "Breakfast", "Lunch")' }),
+  })
+  .meta({ id: 'MealSlot', description: 'A configured meal slot for quick-logging' })
+
+export type MealSlot = z.infer<typeof mealSlotSchema>
+
+/**
+ * Array of configured meal slots.
+ */
+export const mealSlotsSchema = z.array(mealSlotSchema).meta({
+  id: 'MealSlots',
+  description: 'Configured meal slots for quick-logging',
+})
+
+/**
+ * Sensitivity areas for meal tracking.
+ */
+export const sensitivityAreasSchema = z.array(z.string().min(1)).meta({
+  id: 'SensitivityAreas',
+  description: 'Sensitivity areas to track in meals (e.g., "gluten", "dairy", "red_meat")',
+})
+
+/**
  * Update settings input schema.
  */
 export const updateSettingsInputSchema = z
@@ -162,11 +190,17 @@ export const updateSettingsInputSchema = z
       description:
         'Unified icon mappings for all timeline items — tags, activities, exercise types (set to null to clear all)',
     }),
+    meal_slots: mealSlotsSchema.nullable().optional().meta({
+      description: 'Configured meal slots for quick-logging (set to null to clear)',
+    }),
     lastfm_username: lastFmUsernameSchema.nullable().optional().meta({
       description: 'Last.fm username for scrobble sync (set to null to clear)',
     }),
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
+    }),
+    sensitivity_areas: sensitivityAreasSchema.nullable().optional().meta({
+      description: 'Sensitivity areas to track in meals (set to null to clear)',
     }),
     sex: biologicalSexSchema.nullable().optional().meta({
       description: 'Biological sex for calorie calculation (set to null to clear)',
@@ -207,11 +241,13 @@ export const userSettingsResponseSchema = baseResponseSchema
     garmin_connected: z
       .boolean()
       .meta({ description: 'Whether Garmin Connect is connected via stored session' }),
+    meal_slots: mealSlotsSchema.meta({ description: 'Configured meal slots for quick-logging' }),
     lastfm_configured: z.boolean().meta({ description: 'Whether Last.fm API key is configured on server' }),
     lastfm_username: z.string().nullable().meta({ description: 'Last.fm username for scrobble sync' }),
     oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
     rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),
+    sensitivity_areas: sensitivityAreasSchema.meta({ description: 'Sensitivity areas to track in meals' }),
     sex: biologicalSexSchema.nullable().meta({ description: 'Biological sex for calorie calculation' }),
     tag_icons: tagIconsSchema.meta({
       description: 'Tag icon mappings (deprecated, use item_icons)',
