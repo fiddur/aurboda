@@ -28,6 +28,7 @@ import { Home } from './pages/Home/index.jsx'
 import { HrZones } from './pages/HrZones/index.jsx'
 import { Login } from './pages/Login/index.jsx'
 import { Meals } from './pages/Meals/index.jsx'
+import { MealDetail } from './pages/Meals/MealDetail.jsx'
 import { MetricMeta } from './pages/MetricMeta/index.jsx'
 import { Places } from './pages/Places/index.jsx'
 import { Privacy } from './pages/Privacy/index.jsx'
@@ -63,6 +64,7 @@ export function App() {
             <Route path="/timeline" component={Timeline} />
             <Route path="/data" component={Data} />
             <Route path="/add" component={AddData} />
+            <Route path="/meals/:id" component={MealDetail} />
             <Route path="/meals" component={Meals} />
             <Route path="/reports/add" component={AddReport} />
             <Route path="/reports/:id" component={ReportDetail} />

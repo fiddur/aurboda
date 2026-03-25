@@ -102,14 +102,18 @@ function MealDetails({
   onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
 }) {
   const hasFoodItems = meal.food_items && meal.food_items.length > 0
-  const hasSensitivities = meal.sensitivities && meal.sensitivities.length > 0
   const hasCalories = meal.calories !== undefined
+  const hasContent = meal.name || hasFoodItems || meal.notes || hasCalories
 
-  if (!meal.name && !hasFoodItems && !hasSensitivities && !meal.notes && !hasCalories) return null
+  if (!hasContent) return null
 
   return (
     <div class="meal-details">
-      {meal.name && <div class="meal-name">{meal.name}</div>}
+      {meal.name && (
+        <a href={`/meals/${meal.id}`} class="meal-name">
+          {meal.name}
+        </a>
+      )}
       {hasFoodItems && (
         <div class="food-items">
           {meal.food_items!.map((item, i) => (
@@ -120,15 +124,6 @@ function MealDetails({
               sensitivityAreas={sensitivityAreas}
               onToggle={onToggleFoodMapping}
             />
-          ))}
-        </div>
-      )}
-      {hasSensitivities && (
-        <div class="meal-sensitivities">
-          {meal.sensitivities!.map((s) => (
-            <span key={s} class="sensitivity-chip">
-              {s}
-            </span>
           ))}
         </div>
       )}
@@ -194,6 +189,12 @@ function MealSlotRow({
         </div>
 
         {isSaving && <span class="saving-indicator" />}
+
+        {primaryMeal && (
+          <a href={`/meals/${primaryMeal.id}`} class="meal-edit-link" title="Edit meal details">
+            ...
+          </a>
+        )}
 
         {primaryMeal && (
           <ConfirmButton
