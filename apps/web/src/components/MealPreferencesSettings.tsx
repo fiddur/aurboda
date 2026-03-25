@@ -105,7 +105,7 @@ export function MealPreferencesSettings() {
       title="Meal Preferences"
       description="Configure meal slots and sensitivity areas for quick meal logging."
       isLoading={isLoading}
-      headerExtra={<SaveStatusIndicator status={saveStatus} />}
+      headerExtra={<SaveStatusIndicator state={saveStatus} />}
     >
       {/* Sensitivity Areas */}
       <div class="meal-pref-subsection">
