@@ -8,11 +8,11 @@ vi.mock('../db', () => ({
   deleteMeal: vi.fn(),
   getMealById: vi.fn(),
   getMeals: vi.fn(),
-  insertMeal: vi.fn(),
+  upsertMeal: vi.fn(),
   updateMeal: vi.fn(),
 }))
 
-const mockInsertMeal = vi.mocked(db.insertMeal)
+const mockUpsertMeal = vi.mocked(db.upsertMeal)
 const mockGetMealById = vi.mocked(db.getMealById)
 const mockGetMeals = vi.mocked(db.getMeals)
 const mockDeleteMeal = vi.mocked(db.deleteMeal)
@@ -44,7 +44,7 @@ describe('addMeal', () => {
       time: new Date('2025-06-15T08:00:00Z'),
     }
 
-    mockInsertMeal.mockResolvedValue(mockMeal)
+    mockUpsertMeal.mockResolvedValue(mockMeal)
 
     const result = await addMeal('testuser', {
       calories: 650,
@@ -73,7 +73,7 @@ describe('addMeal', () => {
   })
 
   test('creates a meal with sensitivities', async () => {
-    mockInsertMeal.mockResolvedValue({
+    mockUpsertMeal.mockResolvedValue({
       created_at: new Date('2025-06-15T10:00:00Z'),
       id: 'meal-3',
       meal_type: 'dinner',
@@ -90,14 +90,14 @@ describe('addMeal', () => {
 
     expect(result.success).toBe(true)
     expect(result.data!.sensitivities).toEqual(['gluten', 'dairy'])
-    expect(mockInsertMeal).toHaveBeenCalledWith(
+    expect(mockUpsertMeal).toHaveBeenCalledWith(
       'testuser',
       expect.objectContaining({ sensitivities: ['gluten', 'dairy'] }),
     )
   })
 
   test('creates a meal with minimal fields', async () => {
-    mockInsertMeal.mockResolvedValue({
+    mockUpsertMeal.mockResolvedValue({
       created_at: new Date('2025-06-15T10:00:00Z'),
       id: 'meal-2',
       source: 'manual',

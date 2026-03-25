@@ -108,6 +108,11 @@ export type Meal = z.infer<typeof mealSchema>
  */
 export const addMealBodySchema = z
   .object({
+    id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Client-generated meal ID (enables idempotent PUT)' }),
     calories: z.number().optional().meta({ description: 'Total energy in kcal' }),
     carbs: z.number().optional().meta({ description: 'Total carbohydrates in grams' }),
     fat: z.number().optional().meta({ description: 'Total fat in grams' }),

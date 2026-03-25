@@ -178,6 +178,7 @@ export {
   getMealLogCompleted,
   getMeals,
   insertMeal,
+  upsertMeal,
   setMealLogCompleted,
   unsetMealLogCompleted,
   updateMeal,

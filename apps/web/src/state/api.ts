@@ -1550,7 +1550,8 @@ export const fetchMeals = async (params?: MealsQuery): Promise<Meal[]> => {
 
 export const addMealApi = async (body: AddMealBody): Promise<Meal> => {
   const { token } = auth.value
-  const response = await axios.post<MealResponse>(`${API_URL}/meals`, body, {
+  const payload = { ...body, id: body.id ?? crypto.randomUUID() }
+  const response = await axios.put<MealResponse>(`${API_URL}/meals`, payload, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return mapMeal(response.data.data!)
