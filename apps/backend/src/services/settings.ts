@@ -193,37 +193,40 @@ export const getTagMappings = async (
 /**
  * Get settings response in the format used by both API and MCP.
  */
+/** Apply defaults for nullable settings fields. */
+const withDefaults = (settings: UserSettings) => ({
+  birth_date: settings.birth_date ?? null,
+  calendars: settings.calendars ?? [],
+  dashboard: settings.dashboard ?? null,
+  food_sensitivity_map: settings.food_sensitivity_map ?? {},
+  item_icons: settings.item_icons ?? {},
+  lastfm_username: settings.lastfm_username ?? null,
+  meal_slots: settings.meal_slots ?? [],
+  rescue_time_key: settings.rescue_time_key ?? null,
+  sensitivity_areas: settings.sensitivity_areas ?? [],
+  sex: settings.sex ?? null,
+  tag_icons: settings.item_icons ?? {},
+  tag_mappings: settings.tag_mappings ?? {},
+  training_load: settings.training_load ?? null,
+})
+
 export const getSettingsResponse = async (user: string): Promise<SettingsResponse> => {
   const settings = await getSettings(user)
   const { zones, source } = await getEffectiveHrZones(user)
   const ouraToken = await getOAuthToken(user, 'oura')
-  const ouraConfigured = !!(process.env.OURA_CLIENT && process.env.OURA_SECRET)
   const garminToken = await getOAuthToken(user, 'garmin')
-  const lastFmApiKey = await getCentralDb().getLastFmApiKey()
-  const lastFmConfigured = !!lastFmApiKey
+  const lastFmConfigured = !!(await getCentralDb().getLastFmApiKey())
 
   return {
-    birth_date: settings.birth_date ?? null,
-    calendars: settings.calendars ?? [],
-    dashboard: settings.dashboard ?? null,
+    ...withDefaults(settings),
     garmin_connected: garminToken !== null && garminToken.access_token !== '',
     goals: getEffectiveGoals(settings),
     hr_zone_start: zones,
     hr_zone_start_source: source,
-    food_sensitivity_map: settings.food_sensitivity_map ?? {},
-    item_icons: settings.item_icons ?? {},
-    meal_slots: settings.meal_slots ?? [],
     lastfm_configured: lastFmConfigured,
-    lastfm_username: settings.lastfm_username ?? null,
-    oura_configured: ouraConfigured,
+    oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
     oura_connected: ouraToken !== null,
-    rescue_time_key: settings.rescue_time_key ?? null,
-    sensitivity_areas: settings.sensitivity_areas ?? [],
-    sex: settings.sex ?? null,
     success: true,
-    tag_icons: settings.item_icons ?? {},
-    tag_mappings: settings.tag_mappings ?? {},
-    training_load: settings.training_load ?? null,
   }
 }
 
@@ -231,29 +234,33 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
  * Validate and update user settings.
  * Returns a SettingsResponse with either success or error.
  */
-const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => ({
+const EMPTY_SETTINGS_DEFAULTS = {
   birth_date: null,
   calendars: [],
   dashboard: null,
-  error: errorMessage,
   food_sensitivity_map: {},
   garmin_connected: false,
   goals: defaultGoals,
-  hr_zone_start: calculateDefaultHrZones(null),
-  hr_zone_start_source: 'default',
+  hr_zone_start_source: 'default' as const,
   item_icons: {},
-  meal_slots: [],
-  lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
   lastfm_username: null,
-  oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
+  meal_slots: [],
   oura_connected: false,
   rescue_time_key: null,
   sensitivity_areas: [],
   sex: null,
-  success: false,
   tag_icons: {},
   tag_mappings: {},
   training_load: null,
+}
+
+const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => ({
+  ...EMPTY_SETTINGS_DEFAULTS,
+  error: errorMessage,
+  hr_zone_start: calculateDefaultHrZones(null),
+  lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
+  oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
+  success: false,
 })
 
 export const validateAndUpdateSettings = async (user: string, input: unknown): Promise<SettingsResponse> => {
