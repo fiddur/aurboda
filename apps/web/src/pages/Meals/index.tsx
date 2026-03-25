@@ -308,22 +308,8 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
   }
 }
 
-export function Meals() {
+function MealsContent({ dayKey }: { dayKey: string }) {
   const isLoggedIn = auth.value.token
-  const { query: urlQuery, route } = useLocation()
-
-  // Read date from URL ?date=YYYY-MM-DD, default to today
-  const dateParam = new URLSearchParams(urlQuery).get('date')
-  const dayKey = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : todayISO()
-
-  const setDayKey = (date: string) => {
-    // Only put date in URL if it's not today (today = default)
-    if (date === todayISO()) {
-      route('/meals')
-    } else {
-      route(`/meals?date=${date}`)
-    }
-  }
 
   const { data: settings } = useQuery({
     enabled: !!isLoggedIn,
@@ -365,7 +351,70 @@ export function Meals() {
     .filter((m) => !slotTypes.has(m.meal_type ?? ''))
     .sort((a, b) => a.time.getTime() - b.time.getTime())
 
-  const isToday = dayKey === formatISO(new Date(), { representation: 'date' })
+  if (!isLoggedIn) return <p>Please log in to use meal tracking.</p>
+  if (isLoading) return <p class="loading">Loading...</p>
+
+  const isToday = dayKey === todayISO()
+
+  return (
+    <>
+      {sensitivityAreas.length === 0 && (
+        <p class="config-hint">
+          Configure your sensitivity areas and meal slots in <a href="/settings">Settings</a>.
+        </p>
+      )}
+
+      <div class="meal-slots">
+        {mealSlots.map((slot) => (
+          <MealSlotRow
+            key={slot.name}
+            slot={slot}
+            meals={findMealsForSlot(meals ?? [], slot.name)}
+            sensitivityAreas={sensitivityAreas}
+            onToggleSensitivity={handleToggleSensitivity}
+            onChangeHour={handleChangeHour}
+            onDelete={(id) => deleteMutation.mutate(id)}
+            isDeletePending={deleteMutation.isPending}
+            isSaving={savingSlots.has(slot.name.toLowerCase())}
+          />
+        ))}
+      </div>
+
+      <OtherMeals
+        meals={otherMeals}
+        onDelete={(id) => deleteMutation.mutate(id)}
+        isDeletePending={deleteMutation.isPending}
+      />
+
+      <div class="log-completion">
+        <label class="completion-label">
+          <input
+            type="checkbox"
+            checked={isDayCompleted}
+            onChange={() => toggleCompletedMutation.mutate({ dayKey, completed: isDayCompleted })}
+            disabled={toggleCompletedMutation.isPending}
+          />
+          Logging complete for {isToday ? 'today' : format(selectedDate, 'MMM d')}
+        </label>
+      </div>
+
+      {(upsertMutation.isError || updateMutation.isError) && (
+        <p class="error-message">Something went wrong. Please try again.</p>
+      )}
+    </>
+  )
+}
+
+export function Meals() {
+  const { query: urlQuery, route } = useLocation()
+
+  const dateParam = new URLSearchParams(urlQuery).get('date')
+  const dayKey = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : todayISO()
+
+  const setDayKey = (date: string) => {
+    if (date === todayISO()) route('/meals')
+    else route(`/meals?date=${date}`)
+  }
 
   return (
     <div class="meals-page">
@@ -373,58 +422,7 @@ export function Meals() {
         <h1>Meals</h1>
         <DateNav value={dayKey} onChange={setDayKey} />
       </div>
-
-      {!isLoggedIn ? (
-        <p>Please log in to use meal tracking.</p>
-      ) : isLoading ? (
-        <p class="loading">Loading...</p>
-      ) : (
-        <>
-          {sensitivityAreas.length === 0 && (
-            <p class="config-hint">
-              Configure your sensitivity areas and meal slots in <a href="/settings">Settings</a>.
-            </p>
-          )}
-
-          <div class="meal-slots">
-            {mealSlots.map((slot) => (
-              <MealSlotRow
-                key={slot.name}
-                slot={slot}
-                meals={findMealsForSlot(meals ?? [], slot.name)}
-                sensitivityAreas={sensitivityAreas}
-                onToggleSensitivity={handleToggleSensitivity}
-                onChangeHour={handleChangeHour}
-                onDelete={(id) => deleteMutation.mutate(id)}
-                isDeletePending={deleteMutation.isPending}
-                isSaving={savingSlots.has(slot.name.toLowerCase())}
-              />
-            ))}
-          </div>
-
-          <OtherMeals
-            meals={otherMeals}
-            onDelete={(id) => deleteMutation.mutate(id)}
-            isDeletePending={deleteMutation.isPending}
-          />
-
-          <div class="log-completion">
-            <label class="completion-label">
-              <input
-                type="checkbox"
-                checked={isDayCompleted}
-                onChange={() => toggleCompletedMutation.mutate({ dayKey, completed: isDayCompleted })}
-                disabled={toggleCompletedMutation.isPending}
-              />
-              Logging complete for {isToday ? 'today' : format(selectedDate, 'MMM d')}
-            </label>
-          </div>
-
-          {(upsertMutation.isError || updateMutation.isError) && (
-            <p class="error-message">Something went wrong. Please try again.</p>
-          )}
-        </>
-      )}
+      <MealsContent dayKey={dayKey} />
     </div>
   )
 }
