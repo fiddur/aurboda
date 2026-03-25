@@ -113,6 +113,16 @@ export function DateNav({
       >
         {'>>'}
       </button>
+      {!isToday && (
+        <button
+          type="button"
+          class="nav-btn nav-today"
+          onClick={() => onChange(todayStr())}
+          title="Jump to today"
+        >
+          Today
+        </button>
+      )}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay } from 'date-fns'
 import { useLocation } from 'preact-iso'
-import { useCallback, useState } from 'preact/hooks'
+import { useCallback, useRef, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { DateNav } from '../../components/DateNav'
@@ -15,6 +15,7 @@ import {
   setMealLogCompletedApi,
   unsetMealLogCompletedApi,
   updateMealApi,
+  updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -39,7 +40,57 @@ const formatMealType = (type?: string): string =>
 const findMealsForSlot = (meals: Meal[], slotName: string): Meal[] =>
   meals.filter((m) => m.meal_type === slotName.toLowerCase())
 
-function MealDetails({ meal }: { meal: Meal }) {
+/** A clickable food item chip with popover for sensitivity mapping. */
+function FoodItemChip({
+  name,
+  mappedSensitivities,
+  sensitivityAreas,
+  onToggle,
+}: {
+  name: string
+  mappedSensitivities: string[]
+  sensitivityAreas: string[]
+  onToggle: (foodItem: string, area: string, checked: boolean) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+
+  const hasMappings = mappedSensitivities.length > 0
+
+  return (
+    <span ref={ref} class={`food-item-chip ${hasMappings ? 'mapped' : ''}`} onClick={() => setOpen(!open)}>
+      {name}
+      {hasMappings && <span class="mapping-dot" />}
+      {open && sensitivityAreas.length > 0 && (
+        <div class="food-map-popover" onClick={(e) => e.stopPropagation()}>
+          <div class="popover-title">Sensitivities for "{name}"</div>
+          {sensitivityAreas.map((area) => (
+            <label key={area} class="popover-option">
+              <input
+                type="checkbox"
+                checked={mappedSensitivities.includes(area)}
+                onChange={(e) => onToggle(name, area, (e.target as HTMLInputElement).checked)}
+              />
+              {area}
+            </label>
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
+function MealDetails({
+  meal,
+  foodSensitivityMap,
+  sensitivityAreas,
+  onToggleFoodMapping,
+}: {
+  meal: Meal
+  foodSensitivityMap: Record<string, string[]>
+  sensitivityAreas: string[]
+  onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
+}) {
   const hasFoodItems = meal.food_items && meal.food_items.length > 0
   const hasSensitivities = meal.sensitivities && meal.sensitivities.length > 0
   const hasCalories = meal.calories !== undefined
@@ -52,9 +103,13 @@ function MealDetails({ meal }: { meal: Meal }) {
       {hasFoodItems && (
         <div class="food-items">
           {meal.food_items!.map((item, i) => (
-            <span key={i} class="food-item-chip">
-              {item.name}
-            </span>
+            <FoodItemChip
+              key={i}
+              name={item.name}
+              mappedSensitivities={foodSensitivityMap[item.name] ?? []}
+              sensitivityAreas={sensitivityAreas}
+              onToggle={onToggleFoodMapping}
+            />
           ))}
         </div>
       )}
@@ -78,7 +133,9 @@ interface MealSlotRowProps {
   slot: MealSlot
   meals: Meal[]
   sensitivityAreas: string[]
+  foodSensitivityMap: Record<string, string[]>
   onToggleSensitivity: (slot: MealSlot, area: string, existingMeal?: Meal) => void
+  onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
   onChangeHour: (meal: Meal, hour: number) => void
   onDelete: (id: string) => void
   isDeletePending: boolean
@@ -89,7 +146,9 @@ function MealSlotRow({
   slot,
   meals: slotMeals,
   sensitivityAreas,
+  foodSensitivityMap,
   onToggleSensitivity,
+  onToggleFoodMapping,
   onChangeHour,
   onDelete,
   isDeletePending,
@@ -154,7 +213,13 @@ function MealSlotRow({
       )}
 
       {slotMeals.map((meal) => (
-        <MealDetails key={meal.id} meal={meal} />
+        <MealDetails
+          key={meal.id}
+          meal={meal}
+          foodSensitivityMap={foodSensitivityMap}
+          sensitivityAreas={sensitivityAreas}
+          onToggleFoodMapping={onToggleFoodMapping}
+        />
       ))}
     </div>
   )
@@ -164,10 +229,16 @@ function OtherMeals({
   meals,
   onDelete,
   isDeletePending,
+  foodSensitivityMap,
+  sensitivityAreas,
+  onToggleFoodMapping,
 }: {
   meals: Meal[]
   onDelete: (id: string) => void
   isDeletePending: boolean
+  foodSensitivityMap: Record<string, string[]>
+  sensitivityAreas: string[]
+  onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
 }) {
   if (meals.length === 0) return null
   return (
@@ -187,7 +258,12 @@ function OtherMeals({
               buttonClass="btn-danger-small"
             />
           </div>
-          <MealDetails meal={meal} />
+          <MealDetails
+            meal={meal}
+            foodSensitivityMap={foodSensitivityMap}
+            sensitivityAreas={sensitivityAreas}
+            onToggleFoodMapping={onToggleFoodMapping}
+          />
         </div>
       ))}
     </div>
@@ -354,6 +430,25 @@ function MealsContent({ dayKey }: { dayKey: string }) {
   } = useMealMutations(mealsQueryKey, meals)
 
   const otherMeals = getOtherMeals(meals ?? [], mealSlots)
+  const foodSensitivityMap: Record<string, string[]> = settings?.food_sensitivity_map ?? {}
+  const queryClient = useQueryClient()
+
+  const foodMapMutation = useMutation({
+    mutationFn: (newMap: Record<string, string[]>) => updateUserSettings({ food_sensitivity_map: newMap }),
+    onSuccess: (result) => queryClient.setQueryData(['userSettings'], result),
+  })
+
+  const handleToggleFoodMapping = (foodItem: string, area: string, checked: boolean) => {
+    const current = foodSensitivityMap[foodItem] ?? []
+    const next = checked ? [...current, area] : current.filter((s) => s !== area)
+    const newMap = { ...foodSensitivityMap, [foodItem]: next.length > 0 ? next : undefined }
+    // Clean up entries with empty arrays
+    const cleaned = Object.fromEntries(Object.entries(newMap).filter(([, v]) => v && v.length > 0)) as Record<
+      string,
+      string[]
+    >
+    foodMapMutation.mutate(cleaned)
+  }
 
   if (!isLoggedIn) return <p>Please log in to use meal tracking.</p>
   if (isLoading) return <p class="loading">Loading...</p>
@@ -375,7 +470,9 @@ function MealsContent({ dayKey }: { dayKey: string }) {
             slot={slot}
             meals={findMealsForSlot(meals ?? [], slot.name)}
             sensitivityAreas={sensitivityAreas}
+            foodSensitivityMap={foodSensitivityMap}
             onToggleSensitivity={handleToggleSensitivity}
+            onToggleFoodMapping={handleToggleFoodMapping}
             onChangeHour={handleChangeHour}
             onDelete={(id) => deleteMutation.mutate(id)}
             isDeletePending={deleteMutation.isPending}
@@ -388,6 +485,9 @@ function MealsContent({ dayKey }: { dayKey: string }) {
         meals={otherMeals}
         onDelete={(id) => deleteMutation.mutate(id)}
         isDeletePending={deleteMutation.isPending}
+        foodSensitivityMap={foodSensitivityMap}
+        sensitivityAreas={sensitivityAreas}
+        onToggleFoodMapping={handleToggleFoodMapping}
       />
 
       <div class="log-completion">

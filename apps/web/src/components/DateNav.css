@@ -26,6 +26,13 @@
   cursor: not-allowed;
 }
 
+.nav-today {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  color: #673ab8;
+  border-color: #c4b5fd;
+}
+
 .nav-date-label {
   font-size: 0.9rem;
   font-weight: 500;
