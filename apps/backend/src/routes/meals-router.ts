@@ -3,16 +3,7 @@
  *
  * Handles: /meals/*
  */
-import {
-  addMealBodySchema,
-  type DeleteMealResponse,
-  type MealResponse,
-  type MealsQuery,
-  mealsQuerySchema,
-  type MealsResponse,
-  type UpdateMealBody,
-  updateMealBodySchema,
-} from '@aurboda/api-spec'
+import { addMealBodySchema, mealsQuerySchema, updateMealBodySchema } from '@aurboda/api-spec'
 import { type RequestHandler, Router } from 'express'
 
 import { getMealLogCompleted, setMealLogCompleted, unsetMealLogCompleted } from '../db/index.ts'
@@ -48,6 +39,18 @@ const handleUpsertMeal: RequestHandler = async (req, res) => {
   res.json({ data: result.data, success: true })
 }
 
+const handleUpdateMeal: RequestHandler<{ id: string }> = async (req, res) => {
+  const result = await updateMealById(req.user!, req.params.id, req.body)
+  if (!result.success) return res.status(404).json({ error: result.error, success: false })
+  res.json({ data: result.data, success: true })
+}
+
+const handleDeleteMeal: RequestHandler<{ id: string }> = async (req, res) => {
+  const result = await deleteMealById(req.user!, req.params.id)
+  if (!result.success) return res.status(404).json({ error: result.error, success: false })
+  res.json({ success: true })
+}
+
 export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()
 
@@ -69,38 +72,8 @@ export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
   router.put('/', ...upsertMiddleware)
   router.post('/', ...upsertMiddleware)
 
-  // PATCH /meals/:id - Update a meal
-  router.patch<{ id: string }, MealResponse, UpdateMealBody>(
-    '/:id',
-    authMiddleware,
-    validateBody(updateMealBodySchema),
-    async (req, res) => {
-      const { id } = req.params
-      const user = req.user!
-
-      const result = await updateMealById(user, id, req.body)
-
-      if (!result.success) {
-        return res.status(404).json({ error: result.error, success: false })
-      }
-
-      res.json({ data: result.data, success: true })
-    },
-  )
-
-  // DELETE /meals/:id - Delete a meal
-  router.delete<{ id: string }, DeleteMealResponse>('/:id', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const user = req.user!
-
-    const result = await deleteMealById(user, id)
-
-    if (!result.success) {
-      return res.status(404).json({ error: result.error, success: false })
-    }
-
-    res.json({ success: true })
-  })
+  router.patch('/:id', authMiddleware, validateBody(updateMealBodySchema), handleUpdateMeal)
+  router.delete('/:id', authMiddleware, handleDeleteMeal)
 
   return router
 }
