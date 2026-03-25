@@ -179,3 +179,35 @@ export const deleteMeal = async (user: string, id: string): Promise<boolean> => 
   const result = await query(user, `DELETE FROM meals WHERE id = $1`, [id])
   return (result.rowCount ?? 0) > 0
 }
+
+// ============================================================================
+// Meal Log Completion
+// ============================================================================
+
+/**
+ * Get completed dates within a range.
+ */
+export const getMealLogCompleted = async (user: string, dates: string[]): Promise<string[]> => {
+  if (dates.length === 0) return []
+  const placeholders = dates.map((_, i) => `$${i + 1}`).join(', ')
+  const result = await query(
+    user,
+    `SELECT date FROM meal_log_completed WHERE date IN (${placeholders})`,
+    dates,
+  )
+  return result.rows.map((r) => r.date.toISOString().slice(0, 10))
+}
+
+/**
+ * Mark a date as completed.
+ */
+export const setMealLogCompleted = async (user: string, date: string): Promise<void> => {
+  await query(user, `INSERT INTO meal_log_completed (date) VALUES ($1) ON CONFLICT (date) DO NOTHING`, [date])
+}
+
+/**
+ * Unmark a date as completed.
+ */
+export const unsetMealLogCompleted = async (user: string, date: string): Promise<void> => {
+  await query(user, `DELETE FROM meal_log_completed WHERE date = $1`, [date])
+}

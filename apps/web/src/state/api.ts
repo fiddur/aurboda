@@ -1570,3 +1570,29 @@ export const deleteMealApi = async (id: string): Promise<void> => {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
+
+// Meal log completion
+
+export const fetchMealLogCompleted = async (dates: string[]): Promise<string[]> => {
+  if (dates.length === 0) return []
+  const { token } = auth.value
+  const response = await axios.get<{ data: string[]; success: boolean }>(`${API_URL}/meals/log-completed`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { dates: dates.join(',') },
+  })
+  return response.data.data ?? []
+}
+
+export const setMealLogCompletedApi = async (date: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.put(`${API_URL}/meals/log-completed/${date}`, null, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export const unsetMealLogCompletedApi = async (date: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/meals/log-completed/${date}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
