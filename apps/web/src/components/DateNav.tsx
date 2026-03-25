@@ -23,8 +23,6 @@ interface DateRangeNavProps {
   to: string // YYYY-MM-DD
   /** Called when the range changes. */
   onChange: (from: string, to: string) => void
-  /** Label to display (caller controls formatting). */
-  label: string
   /** If true, disable navigating past today. */
   maxToday?: boolean
   /** Extra class name. */
@@ -120,7 +118,7 @@ export function DateNav({
 }
 
 /** Date-range navigation with day/month arrows and click-to-pick start/end. */
-export function DateRangeNav({ from, to, onChange, label, maxToday = true, ...rest }: DateRangeNavProps) {
+export function DateRangeNav({ from, to, onChange, maxToday = true, ...rest }: DateRangeNavProps) {
   const fromInputRef = useRef<HTMLInputElement>(null)
   const toInputRef = useRef<HTMLInputElement>(null)
   const [editingField, setEditingField] = useState<'from' | 'to' | null>(null)
