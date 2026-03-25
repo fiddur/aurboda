@@ -234,13 +234,7 @@ export function Meals() {
     .filter((m) => !slotTypes.has(m.meal_type ?? ''))
     .sort((a, b) => a.time.getTime() - b.time.getTime())
 
-  if (!isLoggedIn) {
-    return (
-      <div class="meals-page">
-        <p>Please log in to use meal tracking.</p>
-      </div>
-    )
-  }
+  const isToday = dayKey === formatISO(new Date(), { representation: 'date' })
 
   return (
     <div class="meals-page">
@@ -249,16 +243,18 @@ export function Meals() {
         <DateNav value={dayKey} onChange={setDayKey} />
       </div>
 
-      {sensitivityAreas.length === 0 && (
-        <p class="config-hint">
-          Configure your sensitivity areas and meal slots in <a href="/settings">Settings</a>.
-        </p>
-      )}
-
-      {isLoading ? (
+      {!isLoggedIn ? (
+        <p>Please log in to use meal tracking.</p>
+      ) : isLoading ? (
         <p class="loading">Loading...</p>
       ) : (
         <>
+          {sensitivityAreas.length === 0 && (
+            <p class="config-hint">
+              Configure your sensitivity areas and meal slots in <a href="/settings">Settings</a>.
+            </p>
+          )}
+
           <div class="meal-slots">
             {mealSlots.map((slot) => (
               <MealSlotRow
@@ -297,7 +293,6 @@ export function Meals() {
             </div>
           )}
 
-          {/* Day completion toggle */}
           <div class="log-completion">
             <label class="completion-label">
               <input
@@ -306,17 +301,14 @@ export function Meals() {
                 onChange={() => toggleCompletedMutation.mutate()}
                 disabled={toggleCompletedMutation.isPending}
               />
-              Logging complete for{' '}
-              {dayKey === formatISO(new Date(), { representation: 'date' })
-                ? 'today'
-                : format(selectedDate, 'MMM d')}
+              Logging complete for {isToday ? 'today' : format(selectedDate, 'MMM d')}
             </label>
           </div>
-        </>
-      )}
 
-      {(addMutation.isError || updateMutation.isError) && (
-        <p class="error-message">Something went wrong. Please try again.</p>
+          {(addMutation.isError || updateMutation.isError) && (
+            <p class="error-message">Something went wrong. Please try again.</p>
+          )}
+        </>
       )}
     </div>
   )
