@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay } from 'date-fns'
-import { useState } from 'preact/hooks'
+import { useCallback, useRef, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { DateNav } from '../../components/DateNav'
@@ -81,6 +81,7 @@ interface MealSlotRowProps {
   onChangeHour: (meal: Meal, hour: number) => void
   onDelete: (id: string) => void
   isDeletePending: boolean
+  isSaving: boolean
 }
 
 function MealSlotRow({
@@ -91,6 +92,7 @@ function MealSlotRow({
   onChangeHour,
   onDelete,
   isDeletePending,
+  isSaving,
 }: MealSlotRowProps) {
   const primaryMeal = slotMeals[0]
   const sensitivities = primaryMeal?.sensitivities ?? []
@@ -120,6 +122,8 @@ function MealSlotRow({
             </button>
           ))}
         </div>
+
+        {isSaving && <span class="saving-indicator" />}
 
         {primaryMeal && (
           <ConfirmButton
@@ -194,6 +198,10 @@ export function Meals() {
   const queryClient = useQueryClient()
 
   const [dayKey, setDayKey] = useState(() => formatISO(new Date(), { representation: 'date' }))
+  // Track slots with in-flight creation to prevent duplicates
+  const pendingCreates = useRef(new Set<string>())
+  // Track which slots have active mutations for the spinner
+  const [savingSlots, setSavingSlots] = useState(new Set<string>())
 
   const { data: settings } = useQuery({
     enabled: !!isLoggedIn,
@@ -208,15 +216,15 @@ export function Meals() {
   const selectedDate = new Date(dayKey)
   const dayStart = startOfDay(selectedDate)
   const dayEnd = endOfDay(selectedDate)
+  const mealsQueryKey = ['meals', dayKey]
 
   const { data: meals, isLoading } = useQuery({
     enabled: !!isLoggedIn,
     queryFn: () => fetchMeals({ start: dayStart.toISOString(), end: dayEnd.toISOString() }),
-    queryKey: ['meals', dayKey],
+    queryKey: mealsQueryKey,
     staleTime: 30_000,
   })
 
-  // Log completion status
   const { data: completedDates } = useQuery({
     enabled: !!isLoggedIn,
     queryFn: () => fetchMealLogCompleted([dayKey]),
@@ -225,14 +233,52 @@ export function Meals() {
   })
   const isDayCompleted = completedDates?.includes(dayKey) ?? false
 
+  const markSlotSaving = (slotName: string, saving: boolean) => {
+    setSavingSlots((prev) => {
+      const next = new Set(prev)
+      if (saving) next.add(slotName)
+      else next.delete(slotName)
+      return next
+    })
+  }
+
+  /** Optimistically update the meals cache. */
+  const optimisticUpdate = useCallback(
+    (updater: (old: Meal[]) => Meal[]) => {
+      queryClient.setQueryData<Meal[]>(mealsQueryKey, (old) => updater(old ?? []))
+    },
+    [queryClient, mealsQueryKey],
+  )
+
   const invalidateMeals = () => queryClient.invalidateQueries({ queryKey: ['meals'] })
 
-  const addMutation = useMutation({ mutationFn: addMealApi, onSuccess: invalidateMeals })
-  const updateMutation = useMutation({
-    mutationFn: ({ id, ...body }: { id: string } & Parameters<typeof updateMealApi>[1]) =>
-      updateMealApi(id, body),
-    onSuccess: invalidateMeals,
+  const addMutation = useMutation({
+    mutationFn: addMealApi,
+    onSuccess: (newMeal) => {
+      pendingCreates.current.delete(newMeal.meal_type ?? '')
+      // Replace the optimistic placeholder with the real meal
+      optimisticUpdate((old) => old.map((m) => (m.id === `pending-${newMeal.meal_type}` ? newMeal : m)))
+      invalidateMeals()
+    },
+    onError: (_err, variables) => {
+      const slotName = variables.meal_type ?? ''
+      pendingCreates.current.delete(slotName)
+      markSlotSaving(slotName, false)
+      invalidateMeals()
+    },
   })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...body }: { id: string; sensitivities?: string[]; time?: string }) =>
+      updateMealApi(id, body),
+    onSettled: (_data, _err, variables) => {
+      // Find the meal's slot to clear saving indicator
+      const meal = (meals ?? []).find((m) => m.id === variables.id)
+      if (meal?.meal_type) markSlotSaving(meal.meal_type, false)
+      invalidateMeals()
+    },
+  })
+
   const deleteMutation = useMutation({ mutationFn: deleteMealApi, onSuccess: invalidateMeals })
 
   const toggleCompletedMutation = useMutation({
@@ -241,15 +287,43 @@ export function Meals() {
   })
 
   const handleToggleSensitivity = (slot: MealSlot, area: string, existingMeal?: Meal) => {
+    const slotName = slot.name.toLowerCase()
+    markSlotSaving(slotName, true)
+
     if (existingMeal) {
+      // Update existing meal optimistically
       const current = existingMeal.sensitivities ?? []
       const next = current.includes(area) ? current.filter((s) => s !== area) : [...current, area]
+      optimisticUpdate((old) =>
+        old.map((m) => (m.id === existingMeal.id ? { ...m, sensitivities: next } : m)),
+      )
       updateMutation.mutate({ id: existingMeal.id!, sensitivities: next })
+    } else if (pendingCreates.current.has(slotName)) {
+      // A create is already in flight for this slot — update the optimistic placeholder
+      optimisticUpdate((old) =>
+        old.map((m) => {
+          if (m.id !== `pending-${slotName}`) return m
+          const current = m.sensitivities ?? []
+          const next = current.includes(area) ? current.filter((s) => s !== area) : [...current, area]
+          return { ...m, sensitivities: next }
+        }),
+      )
+      // The real meal will arrive from addMutation.onSuccess and we'll reconcile
     } else {
+      // Create new meal — add optimistic placeholder and guard against duplicates
+      pendingCreates.current.add(slotName)
       const mealTime = new Date(selectedDate)
       mealTime.setHours(slot.default_hour, 0, 0, 0)
+      const placeholder: Meal = {
+        id: `pending-${slotName}`,
+        meal_type: slotName,
+        sensitivities: [area],
+        source: 'manual',
+        time: mealTime,
+      }
+      optimisticUpdate((old) => [...old, placeholder])
       addMutation.mutate({
-        meal_type: slot.name.toLowerCase(),
+        meal_type: slotName,
         sensitivities: [area],
         source: 'manual',
         time: mealTime.toISOString(),
@@ -260,6 +334,8 @@ export function Meals() {
   const handleChangeHour = (meal: Meal, hour: number) => {
     const newTime = new Date(meal.time)
     newTime.setHours(hour, 0, 0, 0)
+    optimisticUpdate((old) => old.map((m) => (m.id === meal.id ? { ...m, time: newTime } : m)))
+    if (meal.meal_type) markSlotSaving(meal.meal_type, true)
     updateMutation.mutate({ id: meal.id!, time: newTime.toISOString() })
   }
 
@@ -300,6 +376,7 @@ export function Meals() {
                 onChangeHour={handleChangeHour}
                 onDelete={(id) => deleteMutation.mutate(id)}
                 isDeletePending={deleteMutation.isPending}
+                isSaving={savingSlots.has(slot.name.toLowerCase())}
               />
             ))}
           </div>
