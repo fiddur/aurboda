@@ -4,7 +4,6 @@
  * Handles: /meals/*
  */
 import {
-  type AddMealBody,
   addMealBodySchema,
   type DeleteMealResponse,
   type MealResponse,
