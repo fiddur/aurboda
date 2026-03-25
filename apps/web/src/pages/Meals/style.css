@@ -19,39 +19,30 @@
   color: #1f2937;
 }
 
-/* Date navigation */
+/* Log completion */
 
-.date-nav {
+.log-completion {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.completion-label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-.date-nav .btn-secondary {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.85rem;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  color: #374151;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.date-nav .btn-secondary:hover:not(:disabled) {
-  background: #f3f4f6;
-}
-
-.date-nav .btn-secondary:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.history-date {
   font-size: 0.9rem;
-  font-weight: 500;
   color: #374151;
-  min-width: 100px;
-  text-align: center;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.completion-label input[type='checkbox'] {
+  accent-color: #673ab8;
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 /* Config hint */
@@ -356,20 +347,6 @@
     color: #d1d5db;
   }
 
-  .history-date {
-    color: #d1d5db;
-  }
-
-  .date-nav .btn-secondary {
-    background: #374151;
-    border-color: #4b5563;
-    color: #d1d5db;
-  }
-
-  .date-nav .btn-secondary:hover:not(:disabled) {
-    background: #4b5563;
-  }
-
   .btn-danger-small {
     background: #1f2937;
     border-color: #7f1d1d;
@@ -382,5 +359,14 @@
 
   .config-hint {
     color: #9ca3af;
+  }
+
+  .log-completion {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .completion-label {
+    color: #d1d5db;
   }
 }

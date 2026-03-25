@@ -186,6 +186,14 @@ export const createTableStatements: Record<string, string> = {
     )
   `,
 
+  // Meal log completion flag per day
+  meal_log_completed: `
+    CREATE TABLE IF NOT EXISTS meal_log_completed (
+      date            DATE PRIMARY KEY,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
   meals_indexes: `
     CREATE INDEX IF NOT EXISTS idx_meals_time ON meals (time DESC);
     CREATE INDEX IF NOT EXISTS idx_meals_type_time ON meals (meal_type, time DESC);

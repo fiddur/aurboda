@@ -1,7 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
+import { addDays, endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useState } from 'preact/hooks'
 
+import { DateNav } from '../../components/DateNav'
 import {
   fetchActivities,
   fetchPlaces,
@@ -207,25 +208,12 @@ export const Data = () => {
     scrobblesQuery.data ?? [],
   )
 
-  const prevDay = () => setDateStr(formatISO(subDays(new Date(dateStr), 1), { representation: 'date' }))
-  const nextDay = () => setDateStr(formatISO(addDays(new Date(dateStr), 1), { representation: 'date' }))
-  const goToday = () => setDateStr(formatISO(new Date(), { representation: 'date' }))
+  // Date navigation handled by DateNav component
 
   return (
     <div class="data-page">
       <div class="data-controls">
-        <div class="data-nav">
-          <button class="nav-btn" onClick={prevDay} title="Previous day" type="button">
-            {'<'}
-          </button>
-          <button class="nav-btn nav-today" onClick={goToday} type="button">
-            Today
-          </button>
-          <button class="nav-btn" onClick={nextDay} title="Next day" type="button">
-            {'>'}
-          </button>
-        </div>
-        <span class="data-date-label">{format(date, 'EEE MMM d, yyyy')}</span>
+        <DateNav value={dateStr} onChange={setDateStr} dateFormat="EEE MMM d, yyyy" />
         <div class="data-type-filters">
           {(Object.entries(TYPE_LABELS) as [ItemType, string][]).map(([t, label]) => (
             <button

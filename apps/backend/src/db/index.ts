@@ -172,7 +172,16 @@ export {
 } from './notes.ts'
 
 // Meals
-export { deleteMeal, getMealById, getMeals, insertMeal, updateMeal } from './meals.ts'
+export {
+  deleteMeal,
+  getMealById,
+  getMealLogCompleted,
+  getMeals,
+  insertMeal,
+  setMealLogCompleted,
+  unsetMealLogCompleted,
+  updateMeal,
+} from './meals.ts'
 
 // Lab results (legacy)
 export { getLabResults, insertLabResult } from './lab-results.ts'
