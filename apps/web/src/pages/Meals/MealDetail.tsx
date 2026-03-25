@@ -4,7 +4,7 @@ import { useLocation, useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
-import { deleteMealApi, fetchMeal, type Meal, updateMealApi } from '../../state/api'
+import { deleteMealApi, fetchMeal, updateMealApi } from '../../state/api'
 import './MealDetail.css'
 
 export function MealDetail() {
@@ -18,7 +18,7 @@ export function MealDetail() {
     queryKey: ['meal', id],
   })
 
-  const [editing, setEditing] = useState<Partial<Meal> | null>(null)
+  const [editing, setEditing] = useState<{ name?: string; time?: string; notes?: string } | null>(null)
 
   const updateMutation = useMutation({
     mutationFn: (body: Parameters<typeof updateMealApi>[1]) => updateMealApi(id, body),
@@ -37,28 +37,33 @@ export function MealDetail() {
     },
   })
 
-  if (isLoading)
-    {return (
+  if (isLoading) {
+    return (
       <div class="meal-detail-page">
         <p class="loading">Loading...</p>
       </div>
-    )}
-  if (!meal)
-    {return (
+    )
+  }
+  if (!meal) {
+    return (
       <div class="meal-detail-page">
         <p>Meal not found.</p>
       </div>
-    )}
+    )
+  }
 
   const isEditing = editing !== null
-  const current = isEditing ? { ...meal, ...editing } : meal
+
+  // Editing values with fallback to meal values
+  const editName = editing?.name ?? meal.name ?? ''
+  const editTime = editing?.time ?? format(meal.time, "yyyy-MM-dd'T'HH:mm")
+  const editNotes = editing?.notes ?? meal.notes ?? ''
 
   const handleSave = () => {
     if (!editing) return
     const body: Record<string, unknown> = {}
     if (editing.name !== undefined) body.name = editing.name || null
-    if (editing.time !== undefined)
-      {body.time = editing.time instanceof Date ? editing.time.toISOString() : editing.time}
+    if (editing.time !== undefined) body.time = new Date(editing.time).toISOString()
     if (editing.notes !== undefined) body.notes = editing.notes || null
     updateMutation.mutate(body)
   }
@@ -109,10 +114,7 @@ export function MealDetail() {
           {isEditing ? (
             <input
               type="datetime-local"
-              value={format(
-                current.time instanceof Date ? current.time : new Date(current.time as string),
-                "yyyy-MM-dd'T'HH:mm",
-              )}
+              value={editTime}
               onInput={(e) => setEditing({ ...editing, time: (e.target as HTMLInputElement).value })}
             />
           ) : (
@@ -125,7 +127,7 @@ export function MealDetail() {
           {isEditing ? (
             <input
               type="text"
-              value={current.name ?? ''}
+              value={editName}
               placeholder="Meal name/description"
               onInput={(e) => setEditing({ ...editing, name: (e.target as HTMLInputElement).value })}
             />
@@ -138,7 +140,7 @@ export function MealDetail() {
           <label>Notes</label>
           {isEditing ? (
             <textarea
-              value={current.notes ?? ''}
+              value={editNotes}
               placeholder="Notes..."
               rows={3}
               onInput={(e) => setEditing({ ...editing, notes: (e.target as HTMLTextAreaElement).value })}
