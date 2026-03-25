@@ -231,35 +231,35 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
  * Validate and update user settings.
  * Returns a SettingsResponse with either success or error.
  */
+const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => ({
+  birth_date: null,
+  calendars: [],
+  dashboard: null,
+  error: errorMessage,
+  food_sensitivity_map: {},
+  garmin_connected: false,
+  goals: defaultGoals,
+  hr_zone_start: calculateDefaultHrZones(null),
+  hr_zone_start_source: 'default',
+  item_icons: {},
+  meal_slots: [],
+  lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
+  lastfm_username: null,
+  oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
+  oura_connected: false,
+  rescue_time_key: null,
+  sensitivity_areas: [],
+  sex: null,
+  success: false,
+  tag_icons: {},
+  tag_mappings: {},
+  training_load: null,
+})
+
 export const validateAndUpdateSettings = async (user: string, input: unknown): Promise<SettingsResponse> => {
-  // Validate input
   const parsed = updateSettingsInputSchema.safeParse(input)
   if (!parsed.success) {
-    const errorMessage = parsed.error.issues.map((e) => e.message).join('; ')
-    return {
-      birth_date: null,
-      calendars: [],
-      dashboard: null,
-      error: errorMessage,
-      garmin_connected: false,
-      goals: defaultGoals,
-      hr_zone_start: calculateDefaultHrZones(null),
-      hr_zone_start_source: 'default',
-      food_sensitivity_map: {},
-      item_icons: {},
-      meal_slots: [],
-      lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
-      lastfm_username: null,
-      oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
-      oura_connected: false,
-      rescue_time_key: null,
-      sensitivity_areas: [],
-      sex: null,
-      success: false,
-      tag_icons: {},
-      tag_mappings: {},
-      training_load: null,
-    }
+    return buildErrorSettingsResponse(parsed.error.issues.map((e) => e.message).join('; '))
   }
 
   // Build updates object, converting null to undefined (which clears/resets the field in storage)
@@ -267,6 +267,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     'birth_date',
     'calendars',
     'dashboard',
+    'food_sensitivity_map',
     'goals',
     'hr_zone_start',
     'item_icons',
