@@ -19,6 +19,14 @@ import { getMealLogCompleted, setMealLogCompleted, unsetMealLogCompleted } from 
 import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from '../services/meals.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
+/** Check if a date is marked as logging-complete. Returns undefined if no date provided. */
+const checkLogCompleted = async (user: string, start?: string): Promise<boolean | undefined> => {
+  if (!start) return undefined
+  const dateStr = start.slice(0, 10)
+  const completed = await getMealLogCompleted(user, [dateStr])
+  return completed.includes(dateStr)
+}
+
 export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
   const router = Router()
 
@@ -32,14 +40,7 @@ export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
       const user = req.user!
 
       const result = await queryMeals(user, { end, meal_type, start })
-
-      // Include log_completed when querying a single day (start date provided)
-      let log_completed: boolean | undefined
-      if (start) {
-        const dateStr = start.slice(0, 10)
-        const completed = await getMealLogCompleted(user, [dateStr])
-        log_completed = completed.includes(dateStr)
-      }
+      const log_completed = await checkLogCompleted(user, start)
 
       res.json({ data: result.data, log_completed, success: true })
     },
