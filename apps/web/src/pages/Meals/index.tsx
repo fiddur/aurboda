@@ -155,6 +155,40 @@ function MealSlotRow({
   )
 }
 
+function OtherMeals({
+  meals,
+  onDelete,
+  isDeletePending,
+}: {
+  meals: Meal[]
+  onDelete: (id: string) => void
+  isDeletePending: boolean
+}) {
+  if (meals.length === 0) return null
+  return (
+    <div class="other-meals">
+      <h2>Other</h2>
+      {meals.map((meal) => (
+        <div key={meal.id} class="meal-slot-row has-meal">
+          <div class="slot-top">
+            <span class="slot-name">{formatMealType(meal.meal_type)}</span>
+            <span class="meal-time">{format(meal.time, 'HH:mm')}</span>
+            <ConfirmButton
+              label="Delete"
+              confirmMessage="Delete this meal?"
+              onConfirm={() => onDelete(meal.id!)}
+              isPending={isDeletePending}
+              pendingLabel="Deleting..."
+              buttonClass="btn-danger-small"
+            />
+          </div>
+          <MealDetails meal={meal} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function Meals() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
@@ -270,28 +304,11 @@ export function Meals() {
             ))}
           </div>
 
-          {otherMeals.length > 0 && (
-            <div class="other-meals">
-              <h2>Other</h2>
-              {otherMeals.map((meal) => (
-                <div key={meal.id} class="meal-slot-row has-meal">
-                  <div class="slot-top">
-                    <span class="slot-name">{formatMealType(meal.meal_type)}</span>
-                    <span class="meal-time">{format(meal.time, 'HH:mm')}</span>
-                    <ConfirmButton
-                      label="Delete"
-                      confirmMessage="Delete this meal?"
-                      onConfirm={() => deleteMutation.mutate(meal.id!)}
-                      isPending={deleteMutation.isPending}
-                      pendingLabel="Deleting..."
-                      buttonClass="btn-danger-small"
-                    />
-                  </div>
-                  <MealDetails meal={meal} />
-                </div>
-              ))}
-            </div>
-          )}
+          <OtherMeals
+            meals={otherMeals}
+            onDelete={(id) => deleteMutation.mutate(id)}
+            isDeletePending={deleteMutation.isPending}
+          />
 
           <div class="log-completion">
             <label class="completion-label">
