@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay } from 'date-fns'
+import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
@@ -7,10 +8,10 @@ import { DateNav } from '../../components/DateNav'
 import {
   addMealApi,
   deleteMealApi,
-  fetchMealLogCompleted,
   fetchMeals,
   fetchUserSettings,
   type Meal,
+  type MealsResult,
   setMealLogCompletedApi,
   unsetMealLogCompletedApi,
   updateMealApi,
@@ -193,42 +194,12 @@ function OtherMeals({
   )
 }
 
-export function Meals() {
-  const isLoggedIn = auth.value.token
+const todayISO = () => formatISO(new Date(), { representation: 'date' })
+
+/** Hook to manage meal mutations with optimistic updates. */
+function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
   const queryClient = useQueryClient()
-
-  const [dayKey, setDayKey] = useState(() => formatISO(new Date(), { representation: 'date' }))
   const [savingSlots, setSavingSlots] = useState(new Set<string>())
-
-  const { data: settings } = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: fetchUserSettings,
-    queryKey: ['userSettings'],
-  })
-
-  const mealSlots: MealSlot[] =
-    settings?.meal_slots && settings.meal_slots.length > 0 ? settings.meal_slots : DEFAULT_MEAL_SLOTS
-  const sensitivityAreas: string[] = settings?.sensitivity_areas ?? []
-
-  const selectedDate = new Date(dayKey)
-  const dayStart = startOfDay(selectedDate)
-  const dayEnd = endOfDay(selectedDate)
-  const mealsQueryKey = ['meals', dayKey]
-
-  const { data: meals, isLoading } = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: () => fetchMeals({ start: dayStart.toISOString(), end: dayEnd.toISOString() }),
-    queryKey: mealsQueryKey,
-    staleTime: 30_000,
-  })
-
-  const { data: completedDates } = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: () => fetchMealLogCompleted([dayKey]),
-    queryKey: ['mealLogCompleted', dayKey],
-    staleTime: 60_000,
-  })
-  const isDayCompleted = completedDates?.includes(dayKey) ?? false
 
   const markSlotSaving = (slotName: string, saving: boolean) => {
     setSavingSlots((prev) => {
@@ -239,17 +210,21 @@ export function Meals() {
     })
   }
 
-  /** Optimistically update the meals cache. */
   const optimisticUpdate = useCallback(
     (updater: (old: Meal[]) => Meal[]) => {
-      queryClient.setQueryData<Meal[]>(mealsQueryKey, (old) => updater(old ?? []))
+      queryClient.setQueryData<MealsResult>(mealsQueryKey, (old) => ({
+        meals: updater(old?.meals ?? []),
+        log_completed: old?.log_completed,
+      }))
     },
     [queryClient, mealsQueryKey],
   )
 
-  const invalidateMeals = () => queryClient.invalidateQueries({ queryKey: ['meals'] })
+  const invalidateMeals = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ['meals'] }),
+    [queryClient],
+  )
 
-  // PUT is idempotent — safe to retry, no duplicate risk
   const upsertMutation = useMutation({
     mutationFn: addMealApi,
     onSettled: (_data, _err, variables) => {
@@ -271,8 +246,14 @@ export function Meals() {
   const deleteMutation = useMutation({ mutationFn: deleteMealApi, onSuccess: invalidateMeals })
 
   const toggleCompletedMutation = useMutation({
-    mutationFn: () => (isDayCompleted ? unsetMealLogCompletedApi(dayKey) : setMealLogCompletedApi(dayKey)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mealLogCompleted'] }),
+    mutationFn: (params: { dayKey: string; completed: boolean }) =>
+      params.completed ? unsetMealLogCompletedApi(params.dayKey) : setMealLogCompletedApi(params.dayKey),
+    onMutate: () => {
+      queryClient.setQueryData<MealsResult>(mealsQueryKey, (old) =>
+        old ? { ...old, log_completed: !old.log_completed } : old,
+      )
+    },
+    onSettled: invalidateMeals,
   })
 
   const handleToggleSensitivity = (slot: MealSlot, area: string, existingMeal?: Meal) => {
@@ -287,11 +268,16 @@ export function Meals() {
       )
       updateMutation.mutate({ id: existingMeal.id!, sensitivities: next })
     } else {
-      // Create new meal with client-generated UUID — PUT is idempotent
       const id = crypto.randomUUID()
-      const mealTime = new Date(selectedDate)
+      const mealTime = new Date(mealsQueryKey[1])
       mealTime.setHours(slot.default_hour, 0, 0, 0)
-      const placeholder: Meal = { id, meal_type: slotName, sensitivities: [area], source: 'manual', time: mealTime }
+      const placeholder: Meal = {
+        id,
+        meal_type: slotName,
+        sensitivities: [area],
+        source: 'manual',
+        time: mealTime,
+      }
       optimisticUpdate((old) => [...old, placeholder])
       upsertMutation.mutate({
         id,
@@ -310,6 +296,69 @@ export function Meals() {
     if (meal.meal_type) markSlotSaving(meal.meal_type, true)
     updateMutation.mutate({ id: meal.id!, time: newTime.toISOString() })
   }
+
+  return {
+    savingSlots,
+    handleToggleSensitivity,
+    handleChangeHour,
+    upsertMutation,
+    updateMutation,
+    deleteMutation,
+    toggleCompletedMutation,
+  }
+}
+
+export function Meals() {
+  const isLoggedIn = auth.value.token
+  const { query: urlQuery, route } = useLocation()
+
+  // Read date from URL ?date=YYYY-MM-DD, default to today
+  const dateParam = new URLSearchParams(urlQuery).get('date')
+  const dayKey = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : todayISO()
+
+  const setDayKey = (date: string) => {
+    // Only put date in URL if it's not today (today = default)
+    if (date === todayISO()) {
+      route('/meals')
+    } else {
+      route(`/meals?date=${date}`)
+    }
+  }
+
+  const { data: settings } = useQuery({
+    enabled: !!isLoggedIn,
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+  })
+
+  const mealSlots: MealSlot[] =
+    settings?.meal_slots && settings.meal_slots.length > 0 ? settings.meal_slots : DEFAULT_MEAL_SLOTS
+  const sensitivityAreas: string[] = settings?.sensitivity_areas ?? []
+
+  const selectedDate = new Date(dayKey)
+  const dayStart = startOfDay(selectedDate)
+  const dayEnd = endOfDay(selectedDate)
+  const mealsQueryKey = ['meals', dayKey]
+
+  const { data: mealsResult, isLoading } = useQuery({
+    enabled: !!isLoggedIn,
+    queryFn: () => fetchMeals({ start: dayStart.toISOString(), end: dayEnd.toISOString() }),
+    queryKey: mealsQueryKey,
+    staleTime: 30_000,
+  })
+
+  const meals = mealsResult?.meals
+  const isDayCompleted = mealsResult?.log_completed ?? false
+
+  const {
+    savingSlots,
+    handleToggleSensitivity,
+    handleChangeHour,
+    upsertMutation,
+    updateMutation,
+    deleteMutation,
+    toggleCompletedMutation,
+  } = useMealMutations(mealsQueryKey, meals)
 
   const slotTypes = new Set(mealSlots.map((s) => s.name.toLowerCase()))
   const otherMeals = (meals ?? [])
@@ -364,7 +413,7 @@ export function Meals() {
               <input
                 type="checkbox"
                 checked={isDayCompleted}
-                onChange={() => toggleCompletedMutation.mutate()}
+                onChange={() => toggleCompletedMutation.mutate({ dayKey, completed: isDayCompleted })}
                 disabled={toggleCompletedMutation.isPending}
               />
               Logging complete for {isToday ? 'today' : format(selectedDate, 'MMM d')}

@@ -1539,13 +1539,21 @@ const mapMeal = (m: ApiMeal): Meal => ({
   time: new Date(m.time),
 })
 
-export const fetchMeals = async (params?: MealsQuery): Promise<Meal[]> => {
+export interface MealsResult {
+  meals: Meal[]
+  log_completed?: boolean
+}
+
+export const fetchMeals = async (params?: MealsQuery): Promise<MealsResult> => {
   const { token } = auth.value
-  const response = await axios.get<MealsResponse>(`${API_URL}/meals`, {
+  const response = await axios.get<MealsResponse & { log_completed?: boolean }>(`${API_URL}/meals`, {
     headers: { Authorization: `Bearer ${token}` },
     params,
   })
-  return (response.data.data ?? []).map(mapMeal)
+  return {
+    meals: (response.data.data ?? []).map(mapMeal),
+    log_completed: response.data.log_completed,
+  }
 }
 
 export const addMealApi = async (body: AddMealBody): Promise<Meal> => {
@@ -1573,16 +1581,6 @@ export const deleteMealApi = async (id: string): Promise<void> => {
 }
 
 // Meal log completion
-
-export const fetchMealLogCompleted = async (dates: string[]): Promise<string[]> => {
-  if (dates.length === 0) return []
-  const { token } = auth.value
-  const response = await axios.get<{ data: string[]; success: boolean }>(`${API_URL}/meals/log-completed`, {
-    headers: { Authorization: `Bearer ${token}` },
-    params: { dates: dates.join(',') },
-  })
-  return response.data.data ?? []
-}
 
 export const setMealLogCompletedApi = async (date: string): Promise<void> => {
   const { token } = auth.value

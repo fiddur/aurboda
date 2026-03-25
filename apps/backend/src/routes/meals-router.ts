@@ -32,24 +32,20 @@ export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
       const user = req.user!
 
       const result = await queryMeals(user, { end, meal_type, start })
-      res.json({ data: result.data, success: true })
+
+      // Include log_completed when querying a single day (start date provided)
+      let log_completed: boolean | undefined
+      if (start) {
+        const dateStr = start.slice(0, 10)
+        const completed = await getMealLogCompleted(user, [dateStr])
+        log_completed = completed.includes(dateStr)
+      }
+
+      res.json({ data: result.data, log_completed, success: true })
     },
   )
 
   // --- Log completion endpoints (before /:id to avoid route conflict) ---
-
-  // GET /meals/log-completed?dates=2026-03-25,2026-03-24
-  router.get('/log-completed', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const datesParam = (req.query.dates as string) ?? ''
-    const dates = datesParam
-      .split(',')
-      .map((d) => d.trim())
-      .filter(Boolean)
-
-    const completed = await getMealLogCompleted(user, dates)
-    res.json({ data: completed, success: true })
-  })
 
   // PUT /meals/log-completed/:date
   router.put<{ date: string }>('/log-completed/:date', authMiddleware, async (req, res) => {
