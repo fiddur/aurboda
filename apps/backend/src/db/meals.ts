@@ -34,8 +34,7 @@ export interface InsertMealInput {
  * This makes the operation idempotent — retries with the same ID are safe.
  */
 export const upsertMeal = async (user: string, input: InsertMealInput): Promise<Meal> => {
-  const params = [
-    input.id ?? null,
+  const commonParams = [
     input.source ?? 'manual',
     input.meal_type ?? null,
     input.name ?? null,
@@ -51,21 +50,27 @@ export const upsertMeal = async (user: string, input: InsertMealInput): Promise<
     input.sensitivities ?? null,
   ]
 
-  const sql = input.id
-    ? `INSERT INTO meals (id, source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, sensitivities)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-       ON CONFLICT (id) DO UPDATE SET
-         source = EXCLUDED.source, meal_type = EXCLUDED.meal_type, name = EXCLUDED.name,
-         time = EXCLUDED.time, calories = EXCLUDED.calories, protein = EXCLUDED.protein,
-         carbs = EXCLUDED.carbs, fat = EXCLUDED.fat, fiber = EXCLUDED.fiber,
-         food_items = EXCLUDED.food_items, micros = EXCLUDED.micros,
-         notes = EXCLUDED.notes, sensitivities = EXCLUDED.sensitivities
-       RETURNING ${MEAL_COLUMNS}`
-    : `INSERT INTO meals (source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, sensitivities)
-       VALUES ($2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-       RETURNING ${MEAL_COLUMNS}`
-
-  const result = await query(user, sql, params)
+  const result = input.id
+    ? await query(
+        user,
+        `INSERT INTO meals (id, source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, sensitivities)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         ON CONFLICT (id) DO UPDATE SET
+           source = EXCLUDED.source, meal_type = EXCLUDED.meal_type, name = EXCLUDED.name,
+           time = EXCLUDED.time, calories = EXCLUDED.calories, protein = EXCLUDED.protein,
+           carbs = EXCLUDED.carbs, fat = EXCLUDED.fat, fiber = EXCLUDED.fiber,
+           food_items = EXCLUDED.food_items, micros = EXCLUDED.micros,
+           notes = EXCLUDED.notes, sensitivities = EXCLUDED.sensitivities
+         RETURNING ${MEAL_COLUMNS}`,
+        [input.id, ...commonParams],
+      )
+    : await query(
+        user,
+        `INSERT INTO meals (source, meal_type, name, time, calories, protein, carbs, fat, fiber, food_items, micros, notes, sensitivities)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING ${MEAL_COLUMNS}`,
+        commonParams,
+      )
   return mapMealRow(result.rows[0])
 }
 
