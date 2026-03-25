@@ -315,6 +315,7 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
   }
 }
 
+// eslint-disable-next-line complexity -- React component with many hooks and conditional renders
 function MealsContent({ dayKey }: { dayKey: string }) {
   const isLoggedIn = auth.value.token
 
