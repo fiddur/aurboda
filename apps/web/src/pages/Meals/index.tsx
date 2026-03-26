@@ -160,7 +160,10 @@ function MealSlotRow({
   isSaving,
 }: MealSlotRowProps) {
   const primaryMeal = slotMeals[0]
-  const sensitivities = primaryMeal?.sensitivities ?? []
+  const explicit = primaryMeal?.sensitivities ?? []
+  const derived = derivedSensitivities(primaryMeal, foodSensitivityMap)
+  // Union of explicit + derived — checkbox shows checked if either
+  const effectiveSensitivities = new Set([...explicit, ...derived])
   const mealHour = primaryMeal ? primaryMeal.time.getHours() : slot.default_hour
   const hours = [slot.default_hour - 1, slot.default_hour, slot.default_hour + 1].filter(
     (h) => h >= 0 && h <= 23,
@@ -210,16 +213,20 @@ function MealSlotRow({
 
       {sensitivityAreas.length > 0 && (
         <div class="sensitivity-checks">
-          {sensitivityAreas.map((area) => (
-            <label key={area} class="sensitivity-label">
-              <input
-                type="checkbox"
-                checked={sensitivities.includes(area)}
-                onChange={() => onToggleSensitivity(slot, area, primaryMeal)}
-              />
-              {area}
-            </label>
-          ))}
+          {sensitivityAreas.map((area) => {
+            const isDerived = derived.has(area)
+            const isExplicit = explicit.includes(area)
+            return (
+              <label key={area} class={`sensitivity-label ${isDerived && !isExplicit ? 'derived' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={effectiveSensitivities.has(area)}
+                  onChange={() => onToggleSensitivity(slot, area, primaryMeal)}
+                />
+                {area}
+              </label>
+            )
+          })}
         </div>
       )}
 
@@ -282,6 +289,15 @@ function OtherMeals({
 }
 
 const todayISO = () => formatISO(new Date(), { representation: 'date' })
+
+/** Compute sensitivities derived from food items via the food-to-sensitivity mapping. */
+const derivedSensitivities = (meal: Meal | undefined, foodMap: Record<string, string[]>): Set<string> => {
+  const derived = new Set<string>()
+  for (const item of meal?.food_items ?? []) {
+    for (const area of foodMap[item.name] ?? []) derived.add(area)
+  }
+  return derived
+}
 
 const getOtherMeals = (meals: Meal[], slots: MealSlot[]): Meal[] => {
   const slotTypes = new Set(slots.map((s) => s.name.toLowerCase()))

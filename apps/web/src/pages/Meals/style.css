@@ -162,6 +162,11 @@
   accent-color: #673ab8;
 }
 
+.sensitivity-label.derived {
+  font-style: italic;
+  opacity: 0.8;
+}
+
 .meal-details {
   margin-top: 0.5rem;
   padding-top: 0.5rem;
