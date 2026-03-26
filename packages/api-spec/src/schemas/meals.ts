@@ -204,6 +204,7 @@ export type UpdateMealBody = z.infer<typeof updateMealBodySchema>
  */
 export const mealsQuerySchema = z
   .object({
+    date: z.string().optional().meta({ description: 'Local date (YYYY-MM-DD) for log_completed check' }),
     end: iso8601DateTimeSchema.optional().meta({ description: 'End date/time filter' }),
     meal_type: z.string().optional().meta({ description: 'Filter by meal type' }),
     start: iso8601DateTimeSchema.optional().meta({ description: 'Start date/time filter' }),

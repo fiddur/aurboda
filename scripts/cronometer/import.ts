@@ -8,10 +8,10 @@
  * Uses PUT /meals (idempotent upsert) so re-running is safe.
  */
 
-import { readFileSync } from 'fs'
 import { randomUUID } from 'crypto'
-import { resolve } from 'path'
+import { readFileSync } from 'fs'
 import { homedir } from 'os'
+import { resolve } from 'path'
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
