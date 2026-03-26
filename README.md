@@ -21,6 +21,7 @@ No public signup, but self-hosting is straightforward via Docker. It was initiat
 - [**Screentime Categories**](docs/features/screentime-categories.md) -- Hierarchical app categorization with productivity scoring
 - [**Training Load**](docs/features/training-load.md) -- Banister model fitness/fatigue tracking (CTL/ATL/TSB)
 - [**Places**](docs/features/places.md) -- GPS location history, auto-detected locations, visit tracking with PostGIS
+- [**Meals & Nutrition**](docs/features/meals.md) -- Quick sensitivity logging, Cronometer/Oura import, per-item micronutrients
 - [**Lab Reports**](docs/features/lab-reports.md) -- Structured lab results with metric write-through and reference ranges
 - [**Active Calorie Computation**](docs/features/calories.md) -- HR-based calculation with gap-fill from Health Connect
 - **MCP Integration** -- Full AI assistant access via [Model Context Protocol](docs/mcp-server.md) (50+ tools)

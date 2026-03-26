@@ -19,10 +19,12 @@ const checkLogCompleted = async (user: string, start?: string): Promise<boolean 
 }
 
 const handleQueryMeals: RequestHandler = async (req, res) => {
-  const { meal_type, start, end } = req.query as Record<string, string | undefined>
+  const { meal_type, start, end, date } = req.query as Record<string, string | undefined>
   const user = req.user!
   const result = await queryMeals(user, { end, meal_type, start })
-  const log_completed = await checkLogCompleted(user, start)
+  // Use explicit `date` param (local date from frontend) for log_completed check,
+  // not `start` which is UTC and may be a different calendar date due to timezone offset
+  const log_completed = await checkLogCompleted(user, date)
   res.json({ data: result.data, log_completed, success: true })
 }
 

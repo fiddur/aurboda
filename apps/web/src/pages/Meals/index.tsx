@@ -422,7 +422,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
 
   const { data: mealsResult, isLoading } = useQuery({
     enabled: !!isLoggedIn,
-    queryFn: () => fetchMeals({ start: dayStart.toISOString(), end: dayEnd.toISOString() }),
+    queryFn: () => fetchMeals({ start: dayStart.toISOString(), end: dayEnd.toISOString(), date: dayKey }),
     queryKey: mealsQueryKey,
     staleTime: 30_000,
   })

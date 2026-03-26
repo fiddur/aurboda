@@ -14,6 +14,7 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 | [Last.fm](./lastfm.md)                | Music scrobbles, auto-generated tags                                        | Pull (API)                              | API key (admin setting)      | Last.fm username                                         |
 | [Calendars](./calendars.md)           | Calendar events (stored as tags)                                            | Pull (ICS fetch)                        | None                         | ICS URL(s)                                               |
 | [OwnTracks](./owntracks.md)           | GPS location, geofences                                                     | Push (HTTP)                             | None                         | OwnTracks app config                                     |
+| Cronometer                            | Meals with full per-item macros and ~50 micronutrients                      | CSV import script                       | None                         | Export CSV from Cronometer                               |
 
 ## Sync Behavior
 

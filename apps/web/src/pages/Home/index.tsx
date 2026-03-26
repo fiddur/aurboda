@@ -233,9 +233,18 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
             </tr>
             <tr>
               <td>
+                <a href="https://cronometer.com/" target="_blank" rel="noopener noreferrer">
+                  <strong>Cronometer</strong>
+                </a>
+              </td>
+              <td>Meals with full per-item macros and ~50 micronutrients</td>
+              <td>CSV import script</td>
+            </tr>
+            <tr>
+              <td>
                 <strong>Manual Entry</strong>
               </td>
-              <td>Any metric, tag, activity, or note</td>
+              <td>Any metric, tag, activity, meal, or note</td>
               <td>Web UI, REST API, or MCP</td>
             </tr>
           </tbody>
@@ -276,6 +285,10 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
           <li>
             <strong>Places</strong> — GPS location history, auto-detected locations, visit tracking with
             PostGIS
+          </li>
+          <li>
+            <strong>Meals & Nutrition</strong> — Quick sensitivity logging, Cronometer/Oura import, per-item
+            micronutrients
           </li>
           <li>
             <strong>Lab Reports</strong> — Structured lab results with metric write-through and reference
