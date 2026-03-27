@@ -11,12 +11,13 @@ import * as d3 from 'd3'
 import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
-import type { Activity, Place, ProductivityRecord, Tag } from '../../state/api'
+import type { Activity, Meal, Place, ProductivityRecord, Tag } from '../../state/api'
 import type { ChartItem, Column, Orientation } from './types'
 
 import {
   fetchActivities,
   fetchBucketedMetrics,
+  fetchMeals,
   fetchCustomMetrics,
   fetchPlaces,
   fetchProductivity,
@@ -29,7 +30,7 @@ import {
   fetchUserSettings,
 } from '../../state/api'
 import { aggregateBucketsAligned, parseBucketedResponse } from '../../utils/chart'
-import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
+import { isEmoji, isIconPath, isUrl, resolveItemIcon } from '../../utils/emojiLookup'
 import { packLanes } from '../../utils/lanePacking'
 import { buildActivityColumnItems, EXCLUDED_TAG_PREFIXES, EXCLUDED_TAG_SOURCES } from './activityMerge'
 import { computeBarLayout, type BarSlot } from './barLayout'
@@ -83,6 +84,7 @@ type LegendCategory =
   | 'exercise'
   | 'tags'
   | 'calendar'
+  | 'meal'
   | 'screentime' // vertical only
   // Metrics sub-toggles
   | 'hr'
@@ -339,6 +341,7 @@ const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = 
   hr: () => false,
   hrv: () => false,
   location: (item) => item.column === 'Location',
+  meal: (item) => item.entity_type === 'meal',
   meditation: (item) => item.column === 'Activity' && item.activity_type === 'meditation',
   metrics: () => false, // metrics track controlled via sub-toggles at draw level
   music: (item) => item.column === 'Music',
@@ -403,6 +406,34 @@ const categorizeTags = (tags: Tag[], itemIcons: Record<string, string>): ChartIt
         },
       }
     })
+
+const categorizeMeals = (meals: Meal[], itemIcons: Record<string, string>): ChartItem[] =>
+  meals.map((m) => {
+    const icon =
+      resolveItemIcon(`meal:${m.meal_type ?? 'default'}`, itemIcons) ??
+      resolveItemIcon('meal:default', itemIcons) ??
+      '🍽️'
+    const end = new Date(m.time.getTime() + 15 * 60000)
+    const typeLabel = m.meal_type ? m.meal_type.charAt(0).toUpperCase() + m.meal_type.slice(1) : 'Meal'
+    const details = [m.name, m.calories ? `${m.calories} kcal` : undefined].filter(Boolean) as string[]
+    return {
+      color: '#f59e0b',
+      column: 'Tags / Events' as Column,
+      end,
+      entity_id: m.id,
+      entity_type: 'meal' as const,
+      href: `/meals/${m.id}`,
+      icon,
+      isPoint: true,
+      label: m.name ?? typeLabel,
+      start: m.time,
+      tooltip: {
+        details: details.length > 0 ? details : [typeLabel],
+        time: formatTime(m.time),
+        title: `${icon} ${typeLabel}`,
+      },
+    }
+  })
 
 const formatMetricLabel = (metric: string): string =>
   metric.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
@@ -705,6 +736,14 @@ export const Timeline = () => {
     staleTime: 5 * 60 * 1000,
   })
 
+  const mealsQuery = useQuery({
+    enabled: !hiddenCategories.has('meal'),
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchMeals({ start: fetchStart.toISOString(), end: fetchEnd.toISOString() }),
+    queryKey: ['timeline-meals', fromDate.value, toDate.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
   const productivityQuery = useQuery({
     enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
     placeholderData: keepPreviousData,
@@ -974,6 +1013,11 @@ export const Timeline = () => {
     [showMusicColumn],
   )
 
+  const mealItems = useMemo(
+    () => categorizeMeals(mealsQuery.data?.meals ?? [], itemIcons),
+    [mealsQuery.data, itemIcons],
+  )
+
   const allChartItems = useMemo(
     () => [
       ...activityItems,
@@ -982,6 +1026,7 @@ export const Timeline = () => {
       ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
       ...occasionalMetricItems,
       ...musicItems,
+      ...mealItems,
     ],
     [
       activityItems,
@@ -993,6 +1038,7 @@ export const Timeline = () => {
       screentimeCategoriesQuery.data,
       occasionalMetricItems,
       musicItems,
+      mealItems,
     ],
   )
 
@@ -1024,6 +1070,7 @@ export const Timeline = () => {
     activitiesQuery.isFetching ||
     placesQuery.isFetching ||
     tagsQuery.isFetching ||
+    mealsQuery.isFetching ||
     productivityQuery.isFetching ||
     scrobblesQuery.isFetching ||
     bucketedMetricsQuery.isFetching
