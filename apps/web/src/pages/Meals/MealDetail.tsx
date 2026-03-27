@@ -139,49 +139,90 @@ function FoodItemRow({
   const parseNum = (v: string) => (v === '' ? undefined : parseFloat(v))
   return (
     <div class="food-item-edit-row">
-      <FoodItemAutocomplete
-        value={item.name}
-        onChange={(name) => update('name', name)}
-        onSelect={(fi: FoodItemEntity) => {
-          onChange(index, {
-            ...item,
-            name: fi.name,
-            quantity: fi.default_quantity ?? item.quantity,
-            unit: fi.default_unit ?? item.unit,
-            calories: fi.calories ?? item.calories,
-            protein: fi.protein ?? item.protein,
-            carbs: fi.carbs ?? item.carbs,
-            fat: fi.fat ?? item.fat,
-            fiber: fi.fiber ?? item.fiber,
-          })
-        }}
-      />
-      <input
-        type="number"
-        step="0.1"
-        value={item.quantity ?? ''}
-        placeholder="Qty"
-        class="food-num-input"
-        onInput={(e) => update('quantity', parseNum((e.target as HTMLInputElement).value))}
-      />
-      <input
-        type="text"
-        value={item.unit ?? ''}
-        placeholder="Unit"
-        class="food-unit-input"
-        onInput={(e) => update('unit', (e.target as HTMLInputElement).value)}
-      />
-      <input
-        type="number"
-        step="0.1"
-        value={item.calories ?? ''}
-        placeholder="kcal"
-        class="food-num-input"
-        onInput={(e) => update('calories', parseNum((e.target as HTMLInputElement).value))}
-      />
-      <button type="button" class="btn-danger-small" onClick={() => onRemove(index)}>
-        &times;
-      </button>
+      <div class="food-row-top">
+        <FoodItemAutocomplete
+          value={item.name}
+          onChange={(name) => update('name', name)}
+          onSelect={(fi: FoodItemEntity) => {
+            onChange(index, {
+              ...item,
+              name: fi.name,
+              quantity: fi.default_quantity ?? item.quantity,
+              unit: fi.default_unit ?? item.unit,
+              calories: fi.calories ?? item.calories,
+              protein: fi.protein ?? item.protein,
+              carbs: fi.carbs ?? item.carbs,
+              fat: fi.fat ?? item.fat,
+              fiber: fi.fiber ?? item.fiber,
+            })
+          }}
+        />
+        <input
+          type="number"
+          step="0.1"
+          value={item.quantity ?? ''}
+          placeholder="Qty"
+          class="food-num-input"
+          onInput={(e) => update('quantity', parseNum((e.target as HTMLInputElement).value))}
+        />
+        <input
+          type="text"
+          value={item.unit ?? ''}
+          placeholder="Unit"
+          class="food-unit-input"
+          onInput={(e) => update('unit', (e.target as HTMLInputElement).value)}
+        />
+        <button type="button" class="btn-danger-small" onClick={() => onRemove(index)}>
+          &times;
+        </button>
+      </div>
+      <div class="food-row-macros">
+        <label>
+          <span>kcal</span>
+          <input
+            type="number"
+            step="0.1"
+            value={item.calories ?? ''}
+            onInput={(e) => update('calories', parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+        <label>
+          <span>prot</span>
+          <input
+            type="number"
+            step="0.1"
+            value={item.protein ?? ''}
+            onInput={(e) => update('protein', parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+        <label>
+          <span>carbs</span>
+          <input
+            type="number"
+            step="0.1"
+            value={item.carbs ?? ''}
+            onInput={(e) => update('carbs', parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+        <label>
+          <span>fat</span>
+          <input
+            type="number"
+            step="0.1"
+            value={item.fat ?? ''}
+            onInput={(e) => update('fat', parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+        <label>
+          <span>fiber</span>
+          <input
+            type="number"
+            step="0.1"
+            value={item.fiber ?? ''}
+            onInput={(e) => update('fiber', parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+      </div>
     </div>
   )
 }
