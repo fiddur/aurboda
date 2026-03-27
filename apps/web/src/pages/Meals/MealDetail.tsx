@@ -139,49 +139,90 @@ function FoodItemRow({
   const parseNum = (v: string) => (v === '' ? undefined : parseFloat(v))
   return (
     <div class="food-item-edit-row">
-      <FoodItemAutocomplete
-        value={item.name}
-        onChange={(name) => update('name', name)}
-        onSelect={(fi: FoodItemEntity) => {
-          onChange(index, {
-            ...item,
-            name: fi.name,
-            quantity: fi.default_quantity ?? item.quantity,
-            unit: fi.default_unit ?? item.unit,
-            calories: fi.calories ?? item.calories,
-            protein: fi.protein ?? item.protein,
-            carbs: fi.carbs ?? item.carbs,
-            fat: fi.fat ?? item.fat,
-            fiber: fi.fiber ?? item.fiber,
-          })
-        }}
-      />
-      <input
-        type="number"
-        step="0.1"
-        value={item.quantity ?? ''}
-        placeholder="Qty"
-        class="food-num-input"
-        onInput={(e) => update('quantity', parseNum((e.target as HTMLInputElement).value))}
-      />
-      <input
-        type="text"
-        value={item.unit ?? ''}
-        placeholder="Unit"
-        class="food-unit-input"
-        onInput={(e) => update('unit', (e.target as HTMLInputElement).value)}
-      />
-      <input
-        type="number"
-        step="0.1"
-        value={item.calories ?? ''}
-        placeholder="kcal"
-        class="food-num-input"
-        onInput={(e) => update('calories', parseNum((e.target as HTMLInputElement).value))}
-      />
-      <button type="button" class="btn-danger-small" onClick={() => onRemove(index)}>
-        &times;
-      </button>
+      <div class="food-row-top">
+        <FoodItemAutocomplete
+          value={item.name}
+          onChange={(name) => update('name', name)}
+          onSelect={(fi: FoodItemEntity) => {
+            onChange(index, {
+              ...item,
+              name: fi.name,
+              quantity: fi.default_quantity ?? item.quantity,
+              unit: fi.default_unit ?? item.unit,
+              calories: fi.calories ?? item.calories,
+              protein: fi.protein ?? item.protein,
+              carbs: fi.carbs ?? item.carbs,
+              fat: fi.fat ?? item.fat,
+              fiber: fi.fiber ?? item.fiber,
+            })
+          }}
+        />
+        <input
+          type="number"
+          step="0.1"
+          value={item.quantity ?? ''}
+          placeholder="Qty"
+          class="food-num-input"
+          onInput={(e) => update('quantity', parseNum((e.target as HTMLInputElement).value))}
+        />
+        <input
+          type="text"
+          value={item.unit ?? ''}
+          placeholder="Unit"
+          class="food-unit-input"
+          onInput={(e) => update('unit', (e.target as HTMLInputElement).value)}
+        />
+        <button type="button" class="btn-danger-small" onClick={() => onRemove(index)}>
+          &times;
+        </button>
+      </div>
+      <div class="food-row-macros">
+        <label>
+          <span>kcal</span>
+          <input
+            type="number"
+            step="0.1"
+            value={item.calories ?? ''}
+            onInput={(e) => update('calories', parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+        <label>
+          <span>prot</span>
+          <input
+            type="number"
+            step="0.1"
+            value={item.protein ?? ''}
+            onInput={(e) => update('protein', parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+        <label>
+          <span>carbs</span>
+          <input
+            type="number"
+            step="0.1"
+            value={item.carbs ?? ''}
+            onInput={(e) => update('carbs', parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+        <label>
+          <span>fat</span>
+          <input
+            type="number"
+            step="0.1"
+            value={item.fat ?? ''}
+            onInput={(e) => update('fat', parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+        <label>
+          <span>fiber</span>
+          <input
+            type="number"
+            step="0.1"
+            value={item.fiber ?? ''}
+            onInput={(e) => update('fiber', parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+      </div>
     </div>
   )
 }
@@ -229,6 +270,39 @@ interface EditState {
   fiber?: number | null
   food_items?: FoodItemEdit[]
   sensitivities?: string[]
+}
+
+/** Build the PATCH body from edit state, auto-summing macros from food items. */
+const buildSaveBody = (editing: EditState): Record<string, unknown> => {
+  const body: Record<string, unknown> = {}
+  if (editing.name !== undefined) body.name = editing.name || null
+  if (editing.time !== undefined) body.time = new Date(editing.time).toISOString()
+  if (editing.notes !== undefined) body.notes = editing.notes || null
+  if (editing.meal_type !== undefined) body.meal_type = editing.meal_type
+  if (editing.sensitivities !== undefined) body.sensitivities = editing.sensitivities
+
+  const items = editing.food_items?.filter((fi) => fi.name.trim())
+  if (items !== undefined) {
+    body.food_items = items
+    // Auto-sum macros from food items
+    const sumField = (field: keyof FoodItemEdit) => {
+      const total = items.reduce((s, fi) => s + ((fi[field] as number) ?? 0), 0)
+      return total > 0 ? Math.round(total * 100) / 100 : null
+    }
+    body.calories = sumField('calories')
+    body.protein = sumField('protein')
+    body.carbs = sumField('carbs')
+    body.fat = sumField('fat')
+    body.fiber = sumField('fiber')
+  } else {
+    if (editing.calories !== undefined) body.calories = editing.calories
+    if (editing.protein !== undefined) body.protein = editing.protein
+    if (editing.carbs !== undefined) body.carbs = editing.carbs
+    if (editing.fat !== undefined) body.fat = editing.fat
+    if (editing.fiber !== undefined) body.fiber = editing.fiber
+  }
+
+  return body
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
@@ -315,18 +389,7 @@ export function MealDetail() {
 
   const handleSave = () => {
     if (!editing) return
-    const body: Record<string, unknown> = {}
-    if (editing.name !== undefined) body.name = editing.name || null
-    if (editing.time !== undefined) body.time = new Date(editing.time).toISOString()
-    if (editing.notes !== undefined) body.notes = editing.notes || null
-    if (editing.meal_type !== undefined) body.meal_type = editing.meal_type
-    if (editing.calories !== undefined) body.calories = editing.calories
-    if (editing.protein !== undefined) body.protein = editing.protein
-    if (editing.carbs !== undefined) body.carbs = editing.carbs
-    if (editing.fat !== undefined) body.fat = editing.fat
-    if (editing.fiber !== undefined) body.fiber = editing.fiber
-    if (editing.food_items !== undefined) body.food_items = editing.food_items.filter((fi) => fi.name.trim())
-    if (editing.sensitivities !== undefined) body.sensitivities = editing.sensitivities
+    const body = buildSaveBody(editing)
     updateMutation.mutate(body)
   }
 
