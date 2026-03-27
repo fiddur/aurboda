@@ -160,8 +160,45 @@
 
 .food-item-edit-row {
   display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.food-row-top {
+  display: flex;
   gap: 0.375rem;
   align-items: center;
+}
+
+.food-row-macros {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.food-row-macros label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+}
+
+.food-row-macros span {
+  font-size: 0.65rem;
+  color: #6b7280;
+}
+
+.food-row-macros input {
+  width: 55px;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  color: #374151;
+  background: #fff;
 }
 
 .food-name-input {
@@ -279,10 +316,20 @@
   .type-editor select,
   .type-editor input,
   .macro-input input,
-  .food-item-edit-row input {
+  .food-item-edit-row input,
+  .food-row-macros input {
     background: #374151;
     border-color: #4b5563;
     color: #d1d5db;
+  }
+
+  .food-item-edit-row {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .food-row-macros span {
+    color: #9ca3af;
   }
 
   .macro-input span {
