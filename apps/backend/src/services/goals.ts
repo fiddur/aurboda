@@ -11,13 +11,7 @@ import {
   type MetricType,
 } from '@aurboda/api-spec'
 
-import {
-  getDailyAggregates,
-  getDailyAggregateValue,
-  getGoals,
-  getRawDailySum,
-  getTimeSeries,
-} from '../db/index.ts'
+import { getDailyAggregates, getDailyAggregateValue, getRawDailySum, getTimeSeries } from '../db/index.ts'
 import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
 
 /**
