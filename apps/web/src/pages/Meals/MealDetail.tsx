@@ -272,6 +272,39 @@ interface EditState {
   sensitivities?: string[]
 }
 
+/** Build the PATCH body from edit state, auto-summing macros from food items. */
+const buildSaveBody = (editing: EditState): Record<string, unknown> => {
+  const body: Record<string, unknown> = {}
+  if (editing.name !== undefined) body.name = editing.name || null
+  if (editing.time !== undefined) body.time = new Date(editing.time).toISOString()
+  if (editing.notes !== undefined) body.notes = editing.notes || null
+  if (editing.meal_type !== undefined) body.meal_type = editing.meal_type
+  if (editing.sensitivities !== undefined) body.sensitivities = editing.sensitivities
+
+  const items = editing.food_items?.filter((fi) => fi.name.trim())
+  if (items !== undefined) {
+    body.food_items = items
+    // Auto-sum macros from food items
+    const sumField = (field: keyof FoodItemEdit) => {
+      const total = items.reduce((s, fi) => s + ((fi[field] as number) ?? 0), 0)
+      return total > 0 ? Math.round(total * 100) / 100 : null
+    }
+    body.calories = sumField('calories')
+    body.protein = sumField('protein')
+    body.carbs = sumField('carbs')
+    body.fat = sumField('fat')
+    body.fiber = sumField('fiber')
+  } else {
+    if (editing.calories !== undefined) body.calories = editing.calories
+    if (editing.protein !== undefined) body.protein = editing.protein
+    if (editing.carbs !== undefined) body.carbs = editing.carbs
+    if (editing.fat !== undefined) body.fat = editing.fat
+    if (editing.fiber !== undefined) body.fiber = editing.fiber
+  }
+
+  return body
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 // eslint-disable-next-line complexity -- detail page with edit mode and multiple data sections
@@ -356,18 +389,7 @@ export function MealDetail() {
 
   const handleSave = () => {
     if (!editing) return
-    const body: Record<string, unknown> = {}
-    if (editing.name !== undefined) body.name = editing.name || null
-    if (editing.time !== undefined) body.time = new Date(editing.time).toISOString()
-    if (editing.notes !== undefined) body.notes = editing.notes || null
-    if (editing.meal_type !== undefined) body.meal_type = editing.meal_type
-    if (editing.calories !== undefined) body.calories = editing.calories
-    if (editing.protein !== undefined) body.protein = editing.protein
-    if (editing.carbs !== undefined) body.carbs = editing.carbs
-    if (editing.fat !== undefined) body.fat = editing.fat
-    if (editing.fiber !== undefined) body.fiber = editing.fiber
-    if (editing.food_items !== undefined) body.food_items = editing.food_items.filter((fi) => fi.name.trim())
-    if (editing.sensitivities !== undefined) body.sensitivities = editing.sensitivities
+    const body = buildSaveBody(editing)
     updateMutation.mutate(body)
   }
 
