@@ -143,7 +143,7 @@ export const updateFoodItem = async (
   const params: unknown[] = []
   let idx = 1
 
-  if (input.name !== undefined) {
+  if (typeof input.name === 'string') {
     setClauses.push(`name = $${idx}`)
     params.push(input.name)
     idx++
