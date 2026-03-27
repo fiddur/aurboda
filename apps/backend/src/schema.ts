@@ -562,7 +562,7 @@ export const createTableStatements: Record<string, string> = {
       metric          VARCHAR(50) NOT NULL,
       min_value       DOUBLE PRECISION,
       max_value       DOUBLE PRECISION,
-      window          VARCHAR(10) NOT NULL DEFAULT '7d',
+      time_window     VARCHAR(10) NOT NULL DEFAULT '7d',
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

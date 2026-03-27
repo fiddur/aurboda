@@ -8,7 +8,7 @@ import { query } from './connection.ts'
 export const getGoals = async (user: string): Promise<Goal[]> => {
   const result = await query(
     user,
-    `SELECT id, metric, min_value, max_value, window FROM goals ORDER BY created_at`,
+    `SELECT id, metric, min_value, max_value, time_window FROM goals ORDER BY created_at`,
   )
 
   return result.rows.map((row) => ({
@@ -16,20 +16,20 @@ export const getGoals = async (user: string): Promise<Goal[]> => {
     metric: row.metric,
     ...(row.min_value != null ? { min: row.min_value } : {}),
     ...(row.max_value != null ? { max: row.max_value } : {}),
-    window: row.window,
+    window: row.time_window,
   }))
 }
 
 export const insertGoal = async (user: string, goal: Goal): Promise<void> => {
   await query(
     user,
-    `INSERT INTO goals (id, metric, min_value, max_value, window)
+    `INSERT INTO goals (id, metric, min_value, max_value, time_window)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (id) DO UPDATE SET
        metric = EXCLUDED.metric,
        min_value = EXCLUDED.min_value,
        max_value = EXCLUDED.max_value,
-       window = EXCLUDED.window,
+       time_window = EXCLUDED.time_window,
        updated_at = NOW()`,
     [goal.id, goal.metric, goal.min ?? null, goal.max ?? null, goal.window],
   )

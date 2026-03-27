@@ -283,8 +283,9 @@ const migrateGoalsFromSettings = async (
   settings: Record<string, unknown>,
   existingTableNames: Set<string>,
 ) => {
-  if (!existingTableNames.has('goals') || !Array.isArray(settings.goals) || settings.goals.length === 0)
-    {return}
+  if (!existingTableNames.has('goals') || !Array.isArray(settings.goals) || settings.goals.length === 0) {
+    return
+  }
 
   const goalsCount = await query(db, `SELECT COUNT(*) as count FROM goals`)
   if (parseInt(goalsCount.rows[0].count, 10) !== 0) return
@@ -292,7 +293,7 @@ const migrateGoalsFromSettings = async (
   for (const goal of settings.goals as Array<Record<string, unknown>>) {
     await query(
       db,
-      `INSERT INTO goals (id, metric, min_value, max_value, window)
+      `INSERT INTO goals (id, metric, min_value, max_value, time_window)
        VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5)
        ON CONFLICT (id) DO NOTHING`,
       [goal.id ?? null, goal.metric, goal.min ?? null, goal.max ?? null, goal.window ?? '7d'],
