@@ -52,6 +52,7 @@ import { createActivitiesRouter } from './routes/activities-router.ts'
 import { createAdminRouter } from './routes/admin-router.ts'
 import { createCorrelationsRouter } from './routes/correlations-router.ts'
 import { createDashboardRouter } from './routes/dashboard-router.ts'
+import { createFoodItemsRouter } from './routes/food-items-router.ts'
 import { createIconsRouter } from './routes/icons-router.ts'
 import { createLocationsRouter } from './routes/locations-router.ts'
 import { createMealsRouter } from './routes/meals-router.ts'
@@ -544,6 +545,7 @@ const main = async () => {
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/notes', createNotesRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
+  httpd.use('/food-items', createFoodItemsRouter(authMiddleware))
   httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(createActivitiesRouter(authMiddleware, syncProvider))
   httpd.use('/locations', createLocationsRouter(authMiddleware))

@@ -4,7 +4,14 @@ import { useLocation, useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
-import { deleteMealApi, fetchMeal, fetchUserSettings, updateMealApi } from '../../state/api'
+import { FoodItemAutocomplete } from '../../components/FoodItemAutocomplete'
+import {
+  deleteMealApi,
+  fetchMeal,
+  fetchUserSettings,
+  type FoodItemEntity,
+  updateMealApi,
+} from '../../state/api'
 import './MealDetail.css'
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -132,12 +139,22 @@ function FoodItemRow({
   const parseNum = (v: string) => (v === '' ? undefined : parseFloat(v))
   return (
     <div class="food-item-edit-row">
-      <input
-        type="text"
+      <FoodItemAutocomplete
         value={item.name}
-        placeholder="Food name"
-        class="food-name-input"
-        onInput={(e) => update('name', (e.target as HTMLInputElement).value)}
+        onChange={(name) => update('name', name)}
+        onSelect={(fi: FoodItemEntity) => {
+          onChange(index, {
+            ...item,
+            name: fi.name,
+            quantity: fi.default_quantity ?? item.quantity,
+            unit: fi.default_unit ?? item.unit,
+            calories: fi.calories ?? item.calories,
+            protein: fi.protein ?? item.protein,
+            carbs: fi.carbs ?? item.carbs,
+            fat: fi.fat ?? item.fat,
+            fiber: fi.fiber ?? item.fiber,
+          })
+        }}
       />
       <input
         type="number"
