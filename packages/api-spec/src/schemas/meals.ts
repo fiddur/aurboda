@@ -76,6 +76,7 @@ export const foodItemSchema = z
     carbs: z.number().optional().meta({ description: 'Carbohydrates in grams' }),
     fat: z.number().optional().meta({ description: 'Fat in grams' }),
     fiber: z.number().optional().meta({ description: 'Dietary fiber in grams' }),
+    food_item_id: z.string().uuid().optional().meta({ description: 'Link to canonical food item entity' }),
     micros: microsSchema.meta({ description: 'Micronutrients for this food item' }),
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     protein: z.number().optional().meta({ description: 'Protein in grams' }),

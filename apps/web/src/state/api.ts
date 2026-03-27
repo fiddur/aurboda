@@ -1603,3 +1603,30 @@ export const unsetMealLogCompletedApi = async (date: string): Promise<void> => {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
+
+// ==========================================================================
+// Food Items API
+// ==========================================================================
+
+export interface FoodItemEntity {
+  id: string
+  name: string
+  source?: string
+  default_quantity?: number
+  default_unit?: string
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  fiber?: number
+  [nutrient: string]: string | number | undefined
+}
+
+export const searchFoodItemsApi = async (q: string, limit = 10): Promise<FoodItemEntity[]> => {
+  const { token } = auth.value
+  const response = await axios.get<{ data: FoodItemEntity[]; success: boolean }>(`${API_URL}/food-items`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { q, limit },
+  })
+  return response.data.data ?? []
+}

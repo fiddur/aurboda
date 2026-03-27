@@ -348,6 +348,37 @@ export interface Meal {
 }
 
 // ============================================================================
+// Food Items (canonical library)
+// ============================================================================
+
+export interface FoodItemEntity {
+  id: string
+  name: string
+  name_lower: string
+  source: string
+  default_quantity?: number
+  default_unit?: string
+  // All ~65 nutrient fields are optional numbers.
+  // Using Record for the nutrient fields to avoid 65 lines of boilerplate.
+  // At runtime these are individual columns, but in TypeScript we use an index signature.
+  [nutrient: string]: string | number | Date | undefined
+  created_at: Date
+  updated_at: Date
+}
+
+export interface MealFoodItemLink {
+  id: string
+  meal_id: string
+  food_item_id: string
+  food_item_name?: string // populated via JOIN
+  quantity?: number
+  unit?: string
+  sort_order: number
+  // Nutrient snapshot — same fields as FoodItemEntity
+  [nutrient: string]: string | number | Date | undefined
+}
+
+// ============================================================================
 // OAuth
 // ============================================================================
 
