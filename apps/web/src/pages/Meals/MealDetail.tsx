@@ -65,7 +65,7 @@ function MealInfoRows({ meal }: { meal: Meal }) {
 
       {meal.sensitivities && meal.sensitivities.length > 0 && (
         <div class="detail-row">
-          <label>Sensitivities</label>
+          <label>Flags</label>
           <div class="detail-sensitivities">
             {meal.sensitivities.map((s) => (
               <span key={s} class="detail-sensitivity-chip">
@@ -124,18 +124,20 @@ export function MealDetail() {
     },
   })
 
-  if (isLoading)
-    {return (
+  if (isLoading) {
+    return (
       <div class="meal-detail-page">
         <p class="loading">Loading...</p>
       </div>
-    )}
-  if (!meal)
-    {return (
+    )
+  }
+  if (!meal) {
+    return (
       <div class="meal-detail-page">
         <p>Meal not found.</p>
       </div>
-    )}
+    )
+  }
 
   const isEditing = editing !== null
   const editName = editing?.name ?? meal.name ?? ''

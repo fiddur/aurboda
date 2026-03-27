@@ -32,7 +32,39 @@ const DEFAULT_MEAL_SLOTS: MealSlot[] = [
   { name: 'Dinner', default_hour: 18 },
 ]
 
-const formatHour = (hour: number): string => `${hour}:00`
+const formatTime = (hour: number, minute: number): string => `${hour}:${String(minute).padStart(2, '0')}`
+
+interface TimeOption {
+  hour: number
+  minute: number
+  label: string
+}
+
+/** Build time selector options: preset hours ± 1, plus the actual meal time if non-round. */
+const buildTimeOptions = (defaultHour: number, mealHour: number, mealMinute: number): TimeOption[] => {
+  const presets: TimeOption[] = [defaultHour - 1, defaultHour, defaultHour + 1]
+    .filter((h) => h >= 0 && h <= 23)
+    .map((h) => ({ hour: h, minute: 0, label: formatTime(h, 0) }))
+
+  // If meal has a non-round time that isn't already a preset, insert it sorted
+  if (mealMinute !== 0) {
+    const mealKey = mealHour * 60 + mealMinute
+    const alreadyPresent = presets.some((p) => p.hour === mealHour && p.minute === mealMinute)
+    if (!alreadyPresent) {
+      const mealOption: TimeOption = {
+        hour: mealHour,
+        minute: mealMinute,
+        label: formatTime(mealHour, mealMinute),
+      }
+      const idx = presets.findIndex((p) => p.hour * 60 + p.minute > mealKey)
+      if (idx === -1) presets.push(mealOption)
+      else presets.splice(idx, 0, mealOption)
+    }
+  }
+
+  return presets
+}
+
 
 const formatMealType = (type?: string): string =>
   type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Meal'
@@ -73,7 +105,7 @@ function FoodItemChip({
       {hasMappings && <span class="mapping-dot" />}
       {open && sensitivityAreas.length > 0 && (
         <div class="food-map-popover" onClick={(e) => e.stopPropagation()}>
-          <div class="popover-title">Sensitivities for "{name}"</div>
+          <div class="popover-title">Flags for "{name}"</div>
           {sensitivityAreas.map((area) => (
             <label key={area} class="popover-option">
               <input
@@ -141,7 +173,7 @@ interface MealSlotRowProps {
   foodSensitivityMap: Record<string, string[]>
   onToggleSensitivity: (slot: MealSlot, area: string, existingMeal?: Meal) => void
   onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
-  onChangeHour: (meal: Meal, hour: number) => void
+  onChangeTime: (meal: Meal, hour: number, minute?: number) => void
   onDelete: (id: string) => void
   isDeletePending: boolean
   isSaving: boolean
@@ -154,7 +186,7 @@ function MealSlotRow({
   foodSensitivityMap,
   onToggleSensitivity,
   onToggleFoodMapping,
-  onChangeHour,
+  onChangeTime,
   onDelete,
   isDeletePending,
   isSaving,
@@ -164,10 +196,11 @@ function MealSlotRow({
   const derived = derivedSensitivities(primaryMeal, foodSensitivityMap)
   // Union of explicit + derived — checkbox shows checked if either
   const effectiveSensitivities = new Set([...explicit, ...derived])
-  const mealHour = primaryMeal ? primaryMeal.time.getHours() : slot.default_hour
-  const hours = [slot.default_hour - 1, slot.default_hour, slot.default_hour + 1].filter(
-    (h) => h >= 0 && h <= 23,
-  )
+  const mealH = primaryMeal ? primaryMeal.time.getHours() : slot.default_hour
+  const mealM = primaryMeal ? primaryMeal.time.getMinutes() : 0
+
+  // Build time options: preset hours + actual meal time if non-round
+  const timeOptions = buildTimeOptions(slot.default_hour, mealH, mealM)
 
   return (
     <div class={`meal-slot-row ${primaryMeal ? 'has-meal' : ''}`}>
@@ -175,18 +208,18 @@ function MealSlotRow({
         <span class="slot-name">{slot.name}</span>
 
         <div class="time-selector">
-          {hours.map((h) => (
+          {timeOptions.map((t) => (
             <button
-              key={h}
+              key={t.label}
               type="button"
-              class={`time-btn ${mealHour === h ? 'active' : ''}`}
+              class={`time-btn ${mealH === t.hour && mealM === t.minute ? 'active' : ''}`}
               onClick={() => {
-                if (primaryMeal) onChangeHour(primaryMeal, h)
+                if (primaryMeal) onChangeTime(primaryMeal, t.hour, t.minute)
               }}
-              disabled={!primaryMeal && h !== slot.default_hour}
-              title={!primaryMeal ? 'Log a meal first to change the time' : `Set time to ${formatHour(h)}`}
+              disabled={!primaryMeal && t.hour !== slot.default_hour}
+              title={!primaryMeal ? 'Log a meal first to change the time' : `Set time to ${t.label}`}
             >
-              {formatHour(h)}
+              {t.label}
             </button>
           ))}
         </div>
@@ -399,9 +432,9 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
     }
   }
 
-  const handleChangeHour = (meal: Meal, hour: number) => {
+  const handleChangeTime = (meal: Meal, hour: number, minute = 0) => {
     const newTime = new Date(meal.time)
-    newTime.setHours(hour, 0, 0, 0)
+    newTime.setHours(hour, minute, 0, 0)
     optimisticUpdate((old) => old.map((m) => (m.id === meal.id ? { ...m, time: newTime } : m)))
     if (meal.meal_type) markSlotSaving(meal.meal_type, true)
     updateMutation.mutate({ id: meal.id!, time: newTime.toISOString() })
@@ -410,7 +443,7 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
   return {
     savingSlots,
     handleToggleSensitivity,
-    handleChangeHour,
+    handleChangeTime,
     upsertMutation,
     updateMutation,
     deleteMutation,
@@ -449,7 +482,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
   const {
     savingSlots,
     handleToggleSensitivity,
-    handleChangeHour,
+    handleChangeTime,
     upsertMutation,
     updateMutation,
     deleteMutation,
@@ -488,7 +521,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     <>
       {sensitivityAreas.length === 0 && (
         <p class="config-hint">
-          Configure your sensitivity areas and meal slots in <a href="/settings">Settings</a>.
+          Configure your meal flags and meal slots in <a href="/settings">Settings</a>.
         </p>
       )}
 
@@ -502,7 +535,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
             foodSensitivityMap={foodSensitivityMap}
             onToggleSensitivity={handleToggleSensitivity}
             onToggleFoodMapping={handleToggleFoodMapping}
-            onChangeHour={handleChangeHour}
+            onChangeTime={handleChangeTime}
             onDelete={(id) => deleteMutation.mutate(id)}
             isDeletePending={deleteMutation.isPending}
             isSaving={savingSlots.has(slot.name.toLowerCase())}

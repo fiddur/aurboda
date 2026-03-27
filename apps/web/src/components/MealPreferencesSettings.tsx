@@ -94,12 +94,10 @@ export function MealPreferencesSettings() {
       isLoading={isLoading}
       headerExtra={<SaveStatusIndicator state={saveStatus} />}
     >
-      {/* Sensitivity Areas */}
+      {/* Meal Flags */}
       <div class="meal-pref-subsection">
-        <h3>Sensitivity Areas</h3>
-        <p class="subsection-desc">
-          Food sensitivities you want to track (e.g., gluten, dairy, red meat, legumes).
-        </p>
+        <h3>Meal Flags</h3>
+        <p class="subsection-desc">Flags for categorizing meals (e.g., gluten, dairy, keto, cheat day).</p>
 
         <div class="area-list">
           {currentAreas.map((area) => (
@@ -120,7 +118,7 @@ export function MealPreferencesSettings() {
         <div class="add-row">
           <input
             type="text"
-            placeholder="Add sensitivity area..."
+            placeholder="Add meal flag..."
             value={newArea}
             onInput={(e) => setNewArea((e.target as HTMLInputElement).value)}
             onKeyDown={(e) => e.key === 'Enter' && addArea()}

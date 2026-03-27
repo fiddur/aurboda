@@ -1,21 +1,21 @@
 # Meals & Nutrition
 
-Track food intake with sensitivity/allergen logging, imported nutrition data from Cronometer and Oura, and per-item micronutrient tracking.
+Track food intake with meal flag/allergen logging, imported nutrition data from Cronometer and Oura, and per-item micronutrient tracking.
 
 ## Quick Logging (Web UI)
 
 The `/meals` page provides a day-by-day view with configurable meal slots (Breakfast, Lunch, Snack, Dinner). Each slot has:
 
 - **Time preset buttons** -- quickly set the meal time to your default hour +/- 1
-- **Sensitivity checkboxes** -- check which sensitivity areas apply (e.g., gluten, dairy, red meat)
-- **Food item chips** -- click any food item to map it to sensitivity areas (saved globally)
+- **Meal Flag checkboxes** -- check which meal flags apply (e.g., gluten, dairy, red meat)
+- **Food item chips** -- click any food item to map it to meal flags (saved globally)
 - **"Logging complete" checkbox** -- mark a day as fully logged for data reliability
 
 ### Configuration (Settings page)
 
-- **Sensitivity Areas** -- define the areas you want to track (e.g., "gluten", "dairy", "red_meat", "legumes")
+- **Meal Flags** -- define the areas you want to track (e.g., "gluten", "dairy", "red_meat", "legumes")
 - **Meal Slots** -- define slot names and default hours (e.g., Breakfast at 7, Lunch at 12)
-- **Food-to-Sensitivity Map** -- automatically built as you click food items and assign sensitivities
+- **Food-to-Meal Flag Map** -- automatically built as you click food items and assign meal flags
 
 ### Meal Detail Page
 
@@ -34,7 +34,7 @@ Each meal has:
 - Macros: `calories`, `protein`, `carbs`, `fat`, `fiber`
 - `food_items[]` -- individual food items, each with name, quantity, unit, macros, and micronutrients
 - `micros` -- meal-level micronutrients (aggregated from food items)
-- `sensitivities[]` -- tagged sensitivity areas
+- `meal flags[]` -- tagged meal flags
 - `notes`
 
 ### Micronutrient Format
@@ -56,7 +56,7 @@ Legacy data (from Oura) uses plain numbers: `{ "iron": 3.2 }`.
 
 ### Manual (Web UI)
 
-Quick-log via sensitivity checkboxes. Creates meals with `source: "manual"`.
+Quick-log via meal flag checkboxes. Creates meals with `source: "manual"`.
 
 ### Oura
 
