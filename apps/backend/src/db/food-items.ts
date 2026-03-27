@@ -137,7 +137,7 @@ export const upsertFoodItem = async (user: string, input: InsertFoodItemInput): 
 export const updateFoodItem = async (
   user: string,
   id: string,
-  input: Partial<InsertFoodItemInput>,
+  input: Record<string, unknown>,
 ): Promise<FoodItemEntity | null> => {
   const setClauses: string[] = []
   const params: unknown[] = []

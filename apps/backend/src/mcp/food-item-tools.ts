@@ -46,7 +46,7 @@ export const registerFoodItemTools = (server: McpServer, user: string) => {
     'Update a food item by ID.',
     { id: z.string().uuid().describe('Food item ID'), ...updateFoodItemBodySchema.shape },
     async ({ id, ...params }) => {
-      const item = await updateFoodItem(user, id, params as Record<string, unknown>)
+      const item = await updateFoodItem(user, id, params)
       if (!item) return errorResponse('Food item not found')
       return jsonResponse({ data: item, success: true })
     },
