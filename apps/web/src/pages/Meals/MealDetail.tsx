@@ -273,7 +273,7 @@ interface EditState {
 }
 
 /** Build the PATCH body from edit state, auto-summing macros from food items. */
-const buildSaveBody = (editing: EditState, meal: { food_items?: unknown[] }): Record<string, unknown> => {
+const buildSaveBody = (editing: EditState): Record<string, unknown> => {
   const body: Record<string, unknown> = {}
   if (editing.name !== undefined) body.name = editing.name || null
   if (editing.time !== undefined) body.time = new Date(editing.time).toISOString()
@@ -389,7 +389,7 @@ export function MealDetail() {
 
   const handleSave = () => {
     if (!editing) return
-    const body = buildSaveBody(editing, meal)
+    const body = buildSaveBody(editing)
     updateMutation.mutate(body)
   }
 
