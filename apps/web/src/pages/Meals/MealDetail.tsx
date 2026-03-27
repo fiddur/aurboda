@@ -361,13 +361,30 @@ export function MealDetail() {
     if (editing.time !== undefined) body.time = new Date(editing.time).toISOString()
     if (editing.notes !== undefined) body.notes = editing.notes || null
     if (editing.meal_type !== undefined) body.meal_type = editing.meal_type
-    if (editing.calories !== undefined) body.calories = editing.calories
-    if (editing.protein !== undefined) body.protein = editing.protein
-    if (editing.carbs !== undefined) body.carbs = editing.carbs
-    if (editing.fat !== undefined) body.fat = editing.fat
-    if (editing.fiber !== undefined) body.fiber = editing.fiber
-    if (editing.food_items !== undefined) body.food_items = editing.food_items.filter((fi) => fi.name.trim())
     if (editing.sensitivities !== undefined) body.sensitivities = editing.sensitivities
+
+    // If food items were edited, auto-sum macros from them
+    const items = editing.food_items?.filter((fi) => fi.name.trim())
+    if (items !== undefined) {
+      body.food_items = items
+      const sum = (field: keyof FoodItemEdit) => {
+        const total = items.reduce((s, fi) => s + ((fi[field] as number) ?? 0), 0)
+        return total > 0 ? Math.round(total * 100) / 100 : null
+      }
+      body.calories = sum('calories')
+      body.protein = sum('protein')
+      body.carbs = sum('carbs')
+      body.fat = sum('fat')
+      body.fiber = sum('fiber')
+    } else {
+      // Manual macro edits (no food item changes)
+      if (editing.calories !== undefined) body.calories = editing.calories
+      if (editing.protein !== undefined) body.protein = editing.protein
+      if (editing.carbs !== undefined) body.carbs = editing.carbs
+      if (editing.fat !== undefined) body.fat = editing.fat
+      if (editing.fiber !== undefined) body.fiber = editing.fiber
+    }
+
     updateMutation.mutate(body)
   }
 
