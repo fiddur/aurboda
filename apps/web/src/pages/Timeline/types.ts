@@ -24,7 +24,7 @@ export interface ChartItem {
   tooltip: TooltipContent
   isPoint: boolean
   entity_id?: string
-  entity_type?: 'activity' | 'tag' | 'productivity' | 'metric'
+  entity_type?: 'activity' | 'tag' | 'productivity' | 'metric' | 'meal'
   href?: string
   /** Activity type for sparkline overlay targeting */
   activity_type?: 'sleep' | 'nap' | 'meditation' | 'exercise' | 'rest'

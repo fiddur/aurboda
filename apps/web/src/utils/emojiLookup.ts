@@ -36,6 +36,14 @@ export const DEFAULT_ITEM_ICONS: Record<string, string> = {
   'exercise:Walking': '🚶',
   'exercise:Weightlifting': '🏋️',
   'exercise:Workout': '🏋️',
+
+  // Meal types
+  'meal:breakfast': '🍳',
+  'meal:lunch': '🍽️',
+  'meal:dinner': '🍽️',
+  'meal:snack': '🍿',
+  'meal:drink': '☕',
+  'meal:default': '🍽️',
   'exercise:Yoga': '🧘',
 }
 
