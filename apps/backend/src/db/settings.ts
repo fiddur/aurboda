@@ -126,9 +126,7 @@ export const upsertUserSettings = async (
   const simpleFields = [
     'birth_date',
     'calendars',
-    'custom_metrics',
     'dashboard',
-    'goals',
     'hr_zone_start',
     'food_sensitivity_map',
     'item_icons',

@@ -38,7 +38,6 @@ import { type RequestHandler, Router } from 'express'
 
 import type { MetricType } from '../schema.ts'
 
-import { getUserSettings } from '../db/index.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
 import {
   addCustomMetric,
@@ -72,8 +71,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const { start, end, bucket, metrics: metricsParam, exclude: excludeParam, tz } = req.query
       const user = req.user!
 
-      const settings = await getUserSettings(user)
-      const customMetrics = settings?.custom_metrics ?? []
+      const customMetrics = await getCustomMetrics(user)
 
       // Parse optional metrics and exclude lists
       const metrics = metricsParam ? metricsParam.split(',') : undefined
@@ -255,8 +253,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const { start, end } = req.query
       const user = req.user!
 
-      const settings = await getUserSettings(user)
-      const customMetrics = settings?.custom_metrics ?? []
+      const customMetrics = await getCustomMetrics(user)
 
       const result = await queryMetrics(user, metric, new Date(start), new Date(end), customMetrics)
       res.json({ ...result, success: true })

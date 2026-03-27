@@ -252,6 +252,19 @@ export { deleteIcon, getIcon, insertIcon } from './icons.ts'
 // Settings
 export { getUserSettings, upsertUserSettings } from './settings.ts'
 
+// Goals
+export { deleteGoal, getGoals, insertGoal, replaceGoals } from './goals.ts'
+
+// Custom metric definitions
+export {
+  bulkInsertCustomMetricDefinitions,
+  deleteCustomMetricDefinition,
+  getCustomMetricByName,
+  getCustomMetricDefinitions,
+  insertCustomMetricDefinition,
+  updateCustomMetricDefinition,
+} from './custom-metrics.ts'
+
 // Last.fm tag rules
 export {
   deleteLastFmTagRule,

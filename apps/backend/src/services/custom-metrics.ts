@@ -5,10 +5,13 @@
 import type { CustomMetricDefinition } from '@aurboda/api-spec'
 
 import {
+  deleteCustomMetricDefinition,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
-  getUserSettings,
-  upsertUserSettings,
+  getCustomMetricByName,
+  getCustomMetricDefinitions,
+  insertCustomMetricDefinition,
+  updateCustomMetricDefinition,
 } from '../db/index.ts'
 import { isValidMetric } from '../schema.ts'
 
@@ -65,20 +68,16 @@ export async function addCustomMetric(
     }
   }
 
-  const settings = await getUserSettings(user)
-  const existing = settings?.custom_metrics ?? []
-
   // Check for duplicate
-  if (existing.some((m) => m.name === definition.name)) {
+  const existing = await getCustomMetricByName(user, definition.name)
+  if (existing) {
     return {
       error: `Custom metric "${definition.name}" already exists.`,
       success: false,
     }
   }
 
-  await upsertUserSettings(user, {
-    custom_metrics: [...existing, definition],
-  })
+  await insertCustomMetricDefinition(user, definition)
 
   return {
     data: definition,
@@ -91,15 +90,10 @@ export async function addCustomMetric(
  * Note: Existing time_series data for the metric is preserved.
  */
 export async function deleteCustomMetric(user: string, name: string): Promise<DeleteCustomMetricResult> {
-  const settings = await getUserSettings(user)
-  const existing = settings?.custom_metrics ?? []
-
-  const filtered = existing.filter((m) => m.name !== name)
-  if (filtered.length === existing.length) {
+  const deleted = await deleteCustomMetricDefinition(user, name)
+  if (!deleted) {
     return { deleted: false, name, success: false }
   }
-
-  await upsertUserSettings(user, { custom_metrics: filtered })
 
   return { deleted: true, name, success: true }
 }
@@ -114,31 +108,22 @@ export async function updateCustomMetric(
   name: string,
   updates: UpdateCustomMetricInput,
 ): Promise<UpdateCustomMetricResult> {
-  const settings = await getUserSettings(user)
-  const existing = settings?.custom_metrics ?? []
+  const dbUpdates: Partial<Pick<CustomMetricDefinition, 'unit' | 'description' | 'min_value' | 'max_value'>> =
+    {}
 
-  const index = existing.findIndex((m) => m.name === name)
-  if (index === -1) {
+  if (updates.unit !== undefined) dbUpdates.unit = updates.unit
+  if (updates.description !== undefined) dbUpdates.description = updates.description
+  if (updates.minValue !== undefined) {
+    dbUpdates.min_value = updates.minValue === null ? undefined : updates.minValue
+  }
+  if (updates.maxValue !== undefined) {
+    dbUpdates.max_value = updates.maxValue === null ? undefined : updates.maxValue
+  }
+
+  const updated = await updateCustomMetricDefinition(user, name, dbUpdates)
+  if (!updated) {
     return { error: `Custom metric "${name}" not found.`, success: false }
   }
-
-  const current = existing[index]
-  const updated: CustomMetricDefinition = {
-    ...current,
-    ...(updates.unit !== undefined && { unit: updates.unit }),
-    ...(updates.description !== undefined && { description: updates.description }),
-    ...(updates.minValue !== undefined && {
-      min_value: updates.minValue === null ? undefined : updates.minValue,
-    }),
-    ...(updates.maxValue !== undefined && {
-      max_value: updates.maxValue === null ? undefined : updates.maxValue,
-    }),
-  }
-
-  const newMetrics = [...existing]
-  newMetrics[index] = updated
-
-  await upsertUserSettings(user, { custom_metrics: newMetrics })
 
   return { data: updated, success: true }
 }
@@ -174,6 +159,5 @@ export async function deleteMetricData(user: string, metric: string): Promise<De
  * Get all custom metric definitions for a user.
  */
 export async function getCustomMetrics(user: string): Promise<CustomMetricDefinition[]> {
-  const settings = await getUserSettings(user)
-  return settings?.custom_metrics ?? []
+  return getCustomMetricDefinitions(user)
 }

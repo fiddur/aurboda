@@ -538,6 +538,39 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_reports_date ON reports (report_date DESC);
     CREATE INDEX IF NOT EXISTS idx_reports_type ON reports (report_type, report_date DESC)
   `,
+  // User-defined custom metric types (extracted from user_settings JSONB)
+  custom_metrics: `
+    CREATE TABLE IF NOT EXISTS custom_metrics (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name            VARCHAR(100) NOT NULL UNIQUE,
+      unit            VARCHAR(30) NOT NULL,
+      description     TEXT,
+      min_value       DOUBLE PRECISION,
+      max_value       DOUBLE PRECISION,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  custom_metrics_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_custom_metrics_name ON custom_metrics (name)
+  `,
+
+  // User-defined goals for tracking metrics (extracted from user_settings JSONB)
+  goals: `
+    CREATE TABLE IF NOT EXISTS goals (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      metric          VARCHAR(50) NOT NULL,
+      min_value       DOUBLE PRECISION,
+      max_value       DOUBLE PRECISION,
+      time_window     VARCHAR(10) NOT NULL DEFAULT '7d',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  goals_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_goals_metric ON goals (metric)
+  `,
+
   // Screentime category rules for categorizing productivity records
 
   screentime_categories: `
@@ -675,6 +708,10 @@ export const tableCreationOrder = [
   'oauth_tokens',
   'sync_state',
   'uploaded_icons',
+  'custom_metrics',
+  'custom_metrics_indexes',
+  'goals',
+  'goals_indexes',
   'user_settings',
   'notes',
   'notes_indexes',

@@ -16,8 +16,10 @@ import {
 
 // Mock the db module
 vi.mock('../db', () => ({
+  getGoals: vi.fn().mockResolvedValue([]),
   getOAuthToken: vi.fn(),
   getUserSettings: vi.fn(),
+  replaceGoals: vi.fn(),
   updateTagNameByKey: vi.fn(),
   upsertUserSettings: vi.fn(),
 }))

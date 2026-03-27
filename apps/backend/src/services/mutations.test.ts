@@ -22,18 +22,23 @@ import {
 // Mock the db module
 vi.mock('../db', () => ({
   deleteActivity: vi.fn(),
+  deleteCustomMetricDefinition: vi.fn(),
   deleteTag: vi.fn(),
   deleteTimeSeriesMetric: vi.fn(),
   deleteTimeSeriesPoint: vi.fn(),
   enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
   findMergeableTag: vi.fn(),
   getActivityById: vi.fn(),
+  getCustomMetricByName: vi.fn(),
+  getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
   getTagById: vi.fn(),
   getUserSettings: vi.fn(),
+  insertCustomMetricDefinition: vi.fn(),
   insertActivity: vi.fn(),
   insertTag: vi.fn(),
   insertTimeSeries: vi.fn(),
   updateActivity: vi.fn(),
+  updateCustomMetricDefinition: vi.fn(),
   updateTag: vi.fn(),
   updateTagEndTime: vi.fn(),
   upsertUserSettings: vi.fn(),
@@ -441,27 +446,17 @@ describe('addCustomMetric', () => {
   })
 
   test('creates a custom metric definition', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({ custom_metrics: [] })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
 
     const result = await addCustomMetric('testuser', { name: 'mood', unit: 'score' })
 
     expect(result.success).toBe(true)
     expect(result.data).toEqual({ name: 'mood', unit: 'score' })
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    expect(db.insertCustomMetricDefinition).toHaveBeenCalledWith('testuser', { name: 'mood', unit: 'score' })
   })
 
   test('creates a custom metric with all fields', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({ custom_metrics: [] })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { description: 'Daily mood rating', max_value: 10, min_value: 1, name: 'mood', unit: 'score' },
-      ],
-    })
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
 
     const result = await addCustomMetric('testuser', {
       description: 'Daily mood rating',
@@ -482,55 +477,26 @@ describe('addCustomMetric', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('conflicts with a built-in metric')
-    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+    expect(db.insertCustomMetricDefinition).not.toHaveBeenCalled()
   })
 
   test('rejects duplicate custom metric name', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue({ name: 'mood', unit: 'score' })
 
     const result = await addCustomMetric('testuser', { name: 'mood', unit: 'points' })
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('already exists')
-    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+    expect(db.insertCustomMetricDefinition).not.toHaveBeenCalled()
   })
 
-  test('appends to existing custom metrics', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { name: 'mood', unit: 'score' },
-        { name: 'caffeine_mg', unit: 'mg' },
-      ],
-    })
-
-    const result = await addCustomMetric('testuser', { name: 'caffeine_mg', unit: 'mg' })
-
-    expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [
-        { name: 'mood', unit: 'score' },
-        { name: 'caffeine_mg', unit: 'mg' },
-      ],
-    })
-  })
-
-  test('works when no settings exist', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+  test('works when no metrics exist yet', async () => {
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
 
     const result = await addCustomMetric('testuser', { name: 'mood', unit: 'score' })
 
     expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    expect(db.insertCustomMetricDefinition).toHaveBeenCalledWith('testuser', { name: 'mood', unit: 'score' })
   })
 })
 
@@ -540,41 +506,19 @@ describe('deleteCustomMetric', () => {
   })
 
   test('deletes an existing custom metric', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { name: 'mood', unit: 'score' },
-        { name: 'caffeine_mg', unit: 'mg' },
-      ],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'caffeine_mg', unit: 'mg' }],
-    })
+    vi.mocked(db.deleteCustomMetricDefinition).mockResolvedValue(true)
 
     const result = await deleteCustomMetric('testuser', 'mood')
 
     expect(result.success).toBe(true)
     expect(result.deleted).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [{ name: 'caffeine_mg', unit: 'mg' }],
-    })
+    expect(db.deleteCustomMetricDefinition).toHaveBeenCalledWith('testuser', 'mood')
   })
 
   test('returns false when metric not found', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.deleteCustomMetricDefinition).mockResolvedValue(false)
 
     const result = await deleteCustomMetric('testuser', 'nonexistent')
-
-    expect(result.success).toBe(false)
-    expect(result.deleted).toBe(false)
-    expect(db.upsertUserSettings).not.toHaveBeenCalled()
-  })
-
-  test('returns false when no custom metrics exist', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
-
-    const result = await deleteCustomMetric('testuser', 'mood')
 
     expect(result.success).toBe(false)
     expect(result.deleted).toBe(false)
@@ -586,13 +530,11 @@ describe('getCustomMetrics', () => {
     vi.clearAllMocks()
   })
 
-  test('returns custom metrics from settings', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { name: 'mood', unit: 'score' },
-        { name: 'caffeine_mg', unit: 'mg' },
-      ],
-    })
+  test('returns custom metrics from database', async () => {
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([
+      { name: 'mood', unit: 'score' },
+      { name: 'caffeine_mg', unit: 'mg' },
+    ])
 
     const result = await getCustomMetrics('testuser')
 
@@ -603,7 +545,7 @@ describe('getCustomMetrics', () => {
   })
 
   test('returns empty array when no custom metrics', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     const result = await getCustomMetrics('testuser')
 
@@ -618,9 +560,7 @@ describe('addMetric with custom metrics', () => {
 
   test('adds a custom metric measurement', async () => {
     vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([{ name: 'mood', unit: 'score' }])
 
     const result = await addMetric('testuser', {
       metric: 'mood',
@@ -645,7 +585,7 @@ describe('addMetric with custom metrics', () => {
   })
 
   test('rejects unknown metric name', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({ custom_metrics: [] })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     const result = await addMetric('testuser', {
       metric: 'unknown_metric',
@@ -659,9 +599,9 @@ describe('addMetric with custom metrics', () => {
   })
 
   test('validates custom metric value against min/max', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, min_value: 1, name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([
+      { max_value: 10, min_value: 1, name: 'mood', unit: 'score' },
+    ])
 
     const result = await addMetric('testuser', {
       metric: 'mood',
@@ -675,9 +615,9 @@ describe('addMetric with custom metrics', () => {
   })
 
   test('validates custom metric value against min', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, min_value: 1, name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([
+      { max_value: 10, min_value: 1, name: 'mood', unit: 'score' },
+    ])
 
     const result = await addMetric('testuser', {
       metric: 'mood',
@@ -698,7 +638,7 @@ describe('bulkAddMetrics', () => {
 
   test('inserts multiple built-in metrics in a single batch', async () => {
     vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     const result = await bulkAddMetrics('testuser', [
       { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
@@ -738,7 +678,7 @@ describe('bulkAddMetrics', () => {
 
   test('collects per-item errors without failing the batch', async () => {
     vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
-    vi.mocked(db.getUserSettings).mockResolvedValue({ custom_metrics: [] })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     const result = await bulkAddMetrics('testuser', [
       { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
@@ -757,9 +697,9 @@ describe('bulkAddMetrics', () => {
 
   test('validates custom metric ranges', async () => {
     vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, min_value: 1, name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([
+      { max_value: 10, min_value: 1, name: 'mood', unit: 'score' },
+    ])
 
     const result = await bulkAddMetrics('testuser', [
       { metric: 'mood', time: new Date('2024-01-15T10:00:00Z'), value: 5 },
@@ -778,7 +718,7 @@ describe('bulkAddMetrics', () => {
 
   test('uses default source when no per-item source specified', async () => {
     vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     await bulkAddMetrics(
       'testuser',
@@ -793,7 +733,7 @@ describe('bulkAddMetrics', () => {
 
   test('per-item source overrides default source', async () => {
     vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     await bulkAddMetrics(
       'testuser',
@@ -812,7 +752,7 @@ describe('bulkAddMetrics', () => {
 
   test('defaults source to aurboda when not specified', async () => {
     vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     await bulkAddMetrics('testuser', [
       { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
@@ -824,7 +764,7 @@ describe('bulkAddMetrics', () => {
   })
 
   test('does not call insertTimeSeries when all items are invalid', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({ custom_metrics: [] })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     const result = await bulkAddMetrics('testuser', [
       { metric: 'unknown1', time: new Date('2024-01-15T10:00:00Z'), value: 1 },
@@ -837,11 +777,9 @@ describe('bulkAddMetrics', () => {
     expect(db.insertTimeSeries).not.toHaveBeenCalled()
   })
 
-  test('calls getUserSettings only once for the entire batch', async () => {
+  test('calls getCustomMetricDefinitions only once for the entire batch', async () => {
     vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([{ name: 'mood', unit: 'score' }])
 
     await bulkAddMetrics('testuser', [
       { metric: 'mood', time: new Date('2024-01-15T10:00:00Z'), value: 5 },
@@ -849,7 +787,7 @@ describe('bulkAddMetrics', () => {
       { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
     ])
 
-    expect(db.getUserSettings).toHaveBeenCalledTimes(1)
+    expect(db.getCustomMetricDefinitions).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -1180,28 +1118,19 @@ describe('updateCustomMetric', () => {
   })
 
   test('updates unit field', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'points' }],
-    })
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({ name: 'mood', unit: 'points' })
 
     const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
 
     expect(result.success).toBe(true)
     expect(result.data?.unit).toBe('points')
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [{ name: 'mood', unit: 'points' }],
-    })
   })
 
   test('updates description field', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ description: 'Daily mood rating', name: 'mood', unit: 'score' }],
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      description: 'Daily mood rating',
+      name: 'mood',
+      unit: 'score',
     })
 
     const result = await updateCustomMetric('testuser', 'mood', { description: 'Daily mood rating' })
@@ -1211,11 +1140,10 @@ describe('updateCustomMetric', () => {
   })
 
   test('clears min_value with null', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, min_value: 1, name: 'mood', unit: 'score' }],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, name: 'mood', unit: 'score' }],
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      max_value: 10,
+      name: 'mood',
+      unit: 'score',
     })
 
     const result = await updateCustomMetric('testuser', 'mood', { minValue: null })
@@ -1226,11 +1154,10 @@ describe('updateCustomMetric', () => {
   })
 
   test('clears max_value with null', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, min_value: 1, name: 'mood', unit: 'score' }],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ min_value: 1, name: 'mood', unit: 'score' }],
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      min_value: 1,
+      name: 'mood',
+      unit: 'score',
     })
 
     const result = await updateCustomMetric('testuser', 'mood', { maxValue: null })
@@ -1241,27 +1168,21 @@ describe('updateCustomMetric', () => {
   })
 
   test('returns error when metric not found', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue(null)
 
     const result = await updateCustomMetric('testuser', 'nonexistent', { unit: 'mg' })
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('not found')
-    expect(db.upsertUserSettings).not.toHaveBeenCalled()
   })
 
   test('partial update preserves other fields', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { description: 'Daily mood', max_value: 10, min_value: 1, name: 'mood', unit: 'score' },
-      ],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { description: 'Daily mood', max_value: 10, min_value: 1, name: 'mood', unit: 'points' },
-      ],
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      description: 'Daily mood',
+      max_value: 10,
+      min_value: 1,
+      name: 'mood',
+      unit: 'points',
     })
 
     const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
@@ -1274,20 +1195,6 @@ describe('updateCustomMetric', () => {
       name: 'mood',
       unit: 'points',
     })
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [
-        { description: 'Daily mood', max_value: 10, min_value: 1, name: 'mood', unit: 'points' },
-      ],
-    })
-  })
-
-  test('returns error when no settings exist', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
-
-    const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
-
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('not found')
   })
 })
 

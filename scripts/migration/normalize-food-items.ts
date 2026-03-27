@@ -10,10 +10,11 @@
  * Usage: cd apps/backend && npx tsx ../../scripts/migration/normalize-food-items.ts
  */
 
-import { NUTRIENT_FIELD_NAMES } from '../../packages/api-spec/src/schemas/nutrients.ts'
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
+
+import { NUTRIENT_FIELD_NAMES } from '../../packages/api-spec/src/schemas/nutrients.ts'
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
