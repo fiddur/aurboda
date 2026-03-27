@@ -19,6 +19,7 @@ import type { SyncProvider } from './services/queries.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
+import { registerFoodItemTools } from './mcp/food-item-tools.ts'
 import { registerLastFmTools } from './mcp/lastfm-tools.ts'
 import { registerLocationTools } from './mcp/location-tools.ts'
 import { registerMealTools } from './mcp/meal-tools.ts'
@@ -62,6 +63,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerTrendTools(server, user)
   registerNoteTools(server, user)
   registerMealTools(server, user)
+  registerFoodItemTools(server, user)
   registerReportTools(server, user)
   registerScreentimeCategoryTools(server, user)
 

@@ -24,8 +24,10 @@ export type {
   LastFmTagRuleInput,
   Location,
   McpSessionRecord,
+  FoodItemEntity,
   Meal,
   MealFoodItem,
+  MealFoodItemLink,
   MergedActivity,
   Micros,
   MetricStats,
@@ -171,6 +173,19 @@ export {
   updateNoteTimesForEntity,
   upsertSyncedNote,
 } from './notes.ts'
+
+// Food Items
+export {
+  deleteFoodItem,
+  findOrCreateFoodItem,
+  getFoodItemById,
+  getFoodItemByName,
+  listFoodItems,
+  searchFoodItems,
+  updateFoodItem,
+  upsertFoodItem,
+} from './food-items.ts'
+export { getMealFoodItems, getMealFoodItemsBatch, setMealFoodItems } from './meal-food-items.ts'
 
 // Meals
 export {
