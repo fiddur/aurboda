@@ -7,10 +7,8 @@
 import type {
   ActivityType,
   BiologicalSex,
-  CustomMetricDefinition,
   DashboardConfig,
   DataSource,
-  Goal,
   MetricType,
   TrainingLoadSettings,
 } from '@aurboda/api-spec'
@@ -400,10 +398,8 @@ export interface CalendarConfig {
 export interface UserSettings {
   birth_date?: string // YYYY-MM-DD
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
-  custom_metrics?: CustomMetricDefinition[] // User-defined custom metric types
   dashboard?: DashboardConfig // Custom dashboard configuration
   device_timezone?: string // IANA timezone from the Android device (e.g. "Europe/Stockholm")
-  goals?: Goal[] // User-defined goals for tracking metrics
   hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   lastfm_username?: string // Last.fm username for scrobble sync
   rescue_time_key?: string // RescueTime API key (personal token)

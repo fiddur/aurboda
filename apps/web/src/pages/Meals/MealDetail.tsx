@@ -252,18 +252,20 @@ export function MealDetail() {
     },
   })
 
-  if (isLoading)
-    {return (
+  if (isLoading) {
+    return (
       <div class="meal-detail-page">
         <p class="loading">Loading...</p>
       </div>
-    )}
-  if (!meal)
-    {return (
+    )
+  }
+  if (!meal) {
+    return (
       <div class="meal-detail-page">
         <p>Meal not found.</p>
       </div>
-    )}
+    )
+  }
 
   const isEditing = editing !== null
   const flagAreas: string[] = settings?.sensitivity_areas ?? []

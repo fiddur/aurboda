@@ -269,6 +269,62 @@ export const migrateSchema = async (user: string) => {
     // Tags that were already mapped (tag = display name) — reverse-lookup from tag_mappings
     await backfillTagKeysFromMappings(db, existingTableNames)
   }
+
+  // Migrate goals and custom_metrics from user_settings JSONB to their own tables
+  await migrateGoalsAndCustomMetrics(db, existingTableNames)
+}
+
+/**
+ * Migrate goals and custom_metrics from user_settings JSONB into their own tables.
+ * Only runs once: checks if the JSONB still contains data and the tables are empty.
+ */
+const migrateGoalsAndCustomMetrics = async (db: Client, existingTableNames: Set<string>) => {
+  if (!existingTableNames.has('user_settings')) return
+
+  const settingsResult = await query(db, `SELECT settings FROM user_settings LIMIT 1`)
+  if (settingsResult.rows.length === 0) return
+
+  const settings = settingsResult.rows[0].settings as Record<string, unknown>
+
+  // Migrate goals
+  if (existingTableNames.has('goals') && Array.isArray(settings.goals) && settings.goals.length > 0) {
+    const goalsCount = await query(db, `SELECT COUNT(*) as count FROM goals`)
+    if (parseInt(goalsCount.rows[0].count, 10) === 0) {
+      for (const goal of settings.goals as Array<Record<string, unknown>>) {
+        await query(
+          db,
+          `INSERT INTO goals (id, metric, min_value, max_value, window)
+           VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5)
+           ON CONFLICT (id) DO NOTHING`,
+          [goal.id ?? null, goal.metric, goal.min ?? null, goal.max ?? null, goal.window ?? '7d'],
+        )
+      }
+      // Remove goals from settings JSONB
+      await query(db, `UPDATE user_settings SET settings = settings - 'goals', updated_at = NOW()`)
+    }
+  }
+
+  // Migrate custom_metrics
+  if (
+    existingTableNames.has('custom_metrics') &&
+    Array.isArray(settings.custom_metrics) &&
+    settings.custom_metrics.length > 0
+  ) {
+    const metricsCount = await query(db, `SELECT COUNT(*) as count FROM custom_metrics`)
+    if (parseInt(metricsCount.rows[0].count, 10) === 0) {
+      for (const def of settings.custom_metrics as Array<Record<string, unknown>>) {
+        await query(
+          db,
+          `INSERT INTO custom_metrics (name, unit, description, min_value, max_value)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (name) DO NOTHING`,
+          [def.name, def.unit, def.description ?? null, def.min_value ?? null, def.max_value ?? null],
+        )
+      }
+      // Remove custom_metrics from settings JSONB
+      await query(db, `UPDATE user_settings SET settings = settings - 'custom_metrics', updated_at = NOW()`)
+    }
+  }
 }
 
 /**

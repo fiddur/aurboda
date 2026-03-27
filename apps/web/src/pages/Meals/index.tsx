@@ -65,7 +65,6 @@ const buildTimeOptions = (defaultHour: number, mealHour: number, mealMinute: num
   return presets
 }
 
-
 const formatMealType = (type?: string): string =>
   type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Meal'
 

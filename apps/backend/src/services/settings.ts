@@ -12,7 +12,14 @@ import {
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
 
-import { getOAuthToken, getUserSettings, updateTagNameByKey, upsertUserSettings } from '../db/index.ts'
+import {
+  getGoals,
+  getOAuthToken,
+  getUserSettings,
+  replaceGoals,
+  updateTagNameByKey,
+  upsertUserSettings,
+} from '../db/index.ts'
 import { getCentralDb } from './central-db.ts'
 
 // Re-export types from api-spec for use by other modules
@@ -121,11 +128,12 @@ export const getEffectiveHrZones = async (
 }
 
 /**
- * Get effective goals for a user (user goals or defaults).
+ * Get effective goals for a user (from goals table, falling back to defaults).
  */
-export const getEffectiveGoals = (settings: UserSettings): Goal[] => {
-  // If goals is undefined, return defaults. If empty array, return empty.
-  return settings.goals ?? defaultGoals
+export const getEffectiveGoals = async (user: string): Promise<Goal[]> => {
+  const goals = await getGoals(user)
+  // If the goals table is empty, return defaults
+  return goals.length > 0 ? goals : defaultGoals
 }
 
 /**
@@ -217,10 +225,12 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const garminToken = await getOAuthToken(user, 'garmin')
   const lastFmConfigured = !!(await getCentralDb().getLastFmApiKey())
 
+  const goals = await getEffectiveGoals(user)
+
   return {
     ...withDefaults(settings),
     garmin_connected: garminToken !== null && garminToken.access_token !== '',
-    goals: getEffectiveGoals(settings),
+    goals,
     hr_zone_start: zones,
     hr_zone_start_source: source,
     lastfm_configured: lastFmConfigured,
@@ -269,13 +279,18 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     return buildErrorSettingsResponse(parsed.error.issues.map((e) => e.message).join('; '))
   }
 
+  // Handle goals separately — stored in their own table now
+  if (parsed.data.goals !== undefined) {
+    const newGoals = parsed.data.goals === null ? [] : parsed.data.goals
+    await replaceGoals(user, newGoals)
+  }
+
   // Build updates object, converting null to undefined (which clears/resets the field in storage)
   const settingsFields = [
     'birth_date',
     'calendars',
     'dashboard',
     'food_sensitivity_map',
-    'goals',
     'hr_zone_start',
     'item_icons',
     'lastfm_username',
@@ -302,7 +317,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     updates.item_icons = { ...current.item_icons, ...updates.item_icons }
   }
 
-  // Apply updates
+  // Apply updates (only if there are non-goals fields to update)
   await updateSettingsInternal(user, updates)
 
   // Return updated settings

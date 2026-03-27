@@ -11,8 +11,14 @@ import {
   type MetricType,
 } from '@aurboda/api-spec'
 
-import { getDailyAggregates, getDailyAggregateValue, getRawDailySum, getTimeSeries } from '../db/index.ts'
-import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones, getSettings } from './settings.ts'
+import {
+  getDailyAggregates,
+  getDailyAggregateValue,
+  getGoals,
+  getRawDailySum,
+  getTimeSeries,
+} from '../db/index.ts'
+import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
 
 /**
  * Get all dates in a range (inclusive).
@@ -82,8 +88,7 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
  * Returns current value and "losing tomorrow" value for each goal.
  */
 export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> => {
-  const settings = await getSettings(user)
-  const goals = getEffectiveGoals(settings)
+  const goals = await getEffectiveGoals(user)
 
   if (goals.length === 0) {
     return []

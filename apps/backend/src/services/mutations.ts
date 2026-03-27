@@ -18,7 +18,6 @@ import {
   enqueueOutboundSync,
   findHcRecordId,
   findMergeableTag,
-  getUserSettings,
   getTagById,
   insertTag,
   insertTimeSeries,
@@ -35,6 +34,7 @@ import {
   isValidMetricOrCustom,
   metricToHealthConnectType,
 } from '../schema.ts'
+import { getCustomMetrics } from './custom-metrics.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 
 // ============================================================================
@@ -263,8 +263,7 @@ function validateCustomMetricRange(
  * Supports both built-in and custom metrics.
  */
 export async function addMetric(user: string, input: AddMetricInput): Promise<AddMetricResult> {
-  const settings = await getUserSettings(user)
-  const customMetrics = settings?.custom_metrics ?? []
+  const customMetrics = await getCustomMetrics(user)
 
   if (!isValidMetricOrCustom(input.metric, customMetrics)) {
     return {
@@ -347,8 +346,7 @@ export async function bulkAddMetrics(
   items: BulkMetricItem[],
   defaultSource?: string,
 ): Promise<BulkAddMetricsResult> {
-  const settings = await getUserSettings(user)
-  const customMetrics = settings?.custom_metrics ?? []
+  const customMetrics = await getCustomMetrics(user)
 
   const errors: BulkMetricError[] = []
   const validPoints: TimeSeriesPoint[] = []
