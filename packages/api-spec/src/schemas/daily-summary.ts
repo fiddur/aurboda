@@ -49,11 +49,24 @@ export const sleepLocationSchema = z
 export type SleepLocation = z.infer<typeof sleepLocationSchema>
 
 /**
+ * Sleep stage summary — minutes spent in each named sleep stage.
+ */
+export const sleepStageSummarySchema = z
+  .object({
+    awake_min: z.number().optional().meta({ description: 'Minutes spent awake during sleep session' }),
+    deep_min: z.number().optional().meta({ description: 'Minutes of deep (N3/slow-wave) sleep' }),
+    light_min: z.number().optional().meta({ description: 'Minutes of light (N1/N2) sleep' }),
+    rem_min: z.number().optional().meta({ description: 'Minutes of REM sleep' }),
+  })
+  .meta({ description: 'Time spent in each sleep stage', id: 'SleepStageSummary' })
+
+export type SleepStageSummary = z.infer<typeof sleepStageSummarySchema>
+
+/**
  * Sleep session summary schema — extends session summary with sleep-specific fields.
  */
 export const sleepSessionSummarySchema = z
   .object({
-    data: z.record(z.string(), z.unknown()).optional(),
     duration: durationMinutesSchema.optional(),
     end_time: iso8601DateTimeSchema.optional(),
     sleep_date: dateOnlySchema.optional().meta({
@@ -62,6 +75,9 @@ export const sleepSessionSummarySchema = z
     }),
     sleep_location: sleepLocationSchema.optional().meta({
       description: 'Best-guess location where the person slept during this session',
+    }),
+    sleep_stages: sleepStageSummarySchema.optional().meta({
+      description: 'Minutes spent in each sleep stage (awake, light, deep, REM)',
     }),
     start_time: iso8601DateTimeSchema,
     time_in_bed: durationMinutesSchema.optional().meta({
@@ -80,7 +96,6 @@ export type SleepSessionSummary = z.infer<typeof sleepSessionSummarySchema>
  */
 export const sessionSummarySchema = z
   .object({
-    data: z.record(z.string(), z.unknown()).optional(),
     duration: durationMinutesSchema.optional(),
     end_time: iso8601DateTimeSchema.optional(),
     exercise_type: exerciseTypeSchema.optional().meta({

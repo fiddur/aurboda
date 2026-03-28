@@ -128,7 +128,6 @@ export interface SessionSummary {
   duration?: number // minutes
   title?: string
   exercise_type?: ExerciseTypeName
-  data?: Record<string, unknown>
   hr_zone_secs?: HrZoneSecs
 }
 
@@ -139,6 +138,13 @@ export interface SleepLocation {
   lon?: number
 }
 
+export interface SleepStageSummary {
+  awake_min?: number
+  light_min?: number
+  deep_min?: number
+  rem_min?: number
+}
+
 export interface SleepSessionSummary {
   start_time: string
   end_time?: string
@@ -147,7 +153,7 @@ export interface SleepSessionSummary {
   total_sleep?: number // minutes (from sleep stage data)
   sleep_date?: string // YYYY-MM-DD — the date this sleep "belongs to" (wake-up convention)
   sleep_location?: SleepLocation
-  data?: Record<string, unknown>
+  sleep_stages?: SleepStageSummary
 }
 
 export interface TagSummary {
@@ -611,6 +617,59 @@ async function computeContextualHrvData(
 }
 
 /**
+ * Health Connect sleep stage codes → named stages.
+ * 1=Awake, 2=Sleeping/unknown, 3=Out of bed, 4=Light, 5=Deep, 6=REM
+ */
+interface SleepStageEntry {
+  startTime?: string
+  endTime?: string
+  stage?: number
+}
+
+export const computeSleepStageSummary = (
+  data: Record<string, unknown> | undefined,
+): SleepStageSummary | undefined => {
+  if (!data) return undefined
+  const stages = data.stages
+  if (!Array.isArray(stages) || stages.length === 0) return undefined
+
+  let awakeMs = 0
+  let lightMs = 0
+  let deepMs = 0
+  let remMs = 0
+
+  for (const s of stages as SleepStageEntry[]) {
+    if (typeof s.startTime !== 'string' || typeof s.endTime !== 'string') continue
+    const ms = new Date(s.endTime).getTime() - new Date(s.startTime).getTime()
+    if (ms <= 0) continue
+
+    switch (s.stage) {
+      case 1:
+        awakeMs += ms
+        break
+      case 4:
+        lightMs += ms
+        break
+      case 5:
+        deepMs += ms
+        break
+      case 6:
+        remMs += ms
+        break
+      // 2=sleeping/unknown, 3=out of bed — omitted from summary
+    }
+  }
+
+  const toMin = (ms: number) => (ms > 0 ? Math.round(ms / 60000) : undefined)
+  return {
+    awake_min: toMin(awakeMs),
+    deep_min: toMin(deepMs),
+    light_min: toMin(lightMs),
+    rem_min: toMin(remMs),
+  }
+}
+
+/**
  * Get a comprehensive summary of health data for a specific day.
  * @param sync Optional sync provider to auto-refresh stale data before querying
  */
@@ -735,7 +794,6 @@ export async function getDailySummary(
         typeof exerciseTypeCode === 'number' ? getExerciseTypeName(exerciseTypeCode) : undefined
 
       const sessionSummary: SessionSummary = {
-        data: s.data,
         duration: s.end_time
           ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)
           : undefined,
@@ -778,11 +836,11 @@ export async function getDailySummary(
     const sleepLocation = findSleepLocation(s.start_time, s.end_time ?? end, placeVisits)
 
     return {
-      data: s.data,
       duration: totalSleep ?? timeInBed,
       end_time: s.end_time?.toISOString(),
       sleep_date: sleepDate,
       sleep_location: sleepLocation,
+      sleep_stages: computeSleepStageSummary(s.data as Record<string, unknown> | undefined),
       start_time: s.start_time.toISOString(),
       time_in_bed: timeInBed,
       total_sleep: totalSleep,
