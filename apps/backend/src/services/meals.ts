@@ -196,18 +196,25 @@ const syncFoodItemsToJunction = async (
       fiber: fi.fiber,
     })
 
+    // Copy ALL nutrients from canonical food item as snapshot, then override with any
+    // explicit values from the input (the input may have manually adjusted macros)
     const junctionItem: Record<string, unknown> = {
       food_item_id: canonical.id,
       quantity: fi.quantity,
       unit: fi.unit,
       sort_order: i,
-      // Copy macros as snapshot
-      calories: fi.calories,
-      protein: fi.protein,
-      carbs: fi.carbs,
-      fat: fi.fat,
-      fiber: fi.fiber,
     }
+    // First: copy all nutrients from canonical item
+    for (const field of NUTRIENT_FIELD_NAMES) {
+      const canonicalVal = canonical[field]
+      if (typeof canonicalVal === 'number') junctionItem[field] = canonicalVal
+    }
+    // Then: override with any explicit input values (manual edits)
+    if (fi.calories !== undefined) junctionItem.calories = fi.calories
+    if (fi.protein !== undefined) junctionItem.protein = fi.protein
+    if (fi.carbs !== undefined) junctionItem.carbs = fi.carbs
+    if (fi.fat !== undefined) junctionItem.fat = fi.fat
+    if (fi.fiber !== undefined) junctionItem.fiber = fi.fiber
     junctionItems.push(junctionItem)
   }
 
