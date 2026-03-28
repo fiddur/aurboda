@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
-import { type FoodItemEntity, searchFoodItemsApi } from '../../state/api'
+import { searchFoodItemsApi } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
 
