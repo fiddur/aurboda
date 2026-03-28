@@ -270,36 +270,33 @@ const NUTRIENT_CATEGORIES = [
 ] as const
 
 function NutrientBreakdown({ nutrients }: { nutrients: Record<string, number> }) {
-  const [expanded, setExpanded] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
 
   return (
     <div class="nutrient-breakdown">
-      <button type="button" class="nutrient-toggle" onClick={() => setExpanded(!expanded)}>
-        {expanded ? '▾' : '▸'} Full nutrients ({Object.keys(nutrients).length} values)
+      {/* Toggle only visible on narrow screens (hidden via CSS on wide) */}
+      <button type="button" class="nutrient-toggle" onClick={() => setCollapsed(!collapsed)}>
+        {collapsed ? '▸' : '▾'} Nutrients ({Object.keys(nutrients).length})
       </button>
-      {expanded && (
-        <div class="nutrient-groups">
-          {NUTRIENT_CATEGORIES.map(({ key, label }) => {
-            const fields = NUTRIENT_FIELDS.filter(
-              (f) => f.category === key && nutrients[f.name] !== undefined,
-            )
-            if (fields.length === 0) return null
-            return (
-              <div key={key} class="nutrient-group">
-                <h4>{label}</h4>
-                {fields.map((f) => (
-                  <div key={f.name} class="nutrient-line">
-                    <span>{f.label}</span>
-                    <span>
-                      {nutrients[f.name].toFixed(1)} {f.unit}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <div class={`nutrient-groups ${collapsed ? 'collapsed-mobile' : ''}`}>
+        {NUTRIENT_CATEGORIES.map(({ key, label }) => {
+          const fields = NUTRIENT_FIELDS.filter((f) => f.category === key && nutrients[f.name] !== undefined)
+          if (fields.length === 0) return null
+          return (
+            <div key={key} class="nutrient-group">
+              <h4>{label}</h4>
+              {fields.map((f) => (
+                <div key={f.name} class="nutrient-line">
+                  <span>{f.label}</span>
+                  <span>
+                    {nutrients[f.name].toFixed(1)} {f.unit}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -486,143 +483,145 @@ export function MealDetail() {
         </div>
       </div>
 
-      <div class="detail-card">
-        {/* Type */}
-        <div class="detail-row">
-          <label>Type</label>
-          {isEditing ? (
-            <MealTypeEditor value={editType} onChange={(v) => setEditing({ ...editing, meal_type: v })} />
-          ) : (
-            <span class="detail-value">{meal.meal_type ?? '—'}</span>
-          )}
-        </div>
+      <div class="detail-layout">
+        <div class="detail-card">
+          {/* Type */}
+          <div class="detail-row">
+            <label>Type</label>
+            {isEditing ? (
+              <MealTypeEditor value={editType} onChange={(v) => setEditing({ ...editing, meal_type: v })} />
+            ) : (
+              <span class="detail-value">{meal.meal_type ?? '—'}</span>
+            )}
+          </div>
 
-        {/* Time */}
-        <div class="detail-row">
-          <label>Time</label>
-          {isEditing ? (
-            <input
-              type="datetime-local"
-              value={editTime}
-              onInput={(e) => setEditing({ ...editing, time: (e.target as HTMLInputElement).value })}
-            />
-          ) : (
-            <span class="detail-value">{format(meal.time, 'yyyy-MM-dd HH:mm')}</span>
-          )}
-        </div>
+          {/* Time */}
+          <div class="detail-row">
+            <label>Time</label>
+            {isEditing ? (
+              <input
+                type="datetime-local"
+                value={editTime}
+                onInput={(e) => setEditing({ ...editing, time: (e.target as HTMLInputElement).value })}
+              />
+            ) : (
+              <span class="detail-value">{format(meal.time, 'yyyy-MM-dd HH:mm')}</span>
+            )}
+          </div>
 
-        {/* Name */}
-        <div class="detail-row">
-          <label>Name</label>
-          {isEditing ? (
-            <input
-              type="text"
-              value={editName}
-              placeholder="Meal name"
-              onInput={(e) => setEditing({ ...editing, name: (e.target as HTMLInputElement).value })}
-            />
-          ) : (
-            <span class="detail-value">{meal.name || '—'}</span>
-          )}
-        </div>
+          {/* Name */}
+          <div class="detail-row">
+            <label>Name</label>
+            {isEditing ? (
+              <input
+                type="text"
+                value={editName}
+                placeholder="Meal name"
+                onInput={(e) => setEditing({ ...editing, name: (e.target as HTMLInputElement).value })}
+              />
+            ) : (
+              <span class="detail-value">{meal.name || '—'}</span>
+            )}
+          </div>
 
-        {/* Flags */}
-        <div class="detail-row">
-          <label>Flags</label>
-          {isEditing ? (
-            <MealFlagsEditor
-              selected={editFlags}
-              areas={flagAreas}
-              onChange={(flags) => setEditing({ ...editing, sensitivities: flags })}
-            />
-          ) : meal.sensitivities && meal.sensitivities.length > 0 ? (
-            <div class="detail-sensitivities">
-              {meal.sensitivities.map((s) => (
-                <span key={s} class="detail-sensitivity-chip">
-                  {s}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <span class="detail-value">—</span>
-          )}
-        </div>
-
-        {/* Food Items */}
-        <div class="detail-row detail-row-block">
-          <label>Food Items</label>
-          {isEditing ? (
-            <FoodItemsEditor
-              items={editItems}
-              onChange={(items) => setEditing({ ...editing, food_items: items })}
-            />
-          ) : meal.food_items && meal.food_items.length > 0 ? (
-            <div class="detail-food-items">
-              {meal.food_items.map((item, i) =>
-                item.food_item_id ? (
-                  <a
-                    key={i}
-                    href={`/food-items/${item.food_item_id}`}
-                    class="detail-food-chip detail-food-link"
-                  >
-                    {item.name}
-                    {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
-                  </a>
-                ) : (
-                  <span key={i} class="detail-food-chip">
-                    {item.name}
-                    {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
+          {/* Flags */}
+          <div class="detail-row">
+            <label>Flags</label>
+            {isEditing ? (
+              <MealFlagsEditor
+                selected={editFlags}
+                areas={flagAreas}
+                onChange={(flags) => setEditing({ ...editing, sensitivities: flags })}
+              />
+            ) : meal.sensitivities && meal.sensitivities.length > 0 ? (
+              <div class="detail-sensitivities">
+                {meal.sensitivities.map((s) => (
+                  <span key={s} class="detail-sensitivity-chip">
+                    {s}
                   </span>
-                ),
-              )}
+                ))}
+              </div>
+            ) : (
+              <span class="detail-value">—</span>
+            )}
+          </div>
+
+          {/* Food Items */}
+          <div class="detail-row detail-row-block">
+            <label>Food Items</label>
+            {isEditing ? (
+              <FoodItemsEditor
+                items={editItems}
+                onChange={(items) => setEditing({ ...editing, food_items: items })}
+              />
+            ) : meal.food_items && meal.food_items.length > 0 ? (
+              <div class="detail-food-items">
+                {meal.food_items.map((item, i) =>
+                  item.food_item_id ? (
+                    <a
+                      key={i}
+                      href={`/food-items/${item.food_item_id}`}
+                      class="detail-food-chip detail-food-link"
+                    >
+                      {item.name}
+                      {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
+                    </a>
+                  ) : (
+                    <span key={i} class="detail-food-chip">
+                      {item.name}
+                      {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
+                    </span>
+                  ),
+                )}
+              </div>
+            ) : (
+              <span class="detail-value">—</span>
+            )}
+          </div>
+
+          {/* Macros */}
+          <div class="detail-row">
+            <label>Macros</label>
+            {isEditing ? (
+              <MacrosEditor
+                calories={editCal}
+                protein={editProt}
+                carbs={editCarbs}
+                fat={editFat}
+                fiber={editFiber}
+                onChange={(field, val) => setEditing({ ...editing, [field]: val })}
+              />
+            ) : (
+              <span class="detail-value">{macroDisplay || '—'}</span>
+            )}
+          </div>
+
+          {/* Notes */}
+          <div class="detail-row">
+            <label>Notes</label>
+            {isEditing ? (
+              <textarea
+                value={editNotes}
+                placeholder="Notes..."
+                rows={3}
+                onInput={(e) => setEditing({ ...editing, notes: (e.target as HTMLTextAreaElement).value })}
+              />
+            ) : (
+              <span class="detail-value">{meal.notes || '—'}</span>
+            )}
+          </div>
+
+          {!isEditing && (
+            <div class="detail-row">
+              <label>Source</label>
+              <span class="detail-value">{meal.source ?? '—'}</span>
             </div>
-          ) : (
-            <span class="detail-value">—</span>
           )}
         </div>
 
-        {/* Macros */}
-        <div class="detail-row">
-          <label>Macros</label>
-          {isEditing ? (
-            <MacrosEditor
-              calories={editCal}
-              protein={editProt}
-              carbs={editCarbs}
-              fat={editFat}
-              fiber={editFiber}
-              onChange={(field, val) => setEditing({ ...editing, [field]: val })}
-            />
-          ) : (
-            <span class="detail-value">{macroDisplay || '—'}</span>
-          )}
-        </div>
-
-        {/* Full Nutrients (from junction aggregation) */}
+        {/* Nutrient sidebar — shown beside the card on wide screens */}
         {!isEditing && meal.nutrients && Object.keys(meal.nutrients).length > 0 && (
           <NutrientBreakdown nutrients={meal.nutrients} />
-        )}
-
-        {/* Notes */}
-        <div class="detail-row">
-          <label>Notes</label>
-          {isEditing ? (
-            <textarea
-              value={editNotes}
-              placeholder="Notes..."
-              rows={3}
-              onInput={(e) => setEditing({ ...editing, notes: (e.target as HTMLTextAreaElement).value })}
-            />
-          ) : (
-            <span class="detail-value">{meal.notes || '—'}</span>
-          )}
-        </div>
-
-        {!isEditing && (
-          <div class="detail-row">
-            <label>Source</label>
-            <span class="detail-value">{meal.source ?? '—'}</span>
-          </div>
         )}
       </div>
     </div>

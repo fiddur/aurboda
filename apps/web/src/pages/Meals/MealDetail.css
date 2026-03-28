@@ -1,8 +1,43 @@
 .meal-detail-page {
-  max-width: 600px;
+  max-width: 1100px;
   width: 100%;
   margin: 0 auto;
   padding: 2rem;
+}
+
+.detail-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .detail-layout {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .detail-card {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .nutrient-breakdown {
+    width: 320px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+
+  .nutrient-toggle {
+    display: none;
+  }
+
+  .nutrient-groups.collapsed-mobile {
+    display: flex;
+  }
 }
 
 .detail-header {
@@ -92,7 +127,13 @@
 
 .nutrient-breakdown {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.nutrient-groups.collapsed-mobile {
+  display: none;
 }
 
 .nutrient-toggle {
@@ -111,8 +152,8 @@
 
 .nutrient-groups {
   margin-top: 0.75rem;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
 }
 
@@ -348,6 +389,7 @@ a.detail-food-link:hover {
 @media (prefers-color-scheme: dark) {
   .nutrient-breakdown {
     border-color: #374151;
+    background: #1f2937;
   }
 
   .nutrient-toggle {
