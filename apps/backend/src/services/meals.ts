@@ -2,16 +2,24 @@
  * Meals service — CRUD operations for meal/nutrition records.
  *
  * Handles adding, querying, and deleting meals with optional nutrition data.
+ * Food items are stored relationally via the food_items + meal_food_items junction table.
  */
+
+import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import {
   deleteMeal as dbDeleteMeal,
+  findOrCreateFoodItem,
   getMealById as dbGetMealById,
+  getMealFoodItems,
+  getMealFoodItemsBatch,
   getMeals as dbGetMeals,
-  upsertMeal as dbUpsertMeal,
+  setMealFoodItems,
   updateMeal as dbUpdateMeal,
+  upsertMeal as dbUpsertMeal,
   type Meal,
   type MealFoodItem,
+  type MealFoodItemLink,
   type Micros,
 } from '../db/index.ts'
 
@@ -93,7 +101,7 @@ interface MealsResult {
 }
 
 // ============================================================================
-// Formatters
+// Helpers
 // ============================================================================
 
 const formatMeal = (meal: Meal): MealResponse => ({
@@ -113,6 +121,78 @@ const formatMeal = (meal: Meal): MealResponse => ({
   source: meal.source,
   time: meal.time.toISOString(),
 })
+
+/** Convert junction links to the MealFoodItem format for API responses. */
+const linksToFoodItems = (links: MealFoodItemLink[]): MealFoodItem[] =>
+  links.map((link) => {
+    const item: MealFoodItem = {
+      food_item_id: link.food_item_id,
+      name: link.food_item_name ?? '',
+      quantity: link.quantity as number | undefined,
+      unit: link.unit as string | undefined,
+    }
+    // Copy macro fields
+    for (const field of ['calories', 'protein', 'carbs', 'fat', 'fiber'] as const) {
+      const val = link[field]
+      if (typeof val === 'number') (item as Record<string, unknown>)[field] = val
+    }
+    return item
+  })
+
+/** Attach food items from junction table to meals, replacing JSONB food_items. */
+const attachFoodItems = async (user: string, meals: Meal[]): Promise<Meal[]> => {
+  const mealIds = meals.map((m) => m.id)
+  const junctionMap = await getMealFoodItemsBatch(user, mealIds)
+
+  return meals.map((meal) => {
+    const links = junctionMap.get(meal.id)
+    if (links && links.length > 0) {
+      return { ...meal, food_items: linksToFoodItems(links) }
+    }
+    // Fall back to JSONB food_items if no junction rows exist (legacy data)
+    return meal
+  })
+}
+
+/** Write food items to the junction table for a meal. */
+const syncFoodItemsToJunction = async (
+  user: string,
+  mealId: string,
+  foodItems: FoodItemInput[],
+  source = 'manual',
+): Promise<void> => {
+  const junctionItems = []
+  for (let i = 0; i < foodItems.length; i++) {
+    const fi = foodItems[i]
+    // Find or create canonical food item with the macro defaults
+    const canonical = await findOrCreateFoodItem(user, fi.name, {
+      source,
+      default_quantity: fi.quantity,
+      default_unit: fi.unit,
+      calories: fi.calories,
+      protein: fi.protein,
+      carbs: fi.carbs,
+      fat: fi.fat,
+      fiber: fi.fiber,
+    })
+
+    const junctionItem: Record<string, unknown> = {
+      food_item_id: canonical.id,
+      quantity: fi.quantity,
+      unit: fi.unit,
+      sort_order: i,
+      // Copy macros as snapshot
+      calories: fi.calories,
+      protein: fi.protein,
+      carbs: fi.carbs,
+      fat: fi.fat,
+      fiber: fi.fiber,
+    }
+    junctionItems.push(junctionItem)
+  }
+
+  await setMealFoodItems(user, mealId, junctionItems as Parameters<typeof setMealFoodItems>[2])
+}
 
 // ============================================================================
 // Service Functions
@@ -141,6 +221,11 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
     time: mealTime,
   })
 
+  // Write junction table rows for food items
+  if (input.food_items && input.food_items.length > 0) {
+    await syncFoodItemsToJunction(user, meal.id, input.food_items, input.source)
+  }
+
   return { data: formatMeal(meal), success: true }
 }
 
@@ -159,6 +244,15 @@ export async function updateMealById(user: string, id: string, input: UpdateMeal
     return { error: 'Meal not found', success: false }
   }
 
+  // Update junction table if food items changed
+  if (input.food_items !== undefined) {
+    if (input.food_items === null || input.food_items.length === 0) {
+      await setMealFoodItems(user, id, [])
+    } else {
+      await syncFoodItemsToJunction(user, id, input.food_items, meal.source)
+    }
+  }
+
   return { data: formatMeal(meal), success: true }
 }
 
@@ -170,7 +264,10 @@ export async function getMeal(user: string, id: string): Promise<MealResult> {
   if (!meal) {
     return { error: 'Meal not found', success: false }
   }
-  return { data: formatMeal(meal), success: true }
+
+  // Populate food items from junction table
+  const [enriched] = await attachFoodItems(user, [meal])
+  return { data: formatMeal(enriched), success: true }
 }
 
 /**
@@ -186,7 +283,9 @@ export async function queryMeals(
     start: filters.start ? new Date(filters.start) : undefined,
   })
 
-  return { data: meals.map(formatMeal), success: true }
+  // Populate food items from junction table
+  const enriched = await attachFoodItems(user, meals)
+  return { data: enriched.map(formatMeal), success: true }
 }
 
 /**

@@ -6,10 +6,14 @@ import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from './
 // Mock the db module
 vi.mock('../db', () => ({
   deleteMeal: vi.fn(),
+  findOrCreateFoodItem: vi.fn().mockResolvedValue({ id: 'fi-1', name: 'test' }),
   getMealById: vi.fn(),
+  getMealFoodItems: vi.fn().mockResolvedValue([]),
+  getMealFoodItemsBatch: vi.fn().mockResolvedValue(new Map()),
   getMeals: vi.fn(),
-  upsertMeal: vi.fn(),
+  setMealFoodItems: vi.fn().mockResolvedValue(undefined),
   updateMeal: vi.fn(),
+  upsertMeal: vi.fn(),
 }))
 
 const mockUpsertMeal = vi.mocked(db.upsertMeal)

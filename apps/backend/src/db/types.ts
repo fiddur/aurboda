@@ -316,6 +316,7 @@ export type NutrientValue = number | { value: number; unit: string }
 export type Micros = Record<string, NutrientValue>
 
 export interface MealFoodItem {
+  food_item_id?: string
   name: string
   quantity?: number
   unit?: string
