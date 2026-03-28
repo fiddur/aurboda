@@ -162,6 +162,7 @@ export interface Scrobble extends Omit<ApiScrobble, 'recorded_at'> {
 export interface Meal extends Omit<ApiMeal, 'time' | 'created_at'> {
   time: Date
   created_at?: Date
+  nutrients?: Record<string, number>
 }
 
 export interface Report extends Omit<ApiReport, 'date' | 'created_at'> {

@@ -1,3 +1,4 @@
+import { NUTRIENT_FIELDS } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
@@ -255,6 +256,53 @@ function FoodItemsEditor({
 }
 
 // ── Read-only info rows ──────────────────────────────────────────────────────
+
+// ── Nutrient breakdown ───────────────────────────────────────────────────────
+
+const NUTRIENT_CATEGORIES = [
+  { key: 'macro', label: 'Macros' },
+  { key: 'extended_macro', label: 'Extended' },
+  { key: 'fat_breakdown', label: 'Fats' },
+  { key: 'vitamin', label: 'Vitamins' },
+  { key: 'mineral', label: 'Minerals' },
+  { key: 'amino_acid', label: 'Amino Acids' },
+  { key: 'other', label: 'Other' },
+] as const
+
+function NutrientBreakdown({ nutrients }: { nutrients: Record<string, number> }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div class="nutrient-breakdown">
+      <button type="button" class="nutrient-toggle" onClick={() => setExpanded(!expanded)}>
+        {expanded ? '▾' : '▸'} Full nutrients ({Object.keys(nutrients).length} values)
+      </button>
+      {expanded && (
+        <div class="nutrient-groups">
+          {NUTRIENT_CATEGORIES.map(({ key, label }) => {
+            const fields = NUTRIENT_FIELDS.filter(
+              (f) => f.category === key && nutrients[f.name] !== undefined,
+            )
+            if (fields.length === 0) return null
+            return (
+              <div key={key} class="nutrient-group">
+                <h4>{label}</h4>
+                {fields.map((f) => (
+                  <div key={f.name} class="nutrient-line">
+                    <span>{f.label}</span>
+                    <span>
+                      {nutrients[f.name].toFixed(1)} {f.unit}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Edit state ───────────────────────────────────────────────────────────────
 
@@ -549,6 +597,11 @@ export function MealDetail() {
             <span class="detail-value">{macroDisplay || '—'}</span>
           )}
         </div>
+
+        {/* Full Nutrients (from junction aggregation) */}
+        {!isEditing && meal.nutrients && Object.keys(meal.nutrients).length > 0 && (
+          <NutrientBreakdown nutrients={meal.nutrients} />
+        )}
 
         {/* Notes */}
         <div class="detail-row">

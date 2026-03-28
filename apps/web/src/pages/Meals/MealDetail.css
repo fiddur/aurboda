@@ -89,6 +89,57 @@
   flex: 1;
 }
 
+/* Nutrient breakdown */
+
+.nutrient-breakdown {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.nutrient-toggle {
+  background: none;
+  border: none;
+  color: #673ab8;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+  font-weight: 500;
+}
+
+.nutrient-toggle:hover {
+  text-decoration: underline;
+}
+
+.nutrient-groups {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.nutrient-group h4 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  margin: 0 0 0.25rem;
+  padding-bottom: 0.125rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.nutrient-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  padding: 0.125rem 0;
+  color: #374151;
+}
+
+.nutrient-line span:last-child {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
 .type-editor select,
 .type-editor input {
   padding: 0.375rem 0.5rem;
@@ -296,6 +347,23 @@ a.detail-food-link:hover {
 
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
+  .nutrient-breakdown {
+    border-color: #374151;
+  }
+
+  .nutrient-toggle {
+    color: #c4b5fd;
+  }
+
+  .nutrient-group h4 {
+    color: #9ca3af;
+    border-color: #374151;
+  }
+
+  .nutrient-line {
+    color: #d1d5db;
+  }
+
   .detail-card {
     background: #1f2937;
     border-color: #374151;
