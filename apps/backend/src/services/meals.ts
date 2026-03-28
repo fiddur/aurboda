@@ -124,20 +124,17 @@ const formatMeal = (meal: Meal): MealResponse => ({
 
 /** Convert junction links to the MealFoodItem format for API responses. */
 const linksToFoodItems = (links: MealFoodItemLink[]): MealFoodItem[] =>
-  links.map((link) => {
-    const item: MealFoodItem = {
-      food_item_id: link.food_item_id,
-      name: link.food_item_name ?? '',
-      quantity: link.quantity as number | undefined,
-      unit: link.unit as string | undefined,
-    }
-    // Copy macro fields
-    for (const field of ['calories', 'protein', 'carbs', 'fat', 'fiber'] as const) {
-      const val = link[field]
-      if (typeof val === 'number') (item as Record<string, unknown>)[field] = val
-    }
-    return item
-  })
+  links.map((link) => ({
+    food_item_id: link.food_item_id,
+    name: link.food_item_name ?? '',
+    quantity: link.quantity as number | undefined,
+    unit: link.unit as string | undefined,
+    calories: link.calories as number | undefined,
+    protein: link.protein as number | undefined,
+    carbs: link.carbs as number | undefined,
+    fat: link.fat as number | undefined,
+    fiber: link.fiber as number | undefined,
+  }))
 
 /** Attach food items from junction table to meals, replacing JSONB food_items. */
 const attachFoodItems = async (user: string, meals: Meal[]): Promise<Meal[]> => {
