@@ -11,6 +11,10 @@
   gap: 1.5rem;
 }
 
+.nutrient-groups.collapsed-mobile {
+  display: none;
+}
+
 @media (min-width: 900px) {
   .detail-layout {
     flex-direction: row;
@@ -132,9 +136,6 @@
   background: #fafafa;
 }
 
-.nutrient-groups.collapsed-mobile {
-  display: none;
-}
 
 .nutrient-toggle {
   background: none;
