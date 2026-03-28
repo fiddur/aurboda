@@ -4,6 +4,7 @@
 
 import { z } from 'zod'
 
+import { exerciseTypeSchema } from './activities.ts'
 import {
   addressSchema,
   createDataResponseSchema,
@@ -48,11 +49,24 @@ export const sleepLocationSchema = z
 export type SleepLocation = z.infer<typeof sleepLocationSchema>
 
 /**
+ * Sleep stage summary — minutes spent in each named sleep stage.
+ */
+export const sleepStageSummarySchema = z
+  .object({
+    awake_min: z.number().optional().meta({ description: 'Minutes spent awake during sleep session' }),
+    deep_min: z.number().optional().meta({ description: 'Minutes of deep (N3/slow-wave) sleep' }),
+    light_min: z.number().optional().meta({ description: 'Minutes of light (N1/N2) sleep' }),
+    rem_min: z.number().optional().meta({ description: 'Minutes of REM sleep' }),
+  })
+  .meta({ description: 'Time spent in each sleep stage', id: 'SleepStageSummary' })
+
+export type SleepStageSummary = z.infer<typeof sleepStageSummarySchema>
+
+/**
  * Sleep session summary schema — extends session summary with sleep-specific fields.
  */
 export const sleepSessionSummarySchema = z
   .object({
-    data: z.record(z.string(), z.unknown()).optional(),
     duration: durationMinutesSchema.optional(),
     end_time: iso8601DateTimeSchema.optional(),
     sleep_date: dateOnlySchema.optional().meta({
@@ -61,6 +75,9 @@ export const sleepSessionSummarySchema = z
     }),
     sleep_location: sleepLocationSchema.optional().meta({
       description: 'Best-guess location where the person slept during this session',
+    }),
+    sleep_stages: sleepStageSummarySchema.optional().meta({
+      description: 'Minutes spent in each sleep stage (awake, light, deep, REM)',
     }),
     start_time: iso8601DateTimeSchema,
     time_in_bed: durationMinutesSchema.optional().meta({
@@ -79,9 +96,11 @@ export type SleepSessionSummary = z.infer<typeof sleepSessionSummarySchema>
  */
 export const sessionSummarySchema = z
   .object({
-    data: z.record(z.string(), z.unknown()).optional(),
     duration: durationMinutesSchema.optional(),
     end_time: iso8601DateTimeSchema.optional(),
+    exercise_type: exerciseTypeSchema.optional().meta({
+      description: 'Human-readable exercise type name (e.g., "yoga", "running", "weightlifting")',
+    }),
     hr_zone_secs: hrZoneSecsSchema.optional().meta({
       description: 'Time spent in each HR zone during session',
     }),
@@ -156,6 +175,28 @@ export const ouraScoresSchema = z
 export type OuraScores = z.infer<typeof ouraScoresSchema>
 
 /**
+ * Meal summary schema — lightweight meal info for daily summary.
+ */
+export const mealSummarySchema = z
+  .object({
+    calories: z.number().optional().meta({ description: 'Total energy in kcal' }),
+    carbs: z.number().optional().meta({ description: 'Total carbohydrates in grams' }),
+    fat: z.number().optional().meta({ description: 'Total fat in grams' }),
+    fiber: z.number().optional().meta({ description: 'Total dietary fiber in grams' }),
+    food_items: z.array(z.string()).optional().meta({ description: 'Food item names included in this meal' }),
+    meal_type: z
+      .string()
+      .optional()
+      .meta({ description: 'Meal type (e.g., "breakfast", "lunch", "dinner")' }),
+    name: z.string().optional().meta({ description: 'Meal name/description' }),
+    protein: z.number().optional().meta({ description: 'Total protein in grams' }),
+    time: iso8601DateTimeSchema.meta({ description: 'When the meal was consumed' }),
+  })
+  .meta({ description: 'Lightweight meal summary for daily overview', id: 'MealSummary' })
+
+export type MealSummary = z.infer<typeof mealSummarySchema>
+
+/**
  * Daily summary result schema.
  */
 export const dailySummaryResultSchema = z
@@ -167,6 +208,9 @@ export const dailySummaryResultSchema = z
     }),
     exercise_sessions: z.array(sessionSummarySchema),
     heart_rate: heartRateStatsSchema.nullable(),
+    meals: z.array(mealSummarySchema).meta({
+      description: 'Meals logged on this day, with macros and food item names',
+    }),
     notes: z.array(noteSchema).meta({
       description: 'All notes whose time range overlaps this day, across all entity types',
     }),

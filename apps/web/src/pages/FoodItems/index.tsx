@@ -34,12 +34,13 @@ export function FoodItems() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['foodItems'] }),
   })
 
-  if (!isLoggedIn)
-    {return (
+  if (!isLoggedIn) {
+    return (
       <div class="food-items-page">
         <p>Please log in.</p>
       </div>
-    )}
+    )
+  }
 
   return (
     <div class="food-items-page">

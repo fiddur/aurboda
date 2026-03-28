@@ -6,6 +6,7 @@ import * as db from '../db/index.ts'
 import * as locationsService from './locations.ts'
 import {
   assembleScreentimeBuckets,
+  computeSleepStageSummary,
   findSleepLocation,
   getDailySummary,
   getPeriodSummary,
@@ -25,6 +26,7 @@ vi.mock('../db', () => ({
   getDailyAggregates: vi.fn(),
   getDistinctMetrics: vi.fn(),
   getLocations: vi.fn(),
+  getMeals: vi.fn(),
   getNotesByEntityIds: vi.fn(),
   getNotesForTimeRange: vi.fn(),
   getProductivity: vi.fn(),
@@ -95,6 +97,8 @@ describe('getDailySummary', () => {
     vi.mocked(db.getNotesForTimeRange).mockResolvedValue([])
     // Default: no notes for tags
     vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+    // Default: no meals
+    vi.mocked(db.getMeals).mockResolvedValue([])
   })
 
   test('aggregates all data sources for a day', async () => {
@@ -685,6 +689,211 @@ describe('getDailySummary', () => {
     const result = await getDailySummary('testuser', new Date('2024-03-08'))
 
     expect(result.primary_sleep!.sleep_location).toBeUndefined()
+  })
+
+  test('includes exercise_type name from numeric Health Connect code', async () => {
+    vi.mocked(db.getTimeSeries)
+      .mockResolvedValueOnce([]) // heart rate
+      .mockResolvedValueOnce([]) // steps
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activity_type: 'exercise',
+        data: { exerciseType: 83 }, // yoga
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T06:30:00Z'),
+      },
+      {
+        activity_type: 'exercise',
+        data: { exerciseType: 56 }, // running
+        end_time: new Date('2024-01-15T12:00:00Z'),
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T11:30:00Z'),
+      },
+    ])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.exercise_sessions).toHaveLength(2)
+    expect(result.exercise_sessions[0].exercise_type).toBe('yoga')
+    expect(result.exercise_sessions[1].exercise_type).toBe('running')
+  })
+
+  test('includes meals with food item names', async () => {
+    vi.mocked(db.getTimeSeries)
+      .mockResolvedValueOnce([]) // heart rate
+      .mockResolvedValueOnce([]) // steps
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+    vi.mocked(db.getMeals).mockResolvedValue([
+      {
+        id: 'meal-1',
+        calories: 450,
+        carbs: 30,
+        created_at: new Date('2024-01-15T08:00:00Z'),
+        fat: 20,
+        fiber: 5,
+        food_items: [
+          { name: 'Oatmeal', calories: 300 },
+          { name: 'Banana', calories: 100 },
+          { name: 'Honey', calories: 50 },
+        ],
+        meal_type: 'breakfast',
+        name: 'Morning oatmeal',
+        protein: 15,
+        source: 'manual',
+        time: new Date('2024-01-15T08:00:00Z'),
+      },
+    ])
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.meals).toHaveLength(1)
+    expect(result.meals[0]).toEqual({
+      calories: 450,
+      carbs: 30,
+      fat: 20,
+      fiber: 5,
+      food_items: ['Oatmeal', 'Banana', 'Honey'],
+      meal_type: 'breakfast',
+      name: 'Morning oatmeal',
+      protein: 15,
+      time: '2024-01-15T08:00:00.000Z',
+    })
+  })
+
+  test('returns empty meals array when no meals logged', async () => {
+    vi.mocked(db.getTimeSeries)
+      .mockResolvedValueOnce([]) // heart rate
+      .mockResolvedValueOnce([]) // steps
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.meals).toEqual([])
+  })
+
+  test('includes sleep_stages summary from stage data', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        data: {
+          stages: [
+            { stage: 1, startTime: '2024-01-14T23:00:00Z', endTime: '2024-01-14T23:10:00Z' }, // 10 min awake
+            { stage: 4, startTime: '2024-01-14T23:10:00Z', endTime: '2024-01-15T01:10:00Z' }, // 120 min light
+            { stage: 5, startTime: '2024-01-15T01:10:00Z', endTime: '2024-01-15T02:40:00Z' }, // 90 min deep
+            { stage: 6, startTime: '2024-01-15T02:40:00Z', endTime: '2024-01-15T04:10:00Z' }, // 90 min REM
+            { stage: 1, startTime: '2024-01-15T04:10:00Z', endTime: '2024-01-15T04:20:00Z' }, // 10 min awake
+            { stage: 4, startTime: '2024-01-15T04:20:00Z', endTime: '2024-01-15T07:00:00Z' }, // 160 min light
+          ],
+        },
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-01-14T23:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.primary_sleep).not.toBeNull()
+    expect(result.primary_sleep!.sleep_stages).toEqual({
+      awake_min: 20,
+      deep_min: 90,
+      light_min: 280,
+      rem_min: 90,
+    })
+  })
+
+  test('omits data blob from exercise and sleep sessions', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        data: { stages: [], metadata: { device: 'oura' } },
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-01-14T23:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activity_type: 'exercise',
+        data: { exerciseType: 83, metadata: { device: 'oura' } },
+        end_time: new Date('2024-01-15T07:30:00Z'),
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T07:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getTags).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    // Exercise sessions should not have raw data blob
+    expect(result.exercise_sessions[0]).not.toHaveProperty('data')
+    // Sleep sessions should not have raw data blob
+    expect(result.sleep_sessions[0]).not.toHaveProperty('data')
+  })
+})
+
+describe('computeSleepStageSummary', () => {
+  test('returns undefined for missing data', () => {
+    expect(computeSleepStageSummary(undefined)).toBeUndefined()
+  })
+
+  test('returns undefined when no stages array', () => {
+    expect(computeSleepStageSummary({ total_sleep_duration: 28800 })).toBeUndefined()
+  })
+
+  test('computes minutes per stage from Health Connect stages', () => {
+    const result = computeSleepStageSummary({
+      stages: [
+        { stage: 1, startTime: '2024-01-15T00:00:00Z', endTime: '2024-01-15T00:15:00Z' }, // 15 min awake
+        { stage: 4, startTime: '2024-01-15T00:15:00Z', endTime: '2024-01-15T02:15:00Z' }, // 120 min light
+        { stage: 5, startTime: '2024-01-15T02:15:00Z', endTime: '2024-01-15T03:45:00Z' }, // 90 min deep
+        { stage: 6, startTime: '2024-01-15T03:45:00Z', endTime: '2024-01-15T05:15:00Z' }, // 90 min REM
+      ],
+    })
+    expect(result).toEqual({ awake_min: 15, deep_min: 90, light_min: 120, rem_min: 90 })
+  })
+
+  test('omits zero-duration stages', () => {
+    const result = computeSleepStageSummary({
+      stages: [
+        { stage: 4, startTime: '2024-01-15T00:00:00Z', endTime: '2024-01-15T06:00:00Z' }, // 360 min light
+      ],
+    })
+    expect(result).toEqual({ awake_min: undefined, deep_min: undefined, light_min: 360, rem_min: undefined })
   })
 })
 
