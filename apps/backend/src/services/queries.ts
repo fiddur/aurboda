@@ -6,8 +6,12 @@
  * They are used by both the MCP tools and the REST API.
  */
 
-import type { CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
-
+import {
+  getExerciseTypeName,
+  type CustomMetricDefinition,
+  type DataSource,
+  type ExerciseTypeName,
+} from '@aurboda/api-spec'
 import { Temporal } from '@js-temporal/polyfill'
 
 import {
@@ -15,6 +19,7 @@ import {
   getDailyAggregates,
   getDailyAggregateValue,
   getDistinctMetrics,
+  getMeals,
   getNotesByEntityIds,
   getNotesForTimeRange,
   getProductivity,
@@ -122,7 +127,7 @@ export interface SessionSummary {
   end_time?: string
   duration?: number // minutes
   title?: string
-  data?: Record<string, unknown>
+  exercise_type?: ExerciseTypeName
   hr_zone_secs?: HrZoneSecs
 }
 
@@ -133,6 +138,13 @@ export interface SleepLocation {
   lon?: number
 }
 
+export interface SleepStageSummary {
+  awake_min?: number
+  light_min?: number
+  deep_min?: number
+  rem_min?: number
+}
+
 export interface SleepSessionSummary {
   start_time: string
   end_time?: string
@@ -141,7 +153,7 @@ export interface SleepSessionSummary {
   total_sleep?: number // minutes (from sleep stage data)
   sleep_date?: string // YYYY-MM-DD — the date this sleep "belongs to" (wake-up convention)
   sleep_location?: SleepLocation
-  data?: Record<string, unknown>
+  sleep_stages?: SleepStageSummary
 }
 
 export interface TagSummary {
@@ -180,9 +192,22 @@ export interface OuraScores {
   cardiovascular_age: number | null
 }
 
+export interface MealSummary {
+  time: string
+  meal_type?: string
+  name?: string
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  fiber?: number
+  food_items?: string[]
+}
+
 export interface DailySummaryResult {
   date: string
   heart_rate: HeartRateStats | null
+  meals: MealSummary[]
   notes: NoteSummary[]
   steps: { total: number }
   primary_sleep: SleepSessionSummary | null
@@ -592,6 +617,59 @@ async function computeContextualHrvData(
 }
 
 /**
+ * Health Connect sleep stage codes → named stages.
+ * 1=Awake, 2=Sleeping/unknown, 3=Out of bed, 4=Light, 5=Deep, 6=REM
+ */
+interface SleepStageEntry {
+  startTime?: string
+  endTime?: string
+  stage?: number
+}
+
+export const computeSleepStageSummary = (
+  data: Record<string, unknown> | undefined,
+): SleepStageSummary | undefined => {
+  if (!data) return undefined
+  const stages = data.stages
+  if (!Array.isArray(stages) || stages.length === 0) return undefined
+
+  let awakeMs = 0
+  let lightMs = 0
+  let deepMs = 0
+  let remMs = 0
+
+  for (const s of stages as SleepStageEntry[]) {
+    if (typeof s.startTime !== 'string' || typeof s.endTime !== 'string') continue
+    const ms = new Date(s.endTime).getTime() - new Date(s.startTime).getTime()
+    if (ms <= 0) continue
+
+    switch (s.stage) {
+      case 1:
+        awakeMs += ms
+        break
+      case 4:
+        lightMs += ms
+        break
+      case 5:
+        deepMs += ms
+        break
+      case 6:
+        remMs += ms
+        break
+      // 2=sleeping/unknown, 3=out of bed — omitted from summary
+    }
+  }
+
+  const toMin = (ms: number) => (ms > 0 ? Math.round(ms / 60000) : undefined)
+  return {
+    awake_min: toMin(awakeMs),
+    deep_min: toMin(deepMs),
+    light_min: toMin(lightMs),
+    rem_min: toMin(remMs),
+  }
+}
+
+/**
  * Get a comprehensive summary of health data for a specific day.
  * @param sync Optional sync provider to auto-refresh stale data before querying
  */
@@ -629,6 +707,7 @@ export async function getDailySummary(
     placeVisits,
     ouraMetrics,
     dayNotes,
+    dayMeals,
   ] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
@@ -644,6 +723,7 @@ export async function getDailySummary(
       end,
     ),
     getNotesForTimeRange(user, start, end),
+    getMeals(user, { start, end }),
   ])
 
   // Calculate heart rate stats
@@ -707,12 +787,18 @@ export async function getDailySummary(
   // Compute HR zones for exercise sessions
   const exerciseSessionsWithHrZones: SessionSummary[] = await Promise.all(
     exerciseSessions.map(async (s) => {
+      // Resolve human-readable exercise type name from numeric Health Connect ID
+      const dataObj = s.data as Record<string, unknown> | undefined
+      const exerciseTypeCode = dataObj?.exerciseType
+      const exerciseType =
+        typeof exerciseTypeCode === 'number' ? getExerciseTypeName(exerciseTypeCode) : undefined
+
       const sessionSummary: SessionSummary = {
-        data: s.data,
         duration: s.end_time
           ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)
           : undefined,
         end_time: s.end_time?.toISOString(),
+        exercise_type: exerciseType,
         start_time: s.start_time.toISOString(),
         title: s.title,
       }
@@ -750,11 +836,11 @@ export async function getDailySummary(
     const sleepLocation = findSleepLocation(s.start_time, s.end_time ?? end, placeVisits)
 
     return {
-      data: s.data,
       duration: totalSleep ?? timeInBed,
       end_time: s.end_time?.toISOString(),
       sleep_date: sleepDate,
       sleep_location: sleepLocation,
+      sleep_stages: computeSleepStageSummary(s.data as Record<string, unknown> | undefined),
       start_time: s.start_time.toISOString(),
       time_in_bed: timeInBed,
       total_sleep: totalSleep,
@@ -775,6 +861,17 @@ export async function getDailySummary(
     evening_sleep: eveningSleep,
     exercise_sessions: exerciseSessionsWithHrZones,
     heart_rate: heartRateStats,
+    meals: dayMeals.map((m) => ({
+      calories: m.calories,
+      carbs: m.carbs,
+      fat: m.fat,
+      fiber: m.fiber,
+      food_items: m.food_items?.map((fi) => fi.name),
+      meal_type: m.meal_type,
+      name: m.name,
+      protein: m.protein,
+      time: m.time.toISOString(),
+    })),
     notes: dayNotes.map((n) => ({
       content: n.content,
       created_at: n.created_at.toISOString(),
