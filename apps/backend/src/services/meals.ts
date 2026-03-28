@@ -5,13 +5,10 @@
  * Food items are stored relationally via the food_items + meal_food_items junction table.
  */
 
-import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
-
 import {
   deleteMeal as dbDeleteMeal,
   findOrCreateFoodItem,
   getMealById as dbGetMealById,
-  getMealFoodItems,
   getMealFoodItemsBatch,
   getMeals as dbGetMeals,
   setMealFoodItems,
