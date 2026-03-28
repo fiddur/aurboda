@@ -90,10 +90,14 @@ export function MealPreferencesSettings() {
   return (
     <SettingsSection
       title="Meal Preferences"
-      description={<>Configure meal slots and meal flags for quick meal logging. <a href="/food-items">Browse food items</a>.</>}
+      description="Configure meal slots and meal flags for quick meal logging."
       isLoading={isLoading}
       headerExtra={<SaveStatusIndicator state={saveStatus} />}
     >
+      <p class="subsection-desc">
+        <a href="/food-items">Browse food item library</a>
+      </p>
+
       {/* Meal Flags */}
       <div class="meal-pref-subsection">
         <h3>Meal Flags</h3>
