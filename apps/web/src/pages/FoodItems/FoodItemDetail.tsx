@@ -2,7 +2,7 @@ import { NUTRIENT_FIELDS, type NutrientFieldDef } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 
-import { type FoodItemEntity } from '../../state/api'
+import type { FoodItemEntity } from '../../state/api'
 import { auth } from '../../state/auth'
 import './FoodItemDetail.css'
 
