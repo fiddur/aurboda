@@ -23,6 +23,7 @@ import { OwnTracksSource } from './pages/DataSources/OwnTracksSource.jsx'
 import { RescueTimeSource } from './pages/DataSources/RescueTimeSource.jsx'
 import { EntityDetail } from './pages/EntityDetail/index.jsx'
 import { ExerciseMeta } from './pages/ExerciseMeta/index.jsx'
+import { FoodItems } from './pages/FoodItems/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
 import { Home } from './pages/Home/index.jsx'
 import { HrZones } from './pages/HrZones/index.jsx'
@@ -64,6 +65,7 @@ export function App() {
             <Route path="/timeline" component={Timeline} />
             <Route path="/data" component={Data} />
             <Route path="/add" component={AddData} />
+            <Route path="/food-items" component={FoodItems} />
             <Route path="/meals/:id" component={MealDetail} />
             <Route path="/meals" component={Meals} />
             <Route path="/reports/add" component={AddReport} />
