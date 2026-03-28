@@ -90,7 +90,7 @@ export function MealPreferencesSettings() {
   return (
     <SettingsSection
       title="Meal Preferences"
-      description="Configure meal slots and sensitivity areas for quick meal logging."
+      description={<>Configure meal slots and meal flags for quick meal logging. <a href="/food-items">Browse food items</a>.</>}
       isLoading={isLoading}
       headerExtra={<SaveStatusIndicator state={saveStatus} />}
     >
