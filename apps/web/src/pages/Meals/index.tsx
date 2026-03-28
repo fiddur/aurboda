@@ -1,3 +1,4 @@
+import { NUTRIENT_FIELDS } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay } from 'date-fns'
 import { useLocation } from 'preact-iso'
@@ -286,6 +287,56 @@ function MealSlotRow({
   )
 }
 
+const NUTRIENT_CATEGORIES = [
+  { key: 'macro', label: 'Macros' },
+  { key: 'extended_macro', label: 'Extended' },
+  { key: 'fat_breakdown', label: 'Fats' },
+  { key: 'vitamin', label: 'Vitamins' },
+  { key: 'mineral', label: 'Minerals' },
+  { key: 'amino_acid', label: 'Amino Acids' },
+] as const
+
+/** Aggregate nutrients from all meals for the day. */
+const aggregateDayNutrients = (meals: Meal[]): Record<string, number> => {
+  const totals: Record<string, number> = {}
+  for (const meal of meals) {
+    if (!meal.nutrients) continue
+    for (const [key, val] of Object.entries(meal.nutrients)) {
+      if (typeof val === 'number' && val > 0) totals[key] = (totals[key] ?? 0) + val
+    }
+  }
+  for (const key of Object.keys(totals)) totals[key] = Math.round(totals[key] * 100) / 100
+  return totals
+}
+
+function DayNutrientSummary({ meals }: { meals: Meal[] }) {
+  const nutrients = aggregateDayNutrients(meals)
+  if (Object.keys(nutrients).length === 0) return null
+
+  return (
+    <div class="day-nutrient-summary">
+      <h3>Day Totals</h3>
+      {NUTRIENT_CATEGORIES.map(({ key, label }) => {
+        const fields = NUTRIENT_FIELDS.filter((f) => f.category === key && nutrients[f.name] !== undefined)
+        if (fields.length === 0) return null
+        return (
+          <div key={key} class="day-nutrient-group">
+            <h4>{label}</h4>
+            {fields.map((f) => (
+              <div key={f.name} class="day-nutrient-line">
+                <span>{f.label}</span>
+                <span>
+                  {nutrients[f.name].toFixed(1)} {f.unit}
+                </span>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function OtherMeals({
   meals,
   onDelete,
@@ -543,57 +594,61 @@ function MealsContent({ dayKey }: { dayKey: string }) {
   const isToday = dayKey === todayISO()
 
   return (
-    <>
-      {sensitivityAreas.length === 0 && (
-        <p class="config-hint">
-          Configure your meal flags and meal slots in <a href="/settings">Settings</a>.
-        </p>
-      )}
+    <div class="day-layout">
+      <div class="day-main">
+        {sensitivityAreas.length === 0 && (
+          <p class="config-hint">
+            Configure your meal flags and meal slots in <a href="/settings">Settings</a>.
+          </p>
+        )}
 
-      <div class="meal-slots">
-        {mealSlots.map((slot) => (
-          <MealSlotRow
-            key={slot.name}
-            slot={slot}
-            meals={findMealsForSlot(meals ?? [], slot.name)}
-            sensitivityAreas={sensitivityAreas}
-            foodSensitivityMap={foodSensitivityMap}
-            onToggleSensitivity={handleToggleSensitivity}
-            onToggleFoodMapping={handleToggleFoodMapping}
-            onChangeTime={handleChangeTime}
-            onCreateAndOpen={handleCreateAndOpen}
-            onDelete={(id) => deleteMutation.mutate(id)}
-            isDeletePending={deleteMutation.isPending}
-            isSaving={savingSlots.has(slot.name.toLowerCase())}
-          />
-        ))}
+        <div class="meal-slots">
+          {mealSlots.map((slot) => (
+            <MealSlotRow
+              key={slot.name}
+              slot={slot}
+              meals={findMealsForSlot(meals ?? [], slot.name)}
+              sensitivityAreas={sensitivityAreas}
+              foodSensitivityMap={foodSensitivityMap}
+              onToggleSensitivity={handleToggleSensitivity}
+              onToggleFoodMapping={handleToggleFoodMapping}
+              onChangeTime={handleChangeTime}
+              onCreateAndOpen={handleCreateAndOpen}
+              onDelete={(id) => deleteMutation.mutate(id)}
+              isDeletePending={deleteMutation.isPending}
+              isSaving={savingSlots.has(slot.name.toLowerCase())}
+            />
+          ))}
+        </div>
+
+        <OtherMeals
+          meals={otherMeals}
+          onDelete={(id) => deleteMutation.mutate(id)}
+          isDeletePending={deleteMutation.isPending}
+          foodSensitivityMap={foodSensitivityMap}
+          sensitivityAreas={sensitivityAreas}
+          onToggleFoodMapping={handleToggleFoodMapping}
+        />
+
+        <div class="log-completion">
+          <label class="completion-label">
+            <input
+              type="checkbox"
+              checked={isDayCompleted}
+              onChange={() => toggleCompletedMutation.mutate({ dayKey, completed: isDayCompleted })}
+              disabled={toggleCompletedMutation.isPending}
+            />
+            Logging complete for {isToday ? 'today' : format(selectedDate, 'MMM d')}
+          </label>
+        </div>
+
+        {(upsertMutation.isError || updateMutation.isError) && (
+          <p class="error-message">Something went wrong. Please try again.</p>
+        )}
       </div>
 
-      <OtherMeals
-        meals={otherMeals}
-        onDelete={(id) => deleteMutation.mutate(id)}
-        isDeletePending={deleteMutation.isPending}
-        foodSensitivityMap={foodSensitivityMap}
-        sensitivityAreas={sensitivityAreas}
-        onToggleFoodMapping={handleToggleFoodMapping}
-      />
-
-      <div class="log-completion">
-        <label class="completion-label">
-          <input
-            type="checkbox"
-            checked={isDayCompleted}
-            onChange={() => toggleCompletedMutation.mutate({ dayKey, completed: isDayCompleted })}
-            disabled={toggleCompletedMutation.isPending}
-          />
-          Logging complete for {isToday ? 'today' : format(selectedDate, 'MMM d')}
-        </label>
-      </div>
-
-      {(upsertMutation.isError || updateMutation.isError) && (
-        <p class="error-message">Something went wrong. Please try again.</p>
-      )}
-    </>
+      <DayNutrientSummary meals={meals ?? []} />
+    </div>
   )
 }
 
