@@ -98,7 +98,9 @@ export function FoodItemAutocomplete({
               onClick={() => handleSelect(item)}
             >
               <span class="ac-name">{item.name}</span>
-              {item.calories !== undefined && <span class="ac-cal">{item.calories} kcal</span>}
+              <span class="ac-cal">
+                {item.calories !== undefined ? `${item.calories} kcal` : '(no data)'}
+              </span>
             </li>
           ))}
         </ul>

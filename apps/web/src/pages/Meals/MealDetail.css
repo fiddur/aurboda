@@ -242,6 +242,11 @@
   font-size: 0.75rem;
   background: #e0f2fe;
   color: #0369a1;
+  text-decoration: none;
+}
+
+a.detail-food-link:hover {
+  background: #bae6fd;
   border-radius: 10px;
 }
 
