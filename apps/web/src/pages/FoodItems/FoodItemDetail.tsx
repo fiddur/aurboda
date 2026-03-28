@@ -86,7 +86,7 @@ function NutrientSection({
                   <input
                     type="number"
                     step="0.01"
-                    value={val ?? ''}
+                    value={typeof val === 'number' ? val : ''}
                     onInput={(e) => {
                       const v = (e.target as HTMLInputElement).value
                       onEdit?.(f.name, v === '' ? undefined : parseFloat(v))
@@ -138,18 +138,20 @@ export function FoodItemDetail() {
     },
   })
 
-  if (isLoading)
-    {return (
+  if (isLoading) {
+    return (
       <div class="food-item-detail-page">
         <p class="loading">Loading...</p>
       </div>
-    )}
-  if (!item)
-    {return (
+    )
+  }
+  if (!item) {
+    return (
       <div class="food-item-detail-page">
         <p>Food item not found.</p>
       </div>
-    )}
+    )
+  }
 
   const isEditing = editing !== null
   const editName = (editing?.name as string) ?? item.name
