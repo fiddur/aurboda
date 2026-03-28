@@ -6,8 +6,12 @@
  * They are used by both the MCP tools and the REST API.
  */
 
-import type { CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
-
+import {
+  getExerciseTypeName,
+  type CustomMetricDefinition,
+  type DataSource,
+  type ExerciseTypeName,
+} from '@aurboda/api-spec'
 import { Temporal } from '@js-temporal/polyfill'
 
 import {
@@ -15,6 +19,7 @@ import {
   getDailyAggregates,
   getDailyAggregateValue,
   getDistinctMetrics,
+  getMeals,
   getNotesByEntityIds,
   getNotesForTimeRange,
   getProductivity,
@@ -122,6 +127,7 @@ export interface SessionSummary {
   end_time?: string
   duration?: number // minutes
   title?: string
+  exercise_type?: ExerciseTypeName
   data?: Record<string, unknown>
   hr_zone_secs?: HrZoneSecs
 }
@@ -180,9 +186,22 @@ export interface OuraScores {
   cardiovascular_age: number | null
 }
 
+export interface MealSummary {
+  time: string
+  meal_type?: string
+  name?: string
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  fiber?: number
+  food_items?: string[]
+}
+
 export interface DailySummaryResult {
   date: string
   heart_rate: HeartRateStats | null
+  meals: MealSummary[]
   notes: NoteSummary[]
   steps: { total: number }
   primary_sleep: SleepSessionSummary | null
@@ -629,6 +648,7 @@ export async function getDailySummary(
     placeVisits,
     ouraMetrics,
     dayNotes,
+    dayMeals,
   ] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
@@ -644,6 +664,7 @@ export async function getDailySummary(
       end,
     ),
     getNotesForTimeRange(user, start, end),
+    getMeals(user, { start, end }),
   ])
 
   // Calculate heart rate stats
@@ -707,12 +728,19 @@ export async function getDailySummary(
   // Compute HR zones for exercise sessions
   const exerciseSessionsWithHrZones: SessionSummary[] = await Promise.all(
     exerciseSessions.map(async (s) => {
+      // Resolve human-readable exercise type name from numeric Health Connect ID
+      const dataObj = s.data as Record<string, unknown> | undefined
+      const exerciseTypeCode = dataObj?.exerciseType
+      const exerciseType =
+        typeof exerciseTypeCode === 'number' ? getExerciseTypeName(exerciseTypeCode) : undefined
+
       const sessionSummary: SessionSummary = {
         data: s.data,
         duration: s.end_time
           ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)
           : undefined,
         end_time: s.end_time?.toISOString(),
+        exercise_type: exerciseType,
         start_time: s.start_time.toISOString(),
         title: s.title,
       }
@@ -775,6 +803,17 @@ export async function getDailySummary(
     evening_sleep: eveningSleep,
     exercise_sessions: exerciseSessionsWithHrZones,
     heart_rate: heartRateStats,
+    meals: dayMeals.map((m) => ({
+      calories: m.calories,
+      carbs: m.carbs,
+      fat: m.fat,
+      fiber: m.fiber,
+      food_items: m.food_items?.map((fi) => fi.name),
+      meal_type: m.meal_type,
+      name: m.name,
+      protein: m.protein,
+      time: m.time.toISOString(),
+    })),
     notes: dayNotes.map((n) => ({
       content: n.content,
       created_at: n.created_at.toISOString(),
