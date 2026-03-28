@@ -147,7 +147,7 @@ function FoodItemRow({
             onChange(index, {
               ...item,
               name: fi.name,
-              quantity: fi.default_quantity ?? item.quantity,
+              quantity: fi.default_quantity ?? 1,
               unit: fi.default_unit ?? item.unit,
               calories: fi.calories ?? item.calories,
               protein: fi.protein ?? item.protein,
@@ -478,23 +478,6 @@ export function MealDetail() {
           )}
         </div>
 
-        {/* Macros */}
-        <div class="detail-row">
-          <label>Macros</label>
-          {isEditing ? (
-            <MacrosEditor
-              calories={editCal}
-              protein={editProt}
-              carbs={editCarbs}
-              fat={editFat}
-              fiber={editFiber}
-              onChange={(field, val) => setEditing({ ...editing, [field]: val })}
-            />
-          ) : (
-            <span class="detail-value">{macroDisplay || '—'}</span>
-          )}
-        </div>
-
         {/* Flags */}
         <div class="detail-row">
           <label>Flags</label>
@@ -527,15 +510,43 @@ export function MealDetail() {
             />
           ) : meal.food_items && meal.food_items.length > 0 ? (
             <div class="detail-food-items">
-              {meal.food_items.map((item, i) => (
-                <span key={i} class="detail-food-chip">
-                  {item.name}
-                  {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
-                </span>
-              ))}
+              {meal.food_items.map((item, i) =>
+                item.food_item_id ? (
+                  <a
+                    key={i}
+                    href={`/food-items/${item.food_item_id}`}
+                    class="detail-food-chip detail-food-link"
+                  >
+                    {item.name}
+                    {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
+                  </a>
+                ) : (
+                  <span key={i} class="detail-food-chip">
+                    {item.name}
+                    {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
+                  </span>
+                ),
+              )}
             </div>
           ) : (
             <span class="detail-value">—</span>
+          )}
+        </div>
+
+        {/* Macros */}
+        <div class="detail-row">
+          <label>Macros</label>
+          {isEditing ? (
+            <MacrosEditor
+              calories={editCal}
+              protein={editProt}
+              carbs={editCarbs}
+              fat={editFat}
+              fiber={editFiber}
+              onChange={(field, val) => setEditing({ ...editing, [field]: val })}
+            />
+          ) : (
+            <span class="detail-value">{macroDisplay || '—'}</span>
           )}
         </div>
 

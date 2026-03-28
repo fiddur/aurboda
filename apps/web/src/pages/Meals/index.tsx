@@ -173,6 +173,7 @@ interface MealSlotRowProps {
   onToggleSensitivity: (slot: MealSlot, area: string, existingMeal?: Meal) => void
   onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
   onChangeTime: (meal: Meal, hour: number, minute?: number) => void
+  onCreateAndOpen: (slot: MealSlot) => void
   onDelete: (id: string) => void
   isDeletePending: boolean
   isSaving: boolean
@@ -186,6 +187,7 @@ function MealSlotRow({
   onToggleSensitivity,
   onToggleFoodMapping,
   onChangeTime,
+  onCreateAndOpen,
   onDelete,
   isDeletePending,
   isSaving,
@@ -225,10 +227,19 @@ function MealSlotRow({
 
         {isSaving && <span class="saving-indicator" />}
 
-        {primaryMeal && (
+        {primaryMeal ? (
           <a href={`/meals/${primaryMeal.id}`} class="meal-edit-link" title="Edit meal details">
             ...
           </a>
+        ) : (
+          <button
+            type="button"
+            class="meal-edit-link"
+            title="Create meal and edit details"
+            onClick={() => onCreateAndOpen(slot)}
+          >
+            +
+          </button>
         )}
 
         {primaryMeal && (
@@ -453,6 +464,7 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
 // eslint-disable-next-line complexity -- React component with many hooks and conditional renders
 function MealsContent({ dayKey }: { dayKey: string }) {
   const isLoggedIn = auth.value.token
+  const { route } = useLocation()
 
   const { data: settings } = useQuery({
     enabled: !!isLoggedIn,
@@ -487,6 +499,20 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     deleteMutation,
     toggleCompletedMutation,
   } = useMealMutations(mealsQueryKey, meals)
+
+  const handleCreateAndOpen = async (slot: MealSlot) => {
+    const id = crypto.randomUUID()
+    const mealTime = new Date(dayKey)
+    mealTime.setHours(slot.default_hour, 0, 0, 0)
+    await addMealApi({
+      id,
+      meal_type: slot.name.toLowerCase(),
+      source: 'manual',
+      time: mealTime.toISOString(),
+    })
+    queryClient.invalidateQueries({ queryKey: ['meals'] })
+    route(`/meals/${id}`)
+  }
 
   const otherMeals = getOtherMeals(meals ?? [], mealSlots)
   const foodSensitivityMap: Record<string, string[]> = settings?.food_sensitivity_map ?? {}
@@ -535,6 +561,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
             onToggleSensitivity={handleToggleSensitivity}
             onToggleFoodMapping={handleToggleFoodMapping}
             onChangeTime={handleChangeTime}
+            onCreateAndOpen={handleCreateAndOpen}
             onDelete={(id) => deleteMutation.mutate(id)}
             isDeletePending={deleteMutation.isPending}
             isSaving={savingSlots.has(slot.name.toLowerCase())}
