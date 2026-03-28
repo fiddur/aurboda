@@ -5,6 +5,78 @@
   padding: 2rem;
 }
 
+/* Day layout: side-by-side on wide screens */
+
+.day-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.day-main {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .day-layout {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .day-nutrient-summary {
+    width: 280px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+}
+
+/* Day nutrient summary */
+
+.day-nutrient-summary {
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.day-nutrient-summary h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 0.75rem;
+}
+
+.day-nutrient-group {
+  margin-bottom: 0.75rem;
+}
+
+.day-nutrient-group h4 {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  margin: 0 0 0.25rem;
+  padding-bottom: 0.125rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.day-nutrient-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  padding: 0.125rem 0;
+  color: #374151;
+}
+
+.day-nutrient-line span:last-child {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
 .meals-header {
   display: flex;
   align-items: center;
@@ -386,6 +458,24 @@ a.meal-name:hover {
 /* Dark mode */
 
 @media (prefers-color-scheme: dark) {
+  .day-nutrient-summary {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .day-nutrient-summary h3 {
+    color: #d1d5db;
+  }
+
+  .day-nutrient-group h4 {
+    color: #9ca3af;
+    border-color: #374151;
+  }
+
+  .day-nutrient-line {
+    color: #d1d5db;
+  }
+
   .meals-header h1 {
     color: #e5e7eb;
   }
