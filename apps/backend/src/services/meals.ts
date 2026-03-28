@@ -5,6 +5,8 @@
  * Food items are stored relationally via the food_items + meal_food_items junction table.
  */
 
+import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+
 import {
   deleteMeal as dbDeleteMeal,
   findOrCreateFoodItem,
@@ -81,6 +83,7 @@ interface MealResponse {
   food_items?: MealFoodItem[]
   micros?: Micros
   notes?: string
+  nutrients?: Record<string, number>
   sensitivities?: string[]
   created_at: string
 }
@@ -101,7 +104,7 @@ interface MealsResult {
 // Helpers
 // ============================================================================
 
-const formatMeal = (meal: Meal): MealResponse => ({
+const formatMeal = (meal: Meal & { nutrients?: Record<string, number> }): MealResponse => ({
   calories: meal.calories,
   carbs: meal.carbs,
   created_at: meal.created_at.toISOString(),
@@ -113,6 +116,7 @@ const formatMeal = (meal: Meal): MealResponse => ({
   micros: meal.micros,
   name: meal.name,
   notes: meal.notes,
+  nutrients: meal.nutrients,
   protein: meal.protein,
   sensitivities: meal.sensitivities,
   source: meal.source,
@@ -133,15 +137,37 @@ const linksToFoodItems = (links: MealFoodItemLink[]): MealFoodItem[] =>
     fiber: link.fiber as number | undefined,
   }))
 
-/** Attach food items from junction table to meals, replacing JSONB food_items. */
-const attachFoodItems = async (user: string, meals: Meal[]): Promise<Meal[]> => {
+/** Aggregate all nutrient columns from junction links into a flat record. */
+const aggregateNutrients = (links: MealFoodItemLink[]): Record<string, number> => {
+  const totals: Record<string, number> = {}
+  for (const link of links) {
+    for (const field of NUTRIENT_FIELD_NAMES) {
+      const val = link[field]
+      if (typeof val === 'number' && val > 0) {
+        totals[field] = (totals[field] ?? 0) + val
+      }
+    }
+  }
+  // Round to 2 decimal places
+  for (const key of Object.keys(totals)) {
+    totals[key] = Math.round(totals[key] * 100) / 100
+  }
+  return totals
+}
+
+/** Attach food items and aggregated nutrients from junction table to meals. */
+const attachFoodItems = async (
+  user: string,
+  meals: Meal[],
+): Promise<Array<Meal & { nutrients?: Record<string, number> }>> => {
   const mealIds = meals.map((m) => m.id)
   const junctionMap = await getMealFoodItemsBatch(user, mealIds)
 
   return meals.map((meal) => {
     const links = junctionMap.get(meal.id)
     if (links && links.length > 0) {
-      return { ...meal, food_items: linksToFoodItems(links) }
+      const nutrients = aggregateNutrients(links)
+      return { ...meal, food_items: linksToFoodItems(links), nutrients }
     }
     // Fall back to JSONB food_items if no junction rows exist (legacy data)
     return meal
