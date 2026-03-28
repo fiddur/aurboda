@@ -86,7 +86,7 @@ function NutrientSection({
                   <input
                     type="number"
                     step="0.01"
-                    value={val ?? ''}
+                    value={typeof val === 'number' ? val : ''}
                     onInput={(e) => {
                       const v = (e.target as HTMLInputElement).value
                       onEdit?.(f.name, v === '' ? undefined : parseFloat(v))
