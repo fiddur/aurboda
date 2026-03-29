@@ -1,7 +1,7 @@
 import { NUTRIENT_FIELDS, type NutrientFieldDef } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useRoute } from 'preact-iso'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
 import type { FoodItemEntity } from '../../state/api'
 
@@ -120,6 +120,9 @@ export function FoodItemDetail() {
   })
 
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null)
+
+  // Invalidate parent list when leaving so it shows fresh data
+  useEffect(() => () => void queryClient.invalidateQueries({ queryKey: ['foodItems'] }), [queryClient])
 
   const updateMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => updateFoodItemApi(id, body),
