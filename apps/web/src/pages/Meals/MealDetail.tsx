@@ -2,7 +2,7 @@ import { NUTRIENT_FIELDS } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { FoodItemAutocomplete } from '../../components/FoodItemAutocomplete'
@@ -355,7 +355,7 @@ const buildSaveBody = (editing: EditState): Record<string, unknown> => {
 // eslint-disable-next-line complexity -- detail page with edit mode and multiple data sections
 export function MealDetail() {
   const { params } = useRoute()
-  const { route } = useLocation()
+  const { route, query } = useLocation()
   const queryClient = useQueryClient()
   const id = params.id
 
@@ -369,7 +369,11 @@ export function MealDetail() {
     queryKey: ['userSettings'],
   })
 
-  const [editing, setEditing] = useState<EditState | null>(null)
+  const startInEditMode = new URLSearchParams(query).has('edit')
+  const [editing, setEditing] = useState<EditState | null>(startInEditMode ? {} : null)
+
+  // Invalidate the meals list when leaving this page so the day overview refreshes
+  useEffect(() => () => void queryClient.invalidateQueries({ queryKey: ['meals'] }), [queryClient])
 
   const updateMutation = useMutation({
     mutationFn: (body: Parameters<typeof updateMealApi>[1]) => updateMealApi(id, body),

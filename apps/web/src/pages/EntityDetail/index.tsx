@@ -9,7 +9,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
-import { useCallback, useState } from 'preact/hooks'
+import { useCallback, useEffect, useState } from 'preact/hooks'
 
 import type { Activity, ExerciseTypeName, SourceRecord } from '../../state/api'
 
@@ -219,6 +219,13 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     [queryClient, entityId],
   )
 
+  // Invalidate timeline queries when leaving so parent views show fresh data
+  useEffect(
+    () => () =>
+      void queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith('timeline-') }),
+    [queryClient],
+  )
+
   const [isEditing, setIsEditing] = useState(false)
   const emptyDraft: ActivityDraft = {
     end_time: '',
@@ -328,6 +335,13 @@ const TagContent = ({ entityId }: { entityId: string }) => {
         queryKey: ['entity-detail', 'tag', entityId],
       }),
     [queryClient, entityId],
+  )
+
+  // Invalidate timeline queries when leaving so parent views show fresh data
+  useEffect(
+    () => () =>
+      void queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith('timeline-') }),
+    [queryClient],
   )
 
   const [isEditing, setIsEditing] = useState(false)
