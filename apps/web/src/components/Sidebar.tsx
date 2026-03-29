@@ -60,29 +60,41 @@ export function Sidebar() {
               </a>
             ))}
 
-            {/* Data Sources expandable */}
-            <button
-              class={`sidebar-section-btn${isDataSourcesActive ? ' active' : ''}`}
-              onClick={() => setDsExpanded((v) => !v)}
-              title={collapsed ? 'Data Sources' : undefined}
-              type="button"
-            >
-              <span class="sidebar-icon">📡</span>
-              <span class="sidebar-label">Data Sources</span>
-              <span class="sidebar-section-arrow">{dsExpanded ? '▴' : '▾'}</span>
-            </button>
-            {dsExpanded && (
-              <div class="sidebar-sub-links">
-                {DATA_SOURCE_LINKS.map((link) => (
-                  <a
-                    key={link.path}
-                    href={link.path}
-                    class={`sidebar-link${url === link.path ? ' active' : ''}`}
-                  >
-                    <span class="sidebar-label">{link.label}</span>
-                  </a>
-                ))}
-              </div>
+            {/* Data Sources expandable (collapsed: just a link) */}
+            {collapsed ? (
+              <a
+                href="/data-sources"
+                class={`sidebar-link${isDataSourcesActive ? ' active' : ''}`}
+                title="Data Sources"
+              >
+                <span class="sidebar-icon">📡</span>
+                <span class="sidebar-label">Data Sources</span>
+              </a>
+            ) : (
+              <>
+                <button
+                  class={`sidebar-section-btn${isDataSourcesActive ? ' active' : ''}`}
+                  onClick={() => setDsExpanded((v) => !v)}
+                  type="button"
+                >
+                  <span class="sidebar-icon">📡</span>
+                  <span class="sidebar-label">Data Sources</span>
+                  <span class="sidebar-section-arrow">{dsExpanded ? '▴' : '▾'}</span>
+                </button>
+                {dsExpanded && (
+                  <div class="sidebar-sub-links">
+                    {DATA_SOURCE_LINKS.map((link) => (
+                      <a
+                        key={link.path}
+                        href={link.path}
+                        class={`sidebar-link${url === link.path ? ' active' : ''}`}
+                      >
+                        <span class="sidebar-label">{link.label}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             {isAdmin && (
