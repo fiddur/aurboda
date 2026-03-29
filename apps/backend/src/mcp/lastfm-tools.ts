@@ -4,6 +4,7 @@
 import {
   addLastFmTagRuleBodySchema,
   scrobblesQuerySchema,
+  tzSchema,
   updateLastFmTagRuleBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
@@ -18,23 +19,24 @@ import {
   type LastFmMatchType,
 } from '../db/index.ts'
 import { applyRuleRetroactively, cleanupRuleTags, retagAllScrobbles } from '../lastfm-sync.ts'
-import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
+import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
+import { formatInTz } from './tz-utils.ts'
 
 export const registerLastFmTools = (server: McpServer, user: string) => {
   // Tool: query_scrobbles
   server.tool(
     'query_scrobbles',
     'Query Last.fm scrobbles for a time range. Returns tracks played with artist, album, and timestamp.',
-    { ...scrobblesQuerySchema.shape },
-    async ({ start, end }) => {
+    { ...scrobblesQuerySchema.shape, tz: tzSchema },
+    async ({ start, end, tz }) => {
       const scrobbles = await getScrobbles(user, new Date(start), new Date(end))
       const serialized = scrobbles.map((s) => ({
         album: s.album,
         artist: s.artist,
-        recorded_at: s.recorded_at.toISOString(),
+        recorded_at: formatInTz(s.recorded_at, tz),
         track: s.track,
       }))
-      return jsonResponse({ data: serialized, success: true })
+      return tzJsonResponse({ data: serialized, success: true }, tz)
     },
   )
 
@@ -42,14 +44,14 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
   server.tool(
     'get_lastfm_tag_rules',
     'Get all Last.fm auto-tagging rules. These rules create tags when scrobbles match specified criteria.',
-    {},
-    async () => {
+    { tz: tzSchema },
+    async ({ tz }) => {
       const rules = await getLastFmTagRules(user)
       const serialized = rules.map((r) => ({
         ...r,
-        created_at: r.created_at.toISOString(),
+        created_at: formatInTz(r.created_at, tz),
       }))
-      return jsonResponse({ data: serialized, success: true })
+      return tzJsonResponse({ data: serialized, success: true }, tz)
     },
   )
 
@@ -57,7 +59,7 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
   server.tool(
     'add_lastfm_tag_rule',
     'Add a Last.fm auto-tagging rule. Creates tags when scrobbles match the specified criteria. The rule is applied retroactively to all existing scrobbles.',
-    { ...addLastFmTagRuleBodySchema.shape },
+    { ...addLastFmTagRuleBodySchema.shape, tz: tzSchema },
     async ({
       artist_name,
       artist_names,
@@ -67,6 +69,7 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
       rule_name,
       tag_name,
       track_name,
+      tz,
     }) => {
       if ((match_type === 'track' || match_type === 'track_artist') && !track_name) {
         return errorResponse(`track_name is required for match_type "${match_type}"`)
@@ -91,14 +94,17 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
         // Apply the new rule retroactively to all existing scrobbles
         const tagsApplied = await applyRuleRetroactively(user, rule)
 
-        return jsonResponse({
-          data: {
-            ...rule,
-            created_at: rule.created_at.toISOString(),
-            tags_applied: tagsApplied,
+        return tzJsonResponse(
+          {
+            data: {
+              ...rule,
+              created_at: formatInTz(rule.created_at, tz),
+              tags_applied: tagsApplied,
+            },
+            success: true,
           },
-          success: true,
-        })
+          tz,
+        )
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         if (message.includes('unique_rule')) {
@@ -116,6 +122,7 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
     {
       id: z.string().uuid().describe('The ID of the rule to update'),
       ...updateLastFmTagRuleBodySchema.shape,
+      tz: tzSchema,
     },
     async ({
       id,
@@ -127,6 +134,7 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
       rule_name,
       tag_name,
       track_name,
+      tz,
     }) => {
       try {
         // Clean up old auto-tags before updating
@@ -149,14 +157,17 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
 
         const tagsApplied = await applyRuleRetroactively(user, updated)
 
-        return jsonResponse({
-          data: {
-            ...updated,
-            created_at: updated.created_at.toISOString(),
-            tags_applied: tagsApplied,
+        return tzJsonResponse(
+          {
+            data: {
+              ...updated,
+              created_at: formatInTz(updated.created_at, tz),
+              tags_applied: tagsApplied,
+            },
+            success: true,
           },
-          success: true,
-        })
+          tz,
+        )
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         if (message.includes('unique_rule')) {

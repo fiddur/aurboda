@@ -5,6 +5,7 @@ import {
   addNamedLocationBodySchema,
   promoteDetectedLocationBodySchema,
   timeRangeQuerySchema,
+  tzSchema,
   updateNamedLocationBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
@@ -17,7 +18,7 @@ import {
   insertNamedLocation,
   updateNamedLocation,
 } from '../services/locations.ts'
-import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
+import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerLocationTools = (server: McpServer, user: string) => {
   // Tool: get_named_locations
@@ -38,15 +39,16 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     {
       ...timeRangeQuerySchema.shape,
       min_duration: z.number().optional().describe('Minimum stay duration in minutes. Defaults to 60.'),
+      tz: tzSchema,
     },
-    async ({ end, min_duration, start }) => {
+    async ({ end, min_duration, start, tz }) => {
       const detected = await getDetectedLocations(user, {
         end: new Date(end),
         minDurationMinutes: min_duration,
         start: new Date(start),
       })
 
-      return jsonResponse({ data: detected, success: true })
+      return tzJsonResponse({ data: detected, success: true }, tz)
     },
   )
 

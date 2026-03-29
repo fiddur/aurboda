@@ -7,12 +7,13 @@ import {
   exerciseTypeNames,
   getExerciseTypeValue,
   isValidExerciseType,
+  tzSchema,
   updateActivityBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
 import { addActivity, deleteActivity, restoreActivity, updateActivity } from '../services/mutations.ts'
-import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
+import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerActivityTools = (server: McpServer, user: string) => {
   // Tool: add_activity
@@ -28,8 +29,9 @@ export const registerActivityTools = (server: McpServer, user: string) => {
         .describe(
           `Exercise type name (e.g., "weightlifting", "running"). Only for exercise activities. Valid types: ${exerciseTypeNames.slice(0, 10).join(', ')}...`,
         ),
+      tz: tzSchema,
     },
-    async ({ activity_type, end_time, exercise_type, notes, start_time, title }) => {
+    async ({ activity_type, end_time, exercise_type, notes, start_time, title, tz }) => {
       const startDate = new Date(start_time)
       const endDate = new Date(end_time)
 
@@ -59,7 +61,7 @@ export const registerActivityTools = (server: McpServer, user: string) => {
         return errorResponse(result.error ?? 'Failed to add activity')
       }
 
-      return jsonResponse(result)
+      return tzJsonResponse(result, tz)
     },
   )
 
@@ -99,8 +101,9 @@ export const registerActivityTools = (server: McpServer, user: string) => {
         .describe(
           `New exercise type name (e.g., "weightlifting", "running"). Only for exercise activities. Valid types: ${exerciseTypeNames.slice(0, 10).join(', ')}...`,
         ),
+      tz: tzSchema,
     },
-    async ({ id, start_time, end_time, title, notes, exercise_type }) => {
+    async ({ id, start_time, end_time, title, notes, exercise_type, tz }) => {
       let data: Record<string, unknown> | undefined
       if (exercise_type !== undefined) {
         if (!isValidExerciseType(exercise_type)) {
@@ -126,7 +129,7 @@ export const registerActivityTools = (server: McpServer, user: string) => {
         return errorResponse(result.error ?? 'Failed to update activity')
       }
 
-      return jsonResponse(result)
+      return tzJsonResponse(result, tz)
     },
   )
 }

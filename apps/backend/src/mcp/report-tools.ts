@@ -3,7 +3,7 @@
  *
  * Provides tools for creating, querying, and deleting structured lab reports.
  */
-import { addReportBodySchema, reportsQuerySchema, updateReportBodySchema } from '@aurboda/api-spec'
+import { addReportBodySchema, reportsQuerySchema, tzSchema, updateReportBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
 import {
@@ -14,15 +14,15 @@ import {
   queryReports,
   updateReport,
 } from '../services/reports.ts'
-import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
+import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerReportTools = (server: McpServer, user: string) => {
   // Tool: add_report
   server.tool(
     'add_report',
     'Create a structured lab report with grouped measurements (e.g., InBody scan, blood panel, hair mineral analysis). Each entry is also written to the metric time series for trend tracking. Flags are auto-derived from reference ranges if not set.',
-    { ...addReportBodySchema.shape },
-    async (params) => {
+    { ...addReportBodySchema.shape, tz: tzSchema },
+    async ({ tz, ...params }) => {
       const result = await addReport(user, {
         date: params.date,
         entries: params.entries,
@@ -30,7 +30,7 @@ export const registerReportTools = (server: McpServer, user: string) => {
         notes: params.notes,
         report_type: params.report_type,
       })
-      return jsonResponse(result)
+      return tzJsonResponse(result, tz)
     },
   )
 
@@ -38,13 +38,13 @@ export const registerReportTools = (server: McpServer, user: string) => {
   server.tool(
     'get_report',
     'Fetch a single lab report by its ID, including all entries with their metadata.',
-    { id: z.string().uuid().describe('The report ID') },
-    async ({ id }) => {
+    { id: z.string().uuid().describe('The report ID'), tz: tzSchema },
+    async ({ id, tz }) => {
       const result = await getReport(user, id)
       if (!result.success) {
         return errorResponse(result.error ?? 'Report not found')
       }
-      return jsonResponse(result)
+      return tzJsonResponse(result, tz)
     },
   )
 
@@ -52,14 +52,14 @@ export const registerReportTools = (server: McpServer, user: string) => {
   server.tool(
     'query_reports',
     'List lab reports, optionally filtered by type (e.g., "inbody", "blood_panel") and/or date range.',
-    { ...reportsQuerySchema.shape },
-    async (params) => {
+    { ...reportsQuerySchema.shape, tz: tzSchema },
+    async ({ tz, ...params }) => {
       const result = await queryReports(user, {
         end: params.end,
         report_type: params.report_type,
         start: params.start,
       })
-      return jsonResponse(result)
+      return tzJsonResponse(result, tz)
     },
   )
 
@@ -67,13 +67,17 @@ export const registerReportTools = (server: McpServer, user: string) => {
   server.tool(
     'update_report',
     'Update a lab report. Can modify metadata (report_type, date, location, notes) and/or replace all entries. When entries are provided, they fully replace existing entries. Flags are auto-derived from reference ranges if not set.',
-    { id: z.string().uuid().describe('The report ID to update'), ...updateReportBodySchema.shape },
-    async ({ id, ...params }) => {
+    {
+      id: z.string().uuid().describe('The report ID to update'),
+      ...updateReportBodySchema.shape,
+      tz: tzSchema,
+    },
+    async ({ id, tz, ...params }) => {
       const result = await updateReport(user, id, params)
       if (!result.success) {
         return errorResponse(result.error ?? 'Report not found')
       }
-      return jsonResponse(result)
+      return tzJsonResponse(result, tz)
     },
   )
 
@@ -95,10 +99,10 @@ export const registerReportTools = (server: McpServer, user: string) => {
   server.tool(
     'get_latest_metric',
     'Get the most recent value for any metric regardless of age. Useful for lab data that may be months old (e.g., "what was last body_fat?", "latest ferritin?").',
-    { metric: z.string().min(1).max(50).describe('Metric name (built-in or custom)') },
-    async ({ metric }) => {
+    { metric: z.string().min(1).max(50).describe('Metric name (built-in or custom)'), tz: tzSchema },
+    async ({ metric, tz }) => {
       const result = await getLatestMetric(user, metric)
-      return jsonResponse(result)
+      return tzJsonResponse(result, tz)
     },
   )
 }

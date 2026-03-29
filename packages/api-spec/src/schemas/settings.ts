@@ -270,6 +270,9 @@ export const userSettingsResponseSchema = baseResponseSchema
     training_load: trainingLoadSettingsSchema
       .nullable()
       .meta({ description: 'Training load (Banister model) parameters (null = defaults)' }),
+    tz: z.string().nullable().meta({
+      description: 'User timezone (IANA format, e.g. Europe/Stockholm). Auto-detected from device.',
+    }),
   })
   .meta({ id: 'UserSettingsResponse' })
 

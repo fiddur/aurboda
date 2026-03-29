@@ -1,11 +1,11 @@
 /**
  * MCP note management tools.
  */
-import { addNoteBodySchema, notesQuerySchema, updateNoteBodySchema } from '@aurboda/api-spec'
+import { addNoteBodySchema, notesQuerySchema, tzSchema, updateNoteBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
 import { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from '../services/mutations.ts'
-import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
+import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerNoteTools = (server: McpServer, user: string) => {
   // Tool: add_note
@@ -23,10 +23,10 @@ export const registerNoteTools = (server: McpServer, user: string) => {
   server.tool(
     'get_notes',
     'Get all notes for an entity (activity, tag, productivity record, or metric data point). For metrics, use entity_type "metric" with entity_id as a composite key: "<iso_time>|<metric>|<source>".',
-    { ...notesQuerySchema.shape },
-    async ({ entity_type, entity_id }) => {
+    { ...notesQuerySchema.shape, tz: tzSchema },
+    async ({ entity_type, entity_id, tz }) => {
       const notes = await getNotesForEntity(user, entity_type, entity_id)
-      return jsonResponse({ data: notes, success: true })
+      return tzJsonResponse({ data: notes, success: true }, tz)
     },
   )
 

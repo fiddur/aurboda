@@ -1,10 +1,10 @@
 /**
  * MCP training load tools.
  */
-import { getTrainingLoadInputSchema } from '@aurboda/api-spec'
+import { getTrainingLoadInputSchema, tzSchema } from '@aurboda/api-spec'
 
 import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load.ts'
-import { jsonResponse, type McpServer } from './helpers.ts'
+import { jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerTrainingLoadTools = (server: McpServer, user: string) => {
   const deps = createTrainingLoadDeps()
@@ -32,11 +32,11 @@ Parameters can be configured in user settings (training_load).
 
 Example: "Show my training load for the last 3 months"
 → start: 3 months ago, end: today`,
-    { ...getTrainingLoadInputSchema.shape },
+    { ...getTrainingLoadInputSchema.shape, tz: tzSchema },
     async ({ start, end, bucket_size, tz }) => {
       try {
         const result = await computeTrainingLoad(deps, user, new Date(start), new Date(end), bucket_size, tz)
-        return jsonResponse({ data: result, success: true })
+        return tzJsonResponse({ data: result, success: true }, tz)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })

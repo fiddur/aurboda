@@ -678,6 +678,7 @@ export async function getDailySummary(
   user: string,
   date: Date,
   sync?: SyncProvider,
+  tz?: string,
 ): Promise<DailySummaryResult> {
   // Fire-and-forget: trigger background sync so data is fresh for the next request,
   // but return current data immediately to avoid blocking on slow external APIs
@@ -691,10 +692,20 @@ export async function getDailySummary(
     ])
   }
 
-  const start = new Date(date)
-  start.setHours(0, 0, 0, 0)
-  const end = new Date(date)
-  end.setHours(23, 59, 59, 999)
+  let start: Date
+  let end: Date
+  if (tz) {
+    const { dateOnlyToRange } = await import('../mcp/tz-utils.ts')
+    const dateStr = date.toISOString().slice(0, 10)
+    const range = dateOnlyToRange(dateStr, tz)
+    start = range.start
+    end = range.end
+  } else {
+    start = new Date(date)
+    start.setHours(0, 0, 0, 0)
+    end = new Date(date)
+    end.setHours(23, 59, 59, 999)
+  }
 
   // Run queries in parallel
   const [

@@ -9,6 +9,7 @@ import {
   syncOuraBodySchema,
   syncProviderSchema,
   syncRescueTimeBodySchema,
+  tzSchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
@@ -30,7 +31,8 @@ import { syncAllOuraData } from '../oura-sync.ts'
 import { syncRescueTimeData } from '../rescuetime-sync.ts'
 import { getCentralDb } from '../services/central-db.ts'
 import { getSettings } from '../services/settings.ts'
-import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
+import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
+import { formatInTz } from './tz-utils.ts'
 
 type OuraClient = ReturnType<typeof ouraClient>
 
@@ -211,8 +213,9 @@ export const registerSyncTools = (
     'Get the current sync status for Oura, Garmin, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors.',
     {
       provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
+      tz: tzSchema,
     },
-    async ({ provider = 'all' }) => {
+    async ({ provider = 'all', tz }) => {
       try {
         const states: Record<string, unknown[]> = {}
         const providers = provider === 'all' ? syncProviders : syncProviders.filter((p) => p === provider)
@@ -221,7 +224,7 @@ export const registerSyncTools = (
           states[p] = await getAllSyncStates(user, p)
         }
 
-        return jsonResponse({ states, success: true })
+        return tzJsonResponse({ states, success: true }, tz)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })
@@ -235,20 +238,24 @@ export const registerSyncTools = (
     'Get pending outbound sync entries that need to be written to Health Connect. Returns changes (inserts, updates, deletes) queued for the Android app to apply.',
     {
       limit: z.number().int().min(1).max(500).optional().describe('Max entries to return (default 100)'),
+      tz: tzSchema,
     },
-    async ({ limit }) => {
+    async ({ limit, tz }) => {
       try {
         const { entries, total_pending } = await getPendingOutboundSync(user, limit)
-        return jsonResponse({
-          count: entries.length,
-          data: entries.map((e) => ({
-            ...e,
-            created_at: e.created_at.toISOString(),
-            synced_at: e.synced_at?.toISOString(),
-          })),
-          success: true,
-          total_pending,
-        })
+        return tzJsonResponse(
+          {
+            count: entries.length,
+            data: entries.map((e) => ({
+              ...e,
+              created_at: formatInTz(e.created_at, tz),
+              synced_at: e.synced_at ? formatInTz(e.synced_at, tz) : undefined,
+            })),
+            success: true,
+            total_pending,
+          },
+          tz,
+        )
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })
@@ -305,19 +312,23 @@ export const registerSyncTools = (
     'Get outbound sync history including completed and failed entries. Shows fail_count and fail_reason for debugging sync issues.',
     {
       limit: z.number().int().min(1).max(500).optional().describe('Max entries to return (default 50)'),
+      tz: tzSchema,
     },
-    async ({ limit }) => {
+    async ({ limit, tz }) => {
       try {
         const entries = await getOutboundSyncHistory(user, limit)
-        return jsonResponse({
-          count: entries.length,
-          data: entries.map((e) => ({
-            ...e,
-            created_at: e.created_at.toISOString(),
-            synced_at: e.synced_at?.toISOString(),
-          })),
-          success: true,
-        })
+        return tzJsonResponse(
+          {
+            count: entries.length,
+            data: entries.map((e) => ({
+              ...e,
+              created_at: formatInTz(e.created_at, tz),
+              synced_at: e.synced_at ? formatInTz(e.synced_at, tz) : undefined,
+            })),
+            success: true,
+          },
+          tz,
+        )
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })

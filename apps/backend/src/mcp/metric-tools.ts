@@ -7,6 +7,7 @@ import {
   bulkMetricItemSchema,
   customMetricDefinitionSchema,
   recalculateCaloriesBodySchema,
+  tzSchema,
   updateCustomMetricBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
@@ -28,6 +29,7 @@ import {
   type McpServer,
   metricDescription,
   parseOptionalDate,
+  tzJsonResponse,
 } from './helpers.ts'
 
 export const registerMetricTools = (server: McpServer, user: string) => {
@@ -35,8 +37,8 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   server.tool(
     'add_metric',
     'Add a manual health metric measurement. Use this to log data not captured automatically.',
-    { ...addMetricBodySchema.shape },
-    async ({ metric, time, value }) => {
+    { ...addMetricBodySchema.shape, tz: tzSchema },
+    async ({ metric, time, value, tz }) => {
       const measurementTime = time ? parseOptionalDate(time) : new Date()
       if (!measurementTime) {
         return errorResponse('Invalid time format. Use ISO 8601 format.')
@@ -46,7 +48,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to add metric')
       }
-      return jsonResponse(result)
+      return tzJsonResponse(result, tz)
     },
   )
 
@@ -62,8 +64,9 @@ export const registerMetricTools = (server: McpServer, user: string) => {
         .max(50)
         .optional()
         .describe('Default data source for all items (defaults to "aurboda")'),
+      tz: tzSchema,
     },
-    async ({ data, source }) => {
+    async ({ data, source, tz }) => {
       const items = data.map((item) => ({
         metric: item.metric,
         source: item.source,
@@ -77,7 +80,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
       }
 
       const result = await bulkAddMetrics(user, items, source)
-      return jsonResponse(result)
+      return tzJsonResponse(result, tz)
     },
   )
 
@@ -192,8 +195,13 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   server.tool(
     'recalculate_calories',
     'Recalculate calories burned from HR data for a time range. Requires sex and birth_date in settings. Uses weight from Health Connect and VO2 max (measured or age/sex fallback). Omit start/end to recompute all historical data. Full recomputes run asynchronously and return immediately.',
-    { ...recalculateCaloriesBodySchema.shape, end: z.string().optional(), start: z.string().optional() },
-    async ({ start, end }) => {
+    {
+      ...recalculateCaloriesBodySchema.shape,
+      end: z.string().optional(),
+      start: z.string().optional(),
+      tz: tzSchema,
+    },
+    async ({ start, end, tz }) => {
       if (!start || !end) {
         // Full recompute runs async — fire and forget, return immediately
         computeAndStoreCaloriesAll(user).then(
@@ -203,10 +211,13 @@ export const registerMetricTools = (server: McpServer, user: string) => {
             ),
           (error) => console.error(`🔥 Async calorie recompute failed for ${user}:`, error),
         )
-        return jsonResponse({ started: true, message: 'Full calorie recomputation started in background' })
+        return tzJsonResponse(
+          { started: true, message: 'Full calorie recomputation started in background' },
+          tz,
+        )
       }
       const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
-      return jsonResponse({ ...result, success: true })
+      return tzJsonResponse({ ...result, success: true }, tz)
     },
   )
 }
