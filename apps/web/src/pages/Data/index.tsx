@@ -79,7 +79,7 @@ const activityToItem = (a: Activity): DataItem => {
     color: ACTIVITY_COLORS[a.activity_type] ?? '#6b7280',
     detail: `${format(a.start_time, 'HH:mm')} – ${format(end, 'HH:mm')} · ${formatDuration(a.start_time, end)}`,
     end,
-    href: `/detail/activity/${encodeURIComponent(a.id)}`,
+    href: a.id ? `/detail/activity/${encodeURIComponent(a.id)}` : undefined,
     label,
     start: a.start_time,
     type: 'activity',
@@ -92,7 +92,7 @@ const tagToItem = (t: Tag): DataItem => ({
     ? `${format(t.start_time, 'HH:mm')} – ${format(t.end_time, 'HH:mm')} · ${formatDuration(t.start_time, t.end_time)}`
     : format(t.start_time, 'HH:mm'),
   end: t.end_time,
-  href: `/detail/tag/${encodeURIComponent(t.id)}`,
+  href: t.id ? `/detail/tag/${encodeURIComponent(t.id)}` : undefined,
   label: t.tag,
   start: t.start_time,
   type: 'tag',
@@ -213,10 +213,9 @@ const buildItems = (
   return items.sort((a, b) => a.start.getTime() - b.start.getTime())
 }
 
-const parseUrlState = (query: string): { date: string; hidden: Set<ItemType> } => {
-  const params = new URLSearchParams(query)
-  const date = params.get('date') ?? formatISO(new Date(), { representation: 'date' })
-  const hideStr = params.get('hide') ?? ''
+const parseUrlState = (query: Record<string, string>): { date: string; hidden: Set<ItemType> } => {
+  const date = query.date ?? formatISO(new Date(), { representation: 'date' })
+  const hideStr = query.hide ?? ''
   const hidden = new Set<ItemType>(hideStr ? (hideStr.split(',') as ItemType[]) : [])
   return { date, hidden }
 }
