@@ -1,8 +1,7 @@
 .help-page {
   width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
   padding: 2rem;
+  box-sizing: border-box;
   box-sizing: border-box;
 }
 

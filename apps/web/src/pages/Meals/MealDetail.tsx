@@ -620,9 +620,12 @@ export function MealDetail() {
         </div>
 
         {/* Nutrient sidebar — shown beside the card on wide screens */}
-        {!isEditing && meal.nutrients && Object.keys(meal.nutrients).length > 0 && (
-          <NutrientBreakdown nutrients={meal.nutrients} />
-        )}
+        {!isEditing &&
+          (meal.nutrients && Object.keys(meal.nutrients).length > 0 ? (
+            <NutrientBreakdown nutrients={meal.nutrients} />
+          ) : (
+            <div class="nutrient-breakdown nutrient-placeholder" />
+          ))}
       </div>
     </div>
   )
