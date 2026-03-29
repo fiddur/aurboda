@@ -65,6 +65,7 @@ describe('MCP Database Integration Tests (Stateless)', () => {
           arguments: {
             end: '2024-01-31T23:59:59Z',
             start: '2024-01-01T00:00:00Z',
+            tz: 'UTC',
           },
           name: 'query_tags',
         },
@@ -95,6 +96,7 @@ describe('MCP Database Integration Tests (Stateless)', () => {
           arguments: {
             end: '2024-01-31T23:59:59Z',
             start: '2024-01-01T00:00:00Z',
+            tz: 'UTC',
           },
           name: 'query_tags',
         },
@@ -111,6 +113,7 @@ describe('MCP Database Integration Tests (Stateless)', () => {
           arguments: {
             end: '2024-02-28T23:59:59Z',
             start: '2024-02-01T00:00:00Z',
+            tz: 'UTC',
           },
           name: 'query_tags',
         },
@@ -136,6 +139,7 @@ describe('MCP Database Integration Tests (Stateless)', () => {
           arguments: {
             end: '2024-01-31T23:59:59Z',
             start: '2024-01-01T00:00:00Z',
+            tz: 'UTC',
           },
           name: 'query_tags',
         },
@@ -151,6 +155,7 @@ describe('MCP Database Integration Tests (Stateless)', () => {
           arguments: {
             end: '2024-01-31T23:59:59Z',
             start: '2024-01-01T00:00:00Z',
+            tz: 'UTC',
           },
           name: 'query_tags',
         },

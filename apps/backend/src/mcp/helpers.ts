@@ -5,12 +5,24 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
  */
 import { validMetrics } from '@aurboda/api-spec'
 
+import { convertTimestamps } from './tz-utils.ts'
+
 /** Metric name description using validMetrics from api-spec. */
 export const metricDescription = `Metric name. Valid metrics: ${validMetrics.join(', ')}`
 
 /** Helper to create JSON text response. */
 export const jsonResponse = (data: unknown) => ({
   content: [{ text: JSON.stringify(data, null, 2), type: 'text' as const }],
+})
+
+/** Helper to create JSON text response with timezone-converted timestamps. */
+export const tzJsonResponse = (data: unknown, tz: string) => ({
+  content: [
+    {
+      text: JSON.stringify({ ...(convertTimestamps(data, tz) as object), tz }, null, 2),
+      type: 'text' as const,
+    },
+  ],
 })
 
 /** Helper to create error response. */

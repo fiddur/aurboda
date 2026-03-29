@@ -223,6 +223,7 @@ describe('MCP Server', () => {
         end: '2024-01-31T23:59:59Z',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -253,6 +254,7 @@ describe('MCP Server', () => {
         end: 'not-a-date',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       // Schema validation catches invalid dates before our handler runs
@@ -287,6 +289,7 @@ describe('MCP Server', () => {
         end: '2024-01-31T23:59:59Z',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -322,6 +325,7 @@ describe('MCP Server', () => {
         end: '2024-01-31T23:59:59Z',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -357,6 +361,7 @@ describe('MCP Server', () => {
         end: '2024-01-31T23:59:59Z',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -392,6 +397,7 @@ describe('MCP Server', () => {
         end: '2024-01-31T23:59:59Z',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -444,6 +450,7 @@ describe('MCP Server', () => {
       const response = await callTool(app, token, 'query_tags', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -468,6 +475,7 @@ describe('MCP Server', () => {
       const response = await callTool(app, token, 'query_tags', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -512,7 +520,7 @@ describe('MCP Server', () => {
         tag_mappings: { [uuid]: 'Food' },
       })
 
-      const response = await callTool(app, token, 'get_programmatic_tags', {})
+      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
 
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
@@ -521,7 +529,7 @@ describe('MCP Server', () => {
         count: 5,
         current_name: 'Food',
         is_programmatic: true,
-        latest_time: '2024-01-15T12:00:00.000Z',
+        latest_time: '2024-01-15T12:00:00+00:00',
         tag_key: uuid,
       })
     })
@@ -541,7 +549,7 @@ describe('MCP Server', () => {
       ])
       vi.mocked(db.getUserSettings).mockResolvedValue(null)
 
-      const response = await callTool(app, token, 'get_programmatic_tags', {})
+      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
 
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
@@ -551,14 +559,14 @@ describe('MCP Server', () => {
         count: 3,
         current_name: 'VocalExercise',
         is_programmatic: false,
-        latest_time: '2024-01-15T14:00:00.000Z',
+        latest_time: '2024-01-15T14:00:00+00:00',
         tag_key: 'VocalExercise',
       })
       expect(response.toolResult.data[1]).toEqual({
         count: 10,
         current_name: 'coffee',
         is_programmatic: false,
-        latest_time: '2024-01-15T16:00:00.000Z',
+        latest_time: '2024-01-15T16:00:00+00:00',
         tag_key: 'coffee',
       })
     })
@@ -574,7 +582,7 @@ describe('MCP Server', () => {
       ])
       vi.mocked(db.getUserSettings).mockResolvedValue(null)
 
-      const response = await callTool(app, token, 'get_programmatic_tags', {})
+      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
 
       expect(response.toolResult.data).toHaveLength(2)
       // Programmatic tag without mapping has null current_name
@@ -639,6 +647,7 @@ describe('MCP Server', () => {
       const response = await callTool(app, token, 'query_activities', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -669,6 +678,7 @@ describe('MCP Server', () => {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
         types: ['exercise'],
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -735,6 +745,7 @@ describe('MCP Server', () => {
       const response = await callTool(app, token, 'query_productivity', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -803,6 +814,7 @@ describe('MCP Server', () => {
       const response = await callTool(app, token, 'query_locations', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -823,6 +835,7 @@ describe('MCP Server', () => {
       const response = await callTool(app, token, 'query_locations', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -958,6 +971,7 @@ describe('MCP Server', () => {
         exercise_type: 'weightlifting',
         start_time: '2024-03-15T10:30:00Z',
         title: 'Upper body',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -994,6 +1008,7 @@ describe('MCP Server', () => {
         end_time: '2024-03-15T07:30:00Z',
         start_time: '2024-03-15T07:00:00Z',
         title: 'Morning meditation',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -1024,6 +1039,7 @@ describe('MCP Server', () => {
               end_time: '2024-03-15T11:45:00Z',
               exercise_type: 'invalid_exercise_type',
               start_time: '2024-03-15T10:30:00Z',
+              tz: 'UTC',
             },
             name: 'add_activity',
           },
@@ -1055,6 +1071,7 @@ describe('MCP Server', () => {
               activity_type: 'exercise',
               end_time: '2024-03-15T09:00:00Z',
               start_time: '2024-03-15T10:30:00Z',
+              tz: 'UTC',
             },
             name: 'add_activity',
           },
@@ -1109,6 +1126,7 @@ describe('MCP Server', () => {
         exercise_type: 'weightlifting',
         id: testActivityId,
         title: 'Workout',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -1141,6 +1159,7 @@ describe('MCP Server', () => {
       const response = await callTool(app, token, 'update_activity', {
         id: testActivityId,
         notes: 'Great session',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -1168,6 +1187,7 @@ describe('MCP Server', () => {
             arguments: {
               exercise_type: 'not_a_real_exercise',
               id: testActivityId,
+              tz: 'UTC',
             },
             name: 'update_activity',
           },
@@ -1195,6 +1215,7 @@ describe('MCP Server', () => {
         end_time: '2024-03-15T12:00:00Z',
         id: testActivityId,
         start_time: '2024-03-15T09:00:00Z',
+        tz: 'UTC',
       })
 
       expect(mutations.updateActivity).toHaveBeenCalledWith('testuser', testActivityId, {
@@ -1226,6 +1247,7 @@ describe('MCP Server', () => {
             arguments: {
               id: testActivityId,
               title: 'New title',
+              tz: 'UTC',
             },
             name: 'update_activity',
           },

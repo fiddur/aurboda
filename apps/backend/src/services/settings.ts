@@ -216,6 +216,7 @@ const withDefaults = (settings: UserSettings) => ({
   tag_icons: settings.item_icons ?? {},
   tag_mappings: settings.tag_mappings ?? {},
   training_load: settings.training_load ?? null,
+  tz: settings.device_timezone ?? null,
 })
 
 export const getSettingsResponse = async (user: string): Promise<SettingsResponse> => {
@@ -262,6 +263,7 @@ const EMPTY_SETTINGS_DEFAULTS = {
   tag_icons: {},
   tag_mappings: {},
   training_load: null,
+  tz: null,
 }
 
 const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => ({

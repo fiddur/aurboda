@@ -1,7 +1,7 @@
 /**
  * MCP user settings and tag mapping tools.
  */
-import { setTagMappingBodySchema, updateSettingsInputSchema } from '@aurboda/api-spec'
+import { setTagMappingBodySchema, tzSchema, updateSettingsInputSchema } from '@aurboda/api-spec'
 
 import { getProgrammaticTags, getUniqueTags, getUserSettings } from '../db/index.ts'
 import { getGoalsProgress } from '../services/goals.ts'
@@ -11,13 +11,14 @@ import {
   setTagMapping,
   validateAndUpdateSettings,
 } from '../services/settings.ts'
-import { jsonResponse, type McpServer } from './helpers.ts'
+import { jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
+import { formatInTz } from './tz-utils.ts'
 
 export const registerSettingsTools = (server: McpServer, user: string) => {
   // Tool: get_user_settings
   server.tool(
     'get_user_settings',
-    'Get user settings including birth date and effective HR zones. HR zones are used to calculate time spent in different heart rate zones during exercise.',
+    "Get user settings including birth date, effective HR zones, and timezone (tz). The tz field returns the auto-detected timezone from the user's device — use it as the tz parameter for all other tools that require it.",
     {},
     async () => {
       const result = await getSettingsResponse(user)
@@ -51,8 +52,8 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
   server.tool(
     'get_programmatic_tags',
     'Get all tags available for mapping. Includes programmatic tags (UUIDs, tag_* prefixes) that need human-readable display names, plus all other tags so icons can be set on any tag. Tags with is_programmatic=true and no current_name are unmapped.',
-    {},
-    async () => {
+    { tz: tzSchema },
+    async ({ tz }) => {
       const tags = await getProgrammaticTags(user)
       const settings = await getUserSettings(user)
       const mappings = settings?.tag_mappings ?? {}
@@ -61,11 +62,11 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
         count: tag.count,
         current_name: tag.isProgrammatic ? (mappings[tag.tagKey] ?? null) : tag.tagKey,
         is_programmatic: tag.isProgrammatic,
-        latest_time: tag.latestTime.toISOString(),
+        latest_time: formatInTz(tag.latestTime, tz),
         tag_key: tag.tagKey,
       }))
 
-      return jsonResponse({ data, success: true })
+      return tzJsonResponse({ data, success: true }, tz)
     },
   )
 

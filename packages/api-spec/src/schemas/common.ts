@@ -164,6 +164,16 @@ export const iso8601DateTimeSchema = z.iso.datetime().meta({
 })
 
 /**
+ * IANA timezone string schema (e.g. "Europe/Stockholm").
+ */
+export const tzSchema = z.string().meta({
+  description:
+    'IANA timezone (e.g. "Europe/Stockholm"). Required for correct timestamp formatting and date interpretation.',
+  example: 'Europe/Stockholm',
+  id: 'Timezone',
+})
+
+/**
  * Date-only string schema (YYYY-MM-DD).
  */
 export const dateOnlySchema = z.iso.date().meta({
