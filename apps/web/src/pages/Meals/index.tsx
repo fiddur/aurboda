@@ -311,28 +311,36 @@ const aggregateDayNutrients = (meals: Meal[]): Record<string, number> => {
 
 function DayNutrientSummary({ meals }: { meals: Meal[] }) {
   const nutrients = aggregateDayNutrients(meals)
-  if (Object.keys(nutrients).length === 0) return null
+  const hasNutrients = Object.keys(nutrients).length > 0
 
   return (
-    <div class="day-nutrient-summary">
-      <h3>Day Totals</h3>
-      {NUTRIENT_CATEGORIES.map(({ key, label }) => {
-        const fields = NUTRIENT_FIELDS.filter((f) => f.category === key && nutrients[f.name] !== undefined)
-        if (fields.length === 0) return null
-        return (
-          <div key={key} class="day-nutrient-group">
-            <h4>{label}</h4>
-            {fields.map((f) => (
-              <div key={f.name} class="day-nutrient-line">
-                <span>{f.label}</span>
-                <span>
-                  {nutrients[f.name].toFixed(1)} {f.unit}
-                </span>
+    <div class={`day-nutrient-summary${hasNutrients ? '' : ' empty'}`}>
+      {!hasNutrients ? (
+        <p class="no-nutrients">No nutrient data for this day.</p>
+      ) : (
+        <>
+          <h3>Day Totals</h3>
+          {NUTRIENT_CATEGORIES.map(({ key, label }) => {
+            const fields = NUTRIENT_FIELDS.filter(
+              (f) => f.category === key && nutrients[f.name] !== undefined,
+            )
+            if (fields.length === 0) return null
+            return (
+              <div key={key} class="day-nutrient-group">
+                <h4>{label}</h4>
+                {fields.map((f) => (
+                  <div key={f.name} class="day-nutrient-line">
+                    <span>{f.label}</span>
+                    <span>
+                      {nutrients[f.name].toFixed(1)} {f.unit}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )
-      })}
+            )
+          })}
+        </>
+      )}
     </div>
   )
 }
