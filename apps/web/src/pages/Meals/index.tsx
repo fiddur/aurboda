@@ -570,7 +570,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
       time: mealTime.toISOString(),
     })
     queryClient.invalidateQueries({ queryKey: ['meals'] })
-    route(`/meals/${id}`)
+    route(`/meals/${id}?edit=1`)
   }
 
   const otherMeals = getOtherMeals(meals ?? [], mealSlots)
