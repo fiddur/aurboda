@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
+import { format, formatISO } from 'date-fns'
 import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
@@ -242,9 +242,11 @@ export const Data = () => {
     syncUrl(dateStr, hiddenTypes)
   }, [dateStr, hiddenTypes])
 
-  const date = new Date(dateStr)
-  const start = subDays(startOfDay(date), 0.5)
-  const end = addDays(endOfDay(date), 0.5)
+  // Compute day boundaries in the browser's timezone for the specific date.
+  // Using ISO string with explicit time avoids DST issues where date-fns startOfDay/endOfDay
+  // would use the current timezone offset instead of the offset on the viewed date.
+  const start = new Date(`${dateStr}T00:00:00`)
+  const end = new Date(`${dateStr}T23:59:59.999`)
 
   // Cancel in-flight queries when date changes
   const queryClient = useQueryClient()
