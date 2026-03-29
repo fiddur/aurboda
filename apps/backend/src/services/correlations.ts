@@ -359,9 +359,31 @@ const chiSquaredTest = (
 
 /**
  * Get HRV/HR data points that fall within a time range.
+ * Uses binary search since data is sorted by time (from SQL ORDER BY).
  */
 const getDataInRange = (data: [Date, number][], start: Date, end: Date): number[] => {
-  return data.filter(([time]) => time >= start && time <= end).map(([, value]) => value)
+  const startMs = start.getTime()
+  const endMs = end.getTime()
+
+  // Binary search for first index where time >= start
+  let lo = 0
+  let hi = data.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (data[mid][0].getTime() < startMs) lo = mid + 1
+    else hi = mid
+  }
+  const startIdx = lo
+
+  // Binary search for first index where time > end
+  hi = data.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (data[mid][0].getTime() <= endMs) lo = mid + 1
+    else hi = mid
+  }
+
+  return data.slice(startIdx, lo).map(([, v]) => v)
 }
 
 /**

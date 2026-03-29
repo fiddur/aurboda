@@ -104,8 +104,10 @@ describe('getDailySummary', () => {
   test('aggregates all data sources for a day', async () => {
     vi.mocked(db.getTimeSeries)
       .mockResolvedValueOnce([
-        // Daily heart rate data
+        // Daily heart rate data (exercise session HR is filtered from this in memory)
         [new Date('2024-01-15T10:00:00Z'), 72],
+        [new Date('2024-01-15T10:15:00Z'), 80],
+        [new Date('2024-01-15T10:30:00Z'), 75],
         [new Date('2024-01-15T11:00:00Z'), 80],
         [new Date('2024-01-15T12:00:00Z'), 65],
       ])
@@ -113,12 +115,6 @@ describe('getDailySummary', () => {
         // Daily steps data
         [new Date('2024-01-15T08:00:00Z'), 5000],
         [new Date('2024-01-15T12:00:00Z'), 3000],
-      ])
-      .mockResolvedValueOnce([
-        // Exercise session HR data (for HR zone calculation)
-        [new Date('2024-01-15T10:00:00Z'), 72],
-        [new Date('2024-01-15T10:15:00Z'), 80],
-        [new Date('2024-01-15T10:30:00Z'), 75],
       ])
 
     // Sleep sessions now use getSleepSessions with date overlap logic
@@ -185,8 +181,8 @@ describe('getDailySummary', () => {
 
     // Heart rate stats
     expect(result.heart_rate).toEqual({
-      avg: 72,
-      count: 3,
+      avg: 74, // (72+80+75+80+65)/5 = 74.4, rounded to 74
+      count: 5,
       max: 80,
       min: 65,
     })
@@ -370,16 +366,15 @@ describe('getDailySummary', () => {
   })
 
   test('computes hr_zone_secs for exercise sessions with HR data', async () => {
-    // First call: daily heart rate, second call: daily steps, third call: exercise session HR
+    // First call: daily heart rate (includes exercise session data), second call: daily steps
     vi.mocked(db.getTimeSeries)
-      .mockResolvedValueOnce([]) // daily heart_rate
-      .mockResolvedValueOnce([]) // daily steps
       .mockResolvedValueOnce([
         // exercise session HR data - in zone 1 (90-107 with default zones)
         [new Date('2024-01-15T10:00:00Z'), 95],
         [new Date('2024-01-15T10:00:02Z'), 100],
         [new Date('2024-01-15T10:00:04Z'), 98],
-      ])
+      ]) // daily heart_rate (filtered in memory for exercise sessions)
+      .mockResolvedValueOnce([]) // daily steps
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getActivities).mockResolvedValue([
@@ -407,9 +402,8 @@ describe('getDailySummary', () => {
 
   test('does not include hr_zone_secs when exercise has no HR data', async () => {
     vi.mocked(db.getTimeSeries)
-      .mockResolvedValueOnce([]) // daily heart_rate
+      .mockResolvedValueOnce([]) // daily heart_rate (no HR data during exercise)
       .mockResolvedValueOnce([]) // daily steps
-      .mockResolvedValueOnce([]) // exercise session HR data - empty
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getActivities).mockResolvedValue([
@@ -440,13 +434,12 @@ describe('getDailySummary', () => {
     })
 
     vi.mocked(db.getTimeSeries)
-      .mockResolvedValueOnce([]) // daily heart_rate
-      .mockResolvedValueOnce([]) // daily steps
       .mockResolvedValueOnce([
         // HR at 85 - would be zone 0 with defaults (90), but zone 1 with custom (80)
         [new Date('2024-01-15T10:00:00Z'), 85],
         [new Date('2024-01-15T10:00:02Z'), 85],
-      ])
+      ]) // daily heart_rate (filtered in memory for exercise sessions)
+      .mockResolvedValueOnce([]) // daily steps
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getActivities).mockResolvedValue([
