@@ -26,6 +26,35 @@
   align-self: flex-start;
 }
 
+/* Time filter chip */
+.data-time-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.625rem;
+  background: #ede9fe;
+  border: 1px solid #c4b5fd;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  color: #5b21b6;
+}
+
+.data-time-filter button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  color: #7c3aed;
+  padding: 0 0.15rem;
+  border-radius: 50%;
+}
+
+.data-time-filter button:hover {
+  background: #ddd6fe;
+}
+
 /* Type filter buttons (stacked vertically in sidebar) */
 .data-type-filters {
   display: flex;
@@ -198,5 +227,19 @@
 
   .data-item-detail {
     color: #9ca3af;
+  }
+
+  .data-time-filter {
+    background: #2e1065;
+    border-color: #6d28d9;
+    color: #c4b5fd;
+  }
+
+  .data-time-filter button {
+    color: #a78bfa;
+  }
+
+  .data-time-filter button:hover {
+    background: #4c1d95;
   }
 }
