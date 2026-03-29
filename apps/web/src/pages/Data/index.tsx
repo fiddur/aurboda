@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useLocation } from 'preact-iso'
-import { useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useState } from 'preact/hooks'
 
 import { DateNav } from '../../components/DateNav'
 import {
@@ -246,72 +246,85 @@ export const Data = () => {
   const start = subDays(startOfDay(date), 0.5)
   const end = addDays(endOfDay(date), 0.5)
 
+  // Cancel in-flight queries when date changes
+  const queryClient = useQueryClient()
+  const handleDateChange = useCallback(
+    (newDate: string) => {
+      queryClient.cancelQueries({ queryKey: ['data-activities'] })
+      queryClient.cancelQueries({ queryKey: ['data-tags'] })
+      queryClient.cancelQueries({ queryKey: ['data-places'] })
+      queryClient.cancelQueries({ queryKey: ['data-scrobbles'] })
+      queryClient.cancelQueries({ queryKey: ['data-meals'] })
+      queryClient.cancelQueries({ queryKey: ['data-reports'] })
+      queryClient.cancelQueries({ queryKey: ['data-productivity'] })
+      setDateStr(newDate)
+    },
+    [queryClient],
+  )
+
   const activitiesQuery = useQuery({
+    enabled: activeTypes.has('activity'),
     queryFn: () => fetchActivities(start, end, ['sleep', 'exercise', 'meditation', 'nap', 'rest']),
     queryKey: ['data-activities', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
   const tagsQuery = useQuery({
+    enabled: activeTypes.has('tag'),
     queryFn: () => fetchTags(start, end),
     queryKey: ['data-tags', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
   const placesQuery = useQuery({
+    enabled: activeTypes.has('location'),
     queryFn: () => fetchPlaces(start, end),
     queryKey: ['data-places', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
   const scrobblesQuery = useQuery({
+    enabled: activeTypes.has('music'),
     queryFn: () => fetchScrobbles(start, end),
     queryKey: ['data-scrobbles', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
   const mealsQuery = useQuery({
+    enabled: activeTypes.has('meal'),
     queryFn: () => fetchMeals({ start: start.toISOString(), end: end.toISOString() }),
     queryKey: ['data-meals', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
   const reportsQuery = useQuery({
+    enabled: activeTypes.has('report'),
     queryFn: () => fetchReports({ start: start.toISOString(), end: end.toISOString() }),
     queryKey: ['data-reports', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
   const productivityQuery = useQuery({
+    enabled: activeTypes.has('screentime'),
     queryFn: () => fetchProductivity(start, end),
     queryKey: ['data-productivity', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
-  const isLoading =
-    activitiesQuery.isLoading ||
-    tagsQuery.isLoading ||
-    placesQuery.isLoading ||
-    scrobblesQuery.isLoading ||
-    mealsQuery.isLoading ||
-    reportsQuery.isLoading ||
-    productivityQuery.isLoading
-  const isFetching =
-    activitiesQuery.isFetching ||
-    tagsQuery.isFetching ||
-    placesQuery.isFetching ||
-    scrobblesQuery.isFetching ||
-    mealsQuery.isFetching ||
-    reportsQuery.isFetching ||
-    productivityQuery.isFetching
-  const isError =
-    activitiesQuery.isError ||
-    tagsQuery.isError ||
-    placesQuery.isError ||
-    scrobblesQuery.isError ||
-    mealsQuery.isError ||
-    reportsQuery.isError ||
-    productivityQuery.isError
+  // Only check loading/fetching for enabled queries
+  const queries = [
+    { enabled: activeTypes.has('activity'), query: activitiesQuery },
+    { enabled: activeTypes.has('tag'), query: tagsQuery },
+    { enabled: activeTypes.has('location'), query: placesQuery },
+    { enabled: activeTypes.has('music'), query: scrobblesQuery },
+    { enabled: activeTypes.has('meal'), query: mealsQuery },
+    { enabled: activeTypes.has('report'), query: reportsQuery },
+    { enabled: activeTypes.has('screentime'), query: productivityQuery },
+  ]
+  const enabledQueries = queries.filter((q) => q.enabled)
+  const isLoading = enabledQueries.some((q) => q.query.isLoading)
+  const isFetching = enabledQueries.some((q) => q.query.isFetching)
+  const isError = enabledQueries.some((q) => q.query.isError)
 
   const toggleType = (t: ItemType) => {
     setHiddenTypes((prev) => {
@@ -337,7 +350,7 @@ export const Data = () => {
   return (
     <div class="data-page">
       <div class="data-sidebar">
-        <DateNav value={dateStr} onChange={setDateStr} dateFormat="EEE MMM d, yyyy" />
+        <DateNav value={dateStr} onChange={handleDateChange} dateFormat="EEE MMM d, yyyy" />
         <div class="data-type-filters">
           {ALL_TYPES.map((t) => (
             <button
