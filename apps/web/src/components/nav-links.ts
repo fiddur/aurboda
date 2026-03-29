@@ -16,6 +16,7 @@ export const DATA_SOURCE_LINKS = [
   { label: 'Aurboda (Web / API)', path: '/data-sources/aurboda' },
   { label: 'Aurboda Android', path: '/data-sources/android-app' },
   { label: 'Oura Ring', path: '/data-sources/oura' },
+  { label: 'Garmin Connect', path: '/data-sources/garmin' },
   { label: 'ActivityWatch (Desktop)', path: '/data-sources/activitywatch-desktop' },
   { label: 'ActivityWatch (Android)', path: '/data-sources/activitywatch-android' },
   { label: 'RescueTime', path: '/data-sources/rescue-time' },
