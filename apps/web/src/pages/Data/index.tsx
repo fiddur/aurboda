@@ -1,29 +1,35 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { addDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
-import { useState } from 'preact/hooks'
+import { useLocation } from 'preact-iso'
+import { useEffect, useState } from 'preact/hooks'
 
 import { DateNav } from '../../components/DateNav'
 import {
   fetchActivities,
+  fetchMeals,
   fetchPlaces,
+  fetchProductivity,
+  fetchReports,
   fetchScrobbles,
   fetchTags,
   type Activity,
+  type Meal,
   type Place,
+  type ProductivityRecord,
+  type Report,
   type Tag,
 } from '../../state/api'
 import './style.css'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type ItemType = 'activity' | 'tag' | 'location' | 'music'
+type ItemType = 'activity' | 'tag' | 'location' | 'music' | 'meal' | 'report' | 'screentime'
 
 interface DataItem {
   color: string
   detail: string
   end?: Date
-  entityId?: string
-  entityType?: string
+  href?: string
   label: string
   start: Date
   type: ItemType
@@ -42,6 +48,9 @@ const ACTIVITY_COLORS: Record<string, string> = {
 const TAG_COLOR = '#f59e0b'
 const LOCATION_COLOR = '#6366f1'
 const MUSIC_COLOR = '#ec4899'
+const MEAL_COLOR = '#ef4444'
+const REPORT_COLOR = '#14b8a6'
+const SCREENTIME_COLOR = '#8b5cf6'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -70,8 +79,7 @@ const activityToItem = (a: Activity): DataItem => {
     color: ACTIVITY_COLORS[a.activity_type] ?? '#6b7280',
     detail: `${format(a.start_time, 'HH:mm')} – ${format(end, 'HH:mm')} · ${formatDuration(a.start_time, end)}`,
     end,
-    entityId: a.id,
-    entityType: 'activity',
+    href: a.id ? `/detail/activity/${encodeURIComponent(a.id)}` : undefined,
     label,
     start: a.start_time,
     type: 'activity',
@@ -84,35 +92,80 @@ const tagToItem = (t: Tag): DataItem => ({
     ? `${format(t.start_time, 'HH:mm')} – ${format(t.end_time, 'HH:mm')} · ${formatDuration(t.start_time, t.end_time)}`
     : format(t.start_time, 'HH:mm'),
   end: t.end_time,
-  entityId: t.id,
-  entityType: 'tag',
+  href: t.id ? `/detail/tag/${encodeURIComponent(t.id)}` : undefined,
   label: t.tag,
   start: t.start_time,
   type: 'tag',
 })
 
-const placeToItem = (p: Place): DataItem => ({
+const placeToItem = (p: Place, dateStr: string): DataItem => ({
   color: LOCATION_COLOR,
   detail: `${format(p.start_time, 'HH:mm')} – ${format(p.end_time, 'HH:mm')} · ${formatDuration(p.start_time, p.end_time)}`,
   end: p.end_time,
+  href: `/places?date=${dateStr}&name=${encodeURIComponent(p.region)}`,
   label: p.region,
   start: p.start_time,
   type: 'location',
 })
 
+const mealToItem = (m: Meal): DataItem => {
+  const parts = [format(m.time, 'HH:mm')]
+  if (m.meal_type) parts.push(m.meal_type)
+  if (m.calories) parts.push(`${Math.round(m.calories)} kcal`)
+  return {
+    color: MEAL_COLOR,
+    detail: parts.join(' · '),
+    href: `/meals/${m.id}`,
+    label: m.name ?? m.meal_type ?? 'Meal',
+    start: m.time,
+    type: 'meal',
+  }
+}
+
+const reportToItem = (r: Report): DataItem => ({
+  color: REPORT_COLOR,
+  detail: `${format(r.date, 'HH:mm')} · ${r.entries?.length ?? 0} entries`,
+  href: `/reports/${r.id}`,
+  label: r.report_type,
+  start: r.date,
+  type: 'report',
+})
+
+const productivityToItem = (p: ProductivityRecord): DataItem => {
+  const dur = Math.round(p.duration_sec / 60)
+  const category = p.resolved_category?.join(' > ') ?? p.category ?? ''
+  return {
+    color: SCREENTIME_COLOR,
+    detail: `${format(p.start_time, 'HH:mm')} – ${format(p.end_time, 'HH:mm')} · ${dur}m${category ? ` · ${category}` : ''}`,
+    end: p.end_time,
+    href: p.id ? `/detail/productivity/${encodeURIComponent(p.id)}` : undefined,
+    label: p.activity,
+    start: p.start_time,
+    type: 'screentime',
+  }
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
+
+const ALL_TYPES: ItemType[] = ['activity', 'tag', 'location', 'music', 'meal', 'report', 'screentime']
 
 const TYPE_LABELS: Record<ItemType, string> = {
   activity: 'Activities',
   location: 'Locations',
+  meal: 'Meals',
   music: 'Music',
+  report: 'Reports',
+  screentime: 'Screen Time',
   tag: 'Tags',
 }
 
 const TYPE_COLORS: Record<ItemType, string> = {
   activity: ACTIVITY_COLORS.sleep!,
   location: LOCATION_COLOR,
+  meal: MEAL_COLOR,
   music: MUSIC_COLOR,
+  report: REPORT_COLOR,
+  screentime: SCREENTIME_COLOR,
   tag: TAG_COLOR,
 }
 
@@ -122,6 +175,10 @@ const buildItems = (
   tags: Tag[],
   places: Place[],
   scrobbles: { artist: string; recorded_at: Date; track: string }[],
+  meals: Meal[],
+  reports: Report[],
+  productivity: ProductivityRecord[],
+  dateStr: string,
 ): DataItem[] => {
   const items: DataItem[] = []
   if (activeTypes.has('activity')) {
@@ -131,7 +188,7 @@ const buildItems = (
     for (const t of tags) items.push(tagToItem(t))
   }
   if (activeTypes.has('location')) {
-    for (const p of places) items.push(placeToItem(p))
+    for (const p of places) items.push(placeToItem(p, dateStr))
   }
   if (activeTypes.has('music')) {
     for (const s of scrobbles) {
@@ -144,55 +201,120 @@ const buildItems = (
       })
     }
   }
+  if (activeTypes.has('meal')) {
+    for (const m of meals) items.push(mealToItem(m))
+  }
+  if (activeTypes.has('report')) {
+    for (const r of reports) items.push(reportToItem(r))
+  }
+  if (activeTypes.has('screentime')) {
+    for (const p of productivity) items.push(productivityToItem(p))
+  }
   return items.sort((a, b) => a.start.getTime() - b.start.getTime())
+}
+
+const parseUrlState = (query: Record<string, string>): { date: string; hidden: Set<ItemType> } => {
+  const date = query.date ?? formatISO(new Date(), { representation: 'date' })
+  const hideStr = query.hide ?? ''
+  const hidden = new Set<ItemType>(hideStr ? (hideStr.split(',') as ItemType[]) : [])
+  return { date, hidden }
+}
+
+const syncUrl = (dateStr: string, hidden: Set<ItemType>) => {
+  const params = new URLSearchParams()
+  params.set('date', dateStr)
+  if (hidden.size > 0) params.set('hide', [...hidden].join(','))
+  history.replaceState(null, '', `${window.location.pathname}?${params}`)
 }
 
 // eslint-disable-next-line complexity -- data page with multiple query sources
 export const Data = () => {
-  const [dateStr, setDateStr] = useState(formatISO(new Date(), { representation: 'date' }))
-  const [activeTypes, setActiveTypes] = useState<Set<ItemType>>(
-    new Set(['activity', 'tag', 'location', 'music']),
-  )
+  const { query } = useLocation()
+  const initial = parseUrlState(query)
+
+  const [dateStr, setDateStr] = useState(initial.date)
+  const [hiddenTypes, setHiddenTypes] = useState<Set<ItemType>>(initial.hidden)
+
+  const activeTypes = new Set(ALL_TYPES.filter((t) => !hiddenTypes.has(t)))
+
+  // Sync URL on state changes
+  useEffect(() => {
+    syncUrl(dateStr, hiddenTypes)
+  }, [dateStr, hiddenTypes])
 
   const date = new Date(dateStr)
   const start = subDays(startOfDay(date), 0.5)
   const end = addDays(endOfDay(date), 0.5)
 
   const activitiesQuery = useQuery({
-    placeholderData: keepPreviousData,
     queryFn: () => fetchActivities(start, end, ['sleep', 'exercise', 'meditation', 'nap', 'rest']),
     queryKey: ['data-activities', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
   const tagsQuery = useQuery({
-    placeholderData: keepPreviousData,
     queryFn: () => fetchTags(start, end),
     queryKey: ['data-tags', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
   const placesQuery = useQuery({
-    placeholderData: keepPreviousData,
     queryFn: () => fetchPlaces(start, end),
     queryKey: ['data-places', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
   const scrobblesQuery = useQuery({
-    placeholderData: keepPreviousData,
     queryFn: () => fetchScrobbles(start, end),
     queryKey: ['data-scrobbles', dateStr],
     staleTime: 5 * 60 * 1000,
   })
 
+  const mealsQuery = useQuery({
+    queryFn: () => fetchMeals({ start: start.toISOString(), end: end.toISOString() }),
+    queryKey: ['data-meals', dateStr],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const reportsQuery = useQuery({
+    queryFn: () => fetchReports({ start: start.toISOString(), end: end.toISOString() }),
+    queryKey: ['data-reports', dateStr],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const productivityQuery = useQuery({
+    queryFn: () => fetchProductivity(start, end),
+    queryKey: ['data-productivity', dateStr],
+    staleTime: 5 * 60 * 1000,
+  })
+
   const isLoading =
-    activitiesQuery.isLoading || tagsQuery.isLoading || placesQuery.isLoading || scrobblesQuery.isLoading
+    activitiesQuery.isLoading ||
+    tagsQuery.isLoading ||
+    placesQuery.isLoading ||
+    scrobblesQuery.isLoading ||
+    mealsQuery.isLoading ||
+    reportsQuery.isLoading ||
+    productivityQuery.isLoading
+  const isFetching =
+    activitiesQuery.isFetching ||
+    tagsQuery.isFetching ||
+    placesQuery.isFetching ||
+    scrobblesQuery.isFetching ||
+    mealsQuery.isFetching ||
+    reportsQuery.isFetching ||
+    productivityQuery.isFetching
   const isError =
-    activitiesQuery.isError || tagsQuery.isError || placesQuery.isError || scrobblesQuery.isError
+    activitiesQuery.isError ||
+    tagsQuery.isError ||
+    placesQuery.isError ||
+    scrobblesQuery.isError ||
+    mealsQuery.isError ||
+    reportsQuery.isError ||
+    productivityQuery.isError
 
   const toggleType = (t: ItemType) => {
-    setActiveTypes((prev) => {
+    setHiddenTypes((prev) => {
       const next = new Set(prev)
       if (next.has(t)) next.delete(t)
       else next.add(t)
@@ -206,16 +328,18 @@ export const Data = () => {
     tagsQuery.data ?? [],
     placesQuery.data ?? [],
     scrobblesQuery.data ?? [],
+    mealsQuery.data?.meals ?? [],
+    reportsQuery.data ?? [],
+    productivityQuery.data ?? [],
+    dateStr,
   )
-
-  // Date navigation handled by DateNav component
 
   return (
     <div class="data-page">
-      <div class="data-controls">
+      <div class="data-sidebar">
         <DateNav value={dateStr} onChange={setDateStr} dateFormat="EEE MMM d, yyyy" />
         <div class="data-type-filters">
-          {(Object.entries(TYPE_LABELS) as [ItemType, string][]).map(([t, label]) => (
+          {ALL_TYPES.map((t) => (
             <button
               key={t}
               class={`data-type-btn${activeTypes.has(t) ? ' active' : ''}`}
@@ -227,36 +351,38 @@ export const Data = () => {
                 class="data-type-dot"
                 style={{ background: activeTypes.has(t) ? TYPE_COLORS[t] : '#d1d5db' }}
               />
-              {label}
+              {TYPE_LABELS[t]}
             </button>
           ))}
         </div>
       </div>
 
-      {isLoading && <p class="data-status">Loading…</p>}
-      {isError && <p class="data-status data-error">Error loading data</p>}
+      <div class="data-main">
+        {(isLoading || isFetching) && <p class="data-status">Loading…</p>}
+        {isError && <p class="data-status data-error">Error loading data</p>}
 
-      {!isLoading && !isError && (
-        <div class="data-list">
-          {allItems.length === 0 && <p class="data-status">No data for this day</p>}
-          {allItems.map((item, i) => {
-            const href =
-              item.entityId && item.entityType
-                ? `/detail/${item.entityType}/${encodeURIComponent(item.entityId)}`
-                : undefined
-            const El = href ? 'a' : 'div'
-            return (
-              <El key={i} class={`data-item${href ? ' clickable' : ''}`} {...(href ? { href } : {})}>
-                <span class="data-dot" style={{ background: item.color }} />
-                <div class="data-item-content">
-                  <span class="data-item-label">{item.label}</span>
-                  <span class="data-item-detail">{item.detail}</span>
-                </div>
-              </El>
-            )
-          })}
-        </div>
-      )}
+        {!isLoading && !isFetching && !isError && (
+          <div class="data-list">
+            {allItems.length === 0 && <p class="data-status">No data for this day</p>}
+            {allItems.map((item, i) => {
+              const El = item.href ? 'a' : 'div'
+              return (
+                <El
+                  key={i}
+                  class={`data-item${item.href ? ' clickable' : ''}`}
+                  {...(item.href ? { href: item.href } : {})}
+                >
+                  <span class="data-dot" style={{ background: item.color }} />
+                  <div class="data-item-content">
+                    <span class="data-item-label">{item.label}</span>
+                    <span class="data-item-detail">{item.detail}</span>
+                  </div>
+                </El>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

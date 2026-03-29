@@ -170,19 +170,26 @@ export const Places = () => {
     return () => resizeObserver.disconnect()
   }, [])
 
+  const updateDate = (newDate: string) => {
+    selectedDate.value = newDate
+    const params = new URLSearchParams(window.location.search)
+    params.set('date', newDate)
+    history.replaceState(null, '', `${window.location.pathname}?${params}`)
+  }
+
   const handleDateChange = (e: Event) => {
     const target = e.target as HTMLInputElement
-    selectedDate.value = target.value
+    updateDate(target.value)
   }
 
   const handlePreviousDay = () => {
-    selectedDate.value = formatISO(subDays(new Date(selectedDate.value), 1), { representation: 'date' })
+    updateDate(formatISO(subDays(new Date(selectedDate.value), 1), { representation: 'date' }))
   }
 
   const handleNextDay = () => {
     const next = new Date(selectedDate.value)
     next.setDate(next.getDate() + 1)
-    selectedDate.value = formatISO(next, { representation: 'date' })
+    updateDate(formatISO(next, { representation: 'date' }))
   }
 
   const handlePlaceClick = (place: PlaceVisit) => {
