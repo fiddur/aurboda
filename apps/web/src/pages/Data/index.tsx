@@ -213,17 +213,23 @@ const buildItems = (
   return items.sort((a, b) => a.start.getTime() - b.start.getTime())
 }
 
-const parseUrlState = (query: Record<string, string>): { date: string; hidden: Set<ItemType> } => {
+const parseUrlState = (
+  query: Record<string, string>,
+): { date: string; from: string | undefined; hidden: Set<ItemType>; to: string | undefined } => {
   const date = query.date ?? formatISO(new Date(), { representation: 'date' })
   const hideStr = query.hide ?? ''
   const hidden = new Set<ItemType>(hideStr ? (hideStr.split(',') as ItemType[]) : [])
-  return { date, hidden }
+  const from = query.from || undefined
+  const to = query.to || undefined
+  return { date, from, hidden, to }
 }
 
-const syncUrl = (dateStr: string, hidden: Set<ItemType>) => {
+const syncUrl = (dateStr: string, hidden: Set<ItemType>, from?: string, to?: string) => {
   const params = new URLSearchParams()
   params.set('date', dateStr)
   if (hidden.size > 0) params.set('hide', [...hidden].join(','))
+  if (from) params.set('from', from)
+  if (to) params.set('to', to)
   history.replaceState(null, '', `${window.location.pathname}?${params}`)
 }
 
@@ -234,19 +240,20 @@ export const Data = () => {
 
   const [dateStr, setDateStr] = useState(initial.date)
   const [hiddenTypes, setHiddenTypes] = useState<Set<ItemType>>(initial.hidden)
+  const [timeFrom, setTimeFrom] = useState<string | undefined>(initial.from)
+  const [timeTo, setTimeTo] = useState<string | undefined>(initial.to)
 
+  const hasTimeFilter = Boolean(timeFrom || timeTo)
   const activeTypes = new Set(ALL_TYPES.filter((t) => !hiddenTypes.has(t)))
 
   // Sync URL on state changes
   useEffect(() => {
-    syncUrl(dateStr, hiddenTypes)
-  }, [dateStr, hiddenTypes])
+    syncUrl(dateStr, hiddenTypes, timeFrom, timeTo)
+  }, [dateStr, hiddenTypes, timeFrom, timeTo])
 
-  // Compute day boundaries in the browser's timezone for the specific date.
-  // Using ISO string with explicit time avoids DST issues where date-fns startOfDay/endOfDay
-  // would use the current timezone offset instead of the offset on the viewed date.
-  const start = new Date(`${dateStr}T00:00:00`)
-  const end = new Date(`${dateStr}T23:59:59.999`)
+  // Compute query boundaries — use time filter if present, otherwise full day.
+  const start = timeFrom ? new Date(timeFrom) : new Date(`${dateStr}T00:00:00`)
+  const end = timeTo ? new Date(timeTo) : new Date(`${dateStr}T23:59:59.999`)
 
   // Cancel in-flight queries when date changes
   const queryClient = useQueryClient()
@@ -260,56 +267,63 @@ export const Data = () => {
       queryClient.cancelQueries({ queryKey: ['data-reports'] })
       queryClient.cancelQueries({ queryKey: ['data-productivity'] })
       setDateStr(newDate)
+      setTimeFrom(undefined)
+      setTimeTo(undefined)
     },
     [queryClient],
   )
 
+  const clearTimeFilter = useCallback(() => {
+    setTimeFrom(undefined)
+    setTimeTo(undefined)
+  }, [])
+
   const activitiesQuery = useQuery({
     enabled: activeTypes.has('activity'),
     queryFn: () => fetchActivities(start, end, ['sleep', 'exercise', 'meditation', 'nap', 'rest']),
-    queryKey: ['data-activities', dateStr],
+    queryKey: ['data-activities', dateStr, timeFrom, timeTo],
     staleTime: 5 * 60 * 1000,
   })
 
   const tagsQuery = useQuery({
     enabled: activeTypes.has('tag'),
     queryFn: () => fetchTags(start, end),
-    queryKey: ['data-tags', dateStr],
+    queryKey: ['data-tags', dateStr, timeFrom, timeTo],
     staleTime: 5 * 60 * 1000,
   })
 
   const placesQuery = useQuery({
     enabled: activeTypes.has('location'),
     queryFn: () => fetchPlaces(start, end),
-    queryKey: ['data-places', dateStr],
+    queryKey: ['data-places', dateStr, timeFrom, timeTo],
     staleTime: 5 * 60 * 1000,
   })
 
   const scrobblesQuery = useQuery({
     enabled: activeTypes.has('music'),
     queryFn: () => fetchScrobbles(start, end),
-    queryKey: ['data-scrobbles', dateStr],
+    queryKey: ['data-scrobbles', dateStr, timeFrom, timeTo],
     staleTime: 5 * 60 * 1000,
   })
 
   const mealsQuery = useQuery({
     enabled: activeTypes.has('meal'),
     queryFn: () => fetchMeals({ start: start.toISOString(), end: end.toISOString() }),
-    queryKey: ['data-meals', dateStr],
+    queryKey: ['data-meals', dateStr, timeFrom, timeTo],
     staleTime: 5 * 60 * 1000,
   })
 
   const reportsQuery = useQuery({
     enabled: activeTypes.has('report'),
     queryFn: () => fetchReports({ start: start.toISOString(), end: end.toISOString() }),
-    queryKey: ['data-reports', dateStr],
+    queryKey: ['data-reports', dateStr, timeFrom, timeTo],
     staleTime: 5 * 60 * 1000,
   })
 
   const productivityQuery = useQuery({
     enabled: activeTypes.has('screentime'),
     queryFn: () => fetchProductivity(start, end),
-    queryKey: ['data-productivity', dateStr],
+    queryKey: ['data-productivity', dateStr, timeFrom, timeTo],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -353,6 +367,16 @@ export const Data = () => {
     <div class="data-page">
       <div class="data-sidebar">
         <DateNav value={dateStr} onChange={handleDateChange} dateFormat="EEE MMM d, yyyy" />
+        {hasTimeFilter && (
+          <div class="data-time-filter">
+            <span>
+              {format(start, 'HH:mm')} – {format(end, 'HH:mm')}
+            </span>
+            <button type="button" onClick={clearTimeFilter} title="Clear time filter">
+              &times;
+            </button>
+          </div>
+        )}
         <div class="data-type-filters">
           {ALL_TYPES.map((t) => (
             <button
@@ -378,7 +402,9 @@ export const Data = () => {
 
         {!isLoading && !isFetching && !isError && (
           <div class="data-list">
-            {allItems.length === 0 && <p class="data-status">No data for this day</p>}
+            {allItems.length === 0 && (
+              <p class="data-status">No data for this {hasTimeFilter ? 'time range' : 'day'}</p>
+            )}
             {allItems.map((item, i) => {
               const El = item.href ? 'a' : 'div'
               return (

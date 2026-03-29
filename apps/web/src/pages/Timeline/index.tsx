@@ -2420,10 +2420,31 @@ const mergeSmallItems = (
       const mergedStart = items.reduce((min, i) => (i.start < min ? i.start : min), items[0]!.start)
       const mergedEnd = items.reduce((max, i) => (i.end > max ? i.end : max), items[0]!.end)
       const first = items[0]!
+      // Build a Data page link showing only the relevant type for this time range
+      const columnToDataType: Partial<Record<Column, string>> = {
+        Activity: 'activity',
+        Exercise: 'activity',
+        Location: 'location',
+        Music: 'music',
+        'Screen Time': 'screentime',
+        'Sleep / Rest': 'activity',
+        'Tags / Events': 'tag',
+      }
+      const dataType = columnToDataType[first.column]
+      const allDataTypes = ['activity', 'tag', 'location', 'music', 'meal', 'report', 'screentime']
+      const hideTypes = dataType ? allDataTypes.filter((t) => t !== dataType) : []
+      const dataParams = new URLSearchParams({
+        date: formatISO(mergedStart, { representation: 'date' }),
+        from: mergedStart.toISOString(),
+        to: mergedEnd.toISOString(),
+      })
+      if (hideTypes.length > 0) dataParams.set('hide', hideTypes.join(','))
+
       const merged: ChartItem = {
         color: first.color,
         column: first.column,
         end: mergedEnd,
+        href: `/data?${dataParams}`,
         isPoint: false,
         label: `${items.length} items`,
         start: mergedStart,

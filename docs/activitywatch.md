@@ -34,6 +34,12 @@ Each record contains:
 
 Window titles are available in the raw ActivityWatch data but are not currently stored (to avoid sensitive information leaking into the database). Category and productivity scores are not assigned yet — see the [categorization follow-up](https://github.com/fiddur/aurboda/issues/218).
 
+### AFK Filtering
+
+The push agent automatically filters out screentime events that fall entirely within an AFK (away from keyboard) period, as reported by `aw-watcher-afk`. This prevents idle time (e.g. overnight screen-on) from inflating screentime totals.
+
+Events that only partially overlap with an AFK period are kept (conservative approach). If `aw-watcher-afk` is not running, no filtering is applied.
+
 ## Admin Setup
 
 No server-side configuration is needed. Each user sets up their own push agent with their own API token.
@@ -92,13 +98,23 @@ else
 fi
 END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# Find the aw-watcher-window bucket for this host
-BUCKET_ID=$(curl -sf "${AW_URL}/api/0/buckets/" \
-  | python3 -c "
+# Find the aw-watcher-window and aw-watcher-afk buckets for this host
+BUCKETS_JSON=$(curl -sf "${AW_URL}/api/0/buckets/" || true)
+
+BUCKET_ID=$(echo "$BUCKETS_JSON" | python3 -c "
 import sys, json
 buckets = json.load(sys.stdin)
 for bid, b in buckets.items():
     if b.get('type') == 'currentwindow':
+        print(bid)
+        break
+" || true)
+
+AFK_BUCKET_ID=$(echo "$BUCKETS_JSON" | python3 -c "
+import sys, json
+buckets = json.load(sys.stdin)
+for bid, b in buckets.items():
+    if b.get('type') == 'afkstatus':
         print(bid)
         break
 " || true)
@@ -108,9 +124,16 @@ if [[ -z "$BUCKET_ID" ]]; then
   exit 0
 fi
 
-# Fetch events
+# Fetch window events
 EVENTS=$(curl -sf \
   "${AW_URL}/api/0/buckets/${BUCKET_ID}/events?start=${START_TIME}&end=${END_TIME}&limit=10000")
+
+# Fetch AFK events (used to filter out idle screentime)
+AFK_EVENTS="[]"
+if [[ -n "$AFK_BUCKET_ID" ]]; then
+  AFK_EVENTS=$(curl -sf \
+    "${AW_URL}/api/0/buckets/${AFK_BUCKET_ID}/events?start=${START_TIME}&end=${END_TIME}&limit=10000" || echo "[]")
+fi
 
 EVENT_COUNT=$(echo "$EVENTS" | python3 -c "import sys, json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
 
@@ -120,16 +143,47 @@ if [[ "$EVENT_COUNT" -eq 0 ]]; then
   exit 0
 fi
 
-echo "Pushing ${EVENT_COUNT} events (${START_TIME} → ${END_TIME}) as device '${DEVICE_NAME}'"
+echo "Found ${EVENT_COUNT} events (${START_TIME} → ${END_TIME}) for device '${DEVICE_NAME}'"
 
-# Transform and push
-PAYLOAD=$(echo "$EVENTS" | python3 -c "
+# Transform, filter AFK, and push
+PAYLOAD=$(python3 -c "
 import sys, json
-events = json.load(sys.stdin)
+from datetime import datetime, timedelta, timezone
+
+events = json.loads(sys.argv[1])
+afk_events = json.loads(sys.argv[2])
+device_name = sys.argv[3]
+
+def parse_ts(ts):
+    # Handle both 'Z' suffix and '+00:00' offset
+    ts = ts.replace('Z', '+00:00')
+    return datetime.fromisoformat(ts)
+
+# Build list of AFK periods
+afk_periods = []
+for ae in afk_events:
+    if ae.get('data', {}).get('status') == 'afk':
+        start = parse_ts(ae['timestamp'])
+        end = start + timedelta(seconds=ae['duration'])
+        afk_periods.append((start, end))
+
+def is_during_afk(evt_start, evt_end):
+    \"\"\"Check if the event falls entirely within an AFK period.\"\"\"
+    for afk_start, afk_end in afk_periods:
+        if evt_start >= afk_start and evt_end <= afk_end:
+            return True
+    return False
+
 transformed = []
+filtered_count = 0
 for e in events:
     app = e.get('data', {}).get('app', '')
     if not app:
+        continue
+    evt_start = parse_ts(e['timestamp'])
+    evt_end = evt_start + timedelta(seconds=e['duration'])
+    if afk_periods and is_during_afk(evt_start, evt_end):
+        filtered_count += 1
         continue
     transformed.append({
         'timestamp': e['timestamp'],
@@ -137,8 +191,22 @@ for e in events:
         'app': app,
         'title': e.get('data', {}).get('title', ''),
     })
-print(json.dumps({'device_name': '$(echo $DEVICE_NAME)', 'events': transformed}))
-")
+
+if filtered_count > 0:
+    print(f'Filtered {filtered_count} AFK events', file=sys.stderr)
+
+print(json.dumps({'device_name': device_name, 'events': transformed}))
+" "$EVENTS" "$AFK_EVENTS" "$DEVICE_NAME")
+
+PUSH_COUNT=$(echo "$PAYLOAD" | python3 -c "import sys, json; print(len(json.load(sys.stdin).get('events', [])))" 2>/dev/null || echo 0)
+
+if [[ "$PUSH_COUNT" -eq 0 ]]; then
+  echo "All events were AFK — nothing to push"
+  echo "$END_TIME" > "$STATE_FILE"
+  exit 0
+fi
+
+echo "Pushing ${PUSH_COUNT} events (${EVENT_COUNT} total, $((EVENT_COUNT - PUSH_COUNT)) filtered as AFK)"
 
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST "${AURBODA_URL}/sync/activitywatch" \
