@@ -1,6 +1,7 @@
 import { metricUnits } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
+import { GoalsSettings } from '../../components/GoalsSettings'
 import { fetchGoalsProgress, fetchUserSettings, type GoalProgress } from '../../state/api'
 import { auth } from '../../state/auth'
 import { metricLabels } from '../../utils/metricLabels'
@@ -152,9 +153,7 @@ export function Goals() {
     return (
       <div class="goals-page">
         <h1>Goals</h1>
-        <p class="no-goals">
-          No goals set. Visit <a href="/settings">Settings</a> to create goals.
-        </p>
+        <GoalsSettings goals={goals} />
       </div>
     )
   }
@@ -194,9 +193,10 @@ export function Goals() {
           <>Rolling {goals[0]?.window ?? '7d'} window from today.</>
         ) : (
           <>Rolling windows from today.</>
-        )}{' '}
-        <a href="/settings">Edit goals</a>
+        )}
       </p>
+
+      <GoalsSettings goals={goals} />
     </div>
   )
 }
