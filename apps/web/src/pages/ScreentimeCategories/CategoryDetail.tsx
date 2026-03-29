@@ -9,7 +9,7 @@ import type { ScreentimeCategory } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
-import { useCallback, useState } from 'preact/hooks'
+import { useCallback, useEffect, useState } from 'preact/hooks'
 
 import { IconInput } from '../../components/IconInput'
 import {
@@ -1016,6 +1016,9 @@ export function CategoryDetail() {
     queryClient.invalidateQueries({ queryKey: ['screentime-categories'] })
     queryClient.invalidateQueries({ queryKey: ['productivity-apps'] })
   }, [queryClient, categoryId])
+
+  // Invalidate parent list when leaving so it shows fresh data
+  useEffect(() => () => void invalidateAll(), [invalidateAll])
 
   const invalidateIcons = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['userSettings'] })
