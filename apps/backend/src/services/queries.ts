@@ -719,6 +719,7 @@ export async function getDailySummary(
     ouraMetrics,
     dayNotes,
     dayMeals,
+    stepsAggregate,
   ] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
@@ -735,6 +736,7 @@ export async function getDailySummary(
     ),
     getNotesForTimeRange(user, start, end),
     getMeals(user, { start, end }),
+    getDailyAggregateValue(user, 'steps', date),
   ])
 
   // Calculate heart rate stats
@@ -750,7 +752,6 @@ export async function getDailySummary(
       : null
 
   // Get steps - prefer aggregate (deduplicated) over summing raw records
-  const stepsAggregate = await getDailyAggregateValue(user, 'steps', date)
   const totalSteps =
     stepsAggregate !== null ? stepsAggregate : stepsData.reduce((sum, [, value]) => sum + value, 0)
 
@@ -795,36 +796,34 @@ export async function getDailySummary(
   // Get user's HR zones for exercise session HR zone calculation
   const { zones: hrZones } = await getEffectiveHrZones(user)
 
-  // Compute HR zones for exercise sessions
-  const exerciseSessionsWithHrZones: SessionSummary[] = await Promise.all(
-    exerciseSessions.map(async (s) => {
-      // Resolve human-readable exercise type name from numeric Health Connect ID
-      const dataObj = s.data as Record<string, unknown> | undefined
-      const exerciseTypeCode = dataObj?.exerciseType
-      const exerciseType =
-        typeof exerciseTypeCode === 'number' ? getExerciseTypeName(exerciseTypeCode) : undefined
+  // Compute HR zones for exercise sessions (filter already-fetched HR data in memory)
+  const exerciseSessionsWithHrZones: SessionSummary[] = exerciseSessions.map((s) => {
+    // Resolve human-readable exercise type name from numeric Health Connect ID
+    const dataObj = s.data as Record<string, unknown> | undefined
+    const exerciseTypeCode = dataObj?.exerciseType
+    const exerciseType =
+      typeof exerciseTypeCode === 'number' ? getExerciseTypeName(exerciseTypeCode) : undefined
 
-      const sessionSummary: SessionSummary = {
-        duration: s.end_time
-          ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)
-          : undefined,
-        end_time: s.end_time?.toISOString(),
-        exercise_type: exerciseType,
-        start_time: s.start_time.toISOString(),
-        title: s.title,
+    const sessionSummary: SessionSummary = {
+      duration: s.end_time
+        ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)
+        : undefined,
+      end_time: s.end_time?.toISOString(),
+      exercise_type: exerciseType,
+      start_time: s.start_time.toISOString(),
+      title: s.title,
+    }
+
+    // Only compute HR zones for sessions with end time
+    if (s.end_time) {
+      const sessionHrData = heartRateData.filter(([time]) => time >= s.start_time && time <= s.end_time!)
+      if (sessionHrData.length > 0) {
+        sessionSummary.hr_zone_secs = computeHrZoneSecs(sessionHrData, hrZones)
       }
+    }
 
-      // Only compute HR zones for sessions with end time
-      if (s.end_time) {
-        const sessionHrData = await getTimeSeries(user, 'heart_rate', s.start_time, s.end_time)
-        if (sessionHrData.length > 0) {
-          sessionSummary.hr_zone_secs = computeHrZoneSecs(sessionHrData, hrZones)
-        }
-      }
-
-      return sessionSummary
-    }),
-  )
+    return sessionSummary
+  })
 
   // Fetch tag comments
   const tagIds = tags.map((t) => t.id).filter((id): id is string => id !== undefined)
@@ -1035,10 +1034,14 @@ export async function getPeriodSummary(
   // Calculate days in period for completeness calculation
   const daysInPeriod = Math.ceil(periodMs / (1000 * 60 * 60 * 24))
 
+  // Pre-index lookups for O(1) access instead of O(n) find/filter per metric
+  const prevStatsMap = new Map(previousStats.map((s) => [s.metric, s]))
+  const dailyByMetric = Map.groupBy(dailyAggregates, (d) => d.metric)
+
   // Build response with trends and completeness for regular metrics
   const metricsWithTrends: PeriodMetricStats[] = currentStats.map((stat) => {
-    const prevStat = previousStats.find((p) => p.metric === stat.metric)
-    const dailyData = dailyAggregates.filter((d) => d.metric === stat.metric)
+    const prevStat = prevStatsMap.get(stat.metric)
+    const dailyData = dailyByMetric.get(stat.metric) ?? []
 
     // Calculate trend using linear regression on daily averages
     let trend: number | null = null
