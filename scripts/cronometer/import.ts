@@ -8,10 +8,10 @@
  * Uses PUT /meals (idempotent upsert) so re-running is safe.
  */
 
-import { randomUUID } from 'crypto'
-import { readFileSync } from 'fs'
-import { homedir } from 'os'
-import { resolve } from 'path'
+import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { resolve } from 'node:path'
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
@@ -91,8 +91,8 @@ const parseNutrientColumn = (header: string): { key: string; unit: string } | nu
 
   // Normalize name to snake_case key
   const key = name
-    .replace(/[()]/g, '')
-    .replace(/[\s-]+/g, '_')
+    .replaceAll(/[()]/g, '')
+    .replaceAll(/[\s-]+/g, '_')
     .toLowerCase()
 
   return { key, unit: unit.toLowerCase() }
