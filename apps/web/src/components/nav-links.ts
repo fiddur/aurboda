@@ -1,7 +1,6 @@
 export const NAV_LINKS = [
   { href: '/', label: 'Home', icon: '🏠' },
   { href: '/goals', label: 'Goals', icon: '🎯' },
-  { href: '/hr-zones', label: 'HR Zones', icon: '💓' },
   { href: '/timeline', label: 'Timeline', icon: '📅' },
   { href: '/data', label: 'Data', icon: '📊' },
   { href: '/meals', label: 'Meals', icon: '🍽' },

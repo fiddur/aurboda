@@ -7,6 +7,7 @@ import type { DashboardWidget } from '@aurboda/api-spec'
 import { ActivitySummaryWidget } from './ActivitySummaryWidget'
 import { BarChartWidget } from './BarChartWidget'
 import { CorrelationWidget } from './CorrelationWidget'
+import { HrZonesWidget } from './HrZonesWidget'
 import { MetricCardWidget } from './MetricCardWidget'
 import { QuickLinkWidget } from './QuickLinkWidget'
 import { SparklineCardWidget } from './SparklineCardWidget'
@@ -35,6 +36,8 @@ export function WidgetRenderer({ widget, isEditing, onRemove }: WidgetRendererPr
         return <ActivitySummaryWidget config={widget.config} />
       case 'quick_link':
         return <QuickLinkWidget config={widget.config} />
+      case 'hr_zones':
+        return <HrZonesWidget config={widget.config} />
       default:
         return <div class="widget-unknown">Unknown widget type</div>
     }
