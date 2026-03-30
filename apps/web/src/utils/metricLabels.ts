@@ -31,6 +31,13 @@ export const metricLabels: Record<string, string> = {
   vo2_max: 'VO2 Max',
   weight: 'Weight',
   zone2_weekly: 'Zone 2 (Weekly)',
+  // Garmin metrics
+  stress_level: 'Stress Level',
+  body_battery: 'Body Battery',
+  training_readiness: 'Training Readiness',
+  intensity_minutes: 'Intensity Minutes',
+  respiratory_rate: 'Respiratory Rate',
+  cardiovascular_age: 'Cardiovascular Age',
 }
 
 /**
