@@ -33,6 +33,7 @@ export const HR_COLOR = '#ef4444'
 export const HRV_COLOR = '#10b981'
 export const STEPS_COLOR = '#9ca3af'
 export const CALORIES_COLOR = '#f59e0b'
+export const STRESS_COLOR = '#f97316'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ export interface MetricsTrackConfig {
   /** Visibility toggles. */
   showHR: boolean
   showHRV: boolean
+  showStress: boolean
   showSteps: boolean
   showCalories: boolean
   /** Tooltip callback — receives HTML content and mouse event. */
@@ -300,6 +302,7 @@ const buildMetricsTooltipHtml = (
   bucket: MetricBucketParsed,
   showHR: boolean,
   showHRV: boolean,
+  showStress: boolean,
   showSteps: boolean,
   showCalories: boolean,
   trainingLoadPoints?: TrainingLoadPoint[],
@@ -329,6 +332,13 @@ const buildMetricsTooltipHtml = (
     const hrv = bucket.metrics.hrv_rmssd
     if (hrv) {
       html += `<div class="tooltip-detail" style="color:${HRV_COLOR}">♥ HRV: ${Math.round(hrv.avg)} ms (${Math.round(hrv.min)}–${Math.round(hrv.max)})</div>`
+      hasContent = true
+    }
+  }
+  if (showStress) {
+    const stress = bucket.metrics.stress_level
+    if (stress) {
+      html += `<div class="tooltip-detail" style="color:${STRESS_COLOR}">😰 Stress: ${Math.round(stress.avg)} (${Math.round(stress.min)}–${Math.round(stress.max)})</div>`
       hasContent = true
     }
   }
@@ -418,6 +428,7 @@ const getMetricMax = (buckets: MetricBucketParsed[], metricName: string, fallbac
 export interface MetricsYScales {
   yHr: d3.ScaleLinear<number, number>
   yHrv: d3.ScaleLinear<number, number>
+  yStress: d3.ScaleLinear<number, number>
   ySteps: d3.ScaleLinear<number, number>
   yCal: d3.ScaleLinear<number, number>
 }
@@ -430,6 +441,9 @@ export const computeYScales = (
 ): MetricsYScales => {
   // HR: fixed domain
   const yHr = d3.scaleLinear().domain([40, 200]).range([trackBottom, trackY])
+
+  // Stress: fixed domain 0–100
+  const yStress = d3.scaleLinear().domain([0, 100]).range([trackBottom, trackY])
 
   // HRV: dynamic domain based on data
   let hrvMin = Infinity
@@ -464,7 +478,7 @@ export const computeYScales = (
     .domain([0, calMax * 1.1])
     .range([trackBottom, trackY])
 
-  return { yCal, yHr, yHrv, ySteps }
+  return { yCal, yHr, yHrv, ySteps, yStress }
 }
 
 // ── Crosshair helpers ─────────────────────────────────────────────────────────
@@ -500,6 +514,7 @@ const buildTooltipBucket = (
       ...barBucket.metrics,
       ...(lineBucket.metrics.heart_rate && { heart_rate: lineBucket.metrics.heart_rate }),
       ...(lineBucket.metrics.hrv_rmssd && { hrv_rmssd: lineBucket.metrics.hrv_rmssd }),
+      ...(lineBucket.metrics.stress_level && { stress_level: lineBucket.metrics.stress_level }),
     },
   }
 }
@@ -516,6 +531,7 @@ const drawCrosshairOverlay = (
   chartWidth: number,
   showHR: boolean,
   showHRV: boolean,
+  showStress: boolean,
   showSteps: boolean,
   showCalories: boolean,
   showTooltipHtml: (event: MouseEvent, html: string) => void,
@@ -569,6 +585,7 @@ const drawCrosshairOverlay = (
           tooltipBucket,
           showHR,
           showHRV,
+          showStress,
           showSteps,
           showCalories,
           trainingLoadPoints,
@@ -628,11 +645,12 @@ const drawBarAndBandCharts = (
   showCalories: boolean,
   showHR: boolean,
   showHRV: boolean,
+  showStress: boolean,
   barLayout?: BarLayoutResult,
   stepsSlotId?: string,
   caloriesSlotId?: string,
 ): void => {
-  const { yCal, yHr, yHrv, ySteps } = yScales
+  const { yCal, yHr, yHrv, ySteps, yStress } = yScales
 
   // Draw bars first (behind lines), using coarser bar buckets
   if (showSteps) {
@@ -673,6 +691,10 @@ const drawBarAndBandCharts = (
     const hrvBand = extractBandData(lineBuckets, 'hrv_rmssd')
     if (hrvBand.length > 1) drawBandChart(chartGroup, hrvBand, xScale, yHrv, HRV_COLOR)
   }
+  if (showStress) {
+    const stressBand = extractBandData(lineBuckets, 'stress_level')
+    if (stressBand.length > 1) drawBandChart(chartGroup, stressBand, xScale, yStress, STRESS_COLOR)
+  }
 }
 
 /**
@@ -694,13 +716,14 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
     yScales,
     showHR,
     showHRV,
+    showStress,
     showSteps,
     showCalories,
     showTooltipHtml,
     hideTooltip,
   } = config
 
-  const hasMetrics = showHR || showHRV || showSteps || showCalories
+  const hasMetrics = showHR || showHRV || showStress || showSteps || showCalories
   const hasTrainingLoad = config.trainingLoadPoints && config.trainingLoadPoints.length > 0
   const hasScreentime = config.screentimeBuckets && config.screentimeBuckets.length > 0
   if (rawBuckets.length === 0 && !hasTrainingLoad && !hasScreentime) return
@@ -729,6 +752,7 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
     showCalories,
     showHR,
     showHRV,
+    showStress,
     config.barLayout,
     config.stepsSlotId,
     config.caloriesSlotId,
@@ -745,6 +769,7 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
     chartWidth,
     showHR,
     showHRV,
+    showStress,
     showSteps,
     showCalories,
     showTooltipHtml,

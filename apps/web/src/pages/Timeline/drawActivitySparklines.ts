@@ -12,15 +12,19 @@ interface ParsedBucket {
   start: Date
   hr?: number
   hrv?: number
+  stress?: number
 }
 
 const HR_COLOR = '#ef4444' // red
 const HRV_COLOR = '#14b8a6' // teal
+const STRESS_COLOR = '#f97316' // orange
 
 /** HR domain range for sparklines (bpm) */
 const HR_RANGE: [number, number] = [40, 200]
 /** HRV domain range for sparklines (ms) */
 const HRV_RANGE: [number, number] = [0, 150]
+/** Stress domain range for sparklines (Garmin 0–100) */
+const STRESS_RANGE: [number, number] = [0, 100]
 
 /** Minimum block height in pixels before we attempt to draw sparklines. */
 const MIN_SPARKLINE_HEIGHT = 40
@@ -34,6 +38,7 @@ export const parseBucketedData = (data: QueryMetricsBucketedResponse | undefined
     hr: b.metrics.heart_rate?.avg,
     hrv: b.metrics.hrv_rmssd?.avg,
     start: new Date(b.start),
+    stress: b.metrics.stress_level?.avg,
   }))
 }
 
@@ -49,9 +54,10 @@ export const drawActivitySparklines = (
   yScale: d3.ScaleTime<number, number>,
   showHR: boolean,
   showHRV: boolean,
+  showStress: boolean,
   getItemRect: (item: ChartItem) => { x: number; width: number } | undefined,
 ) => {
-  if (buckets.length === 0 || (!showHR && !showHRV)) return
+  if (buckets.length === 0 || (!showHR && !showHRV && !showStress)) return
 
   const activityItems = items.filter((item) => item.activity_type && !item.isPoint)
 
@@ -113,6 +119,21 @@ export const drawActivitySparklines = (
           rect.width,
           HRV_COLOR,
           HRV_RANGE,
+        )
+      }
+    }
+
+    if (showStress) {
+      const stressPoints = activityBuckets.filter((b) => b.stress !== undefined)
+      if (stressPoints.length >= 2) {
+        drawSparkline(
+          sparkGroup,
+          stressPoints.map((b) => ({ time: b.start, value: b.stress! })),
+          yScale,
+          rect.x,
+          rect.width,
+          STRESS_COLOR,
+          STRESS_RANGE,
         )
       }
     }

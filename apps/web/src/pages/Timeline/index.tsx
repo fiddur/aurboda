@@ -43,6 +43,7 @@ import {
   HR_COLOR,
   HRV_COLOR,
   STEPS_COLOR,
+  STRESS_COLOR,
 } from './drawMetricsTrack'
 import {
   buildMusicTooltipHtml,
@@ -89,6 +90,7 @@ type LegendCategory =
   // Metrics sub-toggles
   | 'hr'
   | 'hrv'
+  | 'stress'
   | 'steps' // horizontal only
   | 'calories' // horizontal only
   | 'training_load' // horizontal only
@@ -1321,7 +1323,8 @@ export const Timeline = () => {
 
       const showSparkHR = !hiddenCategories.has('hr')
       const showSparkHRV = !hiddenCategories.has('hrv')
-      if (sparklineBuckets.length > 0 && (showSparkHR || showSparkHRV)) {
+      const showSparkStress = !hiddenCategories.has('stress')
+      if (sparklineBuckets.length > 0 && (showSparkHR || showSparkHRV || showSparkStress)) {
         const getItemRect = (item: ChartItem): { x: number; width: number } | undefined => {
           for (let ci = 0; ci < columnData.length; ci++) {
             const cd = columnData[ci]!
@@ -1345,6 +1348,7 @@ export const Timeline = () => {
           currentYScale,
           showSparkHR,
           showSparkHRV,
+          showSparkStress,
           getItemRect,
         )
       }
@@ -1793,6 +1797,7 @@ export const Timeline = () => {
       // ── Metrics track (HR/HRV band charts + steps/calories bars + combined tooltip) ──
       const showHR = !hiddenCategories.has('hr') && showMetricsTrack
       const showHRV = !hiddenCategories.has('hrv') && showMetricsTrack
+      const showStress = !hiddenCategories.has('stress') && showMetricsTrack
       const showSteps = !hiddenCategories.has('steps') && showMetricsTrack
       const showCalories = !hiddenCategories.has('calories') && showMetricsTrack
       const showTL = !hiddenCategories.has('training_load') && showMetricsTrack
@@ -1822,6 +1827,7 @@ export const Timeline = () => {
           showHR,
           showHRV,
           showSteps,
+          showStress,
           showTooltipHtml: (event: MouseEvent, html: string) => {
             if (!tooltipRef.current || !containerRef.current) return
             const tip = tooltipRef.current
@@ -2302,6 +2308,7 @@ export const Timeline = () => {
               {[
                 { cat: 'hr' as LegendCategory, color: HR_COLOR, label: 'HR' },
                 { cat: 'hrv' as LegendCategory, color: HRV_COLOR, label: 'HRV' },
+                { cat: 'stress' as LegendCategory, color: STRESS_COLOR, label: 'Stress' },
                 ...(orientation === 'horizontal'
                   ? [
                       { cat: 'steps' as LegendCategory, color: STEPS_COLOR, label: 'Steps' },
