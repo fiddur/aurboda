@@ -352,7 +352,7 @@ export const migrateSchema = async (user: string) => {
   if (existingTableNames.has('tags')) {
     await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_key VARCHAR(255)`)
     await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
-    await migrateTagDefinitionFk(db)
+    await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_definition_id UUID`)
   }
   if (existingTableNames.has('activities')) {
     await query(db, `ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
@@ -420,6 +420,9 @@ export const migrateSchema = async (user: string) => {
       await query(db, createTableStatements[key])
     }
   }
+
+  // Add FK constraint for tag_definition_id (after tag_definitions table is created)
+  await migrateTagDefinitionFk(db)
 
   // Backfill tag_key for existing Oura tags
   if (existingTableNames.has('tags')) {
