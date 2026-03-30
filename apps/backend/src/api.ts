@@ -50,6 +50,7 @@ import { createOwnTracksRouter } from './owntracks.ts'
 import { syncRescueTimeData } from './rescuetime-sync.ts'
 import { createActivitiesRouter } from './routes/activities-router.ts'
 import { createAdminRouter } from './routes/admin-router.ts'
+import { createAuditLogRouter } from './routes/audit-log-router.ts'
 import { createChartDataRouter } from './routes/chart-data-router.ts'
 import { createCorrelationsRouter } from './routes/correlations-router.ts'
 import { createDashboardRouter } from './routes/dashboard-router.ts'
@@ -66,6 +67,7 @@ import { createSettingsRouter } from './routes/settings-router.ts'
 import { createTagsRouter } from './routes/tags-router.ts'
 import { createTrainingLoadRouter } from './routes/training-load-router.ts'
 import { createTrendsRouter } from './routes/trends-router.ts'
+import { pruneAuditLog } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
@@ -302,6 +304,12 @@ const main = async () => {
 
     const token = auth.createToken(user)
     const isAdmin = await centralDb.isAdmin(user)
+
+    // Prune old audit log entries in the background
+    centralDb
+      .getAuditLogRetentionDays()
+      .then((days) => pruneAuditLog(user, days))
+      .catch(() => {})
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ is_admin: isAdmin, refresh: token, token }))
@@ -551,6 +559,7 @@ const main = async () => {
   httpd.use(createActivitiesRouter(authMiddleware, syncProvider))
   httpd.use('/locations', createLocationsRouter(authMiddleware))
   httpd.use(createSettingsRouter(authMiddleware))
+  httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))

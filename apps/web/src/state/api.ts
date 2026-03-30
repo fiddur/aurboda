@@ -3,6 +3,7 @@ import type {
   ActivitiesQuery,
   ActivitiesResponse,
   ActivityCorrelation,
+  AuditLogResponse,
   ActivityImpactData,
   ActivityImpactQuery,
   ActivityImpactResponse,
@@ -1753,4 +1754,25 @@ export const fetchChartData = async (params: FetchChartDataParams): Promise<Char
   })
 
   return response.data.data?.buckets ?? []
+}
+
+// ============================================================================
+// Audit Log
+// ============================================================================
+
+export interface FetchAuditLogParams {
+  level?: string
+  category?: string
+  since?: string
+  limit?: number
+  offset?: number
+}
+
+export const fetchAuditLog = async (params: FetchAuditLogParams = {}): Promise<AuditLogResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<AuditLogResponse>(`${API_URL}/user/audit-log`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+  return response.data
 }

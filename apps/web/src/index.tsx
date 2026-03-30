@@ -9,6 +9,7 @@ import { Sidebar } from './components/Sidebar.jsx'
 import { NotFound } from './pages/_404.jsx'
 import { AddData } from './pages/AddData/index.jsx'
 import { AdminSettings } from './pages/AdminSettings/index.jsx'
+import { AuditLog } from './pages/AuditLog/index.jsx'
 import { Chart } from './pages/Chart/index.jsx'
 import { Correlations } from './pages/Correlations/index.jsx'
 import { Data } from './pages/Data/index.jsx'
@@ -96,6 +97,7 @@ export function App() {
               <Route path="/screentime-categories/:id" component={CategoryDetail} />
               <Route path="/screentime-categories" component={ScreentimeCategories} />
               <Route path="/settings" component={Settings} />
+              <Route path="/audit-log" component={AuditLog} />
               <Route path="/admin" component={AdminSettings} />
               <Route path="/help" component={DataSources} />
               <Route default component={NotFound} />
