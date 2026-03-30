@@ -167,13 +167,6 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       const { data } = req.body
       const user = req.user!
 
-      const metrics = [...new Set(data.map((a) => a.metric))]
-      const dates = [...new Set(data.map((a) => a.date))].sort()
-      console.log(
-        `📊 Daily aggregates received: ${data.length} entries for [${metrics.join(', ')}] ` +
-          `dates ${dates[0]}..${dates[dates.length - 1]}`,
-      )
-
       let deviceTimezone: string | undefined
       for (const aggregate of data) {
         const tz = await deps.processDailyAggregate(user, aggregate)

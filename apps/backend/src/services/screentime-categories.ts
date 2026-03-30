@@ -26,6 +26,7 @@ import {
   updateScreentimeCategory,
   upsertScreentimeCategory,
 } from '../db/index.ts'
+import { auditError } from './audit-log.ts'
 
 // ============================================================================
 // Category Resolution
@@ -183,7 +184,7 @@ export const createCategory = async (user: string, input: ScreentimeCategoryInpu
   // Fire-and-forget recategorization (only if the new category has a rule)
   if (input.rule_type === 'regex' && input.rule_regex) {
     recategorizeAll(user).catch((err) => {
-      console.error(`Recategorization failed for user ${user}:`, err)
+      auditError(user, 'data', 'Recategorization failed', { error: String(err) })
     })
   }
 
@@ -201,7 +202,7 @@ export const modifyCategory = async (user: string, id: string, input: Partial<Sc
     input.name !== undefined
   ) {
     recategorizeAll(user).catch((err) => {
-      console.error(`Recategorization failed for user ${user}:`, err)
+      auditError(user, 'data', 'Recategorization failed', { error: String(err) })
     })
   }
 
@@ -213,7 +214,7 @@ export const removeCategory = async (user: string, id: string) => {
 
   if (count > 0) {
     recategorizeAll(user).catch((err) => {
-      console.error(`Recategorization failed for user ${user}:`, err)
+      auditError(user, 'data', 'Recategorization failed', { error: String(err) })
     })
   }
 
@@ -228,7 +229,7 @@ export const upsertCategory = async (user: string, id: string, input: Screentime
   // Recategorize if the category has a rule
   if (input.rule_type === 'regex' && input.rule_regex) {
     recategorizeAll(user).catch((err) => {
-      console.error(`Recategorization failed for user ${user}:`, err)
+      auditError(user, 'data', 'Recategorization failed', { error: String(err) })
     })
   }
 
@@ -245,7 +246,7 @@ export const moveCategoryToParent = async (user: string, id: string, newParentId
 
   if (result.updated > 0) {
     recategorizeAll(user).catch((err) => {
-      console.error(`Recategorization after move failed for user ${user}:`, err)
+      auditError(user, 'data', 'Recategorization after move failed', { error: String(err) })
     })
   }
 
@@ -304,7 +305,7 @@ export const importFromActivityWatch = async (
 
   // Fire-and-forget recategorization
   recategorizeAll(user).catch((err) => {
-    console.error(`Recategorization after AW import failed for user ${user}:`, err)
+    auditError(user, 'data', 'Recategorization after AW import failed', { error: String(err) })
   })
 
   return result

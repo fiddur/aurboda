@@ -35,6 +35,7 @@ import {
   isValidMetricOrCustom,
   metricToHealthConnectType,
 } from '../schema.ts'
+import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 
@@ -173,7 +174,7 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
       // Sync inherited times on any notes attached to this tag
       if (existingTag.id) {
         await syncNoteTimesForEntity(user, 'tag', existingTag.id, existingTag.start_time, newEndTime).catch(
-          (err) => console.error('Failed to sync note times for tag:', err),
+          (err) => auditError(user, 'data', 'Failed to sync note times for tag', { error: String(err) }),
         )
       }
 
@@ -325,7 +326,7 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
       }
     }
   } catch (err) {
-    console.error('Failed to enqueue outbound sync for metric:', err)
+    auditError(user, 'data', 'Failed to enqueue outbound sync for metric', { error: String(err) })
   }
 
   const storedTime = input.time.toISOString()
@@ -457,7 +458,7 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
       }
     }
   } catch (err) {
-    console.error('Failed to enqueue outbound sync for activity:', err)
+    auditError(user, 'data', 'Failed to enqueue outbound sync for activity', { error: String(err) })
   }
 
   return {
@@ -521,7 +522,7 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
       }
     }
   } catch (err) {
-    console.error('Failed to enqueue outbound sync for activity delete:', err)
+    auditError(user, 'data', 'Failed to enqueue outbound sync for activity delete', { error: String(err) })
   }
 
   return {
@@ -587,7 +588,7 @@ export async function updateActivity(
 
   // Sync inherited times on any notes attached to this activity (best-effort)
   syncNoteTimesForEntity(user, 'activity', id, updated.start_time, updated.end_time ?? undefined).catch(
-    (err) => console.error('Failed to sync note times for activity:', err),
+    (err) => auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }),
   )
 
   // Enqueue outbound sync if this is an aurboda-owned HC-syncable activity (best-effort)
@@ -613,7 +614,7 @@ export async function updateActivity(
       }
     }
   } catch (err) {
-    console.error('Failed to enqueue outbound sync for activity update:', err)
+    auditError(user, 'data', 'Failed to enqueue outbound sync for activity update', { error: String(err) })
   }
 
   return {

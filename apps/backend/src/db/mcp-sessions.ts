@@ -10,7 +10,6 @@ import { mapMcpSessionRow } from './row-mappers.ts'
  * Save an MCP session to the database.
  */
 export const saveMcpSession = async (user: string, sessionId: string): Promise<McpSessionRecord> => {
-  console.log(`[MCP-DB] saveMcpSession: saving session ${sessionId} for user ${user}`)
   const result = await query(
     user,
     `INSERT INTO mcp_sessions (session_id, username, created_at, last_activity)
@@ -20,7 +19,6 @@ export const saveMcpSession = async (user: string, sessionId: string): Promise<M
     [sessionId, user],
   )
 
-  console.log(`[MCP-DB] saveMcpSession: saved session ${sessionId}, result:`, result.rows[0])
   return mapMcpSessionRow(result.rows[0])
 }
 
@@ -28,7 +26,6 @@ export const saveMcpSession = async (user: string, sessionId: string): Promise<M
  * Get an MCP session by ID.
  */
 export const getMcpSession = async (user: string, sessionId: string): Promise<McpSessionRecord | null> => {
-  console.log(`[MCP-DB] getMcpSession: looking for session ${sessionId}`)
   const result = await query(
     user,
     `SELECT session_id, username, created_at, last_activity
@@ -37,12 +34,7 @@ export const getMcpSession = async (user: string, sessionId: string): Promise<Mc
     [sessionId],
   )
 
-  if (result.rows.length === 0) {
-    console.log(`[MCP-DB] getMcpSession: session ${sessionId} not found`)
-    return null
-  }
-
-  console.log(`[MCP-DB] getMcpSession: found session ${sessionId}:`, result.rows[0])
+  if (result.rows.length === 0) return null
   return mapMcpSessionRow(result.rows[0])
 }
 

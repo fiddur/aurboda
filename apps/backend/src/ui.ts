@@ -24,8 +24,6 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
   const tags = await oura.getTags(start, end, ouraToken, settings.tag_mappings)
   const meditations = await oura.getSessions(start, end, ouraToken)
 
-  console.log(tags)
-
   const placeColors: Record<string, string> = {
     Genki: 'darkgrey',
     Hökås: 'lightgreen',
@@ -153,9 +151,8 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
     .attr('d', line)
 
   // -- Tags
-  tags.forEach(({ start_time, end_time, tag }) => {
+  tags.forEach(({ start_time, end_time }) => {
     if (end_time) {
-      console.log('=====', tag, start_time, end_time)
       svg
         .append('rect')
         .attr('x', xScale(start_time))
@@ -167,7 +164,6 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
         .attr('stroke-dasharray', '4')
         .attr('opacity', 0.2)
     } else {
-      console.log('-----', start_time, tag)
       svg
         .append('line')
         .attr('x1', xScale(start_time))
