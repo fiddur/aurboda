@@ -38,6 +38,7 @@ import type {
   DashboardResponse,
   ExerciseTypeName,
   GarminSyncResponse,
+  GarminSyncStatusResponse,
   Goal,
   GoalProgress,
   GoalsProgressResponse,
@@ -56,6 +57,7 @@ import type {
   NamedLocation,
   NamedLocationsResponse,
   OuraSyncResponse,
+  OuraSyncStatusResponse,
   PeriodMetricStats,
   PeriodSummaryQuery,
   PeriodSummaryResponse,
@@ -603,6 +605,14 @@ export const syncOura = async (fullResync?: boolean): Promise<OuraSyncResponse> 
   return response.data
 }
 
+export const fetchOuraSyncStatus = async (): Promise<OuraSyncStatusResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<OuraSyncStatusResponse>(`${API_URL}/sync/oura/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
 // Garmin Connect auth + sync
 export const connectGarmin = async (
   email: string,
@@ -644,6 +654,14 @@ export const syncGarmin = async (fullResync?: boolean): Promise<GarminSyncRespon
     { full_resync: fullResync },
     { headers: { Authorization: `Bearer ${token}` } },
   )
+  return response.data
+}
+
+export const fetchGarminSyncStatus = async (): Promise<GarminSyncStatusResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<GarminSyncStatusResponse>(`${API_URL}/sync/garmin/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
   return response.data
 }
 

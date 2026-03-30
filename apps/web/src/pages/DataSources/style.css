@@ -432,6 +432,52 @@
   color: #f44336;
 }
 
+/* Sync status bar */
+.data-sources-page .sync-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+.data-sources-page .sync-status-time {
+  color: #6b7280;
+}
+
+.data-sources-page .sync-status-error {
+  color: #f44336;
+}
+
+.data-sources-page .sync-now-button {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  background: #673ab8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.data-sources-page .sync-now-button:hover:not(:disabled) {
+  background: #5e35b1;
+}
+
+.data-sources-page .sync-now-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.data-sources-page .sync-result.done {
+  color: #4caf50;
+}
+
+.data-sources-page .sync-result.error {
+  color: #f44336;
+}
+
 /* Garmin specific */
 .data-sources-page .garmin-connected-actions .connected-status {
   margin-bottom: 0.75rem;
@@ -721,6 +767,18 @@
     background: #2a2a2a;
     border-color: #555;
     color: #ddd;
+  }
+
+  .data-sources-page .sync-status-time {
+    color: #9ca3af;
+  }
+
+  .data-sources-page .sync-now-button {
+    background: #7c3aed;
+  }
+
+  .data-sources-page .sync-now-button:hover:not(:disabled) {
+    background: #6d28d9;
   }
 }
 
