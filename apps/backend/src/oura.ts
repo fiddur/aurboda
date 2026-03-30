@@ -57,7 +57,6 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
       `https://api.ouraring.com/v2/usercollection/${type}?start_date=${formatISO(start, { representation: 'date' })}&end_date=${formatISO(addDays(end, 1), { representation: 'date' })}`,
       { headers: { Authorization: `Bearer ${token}` } },
     )
-    console.log(type, start, end, response.data)
     return response.data.data
   }
 
@@ -75,7 +74,6 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
 
   return {
     async authCb(req: Request, res: Response) {
-      console.log(req.query)
       const { code, scope, state, error } = req.query as Record<string, string | undefined>
 
       if (error) {
@@ -98,7 +96,6 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
       tokenUrl.searchParams.append('redirect_uri', redirectUri)
 
       const response = await axios.post(tokenUrl.toString())
-      console.log(response.data)
 
       const { access_token, refresh_token, expires_in } = response.data
 
@@ -115,7 +112,6 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
         const personalInfo = await getPersonalInfo(access_token)
         if (personalInfo?.id) {
           await options.onUserAuthenticated(personalInfo.id, user)
-          console.log(`Stored Oura user mapping: ${personalInfo.id} -> ${user}`)
         }
       }
 
@@ -139,7 +135,6 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
       tokenUrl.searchParams.append('client_secret', secret)
 
       const response = await axios.post(tokenUrl.toString())
-      console.log(response.data)
       const { access_token, refresh_token, expires_in } = response.data
 
       await upsertOAuthToken(user, {

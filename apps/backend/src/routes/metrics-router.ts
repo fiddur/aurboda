@@ -38,6 +38,7 @@ import { type RequestHandler, Router } from 'express'
 
 import type { MetricType } from '../schema.ts'
 
+import { auditError, auditInfo } from '../services/audit-log.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
 import {
   addCustomMetric,
@@ -159,10 +160,10 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
         // Full recompute runs async — fire and forget
         computeAndStoreCaloriesAll(user).then(
           (result) =>
-            console.log(
-              `🔥 Async calorie recompute done for ${user}: ${result.points_stored} points across ${result.days_processed} days`,
-            ),
-          (error) => console.error(`🔥 Async calorie recompute failed for ${user}:`, error),
+            auditInfo(user, 'data', `Async calorie recompute done: ${result.points_stored} points`, {
+              days: result.days_processed,
+            }),
+          (error) => auditError(user, 'data', 'Async calorie recompute failed', { error: String(error) }),
         )
         return res.json({
           points_computed: 0,

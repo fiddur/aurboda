@@ -12,6 +12,7 @@ import type { GarminClient } from './garmin.ts'
 
 import { getSyncState, upsertSyncState } from './db/index.ts'
 import { type GarminDataType, garminDataTypes, processGarminData } from './garmin-process.ts'
+import { auditError } from './services/audit-log.ts'
 
 // ============================================================================
 // Constants
@@ -216,7 +217,10 @@ const fetchAndProcess = async (
   } catch (error) {
     // If a single day fails, log and continue (don't abort the whole sync)
     const message = error instanceof Error ? error.message : String(error)
-    console.error(`Garmin sync error for ${dataType} on ${date.toISOString().slice(0, 10)}:`, message)
+    auditError(user, 'sync', `Garmin sync error for ${dataType}`, {
+      date: date.toISOString().slice(0, 10),
+      error: message,
+    })
     return { error: message, records: 0 }
   }
 }

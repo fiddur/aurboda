@@ -67,7 +67,7 @@ import { createSettingsRouter } from './routes/settings-router.ts'
 import { createTagsRouter } from './routes/tags-router.ts'
 import { createTrainingLoadRouter } from './routes/training-load-router.ts'
 import { createTrendsRouter } from './routes/trends-router.ts'
-import { auditInfo, pruneAuditLog } from './services/audit-log.ts'
+import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
@@ -313,8 +313,7 @@ const main = async () => {
           // Run migrations for existing databases
           await migrateSchema(user)
         }
-      } catch (err) {
-        console.log(err)
+      } catch {
         return next(unauthorized)
       }
     } else return next(unauthorized)
@@ -462,7 +461,7 @@ const main = async () => {
         res.json({ success: true })
       }
     } catch (error) {
-      console.error(`🔑 Garmin login endpoint error for user=${user}:`, error)
+      auditError(user, 'auth', 'Garmin login endpoint error', { error: String(error) })
       const message = error instanceof Error ? error.message : 'Login failed'
       res.status(401).json({ error: message, success: false })
     }
@@ -481,7 +480,7 @@ const main = async () => {
       await garmin.verifyMfa(user, mfa_code)
       res.json({ success: true })
     } catch (error) {
-      console.error(`🔑 Garmin MFA endpoint error for user=${user}:`, error)
+      auditError(user, 'auth', 'Garmin MFA endpoint error', { error: String(error) })
       const message = error instanceof Error ? error.message : 'MFA verification failed'
       res.status(401).json({ error: message, success: false })
     }
