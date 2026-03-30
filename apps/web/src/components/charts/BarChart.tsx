@@ -27,6 +27,8 @@ interface ParsedBar {
 const buildBarDateFormat = (extent: [Date, Date]) => {
   const spanMs = extent[1].getTime() - extent[0].getTime()
   const spanDays = spanMs / (1000 * 60 * 60 * 24)
+  if (spanDays < 2) return d3.timeFormat('%H:%M')
+  if (spanDays < 7) return d3.timeFormat('%b %d %H:%M')
   if (spanDays > 365) return d3.timeFormat("%b '%y")
   if (spanDays > 60) return d3.timeFormat('%b %d')
   return d3.timeFormat('%b %d')

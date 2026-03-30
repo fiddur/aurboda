@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
-import { getChartData } from './chart-data.ts'
+import { buildBucketExpr, getChartData } from './chart-data.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
@@ -184,6 +184,58 @@ describe('getChartData', () => {
     expect(result[0].value).toBe(2.75)
   })
 
+  test('uses date_trunc with hour for 1h bucket size', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        { bucket_start: new Date('2026-01-01T10:00:00Z'), value: 2n },
+        { bucket_start: new Date('2026-01-01T11:00:00Z'), value: 3n },
+      ],
+    } as never)
+
+    const result = await getChartData('testuser', {
+      aggregation: 'count',
+      bucket_size: '1h',
+      end: '2026-01-01T23:59:59Z',
+      pattern: 'coffee',
+      source_type: 'tag',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(result).toHaveLength(2)
+    expect(result[0].bucket_start).toBe('2026-01-01T10:00:00.000Z')
+    expect(result[0].value).toBe(2)
+
+    const call = vi.mocked(db.query).mock.calls[0]
+    expect(call[1]).toContain('date_trunc')
+    expect(call[2]![0]).toBe('hour')
+  })
+
+  test('uses date_bin with 15 minutes interval for 15m bucket size', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        { bucket_start: new Date('2026-01-01T10:00:00Z'), value: 1n },
+        { bucket_start: new Date('2026-01-01T10:15:00Z'), value: 2n },
+      ],
+    } as never)
+
+    const result = await getChartData('testuser', {
+      aggregation: 'count',
+      bucket_size: '15m',
+      end: '2026-01-01T23:59:59Z',
+      pattern: 'coffee',
+      source_type: 'tag',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(result).toHaveLength(2)
+    expect(result[0].bucket_start).toBe('2026-01-01T10:00:00.000Z')
+    expect(result[1].value).toBe(2)
+
+    const call = vi.mocked(db.query).mock.calls[0]
+    expect(call[1]).toContain('date_bin')
+    expect(call[2]![0]).toBe('15 minutes')
+  })
+
   test('returns empty array for metric without pattern', async () => {
     const result = await getChartData('testuser', {
       aggregation: 'mean',
@@ -195,5 +247,43 @@ describe('getChartData', () => {
 
     expect(result).toEqual([])
     expect(db.query).not.toHaveBeenCalled()
+  })
+})
+
+describe('buildBucketExpr', () => {
+  test('returns date_trunc for day bucket', () => {
+    const { expr, params } = buildBucketExpr('1d', 'time', 1)
+    expect(expr).toContain('date_trunc')
+    expect(params).toEqual(['day'])
+  })
+
+  test('returns date_trunc for week bucket', () => {
+    const { expr, params } = buildBucketExpr('1w', 'time', 1)
+    expect(expr).toContain('date_trunc')
+    expect(params).toEqual(['week'])
+  })
+
+  test('returns date_trunc for month bucket', () => {
+    const { expr, params } = buildBucketExpr('1M', 'time', 1)
+    expect(expr).toContain('date_trunc')
+    expect(params).toEqual(['month'])
+  })
+
+  test('returns date_trunc with hour for 1h bucket', () => {
+    const { expr, params } = buildBucketExpr('1h', 'time', 1)
+    expect(expr).toContain('date_trunc')
+    expect(params).toEqual(['hour'])
+  })
+
+  test('returns date_bin with 15 minutes for 15m bucket', () => {
+    const { expr, params } = buildBucketExpr('15m', 'start_time', 1)
+    expect(expr).toContain('date_bin')
+    expect(expr).toContain('start_time')
+    expect(params).toEqual(['15 minutes'])
+  })
+
+  test('uses correct placeholder index', () => {
+    const { expr } = buildBucketExpr('1d', 'time', 3)
+    expect(expr).toContain('$3')
   })
 })
