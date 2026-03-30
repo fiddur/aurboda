@@ -161,8 +161,8 @@ export function ExerciseMeta() {
           <a href="/timeline" class="tag-meta-link">
             Timeline
           </a>
-          <a href="/hr-zones" class="tag-meta-link">
-            HR Zones
+          <a href="/" class="tag-meta-link">
+            Dashboard
           </a>
         </div>
       </section>

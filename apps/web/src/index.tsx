@@ -29,7 +29,6 @@ import { FoodItemDetail } from './pages/FoodItems/FoodItemDetail.jsx'
 import { FoodItems } from './pages/FoodItems/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
 import { Home } from './pages/Home/index.jsx'
-import { HrZones } from './pages/HrZones/index.jsx'
 import { Login } from './pages/Login/index.jsx'
 import { Meals } from './pages/Meals/index.jsx'
 import { MealDetail } from './pages/Meals/MealDetail.jsx'
@@ -65,7 +64,6 @@ export function App() {
               <Route path="/privacy" component={Privacy} />
               <Route path="/terms" component={Terms} />
               <Route path="/goals" component={Goals} />
-              <Route path="/hr-zones" component={HrZones} />
               <Route path="/timeline" component={Timeline} />
               <Route path="/data" component={Data} />
               <Route path="/add" component={AddData} />
