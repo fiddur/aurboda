@@ -37,6 +37,11 @@ vi.mock('../db', () => ({
   insertActivity: vi.fn(),
   insertTag: vi.fn(),
   insertTimeSeries: vi.fn(),
+  resolveOrCreateTagDefinition: vi
+    .fn()
+    .mockImplementation((_user: string, tagName: string) =>
+      Promise.resolve({ aliases: [tagName.toLowerCase()], id: 'def-uuid', name: tagName }),
+    ),
   updateActivity: vi.fn(),
   updateCustomMetricDefinition: vi.fn(),
   updateTag: vi.fn(),
@@ -74,6 +79,7 @@ describe('addTag', () => {
       source: 'aurboda',
       start_time: new Date('2024-01-15T10:00:00Z'),
       tag: 'coffee',
+      tag_definition_id: 'def-uuid',
     })
   })
 
@@ -96,6 +102,7 @@ describe('addTag', () => {
       source: 'aurboda',
       start_time: new Date('2024-01-15T10:00:00Z'),
       tag: 'meditation',
+      tag_definition_id: 'def-uuid',
     })
   })
 

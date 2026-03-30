@@ -6,14 +6,22 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import {
   deleteTag,
+  deleteTagDefinition,
   findMergeableTag,
   getProgrammaticTags,
+  getTagDefinitionById,
+  getTagDefinitions,
   getTags,
   getUniqueTags,
   hardDeleteTagsByExternalIdPrefix,
   hardDeleteTagsBySource,
   insertTag,
+  insertTagDefinition,
   isProgrammaticTag,
+  mergeTagDefinitions,
+  resolveOrCreateTagDefinition,
+  resolveTagDefinition,
+  updateTagDefinition,
   updateTagEndTime,
   updateTagNameByKey,
 } from '../db/index.ts'
@@ -733,6 +741,252 @@ describe('Tags Integration Tests', () => {
 
       const deleted = await hardDeleteTagsBySource(user, 'nonexistent-source')
       expect(deleted).toBe(0)
+    })
+  })
+
+  // ============================================================================
+  // Tag Definitions
+  // ============================================================================
+
+  describe('insertTagDefinition', () => {
+    test('creates a definition with name and aliases', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee', aliases: ['kaffe'] })
+
+      expect(def.name).toBe('Coffee')
+      expect(def.aliases).toContain('coffee') // name auto-added as lowercase
+      expect(def.aliases).toContain('kaffe')
+      expect(def.id).toBeTruthy()
+    })
+
+    test('auto-includes lowercased name in aliases', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Sex' })
+
+      expect(def.aliases).toEqual(['sex'])
+    })
+
+    test('stores icon', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee', icon: 'coffee' })
+
+      expect(def.icon).toBe('coffee')
+    })
+  })
+
+  describe('getTagDefinitions', () => {
+    test('returns definitions with counts', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+      await insertTag(user, {
+        external_id: 'tag-2',
+        source: 'aurboda',
+        start_time: new Date('2024-01-16T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+
+      const defs = await getTagDefinitions(user)
+      expect(defs).toHaveLength(1)
+      expect(defs[0].name).toBe('Coffee')
+      expect(defs[0].count).toBe(2)
+    })
+
+    test('returns empty array when no definitions', async () => {
+      const user = getTestUser()
+      const defs = await getTagDefinitions(user)
+      expect(defs).toEqual([])
+    })
+  })
+
+  describe('resolveTagDefinition', () => {
+    test('resolves by alias match (case-insensitive)', async () => {
+      const user = getTestUser()
+      await insertTagDefinition(user, { name: 'Coffee', aliases: ['kaffe'] })
+
+      const found = await resolveTagDefinition(user, 'kaffe')
+      expect(found).not.toBeNull()
+      expect(found!.name).toBe('Coffee')
+    })
+
+    test('resolves by name (auto-alias)', async () => {
+      const user = getTestUser()
+      await insertTagDefinition(user, { name: 'Sex' })
+
+      const found = await resolveTagDefinition(user, 'sex')
+      expect(found).not.toBeNull()
+      expect(found!.name).toBe('Sex')
+    })
+
+    test('returns null when no match', async () => {
+      const user = getTestUser()
+      const found = await resolveTagDefinition(user, 'nonexistent')
+      expect(found).toBeNull()
+    })
+  })
+
+  describe('resolveOrCreateTagDefinition', () => {
+    test('returns existing when alias matches', async () => {
+      const user = getTestUser()
+      const original = await insertTagDefinition(user, { name: 'Coffee' })
+
+      const resolved = await resolveOrCreateTagDefinition(user, 'coffee')
+      expect(resolved.id).toBe(original.id)
+    })
+
+    test('creates new when no match', async () => {
+      const user = getTestUser()
+      const resolved = await resolveOrCreateTagDefinition(user, 'NewTag')
+
+      expect(resolved.name).toBe('NewTag')
+      expect(resolved.aliases).toContain('newtag')
+    })
+  })
+
+  describe('updateTagDefinition', () => {
+    test('updates name and propagates to linked tags', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+
+      const updated = await updateTagDefinition(user, def.id, { name: 'Espresso' })
+      expect(updated!.name).toBe('Espresso')
+      expect(updated!.aliases).toContain('espresso')
+
+      // Verify tag was renamed
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags[0].tag).toBe('Espresso')
+    })
+  })
+
+  describe('deleteTagDefinition', () => {
+    test('deletes definition and unlinks tags', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+
+      const deleted = await deleteTagDefinition(user, def.id)
+      expect(deleted).toBe(true)
+
+      // Tag still exists but unlinked
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags).toHaveLength(1)
+      expect(tags[0].tag_definition_id).toBeUndefined()
+
+      const defs = await getTagDefinitions(user)
+      expect(defs).toHaveLength(0)
+    })
+  })
+
+  describe('mergeTagDefinitions', () => {
+    test('merges aliases, re-links tags, deletes source', async () => {
+      const user = getTestUser()
+      const source = await insertTagDefinition(user, { name: 'Ejaculation', aliases: ['ejac'] })
+      const target = await insertTagDefinition(user, { name: 'Sex' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Ejaculation',
+        tag_definition_id: source.id,
+      })
+      await insertTag(user, {
+        external_id: 'tag-2',
+        source: 'aurboda',
+        start_time: new Date('2024-01-16T10:00:00Z'),
+        tag: 'Sex',
+        tag_definition_id: target.id,
+      })
+
+      const result = await mergeTagDefinitions(user, source.id, target.id)
+      expect(result).not.toBeNull()
+      expect(result!.name).toBe('Sex')
+      expect(result!.aliases).toContain('ejaculation')
+      expect(result!.aliases).toContain('ejac')
+      expect(result!.aliases).toContain('sex')
+
+      // All tags now link to target
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-16T23:59:59Z'))
+      expect(tags).toHaveLength(2)
+      expect(tags.every((t) => t.tag_definition_id === target.id)).toBe(true)
+      // Merged tags get target's display name
+      expect(tags.every((t) => t.tag === 'Sex')).toBe(true)
+
+      // Source definition is deleted
+      const sourceDef = await getTagDefinitionById(user, source.id)
+      expect(sourceDef).toBeNull()
+    })
+
+    test('returns null when merging into self', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+      const result = await mergeTagDefinitions(user, def.id, def.id)
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('insertTag with tag_definition_id', () => {
+    test('stores tag_definition_id on insert', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags[0].tag_definition_id).toBe(def.id)
+    })
+
+    test('preserves tag_definition_id on upsert', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+
+      // Upsert without tag_definition_id should preserve it
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+      })
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags[0].tag_definition_id).toBe(def.id)
     })
   })
 

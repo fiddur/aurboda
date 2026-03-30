@@ -12,6 +12,7 @@ import type {
   AddCustomMetricBody,
   AddReportBody,
   AddLastFmTagRuleBody,
+  CreateTagDefinitionBody,
   AddLastFmTagRuleResponse,
   AddMetricBody,
   AddMetricResponse,
@@ -27,6 +28,9 @@ import type {
   Tag as ApiTag,
   BaselineData,
   BaselineResponse,
+  ChartDataBucket,
+  ChartDataResponse,
+  ChartDataSourceType,
   CreateScreentimeCategoryBody,
   CustomMetricDefinition,
   CustomMetricsListResponse,
@@ -34,6 +38,7 @@ import type {
   DashboardResponse,
   ExerciseTypeName,
   GarminSyncResponse,
+  GarminSyncStatusResponse,
   Goal,
   GoalProgress,
   GoalsProgressResponse,
@@ -52,6 +57,7 @@ import type {
   NamedLocation,
   NamedLocationsResponse,
   OuraSyncResponse,
+  OuraSyncStatusResponse,
   PeriodMetricStats,
   PeriodSummaryQuery,
   PeriodSummaryResponse,
@@ -81,6 +87,8 @@ import type {
   SetTagMappingResponse,
   SyncResponse,
   TagCorrelation,
+  TagDefinition,
+  TagDefinitionsResponse,
   TagMappings,
   TagsQuery,
   TagsResponse,
@@ -94,6 +102,7 @@ import type {
   UniqueTagsResponse,
   UpdateActivityBody,
   UpdateCustomMetricBody,
+  UpdateTagDefinitionBody,
   UpdateLastFmTagRuleBody,
   UpdateLastFmTagRuleResponse,
   UpdateReportBody,
@@ -199,6 +208,7 @@ export type {
   PeriodMetricStats,
   ProductivityCorrelation,
   TagCorrelation,
+  TagDefinition,
   TagMappings,
   TrendDisplayPeriod,
   TrendResult,
@@ -595,6 +605,14 @@ export const syncOura = async (fullResync?: boolean): Promise<OuraSyncResponse> 
   return response.data
 }
 
+export const fetchOuraSyncStatus = async (): Promise<OuraSyncStatusResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<OuraSyncStatusResponse>(`${API_URL}/sync/oura/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
 // Garmin Connect auth + sync
 export const connectGarmin = async (
   email: string,
@@ -636,6 +654,14 @@ export const syncGarmin = async (fullResync?: boolean): Promise<GarminSyncRespon
     { full_resync: fullResync },
     { headers: { Authorization: `Bearer ${token}` } },
   )
+  return response.data
+}
+
+export const fetchGarminSyncStatus = async (): Promise<GarminSyncStatusResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<GarminSyncStatusResponse>(`${API_URL}/sync/garmin/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
   return response.data
 }
 
@@ -696,6 +722,67 @@ export const fetchTagMappings = async (): Promise<{
     icons: response.data.icons ?? {},
     mappings: response.data.mappings,
   }
+}
+
+// ==========================================================================
+// Tag Definitions API
+// ==========================================================================
+
+export const fetchTagDefinitions = async (): Promise<TagDefinition[]> => {
+  const { token } = auth.value
+  const response = await axios.get<TagDefinitionsResponse>(`${API_URL}/tags/definitions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data.data ?? []
+}
+
+export const fetchTagDefinitionById = async (id: string): Promise<TagDefinition> => {
+  const { token } = auth.value
+  const response = await axios.get<{ data: TagDefinition; success: boolean }>(
+    `${API_URL}/tags/definitions/${id}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
+export const createTagDefinition = async (body: CreateTagDefinitionBody): Promise<TagDefinition> => {
+  const { token } = auth.value
+  const response = await axios.post<{ data: TagDefinition; success: boolean }>(
+    `${API_URL}/tags/definitions`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
+export const updateTagDefinitionApi = async (
+  id: string,
+  body: UpdateTagDefinitionBody,
+): Promise<TagDefinition> => {
+  const { token } = auth.value
+  const response = await axios.patch<{ data: TagDefinition; success: boolean }>(
+    `${API_URL}/tags/definitions/${id}`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
+export const deleteTagDefinitionApi = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/tags/definitions/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export const mergeTagDefinitionsApi = async (sourceId: string, targetId: string): Promise<TagDefinition> => {
+  const { token } = auth.value
+  const response = await axios.post<{ data: TagDefinition; success: boolean }>(
+    `${API_URL}/tags/definitions/${sourceId}/merge`,
+    { target_id: targetId },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
 }
 
 // Fetch goal progress
@@ -1006,6 +1093,7 @@ export interface FetchTrendParams {
   lookback_days?: number
   display_period?: TrendDisplayPeriod
   aggregation?: 'count' | 'sum' | 'mean'
+  tag_definition_id?: string
 }
 
 // Fetch trend data with EMA calculation
@@ -1020,6 +1108,7 @@ export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult>
   if (params.display_period) query.display_period = params.display_period
   if (params.half_life_days) query.half_life_days = params.half_life_days.toString()
   if (params.lookback_days) query.lookback_days = params.lookback_days.toString()
+  if (params.tag_definition_id) query.tag_definition_id = params.tag_definition_id
 
   const response = await axios.get<TrendResponse>(`${API_URL}/trends`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -1630,4 +1719,38 @@ export const searchFoodItemsApi = async (q: string, limit = 10): Promise<FoodIte
     params: { q, limit },
   })
   return response.data.data ?? []
+}
+
+// ==========================================================================
+// Chart Data API (bucketed aggregation for bar charts)
+// ==========================================================================
+
+export interface FetchChartDataParams {
+  source_type: ChartDataSourceType
+  start: string
+  end: string
+  pattern?: string
+  tag_definition_id?: string
+  bucket_size?: '1d' | '1w' | '1M'
+  aggregation?: 'count' | 'sum' | 'mean'
+}
+
+export const fetchChartData = async (params: FetchChartDataParams): Promise<ChartDataBucket[]> => {
+  const { token } = auth.value
+  const query: Record<string, string> = {
+    source_type: params.source_type,
+    start: params.start,
+    end: params.end,
+  }
+  if (params.pattern) query.pattern = params.pattern
+  if (params.tag_definition_id) query.tag_definition_id = params.tag_definition_id
+  if (params.bucket_size) query.bucket_size = params.bucket_size
+  if (params.aggregation) query.aggregation = params.aggregation
+
+  const response = await axios.get<ChartDataResponse>(`${API_URL}/chart-data`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: query,
+  })
+
+  return response.data.data?.buckets ?? []
 }

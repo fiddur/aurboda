@@ -163,6 +163,171 @@ const backfillTagKeysFromMappings = async (db: Client, existingTableNames: Set<s
   }
 }
 
+/** Add an alias to an existing definition, or create a new one and link tags. */
+const backfillCreateOrLinkDefinition = async (
+  db: Client,
+  createdByLowerName: Map<string, string>,
+  name: string,
+  icon: string | null,
+  aliases: string[],
+  linkQuery: string,
+  linkParams: (defId: string) => unknown[],
+) => {
+  const lowerName = name.toLowerCase()
+  if (createdByLowerName.has(lowerName)) {
+    const existingId = createdByLowerName.get(lowerName)!
+    for (const alias of aliases) {
+      if (alias !== lowerName) {
+        await query(
+          db,
+          `UPDATE tag_definitions SET aliases = array_append(aliases, $1) WHERE id = $2 AND NOT ($1 = ANY(aliases))`,
+          [alias, existingId],
+        )
+      }
+    }
+    await query(db, linkQuery, linkParams(existingId))
+    return
+  }
+
+  const allAliases = [lowerName, ...aliases.filter((a) => a !== lowerName)]
+  const result = await query(
+    db,
+    `INSERT INTO tag_definitions (name, icon, aliases) VALUES ($1, $2, $3) RETURNING id`,
+    [name, icon, allAliases],
+  )
+  const defId = result.rows[0].id as string
+  createdByLowerName.set(lowerName, defId)
+  await query(db, linkQuery, linkParams(defId))
+}
+
+/** Read tag_mappings and item_icons from user_settings. */
+const readTagSettingsForBackfill = async (
+  db: Client,
+  existingTableNames: Set<string>,
+): Promise<{ tagMappings: Record<string, string>; itemIcons: Record<string, string> }> => {
+  if (!existingTableNames.has('user_settings')) return { itemIcons: {}, tagMappings: {} }
+  const settingsResult = await query(db, `SELECT settings FROM user_settings LIMIT 1`)
+  if (settingsResult.rows.length === 0) return { itemIcons: {}, tagMappings: {} }
+  const settings = settingsResult.rows[0].settings as Record<string, unknown>
+  return {
+    itemIcons: ((settings.item_icons ?? settings.tag_icons) as Record<string, string>) ?? {},
+    tagMappings: ((settings.tag_mappings ?? settings.tagMappings) as Record<string, string>) ?? {},
+  }
+}
+
+/** Backfill definitions from tag_mappings entries. */
+const backfillFromMappings = async (
+  db: Client,
+  createdByLowerName: Map<string, string>,
+  tagMappings: Record<string, string>,
+  itemIcons: Record<string, string>,
+) => {
+  for (const [tagKey, displayName] of Object.entries(tagMappings)) {
+    const icon = itemIcons[displayName] ?? itemIcons[tagKey] ?? null
+    const aliases = tagKey.toLowerCase() !== displayName.toLowerCase() ? [tagKey.toLowerCase()] : []
+    await backfillCreateOrLinkDefinition(
+      db,
+      createdByLowerName,
+      displayName,
+      icon,
+      aliases,
+      `UPDATE tags SET tag_definition_id = $1 WHERE (tag_key = $2 OR (tag_definition_id IS NULL AND tag = $3 AND source IN ('aurboda', 'manual', 'oura')))`,
+      (defId) => [defId, tagKey, displayName],
+    )
+  }
+}
+
+/** Backfill definitions from unmapped Oura tags. */
+const backfillFromOuraTags = async (
+  db: Client,
+  createdByLowerName: Map<string, string>,
+  itemIcons: Record<string, string>,
+) => {
+  const rows = await query(
+    db,
+    `SELECT tag_key, tag FROM tags
+     WHERE tag_key IS NOT NULL AND tag_definition_id IS NULL AND deleted_at IS NULL AND source = 'oura'
+     GROUP BY tag_key, tag ORDER BY MAX(start_time) DESC`,
+  )
+  for (const row of rows.rows) {
+    const tagName = row.tag as string
+    const tagKey = row.tag_key as string
+    const icon = itemIcons[tagName] ?? null
+    const aliases = tagKey.toLowerCase() !== tagName.toLowerCase() ? [tagKey.toLowerCase()] : []
+    await backfillCreateOrLinkDefinition(
+      db,
+      createdByLowerName,
+      tagName,
+      icon,
+      aliases,
+      `UPDATE tags SET tag_definition_id = $1 WHERE tag_key = $2 AND tag_definition_id IS NULL`,
+      (defId) => [defId, tagKey],
+    )
+  }
+}
+
+/** Backfill definitions from manual/aurboda tags without tag_key. */
+const backfillFromManualTags = async (
+  db: Client,
+  createdByLowerName: Map<string, string>,
+  itemIcons: Record<string, string>,
+) => {
+  const rows = await query(
+    db,
+    `SELECT tag FROM tags
+     WHERE tag_definition_id IS NULL AND deleted_at IS NULL AND source IN ('aurboda', 'manual') AND tag_key IS NULL
+     GROUP BY tag ORDER BY MAX(start_time) DESC`,
+  )
+  for (const row of rows.rows) {
+    const tagName = row.tag as string
+    const icon = itemIcons[tagName] ?? null
+    await backfillCreateOrLinkDefinition(
+      db,
+      createdByLowerName,
+      tagName,
+      icon,
+      [],
+      `UPDATE tags SET tag_definition_id = $1 WHERE tag_definition_id IS NULL AND lower(tag) = $2 AND source IN ('aurboda', 'manual')`,
+      (defId) => [defId, tagName.toLowerCase()],
+    )
+  }
+}
+
+/**
+ * Backfill tag_definitions from existing tag data and user_settings tag_mappings.
+ * Idempotent: skips if definitions already exist.
+ */
+const backfillTagDefinitions = async (db: Client, existingTableNames: Set<string>) => {
+  if (!existingTableNames.has('tag_definitions') && !existingTableNames.has('tags')) return
+
+  const countResult = await query(db, `SELECT count(*) FROM tag_definitions`)
+  if (parseInt(countResult.rows[0].count, 10) > 0) return
+
+  const { tagMappings, itemIcons } = await readTagSettingsForBackfill(db, existingTableNames)
+  const createdByLowerName = new Map<string, string>()
+
+  await backfillFromMappings(db, createdByLowerName, tagMappings, itemIcons)
+  await backfillFromOuraTags(db, createdByLowerName, itemIcons)
+  await backfillFromManualTags(db, createdByLowerName, itemIcons)
+}
+
+/** Add tag_definition_id FK column to tags table if not present. */
+const migrateTagDefinitionFk = async (db: Client) => {
+  await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_definition_id UUID`)
+  await query(
+    db,
+    `DO $$ BEGIN
+       IF NOT EXISTS (
+         SELECT 1 FROM information_schema.table_constraints
+         WHERE constraint_name = 'tags_tag_definition_id_fkey' AND table_name = 'tags'
+       ) THEN
+         ALTER TABLE tags ADD CONSTRAINT tags_tag_definition_id_fkey
+           FOREIGN KEY (tag_definition_id) REFERENCES tag_definitions(id);
+       END IF;
+     END $$`,
+  )
+}
+
 /**
  * Run database migrations for a user.
  * Checks which tables exist and creates missing ones.
@@ -187,6 +352,7 @@ export const migrateSchema = async (user: string) => {
   if (existingTableNames.has('tags')) {
     await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_key VARCHAR(255)`)
     await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
+    await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_definition_id UUID`)
   }
   if (existingTableNames.has('activities')) {
     await query(db, `ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
@@ -255,6 +421,9 @@ export const migrateSchema = async (user: string) => {
     }
   }
 
+  // Add FK constraint for tag_definition_id (after tag_definitions table is created)
+  await migrateTagDefinitionFk(db)
+
   // Backfill tag_key for existing Oura tags
   if (existingTableNames.has('tags')) {
     // Tags that still have programmatic names (UUID/tag_*) get tag_key = tag
@@ -269,6 +438,9 @@ export const migrateSchema = async (user: string) => {
     // Tags that were already mapped (tag = display name) — reverse-lookup from tag_mappings
     await backfillTagKeysFromMappings(db, existingTableNames)
   }
+
+  // Backfill tag_definitions from existing tags and tag_mappings
+  await backfillTagDefinitions(db, existingTableNames)
 
   // Migrate goals and custom_metrics from user_settings JSONB to their own tables
   await migrateGoalsAndCustomMetrics(db, existingTableNames)

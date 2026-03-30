@@ -387,12 +387,15 @@ const categorizeTags = (tags: Tag[], itemIcons: Record<string, string>): ChartIt
       const sourceLabel = t.source ? ` (${t.source})` : ''
       const icon =
         itemIcons[t.tag] ?? itemIcons[t.tag.toLowerCase()] ?? (t.tag_key ? itemIcons[t.tag_key] : undefined)
+      // Link to tag definition page if available; calendar/lastfm tags (no definition) won't link
+      const href = t.tag_definition_id ? `/tag/${t.tag_definition_id}` : undefined
       return {
         color: getTagColor(t),
         column: 'Tags / Events' as Column,
         end,
-        entity_id: t.id,
-        entity_type: 'tag' as const,
+        entity_id: href ? undefined : t.id,
+        entity_type: href ? undefined : ('tag' as const),
+        href,
         icon,
         isPoint,
         label: t.tag,

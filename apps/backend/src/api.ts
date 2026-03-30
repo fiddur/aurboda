@@ -50,6 +50,7 @@ import { createOwnTracksRouter } from './owntracks.ts'
 import { syncRescueTimeData } from './rescuetime-sync.ts'
 import { createActivitiesRouter } from './routes/activities-router.ts'
 import { createAdminRouter } from './routes/admin-router.ts'
+import { createChartDataRouter } from './routes/chart-data-router.ts'
 import { createCorrelationsRouter } from './routes/correlations-router.ts'
 import { createDashboardRouter } from './routes/dashboard-router.ts'
 import { createFoodItemsRouter } from './routes/food-items-router.ts'
@@ -554,6 +555,7 @@ const main = async () => {
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))
+  httpd.use('/chart-data', createChartDataRouter(authMiddleware))
   httpd.use('/screentime-categories', createScreentimeCategoriesRouter(authMiddleware))
   httpd.use(
     '/admin',

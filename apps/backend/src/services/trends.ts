@@ -33,6 +33,7 @@ export interface GetTrendInput {
   lookback_days?: number
   pattern: string
   source_type: TrendSourceType
+  tag_definition_id?: string
 }
 
 /**
@@ -96,6 +97,76 @@ const calculateTagTrend = async (
     ORDER BY day
     `,
     [pattern, lookbackDays, LN2, multiplier, halfLifeDays],
+  )
+
+  const history: TrendHistoryPoint[] = result.rows.map((row) => ({
+    date: row.day.toISOString().split('T')[0],
+    value: Number(row.ema_value),
+  }))
+
+  const currentValue = history.length > 0 ? history[history.length - 1].value : 0
+
+  return { currentValue, history }
+}
+
+/**
+ * Calculate the EMA-weighted trend for tags linked to a tag definition.
+ *
+ * Uses tag_definition_id for exact relational matching instead of regex on tag names.
+ */
+const calculateTagTrendByDefinition = async (
+  user: string,
+  tagDefinitionId: string,
+  halfLifeDays: number,
+  lookbackDays: number,
+  displayPeriod: TrendDisplayPeriod,
+): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
+  const multiplier = displayPeriodMultipliers[displayPeriod]
+
+  const result = await query(
+    user,
+    `
+    WITH date_range AS (
+      SELECT generate_series(
+        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
+        CURRENT_DATE,
+        '1 day'
+      )::date AS day
+    ),
+    daily_counts AS (
+      SELECT
+        d.day,
+        COALESCE(t.cnt, 0) as cnt
+      FROM date_range d
+      LEFT JOIN (
+        SELECT
+          date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
+          count(*) as cnt
+        FROM tags
+        WHERE tag_definition_id = $1
+          AND deleted_at IS NULL
+          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+        GROUP BY 1
+      ) t ON d.day = t.day
+    ),
+    ema_calc AS (
+      SELECT
+        dc.day,
+        $4::float * SUM(dc2.cnt::float * EXP(-$3::float * (dc.day - dc2.day)::float / $5::float)) /
+        NULLIF(SUM(EXP(-$3::float * (dc.day - dc2.day)::float / $5::float)), 0) as ema_value
+      FROM daily_counts dc
+      CROSS JOIN LATERAL (
+        SELECT day, cnt
+        FROM daily_counts
+        WHERE day <= dc.day AND day > dc.day - INTERVAL '1 day' * LEAST($2::integer, 90)
+      ) dc2
+      GROUP BY dc.day
+    )
+    SELECT day, COALESCE(ema_value, 0) as ema_value
+    FROM ema_calc
+    ORDER BY day
+    `,
+    [tagDefinitionId, lookbackDays, LN2, multiplier, halfLifeDays],
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
@@ -355,13 +426,15 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
   }
 
   if (sourceType === 'tag') {
-    const { currentValue, history } = await calculateTagTrend(
-      user,
-      pattern,
-      halfLifeDays,
-      lookbackDays,
-      displayPeriod,
-    )
+    const { currentValue, history } = input.tag_definition_id
+      ? await calculateTagTrendByDefinition(
+          user,
+          input.tag_definition_id,
+          halfLifeDays,
+          lookbackDays,
+          displayPeriod,
+        )
+      : await calculateTagTrend(user, pattern, halfLifeDays, lookbackDays, displayPeriod)
 
     return {
       aggregation: 'count',

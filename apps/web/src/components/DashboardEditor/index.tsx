@@ -77,6 +77,18 @@ const widgetTemplates: WidgetTemplate[] = [
   {
     allowedSections: ['charts'],
     defaultConfig: () => ({
+      bucket_size: '1d',
+      lookback_days: 30,
+      pattern: 'coffee',
+      source_type: 'tag',
+    }),
+    description: 'Bucketed bar chart for tags, metrics, or categories',
+    label: 'Bar Chart',
+    type: 'bar_chart',
+  },
+  {
+    allowedSections: ['charts'],
+    defaultConfig: () => ({
       activity: 'exercise',
       activity_type: 'activity_type',
       period_days: 90,
@@ -84,6 +96,16 @@ const widgetTemplates: WidgetTemplate[] = [
     description: 'Activity impact on HRV/HR timeline',
     label: 'Correlation Impact',
     type: 'correlation',
+  },
+  {
+    allowedSections: ['charts'],
+    defaultConfig: () => ({
+      lookback_days: 7,
+      show_targets: true,
+    }),
+    description: 'Heart rate zone progress bars with targets',
+    label: 'HR Zones',
+    type: 'hr_zones',
   },
   {
     allowedSections: ['links'],
@@ -102,11 +124,10 @@ const widgetTemplates: WidgetTemplate[] = [
 const linkOptions = [
   { icon: 'timeline', label: 'Timeline', value: '/timeline' },
   { icon: 'sleep', label: 'Sleep', value: '/sleep' },
-  { icon: 'hr-zones', label: 'HR Zones', value: '/hr-zones' },
   { icon: 'correlations', label: 'Correlations', value: '/correlations' },
   { icon: 'goals', label: 'Goals', value: '/goals' },
   { icon: 'places', label: 'Places', value: '/places' },
-  { icon: 'trends', label: 'Trends', value: '/trends' },
+  { icon: 'trends', label: 'Chart', value: '/chart' },
   { icon: 'settings', label: 'Settings', value: '/settings' },
 ]
 
@@ -294,6 +315,34 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 onChange={(e) => updateConfig('activity', (e.target as HTMLInputElement).value)}
                 placeholder="e.g., coffee, exercise, gym"
               />
+            </div>
+          </div>
+        )
+
+      case 'hr_zones':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>Lookback Days</label>
+              <input
+                type="number"
+                value={(configValues.lookback_days as number) ?? 7}
+                onChange={(e) =>
+                  updateConfig('lookback_days', parseInt((e.target as HTMLInputElement).value, 10))
+                }
+                min={1}
+                max={90}
+              />
+            </div>
+            <div class="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={(configValues.show_targets as boolean) ?? true}
+                  onChange={(e) => updateConfig('show_targets', (e.target as HTMLInputElement).checked)}
+                />{' '}
+                Show target percentages
+              </label>
             </div>
           </div>
         )

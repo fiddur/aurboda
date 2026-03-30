@@ -1,13 +1,12 @@
 export const NAV_LINKS = [
   { href: '/', label: 'Home', icon: '🏠' },
   { href: '/goals', label: 'Goals', icon: '🎯' },
-  { href: '/hr-zones', label: 'HR Zones', icon: '💓' },
   { href: '/timeline', label: 'Timeline', icon: '📅' },
   { href: '/data', label: 'Data', icon: '📊' },
   { href: '/meals', label: 'Meals', icon: '🍽' },
   { href: '/reports', label: 'Reports', icon: '📝' },
   { href: '/add', label: '+ Add', icon: '➕' },
-  { href: '/trends', label: 'Trends', icon: '📈' },
+  { href: '/chart', label: 'Chart', icon: '📈' },
   { href: '/places', label: 'Places', icon: '📍' },
 ]
 

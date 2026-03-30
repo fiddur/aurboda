@@ -94,9 +94,37 @@ export const trendChartConfigSchema = z
     lookback_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
     pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
     source_type: z.enum(['tag', 'metric']).meta({ description: 'Data source type' }),
+    tag_definition_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Tag definition ID (alternative to pattern)' }),
     title: z.string().optional().meta({ description: 'Chart title' }),
   })
   .meta({ id: 'TrendChartConfig' })
+
+/**
+ * Bar chart widget - displays bucketed bar chart visualization.
+ */
+export const barChartConfigSchema = z
+  .object({
+    aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
+    bucket_size: z.enum(['1d', '1w', '1M']).meta({ description: 'Time bucket size' }),
+    lookback_days: z.number().int().positive().meta({ description: 'Days of data to display' }),
+    pattern: z.string().min(1).optional().meta({ description: 'Tag pattern (regex) or metric name' }),
+    source_type: z
+      .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
+      .meta({ description: 'Data source type' }),
+    tag_definition_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Tag definition ID (alternative to pattern)' }),
+    title: z.string().optional().meta({ description: 'Chart title' }),
+  })
+  .meta({ id: 'BarChartConfig' })
+
+export type BarChartConfig = z.infer<typeof barChartConfigSchema>
 
 export type TrendChartConfig = z.infer<typeof trendChartConfigSchema>
 
@@ -151,7 +179,7 @@ export const quickLinkConfigSchema = z
   .object({
     href: z.string().min(1).meta({ description: 'Target URL path' }),
     icon: z
-      .enum(['timeline', 'sleep', 'hr-zones', 'correlations', 'goals', 'places', 'trends', 'settings'])
+      .enum(['timeline', 'sleep', 'correlations', 'goals', 'places', 'trends', 'settings'])
       .optional()
       .meta({ description: 'Icon name' }),
     label: z.string().min(1).meta({ description: 'Link text' }),
@@ -159,6 +187,23 @@ export const quickLinkConfigSchema = z
   .meta({ id: 'QuickLinkConfig' })
 
 export type QuickLinkConfig = z.infer<typeof quickLinkConfigSchema>
+
+/**
+ * HR Zones widget - displays heart rate zone progress bars.
+ */
+export const hrZonesConfigSchema = z
+  .object({
+    lookback_days: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .meta({ description: 'Days of data to show (default: 7)' }),
+    show_targets: z.boolean().optional().meta({ description: 'Show target percentages (default: true)' }),
+  })
+  .meta({ id: 'HrZonesConfig' })
+
+export type HrZonesConfig = z.infer<typeof hrZonesConfigSchema>
 
 // =============================================================================
 // Widget Type Discriminated Union
@@ -171,9 +216,11 @@ export const widgetTypeSchema = z.enum([
   'metric_card',
   'sparkline_card',
   'trend_chart',
+  'bar_chart',
   'correlation',
   'activity_summary',
   'quick_link',
+  'hr_zones',
 ])
 
 export type WidgetType = z.infer<typeof widgetTypeSchema>
@@ -198,6 +245,11 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     type: z.literal('trend_chart'),
   }),
   z.object({
+    config: barChartConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('bar_chart'),
+  }),
+  z.object({
     config: correlationConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('correlation'),
@@ -211,6 +263,11 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: quickLinkConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('quick_link'),
+  }),
+  z.object({
+    config: hrZonesConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('hr_zones'),
   }),
 ])
 
@@ -370,6 +427,11 @@ export const defaultDashboardConfig: DashboardConfig = {
           id: 'activity-summary',
           type: 'activity_summary',
         },
+        {
+          config: { lookback_days: 7, show_targets: true },
+          id: 'hr-zones-widget',
+          type: 'hr_zones',
+        },
       ],
     },
     {
@@ -383,11 +445,6 @@ export const defaultDashboardConfig: DashboardConfig = {
           type: 'quick_link',
         },
         { config: { href: '/sleep', icon: 'sleep', label: 'Sleep' }, id: 'link-sleep', type: 'quick_link' },
-        {
-          config: { href: '/hr-zones', icon: 'hr-zones', label: 'HR Zones' },
-          id: 'link-hr-zones',
-          type: 'quick_link',
-        },
         {
           config: { href: '/correlations', icon: 'correlations', label: 'Correlations' },
           id: 'link-correlations',

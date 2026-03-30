@@ -364,7 +364,12 @@ export function MetricMeta() {
               <span class="metric-meta-trend-number">{trendQuery.data.current_value.toFixed(2)}</span>
               <span class="metric-meta-trend-unit">{unit || trendQuery.data.display_unit}</span>
             </div>
-            <MiniTrendChart data={trendQuery.data.history} color="#2563eb" />
+            <a
+              href={`/chart?source_type=metric&pattern=${encodeURIComponent(metricName)}&lookback_days=${lookback}&aggregation=mean`}
+              style={{ display: 'block' }}
+            >
+              <MiniTrendChart data={trendQuery.data.history} color="#2563eb" />
+            </a>
           </>
         )}
       </section>
@@ -382,8 +387,8 @@ export function MetricMeta() {
       <section class="metric-meta-section">
         <h2>Related</h2>
         <div class="metric-meta-links">
-          <a href="/trends" class="metric-meta-link">
-            All Trends
+          <a href="/chart" class="metric-meta-link">
+            Chart Explorer
           </a>
           <a href="/correlations" class="metric-meta-link">
             Correlations

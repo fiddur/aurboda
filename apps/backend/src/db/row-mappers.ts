@@ -26,6 +26,7 @@ import type {
   SyncState,
   SyncStatus,
   Tag,
+  TagDefinition,
 } from './types.ts'
 
 // ============================================================================
@@ -170,7 +171,17 @@ export const mapTagRow = (row: QueryResultRow): Tag => ({
   source: row.source,
   start_time: new Date(row.start_time),
   tag: row.tag,
+  tag_definition_id: row.tag_definition_id ?? undefined,
   tag_key: row.tag_key ?? undefined,
+})
+
+export const mapTagDefinitionRow = (row: QueryResultRow): TagDefinition => ({
+  aliases: row.aliases ?? [],
+  created_at: new Date(row.created_at),
+  icon: row.icon ?? undefined,
+  id: row.id,
+  name: row.name,
+  updated_at: new Date(row.updated_at),
 })
 
 export const mapMcpSessionRow = (row: QueryResultRow): McpSessionRecord => ({

@@ -24,7 +24,15 @@ Common half-life values:
 - 15 days (responsive): Balanced, good default
 - 30 days (stable): Smooths out short-term variation`,
     { ...getTrendQuerySchema.shape },
-    async ({ aggregation, display_period, half_life_days, lookback_days, pattern, source_type }) => {
+    async ({
+      aggregation,
+      display_period,
+      half_life_days,
+      lookback_days,
+      pattern,
+      source_type,
+      tag_definition_id,
+    }) => {
       try {
         const customMetrics = await getCustomMetrics(user)
 
@@ -34,8 +42,9 @@ Common half-life values:
           display_period,
           half_life_days,
           lookback_days,
-          pattern,
+          pattern: pattern ?? '',
           source_type,
+          tag_definition_id,
         })
         return jsonResponse({ data: result, success: true })
       } catch (error) {

@@ -9,6 +9,7 @@ import { Sidebar } from './components/Sidebar.jsx'
 import { NotFound } from './pages/_404.jsx'
 import { AddData } from './pages/AddData/index.jsx'
 import { AdminSettings } from './pages/AdminSettings/index.jsx'
+import { Chart } from './pages/Chart/index.jsx'
 import { Correlations } from './pages/Correlations/index.jsx'
 import { Data } from './pages/Data/index.jsx'
 import { ActivityWatchAndroidSource } from './pages/DataSources/ActivityWatchAndroidSource.jsx'
@@ -28,7 +29,6 @@ import { FoodItemDetail } from './pages/FoodItems/FoodItemDetail.jsx'
 import { FoodItems } from './pages/FoodItems/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
 import { Home } from './pages/Home/index.jsx'
-import { HrZones } from './pages/HrZones/index.jsx'
 import { Login } from './pages/Login/index.jsx'
 import { Meals } from './pages/Meals/index.jsx'
 import { MealDetail } from './pages/Meals/MealDetail.jsx'
@@ -46,7 +46,6 @@ import { Sleep } from './pages/Sleep/index.jsx'
 import { TagMeta } from './pages/TagMeta/index.jsx'
 import { Terms } from './pages/Terms/index.jsx'
 import { Timeline } from './pages/Timeline/index.jsx'
-import { Trends } from './pages/Trends/index.jsx'
 import { queryClient } from './state/queryClient.js'
 import './style.css'
 
@@ -65,7 +64,6 @@ export function App() {
               <Route path="/privacy" component={Privacy} />
               <Route path="/terms" component={Terms} />
               <Route path="/goals" component={Goals} />
-              <Route path="/hr-zones" component={HrZones} />
               <Route path="/timeline" component={Timeline} />
               <Route path="/data" component={Data} />
               <Route path="/add" component={AddData} />
@@ -82,7 +80,7 @@ export function App() {
               <Route path="/metric/:metricName" component={MetricMeta} />
               <Route path="/sleep" component={Sleep} />
               <Route path="/correlations" component={Correlations} />
-              <Route path="/trends" component={Trends} />
+              <Route path="/chart" component={Chart} />
               <Route path="/places" component={Places} />
               <Route path="/data-sources" component={DataSources} />
               <Route path="/data-sources/aurboda" component={AurbodaSource} />
