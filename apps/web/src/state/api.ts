@@ -28,6 +28,9 @@ import type {
   Tag as ApiTag,
   BaselineData,
   BaselineResponse,
+  ChartDataBucket,
+  ChartDataResponse,
+  ChartDataSourceType,
   CreateScreentimeCategoryBody,
   CustomMetricDefinition,
   CustomMetricsListResponse,
@@ -1698,4 +1701,38 @@ export const searchFoodItemsApi = async (q: string, limit = 10): Promise<FoodIte
     params: { q, limit },
   })
   return response.data.data ?? []
+}
+
+// ==========================================================================
+// Chart Data API (bucketed aggregation for bar charts)
+// ==========================================================================
+
+export interface FetchChartDataParams {
+  source_type: ChartDataSourceType
+  start: string
+  end: string
+  pattern?: string
+  tag_definition_id?: string
+  bucket_size?: '1d' | '1w' | '1M'
+  aggregation?: 'count' | 'sum' | 'mean'
+}
+
+export const fetchChartData = async (params: FetchChartDataParams): Promise<ChartDataBucket[]> => {
+  const { token } = auth.value
+  const query: Record<string, string> = {
+    source_type: params.source_type,
+    start: params.start,
+    end: params.end,
+  }
+  if (params.pattern) query.pattern = params.pattern
+  if (params.tag_definition_id) query.tag_definition_id = params.tag_definition_id
+  if (params.bucket_size) query.bucket_size = params.bucket_size
+  if (params.aggregation) query.aggregation = params.aggregation
+
+  const response = await axios.get<ChartDataResponse>(`${API_URL}/chart-data`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: query,
+  })
+
+  return response.data.data?.buckets ?? []
 }
