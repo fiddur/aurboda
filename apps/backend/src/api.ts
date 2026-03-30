@@ -67,7 +67,7 @@ import { createSettingsRouter } from './routes/settings-router.ts'
 import { createTagsRouter } from './routes/tags-router.ts'
 import { createTrainingLoadRouter } from './routes/training-load-router.ts'
 import { createTrendsRouter } from './routes/trends-router.ts'
-import { pruneAuditLog } from './services/audit-log.ts'
+import { auditInfo, pruneAuditLog } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
@@ -134,14 +134,31 @@ const main = async () => {
 
   httpd.use(json({ limit: '10mb' }))
 
+  // Log mutations to the user's audit log (GET requests are silent)
   httpd.use((req, res, next) => {
-    const sanitizedBody =
-      req.body && typeof req.body === 'object'
-        ? Object.fromEntries(
-            Object.entries(req.body).map(([k, v]) => (k === 'password' ? [k, '[REDACTED]'] : [k, v])),
-          )
-        : req.body
-    console.log(req.path, sanitizedBody)
+    if (req.method !== 'GET' && req.method !== 'OPTIONS' && req.method !== 'HEAD') {
+      const user = (() => {
+        try {
+          const authHeader = req.headers.authorization
+          if (typeof authHeader === 'string') {
+            return auth.getUsernameFromToken(authHeader.slice('bearer '.length))
+          }
+        } catch {}
+        return undefined
+      })()
+
+      if (user) {
+        const sanitizedBody =
+          req.body && typeof req.body === 'object'
+            ? Object.fromEntries(
+                Object.entries(req.body as Record<string, unknown>).map(([k, v]) =>
+                  k === 'password' ? [k, '[REDACTED]'] : [k, v],
+                ),
+              )
+            : undefined
+        auditInfo(user, 'data', `${req.method} ${req.path}`, sanitizedBody)
+      }
+    }
     next()
   })
 
