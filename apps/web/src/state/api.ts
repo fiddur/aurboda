@@ -12,6 +12,7 @@ import type {
   AddCustomMetricBody,
   AddReportBody,
   AddLastFmTagRuleBody,
+  CreateTagDefinitionBody,
   AddLastFmTagRuleResponse,
   AddMetricBody,
   AddMetricResponse,
@@ -81,6 +82,8 @@ import type {
   SetTagMappingResponse,
   SyncResponse,
   TagCorrelation,
+  TagDefinition,
+  TagDefinitionsResponse,
   TagMappings,
   TagsQuery,
   TagsResponse,
@@ -94,6 +97,7 @@ import type {
   UniqueTagsResponse,
   UpdateActivityBody,
   UpdateCustomMetricBody,
+  UpdateTagDefinitionBody,
   UpdateLastFmTagRuleBody,
   UpdateLastFmTagRuleResponse,
   UpdateReportBody,
@@ -199,6 +203,7 @@ export type {
   PeriodMetricStats,
   ProductivityCorrelation,
   TagCorrelation,
+  TagDefinition,
   TagMappings,
   TrendDisplayPeriod,
   TrendResult,
@@ -698,6 +703,67 @@ export const fetchTagMappings = async (): Promise<{
   }
 }
 
+// ==========================================================================
+// Tag Definitions API
+// ==========================================================================
+
+export const fetchTagDefinitions = async (): Promise<TagDefinition[]> => {
+  const { token } = auth.value
+  const response = await axios.get<TagDefinitionsResponse>(`${API_URL}/tags/definitions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data.data
+}
+
+export const fetchTagDefinitionById = async (id: string): Promise<TagDefinition> => {
+  const { token } = auth.value
+  const response = await axios.get<{ data: TagDefinition; success: boolean }>(
+    `${API_URL}/tags/definitions/${id}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
+export const createTagDefinition = async (body: CreateTagDefinitionBody): Promise<TagDefinition> => {
+  const { token } = auth.value
+  const response = await axios.post<{ data: TagDefinition; success: boolean }>(
+    `${API_URL}/tags/definitions`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
+export const updateTagDefinitionApi = async (
+  id: string,
+  body: UpdateTagDefinitionBody,
+): Promise<TagDefinition> => {
+  const { token } = auth.value
+  const response = await axios.patch<{ data: TagDefinition; success: boolean }>(
+    `${API_URL}/tags/definitions/${id}`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
+export const deleteTagDefinitionApi = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/tags/definitions/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export const mergeTagDefinitionsApi = async (sourceId: string, targetId: string): Promise<TagDefinition> => {
+  const { token } = auth.value
+  const response = await axios.post<{ data: TagDefinition; success: boolean }>(
+    `${API_URL}/tags/definitions/${sourceId}/merge`,
+    { target_id: targetId },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
 // Fetch goal progress
 export const fetchGoalsProgress = async (): Promise<GoalProgress[]> => {
   const { token } = auth.value
@@ -1006,6 +1072,7 @@ export interface FetchTrendParams {
   lookback_days?: number
   display_period?: TrendDisplayPeriod
   aggregation?: 'count' | 'sum' | 'mean'
+  tag_definition_id?: string
 }
 
 // Fetch trend data with EMA calculation
@@ -1020,6 +1087,7 @@ export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult>
   if (params.display_period) query.display_period = params.display_period
   if (params.half_life_days) query.half_life_days = params.half_life_days.toString()
   if (params.lookback_days) query.lookback_days = params.lookback_days.toString()
+  if (params.tag_definition_id) query.tag_definition_id = params.tag_definition_id
 
   const response = await axios.get<TrendResponse>(`${API_URL}/trends`, {
     headers: { Authorization: `Bearer ${token}` },

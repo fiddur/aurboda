@@ -7,22 +7,40 @@ import {
   type AddTagBody,
   addTagBodySchema,
   type AddTagResponse,
+  type CreateTagDefinitionBody,
+  createTagDefinitionBodySchema,
   type DeleteTagResponse,
+  type MergeTagDefinitionsBody,
+  mergeTagDefinitionsBodySchema,
   type ProgrammaticTagsResponse,
   type SetTagMappingBody,
   setTagMappingBodySchema,
   type SetTagMappingResponse,
+  type TagDefinitionsResponse,
   type TagMappingsResponse,
   type TagsQuery,
   tagsQuerySchema,
   type TagsResponse,
   type UniqueTagsResponse,
   type UpdateTagBody,
+  type UpdateTagDefinitionBody,
   updateTagBodySchema,
+  updateTagDefinitionBodySchema,
 } from '@aurboda/api-spec'
 import { type RequestHandler, Router } from 'express'
 
-import { getProgrammaticTags, getTagById, getUniqueTags, getUserSettings } from '../db/index.ts'
+import {
+  deleteTagDefinition,
+  getProgrammaticTags,
+  getTagById,
+  getTagDefinitionById,
+  getTagDefinitions,
+  getUniqueTags,
+  getUserSettings,
+  insertTagDefinition,
+  mergeTagDefinitions,
+  updateTagDefinition,
+} from '../db/index.ts'
 import { addTag, deleteTag, deleteTagById, restoreTag, updateTag } from '../services/mutations.ts'
 import { queryTags, type SyncProvider } from '../services/queries.ts'
 import { getTagMappings, setTagMapping } from '../services/settings.ts'
@@ -205,6 +223,138 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
     const result = await getTagMappings(user)
     res.json({ ...result, success: true })
   })
+
+  // ============================================================================
+  // Tag Definitions
+  // ============================================================================
+
+  // GET /tags/definitions - List all tag definitions with counts
+  router.get<Record<string, never>, TagDefinitionsResponse>(
+    '/definitions',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const definitions = await getTagDefinitions(user)
+      const data = definitions.map((d) => ({
+        aliases: d.aliases,
+        count: d.count,
+        created_at: d.created_at.toISOString(),
+        icon: d.icon ?? null,
+        id: d.id,
+        latest_time: d.latest_time?.toISOString(),
+        name: d.name,
+        updated_at: d.updated_at.toISOString(),
+      }))
+      res.json({ data, success: true })
+    },
+  )
+
+  // GET /tags/definitions/:id - Get a single tag definition
+  router.get<{ id: string }>('/definitions/:id', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const definition = await getTagDefinitionById(user, req.params.id)
+    if (!definition) {
+      return res.status(404).json({ error: 'Tag definition not found', success: false })
+    }
+    res.json({
+      data: {
+        aliases: definition.aliases,
+        count: definition.count,
+        created_at: definition.created_at.toISOString(),
+        icon: definition.icon ?? null,
+        id: definition.id,
+        latest_time: definition.latest_time?.toISOString(),
+        name: definition.name,
+        updated_at: definition.updated_at.toISOString(),
+      },
+      success: true,
+    })
+  })
+
+  // POST /tags/definitions - Create a tag definition
+  router.post<Record<string, never>, unknown, CreateTagDefinitionBody>(
+    '/definitions',
+    authMiddleware,
+    validateBody(createTagDefinitionBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const definition = await insertTagDefinition(user, req.body)
+      res.status(201).json({
+        data: {
+          aliases: definition.aliases,
+          created_at: definition.created_at.toISOString(),
+          icon: definition.icon ?? null,
+          id: definition.id,
+          name: definition.name,
+          updated_at: definition.updated_at.toISOString(),
+        },
+        success: true,
+      })
+    },
+  )
+
+  // PATCH /tags/definitions/:id - Update a tag definition
+  router.patch<{ id: string }, unknown, UpdateTagDefinitionBody>(
+    '/definitions/:id',
+    authMiddleware,
+    validateBody(updateTagDefinitionBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const definition = await updateTagDefinition(user, req.params.id, req.body)
+      if (!definition) {
+        return res.status(404).json({ error: 'Tag definition not found', success: false })
+      }
+      res.json({
+        data: {
+          aliases: definition.aliases,
+          created_at: definition.created_at.toISOString(),
+          icon: definition.icon ?? null,
+          id: definition.id,
+          name: definition.name,
+          updated_at: definition.updated_at.toISOString(),
+        },
+        success: true,
+      })
+    },
+  )
+
+  // DELETE /tags/definitions/:id - Delete a tag definition
+  router.delete<{ id: string }>('/definitions/:id', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const deleted = await deleteTagDefinition(user, req.params.id)
+    if (!deleted) {
+      return res.status(404).json({ error: 'Tag definition not found', success: false })
+    }
+    res.json({ success: true })
+  })
+
+  // POST /tags/definitions/:id/merge - Merge this definition into another
+  router.post<{ id: string }, unknown, MergeTagDefinitionsBody>(
+    '/definitions/:id/merge',
+    authMiddleware,
+    validateBody(mergeTagDefinitionsBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { target_id } = req.body
+      const result = await mergeTagDefinitions(user, req.params.id, target_id)
+      if (!result) {
+        return res
+          .status(400)
+          .json({ error: 'Merge failed (definitions not found or same ID)', success: false })
+      }
+      res.json({
+        data: {
+          aliases: result.aliases,
+          created_at: result.created_at.toISOString(),
+          icon: result.icon ?? null,
+          id: result.id,
+          name: result.name,
+          updated_at: result.updated_at.toISOString(),
+        },
+        success: true,
+      })
+    },
+  )
 
   return router
 }

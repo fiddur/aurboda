@@ -608,6 +608,22 @@ export const createTableStatements: Record<string, string> = {
     )
   `,
 
+  // Tag definitions — canonical tag identities with aliases for matching
+  tag_definitions: `
+    CREATE TABLE IF NOT EXISTS tag_definitions (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name            VARCHAR(100) NOT NULL,
+      icon            TEXT,
+      aliases         TEXT[] NOT NULL DEFAULT '{}',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  tag_definitions_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_tag_definitions_aliases ON tag_definitions USING GIN (aliases);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tag_definitions_name ON tag_definitions (lower(name))
+  `,
+
   // Activity labels/tags
   tags: `
     CREATE TABLE IF NOT EXISTS tags (
@@ -616,6 +632,7 @@ export const createTableStatements: Record<string, string> = {
       external_id     VARCHAR(255),
       tag             VARCHAR(100) NOT NULL,
       tag_key         VARCHAR(255),
+      tag_definition_id UUID REFERENCES tag_definitions(id),
       start_time      TIMESTAMPTZ NOT NULL,
       end_time        TIMESTAMPTZ,
       deleted_at      TIMESTAMPTZ,
@@ -626,7 +643,8 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_tags_time ON tags (start_time DESC);
     CREATE INDEX IF NOT EXISTS idx_tags_tag_time ON tags (tag, start_time DESC);
     CREATE INDEX IF NOT EXISTS idx_tags_tag_key ON tags (tag_key) WHERE tag_key IS NOT NULL;
-    CREATE INDEX IF NOT EXISTS idx_tags_not_deleted ON tags (start_time DESC) WHERE deleted_at IS NULL
+    CREATE INDEX IF NOT EXISTS idx_tags_not_deleted ON tags (start_time DESC) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_tags_definition_id ON tags (tag_definition_id) WHERE tag_definition_id IS NOT NULL
   `,
 
   // Normalized time-series metrics for fast charting queries
@@ -693,6 +711,8 @@ export const tableCreationOrder = [
   'named_locations_indexes',
   'detected_locations',
   'detected_locations_indexes',
+  'tag_definitions',
+  'tag_definitions_indexes',
   'tags',
   'tags_indexes',
   'productivity',

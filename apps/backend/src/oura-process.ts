@@ -13,6 +13,7 @@ import {
   insertRawRecord,
   insertTag,
   insertTimeSeries,
+  resolveOrCreateTagDefinition,
   type TimeSeriesPoint,
   upsertSyncedNote,
 } from './db/index.ts'
@@ -485,7 +486,15 @@ const processTags = async (user: string, data: OuraTagWithComment[]) => {
       source: 'oura',
     })
 
-    const tagId = await insertTag(user, record)
+    // Resolve or auto-create a tag definition, including tag_key as alias
+    const extraAliases = record.tag_key ? [record.tag_key] : []
+    const definition = await resolveOrCreateTagDefinition(user, record.tag, { aliases: extraAliases })
+
+    const tagId = await insertTag(user, {
+      ...record,
+      tag: definition.name, // Use canonical definition name
+      tag_definition_id: definition.id,
+    })
 
     await upsertSyncedNote(user, 'tag', tagId, 'oura', record.comment, record.start_time, record.end_time)
   }
