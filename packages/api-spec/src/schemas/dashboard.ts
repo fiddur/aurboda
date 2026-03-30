@@ -22,6 +22,7 @@ export const builtinDashboardMetrics = [
   // Period summary metrics
   'sleep_score',
   'readiness_score',
+  'resilience_score',
   'steps',
   'zone2_weekly',
   'weight',
@@ -29,9 +30,23 @@ export const builtinDashboardMetrics = [
   // Contextual HRV metrics
   'hrv_sleep',
   // Raw metrics
+  'heart_rate',
   'hrv_rmssd',
   'resting_heart_rate',
   'hr_zone_2_sec',
+  'spo2',
+  'vo2_max',
+  'calories_active',
+  'calories_total',
+  'distance',
+  'floors_climbed',
+  'cardiovascular_age',
+  // Garmin metrics
+  'stress_level',
+  'body_battery',
+  'training_readiness',
+  'intensity_minutes',
+  'respiratory_rate',
 ] as const
 
 export type BuiltinDashboardMetric = (typeof builtinDashboardMetrics)[number]
