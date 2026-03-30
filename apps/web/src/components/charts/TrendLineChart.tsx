@@ -284,11 +284,7 @@ export function TrendLineChart({ data, color, height = 200, width, compact = fal
   }
 
   return (
-    <div
-      ref={containerRef}
-      class="trend-line-chart-container"
-      style={width ? { width: `${width}px` } : undefined}
-    >
+    <div ref={containerRef} class="trend-line-chart-container">
       <svg ref={svgRef} />
       {!compact && <div class="trend-line-chart-tooltip" ref={tooltipRef} />}
     </div>

@@ -7,6 +7,7 @@ import type { BarChartConfig } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
 import { fetchChartData } from '../../state/api'
+import { buildChartUrl } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 
 interface BarChartWidgetProps {
@@ -59,10 +60,19 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
   })
 
   const displayTitle = title ?? `${pattern ?? 'chart'} (${bucket_size})`
+  const chartUrl = buildChartUrl({
+    aggregation,
+    bucket_size,
+    chart_type: 'bar',
+    lookback_days,
+    pattern: pattern ?? undefined,
+    source_type,
+    tag_definition_id,
+  })
 
   if (chartQuery.isLoading) {
     return (
-      <div class="bar-chart-widget">
+      <div class="chart-widget">
         <h4>{displayTitle}</h4>
         <div class="chart-loading">Loading chart data...</div>
       </div>
@@ -71,7 +81,7 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
 
   if (chartQuery.isError || !chartQuery.data) {
     return (
-      <div class="bar-chart-widget">
+      <div class="chart-widget">
         <h4>{displayTitle}</h4>
         <div class="chart-error">Unable to load chart data</div>
       </div>
@@ -79,9 +89,9 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
   }
 
   return (
-    <div class="bar-chart-widget">
+    <a href={chartUrl} class="chart-widget chart-widget-link">
       <h4>{displayTitle}</h4>
       <BarChart data={chartQuery.data} color="#8b5cf6" height={200} />
-    </div>
+    </a>
   )
 }

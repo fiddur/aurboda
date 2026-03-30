@@ -7,6 +7,7 @@ import type { TrendChartConfig } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
 import { fetchTrend } from '../../state/api'
+import { buildChartUrl } from '../../utils/chart-url'
 import { TrendLineChart } from '../charts/TrendLineChart'
 
 interface TrendChartWidgetProps {
@@ -39,10 +40,20 @@ export function TrendChartWidget({ config }: TrendChartWidgetProps) {
   })
 
   const displayTitle = title ?? `${pattern} trend`
+  const chartUrl = buildChartUrl({
+    aggregation,
+    chart_type: 'trend',
+    display_period,
+    half_life_days,
+    lookback_days,
+    pattern,
+    source_type,
+    tag_definition_id: config.tag_definition_id,
+  })
 
   if (trendQuery.isLoading) {
     return (
-      <div class="trend-chart-widget">
+      <div class="chart-widget">
         <h4>{displayTitle}</h4>
         <div class="chart-loading">Loading trend data...</div>
       </div>
@@ -51,7 +62,7 @@ export function TrendChartWidget({ config }: TrendChartWidgetProps) {
 
   if (trendQuery.isError || !trendQuery.data) {
     return (
-      <div class="trend-chart-widget">
+      <div class="chart-widget">
         <h4>{displayTitle}</h4>
         <div class="chart-error">Unable to load trend data</div>
       </div>
@@ -59,12 +70,12 @@ export function TrendChartWidget({ config }: TrendChartWidgetProps) {
   }
 
   return (
-    <div class="trend-chart-widget">
+    <a href={chartUrl} class="chart-widget chart-widget-link">
       <h4>{displayTitle}</h4>
-      <div class="trend-chart-widget-value">
+      <div class="chart-widget-value">
         {trendQuery.data.current_value.toFixed(1)} / {display_period}
       </div>
-      <TrendLineChart data={trendQuery.data.history} color="#673ab8" width={300} height={150} compact />
-    </div>
+      <TrendLineChart data={trendQuery.data.history} color="#673ab8" height={150} compact />
+    </a>
   )
 }
