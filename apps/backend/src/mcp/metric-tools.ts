@@ -12,6 +12,7 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
+import { auditError, auditInfo } from '../services/audit-log.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
 import {
   addCustomMetric,
@@ -206,10 +207,10 @@ export const registerMetricTools = (server: McpServer, user: string) => {
         // Full recompute runs async — fire and forget, return immediately
         computeAndStoreCaloriesAll(user).then(
           (result) =>
-            console.log(
-              `🔥 Async calorie recompute done for ${user}: ${result.points_stored} points across ${result.days_processed} days`,
-            ),
-          (error) => console.error(`🔥 Async calorie recompute failed for ${user}:`, error),
+            auditInfo(user, 'data', `Async calorie recompute done: ${result.points_stored} points`, {
+              days: result.days_processed,
+            }),
+          (error) => auditError(user, 'data', 'Async calorie recompute failed', { error: String(error) }),
         )
         return tzJsonResponse(
           { started: true, message: 'Full calorie recomputation started in background' },

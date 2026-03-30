@@ -10,6 +10,7 @@ import * as PgBossModule from 'pg-boss'
 
 import type { DetectedLocationUpdate } from '../db/index.ts'
 
+import { auditError, auditInfo, auditWarn } from './audit-log.ts'
 import { reverseGeocode } from './geocoding.ts'
 
 // ============================================================================
@@ -132,7 +133,7 @@ const createJobHandler = (deps: GeocodeQueueDeps) => {
     for (const job of jobs) {
       const { detectedLocationId, lat, lon, user } = job.data
 
-      console.log(`Processing geocode job for location ${detectedLocationId} at ${lat}, ${lon}`)
+      auditInfo(user, 'data', `Processing geocode job for location ${detectedLocationId}`, { lat, lon })
 
       const result = await reverseGeocode(lat, lon)
 
@@ -145,28 +146,28 @@ const createJobHandler = (deps: GeocodeQueueDeps) => {
           address: result.data.address,
           geocode_status: 'success',
         })
-        console.log(`Geocoded location ${detectedLocationId}: ${result.data.address}`)
+        auditInfo(user, 'data', `Geocoded location ${detectedLocationId}`, { address: result.data.address })
       } else {
         // Handle different error types
         const { error } = result
         if (error.type === 'network') {
           // Network error - retry by throwing
-          console.error(`Network error geocoding ${detectedLocationId}: ${error.message}`)
+          auditError(user, 'data', `Network error geocoding ${detectedLocationId}`, { error: error.message })
           throw new Error(`Network error: ${error.message}`)
         } else if (error.type === 'http') {
           // HTTP error - retry for server errors (5xx), fail for client errors
           if (error.status >= 500) {
-            console.error(`Server error geocoding ${detectedLocationId}: ${error.status}`)
+            auditError(user, 'data', `Server error geocoding ${detectedLocationId}`, { status: error.status })
             throw new Error(`HTTP ${error.status}: ${error.statusText}`)
           }
           // Client error (4xx) - don't retry
-          console.warn(`HTTP ${error.status} for location ${detectedLocationId}, marking failed`)
+          auditWarn(user, 'data', `HTTP ${error.status} for location ${detectedLocationId}, marking failed`)
           await deps.updateDetectedLocation(user, detectedLocationId, {
             geocode_status: 'failed',
           })
         } else {
           // No results - valid response but location has no address
-          console.warn(`No address found for location ${detectedLocationId}`)
+          auditWarn(user, 'data', `No address found for location ${detectedLocationId}`)
           await deps.updateDetectedLocation(user, detectedLocationId, {
             geocode_status: 'failed',
           })
@@ -239,11 +240,11 @@ export const createGeocodeQueue = async (deps: GeocodeQueueDeps): Promise<Geocod
           geocode_status: 'geocoding',
         })
 
-        console.log(`Enqueued geocode job ${jobId} for location ${data.detectedLocationId}`)
         return jobId
       } catch (error) {
-        // Enqueue failed - location stays in 'pending' status for future retry
-        console.error(`Failed to enqueue geocode job for ${data.detectedLocationId}:`, error)
+        auditError(data.user, 'data', `Failed to enqueue geocode job for ${data.detectedLocationId}`, {
+          error: String(error),
+        })
         return null
       }
     },

@@ -21,6 +21,7 @@ import {
   insertTimeSeries,
 } from '../db/time-series.ts'
 import { isHealthConnectSyncableMetric, metricToHealthConnectType } from '../schema.ts'
+import { auditError, auditInfo } from './audit-log.ts'
 import {
   type CalorieDataPoint,
   computeCaloriesPerMinute,
@@ -95,7 +96,7 @@ export const enqueueCalorieSync = async (
       })
     }
   } catch (err) {
-    console.error('Failed to enqueue calorie outbound sync:', err)
+    auditError(user, 'data', 'Failed to enqueue calorie outbound sync', { error: String(err) })
   }
 }
 
@@ -119,7 +120,7 @@ const invalidateTrainingLoadImpulses = async (user: string, fromTime: Date): Pro
       },
     })
   } catch (err) {
-    console.error('Failed to invalidate training load impulses:', err)
+    auditError(user, 'data', 'Failed to invalidate training load impulses', { error: String(err) })
   }
 }
 
@@ -444,12 +445,10 @@ export const computeAndStoreCaloriesAll = async (
   const gapFill = await gapFillCaloriesForRange(user, range.min, range.max)
   totalStored += gapFill.total_points_stored
 
-  console.log(
-    `🔥 Full recompute: ${totalStored} calorie points across ${daysProcessed} days for ${user}` +
-      (gapFill.total_points_stored > 0
-        ? ` (${gapFill.total_points_stored} gap-filled from HC aggregate)`
-        : ''),
-  )
+  auditInfo(user, 'data', `Full calorie recompute: ${totalStored} points across ${daysProcessed} days`, {
+    gap_filled: gapFill.total_points_stored,
+    vo2_max_source: vo2MaxSource,
+  })
 
   return {
     days_processed: daysProcessed,
@@ -468,20 +467,19 @@ export const triggerCalorieComputation = async (user: string, start: Date, end: 
   try {
     const result = await computeAndStoreCalories(user, start, end)
     if (result.points_stored > 0) {
-      console.log(
-        `🔥 Computed ${result.points_stored} calorie data points for ${user} ` +
-          `(VO2max: ${result.vo2_max_source})`,
-      )
+      auditInfo(user, 'data', `Computed ${result.points_stored} calorie points`, {
+        vo2_max_source: result.vo2_max_source,
+      })
     }
     // Gap-fill from HC aggregate for days in the range
     const gapFill = await gapFillCaloriesForRange(user, start, end)
     if (gapFill.total_points_stored > 0) {
-      console.log(
-        `🔥 Gap-filled ${gapFill.total_points_stored} calorie points for ${user} ` +
-          `(${gapFill.total_residual_kcal.toFixed(0)} kcal residual across ${gapFill.days_processed} days)`,
-      )
+      auditInfo(user, 'data', `Gap-filled ${gapFill.total_points_stored} calorie points`, {
+        days: gapFill.days_processed,
+        residual_kcal: Math.round(gapFill.total_residual_kcal),
+      })
     }
   } catch (err) {
-    console.error('Calorie computation failed (non-fatal):', err)
+    auditError(user, 'data', 'Calorie computation failed', { error: String(err) })
   }
 }

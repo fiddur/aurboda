@@ -14,6 +14,7 @@ import garminConnectPkg from '@flow-js/garmin-connect'
 const { GarminConnect } = garminConnectPkg
 
 import { getOAuthToken, upsertOAuthToken } from './db/index.ts'
+import { auditError, auditInfo } from './services/audit-log.ts'
 
 // ============================================================================
 // Types for Garmin API responses (from custom GET endpoints)
@@ -322,18 +323,18 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
       // Clean up any stale pending session for this user
       pendingMfaSessions.delete(user)
 
-      console.log(`🔑 Garmin login attempt for user=${user}, email=${email}`)
+      auditInfo(user, 'auth', 'Garmin login attempt', { email })
       const gc = new GarminConnect({ password, username: email })
 
       let result
       try {
         result = await gc.login()
       } catch (error) {
-        console.error(`🔑 Garmin login threw for user=${user}, email=${email}:`, error)
+        auditError(user, 'auth', 'Garmin login failed', { email, error: String(error) })
         throw error
       }
 
-      console.log(`🔑 Garmin login result for user=${user}: type=${result.type}`)
+      auditInfo(user, 'auth', `Garmin login result: ${result.type}`)
 
       if (result.type === 'success') {
         const tokens = gc.exportToken()
@@ -362,29 +363,27 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
      * @param mfaCode  The code from the user's email/SMS
      */
     async verifyMfa(user: string, mfaCode: string): Promise<GarminLoginSuccess> {
-      console.log(`🔑 Garmin MFA verify for user=${user}`)
+      auditInfo(user, 'auth', 'Garmin MFA verify')
       const entry = pendingMfaSessions.get(user)
       if (!entry) {
-        console.error(`🔑 Garmin MFA: no pending session for user=${user}`)
+        auditError(user, 'auth', 'Garmin MFA: no pending session')
         throw new Error('No pending MFA session. Please start login again.')
       }
 
       if (Date.now() - entry.createdAt > MFA_SESSION_TTL_MS) {
         pendingMfaSessions.delete(user)
-        console.error(`🔑 Garmin MFA: session expired for user=${user}`)
+        auditError(user, 'auth', 'Garmin MFA: session expired')
         throw new Error('MFA session expired. Please start login again.')
       }
 
       const { gc } = entry
 
-      console.log(`🔑 Garmin MFA: calling verifyMfa on GarminConnect...`)
       await gc.verifyMfa(mfaCode)
-      console.log(`🔑 Garmin MFA: verification succeeded for user=${user}`)
+      auditInfo(user, 'auth', 'Garmin MFA verification succeeded')
       pendingMfaSessions.delete(user)
 
       const tokens = gc.exportToken()
       await saveSession(user, gc)
-      console.log(`🔑 Garmin MFA: tokens saved for user=${user}`)
       return { success: true, tokens }
     },
   }
