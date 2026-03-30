@@ -4,12 +4,13 @@ import { useCallback, useState } from 'preact/hooks'
 import {
   connectGarmin,
   disconnectGarmin,
+  fetchGarminSyncStatus,
   fetchUserSettings,
   syncGarmin,
   verifyGarminMfa,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { DataTypesList, LoginRequired, StatusBanner } from './shared'
+import { DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
 import './style.css'
 
 const DATA_TYPES = [
@@ -170,6 +171,12 @@ export function GarminSource() {
 
   const isConnected = userSettings?.garmin_connected ?? false
 
+  const { data: syncStatusData, isLoading: syncStatusLoading } = useQuery({
+    enabled: !!isLoggedIn && isConnected,
+    queryFn: fetchGarminSyncStatus,
+    queryKey: ['garminSyncStatus'],
+  })
+
   const [loginStatus, setLoginStatus] = useState<LoginStatus>('idle')
 
   // Disconnect state
@@ -194,6 +201,11 @@ export function GarminSource() {
     } finally {
       setDisconnecting(false)
     }
+  }, [queryClient])
+
+  const handleSyncNow = useCallback(async () => {
+    await syncGarmin(false)
+    await queryClient.invalidateQueries({ queryKey: ['garminSyncStatus'] })
   }, [queryClient])
 
   const handleFullResync = useCallback(async () => {
@@ -239,6 +251,14 @@ export function GarminSource() {
               connected={isConnected}
               label={isConnected ? 'Garmin Connect is connected' : 'Garmin Connect not connected'}
             />
+
+            {isConnected && (
+              <SyncStatusBar
+                states={syncStatusData?.states}
+                isLoading={syncStatusLoading}
+                onSyncNow={handleSyncNow}
+              />
+            )}
 
             <div class="links-row">
               <a
