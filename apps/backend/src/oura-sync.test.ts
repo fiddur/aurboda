@@ -18,6 +18,11 @@ vi.mock('./db', () => ({
   insertRawRecord: vi.fn(),
   insertTag: vi.fn().mockResolvedValue('tag-uuid-123'),
   insertTimeSeries: vi.fn(),
+  resolveOrCreateTagDefinition: vi
+    .fn()
+    .mockImplementation((_user: string, tagName: string) =>
+      Promise.resolve({ aliases: [tagName.toLowerCase()], id: 'def-uuid', name: tagName }),
+    ),
   upsertSyncState: vi.fn(),
   upsertSyncedNote: vi.fn(),
 }))
