@@ -14,7 +14,6 @@ import { z } from 'zod'
 
 import {
   deleteTagDefinition,
-  getTagDefinitionById,
   getTagDefinitions,
   insertTagDefinition,
   mergeTagDefinitions,
