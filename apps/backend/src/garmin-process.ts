@@ -352,7 +352,7 @@ const processBodyBattery = async (
     // Insert time-series points from the body battery values array
     if (day.bodyBatteryValuesArray?.length) {
       for (const [ts, value] of day.bodyBatteryValuesArray) {
-        if (ts && value >= 0) {
+        if (ts && value != null && value >= 0) {
           points.push({ metric: 'body_battery', source: 'garmin', time: new Date(ts), unit: 'score', value })
         }
       }
