@@ -291,6 +291,15 @@ export {
   touchMcpSession,
 } from './mcp-sessions.ts'
 
+// Audit log
+export {
+  cleanupAuditLog,
+  insertAuditLog,
+  queryAuditLog,
+  type AuditLogQueryParams,
+  type AuditLogRow,
+} from './audit-log.ts'
+
 // Row mappers (re-export for consumers that need them directly)
 export {
   mapActivityRow,

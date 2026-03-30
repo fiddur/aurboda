@@ -1,0 +1,198 @@
+.audit-log-page {
+  width: 100%;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.audit-log-page h1 {
+  font-size: 1.75rem;
+  margin-bottom: 1rem;
+}
+
+.audit-log-filters {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.audit-log-filters select {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.875rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.audit-log-count {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.audit-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.audit-log-entry {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.audit-log-entry:hover {
+  background: #f5f5f5;
+}
+
+.audit-log-entry.level-info {
+  border-left-color: #2196f3;
+}
+
+.audit-log-entry.level-warn {
+  border-left-color: #ff9800;
+}
+
+.audit-log-entry.level-error {
+  border-left-color: #f44336;
+}
+
+.audit-log-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.audit-log-icon {
+  flex-shrink: 0;
+  width: 1.25em;
+  text-align: center;
+}
+
+.audit-log-time {
+  color: #888;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-log-category {
+  color: #673ab8;
+  font-weight: 500;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.audit-log-message {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-log-entry.expanded .audit-log-message {
+  white-space: normal;
+}
+
+.audit-log-details {
+  margin: 0.5rem 0 0 2rem;
+  padding: 0.5rem;
+  background: #f8f8f8;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.audit-log-pagination {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+}
+
+.audit-log-pagination button {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.audit-log-pagination button:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+.audit-log-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.audit-log-page .loading,
+.audit-log-page .empty {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+}
+
+@media (prefers-color-scheme: dark) {
+  .audit-log-entry:hover {
+    background: #2a2a2a;
+  }
+
+  .audit-log-filters select {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+  }
+
+  .audit-log-time {
+    color: #aaa;
+  }
+
+  .audit-log-category {
+    color: #b388ff;
+  }
+
+  .audit-log-count {
+    color: #aaa;
+  }
+
+  .audit-log-details {
+    background: #1a1a1a;
+    color: #ddd;
+  }
+
+  .audit-log-pagination button {
+    border-color: #555;
+    color: #fff;
+  }
+
+  .audit-log-pagination button:hover:not(:disabled) {
+    background: #333;
+  }
+}
+
+@media (max-width: 639px) {
+  .audit-log-page {
+    padding: 1rem;
+  }
+
+  .audit-log-row {
+    flex-wrap: wrap;
+  }
+
+  .audit-log-message {
+    width: 100%;
+    white-space: normal;
+  }
+}

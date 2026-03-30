@@ -15,6 +15,7 @@ import pg from 'pg'
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
 export interface ServerSettings {
+  audit_log_retention_days: number
   lastfm_api_key: string
   oura_webhook_enabled: boolean
   oura_webhook_verification_token: string
@@ -76,6 +77,8 @@ export interface CentralDb {
   initializeCentralDb: () => Promise<void>
   getServerSetting: <K extends keyof ServerSettings>(key: K) => Promise<ServerSettings[K] | null>
   setServerSetting: <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => Promise<void>
+  getAuditLogRetentionDays: () => Promise<number>
+  setAuditLogRetentionDays: (days: number) => Promise<void>
   getLastFmApiKey: () => Promise<string | null>
   setLastFmApiKey: (key: string | null) => Promise<void>
   getSignupMode: () => Promise<SignupMode>
@@ -289,6 +292,15 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       return result.rows.map((row) => row.username)
     },
 
+    getAuditLogRetentionDays: async (): Promise<number> => {
+      const client = await getClient()
+      const result = await client.query('SELECT value FROM server_settings WHERE key = $1', [
+        'audit_log_retention_days',
+      ])
+      if (result.rows.length === 0) return 3
+      return result.rows[0].value as number
+    },
+
     getLastFmApiKey: async (): Promise<string | null> => {
       const client = await getClient()
       const result = await client.query('SELECT value FROM server_settings WHERE key = $1', [
@@ -366,6 +378,16 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       const client = await getClient()
       const result = await client.query('DELETE FROM admins WHERE username = $1', [username])
       return (result.rowCount ?? 0) > 0
+    },
+
+    setAuditLogRetentionDays: async (days: number): Promise<void> => {
+      const client = await getClient()
+      await client.query(
+        `INSERT INTO server_settings (key, value, updated_at)
+         VALUES ('audit_log_retention_days', $1, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+        [JSON.stringify(days)],
+      )
     },
 
     setLastFmApiKey: async (key: string | null): Promise<void> => {

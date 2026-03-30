@@ -217,6 +217,13 @@ export function Settings() {
           <a href="/data-sources">Data Sources</a>.
         </p>
       </section>
+
+      <section class="settings-section">
+        <h2>Audit Log</h2>
+        <p class="section-description">
+          View recent system events, sync operations, and errors. <a href="/audit-log">View audit log</a>
+        </p>
+      </section>
     </div>
   )
 }

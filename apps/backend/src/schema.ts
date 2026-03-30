@@ -682,6 +682,24 @@ export const createTableStatements: Record<string, string> = {
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
+
+  // Audit log for user-specific events (sync, auth, settings changes, etc.)
+  audit_log: `
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      level           VARCHAR(10) NOT NULL DEFAULT 'info',
+      category        VARCHAR(20) NOT NULL,
+      message         TEXT NOT NULL,
+      details         JSONB
+    )
+  `,
+
+  audit_log_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log (timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_log_category ON audit_log (category);
+    CREATE INDEX IF NOT EXISTS idx_audit_log_level ON audit_log (level)
+  `,
 }
 
 /**
@@ -733,6 +751,8 @@ export const tableCreationOrder = [
   'goals',
   'goals_indexes',
   'user_settings',
+  'audit_log',
+  'audit_log_indexes',
   'notes',
   'notes_indexes',
   'mcp_sessions',
