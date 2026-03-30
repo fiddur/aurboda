@@ -4,6 +4,7 @@
 
 export * from './activities.ts'
 export * from './admin.ts'
+export * from './chart-data.ts'
 export * from './common.ts'
 export * from './correlations.ts'
 export * from './food-items.ts'

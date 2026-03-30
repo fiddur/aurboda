@@ -18,6 +18,7 @@ import type { CentralDb } from './services/central-db.ts'
 import type { SyncProvider } from './services/queries.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
+import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerFoodItemTools } from './mcp/food-item-tools.ts'
 import { registerLastFmTools } from './mcp/lastfm-tools.ts'
@@ -61,6 +62,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerCorrelationTools(server, user, deps.sync)
   registerTrainingLoadTools(server, user)
   registerTrendTools(server, user)
+  registerChartTools(server, user)
   registerNoteTools(server, user)
   registerMealTools(server, user)
   registerFoodItemTools(server, user)
