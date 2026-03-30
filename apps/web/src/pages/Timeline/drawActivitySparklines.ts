@@ -12,15 +12,19 @@ interface ParsedBucket {
   start: Date
   hr?: number
   hrv?: number
+  stress?: number
 }
 
 const HR_COLOR = '#ef4444' // red
 const HRV_COLOR = '#14b8a6' // teal
+const STRESS_COLOR = '#f97316' // orange
 
 /** HR domain range for sparklines (bpm) */
 const HR_RANGE: [number, number] = [40, 200]
 /** HRV domain range for sparklines (ms) */
 const HRV_RANGE: [number, number] = [0, 150]
+/** Stress domain range for sparklines (Garmin 0–100) */
+const STRESS_RANGE: [number, number] = [0, 100]
 
 /** Minimum block height in pixels before we attempt to draw sparklines. */
 const MIN_SPARKLINE_HEIGHT = 40
@@ -34,6 +38,7 @@ export const parseBucketedData = (data: QueryMetricsBucketedResponse | undefined
     hr: b.metrics.heart_rate?.avg,
     hrv: b.metrics.hrv_rmssd?.avg,
     start: new Date(b.start),
+    stress: b.metrics.stress_level?.avg,
   }))
 }
 
@@ -49,9 +54,10 @@ export const drawActivitySparklines = (
   yScale: d3.ScaleTime<number, number>,
   showHR: boolean,
   showHRV: boolean,
+  showStress: boolean,
   getItemRect: (item: ChartItem) => { x: number; width: number } | undefined,
 ) => {
-  if (buckets.length === 0 || (!showHR && !showHRV)) return
+  if (buckets.length === 0 || (!showHR && !showHRV && !showStress)) return
 
   const activityItems = items.filter((item) => item.activity_type && !item.isPoint)
 
@@ -87,32 +93,29 @@ export const drawActivitySparklines = (
       .attr('clip-path', `url(#${clipId})`)
       .attr('pointer-events', 'none')
 
-    if (showHR) {
-      const hrPoints = activityBuckets.filter((b) => b.hr !== undefined)
-      if (hrPoints.length >= 2) {
-        drawSparkline(
-          sparkGroup,
-          hrPoints.map((b) => ({ time: b.start, value: b.hr! })),
-          yScale,
-          rect.x,
-          rect.width,
-          HR_COLOR,
-          HR_RANGE,
-        )
-      }
-    }
+    const sparklineSeries: {
+      show: boolean
+      key: keyof ParsedBucket
+      color: string
+      range: [number, number]
+    }[] = [
+      { show: showHR, key: 'hr', color: HR_COLOR, range: HR_RANGE },
+      { show: showHRV, key: 'hrv', color: HRV_COLOR, range: HRV_RANGE },
+      { show: showStress, key: 'stress', color: STRESS_COLOR, range: STRESS_RANGE },
+    ]
 
-    if (showHRV) {
-      const hrvPoints = activityBuckets.filter((b) => b.hrv !== undefined)
-      if (hrvPoints.length >= 2) {
+    for (const { show, key, color, range } of sparklineSeries) {
+      if (!show) continue
+      const points = activityBuckets.filter((b) => b[key] !== undefined)
+      if (points.length >= 2) {
         drawSparkline(
           sparkGroup,
-          hrvPoints.map((b) => ({ time: b.start, value: b.hrv! })),
+          points.map((b) => ({ time: b.start, value: b[key] as number })),
           yScale,
           rect.x,
           rect.width,
-          HRV_COLOR,
-          HRV_RANGE,
+          color,
+          range,
         )
       }
     }
