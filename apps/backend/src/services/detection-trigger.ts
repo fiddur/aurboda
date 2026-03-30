@@ -8,6 +8,8 @@
 import type { DetectedLocation } from '../db/index.ts'
 import type { GeocodeQueue } from './geocode-queue.ts'
 
+import { auditError, auditInfo } from './audit-log.ts'
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -57,14 +59,16 @@ export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTri
    * Called after debounce period expires.
    */
   const executeDetectionForUser = async (user: string): Promise<void> => {
-    console.log(`Running detection for user ${user}`)
+    auditInfo(user, 'data', 'Running location detection')
 
     try {
       const result = await deps.runDetectionForUser(user)
 
-      console.log(
-        `Detection complete for ${user}: ${result.created} created, ${result.updated} updated, ${result.needsGeocode.length} need geocoding`,
-      )
+      auditInfo(user, 'data', 'Location detection complete', {
+        created: result.created,
+        updated: result.updated,
+        needs_geocode: result.needsGeocode.length,
+      })
 
       // Queue geocoding jobs if the queue is available
       if (deps.geocodeQueue && result.needsGeocode.length > 0) {
@@ -81,7 +85,7 @@ export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTri
         }
       }
     } catch (error) {
-      console.error(`Detection failed for user ${user}:`, error)
+      auditError(user, 'data', 'Location detection failed', { error: String(error) })
     }
   }
 

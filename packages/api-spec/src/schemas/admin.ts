@@ -111,6 +111,10 @@ export type LoginResponse = z.infer<typeof loginResponseSchema>
 export const adminSettingsResponseSchema = baseResponseSchema
   .extend({
     admin_count: z.number().int().meta({ description: 'Number of admin users' }),
+    audit_log_retention_days: z
+      .number()
+      .int()
+      .meta({ description: 'Number of days to keep audit log entries (default: 3)' }),
     lastfm_api_key_set: z.boolean().meta({ description: 'Whether a Last.fm API key is configured' }),
     oura_webhook_available: z.boolean().meta({
       description: 'Whether Oura webhook push can be enabled (requires HTTPS and Oura credentials)',
@@ -127,6 +131,13 @@ export type AdminSettingsResponse = z.infer<typeof adminSettingsResponseSchema>
  */
 export const updateAdminSettingsBodySchema = z
   .object({
+    audit_log_retention_days: z
+      .number()
+      .int()
+      .positive()
+      .max(365)
+      .optional()
+      .meta({ description: 'Number of days to keep audit log entries (1-365, default: 3)' }),
     lastfm_api_key: z
       .string()
       .nullable()

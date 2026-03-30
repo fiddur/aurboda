@@ -25,6 +25,7 @@ import {
   needsSync as rescueTimeNeedsSync,
   syncRescueTimeData,
 } from '../rescuetime-sync.ts'
+import { auditError, auditInfo, auditWarn } from './audit-log.ts'
 import { getSettings } from './settings.ts'
 
 /** Default sync threshold - sync if last sync was more than 30 minutes ago */
@@ -64,10 +65,10 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
           return
         }
 
-        console.log('Auto-syncing calendars...')
+        auditInfo(user, 'sync', 'Auto-syncing calendars')
         await syncAllCalendars(user, settings.calendars)
       } catch (error) {
-        console.error('Failed to auto-sync calendars:', error)
+        auditError(user, 'sync', 'Failed to auto-sync calendars', { error: String(error) })
       }
     },
 
@@ -78,7 +79,9 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         const syncState = await getSyncState(user, 'garmin', dataType)
 
         if (isGarminRateLimited(syncState)) {
-          console.log(`Garmin ${dataType} sync skipped - rate limited until ${syncState?.retry_after}`)
+          auditWarn(user, 'sync', `Garmin ${dataType} sync skipped - rate limited`, {
+            retry_after: syncState?.retry_after?.toISOString(),
+          })
           return
         }
 
@@ -87,10 +90,10 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
           return
         }
 
-        console.log(`Auto-syncing Garmin ${dataType}...`)
+        auditInfo(user, 'sync', `Auto-syncing Garmin ${dataType}`)
         await syncGarminDataType(user, config.garmin, dataType as GarminDataType)
       } catch (error) {
-        console.error(`Failed to auto-sync Garmin ${dataType}:`, error)
+        auditError(user, 'sync', `Failed to auto-sync Garmin ${dataType}`, { error: String(error) })
       }
     },
 
@@ -110,10 +113,10 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
           return
         }
 
-        console.log('Auto-syncing Last.fm scrobbles...')
+        auditInfo(user, 'sync', 'Auto-syncing Last.fm scrobbles')
         await syncLastFmData(user, apiKey, settings.lastfm_username)
       } catch (error) {
-        console.error('Failed to auto-sync Last.fm:', error)
+        auditError(user, 'sync', 'Failed to auto-sync Last.fm', { error: String(error) })
       }
     },
 
@@ -126,7 +129,9 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
 
         // Skip if rate limited
         if (isOuraRateLimited(syncState)) {
-          console.log(`Oura ${dataType} sync skipped - rate limited until ${syncState?.retry_after}`)
+          auditWarn(user, 'sync', `Oura ${dataType} sync skipped - rate limited`, {
+            retry_after: syncState?.retry_after?.toISOString(),
+          })
           return
         }
 
@@ -136,11 +141,11 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
           return // Recently synced, no need to sync again
         }
 
-        console.log(`Auto-syncing Oura ${dataType}...`)
+        auditInfo(user, 'sync', `Auto-syncing Oura ${dataType}`)
         const accessToken = await config.oura.getAccessToken(user)
         await syncOuraDataType(user, config.oura, ouraDataType, accessToken)
       } catch (error) {
-        console.error(`Failed to auto-sync Oura ${dataType}:`, error)
+        auditError(user, 'sync', `Failed to auto-sync Oura ${dataType}`, { error: String(error) })
       }
     },
 
@@ -154,10 +159,10 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         if (isRescueTimeRateLimited(syncState)) return
         if (!rescueTimeNeedsSync(syncState, threshold)) return
 
-        console.log('Auto-syncing RescueTime productivity...')
+        auditInfo(user, 'sync', 'Auto-syncing RescueTime productivity')
         await syncRescueTimeData(user, settings.rescue_time_key)
       } catch (error) {
-        console.error('Failed to auto-sync RescueTime:', error)
+        auditError(user, 'sync', 'Failed to auto-sync RescueTime', { error: String(error) })
       }
     },
   }
