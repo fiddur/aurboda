@@ -387,8 +387,8 @@ export function MetricMeta() {
       <section class="metric-meta-section">
         <h2>Related</h2>
         <div class="metric-meta-links">
-          <a href="/trends" class="metric-meta-link">
-            All Trends
+          <a href="/chart" class="metric-meta-link">
+            Chart Explorer
           </a>
           <a href="/correlations" class="metric-meta-link">
             Correlations
