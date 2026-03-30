@@ -304,8 +304,19 @@ const processStress = async (
   const time = dateAt(data.calendarDate)
   await deps.insertRawRecord(user, makeRaw('garmin_stress', `garmin-stress-${data.calendarDate}`, time, data))
 
-  const points: TimeSeriesPoint[] = []
-  if (data.overallStressLevel > 0) {
+  // Prefer granular time-series data from stressValuesArray
+  const points: TimeSeriesPoint[] = (data.stressValuesArray ?? [])
+    .filter(([ts, value]) => ts && value > 0)
+    .map(([ts, value]) => ({
+      metric: 'stress_level' as const,
+      source: 'garmin' as const,
+      time: new Date(ts),
+      unit: 'score',
+      value,
+    }))
+
+  // Fall back to daily average if no granular data
+  if (points.length === 0 && data.overallStressLevel > 0) {
     points.push({
       metric: 'stress_level',
       source: 'garmin',

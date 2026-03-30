@@ -432,7 +432,7 @@ describe('processGarminData', () => {
 
   describe('stress', () => {
     test('inserts raw record with correct fields', async () => {
-      const data = { calendarDate: '2025-01-15', overallStressLevel: 38 }
+      const data = { calendarDate: '2025-01-15', overallStressLevel: 38, stressValuesArray: null }
 
       await processGarminData(user, 'stress', data, mockDeps)
 
@@ -445,8 +445,30 @@ describe('processGarminData', () => {
       })
     })
 
-    test('inserts stress_level time series point', async () => {
-      const data = { calendarDate: '2025-01-15', overallStressLevel: 38 }
+    test('inserts granular stress time series from stressValuesArray', async () => {
+      const data = {
+        calendarDate: '2025-01-15',
+        overallStressLevel: 38,
+        stressValuesArray: [
+          [1736935200000, 25],
+          [1736935500000, 42],
+          [1736935800000, -1],
+          [1736936100000, 0],
+          [1736936400000, 55],
+        ] as [number, number][],
+      }
+
+      await processGarminData(user, 'stress', data, mockDeps)
+
+      expect(mockDeps.insertTimeSeries).toHaveBeenCalledWith(user, [
+        { metric: 'stress_level', source: 'garmin', time: new Date(1736935200000), unit: 'score', value: 25 },
+        { metric: 'stress_level', source: 'garmin', time: new Date(1736935500000), unit: 'score', value: 42 },
+        { metric: 'stress_level', source: 'garmin', time: new Date(1736936400000), unit: 'score', value: 55 },
+      ])
+    })
+
+    test('falls back to overallStressLevel when stressValuesArray is null', async () => {
+      const data = { calendarDate: '2025-01-15', overallStressLevel: 38, stressValuesArray: null }
 
       await processGarminData(user, 'stress', data, mockDeps)
 
@@ -455,8 +477,24 @@ describe('processGarminData', () => {
       ])
     })
 
-    test('skips time series when overallStressLevel is 0', async () => {
-      const data = { calendarDate: '2025-01-15', overallStressLevel: 0 }
+    test('skips time series when no valid data', async () => {
+      const data = { calendarDate: '2025-01-15', overallStressLevel: 0, stressValuesArray: null }
+
+      await processGarminData(user, 'stress', data, mockDeps)
+
+      expect(mockDeps.insertTimeSeries).not.toHaveBeenCalled()
+    })
+
+    test('filters out negative and zero stress values', async () => {
+      const data = {
+        calendarDate: '2025-01-15',
+        overallStressLevel: 0,
+        stressValuesArray: [
+          [1736935200000, -1],
+          [1736935500000, -2],
+          [1736935800000, 0],
+        ] as [number, number][],
+      }
 
       await processGarminData(user, 'stress', data, mockDeps)
 
@@ -473,7 +511,7 @@ describe('processGarminData', () => {
         await processGarminData(
           user,
           'stress',
-          { calendarDate: '2025-01-15', overallStressLevel: 38 },
+          { calendarDate: '2025-01-15', overallStressLevel: 38, stressValuesArray: null },
           mockDeps,
         ),
       ).toBe(1)
