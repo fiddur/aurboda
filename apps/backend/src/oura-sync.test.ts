@@ -18,6 +18,11 @@ vi.mock('./db', () => ({
   insertRawRecord: vi.fn(),
   insertTag: vi.fn().mockResolvedValue('tag-uuid-123'),
   insertTimeSeries: vi.fn(),
+  resolveOrCreateTagDefinition: vi
+    .fn()
+    .mockImplementation((_user: string, tagName: string) =>
+      Promise.resolve({ aliases: [tagName.toLowerCase()], id: 'def-uuid', name: tagName }),
+    ),
   upsertSyncState: vi.fn(),
   upsertSyncedNote: vi.fn(),
 }))
@@ -784,7 +789,15 @@ describe('processOuraData', () => {
         source: 'oura',
       })
 
-      expect(db.insertTag).toHaveBeenCalledWith(user, data[0])
+      expect(db.insertTag).toHaveBeenCalledWith(
+        user,
+        expect.objectContaining({
+          external_id: 'tag-1',
+          source: 'oura',
+          tag: 'Morning Coffee',
+          tag_definition_id: 'def-uuid',
+        }),
+      )
     })
 
     test('processes tag data without end_time', async () => {
@@ -801,7 +814,10 @@ describe('processOuraData', () => {
 
       await processOuraData(user, 'tags', data)
 
-      expect(db.insertTag).toHaveBeenCalledWith(user, data[0])
+      expect(db.insertTag).toHaveBeenCalledWith(
+        user,
+        expect.objectContaining({ external_id: 'tag-2', tag: 'stress_high', tag_definition_id: 'def-uuid' }),
+      )
     })
 
     test('handles tag with unknown type', async () => {
@@ -818,7 +834,10 @@ describe('processOuraData', () => {
 
       await processOuraData(user, 'tags', data)
 
-      expect(db.insertTag).toHaveBeenCalledWith(user, data[0])
+      expect(db.insertTag).toHaveBeenCalledWith(
+        user,
+        expect.objectContaining({ external_id: 'tag-3', tag: 'unknown', tag_definition_id: 'def-uuid' }),
+      )
     })
 
     test('upserts synced note when tag has a comment', async () => {

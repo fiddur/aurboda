@@ -27,6 +27,11 @@ export const tagSchema = z
     source: dataSourceSchema.optional(),
     start_time: iso8601DateTimeSchema,
     tag: tagTextSchema,
+    tag_definition_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Reference to the tag definition this tag belongs to' }),
     tag_key: z
       .string()
       .optional()
@@ -227,3 +232,80 @@ export const tagMappingsResponseSchema = baseResponseSchema
   .meta({ id: 'TagMappingsResponse' })
 
 export type TagMappingsResponse = z.infer<typeof tagMappingsResponseSchema>
+
+// ============================================================================
+// Tag Definitions
+// ============================================================================
+
+/**
+ * Tag definition — canonical tag identity with aliases for matching.
+ */
+export const tagDefinitionSchema = z
+  .object({
+    aliases: z.array(z.string()).meta({ description: 'Lowercase match strings for this tag' }),
+    count: z.number().int().optional().meta({ description: 'Number of tag occurrences (when included)' }),
+    created_at: iso8601DateTimeSchema.optional(),
+    icon: z.string().nullable().optional().meta({ description: 'Emoji or URL icon' }),
+    id: z.string().uuid().meta({ description: 'Tag definition ID' }),
+    latest_time: iso8601DateTimeSchema.optional().meta({ description: 'Most recent tag occurrence' }),
+    name: z.string().meta({ description: 'Display name' }),
+    updated_at: iso8601DateTimeSchema.optional(),
+  })
+  .meta({ id: 'TagDefinition', description: 'Canonical tag identity with aliases' })
+
+export type TagDefinition = z.infer<typeof tagDefinitionSchema>
+
+/**
+ * Create tag definition body.
+ */
+export const createTagDefinitionBodySchema = z
+  .object({
+    aliases: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Additional lowercase match strings (name is always included)' }),
+    icon: z.string().optional().meta({ description: 'Emoji or URL icon' }),
+    name: z.string().min(1).meta({ description: 'Display name for the tag definition' }),
+  })
+  .meta({ id: 'CreateTagDefinitionBody', description: 'Body for creating a tag definition' })
+
+export type CreateTagDefinitionBody = z.infer<typeof createTagDefinitionBodySchema>
+
+/**
+ * Update tag definition body.
+ */
+export const updateTagDefinitionBodySchema = z
+  .object({
+    aliases: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Replace aliases (name is always included)' }),
+    icon: z.string().nullable().optional().meta({ description: 'Emoji or URL icon (null to clear)' }),
+    name: z.string().min(1).optional().meta({ description: 'New display name' }),
+  })
+  .meta({ id: 'UpdateTagDefinitionBody', description: 'Body for updating a tag definition' })
+
+export type UpdateTagDefinitionBody = z.infer<typeof updateTagDefinitionBodySchema>
+
+/**
+ * Merge tag definitions body.
+ */
+export const mergeTagDefinitionsBodySchema = z
+  .object({
+    target_id: z.string().uuid().meta({ description: 'ID of the definition to merge INTO (kept)' }),
+  })
+  .meta({
+    id: 'MergeTagDefinitionsBody',
+    description: 'Merge this definition into the target. Moves all aliases and re-links all tags.',
+  })
+
+export type MergeTagDefinitionsBody = z.infer<typeof mergeTagDefinitionsBodySchema>
+
+/**
+ * Tag definitions response.
+ */
+export const tagDefinitionsResponseSchema = createDataArrayResponseSchema(tagDefinitionSchema).meta({
+  id: 'TagDefinitionsResponse',
+})
+
+export type TagDefinitionsResponse = z.infer<typeof tagDefinitionsResponseSchema>

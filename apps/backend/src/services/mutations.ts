@@ -21,6 +21,7 @@ import {
   getTagById,
   insertTag,
   insertTimeSeries,
+  resolveOrCreateTagDefinition,
   type TimeSeriesPoint,
   updateTag as dbUpdateTag,
   updateTagEndTime,
@@ -188,6 +189,9 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
     }
   }
 
+  // Resolve or create a tag definition for this tag name
+  const definition = await resolveOrCreateTagDefinition(user, input.tag)
+
   // Create a new tag
   const externalId = randomUUID()
 
@@ -196,7 +200,8 @@ export async function addTag(user: string, input: AddTagInput): Promise<AddTagRe
     external_id: externalId,
     source: 'aurboda',
     start_time: input.start_time,
-    tag: input.tag,
+    tag: definition.name, // Use the canonical definition name
+    tag_definition_id: definition.id,
   })
 
   return {

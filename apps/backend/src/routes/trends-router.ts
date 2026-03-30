@@ -19,8 +19,23 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
     authMiddleware,
     validateQuery(trendQuerySchema),
     async (req, res) => {
-      const { aggregation, display_period, half_life_days, lookback_days, pattern, source_type } = req.query
+      const {
+        aggregation,
+        display_period,
+        half_life_days,
+        lookback_days,
+        pattern,
+        source_type,
+        tag_definition_id,
+      } = req.query
       const user = req.user!
+
+      // Require pattern or tag_definition_id
+      if (!pattern && !tag_definition_id) {
+        return res
+          .status(400)
+          .json({ error: 'Either pattern or tag_definition_id is required', success: false })
+      }
 
       const halfLifeDays = half_life_days ? parseInt(half_life_days, 10) : undefined
       const lookbackDays = lookback_days ? parseInt(lookback_days, 10) : undefined
@@ -34,8 +49,9 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
           display_period,
           half_life_days: halfLifeDays,
           lookback_days: lookbackDays,
-          pattern,
+          pattern: pattern ?? '',
           source_type,
+          tag_definition_id,
         })
         res.json({ data: result, success: true })
       } catch (error) {
