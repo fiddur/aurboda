@@ -38,7 +38,7 @@ import './style.css'
 
 type SourceType = 'tag' | 'metric' | 'productivity_category' | 'activity_type'
 type ChartType = 'trend' | 'bar'
-type BucketSize = '15m' | '1h' | '1d' | '1w' | '1M'
+type BucketSize = '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
 
 const LOOKBACK_OPTIONS = [
   { label: '1 day', value: 1 },
@@ -57,6 +57,8 @@ const HALF_LIFE_OPTIONS = [
 ]
 
 const BUCKET_SIZE_OPTIONS: { label: string; value: BucketSize }[] = [
+  { label: '1 min', value: '1m' },
+  { label: '5 min', value: '5m' },
   { label: '15 min', value: '15m' },
   { label: 'Hourly', value: '1h' },
   { label: 'Daily', value: '1d' },

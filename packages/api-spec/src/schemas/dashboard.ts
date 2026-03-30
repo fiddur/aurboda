@@ -124,7 +124,9 @@ export const trendChartConfigSchema = z
 export const barChartConfigSchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
-    bucket_size: z.enum(['15m', '1h', '1d', '1w', '1M']).meta({ description: 'Time bucket size' }),
+    bucket_size: z
+      .enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M'])
+      .meta({ description: 'Time bucket size' }),
     lookback_days: z.number().int().positive().meta({ description: 'Days of data to display' }),
     pattern: z.string().min(1).optional().meta({ description: 'Tag pattern (regex) or metric name' }),
     source_type: z
