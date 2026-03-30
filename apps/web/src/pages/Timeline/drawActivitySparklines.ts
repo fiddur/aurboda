@@ -93,47 +93,29 @@ export const drawActivitySparklines = (
       .attr('clip-path', `url(#${clipId})`)
       .attr('pointer-events', 'none')
 
-    if (showHR) {
-      const hrPoints = activityBuckets.filter((b) => b.hr !== undefined)
-      if (hrPoints.length >= 2) {
-        drawSparkline(
-          sparkGroup,
-          hrPoints.map((b) => ({ time: b.start, value: b.hr! })),
-          yScale,
-          rect.x,
-          rect.width,
-          HR_COLOR,
-          HR_RANGE,
-        )
-      }
-    }
+    const sparklineSeries: {
+      show: boolean
+      key: keyof ParsedBucket
+      color: string
+      range: [number, number]
+    }[] = [
+      { show: showHR, key: 'hr', color: HR_COLOR, range: HR_RANGE },
+      { show: showHRV, key: 'hrv', color: HRV_COLOR, range: HRV_RANGE },
+      { show: showStress, key: 'stress', color: STRESS_COLOR, range: STRESS_RANGE },
+    ]
 
-    if (showHRV) {
-      const hrvPoints = activityBuckets.filter((b) => b.hrv !== undefined)
-      if (hrvPoints.length >= 2) {
+    for (const { show, key, color, range } of sparklineSeries) {
+      if (!show) continue
+      const points = activityBuckets.filter((b) => b[key] !== undefined)
+      if (points.length >= 2) {
         drawSparkline(
           sparkGroup,
-          hrvPoints.map((b) => ({ time: b.start, value: b.hrv! })),
+          points.map((b) => ({ time: b.start, value: b[key] as number })),
           yScale,
           rect.x,
           rect.width,
-          HRV_COLOR,
-          HRV_RANGE,
-        )
-      }
-    }
-
-    if (showStress) {
-      const stressPoints = activityBuckets.filter((b) => b.stress !== undefined)
-      if (stressPoints.length >= 2) {
-        drawSparkline(
-          sparkGroup,
-          stressPoints.map((b) => ({ time: b.start, value: b.stress! })),
-          yScale,
-          rect.x,
-          rect.width,
-          STRESS_COLOR,
-          STRESS_RANGE,
+          color,
+          range,
         )
       }
     }

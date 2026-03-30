@@ -342,6 +342,7 @@ const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = 
   exercise: (item) => item.column === 'Activity' && item.activity_type === 'exercise',
   hr: () => false,
   hrv: () => false,
+  stress: () => false,
   location: (item) => item.column === 'Location',
   meal: (item) => item.entity_type === 'meal',
   meditation: (item) => item.column === 'Activity' && item.activity_type === 'meditation',

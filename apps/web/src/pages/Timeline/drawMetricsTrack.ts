@@ -321,38 +321,61 @@ const buildMetricsTooltipHtml = (
   html += `<div class="tooltip-time">${timeRange}</div>`
   let hasContent = false
 
-  if (showHR) {
-    const hr = bucket.metrics.heart_rate
-    if (hr) {
-      html += `<div class="tooltip-detail" style="color:${HR_COLOR}">❤ HR: ${Math.round(hr.avg)} bpm (${Math.round(hr.min)}–${Math.round(hr.max)})</div>`
-      hasContent = true
-    }
-  }
-  if (showHRV) {
-    const hrv = bucket.metrics.hrv_rmssd
-    if (hrv) {
-      html += `<div class="tooltip-detail" style="color:${HRV_COLOR}">♥ HRV: ${Math.round(hrv.avg)} ms (${Math.round(hrv.min)}–${Math.round(hrv.max)})</div>`
-      hasContent = true
-    }
-  }
-  if (showStress) {
-    const stress = bucket.metrics.stress_level
-    if (stress) {
-      html += `<div class="tooltip-detail" style="color:${STRESS_COLOR}">😰 Stress: ${Math.round(stress.avg)} (${Math.round(stress.min)}–${Math.round(stress.max)})</div>`
-      hasContent = true
-    }
-  }
-  if (showSteps) {
-    const steps = bucket.metrics.steps
-    if (steps) {
-      html += `<div class="tooltip-detail" style="color:${STEPS_COLOR}">🚶 Steps: ${steps.avg.toFixed(1)}/min</div>`
-      hasContent = true
-    }
-  }
-  if (showCalories) {
-    const cal = bucket.metrics.calories_active
-    if (cal) {
-      html += `<div class="tooltip-detail" style="color:${CALORIES_COLOR}">🔥 Calories: ${cal.avg.toFixed(1)} kcal/min</div>`
+  const tooltipMetrics: {
+    show: boolean
+    key: string
+    icon: string
+    label: string
+    color: string
+    fmt: (m: { avg: number; min: number; max: number }) => string
+  }[] = [
+    {
+      show: showHR,
+      key: 'heart_rate',
+      icon: '❤',
+      label: 'HR',
+      color: HR_COLOR,
+      fmt: (m) => `${Math.round(m.avg)} bpm (${Math.round(m.min)}–${Math.round(m.max)})`,
+    },
+    {
+      show: showHRV,
+      key: 'hrv_rmssd',
+      icon: '♥',
+      label: 'HRV',
+      color: HRV_COLOR,
+      fmt: (m) => `${Math.round(m.avg)} ms (${Math.round(m.min)}–${Math.round(m.max)})`,
+    },
+    {
+      show: showStress,
+      key: 'stress_level',
+      icon: '😰',
+      label: 'Stress',
+      color: STRESS_COLOR,
+      fmt: (m) => `${Math.round(m.avg)} (${Math.round(m.min)}–${Math.round(m.max)})`,
+    },
+    {
+      show: showSteps,
+      key: 'steps',
+      icon: '🚶',
+      label: 'Steps',
+      color: STEPS_COLOR,
+      fmt: (m) => `${m.avg.toFixed(1)}/min`,
+    },
+    {
+      show: showCalories,
+      key: 'calories_active',
+      icon: '🔥',
+      label: 'Calories',
+      color: CALORIES_COLOR,
+      fmt: (m) => `${m.avg.toFixed(1)} kcal/min`,
+    },
+  ]
+
+  for (const { show, key, icon, label, color, fmt } of tooltipMetrics) {
+    if (!show) continue
+    const m = bucket.metrics[key]
+    if (m) {
+      html += `<div class="tooltip-detail" style="color:${color}">${icon} ${label}: ${fmt(m)}</div>`
       hasContent = true
     }
   }
