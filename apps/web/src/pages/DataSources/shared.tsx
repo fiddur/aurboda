@@ -104,12 +104,16 @@ export function SyncStatusBar({
     .sort((a, b) => new Date(b.last_sync_time!).getTime() - new Date(a.last_sync_time!).getTime())[0]
 
   const hasError = states?.some((s) => s.status === 'error')
+  const warnings = states?.filter((s) => s.error_message && s.status !== 'error') ?? []
 
   return (
     <div class="sync-status-bar">
       <span class="sync-status-time">
         {lastSync?.last_sync_time ? `Last synced ${formatSyncTime(lastSync.last_sync_time)}` : 'Never synced'}
         {hasError && <span class="sync-status-error"> (some data types have errors)</span>}
+        {!hasError && warnings.length > 0 && (
+          <span class="sync-status-warning"> ({warnings.length} data type(s) had partial failures)</span>
+        )}
       </span>
       <button type="button" class="sync-now-button" disabled={syncing} onClick={handleSync}>
         {syncing && <span class="sync-spinner" />}

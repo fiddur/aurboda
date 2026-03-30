@@ -465,6 +465,10 @@
   color: #f44336;
 }
 
+.data-sources-page .sync-status-warning {
+  color: #f57c00;
+}
+
 .data-sources-page .sync-now-button {
   padding: 0.3rem 0.75rem;
   font-size: 0.8rem;

@@ -35,6 +35,7 @@ export interface SyncResult {
   records_processed: number
   status: 'success' | 'skipped' | 'error' | 'rate_limited'
   error?: string
+  errors_by_day?: number
   retry_after?: Date
 }
 
@@ -65,6 +66,31 @@ export const isRateLimited = (syncState: SyncState | null): boolean => {
 // Single data type sync
 // ============================================================================
 
+/** Iterate day-by-day over a date range, fetching and processing each day. */
+const syncDateRange = async (
+  user: string,
+  garmin: GarminClient,
+  dataType: GarminDataType,
+  startDate: Date,
+  endDate: Date,
+): Promise<{ totalRecords: number; dayErrors: number }> => {
+  let totalRecords = 0
+  let dayErrors = 0
+
+  const currentDate = new Date(startDate)
+  while (currentDate <= endDate) {
+    const result = await fetchAndProcess(user, garmin, dataType, currentDate)
+    totalRecords += result.records
+    if (result.error) dayErrors++
+
+    currentDate.setTime(addDays(currentDate, 1).getTime())
+
+    if (currentDate <= endDate) await delay(REQUEST_DELAY_MS)
+  }
+
+  return { totalRecords, dayErrors }
+}
+
 export const syncGarminDataType = async (
   user: string,
   garmin: GarminClient,
@@ -90,46 +116,31 @@ export const syncGarminDataType = async (
   })
 
   try {
-    // Determine date range
     const now = new Date()
-    let startDate: Date
+    const startDate =
+      options?.fullResync || !syncState?.last_sync_time
+        ? (options?.startDate ?? subDays(now, DEFAULT_SYNC_HISTORY_DAYS))
+        : subDays(syncState.last_sync_time, INCREMENTAL_SYNC_OVERLAP_DAYS)
 
-    if (options?.fullResync || !syncState?.last_sync_time) {
-      // First sync or full resync
-      startDate = options?.startDate ?? subDays(now, DEFAULT_SYNC_HISTORY_DAYS)
-    } else {
-      // Incremental sync with overlap
-      startDate = subDays(syncState.last_sync_time, INCREMENTAL_SYNC_OVERLAP_DAYS)
-    }
+    const { totalRecords, dayErrors } = await syncDateRange(user, garmin, dataType, startDate, now)
 
-    let totalRecords = 0
-
-    // Iterate day by day (most Garmin endpoints are per-day)
-    const currentDate = new Date(startDate)
-    while (currentDate <= now) {
-      const records = await fetchAndProcess(user, garmin, dataType, currentDate)
-      totalRecords += records
-
-      // Move to next day
-      currentDate.setTime(addDays(currentDate, 1).getTime())
-
-      // Rate limit ourselves
-      if (currentDate <= now) {
-        await delay(REQUEST_DELAY_MS)
-      }
-    }
-
-    // Mark as idle on success
+    // Mark as idle on success (with warning if some days had errors)
+    const errorMessage = dayErrors > 0 ? `${dayErrors} day(s) had fetch errors` : undefined
     await upsertSyncState(user, {
       data_type: dataType,
-      error_message: undefined,
+      error_message: errorMessage,
       last_sync_time: now,
       provider: 'garmin',
       retry_after: undefined,
       status: 'idle',
     })
 
-    return { data_type: dataType, records_processed: totalRecords, status: 'success' }
+    return {
+      data_type: dataType,
+      errors_by_day: dayErrors > 0 ? dayErrors : undefined,
+      records_processed: totalRecords,
+      status: 'success',
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
 
@@ -197,15 +208,16 @@ const fetchAndProcess = async (
   garmin: GarminClient,
   dataType: GarminDataType,
   date: Date,
-): Promise<number> => {
+): Promise<{ records: number; error?: string }> => {
   try {
     const data = await fetchDataType(garmin, user, dataType, date)
-    if (data == null) return 0
-    return await processGarminData(user, dataType, data)
+    if (data == null) return { records: 0 }
+    return { records: await processGarminData(user, dataType, data) }
   } catch (error) {
     // If a single day fails, log and continue (don't abort the whole sync)
-    console.error(`Garmin sync error for ${dataType} on ${date.toISOString().slice(0, 10)}:`, error)
-    return 0
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Garmin sync error for ${dataType} on ${date.toISOString().slice(0, 10)}:`, message)
+    return { error: message, records: 0 }
   }
 }
 
