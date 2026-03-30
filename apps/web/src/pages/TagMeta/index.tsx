@@ -168,14 +168,41 @@ function MergeSection({ definitionId }: { definitionId: string }) {
   )
 }
 
-export function TagMeta() {
-  const { params } = useRoute()
-  const rawParam = decodeURIComponent(params.tagKey as string)
+/** Find the programmatic tag matching either a definition or a raw param. */
+const findTagInfo = (
+  tags: ProgrammaticTag[] | undefined,
+  definition: TagDefinition | undefined,
+  rawParam: string,
+  isUuid: boolean,
+): ProgrammaticTag | undefined => {
+  if (isUuid) {
+    return tags?.find(
+      (t) => definition && (t.tag_key === definition.name || t.current_name === definition.name),
+    )
+  }
+  return tags?.find((t) => t.tag_key === rawParam || t.current_name === rawParam)
+}
+
+/** Resolve the canonical display name from available sources. */
+const resolveName = (
+  definition: TagDefinition | undefined,
+  tagInfo: ProgrammaticTag | undefined,
+  mappings: Record<string, string>,
+  rawParam: string,
+): string => definition?.name ?? tagInfo?.current_name ?? mappings[rawParam] ?? rawParam
+
+/** Resolve the icon from available sources. */
+const resolveIcon = (
+  definition: TagDefinition | undefined,
+  icons: Record<string, string>,
+  name: string,
+  tagKey: string,
+): string => definition?.icon ?? icons[name] ?? icons[tagKey] ?? ''
+
+/** Resolve tag identity from URL param (UUID for definition, or legacy tag key). */
+function useTagResolution(rawParam: string) {
   const isUuid = UUID_RE.test(rawParam)
 
-  const [lookback, setLookback] = useState(90)
-
-  // If UUID, fetch the definition directly
   const { data: definition } = useQuery({
     enabled: isUuid,
     queryFn: () => fetchTagDefinitionById(rawParam),
@@ -183,7 +210,6 @@ export function TagMeta() {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Fetch programmatic tags (for both UUID and legacy lookups)
   const { data: tags } = useQuery({
     queryFn: fetchProgrammaticTags,
     queryKey: ['programmaticTags'],
@@ -195,19 +221,23 @@ export function TagMeta() {
     staleTime: 30 * 60 * 1000,
   })
 
-  // Resolve tag info — for UUID, match by definition name; for legacy, match by tag_key/current_name
-  const tagInfo = isUuid
-    ? tags?.find((t) => definition && (t.tag_key === definition.name || t.current_name === definition.name))
-    : tags?.find((t) => t.tag_key === rawParam || t.current_name === rawParam)
-
+  const tagInfo = findTagInfo(tags, definition, rawParam, isUuid)
   const mappings = mappingsData?.mappings ?? {}
   const icons = mappingsData?.icons ?? {}
-
-  // Resolve display values
   const definitionId = isUuid ? rawParam : undefined
   const effectiveTagKey = definition?.name ?? tagInfo?.tag_key ?? rawParam
-  const currentName = definition?.name ?? tagInfo?.current_name ?? mappings[rawParam] ?? rawParam
-  const currentIcon = definition?.icon ?? icons[currentName] ?? icons[effectiveTagKey] ?? ''
+  const currentName = resolveName(definition, tagInfo, mappings, rawParam)
+  const currentIcon = resolveIcon(definition, icons, currentName, effectiveTagKey)
+
+  return { currentIcon, currentName, definition, definitionId, effectiveTagKey, tagInfo }
+}
+
+export function TagMeta() {
+  const { params } = useRoute()
+  const rawParam = decodeURIComponent(params.tagKey as string)
+  const [lookback, setLookback] = useState(90)
+  const { currentIcon, currentName, definition, definitionId, effectiveTagKey, tagInfo } =
+    useTagResolution(rawParam)
 
   return (
     <div class="tag-meta-page">

@@ -712,7 +712,7 @@ export const fetchTagDefinitions = async (): Promise<TagDefinition[]> => {
   const response = await axios.get<TagDefinitionsResponse>(`${API_URL}/tags/definitions`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  return response.data.data
+  return response.data.data ?? []
 }
 
 export const fetchTagDefinitionById = async (id: string): Promise<TagDefinition> => {
