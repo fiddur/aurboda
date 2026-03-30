@@ -113,6 +113,8 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['userSettings'], data)
+      void queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+      void queryClient.invalidateQueries({ queryKey: ['goalsProgress'] })
       setSaveStatus({ status: 'saved', time: new Date() })
       // Mark all goals as saved
       setLocalGoals((local) => local.map((g) => ({ ...g, isNew: false })))
