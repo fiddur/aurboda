@@ -172,6 +172,40 @@
   background: #7c3aed;
 }
 
+/* Add to Dashboard button */
+.add-to-dashboard-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.btn-add-to-dashboard {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: #673ab8;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-add-to-dashboard:hover {
+  background: #5b32a3;
+}
+
+.add-to-dash-success {
+  text-align: center;
+  padding: 1.5rem;
+  color: #059669;
+  font-weight: 500;
+  font-size: 1rem;
+}
+
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
   .chart-page h1 {
@@ -230,6 +264,10 @@
 
   .chart-login-prompt h2 {
     color: #e5e7eb;
+  }
+
+  .add-to-dash-success {
+    color: #34d399;
   }
 }
 

@@ -77,6 +77,18 @@ const widgetTemplates: WidgetTemplate[] = [
   {
     allowedSections: ['charts'],
     defaultConfig: () => ({
+      bucket_size: '1d',
+      lookback_days: 30,
+      pattern: 'coffee',
+      source_type: 'tag',
+    }),
+    description: 'Bucketed bar chart for tags, metrics, or categories',
+    label: 'Bar Chart',
+    type: 'bar_chart',
+  },
+  {
+    allowedSections: ['charts'],
+    defaultConfig: () => ({
       activity: 'exercise',
       activity_type: 'activity_type',
       period_days: 90,

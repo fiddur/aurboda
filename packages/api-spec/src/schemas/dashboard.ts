@@ -94,9 +94,37 @@ export const trendChartConfigSchema = z
     lookback_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
     pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
     source_type: z.enum(['tag', 'metric']).meta({ description: 'Data source type' }),
+    tag_definition_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Tag definition ID (alternative to pattern)' }),
     title: z.string().optional().meta({ description: 'Chart title' }),
   })
   .meta({ id: 'TrendChartConfig' })
+
+/**
+ * Bar chart widget - displays bucketed bar chart visualization.
+ */
+export const barChartConfigSchema = z
+  .object({
+    aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
+    bucket_size: z.enum(['1d', '1w', '1M']).meta({ description: 'Time bucket size' }),
+    lookback_days: z.number().int().positive().meta({ description: 'Days of data to display' }),
+    pattern: z.string().min(1).optional().meta({ description: 'Tag pattern (regex) or metric name' }),
+    source_type: z
+      .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
+      .meta({ description: 'Data source type' }),
+    tag_definition_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Tag definition ID (alternative to pattern)' }),
+    title: z.string().optional().meta({ description: 'Chart title' }),
+  })
+  .meta({ id: 'BarChartConfig' })
+
+export type BarChartConfig = z.infer<typeof barChartConfigSchema>
 
 export type TrendChartConfig = z.infer<typeof trendChartConfigSchema>
 
@@ -171,6 +199,7 @@ export const widgetTypeSchema = z.enum([
   'metric_card',
   'sparkline_card',
   'trend_chart',
+  'bar_chart',
   'correlation',
   'activity_summary',
   'quick_link',
@@ -196,6 +225,11 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: trendChartConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('trend_chart'),
+  }),
+  z.object({
+    config: barChartConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('bar_chart'),
   }),
   z.object({
     config: correlationConfigSchema,

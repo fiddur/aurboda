@@ -6,9 +6,15 @@
  *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=mean
  *   /chart?source_type=tag&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
  */
-import type { TagDefinition } from '@aurboda/api-spec'
+import type {
+  DashboardConfig,
+  DashboardSection,
+  DashboardWidget,
+  SectionType,
+  TagDefinition,
+} from '@aurboda/api-spec'
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useMemo, useState } from 'preact/hooks'
 
@@ -19,10 +25,12 @@ import { TagPicker } from '../../components/TagPicker'
 import {
   fetchChartData,
   type FetchChartDataParams,
+  fetchDashboard,
   fetchScreentimeCategories,
   fetchTagDefinitions,
   fetchTrend,
   type FetchTrendParams,
+  saveDashboard,
   type TrendDisplayPeriod,
 } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -433,10 +441,190 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
   )
 }
 
+/** Generate unique ID for widgets and sections. */
+const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+
+/** Build a dashboard widget config from the current chart state. */
+function buildWidgetFromState(state: ChartState, title: string): DashboardWidget {
+  if (state.chart_type === 'bar') {
+    return {
+      config: {
+        aggregation: state.aggregation,
+        bucket_size: state.bucket_size,
+        lookback_days: state.lookback_days,
+        ...(state.pattern ? { pattern: state.pattern } : {}),
+        source_type: state.source_type,
+        ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
+        ...(title ? { title } : {}),
+      },
+      id: generateId('widget'),
+      type: 'bar_chart',
+    } as DashboardWidget
+  }
+
+  return {
+    config: {
+      aggregation: state.aggregation,
+      display_period: state.display_period,
+      half_life_days: state.half_life_days,
+      lookback_days: state.lookback_days,
+      pattern: state.pattern,
+      source_type: state.source_type === 'tag' || state.source_type === 'metric' ? state.source_type : 'tag',
+      ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
+      ...(title ? { title } : {}),
+    },
+    id: generateId('widget'),
+    type: 'trend_chart',
+  } as DashboardWidget
+}
+
+/** Modal for adding the current chart to a dashboard section. */
+function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [title, setTitle] = useState('')
+  const [selectedSectionId, setSelectedSectionId] = useState('')
+  const [newSectionTitle, setNewSectionTitle] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  const dashboardQuery = useQuery({
+    queryFn: fetchDashboard,
+    queryKey: ['dashboard'],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const saveMutation = useMutation({
+    mutationFn: saveDashboard,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['dashboard'], data)
+      setSaved(true)
+    },
+  })
+
+  const dashboard: DashboardConfig | undefined = dashboardQuery.data
+  const chartsSections = dashboard?.sections.filter((s) => s.type === 'charts') ?? []
+
+  const handleSave = () => {
+    if (!dashboard) return
+
+    const widget = buildWidgetFromState(state, title)
+
+    let newDashboard: DashboardConfig
+    if (selectedSectionId === '__new__') {
+      const sectionTitle = newSectionTitle.trim() || 'Charts'
+      const newSection: DashboardSection = {
+        id: generateId('section'),
+        title: sectionTitle,
+        type: 'charts' as SectionType,
+        widgets: [widget],
+      }
+      newDashboard = { ...dashboard, sections: [...dashboard.sections, newSection] }
+    } else {
+      newDashboard = {
+        ...dashboard,
+        sections: dashboard.sections.map((section) =>
+          section.id === selectedSectionId ? { ...section, widgets: [...section.widgets, widget] } : section,
+        ),
+      }
+    }
+
+    saveMutation.mutate(newDashboard)
+  }
+
+  const canSave =
+    !saveMutation.isPending &&
+    (selectedSectionId === '__new__' ? newSectionTitle.trim().length > 0 : selectedSectionId.length > 0)
+
+  return (
+    <div class="dashboard-editor-overlay" onClick={onClose}>
+      <div class="dashboard-editor-modal" onClick={(e) => e.stopPropagation()}>
+        <div class="modal-header">
+          <h3>Add to Dashboard</h3>
+          <button class="close-btn" onClick={onClose}>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-content">
+          {saved ? (
+            <div class="add-to-dash-success">Widget added to dashboard!</div>
+          ) : (
+            <div class="config-form">
+              <div class="form-group">
+                <label>Title (optional)</label>
+                <input
+                  type="text"
+                  value={title}
+                  onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
+                  placeholder={state.pattern || 'Chart title'}
+                />
+              </div>
+
+              <div class="form-group">
+                <label>Dashboard Section</label>
+                <select
+                  value={selectedSectionId}
+                  onChange={(e) => setSelectedSectionId((e.target as HTMLSelectElement).value)}
+                >
+                  <option value="">Select a section...</option>
+                  {chartsSections.map((section) => (
+                    <option key={section.id} value={section.id}>
+                      {section.title}
+                    </option>
+                  ))}
+                  <option value="__new__">+ Create new section</option>
+                </select>
+              </div>
+
+              {selectedSectionId === '__new__' && (
+                <div class="form-group">
+                  <label>New Section Title</label>
+                  <input
+                    type="text"
+                    value={newSectionTitle}
+                    onInput={(e) => setNewSectionTitle((e.target as HTMLInputElement).value)}
+                    placeholder="e.g., My Charts"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div class="modal-footer">
+          {saved ? (
+            <button class="btn-primary" onClick={onClose}>
+              Done
+            </button>
+          ) : (
+            <>
+              <button class="btn-secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button class="btn-primary" onClick={handleSave} disabled={!canSave}>
+                {saveMutation.isPending ? 'Saving...' : 'Add Widget'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Chart() {
   const isLoggedIn = auth.value.token
   const { query } = useLocation()
   const [state, setState] = useState(() => parseQuery(query))
+  const [showAddToDashboard, setShowAddToDashboard] = useState(false)
 
   const handleUpdate = useCallback(
     (patch: Partial<ChartState>) => {
@@ -494,6 +682,28 @@ export function Chart() {
             ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
           }}
         />
+      )}
+
+      {(state.pattern || state.tag_definition_id) && (
+        <div class="add-to-dashboard-row">
+          <button class="btn-add-to-dashboard" onClick={() => setShowAddToDashboard(true)}>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Add to Dashboard
+          </button>
+        </div>
+      )}
+
+      {showAddToDashboard && (
+        <AddToDashboardModal state={state} onClose={() => setShowAddToDashboard(false)} />
       )}
     </div>
   )
