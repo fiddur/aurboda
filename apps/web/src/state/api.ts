@@ -1732,7 +1732,7 @@ export interface FetchChartDataParams {
   end: string
   pattern?: string
   tag_definition_id?: string
-  bucket_size?: '1d' | '1w' | '1M'
+  bucket_size?: '15m' | '1h' | '1d' | '1w' | '1M'
   aggregation?: 'count' | 'sum' | 'mean'
 }
 
