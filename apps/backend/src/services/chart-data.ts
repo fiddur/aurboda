@@ -31,10 +31,15 @@ export const buildBucketExpr = (
   column: string,
   startIdx: number,
 ): { expr: string; params: string[] } => {
-  if (bucketSize === '15m') {
+  const dateBinIntervals: Record<string, string> = {
+    '1m': '1 minute',
+    '5m': '5 minutes',
+    '15m': '15 minutes',
+  }
+  if (dateBinIntervals[bucketSize]) {
     return {
       expr: `date_bin($${startIdx}::interval, ${column} AT TIME ZONE 'UTC', '2000-01-01'::timestamptz)`,
-      params: ['15 minutes'],
+      params: [dateBinIntervals[bucketSize]],
     }
   }
   if (bucketSize === '1h') {
@@ -52,7 +57,7 @@ export const buildBucketExpr = (
 
 export interface ChartDataInput {
   aggregation: 'count' | 'mean' | 'sum'
-  bucket_size: '15m' | '1M' | '1d' | '1h' | '1w'
+  bucket_size: '1m' | '5m' | '15m' | '1M' | '1d' | '1h' | '1w'
   end: string
   pattern?: string
   source_type: ChartDataSourceType

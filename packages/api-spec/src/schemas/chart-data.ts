@@ -25,8 +25,9 @@ export type ChartDataSourceType = z.infer<typeof chartDataSourceTypeSchema>
 /**
  * Bucket size for chart data aggregation.
  */
-export const chartDataBucketSizeSchema = z.enum(['15m', '1h', '1d', '1w', '1M']).meta({
-  description: 'Bucket size for aggregation: 15 minutes, hourly, daily, weekly, or monthly',
+export const chartDataBucketSizeSchema = z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).meta({
+  description:
+    'Bucket size for aggregation: 1 minute, 5 minutes, 15 minutes, hourly, daily, weekly, or monthly',
   example: '1d',
   id: 'ChartDataBucketSize',
 })
@@ -74,7 +75,7 @@ export type ChartDataQuery = z.infer<typeof chartDataQuerySchema>
 export const chartDataHttpQuerySchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional(),
-    bucket_size: z.enum(['15m', '1h', '1d', '1w', '1M']).optional(),
+    bucket_size: z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).optional(),
     end: z.string().meta({ description: 'End of time range (ISO 8601 string)' }),
     pattern: z.string().optional().meta({ description: 'Pattern to match' }),
     source_type: chartDataSourceTypeSchema,
