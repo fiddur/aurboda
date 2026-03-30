@@ -7,7 +7,7 @@ export const NAV_LINKS = [
   { href: '/meals', label: 'Meals', icon: '🍽' },
   { href: '/reports', label: 'Reports', icon: '📝' },
   { href: '/add', label: '+ Add', icon: '➕' },
-  { href: '/trends', label: 'Trends', icon: '📈' },
+  { href: '/chart', label: 'Chart', icon: '📈' },
   { href: '/places', label: 'Places', icon: '📍' },
 ]
 

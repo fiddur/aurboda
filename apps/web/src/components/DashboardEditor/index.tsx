@@ -106,7 +106,7 @@ const linkOptions = [
   { icon: 'correlations', label: 'Correlations', value: '/correlations' },
   { icon: 'goals', label: 'Goals', value: '/goals' },
   { icon: 'places', label: 'Places', value: '/places' },
-  { icon: 'trends', label: 'Trends', value: '/trends' },
+  { icon: 'trends', label: 'Chart', value: '/chart' },
   { icon: 'settings', label: 'Settings', value: '/settings' },
 ]
 

@@ -155,8 +155,8 @@ export function ExerciseMeta() {
       <section class="tag-meta-section">
         <h2>Related</h2>
         <div class="tag-meta-links">
-          <a href="/trends" class="tag-meta-link">
-            All Trends
+          <a href="/chart" class="tag-meta-link">
+            Chart Explorer
           </a>
           <a href="/timeline" class="tag-meta-link">
             Timeline
