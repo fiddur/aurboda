@@ -163,7 +163,7 @@ describe('garminClient', () => {
       expect(mockGarminConnect.loadToken).toHaveBeenCalledWith('stored-token1', 'stored-token2')
       expect(mockGarminConnect.getUserProfile).toHaveBeenCalled()
       expect(mockGarminConnect.get).toHaveBeenCalledWith(
-        '/usersummary-service/usersummary/daily/user123?calendarDate=2024-06-15',
+        'https://connectapi.garmin.com/usersummary-service/usersummary/daily/user123?calendarDate=2024-06-15',
       )
       expect(result).toEqual(summaryData)
       expect(deps.upsertOAuthToken).toHaveBeenCalledWith(testUser, {
@@ -203,7 +203,9 @@ describe('garminClient', () => {
 
       expect(deps.getOAuthToken).toHaveBeenCalledWith(testUser, 'garmin')
       expect(mockGarminConnect.loadToken).toHaveBeenCalledWith('stored-token1', 'stored-token2')
-      expect(mockGarminConnect.get).toHaveBeenCalledWith('/wellness-service/wellness/dailyStress/2024-06-15')
+      expect(mockGarminConnect.get).toHaveBeenCalledWith(
+        'https://connectapi.garmin.com/wellness-service/wellness/dailyStress/2024-06-15',
+      )
       expect(result).toEqual(stressData)
       expect(deps.upsertOAuthToken).toHaveBeenCalledWith(testUser, {
         access_token: JSON.stringify({ oauth1: 'token1', oauth2: 'token2' }),
@@ -224,7 +226,9 @@ describe('garminClient', () => {
       const client = garminClient(deps)
       const result = await client.getHrv(testUser, new Date('2024-06-15'))
 
-      expect(mockGarminConnect.get).toHaveBeenCalledWith('/hrv-service/hrv/2024-06-15')
+      expect(mockGarminConnect.get).toHaveBeenCalledWith(
+        'https://connectapi.garmin.com/hrv-service/hrv/2024-06-15',
+      )
       expect(result).toEqual(hrvData)
       expect(deps.upsertOAuthToken).toHaveBeenCalled()
     })
@@ -254,7 +258,7 @@ describe('garminClient', () => {
       const result = await client.getBodyBattery(testUser, new Date('2024-06-14'), new Date('2024-06-15'))
 
       expect(mockGarminConnect.get).toHaveBeenCalledWith(
-        '/wellness-service/wellness/bodyBattery/reports/daily?startDate=2024-06-14&endDate=2024-06-15',
+        'https://connectapi.garmin.com/wellness-service/wellness/bodyBattery/reports/daily?startDate=2024-06-14&endDate=2024-06-15',
       )
       expect(result).toEqual(bbData)
       expect(deps.upsertOAuthToken).toHaveBeenCalled()
@@ -283,7 +287,9 @@ describe('garminClient', () => {
       const client = garminClient(deps)
       const result = await client.getSpo2(testUser, new Date('2024-06-15'))
 
-      expect(mockGarminConnect.get).toHaveBeenCalledWith('/wellness-service/wellness/daily/spo2/2024-06-15')
+      expect(mockGarminConnect.get).toHaveBeenCalledWith(
+        'https://connectapi.garmin.com/wellness-service/wellness/daily/spo2/2024-06-15',
+      )
       expect(result).toEqual(spo2Data)
       expect(deps.upsertOAuthToken).toHaveBeenCalled()
     })
@@ -301,7 +307,7 @@ describe('garminClient', () => {
       const result = await client.getRespiration(testUser, new Date('2024-06-15'))
 
       expect(mockGarminConnect.get).toHaveBeenCalledWith(
-        '/wellness-service/wellness/daily/respiration/2024-06-15',
+        'https://connectapi.garmin.com/wellness-service/wellness/daily/respiration/2024-06-15',
       )
       expect(result).toEqual(respData)
       expect(deps.upsertOAuthToken).toHaveBeenCalled()
@@ -321,7 +327,7 @@ describe('garminClient', () => {
       const result = await client.getTrainingReadiness(testUser, new Date('2024-06-15'))
 
       expect(mockGarminConnect.get).toHaveBeenCalledWith(
-        '/metrics-service/metrics/trainingreadiness/2024-06-15',
+        'https://connectapi.garmin.com/metrics-service/metrics/trainingreadiness/2024-06-15',
       )
       expect(result).toEqual(trData)
       expect(deps.upsertOAuthToken).toHaveBeenCalled()
@@ -340,7 +346,9 @@ describe('garminClient', () => {
       const client = garminClient(deps)
       const result = await client.getIntensityMinutes(testUser, new Date('2024-06-15'))
 
-      expect(mockGarminConnect.get).toHaveBeenCalledWith('/wellness-service/wellness/daily/im/2024-06-15')
+      expect(mockGarminConnect.get).toHaveBeenCalledWith(
+        'https://connectapi.garmin.com/wellness-service/wellness/daily/im/2024-06-15',
+      )
       expect(result).toEqual(imData)
       expect(deps.upsertOAuthToken).toHaveBeenCalled()
     })

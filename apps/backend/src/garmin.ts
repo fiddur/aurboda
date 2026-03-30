@@ -173,6 +173,9 @@ const MFA_SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
  * Creates a Garmin Connect API client.
  * Does NOT require any server-side credentials (unlike Oura which needs client/secret).
  */
+/** Base URL for Garmin Connect API — gc.get() needs full URLs, not relative paths. */
+const GC_API = 'https://connectapi.garmin.com'
+
 export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
   /**
    * Restore a GarminConnect instance from stored tokens for a user.
@@ -222,7 +225,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
     async getBodyBattery(user: string, startDate: Date, endDate: Date): Promise<GarminBodyBatteryData[]> {
       const gc = await restoreSession(user)
       const result = await gc.get<GarminBodyBatteryData[]>(
-        `/wellness-service/wellness/bodyBattery/reports/daily?startDate=${fmt(startDate)}&endDate=${fmt(endDate)}`,
+        `${GC_API}/wellness-service/wellness/bodyBattery/reports/daily?startDate=${fmt(startDate)}&endDate=${fmt(endDate)}`,
       )
       await saveSession(user, gc)
       return result
@@ -235,8 +238,9 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
     async getDailySummary(user: string, date: Date): Promise<GarminDailySummary> {
       const gc = await restoreSession(user)
       const profile = await gc.getUserProfile()
+      if (!profile?.displayName) throw new Error('Could not retrieve Garmin user profile')
       const result = await gc.get<GarminDailySummary>(
-        `/usersummary-service/usersummary/daily/${profile.displayName}?calendarDate=${fmt(date)}`,
+        `${GC_API}/usersummary-service/usersummary/daily/${profile.displayName}?calendarDate=${fmt(date)}`,
       )
       await saveSession(user, gc) // persist any refreshed tokens
       return result
@@ -251,14 +255,16 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
 
     async getHrv(user: string, date: Date): Promise<GarminHrvData> {
       const gc = await restoreSession(user)
-      const result = await gc.get<GarminHrvData>(`/hrv-service/hrv/${fmt(date)}`)
+      const result = await gc.get<GarminHrvData>(`${GC_API}/hrv-service/hrv/${fmt(date)}`)
       await saveSession(user, gc)
       return result
     },
 
     async getIntensityMinutes(user: string, date: Date): Promise<GarminIntensityMinutes> {
       const gc = await restoreSession(user)
-      const result = await gc.get<GarminIntensityMinutes>(`/wellness-service/wellness/daily/im/${fmt(date)}`)
+      const result = await gc.get<GarminIntensityMinutes>(
+        `${GC_API}/wellness-service/wellness/daily/im/${fmt(date)}`,
+      )
       await saveSession(user, gc)
       return result
     },
@@ -266,7 +272,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
     async getRespiration(user: string, date: Date): Promise<GarminRespirationData> {
       const gc = await restoreSession(user)
       const result = await gc.get<GarminRespirationData>(
-        `/wellness-service/wellness/daily/respiration/${fmt(date)}`,
+        `${GC_API}/wellness-service/wellness/daily/respiration/${fmt(date)}`,
       )
       await saveSession(user, gc)
       return result
@@ -281,14 +287,18 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
 
     async getSpo2(user: string, date: Date): Promise<GarminSpo2Data> {
       const gc = await restoreSession(user)
-      const result = await gc.get<GarminSpo2Data>(`/wellness-service/wellness/daily/spo2/${fmt(date)}`)
+      const result = await gc.get<GarminSpo2Data>(
+        `${GC_API}/wellness-service/wellness/daily/spo2/${fmt(date)}`,
+      )
       await saveSession(user, gc)
       return result
     },
 
     async getStress(user: string, date: Date): Promise<GarminStressData> {
       const gc = await restoreSession(user)
-      const result = await gc.get<GarminStressData>(`/wellness-service/wellness/dailyStress/${fmt(date)}`)
+      const result = await gc.get<GarminStressData>(
+        `${GC_API}/wellness-service/wellness/dailyStress/${fmt(date)}`,
+      )
       await saveSession(user, gc)
       return result
     },
@@ -296,7 +306,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
     async getTrainingReadiness(user: string, date: Date): Promise<GarminTrainingReadiness> {
       const gc = await restoreSession(user)
       const result = await gc.get<GarminTrainingReadiness>(
-        `/metrics-service/metrics/trainingreadiness/${fmt(date)}`,
+        `${GC_API}/metrics-service/metrics/trainingreadiness/${fmt(date)}`,
       )
       await saveSession(user, gc)
       return result
