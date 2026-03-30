@@ -7,18 +7,18 @@ import { TagMappingsSettings } from '../../components/TagMappingsSettings'
 import { API_URL } from '../../config'
 import { fetchOuraSyncStatus, fetchUserSettings, syncOura } from '../../state/api'
 import { auth } from '../../state/auth'
-import { DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
+import { type DataTypeItem, DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
 import './style.css'
 
-const DATA_TYPES = [
-  'Sleep (duration, stages, scores)',
-  'Readiness score',
-  'Resilience',
-  'HRV (resting)',
-  'Cardiovascular age',
-  'Resting heart rate',
-  'Meditation / breathing sessions',
-  'Oura tags (mood, symptoms, etc.)',
+const DATA_TYPES: DataTypeItem[] = [
+  { label: 'Sleep (duration, stages, scores)', href: '/sleep' },
+  { label: 'Readiness score', href: '/metric/readiness_score' },
+  { label: 'Resilience', href: '/metric/resilience_score' },
+  { label: 'HRV (resting)', href: '/metric/hrv_rmssd' },
+  { label: 'Cardiovascular age', href: '/metric/cardiovascular_age' },
+  { label: 'Resting heart rate', href: '/metric/resting_heart_rate' },
+  { label: 'Meditation / breathing sessions' },
+  { label: 'Oura tags (mood, symptoms, etc.)' },
 ]
 
 function OuraConnection({

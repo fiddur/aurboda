@@ -345,6 +345,11 @@ export const garminSyncResultSchema = z
   .object({
     data_type: garminDataTypeSchema,
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    errors_by_day: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of days that had fetch errors (data still synced for other days)' }),
     records_processed: z.number().int().meta({ description: 'Number of records processed' }),
     retry_after: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
     status: syncResultStatusSchema,

@@ -10,21 +10,21 @@ import {
   verifyGarminMfa,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
+import { type DataTypeItem, DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
 import './style.css'
 
-const DATA_TYPES = [
-  'Daily summary (steps, distance, calories, floors)',
-  'Heart rate (resting + samples)',
-  'HRV (last night average)',
-  'Sleep (duration, stages, score)',
-  'Stress level',
-  'Body Battery',
-  'Activities (exercise with HR, VO2 max)',
-  'SpO2 (blood oxygen)',
-  'Respiration rate',
-  'Training readiness',
-  'Intensity minutes',
+const DATA_TYPES: DataTypeItem[] = [
+  { label: 'Daily summary (steps, distance, calories, floors)', href: '/metric/steps' },
+  { label: 'Heart rate (resting + samples)', href: '/metric/heart_rate' },
+  { label: 'HRV (last night average)', href: '/metric/hrv_rmssd' },
+  { label: 'Sleep (duration, stages, score)', href: '/sleep' },
+  { label: 'Stress level', href: '/metric/stress_level' },
+  { label: 'Body Battery', href: '/metric/body_battery' },
+  { label: 'Activities (exercise with HR, VO2 max)' },
+  { label: 'SpO2 (blood oxygen)', href: '/metric/spo2' },
+  { label: 'Respiration rate', href: '/metric/respiratory_rate' },
+  { label: 'Training readiness', href: '/metric/training_readiness' },
+  { label: 'Intensity minutes', href: '/metric/intensity_minutes' },
 ]
 
 type LoginStatus = 'idle' | 'loading' | 'mfa' | 'mfa_loading' | 'error'

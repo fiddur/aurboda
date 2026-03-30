@@ -183,7 +183,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
     if (!stored) throw new Error('User has no Garmin session. Please connect Garmin first.')
 
     const tokens: IGarminTokens = JSON.parse(stored.access_token)
-    const gc = new GarminConnect()
+    const gc = new GarminConnect({ username: '', password: '' })
     gc.loadToken(tokens.oauth1, tokens.oauth2)
     return gc
   }
