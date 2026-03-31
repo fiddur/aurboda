@@ -129,10 +129,15 @@ export async function updateCustomMetric(
 }
 
 /**
- * Delete a single manual metric measurement by metric name and time.
+ * Delete a single metric measurement by metric name, time, and source (soft delete).
  */
-export async function deleteMetric(user: string, metric: string, time: Date): Promise<DeleteMetricResult> {
-  const deleted = await deleteTimeSeriesPoint(user, metric, time)
+export async function deleteMetric(
+  user: string,
+  metric: string,
+  time: Date,
+  source: string,
+): Promise<DeleteMetricResult> {
+  const deleted = await deleteTimeSeriesPoint(user, metric, time, source)
 
   return {
     deleted,

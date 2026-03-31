@@ -163,18 +163,21 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: delete_metric
   server.tool(
     'delete_metric',
-    'Delete a single manual metric measurement by metric name and time. Only manual entries can be deleted.',
+    'Delete a single metric measurement by metric name, time, and source (soft delete). Works for any source.',
     {
       metric: z.string().describe(metricDescription),
+      source: z
+        .string()
+        .describe('Data source of the measurement (e.g. manual, oura, garmin, health_connect)'),
       time: z.string().describe('Measurement time in ISO 8601 format (must match exactly)'),
     },
-    async ({ metric, time }) => {
+    async ({ metric, source, time }) => {
       const measurementTime = parseOptionalDate(time)
       if (!measurementTime) {
         return errorResponse('Invalid time format. Use ISO 8601 format.')
       }
 
-      const result = await deleteMetric(user, metric, measurementTime)
+      const result = await deleteMetric(user, metric, measurementTime, source)
       return jsonResponse(result)
     },
   )

@@ -37,7 +37,7 @@ const deleteEntity = (entityType: EntityType, entityId: string): Promise<void> =
   if (entityType === 'metric') {
     const parsed = parseMetricEntityId(entityId)
     if (!parsed) return Promise.reject(new Error('Invalid metric entity ID'))
-    return deleteMetricPoint(parsed.metric, parsed.time)
+    return deleteMetricPoint(parsed.metric, parsed.time, parsed.source)
   }
   return Promise.reject(new Error('Unsupported entity type for delete'))
 }

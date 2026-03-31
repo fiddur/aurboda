@@ -212,6 +212,7 @@ export type UpdateCustomMetricBody = z.infer<typeof updateCustomMetricBodySchema
  */
 export const deleteMetricQuerySchema = z
   .object({
+    source: z.string().describe('Data source of the measurement'),
     time: iso8601DateTimeSchema,
   })
   .meta({ id: 'DeleteMetricQuery' })

@@ -527,14 +527,14 @@ describe('Time Series Integration Tests', () => {
   // ==========================================================================
 
   describe('deleteTimeSeriesPoint', () => {
-    test('deletes a user-created measurement and returns true', async () => {
+    test('soft-deletes a measurement and returns true', async () => {
       const user = getTestUser()
 
       await insertTimeSeries(user, [
         { metric: 'weight', source: 'aurboda', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
       ])
 
-      const result = await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T08:00:00Z'))
+      const result = await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T08:00:00Z'), 'aurboda')
 
       expect(result).toBe(true)
 
@@ -547,16 +547,21 @@ describe('Time Series Integration Tests', () => {
       expect(data).toHaveLength(0)
     })
 
-    test('does not delete external source data', async () => {
+    test('soft-deletes external source data', async () => {
       const user = getTestUser()
 
       await insertTimeSeries(user, [
         { metric: 'weight', source: 'health_connect', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
       ])
 
-      const result = await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T08:00:00Z'))
+      const result = await deleteTimeSeriesPoint(
+        user,
+        'weight',
+        new Date('2024-01-15T08:00:00Z'),
+        'health_connect',
+      )
 
-      expect(result).toBe(false)
+      expect(result).toBe(true)
 
       const data = await getTimeSeries(
         user,
@@ -564,15 +569,60 @@ describe('Time Series Integration Tests', () => {
         new Date('2024-01-15T00:00:00Z'),
         new Date('2024-01-15T23:59:59Z'),
       )
-      expect(data).toHaveLength(1)
+      expect(data).toHaveLength(0)
     })
 
     test('returns false when no matching measurement found', async () => {
       const user = getTestUser()
 
-      const result = await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T08:00:00Z'))
+      const result = await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T08:00:00Z'), 'manual')
 
       expect(result).toBe(false)
+    })
+
+    test('sync does not resurrect a soft-deleted point', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'oura', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+      ])
+
+      // Soft delete it
+      await deleteTimeSeriesPoint(user, 'heart_rate', new Date('2024-01-15T10:00:00Z'), 'oura')
+
+      // Re-insert the same point (simulating a sync)
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'oura', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+      ])
+
+      // Should still be invisible
+      const data = await getTimeSeries(
+        user,
+        'heart_rate',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+      expect(data).toHaveLength(0)
+    })
+
+    test('does not affect other sources for the same metric and time', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'oura', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:00:00Z'), value: 74 },
+      ])
+
+      await deleteTimeSeriesPoint(user, 'heart_rate', new Date('2024-01-15T10:00:00Z'), 'oura')
+
+      const data = await getTimeSeriesWithSource(
+        user,
+        'heart_rate',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+      expect(data).toHaveLength(1)
+      expect(data[0].source).toBe('garmin')
     })
   })
 

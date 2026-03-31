@@ -48,7 +48,8 @@ export const insertTimeSeries = async (user: string, points: TimeSeriesPoint[]) 
     format(
       `INSERT INTO time_series (time, metric, value, unit, source)
        VALUES %L
-       ON CONFLICT (time, metric, source) DO UPDATE SET value = EXCLUDED.value`,
+       ON CONFLICT (time, metric, source) DO UPDATE SET value = EXCLUDED.value
+       WHERE time_series.deleted_at IS NULL`,
       values,
     ),
   )
@@ -66,11 +67,11 @@ export const getTimeSeries = async (
     user,
     sources
       ? `SELECT time, value FROM time_series
-       WHERE metric = $1 AND time >= $2 AND time <= $3
+       WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL
          AND source = ANY($4)
        ORDER BY time`
       : `SELECT time, value FROM time_series
-       WHERE metric = $1 AND time >= $2 AND time <= $3
+       WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL
        ORDER BY time`,
     sources ? [metric, start, end, sources] : [metric, start, end],
   )
@@ -91,11 +92,11 @@ export const getTimeSeriesWithSource = async (
     user,
     sources
       ? `SELECT time, value, source FROM time_series
-       WHERE metric = $1 AND time >= $2 AND time <= $3
+       WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL
          AND source = ANY($4)
        ORDER BY time`
       : `SELECT time, value, source FROM time_series
-       WHERE metric = $1 AND time >= $2 AND time <= $3
+       WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL
        ORDER BY time`,
     sources ? [metric, start, end, sources] : [metric, start, end],
   )
@@ -114,7 +115,7 @@ export const getTimeSeriesBySource = async (
   const result = await query(
     user,
     `SELECT time, value FROM time_series
-     WHERE metric = $1 AND source = $2 AND time >= $3 AND time <= $4
+     WHERE metric = $1 AND source = $2 AND time >= $3 AND time <= $4 AND deleted_at IS NULL
      ORDER BY time`,
     [metric, source, start, end],
   )
@@ -135,7 +136,7 @@ export const getRawDailySum = async (
   const result = await query(
     user,
     `SELECT COALESCE(SUM(value), 0) as total FROM time_series
-     WHERE metric = $1 AND time >= $2 AND time <= $3`,
+     WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL`,
     [metric, start, end],
   )
   return Number(result.rows[0].total)
@@ -156,11 +157,11 @@ export const getTimeSeriesMultiMetric = async (
     params: [start, end],
     queryFn: (sql, params) => query(user, sql, params),
     sqlCumulative: `SELECT time, metric, value FROM time_series
-       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL
          AND source = ANY($4)
        ORDER BY metric, time`,
     sqlNonCumulative: `SELECT time, metric, value FROM time_series
-       WHERE metric = ANY($1) AND time >= $2 AND time <= $3
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL
        ORDER BY metric, time`,
   })
 
@@ -194,7 +195,7 @@ export const getTimeSeriesStats = async (
          STDDEV_POP(value) as stddev,
          MAX(unit) as unit
        FROM time_series
-       WHERE metric = ANY($1) AND time >= $2 AND time <= $3${sourceFilter}
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL${sourceFilter}
        GROUP BY metric
        ORDER BY metric`
 
@@ -236,7 +237,7 @@ export const getDailyAggregates = async (
          AVG(value) as avg,
          SUM(value) as sum
        FROM time_series
-       WHERE metric = ANY($1) AND time >= $2 AND time <= $3${sourceFilter}
+       WHERE metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL${sourceFilter}
        GROUP BY DATE(time), metric
        ORDER BY metric, date`
 
@@ -292,7 +293,7 @@ export const getMetricTimeRange = async (
 ): Promise<{ min: Date; max: Date } | null> => {
   const result = await query(
     user,
-    `SELECT MIN(time) as min_time, MAX(time) as max_time FROM time_series WHERE metric = $1`,
+    `SELECT MIN(time) as min_time, MAX(time) as max_time FROM time_series WHERE metric = $1 AND deleted_at IS NULL`,
     [metric],
   )
   if (result.rows.length === 0 || result.rows[0].min_time === null) return null
@@ -300,14 +301,19 @@ export const getMetricTimeRange = async (
 }
 
 // ============================================================================
-// Time Series Deletion (manual source only)
+// Time Series Deletion (soft delete)
 // ============================================================================
 
-export const deleteTimeSeriesPoint = async (user: string, metric: string, time: Date): Promise<boolean> => {
+export const deleteTimeSeriesPoint = async (
+  user: string,
+  metric: string,
+  time: Date,
+  source: string,
+): Promise<boolean> => {
   const result = await query(
     user,
-    `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source IN ('manual', 'aurboda', 'aurboda_gap_fill')`,
-    [metric, time],
+    `UPDATE time_series SET deleted_at = NOW() WHERE metric = $1 AND time = $2 AND source = $3 AND deleted_at IS NULL`,
+    [metric, time, source],
   )
   return (result.rowCount ?? 0) > 0
 }
@@ -315,7 +321,7 @@ export const deleteTimeSeriesPoint = async (user: string, metric: string, time: 
 export const deleteTimeSeriesMetric = async (user: string, metric: string): Promise<number> => {
   const result = await query(
     user,
-    `DELETE FROM time_series WHERE metric = $1 AND source IN ('manual', 'aurboda', 'aurboda_gap_fill')`,
+    `UPDATE time_series SET deleted_at = NOW() WHERE metric = $1 AND source IN ('manual', 'aurboda', 'aurboda_gap_fill') AND deleted_at IS NULL`,
     [metric],
   )
   return result.rowCount ?? 0
@@ -330,7 +336,7 @@ export const deleteTimeSeriesBySource = async (
 ): Promise<number> => {
   const result = await query(
     user,
-    `DELETE FROM time_series WHERE metric = $1 AND source = $2 AND time >= $3 AND time < $4`,
+    `UPDATE time_series SET deleted_at = NOW() WHERE metric = $1 AND source = $2 AND time >= $3 AND time < $4 AND deleted_at IS NULL`,
     [metric, source, start, end],
   )
   return result.rowCount ?? 0
@@ -358,7 +364,7 @@ export const getTimeSeriesBucketed = async (
        SUM(value) as sum,
        COUNT(*)::integer as count
      FROM time_series
-     WHERE metric = ANY($1) AND time >= $2 AND time < $3${sourceFilter}
+     WHERE metric = ANY($1) AND time >= $2 AND time < $3 AND deleted_at IS NULL${sourceFilter}
      GROUP BY bucket_start, metric
      ORDER BY bucket_start, metric`
 
@@ -387,9 +393,10 @@ export const getTimeSeriesBucketed = async (
 
 /** Get distinct metric names that have data in the given time range. */
 export const getDistinctMetrics = async (user: string, start: Date, end: Date): Promise<string[]> => {
-  const result = await query(user, 'SELECT DISTINCT metric FROM time_series WHERE time >= $1 AND time < $2', [
-    start,
-    end,
-  ])
+  const result = await query(
+    user,
+    'SELECT DISTINCT metric FROM time_series WHERE time >= $1 AND time < $2 AND deleted_at IS NULL',
+    [start, end],
+  )
   return result.rows.map((row) => row.metric as string).sort()
 }

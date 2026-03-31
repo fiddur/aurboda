@@ -1390,12 +1390,12 @@ export const addMetric = async (body: AddMetricBody): Promise<AddMetricResponse>
   return response.data
 }
 
-/** Delete a single manual metric measurement. */
-export const deleteMetricPoint = async (metric: string, time: string): Promise<void> => {
+/** Delete a single metric measurement (soft delete). */
+export const deleteMetricPoint = async (metric: string, time: string, source: string): Promise<void> => {
   const { token } = auth.value
   await axios.delete(`${API_URL}/metrics/${encodeURIComponent(metric)}`, {
     headers: { Authorization: `Bearer ${token}` },
-    params: { time },
+    params: { source, time },
   })
 }
 

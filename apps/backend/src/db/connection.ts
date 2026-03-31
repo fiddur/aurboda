@@ -357,6 +357,9 @@ export const migrateSchema = async (user: string) => {
   if (existingTableNames.has('activities')) {
     await query(db, `ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
   }
+  if (existingTableNames.has('time_series')) {
+    await query(db, `ALTER TABLE time_series ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
+  }
   if (existingTableNames.has('productivity')) {
     await query(db, `ALTER TABLE productivity ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
     await query(
