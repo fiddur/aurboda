@@ -225,20 +225,18 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     res.json({ ...result, success: true })
   })
 
-  // DELETE /metrics/:metric - Delete a single manual measurement
+  // DELETE /metrics/:metric - Delete a single measurement (soft delete)
   router.delete<{ metric: string }, unknown, unknown, DeleteMetricQuery>(
     '/metrics/:metric',
     authMiddleware,
     validateQuery(deleteMetricQuerySchema),
     async (req, res) => {
       const { metric } = req.params
-      const { time } = req.query
+      const { time, source } = req.query
       const user = req.user!
-      const result = await deleteMetric(user, metric, new Date(time))
+      const result = await deleteMetric(user, metric, new Date(time), source)
       if (!result.deleted) {
-        return res
-          .status(404)
-          .json({ error: 'Measurement not found (only manual entries can be deleted)', success: false })
+        return res.status(404).json({ error: 'Measurement not found', success: false })
       }
       res.json({ ...result, success: true })
     },

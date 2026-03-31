@@ -655,6 +655,7 @@ export const createTableStatements: Record<string, string> = {
       value           DOUBLE PRECISION NOT NULL,
       unit            VARCHAR(20) NOT NULL,
       source          VARCHAR(50) NOT NULL,
+      deleted_at      TIMESTAMPTZ,
       PRIMARY KEY (time, metric, source)
     )
   `,

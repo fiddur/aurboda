@@ -8,8 +8,8 @@ import { useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import {
+  deleteMetricPoint,
   fetchCustomMetrics,
-  fetchMetricTimeSeries,
   fetchMetricTimeSeriesWithSource,
   fetchTrend,
   updateCustomMetric,
@@ -17,6 +17,8 @@ import {
   type FetchTrendParams,
   type MetricDataPointWithSource,
 } from '../../state/api'
+import { buildChartUrl } from '../../utils/chart-url'
+import { formatDateTime } from '../EntityDetail/format-utils'
 import { MiniTrendChart } from '../TagMeta/MiniTrendChart'
 import './style.css'
 
@@ -111,13 +113,24 @@ function SourceFilteredChart({ metric, unit, lookback }: { metric: string; unit:
 }
 
 function RecentValues({ metric, unit }: { metric: string; unit: string }) {
+  const queryClient = useQueryClient()
   const end = new Date()
   const start = new Date(end.getTime() - 30 * 86400000)
 
   const { data, isLoading } = useQuery({
-    queryFn: () => fetchMetricTimeSeries(metric, start, end),
+    queryFn: () => fetchMetricTimeSeriesWithSource(metric, start, end),
     queryKey: ['metric-recent', metric],
     staleTime: 5 * 60 * 1000,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ time, source }: { time: string; source: string }) =>
+      deleteMetricPoint(metric, time, source),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['metric-recent', metric] })
+      queryClient.invalidateQueries({ queryKey: ['trend'] })
+      queryClient.invalidateQueries({ queryKey: ['metric-with-source', metric] })
+    },
   })
 
   if (isLoading) return <p class="loading">Loading...</p>
@@ -128,18 +141,33 @@ function RecentValues({ metric, unit }: { metric: string; unit: string }) {
 
   return (
     <div class="metric-meta-recent-list">
-      {recent.map(([date, value]) => (
-        <div key={date.toISOString()} class="metric-meta-recent-item">
-          <span class="metric-meta-recent-time">
-            {date.toLocaleDateString()}{' '}
-            {date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          <span class="metric-meta-recent-value">
-            {formatValue(value)}
-            {unit ? ` ${unit}` : ''}
-          </span>
-        </div>
-      ))}
+      {recent.map((point) => {
+        const entityId = `${point.time.toISOString()}|${metric}|${point.source}`
+        return (
+          <div key={point.time.toISOString() + point.source} class="metric-meta-recent-item">
+            <a href={`/detail/metric/${encodeURIComponent(entityId)}`} class="metric-meta-recent-link">
+              <span class="metric-meta-recent-time">{formatDateTime(point.time)}</span>
+              <span class="metric-meta-recent-value">
+                {formatValue(point.value)}
+                {unit ? ` ${unit}` : ''}
+              </span>
+            </a>
+            <button
+              type="button"
+              class="metric-meta-delete-btn"
+              title="Delete this measurement"
+              disabled={deleteMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                deleteMutation.mutate({ source: point.source, time: point.time.toISOString() })
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )
+      })}
       {data.length > 10 && (
         <p class="metric-meta-more">
           +{data.length - 10} more in last 30 days ({data.length} total)
@@ -344,6 +372,18 @@ export function MetricMeta() {
       <section class="metric-meta-section">
         <div class="metric-meta-section-header">
           <h2>Trend</h2>
+          <a
+            href={buildChartUrl({
+              aggregation: 'mean',
+              chart_type: 'bar',
+              lookback_days: lookback,
+              pattern: metricName,
+              source_type: 'metric',
+            })}
+            class="metric-meta-chart-link"
+          >
+            Explore in Chart
+          </a>
           <select
             value={lookback}
             onChange={(e) => setLookback(Number((e.target as HTMLSelectElement).value))}
@@ -387,7 +427,10 @@ export function MetricMeta() {
       <section class="metric-meta-section">
         <h2>Related</h2>
         <div class="metric-meta-links">
-          <a href="/chart" class="metric-meta-link">
+          <a
+            href={`/chart?source_type=metric&pattern=${encodeURIComponent(metricName)}`}
+            class="metric-meta-link"
+          >
             Chart Explorer
           </a>
           <a href="/correlations" class="metric-meta-link">
