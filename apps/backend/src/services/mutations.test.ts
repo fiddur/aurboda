@@ -1210,10 +1210,10 @@ describe('deleteMetric', () => {
     vi.clearAllMocks()
   })
 
-  test('deletes a manual measurement and returns success', async () => {
+  test('deletes a measurement and returns success', async () => {
     vi.mocked(db.deleteTimeSeriesPoint).mockResolvedValue(true)
 
-    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'))
+    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'), 'manual')
 
     expect(result.success).toBe(true)
     expect(result.deleted).toBe(true)
@@ -1223,13 +1223,14 @@ describe('deleteMetric', () => {
       'testuser',
       'weight',
       new Date('2024-01-15T08:00:00Z'),
+      'manual',
     )
   })
 
   test('returns false when measurement not found', async () => {
     vi.mocked(db.deleteTimeSeriesPoint).mockResolvedValue(false)
 
-    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'))
+    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'), 'manual')
 
     expect(result.success).toBe(false)
     expect(result.deleted).toBe(false)
