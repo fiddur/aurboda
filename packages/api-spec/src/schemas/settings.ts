@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { baseResponseSchema, hrZoneSourceSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
 import { goalsSchema } from './goals.ts'
+import { garminDataTypeSchema } from './sync.ts'
 import { trainingLoadSettingsSchema } from './training-load.ts'
 
 // Shared HR zone threshold field
@@ -227,6 +228,9 @@ export const updateSettingsInputSchema = z
     training_load: trainingLoadSettingsSchema.nullable().optional().meta({
       description: 'Training load (Banister model) parameters (set to null to reset to defaults)',
     }),
+    garmin_disabled_data_types: z.array(garminDataTypeSchema).nullable().optional().meta({
+      description: 'Garmin data types to skip during sync (set to null to clear, enabling all)',
+    }),
   })
   .meta({ id: 'UpdateSettingsInput' })
 
@@ -254,6 +258,9 @@ export const userSettingsResponseSchema = baseResponseSchema
     garmin_connected: z
       .boolean()
       .meta({ description: 'Whether Garmin Connect is connected via stored session' }),
+    garmin_disabled_data_types: z.array(garminDataTypeSchema).meta({
+      description: 'Garmin data types currently disabled for sync',
+    }),
     food_sensitivity_map: foodSensitivityMapSchema.meta({ description: 'Food-to-sensitivity mapping' }),
     meal_slots: mealSlotsSchema.meta({ description: 'Configured meal slots for quick-logging' }),
     lastfm_configured: z.boolean().meta({ description: 'Whether Last.fm API key is configured on server' }),

@@ -177,12 +177,18 @@ export const syncGarminDataType = async (
 export const syncAllGarminData = async (
   user: string,
   garmin: GarminClient,
-  options?: { fullResync?: boolean; startDate?: Date },
+  options?: { disabledTypes?: GarminDataType[]; fullResync?: boolean; startDate?: Date },
 ): Promise<SyncResult[]> => {
   const results: SyncResult[] = []
   let hitRateLimit = false
+  const disabled = new Set(options?.disabledTypes ?? [])
 
   for (const dataType of garminDataTypes) {
+    if (disabled.has(dataType)) {
+      results.push({ data_type: dataType, records_processed: 0, status: 'skipped' })
+      continue
+    }
+
     if (hitRateLimit) {
       results.push({ data_type: dataType, records_processed: 0, status: 'skipped' })
       continue
