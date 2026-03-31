@@ -689,6 +689,15 @@ export async function getDailySummary(
       sync.syncRescueTimeIfNeeded(user),
       sync.syncCalendarsIfNeeded(user),
       sync.syncLastFmIfNeeded(user),
+      sync.syncGarminIfNeeded(user, 'dailySummary'),
+      sync.syncGarminIfNeeded(user, 'heartRate'),
+      sync.syncGarminIfNeeded(user, 'hrv'),
+      sync.syncGarminIfNeeded(user, 'stress'),
+      sync.syncGarminIfNeeded(user, 'bodyBattery'),
+      sync.syncGarminIfNeeded(user, 'spo2'),
+      sync.syncGarminIfNeeded(user, 'respiration'),
+      sync.syncGarminIfNeeded(user, 'trainingReadiness'),
+      sync.syncGarminIfNeeded(user, 'intensityMinutes'),
     ])
   }
 
@@ -1371,9 +1380,13 @@ export async function queryActivities(
   end: Date,
   sync?: SyncProvider,
 ): Promise<ActivityResult[]> {
-  // Fire-and-forget: trigger background sync so meditation data is fresh for the next request
-  if (sync && types.includes('meditation')) {
-    void sync.syncOuraIfNeeded(user, 'sessions')
+  // Fire-and-forget: trigger background sync so activity data is fresh for the next request
+  if (sync) {
+    const promises: Promise<void>[] = []
+    if (types.includes('meditation')) promises.push(sync.syncOuraIfNeeded(user, 'sessions'))
+    if (types.includes('sleep')) promises.push(sync.syncGarminIfNeeded(user, 'sleep'))
+    if (types.includes('exercise')) promises.push(sync.syncGarminIfNeeded(user, 'activities'))
+    if (promises.length > 0) void Promise.all(promises)
   }
 
   const activities = await getActivities(user, types, start, end)

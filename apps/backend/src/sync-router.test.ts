@@ -313,6 +313,7 @@ describe('sync router', () => {
 
       expect(response.status).toBe(200)
       expect(mockDeps.syncGarmin).toHaveBeenCalledWith('testuser', {
+        disabledTypes: undefined,
         fullResync: undefined,
         startDate: undefined,
       })
@@ -326,6 +327,7 @@ describe('sync router', () => {
 
       expect(response.status).toBe(200)
       expect(mockDeps.syncGarmin).toHaveBeenCalledWith('testuser', {
+        disabledTypes: undefined,
         fullResync: true,
         startDate: new Date('2024-01-01'),
       })

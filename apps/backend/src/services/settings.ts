@@ -201,20 +201,25 @@ export const getTagMappings = async (
 /**
  * Get settings response in the format used by both API and MCP.
  */
-/** Apply defaults for nullable settings fields. */
-const withDefaults = (settings: UserSettings) => ({
-  birth_date: settings.birth_date ?? null,
+/** Apply defaults for nullable/array settings fields. */
+const emptyArrayDefaults = (settings: UserSettings) => ({
   calendars: settings.calendars ?? [],
-  dashboard: settings.dashboard ?? null,
   food_sensitivity_map: settings.food_sensitivity_map ?? {},
+  garmin_disabled_data_types: settings.garmin_disabled_data_types ?? [],
   item_icons: settings.item_icons ?? {},
-  lastfm_username: settings.lastfm_username ?? null,
   meal_slots: settings.meal_slots ?? [],
-  rescue_time_key: settings.rescue_time_key ?? null,
   sensitivity_areas: settings.sensitivity_areas ?? [],
-  sex: settings.sex ?? null,
   tag_icons: settings.item_icons ?? {},
   tag_mappings: settings.tag_mappings ?? {},
+})
+
+const withDefaults = (settings: UserSettings) => ({
+  ...emptyArrayDefaults(settings),
+  birth_date: settings.birth_date ?? null,
+  dashboard: settings.dashboard ?? null,
+  lastfm_username: settings.lastfm_username ?? null,
+  rescue_time_key: settings.rescue_time_key ?? null,
+  sex: settings.sex ?? null,
   training_load: settings.training_load ?? null,
   tz: settings.device_timezone ?? null,
 })
@@ -251,6 +256,7 @@ const EMPTY_SETTINGS_DEFAULTS = {
   dashboard: null,
   food_sensitivity_map: {},
   garmin_connected: false,
+  garmin_disabled_data_types: [],
   goals: defaultGoals,
   hr_zone_start_source: 'default' as const,
   item_icons: {},

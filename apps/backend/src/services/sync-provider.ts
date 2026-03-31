@@ -76,6 +76,10 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
       if (!config.garmin) return
 
       try {
+        // Check if this data type is disabled in user settings
+        const settings = await getSettings(user)
+        if (settings.garmin_disabled_data_types?.includes(dataType as GarminDataType)) return
+
         const syncState = await getSyncState(user, 'garmin', dataType)
 
         if (isGarminRateLimited(syncState)) {
