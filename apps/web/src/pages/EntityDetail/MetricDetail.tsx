@@ -89,90 +89,146 @@ export const MetricDetail = ({
   const metricLabel = formatMetricLabel(parsed.metric)
   const customUnit = customMetricsQuery.data?.find((m) => m.name === parsed.metric)?.unit
   const unit = customUnit ?? (builtinMetricUnits as Record<string, string>)[parsed.metric] ?? ''
-  const time = new Date(parsed.time)
-  const displayValue = point ? Number(point.value.toFixed(2)) : null
+  const source = parsed.source ?? point?.source ?? '…'
 
   if (isEditing && draft && onDraftChange) {
     return (
-      <div class="entity-info">
-        <div class="entity-meta">
-          <span class="entity-type-badge">metric</span>
-          <span class="entity-source">Source: {parsed.source ?? point?.source ?? '…'}</span>
-        </div>
-
-        <h2>
-          <a href={`/metric/${encodeURIComponent(parsed.metric)}`} class="entity-meta-link">
-            {metricLabel}
-          </a>
-        </h2>
-
-        <div class="entity-fields">
-          <div class="field-row">
-            <span class="field-label">Time</span>
-            <span class="field-value">
-              <input
-                type="datetime-local"
-                class="edit-datetime-input"
-                value={draft.time}
-                onInput={(e) => onDraftChange({ ...draft, time: (e.target as HTMLInputElement).value })}
-              />
-            </span>
-          </div>
-          <div class="field-row">
-            <span class="field-label">Value</span>
-            <span class="field-value">
-              <input
-                type="number"
-                step="any"
-                class="edit-value-input"
-                value={draft.value}
-                onInput={(e) => onDraftChange({ ...draft, value: (e.target as HTMLInputElement).value })}
-              />
-              {unit && <span class="edit-value-unit">{unit}</span>}
-            </span>
-          </div>
-          <div class="field-row">
-            <span class="field-label">Metric</span>
-            <span class="field-value">{parsed.metric}</span>
-          </div>
-        </div>
-      </div>
+      <MetricEditView
+        metric={parsed.metric}
+        metricLabel={metricLabel}
+        source={source}
+        unit={unit}
+        draft={draft}
+        onDraftChange={onDraftChange}
+      />
     )
   }
 
+  const time = new Date(parsed.time)
+  const displayValue = point ? Number(point.value.toFixed(2)) : null
+
   return (
-    <div class="entity-info">
-      <div class="entity-meta">
-        <span class="entity-type-badge">metric</span>
-        <span class="entity-source">Source: {parsed.source ?? point?.source ?? '…'}</span>
-      </div>
-
-      <h2>
-        <a href={`/metric/${encodeURIComponent(parsed.metric)}`} class="entity-meta-link">
-          {metricLabel}
-        </a>
-      </h2>
-
-      <div class="entity-fields">
-        <div class="field-row">
-          <span class="field-label">Time</span>
-          <span class="field-value">{formatDateTime(time)}</span>
-        </div>
-        <div class="field-row">
-          <span class="field-label">Value</span>
-          <span class="field-value">
-            {pointQuery.isLoading
-              ? 'Loading...'
-              : displayValue !== null
-                ? `${displayValue}${unit ? ` ${unit}` : ''}`
-                : 'Not found'}
-          </span>
-        </div>
-        <div class="field-row">
-          <span class="field-label">Metric</span>
-          <span class="field-value">{parsed.metric}</span>
-        </div>
-      </div>
-    </div>
+    <MetricReadView
+      metric={parsed.metric}
+      metricLabel={metricLabel}
+      source={source}
+      unit={unit}
+      time={time}
+      displayValue={displayValue}
+      isLoading={pointQuery.isLoading}
+    />
   )
 }
+
+const MetricEditView = ({
+  metric,
+  metricLabel,
+  source,
+  unit,
+  draft,
+  onDraftChange,
+}: {
+  metric: string
+  metricLabel: string
+  source: string
+  unit: string
+  draft: MetricDraft
+  onDraftChange: (draft: MetricDraft) => void
+}) => (
+  <div class="entity-info">
+    <div class="entity-meta">
+      <span class="entity-type-badge">metric</span>
+      <span class="entity-source">Source: {source}</span>
+    </div>
+
+    <h2>
+      <a href={`/metric/${encodeURIComponent(metric)}`} class="entity-meta-link">
+        {metricLabel}
+      </a>
+    </h2>
+
+    <div class="entity-fields">
+      <div class="field-row">
+        <span class="field-label">Time</span>
+        <span class="field-value">
+          <input
+            type="datetime-local"
+            class="edit-datetime-input"
+            value={draft.time}
+            onInput={(e) => onDraftChange({ ...draft, time: (e.target as HTMLInputElement).value })}
+          />
+        </span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Value</span>
+        <span class="field-value">
+          <input
+            type="number"
+            step="any"
+            class="edit-value-input"
+            value={draft.value}
+            onInput={(e) => onDraftChange({ ...draft, value: (e.target as HTMLInputElement).value })}
+          />
+          {unit && <span class="edit-value-unit">{unit}</span>}
+        </span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Metric</span>
+        <span class="field-value">{metric}</span>
+      </div>
+    </div>
+  </div>
+)
+
+const formatValueDisplay = (displayValue: number | null, unit: string): string => {
+  if (displayValue === null) return 'Not found'
+  return `${displayValue}${unit ? ` ${unit}` : ''}`
+}
+
+const MetricReadView = ({
+  metric,
+  metricLabel,
+  source,
+  unit,
+  time,
+  displayValue,
+  isLoading,
+}: {
+  metric: string
+  metricLabel: string
+  source: string
+  unit: string
+  time: Date
+  displayValue: number | null
+  isLoading: boolean
+}) => (
+  <div class="entity-info">
+    <div class="entity-meta">
+      <span class="entity-type-badge">metric</span>
+      <span class="entity-source">Source: {source}</span>
+    </div>
+
+    <h2>
+      <a href={`/metric/${encodeURIComponent(metric)}`} class="entity-meta-link">
+        {metricLabel}
+      </a>
+    </h2>
+
+    <div class="entity-fields">
+      <div class="field-row">
+        <span class="field-label">Time</span>
+        <span class="field-value">{formatDateTime(time)}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Value</span>
+        <span class="field-value">
+          {isLoading ? 'Loading...' : formatValueDisplay(displayValue, unit)}
+        </span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Metric</span>
+        <span class="field-value">{metric}</span>
+      </div>
+    </div>
+  </div>
+)
