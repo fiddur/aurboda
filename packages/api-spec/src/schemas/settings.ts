@@ -241,43 +241,50 @@ export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
  */
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
-    birth_date: z.string().nullable().meta({ description: 'Birth date in YYYY-MM-DD format' }),
-    calendars: calendarsSchema.meta({ description: 'Calendar ICS URL configurations' }),
+    birth_date: z.string().nullable().default(null).meta({ description: 'Birth date in YYYY-MM-DD format' }),
+    calendars: calendarsSchema.default([]).meta({ description: 'Calendar ICS URL configurations' }),
     dashboard: dashboardConfigSchema
       .nullable()
+      .default(null)
       .meta({ description: 'Custom dashboard configuration (null = use default)' }),
+    food_sensitivity_map: foodSensitivityMapSchema.default({}).meta({ description: 'Food-to-sensitivity mapping' }),
+    garmin_connected: z
+      .boolean()
+      .default(false)
+      .meta({ description: 'Whether Garmin Connect is connected via stored session' }),
+    garmin_disabled_data_types: z
+      .array(garminDataTypeSchema)
+      .default([])
+      .meta({ description: 'Garmin data types currently disabled for sync' }),
     goals: goalsSchema.meta({ description: 'User goals for tracking metrics' }),
     hr_zone_start: hrZoneThresholdsSchema.meta({ description: 'Effective HR zone thresholds' }),
-    hr_zone_start_source: hrZoneSourceSchema.meta({
+    hr_zone_start_source: hrZoneSourceSchema.default('default').meta({
       description: 'Source of HR zone thresholds',
     }),
-    item_icons: itemIconsSchema.meta({
+    item_icons: itemIconsSchema.default({}).meta({
       description:
         'Unified icon mappings for all timeline items — tags, activities, exercise types (tag key or name -> emoji/URL)',
     }),
-    garmin_connected: z
+    lastfm_configured: z
       .boolean()
-      .meta({ description: 'Whether Garmin Connect is connected via stored session' }),
-    garmin_disabled_data_types: z.array(garminDataTypeSchema).meta({
-      description: 'Garmin data types currently disabled for sync',
-    }),
-    food_sensitivity_map: foodSensitivityMapSchema.meta({ description: 'Food-to-sensitivity mapping' }),
-    meal_slots: mealSlotsSchema.meta({ description: 'Configured meal slots for quick-logging' }),
-    lastfm_configured: z.boolean().meta({ description: 'Whether Last.fm API key is configured on server' }),
-    lastfm_username: z.string().nullable().meta({ description: 'Last.fm username for scrobble sync' }),
-    oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),
-    oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
-    rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),
-    sensitivity_areas: sensitivityAreasSchema.meta({ description: 'Sensitivity areas to track in meals' }),
-    sex: biologicalSexSchema.nullable().meta({ description: 'Biological sex for calorie calculation' }),
-    tag_icons: tagIconsSchema.meta({
+      .default(false)
+      .meta({ description: 'Whether Last.fm API key is configured on server' }),
+    lastfm_username: z.string().nullable().default(null).meta({ description: 'Last.fm username for scrobble sync' }),
+    meal_slots: mealSlotsSchema.default([]).meta({ description: 'Configured meal slots for quick-logging' }),
+    oura_configured: z.boolean().default(false).meta({ description: 'Whether Oura OAuth is configured on server' }),
+    oura_connected: z.boolean().default(false).meta({ description: 'Whether Oura is connected via OAuth' }),
+    rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
+    sensitivity_areas: sensitivityAreasSchema.default([]).meta({ description: 'Sensitivity areas to track in meals' }),
+    sex: biologicalSexSchema.nullable().default(null).meta({ description: 'Biological sex for calorie calculation' }),
+    tag_icons: tagIconsSchema.default({}).meta({
       description: 'Tag icon mappings (deprecated, use item_icons)',
     }),
-    tag_mappings: tagMappingsSchema.meta({ description: 'Tag name mappings from UUIDs to display names' }),
+    tag_mappings: tagMappingsSchema.default({}).meta({ description: 'Tag name mappings from UUIDs to display names' }),
     training_load: trainingLoadSettingsSchema
       .nullable()
+      .default(null)
       .meta({ description: 'Training load (Banister model) parameters (null = defaults)' }),
-    tz: z.string().nullable().meta({
+    tz: z.string().nullable().default(null).meta({
       description: 'User timezone (IANA format, e.g. Europe/Stockholm). Auto-detected from device.',
     }),
   })

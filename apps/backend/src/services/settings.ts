@@ -9,6 +9,7 @@ import {
   type HrZoneSource,
   type HrZoneThresholds,
   updateSettingsInputSchema,
+  userSettingsResponseSchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
 
@@ -199,30 +200,34 @@ export const getTagMappings = async (
 }
 
 /**
- * Get settings response in the format used by both API and MCP.
+ * Map DB settings to response fields, applying schema defaults for missing values.
+ * Fields with different DB vs response names are mapped explicitly.
  */
-/** Apply defaults for nullable/array settings fields. */
-const emptyArrayDefaults = (settings: UserSettings) => ({
-  calendars: settings.calendars ?? [],
-  food_sensitivity_map: settings.food_sensitivity_map ?? {},
-  garmin_disabled_data_types: settings.garmin_disabled_data_types ?? [],
-  item_icons: settings.item_icons ?? {},
-  meal_slots: settings.meal_slots ?? [],
-  sensitivity_areas: settings.sensitivity_areas ?? [],
-  tag_icons: settings.item_icons ?? {},
-  tag_mappings: settings.tag_mappings ?? {},
+/** Schema for applying defaults to DB settings. Uses .default() from the response schema. */
+const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
+  birth_date: true,
+  calendars: true,
+  dashboard: true,
+  food_sensitivity_map: true,
+  garmin_disabled_data_types: true,
+  item_icons: true,
+  lastfm_username: true,
+  meal_slots: true,
+  rescue_time_key: true,
+  sensitivity_areas: true,
+  sex: true,
+  tag_icons: true,
+  tag_mappings: true,
+  training_load: true,
+  tz: true,
 })
 
-const withDefaults = (settings: UserSettings) => ({
-  ...emptyArrayDefaults(settings),
-  birth_date: settings.birth_date ?? null,
-  dashboard: settings.dashboard ?? null,
-  lastfm_username: settings.lastfm_username ?? null,
-  rescue_time_key: settings.rescue_time_key ?? null,
-  sex: settings.sex ?? null,
-  training_load: settings.training_load ?? null,
-  tz: settings.device_timezone ?? null,
-})
+const withDefaults = (settings: UserSettings) =>
+  settingsWithDefaultsSchema.parse({
+    ...settings,
+    tag_icons: settings.item_icons,
+    tz: settings.device_timezone,
+  })
 
 export const getSettingsResponse = async (user: string): Promise<SettingsResponse> => {
   const settings = await getSettings(user)
@@ -246,38 +251,16 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   }
 }
 
-/**
- * Validate and update user settings.
- * Returns a SettingsResponse with either success or error.
- */
-const EMPTY_SETTINGS_DEFAULTS = {
-  birth_date: null,
-  calendars: [],
-  dashboard: null,
-  food_sensitivity_map: {},
-  garmin_connected: false,
-  garmin_disabled_data_types: [],
-  goals: defaultGoals,
-  hr_zone_start_source: 'default' as const,
-  item_icons: {},
-  lastfm_username: null,
-  meal_slots: [],
-  oura_connected: false,
-  rescue_time_key: null,
-  sensitivity_areas: [],
-  sex: null,
-  tag_icons: {},
-  tag_mappings: {},
-  training_load: null,
-  tz: null,
-}
-
 const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => ({
-  ...EMPTY_SETTINGS_DEFAULTS,
+  ...settingsWithDefaultsSchema.parse({}),
   error: errorMessage,
+  goals: defaultGoals,
   hr_zone_start: calculateDefaultHrZones(null),
+  hr_zone_start_source: 'default' as const,
   lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
   oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
+  garmin_connected: false,
+  oura_connected: false,
   success: false,
 })
 
