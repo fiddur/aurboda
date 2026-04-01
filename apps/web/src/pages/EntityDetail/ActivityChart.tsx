@@ -5,6 +5,7 @@
  * - Sleep hypnogram (colored bands by sleep stage)
  * - Heart rate line overlay
  * - HRV line overlay
+ * - Stress level overlay
  * - Hover tooltip with crosshair
  */
 import { useQuery } from '@tanstack/react-query'
@@ -33,6 +34,7 @@ const HYPNOGRAM_LABELS = ['Awake', 'REM', 'Light', 'Deep']
 const HYPNOGRAM_Y_VALUES = [0, 1, 2, 3]
 
 type GSelection = d3.Selection<SVGGElement, unknown, null, undefined>
+type TimeSeries = [Date, number][]
 
 const drawHypnogram = (
   g: GSelection,
@@ -92,7 +94,7 @@ const drawLineOverlay = (
   xScale: d3.ScaleTime<number, number>,
   innerWidth: number,
   innerHeight: number,
-  data: [Date, number][],
+  data: TimeSeries,
   color: string,
   unit: string,
   axisSide: 'left' | 'right',
@@ -145,8 +147,7 @@ const drawLineOverlay = (
     .attr('d', line)
 }
 
-const hasData = (data: [Date, number][] | undefined): data is [Date, number][] =>
-  data !== undefined && data.length > 0
+const hasData = (data: TimeSeries | undefined): data is TimeSeries => data !== undefined && data.length > 0
 
 /** Draw all metric overlays (HR, HRV, stress) with dynamic axis offsets. */
 const drawOverlays = (
@@ -155,9 +156,9 @@ const drawOverlays = (
   innerWidth: number,
   innerHeight: number,
   hasHypnogram: boolean,
-  hrData: [Date, number][] | undefined,
-  hrvData: [Date, number][] | undefined,
-  stressData: [Date, number][] | undefined,
+  hrData: TimeSeries | undefined,
+  hrvData: TimeSeries | undefined,
+  stressData: TimeSeries | undefined,
 ) => {
   let rightAxisCount = 0
 
@@ -177,9 +178,173 @@ const drawOverlays = (
   if (hasData(stressData)) {
     const axisSide = rightAxisCount > 0 || hasHypnogram ? 'right' : 'left'
     const offset = axisSide === 'right' ? rightAxisCount * 45 : 0
-    drawLineOverlay(g, xScale, innerWidth, innerHeight, stressData, '#f97316', 'score', axisSide, offset, true)
+    drawLineOverlay(
+      g,
+      xScale,
+      innerWidth,
+      innerHeight,
+      stressData,
+      '#f97316',
+      'score',
+      axisSide,
+      offset,
+      true,
+    )
   }
 }
+
+/** Build tooltip text lines for the crosshair position. */
+const buildTooltipLines = (
+  time: Date,
+  hrData: TimeSeries | undefined,
+  hrvData: TimeSeries | undefined,
+  stressData: TimeSeries | undefined,
+  stages: SleepStage[] | undefined,
+): string[] => {
+  const lines: string[] = [format(time, 'HH:mm:ss')]
+
+  if (hasData(hrData)) {
+    const nearest = findNearest(hrData, time)
+    if (nearest) lines.push(`HR: ${Math.round(nearest[1])} bpm`)
+  }
+  if (hasData(hrvData)) {
+    const nearest = findNearest(hrvData, time)
+    if (nearest) lines.push(`HRV: ${Math.round(nearest[1])} ms`)
+  }
+  if (hasData(stressData)) {
+    const nearest = findNearest(stressData, time)
+    if (nearest) lines.push(`Stress: ${Math.round(nearest[1])}`)
+  }
+  if (stages) {
+    const stage = findStageAtTime(stages, time)
+    if (stage) lines.push(`Stage: ${stage}`)
+  }
+
+  return lines
+}
+
+/** Render the full D3 chart (overlays + tooltip). Called from useEffect. */
+const renderChart = ({
+  containerRef,
+  hasHypnogram,
+  hrData,
+  hrvData,
+  stressData,
+  stages,
+  start,
+  end,
+  svgRef,
+  tooltipRef,
+}: {
+  containerRef: { current: HTMLDivElement | null }
+  hasHypnogram: boolean
+  hrData: TimeSeries | undefined
+  hrvData: TimeSeries | undefined
+  stressData: TimeSeries | undefined
+  stages: SleepStage[] | undefined
+  start: Date
+  end: Date
+  svgRef: { current: SVGSVGElement | null }
+  tooltipRef: { current: HTMLDivElement | null }
+}) => {
+  if (!svgRef.current || !containerRef.current) return
+
+  const containerWidth = containerRef.current.clientWidth
+  const svg = d3.select(svgRef.current)
+  svg.selectAll('*').remove()
+
+  const innerWidth = containerWidth - MARGIN.left - MARGIN.right
+  const innerHeight = CHART_HEIGHT - MARGIN.top - MARGIN.bottom
+
+  svg.attr('width', containerWidth).attr('height', CHART_HEIGHT)
+
+  const g = svg.append('g').attr('transform', `translate(${MARGIN.left},${MARGIN.top})`)
+
+  const xScale = d3.scaleTime().domain([start, end]).range([0, innerWidth])
+
+  g.append('g')
+    .attr('transform', `translate(0,${innerHeight})`)
+    .call(
+      d3
+        .axisBottom(xScale)
+        .ticks(6)
+        .tickFormat((d) => format(d as Date, 'HH:mm')),
+    )
+    .selectAll('text')
+    .attr('fill', 'currentColor')
+
+  if (hasHypnogram && stages) {
+    drawHypnogram(g, xScale, innerWidth, innerHeight, stages)
+  }
+
+  drawOverlays(g, xScale, innerWidth, innerHeight, hasHypnogram, hrData, hrvData, stressData)
+
+  // Tooltip crosshair and interaction overlay
+  const crosshair = g
+    .append('line')
+    .attr('y1', 0)
+    .attr('y2', innerHeight)
+    .attr('stroke', 'currentColor')
+    .attr('stroke-opacity', 0.4)
+    .attr('stroke-dasharray', '4 3')
+    .attr('pointer-events', 'none')
+    .style('display', 'none')
+
+  const tooltip = tooltipRef.current
+
+  g.append('rect')
+    .attr('width', innerWidth)
+    .attr('height', innerHeight)
+    .attr('fill', 'transparent')
+    .attr('pointer-events', 'all')
+    .on('mousemove', (event: MouseEvent) => {
+      const [mx] = d3.pointer(event)
+      const time = xScale.invert(mx)
+
+      crosshair.attr('x1', mx).attr('x2', mx).style('display', null)
+
+      const lines = buildTooltipLines(time, hrData, hrvData, stressData, hasHypnogram ? stages : undefined)
+
+      if (tooltip) {
+        tooltip.textContent = lines.join('\n')
+        tooltip.style.display = 'block'
+
+        const containerRect = containerRef.current!.getBoundingClientRect()
+        const svgRect = svgRef.current!.getBoundingClientRect()
+        const tooltipX = mx + MARGIN.left + (svgRect.left - containerRect.left)
+        const tooltipWidth = tooltip.offsetWidth
+        const availableWidth = containerRect.width
+
+        const left =
+          tooltipX + tooltipWidth + 12 > availableWidth ? tooltipX - tooltipWidth - 12 : tooltipX + 12
+        tooltip.style.left = `${left}px`
+        tooltip.style.top = `${MARGIN.top + 8}px`
+      }
+    })
+    .on('mouseleave', () => {
+      crosshair.style('display', 'none')
+      if (tooltip) tooltip.style.display = 'none'
+    })
+}
+
+const ChartToggle = ({
+  color,
+  label,
+  active,
+  loading,
+  onToggle,
+}: {
+  color: string
+  label: string
+  active: boolean
+  loading: boolean
+  onToggle: () => void
+}) => (
+  <button class={`chart-toggle${active ? ' active' : ''}`} onClick={onToggle} type="button">
+    <span class="chart-toggle-dot" style={{ background: color }} />
+    {label} {loading && active ? '...' : ''}
+  </button>
+)
 
 export const ActivityChart = ({
   start,
@@ -222,133 +387,47 @@ export const ActivityChart = ({
   const hrvData = showHrv ? hrvQuery.data : undefined
   const stressData = showStress ? stressQuery.data : undefined
 
-  useEffect(() => {
-    if (!svgRef.current || !containerRef.current) return
-
-    const containerWidth = containerRef.current.clientWidth
-    const svg = d3.select(svgRef.current)
-    svg.selectAll('*').remove()
-
-    const innerWidth = containerWidth - MARGIN.left - MARGIN.right
-    const innerHeight = CHART_HEIGHT - MARGIN.top - MARGIN.bottom
-
-    svg.attr('width', containerWidth).attr('height', CHART_HEIGHT)
-
-    const g = svg.append('g').attr('transform', `translate(${MARGIN.left},${MARGIN.top})`)
-
-    const xScale = d3.scaleTime().domain([start, end]).range([0, innerWidth])
-
-    g.append('g')
-      .attr('transform', `translate(0,${innerHeight})`)
-      .call(
-        d3
-          .axisBottom(xScale)
-          .ticks(6)
-          .tickFormat((d) => format(d as Date, 'HH:mm')),
-      )
-      .selectAll('text')
-      .attr('fill', 'currentColor')
-
-    if (hasHypnogram) {
-      drawHypnogram(g, xScale, innerWidth, innerHeight, stages!)
-    }
-
-    drawOverlays(g, xScale, innerWidth, innerHeight, !!hasHypnogram, hrData, hrvData, stressData)
-
-    // Tooltip crosshair and interaction overlay
-    const crosshair = g
-      .append('line')
-      .attr('y1', 0)
-      .attr('y2', innerHeight)
-      .attr('stroke', 'currentColor')
-      .attr('stroke-opacity', 0.4)
-      .attr('stroke-dasharray', '4 3')
-      .attr('pointer-events', 'none')
-      .style('display', 'none')
-
-    const tooltip = tooltipRef.current
-
-    g.append('rect')
-      .attr('width', innerWidth)
-      .attr('height', innerHeight)
-      .attr('fill', 'transparent')
-      .attr('pointer-events', 'all')
-      .on('mousemove', (event: MouseEvent) => {
-        const [mx] = d3.pointer(event)
-        const time = xScale.invert(mx)
-
-        crosshair.attr('x1', mx).attr('x2', mx).style('display', null)
-
-        const lines: string[] = [format(time, 'HH:mm:ss')]
-
-        if (hasData(hrData)) {
-          const nearest = findNearest(hrData, time)
-          if (nearest) lines.push(`HR: ${Math.round(nearest[1])} bpm`)
-        }
-        if (hasData(hrvData)) {
-          const nearest = findNearest(hrvData, time)
-          if (nearest) lines.push(`HRV: ${Math.round(nearest[1])} ms`)
-        }
-        if (hasData(stressData)) {
-          const nearest = findNearest(stressData, time)
-          if (nearest) lines.push(`Stress: ${Math.round(nearest[1])}`)
-        }
-        if (hasHypnogram && stages) {
-          const stage = findStageAtTime(stages, time)
-          if (stage) lines.push(`Stage: ${stage}`)
-        }
-
-        if (tooltip) {
-          tooltip.textContent = lines.join('\n')
-          tooltip.style.display = 'block'
-
-          // Position relative to container
-          const containerRect = containerRef.current!.getBoundingClientRect()
-          const svgRect = svgRef.current!.getBoundingClientRect()
-          const tooltipX = mx + MARGIN.left + (svgRect.left - containerRect.left)
-          const tooltipWidth = tooltip.offsetWidth
-          const availableWidth = containerRect.width
-
-          // Flip to left side if too close to right edge
-          const left =
-            tooltipX + tooltipWidth + 12 > availableWidth ? tooltipX - tooltipWidth - 12 : tooltipX + 12
-          tooltip.style.left = `${left}px`
-          tooltip.style.top = `${MARGIN.top + 8}px`
-        }
-      })
-      .on('mouseleave', () => {
-        crosshair.style('display', 'none')
-        if (tooltip) tooltip.style.display = 'none'
-      })
-  }, [start, end, stages, hasHypnogram, hrData, hrvData, stressData])
+  useEffect(
+    () =>
+      renderChart({
+        containerRef,
+        hasHypnogram: !!hasHypnogram,
+        hrData,
+        hrvData,
+        stressData,
+        stages,
+        start,
+        end,
+        svgRef,
+        tooltipRef,
+      }),
+    [start, end, stages, hasHypnogram, hrData, hrvData, stressData],
+  )
 
   return (
     <div class="activity-chart-container">
       <div class="chart-toggles">
-        <button
-          class={`chart-toggle${showHr ? ' active' : ''}`}
-          onClick={() => setShowHr(!showHr)}
-          type="button"
-        >
-          <span class="chart-toggle-dot" style={{ background: '#ef4444' }} />
-          HR {hrQuery.isLoading && showHr ? '...' : ''}
-        </button>
-        <button
-          class={`chart-toggle${showHrv ? ' active' : ''}`}
-          onClick={() => setShowHrv(!showHrv)}
-          type="button"
-        >
-          <span class="chart-toggle-dot" style={{ background: '#14b8a6' }} />
-          HRV {hrvQuery.isLoading && showHrv ? '...' : ''}
-        </button>
-        <button
-          class={`chart-toggle${showStress ? ' active' : ''}`}
-          onClick={() => setShowStress(!showStress)}
-          type="button"
-        >
-          <span class="chart-toggle-dot" style={{ background: '#f97316' }} />
-          Stress {stressQuery.isLoading && showStress ? '...' : ''}
-        </button>
+        <ChartToggle
+          color="#ef4444"
+          label="HR"
+          active={showHr}
+          loading={hrQuery.isLoading}
+          onToggle={() => setShowHr(!showHr)}
+        />
+        <ChartToggle
+          color="#14b8a6"
+          label="HRV"
+          active={showHrv}
+          loading={hrvQuery.isLoading}
+          onToggle={() => setShowHrv(!showHrv)}
+        />
+        <ChartToggle
+          color="#f97316"
+          label="Stress"
+          active={showStress}
+          loading={stressQuery.isLoading}
+          onToggle={() => setShowStress(!showStress)}
+        />
       </div>
       <div class="chart-svg-container" ref={containerRef}>
         <svg ref={svgRef} />
