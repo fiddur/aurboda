@@ -52,7 +52,7 @@ export const MetricContent = ({ entityId }: { entityId: string }) => {
 
       // Only delete the old point if the time actually changed, otherwise
       // we'd delete the point we just upserted.
-      if (newTime !== parsed.time) {
+      if (newTime !== parsed.time && parsed.source) {
         await deleteMetricPoint(parsed.metric, parsed.time, parsed.source)
       }
     },
