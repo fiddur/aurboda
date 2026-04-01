@@ -293,28 +293,14 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     await replaceGoals(user, newGoals)
   }
 
-  // Build updates object, converting null to undefined (which clears/resets the field in storage)
-  const settingsFields = [
-    'birth_date',
-    'calendars',
-    'dashboard',
-    'food_sensitivity_map',
-    'hr_zone_start',
-    'item_icons',
-    'lastfm_username',
-    'meal_slots',
-    'rescue_time_key',
-    'sensitivity_areas',
-    'sex',
-    'tag_icons',
-    'tag_mappings',
-    'training_load',
-  ] as const
+  // Build updates object, converting null to undefined (which clears/resets the field in storage).
+  // Derive field list from the schema to keep it in sync with api-spec.
+  const settingsFields = Object.keys(updateSettingsInputSchema.shape).filter((k) => k !== 'goals')
   const updates: Partial<UserSettings> = {}
   for (const field of settingsFields) {
-    if (parsed.data[field] !== undefined) {
-      ;(updates as Record<string, unknown>)[field] =
-        parsed.data[field] === null ? undefined : parsed.data[field]
+    const value = parsed.data[field as keyof typeof parsed.data]
+    if (value !== undefined) {
+      ;(updates as Record<string, unknown>)[field] = value === null ? undefined : value
     }
   }
 
