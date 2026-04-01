@@ -198,23 +198,36 @@ function GarminDataTypeToggles({
   disabledTypes: GarminDataType[]
   onToggle: (disabledTypes: GarminDataType[]) => Promise<void>
 }) {
+  // Optimistic local state — updates immediately on click
+  const [localDisabled, setLocalDisabled] = useState<GarminDataType[]>(disabledTypes)
   const [saving, setSaving] = useState(false)
-  const disabledSet = new Set(disabledTypes)
+
+  // Sync local state with prop when not saving (e.g. after API response)
+  if (!saving && localDisabled !== disabledTypes) {
+    setLocalDisabled(disabledTypes)
+  }
 
   const handleToggle = useCallback(
     async (type: GarminDataType) => {
+      setLocalDisabled((prev) => {
+        const set = new Set(prev)
+        return set.has(type) ? prev.filter((t) => t !== type) : [...prev, type]
+      })
       setSaving(true)
       try {
-        const newDisabled = disabledSet.has(type)
-          ? disabledTypes.filter((t) => t !== type)
-          : [...disabledTypes, type]
+        const set = new Set(localDisabled)
+        const newDisabled = set.has(type)
+          ? localDisabled.filter((t) => t !== type)
+          : [...localDisabled, type]
         await onToggle(newDisabled)
       } finally {
         setSaving(false)
       }
     },
-    [disabledTypes, disabledSet, onToggle],
+    [localDisabled, onToggle],
   )
+
+  const disabledSet = new Set(localDisabled)
 
   return (
     <div class="data-types-section">
@@ -231,7 +244,6 @@ function GarminDataTypeToggles({
               <input
                 type="checkbox"
                 checked={enabled}
-                disabled={saving}
                 onChange={() => handleToggle(dt.type)}
               />
               <div class="garmin-data-type-info">
