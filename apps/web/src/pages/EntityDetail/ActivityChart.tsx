@@ -148,6 +148,39 @@ const drawLineOverlay = (
 const hasData = (data: [Date, number][] | undefined): data is [Date, number][] =>
   data !== undefined && data.length > 0
 
+/** Draw all metric overlays (HR, HRV, stress) with dynamic axis offsets. */
+const drawOverlays = (
+  g: GSelection,
+  xScale: d3.ScaleTime<number, number>,
+  innerWidth: number,
+  innerHeight: number,
+  hasHypnogram: boolean,
+  hrData: [Date, number][] | undefined,
+  hrvData: [Date, number][] | undefined,
+  stressData: [Date, number][] | undefined,
+) => {
+  let rightAxisCount = 0
+
+  if (hasData(hrData)) {
+    const axisSide = hasHypnogram ? 'right' : 'left'
+    drawLineOverlay(g, xScale, innerWidth, innerHeight, hrData, '#ef4444', 'bpm', axisSide)
+    if (axisSide === 'right') rightAxisCount++
+  }
+
+  if (hasData(hrvData)) {
+    const axisSide = hasData(hrData) || hasHypnogram ? 'right' : 'left'
+    const offset = axisSide === 'right' ? rightAxisCount * 45 : 0
+    drawLineOverlay(g, xScale, innerWidth, innerHeight, hrvData, '#14b8a6', 'ms', axisSide, offset, true)
+    if (axisSide === 'right') rightAxisCount++
+  }
+
+  if (hasData(stressData)) {
+    const axisSide = rightAxisCount > 0 || hasHypnogram ? 'right' : 'left'
+    const offset = axisSide === 'right' ? rightAxisCount * 45 : 0
+    drawLineOverlay(g, xScale, innerWidth, innerHeight, stressData, '#f97316', 'score', axisSide, offset, true)
+  }
+}
+
 export const ActivityChart = ({
   start,
   end,
@@ -220,32 +253,7 @@ export const ActivityChart = ({
       drawHypnogram(g, xScale, innerWidth, innerHeight, stages!)
     }
 
-    if (hasData(hrData)) {
-      drawLineOverlay(
-        g,
-        xScale,
-        innerWidth,
-        innerHeight,
-        hrData,
-        '#ef4444',
-        'bpm',
-        hasHypnogram ? 'right' : 'left',
-      )
-    }
-
-    if (hasData(hrvData)) {
-      const hrVisible = hasData(hrData)
-      const axisSide = hrVisible || hasHypnogram ? 'right' : 'left'
-      const offset = axisSide === 'right' && hrVisible ? 45 : 0
-      drawLineOverlay(g, xScale, innerWidth, innerHeight, hrvData, '#14b8a6', 'ms', axisSide, offset, true)
-    }
-
-    if (hasData(stressData)) {
-      const rightCount = [hasData(hrData), hasData(hrvData)].filter(Boolean).length
-      const axisSide = rightCount > 0 || hasHypnogram ? 'right' : 'left'
-      const offset = axisSide === 'right' ? rightCount * 45 : 0
-      drawLineOverlay(g, xScale, innerWidth, innerHeight, stressData, '#f97316', 'score', axisSide, offset, true)
-    }
+    drawOverlays(g, xScale, innerWidth, innerHeight, hasHypnogram, hrData, hrvData, stressData)
 
     // Tooltip crosshair and interaction overlay
     const crosshair = g
