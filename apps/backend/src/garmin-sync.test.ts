@@ -12,10 +12,12 @@ import {
 
 // Mock the db module (include all exports used by garmin-process.ts too)
 vi.mock('./db', () => ({
+  getActivitiesNeedingDetail: vi.fn().mockResolvedValue([]),
   getSyncState: vi.fn(),
   insertActivity: vi.fn(),
   insertRawRecord: vi.fn(),
   insertTimeSeries: vi.fn(),
+  markActivityDetailSynced: vi.fn().mockResolvedValue(undefined),
   upsertSyncState: vi.fn(),
 }))
 
@@ -24,13 +26,20 @@ vi.mock('./garmin-process', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
+    processActivityDetail: vi.fn().mockResolvedValue(0),
     processGarminData: vi.fn().mockResolvedValue(1),
   }
 })
 
+vi.mock('./services/audit-log', () => ({
+  auditError: vi.fn(),
+  auditInfo: vi.fn(),
+}))
+
 const createMockGarmin = () => ({
   disconnect: vi.fn(),
   getActivities: vi.fn().mockResolvedValue([]),
+  getActivityDetail: vi.fn().mockResolvedValue({ activityDetailMetrics: [], activityId: 0, metricDescriptors: [] }),
   getBodyBattery: vi.fn().mockResolvedValue([]),
   getDailySummary: vi.fn().mockResolvedValue({}),
   getHeartRate: vi.fn().mockResolvedValue({}),
