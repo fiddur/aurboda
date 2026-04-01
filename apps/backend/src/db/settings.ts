@@ -121,31 +121,13 @@ export const upsertUserSettings = async (
   // Get existing settings
   const existing = (await getUserSettings(user)) ?? {}
 
-  // Merge updates — simple fields are copied directly when present
-  const merged: UserSettings = { ...existing }
-  const simpleFields = [
-    'birth_date',
-    'calendars',
-    'dashboard',
-    'hr_zone_start',
-    'food_sensitivity_map',
-    'item_icons',
-    'lastfm_username',
-    'meal_slots',
-    'rescue_time_key',
-    'sensitivity_areas',
-    'sex',
-    'tag_mappings',
-    'training_load',
-  ] as const
-  for (const field of simpleFields) {
-    if (updates[field] !== undefined) {
-      ;(merged as Record<string, unknown>)[field] = updates[field]
-    }
-  }
-  // Deprecated: merge tag_icons into item_icons for backwards compatibility
-  if (updates.tag_icons !== undefined) {
-    merged.item_icons = { ...merged.item_icons, ...updates.tag_icons }
+  // Merge updates into existing settings — only defined values override.
+  // Deprecated: tag_icons merges into item_icons for backwards compatibility.
+  const { tag_icons, ...rest } = updates
+  const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
+  const merged: UserSettings = { ...existing, ...defined }
+  if (tag_icons !== undefined) {
+    merged.item_icons = { ...merged.item_icons, ...tag_icons }
   }
 
   // Check if settings row exists
