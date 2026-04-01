@@ -299,6 +299,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     'calendars',
     'dashboard',
     'food_sensitivity_map',
+    'garmin_disabled_data_types',
     'hr_zone_start',
     'item_icons',
     'lastfm_username',
