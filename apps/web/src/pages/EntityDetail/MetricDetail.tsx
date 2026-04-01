@@ -18,14 +18,14 @@ export interface MetricDraft {
   value: string // string so input binding works naturally
 }
 
-/** Parse a metric entity ID (format: "iso_time|metric_name|source"). */
+/** Parse a metric entity ID (format: "iso_time|metric_name|source" or "iso_time|metric_name"). */
 export const parseMetricEntityId = (
   entityId: string,
-): { time: string; metric: string; source: string } | null => {
+): { time: string; metric: string; source: string | undefined } | null => {
   const parts = entityId.split('|')
-  if (parts.length !== 3) return null
+  if (parts.length < 2 || parts.length > 3) return null
   const [time, metric, source] = parts
-  if (!time || !metric || !source) return null
+  if (!time || !metric) return null
   const d = new Date(time)
   if (isNaN(d.getTime())) return null
   return { metric, source, time }
@@ -97,7 +97,7 @@ export const MetricDetail = ({
       <div class="entity-info">
         <div class="entity-meta">
           <span class="entity-type-badge">metric</span>
-          <span class="entity-source">Source: {parsed.source}</span>
+          <span class="entity-source">Source: {parsed.source ?? point?.source ?? '…'}</span>
         </div>
 
         <h2>
@@ -144,7 +144,7 @@ export const MetricDetail = ({
     <div class="entity-info">
       <div class="entity-meta">
         <span class="entity-type-badge">metric</span>
-        <span class="entity-source">Source: {parsed.source}</span>
+        <span class="entity-source">Source: {parsed.source ?? point?.source ?? '…'}</span>
       </div>
 
       <h2>
