@@ -1,6 +1,7 @@
 import type { ParamsDictionary } from 'express-serve-static-core'
 
 import {
+  type GarminDataType,
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
   healthConnectSyncBodySchema,
@@ -96,7 +97,7 @@ export interface SyncRouterDeps {
   resetOuraSyncState: (user: string, dataType?: string) => Promise<void>
   syncGarmin: (
     user: string,
-    options: { fullResync?: boolean; startDate?: Date },
+    options: { disabledTypes?: GarminDataType[]; fullResync?: boolean; startDate?: Date },
   ) => Promise<GarminSyncResult[]>
   getGarminSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetGarminSyncState: (user: string, dataType?: string) => Promise<void>
@@ -124,7 +125,12 @@ export interface SyncRouterDeps {
   resetLastFmSyncState: (user: string) => Promise<void>
   getSettings: (
     user: string,
-  ) => Promise<{ rescue_time_key?: string; calendars?: CalendarConfig[]; lastfm_username?: string }>
+  ) => Promise<{
+    rescue_time_key?: string
+    calendars?: CalendarConfig[]
+    lastfm_username?: string
+    garmin_disabled_data_types?: GarminDataType[]
+  }>
   getLastFmApiKey: () => Promise<string | null>
   processActivityWatchEvents: (
     user: string,
@@ -244,7 +250,9 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       const { full_resync, start_date } = req.body
 
       try {
+        const settings = await deps.getSettings(user)
         const results = await deps.syncGarmin(user, {
+          disabledTypes: settings.garmin_disabled_data_types,
           fullResync: full_resync,
           startDate: start_date ? new Date(start_date) : undefined,
         })

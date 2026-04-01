@@ -1,3 +1,5 @@
+import type { GarminDataType, ProviderSyncStatus } from '@aurboda/api-spec'
+
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 
@@ -7,25 +9,55 @@ import {
   fetchGarminSyncStatus,
   fetchUserSettings,
   syncGarmin,
+  updateUserSettings,
   verifyGarminMfa,
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { type DataTypeItem, DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
 import './style.css'
 
-const DATA_TYPES: DataTypeItem[] = [
-  { label: 'Daily summary (steps, distance, calories, floors)', href: '/metric/steps' },
-  { label: 'Heart rate (resting + samples)', href: '/metric/heart_rate' },
-  { label: 'HRV (last night average)', href: '/metric/hrv_rmssd' },
-  { label: 'Sleep (duration, stages, score)', href: '/sleep' },
-  { label: 'Stress level', href: '/metric/stress_level' },
-  { label: 'Body Battery', href: '/metric/body_battery' },
-  { label: 'Activities (exercise with HR, VO2 max)' },
-  { label: 'SpO2 (blood oxygen)', href: '/metric/spo2' },
-  { label: 'Respiration rate', href: '/metric/respiratory_rate' },
-  { label: 'Training readiness', href: '/metric/training_readiness' },
-  { label: 'Intensity minutes', href: '/metric/intensity_minutes' },
+interface GarminDataTypeInfo {
+  type: GarminDataType
+  label: string
+  href?: string
+  hc_note?: string // Health Connect overlap note (undefined = Garmin only)
+}
+
+const GARMIN_DATA_TYPES: GarminDataTypeInfo[] = [
+  {
+    type: 'dailySummary',
+    label: 'Daily summary (steps, distance, calories, floors)',
+    href: '/metric/steps',
+    hc_note: 'Also available via Health Connect',
+  },
+  {
+    type: 'heartRate',
+    label: 'Heart rate (resting + samples)',
+    href: '/metric/heart_rate',
+    hc_note: 'Also available via Health Connect',
+  },
+  { type: 'hrv', label: 'HRV (last night average)', href: '/metric/hrv_rmssd' },
+  {
+    type: 'sleep',
+    label: 'Sleep (duration, stages, score)',
+    href: '/sleep',
+    hc_note: 'Also available via Health Connect. Garmin adds sleep score.',
+  },
+  { type: 'stress', label: 'Stress level', href: '/metric/stress_level' },
+  { type: 'bodyBattery', label: 'Body Battery', href: '/metric/body_battery' },
+  {
+    type: 'activities',
+    label: 'Activities (exercise with HR, VO2 max)',
+    hc_note: 'Also available via Health Connect. Garmin adds VO2 max, activity type detail.',
+  },
+  { type: 'spo2', label: 'SpO2 (blood oxygen)', href: '/metric/spo2' },
+  { type: 'respiration', label: 'Respiration rate', href: '/metric/respiratory_rate' },
+  { type: 'trainingReadiness', label: 'Training readiness', href: '/metric/training_readiness' },
+  { type: 'intensityMinutes', label: 'Intensity minutes', href: '/metric/intensity_minutes' },
 ]
+
+// Static list for when not connected (no toggles)
+const DATA_TYPES: DataTypeItem[] = GARMIN_DATA_TYPES.map(({ label, href }) => ({ label, href }))
 
 type LoginStatus = 'idle' | 'loading' | 'mfa' | 'mfa_loading' | 'error'
 
@@ -159,6 +191,178 @@ function GarminLoginForm({ onMfaRequired, onSuccess }: { onMfaRequired: () => vo
   )
 }
 
+function GarminDataTypeToggles({
+  disabledTypes,
+  onToggle,
+}: {
+  disabledTypes: GarminDataType[]
+  onToggle: (disabledTypes: GarminDataType[]) => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+  const disabledSet = new Set(disabledTypes)
+
+  const handleToggle = useCallback(
+    async (type: GarminDataType) => {
+      setSaving(true)
+      try {
+        const newDisabled = disabledSet.has(type)
+          ? disabledTypes.filter((t) => t !== type)
+          : [...disabledTypes, type]
+        await onToggle(newDisabled)
+      } finally {
+        setSaving(false)
+      }
+    },
+    [disabledTypes, disabledSet, onToggle],
+  )
+
+  return (
+    <div class="data-types-section">
+      <h2>Data types</h2>
+      <p class="field-description">
+        Toggle which data types to sync from Garmin. Disable types that are already synced via Health Connect
+        to avoid duplicates.
+      </p>
+      <div class="garmin-data-types-grid">
+        {GARMIN_DATA_TYPES.map((dt) => {
+          const enabled = !disabledSet.has(dt.type)
+          return (
+            <label key={dt.type} class={`garmin-data-type-row ${enabled ? '' : 'disabled'}`}>
+              <input
+                type="checkbox"
+                checked={enabled}
+                disabled={saving}
+                onChange={() => handleToggle(dt.type)}
+              />
+              <div class="garmin-data-type-info">
+                {dt.href ? (
+                  <a class="garmin-data-type-label" href={dt.href}>
+                    {dt.label}
+                  </a>
+                ) : (
+                  <span class="garmin-data-type-label">{dt.label}</span>
+                )}
+                <span class="garmin-data-type-note">{dt.hc_note ?? 'Garmin only'}</span>
+              </div>
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function GarminDataTypesSection({
+  isConnected,
+  disabledTypes,
+  queryClient,
+}: {
+  isConnected: boolean
+  disabledTypes: GarminDataType[]
+  queryClient: ReturnType<typeof useQueryClient>
+}) {
+  if (!isConnected) return <DataTypesList types={DATA_TYPES} />
+
+  return (
+    <GarminDataTypeToggles
+      disabledTypes={disabledTypes}
+      onToggle={async (types) => {
+        await updateUserSettings({ garmin_disabled_data_types: types })
+        await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+      }}
+    />
+  )
+}
+
+function GarminConnectionSection({
+  isConnected,
+  syncStatusData,
+  syncStatusLoading,
+  loginStatus,
+  setLoginStatus,
+  disconnecting,
+  syncStatus,
+  syncMessage,
+  handleLoginSuccess,
+  handleDisconnect,
+  handleSyncNow,
+  handleFullResync,
+}: {
+  isConnected: boolean
+  syncStatusData: { states?: ProviderSyncStatus[] } | undefined
+  syncStatusLoading: boolean
+  loginStatus: LoginStatus
+  setLoginStatus: (s: LoginStatus) => void
+  disconnecting: boolean
+  syncStatus: string
+  syncMessage: string
+  handleLoginSuccess: () => Promise<void>
+  handleDisconnect: () => Promise<void>
+  handleSyncNow: () => Promise<void>
+  handleFullResync: () => Promise<void>
+}) {
+  return (
+    <>
+      <StatusBanner
+        connected={isConnected}
+        label={isConnected ? 'Garmin Connect is connected' : 'Garmin Connect not connected'}
+      />
+
+      {isConnected && (
+        <SyncStatusBar
+          states={syncStatusData?.states}
+          isLoading={syncStatusLoading}
+          onSyncNow={handleSyncNow}
+        />
+      )}
+
+      <div class="links-row">
+        <a
+          href="https://github.com/fiddur/aurboda/blob/develop/docs/garmin.md"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="doc-link"
+        >
+          Garmin integration documentation
+        </a>
+      </div>
+
+      <section class="settings-section">
+        <h2>Connection</h2>
+
+        {isConnected ? (
+          <div class="garmin-connected-actions">
+            <p class="connected-status">Connected</p>
+            <div class="garmin-button-row">
+              <button
+                type="button"
+                class="connect-button"
+                disabled={syncStatus === 'syncing'}
+                onClick={handleFullResync}
+              >
+                {syncStatus === 'syncing' ? 'Syncing...' : 'Full Re-sync'}
+              </button>
+              <button
+                type="button"
+                class="connect-button disconnect-button"
+                disabled={disconnecting}
+                onClick={handleDisconnect}
+              >
+                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+              </button>
+            </div>
+            {syncMessage && <p class={`garmin-sync-message ${syncStatus}`}>{syncMessage}</p>}
+          </div>
+        ) : loginStatus === 'mfa' ? (
+          <GarminMfaForm onCancel={() => setLoginStatus('idle')} onSuccess={handleLoginSuccess} />
+        ) : (
+          <GarminLoginForm onMfaRequired={() => setLoginStatus('mfa')} onSuccess={handleLoginSuccess} />
+        )}
+      </section>
+    </>
+  )
+}
+
 export function GarminSource() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
@@ -241,69 +445,29 @@ export function GarminSource() {
           only session tokens are persisted.
         </p>
 
-        <DataTypesList types={DATA_TYPES} />
+        <GarminDataTypesSection
+          isConnected={isConnected}
+          disabledTypes={userSettings?.garmin_disabled_data_types ?? []}
+          queryClient={queryClient}
+        />
 
         {isLoading ? (
           <div class="loading">Loading...</div>
         ) : (
-          <>
-            <StatusBanner
-              connected={isConnected}
-              label={isConnected ? 'Garmin Connect is connected' : 'Garmin Connect not connected'}
-            />
-
-            {isConnected && (
-              <SyncStatusBar
-                states={syncStatusData?.states}
-                isLoading={syncStatusLoading}
-                onSyncNow={handleSyncNow}
-              />
-            )}
-
-            <div class="links-row">
-              <a
-                href="https://github.com/fiddur/aurboda/blob/develop/docs/garmin.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="doc-link"
-              >
-                Garmin integration documentation
-              </a>
-            </div>
-
-            <section class="settings-section">
-              <h2>Connection</h2>
-
-              {isConnected ? (
-                <div class="garmin-connected-actions">
-                  <p class="connected-status">Connected</p>
-                  <div class="garmin-button-row">
-                    <button
-                      type="button"
-                      class="connect-button"
-                      disabled={syncStatus === 'syncing'}
-                      onClick={handleFullResync}
-                    >
-                      {syncStatus === 'syncing' ? 'Syncing...' : 'Full Re-sync'}
-                    </button>
-                    <button
-                      type="button"
-                      class="connect-button disconnect-button"
-                      disabled={disconnecting}
-                      onClick={handleDisconnect}
-                    >
-                      {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-                    </button>
-                  </div>
-                  {syncMessage && <p class={`garmin-sync-message ${syncStatus}`}>{syncMessage}</p>}
-                </div>
-              ) : loginStatus === 'mfa' ? (
-                <GarminMfaForm onCancel={() => setLoginStatus('idle')} onSuccess={handleLoginSuccess} />
-              ) : (
-                <GarminLoginForm onMfaRequired={() => setLoginStatus('mfa')} onSuccess={handleLoginSuccess} />
-              )}
-            </section>
-          </>
+          <GarminConnectionSection
+            isConnected={isConnected}
+            syncStatusData={syncStatusData}
+            syncStatusLoading={syncStatusLoading}
+            loginStatus={loginStatus}
+            setLoginStatus={setLoginStatus}
+            disconnecting={disconnecting}
+            syncStatus={syncStatus}
+            syncMessage={syncMessage}
+            handleLoginSuccess={handleLoginSuccess}
+            handleDisconnect={handleDisconnect}
+            handleSyncNow={handleSyncNow}
+            handleFullResync={handleFullResync}
+          />
         )}
       </div>
     </div>

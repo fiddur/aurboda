@@ -24,7 +24,7 @@ import {
   getPendingOutboundSync,
   requeueOutboundSync,
 } from '../db/index.ts'
-import { syncAllGarminData } from '../garmin-sync.ts'
+import { type GarminDataType, syncAllGarminData } from '../garmin-sync.ts'
 import { syncAllCalendars } from '../ical-sync.ts'
 import { syncLastFmData } from '../lastfm-sync.ts'
 import { syncAllOuraData } from '../oura-sync.ts'
@@ -90,7 +90,9 @@ export const registerSyncTools = (
       }
 
       try {
+        const settings = await getSettings(user)
         const results = await syncAllGarminData(user, garmin, {
+          disabledTypes: settings.garmin_disabled_data_types as GarminDataType[],
           fullResync: full_resync,
           startDate: start_date ? new Date(start_date) : undefined,
         })

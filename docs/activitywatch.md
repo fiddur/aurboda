@@ -96,7 +96,9 @@ else
   START_TIME=$(date -u -d "${LOOKBACK_HOURS} hours ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
     || date -u -v-${LOOKBACK_HOURS}H +%Y-%m-%dT%H:%M:%SZ)  # macOS fallback
 fi
-END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+# Use 5 minutes ago to give AFK watcher time to finalize heartbeats
+END_TIME=$(date -u -d "5 minutes ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+  || date -u -v-5M +%Y-%m-%dT%H:%M:%SZ)  # macOS fallback
 
 # Find the aw-watcher-window and aw-watcher-afk buckets for this host
 BUCKETS_JSON=$(curl -sf "${AW_URL}/api/0/buckets/" || true)

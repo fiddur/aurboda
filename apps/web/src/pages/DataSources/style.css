@@ -181,6 +181,63 @@
   border-color: #673ab8;
 }
 
+/* Garmin data type toggles */
+.garmin-data-types-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.garmin-data-type-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.garmin-data-type-row:hover {
+  background: #f3f4f6;
+}
+
+.garmin-data-type-row.disabled {
+  opacity: 0.55;
+}
+
+.garmin-data-type-row input[type='checkbox'] {
+  margin-top: 0.15rem;
+  accent-color: #673ab8;
+}
+
+.garmin-data-type-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.garmin-data-type-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+a.garmin-data-type-label {
+  color: #673ab8;
+  text-decoration: none;
+}
+
+a.garmin-data-type-label:hover {
+  text-decoration: underline;
+}
+
+.garmin-data-type-note {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
 .data-source-detail .doc-link {
   display: inline-flex;
   align-items: center;
@@ -824,6 +881,22 @@
 
   .data-sources-page .sync-now-button:hover:not(:disabled) {
     background: #6d28d9;
+  }
+
+  .garmin-data-type-row:hover {
+    background: #374151;
+  }
+
+  .garmin-data-type-label {
+    color: #f9fafb;
+  }
+
+  a.garmin-data-type-label {
+    color: #a78bfa;
+  }
+
+  .garmin-data-type-note {
+    color: #9ca3af;
   }
 }
 

@@ -9,6 +9,7 @@ import type {
   BiologicalSex,
   DashboardConfig,
   DataSource,
+  GarminDataType,
   MetricType,
   TrainingLoadSettings,
 } from '@aurboda/api-spec'
@@ -457,6 +458,7 @@ export interface UserSettings {
   sensitivity_areas?: string[] // Sensitivity areas to track in meals
   tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names
   training_load?: TrainingLoadSettings // Training load (Banister model) parameters
+  garmin_disabled_data_types?: GarminDataType[] // Garmin data types to skip during sync
 }
 
 // ============================================================================

@@ -279,6 +279,32 @@ describe('syncAllGarminData', () => {
     }
   })
 
+  test('skips disabled data types', async () => {
+    vi.mocked(db.getSyncState).mockResolvedValue({
+      data_type: 'dailySummary',
+      last_sync_time: new Date(),
+      provider: 'garmin',
+      status: 'idle',
+    })
+
+    const mockGarmin = createMockGarmin()
+    const results = await syncAllGarminData(user, mockGarmin as never, {
+      disabledTypes: ['heartRate', 'sleep', 'activities'],
+    })
+
+    expect(results).toHaveLength(garminDataTypes.length)
+
+    const skippedTypes = results.filter((r) => r.status === 'skipped').map((r) => r.data_type)
+    expect(skippedTypes).toContain('heartRate')
+    expect(skippedTypes).toContain('sleep')
+    expect(skippedTypes).toContain('activities')
+
+    // Non-disabled types should have been synced
+    const syncedTypes = results.filter((r) => r.status === 'success').map((r) => r.data_type)
+    expect(syncedTypes).toContain('dailySummary')
+    expect(syncedTypes).toContain('stress')
+  })
+
   test('skips remaining data types after hitting rate limit', async () => {
     // Return rate_limited sync state for all data types (mock returns same value)
     vi.mocked(db.getSyncState).mockResolvedValue({
