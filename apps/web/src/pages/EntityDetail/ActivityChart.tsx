@@ -253,7 +253,7 @@ export const ActivityChart = ({
       drawHypnogram(g, xScale, innerWidth, innerHeight, stages!)
     }
 
-    drawOverlays(g, xScale, innerWidth, innerHeight, hasHypnogram, hrData, hrvData, stressData)
+    drawOverlays(g, xScale, innerWidth, innerHeight, !!hasHypnogram, hrData, hrvData, stressData)
 
     // Tooltip crosshair and interaction overlay
     const crosshair = g
