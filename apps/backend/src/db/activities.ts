@@ -326,3 +326,31 @@ export const getSleepSessions = async (user: string, start: Date, end: Date): Pr
 
   return mergeOverlappingActivities(activities)
 }
+
+/**
+ * Get Garmin activities that have a garmin_activity_id but haven't had their
+ * per-second detail data synced yet.
+ */
+export const getActivitiesNeedingDetail = async (user: string, limit = 10): Promise<Activity[]> => {
+  const result = await query(
+    user,
+    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
+     FROM activities
+     WHERE source = 'garmin' AND activity_type = 'exercise'
+       AND data->>'garmin_activity_id' IS NOT NULL
+       AND (data->>'detail_synced') IS NULL
+       AND deleted_at IS NULL
+     ORDER BY start_time DESC
+     LIMIT $1`,
+    [limit],
+  )
+
+  return result.rows.map(mapActivityRow)
+}
+
+/** Mark an activity's detail data as synced using JSONB merge (preserves existing data). */
+export const markActivityDetailSynced = async (user: string, id: string): Promise<void> => {
+  await query(user, `UPDATE activities SET data = data || '{"detail_synced": true}'::jsonb WHERE id = $1`, [
+    id,
+  ])
+}

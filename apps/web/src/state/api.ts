@@ -270,6 +270,21 @@ export const fetchHrv = async (start: Date, end: Date): Promise<[Date, number][]
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
+// Fetch stress level data for the specified date range
+export const fetchStress = async (start: Date, end: Date): Promise<[Date, number][]> => {
+  const { token } = auth.value
+  const params: QueryMetricsQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<QueryMetricsResponse>(`${API_URL}/metrics/stress_level`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+
+  return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
+}
+
 // Fetch HRV sleep (contextual: only during sleep) for the specified date range
 export const fetchHrvSleep = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value

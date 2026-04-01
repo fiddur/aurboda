@@ -12,7 +12,7 @@ import * as d3 from 'd3'
 import { format } from 'date-fns'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
-import { fetchHeartRate, fetchHrv } from '../../state/api'
+import { fetchHeartRate, fetchHrv, fetchStress } from '../../state/api'
 import { findNearest, findStageAtTime } from './chart-utils'
 import { STAGE_COLORS, STAGE_LABELS, STAGE_Y_ORDER, type SleepStage } from './sleep-utils'
 
@@ -22,10 +22,11 @@ interface ActivityChartProps {
   stages?: SleepStage[]
   showHrDefault?: boolean
   showHrvDefault?: boolean
+  showStressDefault?: boolean
 }
 
 const CHART_HEIGHT = 260
-const MARGIN = { bottom: 30, left: 50, right: 110, top: 10 }
+const MARGIN = { bottom: 30, left: 50, right: 155, top: 10 }
 
 /** Hypnogram Y-axis labels in display order (top to bottom). */
 const HYPNOGRAM_LABELS = ['Awake', 'REM', 'Light', 'Deep']
@@ -153,12 +154,14 @@ export const ActivityChart = ({
   stages,
   showHrDefault = false,
   showHrvDefault = false,
+  showStressDefault = true,
 }: ActivityChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const [showHr, setShowHr] = useState(showHrDefault)
   const [showHrv, setShowHrv] = useState(showHrvDefault)
+  const [showStress, setShowStress] = useState(showStressDefault)
 
   const hrQuery = useQuery({
     enabled: showHr,
@@ -174,9 +177,17 @@ export const ActivityChart = ({
     staleTime: 5 * 60 * 1000,
   })
 
+  const stressQuery = useQuery({
+    enabled: showStress,
+    queryFn: () => fetchStress(start, end),
+    queryKey: ['detail-stress', start.toISOString(), end.toISOString()],
+    staleTime: 5 * 60 * 1000,
+  })
+
   const hasHypnogram = stages && stages.length > 0
   const hrData = showHr ? hrQuery.data : undefined
   const hrvData = showHrv ? hrvQuery.data : undefined
+  const stressData = showStress ? stressQuery.data : undefined
 
   useEffect(() => {
     if (!svgRef.current || !containerRef.current) return
@@ -229,6 +240,13 @@ export const ActivityChart = ({
       drawLineOverlay(g, xScale, innerWidth, innerHeight, hrvData, '#14b8a6', 'ms', axisSide, offset, true)
     }
 
+    if (hasData(stressData)) {
+      const rightCount = [hasData(hrData), hasData(hrvData)].filter(Boolean).length
+      const axisSide = rightCount > 0 || hasHypnogram ? 'right' : 'left'
+      const offset = axisSide === 'right' ? rightCount * 45 : 0
+      drawLineOverlay(g, xScale, innerWidth, innerHeight, stressData, '#f97316', 'score', axisSide, offset, true)
+    }
+
     // Tooltip crosshair and interaction overlay
     const crosshair = g
       .append('line')
@@ -263,6 +281,10 @@ export const ActivityChart = ({
           const nearest = findNearest(hrvData, time)
           if (nearest) lines.push(`HRV: ${Math.round(nearest[1])} ms`)
         }
+        if (hasData(stressData)) {
+          const nearest = findNearest(stressData, time)
+          if (nearest) lines.push(`Stress: ${Math.round(nearest[1])}`)
+        }
         if (hasHypnogram && stages) {
           const stage = findStageAtTime(stages, time)
           if (stage) lines.push(`Stage: ${stage}`)
@@ -290,7 +312,7 @@ export const ActivityChart = ({
         crosshair.style('display', 'none')
         if (tooltip) tooltip.style.display = 'none'
       })
-  }, [start, end, stages, hasHypnogram, hrData, hrvData])
+  }, [start, end, stages, hasHypnogram, hrData, hrvData, stressData])
 
   return (
     <div class="activity-chart-container">
@@ -310,6 +332,14 @@ export const ActivityChart = ({
         >
           <span class="chart-toggle-dot" style={{ background: '#14b8a6' }} />
           HRV {hrvQuery.isLoading && showHrv ? '...' : ''}
+        </button>
+        <button
+          class={`chart-toggle${showStress ? ' active' : ''}`}
+          onClick={() => setShowStress(!showStress)}
+          type="button"
+        >
+          <span class="chart-toggle-dot" style={{ background: '#f97316' }} />
+          Stress {stressQuery.isLoading && showStress ? '...' : ''}
         </button>
       </div>
       <div class="chart-svg-container" ref={containerRef}>

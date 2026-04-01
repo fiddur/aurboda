@@ -10,6 +10,7 @@ import type { SleepData } from '@flow-js/garmin-connect/dist/garmin/types/sleep'
 
 import type { Activity, RawRecord, TimeSeriesPoint } from './db/types.ts'
 import type {
+  GarminActivityDetailResponse,
   GarminBodyBatteryData,
   GarminDailySummary,
   GarminHrvData,
@@ -535,4 +536,77 @@ const processIntensityMinutes = async (
 
   if (points.length > 0) await deps.insertTimeSeries(user, points)
   return 1
+}
+
+// ---------------------------------------------------------------------------
+// Activity Detail (per-second metrics from /activity-service/activity/{id}/details)
+// ---------------------------------------------------------------------------
+
+/** Metrics to extract from activity detail, mapped to our metric names. */
+const DETAIL_METRIC_MAP: Record<string, { metric: string; unit: string }> = {
+  directBodyBattery: { metric: 'body_battery', unit: 'score' },
+  directCurrentStress: { metric: 'stress_level', unit: 'score' },
+  directHeartRate: { metric: 'heart_rate', unit: 'bpm' },
+  directRespirationRate: { metric: 'respiratory_rate', unit: 'brpm' },
+}
+
+/** Build a map of garminKey → metricsIndex from dynamic metricDescriptors. */
+const buildMetricIndexMap = (
+  descriptors: GarminActivityDetailResponse['metricDescriptors'],
+): Map<string, number> => {
+  const map = new Map<string, number>()
+  for (const desc of descriptors ?? []) {
+    if (desc) map.set(desc.key, desc.metricsIndex)
+  }
+  return map
+}
+
+/** Extract time series points from a single activity detail metrics entry. */
+const extractDetailPoints = (
+  metrics: number[],
+  time: Date,
+  indexMap: Map<string, number>,
+): TimeSeriesPoint[] => {
+  const points: TimeSeriesPoint[] = []
+  for (const [garminKey, { metric, unit }] of Object.entries(DETAIL_METRIC_MAP)) {
+    const idx = indexMap.get(garminKey)
+    if (idx === undefined) continue
+    const value = metrics[idx]
+    if (value == null || value <= 0) continue
+    points.push({ metric, source: 'garmin', time, unit, value })
+  }
+  return points
+}
+
+export const processActivityDetail = async (
+  user: string,
+  data: GarminActivityDetailResponse,
+  deps: GarminProcessDeps = defaultDeps,
+): Promise<number> => {
+  if (!data.activityDetailMetrics?.length) return 0
+
+  const indexMap = buildMetricIndexMap(data.metricDescriptors)
+  const tsIdx = indexMap.get('directTimestamp')
+  if (tsIdx === undefined) return 0
+
+  const points: TimeSeriesPoint[] = []
+  for (const entry of data.activityDetailMetrics) {
+    const ts = entry.metrics[tsIdx]
+    if (!ts || ts <= 0) continue
+    points.push(...extractDetailPoints(entry.metrics, new Date(ts), indexMap))
+  }
+
+  await deps.insertRawRecord(
+    user,
+    makeRaw(
+      'garmin_activity_detail',
+      `garmin-activity-detail-${data.activityId}`,
+      new Date(data.activityDetailMetrics[0]!.metrics[tsIdx]!),
+      data,
+    ),
+  )
+
+  if (points.length > 0) await deps.insertTimeSeries(user, points)
+
+  return points.length
 }

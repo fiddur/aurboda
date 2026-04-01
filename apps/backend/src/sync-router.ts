@@ -123,9 +123,7 @@ export interface SyncRouterDeps {
   ) => Promise<LastFmSyncResult>
   getLastFmSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetLastFmSyncState: (user: string) => Promise<void>
-  getSettings: (
-    user: string,
-  ) => Promise<{
+  getSettings: (user: string) => Promise<{
     rescue_time_key?: string
     calendars?: CalendarConfig[]
     lastfm_username?: string

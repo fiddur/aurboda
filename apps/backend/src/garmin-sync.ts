@@ -10,9 +10,19 @@ import { addDays, addMinutes, isFuture, subDays } from 'date-fns'
 import type { SyncState } from './db/types.ts'
 import type { GarminClient } from './garmin.ts'
 
-import { getSyncState, upsertSyncState } from './db/index.ts'
-import { type GarminDataType, garminDataTypes, processGarminData } from './garmin-process.ts'
-import { auditError } from './services/audit-log.ts'
+import {
+  getActivitiesNeedingDetail,
+  getSyncState,
+  markActivityDetailSynced,
+  upsertSyncState,
+} from './db/index.ts'
+import {
+  type GarminDataType,
+  garminDataTypes,
+  processActivityDetail,
+  processGarminData,
+} from './garmin-process.ts'
+import { auditError, auditInfo } from './services/audit-log.ts'
 
 // ============================================================================
 // Constants
@@ -200,9 +210,52 @@ export const syncAllGarminData = async (
     if (result.status === 'rate_limited') {
       hitRateLimit = true
     }
+
+    // After syncing activities, fetch per-second detail data for new activities
+    if (dataType === 'activities' && result.status === 'success' && !hitRateLimit) {
+      await syncActivityDetails(user, garmin)
+    }
   }
 
   return results
+}
+
+// ============================================================================
+// Activity detail sync (per-second metrics)
+// ============================================================================
+
+/**
+ * Fetch granular per-second metrics (stress, HR, respiration, body battery)
+ * from Garmin activity details for activities that haven't been processed yet.
+ */
+const syncActivityDetails = async (user: string, garmin: GarminClient): Promise<void> => {
+  const activities = await getActivitiesNeedingDetail(user)
+  if (activities.length === 0) return
+
+  for (const activity of activities) {
+    const garminActivityId = activity.data?.garmin_activity_id as number | undefined
+    if (!garminActivityId || !activity.id) continue
+
+    try {
+      const detail = await garmin.getActivityDetail(user, garminActivityId)
+      const pointCount = await processActivityDetail(user, detail)
+      await markActivityDetailSynced(user, activity.id)
+
+      auditInfo(
+        user,
+        'sync',
+        `📊 Synced ${pointCount} detail metrics for Garmin activity ${garminActivityId}`,
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      auditError(user, 'sync', `Failed to sync detail for Garmin activity ${garminActivityId}`, {
+        error: message,
+      })
+      // Don't mark as synced on error — retry next time
+    }
+
+    await delay(REQUEST_DELAY_MS)
+  }
 }
 
 // ============================================================================

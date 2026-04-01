@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { GarminProcessDeps } from './garmin-process.ts'
+import type { GarminActivityDetailResponse } from './garmin.ts'
 
-import { processGarminData } from './garmin-process.ts'
+import { processActivityDetail, processGarminData } from './garmin-process.ts'
 
 const mockDeps: GarminProcessDeps = {
   insertActivity: vi.fn().mockResolvedValue(undefined),
@@ -1037,5 +1038,179 @@ describe('processGarminData', () => {
         ),
       ).toBe(1)
     })
+  })
+})
+
+// ============================================================================
+// processActivityDetail
+// ============================================================================
+
+describe('processActivityDetail', () => {
+  const user = 'testuser'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const makeDetail = (
+    overrides: Partial<GarminActivityDetailResponse> = {},
+  ): GarminActivityDetailResponse => ({
+    activityDetailMetrics: [
+      { metrics: [70, 0, 14, 1700000001000, 25, 0, 0, 0, 0, 72, 0, 0] },
+      { metrics: [69, 0, 13, 1700000002000, 30, 1, 1, 0, 0, 68, 0, 0] },
+      { metrics: [68, 0, 12, 1700000003000, 20, 2, 2, 0, 0, 65, 0, 0] },
+    ],
+    activityId: 99999,
+    metricDescriptors: [
+      { key: 'directBodyBattery', metricsIndex: 0, unit: { key: 'dimensionless' } },
+      { key: 'sumMovingDuration', metricsIndex: 1, unit: { key: 'second' } },
+      { key: 'directRespirationRate', metricsIndex: 2, unit: { key: 'breathsPerMinute' } },
+      { key: 'directTimestamp', metricsIndex: 3, unit: { key: 'gmt' } },
+      { key: 'directCurrentStress', metricsIndex: 4, unit: { key: 'dimensionless' } },
+      { key: 'sumDuration', metricsIndex: 5, unit: { key: 'second' } },
+      { key: 'sumElapsedDuration', metricsIndex: 6, unit: { key: 'second' } },
+      { key: 'connectIQDeveloperField-07', metricsIndex: 7, unit: { key: 'dimensionless' } },
+      { key: 'connectIQDeveloperField-08', metricsIndex: 8, unit: { key: 'dimensionless' } },
+      { key: 'directHeartRate', metricsIndex: 9, unit: { key: 'bpm' } },
+      { key: 'connectIQDeveloperField-06', metricsIndex: 10, unit: { key: 'dimensionless' } },
+      { key: 'connectIQDeveloperField-09', metricsIndex: 11, unit: { key: 'dimensionless' } },
+    ],
+    ...overrides,
+  })
+
+  test('extracts stress, HR, respiration, body_battery from detail data', async () => {
+    await processActivityDetail(user, makeDetail(), mockDeps)
+
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+
+    // 3 entries × 4 metrics = 12 points
+    expect(points).toHaveLength(12)
+
+    // Check first entry
+    const t1 = new Date(1700000001000)
+    expect(points).toEqual(
+      expect.arrayContaining([
+        { metric: 'stress_level', source: 'garmin', time: t1, unit: 'score', value: 25 },
+        { metric: 'heart_rate', source: 'garmin', time: t1, unit: 'bpm', value: 72 },
+        { metric: 'respiratory_rate', source: 'garmin', time: t1, unit: 'brpm', value: 14 },
+        { metric: 'body_battery', source: 'garmin', time: t1, unit: 'score', value: 70 },
+      ]),
+    )
+  })
+
+  test('stores raw record', async () => {
+    await processActivityDetail(user, makeDetail(), mockDeps)
+
+    expect(mockDeps.insertRawRecord).toHaveBeenCalledWith(user, {
+      data: expect.objectContaining({ activityId: 99999 }),
+      external_id: 'garmin-activity-detail-99999',
+      record_type: 'garmin_activity_detail',
+      recorded_at: new Date(1700000001000),
+      source: 'garmin',
+    })
+  })
+
+  test('returns number of time series points inserted', async () => {
+    const result = await processActivityDetail(user, makeDetail(), mockDeps)
+    expect(result).toBe(12)
+  })
+
+  test('skips metrics with zero values', async () => {
+    const detail = makeDetail({
+      activityDetailMetrics: [{ metrics: [0, 0, 0, 1700000001000, 0, 0, 0, 0, 0, 72, 0, 0] }],
+    })
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    // Only HR should be present (stress=0, resp=0, bb=0 are skipped)
+    expect(points).toHaveLength(1)
+    expect(points[0]).toMatchObject({ metric: 'heart_rate', value: 72 })
+  })
+
+  test('skips metrics with null values', async () => {
+    const detail = makeDetail({
+      activityDetailMetrics: [
+        {
+          metrics: [
+            null as unknown as number,
+            0,
+            null as unknown as number,
+            1700000001000,
+            15,
+            0,
+            0,
+            0,
+            0,
+            null as unknown as number,
+            0,
+            0,
+          ],
+        },
+      ],
+    })
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    expect(points).toHaveLength(1)
+    expect(points[0]).toMatchObject({ metric: 'stress_level', value: 15 })
+  })
+
+  test('handles missing metric descriptors gracefully', async () => {
+    const detail = makeDetail({
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directCurrentStress', metricsIndex: 1, unit: { key: 'dimensionless' } },
+      ],
+      activityDetailMetrics: [{ metrics: [1700000001000, 42] }],
+    })
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    expect(points).toHaveLength(1)
+    expect(points[0]).toMatchObject({ metric: 'stress_level', value: 42 })
+  })
+
+  test('returns 0 for empty activityDetailMetrics', async () => {
+    const detail = makeDetail({ activityDetailMetrics: [] })
+    const result = await processActivityDetail(user, detail, mockDeps)
+    expect(result).toBe(0)
+    expect(mockDeps.insertTimeSeries).not.toHaveBeenCalled()
+  })
+
+  test('returns 0 when no timestamp descriptor exists', async () => {
+    const detail = makeDetail({
+      metricDescriptors: [{ key: 'directCurrentStress', metricsIndex: 0, unit: { key: 'dimensionless' } }],
+      activityDetailMetrics: [{ metrics: [25] }],
+    })
+
+    const result = await processActivityDetail(user, detail, mockDeps)
+    expect(result).toBe(0)
+    expect(mockDeps.insertTimeSeries).not.toHaveBeenCalled()
+  })
+
+  test('uses dynamic index lookup from metricDescriptors', async () => {
+    // Shuffle indices — stress at 0, timestamp at 1, HR at 2
+    const detail = makeDetail({
+      metricDescriptors: [
+        { key: 'directCurrentStress', metricsIndex: 0, unit: { key: 'dimensionless' } },
+        { key: 'directTimestamp', metricsIndex: 1, unit: { key: 'gmt' } },
+        { key: 'directHeartRate', metricsIndex: 2, unit: { key: 'bpm' } },
+      ],
+      activityDetailMetrics: [{ metrics: [35, 1700000001000, 80] }],
+    })
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    expect(points).toHaveLength(2)
+    expect(points).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ metric: 'stress_level', value: 35 }),
+        expect.objectContaining({ metric: 'heart_rate', value: 80 }),
+      ]),
+    )
   })
 })
