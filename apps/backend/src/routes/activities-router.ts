@@ -16,9 +16,6 @@ import {
   type MergeActivitiesBody,
   mergeActivitiesBodySchema,
   type MergeActivitiesResponse,
-  type NearbyActivitiesQuery,
-  nearbyActivitiesQuerySchema,
-  type NearbyActivitiesResponse,
   type ProductivityQuery,
   productivityQuerySchema,
   type ProductivityResponse,
@@ -339,14 +336,10 @@ export const createActivitiesRouter = (
   )
 
   // GET /activities/:id/nearby - Get nearby same-type activities for merge suggestions
-  router.get<{ id: string }, NearbyActivitiesResponse, unknown, NearbyActivitiesQuery>(
-    '/activities/:id/nearby',
-    authMiddleware,
-    validateQuery(nearbyActivitiesQuerySchema),
-    async (req, res) => {
-      const { id } = req.params
-      const user = req.user!
-      const hours = req.query.hours ?? 6
+  router.get<{ id: string }>('/activities/:id/nearby', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const user = req.user!
+    const hours = Number(req.query.hours) || 6
 
       const activity = await getActivityById(user, id)
       if (!activity) {
