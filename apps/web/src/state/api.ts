@@ -1301,6 +1301,40 @@ export const fetchActivityById = async (id: string): Promise<Activity> => {
   }
 }
 
+export const fetchNearbyActivities = async (id: string, hours = 6): Promise<Activity[]> => {
+  const { token } = auth.value
+  const response = await axios.get(`${API_URL}/activities/${id}/nearby`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { hours },
+  })
+
+  return response.data.data.map((d: Record<string, unknown>) => ({
+    ...d,
+    end_time: d.end_time ? new Date(d.end_time as string) : undefined,
+    start_time: new Date(d.start_time as string),
+  }))
+}
+
+export const mergeActivities = async (
+  activityIds: string[],
+  title?: string,
+  notes?: string,
+): Promise<Activity> => {
+  const { token } = auth.value
+  const response = await axios.post(
+    `${API_URL}/activities/merge`,
+    { activity_ids: activityIds, notes, title },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+
+  const d = response.data.data
+  return {
+    ...d,
+    end_time: d.end_time ? new Date(d.end_time) : undefined,
+    start_time: new Date(d.start_time),
+  }
+}
+
 export const fetchTagById = async (id: string): Promise<Tag> => {
   const { token } = auth.value
   const response = await axios.get(`${API_URL}/tags/id/${id}`, {

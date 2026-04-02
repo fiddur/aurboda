@@ -28,6 +28,7 @@ export interface EntityActionsProps {
   onCancelEditing: () => void
   onSave: () => void
   isSaving: boolean
+  onStartMerging?: () => void
 }
 
 const deleteEntity = (entityType: EntityType, entityId: string): Promise<void> => {
@@ -69,6 +70,7 @@ export const EntityActions = ({
   onCancelEditing,
   onSave,
   isSaving,
+  onStartMerging,
 }: EntityActionsProps) => {
   const deleteMutation = useMutation({
     mutationFn: () => deleteEntity(entityType, entityId),
@@ -118,6 +120,17 @@ export const EntityActions = ({
             Cancel
           </button>
         </>
+      )}
+      {!isEditing && onStartMerging && (
+        <button
+          class="btn-secondary"
+          onClick={onStartMerging}
+          disabled={isMerged}
+          title={isMerged ? 'Cannot merge display-merged activities' : 'Merge with nearby activity'}
+          type="button"
+        >
+          Merge
+        </button>
       )}
       {!isEditing && (
         <button

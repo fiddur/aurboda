@@ -9,6 +9,8 @@ import type { ActivityType, CustomMetricDefinition, DataSource } from '@aurboda/
 
 import { randomUUID } from 'node:crypto'
 
+import type { Activity } from '../db/types.ts'
+
 import {
   deleteActivity as dbDeleteActivity,
   deleteTag as dbDeleteTag,
@@ -625,6 +627,159 @@ export async function updateActivity(
     start_time: updated.start_time.toISOString(),
     success: true,
     title: updated.title,
+  }
+}
+
+// ============================================================================
+// Merge Activities
+// ============================================================================
+
+export interface MergeActivitiesInput {
+  activity_ids: string[]
+  title?: string
+  notes?: string
+}
+
+export interface MergeActivitiesResult {
+  success: boolean
+  id?: string
+  activity_type?: ActivityType
+  start_time?: string
+  end_time?: string
+  title?: string
+  notes?: string
+  error?: string
+}
+
+/**
+ * Build the merged data object from a list of activities sorted by start_time.
+ * Pure function — easy to unit-test independently.
+ */
+export const buildMergedActivityData = (
+  sortedActivities: Activity[],
+  overrides?: { title?: string; notes?: string },
+): {
+  start_time: Date
+  end_time: Date | undefined
+  title: string | undefined
+  notes: string | undefined
+  data: Record<string, unknown>
+} => {
+  const startTime = sortedActivities[0].start_time
+  let endTime: Date | undefined
+
+  for (const a of sortedActivities) {
+    if (a.end_time && (!endTime || a.end_time > endTime)) {
+      endTime = a.end_time
+    }
+  }
+
+  // Merge data objects: earlier first, later overrides
+  let mergedData: Record<string, unknown> = {}
+  for (const a of sortedActivities) {
+    if (a.data) {
+      mergedData = { ...mergedData, ...(a.data as Record<string, unknown>) }
+    }
+  }
+
+  // Record provenance
+  mergedData.merged_from = sortedActivities.map((a) => ({
+    end_time: a.end_time?.toISOString(),
+    id: a.id,
+    source: a.source,
+    start_time: a.start_time.toISOString(),
+  }))
+
+  // Title: override > first non-empty from sources
+  const title = overrides?.title || sortedActivities.find((a) => a.title)?.title
+
+  // Notes: override > concatenation
+  const notes =
+    overrides?.notes ||
+    sortedActivities
+      .filter((a) => a.notes)
+      .map((a) => a.notes)
+      .join('\n') ||
+    undefined
+
+  return { data: mergedData, end_time: endTime, notes, start_time: startTime, title }
+}
+
+/**
+ * Permanently merge 2+ activities of the same type into one.
+ *
+ * Creates a new aurboda-owned activity spanning the full time range,
+ * soft-deletes the originals, and stores merged_from metadata.
+ */
+export async function mergeActivities(
+  user: string,
+  input: MergeActivitiesInput,
+  deps: {
+    getActivityById: (user: string, id: string) => Promise<Activity | null>
+    insertActivity: (user: string, activity: Activity) => Promise<void>
+    deleteActivity: (user: string, id: string) => Promise<boolean>
+  } = {
+    deleteActivity: dbDeleteActivity,
+    getActivityById: dbGetActivityById,
+    insertActivity: dbInsertActivity,
+  },
+): Promise<MergeActivitiesResult> {
+  if (input.activity_ids.length < 2) {
+    return { error: 'At least 2 activity IDs are required', success: false }
+  }
+
+  // Fetch all activities
+  const activities: Activity[] = []
+  for (const id of input.activity_ids) {
+    const activity = await deps.getActivityById(user, id)
+    if (!activity) {
+      return { error: `Activity not found: ${id}`, success: false }
+    }
+    if (activity.deleted_at) {
+      return { error: `Activity is deleted: ${id}`, success: false }
+    }
+    activities.push(activity)
+  }
+
+  // Validate all same type
+  const types = new Set(activities.map((a) => a.activity_type))
+  if (types.size > 1) {
+    return { error: `Cannot merge activities of different types: ${[...types].join(', ')}`, success: false }
+  }
+
+  // Sort by start_time
+  const sorted = [...activities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+
+  const merged = buildMergedActivityData(sorted, { notes: input.notes, title: input.title })
+
+  const id = randomUUID()
+
+  await deps.insertActivity(user, {
+    activity_type: sorted[0].activity_type,
+    data: merged.data,
+    end_time: merged.end_time,
+    id,
+    notes: merged.notes,
+    source: 'aurboda',
+    start_time: merged.start_time,
+    title: merged.title,
+  })
+
+  // Soft-delete originals
+  for (const activity of sorted) {
+    if (activity.id) {
+      await deps.deleteActivity(user, activity.id)
+    }
+  }
+
+  return {
+    activity_type: sorted[0].activity_type,
+    end_time: merged.end_time?.toISOString(),
+    id,
+    notes: merged.notes,
+    start_time: merged.start_time.toISOString(),
+    success: true,
+    title: merged.title,
   }
 }
 

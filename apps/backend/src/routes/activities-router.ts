@@ -13,6 +13,9 @@ import {
   type DeleteActivityResponse,
   getExerciseTypeValue,
   isValidExerciseType,
+  type MergeActivitiesBody,
+  mergeActivitiesBodySchema,
+  type MergeActivitiesResponse,
   type ProductivityQuery,
   productivityQuerySchema,
   type ProductivityResponse,
@@ -29,6 +32,7 @@ import multer from 'multer'
 import {
   getActivityById,
   getDistinctApps,
+  getNearbyActivities,
   getOverlappingActivities,
   getProductivityBucketed,
   getProductivityById,
@@ -41,6 +45,7 @@ import {
   addActivity,
   deleteActivity,
   deleteProductivity,
+  mergeActivities,
   restoreActivity,
   restoreProductivity,
   updateActivity,
@@ -299,6 +304,72 @@ export const createActivitiesRouter = (
       res.status(400).json({ error: message, success: false })
     }
   })
+
+  // POST /activities/merge - Merge multiple activities into one
+  router.post<Record<string, never>, MergeActivitiesResponse, MergeActivitiesBody>(
+    '/activities/merge',
+    authMiddleware,
+    validateBody(mergeActivitiesBodySchema),
+    async (req, res) => {
+      const { activity_ids, title, notes } = req.body
+      const user = req.user!
+
+      const result = await mergeActivities(user, { activity_ids, notes, title })
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error, success: false })
+      }
+
+      res.json({
+        data: {
+          activity_type: result.activity_type!,
+          end_time: result.end_time,
+          id: result.id,
+          notes: result.notes,
+          source: 'aurboda',
+          start_time: result.start_time!,
+          title: result.title,
+        },
+        success: true,
+      })
+    },
+  )
+
+  // GET /activities/:id/nearby - Get nearby same-type activities for merge suggestions
+  router.get<{ id: string }>('/activities/:id/nearby', authMiddleware, async (req, res) => {
+    const { id } = req.params
+    const user = req.user!
+    const hours = Number(req.query.hours) || 6
+
+      const activity = await getActivityById(user, id)
+      if (!activity) {
+        return res.status(404).json({ data: [], error: 'Activity not found', success: false })
+      }
+
+      const nearby = await getNearbyActivities(
+        user,
+        id,
+        activity.activity_type,
+        activity.start_time,
+        activity.end_time,
+        hours,
+      )
+
+      res.json({
+        data: nearby.map((a) => ({
+          activity_type: a.activity_type,
+          data: a.data,
+          end_time: a.end_time?.toISOString(),
+          id: a.id,
+          notes: a.notes,
+          source: a.source,
+          start_time: a.start_time.toISOString(),
+          title: a.title,
+        })),
+        success: true,
+      })
+    },
+  )
 
   // DELETE /activities/:id - Delete an activity by ID
   router.delete<{ id: string }, DeleteActivityResponse>(

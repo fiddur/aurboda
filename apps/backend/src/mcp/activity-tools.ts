@@ -12,7 +12,13 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { addActivity, deleteActivity, restoreActivity, updateActivity } from '../services/mutations.ts'
+import {
+  addActivity,
+  deleteActivity,
+  mergeActivities,
+  restoreActivity,
+  updateActivity,
+} from '../services/mutations.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerActivityTools = (server: McpServer, user: string) => {
@@ -127,6 +133,27 @@ export const registerActivityTools = (server: McpServer, user: string) => {
 
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to update activity')
+      }
+
+      return tzJsonResponse(result, tz)
+    },
+  )
+
+  // Tool: merge_activities
+  server.tool(
+    'merge_activities',
+    'Permanently merge 2+ activities of the same type into one. Creates a new merged activity spanning the full time range and soft-deletes the originals. Useful for fixing split activities (e.g., a run that got recorded as two separate activities).',
+    {
+      activity_ids: z.array(z.string().uuid()).min(2).describe('IDs of activities to merge (minimum 2)'),
+      notes: z.string().optional().describe('Optional notes override for the merged activity'),
+      title: z.string().optional().describe('Optional title override for the merged activity'),
+      tz: tzSchema,
+    },
+    async ({ activity_ids, notes, title, tz }) => {
+      const result = await mergeActivities(user, { activity_ids, notes, title })
+
+      if (!result.success) {
+        return errorResponse(result.error ?? 'Failed to merge activities')
       }
 
       return tzJsonResponse(result, tz)

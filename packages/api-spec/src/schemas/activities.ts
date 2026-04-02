@@ -330,3 +330,54 @@ export const updateActivityResponseSchema = baseResponseSchema
   .meta({ id: 'UpdateActivityResponse' })
 
 export type UpdateActivityResponse = z.infer<typeof updateActivityResponseSchema>
+
+/**
+ * Merge activities request body schema.
+ */
+export const mergeActivitiesBodySchema = z
+  .object({
+    activity_ids: z
+      .array(z.string().uuid())
+      .min(2)
+      .meta({ description: 'IDs of activities to merge (minimum 2)' }),
+    notes: z.string().optional().meta({ description: 'Optional notes override for the merged activity' }),
+    title: z.string().optional().meta({ description: 'Optional title override for the merged activity' }),
+  })
+  .meta({ id: 'MergeActivitiesBody', description: 'Request body for merging multiple activities into one' })
+
+export type MergeActivitiesBody = z.infer<typeof mergeActivitiesBodySchema>
+
+/**
+ * Merge activities response schema.
+ */
+export const mergeActivitiesResponseSchema = baseResponseSchema
+  .extend({
+    data: activitySchema.optional(),
+  })
+  .meta({ id: 'MergeActivitiesResponse' })
+
+export type MergeActivitiesResponse = z.infer<typeof mergeActivitiesResponseSchema>
+
+/**
+ * Nearby activities query schema.
+ */
+export const nearbyActivitiesQuerySchema = z
+  .object({
+    hours: z.coerce
+      .number()
+      .optional()
+      .default(6)
+      .meta({ description: 'Hours before/after to search for nearby activities' }),
+  })
+  .meta({ id: 'NearbyActivitiesQuery' })
+
+export type NearbyActivitiesQuery = z.infer<typeof nearbyActivitiesQuerySchema>
+
+/**
+ * Nearby activities response schema.
+ */
+export const nearbyActivitiesResponseSchema = createDataArrayResponseSchema(activitySchema).meta({
+  id: 'NearbyActivitiesResponse',
+})
+
+export type NearbyActivitiesResponse = z.infer<typeof nearbyActivitiesResponseSchema>
