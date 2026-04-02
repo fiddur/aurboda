@@ -221,9 +221,7 @@ const MetricReadView = ({
       </div>
       <div class="field-row">
         <span class="field-label">Value</span>
-        <span class="field-value">
-          {isLoading ? 'Loading...' : formatValueDisplay(displayValue, unit)}
-        </span>
+        <span class="field-value">{isLoading ? 'Loading...' : formatValueDisplay(displayValue, unit)}</span>
       </div>
       <div class="field-row">
         <span class="field-label">Metric</span>

@@ -195,13 +195,10 @@ export type ActivitySummaryConfig = z.infer<typeof activitySummaryConfigSchema>
 export const quickLinkConfigSchema = z
   .object({
     href: z.string().min(1).meta({ description: 'Target URL path' }),
-    icon: z
-      .string()
-      .optional()
-      .meta({
-        description:
-          'Icon name (e.g. timeline, sleep, correlations, goals, places, trends, settings, hr-zones)',
-      }),
+    icon: z.string().optional().meta({
+      description:
+        'Icon name (e.g. timeline, sleep, correlations, goals, places, trends, settings, hr-zones)',
+    }),
     label: z.string().min(1).meta({ description: 'Link text' }),
   })
   .meta({ id: 'QuickLinkConfig' })
