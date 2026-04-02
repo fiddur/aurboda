@@ -145,8 +145,7 @@ export const SleepDetail = ({
           start={displayStart}
           end={displayEnd}
           stages={stages.length > 0 ? stages : undefined}
-          showHrDefault={true}
-          showHrvDefault={true}
+          defaultMetrics={['heart_rate', 'hrv_rmssd']}
         />
       </div>
     </>

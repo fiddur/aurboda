@@ -247,7 +247,9 @@ export const userSettingsResponseSchema = baseResponseSchema
       .nullable()
       .default(null)
       .meta({ description: 'Custom dashboard configuration (null = use default)' }),
-    food_sensitivity_map: foodSensitivityMapSchema.default({}).meta({ description: 'Food-to-sensitivity mapping' }),
+    food_sensitivity_map: foodSensitivityMapSchema
+      .default({})
+      .meta({ description: 'Food-to-sensitivity mapping' }),
     garmin_connected: z
       .boolean()
       .default(false)
@@ -269,17 +271,31 @@ export const userSettingsResponseSchema = baseResponseSchema
       .boolean()
       .default(false)
       .meta({ description: 'Whether Last.fm API key is configured on server' }),
-    lastfm_username: z.string().nullable().default(null).meta({ description: 'Last.fm username for scrobble sync' }),
+    lastfm_username: z
+      .string()
+      .nullable()
+      .default(null)
+      .meta({ description: 'Last.fm username for scrobble sync' }),
     meal_slots: mealSlotsSchema.default([]).meta({ description: 'Configured meal slots for quick-logging' }),
-    oura_configured: z.boolean().default(false).meta({ description: 'Whether Oura OAuth is configured on server' }),
+    oura_configured: z
+      .boolean()
+      .default(false)
+      .meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().default(false).meta({ description: 'Whether Oura is connected via OAuth' }),
     rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
-    sensitivity_areas: sensitivityAreasSchema.default([]).meta({ description: 'Sensitivity areas to track in meals' }),
-    sex: biologicalSexSchema.nullable().default(null).meta({ description: 'Biological sex for calorie calculation' }),
+    sensitivity_areas: sensitivityAreasSchema
+      .default([])
+      .meta({ description: 'Sensitivity areas to track in meals' }),
+    sex: biologicalSexSchema
+      .nullable()
+      .default(null)
+      .meta({ description: 'Biological sex for calorie calculation' }),
     tag_icons: tagIconsSchema.default({}).meta({
       description: 'Tag icon mappings (deprecated, use item_icons)',
     }),
-    tag_mappings: tagMappingsSchema.default({}).meta({ description: 'Tag name mappings from UUIDs to display names' }),
+    tag_mappings: tagMappingsSchema
+      .default({})
+      .meta({ description: 'Tag name mappings from UUIDs to display names' }),
     training_load: trainingLoadSettingsSchema
       .nullable()
       .default(null)

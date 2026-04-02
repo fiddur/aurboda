@@ -196,9 +196,12 @@ export const quickLinkConfigSchema = z
   .object({
     href: z.string().min(1).meta({ description: 'Target URL path' }),
     icon: z
-      .enum(['timeline', 'sleep', 'correlations', 'goals', 'places', 'trends', 'settings'])
+      .string()
       .optional()
-      .meta({ description: 'Icon name' }),
+      .meta({
+        description:
+          'Icon name (e.g. timeline, sleep, correlations, goals, places, trends, settings, hr-zones)',
+      }),
     label: z.string().min(1).meta({ description: 'Link text' }),
   })
   .meta({ id: 'QuickLinkConfig' })
