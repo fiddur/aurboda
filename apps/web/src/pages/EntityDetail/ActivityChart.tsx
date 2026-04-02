@@ -446,13 +446,43 @@ const ChartToggle = ({
   </button>
 )
 
-/** Pick a bucket size that yields a reasonable number of chart points for the duration. */
-const chooseBucketSize = (start: Date, end: Date): string => {
-  const durationMin = (end.getTime() - start.getTime()) / 60_000
-  if (durationMin <= 30) return '30s'
-  if (durationMin <= 120) return '1m'
-  if (durationMin <= 360) return '5m'
-  return '15m'
+/** Standard bucket sizes in ascending order of seconds. */
+const BUCKET_STEPS = [
+  { label: '1s', sec: 1 },
+  { label: '2s', sec: 2 },
+  { label: '5s', sec: 5 },
+  { label: '10s', sec: 10 },
+  { label: '15s', sec: 15 },
+  { label: '30s', sec: 30 },
+  { label: '1m', sec: 60 },
+  { label: '2m', sec: 120 },
+  { label: '5m', sec: 300 },
+  { label: '10m', sec: 600 },
+  { label: '15m', sec: 900 },
+  { label: '30m', sec: 1800 },
+  { label: '1h', sec: 3600 },
+]
+
+/** Target ~1 data point per 2mm of chart width. 1mm ≈ 96/25.4 CSS px ≈ 3.78px. */
+const PX_PER_POINT = 2 * (96 / 25.4) // ~7.56 CSS px
+
+/**
+ * Compute bucket size to yield ~1 data point per 2mm of chart width.
+ * Rounds down to the closest smaller standard bucket for at least as many points as needed.
+ */
+const chooseBucketSize = (start: Date, end: Date, chartWidthPx: number): string => {
+  const durationSec = (end.getTime() - start.getTime()) / 1000
+  const numPoints = chartWidthPx / PX_PER_POINT
+  const idealBucketSec = durationSec / numPoints
+
+  // Find the largest standard bucket that is ≤ idealBucketSec
+  let chosen = BUCKET_STEPS[0]!
+  for (const step of BUCKET_STEPS) {
+    if (step.sec <= idealBucketSec) chosen = step
+    else break
+  }
+
+  return chosen.label
 }
 
 interface MetricChartData {
@@ -461,10 +491,12 @@ interface MetricChartData {
 }
 
 /** Fetch bucketed metrics — discovers available metrics AND provides chart data in one call. */
-const useMetricChartData = (start: Date, end: Date) =>
-  useQuery({
+const useMetricChartData = (start: Date, end: Date, chartWidthPx: number) => {
+  const bucket = chartWidthPx > 0 ? chooseBucketSize(start, end, chartWidthPx) : ''
+
+  return useQuery({
+    enabled: chartWidthPx > 0,
     queryFn: async (): Promise<MetricChartData> => {
-      const bucket = chooseBucketSize(start, end)
       const response = await fetchBucketedMetrics(start, end, undefined, bucket)
       const seriesMap = new Map<string, TimeSeries>()
 
@@ -483,16 +515,30 @@ const useMetricChartData = (start: Date, end: Date) =>
 
       return { metrics: [...seriesMap.keys()].sort(), series: seriesMap }
     },
-    queryKey: ['detail-metric-chart-data', start.toISOString(), end.toISOString()],
+    // Use bucket label as key so small resize jitter doesn't cause refetches
+    queryKey: ['detail-metric-chart-data', start.toISOString(), end.toISOString(), bucket],
     staleTime: 5 * 60 * 1000,
   })
+}
 
 export const ActivityChart = ({ start, end, stages, defaultMetrics = [] }: ActivityChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
 
-  const chartDataQuery = useMetricChartData(start, end)
+  // Measure chart inner width (container minus margins) for pixel-accurate bucket sizing
+  const [chartWidthPx, setChartWidthPx] = useState(0)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const measure = () => setChartWidthPx(Math.max(0, el.clientWidth - MARGIN.left - MARGIN.right))
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const chartDataQuery = useMetricChartData(start, end, chartWidthPx)
   const availableMetrics = chartDataQuery.data?.metrics ?? []
   const seriesMap = chartDataQuery.data?.series
 
