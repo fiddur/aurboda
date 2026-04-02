@@ -28,6 +28,7 @@ import { type ActivityDraft, EditableActivityFields } from './EditableActivityFi
 import { EntityActions, type EntityType } from './EntityActions'
 import { ExerciseDetail, resolveExerciseType } from './ExerciseDetail'
 import { formatDateTimeLocal, formatTime } from './format-utils'
+import { MergePanel } from './MergePanel'
 import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
@@ -227,6 +228,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   )
 
   const [isEditing, setIsEditing] = useState(false)
+  const [isMerging, setIsMerging] = useState(false)
   const emptyDraft: ActivityDraft = {
     end_time: '',
     notes: '',
@@ -296,7 +298,9 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         }}
         onSave={() => saveMutation.mutate()}
         isSaving={saveMutation.isPending}
+        onStartMerging={!activity.deleted_at && !isMergedActivity ? () => setIsMerging(true) : undefined}
       />
+      {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
       <ActivityDetailDispatch
         activity={activity}
         isEditing={isEditing}

@@ -89,6 +89,7 @@ export {
   getActivities,
   getActivitiesNeedingDetail,
   getActivityById,
+  getNearbyActivities,
   getOverlappingActivities,
   getSleepSessions,
   insertActivity,

@@ -348,6 +348,39 @@ export const getActivitiesNeedingDetail = async (user: string, limit = 10): Prom
   return result.rows.map(mapActivityRow)
 }
 
+/**
+ * Find nearby same-type activities for merge suggestions.
+ * Returns non-deleted activities of the same type within ±hoursWindow of the given time range,
+ * excluding the given activity ID.
+ */
+export const getNearbyActivities = async (
+  user: string,
+  activityId: string,
+  activityType: string,
+  startTime: Date,
+  endTime: Date | undefined,
+  hoursWindow: number,
+): Promise<Activity[]> => {
+  const windowMs = hoursWindow * 60 * 60 * 1000
+  const windowStart = new Date(startTime.getTime() - windowMs)
+  const windowEnd = new Date((endTime ?? startTime).getTime() + windowMs)
+
+  const result = await query(
+    user,
+    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
+     FROM activities
+     WHERE activity_type = $1
+       AND id != $2
+       AND deleted_at IS NULL
+       AND start_time >= $3
+       AND start_time <= $4
+     ORDER BY start_time`,
+    [activityType, activityId, windowStart, windowEnd],
+  )
+
+  return result.rows.map(mapActivityRow)
+}
+
 /** Mark an activity's detail data as synced using JSONB merge (preserves existing data). */
 export const markActivityDetailSynced = async (user: string, id: string): Promise<void> => {
   await query(user, `UPDATE activities SET data = data || '{"detail_synced": true}'::jsonb WHERE id = $1`, [
