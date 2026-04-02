@@ -93,6 +93,7 @@ export {
   getOverlappingActivities,
   getSleepSessions,
   insertActivity,
+  insertNewActivity,
   markActivityDetailSynced,
   mergeOverlappingActivities,
   restoreActivity,

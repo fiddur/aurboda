@@ -128,7 +128,11 @@ describe('mergeActivities', () => {
     getActivityById: vi
       .fn()
       .mockImplementation((_user: string, id: string) => Promise.resolve(activitiesMap[id] ?? null)),
-    insertActivity: vi.fn().mockResolvedValue(undefined),
+    insertNewActivity: vi
+      .fn()
+      .mockImplementation((_user: string, activity: Activity) =>
+        Promise.resolve(activity.id ?? 'generated-id'),
+      ),
   })
 
   test('merges two same-type activities', async () => {
@@ -154,8 +158,8 @@ describe('mergeActivities', () => {
     expect(result.id).toBeDefined()
 
     // Should insert one new activity
-    expect(deps.insertActivity).toHaveBeenCalledOnce()
-    const inserted = deps.insertActivity.mock.calls[0][1]
+    expect(deps.insertNewActivity).toHaveBeenCalledOnce()
+    const inserted = deps.insertNewActivity.mock.calls[0][1]
     expect(inserted.source).toBe('aurboda')
     expect(inserted.data.merged_from).toHaveLength(2)
 
