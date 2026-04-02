@@ -8,12 +8,12 @@
  * - Hover tooltip with crosshair
  */
 import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { format } from 'date-fns'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
-import { fetchBucketedMetrics, fetchMetricTimeSeries } from '../../state/api'
+import { fetchBucketedMetrics } from '../../state/api'
 import { findNearest, findStageAtTime } from './chart-utils'
 import { STAGE_COLORS, STAGE_LABELS, STAGE_Y_ORDER, type SleepStage } from './sleep-utils'
 
@@ -446,20 +446,44 @@ const ChartToggle = ({
   </button>
 )
 
-/** Discover available metrics in a time range via bucketed query. */
-const useAvailableMetrics = (start: Date, end: Date) =>
+/** Pick a bucket size that yields a reasonable number of chart points for the duration. */
+const chooseBucketSize = (start: Date, end: Date): string => {
+  const durationMin = (end.getTime() - start.getTime()) / 60_000
+  if (durationMin <= 30) return '30s'
+  if (durationMin <= 120) return '1m'
+  if (durationMin <= 360) return '5m'
+  return '15m'
+}
+
+interface MetricChartData {
+  metrics: string[]
+  series: Map<string, TimeSeries>
+}
+
+/** Fetch bucketed metrics — discovers available metrics AND provides chart data in one call. */
+const useMetricChartData = (start: Date, end: Date) =>
   useQuery({
-    queryFn: async () => {
-      const response = await fetchBucketedMetrics(start, end, undefined, '1h')
-      const metricSet = new Set<string>()
-      for (const bucket of response.buckets ?? []) {
-        for (const metric of Object.keys(bucket.metrics)) {
-          if (!EXCLUDED_METRICS.has(metric)) metricSet.add(metric)
+    queryFn: async (): Promise<MetricChartData> => {
+      const bucket = chooseBucketSize(start, end)
+      const response = await fetchBucketedMetrics(start, end, undefined, bucket)
+      const seriesMap = new Map<string, TimeSeries>()
+
+      for (const b of response.buckets ?? []) {
+        const time = new Date(b.start)
+        for (const [metric, stats] of Object.entries(b.metrics)) {
+          if (EXCLUDED_METRICS.has(metric)) continue
+          let arr = seriesMap.get(metric)
+          if (!arr) {
+            arr = []
+            seriesMap.set(metric, arr)
+          }
+          arr.push([time, stats.avg])
         }
       }
-      return [...metricSet].sort()
+
+      return { metrics: [...seriesMap.keys()].sort(), series: seriesMap }
     },
-    queryKey: ['detail-available-metrics', start.toISOString(), end.toISOString()],
+    queryKey: ['detail-metric-chart-data', start.toISOString(), end.toISOString()],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -468,49 +492,43 @@ export const ActivityChart = ({ start, end, stages, defaultMetrics = [] }: Activ
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
 
-  const [enabledMetrics, setEnabledMetrics] = useState<Set<string>>(() => new Set(defaultMetrics))
+  const chartDataQuery = useMetricChartData(start, end)
+  const availableMetrics = chartDataQuery.data?.metrics ?? []
+  const seriesMap = chartDataQuery.data?.series
+
+  // Enable all metrics by default; track which ones the user has toggled off
+  const [disabledMetrics, setDisabledMetrics] = useState<Set<string>>(new Set())
   // Track toggle order for axis priority (most recent gets axis)
-  const [toggleOrder, setToggleOrder] = useState<string[]>(() => [...defaultMetrics])
+  const [toggleOrder, setToggleOrder] = useState<string[]>([])
 
-  const availableQuery = useAvailableMetrics(start, end)
-  const availableMetrics = availableQuery.data ?? []
-
-  // Auto-enable default metrics when available metrics load
+  // When available metrics first load, initialize toggle order with defaultMetrics first, then rest
   const defaultsAppliedRef = useRef(false)
   useEffect(() => {
     if (availableMetrics.length > 0 && !defaultsAppliedRef.current) {
       defaultsAppliedRef.current = true
-      const validDefaults = defaultMetrics.filter((m) => availableMetrics.includes(m))
-      if (validDefaults.length > 0) {
-        setEnabledMetrics(new Set(validDefaults))
-        setToggleOrder(validDefaults)
-      }
+      const defaults = defaultMetrics.filter((m) => availableMetrics.includes(m))
+      const rest = availableMetrics.filter((m) => !defaults.includes(m))
+      setToggleOrder([...rest, ...defaults])
     }
   }, [availableMetrics, defaultMetrics])
 
-  const toggleMetric = useCallback(
-    (metric: string) => {
-      setEnabledMetrics((prev) => {
-        const next = new Set(prev)
-        if (next.has(metric)) {
-          next.delete(metric)
-        } else {
-          next.add(metric)
-        }
-        return next
-      })
-      setToggleOrder((prev) => {
-        const filtered = prev.filter((m) => m !== metric)
-        if (!enabledMetrics.has(metric)) {
-          // Being toggled on — add to end (most recent)
-          return [...filtered, metric]
-        }
-        // Being toggled off — remove
-        return filtered
-      })
-    },
-    [enabledMetrics],
-  )
+  const toggleMetric = useCallback((metric: string) => {
+    setDisabledMetrics((prev) => {
+      const next = new Set(prev)
+      if (next.has(metric)) {
+        next.delete(metric)
+      } else {
+        next.add(metric)
+      }
+      return next
+    })
+    setToggleOrder((prev) => {
+      const filtered = prev.filter((m) => m !== metric)
+      return [...filtered, metric]
+    })
+  }, [])
+
+  const enabledMetrics = new Set(availableMetrics.filter((m) => !disabledMetrics.has(m)))
 
   // Compute which metrics get axes (last MAX_RIGHT_AXES in toggleOrder that are enabled)
   const metricsWithAxes = new Set(toggleOrder.filter((m) => enabledMetrics.has(m)).slice(-MAX_RIGHT_AXES))
@@ -524,22 +542,11 @@ export const ActivityChart = ({ start, end, stages, defaultMetrics = [] }: Activ
     }
   }
 
-  // Dynamic queries for each enabled metric
-  const metricQueries = useQueries({
-    queries: availableMetrics.map((metric) => ({
-      enabled: enabledMetrics.has(metric),
-      queryFn: () => fetchMetricTimeSeries(metric, start, end),
-      queryKey: ['detail-metric', metric, start.toISOString(), end.toISOString()],
-      staleTime: 5 * 60 * 1000,
-    })),
-  })
-
-  // Build overlay list for enabled metrics with data
+  // Build overlay list from bucketed data
   const overlays: MetricOverlay[] = []
-  for (let i = 0; i < availableMetrics.length; i++) {
-    const metric = availableMetrics[i]!
+  for (const metric of availableMetrics) {
     if (!enabledMetrics.has(metric)) continue
-    const data = metricQueries[i]?.data
+    const data = seriesMap?.get(metric)
     if (!hasData(data)) continue
 
     overlays.push({
@@ -571,14 +578,14 @@ export const ActivityChart = ({ start, end, stages, defaultMetrics = [] }: Activ
   return (
     <div class="activity-chart-container">
       <div class="chart-toggles">
-        {availableQuery.isLoading && <span class="chart-toggle-loading">Loading metrics...</span>}
-        {availableMetrics.map((metric, i) => (
+        {chartDataQuery.isLoading && <span class="chart-toggle-loading">Loading metrics...</span>}
+        {availableMetrics.map((metric) => (
           <ChartToggle
             key={metric}
             color={getMetricColor(metric, fallbackColorIndices.get(metric) ?? 0)}
             label={formatMetricLabel(metric)}
             active={enabledMetrics.has(metric)}
-            loading={metricQueries[i]?.isLoading ?? false}
+            loading={false}
             onToggle={() => toggleMetric(metric)}
           />
         ))}
