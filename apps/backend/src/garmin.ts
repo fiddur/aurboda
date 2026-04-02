@@ -190,9 +190,6 @@ const MFA_SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
 /** Base URL for Garmin Connect API — gc.get() needs full URLs, not relative paths. */
 const GC_API = 'https://connectapi.garmin.com'
 
-/** Web API base for endpoints only available via connect.garmin.com (e.g. activity details). */
-const GC_WEB_API = 'https://connect.garmin.com'
-
 export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
   /**
    * Restore a GarminConnect instance from stored tokens for a user.
@@ -235,7 +232,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
     async getActivityDetail(user: string, activityId: number): Promise<GarminActivityDetailResponse> {
       const gc = await restoreSession(user)
       const result = await gc.get<GarminActivityDetailResponse>(
-        `${GC_WEB_API}/gc-api/activity-service/activity/${activityId}/details?maxChartSize=10000&maxPolylineSize=0`,
+        `${GC_API}/activity-service/activity/${activityId}/details?maxChartSize=10000&maxPolylineSize=0`,
       )
       await saveSession(user, gc)
       return result
