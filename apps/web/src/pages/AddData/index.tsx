@@ -5,7 +5,15 @@ import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
 import { MetricPicker } from '../../components/MetricPicker'
-import { addActivity, addMetric, addNote, addTag, fetchUniqueTags, type ActivityType } from '../../state/api'
+import {
+  addActivity,
+  addMetric,
+  addNote,
+  addTag,
+  fetchUniqueTags,
+  uploadFitFile,
+  type ActivityType,
+} from '../../state/api'
 import './style.css'
 
 type Tab = 'activity' | 'tag' | 'metric'
@@ -19,6 +27,60 @@ const nowLocal = () => format(new Date(), "yyyy-MM-dd'T'HH:mm")
 interface FormProps {
   /** Called after successful creation. If it returns true, the form was navigated away. */
   onCreated: (entityType: string, entityId: string | undefined) => boolean
+}
+
+const FitUpload = ({ onCreated }: FormProps) => {
+  const queryClient = useQueryClient()
+  const [uploading, setUploading] = useState(false)
+  const [success, setSuccess] = useState('')
+  const [error, setError] = useState('')
+
+  const handleFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!files?.length) return
+      setUploading(true)
+      setError('')
+      setSuccess('')
+
+      try {
+        let lastId: string | undefined
+        for (const file of Array.from(files)) {
+          const result = await uploadFitFile(file)
+          const data = Array.isArray(result.data) ? result.data[0] : result.data
+          lastId = data?.id
+        }
+        queryClient.invalidateQueries({ queryKey: ['dayview-activities'] })
+        if (files.length === 1 && lastId) {
+          if (onCreated('activity', lastId)) return
+        }
+        setSuccess(`Imported ${files.length} file${files.length > 1 ? 's' : ''}`)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Upload failed')
+      } finally {
+        setUploading(false)
+      }
+    },
+    [onCreated, queryClient],
+  )
+
+  return (
+    <div class="fit-upload">
+      {success && <div class="add-success">{success}</div>}
+      {error && <div class="add-error">{error}</div>}
+      <label class="fit-upload-area">
+        <input
+          type="file"
+          accept=".fit"
+          multiple
+          class="fit-upload-input"
+          onChange={(e) => handleFiles((e.target as HTMLInputElement).files)}
+          disabled={uploading}
+        />
+        <span class="fit-upload-label">{uploading ? 'Importing...' : 'Import .FIT file(s)'}</span>
+        <span class="fit-upload-hint">From Garmin, QZ, Polar, Suunto, etc.</span>
+      </label>
+    </div>
+  )
 }
 
 const AddActivityForm = ({ onCreated }: FormProps) => {
@@ -503,7 +565,13 @@ export const AddData = () => {
         </button>
       </div>
 
-      {activeTab === 'activity' && <AddActivityForm onCreated={handleCreated} />}
+      {activeTab === 'activity' && (
+        <>
+          <FitUpload onCreated={handleCreated} />
+          <div class="form-divider">or enter manually</div>
+          <AddActivityForm onCreated={handleCreated} />
+        </>
+      )}
       {activeTab === 'tag' && <AddTagForm onCreated={handleCreated} />}
       {activeTab === 'metric' && <AddMetricForm onCreated={handleCreated} />}
     </div>

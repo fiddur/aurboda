@@ -24,6 +24,7 @@
     "date-fns": "^4.1.0",
     "env-schema": "^6.0.0",
     "express": "^5.1.0",
+    "fit-file-parser": "^2.3.3",
     "jsdom": "^26.1.0",
     "multer": "^2.1.1",
     "node-ical": "^0.25.1",

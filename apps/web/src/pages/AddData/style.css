@@ -273,6 +273,100 @@
   }
 }
 
+/* FIT file upload */
+
+.fit-upload {
+  margin-bottom: 0;
+}
+
+.fit-upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 1.5rem;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.fit-upload-area:hover {
+  border-color: #6366f1;
+  background: #f0f0ff;
+}
+
+.fit-upload-input {
+  display: none;
+}
+
+.fit-upload-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #374151;
+}
+
+.fit-upload-hint {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.form-divider {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.85rem;
+  margin: 1rem 0;
+  position: relative;
+}
+
+.form-divider::before,
+.form-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 40%;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.form-divider::before {
+  left: 0;
+}
+
+.form-divider::after {
+  right: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .fit-upload-area {
+    border-color: #4b5563;
+  }
+
+  .fit-upload-area:hover {
+    border-color: #818cf8;
+    background: #1e1b4b33;
+  }
+
+  .fit-upload-label {
+    color: #e5e7eb;
+  }
+
+  .fit-upload-hint {
+    color: #6b7280;
+  }
+
+  .form-divider {
+    color: #6b7280;
+  }
+
+  .form-divider::before,
+  .form-divider::after {
+    background: #374151;
+  }
+}
+
 @media (max-width: 639px) {
   .add-data-page {
     padding: 1rem;
