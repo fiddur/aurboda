@@ -160,6 +160,32 @@ export const getOverlappingActivities = async (user: string, activity: Activity)
   return findMergedGroupForActivity(merged, rawActivities, activity.id!)
 }
 
+/**
+ * Insert a new activity with a guaranteed new row (no upsert).
+ * Used for merge operations where we need to ensure the activity is created.
+ * Throws on conflict instead of silently doing nothing.
+ */
+export const insertNewActivity = async (user: string, activity: Activity): Promise<string> => {
+  const result = await query(
+    user,
+    `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id`,
+    [
+      activity.id,
+      activity.source,
+      activity.activity_type,
+      activity.start_time,
+      activity.end_time,
+      activity.title,
+      activity.notes,
+      activity.data,
+    ],
+  )
+
+  return result.rows[0].id as string
+}
+
 export const insertActivity = async (user: string, activity: Activity) => {
   await query(
     user,

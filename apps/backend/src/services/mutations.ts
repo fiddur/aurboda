@@ -16,6 +16,7 @@ import {
   deleteTag as dbDeleteTag,
   getActivityById as dbGetActivityById,
   insertActivity as dbInsertActivity,
+  insertNewActivity as dbInsertNewActivity,
   updateActivity as dbUpdateActivity,
   enqueueOutboundSync,
   findHcRecordId,
@@ -716,12 +717,12 @@ export async function mergeActivities(
   input: MergeActivitiesInput,
   deps: {
     getActivityById: (user: string, id: string) => Promise<Activity | null>
-    insertActivity: (user: string, activity: Activity) => Promise<void>
+    insertNewActivity: (user: string, activity: Activity) => Promise<string>
     deleteActivity: (user: string, id: string) => Promise<boolean>
   } = {
     deleteActivity: dbDeleteActivity,
     getActivityById: dbGetActivityById,
-    insertActivity: dbInsertActivity,
+    insertNewActivity: dbInsertNewActivity,
   },
 ): Promise<MergeActivitiesResult> {
   if (input.activity_ids.length < 2) {
@@ -752,13 +753,11 @@ export async function mergeActivities(
 
   const merged = buildMergedActivityData(sorted, { notes: input.notes, title: input.title })
 
-  const id = randomUUID()
-
-  await deps.insertActivity(user, {
+  const id = await deps.insertNewActivity(user, {
     activity_type: sorted[0].activity_type,
     data: merged.data,
     end_time: merged.end_time,
-    id,
+    id: randomUUID(),
     notes: merged.notes,
     source: 'aurboda',
     start_time: merged.start_time,
