@@ -2,7 +2,7 @@
  * Panel for selecting nearby activities to merge with the current activity.
  */
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { route } from 'preact-router'
+import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import type { Activity } from '../../state/api'
@@ -23,6 +23,7 @@ interface MergePanelProps {
 }
 
 export const MergePanel = ({ activityId, onCancel }: MergePanelProps) => {
+  const { route } = useLocation()
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const nearbyQuery = useQuery({
