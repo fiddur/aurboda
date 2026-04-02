@@ -1389,6 +1389,16 @@ export const addActivity = async (body: AddActivityBody): Promise<AddActivityRes
   return response.data
 }
 
+export const uploadFitFile = async (file: File): Promise<AddActivityResponse> => {
+  const { token } = auth.value
+  const formData = new FormData()
+  formData.append('fit_file', file)
+  const response = await axios.post<AddActivityResponse>(`${API_URL}/activities/upload-fit`, formData, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
 export const addTag = async (body: AddTagBody): Promise<AddTagResponse> => {
   const { token } = auth.value
   const response = await axios.post<AddTagResponse>(`${API_URL}/tags`, body, {

@@ -39,7 +39,9 @@ vi.mock('./services/audit-log', () => ({
 const createMockGarmin = () => ({
   disconnect: vi.fn(),
   getActivities: vi.fn().mockResolvedValue([]),
-  getActivityDetail: vi.fn().mockResolvedValue({ activityDetailMetrics: [], activityId: 0, metricDescriptors: [] }),
+  getActivityDetail: vi
+    .fn()
+    .mockResolvedValue({ activityDetailMetrics: [], activityId: 0, metricDescriptors: [] }),
   getBodyBattery: vi.fn().mockResolvedValue([]),
   getDailySummary: vi.fn().mockResolvedValue({}),
   getHeartRate: vi.fn().mockResolvedValue({}),

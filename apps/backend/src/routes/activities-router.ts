@@ -24,6 +24,7 @@ import {
   type UpdateActivityResponse,
 } from '@aurboda/api-spec'
 import { type RequestHandler, Router } from 'express'
+import multer from 'multer'
 
 import {
   getActivityById,
@@ -32,7 +33,10 @@ import {
   getProductivityBucketed,
   getProductivityById,
   getTimeSeries,
+  insertTimeSeries,
+  type TimeSeriesPoint,
 } from '../db/index.ts'
+import { parseFitBuffer } from '../services/fit-parser.ts'
 import {
   addActivity,
   deleteActivity,
@@ -221,6 +225,80 @@ export const createActivitiesRouter = (
       })
     },
   )
+
+  // POST /activities/upload-fit - Import activities from a FIT file
+
+  const upload = multer({
+    limits: { fileSize: 10 * 1024 * 1024 },
+    storage: multer.memoryStorage(),
+  })
+
+  router.post('/activities/upload-fit', authMiddleware, upload.single('fit_file'), async (req, res) => {
+    const user = req.user!
+    const file = req.file
+
+    if (!file) {
+      res.status(400).json({ error: 'No file uploaded', success: false })
+      return
+    }
+
+    try {
+      const fitActivities = await parseFitBuffer(file.buffer.buffer as ArrayBuffer)
+      const results: AddActivityResponse['data'][] = []
+
+      for (const fitAct of fitActivities) {
+        // Map exercise type name to Health Connect value
+        const data = {
+          ...fitAct.data,
+          exerciseType: isValidExerciseType(fitAct.exercise_type)
+            ? getExerciseTypeValue(fitAct.exercise_type)
+            : undefined,
+        }
+
+        const result = await addActivity(user, {
+          activity_type: fitAct.activity_type,
+          data,
+          end_time: fitAct.end_time,
+          notes: fitAct.notes,
+          start_time: fitAct.start_time,
+          title: fitAct.title,
+        })
+
+        if (!result.success) {
+          res.status(400).json({ error: result.error, success: false })
+          return
+        }
+
+        // Insert time series data (heart rate, power, cadence, speed)
+        if (fitAct.timeSeries.length > 0 && result.id) {
+          const points: TimeSeriesPoint[] = fitAct.timeSeries.map((ts) => ({
+            metric: ts.metric,
+            source: 'aurboda' as const,
+            time: ts.time,
+            value: ts.value,
+          }))
+          await insertTimeSeries(user, points)
+        }
+
+        results.push({
+          activity_type: fitAct.activity_type,
+          end_time: fitAct.end_time.toISOString(),
+          id: result.id!,
+          notes: fitAct.notes,
+          start_time: fitAct.start_time.toISOString(),
+          title: fitAct.title,
+        })
+      }
+
+      res.json({
+        data: results.length === 1 ? results[0] : results,
+        success: true,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to parse FIT file'
+      res.status(400).json({ error: message, success: false })
+    }
+  })
 
   // DELETE /activities/:id - Delete an activity by ID
   router.delete<{ id: string }, DeleteActivityResponse>(

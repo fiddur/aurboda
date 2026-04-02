@@ -13,7 +13,7 @@
 | Stress             | time_series            | `stress_level` (overall daily stress)                                                                                    |
 | Body Battery       | time_series            | `body_battery` (from values array or daily charged amount)                                                               |
 | Activities         | activity + time_series | Exercise activities with type, distance, calories, HR, VO2 max; `vo2_max`                                                |
-| Activity Details   | time_series            | Per-second `stress_level`, `heart_rate`, `respiratory_rate`, `body_battery` from activity detail API                      |
+| Activity Details   | time_series            | Per-second `stress_level`, `heart_rate`, `respiratory_rate`, `body_battery` from activity detail API                     |
 | SpO2               | time_series            | `spo2` (average daily blood oxygen)                                                                                      |
 | Respiration        | time_series            | `respiratory_rate` (average waking respiration)                                                                          |
 | Training Readiness | time_series            | `training_readiness` (overall score)                                                                                     |

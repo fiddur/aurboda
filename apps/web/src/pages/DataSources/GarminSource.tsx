@@ -216,9 +216,7 @@ function GarminDataTypeToggles({
       setSaving(true)
       try {
         const set = new Set(localDisabled)
-        const newDisabled = set.has(type)
-          ? localDisabled.filter((t) => t !== type)
-          : [...localDisabled, type]
+        const newDisabled = set.has(type) ? localDisabled.filter((t) => t !== type) : [...localDisabled, type]
         await onToggle(newDisabled)
       } finally {
         setSaving(false)
@@ -241,11 +239,7 @@ function GarminDataTypeToggles({
           const enabled = !disabledSet.has(dt.type)
           return (
             <label key={dt.type} class={`garmin-data-type-row ${enabled ? '' : 'disabled'}`}>
-              <input
-                type="checkbox"
-                checked={enabled}
-                onChange={() => handleToggle(dt.type)}
-              />
+              <input type="checkbox" checked={enabled} onChange={() => handleToggle(dt.type)} />
               <div class="garmin-data-type-info">
                 {dt.href ? (
                   <a class="garmin-data-type-label" href={dt.href}>
