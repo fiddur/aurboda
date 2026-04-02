@@ -216,7 +216,7 @@ export const ExerciseDetail = ({
 
       {/* HR chart with overlays */}
       <div class="detail-grid-full">
-        <ActivityChart start={displayStart} end={displayEnd} showHrDefault={true} showHrvDefault={true} />
+        <ActivityChart start={displayStart} end={displayEnd} defaultMetrics={['heart_rate', 'hrv_rmssd']} />
       </div>
     </>
   )

@@ -302,6 +302,12 @@ a.entity-type-badge:hover {
   border-radius: 50%;
 }
 
+.chart-toggle-loading {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  padding: 0.25rem 0.5rem;
+}
+
 .chart-svg-container {
   position: relative;
   width: 100%;

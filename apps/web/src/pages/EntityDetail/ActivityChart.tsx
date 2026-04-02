@@ -1,19 +1,19 @@
 /**
- * D3-based activity chart with toggleable overlays.
+ * D3-based activity chart with dynamic, toggleable metric overlays.
  *
  * Supports:
  * - Sleep hypnogram (colored bands by sleep stage)
- * - Heart rate line overlay
- * - HRV line overlay
- * - Stress level overlay
+ * - Auto-discovery of all metrics recorded in the time range
+ * - Line overlays for dense data, diamond dots for sparse data
  * - Hover tooltip with crosshair
  */
-import { useQuery } from '@tanstack/react-query'
+import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { format } from 'date-fns'
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
-import { fetchHeartRate, fetchHrv, fetchStress } from '../../state/api'
+import { fetchBucketedMetrics, fetchMetricTimeSeries } from '../../state/api'
 import { findNearest, findStageAtTime } from './chart-utils'
 import { STAGE_COLORS, STAGE_LABELS, STAGE_Y_ORDER, type SleepStage } from './sleep-utils'
 
@@ -21,13 +21,13 @@ interface ActivityChartProps {
   start: Date
   end: Date
   stages?: SleepStage[]
-  showHrDefault?: boolean
-  showHrvDefault?: boolean
-  showStressDefault?: boolean
+  defaultMetrics?: string[]
 }
 
 const CHART_HEIGHT = 260
 const MARGIN = { bottom: 30, left: 50, right: 155, top: 10 }
+const MAX_RIGHT_AXES = 2
+const SPARSE_THRESHOLD = 10
 
 /** Hypnogram Y-axis labels in display order (top to bottom). */
 const HYPNOGRAM_LABELS = ['Awake', 'REM', 'Light', 'Deep']
@@ -35,6 +35,54 @@ const HYPNOGRAM_Y_VALUES = [0, 1, 2, 3]
 
 type GSelection = d3.Selection<SVGGElement, unknown, null, undefined>
 type TimeSeries = [Date, number][]
+
+/** Predefined color palette — well-known metrics get stable colors, rest cycle through. */
+const KNOWN_METRIC_COLORS: Record<string, string> = {
+  body_battery: '#a855f7',
+  heart_rate: '#ef4444',
+  hrv_rmssd: '#14b8a6',
+  respiratory_rate: '#6366f1',
+  spo2: '#0ea5e9',
+  stress_level: '#f97316',
+}
+const FALLBACK_COLORS = [
+  '#8b5cf6',
+  '#ec4899',
+  '#06b6d4',
+  '#84cc16',
+  '#f43f5e',
+  '#0891b2',
+  '#d946ef',
+  '#eab308',
+]
+
+const getMetricColor = (metric: string, fallbackIndex: number): string =>
+  KNOWN_METRIC_COLORS[metric] ?? FALLBACK_COLORS[fallbackIndex % FALLBACK_COLORS.length]!
+
+/** Format snake_case metric name to Title Case label. */
+const formatMetricLabel = (metric: string): string =>
+  metric.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
+
+const getMetricUnit = (metric: string): string => (builtinMetricUnits as Record<string, string>)[metric] ?? ''
+
+/** Metrics to exclude from the activity chart (cumulative/computed, not useful as overlays). */
+const EXCLUDED_METRICS = new Set([
+  'calories_active',
+  'calories_basal',
+  'calories_total',
+  'distance',
+  'floors_climbed',
+  'hr_zone_0_sec',
+  'hr_zone_1_sec',
+  'hr_zone_2_sec',
+  'hr_zone_3_sec',
+  'hr_zone_4_sec',
+  'hr_zone_5_sec',
+  'intensity_minutes',
+  'steps',
+  'training_impulse',
+  'activity_impulse',
+])
 
 const drawHypnogram = (
   g: GSelection,
@@ -99,37 +147,39 @@ const drawLineOverlay = (
   unit: string,
   axisSide: 'left' | 'right',
   axisOffset: number = 0,
-  forceZeroMin: boolean = false,
+  showAxis: boolean = true,
 ) => {
   const yExtent = d3.extent(data, (d) => d[1]) as [number, number]
   const padding = (yExtent[1] - yExtent[0]) * 0.1 || 5
-  const yMin = forceZeroMin && yExtent[0] >= 0 ? 0 : yExtent[0] - padding
+  const yMin = yExtent[0] >= 0 ? Math.max(0, yExtent[0] - padding) : yExtent[0] - padding
   const yScale = d3
     .scaleLinear()
     .domain([yMin, yExtent[1] + padding])
     .range([innerHeight, 0])
 
-  if (axisSide === 'right') {
-    g.append('g')
-      .attr('transform', `translate(${innerWidth + axisOffset},0)`)
-      .call(d3.axisRight(yScale).ticks(4))
-      .selectAll('text')
-      .attr('fill', color)
-      .attr('font-size', '0.7rem')
+  if (showAxis) {
+    if (axisSide === 'right') {
+      g.append('g')
+        .attr('transform', `translate(${innerWidth + axisOffset},0)`)
+        .call(d3.axisRight(yScale).ticks(4))
+        .selectAll('text')
+        .attr('fill', color)
+        .attr('font-size', '0.7rem')
 
-    g.append('text')
-      .attr('x', innerWidth + axisOffset + 35)
-      .attr('y', -2)
-      .attr('text-anchor', 'end')
-      .attr('fill', color)
-      .attr('font-size', '0.65rem')
-      .text(unit)
-  } else {
-    g.append('g')
-      .call(d3.axisLeft(yScale).ticks(4))
-      .selectAll('text')
-      .attr('fill', color)
-      .attr('font-size', '0.7rem')
+      g.append('text')
+        .attr('x', innerWidth + axisOffset + 35)
+        .attr('y', -2)
+        .attr('text-anchor', 'end')
+        .attr('fill', color)
+        .attr('font-size', '0.65rem')
+        .text(unit)
+    } else {
+      g.append('g')
+        .call(d3.axisLeft(yScale).ticks(4))
+        .selectAll('text')
+        .attr('fill', color)
+        .attr('font-size', '0.7rem')
+    }
   }
 
   const line = d3
@@ -147,74 +197,128 @@ const drawLineOverlay = (
     .attr('d', line)
 }
 
+/** Draw sparse data as diamond markers instead of a line. */
+const drawDotOverlay = (
+  g: GSelection,
+  xScale: d3.ScaleTime<number, number>,
+  innerWidth: number,
+  innerHeight: number,
+  data: TimeSeries,
+  color: string,
+  unit: string,
+  axisSide: 'left' | 'right',
+  axisOffset: number = 0,
+  showAxis: boolean = true,
+) => {
+  const yExtent = d3.extent(data, (d) => d[1]) as [number, number]
+  const padding = (yExtent[1] - yExtent[0]) * 0.1 || 5
+  const yMin = yExtent[0] >= 0 ? Math.max(0, yExtent[0] - padding) : yExtent[0] - padding
+  const yScale = d3
+    .scaleLinear()
+    .domain([yMin, yExtent[1] + padding])
+    .range([innerHeight, 0])
+
+  if (showAxis) {
+    if (axisSide === 'right') {
+      g.append('g')
+        .attr('transform', `translate(${innerWidth + axisOffset},0)`)
+        .call(d3.axisRight(yScale).ticks(4))
+        .selectAll('text')
+        .attr('fill', color)
+        .attr('font-size', '0.7rem')
+
+      g.append('text')
+        .attr('x', innerWidth + axisOffset + 35)
+        .attr('y', -2)
+        .attr('text-anchor', 'end')
+        .attr('fill', color)
+        .attr('font-size', '0.65rem')
+        .text(unit)
+    } else {
+      g.append('g')
+        .call(d3.axisLeft(yScale).ticks(4))
+        .selectAll('text')
+        .attr('fill', color)
+        .attr('font-size', '0.7rem')
+    }
+  }
+
+  const diamond = d3.symbol().type(d3.symbolDiamond).size(40)
+
+  for (const [time, value] of data) {
+    g.append('path')
+      .attr('d', diamond)
+      .attr('transform', `translate(${xScale(time)},${yScale(value)})`)
+      .attr('fill', color)
+      .attr('fill-opacity', 0.9)
+      .attr('stroke', color)
+      .attr('stroke-width', 0.5)
+  }
+}
+
 const hasData = (data: TimeSeries | undefined): data is TimeSeries => data !== undefined && data.length > 0
 
-/** Draw all metric overlays (HR, HRV, stress) with dynamic axis offsets. */
+interface MetricOverlay {
+  metric: string
+  data: TimeSeries
+  color: string
+  unit: string
+  showAxis: boolean
+}
+
+/** Draw all dynamic metric overlays with axis allocation. */
 const drawOverlays = (
   g: GSelection,
   xScale: d3.ScaleTime<number, number>,
   innerWidth: number,
   innerHeight: number,
   hasHypnogram: boolean,
-  hrData: TimeSeries | undefined,
-  hrvData: TimeSeries | undefined,
-  stressData: TimeSeries | undefined,
+  overlays: MetricOverlay[],
 ) => {
   let rightAxisCount = 0
+  let leftUsed = false
 
-  if (hasData(hrData)) {
-    const axisSide = hasHypnogram ? 'right' : 'left'
-    drawLineOverlay(g, xScale, innerWidth, innerHeight, hrData, '#ef4444', 'bpm', axisSide)
-    if (axisSide === 'right') rightAxisCount++
-  }
-
-  if (hasData(hrvData)) {
-    const axisSide = hasData(hrData) || hasHypnogram ? 'right' : 'left'
+  for (const overlay of overlays) {
+    const axisSide = leftUsed || hasHypnogram ? 'right' : 'left'
+    const showAxis = overlay.showAxis && (axisSide === 'left' || rightAxisCount < MAX_RIGHT_AXES)
     const offset = axisSide === 'right' ? rightAxisCount * 45 : 0
-    drawLineOverlay(g, xScale, innerWidth, innerHeight, hrvData, '#14b8a6', 'ms', axisSide, offset, true)
-    if (axisSide === 'right') rightAxisCount++
-  }
 
-  if (hasData(stressData)) {
-    const axisSide = rightAxisCount > 0 || hasHypnogram ? 'right' : 'left'
-    const offset = axisSide === 'right' ? rightAxisCount * 45 : 0
-    drawLineOverlay(
+    const drawFn = overlay.data.length < SPARSE_THRESHOLD ? drawDotOverlay : drawLineOverlay
+    drawFn(
       g,
       xScale,
       innerWidth,
       innerHeight,
-      stressData,
-      '#f97316',
-      'score',
+      overlay.data,
+      overlay.color,
+      overlay.unit,
       axisSide,
       offset,
-      true,
+      showAxis,
     )
+
+    if (axisSide === 'left') leftUsed = true
+    if (axisSide === 'right' && showAxis) rightAxisCount++
   }
 }
 
 /** Build tooltip text lines for the crosshair position. */
 const buildTooltipLines = (
   time: Date,
-  hrData: TimeSeries | undefined,
-  hrvData: TimeSeries | undefined,
-  stressData: TimeSeries | undefined,
+  overlays: MetricOverlay[],
   stages: SleepStage[] | undefined,
 ): string[] => {
   const lines: string[] = [format(time, 'HH:mm:ss')]
 
-  if (hasData(hrData)) {
-    const nearest = findNearest(hrData, time)
-    if (nearest) lines.push(`HR: ${Math.round(nearest[1])} bpm`)
+  for (const overlay of overlays) {
+    const nearest = findNearest(overlay.data, time)
+    if (nearest) {
+      const label = formatMetricLabel(overlay.metric)
+      const unit = overlay.unit ? ` ${overlay.unit}` : ''
+      lines.push(`${label}: ${Math.round(nearest[1] * 10) / 10}${unit}`)
+    }
   }
-  if (hasData(hrvData)) {
-    const nearest = findNearest(hrvData, time)
-    if (nearest) lines.push(`HRV: ${Math.round(nearest[1])} ms`)
-  }
-  if (hasData(stressData)) {
-    const nearest = findNearest(stressData, time)
-    if (nearest) lines.push(`Stress: ${Math.round(nearest[1])}`)
-  }
+
   if (stages) {
     const stage = findStageAtTime(stages, time)
     if (stage) lines.push(`Stage: ${stage}`)
@@ -227,9 +331,7 @@ const buildTooltipLines = (
 const renderChart = ({
   containerRef,
   hasHypnogram,
-  hrData,
-  hrvData,
-  stressData,
+  overlays,
   stages,
   start,
   end,
@@ -238,9 +340,7 @@ const renderChart = ({
 }: {
   containerRef: { current: HTMLDivElement | null }
   hasHypnogram: boolean
-  hrData: TimeSeries | undefined
-  hrvData: TimeSeries | undefined
-  stressData: TimeSeries | undefined
+  overlays: MetricOverlay[]
   stages: SleepStage[] | undefined
   start: Date
   end: Date
@@ -277,7 +377,7 @@ const renderChart = ({
     drawHypnogram(g, xScale, innerWidth, innerHeight, stages)
   }
 
-  drawOverlays(g, xScale, innerWidth, innerHeight, hasHypnogram, hrData, hrvData, stressData)
+  drawOverlays(g, xScale, innerWidth, innerHeight, !!hasHypnogram, overlays)
 
   // Tooltip crosshair and interaction overlay
   const crosshair = g
@@ -303,7 +403,7 @@ const renderChart = ({
 
       crosshair.attr('x1', mx).attr('x2', mx).style('display', null)
 
-      const lines = buildTooltipLines(time, hrData, hrvData, stressData, hasHypnogram ? stages : undefined)
+      const lines = buildTooltipLines(time, overlays, hasHypnogram ? stages : undefined)
 
       if (tooltip) {
         tooltip.textContent = lines.join('\n')
@@ -346,88 +446,142 @@ const ChartToggle = ({
   </button>
 )
 
-export const ActivityChart = ({
-  start,
-  end,
-  stages,
-  showHrDefault = false,
-  showHrvDefault = false,
-  showStressDefault = true,
-}: ActivityChartProps) => {
+/** Discover available metrics in a time range via bucketed query. */
+const useAvailableMetrics = (start: Date, end: Date) =>
+  useQuery({
+    queryFn: async () => {
+      const response = await fetchBucketedMetrics(start, end, undefined, '1h')
+      const metricSet = new Set<string>()
+      for (const bucket of response.buckets ?? []) {
+        for (const metric of Object.keys(bucket.metrics)) {
+          if (!EXCLUDED_METRICS.has(metric)) metricSet.add(metric)
+        }
+      }
+      return [...metricSet].sort()
+    },
+    queryKey: ['detail-available-metrics', start.toISOString(), end.toISOString()],
+    staleTime: 5 * 60 * 1000,
+  })
+
+export const ActivityChart = ({ start, end, stages, defaultMetrics = [] }: ActivityChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
-  const [showHr, setShowHr] = useState(showHrDefault)
-  const [showHrv, setShowHrv] = useState(showHrvDefault)
-  const [showStress, setShowStress] = useState(showStressDefault)
 
-  const hrQuery = useQuery({
-    enabled: showHr,
-    queryFn: () => fetchHeartRate(start, end),
-    queryKey: ['detail-hr', start.toISOString(), end.toISOString()],
-    staleTime: 5 * 60 * 1000,
+  const [enabledMetrics, setEnabledMetrics] = useState<Set<string>>(() => new Set(defaultMetrics))
+  // Track toggle order for axis priority (most recent gets axis)
+  const [toggleOrder, setToggleOrder] = useState<string[]>(() => [...defaultMetrics])
+
+  const availableQuery = useAvailableMetrics(start, end)
+  const availableMetrics = availableQuery.data ?? []
+
+  // Auto-enable default metrics when available metrics load
+  const defaultsAppliedRef = useRef(false)
+  useEffect(() => {
+    if (availableMetrics.length > 0 && !defaultsAppliedRef.current) {
+      defaultsAppliedRef.current = true
+      const validDefaults = defaultMetrics.filter((m) => availableMetrics.includes(m))
+      if (validDefaults.length > 0) {
+        setEnabledMetrics(new Set(validDefaults))
+        setToggleOrder(validDefaults)
+      }
+    }
+  }, [availableMetrics, defaultMetrics])
+
+  const toggleMetric = useCallback(
+    (metric: string) => {
+      setEnabledMetrics((prev) => {
+        const next = new Set(prev)
+        if (next.has(metric)) {
+          next.delete(metric)
+        } else {
+          next.add(metric)
+        }
+        return next
+      })
+      setToggleOrder((prev) => {
+        const filtered = prev.filter((m) => m !== metric)
+        if (!enabledMetrics.has(metric)) {
+          // Being toggled on — add to end (most recent)
+          return [...filtered, metric]
+        }
+        // Being toggled off — remove
+        return filtered
+      })
+    },
+    [enabledMetrics],
+  )
+
+  // Compute which metrics get axes (last MAX_RIGHT_AXES in toggleOrder that are enabled)
+  const metricsWithAxes = new Set(toggleOrder.filter((m) => enabledMetrics.has(m)).slice(-MAX_RIGHT_AXES))
+
+  // Compute fallback color index for non-known metrics
+  const fallbackColorIndices = new Map<string, number>()
+  let fallbackIdx = 0
+  for (const metric of availableMetrics) {
+    if (!KNOWN_METRIC_COLORS[metric]) {
+      fallbackColorIndices.set(metric, fallbackIdx++)
+    }
+  }
+
+  // Dynamic queries for each enabled metric
+  const metricQueries = useQueries({
+    queries: availableMetrics.map((metric) => ({
+      enabled: enabledMetrics.has(metric),
+      queryFn: () => fetchMetricTimeSeries(metric, start, end),
+      queryKey: ['detail-metric', metric, start.toISOString(), end.toISOString()],
+      staleTime: 5 * 60 * 1000,
+    })),
   })
 
-  const hrvQuery = useQuery({
-    enabled: showHrv,
-    queryFn: () => fetchHrv(start, end),
-    queryKey: ['detail-hrv', start.toISOString(), end.toISOString()],
-    staleTime: 5 * 60 * 1000,
-  })
+  // Build overlay list for enabled metrics with data
+  const overlays: MetricOverlay[] = []
+  for (let i = 0; i < availableMetrics.length; i++) {
+    const metric = availableMetrics[i]!
+    if (!enabledMetrics.has(metric)) continue
+    const data = metricQueries[i]?.data
+    if (!hasData(data)) continue
 
-  const stressQuery = useQuery({
-    enabled: showStress,
-    queryFn: () => fetchStress(start, end),
-    queryKey: ['detail-stress', start.toISOString(), end.toISOString()],
-    staleTime: 5 * 60 * 1000,
-  })
+    overlays.push({
+      color: getMetricColor(metric, fallbackColorIndices.get(metric) ?? 0),
+      data,
+      metric,
+      showAxis: metricsWithAxes.has(metric),
+      unit: getMetricUnit(metric),
+    })
+  }
 
   const hasHypnogram = stages && stages.length > 0
-  const hrData = showHr ? hrQuery.data : undefined
-  const hrvData = showHrv ? hrvQuery.data : undefined
-  const stressData = showStress ? stressQuery.data : undefined
 
   useEffect(
     () =>
       renderChart({
         containerRef,
         hasHypnogram: !!hasHypnogram,
-        hrData,
-        hrvData,
-        stressData,
+        overlays,
         stages,
         start,
         end,
         svgRef,
         tooltipRef,
       }),
-    [start, end, stages, hasHypnogram, hrData, hrvData, stressData],
+    [start, end, stages, hasHypnogram, overlays],
   )
 
   return (
     <div class="activity-chart-container">
       <div class="chart-toggles">
-        <ChartToggle
-          color="#ef4444"
-          label="HR"
-          active={showHr}
-          loading={hrQuery.isLoading}
-          onToggle={() => setShowHr(!showHr)}
-        />
-        <ChartToggle
-          color="#14b8a6"
-          label="HRV"
-          active={showHrv}
-          loading={hrvQuery.isLoading}
-          onToggle={() => setShowHrv(!showHrv)}
-        />
-        <ChartToggle
-          color="#f97316"
-          label="Stress"
-          active={showStress}
-          loading={stressQuery.isLoading}
-          onToggle={() => setShowStress(!showStress)}
-        />
+        {availableQuery.isLoading && <span class="chart-toggle-loading">Loading metrics...</span>}
+        {availableMetrics.map((metric, i) => (
+          <ChartToggle
+            key={metric}
+            color={getMetricColor(metric, fallbackColorIndices.get(metric) ?? 0)}
+            label={formatMetricLabel(metric)}
+            active={enabledMetrics.has(metric)}
+            loading={metricQueries[i]?.isLoading ?? false}
+            onToggle={() => toggleMetric(metric)}
+          />
+        ))}
       </div>
       <div class="chart-svg-container" ref={containerRef}>
         <svg ref={svgRef} />
