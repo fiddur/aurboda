@@ -8,6 +8,8 @@ export const NAV_LINKS = [
   { href: '/add', label: '+ Add', icon: '➕' },
   { href: '/chart', label: 'Chart', icon: '📈' },
   { href: '/places', label: 'Places', icon: '📍' },
+  { href: '/activity-types', label: 'Types', icon: '🏷' },
+  { href: '/deduction-rules', label: 'Rules', icon: '🔗' },
 ]
 
 export const DATA_SOURCE_LINKS = [
