@@ -9,7 +9,7 @@ import type { CalendarSyncResult } from '@aurboda/api-spec'
 
 import ical from 'node-ical'
 
-import { insertRawRecord, insertTag, upsertSyncState } from './db/index.ts'
+import { insertActivity, insertRawRecord, upsertSyncState } from './db/index.ts'
 
 export interface CalendarEvent {
   uid: string
@@ -86,12 +86,14 @@ export const syncCalendar = async (
     const events = parseICalEvents(icsText)
 
     for (const event of events) {
-      await insertTag(user, {
+      await insertActivity(user, {
+        activity_type: 'calendar_event',
+        data: { calendar_name: calendar.name },
         end_time: event.end,
         external_id: event.uid,
         source: 'calendar',
         start_time: event.start,
-        tag: `[${calendar.name}] ${event.summary}`,
+        title: event.summary,
       })
 
       await insertRawRecord(user, {

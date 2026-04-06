@@ -11,9 +11,8 @@ import type { MetricType } from './schema.ts'
 import {
   insertActivity,
   insertRawRecord,
-  insertTag,
   insertTimeSeries,
-  resolveOrCreateTagDefinition,
+  resolveOrCreateActivityType,
   type TimeSeriesPoint,
   upsertSyncedNote,
 } from './db/index.ts'
@@ -486,17 +485,27 @@ const processTags = async (user: string, data: OuraTagWithComment[]) => {
       source: 'oura',
     })
 
-    // Resolve or auto-create a tag definition, including tag_key as alias
-    const extraAliases = record.tag_key ? [record.tag_key] : []
-    const definition = await resolveOrCreateTagDefinition(user, record.tag, { aliases: extraAliases })
+    // Resolve or auto-create an activity type definition from the tag display name
+    const activityType = await resolveOrCreateActivityType(user, record.tag)
 
-    const tagId = await insertTag(user, {
-      ...record,
-      tag: definition.name, // Use canonical definition name
-      tag_definition_id: definition.id,
+    const activityId = await insertActivity(user, {
+      activity_type: activityType,
+      data: record.tag_key ? { tag_key: record.tag_key } : undefined,
+      end_time: record.end_time,
+      external_id: record.external_id,
+      source: 'oura',
+      start_time: record.start_time,
     })
 
-    await upsertSyncedNote(user, 'tag', tagId, 'oura', record.comment, record.start_time, record.end_time)
+    await upsertSyncedNote(
+      user,
+      'activity',
+      activityId,
+      'oura',
+      record.comment,
+      record.start_time,
+      record.end_time,
+    )
   }
 }
 

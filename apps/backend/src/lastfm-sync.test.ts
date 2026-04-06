@@ -10,7 +10,7 @@ import type { Scrobble } from './lastfm.ts'
 import {
   applyRuleRetroactively,
   applyTagRules,
-  cleanupRuleTags,
+  cleanupRuleActivities,
   matchesRule,
   retagAllScrobbles,
   scrobbleRecordToScrobble,
@@ -19,15 +19,26 @@ import {
 
 // Mock the db module
 vi.mock('./db', () => ({
-  findMergeableTag: vi.fn(),
+  findMergeableActivity: vi.fn(),
   getAllScrobbles: vi.fn(),
   getLastFmTagRules: vi.fn(),
   getSyncState: vi.fn(),
-  hardDeleteTagsByExternalIdPrefix: vi.fn(),
-  hardDeleteTagsBySource: vi.fn(),
+  hardDeleteActivitiesByExternalIdPrefix: vi.fn(),
+  hardDeleteActivitiesBySource: vi.fn(),
+  insertActivity: vi.fn(),
   insertRawRecord: vi.fn(),
-  insertTag: vi.fn(),
-  updateTagEndTime: vi.fn(),
+  resolveOrCreateActivityType: vi.fn((_, name: string) =>
+    Promise.resolve(
+      name
+        .replace(/[[\]()]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_|_$/g, '')
+        .replace(/_+/g, '_') || 'unknown',
+    ),
+  ),
+  updateActivityEndTimeByExternalId: vi.fn(),
   upsertSyncState: vi.fn(),
 }))
 
@@ -39,15 +50,15 @@ vi.mock('./lastfm', () => ({
 }))
 
 import {
-  findMergeableTag,
+  findMergeableActivity,
   getAllScrobbles,
   getLastFmTagRules,
   getSyncState,
-  hardDeleteTagsByExternalIdPrefix,
-  hardDeleteTagsBySource,
+  hardDeleteActivitiesByExternalIdPrefix,
+  hardDeleteActivitiesBySource,
+  insertActivity,
   insertRawRecord,
-  insertTag,
-  updateTagEndTime,
+  updateActivityEndTimeByExternalId,
   upsertSyncState,
 } from './db/index.ts'
 import { lastfmClient } from './lastfm.ts'
@@ -253,12 +264,12 @@ describe('applyTagRules', () => {
     const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
 
     expect(tagsCreated).toBe(1)
-    expect(insertTag).toHaveBeenCalledTimes(1)
-    expect(insertTag).toHaveBeenCalledWith('testuser', {
+    expect(insertActivity).toHaveBeenCalledTimes(1)
+    expect(insertActivity).toHaveBeenCalledWith('testuser', {
+      activity_type: 'vocalexercises',
       external_id: expect.stringMatching(/^lastfm-auto-rule-1-/),
       source: 'lastfm-auto',
       start_time: new Date('2024-01-01T10:00:00Z'),
-      tag: 'VocalExercises',
     })
   })
 
@@ -270,7 +281,7 @@ describe('applyTagRules', () => {
     const tagsCreated = await applyTagRules('testuser', scrobbles, [])
 
     expect(tagsCreated).toBe(0)
-    expect(insertTag).not.toHaveBeenCalled()
+    expect(insertActivity).not.toHaveBeenCalled()
   })
 
   it('deduplicates tags with same name and timestamp', async () => {
@@ -302,11 +313,11 @@ describe('applyTagRules', () => {
 
     // Both rules match, but same tag + timestamp should only create one tag
     expect(tagsCreated).toBe(1)
-    expect(insertTag).toHaveBeenCalledTimes(1)
+    expect(insertActivity).toHaveBeenCalledTimes(1)
   })
 
   it('creates span tags for session rules', async () => {
-    vi.mocked(findMergeableTag).mockResolvedValue(undefined)
+    vi.mocked(findMergeableActivity).mockResolvedValue(null)
 
     const scrobbles: Scrobble[] = [
       { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:00:00Z'), track: 'Song 1' },
@@ -330,19 +341,19 @@ describe('applyTagRules', () => {
     const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
 
     expect(tagsCreated).toBe(1)
-    expect(insertTag).toHaveBeenCalledTimes(1)
+    expect(insertActivity).toHaveBeenCalledTimes(1)
     // End time is the last scrobble (10:08) + merge_gap_seconds (10min) = 10:18.
-    expect(insertTag).toHaveBeenCalledWith('testuser', {
+    expect(insertActivity).toHaveBeenCalledWith('testuser', {
+      activity_type: 'vocalexercise',
       end_time: new Date('2024-01-01T10:18:00Z'),
       external_id: expect.stringMatching(/^lastfm-session-rule-1-/),
       source: 'lastfm-auto',
       start_time: new Date('2024-01-01T10:00:00Z'),
-      tag: 'VocalExercise',
     })
   })
 
   it('creates multiple span tags for separate sessions', async () => {
-    vi.mocked(findMergeableTag).mockResolvedValue(undefined)
+    vi.mocked(findMergeableActivity).mockResolvedValue(null)
 
     const scrobbles: Scrobble[] = [
       { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:00:00Z'), track: 'Song 1' },
@@ -367,11 +378,11 @@ describe('applyTagRules', () => {
     const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
 
     expect(tagsCreated).toBe(2)
-    expect(insertTag).toHaveBeenCalledTimes(2)
+    expect(insertActivity).toHaveBeenCalledTimes(2)
   })
 
   it('creates separate session tags when scrobbles arrive in reverse chronological order', async () => {
-    vi.mocked(findMergeableTag).mockResolvedValue(undefined)
+    vi.mocked(findMergeableActivity).mockResolvedValue(null)
 
     // Last.fm API returns scrobbles in reverse chronological order (newest first)
     const scrobbles: Scrobble[] = [
@@ -399,37 +410,37 @@ describe('applyTagRules', () => {
     const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
 
     expect(tagsCreated).toBe(2)
-    expect(insertTag).toHaveBeenCalledTimes(2)
+    expect(insertActivity).toHaveBeenCalledTimes(2)
 
     // First session: Jan 9 (11:00–11:04) + merge_gap 10min = 11:14.
-    expect(insertTag).toHaveBeenCalledWith('testuser', {
+    expect(insertActivity).toHaveBeenCalledWith('testuser', {
+      activity_type: 'vocalexercise',
       end_time: new Date('2024-01-09T11:14:00Z'),
       external_id: expect.stringContaining('rule-1'),
       source: 'lastfm-auto',
       start_time: new Date('2024-01-09T11:00:00Z'),
-      tag: 'VocalExercise',
     })
 
     // Second session: Jan 17 (10:00–10:08) + merge_gap 10min = 10:18.
-    expect(insertTag).toHaveBeenCalledWith('testuser', {
+    expect(insertActivity).toHaveBeenCalledWith('testuser', {
+      activity_type: 'vocalexercise',
       end_time: new Date('2024-01-17T10:18:00Z'),
       external_id: expect.stringContaining('rule-1'),
       source: 'lastfm-auto',
       start_time: new Date('2024-01-17T10:00:00Z'),
-      tag: 'VocalExercise',
     })
   })
 
-  it('extends existing tag via findMergeableTag for cross-sync merging', async () => {
-    const existingTag = {
+  it('extends existing activity via findMergeableActivity for cross-sync merging', async () => {
+    const existingActivity = {
+      activity_type: 'vocalexercise',
       end_time: new Date('2024-01-01T09:58:00Z'),
       external_id: 'lastfm-session-rule-1-existing',
-      id: 'tag-id-1',
+      id: 'activity-id-1',
       source: 'lastfm-auto' as const,
       start_time: new Date('2024-01-01T09:50:00Z'),
-      tag: 'VocalExercise',
     }
-    vi.mocked(findMergeableTag).mockResolvedValueOnce(existingTag)
+    vi.mocked(findMergeableActivity).mockResolvedValueOnce(existingActivity)
 
     const scrobbles: Scrobble[] = [
       { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:02:00Z'), track: 'Song 1' },
@@ -453,16 +464,16 @@ describe('applyTagRules', () => {
 
     // End extended by merge_gap_seconds: 10:06 + 10min = 10:16.
     expect(tagsCreated).toBe(1)
-    expect(updateTagEndTime).toHaveBeenCalledWith(
+    expect(updateActivityEndTimeByExternalId).toHaveBeenCalledWith(
       'testuser',
       'lastfm-session-rule-1-existing',
       new Date('2024-01-01T10:16:00Z'),
     )
-    expect(insertTag).not.toHaveBeenCalled()
+    expect(insertActivity).not.toHaveBeenCalled()
   })
 
   it('extends single-scrobble session by merge_gap_seconds', async () => {
-    vi.mocked(findMergeableTag).mockResolvedValue(undefined)
+    vi.mocked(findMergeableActivity).mockResolvedValue(null)
 
     // Single matching scrobble — merge_gap_seconds used as duration estimate
     const scrobbles: Scrobble[] = [
@@ -485,18 +496,18 @@ describe('applyTagRules', () => {
     const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
 
     expect(tagsCreated).toBe(1)
-    expect(insertTag).toHaveBeenCalledWith('testuser', {
+    expect(insertActivity).toHaveBeenCalledWith('testuser', {
+      activity_type: 'holosync',
       // End = 14:36 + 31min = 15:07
       end_time: new Date('2024-01-01T15:07:00Z'),
       external_id: expect.stringMatching(/^lastfm-session-rule-1-/),
       source: 'lastfm-auto',
       start_time: new Date('2024-01-01T14:36:00Z'),
-      tag: 'Holosync',
     })
   })
 
   it('handles mix of point-in-time and session rules', async () => {
-    vi.mocked(findMergeableTag).mockResolvedValue(undefined)
+    vi.mocked(findMergeableActivity).mockResolvedValue(null)
 
     const scrobbles: Scrobble[] = [
       { artist: 'Warmup Artist', timestamp: new Date('2024-01-01T10:00:00Z'), track: 'Song 1' },
@@ -559,7 +570,7 @@ describe('applyTagRules', () => {
     const tagsCreated = await applyTagRules('testuser', scrobbles, rules)
 
     expect(tagsCreated).toBe(2)
-    expect(insertTag).toHaveBeenCalledTimes(2)
+    expect(insertActivity).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -600,7 +611,7 @@ describe('syncLastFmData', () => {
     expect(result.tags_created).toBe(1)
 
     expect(insertRawRecord).toHaveBeenCalledTimes(1)
-    expect(insertTag).toHaveBeenCalledTimes(1)
+    expect(insertActivity).toHaveBeenCalledTimes(1)
     expect(upsertSyncState).toHaveBeenCalledWith(
       'testuser',
       expect.objectContaining({
@@ -755,7 +766,7 @@ describe('applyRuleRetroactively', () => {
 
     expect(tagsCreated).toBe(1)
     expect(getAllScrobbles).toHaveBeenCalledWith('testuser')
-    expect(insertTag).toHaveBeenCalledTimes(1)
+    expect(insertActivity).toHaveBeenCalledTimes(1)
   })
 
   it('returns 0 when no scrobbles exist', async () => {
@@ -774,29 +785,37 @@ describe('applyRuleRetroactively', () => {
     const tagsCreated = await applyRuleRetroactively('testuser', rule)
 
     expect(tagsCreated).toBe(0)
-    expect(insertTag).not.toHaveBeenCalled()
+    expect(insertActivity).not.toHaveBeenCalled()
   })
 })
 
-describe('cleanupRuleTags', () => {
+describe('cleanupRuleActivities', () => {
   beforeEach(() => {
     vi.resetAllMocks()
   })
 
-  it('deletes point-in-time and session tags for the rule', async () => {
-    vi.mocked(hardDeleteTagsByExternalIdPrefix).mockResolvedValueOnce(3).mockResolvedValueOnce(2)
+  it('deletes point-in-time and session activities for the rule', async () => {
+    vi.mocked(hardDeleteActivitiesByExternalIdPrefix).mockResolvedValueOnce(3).mockResolvedValueOnce(2)
 
-    const deleted = await cleanupRuleTags('testuser', 'rule-abc')
+    const deleted = await cleanupRuleActivities('testuser', 'rule-abc')
 
     expect(deleted).toBe(5)
-    expect(hardDeleteTagsByExternalIdPrefix).toHaveBeenCalledWith('testuser', 'lastfm-auto-rule-abc-')
-    expect(hardDeleteTagsByExternalIdPrefix).toHaveBeenCalledWith('testuser', 'lastfm-session-rule-abc-')
+    expect(hardDeleteActivitiesByExternalIdPrefix).toHaveBeenCalledWith(
+      'testuser',
+      'lastfm-auto',
+      'lastfm-auto-rule-abc-',
+    )
+    expect(hardDeleteActivitiesByExternalIdPrefix).toHaveBeenCalledWith(
+      'testuser',
+      'lastfm-auto',
+      'lastfm-session-rule-abc-',
+    )
   })
 
-  it('returns 0 when no tags match', async () => {
-    vi.mocked(hardDeleteTagsByExternalIdPrefix).mockResolvedValue(0)
+  it('returns 0 when no activities match', async () => {
+    vi.mocked(hardDeleteActivitiesByExternalIdPrefix).mockResolvedValue(0)
 
-    const deleted = await cleanupRuleTags('testuser', 'nonexistent')
+    const deleted = await cleanupRuleActivities('testuser', 'nonexistent')
 
     expect(deleted).toBe(0)
   })
@@ -808,7 +827,7 @@ describe('retagAllScrobbles', () => {
   })
 
   it('deletes all auto-tags and reapplies rules', async () => {
-    vi.mocked(hardDeleteTagsBySource).mockResolvedValue(10)
+    vi.mocked(hardDeleteActivitiesBySource).mockResolvedValue(10)
     vi.mocked(getAllScrobbles).mockResolvedValue([
       {
         album: 'Album',
@@ -833,12 +852,12 @@ describe('retagAllScrobbles', () => {
 
     expect(result.tags_deleted).toBe(10)
     expect(result.tags_created).toBe(1)
-    expect(hardDeleteTagsBySource).toHaveBeenCalledWith('testuser', 'lastfm-auto')
-    expect(insertTag).toHaveBeenCalledTimes(1)
+    expect(hardDeleteActivitiesBySource).toHaveBeenCalledWith('testuser', 'lastfm-auto')
+    expect(insertActivity).toHaveBeenCalledTimes(1)
   })
 
   it('returns early when no scrobbles exist', async () => {
-    vi.mocked(hardDeleteTagsBySource).mockResolvedValue(5)
+    vi.mocked(hardDeleteActivitiesBySource).mockResolvedValue(5)
     vi.mocked(getAllScrobbles).mockResolvedValue([])
     vi.mocked(getLastFmTagRules).mockResolvedValue([
       {
@@ -856,11 +875,11 @@ describe('retagAllScrobbles', () => {
 
     expect(result.tags_deleted).toBe(5)
     expect(result.tags_created).toBe(0)
-    expect(insertTag).not.toHaveBeenCalled()
+    expect(insertActivity).not.toHaveBeenCalled()
   })
 
   it('returns early when no rules exist', async () => {
-    vi.mocked(hardDeleteTagsBySource).mockResolvedValue(5)
+    vi.mocked(hardDeleteActivitiesBySource).mockResolvedValue(5)
     vi.mocked(getAllScrobbles).mockResolvedValue([
       {
         album: '',
@@ -875,6 +894,6 @@ describe('retagAllScrobbles', () => {
 
     expect(result.tags_deleted).toBe(5)
     expect(result.tags_created).toBe(0)
-    expect(insertTag).not.toHaveBeenCalled()
+    expect(insertActivity).not.toHaveBeenCalled()
   })
 })
