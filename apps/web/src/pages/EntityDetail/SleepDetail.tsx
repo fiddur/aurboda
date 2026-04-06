@@ -4,7 +4,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 
-import type { Activity } from '../../state/api'
+import type { Activity, ActivityTypeDefinition } from '../../state/api'
 
 import { fetchBucketedMetrics } from '../../state/api'
 import { resolveItemIcon } from '../../utils/emojiLookup'
@@ -72,12 +72,14 @@ export const SleepDetail = ({
   draft,
   onDraftChange,
   itemIcons,
+  typeDefinitions,
 }: {
   activity: Activity
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (d: ActivityDraft) => void
   itemIcons: Record<string, string>
+  typeDefinitions?: ActivityTypeDefinition[]
 }) => {
   const end = activity.end_time ?? new Date(activity.start_time.getTime() + 8 * 60 * 60000)
   const displayStart = activity.merged_start_time ?? activity.start_time
@@ -116,6 +118,7 @@ export const SleepDetail = ({
           isEditing={isEditing}
           draft={draft}
           onDraftChange={onDraftChange}
+          typeDefinitions={typeDefinitions}
           durationLabel="In Bed"
           icon={icon}
         />
