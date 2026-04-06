@@ -4,7 +4,7 @@
 import { exerciseTypeNames, getExerciseTypeName } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
-import type { Activity } from '../../state/api'
+import type { Activity, ActivityTypeDefinition } from '../../state/api'
 
 import { fetchMetricTimeSeries } from '../../state/api'
 import { resolveItemIcon } from '../../utils/emojiLookup'
@@ -149,12 +149,14 @@ export const ExerciseDetail = ({
   draft,
   onDraftChange,
   itemIcons,
+  typeDefinitions,
 }: {
   activity: Activity
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (d: ActivityDraft) => void
   itemIcons: Record<string, string>
+  typeDefinitions?: ActivityTypeDefinition[]
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
@@ -194,6 +196,7 @@ export const ExerciseDetail = ({
           isEditing={isEditing}
           draft={draft}
           onDraftChange={onDraftChange}
+          typeDefinitions={typeDefinitions}
           icon={icon}
         />
 

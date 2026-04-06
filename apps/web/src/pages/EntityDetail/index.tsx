@@ -11,10 +11,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
-import type { Activity, ExerciseTypeName, SourceRecord } from '../../state/api'
+import type { Activity, ActivityTypeDefinition, ExerciseTypeName, SourceRecord } from '../../state/api'
 
 import {
   fetchActivityById,
+  fetchActivityTypeDefinitions,
   fetchItemIcons,
   fetchProductivityById,
   fetchScreentimeCategories,
@@ -59,12 +60,14 @@ const GenericActivityDetail = ({
   draft,
   onDraftChange,
   itemIcons,
+  typeDefinitions,
 }: {
   activity: Activity
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (d: ActivityDraft) => void
   itemIcons: Record<string, string>
+  typeDefinitions?: ActivityTypeDefinition[]
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
@@ -87,6 +90,7 @@ const GenericActivityDetail = ({
         isEditing={isEditing}
         draft={draft}
         onDraftChange={onDraftChange}
+        typeDefinitions={typeDefinitions}
         icon={icon}
       />
 
@@ -111,22 +115,24 @@ const ActivityDetailDispatch = ({
   draft,
   onDraftChange,
   itemIcons,
+  typeDefinitions,
 }: {
   activity: Activity
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (d: ActivityDraft) => void
   itemIcons: Record<string, string>
+  typeDefinitions?: ActivityTypeDefinition[]
 }) => {
   const musicStart = activity.merged_start_time ?? activity.start_time
   const musicEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
 
-  const isSleep =
-    activity.activity_type === 'sleep' ||
-    activity.activity_type === 'nap' ||
-    activity.activity_type === 'rest'
-  const isExercise = activity.activity_type === 'exercise'
+  // Use display_category from type definitions to decide which detail component to show
+  const typeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
+  const displayCategory = typeDef?.display_category ?? 'other'
+  const isSleep = displayCategory === 'sleep_rest'
+  const isExercise = displayCategory === 'exercise'
   const hasSourceRecords = activity.source_records && activity.source_records.length > 1
 
   return (
@@ -142,6 +148,7 @@ const ActivityDetailDispatch = ({
           draft={draft}
           onDraftChange={onDraftChange}
           itemIcons={itemIcons}
+          typeDefinitions={typeDefinitions}
         />
       )}
       {isExercise && (
@@ -151,6 +158,7 @@ const ActivityDetailDispatch = ({
           draft={draft}
           onDraftChange={onDraftChange}
           itemIcons={itemIcons}
+          typeDefinitions={typeDefinitions}
         />
       )}
       {!isSleep && !isExercise && (
@@ -160,6 +168,7 @@ const ActivityDetailDispatch = ({
           draft={draft}
           onDraftChange={onDraftChange}
           itemIcons={itemIcons}
+          typeDefinitions={typeDefinitions}
         />
       )}
 
@@ -178,6 +187,7 @@ const makeDraft = (activity: Activity): ActivityDraft => {
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
   const exerciseType = resolveExerciseType(activity)
   return {
+    activity_type: activity.activity_type,
     end_time: formatDateTimeLocal(displayEnd),
     exercise_type: exerciseType,
     notes: activity.notes ?? '',
@@ -223,9 +233,16 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     [queryClient],
   )
 
+  const { data: typeDefinitions } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activity-type-definitions'],
+    staleTime: 30 * 60 * 1000,
+  })
+
   const [isEditing, setIsEditing] = useState(false)
   const [isMerging, setIsMerging] = useState(false)
   const emptyDraft: ActivityDraft = {
+    activity_type: '',
     end_time: '',
     notes: '',
     start_time: '',
@@ -245,6 +262,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     mutationFn: () => {
       if (!activity) return Promise.resolve()
       const body: {
+        activity_type?: string
         start_time?: string
         end_time?: string
         title?: string
@@ -252,6 +270,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         exercise_type?: ExerciseTypeName
       } = {}
       const orig = makeDraft(activity)
+      if (draft.activity_type !== orig.activity_type) body.activity_type = draft.activity_type
       if (draft.title !== orig.title) body.title = draft.title
       if (draft.start_time !== orig.start_time) {
         body.start_time = new Date(draft.start_time).toISOString()
@@ -303,6 +322,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         draft={draft}
         onDraftChange={setDraft}
         itemIcons={itemIcons}
+        typeDefinitions={typeDefinitions}
       />
       <NotesSection entityType="activity" entityId={rawEntityId} allEntityIds={allEntityIds} />
     </>
