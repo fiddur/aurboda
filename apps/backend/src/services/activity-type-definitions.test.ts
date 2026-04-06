@@ -23,8 +23,8 @@ describe('listActivityTypeDefinitions', () => {
 
   test('returns all definitions from db', async () => {
     const defs = [
-      { color: '#3b82f6', display_category: 'sleep_rest', display_name: 'Sleep', is_builtin: true, name: 'sleep' },
-      { color: '#ef4444', display_category: 'wellness', display_name: 'Sauna', is_builtin: false, name: 'sauna' },
+      { color: '#3b82f6', display_category: 'sleep_rest' as const, display_name: 'Sleep', is_builtin: true, name: 'sleep' },
+      { color: '#ef4444', display_category: 'wellness' as const, display_name: 'Sauna', is_builtin: false, name: 'sauna' },
     ]
     vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue(defs)
 
