@@ -249,6 +249,7 @@ export const tagDefinitionSchema = z
     id: z.string().uuid().meta({ description: 'Tag definition ID' }),
     latest_time: iso8601DateTimeSchema.optional().meta({ description: 'Most recent tag occurrence' }),
     name: z.string().meta({ description: 'Display name' }),
+    show_on_timeline: z.boolean().optional().meta({ description: 'Whether to show on the timeline' }),
     updated_at: iso8601DateTimeSchema.optional(),
   })
   .meta({ id: 'TagDefinition', description: 'Canonical tag identity with aliases' })

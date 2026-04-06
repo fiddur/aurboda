@@ -17,10 +17,12 @@ export const auditLogLevelSchema = z.enum(['info', 'warn', 'error']).meta({
 
 export type AuditLogLevel = z.infer<typeof auditLogLevelSchema>
 
-export const auditLogCategorySchema = z.enum(['sync', 'auth', 'settings', 'data', 'system']).meta({
-  description: 'Category of the audit log entry',
-  id: 'AuditLogCategory',
-})
+export const auditLogCategorySchema = z
+  .enum(['sync', 'auth', 'settings', 'data', 'deduction', 'system'])
+  .meta({
+    description: 'Category of the audit log entry',
+    id: 'AuditLogCategory',
+  })
 
 export type AuditLogCategory = z.infer<typeof auditLogCategorySchema>
 

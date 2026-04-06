@@ -55,6 +55,7 @@ import { createAuditLogRouter } from './routes/audit-log-router.ts'
 import { createChartDataRouter } from './routes/chart-data-router.ts'
 import { createCorrelationsRouter } from './routes/correlations-router.ts'
 import { createDashboardRouter } from './routes/dashboard-router.ts'
+import { createDeductionRulesRouter } from './routes/deduction-rules-router.ts'
 import { createFoodItemsRouter } from './routes/food-items-router.ts'
 import { createIconsRouter } from './routes/icons-router.ts'
 import { createLocationsRouter } from './routes/locations-router.ts'
@@ -71,6 +72,7 @@ import { createTrendsRouter } from './routes/trends-router.ts'
 import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
+import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
 import { createGeocodeQueue, type GeocodeQueue } from './services/geocode-queue.ts'
@@ -575,6 +577,7 @@ const main = async () => {
   httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(createActivitiesRouter(authMiddleware, syncProvider))
   httpd.use('/activity-types', createActivityTypesRouter(authMiddleware))
+  httpd.use('/deduction-rules', createDeductionRulesRouter(authMiddleware, createDefaultEngineDeps()))
   httpd.use('/locations', createLocationsRouter(authMiddleware))
   httpd.use(createSettingsRouter(authMiddleware))
   httpd.use(createAuditLogRouter(authMiddleware))

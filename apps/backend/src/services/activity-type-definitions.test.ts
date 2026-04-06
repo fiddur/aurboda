@@ -23,8 +23,22 @@ describe('listActivityTypeDefinitions', () => {
 
   test('returns all definitions from db', async () => {
     const defs = [
-      { color: '#3b82f6', display_category: 'sleep_rest' as const, display_name: 'Sleep', is_builtin: true, name: 'sleep' },
-      { color: '#ef4444', display_category: 'wellness' as const, display_name: 'Sauna', is_builtin: false, name: 'sauna' },
+      {
+        color: '#3b82f6',
+        display_category: 'sleep_rest' as const,
+        display_name: 'Sleep',
+        is_builtin: true,
+        name: 'sleep',
+        show_on_timeline: true,
+      },
+      {
+        color: '#ef4444',
+        display_category: 'wellness' as const,
+        display_name: 'Sauna',
+        is_builtin: false,
+        name: 'sauna',
+        show_on_timeline: true,
+      },
     ]
     vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue(defs)
 
@@ -45,6 +59,7 @@ describe('addActivityTypeDefinition', () => {
       display_name: 'Sauna',
       is_builtin: false,
       name: 'sauna',
+      show_on_timeline: true,
     }
     vi.mocked(db.insertActivityTypeDefinition).mockResolvedValue(created)
 
@@ -78,6 +93,7 @@ describe('addActivityTypeDefinition', () => {
       display_name: 'Sauna',
       is_builtin: false,
       name: 'sauna',
+      show_on_timeline: true,
     })
 
     const result = await addActivityTypeDefinition(user, {
@@ -101,6 +117,7 @@ describe('updateActivityTypeDefinition', () => {
       display_name: 'Sauna',
       is_builtin: false,
       name: 'sauna',
+      show_on_timeline: true,
     })
     vi.mocked(db.updateActivityTypeDefinition).mockResolvedValue({
       color: '#f97316',
@@ -108,6 +125,7 @@ describe('updateActivityTypeDefinition', () => {
       display_name: 'Hot Sauna',
       is_builtin: false,
       name: 'sauna',
+      show_on_timeline: true,
     })
 
     const result = await updateActivityTypeDefinition(user, 'sauna', {

@@ -184,7 +184,8 @@ const getActivityMeta = (
   if (!type) return null
 
   // Exercise has special label/color logic
-  if (type === 'exercise') return { actType: 'exercise', color: exerciseColor(a), label: getExerciseTypeName(a) }
+  if (type === 'exercise')
+    {return { actType: 'exercise', color: exerciseColor(a), label: getExerciseTypeName(a) }}
 
   // Built-in non-exercise types
   const builtin = BUILTIN_DEFAULTS[type]

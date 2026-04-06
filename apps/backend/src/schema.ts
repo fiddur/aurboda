@@ -564,6 +564,7 @@ export const createTableStatements: Record<string, string> = {
       color             VARCHAR(7) NOT NULL DEFAULT '#6b7280',
       icon              VARCHAR(50),
       is_builtin        BOOLEAN NOT NULL DEFAULT false,
+      show_on_timeline  BOOLEAN NOT NULL DEFAULT true,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -576,6 +577,41 @@ export const createTableStatements: Record<string, string> = {
       ('nap', 'Nap', 'sleep_rest', '#60a5fa', true),
       ('rest', 'Rest', 'sleep_rest', '#86efac', true)
     ON CONFLICT (name) DO NOTHING
+  `,
+
+  // Deduction rules — automatically create activities from data conditions
+  deduction_rules: `
+    CREATE TABLE IF NOT EXISTS deduction_rules (
+      id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name                  VARCHAR(255) NOT NULL,
+      enabled               BOOLEAN NOT NULL DEFAULT true,
+      priority              INTEGER NOT NULL DEFAULT 0,
+      conditions            JSONB NOT NULL,
+      output_activity_type  VARCHAR(100) NOT NULL,
+      output_title          VARCHAR(255),
+      merge_gap_seconds     INTEGER,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  deduction_rules_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_deduction_rules_enabled ON deduction_rules (enabled, priority) WHERE enabled = true
+  `,
+
+  // Deduction rule run audit log
+  deduction_rule_runs: `
+    CREATE TABLE IF NOT EXISTS deduction_rule_runs (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      rule_id           UUID NOT NULL REFERENCES deduction_rules(id) ON DELETE CASCADE,
+      evaluated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      window_start      TIMESTAMPTZ NOT NULL,
+      window_end        TIMESTAMPTZ NOT NULL,
+      activities_created INTEGER NOT NULL DEFAULT 0,
+      duration_ms       INTEGER
+    )
+  `,
+  deduction_rule_runs_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_deduction_rule_runs_rule ON deduction_rule_runs (rule_id, evaluated_at DESC)
   `,
 
   // User-defined goals for tracking metrics (extracted from user_settings JSONB)
@@ -637,6 +673,7 @@ export const createTableStatements: Record<string, string> = {
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name            VARCHAR(100) NOT NULL,
       icon            TEXT,
+      show_on_timeline BOOLEAN NOT NULL DEFAULT true,
       aliases         TEXT[] NOT NULL DEFAULT '{}',
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -783,6 +820,12 @@ export const tableCreationOrder = [
   'mcp_sessions_indexes',
   'outbound_sync_queue',
   'outbound_sync_queue_indexes',
+  'activity_type_definitions',
+  'activity_type_definitions_seed',
+  'deduction_rules',
+  'deduction_rules_indexes',
+  'deduction_rule_runs',
+  'deduction_rule_runs_indexes',
 ]
 
 /**

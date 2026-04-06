@@ -82,6 +82,19 @@ export {
   insertTimeSeries,
 } from './time-series.ts'
 
+// Deduction Rules
+export {
+  deleteDeductionRule,
+  deleteRuleActivities,
+  deleteStaleRuleActivities,
+  getDeductionRule,
+  getDeductionRules,
+  getEnabledDeductionRules,
+  insertDeductionRule,
+  insertDeductionRuleRun,
+  updateDeductionRule,
+} from './deduction-rules.ts'
+
 // Activity Type Definitions
 export {
   activityTypeExists,

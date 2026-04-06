@@ -1,11 +1,10 @@
-import type { QueryResultRow } from 'pg'
-
 /**
  * Row mapper functions for converting PostgreSQL rows to typed objects.
  *
  * Replaces inline `as Type` casts with validated type guards.
  */
 import type { ActivityType, DataSource, MetricType } from '@aurboda/api-spec'
+import type { QueryResultRow } from 'pg'
 
 import type {
   Activity,
@@ -35,6 +34,7 @@ import type {
 
 const VALID_DATA_SOURCES = [
   'aurboda',
+  'deduction-rule',
   'health_connect',
   'health_connect_aggregate',
   'lab_report',
