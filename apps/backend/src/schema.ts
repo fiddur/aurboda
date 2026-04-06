@@ -555,6 +555,29 @@ export const createTableStatements: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_custom_metrics_name ON custom_metrics (name)
   `,
 
+  // Activity type definitions (built-in + custom)
+  activity_type_definitions: `
+    CREATE TABLE IF NOT EXISTS activity_type_definitions (
+      name              VARCHAR(100) PRIMARY KEY,
+      display_name      VARCHAR(255) NOT NULL,
+      display_category  VARCHAR(50) NOT NULL DEFAULT 'other',
+      color             VARCHAR(7) NOT NULL DEFAULT '#6b7280',
+      icon              VARCHAR(50),
+      is_builtin        BOOLEAN NOT NULL DEFAULT false,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  activity_type_definitions_seed: `
+    INSERT INTO activity_type_definitions (name, display_name, display_category, color, is_builtin) VALUES
+      ('sleep', 'Sleep', 'sleep_rest', '#3b82f6', true),
+      ('exercise', 'Exercise', 'exercise', '#22c55e', true),
+      ('meditation', 'Meditation', 'meditation', '#a855f7', true),
+      ('nap', 'Nap', 'sleep_rest', '#60a5fa', true),
+      ('rest', 'Rest', 'sleep_rest', '#86efac', true)
+    ON CONFLICT (name) DO NOTHING
+  `,
+
   // User-defined goals for tracking metrics (extracted from user_settings JSONB)
   goals: `
     CREATE TABLE IF NOT EXISTS goals (

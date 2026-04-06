@@ -34,7 +34,12 @@ vi.mock('./services/mutations', () => ({
 
 // Mock db for sync status and stored detected locations
 vi.mock('./db', () => ({
+  activityTypeExists: vi.fn().mockResolvedValue(true),
+  deleteActivityTypeDefinition: vi.fn().mockResolvedValue(false),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
+  getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
+  getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
+  getActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
   getAllSyncStates: vi.fn(),
   getDetectedLocations: vi.fn(),
   getOAuthToken: vi.fn().mockResolvedValue(null),
@@ -43,8 +48,10 @@ vi.mock('./db', () => ({
   getUniqueTags: vi.fn().mockResolvedValue([]),
   getUserSettings: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
+  insertActivityTypeDefinition: vi.fn(),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
+  updateActivityTypeDefinition: vi.fn(),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
   upsertUserSettings: vi.fn(),
 }))

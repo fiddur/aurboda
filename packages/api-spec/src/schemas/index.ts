@@ -3,6 +3,7 @@
  */
 
 export * from './activities.ts'
+export * from './activity-type-definitions.ts'
 export * from './admin.ts'
 export * from './audit-log.ts'
 export * from './chart-data.ts'

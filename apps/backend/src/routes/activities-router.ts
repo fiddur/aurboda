@@ -31,6 +31,7 @@ import multer from 'multer'
 
 import {
   getActivityById,
+  getActivityTypeNames,
   getDistinctApps,
   getNearbyActivities,
   getOverlappingActivities,
@@ -164,12 +165,7 @@ export const createActivitiesRouter = (
       const { start, end, types: typesParam } = req.query
       const user = req.user!
 
-      const types = (typesParam?.split(',') || ['sleep', 'exercise', 'meditation', 'nap']) as (
-        | 'sleep'
-        | 'exercise'
-        | 'meditation'
-        | 'nap'
-      )[]
+      const types = typesParam ? typesParam.split(',') : await getActivityTypeNames(user)
 
       const activities = await queryActivities(user, types, new Date(start), new Date(end), syncProvider)
       res.json({ data: activities, success: true })

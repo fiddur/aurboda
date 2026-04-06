@@ -161,7 +161,15 @@ export const createDurationTagItem = (
 type ActivityMeta = {
   label: string
   color: string
-  actType: 'sleep' | 'nap' | 'rest' | 'meditation' | 'exercise'
+  actType: string
+}
+
+/** Default colors and labels for built-in activity types. */
+const BUILTIN_DEFAULTS: Record<string, { color: string; label: string }> = {
+  meditation: { color: '#a855f7', label: 'Meditation' },
+  nap: { color: '#60a5fa', label: 'Nap' },
+  rest: { color: '#86efac', label: 'Rest' },
+  sleep: { color: '#3b82f6', label: 'Sleep' },
 }
 
 /** Extract label, color, and activity type from an Activity. Returns null for unknown types. */
@@ -170,25 +178,28 @@ const getActivityMeta = (
   activityColors: Record<string, string>,
   exerciseColor: (a: Activity) => string,
   getExerciseTypeName: (a: Activity) => string,
+  typeDefinitions?: Map<string, { display_name: string; color: string }>,
 ): ActivityMeta | null => {
-  switch (a.activity_type) {
-    case 'sleep':
-      return { actType: 'sleep', color: activityColors.sleep ?? '#3b82f6', label: 'Sleep' }
-    case 'nap':
-      return { actType: 'nap', color: activityColors.nap ?? '#60a5fa', label: 'Nap' }
-    case 'rest':
-      return { actType: 'rest', color: activityColors.rest ?? '#86efac', label: a.title || 'Rest' }
-    case 'meditation':
-      return {
-        actType: 'meditation',
-        color: activityColors.meditation ?? '#a855f7',
-        label: a.title || 'Meditation',
-      }
-    case 'exercise':
-      return { actType: 'exercise', color: exerciseColor(a), label: getExerciseTypeName(a) }
-    default:
-      return null
+  const type = a.activity_type
+  if (!type) return null
+
+  // Exercise has special label/color logic
+  if (type === 'exercise') return { actType: 'exercise', color: exerciseColor(a), label: getExerciseTypeName(a) }
+
+  // Built-in non-exercise types
+  const builtin = BUILTIN_DEFAULTS[type]
+  if (builtin) {
+    return {
+      actType: type,
+      color: activityColors[type] ?? builtin.color,
+      label: (type === 'rest' || type === 'meditation' ? a.title : undefined) || builtin.label,
+    }
   }
+
+  // Custom activity type — look up definition for display metadata
+  const def = typeDefinitions?.get(type)
+  if (!def) return null
+  return { actType: type, color: activityColors[type] ?? def.color, label: a.title || def.display_name }
 }
 
 /** Build tooltip details for an activity item. */
@@ -247,13 +258,14 @@ export const buildActivityColumnItems = (
   sleepMetricsByDate: Map<string, Record<string, number>>,
   buildSleepDetails: (a: Activity, end: Date) => string[],
   scrobbles: { artist: string; track: string; recorded_at: Date }[],
+  typeDefinitions?: Map<string, { display_name: string; color: string }>,
 ): { items: ChartItem[]; overlaps: OverlapWarning[] } => {
   const items: ChartItem[] = []
   const overlaps: OverlapWarning[] = []
 
   // 1. Convert activities to ChartItems
   for (const a of activities) {
-    const meta = getActivityMeta(a, activityColors, exerciseColor, getExerciseTypeName)
+    const meta = getActivityMeta(a, activityColors, exerciseColor, getExerciseTypeName, typeDefinitions)
     if (!meta) continue
 
     const end = a.end_time ?? new Date(a.start_time.getTime() + 60 * 60000)

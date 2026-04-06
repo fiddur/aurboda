@@ -289,8 +289,9 @@ export const updateActivity = async (
   updates: ActivityUpdate,
 ): Promise<Activity | null> => {
   const fields: UpdateEntry[] = []
-  if (updates.activity_type !== undefined)
-    {fields.push({ column: 'activity_type', value: updates.activity_type })}
+  if (updates.activity_type !== undefined) {
+    fields.push({ column: 'activity_type', value: updates.activity_type })
+  }
   if (updates.start_time !== undefined) fields.push({ column: 'start_time', value: updates.start_time })
   if (updates.end_time !== undefined) fields.push({ column: 'end_time', value: updates.end_time })
   if (updates.title !== undefined) fields.push({ column: 'title', value: updates.title })

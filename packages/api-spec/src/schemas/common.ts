@@ -111,20 +111,47 @@ export const isContextualHrvMetric = (metric: MetricType): boolean =>
   (contextualHrvMetrics as readonly string[]).includes(metric)
 
 /**
- * Valid activity types.
+ * Built-in activity types (always available, cannot be deleted).
  */
-export const activityTypes = ['sleep', 'exercise', 'meditation', 'nap', 'rest'] as const
+export const builtinActivityTypes = ['sleep', 'exercise', 'meditation', 'nap', 'rest'] as const
+export type BuiltinActivityType = (typeof builtinActivityTypes)[number]
+
+/** @deprecated Use builtinActivityTypes. Kept for backward compatibility. */
+export const activityTypes = builtinActivityTypes
 
 /**
- * Activity types for activities table.
+ * Activity type identifier — any snake_case string (built-in or custom).
+ * Validated against activity_type_definitions table at runtime.
  */
-export const activityTypeSchema = z.enum(activityTypes).meta({
-  description: 'Type of activity',
-  example: 'exercise',
-  id: 'ActivityType',
-})
+export const activityTypeSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/)
+  .meta({
+    description: 'Activity type identifier (built-in or custom)',
+    example: 'exercise',
+    id: 'ActivityType',
+  })
 
-export type ActivityType = z.infer<typeof activityTypeSchema>
+export type ActivityType = string
+
+/**
+ * Display categories for grouping activity types in the timeline.
+ */
+export const displayCategories = [
+  'sleep_rest',
+  'exercise',
+  'meditation',
+  'wellness',
+  'productivity',
+  'travel',
+  'other',
+] as const
+export type DisplayCategory = (typeof displayCategories)[number]
+
+export const displayCategorySchema = z.enum(displayCategories).meta({
+  description: 'Display category for grouping in timeline',
+  id: 'DisplayCategory',
+})
 
 /**
  * Supported data sources.
