@@ -12,6 +12,7 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
+import { getAllActivityTypeNames } from '../db/index.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
   getDailySummary,
@@ -158,7 +159,6 @@ Use cases:
       tz: tzSchema,
     },
     async ({ end, start, types, tz }) => {
-      const { getAllActivityTypeNames } = await import('../db/activities.ts')
       const requestedTypes = types ?? (await getAllActivityTypeNames(user))
       const activities = await queryActivities(user, requestedTypes, new Date(start), new Date(end), sync)
       return tzJsonResponse({ data: activities, success: true }, tz)
