@@ -116,7 +116,28 @@ export interface ActivityTypeDefinition {
   display_category: string
   color: string
   icon?: string
+  aliases?: string[]
   is_builtin: boolean
+  show_on_timeline: boolean
+}
+
+export interface DeductionRuleCondition {
+  kind: 'activity' | 'tag' | 'screentime_category'
+  activity_type?: string
+  tag_name?: string
+  category?: string[]
+}
+
+export interface DeductionRule {
+  id: string
+  name: string
+  enabled: boolean
+  priority: number
+  conditions: DeductionRuleCondition[]
+  output_activity_type: string
+  output_title?: string
+  merge_gap_seconds?: number
+  created_at?: string
 }
 
 export interface SourceRecord {
@@ -765,6 +786,104 @@ export const mergeTagDefinitionsApi = async (sourceId: string, targetId: string)
   // Merge is no longer supported at the activity-types level
   // This is a no-op that returns the target definition
   return fetchTagDefinitionById(targetId)
+}
+
+// Update activity type definition (show_on_timeline, color, icon, display_name, etc.)
+export const updateActivityTypeDefinition = async (
+  name: string,
+  body: Partial<{
+    display_name: string
+    display_category: string
+    color: string
+    icon: string
+    show_on_timeline: boolean
+  }>,
+): Promise<ActivityTypeDefinition> => {
+  const { token } = auth.value
+  const response = await axios.patch<{ data: ActivityTypeDefinition; success: boolean }>(
+    `${API_URL}/activity-types/${encodeURIComponent(name)}`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
+// Deduction rules CRUD
+export const fetchDeductionRules = async (): Promise<DeductionRule[]> => {
+  const { token } = auth.value
+  const response = await axios.get<{ success: boolean; data: DeductionRule[] }>(
+    `${API_URL}/deduction-rules`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data ?? []
+}
+
+export const createDeductionRule = async (body: {
+  name: string
+  conditions: DeductionRuleCondition[]
+  output_activity_type: string
+  output_title?: string
+  merge_gap_seconds?: number
+  priority?: number
+  enabled?: boolean
+}): Promise<DeductionRule> => {
+  const { token } = auth.value
+  const response = await axios.post<{ success: boolean; data: DeductionRule }>(
+    `${API_URL}/deduction-rules`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
+export const updateDeductionRule = async (
+  id: string,
+  body: Partial<{
+    name: string
+    conditions: DeductionRuleCondition[]
+    output_activity_type: string
+    output_title: string | null
+    merge_gap_seconds: number | null
+    priority: number
+    enabled: boolean
+  }>,
+): Promise<DeductionRule> => {
+  const { token } = auth.value
+  const response = await axios.patch<{ success: boolean; data: DeductionRule }>(
+    `${API_URL}/deduction-rules/${id}`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
+export const deleteDeductionRule = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/deduction-rules/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export const evaluateDeductionRules = async (): Promise<{
+  rules_evaluated: number
+  activities_created: number
+}> => {
+  const { token } = auth.value
+  const response = await axios.post<{
+    success: boolean
+    rules_evaluated: number
+    activities_created: number
+  }>(
+    `${API_URL}/deduction-rules/evaluate`,
+    {},
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+  return {
+    activities_created: response.data.activities_created,
+    rules_evaluated: response.data.rules_evaluated,
+  }
 }
 
 // Fetch goal progress

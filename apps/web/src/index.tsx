@@ -7,6 +7,7 @@ import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
 import { NotFound } from './pages/_404.jsx'
+import { ActivityTypes } from './pages/ActivityTypes/index.jsx'
 import { AddData } from './pages/AddData/index.jsx'
 import { AdminSettings } from './pages/AdminSettings/index.jsx'
 import { AuditLog } from './pages/AuditLog/index.jsx'
@@ -24,6 +25,8 @@ import { LastFmSource } from './pages/DataSources/LastFmSource.jsx'
 import { OuraSource } from './pages/DataSources/OuraSource.jsx'
 import { OwnTracksSource } from './pages/DataSources/OwnTracksSource.jsx'
 import { RescueTimeSource } from './pages/DataSources/RescueTimeSource.jsx'
+import { DeductionRules } from './pages/DeductionRules/index.jsx'
+import { DeductionRuleDetail } from './pages/DeductionRules/RuleDetail.jsx'
 import { EntityDetail } from './pages/EntityDetail/index.jsx'
 import { ExerciseMeta } from './pages/ExerciseMeta/index.jsx'
 import { FoodItemDetail } from './pages/FoodItems/FoodItemDetail.jsx'
@@ -94,6 +97,10 @@ export function App() {
               <Route path="/data-sources/lastfm" component={LastFmSource} />
               <Route path="/data-sources/owntracks" component={OwnTracksSource} />
               <Route path="/data-sources/calendars" component={CalendarsSource} />
+              <Route path="/activity-types" component={ActivityTypes} />
+              <Route path="/deduction-rules/new" component={DeductionRuleDetail} />
+              <Route path="/deduction-rules/:id" component={DeductionRuleDetail} />
+              <Route path="/deduction-rules" component={DeductionRules} />
               <Route path="/screentime-categories/:id" component={CategoryDetail} />
               <Route path="/screentime-categories" component={ScreentimeCategories} />
               <Route path="/settings" component={Settings} />

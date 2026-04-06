@@ -16,6 +16,7 @@ import type { ChartItem, Column, Orientation } from './types'
 
 import {
   fetchActivities,
+  fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
   fetchMeals,
   fetchCustomMetrics,
@@ -858,9 +859,25 @@ export const Timeline = () => {
     [todayKey],
   )
 
-  const activities = activitiesQuery.data ?? []
+  const { data: activityTypeDefs = [] } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activityTypeDefinitions'],
+    staleTime: 5 * 60_000,
+  })
+  const hiddenTypes = useMemo(
+    () => new Set(activityTypeDefs.filter((t) => !t.show_on_timeline).map((t) => t.name)),
+    [activityTypeDefs],
+  )
+
+  const activities = useMemo(
+    () => (activitiesQuery.data ?? []).filter((a) => !hiddenTypes.has(a.activity_type ?? '')),
+    [activitiesQuery.data, hiddenTypes],
+  )
   const places = placesQuery.data ?? []
-  const tagActivities = tagActivitiesQuery.data ?? []
+  const tagActivities = useMemo(
+    () => (tagActivitiesQuery.data ?? []).filter((a) => !hiddenTypes.has(a.activity_type ?? '')),
+    [tagActivitiesQuery.data, hiddenTypes],
+  )
   const productivity = productivityQuery.data ?? []
   const scrobbles = scrobblesQuery.data ?? []
 
