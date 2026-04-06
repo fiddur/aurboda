@@ -44,6 +44,7 @@ describe('activity-type-definitions db', () => {
     const result = await getActivityTypeDefinitions(user)
     expect(result).toEqual([
       {
+        aliases: [],
         color: '#3b82f6',
         display_category: 'sleep_rest',
         display_name: 'Sleep',
@@ -82,6 +83,7 @@ describe('activity-type-definitions db', () => {
 
     const result = await getActivityTypeDefinition(user, 'sauna')
     expect(result).toEqual({
+      aliases: [],
       color: '#ef4444',
       display_category: 'wellness',
       display_name: 'Sauna',

@@ -240,7 +240,7 @@ describe('getDailySummary', () => {
   test('returns null for heartRate when no data', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -263,7 +263,7 @@ describe('getDailySummary', () => {
       ])
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -287,7 +287,7 @@ describe('getDailySummary', () => {
       ])
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -305,7 +305,7 @@ describe('getDailySummary', () => {
   test('includes Oura scores when data is present', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -332,7 +332,7 @@ describe('getDailySummary', () => {
   test('returns null ouraScores when no Oura data', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -347,7 +347,7 @@ describe('getDailySummary', () => {
   test('returns partial ouraScores when some metrics are missing', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -381,7 +381,7 @@ describe('getDailySummary', () => {
       .mockResolvedValueOnce([]) // daily steps
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([
       {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T10:30:00Z'),
@@ -410,7 +410,7 @@ describe('getDailySummary', () => {
       .mockResolvedValueOnce([]) // daily steps
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([
       {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T10:30:00Z'),
@@ -446,7 +446,7 @@ describe('getDailySummary', () => {
       .mockResolvedValueOnce([]) // daily steps
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([
       {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T10:30:00Z'),
@@ -475,7 +475,7 @@ describe('getDailySummary', () => {
       .mockResolvedValueOnce([]) // daily steps
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([
       {
         activity_type: 'exercise',
         // No end_time - ongoing session
@@ -508,7 +508,7 @@ describe('getDailySummary', () => {
         start_time: new Date('2024-03-07T22:01:00Z'),
       },
     ])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -543,7 +543,7 @@ describe('getDailySummary', () => {
         start_time: new Date('2024-03-08T22:30:00Z'),
       },
     ])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -570,7 +570,7 @@ describe('getDailySummary', () => {
   test('returns null for primary_sleep and evening_sleep when no sleep data', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -594,7 +594,7 @@ describe('getDailySummary', () => {
         start_time: new Date('2024-03-07T23:00:00Z'),
       },
     ])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([
@@ -632,7 +632,7 @@ describe('getDailySummary', () => {
         start_time: new Date('2024-03-07T23:00:00Z'),
       },
     ])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([
@@ -676,7 +676,7 @@ describe('getDailySummary', () => {
         start_time: new Date('2024-03-07T23:00:00Z'),
       },
     ])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -694,7 +694,7 @@ describe('getDailySummary', () => {
       .mockResolvedValueOnce([]) // steps
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([
       {
         activity_type: 'exercise',
         data: { exerciseType: 83 }, // yoga
@@ -729,7 +729,7 @@ describe('getDailySummary', () => {
       .mockResolvedValueOnce([]) // steps
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -778,7 +778,7 @@ describe('getDailySummary', () => {
       .mockResolvedValueOnce([]) // steps
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -810,7 +810,7 @@ describe('getDailySummary', () => {
         start_time: new Date('2024-01-14T23:00:00Z'),
       },
     ])
-    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
     vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -839,7 +839,7 @@ describe('getDailySummary', () => {
         start_time: new Date('2024-01-14T23:00:00Z'),
       },
     ])
-    vi.mocked(db.getActivities).mockResolvedValue([
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([
       {
         activity_type: 'exercise',
         data: { exerciseType: 83, metadata: { device: 'oura' } },
