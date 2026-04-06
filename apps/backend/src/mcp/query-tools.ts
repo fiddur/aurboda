@@ -2,7 +2,6 @@
  * MCP query tools - read-only data retrieval.
  */
 import {
-  activityTypes,
   activityTypeSchema,
   bucketSizeSchema,
   dateOnlySchema,
@@ -159,7 +158,8 @@ Use cases:
       tz: tzSchema,
     },
     async ({ end, start, types, tz }) => {
-      const requestedTypes = types ?? [...activityTypes]
+      const { getAllActivityTypeNames } = await import('../db/activities.ts')
+      const requestedTypes = types ?? (await getAllActivityTypeNames(user))
       const activities = await queryActivities(user, requestedTypes, new Date(start), new Date(end), sync)
       return tzJsonResponse({ data: activities, success: true }, tz)
     },
