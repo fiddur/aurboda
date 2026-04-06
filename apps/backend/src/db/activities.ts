@@ -144,7 +144,7 @@ export const getOverlappingActivities = async (user: string, activity: Activity)
 
   const result = await query(
     user,
-    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
      WHERE activity_type = $1
        AND deleted_at IS NULL
@@ -186,17 +186,49 @@ export const insertNewActivity = async (user: string, activity: Activity): Promi
   return result.rows[0].id as string
 }
 
-export const insertActivity = async (user: string, activity: Activity) => {
-  await query(
+export const insertActivity = async (user: string, activity: Activity): Promise<string> => {
+  if (activity.external_id) {
+    // Upsert by external_id (for sourced data like calendar events, Oura tags, lastfm)
+    const result = await query(
+      user,
+      `INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, notes, data)
+       VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
+         activity_type = EXCLUDED.activity_type,
+         start_time = EXCLUDED.start_time,
+         end_time = EXCLUDED.end_time,
+         title = EXCLUDED.title,
+         notes = EXCLUDED.notes,
+         data = EXCLUDED.data
+       WHERE activities.deleted_at IS NULL
+       RETURNING id`,
+      [
+        activity.id,
+        activity.source,
+        activity.external_id,
+        activity.activity_type,
+        activity.start_time,
+        activity.end_time,
+        activity.title,
+        activity.notes,
+        activity.data,
+      ],
+    )
+    return result.rows[0]?.id as string
+  }
+
+  // Upsert by type + time (for sync data without external_id)
+  const result = await query(
     user,
     `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
      VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)
-     ON CONFLICT (source, activity_type, start_time) DO UPDATE SET
+     ON CONFLICT (source, activity_type, start_time) WHERE external_id IS NULL DO UPDATE SET
        end_time = EXCLUDED.end_time,
        title = EXCLUDED.title,
        notes = EXCLUDED.notes,
        data = EXCLUDED.data
-     WHERE activities.deleted_at IS NULL`,
+     WHERE activities.deleted_at IS NULL
+     RETURNING id`,
     [
       activity.id,
       activity.source,
@@ -208,38 +240,76 @@ export const insertActivity = async (user: string, activity: Activity) => {
       activity.data,
     ],
   )
+  return result.rows[0]?.id as string
 }
 
 export const insertActivities = async (user: string, activities: Activity[]) => {
   if (activities.length === 0) return
 
-  const values = activities.map((a) => [
-    a.id ?? null,
-    a.source,
-    a.activity_type,
-    a.start_time,
-    a.end_time ?? null,
-    a.title ?? null,
-    a.notes ?? null,
-    a.data ?? null,
-  ])
+  // Split into external_id and non-external_id batches for different conflict targets
+  const withExtId = activities.filter((a) => a.external_id)
+  const withoutExtId = activities.filter((a) => !a.external_id)
 
-  await query(
-    user,
-    format(
-      `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
-       SELECT COALESCE(v.id::uuid, gen_random_uuid()), v.source, v.activity_type,
-              v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.notes, v.data::jsonb
-       FROM (VALUES %L) AS v(id, source, activity_type, start_time, end_time, title, notes, data)
-       ON CONFLICT (source, activity_type, start_time) DO UPDATE SET
-         end_time = EXCLUDED.end_time,
-         title = EXCLUDED.title,
-         notes = EXCLUDED.notes,
-         data = EXCLUDED.data
-       WHERE activities.deleted_at IS NULL`,
-      values,
-    ),
-  )
+  if (withExtId.length > 0) {
+    const values = withExtId.map((a) => [
+      a.id ?? null,
+      a.source,
+      a.external_id!,
+      a.activity_type,
+      a.start_time,
+      a.end_time ?? null,
+      a.title ?? null,
+      a.notes ?? null,
+      a.data ?? null,
+    ])
+    await query(
+      user,
+      format(
+        `INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, notes, data)
+         SELECT COALESCE(v.id::uuid, gen_random_uuid()), v.source, v.external_id, v.activity_type,
+                v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.notes, v.data::jsonb
+         FROM (VALUES %L) AS v(id, source, external_id, activity_type, start_time, end_time, title, notes, data)
+         ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
+           activity_type = EXCLUDED.activity_type,
+           start_time = EXCLUDED.start_time,
+           end_time = EXCLUDED.end_time,
+           title = EXCLUDED.title,
+           notes = EXCLUDED.notes,
+           data = EXCLUDED.data
+         WHERE activities.deleted_at IS NULL`,
+        values,
+      ),
+    )
+  }
+
+  if (withoutExtId.length > 0) {
+    const values = withoutExtId.map((a) => [
+      a.id ?? null,
+      a.source,
+      a.activity_type,
+      a.start_time,
+      a.end_time ?? null,
+      a.title ?? null,
+      a.notes ?? null,
+      a.data ?? null,
+    ])
+    await query(
+      user,
+      format(
+        `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
+         SELECT COALESCE(v.id::uuid, gen_random_uuid()), v.source, v.activity_type,
+                v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.notes, v.data::jsonb
+         FROM (VALUES %L) AS v(id, source, activity_type, start_time, end_time, title, notes, data)
+         ON CONFLICT (source, activity_type, start_time) WHERE external_id IS NULL DO UPDATE SET
+           end_time = EXCLUDED.end_time,
+           title = EXCLUDED.title,
+           notes = EXCLUDED.notes,
+           data = EXCLUDED.data
+         WHERE activities.deleted_at IS NULL`,
+        values,
+      ),
+    )
+  }
 }
 
 export const getActivityById = async (
@@ -250,7 +320,7 @@ export const getActivityById = async (
   const deletedClause = includeDeleted ? '' : ' AND deleted_at IS NULL'
   const result = await query(
     user,
-    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
      WHERE id = $1${deletedClause}`,
     [id],
@@ -301,7 +371,7 @@ export const updateActivity = async (
   if (fields.length === 0) return getActivityById(user, id)
 
   const update = buildDynamicUpdate('activities', id, fields, {
-    returning: 'id, source, activity_type, start_time, end_time, title, notes, data, deleted_at',
+    returning: 'id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at',
   })
   if (!update) return getActivityById(user, id)
 
@@ -320,7 +390,7 @@ export const getActivities = async (
 
   const result = await query(
     user,
-    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
      WHERE activity_type = ANY($1) AND start_time >= $2 AND start_time <= $3
        AND deleted_at IS NULL
@@ -341,7 +411,7 @@ export const getActivities = async (
 export const getSleepSessions = async (user: string, start: Date, end: Date): Promise<MergedActivity[]> => {
   const result = await query(
     user,
-    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
      WHERE activity_type = 'sleep'
        AND start_time < $2
@@ -363,7 +433,7 @@ export const getSleepSessions = async (user: string, start: Date, end: Date): Pr
 export const getActivitiesNeedingDetail = async (user: string, limit = 10): Promise<Activity[]> => {
   const result = await query(
     user,
-    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
      WHERE source = 'garmin' AND activity_type IN ('exercise', 'meditation')
        AND data->>'garmin_activity_id' IS NOT NULL
@@ -396,7 +466,7 @@ export const getNearbyActivities = async (
 
   const result = await query(
     user,
-    `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
      WHERE activity_type = $1
        AND id != $2
@@ -460,5 +530,112 @@ export const deleteGarminActivityWithWrongType = async (
 export const markActivityDetailSynced = async (user: string, id: string): Promise<void> => {
   await query(user, `UPDATE activities SET data = data || '{"detail_synced": true}'::jsonb WHERE id = $1`, [
     id,
+  ])
+}
+
+/** Get activities by display category (e.g., 'exercise' gets all exercise types). */
+export const getActivitiesByCategory = async (
+  user: string,
+  displayCategory: string,
+  start: Date,
+  end: Date,
+): Promise<MergedActivity[]> => {
+  const result = await query(
+    user,
+    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at
+     FROM activities a
+     JOIN activity_type_definitions atd ON a.activity_type = atd.name
+     WHERE atd.display_category = $1 AND a.start_time >= $2 AND a.start_time <= $3
+       AND a.deleted_at IS NULL
+     ORDER BY a.start_time`,
+    [displayCategory, start, end],
+  )
+  const activities = result.rows.map(mapActivityRow)
+  return mergeOverlappingActivities(activities)
+}
+
+/**
+ * Get activities whose type definition is NOT in the given display categories.
+ * Used to get "tag-like" activities (everything except sleep/exercise).
+ */
+export const getActivitiesExcludingCategories = async (
+  user: string,
+  excludeCategories: string[],
+  start: Date,
+  end: Date,
+): Promise<Activity[]> => {
+  const result = await query(
+    user,
+    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at
+     FROM activities a
+     LEFT JOIN activity_type_definitions atd ON a.activity_type = atd.name
+     WHERE a.deleted_at IS NULL
+       AND a.start_time >= $1 AND a.start_time <= $2
+       AND (atd.display_category IS NULL OR atd.display_category != ALL($3))
+     ORDER BY a.start_time`,
+    [start, end, excludeCategories],
+  )
+  return result.rows.map(mapActivityRow)
+}
+
+/** Hard-delete all activities from a given source. Used for lastfm-auto retag cleanup. */
+export const hardDeleteActivitiesBySource = async (user: string, source: string): Promise<number> => {
+  const result = await query(user, `DELETE FROM activities WHERE source = $1`, [source])
+  return result.rowCount ?? 0
+}
+
+/** Hard-delete activities by source and external_id prefix. */
+export const hardDeleteActivitiesByExternalIdPrefix = async (
+  user: string,
+  source: string,
+  prefix: string,
+): Promise<number> => {
+  const result = await query(user, `DELETE FROM activities WHERE source = $1 AND external_id LIKE $2`, [
+    source,
+    `${prefix}%`,
+  ])
+  return result.rowCount ?? 0
+}
+
+/** Find a mergeable activity of the same type near a given time. */
+export const findMergeableActivity = async (
+  user: string,
+  activityType: string,
+  startTime: Date,
+  mergeSpanSeconds: number,
+  source?: string,
+): Promise<Activity | null> => {
+  const windowStart = new Date(startTime.getTime() - mergeSpanSeconds * 1000)
+  const sourceClause = source ? ' AND source = $4' : ''
+  const params: unknown[] = [activityType, windowStart, startTime]
+  if (source) params.push(source)
+
+  const result = await query(
+    user,
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
+     FROM activities
+     WHERE activity_type = $1
+       AND deleted_at IS NULL
+       AND (
+         (end_time IS NOT NULL AND end_time >= $2 AND end_time <= $3)
+         OR (end_time IS NULL AND start_time >= $2 AND start_time <= $3)
+       )${sourceClause}
+     ORDER BY COALESCE(end_time, start_time) DESC
+     LIMIT 1`,
+    params,
+  )
+  if (result.rows.length === 0) return null
+  return mapActivityRow(result.rows[0])
+}
+
+/** Update an activity's end_time by external_id. */
+export const updateActivityEndTimeByExternalId = async (
+  user: string,
+  externalId: string,
+  endTime: Date,
+): Promise<void> => {
+  await query(user, `UPDATE activities SET end_time = $1 WHERE external_id = $2 AND deleted_at IS NULL`, [
+    endTime,
+    externalId,
   ])
 }

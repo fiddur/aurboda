@@ -29,7 +29,7 @@ import {
   type LastFmMatchMode,
   type LastFmMatchType,
 } from './db/index.ts'
-import { applyRuleRetroactively, cleanupRuleTags, retagAllScrobbles } from './lastfm-sync.ts'
+import { applyRuleRetroactively, cleanupRuleActivities, retagAllScrobbles } from './lastfm-sync.ts'
 import { validateBody } from './validation.ts'
 
 /**
@@ -174,7 +174,7 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
 
       try {
         // Clean up old auto-tags before updating
-        await cleanupRuleTags(user, id)
+        await cleanupRuleActivities(user, id)
 
         const updated = await updateLastFmTagRule(user, id, {
           artist_name: req.body.artist_name,
@@ -231,7 +231,7 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
       const { id } = req.params
 
       try {
-        const tagsRemoved = await cleanupRuleTags(user, id)
+        const tagsRemoved = await cleanupRuleActivities(user, id)
         const deleted = await deleteLastFmTagRule(user, id)
         if (!deleted) {
           return res.status(404).json({ error: 'Rule not found', success: false })

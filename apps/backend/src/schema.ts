@@ -29,8 +29,10 @@ export {
   type MetricType,
 } from '@aurboda/api-spec'
 
-// Import types for use in local mappings
+// Import types and values for use in local mappings
 import type { ActivityType, MetricType } from '@aurboda/api-spec'
+
+import { exerciseTypeNames } from '@aurboda/api-spec'
 
 export const SCHEMA_VERSION = 1
 
@@ -39,24 +41,25 @@ export const SCHEMA_VERSION = 1
  * Each table is created with proper indexes for query performance.
  */
 export const createTableStatements: Record<string, string> = {
-  // Time-ranged activities (sleep, exercise, meditation)
+  // Unified activities table (covers all time-ranged events: sleep, exercise, tags, calendar, etc.)
   activities: `
     CREATE TABLE IF NOT EXISTS activities (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       source          VARCHAR(50) NOT NULL,
-      activity_type   VARCHAR(50) NOT NULL,
+      external_id     VARCHAR(255),
+      activity_type   VARCHAR(100) NOT NULL,
       start_time      TIMESTAMPTZ NOT NULL,
       end_time        TIMESTAMPTZ,
       title           VARCHAR(255),
       notes           TEXT,
       data            JSONB,
-      deleted_at      TIMESTAMPTZ,
-      CONSTRAINT unique_activity UNIQUE (source, activity_type, start_time)
+      deleted_at      TIMESTAMPTZ
     )
   `,
 
   activities_indexes: `
-    CREATE INDEX IF NOT EXISTS idx_activities_type_time ON activities (activity_type, start_time DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_ext_id ON activities (source, external_id) WHERE external_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_type_time ON activities (source, activity_type, start_time) WHERE external_id IS NULL;
     CREATE INDEX IF NOT EXISTS idx_activities_time_range ON activities (start_time, end_time);
     CREATE INDEX IF NOT EXISTS idx_activities_not_deleted ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL
   `,
@@ -563,19 +566,109 @@ export const createTableStatements: Record<string, string> = {
       display_category  VARCHAR(50) NOT NULL DEFAULT 'other',
       color             VARCHAR(7) NOT NULL DEFAULT '#6b7280',
       icon              VARCHAR(50),
+      aliases           TEXT[] NOT NULL DEFAULT '{}',
+      health_connect_record_type VARCHAR(100),
+      health_connect_exercise_type INTEGER,
       is_builtin        BOOLEAN NOT NULL DEFAULT false,
       show_on_timeline  BOOLEAN NOT NULL DEFAULT true,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
+  activity_type_definitions_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_atd_aliases ON activity_type_definitions USING GIN (aliases)
+  `,
   activity_type_definitions_seed: `
-    INSERT INTO activity_type_definitions (name, display_name, display_category, color, is_builtin) VALUES
-      ('sleep', 'Sleep', 'sleep_rest', '#3b82f6', true),
-      ('exercise', 'Exercise', 'exercise', '#22c55e', true),
-      ('meditation', 'Meditation', 'meditation', '#a855f7', true),
-      ('nap', 'Nap', 'sleep_rest', '#60a5fa', true),
-      ('rest', 'Rest', 'sleep_rest', '#86efac', true)
+    INSERT INTO activity_type_definitions (name, display_name, display_category, color, is_builtin, health_connect_record_type, health_connect_exercise_type) VALUES
+      ('sleep', 'Sleep', 'sleep_rest', '#3b82f6', true, 'SleepSessionRecord', NULL),
+      ('exercise', 'Exercise', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', NULL),
+      ('meditation', 'Meditation', 'meditation', '#a855f7', true, NULL, NULL),
+      ('nap', 'Nap', 'sleep_rest', '#60a5fa', true, 'SleepSessionRecord', NULL),
+      ('rest', 'Rest', 'sleep_rest', '#86efac', true, NULL, NULL),
+      ('calendar_event', 'Calendar Event', 'other', '#f59e0b', true, NULL, NULL),
+      ('back_extension', 'Back Extension', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 1),
+      ('badminton', 'Badminton', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 2),
+      ('barbell_shoulder_press', 'Barbell Shoulder Press', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 3),
+      ('baseball', 'Baseball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 4),
+      ('basketball', 'Basketball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 5),
+      ('bench_press', 'Bench Press', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 6),
+      ('bench_sit_up', 'Bench Sit Up', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 7),
+      ('biking', 'Biking', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 8),
+      ('biking_stationary', 'Biking Stationary', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 9),
+      ('boot_camp', 'Boot Camp', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 10),
+      ('boxing', 'Boxing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 11),
+      ('burpee', 'Burpee', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 12),
+      ('calisthenics', 'Calisthenics', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 13),
+      ('cricket', 'Cricket', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 14),
+      ('crunch', 'Crunch', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 15),
+      ('dancing', 'Dancing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 16),
+      ('deadlift', 'Deadlift', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 17),
+      ('dumbbell_curl_left_arm', 'Dumbbell Curl Left Arm', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 18),
+      ('dumbbell_curl_right_arm', 'Dumbbell Curl Right Arm', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 19),
+      ('dumbbell_front_raise', 'Dumbbell Front Raise', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 20),
+      ('dumbbell_lateral_raise', 'Dumbbell Lateral Raise', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 21),
+      ('dumbbell_triceps_extension_left_arm', 'Dumbbell Triceps Extension Left Arm', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 22),
+      ('dumbbell_triceps_extension_right_arm', 'Dumbbell Triceps Extension Right Arm', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 23),
+      ('dumbbell_triceps_extension_two_arm', 'Dumbbell Triceps Extension Two Arm', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 24),
+      ('elliptical', 'Elliptical', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 25),
+      ('exercise_class', 'Exercise Class', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 26),
+      ('fencing', 'Fencing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 27),
+      ('football_american', 'Football American', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 28),
+      ('football_australian', 'Football Australian', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 29),
+      ('forward_twist', 'Forward Twist', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 30),
+      ('frisbee_disc', 'Frisbee Disc', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 31),
+      ('golf', 'Golf', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 32),
+      ('guided_breathing', 'Guided Breathing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 33),
+      ('gymnastics', 'Gymnastics', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 34),
+      ('handball', 'Handball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 35),
+      ('high_intensity_interval_training', 'High Intensity Interval Training', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 36),
+      ('hiking', 'Hiking', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 37),
+      ('ice_hockey', 'Ice Hockey', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 38),
+      ('ice_skating', 'Ice Skating', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 39),
+      ('jumping_jack', 'Jumping Jack', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 40),
+      ('jump_rope', 'Jump Rope', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 41),
+      ('lat_pull_down', 'Lat Pull Down', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 42),
+      ('lunge', 'Lunge', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 43),
+      ('martial_arts', 'Martial Arts', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 44),
+      ('other_workout', 'Other Workout', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 0),
+      ('paddling', 'Paddling', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 46),
+      ('paragliding', 'Paragliding', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 47),
+      ('pilates', 'Pilates', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 48),
+      ('plank', 'Plank', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 49),
+      ('racquetball', 'Racquetball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 50),
+      ('rock_climbing', 'Rock Climbing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 51),
+      ('roller_hockey', 'Roller Hockey', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 52),
+      ('rowing', 'Rowing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 53),
+      ('rowing_machine', 'Rowing Machine', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 54),
+      ('rugby', 'Rugby', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 55),
+      ('running', 'Running', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 56),
+      ('running_treadmill', 'Running Treadmill', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 57),
+      ('sailing', 'Sailing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 58),
+      ('scuba_diving', 'Scuba Diving', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 59),
+      ('skating', 'Skating', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 60),
+      ('skiing', 'Skiing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 61),
+      ('snowboarding', 'Snowboarding', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 62),
+      ('snowshoeing', 'Snowshoeing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 63),
+      ('soccer', 'Soccer', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 64),
+      ('softball', 'Softball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 65),
+      ('squash', 'Squash', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 66),
+      ('squat', 'Squat', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 67),
+      ('stair_climbing', 'Stair Climbing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 68),
+      ('stair_climbing_machine', 'Stair Climbing Machine', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 69),
+      ('strength_training', 'Strength Training', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 70),
+      ('stretching', 'Stretching', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 71),
+      ('surfing', 'Surfing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 72),
+      ('swimming_open_water', 'Swimming Open Water', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 73),
+      ('swimming_pool', 'Swimming Pool', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 74),
+      ('table_tennis', 'Table Tennis', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 75),
+      ('tennis', 'Tennis', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 76),
+      ('upper_twist', 'Upper Twist', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 77),
+      ('volleyball', 'Volleyball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 78),
+      ('walking', 'Walking', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 79),
+      ('water_polo', 'Water Polo', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 80),
+      ('weightlifting', 'Weightlifting', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 81),
+      ('wheelchair', 'Wheelchair', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 82),
+      ('yoga', 'Yoga', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 83)
     ON CONFLICT (name) DO NOTHING
   `,
 
@@ -821,6 +914,7 @@ export const tableCreationOrder = [
   'outbound_sync_queue',
   'outbound_sync_queue_indexes',
   'activity_type_definitions',
+  'activity_type_definitions_indexes',
   'activity_type_definitions_seed',
   'deduction_rules',
   'deduction_rules_indexes',
@@ -891,11 +985,16 @@ export const metricToHealthConnectType: Partial<Record<MetricType, string>> = {
 
 /**
  * Mapping from Aurboda activity types to Health Connect record type names.
+ * Includes all exercise types (they all map to ExerciseSessionRecord) plus sleep types.
+ * Note: The canonical source for HC mappings is the activity_type_definitions table.
+ * This static map is a fallback for when the DB isn't available.
  */
-export const activityTypeToHealthConnectType: Partial<Record<ActivityType, string>> = {
+export const activityTypeToHealthConnectType: Record<string, string> = {
   exercise: 'ExerciseSessionRecord',
   nap: 'SleepSessionRecord',
   sleep: 'SleepSessionRecord',
+  // All exercise subtypes also map to ExerciseSessionRecord
+  ...Object.fromEntries(exerciseTypeNames.map((name) => [name, 'ExerciseSessionRecord'])),
 }
 
 /**

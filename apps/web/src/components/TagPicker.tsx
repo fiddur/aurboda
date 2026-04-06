@@ -1,9 +1,7 @@
-import type { ProgrammaticTag } from '@aurboda/api-spec'
-
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
-import { fetchProgrammaticTags, fetchUniqueTags } from '../state/api'
+import { fetchActivityTypeDefinitions, type ActivityTypeDefinition } from '../state/api'
 import './TagPicker.css'
 
 interface TagEntry {
@@ -11,19 +9,11 @@ interface TagEntry {
   display: string
 }
 
-const buildTagEntries = (uniqueTags: string[], programmaticTags: ProgrammaticTag[]): TagEntry[] => {
-  const mappings = new Map<string, string>()
-  for (const pt of programmaticTags) {
-    if (pt.current_name) {
-      mappings.set(pt.tag_key, pt.current_name)
-    }
-  }
-
-  return uniqueTags.map((raw) => ({
-    display: mappings.get(raw) ?? raw,
-    raw,
+const buildTagEntries = (defs: ActivityTypeDefinition[]): TagEntry[] =>
+  defs.map((d) => ({
+    display: d.display_name || d.name,
+    raw: d.name,
   }))
-}
 
 export function TagPicker({
   onChange,
@@ -38,19 +28,13 @@ export function TagPicker({
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const { data: uniqueTags } = useQuery({
-    queryFn: fetchUniqueTags,
-    queryKey: ['uniqueTags'],
+  const { data: activityTypeDefs } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activity-type-definitions'],
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: programmaticTags } = useQuery({
-    queryFn: fetchProgrammaticTags,
-    queryKey: ['programmaticTags'],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const tagEntries = uniqueTags && programmaticTags ? buildTagEntries(uniqueTags, programmaticTags) : []
+  const tagEntries = activityTypeDefs ? buildTagEntries(activityTypeDefs) : []
 
   const filteredEntries = tagEntries.filter(
     (entry) =>
@@ -128,7 +112,7 @@ export function TagPicker({
           }}
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder={selectedTags.length === 0 ? 'Search tags...' : ''}
+          placeholder={selectedTags.length === 0 ? 'Search activity types...' : ''}
         />
       </div>
       {isOpen && filteredEntries.length > 0 && (

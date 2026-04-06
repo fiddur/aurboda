@@ -26,7 +26,6 @@ vi.mock('./services/mutations', () => ({
   addTag: vi.fn(),
   deleteActivity: vi.fn(),
   deleteCustomMetric: vi.fn(),
-  deleteTag: vi.fn(),
   getCustomMetrics: vi.fn().mockResolvedValue([]),
   restoreActivity: vi.fn(),
   updateActivity: vi.fn(),
@@ -55,7 +54,14 @@ vi.mock('./db', () => ({
   getUserSettings: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertActivityTypeDefinition: vi.fn(),
-  insertDeductionRule: vi.fn().mockResolvedValue({ conditions: [], enabled: true, id: 'mock-id', name: 'mock', output_activity_type: 'test', priority: 0 }),
+  insertDeductionRule: vi.fn().mockResolvedValue({
+    conditions: [],
+    enabled: true,
+    id: 'mock-id',
+    name: 'mock',
+    output_activity_type: 'test',
+    priority: 0,
+  }),
   insertDeductionRuleRun: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
@@ -509,116 +515,6 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.data).toHaveLength(0)
-    })
-  })
-
-  describe('Tool: get_programmatic_tags', () => {
-    async function callTool(
-      app: express.Express,
-      token: string,
-      toolName: string,
-      args: Record<string, unknown>,
-    ) {
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'tools/call',
-          params: { arguments: args, name: toolName },
-        })
-
-      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
-      return {
-        ...response,
-        parsed,
-        toolResult: JSON.parse(parsed.result.content[0].text),
-      }
-    }
-
-    test('returns programmatic tags with is_programmatic flag and mapped name', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
-      vi.mocked(db.getProgrammaticTags).mockResolvedValue([
-        { count: 5, isProgrammatic: true, latestTime: new Date('2024-01-15T12:00:00Z'), tagKey: uuid },
-      ])
-      vi.mocked(db.getUserSettings).mockResolvedValue({
-        tag_mappings: { [uuid]: 'Food' },
-      })
-
-      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
-
-      expect(response.status).toBe(200)
-      expect(response.toolResult.success).toBe(true)
-      expect(response.toolResult.data).toHaveLength(1)
-      expect(response.toolResult.data[0]).toEqual({
-        count: 5,
-        current_name: 'Food',
-        is_programmatic: true,
-        latest_time: '2024-01-15T12:00:00+00:00',
-        tag_key: uuid,
-      })
-    })
-
-    test('returns non-programmatic tags with current_name set to tag name', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      vi.mocked(db.getProgrammaticTags).mockResolvedValue([
-        {
-          count: 3,
-          isProgrammatic: false,
-          latestTime: new Date('2024-01-15T14:00:00Z'),
-          tagKey: 'VocalExercise',
-        },
-        { count: 10, isProgrammatic: false, latestTime: new Date('2024-01-15T16:00:00Z'), tagKey: 'coffee' },
-      ])
-      vi.mocked(db.getUserSettings).mockResolvedValue(null)
-
-      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
-
-      expect(response.status).toBe(200)
-      expect(response.toolResult.success).toBe(true)
-      expect(response.toolResult.data).toHaveLength(2)
-      // Non-programmatic tags use their tag name as current_name
-      expect(response.toolResult.data[0]).toEqual({
-        count: 3,
-        current_name: 'VocalExercise',
-        is_programmatic: false,
-        latest_time: '2024-01-15T14:00:00+00:00',
-        tag_key: 'VocalExercise',
-      })
-      expect(response.toolResult.data[1]).toEqual({
-        count: 10,
-        current_name: 'coffee',
-        is_programmatic: false,
-        latest_time: '2024-01-15T16:00:00+00:00',
-        tag_key: 'coffee',
-      })
-    })
-
-    test('returns mixed programmatic and non-programmatic tags', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
-      vi.mocked(db.getProgrammaticTags).mockResolvedValue([
-        { count: 2, isProgrammatic: true, latestTime: new Date('2024-01-15T10:00:00Z'), tagKey: uuid },
-        { count: 7, isProgrammatic: false, latestTime: new Date('2024-01-15T12:00:00Z'), tagKey: 'coffee' },
-      ])
-      vi.mocked(db.getUserSettings).mockResolvedValue(null)
-
-      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
-
-      expect(response.toolResult.data).toHaveLength(2)
-      // Programmatic tag without mapping has null current_name
-      expect(response.toolResult.data[0].is_programmatic).toBe(true)
-      expect(response.toolResult.data[0].current_name).toBeNull()
-      // Non-programmatic tag always has current_name = tag name
-      expect(response.toolResult.data[1].is_programmatic).toBe(false)
-      expect(response.toolResult.data[1].current_name).toBe('coffee')
     })
   })
 

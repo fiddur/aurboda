@@ -6,6 +6,7 @@ import type { ActivityTypeDefinition, DisplayCategory } from '@aurboda/api-spec'
 import { query } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
+  aliases: (row.aliases as string[]) ?? [],
   color: row.color as string,
   display_category: row.display_category as DisplayCategory,
   display_name: row.display_name as string,
@@ -15,7 +16,8 @@ const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
   show_on_timeline: (row.show_on_timeline as boolean) ?? true,
 })
 
-const SELECT_COLS = 'name, display_name, display_category, color, icon, is_builtin, show_on_timeline'
+const SELECT_COLS =
+  'name, display_name, display_category, color, icon, aliases, health_connect_record_type, health_connect_exercise_type, is_builtin, show_on_timeline'
 
 export const getActivityTypeDefinitions = async (user: string): Promise<ActivityTypeDefinition[]> => {
   const result = await query(
@@ -41,6 +43,16 @@ export const activityTypeExists = async (user: string, name: string): Promise<bo
   return result.rows.length > 0
 }
 
+/**
+ * Ensure aliases always include the lowercased name.
+ */
+const normalizeAliases = (name: string, aliases: string[] = []): string[] => {
+  const lowerName = name.toLowerCase()
+  const uniqueAliases = new Set(aliases.map((a) => a.toLowerCase()))
+  uniqueAliases.add(lowerName)
+  return [...uniqueAliases]
+}
+
 export const insertActivityTypeDefinition = async (
   user: string,
   def: {
@@ -49,13 +61,15 @@ export const insertActivityTypeDefinition = async (
     display_category: string
     color?: string
     icon?: string
+    aliases?: string[]
     show_on_timeline?: boolean
   },
 ): Promise<ActivityTypeDefinition> => {
+  const aliases = normalizeAliases(def.name, def.aliases)
   const result = await query(
     user,
-    `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, show_on_timeline)
-     VALUES ($1, $2, $3, COALESCE($4, '#6b7280'), $5, COALESCE($6, true))
+    `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, aliases, show_on_timeline)
+     VALUES ($1, $2, $3, COALESCE($4, '#6b7280'), $5, $6, COALESCE($7, true))
      RETURNING ${SELECT_COLS}`,
     [
       def.name,
@@ -63,6 +77,7 @@ export const insertActivityTypeDefinition = async (
       def.display_category,
       def.color ?? null,
       def.icon ?? null,
+      aliases,
       def.show_on_timeline ?? null,
     ],
   )
@@ -76,7 +91,8 @@ export const updateActivityTypeDefinition = async (
     display_name?: string
     display_category?: string
     color?: string
-    icon?: string
+    icon?: string | null
+    aliases?: string[]
     show_on_timeline?: boolean
   },
 ): Promise<ActivityTypeDefinition | null> => {
@@ -100,6 +116,10 @@ export const updateActivityTypeDefinition = async (
     setClauses.push(`icon = $${paramIndex++}`)
     values.push(updates.icon)
   }
+  if (updates.aliases !== undefined) {
+    setClauses.push(`aliases = $${paramIndex++}`)
+    values.push(normalizeAliases(name, updates.aliases))
+  }
   if (updates.show_on_timeline !== undefined) {
     setClauses.push(`show_on_timeline = $${paramIndex++}`)
     values.push(updates.show_on_timeline)
@@ -118,6 +138,89 @@ export const updateActivityTypeDefinition = async (
   )
   if (result.rows.length === 0) return null
   return mapRow(result.rows[0])
+}
+
+/**
+ * Resolve a free-form string to an activity type definition by checking aliases.
+ * Returns the definition name if found, or null if no match.
+ */
+export const resolveActivityTypeByAlias = async (user: string, alias: string): Promise<string | null> => {
+  const lowerAlias = alias.toLowerCase()
+  const result = await query(
+    user,
+    `SELECT name FROM activity_type_definitions WHERE $1 = ANY(aliases) LIMIT 1`,
+    [lowerAlias],
+  )
+  if (result.rows.length === 0) return null
+  return result.rows[0].name as string
+}
+
+/**
+ * Resolve or create an activity type definition from a display name.
+ * Used during sync to ensure all incoming types get a definition.
+ */
+export const resolveOrCreateActivityType = async (
+  user: string,
+  displayName: string,
+  displayCategory = 'other',
+): Promise<string> => {
+  // Try direct name match first
+  const snakeName =
+    displayName
+      .replaceAll(/[[\]()]/g, '')
+      .trim()
+      .toLowerCase()
+      .replaceAll(/[^a-z0-9]+/g, '_')
+      .replaceAll(/^_|_$/g, '')
+      .replaceAll(/_+/g, '_') || 'unknown'
+
+  const existing = await getActivityTypeDefinition(user, snakeName)
+  if (existing) return existing.name
+
+  // Try alias match
+  const aliasMatch = await resolveActivityTypeByAlias(user, displayName)
+  if (aliasMatch) return aliasMatch
+
+  // Create new definition
+  const created = await insertActivityTypeDefinition(user, {
+    aliases: [displayName.toLowerCase()],
+    display_category: displayCategory,
+    display_name: displayName,
+    name: snakeName,
+  })
+  return created.name
+}
+
+/**
+ * Look up the Health Connect exercise type int for an activity type.
+ */
+export const getHealthConnectExerciseType = async (
+  user: string,
+  activityType: string,
+): Promise<number | null> => {
+  const result = await query(
+    user,
+    `SELECT health_connect_exercise_type FROM activity_type_definitions WHERE name = $1`,
+    [activityType],
+  )
+  if (result.rows.length === 0) return null
+  return (result.rows[0].health_connect_exercise_type as number) ?? null
+}
+
+/**
+ * Resolve an activity type from a Health Connect exercise type int.
+ */
+export const resolveActivityTypeFromHcExerciseType = async (
+  user: string,
+  hcExerciseType: number,
+): Promise<string | null> => {
+  const result = await query(
+    user,
+    `SELECT name FROM activity_type_definitions WHERE health_connect_exercise_type = $1 LIMIT 1`,
+    [hcExerciseType],
+  )
+  if (result.rows.length === 0) return null
+  return result.rows[0].name as string
 }
 
 export const deleteActivityTypeDefinition = async (user: string, name: string): Promise<boolean> => {

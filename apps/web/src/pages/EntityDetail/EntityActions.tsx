@@ -7,14 +7,12 @@ import {
   deleteMetricPoint,
   restoreActivity,
   restoreProductivity,
-  restoreTag,
   softDeleteActivity,
   softDeleteProductivity,
-  softDeleteTag,
 } from '../../state/api'
 import { parseMetricEntityId } from './MetricDetail'
 
-export type EntityType = 'activity' | 'tag' | 'productivity' | 'metric' | 'report'
+export type EntityType = 'activity' | 'productivity' | 'metric' | 'report'
 
 export interface EntityActionsProps {
   entityType: EntityType
@@ -33,7 +31,6 @@ export interface EntityActionsProps {
 
 const deleteEntity = (entityType: EntityType, entityId: string): Promise<void> => {
   if (entityType === 'activity') return softDeleteActivity(entityId)
-  if (entityType === 'tag') return softDeleteTag(entityId)
   if (entityType === 'productivity') return softDeleteProductivity(entityId)
   if (entityType === 'metric') {
     const parsed = parseMetricEntityId(entityId)
@@ -46,7 +43,6 @@ const deleteEntity = (entityType: EntityType, entityId: string): Promise<void> =
 
 const restoreEntity = (entityType: EntityType, entityId: string): Promise<void> => {
   if (entityType === 'activity') return restoreActivity(entityId)
-  if (entityType === 'tag') return restoreTag(entityId)
   if (entityType === 'productivity') return restoreProductivity(entityId)
   return Promise.reject(new Error('Unsupported entity type for restore'))
 }

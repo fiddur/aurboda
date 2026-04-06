@@ -18,7 +18,7 @@ import {
   type LastFmMatchMode,
   type LastFmMatchType,
 } from '../db/index.ts'
-import { applyRuleRetroactively, cleanupRuleTags, retagAllScrobbles } from '../lastfm-sync.ts'
+import { applyRuleRetroactively, cleanupRuleActivities, retagAllScrobbles } from '../lastfm-sync.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 import { formatInTz } from './tz-utils.ts'
 
@@ -138,7 +138,7 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
     }) => {
       try {
         // Clean up old auto-tags before updating
-        await cleanupRuleTags(user, id)
+        await cleanupRuleActivities(user, id)
 
         const updated = await updateLastFmTagRule(user, id, {
           artist_name,
@@ -186,7 +186,7 @@ export const registerLastFmTools = (server: McpServer, user: string) => {
       rule_id: z.string().uuid().describe('The ID of the rule to delete'),
     },
     async ({ rule_id }) => {
-      const tagsRemoved = await cleanupRuleTags(user, rule_id)
+      const tagsRemoved = await cleanupRuleActivities(user, rule_id)
       const deleted = await deleteLastFmTagRule(user, rule_id)
       if (!deleted) {
         return jsonResponse({ error: 'Rule not found', success: false })

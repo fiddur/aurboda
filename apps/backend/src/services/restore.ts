@@ -5,11 +5,10 @@
 import type { DeleteActivityResult, DeleteTagResult } from './mutations.ts'
 
 import {
+  deleteActivity as dbDeleteActivity,
   deleteProductivityRecord as dbDeleteProductivityRecord,
-  deleteTagById as dbDeleteTagById,
   restoreActivity as dbRestoreActivity,
   restoreProductivityRecord as dbRestoreProductivityRecord,
-  restoreTag as dbRestoreTag,
 } from '../db/index.ts'
 
 export interface RestoreResult {
@@ -24,7 +23,8 @@ export async function restoreActivity(user: string, id: string): Promise<Restore
 }
 
 export async function restoreTag(user: string, id: string): Promise<RestoreResult> {
-  const restored = await dbRestoreTag(user, id)
+  // Tags are now activities — delegate to activity restore
+  const restored = await dbRestoreActivity(user, id)
   return { id, restored, success: restored }
 }
 
@@ -34,7 +34,8 @@ export async function restoreProductivity(user: string, id: string): Promise<Res
 }
 
 export async function deleteTagById(user: string, id: string): Promise<DeleteTagResult> {
-  const deleted = await dbDeleteTagById(user, id)
+  // Tags are now activities — delegate to activity soft-delete
+  const deleted = await dbDeleteActivity(user, id)
   return { deleted, external_id: id, success: deleted }
 }
 

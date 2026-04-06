@@ -33,7 +33,9 @@ import type {
 // ============================================================================
 
 const VALID_DATA_SOURCES = [
+  'activitywatch',
   'aurboda',
+  'aurboda_gap_fill',
   'deduction-rule',
   'health_connect',
   'health_connect_aggregate',
@@ -45,6 +47,7 @@ const VALID_DATA_SOURCES = [
   'calendar',
   'manual',
   'lastfm',
+  'lastfm-auto',
 ] as const
 
 const VALID_GEOCODE_STATUSES = ['pending', 'geocoding', 'success', 'failed'] as const
@@ -119,6 +122,7 @@ export const mapActivityRow = (row: QueryResultRow): Activity => ({
   data: row.data,
   deleted_at: row.deleted_at ? new Date(row.deleted_at) : undefined,
   end_time: row.end_time ? new Date(row.end_time) : undefined,
+  external_id: row.external_id ?? undefined,
   id: row.id,
   notes: row.notes,
   source: parseDataSource(row.source),

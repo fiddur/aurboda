@@ -63,7 +63,6 @@ For direct API access, use the existing AES-256-GCM Bearer token:
 
 Both authentication methods are supported simultaneously. Each MCP session is scoped to the authenticated user.
 
-
 ## Available Metrics
 
 The following metrics are available for querying and manual entry:

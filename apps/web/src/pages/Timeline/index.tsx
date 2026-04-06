@@ -11,7 +11,7 @@ import * as d3 from 'd3'
 import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
-import type { Activity, Meal, Place, ProductivityRecord, Tag } from '../../state/api'
+import type { Activity, Meal, Place, ProductivityRecord } from '../../state/api'
 import type { ChartItem, Column, Orientation } from './types'
 
 import {
@@ -24,15 +24,19 @@ import {
   fetchScreentimeCategories,
   fetchScreentimeBucketed,
   fetchScrobbles,
-  fetchTagMappings,
-  fetchTags,
+  fetchItemIcons,
   fetchTrainingLoad,
   fetchUserSettings,
 } from '../../state/api'
 import { aggregateBucketsAligned, parseBucketedResponse } from '../../utils/chart'
+import { toDisplayName } from '../../utils/displayName'
 import { isEmoji, isIconPath, isUrl, resolveItemIcon } from '../../utils/emojiLookup'
 import { packLanes } from '../../utils/lanePacking'
-import { buildActivityColumnItems, EXCLUDED_TAG_PREFIXES, EXCLUDED_TAG_SOURCES } from './activityMerge'
+import {
+  buildActivityColumnItems,
+  EXCLUDED_ACTIVITY_PREFIXES,
+  EXCLUDED_ACTIVITY_SOURCES,
+} from './activityMerge'
 import { computeBarLayout, type BarSlot } from './barLayout'
 import { categorizeMusic } from './categorizeMusic'
 import { drawActivitySparklines, parseBucketedData } from './drawActivitySparklines'
@@ -269,7 +273,8 @@ const getExerciseColor = (activity: Activity): string => {
   return hrZoneColors[maxZone] ?? hrZoneColors[0]!
 }
 
-const getTagColor = (tag: Tag): string => tagSourceColors[tag.source ?? 'default'] ?? tagSourceColors.default!
+const getActivityColor = (activity: Activity): string =>
+  tagSourceColors[activity.source ?? 'default'] ?? tagSourceColors.default!
 
 const getProductivityColor = (score: number | undefined): string =>
   productivityColors[score ?? 0] ?? productivityColors[0]!
@@ -357,8 +362,8 @@ const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = 
     (item.column === 'Tags / Events' &&
       item.color !== tagSourceColors.calendar &&
       item.color !== METRIC_COLOR) ||
-    // Duration tags promoted to Activity column (have entity_type 'tag' but no activity_type)
-    (item.column === 'Activity' && item.entity_type === 'tag' && !item.activity_type),
+    // Duration tags promoted to Activity column (activity entity without a built-in activity_type)
+    (item.column === 'Activity' && item.entity_type === 'activity' && !item.activity_type),
   screen_time_h: () => false, // horizontal screentime bar controlled at draw level
   training_load: () => false,
 }
@@ -381,34 +386,32 @@ const categorizeLocations = (places: Place[], uniquePlaceNames: string[]): Chart
     },
   }))
 
-const categorizeTags = (tags: Tag[], itemIcons: Record<string, string>): ChartItem[] =>
-  tags
-    .filter((t) => t.source !== 'lastfm')
-    .map((t) => {
-      const isPoint = !t.end_time
-      const end = t.end_time ?? new Date(t.start_time.getTime() + 15 * 60000)
-      const sourceLabel = t.source ? ` (${t.source})` : ''
+const categorizeTagActivities = (activities: Activity[], itemIcons: Record<string, string>): ChartItem[] =>
+  activities
+    .filter((a) => a.source !== 'lastfm')
+    .map((a) => {
+      const isPoint = !a.end_time
+      const end = a.end_time ?? new Date(a.start_time.getTime() + 15 * 60000)
+      const sourceLabel = a.source ? ` (${a.source})` : ''
+      const displayName = a.title ?? toDisplayName(a.activity_type)
       const icon =
-        itemIcons[t.tag] ?? itemIcons[t.tag.toLowerCase()] ?? (t.tag_key ? itemIcons[t.tag_key] : undefined)
-      // Link to tag definition page if available; calendar/lastfm tags (no definition) won't link
-      const href = t.tag_definition_id ? `/tag/${t.tag_definition_id}` : undefined
+        itemIcons[displayName] ?? itemIcons[displayName.toLowerCase()] ?? itemIcons[a.activity_type]
       return {
-        color: getTagColor(t),
+        color: getActivityColor(a),
         column: 'Tags / Events' as Column,
         end,
-        entity_id: href ? undefined : t.id,
-        entity_type: href ? undefined : ('tag' as const),
-        href,
+        entity_id: a.id,
+        entity_type: 'activity' as const,
         icon,
         isPoint,
-        label: t.tag,
-        start: t.start_time,
+        label: displayName,
+        start: a.start_time,
         tooltip: {
           details: isPoint
             ? [`Point event${sourceLabel}`]
-            : [formatDuration(t.start_time, end) + sourceLabel],
-          time: isPoint ? formatTime(t.start_time) : `${formatTime(t.start_time)} – ${formatTime(end)}`,
-          title: t.tag,
+            : [formatDuration(a.start_time, end) + sourceLabel],
+          time: isPoint ? formatTime(a.start_time) : `${formatTime(a.start_time)} – ${formatTime(end)}`,
+          title: displayName,
         },
       }
     })
@@ -735,10 +738,15 @@ export const Timeline = () => {
     staleTime: 5 * 60 * 1000,
   })
 
-  const tagsQuery = useQuery({
+  // Fetch non-builtin activities (tags/events - activities not in sleep_rest/exercise categories)
+  const EXCLUDED_BUILTIN_TYPES = new Set(['sleep', 'nap', 'rest', 'exercise'])
+  const tagActivitiesQuery = useQuery({
     placeholderData: keepPreviousData,
-    queryFn: () => fetchTags(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-tags', fromDate.value, toDate.value],
+    queryFn: async () => {
+      const allActivities = await fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5))
+      return allActivities.filter((a) => !EXCLUDED_BUILTIN_TYPES.has(a.activity_type))
+    },
+    queryKey: ['timeline-tag-activities', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -807,9 +815,9 @@ export const Timeline = () => {
     staleTime: 5 * 60 * 1000,
   })
 
-  const tagMappingsQuery = useQuery({
-    queryFn: fetchTagMappings,
-    queryKey: ['tag-mappings'],
+  const itemIconsQuery = useQuery({
+    queryFn: fetchItemIcons,
+    queryKey: ['item-icons'],
     staleTime: 30 * 60 * 1000,
   })
 
@@ -852,7 +860,7 @@ export const Timeline = () => {
 
   const activities = activitiesQuery.data ?? []
   const places = placesQuery.data ?? []
-  const tags = tagsQuery.data ?? []
+  const tagActivities = tagActivitiesQuery.data ?? []
   const productivity = productivityQuery.data ?? []
   const scrobbles = scrobblesQuery.data ?? []
 
@@ -880,8 +888,8 @@ export const Timeline = () => {
   }, [bucketedMetricsQuery.data])
 
   const itemIcons = useMemo<Record<string, string>>(() => {
-    return tagMappingsQuery.data?.icons ?? {}
-  }, [tagMappingsQuery.data])
+    return itemIconsQuery.data ?? {}
+  }, [itemIconsQuery.data])
 
   const musicItems = useMemo(() => (hasLastFm ? categorizeMusic(scrobbles) : []), [hasLastFm, scrobbles])
   const showMusicColumn = musicItems.length > 0
@@ -913,7 +921,7 @@ export const Timeline = () => {
     () =>
       buildActivityColumnItems(
         activities,
-        tags,
+        tagActivities,
         itemIcons,
         activityColors,
         getExerciseColor,
@@ -922,22 +930,22 @@ export const Timeline = () => {
         (a, end) => buildSleepDetails(a, end, sleepMetricsByDate),
         scrobbles,
       ),
-    [activities, tags, itemIcons, sleepMetricsByDate, scrobbles],
+    [activities, tagActivities, itemIcons, sleepMetricsByDate, scrobbles],
   )
 
-  // Tags that should stay in the Tags / Events column (not pulled into Activity)
-  const nonActivityTags = useMemo(
+  // Activities that should stay in the Tags / Events column (not pulled into Activity)
+  const nonBuiltinTagActivities = useMemo(
     () =>
-      tags.filter((t) => {
-        if (!t.end_time) return true // point tags always go to Tags column
-        if (t.source && EXCLUDED_TAG_SOURCES.has(t.source)) return true
-        for (const prefix of EXCLUDED_TAG_PREFIXES) {
-          if (t.tag.startsWith(prefix)) return true
+      tagActivities.filter((a) => {
+        if (!a.end_time) return true // point activities always go to Tags column
+        if (a.source && EXCLUDED_ACTIVITY_SOURCES.has(a.source)) return true
+        for (const prefix of EXCLUDED_ACTIVITY_PREFIXES) {
+          if (a.activity_type.startsWith(prefix)) return true
         }
-        // Check if this tag was placed in the Activity column
-        return !activityItems.some((i) => i.entity_id === t.id)
+        // Check if this activity was placed in the Activity column
+        return !activityItems.some((i) => i.entity_id === a.id)
       }),
-    [tags, activityItems],
+    [tagActivities, activityItems],
   )
 
   // ── Legend / filtering ─────────────────────────────────────────────────────
@@ -1028,7 +1036,7 @@ export const Timeline = () => {
     () => [
       ...activityItems,
       ...categorizeLocations(places, uniquePlaceNames),
-      ...categorizeTags(nonActivityTags, itemIcons),
+      ...categorizeTagActivities(nonBuiltinTagActivities, itemIcons),
       ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
       ...occasionalMetricItems,
       ...musicItems,
@@ -1038,7 +1046,7 @@ export const Timeline = () => {
       activityItems,
       places,
       uniquePlaceNames,
-      nonActivityTags,
+      nonBuiltinTagActivities,
       itemIcons,
       productivity,
       screentimeCategoriesQuery.data,
@@ -1075,7 +1083,7 @@ export const Timeline = () => {
   const isFetching =
     activitiesQuery.isFetching ||
     placesQuery.isFetching ||
-    tagsQuery.isFetching ||
+    tagActivitiesQuery.isFetching ||
     mealsQuery.isFetching ||
     productivityQuery.isFetching ||
     scrobblesQuery.isFetching ||
@@ -2090,12 +2098,15 @@ export const Timeline = () => {
   // ── UI state ───────────────────────────────────────────────────────────────
 
   const isInitialLoad =
-    activitiesQuery.isLoading && placesQuery.isLoading && tagsQuery.isLoading && productivityQuery.isLoading
+    activitiesQuery.isLoading &&
+    placesQuery.isLoading &&
+    tagActivitiesQuery.isLoading &&
+    productivityQuery.isLoading
 
   const errorSources = [
     activitiesQuery.isError && 'activities',
     placesQuery.isError && 'places',
-    tagsQuery.isError && 'tags',
+    tagActivitiesQuery.isError && 'tags',
     productivityQuery.isError && 'screen time',
   ].filter(Boolean) as string[]
 

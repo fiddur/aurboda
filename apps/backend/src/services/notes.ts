@@ -17,7 +17,6 @@ import {
   getActivityById,
   getProductivityById,
   getReportById,
-  getTagById,
   type EntityType,
 } from '../db/index.ts'
 
@@ -52,11 +51,7 @@ async function getEntityTimes(
   entityId: string,
 ): Promise<{ start_time: Date; end_time?: Date } | undefined> {
   switch (entityType) {
-    case 'tag': {
-      const tag = await getTagById(user, entityId)
-      if (!tag) return undefined
-      return { end_time: tag.end_time, start_time: tag.start_time }
-    }
+    case 'tag': // tags are now activities — fall through
     case 'activity': {
       const activity = await getActivityById(user, entityId)
       if (!activity) return undefined

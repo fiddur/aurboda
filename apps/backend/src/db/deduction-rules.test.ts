@@ -77,7 +77,13 @@ describe('deduction-rules db', () => {
   })
 
   test('updateDeductionRule builds SET for provided fields', async () => {
-    mockQuery.mockResolvedValue({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [{ ...mockRule, name: 'Updated' }] })
+    mockQuery.mockResolvedValue({
+      command: 'UPDATE',
+      fields: [],
+      oid: 0,
+      rowCount: 1,
+      rows: [{ ...mockRule, name: 'Updated' }],
+    })
     const result = await updateDeductionRule(user, 'rule-1', { enabled: false, name: 'Updated' })
     expect(result?.name).toBe('Updated')
   })

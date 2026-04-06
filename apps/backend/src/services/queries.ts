@@ -16,6 +16,8 @@ import { Temporal } from '@js-temporal/polyfill'
 
 import {
   getActivities,
+  getActivitiesByCategory,
+  getActivitiesExcludingCategories,
   getDailyAggregates,
   getDailyAggregateValue,
   getDistinctMetrics,
@@ -24,7 +26,6 @@ import {
   getNotesForTimeRange,
   getProductivity,
   getSleepSessions,
-  getTags,
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesMultiMetric,
@@ -733,8 +734,8 @@ export async function getDailySummary(
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
     getSleepSessions(user, start, end),
-    getActivities(user, 'exercise', start, end),
-    getTags(user, start, end),
+    getActivitiesByCategory(user, 'exercise', start, end),
+    queryTagActivities(user, start, end),
     getProductivity(user, start, end),
     getPlaceVisits(user, start, end),
     getTimeSeriesMultiMetric(
@@ -836,7 +837,7 @@ export async function getDailySummary(
 
   // Fetch tag comments
   const tagIds = tags.map((t) => t.id).filter((id): id is string => id !== undefined)
-  const tagCommentsMap = await getCommentsMap(user, 'tag', tagIds)
+  const tagCommentsMap = await getCommentsMap(user, 'activity', tagIds)
 
   // Build sleep session summaries with sleep_date and sleep_location
   const dateStr = date.toISOString().split('T')[0]
@@ -921,7 +922,7 @@ export async function getDailySummary(
       comments: t.id ? (tagCommentsMap.get(t.id) ?? []) : [],
       end_time: t.end_time?.toISOString(),
       start_time: t.start_time.toISOString(),
-      tag: t.tag,
+      tag: t.title ?? t.activity_type,
     })),
   }
 }
@@ -1243,6 +1244,9 @@ const emptyPeriodMetricStats = (metric: string): PeriodMetricStats => ({
   unit: metricUnits[metric as MetricType] ?? 'ms',
 })
 
+const queryTagActivities = (user: string, start: Date, end: Date) =>
+  getActivitiesExcludingCategories(user, ['sleep_rest', 'exercise'], start, end)
+
 /**
  * Query tags for a time range.
  * @param sync Optional sync provider to auto-refresh stale data before querying
@@ -1262,9 +1266,9 @@ export async function queryTags(
     ])
   }
 
-  const tags = await getTags(user, start, end)
+  const tags = await queryTagActivities(user, start, end)
   const ids = tags.map((t) => t.id).filter((id): id is string => id !== undefined)
-  const commentsMap = await getCommentsMap(user, 'tag', ids)
+  const commentsMap = await getCommentsMap(user, 'activity', ids)
   return tags.map((t) => ({
     comments: t.id ? (commentsMap.get(t.id) ?? []) : [],
     end_time: t.end_time?.toISOString(),
@@ -1272,7 +1276,7 @@ export async function queryTags(
     id: t.id,
     source: t.source,
     start_time: t.start_time.toISOString(),
-    tag: t.tag,
+    tag: t.title ?? t.activity_type,
   }))
 }
 

@@ -102,7 +102,11 @@ export {
   getActivityTypeDefinition,
   getActivityTypeDefinitions,
   getActivityTypeNames,
+  getHealthConnectExerciseType,
   insertActivityTypeDefinition,
+  resolveActivityTypeByAlias,
+  resolveActivityTypeFromHcExerciseType,
+  resolveOrCreateActivityType,
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 
@@ -111,19 +115,26 @@ export {
   checkActivityConflict,
   deleteActivity,
   deleteGarminActivityWithWrongType,
+  findMergeableActivity,
   findMergedGroupForActivity,
   getActivities,
+  getActivitiesByCategory,
+  getActivitiesExcludingCategories,
   getActivitiesNeedingDetail,
   getActivityById,
   getNearbyActivities,
   getOverlappingActivities,
   getSleepSessions,
+  hardDeleteActivitiesByExternalIdPrefix,
+  hardDeleteActivitiesBySource,
+  insertActivities,
   insertActivity,
   insertNewActivity,
   markActivityDetailSynced,
   mergeOverlappingActivities,
   restoreActivity,
   updateActivity,
+  updateActivityEndTimeByExternalId,
 } from './activities.ts'
 
 // Locations

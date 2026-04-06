@@ -11,19 +11,18 @@ import {
   fetchProductivity,
   fetchReports,
   fetchScrobbles,
-  fetchTags,
   type Activity,
   type Meal,
   type Place,
   type ProductivityRecord,
   type Report,
-  type Tag,
 } from '../../state/api'
+import { toDisplayName } from '../../utils/displayName'
 import './style.css'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type ItemType = 'activity' | 'tag' | 'location' | 'music' | 'meal' | 'report' | 'screentime'
+type ItemType = 'activity' | 'location' | 'music' | 'meal' | 'report' | 'screentime'
 
 interface DataItem {
   color: string
@@ -45,7 +44,6 @@ const ACTIVITY_COLORS: Record<string, string> = {
   sleep: '#3b82f6',
 }
 
-const TAG_COLOR = '#f59e0b'
 const LOCATION_COLOR = '#6366f1'
 const MUSIC_COLOR = '#ec4899'
 const MEAL_COLOR = '#ef4444'
@@ -65,16 +63,7 @@ const formatDuration = (start: Date, end: Date): string => {
 
 const activityToItem = (a: Activity): DataItem => {
   const end = a.end_time ?? new Date(a.start_time.getTime() + 60 * 60000)
-  const label =
-    a.activity_type === 'exercise'
-      ? (a.title ?? 'Exercise')
-      : a.activity_type === 'meditation'
-        ? (a.title ?? 'Meditation')
-        : a.activity_type === 'sleep'
-          ? 'Sleep'
-          : a.activity_type === 'rest'
-            ? 'Rest'
-            : 'Nap'
+  const label = a.title ?? toDisplayName(a.activity_type)
   return {
     color: ACTIVITY_COLORS[a.activity_type] ?? '#6b7280',
     detail: `${format(a.start_time, 'HH:mm')} – ${format(end, 'HH:mm')} · ${formatDuration(a.start_time, end)}`,
@@ -85,18 +74,6 @@ const activityToItem = (a: Activity): DataItem => {
     type: 'activity',
   }
 }
-
-const tagToItem = (t: Tag): DataItem => ({
-  color: TAG_COLOR,
-  detail: t.end_time
-    ? `${format(t.start_time, 'HH:mm')} – ${format(t.end_time, 'HH:mm')} · ${formatDuration(t.start_time, t.end_time)}`
-    : format(t.start_time, 'HH:mm'),
-  end: t.end_time,
-  href: t.id ? `/detail/tag/${encodeURIComponent(t.id)}` : undefined,
-  label: t.tag,
-  start: t.start_time,
-  type: 'tag',
-})
 
 const placeToItem = (p: Place, dateStr: string): DataItem => ({
   color: LOCATION_COLOR,
@@ -147,7 +124,7 @@ const productivityToItem = (p: ProductivityRecord): DataItem => {
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-const ALL_TYPES: ItemType[] = ['activity', 'tag', 'location', 'music', 'meal', 'report', 'screentime']
+const ALL_TYPES: ItemType[] = ['activity', 'location', 'music', 'meal', 'report', 'screentime']
 
 const TYPE_LABELS: Record<ItemType, string> = {
   activity: 'Activities',
@@ -156,7 +133,6 @@ const TYPE_LABELS: Record<ItemType, string> = {
   music: 'Music',
   report: 'Reports',
   screentime: 'Screen Time',
-  tag: 'Tags',
 }
 
 const TYPE_COLORS: Record<ItemType, string> = {
@@ -166,13 +142,11 @@ const TYPE_COLORS: Record<ItemType, string> = {
   music: MUSIC_COLOR,
   report: REPORT_COLOR,
   screentime: SCREENTIME_COLOR,
-  tag: TAG_COLOR,
 }
 
 const buildItems = (
   activeTypes: Set<ItemType>,
   activities: Activity[],
-  tags: Tag[],
   places: Place[],
   scrobbles: { artist: string; recorded_at: Date; track: string }[],
   meals: Meal[],
@@ -183,9 +157,6 @@ const buildItems = (
   const items: DataItem[] = []
   if (activeTypes.has('activity')) {
     for (const a of activities) items.push(activityToItem(a))
-  }
-  if (activeTypes.has('tag')) {
-    for (const t of tags) items.push(tagToItem(t))
   }
   if (activeTypes.has('location')) {
     for (const p of places) items.push(placeToItem(p, dateStr))
@@ -260,7 +231,6 @@ export const Data = () => {
   const handleDateChange = useCallback(
     (newDate: string) => {
       queryClient.cancelQueries({ queryKey: ['data-activities'] })
-      queryClient.cancelQueries({ queryKey: ['data-tags'] })
       queryClient.cancelQueries({ queryKey: ['data-places'] })
       queryClient.cancelQueries({ queryKey: ['data-scrobbles'] })
       queryClient.cancelQueries({ queryKey: ['data-meals'] })
@@ -280,15 +250,8 @@ export const Data = () => {
 
   const activitiesQuery = useQuery({
     enabled: activeTypes.has('activity'),
-    queryFn: () => fetchActivities(start, end, ['sleep', 'exercise', 'meditation', 'nap', 'rest']),
+    queryFn: () => fetchActivities(start, end),
     queryKey: ['data-activities', dateStr, timeFrom, timeTo],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const tagsQuery = useQuery({
-    enabled: activeTypes.has('tag'),
-    queryFn: () => fetchTags(start, end),
-    queryKey: ['data-tags', dateStr, timeFrom, timeTo],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -330,7 +293,6 @@ export const Data = () => {
   // Only check loading/fetching for enabled queries
   const queries = [
     { enabled: activeTypes.has('activity'), query: activitiesQuery },
-    { enabled: activeTypes.has('tag'), query: tagsQuery },
     { enabled: activeTypes.has('location'), query: placesQuery },
     { enabled: activeTypes.has('music'), query: scrobblesQuery },
     { enabled: activeTypes.has('meal'), query: mealsQuery },
@@ -354,7 +316,6 @@ export const Data = () => {
   const allItems = buildItems(
     activeTypes,
     activitiesQuery.data ?? [],
-    tagsQuery.data ?? [],
     placesQuery.data ?? [],
     scrobblesQuery.data ?? [],
     mealsQuery.data?.meals ?? [],

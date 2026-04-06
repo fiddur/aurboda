@@ -1,22 +1,21 @@
 /**
- * Tag meta page — overview of a tag type (e.g. "Coffee").
- * Shows icon, display name, trend chart, occurrence count, inline settings, and merge UI.
+ * Activity type meta page — overview of an activity type (e.g. "Coffee").
+ * Shows icon, display name, trend chart, and occurrence count.
  *
  * Accepts both `/tag/:tagKey` (legacy) and `/tag/:definitionId` (UUID) routes.
  */
-import type { ProgrammaticTag, TagDefinition } from '@aurboda/api-spec'
+import type { TagDefinition } from '@aurboda/api-spec'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import {
-  fetchProgrammaticTags,
+  fetchActivityTypeDefinitions,
+  fetchItemIcons,
   fetchTagDefinitionById,
-  fetchTagDefinitions,
-  fetchTagMappings,
   fetchTrend,
-  mergeTagDefinitionsApi,
+  type ActivityTypeDefinition,
   type FetchTrendParams,
 } from '../../state/api'
 import { MiniTrendChart } from './MiniTrendChart'
@@ -82,17 +81,16 @@ function TagTrendSection({
 
 function TagHeader({
   definition,
-  tagInfo,
+  typeDef,
   shownIcon,
   shownName,
 }: {
   definition?: TagDefinition
-  tagInfo: ProgrammaticTag | undefined
+  typeDef?: ActivityTypeDefinition
   shownIcon: string
   shownName: string
 }) {
-  const count = definition?.count ?? tagInfo?.count
-  const latestTime = definition?.latest_time ?? tagInfo?.latest_time
+  const count = definition?.count
 
   return (
     <div class="tag-meta-header">
@@ -105,102 +103,39 @@ function TagHeader({
           <span class="tag-meta-stat">
             <strong>{count}</strong> occurrence{count !== 1 ? 's' : ''}
           </span>
-          {latestTime && <span class="tag-meta-stat">Last: {new Date(latestTime).toLocaleDateString()}</span>}
         </div>
       )}
-      {definition?.aliases && definition.aliases.length > 0 && (
+      {typeDef && (
         <div class="tag-meta-stats">
-          <span class="tag-meta-stat">Aliases: {definition.aliases.join(', ')}</span>
+          <span class="tag-meta-stat">Category: {typeDef.display_category}</span>
+          {typeDef.is_builtin && <span class="tag-meta-stat">Built-in</span>}
         </div>
       )}
     </div>
   )
 }
 
-function MergeSection({ definitionId }: { definitionId: string }) {
-  const queryClient = useQueryClient()
-  const [targetId, setTargetId] = useState('')
+const findTypeDef = (
+  defs: ActivityTypeDefinition[] | undefined,
+  key: string,
+): ActivityTypeDefinition | undefined => defs?.find((d) => d.name === key || d.display_name === key)
 
-  const { data: allDefinitions } = useQuery({
-    queryFn: fetchTagDefinitions,
-    queryKey: ['tag-definitions'],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const mergeMutation = useMutation({
-    mutationFn: () => mergeTagDefinitionsApi(definitionId, targetId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tag-definitions'] })
-      queryClient.invalidateQueries({ queryKey: ['tag-definition'] })
-      queryClient.invalidateQueries({ queryKey: ['programmaticTags'] })
-      // Navigate to the target definition
-      window.location.href = `/tag/${targetId}`
-    },
-  })
-
-  const otherDefinitions = allDefinitions?.filter((d) => d.id !== definitionId) ?? []
-
-  if (otherDefinitions.length === 0) return null
-
-  return (
-    <section class="tag-meta-section">
-      <h2>Merge into...</h2>
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={targetId} onChange={(e) => setTargetId((e.target as HTMLSelectElement).value)}>
-          <option value="">Select a tag definition...</option>
-          {otherDefinitions.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name} ({d.count ?? 0})
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          class="btn-primary"
-          disabled={!targetId || mergeMutation.isPending}
-          onClick={() => mergeMutation.mutate()}
-        >
-          {mergeMutation.isPending ? 'Merging...' : 'Merge'}
-        </button>
-      </div>
-      {mergeMutation.error && <p class="error">Merge failed</p>}
-    </section>
-  )
-}
-
-/** Find the programmatic tag matching either a definition or a raw param. */
-const findTagInfo = (
-  tags: ProgrammaticTag[] | undefined,
+const resolveDisplayName = (
   definition: TagDefinition | undefined,
-  rawParam: string,
-  isUuid: boolean,
-): ProgrammaticTag | undefined => {
-  if (isUuid) {
-    return tags?.find(
-      (t) => definition && (t.tag_key === definition.name || t.current_name === definition.name),
-    )
-  }
-  return tags?.find((t) => t.tag_key === rawParam || t.current_name === rawParam)
-}
+  typeDef: ActivityTypeDefinition | undefined,
+  fallback: string,
+): string => definition?.name ?? typeDef?.display_name ?? typeDef?.name ?? fallback
 
-/** Resolve the canonical display name from available sources. */
-const resolveName = (
+const resolveDisplayIcon = (
   definition: TagDefinition | undefined,
-  tagInfo: ProgrammaticTag | undefined,
-  mappings: Record<string, string>,
-  rawParam: string,
-): string => definition?.name ?? tagInfo?.current_name ?? mappings[rawParam] ?? rawParam
-
-/** Resolve the icon from available sources. */
-const resolveIcon = (
-  definition: TagDefinition | undefined,
+  typeDef: ActivityTypeDefinition | undefined,
   icons: Record<string, string>,
   name: string,
-  tagKey: string,
-): string => definition?.icon ?? icons[name] ?? icons[tagKey] ?? ''
+  key: string,
+): string => definition?.icon ?? typeDef?.icon ?? icons[name] ?? icons[key] ?? ''
 
-/** Resolve tag identity from URL param (UUID for definition, or legacy tag key). */
-function useTagResolution(rawParam: string) {
+/** Resolve activity type identity from URL param (UUID for definition, or type name). */
+function useTypeResolution(rawParam: string) {
   const isUuid = UUID_RE.test(rawParam)
 
   const { data: definition } = useQuery({
@@ -210,41 +145,39 @@ function useTagResolution(rawParam: string) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: tags } = useQuery({
-    queryFn: fetchProgrammaticTags,
-    queryKey: ['programmaticTags'],
+  const { data: activityTypeDefs } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activity-type-definitions'],
+    staleTime: 5 * 60 * 1000,
   })
 
-  const { data: mappingsData } = useQuery({
-    queryFn: fetchTagMappings,
-    queryKey: ['tag-mappings'],
+  const { data: icons = {} } = useQuery({
+    queryFn: fetchItemIcons,
+    queryKey: ['item-icons'],
     staleTime: 30 * 60 * 1000,
   })
 
-  const tagInfo = findTagInfo(tags, definition, rawParam, isUuid)
-  const mappings = mappingsData?.mappings ?? {}
-  const icons = mappingsData?.icons ?? {}
   const definitionId = isUuid ? rawParam : undefined
-  const effectiveTagKey = definition?.name ?? tagInfo?.tag_key ?? rawParam
-  const currentName = resolveName(definition, tagInfo, mappings, rawParam)
-  const currentIcon = resolveIcon(definition, icons, currentName, effectiveTagKey)
+  const effectiveKey = definition?.name ?? rawParam
+  const typeDef = findTypeDef(activityTypeDefs, effectiveKey)
+  const currentName = resolveDisplayName(definition, typeDef, rawParam)
+  const currentIcon = resolveDisplayIcon(definition, typeDef, icons, currentName, effectiveKey)
 
-  return { currentIcon, currentName, definition, definitionId, effectiveTagKey, tagInfo }
+  return { currentIcon, currentName, definition, definitionId, effectiveTagKey: effectiveKey, typeDef }
 }
 
 export function TagMeta() {
   const { params } = useRoute()
   const rawParam = decodeURIComponent(params.tagKey as string)
   const [lookback, setLookback] = useState(90)
-  const { currentIcon, currentName, definition, definitionId, effectiveTagKey, tagInfo } =
-    useTagResolution(rawParam)
+  const { currentIcon, currentName, definition, definitionId, effectiveTagKey, typeDef } =
+    useTypeResolution(rawParam)
 
   return (
     <div class="tag-meta-page">
-      <TagHeader definition={definition} tagInfo={tagInfo} shownIcon={currentIcon} shownName={currentName} />
+      <TagHeader definition={definition} typeDef={typeDef} shownIcon={currentIcon} shownName={currentName} />
 
       <TagSettingsSection
-        tagInfo={tagInfo}
         effectiveTagKey={effectiveTagKey}
         currentName={currentName}
         currentIcon={currentIcon}
@@ -268,9 +201,6 @@ export function TagMeta() {
         <TagTrendSection definitionId={definitionId} tagKey={effectiveTagKey} lookback={lookback} />
       </section>
 
-      {/* Merge section — only when viewing by definition */}
-      {definitionId && <MergeSection definitionId={definitionId} />}
-
       {/* Quick links */}
       <section class="tag-meta-section">
         <h2>Related</h2>
@@ -283,9 +213,6 @@ export function TagMeta() {
           </a>
           <a href="/timeline" class="tag-meta-link">
             Timeline
-          </a>
-          <a href="/data-sources/aurboda" class="tag-meta-link">
-            All Tag Mappings
           </a>
         </div>
       </section>

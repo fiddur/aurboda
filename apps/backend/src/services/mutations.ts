@@ -15,21 +15,15 @@ import {
   activityTypeExists,
   checkActivityConflict,
   deleteActivity as dbDeleteActivity,
-  deleteTag as dbDeleteTag,
   getActivityById as dbGetActivityById,
   insertActivity as dbInsertActivity,
   insertNewActivity as dbInsertNewActivity,
   updateActivity as dbUpdateActivity,
   enqueueOutboundSync,
   findHcRecordId,
-  findMergeableTag,
-  getTagById,
-  insertTag,
   insertTimeSeries,
-  resolveOrCreateTagDefinition,
+  resolveOrCreateActivityType,
   type TimeSeriesPoint,
-  updateTag as dbUpdateTag,
-  updateTagEndTime,
 } from '../db/index.ts'
 import {
   activityTypeToHealthConnectType,
@@ -90,10 +84,12 @@ export interface DeleteTagResult {
 export interface AddActivityInput {
   activity_type: ActivityType
   start_time: Date
-  end_time: Date
+  end_time?: Date
   title?: string
   notes?: string
   data?: Record<string, unknown>
+  external_id?: string
+  merge_span?: number
 }
 
 export interface AddActivityResult {
@@ -163,54 +159,15 @@ export interface UpdateActivityResult {
  * mergeSpan seconds of the new start_time.
  */
 export async function addTag(user: string, input: AddTagInput): Promise<AddTagResult> {
-  // If mergeSpan is specified, check for a mergeable tag
-  if (input.mergeSpan !== undefined) {
-    const existingTag = await findMergeableTag(user, input.tag, input.start_time, input.mergeSpan)
-
-    if (existingTag && existingTag.external_id) {
-      // Calculate the new end time - use new end_time if provided, otherwise use new start_time
-      const newEndTime = input.end_time ?? input.start_time
-
-      // Calculate the time extension
-      const previousEnd = existingTag.end_time ?? existingTag.start_time
-      const extendedBySeconds = Math.round((newEndTime.getTime() - previousEnd.getTime()) / 1000)
-
-      await updateTagEndTime(user, existingTag.external_id, newEndTime)
-
-      // Sync inherited times on any notes attached to this tag
-      if (existingTag.id) {
-        await syncNoteTimesForEntity(user, 'tag', existingTag.id, existingTag.start_time, newEndTime).catch(
-          (err) => auditError(user, 'data', 'Failed to sync note times for tag', { error: String(err) }),
-        )
-      }
-
-      return {
-        end_time: newEndTime.toISOString(),
-        extendedBySeconds,
-        id: existingTag.id!,
-        merged: true,
-        start_time: existingTag.start_time.toISOString(),
-        success: true,
-        tag: existingTag.tag,
-      }
-    }
-  }
-
-  // Resolve or create a tag definition for this tag name
-  const definition = await resolveOrCreateTagDefinition(user, input.tag)
-
-  // Create a new tag
+  const activityType = await resolveOrCreateActivityType(user, input.tag)
   const externalId = randomUUID()
-
-  const dbId = await insertTag(user, {
+  const dbId = await dbInsertActivity(user, {
+    activity_type: activityType,
     end_time: input.end_time,
     external_id: externalId,
     source: 'aurboda',
     start_time: input.start_time,
-    tag: definition.name, // Use the canonical definition name
-    tag_definition_id: definition.id,
   })
-
   return {
     end_time: input.end_time?.toISOString(),
     id: dbId,
@@ -232,7 +189,7 @@ export interface UpdateTagResult {
 }
 
 export async function updateTag(user: string, id: string, input: UpdateTagInput): Promise<UpdateTagResult> {
-  const existing = await getTagById(user, id)
+  const existing = await dbGetActivityById(user, id)
   if (!existing) {
     return { error: 'Tag not found', success: false }
   }
@@ -244,11 +201,11 @@ export async function updateTag(user: string, id: string, input: UpdateTagInput)
     return { error: 'end_time must be after start_time', success: false }
   }
 
-  const updates: { start_time?: Date; end_time?: Date | null } = {}
+  const updates: { start_time?: Date; end_time?: Date } = {}
   if (input.start_time !== undefined) updates.start_time = input.start_time
-  if (input.end_time !== undefined) updates.end_time = input.end_time
+  if (input.end_time !== undefined && input.end_time !== null) updates.end_time = input.end_time
 
-  await dbUpdateTag(user, id, updates)
+  await dbUpdateActivity(user, id, updates)
   return { success: true }
 }
 
@@ -405,13 +362,14 @@ export async function bulkAddMetrics(
  * Delete a tag by its external ID.
  */
 export async function deleteTag(user: string, externalId: string): Promise<DeleteTagResult> {
-  const deleted = await dbDeleteTag(user, externalId)
-
-  return {
-    deleted,
-    external_id: externalId,
-    success: deleted,
-  }
+  const { query } = await import('../db/connection.ts')
+  const result = await query(
+    user,
+    `UPDATE activities SET deleted_at = NOW() WHERE external_id = $1 AND deleted_at IS NULL`,
+    [externalId],
+  )
+  const deleted = (result.rowCount ?? 0) > 0
+  return { deleted, external_id: externalId, success: deleted }
 }
 
 /**
@@ -428,8 +386,8 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
     }
   }
 
-  // Validate that endTime is after startTime
-  if (input.end_time <= input.start_time) {
+  // Validate that endTime is after startTime (if provided)
+  if (input.end_time && input.end_time <= input.start_time) {
     return {
       error: 'end_time must be after start_time',
       success: false,
@@ -463,7 +421,7 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
           payload: {
             activity_type: input.activity_type,
             data: input.data,
-            end_time: input.end_time.toISOString(),
+            end_time: input.end_time?.toISOString(),
             notes: input.notes,
             start_time: input.start_time.toISOString(),
             title: input.title,
@@ -477,7 +435,7 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
 
   return {
     activity_type: input.activity_type,
-    end_time: input.end_time.toISOString(),
+    end_time: input.end_time?.toISOString(),
     id,
     notes: input.notes,
     start_time: input.start_time.toISOString(),

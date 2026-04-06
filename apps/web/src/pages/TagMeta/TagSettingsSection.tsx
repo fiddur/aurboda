@@ -1,65 +1,58 @@
 /**
- * Tag settings section — edit display name, icon, and save.
+ * Activity type settings section — edit icon and save.
  */
-import type { ProgrammaticTag } from '@aurboda/api-spec'
-
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { IconInput } from '../../components/IconInput'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { useSaveStatus } from '../../components/SaveStatusIndicator'
-import { setTagMapping } from '../../state/api'
+import { fetchItemIcons, updateUserSettings } from '../../state/api'
 import { suggestEmoji } from '../../utils/emojiLookup'
 
 interface TagSettingsSectionProps {
-  tagInfo: ProgrammaticTag | undefined
   effectiveTagKey: string
   currentName: string
   currentIcon: string
 }
 
-// eslint-disable-next-line complexity -- settings form with icon/name editing
-export function TagSettingsSection({
-  tagInfo,
-  effectiveTagKey,
-  currentName,
-  currentIcon,
-}: TagSettingsSectionProps) {
+export function TagSettingsSection({ effectiveTagKey, currentName, currentIcon }: TagSettingsSectionProps) {
   const queryClient = useQueryClient()
-  const [displayName, setDisplayName] = useState<string | undefined>(undefined)
   const [iconValue, setIconValue] = useState<string | undefined>(undefined)
   const [saveStatus, setSaveStatus] = useSaveStatus(3000)
 
   const saveMutation = useMutation({
-    mutationFn: ({ name, icon }: { name: string; icon?: string }) =>
-      setTagMapping(effectiveTagKey, name, icon),
+    mutationFn: async ({ icon }: { icon?: string }) => {
+      const icons = await fetchItemIcons()
+      const newIcons = { ...icons }
+      if (icon) {
+        newIcons[currentName] = icon
+      } else {
+        delete newIcons[currentName]
+        delete newIcons[effectiveTagKey]
+      }
+      await updateUserSettings({ item_icons: newIcons })
+    },
     onError: () => setSaveStatus({ status: 'error' }),
     onSuccess: () => {
       setSaveStatus({ status: 'saved' })
-      queryClient.invalidateQueries({ queryKey: ['programmaticTags'] })
-      queryClient.invalidateQueries({ queryKey: ['tag-mappings'] })
+      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
+      queryClient.invalidateQueries({ queryKey: ['item-icons'] })
       queryClient.invalidateQueries({ queryKey: ['userSettings'] })
-      setDisplayName(undefined)
       setIconValue(undefined)
     },
   })
 
   const suggested = suggestEmoji(currentName)
   const shownIcon = iconValue ?? currentIcon
-  const shownName = displayName ?? currentName
 
   const handleSave = () => {
-    const name = (displayName ?? currentName).trim()
-    if (!name) return
     setSaveStatus({ status: 'saving' })
     const iconChanged = iconValue !== undefined && iconValue !== currentIcon
-    saveMutation.mutate({ icon: iconChanged ? iconValue : undefined, name })
+    saveMutation.mutate({ icon: iconChanged ? iconValue : undefined })
   }
 
-  const hasChanges =
-    (displayName !== undefined && displayName !== currentName) ||
-    (iconValue !== undefined && iconValue !== currentIcon)
+  const hasChanges = iconValue !== undefined && iconValue !== currentIcon
 
   return (
     <section class="tag-meta-section">
@@ -67,17 +60,7 @@ export function TagSettingsSection({
       <div class="tag-meta-settings-grid">
         <label>
           <span class="tag-meta-field-label">Display Name</span>
-          <input
-            type="text"
-            value={shownName}
-            onInput={(e) => setDisplayName((e.target as HTMLInputElement).value)}
-            placeholder="Display name..."
-            disabled={tagInfo ? !tagInfo.is_programmatic : false}
-            readOnly={tagInfo ? !tagInfo.is_programmatic : false}
-          />
-          {tagInfo && !tagInfo.is_programmatic && (
-            <span class="tag-meta-field-hint">Non-programmatic tags use their name directly</span>
-          )}
+          <input type="text" value={currentName} disabled readOnly />
         </label>
         <label>
           <span class="tag-meta-field-label">Icon</span>
@@ -90,9 +73,9 @@ export function TagSettingsSection({
             />
           </div>
         </label>
-        {tagInfo?.is_programmatic && effectiveTagKey !== currentName && (
+        {effectiveTagKey !== currentName && (
           <div class="tag-meta-key-display">
-            <span class="tag-meta-field-label">Tag Key</span>
+            <span class="tag-meta-field-label">Type Key</span>
             <code>{effectiveTagKey}</code>
           </div>
         )}
@@ -100,10 +83,7 @@ export function TagSettingsSection({
       {hasChanges && (
         <SaveCancelRow
           onSave={handleSave}
-          onCancel={() => {
-            setDisplayName(undefined)
-            setIconValue(undefined)
-          }}
+          onCancel={() => setIconValue(undefined)}
           isPending={saveMutation.isPending}
           saveStatus={saveStatus}
           saveStatusVariant="compact"

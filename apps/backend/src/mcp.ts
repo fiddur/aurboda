@@ -33,7 +33,7 @@ import { registerReportTools } from './mcp/report-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
 import { registerSyncTools } from './mcp/sync-tools.ts'
-import { registerTagTools } from './mcp/tag-tools.ts'
+// tag-tools removed: tags are now activities
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
@@ -55,7 +55,6 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   })
 
   registerQueryTools(server, user, deps.sync)
-  registerTagTools(server, user)
   registerMetricTools(server, user)
   registerActivityTools(server, user)
   registerActivityTypeTools(server, user)

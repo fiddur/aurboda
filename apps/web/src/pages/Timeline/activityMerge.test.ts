@@ -1,30 +1,29 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Activity, Tag } from '../../state/api'
+import type { Activity } from '../../state/api'
 import type { ChartItem } from './types'
 
 import {
   buildActivityColumnItems,
-  EXCLUDED_TAG_PREFIXES,
-  EXCLUDED_TAG_SOURCES,
-  isDurationTagActivityLike,
+  EXCLUDED_ACTIVITY_PREFIXES,
+  EXCLUDED_ACTIVITY_SOURCES,
+  isDurationActivityLike,
   overlapMinutes,
-  tryMergeTagIntoActivity,
+  tryMergeActivityIntoItem,
 } from './activityMerge'
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// -- Helpers ------------------------------------------------------------------
 
-const makeTag = (overrides: Partial<Tag> = {}): Tag => ({
+const makeActivity = (overrides: Partial<Activity> = {}): Activity => ({
+  activity_type: 'holosync',
   end_time: new Date('2026-01-01T09:00:00Z'),
-  id: 'tag-1',
+  id: 'act-1',
   source: 'manual',
   start_time: new Date('2026-01-01T08:00:00Z'),
-  tag: 'Holosync',
-  tag_key: 'Holosync',
   ...overrides,
 })
 
-const makeActivity = (overrides: Partial<Activity> = {}): Activity => ({
+const makeBuiltinActivity = (overrides: Partial<Activity> = {}): Activity => ({
   activity_type: 'meditation',
   end_time: new Date('2026-01-01T09:00:00Z'),
   id: 'act-1',
@@ -46,40 +45,40 @@ const makeChartItem = (overrides: Partial<ChartItem> = {}): ChartItem => ({
   ...overrides,
 })
 
-// ── isDurationTagActivityLike ─────────────────────────────────────────────────
+// -- isDurationActivityLike ---------------------------------------------------
 
-describe('isDurationTagActivityLike', () => {
-  it('returns false for point tags (no end_time)', () => {
-    expect(isDurationTagActivityLike(makeTag({ end_time: undefined }))).toBe(false)
+describe('isDurationActivityLike', () => {
+  it('returns false for point activities (no end_time)', () => {
+    expect(isDurationActivityLike(makeActivity({ end_time: undefined }))).toBe(false)
   })
 
   it('returns false for lastfm source', () => {
-    expect(isDurationTagActivityLike(makeTag({ source: 'lastfm' }))).toBe(false)
+    expect(isDurationActivityLike(makeActivity({ source: 'lastfm' }))).toBe(false)
   })
 
   it('returns false for lastfm-auto source', () => {
-    expect(isDurationTagActivityLike(makeTag({ source: 'lastfm-auto' }))).toBe(false)
+    expect(isDurationActivityLike(makeActivity({ source: 'lastfm-auto' }))).toBe(false)
   })
 
-  it('returns false for computer: prefix tags', () => {
-    expect(isDurationTagActivityLike(makeTag({ tag: 'computer:idle' }))).toBe(false)
+  it('returns false for computer: prefix activity types', () => {
+    expect(isDurationActivityLike(makeActivity({ activity_type: 'computer:idle' }))).toBe(false)
   })
 
-  it('returns true for a normal duration tag', () => {
-    expect(isDurationTagActivityLike(makeTag({ source: 'manual', tag: 'Holosync' }))).toBe(true)
+  it('returns true for a normal duration activity', () => {
+    expect(isDurationActivityLike(makeActivity({ source: 'manual' }))).toBe(true)
   })
 
-  it('EXCLUDED_TAG_SOURCES covers lastfm and lastfm-auto', () => {
-    expect(EXCLUDED_TAG_SOURCES.has('lastfm')).toBe(true)
-    expect(EXCLUDED_TAG_SOURCES.has('lastfm-auto')).toBe(true)
+  it('EXCLUDED_ACTIVITY_SOURCES covers lastfm and lastfm-auto', () => {
+    expect(EXCLUDED_ACTIVITY_SOURCES.has('lastfm')).toBe(true)
+    expect(EXCLUDED_ACTIVITY_SOURCES.has('lastfm-auto')).toBe(true)
   })
 
-  it('EXCLUDED_TAG_PREFIXES covers computer:', () => {
-    expect(EXCLUDED_TAG_PREFIXES).toContain('computer:')
+  it('EXCLUDED_ACTIVITY_PREFIXES covers computer:', () => {
+    expect(EXCLUDED_ACTIVITY_PREFIXES).toContain('computer:')
   })
 })
 
-// ── overlapMinutes ────────────────────────────────────────────────────────────
+// -- overlapMinutes -----------------------------------------------------------
 
 describe('overlapMinutes', () => {
   const h = (hour: number) => new Date(`2026-01-01T${String(hour).padStart(2, '0')}:00:00Z`)
@@ -93,7 +92,7 @@ describe('overlapMinutes', () => {
   })
 
   it('returns partial overlap', () => {
-    // 08:00-09:00 and 08:30-10:00 → overlap 30 min
+    // 08:00-09:00 and 08:30-10:00 -> overlap 30 min
     expect(overlapMinutes(h(8), h(9), new Date('2026-01-01T08:30:00Z'), h(10))).toBe(30)
   })
 
@@ -102,50 +101,50 @@ describe('overlapMinutes', () => {
   })
 })
 
-// ── tryMergeTagIntoActivity ───────────────────────────────────────────────────
+// -- tryMergeActivityIntoItem -------------------------------------------------
 
-describe('tryMergeTagIntoActivity', () => {
-  it('merges Holosync tag into meditation activity with >50% overlap', () => {
+describe('tryMergeActivityIntoItem', () => {
+  it('merges holosync activity into meditation item with >50% overlap', () => {
     const item = makeChartItem()
-    const tag = makeTag({ tag: 'Holosync' }) // 100% overlap
-    const result = tryMergeTagIntoActivity(tag, [item])
+    const activity = makeActivity({ activity_type: 'holosync' }) // 100% overlap
+    const result = tryMergeActivityIntoItem(activity, [item])
     expect(result).toBe(true)
     expect(item.tooltip.details).toContain('Also tagged: Holosync')
   })
 
-  it('does not merge when overlap is ≤50%', () => {
-    // Tag: 08:00-09:00 (60 min), activity: 08:31-09:30 → overlap ~29 min < 50%
+  it('does not merge when overlap is <=50%', () => {
+    // Activity: 08:00-09:00 (60 min), item: 08:31-09:30 -> overlap ~29 min < 50%
     const item = makeChartItem({
       end: new Date('2026-01-01T09:30:00Z'),
       start: new Date('2026-01-01T08:31:00Z'),
     })
-    const tag = makeTag({ tag: 'Holosync' }) // 08:00-09:00
-    const result = tryMergeTagIntoActivity(tag, [item])
+    const activity = makeActivity({ activity_type: 'holosync' }) // 08:00-09:00
+    const result = tryMergeActivityIntoItem(activity, [item])
     expect(result).toBe(false)
   })
 
-  it('does not merge when tag not in TAG_ACTIVITY_MERGE_MAP', () => {
+  it('does not merge when activity type not in ACTIVITY_TYPE_MERGE_MAP', () => {
     const item = makeChartItem()
-    const tag = makeTag({ tag: 'SomeUnknownTag' })
-    expect(tryMergeTagIntoActivity(tag, [item])).toBe(false)
+    const activity = makeActivity({ activity_type: 'some_unknown_type' })
+    expect(tryMergeActivityIntoItem(activity, [item])).toBe(false)
   })
 
-  it('does not merge when activity type does not match', () => {
+  it('does not merge when item activity type does not match', () => {
     const item = makeChartItem({ activity_type: 'exercise' })
-    const tag = makeTag({ tag: 'Breathwork' }) // maps to meditation only
+    const activity = makeActivity({ activity_type: 'breathwork' }) // maps to meditation only
     // Breathwork merges with meditation, not exercise
-    const result = tryMergeTagIntoActivity(tag, [item])
+    const result = tryMergeActivityIntoItem(activity, [item])
     expect(result).toBe(false)
   })
 
-  it('merges Holosync into nap activity type', () => {
+  it('merges holosync into nap activity type', () => {
     const item = makeChartItem({ activity_type: 'nap', label: 'Nap' })
-    const tag = makeTag({ tag: 'Holosync' }) // maps to ['meditation', 'nap']
-    expect(tryMergeTagIntoActivity(tag, [item])).toBe(true)
+    const activity = makeActivity({ activity_type: 'holosync' }) // maps to ['meditation', 'nap']
+    expect(tryMergeActivityIntoItem(activity, [item])).toBe(true)
   })
 })
 
-// ── buildActivityColumnItems ──────────────────────────────────────────────────
+// -- buildActivityColumnItems -------------------------------------------------
 
 describe('buildActivityColumnItems', () => {
   const activityColors = {
@@ -164,7 +163,7 @@ describe('buildActivityColumnItems', () => {
 
   it('converts a meditation activity to a ChartItem', () => {
     const { items } = buildActivityColumnItems(
-      [makeActivity()],
+      [makeBuiltinActivity()],
       [],
       itemIcons,
       activityColors,
@@ -179,11 +178,11 @@ describe('buildActivityColumnItems', () => {
     expect(items[0].column).toBe('Activity')
   })
 
-  it('merges Holosync tag into meditation activity', () => {
-    const tag = makeTag({ tag: 'Holosync' })
+  it('merges holosync activity into meditation activity', () => {
+    const tagActivity = makeActivity({ activity_type: 'holosync' })
     const { items } = buildActivityColumnItems(
-      [makeActivity()],
-      [tag],
+      [makeBuiltinActivity()],
+      [tagActivity],
       itemIcons,
       activityColors,
       exerciseColor,
@@ -197,12 +196,12 @@ describe('buildActivityColumnItems', () => {
     expect(items[0].tooltip.details).toContain('Also tagged: Holosync')
   })
 
-  it('keeps a duration tag as separate item when it cannot be merged', () => {
-    // A tag not in TAG_ACTIVITY_MERGE_MAP
-    const tag = makeTag({ tag: 'Sauna' })
+  it('keeps a duration activity as separate item when it cannot be merged', () => {
+    // An activity type not in ACTIVITY_TYPE_MERGE_MAP
+    const tagActivity = makeActivity({ activity_type: 'sauna' })
     const { items } = buildActivityColumnItems(
-      [makeActivity()],
-      [tag],
+      [makeBuiltinActivity()],
+      [tagActivity],
       itemIcons,
       activityColors,
       exerciseColor,
@@ -215,11 +214,11 @@ describe('buildActivityColumnItems', () => {
     expect(items.map((i) => i.label)).toContain('Sauna')
   })
 
-  it('excludes lastfm-source tags from the Activity column', () => {
-    const tag = makeTag({ source: 'lastfm', tag: 'Holosync' })
+  it('excludes lastfm-source activities from the Activity column', () => {
+    const tagActivity = makeActivity({ activity_type: 'holosync', source: 'lastfm' })
     const { items } = buildActivityColumnItems(
-      [makeActivity()],
-      [tag],
+      [makeBuiltinActivity()],
+      [tagActivity],
       itemIcons,
       activityColors,
       exerciseColor,
@@ -228,17 +227,17 @@ describe('buildActivityColumnItems', () => {
       buildSleepDetails,
       scrobbles,
     )
-    // lastfm tag should not appear in Activity column
+    // lastfm activity should not appear in Activity column
     expect(items).toHaveLength(1)
     expect(items[0].entity_type).toBe('activity')
   })
 
-  it('records overlap warnings when non-mergeable tags overlap', () => {
-    // Sauna tag fully overlaps with meditation activity
-    const tag = makeTag({ tag: 'Sauna' })
+  it('records overlap warnings when non-mergeable activities overlap', () => {
+    // Sauna activity fully overlaps with meditation activity
+    const tagActivity = makeActivity({ activity_type: 'sauna' })
     const { overlaps } = buildActivityColumnItems(
-      [makeActivity()],
-      [tag],
+      [makeBuiltinActivity()],
+      [tagActivity],
       itemIcons,
       activityColors,
       exerciseColor,

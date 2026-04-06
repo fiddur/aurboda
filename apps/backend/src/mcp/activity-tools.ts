@@ -39,7 +39,7 @@ export const registerActivityTools = (server: McpServer, user: string) => {
     },
     async ({ activity_type, end_time, exercise_type, notes, start_time, title, tz }) => {
       const startDate = new Date(start_time)
-      const endDate = new Date(end_time)
+      const endDate = end_time ? new Date(end_time) : undefined
 
       let data: Record<string, unknown> | undefined
       if (exercise_type !== undefined) {
