@@ -84,7 +84,9 @@ export {
 
 // Activities
 export {
+  checkActivityConflict,
   deleteActivity,
+  deleteGarminActivityWithWrongType,
   findMergedGroupForActivity,
   getActivities,
   getActivitiesNeedingDetail,

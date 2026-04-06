@@ -21,12 +21,14 @@ import {
 
 // Mock the db module
 vi.mock('../db', () => ({
+  checkActivityConflict: vi.fn().mockResolvedValue(false),
   deleteActivity: vi.fn(),
   deleteCustomMetricDefinition: vi.fn(),
   deleteTag: vi.fn(),
   deleteTimeSeriesMetric: vi.fn(),
   deleteTimeSeriesPoint: vi.fn(),
   enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
+  findHcRecordId: vi.fn().mockResolvedValue(null),
   findMergeableTag: vi.fn(),
   getActivityById: vi.fn(),
   getCustomMetricByName: vi.fn(),
@@ -855,6 +857,7 @@ describe('updateActivity', () => {
     expect(result.start_time).toBe('2024-03-15T09:00:00.000Z')
     expect(result.end_time).toBe('2024-03-15T12:00:00.000Z')
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
       end_time: new Date('2024-03-15T12:00:00Z'),
       notes: undefined,
       start_time: new Date('2024-03-15T09:00:00Z'),
@@ -981,6 +984,7 @@ describe('updateActivity', () => {
     })
 
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
       data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
       end_time: undefined,
       notes: undefined,
@@ -1013,6 +1017,7 @@ describe('updateActivity', () => {
 
     // Should merge: existing {calories, exerciseType, exerciseTypeName} + new {exerciseType, exerciseTypeName}
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
       data: { calories: 300, exerciseType: 81, exerciseTypeName: 'weightlifting' },
       end_time: undefined,
       notes: undefined,
@@ -1043,6 +1048,7 @@ describe('updateActivity', () => {
     })
 
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
       data: { exerciseType: 56, exerciseTypeName: 'running' },
       end_time: undefined,
       notes: undefined,
@@ -1076,6 +1082,7 @@ describe('updateActivity', () => {
 
     // data should be undefined (not touched) when not provided in input
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
       data: undefined,
       end_time: undefined,
       notes: 'Updated notes',
@@ -1110,11 +1117,151 @@ describe('updateActivity', () => {
     expect(result.success).toBe(true)
     expect(result.title).toBe('Heavy lifting')
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
       data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
       end_time: undefined,
       notes: undefined,
       start_time: undefined,
       title: 'Heavy lifting',
+    })
+  })
+
+  test('updates activity_type successfully', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'garmin',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.checkActivityConflict).mockResolvedValue(false)
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'meditation',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'garmin',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      activity_type: 'meditation',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.activity_type).toBe('meditation')
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: 'meditation',
+      data: undefined,
+      end_time: undefined,
+      notes: undefined,
+      start_time: undefined,
+      title: undefined,
+    })
+  })
+
+  test('returns error when activity_type change would violate unique constraint', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'garmin',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.checkActivityConflict).mockResolvedValue(true)
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      activity_type: 'meditation',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Cannot change activity type')
+    expect(db.updateActivity).not.toHaveBeenCalled()
+  })
+
+  test('skips conflict check when activity_type is not changing', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+      title: 'Updated',
+    })
+
+    await updateActivity('testuser', 'activity-123', { title: 'Updated' })
+
+    expect(db.checkActivityConflict).not.toHaveBeenCalled()
+  })
+
+  test('enqueues HC delete when changing from exercise to meditation (aurboda source)', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.checkActivityConflict).mockResolvedValue(false)
+    vi.mocked(db.findHcRecordId).mockResolvedValue('hc-record-456')
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'meditation',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      activity_type: 'meditation',
+    })
+
+    // Should enqueue a delete for the old exercise HC record
+    expect(db.enqueueOutboundSync).toHaveBeenCalledWith('testuser', {
+      entity_id: 'activity-123',
+      entity_type: 'activity',
+      hc_record_type: 'ExerciseSessionRecord',
+      operation: 'delete',
+      payload: { hc_record_id: 'hc-record-456' },
+    })
+    // Should NOT enqueue an insert for meditation (not HC-syncable)
+    expect(db.enqueueOutboundSync).toHaveBeenCalledTimes(1)
+  })
+
+  test('enqueues HC insert when changing from meditation to exercise (aurboda source)', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'meditation',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.checkActivityConflict).mockResolvedValue(false)
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      activity_type: 'exercise',
+    })
+
+    // Should enqueue an insert for the new exercise HC record
+    expect(db.enqueueOutboundSync).toHaveBeenCalledWith('testuser', {
+      entity_id: 'activity-123',
+      entity_type: 'activity',
+      hc_record_type: 'ExerciseSessionRecord',
+      operation: 'insert',
+      payload: expect.objectContaining({ activity_type: 'exercise' }),
     })
   })
 })

@@ -341,35 +341,34 @@ export const createActivitiesRouter = (
     const user = req.user!
     const hours = Number(req.query.hours) || 6
 
-      const activity = await getActivityById(user, id)
-      if (!activity) {
-        return res.status(404).json({ data: [], error: 'Activity not found', success: false })
-      }
+    const activity = await getActivityById(user, id)
+    if (!activity) {
+      return res.status(404).json({ data: [], error: 'Activity not found', success: false })
+    }
 
-      const nearby = await getNearbyActivities(
-        user,
-        id,
-        activity.activity_type,
-        activity.start_time,
-        activity.end_time,
-        hours,
-      )
+    const nearby = await getNearbyActivities(
+      user,
+      id,
+      activity.activity_type,
+      activity.start_time,
+      activity.end_time,
+      hours,
+    )
 
-      res.json({
-        data: nearby.map((a) => ({
-          activity_type: a.activity_type,
-          data: a.data,
-          end_time: a.end_time?.toISOString(),
-          id: a.id,
-          notes: a.notes,
-          source: a.source,
-          start_time: a.start_time.toISOString(),
-          title: a.title,
-        })),
-        success: true,
-      })
-    },
-  )
+    res.json({
+      data: nearby.map((a) => ({
+        activity_type: a.activity_type,
+        data: a.data,
+        end_time: a.end_time?.toISOString(),
+        id: a.id,
+        notes: a.notes,
+        source: a.source,
+        start_time: a.start_time.toISOString(),
+        title: a.title,
+      })),
+      success: true,
+    })
+  })
 
   // DELETE /activities/:id - Delete an activity by ID
   router.delete<{ id: string }, DeleteActivityResponse>(
@@ -396,7 +395,7 @@ export const createActivitiesRouter = (
     validateBody(updateActivityBodySchema),
     async (req, res) => {
       const { id } = req.params
-      const { start_time, end_time, title, notes, exercise_type } = req.body
+      const { activity_type, start_time, end_time, title, notes, exercise_type } = req.body
       const user = req.user!
 
       // Convert exercise_type name to data object if provided
@@ -415,6 +414,7 @@ export const createActivitiesRouter = (
       }
 
       const result = await updateActivity(user, id, {
+        activity_type,
         data,
         end_time: end_time ? new Date(end_time) : undefined,
         notes,

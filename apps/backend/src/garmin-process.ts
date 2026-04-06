@@ -21,7 +21,12 @@ import type {
   GarminTrainingReadiness,
 } from './garmin.ts'
 
-import { insertActivity, insertRawRecord, insertTimeSeries } from './db/index.ts'
+import {
+  deleteGarminActivityWithWrongType,
+  insertActivity,
+  insertRawRecord,
+  insertTimeSeries,
+} from './db/index.ts'
 
 // ============================================================================
 // Types
@@ -59,12 +64,21 @@ export const garminDataTypes: GarminDataType[] = [
 // ============================================================================
 
 export interface GarminProcessDeps {
+  deleteGarminActivityWithWrongType: typeof deleteGarminActivityWithWrongType
   insertRawRecord: typeof insertRawRecord
   insertTimeSeries: typeof insertTimeSeries
   insertActivity: typeof insertActivity
 }
 
-const defaultDeps: GarminProcessDeps = { insertActivity, insertRawRecord, insertTimeSeries }
+const defaultDeps: GarminProcessDeps = {
+  deleteGarminActivityWithWrongType,
+  insertActivity,
+  insertRawRecord,
+  insertTimeSeries,
+}
+
+/** Garmin activity typeKeys that map to the 'meditation' activity type. */
+const meditationTypeKeys = new Set(['meditation', 'breathwork'])
 
 // ============================================================================
 // Main dispatcher
@@ -392,10 +406,14 @@ const processActivities = async (
     await deps.insertRawRecord(user, makeRaw('garmin_activity', externalId, startTime, act))
 
     const activityTypeKey = act.activityType?.typeKey ?? 'unknown'
+    const activityType = meditationTypeKeys.has(activityTypeKey) ? 'meditation' : 'exercise'
     const exerciseTitle = act.activityName || activityTypeKey
 
+    // Clean up any existing activity with a different type (handles re-sync after type mapping changes)
+    await deps.deleteGarminActivityWithWrongType(user, act.activityId, activityType)
+
     const activity: Activity = {
-      activity_type: 'exercise',
+      activity_type: activityType,
       data: {
         activity_type_key: activityTypeKey,
         average_hr: act.averageHR,

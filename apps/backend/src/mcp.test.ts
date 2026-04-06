@@ -34,6 +34,7 @@ vi.mock('./services/mutations', () => ({
 
 // Mock db for sync status and stored detected locations
 vi.mock('./db', () => ({
+  deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   getAllSyncStates: vi.fn(),
   getDetectedLocations: vi.fn(),
   getOAuthToken: vi.fn().mockResolvedValue(null),
