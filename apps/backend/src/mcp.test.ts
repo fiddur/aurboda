@@ -42,6 +42,7 @@ vi.mock('./db', () => ({
   getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
   getActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
+  getAllActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
   getAllSyncStates: vi.fn(),
   getDeductionRule: vi.fn().mockResolvedValue(null),
   getDeductionRules: vi.fn().mockResolvedValue([]),

@@ -555,6 +555,18 @@ export const getActivitiesByCategory = async (
 }
 
 /**
+ * Get all distinct activity_type values from the activities table.
+ * Unlike getActivityTypeNames (which reads from definitions), this reads actual data.
+ */
+export const getAllActivityTypeNames = async (user: string): Promise<string[]> => {
+  const result = await query(
+    user,
+    `SELECT DISTINCT activity_type FROM activities WHERE deleted_at IS NULL ORDER BY activity_type`,
+  )
+  return result.rows.map((r) => r.activity_type as string)
+}
+
+/**
  * Get activities whose type definition is NOT in the given display categories.
  * Used to get "tag-like" activities (everything except sleep/exercise).
  */
