@@ -30,12 +30,12 @@ vi.mock('./db', () => ({
   resolveOrCreateActivityType: vi.fn((_, name: string) =>
     Promise.resolve(
       name
-        .replace(/[[\]()]/g, '')
+        .replaceAll(/[[\]()]/g, '')
         .trim()
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_|_$/g, '')
-        .replace(/_+/g, '_') || 'unknown',
+        .replaceAll(/[^a-z0-9]+/g, '_')
+        .replaceAll(/^_|_$/g, '')
+        .replaceAll(/_+/g, '_') || 'unknown',
     ),
   ),
   updateActivityEndTimeByExternalId: vi.fn(),

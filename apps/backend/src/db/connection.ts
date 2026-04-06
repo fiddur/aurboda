@@ -334,13 +334,13 @@ const migrateTagDefinitionFk = async (db: Client) => {
  */
 const toSnakeCase = (s: string): string =>
   s
-    .replace(/[[\]()]/g, '') // remove brackets/parens
+    .replaceAll(/[[\]()]/g, '') // remove brackets/parens
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_') // non-alphanumeric → underscore
-    .replace(/^_|_$/g, '') // trim leading/trailing underscores
-    .replace(/_+/g, '_') // collapse multiple underscores
-    || 'unknown'
+    .replaceAll(/[^a-z0-9]+/g, '_') // non-alphanumeric → underscore
+    .replaceAll(/^_|_$/g, '') // trim leading/trailing underscores
+    .replaceAll(/_+/g, '_') || // collapse multiple underscores
+  'unknown'
 
 /**
  * Migrate tags into activities and tag_definitions into activity_type_definitions.
@@ -354,10 +354,7 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
   if (parseInt(tagCount.rows[0].count, 10) === 0) return
 
   // Check if we already migrated (any activity has external_id)
-  const migratedCheck = await query(
-    db,
-    `SELECT 1 FROM activities WHERE external_id IS NOT NULL LIMIT 1`,
-  )
+  const migratedCheck = await query(db, `SELECT 1 FROM activities WHERE external_id IS NOT NULL LIMIT 1`)
   if (migratedCheck.rows.length > 0) return
 
   console.log('  🔄 Migrating tags into activities...')
@@ -443,6 +440,7 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
  * Run database migrations for a user.
  * Checks which tables exist and creates missing ones.
  */
+// eslint-disable-next-line complexity -- migration functions inherently have many conditional branches
 export const migrateSchema = async (user: string) => {
   const db = await getDbForUser(user)
   const database = `aurboda_${user}`

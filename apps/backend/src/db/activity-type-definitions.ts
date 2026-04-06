@@ -144,10 +144,7 @@ export const updateActivityTypeDefinition = async (
  * Resolve a free-form string to an activity type definition by checking aliases.
  * Returns the definition name if found, or null if no match.
  */
-export const resolveActivityTypeByAlias = async (
-  user: string,
-  alias: string,
-): Promise<string | null> => {
+export const resolveActivityTypeByAlias = async (user: string, alias: string): Promise<string | null> => {
   const lowerAlias = alias.toLowerCase()
   const result = await query(
     user,
@@ -168,14 +165,14 @@ export const resolveOrCreateActivityType = async (
   displayCategory = 'other',
 ): Promise<string> => {
   // Try direct name match first
-  const snakeName = displayName
-    .replace(/[[\]()]/g, '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '')
-    .replace(/_+/g, '_')
-    || 'unknown'
+  const snakeName =
+    displayName
+      .replaceAll(/[[\]()]/g, '')
+      .trim()
+      .toLowerCase()
+      .replaceAll(/[^a-z0-9]+/g, '_')
+      .replaceAll(/^_|_$/g, '')
+      .replaceAll(/_+/g, '_') || 'unknown'
 
   const existing = await getActivityTypeDefinition(user, snakeName)
   if (existing) return existing.name

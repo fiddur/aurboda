@@ -1,18 +1,12 @@
 /**
  * MCP user settings and tag mapping tools.
  */
-import { setTagMappingBodySchema, tzSchema, updateSettingsInputSchema } from '@aurboda/api-spec'
+import { setTagMappingBodySchema, updateSettingsInputSchema } from '@aurboda/api-spec'
 
-import { getActivityTypeNames, getUserSettings } from '../db/index.ts'
+import { getActivityTypeNames } from '../db/index.ts'
 import { getGoalsProgress } from '../services/goals.ts'
-import {
-  getSettingsResponse,
-  getTagMappings,
-  setTagMapping,
-  validateAndUpdateSettings,
-} from '../services/settings.ts'
-import { jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
-import { formatInTz } from './tz-utils.ts'
+import { getSettingsResponse, getTagMappings, setTagMapping, validateAndUpdateSettings } from '../services/settings.ts'
+import { jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerSettingsTools = (server: McpServer, user: string) => {
   // Tool: get_user_settings

@@ -55,7 +55,16 @@ vi.mock('./db', () => ({
   getUserSettings: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertActivityTypeDefinition: vi.fn(),
-  insertDeductionRule: vi.fn().mockResolvedValue({ conditions: [], enabled: true, id: 'mock-id', name: 'mock', output_activity_type: 'test', priority: 0 }),
+  insertDeductionRule: vi
+    .fn()
+    .mockResolvedValue({
+      conditions: [],
+      enabled: true,
+      id: 'mock-id',
+      name: 'mock',
+      output_activity_type: 'test',
+      priority: 0,
+    }),
   insertDeductionRuleRun: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),

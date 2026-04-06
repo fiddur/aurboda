@@ -566,11 +566,10 @@ export const hardDeleteActivitiesByExternalIdPrefix = async (
   source: string,
   prefix: string,
 ): Promise<number> => {
-  const result = await query(
-    user,
-    `DELETE FROM activities WHERE source = $1 AND external_id LIKE $2`,
-    [source, `${prefix}%`],
-  )
+  const result = await query(user, `DELETE FROM activities WHERE source = $1 AND external_id LIKE $2`, [
+    source,
+    `${prefix}%`,
+  ])
   return result.rowCount ?? 0
 }
 
@@ -611,9 +610,8 @@ export const updateActivityEndTimeByExternalId = async (
   externalId: string,
   endTime: Date,
 ): Promise<void> => {
-  await query(
-    user,
-    `UPDATE activities SET end_time = $1 WHERE external_id = $2 AND deleted_at IS NULL`,
-    [endTime, externalId],
-  )
+  await query(user, `UPDATE activities SET end_time = $1 WHERE external_id = $2 AND deleted_at IS NULL`, [
+    endTime,
+    externalId,
+  ])
 }

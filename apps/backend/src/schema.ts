@@ -31,6 +31,7 @@ export {
 
 // Import types and values for use in local mappings
 import type { ActivityType, MetricType } from '@aurboda/api-spec'
+
 import { exerciseTypeNames } from '@aurboda/api-spec'
 
 export const SCHEMA_VERSION = 1
