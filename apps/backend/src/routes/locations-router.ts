@@ -9,7 +9,6 @@ import {
   type AddNamedLocationBody,
   addNamedLocationBodySchema,
   type AddNamedLocationResponse,
-  type DeleteTagResponse,
   type DetectedLocationsQuery,
   detectedLocationsQuerySchema,
   type DetectedLocationsResponse,
@@ -96,14 +95,18 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
   )
 
   // DELETE /locations/named/:id - Delete a named location
-  router.delete<{ id: string }, DeleteTagResponse>('/named/:id', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const deleted = await deleteNamedLocation(req.user!, id)
-    if (!deleted) {
-      return res.status(404).json({ error: 'Named location not found', success: false })
-    }
-    res.json({ success: true })
-  })
+  router.delete<{ id: string }, { success: boolean; error?: string }>(
+    '/named/:id',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const deleted = await deleteNamedLocation(req.user!, id)
+      if (!deleted) {
+        return res.status(404).json({ error: 'Named location not found', success: false })
+      }
+      res.json({ success: true })
+    },
+  )
 
   // GET /locations/detected - Get computed detected location clusters
   router.get<Record<string, string>, DetectedLocationsResponse, unknown, DetectedLocationsQuery>(

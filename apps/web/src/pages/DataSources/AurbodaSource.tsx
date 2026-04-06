@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { CustomMetricsSettings } from '../../components/CustomMetricsSettings'
-import { TagMappingsSettings } from '../../components/TagMappingsSettings'
 import { fetchMetricTimeSeries, fetchUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -121,8 +120,6 @@ export function AurbodaSource() {
         </p>
         <CalorieEstimationStatus hasBirthDate={hasBirthDate} hasSex={hasSex} hasVo2Max={hasVo2Max} />
       </section>
-
-      <TagMappingsSettings />
 
       <CustomMetricsSettings />
     </div>

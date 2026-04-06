@@ -47,12 +47,6 @@ import {
   syncResponseSchema,
   syncStatusResponseSchema,
 } from './schemas/sync.ts'
-import {
-  addTagBodySchema,
-  addTagResponseSchema,
-  deleteTagResponseSchema,
-  tagsResponseSchema,
-} from './schemas/tags.ts'
 
 // Error response
 const errorResponseSchema = z
@@ -690,74 +684,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Tags ---
-    '/tags': {
-      get: {
-        description: 'Get tags/labels for a time range.',
-        requestParams: {
-          query: z.object({
-            end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-            start: iso8601DateTimeSchema.meta({
-              description: 'Start date/time',
-            }),
-          }),
-        },
-        responses: {
-          200: {
-            content: { 'application/json': { schema: tagsResponseSchema } },
-            description: 'Successful response',
-          },
-        },
-        security: [{ bearerAuth: [] }],
-        summary: 'Get tags',
-        tags: ['Tags'],
-      },
-      post: {
-        description: 'Add a manual tag/label to mark an activity or event.',
-        requestBody: {
-          content: { 'application/json': { schema: addTagBodySchema } },
-        },
-        responses: {
-          200: {
-            content: { 'application/json': { schema: addTagResponseSchema } },
-            description: 'Successful response',
-          },
-          400: {
-            content: { 'application/json': { schema: errorResponseSchema } },
-            description: 'Bad request',
-          },
-        },
-        security: [{ bearerAuth: [] }],
-        summary: 'Add tag',
-        tags: ['Tags'],
-      },
-    },
-    '/tags/{externalId}': {
-      delete: {
-        description: 'Delete a tag by its external ID.',
-        requestParams: {
-          path: z.object({
-            externalId: z.string().meta({ description: 'External ID of the tag to delete' }),
-          }),
-        },
-        responses: {
-          200: {
-            content: {
-              'application/json': { schema: deleteTagResponseSchema },
-            },
-            description: 'Successful response',
-          },
-          404: {
-            content: { 'application/json': { schema: errorResponseSchema } },
-            description: 'Tag not found',
-          },
-        },
-        security: [{ bearerAuth: [] }],
-        summary: 'Delete tag',
-        tags: ['Tags'],
-      },
-    },
-
     // --- User Settings ---
     '/user/settings': {
       get: {
@@ -810,7 +736,6 @@ const openApiDocument = createDocument({
     { description: 'Health metric goals and progress tracking', name: 'Goals' },
     { description: 'Time series health metrics', name: 'Metrics' },
     { description: 'Daily and period summaries', name: 'Summary' },
-    { description: 'Activity tags/labels', name: 'Tags' },
     { description: 'Sleep, exercise, meditation sessions', name: 'Activities' },
     { description: 'Named and detected locations', name: 'Locations' },
     { description: 'RescueTime productivity data', name: 'Productivity' },

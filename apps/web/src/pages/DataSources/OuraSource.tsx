@@ -3,7 +3,6 @@ import type { ProviderSyncStatus, UserSettingsResponse } from '@aurboda/api-spec
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 
-import { TagMappingsSettings } from '../../components/TagMappingsSettings'
 import { API_URL } from '../../config'
 import { fetchOuraSyncStatus, fetchUserSettings, syncOura } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -171,8 +170,6 @@ export function OuraSource() {
           />
         ) : null}
       </div>
-
-      <TagMappingsSettings />
     </div>
   )
 }

@@ -14,14 +14,13 @@ import {
 vi.mock('./db', () => ({
   getSyncState: vi.fn(),
   getUserSettings: vi.fn(),
-  insertActivity: vi.fn(),
+  insertActivity: vi.fn().mockResolvedValue('activity-uuid-123'),
   insertRawRecord: vi.fn(),
-  insertTag: vi.fn().mockResolvedValue('tag-uuid-123'),
   insertTimeSeries: vi.fn(),
-  resolveOrCreateTagDefinition: vi
+  resolveOrCreateActivityType: vi
     .fn()
     .mockImplementation((_user: string, tagName: string) =>
-      Promise.resolve({ aliases: [tagName.toLowerCase()], id: 'def-uuid', name: tagName }),
+      Promise.resolve(tagName.toLowerCase().replaceAll(/\s+/g, '_')),
     ),
   upsertSyncState: vi.fn(),
   upsertSyncedNote: vi.fn(),
@@ -789,13 +788,13 @@ describe('processOuraData', () => {
         source: 'oura',
       })
 
-      expect(db.insertTag).toHaveBeenCalledWith(
+      expect(db.resolveOrCreateActivityType).toHaveBeenCalledWith(user, 'Morning Coffee')
+      expect(db.insertActivity).toHaveBeenCalledWith(
         user,
         expect.objectContaining({
+          activity_type: 'morning_coffee',
           external_id: 'tag-1',
           source: 'oura',
-          tag: 'Morning Coffee',
-          tag_definition_id: 'def-uuid',
         }),
       )
     })
@@ -814,9 +813,9 @@ describe('processOuraData', () => {
 
       await processOuraData(user, 'tags', data)
 
-      expect(db.insertTag).toHaveBeenCalledWith(
+      expect(db.insertActivity).toHaveBeenCalledWith(
         user,
-        expect.objectContaining({ external_id: 'tag-2', tag: 'stress_high', tag_definition_id: 'def-uuid' }),
+        expect.objectContaining({ activity_type: 'stress_high', external_id: 'tag-2' }),
       )
     })
 
@@ -834,9 +833,9 @@ describe('processOuraData', () => {
 
       await processOuraData(user, 'tags', data)
 
-      expect(db.insertTag).toHaveBeenCalledWith(
+      expect(db.insertActivity).toHaveBeenCalledWith(
         user,
-        expect.objectContaining({ external_id: 'tag-3', tag: 'unknown', tag_definition_id: 'def-uuid' }),
+        expect.objectContaining({ activity_type: 'unknown', external_id: 'tag-3' }),
       )
     })
 
@@ -856,8 +855,8 @@ describe('processOuraData', () => {
 
       expect(db.upsertSyncedNote).toHaveBeenCalledWith(
         user,
-        'tag',
-        'tag-uuid-123',
+        'activity',
+        'activity-uuid-123',
         'oura',
         'Felt great after this',
         new Date('2025-01-01T08:00:00Z'),
@@ -880,8 +879,8 @@ describe('processOuraData', () => {
 
       expect(db.upsertSyncedNote).toHaveBeenCalledWith(
         user,
-        'tag',
-        'tag-uuid-123',
+        'activity',
+        'activity-uuid-123',
         'oura',
         undefined,
         new Date('2025-01-01T08:00:00Z'),

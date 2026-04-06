@@ -5,7 +5,12 @@ import { setTagMappingBodySchema, updateSettingsInputSchema } from '@aurboda/api
 
 import { getActivityTypeNames } from '../db/index.ts'
 import { getGoalsProgress } from '../services/goals.ts'
-import { getSettingsResponse, getTagMappings, setTagMapping, validateAndUpdateSettings } from '../services/settings.ts'
+import {
+  getSettingsResponse,
+  getTagMappings,
+  setTagMapping,
+  validateAndUpdateSettings,
+} from '../services/settings.ts'
 import { jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerSettingsTools = (server: McpServer, user: string) => {
@@ -45,7 +50,7 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
   // Tool: set_tag_mapping
   server.tool(
     'set_tag_mapping',
-    'Set a display name for a programmatic tag (UUID, tag_* prefix, etc.). Use after get_programmatic_tags to name unmapped tags.',
+    'Set a display name for a programmatic tag (UUID, tag_* prefix, etc.).',
     { ...setTagMappingBodySchema.shape },
     async ({ name, tag_key, icon }) => {
       const mapping = await setTagMapping(user, tag_key, name, icon)

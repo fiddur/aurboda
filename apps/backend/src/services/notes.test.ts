@@ -19,7 +19,7 @@ vi.mock('../db', () => ({
   getActivityById: vi.fn(),
   getNotesForEntity: vi.fn(),
   getProductivityById: vi.fn(),
-  getTagById: vi.fn(),
+  getReportById: vi.fn(),
   insertNote: vi.fn(),
   updateNote: vi.fn(),
   updateNoteTimesForEntity: vi.fn(),
@@ -42,16 +42,17 @@ describe('addNote', () => {
     vi.clearAllMocks()
   })
 
-  test('inherits start_time and end_time from a tag entity', async () => {
+  test('inherits start_time and end_time from a tag entity (now activity)', async () => {
     const tagId = randomUUID()
     const tagStart = new Date('2024-01-15T08:15:00Z')
     const tagEnd = new Date('2024-01-15T08:45:00Z')
 
-    vi.mocked(db.getTagById).mockResolvedValue({
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'morning_run',
       end_time: tagEnd,
+      id: tagId,
       source: 'aurboda',
       start_time: tagStart,
-      tag: 'morning run',
     })
 
     const note = makeNote({ end_time: tagEnd, entity_id: tagId, entity_type: 'tag', start_time: tagStart })
@@ -59,7 +60,7 @@ describe('addNote', () => {
 
     const result = await addNote('user', { content: 'Great session', entity_id: tagId, entity_type: 'tag' })
 
-    expect(db.getTagById).toHaveBeenCalledWith('user', tagId)
+    expect(db.getActivityById).toHaveBeenCalledWith('user', tagId)
     expect(db.insertNote).toHaveBeenCalledWith('user', 'tag', tagId, 'Great session', tagStart, tagEnd)
     expect(result.success).toBe(true)
     expect(result.data?.start_time).toBe(tagStart.toISOString())
@@ -70,11 +71,12 @@ describe('addNote', () => {
     const tagId = randomUUID()
     const tagStart = new Date('2024-01-15T08:15:00Z')
 
-    vi.mocked(db.getTagById).mockResolvedValue({
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'coffee',
       end_time: undefined,
+      id: tagId,
       source: 'aurboda',
       start_time: tagStart,
-      tag: 'coffee',
     })
 
     const note = makeNote({ entity_id: tagId, entity_type: 'tag', start_time: tagStart })
@@ -87,7 +89,7 @@ describe('addNote', () => {
 
   test('returns undefined times when tag entity not found', async () => {
     const tagId = randomUUID()
-    vi.mocked(db.getTagById).mockResolvedValue(null)
+    vi.mocked(db.getActivityById).mockResolvedValue(null)
 
     const note = makeNote({ entity_id: tagId, entity_type: 'tag' })
     vi.mocked(db.insertNote).mockResolvedValue(note)
@@ -159,7 +161,6 @@ describe('addNote', () => {
 
     await addNote('user', { content: 'HRV low', entity_id: metricEntityId, entity_type: 'metric' })
 
-    expect(db.getTagById).not.toHaveBeenCalled()
     expect(db.getActivityById).not.toHaveBeenCalled()
     expect(db.getProductivityById).not.toHaveBeenCalled()
     expect(db.insertNote).toHaveBeenCalledWith(
@@ -177,11 +178,12 @@ describe('addNote', () => {
     const start = new Date('2024-01-15T08:00:00Z')
     const end = new Date('2024-01-15T09:00:00Z')
 
-    vi.mocked(db.getTagById).mockResolvedValue({
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'coffee',
       end_time: end,
+      id: tagId,
       source: 'aurboda',
       start_time: start,
-      tag: 't',
     })
 
     const noteId = randomUUID()
