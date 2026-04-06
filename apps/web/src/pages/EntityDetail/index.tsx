@@ -17,10 +17,8 @@ import {
   fetchActivityById,
   fetchProductivityById,
   fetchScreentimeCategories,
-  fetchTagById,
   fetchTagMappings,
   updateActivity,
-  updateTag,
 } from '../../state/api'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
@@ -34,7 +32,6 @@ import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
 import { SleepDetail } from './SleepDetail'
-import { type TagDraft, TagDetail } from './TagDetail'
 import './style.css'
 
 const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
@@ -313,109 +310,6 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   )
 }
 
-/** Tag entity content. */
-const TagContent = ({ entityId }: { entityId: string }) => {
-  const queryClient = useQueryClient()
-  const {
-    data: tag,
-    isLoading,
-    isError,
-  } = useQuery({
-    queryFn: () => fetchTagById(entityId),
-    queryKey: ['entity-detail', 'tag', entityId],
-    staleTime: 60_000,
-  })
-
-  const { data: mappingsData } = useQuery({
-    queryFn: fetchTagMappings,
-    queryKey: ['tag-mappings'],
-    staleTime: 30 * 60 * 1000,
-  })
-  const itemIcons = mappingsData?.icons ?? {}
-
-  const invalidate = useCallback(
-    () =>
-      queryClient.invalidateQueries({
-        queryKey: ['entity-detail', 'tag', entityId],
-      }),
-    [queryClient, entityId],
-  )
-
-  // Invalidate timeline queries when leaving so parent views show fresh data
-  useEffect(
-    () => () =>
-      void queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith('timeline-') }),
-    [queryClient],
-  )
-
-  const [isEditing, setIsEditing] = useState(false)
-  const emptyDraft: TagDraft = { end_time: '', start_time: '' }
-  const [draft, setDraft] = useState<TagDraft>(emptyDraft)
-
-  const startEditing = useCallback(() => {
-    if (!tag) return
-    setDraft({
-      end_time: tag.end_time ? formatDateTimeLocal(tag.end_time) : '',
-      start_time: formatDateTimeLocal(tag.start_time),
-    })
-    setIsEditing(true)
-  }, [tag])
-
-  const saveMutation = useMutation({
-    mutationFn: () => {
-      if (!tag) return Promise.resolve()
-      const body: { start_time?: string; end_time?: string | null } = {}
-      const origStart = formatDateTimeLocal(tag.start_time)
-      const origEnd = tag.end_time ? formatDateTimeLocal(tag.end_time) : ''
-
-      if (draft.start_time !== origStart) {
-        body.start_time = new Date(draft.start_time).toISOString()
-      }
-      if (draft.end_time !== origEnd) {
-        body.end_time = draft.end_time ? new Date(draft.end_time).toISOString() : null
-      }
-      if (Object.keys(body).length === 0) return Promise.resolve()
-      return updateTag(entityId, body)
-    },
-    onSuccess: () => {
-      setIsEditing(false)
-      invalidate()
-    },
-  })
-
-  if (isLoading) return <p class="loading">Loading...</p>
-  if (isError || !tag) return <p class="error">Failed to load tag</p>
-
-  return (
-    <>
-      <EntityActions
-        entityType="tag"
-        entityId={entityId}
-        isDeleted={Boolean(tag.deleted_at)}
-        onMutationSuccess={invalidate}
-        canEdit={true}
-        isMerged={false}
-        isEditing={isEditing}
-        onStartEditing={startEditing}
-        onCancelEditing={() => {
-          setIsEditing(false)
-          setDraft(emptyDraft)
-        }}
-        onSave={() => saveMutation.mutate()}
-        isSaving={saveMutation.isPending}
-      />
-      <TagDetail
-        tag={tag}
-        itemIcons={itemIcons}
-        isEditing={isEditing}
-        draft={draft}
-        onDraftChange={setDraft}
-      />
-      <NotesSection entityType="tag" entityId={entityId} />
-    </>
-  )
-}
-
 /** Productivity entity content. */
 const ProductivityContent = ({ entityId }: { entityId: string }) => {
   const queryClient = useQueryClient()
@@ -485,6 +379,9 @@ export const EntityDetail = () => {
   const entityType = params.type as EntityType
   const entityId = decodeURIComponent(params.id as string)
 
+  // Tags are now activities — treat tag entity type as activity
+  const effectiveType = entityType === 'tag' ? 'activity' : entityType
+
   if (!VALID_ENTITY_TYPES.has(entityType)) {
     return (
       <div class="entity-detail-page">
@@ -495,10 +392,9 @@ export const EntityDetail = () => {
 
   return (
     <div class="entity-detail-page">
-      {entityType === 'activity' && <ActivityContent entityId={entityId} />}
-      {entityType === 'tag' && <TagContent entityId={entityId} />}
-      {entityType === 'productivity' && <ProductivityContent entityId={entityId} />}
-      {entityType === 'metric' && <MetricContent entityId={entityId} />}
+      {effectiveType === 'activity' && <ActivityContent entityId={entityId} />}
+      {effectiveType === 'productivity' && <ProductivityContent entityId={entityId} />}
+      {effectiveType === 'metric' && <MetricContent entityId={entityId} />}
     </div>
   )
 }

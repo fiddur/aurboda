@@ -20,13 +20,11 @@ import type {
   AddNamedLocationBody,
   AddNamedLocationResponse,
   AddTagBody,
-  AddTagResponse,
   Activity as ApiActivity,
   DetectedLocation as ApiDetectedLocation,
   PlaceVisit as ApiPlaceVisit,
   ProductivityRecord as ApiProductivityRecord,
   Scrobble as ApiScrobble,
-  Tag as ApiTag,
   BaselineData,
   BaselineResponse,
   ChartDataBucket,
@@ -66,7 +64,6 @@ import type {
   ProductivityQuery,
   ProductivityResponse,
   ProgrammaticTag,
-  ProgrammaticTagsResponse,
   PromoteDetectedLocationBody,
   QueryMetricsBucketedQuery,
   QueryMetricsBucketedResponse,
@@ -85,14 +82,10 @@ import type {
   ScreentimeCategoryListResponse,
   ScreentimeCategoryResponse,
   ScrobblesResponse,
-  SetTagMappingResponse,
   SyncResponse,
   TagCorrelation,
   TagDefinition,
-  TagDefinitionsResponse,
   TagMappings,
-  TagsQuery,
-  TagsResponse,
   TrainingLoadResponse,
   TrainingLoadResult,
   TrendDisplayPeriod,
@@ -100,7 +93,6 @@ import type {
   TrendResponse,
   TrendResult,
   TrendSourceType,
-  UniqueTagsResponse,
   UpdateActivityBody,
   UpdateCustomMetricBody,
   UpdateTagDefinitionBody,
@@ -170,9 +162,12 @@ export interface StoredDetectedLocation extends Omit<ApiDetectedLocation, 'first
   last_visit: Date
 }
 
-export interface Tag extends Omit<ApiTag, 'start_time' | 'end_time'> {
-  start_time: Date
-  end_time?: Date
+// Tags are now activities. This interface provides backward compatibility
+// with the old Tag type used throughout the frontend.
+export interface Tag extends Activity {
+  tag: string
+  tag_key?: string
+  tag_definition_id?: string
 }
 
 export interface Scrobble extends Omit<ApiScrobble, 'recorded_at'> {
@@ -467,23 +462,33 @@ export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
   }))
 }
 
-// Fetch tags for the specified date range
+// Fetch tag-like activities (activities not in sleep_rest/exercise categories)
 export const fetchTags = async (start: Date, end: Date): Promise<Tag[]> => {
   const { token } = auth.value
-  const params: TagsQuery = {
+  const params: ActivitiesQuery = {
     end: end.toISOString(),
     start: start.toISOString(),
+    // No types filter — backend returns all activity types.
+    // We filter out sleep_rest/exercise client-side.
   }
-  const response = await axios.get<TagsResponse>(`${API_URL}/tags`, {
+  const response = await axios.get<ActivitiesResponse>(`${API_URL}/activities`, {
     headers: { Authorization: `Bearer ${token}` },
     params,
   })
 
-  return (response.data.data ?? []).map((tag) => ({
-    ...tag,
-    end_time: tag.end_time ? new Date(tag.end_time) : undefined,
-    start_time: new Date(tag.start_time),
-  }))
+  const EXCLUDED_TYPES = new Set(['sleep', 'nap', 'rest', 'exercise'])
+
+  return (response.data.data ?? [])
+    .filter((a) => !EXCLUDED_TYPES.has(a.activity_type))
+    .map((a) => ({
+      ...a,
+      end_time: a.end_time ? new Date(a.end_time) : undefined,
+      start_time: new Date(a.start_time),
+      // Map activity fields to tag fields for backward compatibility
+      tag: a.title ?? a.activity_type,
+      tag_definition_id: undefined,
+      tag_key: undefined,
+    }))
 }
 
 // Fetch Last.fm scrobbles for the specified date range
@@ -705,36 +710,44 @@ export const fetchGarminSyncStatus = async (): Promise<GarminSyncStatusResponse>
 // Tag Mappings API
 // ==========================================================================
 
-// Fetch all unique tag names
+// Fetch all unique tag/activity type names (via activity type definitions)
 export const fetchUniqueTags = async (): Promise<string[]> => {
-  const { token } = auth.value
-  const response = await axios.get<UniqueTagsResponse>(`${API_URL}/tags/unique`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-
-  return response.data.data ?? []
+  const definitions = await fetchActivityTypeDefinitions()
+  return definitions.map((d) => d.display_name || d.name)
 }
 
-// Fetch programmatic tags (UUIDs, tag_* prefixes) with their current mappings
+// Fetch programmatic tags — now returns activity type definitions adapted to ProgrammaticTag shape
 export const fetchProgrammaticTags = async (): Promise<ProgrammaticTag[]> => {
-  const { token } = auth.value
-  const response = await axios.get<ProgrammaticTagsResponse>(`${API_URL}/tags/programmatic`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-
-  return response.data.data ?? []
+  const definitions = await fetchActivityTypeDefinitions()
+  return definitions.map((d) => ({
+    count: 0,
+    current_name: d.display_name || d.name,
+    is_programmatic: !d.is_builtin,
+    latest_time: new Date().toISOString(),
+    tag_key: d.name,
+  }))
 }
 
-// Set a tag mapping (with optional icon)
+// Set a tag mapping (with optional icon) — now updates user settings
 export const setTagMapping = async (tagKey: string, name: string, icon?: string): Promise<TagMappings> => {
-  const { token } = auth.value
-  const body: { tag_key: string; name: string; icon?: string } = { name, tag_key: tagKey }
-  if (icon !== undefined) body.icon = icon
-  const response = await axios.post<SetTagMappingResponse>(`${API_URL}/tags/mapping`, body, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-
-  return response.data.mapping ?? {}
+  const settings = await fetchUserSettings()
+  const currentMappings = settings.tag_mappings ?? {}
+  const updates: UpdateSettingsInput = {
+    tag_mappings: { ...currentMappings, [tagKey]: name },
+  }
+  if (icon !== undefined) {
+    const currentIcons = settings.item_icons ?? {}
+    if (icon) {
+      updates.item_icons = { ...currentIcons, [name]: icon }
+    } else {
+      const newIcons = { ...currentIcons }
+      delete newIcons[name]
+      delete newIcons[tagKey]
+      updates.item_icons = newIcons
+    }
+  }
+  await updateUserSettings(updates)
+  return updates.tag_mappings as TagMappings
 }
 
 /** Tag mapping entry with name and optional icon. */
@@ -743,20 +756,15 @@ export interface TagMappingEntry {
   icon?: string
 }
 
-/** Fetch all tag mappings (names and icons). */
+/** Fetch all tag mappings (names and icons) from user settings. */
 export const fetchTagMappings = async (): Promise<{
   mappings: TagMappings
   icons: Record<string, string>
 }> => {
-  const { token } = auth.value
-  const response = await axios.get<{
-    success: boolean
-    mappings: TagMappings
-    icons?: Record<string, string>
-  }>(`${API_URL}/tags/mappings`, { headers: { Authorization: `Bearer ${token}` } })
+  const settings = await fetchUserSettings()
   return {
-    icons: response.data.icons ?? {},
-    mappings: response.data.mappings,
+    icons: settings.item_icons ?? {},
+    mappings: settings.tag_mappings ?? {},
   }
 }
 
@@ -765,30 +773,57 @@ export const fetchTagMappings = async (): Promise<{
 // ==========================================================================
 
 export const fetchTagDefinitions = async (): Promise<TagDefinition[]> => {
-  const { token } = auth.value
-  const response = await axios.get<TagDefinitionsResponse>(`${API_URL}/tags/definitions`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  return response.data.data ?? []
+  // Tag definitions are now activity type definitions
+  const definitions = await fetchActivityTypeDefinitions()
+  return definitions.map((d) => ({
+    aliases: [],
+    count: undefined,
+    icon: d.icon,
+    id: d.name,
+    latest_time: undefined,
+    name: d.display_name || d.name,
+  }))
 }
 
 export const fetchTagDefinitionById = async (id: string): Promise<TagDefinition> => {
   const { token } = auth.value
-  const response = await axios.get<{ data: TagDefinition; success: boolean }>(
-    `${API_URL}/tags/definitions/${id}`,
+  const response = await axios.get<{ data: ActivityTypeDefinition; success: boolean }>(
+    `${API_URL}/activity-types/${encodeURIComponent(id)}`,
     { headers: { Authorization: `Bearer ${token}` } },
   )
-  return response.data.data
+  const d = response.data.data
+  return {
+    aliases: [],
+    count: undefined,
+    icon: d.icon,
+    id: d.name,
+    latest_time: undefined,
+    name: d.display_name || d.name,
+  }
 }
 
 export const createTagDefinition = async (body: CreateTagDefinitionBody): Promise<TagDefinition> => {
   const { token } = auth.value
-  const response = await axios.post<{ data: TagDefinition; success: boolean }>(
-    `${API_URL}/tags/definitions`,
-    body,
+  const response = await axios.post<{ data: ActivityTypeDefinition; success: boolean }>(
+    `${API_URL}/activity-types`,
+    {
+      color: '#8b5cf6',
+      display_category: 'tags',
+      display_name: body.name,
+      icon: body.icon,
+      name: body.name.toLowerCase().replaceAll(/\s+/g, '_'),
+    },
     { headers: { Authorization: `Bearer ${token}` } },
   )
-  return response.data.data
+  const d = response.data.data
+  return {
+    aliases: [],
+    count: undefined,
+    icon: d.icon,
+    id: d.name,
+    latest_time: undefined,
+    name: d.display_name || d.name,
+  }
 }
 
 export const updateTagDefinitionApi = async (
@@ -796,29 +831,37 @@ export const updateTagDefinitionApi = async (
   body: UpdateTagDefinitionBody,
 ): Promise<TagDefinition> => {
   const { token } = auth.value
-  const response = await axios.patch<{ data: TagDefinition; success: boolean }>(
-    `${API_URL}/tags/definitions/${id}`,
-    body,
+  // Activity type definitions are identified by name, not UUID
+  const response = await axios.patch<{ data: ActivityTypeDefinition; success: boolean }>(
+    `${API_URL}/activity-types/${encodeURIComponent(id)}`,
+    {
+      ...(body.name ? { display_name: body.name } : {}),
+      ...(body.icon !== undefined ? { icon: body.icon } : {}),
+    },
     { headers: { Authorization: `Bearer ${token}` } },
   )
-  return response.data.data
+  const d = response.data.data
+  return {
+    aliases: [],
+    count: undefined,
+    icon: d.icon,
+    id: d.name,
+    latest_time: undefined,
+    name: d.display_name || d.name,
+  }
 }
 
 export const deleteTagDefinitionApi = async (id: string): Promise<void> => {
   const { token } = auth.value
-  await axios.delete(`${API_URL}/tags/definitions/${id}`, {
+  await axios.delete(`${API_URL}/activity-types/${encodeURIComponent(id)}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
 
 export const mergeTagDefinitionsApi = async (sourceId: string, targetId: string): Promise<TagDefinition> => {
-  const { token } = auth.value
-  const response = await axios.post<{ data: TagDefinition; success: boolean }>(
-    `${API_URL}/tags/definitions/${sourceId}/merge`,
-    { target_id: targetId },
-    { headers: { Authorization: `Bearer ${token}` } },
-  )
-  return response.data.data
+  // Merge is no longer supported at the activity-types level
+  // This is a no-op that returns the target definition
+  return fetchTagDefinitionById(targetId)
 }
 
 // Fetch goal progress
@@ -1265,21 +1308,13 @@ export const restoreActivity = async (id: string): Promise<void> => {
 }
 
 export const softDeleteTag = async (id: string): Promise<void> => {
-  const { token } = auth.value
-  await axios.delete(`${API_URL}/tags/id/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  // Tags are now activities — use the activities endpoint
+  return softDeleteActivity(id)
 }
 
 export const restoreTag = async (id: string): Promise<void> => {
-  const { token } = auth.value
-  await axios.post(
-    `${API_URL}/tags/id/${id}/restore`,
-    {},
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  )
+  // Tags are now activities — use the activities endpoint
+  return restoreActivity(id)
 }
 
 export const softDeleteProductivity = async (id: string): Promise<void> => {
@@ -1356,16 +1391,13 @@ export const mergeActivities = async (
 }
 
 export const fetchTagById = async (id: string): Promise<Tag> => {
-  const { token } = auth.value
-  const response = await axios.get(`${API_URL}/tags/id/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-
-  const d = response.data.data
+  // Tags are now activities — fetch via activities endpoint
+  const activity = await fetchActivityById(id)
   return {
-    ...d,
-    end_time: d.end_time ? new Date(d.end_time) : undefined,
-    start_time: new Date(d.start_time),
+    ...activity,
+    tag: activity.title ?? activity.activity_type,
+    tag_definition_id: undefined,
+    tag_key: undefined,
   }
 }
 
@@ -1373,10 +1405,12 @@ export const updateTag = async (
   id: string,
   body: { start_time?: string; end_time?: string | null },
 ): Promise<void> => {
-  const { token } = auth.value
-  await axios.patch(`${API_URL}/tags/id/${id}`, body, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  // Tags are now activities — update via activities endpoint
+  // Convert null end_time to undefined since activities API doesn't accept null
+  const activityBody: { start_time?: string; end_time?: string } = {}
+  if (body.start_time) activityBody.start_time = body.start_time
+  if (body.end_time) activityBody.end_time = body.end_time
+  return updateActivity(id, activityBody)
 }
 
 // ============================================================================
@@ -1453,9 +1487,16 @@ export const uploadFitFile = async (file: File): Promise<AddActivityResponse> =>
   return response.data
 }
 
-export const addTag = async (body: AddTagBody): Promise<AddTagResponse> => {
+export const addTag = async (body: AddTagBody): Promise<AddActivityResponse> => {
+  // Tags are now activities — post to activities endpoint
   const { token } = auth.value
-  const response = await axios.post<AddTagResponse>(`${API_URL}/tags`, body, {
+  const activityBody: AddActivityBody = {
+    activity_type: body.tag,
+    start_time: body.start_time,
+    ...(body.end_time ? { end_time: body.end_time } : {}),
+    title: body.tag,
+  }
+  const response = await axios.post<AddActivityResponse>(`${API_URL}/activities`, activityBody, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data

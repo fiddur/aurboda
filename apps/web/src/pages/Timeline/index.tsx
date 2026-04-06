@@ -25,7 +25,6 @@ import {
   fetchScreentimeBucketed,
   fetchScrobbles,
   fetchTagMappings,
-  fetchTags,
   fetchTrainingLoad,
   fetchUserSettings,
 } from '../../state/api'
@@ -357,8 +356,8 @@ const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = 
     (item.column === 'Tags / Events' &&
       item.color !== tagSourceColors.calendar &&
       item.color !== METRIC_COLOR) ||
-    // Duration tags promoted to Activity column (have entity_type 'tag' but no activity_type)
-    (item.column === 'Activity' && item.entity_type === 'tag' && !item.activity_type),
+    // Duration tags promoted to Activity column (activity entity without a built-in activity_type)
+    (item.column === 'Activity' && item.entity_type === 'activity' && !item.activity_type),
   screen_time_h: () => false, // horizontal screentime bar controlled at draw level
   training_load: () => false,
 }
@@ -390,15 +389,12 @@ const categorizeTags = (tags: Tag[], itemIcons: Record<string, string>): ChartIt
       const sourceLabel = t.source ? ` (${t.source})` : ''
       const icon =
         itemIcons[t.tag] ?? itemIcons[t.tag.toLowerCase()] ?? (t.tag_key ? itemIcons[t.tag_key] : undefined)
-      // Link to tag definition page if available; calendar/lastfm tags (no definition) won't link
-      const href = t.tag_definition_id ? `/tag/${t.tag_definition_id}` : undefined
       return {
         color: getTagColor(t),
         column: 'Tags / Events' as Column,
         end,
-        entity_id: href ? undefined : t.id,
-        entity_type: href ? undefined : ('tag' as const),
-        href,
+        entity_id: t.id,
+        entity_type: 'activity' as const,
         icon,
         isPoint,
         label: t.tag,
@@ -735,9 +731,23 @@ export const Timeline = () => {
     staleTime: 5 * 60 * 1000,
   })
 
+  // Fetch tag-like activities (activities not in sleep_rest/exercise categories)
+  const EXCLUDED_TAG_ACTIVITY_TYPES = new Set(['sleep', 'nap', 'rest', 'exercise'])
   const tagsQuery = useQuery({
     placeholderData: keepPreviousData,
-    queryFn: () => fetchTags(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryFn: async () => {
+      const allActivities = await fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5))
+      return allActivities
+        .filter((a) => !EXCLUDED_TAG_ACTIVITY_TYPES.has(a.activity_type))
+        .map(
+          (a): Tag => ({
+            ...a,
+            tag: a.title ?? a.activity_type,
+            tag_definition_id: undefined,
+            tag_key: undefined,
+          }),
+        )
+    },
     queryKey: ['timeline-tags', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
   })

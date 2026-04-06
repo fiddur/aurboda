@@ -3,7 +3,7 @@ import type { ProgrammaticTag } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
-import { fetchProgrammaticTags, fetchUniqueTags } from '../state/api'
+import { fetchActivityTypeDefinitions, fetchProgrammaticTags } from '../state/api'
 import './TagPicker.css'
 
 interface TagEntry {
@@ -38,11 +38,12 @@ export function TagPicker({
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const { data: uniqueTags } = useQuery({
-    queryFn: fetchUniqueTags,
-    queryKey: ['uniqueTags'],
+  const { data: activityTypeDefs } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activity-type-definitions'],
     staleTime: 5 * 60 * 1000,
   })
+  const uniqueTags = (activityTypeDefs ?? []).map((d) => d.display_name || d.name)
 
   const { data: programmaticTags } = useQuery({
     queryFn: fetchProgrammaticTags,
@@ -50,7 +51,8 @@ export function TagPicker({
     staleTime: 5 * 60 * 1000,
   })
 
-  const tagEntries = uniqueTags && programmaticTags ? buildTagEntries(uniqueTags, programmaticTags) : []
+  const tagEntries =
+    uniqueTags.length > 0 && programmaticTags ? buildTagEntries(uniqueTags, programmaticTags) : []
 
   const filteredEntries = tagEntries.filter(
     (entry) =>

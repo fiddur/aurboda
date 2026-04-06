@@ -136,16 +136,13 @@ export const createDurationTagItem = (
     }
   }
 
-  const href = tag.tag_definition_id ? `/tag/${tag.tag_definition_id}` : undefined
-
   return {
     activity_type: undefined,
     color: DURATION_TAG_COLORS[tag.tag] ?? DURATION_TAG_DEFAULT_COLOR,
     column: 'Activity',
     end: tagEnd,
-    entity_id: href ? undefined : tag.id,
-    entity_type: href ? undefined : 'tag',
-    href,
+    entity_id: tag.id,
+    entity_type: 'activity',
     icon,
     isPoint: false,
     label: tag.tag,
@@ -184,8 +181,9 @@ const getActivityMeta = (
   if (!type) return null
 
   // Exercise has special label/color logic
-  if (type === 'exercise')
-    {return { actType: 'exercise', color: exerciseColor(a), label: getExerciseTypeName(a) }}
+  if (type === 'exercise') {
+    return { actType: 'exercise', color: exerciseColor(a), label: getExerciseTypeName(a) }
+  }
 
   // Built-in non-exercise types
   const builtin = BUILTIN_DEFAULTS[type]

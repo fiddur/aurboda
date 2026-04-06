@@ -9,8 +9,7 @@ import {
   addActivity,
   addMetric,
   addNote,
-  addTag,
-  fetchUniqueTags,
+  fetchActivityTypeDefinitions,
   uploadFitFile,
   type ActivityType,
 } from '../../state/api'
@@ -240,37 +239,37 @@ const AddTagForm = ({ onCreated }: FormProps) => {
   const [startTime, setStartTime] = useState(nowLocal())
   const [hasEndTime, setHasEndTime] = useState(false)
   const [endTime, setEndTime] = useState(nowLocal())
-  const [mergeSpan, setMergeSpan] = useState('')
   const [comment, setComment] = useState('')
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
-  const { data: uniqueTags } = useQuery({
-    queryFn: fetchUniqueTags,
-    queryKey: ['uniqueTags'],
+  const { data: activityTypeDefs } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activity-type-definitions'],
     staleTime: 5 * 60 * 1000,
   })
+  const uniqueTags = (activityTypeDefs ?? []).map((d) => d.display_name || d.name)
 
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const filteredTags = (uniqueTags ?? []).filter(
+  const filteredTags = uniqueTags.filter(
     (t) => tagName && t.toLowerCase().includes(tagName.toLowerCase()) && t !== tagName,
   )
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const result = await addTag({
-        ...(hasEndTime ? { end_time: new Date(endTime).toISOString() } : {}),
-        ...(mergeSpan ? { merge_span: parseInt(mergeSpan, 10) } : {}),
+      // Tags are now activities — use addActivity
+      const result = await addActivity({
+        activity_type: tagName.toLowerCase().replaceAll(/\s+/g, '_'),
         start_time: new Date(startTime).toISOString(),
-        tag: tagName,
+        ...(hasEndTime ? { end_time: new Date(endTime).toISOString() } : {}),
+        title: tagName,
       })
-      // Backend returns id at top level (not wrapped in data)
-      const tagId = result.data?.id ?? (result as unknown as { id?: string }).id
-      if (comment.trim() && tagId) {
+      const activityId = result.data?.id
+      if (comment.trim() && activityId) {
         try {
-          await addNote('tag', tagId, comment.trim())
+          await addNote('activity', activityId, comment.trim())
         } catch {
-          // Tag was created successfully; comment save failed silently
+          // Activity was created successfully; comment save failed silently
         }
       }
       return result
@@ -280,17 +279,16 @@ const AddTagForm = ({ onCreated }: FormProps) => {
       setSuccess('')
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['dayview-tags'] })
-      queryClient.invalidateQueries({ queryKey: ['uniqueTags'] })
-      const tagId = result.data?.id ?? (result as unknown as { id?: string }).id
-      if (onCreated('tag', tagId)) return
+      queryClient.invalidateQueries({ queryKey: ['dayview-activities'] })
+      queryClient.invalidateQueries({ queryKey: ['timeline-tags'] })
+      const activityId = result.data?.id
+      if (onCreated('activity', activityId)) return
       setSuccess(`Tag "${tagName}" added`)
       setError('')
       setTagName('')
       setComment('')
       setStartTime(nowLocal())
       setHasEndTime(false)
-      setMergeSpan('')
     },
   })
 
@@ -363,19 +361,6 @@ const AddTagForm = ({ onCreated }: FormProps) => {
           />
         </div>
       )}
-
-      <div class="form-field">
-        <label>Merge Span (seconds)</label>
-        <input
-          type="number"
-          value={mergeSpan}
-          onInput={(e) => setMergeSpan((e.target as HTMLInputElement).value)}
-          placeholder="Optional (1-3600)"
-          min="1"
-          max="3600"
-        />
-        <span class="form-hint">If set, extends an existing tag if it ended within this many seconds</span>
-      </div>
 
       <div class="form-field">
         <label>Comment</label>

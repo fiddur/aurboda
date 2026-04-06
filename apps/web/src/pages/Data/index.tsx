@@ -11,7 +11,6 @@ import {
   fetchProductivity,
   fetchReports,
   fetchScrobbles,
-  fetchTags,
   type Activity,
   type Meal,
   type Place,
@@ -92,7 +91,7 @@ const tagToItem = (t: Tag): DataItem => ({
     ? `${format(t.start_time, 'HH:mm')} – ${format(t.end_time, 'HH:mm')} · ${formatDuration(t.start_time, t.end_time)}`
     : format(t.start_time, 'HH:mm'),
   end: t.end_time,
-  href: t.id ? `/detail/tag/${encodeURIComponent(t.id)}` : undefined,
+  href: t.id ? `/detail/activity/${encodeURIComponent(t.id)}` : undefined,
   label: t.tag,
   start: t.start_time,
   type: 'tag',
@@ -285,9 +284,22 @@ export const Data = () => {
     staleTime: 5 * 60 * 1000,
   })
 
+  const EXCLUDED_TAG_TYPES = new Set(['sleep', 'nap', 'rest', 'exercise'])
   const tagsQuery = useQuery({
     enabled: activeTypes.has('tag'),
-    queryFn: () => fetchTags(start, end),
+    queryFn: async () => {
+      const allActivities = await fetchActivities(start, end)
+      return allActivities
+        .filter((a) => !EXCLUDED_TAG_TYPES.has(a.activity_type))
+        .map(
+          (a): Tag => ({
+            ...a,
+            tag: a.title ?? a.activity_type,
+            tag_definition_id: undefined,
+            tag_key: undefined,
+          }),
+        )
+    },
     queryKey: ['data-tags', dateStr, timeFrom, timeTo],
     staleTime: 5 * 60 * 1000,
   })

@@ -6,17 +6,15 @@
  */
 import type { ProgrammaticTag, TagDefinition } from '@aurboda/api-spec'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import {
-  fetchProgrammaticTags,
+  fetchActivityTypeDefinitions,
   fetchTagDefinitionById,
-  fetchTagDefinitions,
   fetchTagMappings,
   fetchTrend,
-  mergeTagDefinitionsApi,
   type FetchTrendParams,
 } from '../../state/api'
 import { MiniTrendChart } from './MiniTrendChart'
@@ -117,55 +115,9 @@ function TagHeader({
   )
 }
 
-function MergeSection({ definitionId }: { definitionId: string }) {
-  const queryClient = useQueryClient()
-  const [targetId, setTargetId] = useState('')
-
-  const { data: allDefinitions } = useQuery({
-    queryFn: fetchTagDefinitions,
-    queryKey: ['tag-definitions'],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const mergeMutation = useMutation({
-    mutationFn: () => mergeTagDefinitionsApi(definitionId, targetId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tag-definitions'] })
-      queryClient.invalidateQueries({ queryKey: ['tag-definition'] })
-      queryClient.invalidateQueries({ queryKey: ['programmaticTags'] })
-      // Navigate to the target definition
-      window.location.href = `/tag/${targetId}`
-    },
-  })
-
-  const otherDefinitions = allDefinitions?.filter((d) => d.id !== definitionId) ?? []
-
-  if (otherDefinitions.length === 0) return null
-
-  return (
-    <section class="tag-meta-section">
-      <h2>Merge into...</h2>
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={targetId} onChange={(e) => setTargetId((e.target as HTMLSelectElement).value)}>
-          <option value="">Select a tag definition...</option>
-          {otherDefinitions.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name} ({d.count ?? 0})
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          class="btn-primary"
-          disabled={!targetId || mergeMutation.isPending}
-          onClick={() => mergeMutation.mutate()}
-        >
-          {mergeMutation.isPending ? 'Merging...' : 'Merge'}
-        </button>
-      </div>
-      {mergeMutation.error && <p class="error">Merge failed</p>}
-    </section>
-  )
+// Merge section removed — activity type definitions don't support merge
+function MergeSection(_props: { definitionId: string }) {
+  return null
 }
 
 /** Find the programmatic tag matching either a definition or a raw param. */
@@ -199,7 +151,7 @@ const resolveIcon = (
   tagKey: string,
 ): string => definition?.icon ?? icons[name] ?? icons[tagKey] ?? ''
 
-/** Resolve tag identity from URL param (UUID for definition, or legacy tag key). */
+/** Resolve tag identity from URL param (UUID for definition, or tag name key). */
 function useTagResolution(rawParam: string) {
   const isUuid = UUID_RE.test(rawParam)
 
@@ -210,10 +162,21 @@ function useTagResolution(rawParam: string) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: tags } = useQuery({
-    queryFn: fetchProgrammaticTags,
-    queryKey: ['programmaticTags'],
+  // Use activity type definitions instead of programmatic tags
+  const { data: activityTypeDefs } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activity-type-definitions'],
+    staleTime: 5 * 60 * 1000,
   })
+
+  // Convert activity type definitions to ProgrammaticTag shape for compatibility
+  const tags: ProgrammaticTag[] | undefined = activityTypeDefs?.map((d) => ({
+    count: 0,
+    current_name: d.display_name || d.name,
+    is_programmatic: !d.is_builtin,
+    latest_time: new Date().toISOString(),
+    tag_key: d.name,
+  }))
 
   const { data: mappingsData } = useQuery({
     queryFn: fetchTagMappings,

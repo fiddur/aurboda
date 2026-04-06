@@ -15,6 +15,7 @@ import {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const makeTag = (overrides: Partial<Tag> = {}): Tag => ({
+  activity_type: 'holosync',
   end_time: new Date('2026-01-01T09:00:00Z'),
   id: 'tag-1',
   source: 'manual',
