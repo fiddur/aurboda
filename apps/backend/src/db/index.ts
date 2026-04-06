@@ -119,6 +119,7 @@ export {
   findMergedGroupForActivity,
   getActivities,
   getActivitiesByCategory,
+  getActivitiesExcludingCategories,
   getActivitiesNeedingDetail,
   getActivityById,
   getNearbyActivities,

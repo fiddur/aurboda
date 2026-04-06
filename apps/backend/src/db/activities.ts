@@ -554,6 +554,30 @@ export const getActivitiesByCategory = async (
   return mergeOverlappingActivities(activities)
 }
 
+/**
+ * Get activities whose type definition is NOT in the given display categories.
+ * Used to get "tag-like" activities (everything except sleep/exercise).
+ */
+export const getActivitiesExcludingCategories = async (
+  user: string,
+  excludeCategories: string[],
+  start: Date,
+  end: Date,
+): Promise<Activity[]> => {
+  const result = await query(
+    user,
+    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at
+     FROM activities a
+     LEFT JOIN activity_type_definitions atd ON a.activity_type = atd.name
+     WHERE a.deleted_at IS NULL
+       AND a.start_time >= $1 AND a.start_time <= $2
+       AND (atd.display_category IS NULL OR atd.display_category != ALL($3))
+     ORDER BY a.start_time`,
+    [start, end, excludeCategories],
+  )
+  return result.rows.map(mapActivityRow)
+}
+
 /** Hard-delete all activities from a given source. Used for lastfm-auto retag cleanup. */
 export const hardDeleteActivitiesBySource = async (user: string, source: string): Promise<number> => {
   const result = await query(user, `DELETE FROM activities WHERE source = $1`, [source])
