@@ -21,6 +21,7 @@ import {
 
 // Mock the db module
 vi.mock('../db', () => ({
+  activityTypeExists: vi.fn().mockResolvedValue(true),
   checkActivityConflict: vi.fn().mockResolvedValue(false),
   deleteActivity: vi.fn(),
   deleteCustomMetricDefinition: vi.fn(),

@@ -5,7 +5,7 @@ import type { QueryResultRow } from 'pg'
  *
  * Replaces inline `as Type` casts with validated type guards.
  */
-import { activityTypes, type ActivityType, type DataSource, type MetricType } from '@aurboda/api-spec'
+import type { ActivityType, DataSource, MetricType } from '@aurboda/api-spec'
 
 import type {
   Activity,
@@ -54,8 +54,8 @@ const VALID_LASTFM_MATCH_TYPES = ['track', 'artist', 'track_artist'] as const
 const VALID_LASTFM_MATCH_MODES = ['exact', 'contains'] as const
 
 export const parseActivityType = (value: unknown): ActivityType => {
-  if (typeof value === 'string' && (activityTypes as readonly string[]).includes(value)) {
-    return value as ActivityType
+  if (typeof value === 'string' && /^[a-z][a-z0-9_]*$/.test(value)) {
+    return value
   }
   throw new Error(`Invalid ActivityType: ${JSON.stringify(value)}`)
 }

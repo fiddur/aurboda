@@ -118,7 +118,17 @@ import { API_URL } from '../config'
 import { auth } from './auth'
 
 // Frontend types with Date objects (converted from API string types)
-export type ActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap' | 'rest'
+export type BuiltinActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap' | 'rest'
+export type ActivityType = string
+
+export interface ActivityTypeDefinition {
+  name: string
+  display_name: string
+  display_category: string
+  color: string
+  icon?: string
+  is_builtin: boolean
+}
 
 export interface SourceRecord {
   id: string
@@ -217,6 +227,16 @@ export type {
   UpdateLastFmTagRuleBody,
   UpdateSettingsInput,
   UserSettingsResponse,
+}
+
+// Fetch activity type definitions (built-in + custom)
+export const fetchActivityTypeDefinitions = async (): Promise<ActivityTypeDefinition[]> => {
+  const { token } = auth.value
+  const response = await axios.get<{ success: boolean; data: ActivityTypeDefinition[] }>(
+    `${API_URL}/activity-types`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data ?? []
 }
 
 // Check if ActivityWatch has ever pushed data (returns sync states per device)

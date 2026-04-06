@@ -49,6 +49,7 @@ import { ouraClient } from './oura.ts'
 import { createOwnTracksRouter } from './owntracks.ts'
 import { syncRescueTimeData } from './rescuetime-sync.ts'
 import { createActivitiesRouter } from './routes/activities-router.ts'
+import { createActivityTypesRouter } from './routes/activity-types-router.ts'
 import { createAdminRouter } from './routes/admin-router.ts'
 import { createAuditLogRouter } from './routes/audit-log-router.ts'
 import { createChartDataRouter } from './routes/chart-data-router.ts'
@@ -573,6 +574,7 @@ const main = async () => {
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware))
   httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(createActivitiesRouter(authMiddleware, syncProvider))
+  httpd.use('/activity-types', createActivityTypesRouter(authMiddleware))
   httpd.use('/locations', createLocationsRouter(authMiddleware))
   httpd.use(createSettingsRouter(authMiddleware))
   httpd.use(createAuditLogRouter(authMiddleware))

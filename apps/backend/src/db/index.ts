@@ -82,6 +82,17 @@ export {
   insertTimeSeries,
 } from './time-series.ts'
 
+// Activity Type Definitions
+export {
+  activityTypeExists,
+  deleteActivityTypeDefinition,
+  getActivityTypeDefinition,
+  getActivityTypeDefinitions,
+  getActivityTypeNames,
+  insertActivityTypeDefinition,
+  updateActivityTypeDefinition,
+} from './activity-type-definitions.ts'
+
 // Activities
 export {
   checkActivityConflict,

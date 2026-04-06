@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto'
 import type { Activity } from '../db/types.ts'
 
 import {
+  activityTypeExists,
   checkActivityConflict,
   deleteActivity as dbDeleteActivity,
   deleteTag as dbDeleteTag,
@@ -419,6 +420,14 @@ export async function deleteTag(user: string, externalId: string): Promise<Delet
  * Validates that end_time is after start_time.
  */
 export async function addActivity(user: string, input: AddActivityInput): Promise<AddActivityResult> {
+  // Validate activity type exists
+  if (!(await activityTypeExists(user, input.activity_type))) {
+    return {
+      error: `Unknown activity type: "${input.activity_type}"`,
+      success: false,
+    }
+  }
+
   // Validate that endTime is after startTime
   if (input.end_time <= input.start_time) {
     return {
@@ -574,6 +583,13 @@ export async function updateActivity(
 
   // Check for unique constraint conflict when changing activity_type
   const isTypeChanging = input.activity_type && input.activity_type !== existing.activity_type
+  if (isTypeChanging && !(await activityTypeExists(user, input.activity_type!))) {
+    return {
+      error: `Unknown activity type: "${input.activity_type}"`,
+      id,
+      success: false,
+    }
+  }
   if (isTypeChanging) {
     const conflict = await checkActivityConflict(
       user,

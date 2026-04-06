@@ -15,7 +15,7 @@ import {
 } from './row-mappers.ts'
 
 describe('type guards', () => {
-  test('parseActivityType accepts valid types', () => {
+  test('parseActivityType accepts built-in types', () => {
     expect(parseActivityType('sleep')).toBe('sleep')
     expect(parseActivityType('exercise')).toBe('exercise')
     expect(parseActivityType('meditation')).toBe('meditation')
@@ -23,8 +23,16 @@ describe('type guards', () => {
     expect(parseActivityType('rest')).toBe('rest')
   })
 
-  test('parseActivityType throws on invalid type', () => {
-    expect(() => parseActivityType('invalid')).toThrow('Invalid ActivityType')
+  test('parseActivityType accepts custom snake_case types', () => {
+    expect(parseActivityType('sauna')).toBe('sauna')
+    expect(parseActivityType('hot_bath')).toBe('hot_bath')
+    expect(parseActivityType('yin_yoga')).toBe('yin_yoga')
+  })
+
+  test('parseActivityType throws on invalid format', () => {
+    expect(() => parseActivityType('Invalid')).toThrow('Invalid ActivityType')
+    expect(() => parseActivityType('has spaces')).toThrow('Invalid ActivityType')
+    expect(() => parseActivityType('123start')).toThrow('Invalid ActivityType')
     expect(() => parseActivityType(null)).toThrow('Invalid ActivityType')
     expect(() => parseActivityType(undefined)).toThrow('Invalid ActivityType')
     expect(() => parseActivityType(42)).toThrow('Invalid ActivityType')
@@ -107,9 +115,25 @@ describe('mapActivityRow', () => {
     expect(result.end_time).toBeUndefined()
   })
 
-  test('throws on invalid activity type', () => {
+  test('accepts custom snake_case activity types', () => {
     const row = {
-      activity_type: 'invalid',
+      activity_type: 'sauna',
+      data: null,
+      end_time: null,
+      id: 'abc',
+      notes: null,
+      source: 'aurboda',
+      start_time: '2024-01-15T10:00:00Z',
+      title: null,
+    }
+
+    const result = mapActivityRow(row)
+    expect(result.activity_type).toBe('sauna')
+  })
+
+  test('throws on invalid activity type format', () => {
+    const row = {
+      activity_type: 'Has Spaces',
       data: null,
       end_time: null,
       id: 'abc',
