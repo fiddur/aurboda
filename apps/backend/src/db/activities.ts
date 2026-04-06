@@ -289,6 +289,8 @@ export const updateActivity = async (
   updates: ActivityUpdate,
 ): Promise<Activity | null> => {
   const fields: UpdateEntry[] = []
+  if (updates.activity_type !== undefined)
+    {fields.push({ column: 'activity_type', value: updates.activity_type })}
   if (updates.start_time !== undefined) fields.push({ column: 'start_time', value: updates.start_time })
   if (updates.end_time !== undefined) fields.push({ column: 'end_time', value: updates.end_time })
   if (updates.title !== undefined) fields.push({ column: 'title', value: updates.title })
@@ -362,7 +364,7 @@ export const getActivitiesNeedingDetail = async (user: string, limit = 10): Prom
     user,
     `SELECT id, source, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
-     WHERE source = 'garmin' AND activity_type = 'exercise'
+     WHERE source = 'garmin' AND activity_type IN ('exercise', 'meditation')
        AND data->>'garmin_activity_id' IS NOT NULL
        AND (data->>'detail_synced') IS NULL
        AND deleted_at IS NULL
@@ -405,6 +407,52 @@ export const getNearbyActivities = async (
   )
 
   return result.rows.map(mapActivityRow)
+}
+
+/**
+ * Check if an activity with the same (source, activity_type, start_time) already exists,
+ * excluding the given activity ID. Used to preemptively detect unique constraint violations
+ * before changing an activity's type.
+ */
+export const checkActivityConflict = async (
+  user: string,
+  source: string,
+  activityType: string,
+  startTime: Date,
+  excludeId: string,
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `SELECT 1 FROM activities
+     WHERE source = $1 AND activity_type = $2 AND start_time = $3
+       AND id != $4 AND deleted_at IS NULL
+     LIMIT 1`,
+    [source, activityType, startTime, excludeId],
+  )
+  return result.rows.length > 0
+}
+
+/**
+ * Delete a Garmin activity that has the given garmin_activity_id but a different activity_type.
+ * Used during re-sync to prevent duplicates when the type mapping changes
+ * (e.g., meditation activities previously imported as exercise).
+ */
+export const deleteGarminActivityWithWrongType = async (
+  user: string,
+  garminActivityId: number,
+  correctType: string,
+): Promise<string | null> => {
+  const result = await query(
+    user,
+    `DELETE FROM activities
+     WHERE source = 'garmin'
+       AND (data->>'garmin_activity_id')::int = $1
+       AND activity_type != $2
+       AND deleted_at IS NULL
+     RETURNING id`,
+    [garminActivityId, correctType],
+  )
+  return result.rows.length > 0 ? (result.rows[0].id as string) : null
 }
 
 /** Mark an activity's detail data as synced using JSONB merge (preserves existing data). */

@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto'
 import type { Activity } from '../db/types.ts'
 
 import {
+  checkActivityConflict,
   deleteActivity as dbDeleteActivity,
   deleteTag as dbDeleteTag,
   getActivityById as dbGetActivityById,
@@ -130,6 +131,7 @@ export interface DeleteActivityResult {
 }
 
 export interface UpdateActivityInput {
+  activity_type?: ActivityType
   start_time?: Date
   end_time?: Date
   title?: string
@@ -570,10 +572,30 @@ export async function updateActivity(
     }
   }
 
+  // Check for unique constraint conflict when changing activity_type
+  const isTypeChanging = input.activity_type && input.activity_type !== existing.activity_type
+  if (isTypeChanging) {
+    const conflict = await checkActivityConflict(
+      user,
+      existing.source,
+      input.activity_type!,
+      finalStartTime,
+      id,
+    )
+    if (conflict) {
+      return {
+        error: `Cannot change activity type: a ${input.activity_type} activity from ${existing.source} already exists at that start time`,
+        id,
+        success: false,
+      }
+    }
+  }
+
   // Merge new data fields into existing data (preserving fields not being updated)
   const mergedData = input.data ? { ...(existing.data as Record<string, unknown>), ...input.data } : undefined
 
   const updated = await dbUpdateActivity(user, id, {
+    activity_type: input.activity_type,
     data: mergedData,
     end_time: input.end_time,
     notes: input.notes,
@@ -594,26 +616,51 @@ export async function updateActivity(
     (err) => auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }),
   )
 
-  // Enqueue outbound sync if this is an aurboda-owned HC-syncable activity (best-effort)
+  // Enqueue outbound sync if this is an aurboda-owned activity (best-effort)
   try {
-    if (updated.source === 'aurboda' && isHealthConnectSyncableActivity(updated.activity_type)) {
-      const hcRecordType =
-        activityTypeToHealthConnectType[updated.activity_type as keyof typeof activityTypeToHealthConnectType]
-      if (hcRecordType) {
-        await enqueueOutboundSync(user, {
-          entity_id: id,
-          entity_type: 'activity',
-          hc_record_type: hcRecordType,
-          operation: 'update',
-          payload: {
-            activity_type: updated.activity_type,
-            data: updated.data,
-            end_time: updated.end_time?.toISOString(),
-            notes: updated.notes,
-            start_time: updated.start_time.toISOString(),
-            title: updated.title,
-          },
-        })
+    if (updated.source === 'aurboda') {
+      const oldWasSyncable = isHealthConnectSyncableActivity(existing.activity_type)
+      const newIsSyncable = isHealthConnectSyncableActivity(updated.activity_type)
+
+      if (isTypeChanging && oldWasSyncable) {
+        // Type changed away from an HC-syncable type — delete the old HC record
+        const oldHcType =
+          activityTypeToHealthConnectType[
+            existing.activity_type as keyof typeof activityTypeToHealthConnectType
+          ]
+        const hcRecordId = await findHcRecordId(user, 'activity', id)
+        if (oldHcType && hcRecordId) {
+          await enqueueOutboundSync(user, {
+            entity_id: id,
+            entity_type: 'activity',
+            hc_record_type: oldHcType,
+            operation: 'delete',
+            payload: { hc_record_id: hcRecordId },
+          })
+        }
+      }
+
+      if (newIsSyncable) {
+        const hcRecordType =
+          activityTypeToHealthConnectType[
+            updated.activity_type as keyof typeof activityTypeToHealthConnectType
+          ]
+        if (hcRecordType) {
+          await enqueueOutboundSync(user, {
+            entity_id: id,
+            entity_type: 'activity',
+            hc_record_type: hcRecordType,
+            operation: isTypeChanging ? 'insert' : 'update',
+            payload: {
+              activity_type: updated.activity_type,
+              data: updated.data,
+              end_time: updated.end_time?.toISOString(),
+              notes: updated.notes,
+              start_time: updated.start_time.toISOString(),
+              title: updated.title,
+            },
+          })
+        }
       }
     }
   } catch (err) {

@@ -6,6 +6,7 @@ import type { GarminActivityDetailResponse } from './garmin.ts'
 import { processActivityDetail, processGarminData } from './garmin-process.ts'
 
 const mockDeps: GarminProcessDeps = {
+  deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
@@ -757,6 +758,53 @@ describe('processGarminData', () => {
       const startTime = new Date('2025-01-15T07:00:00.000')
       const expectedEnd = new Date(startTime.getTime() + 3600 * 1000)
       expect(activityArg.end_time).toEqual(expectedEnd)
+    })
+
+    test('maps meditation typeKey to meditation activity_type', async () => {
+      await processGarminData(
+        user,
+        'activities',
+        [makeActivity({ activityType: { typeKey: 'meditation' }, activityName: 'Meditation' })],
+        mockDeps,
+      )
+
+      const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+      expect(activityArg.activity_type).toBe('meditation')
+      expect(activityArg.title).toBe('Meditation')
+    })
+
+    test('maps breathwork typeKey to meditation activity_type', async () => {
+      await processGarminData(
+        user,
+        'activities',
+        [makeActivity({ activityType: { typeKey: 'breathwork' }, activityName: 'Breathwork' })],
+        mockDeps,
+      )
+
+      const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+      expect(activityArg.activity_type).toBe('meditation')
+    })
+
+    test('maps running typeKey to exercise activity_type', async () => {
+      await processGarminData(user, 'activities', [makeActivity()], mockDeps)
+
+      const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+      expect(activityArg.activity_type).toBe('exercise')
+    })
+
+    test('calls deleteGarminActivityWithWrongType before insert', async () => {
+      await processGarminData(
+        user,
+        'activities',
+        [makeActivity({ activityType: { typeKey: 'meditation' } })],
+        mockDeps,
+      )
+
+      expect(mockDeps.deleteGarminActivityWithWrongType).toHaveBeenCalledWith(user, 12345, 'meditation')
+      // Verify delete is called before insert
+      const deleteOrder = vi.mocked(mockDeps.deleteGarminActivityWithWrongType).mock.invocationCallOrder[0]
+      const insertOrder = vi.mocked(mockDeps.insertActivity).mock.invocationCallOrder[0]
+      expect(deleteOrder).toBeLessThan(insertOrder!)
     })
   })
 

@@ -96,7 +96,7 @@ export const registerActivityTools = (server: McpServer, user: string) => {
   // Tool: update_activity
   server.tool(
     'update_activity',
-    'Update an existing activity. Can modify start_time, end_time, title, notes, and exercise_type. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
+    'Update an existing activity. Can modify activity_type, start_time, end_time, title, notes, and exercise_type. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
     {
       id: z.string().uuid().describe('The ID of the activity to update'),
       ...updateActivityBodySchema.shape,
@@ -109,7 +109,7 @@ export const registerActivityTools = (server: McpServer, user: string) => {
         ),
       tz: tzSchema,
     },
-    async ({ id, start_time, end_time, title, notes, exercise_type, tz }) => {
+    async ({ id, activity_type, start_time, end_time, title, notes, exercise_type, tz }) => {
       let data: Record<string, unknown> | undefined
       if (exercise_type !== undefined) {
         if (!isValidExerciseType(exercise_type)) {
@@ -124,6 +124,7 @@ export const registerActivityTools = (server: McpServer, user: string) => {
       }
 
       const result = await updateActivity(user, id, {
+        activity_type,
         data,
         end_time: end_time ? new Date(end_time) : undefined,
         notes,

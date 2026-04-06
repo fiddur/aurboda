@@ -12,6 +12,7 @@ import {
 
 // Mock the db module (include all exports used by garmin-process.ts too)
 vi.mock('./db', () => ({
+  deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   getActivitiesNeedingDetail: vi.fn().mockResolvedValue([]),
   getSyncState: vi.fn(),
   insertActivity: vi.fn(),
