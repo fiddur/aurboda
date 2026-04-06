@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Activity type definitions route group.
  *
@@ -11,7 +13,6 @@ import {
   type UpdateActivityTypeDefinitionBody,
   updateActivityTypeDefinitionBodySchema,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import {
   addActivityTypeDefinition,
@@ -19,20 +20,25 @@ import {
   listActivityTypeDefinitions,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
 export const createActivityTypesRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET / - List all activity type definitions
-  router.get<Record<string, never>, ActivityTypeDefinitionsResponse>('/', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const definitions = await listActivityTypeDefinitions(user)
-    res.json({ data: definitions, success: true })
-  })
+  router.get<Record<string, string>, ActivityTypeDefinitionsResponse>(
+    '/',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const definitions = await listActivityTypeDefinitions(user)
+      res.json({ data: definitions, success: true })
+    },
+  )
 
   // POST / - Create a custom activity type
-  router.post<Record<string, never>, ActivityTypeDefinitionResponse, AddActivityTypeDefinitionBody>(
+  router.post<Record<string, string>, ActivityTypeDefinitionResponse, AddActivityTypeDefinitionBody>(
     '/',
     authMiddleware,
     validateBody(addActivityTypeDefinitionBodySchema),
@@ -92,5 +98,5 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  return router
+  return router as unknown as Router
 }
