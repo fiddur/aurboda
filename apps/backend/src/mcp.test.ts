@@ -36,11 +36,17 @@ vi.mock('./services/mutations', () => ({
 vi.mock('./db', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   deleteActivityTypeDefinition: vi.fn().mockResolvedValue(false),
+  deleteDeductionRule: vi.fn().mockResolvedValue(false),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
+  deleteRuleActivities: vi.fn().mockResolvedValue(0),
+  deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
   getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
   getActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
   getAllSyncStates: vi.fn(),
+  getDeductionRule: vi.fn().mockResolvedValue(null),
+  getDeductionRules: vi.fn().mockResolvedValue([]),
+  getEnabledDeductionRules: vi.fn().mockResolvedValue([]),
   getDetectedLocations: vi.fn(),
   getOAuthToken: vi.fn().mockResolvedValue(null),
   getProgrammaticTags: vi.fn().mockResolvedValue([]),
@@ -49,14 +55,28 @@ vi.mock('./db', () => ({
   getUserSettings: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertActivityTypeDefinition: vi.fn(),
+  insertDeductionRule: vi.fn().mockResolvedValue({ conditions: [], enabled: true, id: 'mock-id', name: 'mock', output_activity_type: 'test', priority: 0 }),
+  insertDeductionRuleRun: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
   updateActivityTypeDefinition: vi.fn(),
+  updateDeductionRule: vi.fn().mockResolvedValue(null),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
   upsertUserSettings: vi.fn(),
 }))
 
 // Mock the sync modules
+vi.mock('./services/deduction-deps', () => ({
+  createDefaultEngineDeps: vi.fn().mockReturnValue({
+    deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
+    getActivities: vi.fn().mockResolvedValue([]),
+    getScreentime: vi.fn().mockResolvedValue([]),
+    getTags: vi.fn().mockResolvedValue([]),
+    insertActivity: vi.fn().mockResolvedValue(undefined),
+    insertRuleRun: vi.fn().mockResolvedValue(undefined),
+  }),
+}))
+
 vi.mock('./oura-sync', () => ({
   syncAllOuraData: vi.fn(),
 }))
