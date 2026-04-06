@@ -3,13 +3,14 @@
  */
 
 import { z } from 'zod'
+
 import {
   baseResponseSchema,
   customMetricDefinitionSchema,
   iso8601DateTimeSchema,
   metricTypeSchema,
   timeRangeQuerySchema,
-} from './common.js'
+} from './common.ts'
 
 // Shared metric value field
 const metricValueSchema = z.number().meta({ description: 'Metric value' })
@@ -28,6 +29,10 @@ const metricNameSchema = z.string().min(1).max(50).meta({
  */
 export const metricDataPointSchema = z
   .object({
+    source: z
+      .string()
+      .optional()
+      .meta({ description: 'Data source (e.g., "manual", "oura", "health_connect")' }),
     time: iso8601DateTimeSchema,
     value: metricValueSchema,
   })
@@ -86,9 +91,82 @@ export type AddMetricBody = z.infer<typeof addMetricBodySchema>
 /**
  * Add metric response.
  */
-export const addMetricResponseSchema = baseResponseSchema.meta({ id: 'AddMetricResponse' })
+export const addMetricResponseSchema = baseResponseSchema
+  .extend({
+    entity_id: z.string().optional().meta({
+      description: 'Composite entity ID for the created metric point (format: time|metric|source)',
+    }),
+  })
+  .meta({ id: 'AddMetricResponse' })
 
 export type AddMetricResponse = z.infer<typeof addMetricResponseSchema>
+
+// ============================================================================
+// Bulk Metric Insert
+// ============================================================================
+
+/**
+ * Single item within a bulk metric insert request.
+ */
+export const bulkMetricItemSchema = z
+  .object({
+    metric: metricNameSchema,
+    source: z.string().min(1).max(50).optional().meta({ description: 'Data source (defaults to "aurboda")' }),
+    time: iso8601DateTimeSchema.meta({ description: 'Measurement time (required for bulk inserts)' }),
+    value: metricValueSchema.meta({ example: 36.03 }),
+  })
+  .meta({ id: 'BulkMetricItem' })
+
+export type BulkMetricItem = z.infer<typeof bulkMetricItemSchema>
+
+/**
+ * Bulk metric insert request body.
+ * Accepts up to 10,000 metric data points per request.
+ */
+export const bulkMetricsBodySchema = z
+  .object({
+    data: z
+      .array(bulkMetricItemSchema)
+      .min(1)
+      .max(10_000)
+      .meta({ description: 'Array of metric data points (max 10,000 per request)' }),
+    source: z
+      .string()
+      .min(1)
+      .max(50)
+      .optional()
+      .meta({ description: 'Default data source for all items (defaults to "aurboda")' }),
+  })
+  .meta({
+    description: 'Bulk insert metric data points for efficient batch imports.',
+    id: 'BulkMetricsBody',
+  })
+
+export type BulkMetricsBody = z.infer<typeof bulkMetricsBodySchema>
+
+/**
+ * Per-item error in bulk insert response.
+ */
+export const bulkMetricErrorSchema = z
+  .object({
+    error: z.string().meta({ description: 'Error message' }),
+    index: z.number().int().meta({ description: 'Zero-based index of the failed item' }),
+  })
+  .meta({ id: 'BulkMetricError' })
+
+export type BulkMetricError = z.infer<typeof bulkMetricErrorSchema>
+
+/**
+ * Bulk metric insert response.
+ */
+export const bulkMetricsResponseSchema = baseResponseSchema
+  .extend({
+    errors: z.array(bulkMetricErrorSchema).optional().meta({ description: 'Per-item validation errors' }),
+    inserted: z.number().int().optional().meta({ description: 'Number of successfully inserted items' }),
+  })
+  .meta({ id: 'BulkMetricsResponse' })
+
+export type BulkMetricsResponse = z.infer<typeof bulkMetricsResponseSchema>
 
 // ============================================================================
 // Custom Metric Management
@@ -134,6 +212,7 @@ export type UpdateCustomMetricBody = z.infer<typeof updateCustomMetricBodySchema
  */
 export const deleteMetricQuerySchema = z
   .object({
+    source: z.string().describe('Data source of the measurement'),
     time: iso8601DateTimeSchema,
   })
   .meta({ id: 'DeleteMetricQuery' })
@@ -167,13 +246,19 @@ export type CustomMetricsListResponse = z.infer<typeof customMetricsListResponse
 // =============================================================================
 
 /**
- * Valid bucket sizes for aggregated queries.
+ * Bucket size for time-based aggregation.
+ * Format: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), M (months).
+ * Examples: '10s', '5m', '1h', '1d', '1M'
  */
-export const bucketSizeSchema = z.enum(['5m', '15m', '30m', '1h', '1d']).meta({
-  description: 'Bucket size for aggregation',
-  example: '15m',
-  id: 'BucketSize',
-})
+export const bucketSizeSchema = z
+  .string()
+  .regex(/^\d+[smhdM]$/, 'Must be {number}{unit} where unit is s, m, h, d, or M')
+  .meta({
+    description:
+      'Bucket size: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), M (months)',
+    example: '15m',
+    id: 'BucketSize',
+  })
 
 export type BucketSize = z.infer<typeof bucketSizeSchema>
 
@@ -186,6 +271,10 @@ export const bucketMetricStatsSchema = z
     count: z.number().int().meta({ description: 'Number of data points' }),
     max: z.number().meta({ description: 'Maximum value in bucket' }),
     min: z.number().meta({ description: 'Minimum value in bucket' }),
+    sum: z
+      .number()
+      .optional()
+      .meta({ description: 'Sum of values in bucket (present for cumulative metrics)' }),
   })
   .meta({ id: 'BucketMetricStats' })
 
@@ -209,14 +298,29 @@ export type MetricBucket = z.infer<typeof metricBucketSchema>
 
 /**
  * Query bucketed metrics request query.
+ * If metrics is omitted, returns all metrics with data in the time range.
+ * Use exclude to skip specific metrics when fetching all.
  */
 export const queryMetricsBucketedQuerySchema = timeRangeQuerySchema
   .extend({
-    bucket: bucketSizeSchema.meta({ description: 'Bucket size: "5m", "15m", "30m", "1h", or "1d"' }),
-    metrics: z.string().meta({
-      description: 'Comma-separated list of metrics',
+    bucket: bucketSizeSchema,
+    exclude: z.string().optional().meta({
+      description: 'Comma-separated list of metrics to exclude (useful when fetching all)',
+      example: 'training_impulse,activity_impulse',
+    }),
+    metrics: z.string().optional().meta({
+      description: 'Comma-separated list of metrics (omit to fetch all metrics with data in the range)',
       example: 'heart_rate,hrv_rmssd',
     }),
+    tz: z
+      .string()
+      .optional()
+      .meta({
+        description:
+          'IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). ' +
+          'Daily+ buckets align to local midnight. Defaults to UTC.',
+        example: 'Europe/Stockholm',
+      }),
   })
   .meta({ id: 'QueryMetricsBucketedQuery' })
 
@@ -235,3 +339,82 @@ export const queryMetricsBucketedResponseSchema = baseResponseSchema
   .meta({ id: 'QueryMetricsBucketedResponse' })
 
 export type QueryMetricsBucketedResponse = z.infer<typeof queryMetricsBucketedResponseSchema>
+
+// =============================================================================
+// Calorie Recalculation
+// =============================================================================
+
+/**
+ * Recalculate calories request body.
+ * Computes calorie burn from HR data for the given time range.
+ */
+export const recalculateCaloriesBodySchema = z
+  .object({
+    end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
+    start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+  })
+  .meta({
+    description: 'Recalculate calories burned from HR data for a time range.',
+    id: 'RecalculateCaloriesBody',
+  })
+
+export type RecalculateCaloriesBody = z.infer<typeof recalculateCaloriesBodySchema>
+
+/**
+ * Recalculate calories response.
+ */
+export const recalculateCaloriesResponseSchema = baseResponseSchema
+  .extend({
+    points_computed: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Total per-minute calorie points computed' }),
+    points_stored: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'New points stored (excluding already-computed)' }),
+    skipped_reason: z.string().optional().meta({ description: 'Reason computation was skipped, if any' }),
+    vo2_max_source: z
+      .enum(['measured', 'fallback'])
+      .optional()
+      .meta({ description: 'Whether measured VO2 max was used or age/sex fallback' }),
+  })
+  .meta({ id: 'RecalculateCaloriesResponse' })
+
+export type RecalculateCaloriesResponse = z.infer<typeof recalculateCaloriesResponseSchema>
+
+// =============================================================================
+// Latest Metric Value
+// =============================================================================
+
+/**
+ * Latest metric query — returns the most recent value for a metric regardless of age.
+ * Useful for lab data that may be months old (e.g., "what was last VO2 max?").
+ */
+export const latestMetricQuerySchema = z
+  .object({
+    metric: metricNameSchema,
+  })
+  .meta({
+    description: 'Query the most recent value for a metric regardless of age',
+    id: 'LatestMetricQuery',
+  })
+
+export type LatestMetricQuery = z.infer<typeof latestMetricQuerySchema>
+
+/**
+ * Latest metric response.
+ */
+export const latestMetricResponseSchema = baseResponseSchema
+  .extend({
+    metric: metricNameSchema.optional(),
+    source: z.string().optional().meta({ description: 'Data source of the latest value' }),
+    time: iso8601DateTimeSchema.optional().meta({ description: 'Timestamp of the latest value' }),
+    unit: z.string().optional().meta({ description: 'Unit of measurement' }),
+    value: z.number().optional().meta({ description: 'The most recent value' }),
+  })
+  .meta({ id: 'LatestMetricResponse' })
+
+export type LatestMetricResponse = z.infer<typeof latestMetricResponseSchema>

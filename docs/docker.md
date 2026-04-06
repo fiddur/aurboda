@@ -19,6 +19,7 @@ docker compose up -d
 ```
 
 This starts:
+
 - **aurboda** (web frontend + API) on port 8080
 - **postgres** (PostGIS) on port 5432
 - **watchtower** for automatic updates
@@ -39,15 +40,15 @@ This mounts your source code and watches for changes.
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PGHOST` | PostgreSQL host | `postgres` |
-| `PGPORT` | PostgreSQL port | `5432` |
-| `PGUSER` | PostgreSQL user | `aurboda_service` |
-| `PGPASSWORD` | PostgreSQL password | (required) |
-| `SESSION_SECRET` | 32-byte secret for session encryption | (required) |
-| `WEB_HOST` | Public URL of the web UI (for OAuth redirects) | `http://localhost:8080` |
-| `ALLOW_SIGNUP` | Enable user registration | `true` |
+| Variable         | Description                                    | Default                 |
+| ---------------- | ---------------------------------------------- | ----------------------- |
+| `PGHOST`         | PostgreSQL host                                | `postgres`              |
+| `PGPORT`         | PostgreSQL port                                | `5432`                  |
+| `PGUSER`         | PostgreSQL user                                | `aurboda_service`       |
+| `PGPASSWORD`     | PostgreSQL password                            | (required)              |
+| `SESSION_SECRET` | 32-byte secret for session encryption          | (required)              |
+| `WEB_HOST`       | Public URL of the web UI (for OAuth redirects) | `http://localhost:8080` |
+| `ALLOW_SIGNUP`   | Enable user registration                       | `true`                  |
 
 ### Generating a Session Secret
 
@@ -100,9 +101,9 @@ services:
   aurboda:
     image: fiddur/aurboda:latest
     ports:
-      - "8080:80"
+      - '8080:80'
     extra_hosts:
-      - "host.docker.internal:host-gateway"  # Linux needs this
+      - 'host.docker.internal:host-gateway' # Linux needs this
     environment:
       - PGHOST=host.docker.internal
       - PGPORT=5432
@@ -122,10 +123,10 @@ services:
   aurboda:
     image: fiddur/aurboda:latest
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.aurboda.rule=Host(`health.example.com`)"
-      - "traefik.http.routers.aurboda.tls.certresolver=letsencrypt"
-      - "traefik.http.services.aurboda.loadbalancer.server.port=80"
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.aurboda.rule=Host(`health.example.com`)'
+      - 'traefik.http.routers.aurboda.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.aurboda.loadbalancer.server.port=80'
     environment:
       - PGHOST=postgres
       - PGUSER=${PGUSER}
@@ -211,6 +212,7 @@ docker compose up -d
 ### Health check failed:
 
 If the service fails to start, check that:
+
 1. PostgreSQL is healthy: `docker compose ps`
 2. Environment variables are set correctly
 3. SESSION_SECRET is at least 32 characters
@@ -234,10 +236,12 @@ Docker images are built automatically by GitHub Actions:
 ## Architecture
 
 The combined Docker image runs:
+
 - **nginx** on port 80 - serves static web files and proxies `/api` to backend
 - **Node.js backend** on 127.0.0.1:3000 - API server (only accessible via nginx)
 
 This architecture:
+
 - Simplifies deployment to a single container
 - API is not directly exposed, only through nginx proxy
 - Static assets benefit from nginx's caching and compression

@@ -41,6 +41,7 @@ CREATE INDEX idx_raw_records_data ON raw_records USING GIN (data);
 ```
 
 **Use cases:**
+
 - Audit trail of all received data
 - Reprocessing if normalization logic changes
 - Debugging data issues
@@ -105,17 +106,19 @@ CREATE INDEX idx_activities_time_range ON activities (start_time, end_time);
 ```
 
 **Activity types:**
+
 - `sleep` - Sleep sessions with stages (awake, light, deep, rem)
 - `exercise` - Workouts with exercise type, distance, calories
 - `meditation` - Meditation/mindfulness sessions
 - `nap` - Daytime sleep
 
 **Example data JSONB for sleep:**
+
 ```json
 {
   "stages": [
-    {"stage": "light", "start": "2024-01-15T23:00:00Z", "end": "2024-01-15T23:45:00Z"},
-    {"stage": "deep", "start": "2024-01-15T23:45:00Z", "end": "2024-01-16T01:00:00Z"}
+    { "stage": "light", "start": "2024-01-15T23:00:00Z", "end": "2024-01-15T23:45:00Z" },
+    { "stage": "deep", "start": "2024-01-15T23:45:00Z", "end": "2024-01-16T01:00:00Z" }
   ],
   "efficiency": 0.92,
   "latency_minutes": 12
@@ -231,6 +234,7 @@ CREATE INDEX idx_lab_results_category ON lab_results (test_category, test_date D
 ```
 
 **Common test categories:**
+
 - `lipids` - Cholesterol, triglycerides, HDL, LDL
 - `metabolic` - Glucose, HbA1c, insulin
 - `thyroid` - TSH, T3, T4
@@ -293,6 +297,7 @@ CREATE TABLE oauth_tokens (
 ### Querying
 
 For charting heart rate over a week:
+
 ```sql
 SELECT
     date_trunc('hour', time) AS hour,
@@ -307,6 +312,7 @@ ORDER BY 1;
 ```
 
 For sleep analysis:
+
 ```sql
 SELECT
     date(start_time) AS night,
@@ -320,6 +326,7 @@ ORDER BY start_time DESC;
 ```
 
 For AI summary export:
+
 ```sql
 SELECT json_build_object(
     'period', '2024-01',
@@ -354,51 +361,52 @@ SELECT json_build_object(
 
 Record types mapped to normalized tables:
 
-| Health Connect Type | Target Table | Metric/Type |
-|---------------------|--------------|-------------|
-| HeartRateRecord | time_series | heart_rate |
-| RestingHeartRateRecord | time_series | resting_heart_rate |
-| HeartRateVariabilityRmssdRecord | time_series | hrv_rmssd |
-| WeightRecord | time_series | weight |
-| BodyFatRecord | time_series | body_fat |
-| StepsRecord | time_series | steps |
-| ActiveCaloriesBurnedRecord | time_series | calories_active |
-| TotalCaloriesBurnedRecord | time_series | calories_total |
-| BloodGlucoseRecord | time_series | blood_glucose |
-| BloodPressureRecord | time_series | blood_pressure_* |
-| SleepSessionRecord | activities | sleep |
-| ExerciseSessionRecord | activities | exercise |
+| Health Connect Type             | Target Table | Metric/Type        |
+| ------------------------------- | ------------ | ------------------ |
+| HeartRateRecord                 | time_series  | heart_rate         |
+| RestingHeartRateRecord          | time_series  | resting_heart_rate |
+| HeartRateVariabilityRmssdRecord | time_series  | hrv_rmssd          |
+| WeightRecord                    | time_series  | weight             |
+| BodyFatRecord                   | time_series  | body_fat           |
+| StepsRecord                     | time_series  | steps              |
+| ActiveCaloriesBurnedRecord      | time_series  | calories_active    |
+| TotalCaloriesBurnedRecord       | time_series  | calories_total     |
+| BloodGlucoseRecord              | time_series  | blood_glucose      |
+| BloodPressureRecord             | time_series  | blood*pressure*\*  |
+| SleepSessionRecord              | activities   | sleep              |
+| ExerciseSessionRecord           | activities   | exercise           |
 
 ### Oura Ring
 
-| Oura Endpoint | Target Table | Details |
-|---------------|--------------|---------|
-| daily_sleep | activities | Sleep sessions with stages |
-| heart_rate | time_series | 5-minute HR averages |
-| daily_readiness | time_series | readiness_score |
-| daily_resilience | time_series | resilience_* metrics |
-| session | activities | Meditation sessions |
-| enhanced_tag | tags | Activity tags |
+| Oura Endpoint    | Target Table | Details                    |
+| ---------------- | ------------ | -------------------------- |
+| daily_sleep      | activities   | Sleep sessions with stages |
+| heart_rate       | time_series  | 5-minute HR averages       |
+| daily_readiness  | time_series  | readiness_score            |
+| daily_resilience | time_series  | resilience\_\* metrics     |
+| session          | activities   | Meditation sessions        |
+| enhanced_tag     | tags         | Activity tags              |
 
 ### RescueTime
 
-| Data Type | Target Table | Details |
-|-----------|--------------|---------|
+| Data Type     | Target Table | Details                    |
+| ------------- | ------------ | -------------------------- |
 | Interval data | productivity | Per-activity time tracking |
-| Daily summary | time_series | productivity_score (daily) |
+| Daily summary | time_series  | productivity_score (daily) |
 
 ### OwnTracks
 
 | Message Type | Target Table |
-|--------------|--------------|
-| location | locations |
-| waypoint | places |
+| ------------ | ------------ |
+| location     | locations    |
+| waypoint     | places       |
 
 ## Future Extensions
 
 ### Garmin Connect
 
 When adding Garmin support, map to existing tables:
+
 - Daily summaries → time_series
 - Activities → activities
 - Sleep → activities (type: sleep)
@@ -411,6 +419,7 @@ Use `lab_results` table with appropriate `test_category` values.
 ### Manual Entry
 
 Support manual data entry with `source = 'manual'` for:
+
 - Weight measurements
 - Blood pressure readings
 - Lab results

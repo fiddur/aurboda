@@ -1,0 +1,230 @@
+.food-item-detail-page {
+  width: 100%;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.fi-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.fi-detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.food-item-detail-page h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+  color: #1f2937;
+}
+
+.fi-name-input {
+  font-size: 1.25rem;
+  font-weight: 600;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  color: #374151;
+  background: #fff;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.fi-default-edit {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.fi-default-edit input {
+  padding: 0.25rem 0.375rem;
+  font-size: 0.8rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  color: #374151;
+  background: #fff;
+}
+
+.fi-default-edit input[type='number'] {
+  width: 60px;
+}
+
+.fi-default-edit input[type='text'] {
+  width: 100px;
+}
+
+.nutrient-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.nutrient-edit input {
+  width: 70px;
+  padding: 0.125rem 0.25rem;
+  font-size: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  color: #374151;
+  background: #fff;
+  text-align: right;
+}
+
+.nutrient-unit {
+  font-size: 0.65rem;
+  color: #9ca3af;
+  min-width: 20px;
+}
+
+.btn-primary {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.85rem;
+  background: #673ab8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  background: #5e35b1;
+}
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.85rem;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: #f3f4f6;
+}
+
+.back-link {
+  color: #673ab8;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.fi-meta {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.nutrient-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.nutrient-section h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.nutrient-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.25rem 1rem;
+}
+
+.nutrient-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  font-size: 0.8rem;
+}
+
+.nutrient-label {
+  color: #6b7280;
+}
+
+.nutrient-value {
+  color: #374151;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-color-scheme: dark) {
+  .food-item-detail-page h1,
+  .fi-name-input {
+    color: #e5e7eb;
+  }
+
+  .fi-name-input,
+  .fi-default-edit input,
+  .nutrient-edit input {
+    background: #374151;
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .btn-secondary {
+    background: #374151;
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .food-item-detail-page h1 {
+    color: #e5e7eb;
+  }
+
+  .back-link {
+    color: #c4b5fd;
+  }
+
+  .fi-meta {
+    color: #9ca3af;
+  }
+
+  .nutrient-section h3 {
+    color: #d1d5db;
+    border-color: #374151;
+  }
+
+  .nutrient-label {
+    color: #9ca3af;
+  }
+
+  .nutrient-value {
+    color: #d1d5db;
+  }
+}
+
+@media (max-width: 639px) {
+  .food-item-detail-page {
+    padding: 1rem;
+  }
+
+  .nutrient-grid {
+    grid-template-columns: 1fr;
+  }
+}

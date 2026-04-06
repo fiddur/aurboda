@@ -1,19 +1,20 @@
 import 'leaflet/dist/leaflet.css'
 import './style.css'
-
 import { signal } from '@preact/signals'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import L from 'leaflet'
+import { useLocation } from 'preact-iso'
 import { useEffect, useRef, useState } from 'preact/hooks'
+
+import type { PlaceVisit, StoredDetectedLocation } from '../../state/api'
+
 import {
   addNamedLocation,
   fetchNamedLocations,
   fetchPlaceVisits,
   fetchStoredDetectedLocations,
-  PlaceVisit,
   promoteDetectedLocation,
-  StoredDetectedLocation,
 } from '../../state/api'
 
 // Fix Leaflet default marker icon path issue with bundlers
@@ -29,6 +30,18 @@ const selectedDate = signal(formatISO(new Date(), { representation: 'date' }))
 
 export const Places = () => {
   const queryClient = useQueryClient()
+  const { query } = useLocation()
+  const initialNameRef = useRef<string | null>(null)
+
+  // On mount: apply URL params for date and name
+  useEffect(() => {
+    const params = new URLSearchParams(query)
+    const dateParam = params.get('date')
+    const nameParam = params.get('name')
+    if (dateParam) selectedDate.value = dateParam
+    if (nameParam) initialNameRef.current = nameParam
+  }, [])
+
   const start = startOfDay(new Date(selectedDate.value))
   const end = endOfDay(new Date(selectedDate.value))
 
@@ -82,6 +95,16 @@ export const Places = () => {
       setNameInput('')
     },
   })
+
+  // Auto-select place from URL param after data loads
+  useEffect(() => {
+    if (!initialNameRef.current || !placesQuery.data) return
+    const match = placesQuery.data.find((p) => p.name === initialNameRef.current)
+    if (match) {
+      setSelectedPlace(match)
+      initialNameRef.current = null
+    }
+  }, [placesQuery.data])
 
   // Initialize Leaflet map
   useEffect(() => {
@@ -147,19 +170,26 @@ export const Places = () => {
     return () => resizeObserver.disconnect()
   }, [])
 
+  const updateDate = (newDate: string) => {
+    selectedDate.value = newDate
+    const params = new URLSearchParams(window.location.search)
+    params.set('date', newDate)
+    history.replaceState(null, '', `${window.location.pathname}?${params}`)
+  }
+
   const handleDateChange = (e: Event) => {
     const target = e.target as HTMLInputElement
-    selectedDate.value = target.value
+    updateDate(target.value)
   }
 
   const handlePreviousDay = () => {
-    selectedDate.value = formatISO(subDays(new Date(selectedDate.value), 1), { representation: 'date' })
+    updateDate(formatISO(subDays(new Date(selectedDate.value), 1), { representation: 'date' }))
   }
 
   const handleNextDay = () => {
     const next = new Date(selectedDate.value)
     next.setDate(next.getDate() + 1)
-    selectedDate.value = formatISO(next, { representation: 'date' })
+    updateDate(formatISO(next, { representation: 'date' }))
   }
 
   const handlePlaceClick = (place: PlaceVisit) => {

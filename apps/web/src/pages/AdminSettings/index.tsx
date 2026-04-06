@@ -1,18 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
-import {
-  fetchAdminSettings,
-  generateInvitation,
-  InvitationResult,
-  SignupMode,
-  updateAdminSettings,
-} from '../../state/api'
+
+import type { InvitationResult, SignupMode } from '../../state/api'
+
+import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
+import { fetchAdminSettings, generateInvitation, updateAdminSettings } from '../../state/api'
 import { auth } from '../../state/auth'
-
 import './style.css'
-
-type SaveStatus = { status: 'idle' | 'saving' | 'saved' | 'error'; time?: Date; error?: string }
 
 const signupModeDescriptions: Record<SignupMode, string> = {
   closed: 'No new users can sign up. Only existing accounts can log in.',
@@ -21,16 +16,6 @@ const signupModeDescriptions: Record<SignupMode, string> = {
 }
 
 const getErrorMessage = (err: unknown): string => (err instanceof Error ? err.message : 'Failed to save')
-
-const formatSavedTime = (time: Date): string => {
-  const now = new Date()
-  const diffSec = Math.floor((now.getTime() - time.getTime()) / 1000)
-  if (diffSec < 5) return 'just now'
-  if (diffSec < 60) return `${diffSec} seconds ago`
-  const diffMin = Math.floor(diffSec / 60)
-  if (diffMin < 60) return `${diffMin} minute${diffMin > 1 ? 's' : ''} ago`
-  return time.toLocaleTimeString()
-}
 
 const formatExpiryTime = (expiresAt: Date): string => {
   const now = new Date()
@@ -44,17 +29,6 @@ const formatExpiryTime = (expiresAt: Date): string => {
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
   if (hours > 0) return `${hours}h ${minutes}m`
   return `${minutes} minute${minutes > 1 ? 's' : ''}`
-}
-
-function SaveStatusIndicator({ saveStatus }: { saveStatus: SaveStatus }) {
-  if (saveStatus.status === 'idle') return null
-  return (
-    <span class={`save-indicator ${saveStatus.status}`}>
-      {saveStatus.status === 'saving' && 'Saving...'}
-      {saveStatus.status === 'saved' && saveStatus.time && `Saved ${formatSavedTime(saveStatus.time)}`}
-      {saveStatus.status === 'error' && (saveStatus.error ?? 'Error saving')}
-    </span>
-  )
 }
 
 function IntegrationsSection() {
@@ -112,11 +86,9 @@ function IntegrationsSection() {
       <div class="form-field">
         <div class="section-header-row">
           <label for="lastfm-api-key">Last.fm API Key</label>
-          <SaveStatusIndicator saveStatus={lastfmSaveStatus} />
+          <SaveStatusIndicator state={lastfmSaveStatus} />
         </div>
-        {settings?.lastfm_api_key_set ?
-          <p class="connected-status">Configured</p>
-        : null}
+        {settings?.lastfm_api_key_set ? <p class="connected-status">Configured</p> : null}
         <div class="api-key-input-row">
           <input
             id="lastfm-api-key"
@@ -145,7 +117,7 @@ function IntegrationsSection() {
         <div class="form-field">
           <div class="section-header-row">
             <label for="oura-webhook-toggle">Oura Webhook Push</label>
-            <SaveStatusIndicator saveStatus={ouraWebhookSaveStatus} />
+            <SaveStatusIndicator state={ouraWebhookSaveStatus} />
           </div>
           <label class="toggle-row">
             <input
@@ -283,7 +255,7 @@ export function AdminSettings() {
       <section class="settings-section">
         <div class="section-header-row">
           <h2>Server Settings</h2>
-          <SaveStatusIndicator saveStatus={saveStatus} />
+          <SaveStatusIndicator state={saveStatus} />
         </div>
 
         <div class="form-field">

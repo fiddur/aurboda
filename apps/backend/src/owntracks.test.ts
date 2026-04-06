@@ -1,8 +1,8 @@
-import { json } from 'body-parser'
-import express from 'express'
+import express, { json } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { createOwnTracksRouter, OwnTracksDeps, parseBasicAuth } from './owntracks'
+
+import { createOwnTracksRouter, type OwnTracksDeps, parseBasicAuth } from './owntracks.ts'
 
 describe('parseBasicAuth', () => {
   test('parses valid Basic auth header', () => {
@@ -47,13 +47,22 @@ describe('parseBasicAuth', () => {
   test('handles special characters in credentials', () => {
     const encoded = Buffer.from('user@domain.com:p@$$w0rd!').toString('base64')
     const result = parseBasicAuth(`Basic ${encoded}`)
-    expect(result).toEqual({ password: 'p@$$w0rd!', username: 'user@domain.com' })
+    expect(result).toEqual({
+      password: 'p@$$w0rd!',
+      username: 'user@domain.com',
+    })
   })
 
   test('handles case-insensitive Basic prefix', () => {
     const encoded = Buffer.from('user:pass').toString('base64')
-    expect(parseBasicAuth(`basic ${encoded}`)).toEqual({ password: 'pass', username: 'user' })
-    expect(parseBasicAuth(`BASIC ${encoded}`)).toEqual({ password: 'pass', username: 'user' })
+    expect(parseBasicAuth(`basic ${encoded}`)).toEqual({
+      password: 'pass',
+      username: 'user',
+    })
+    expect(parseBasicAuth(`BASIC ${encoded}`)).toEqual({
+      password: 'pass',
+      username: 'user',
+    })
   })
 })
 

@@ -1,0 +1,118 @@
+.date-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  position: relative;
+}
+
+.date-nav .nav-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+  font-family: monospace;
+}
+
+.date-nav .nav-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.date-nav .nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.nav-today {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  color: #673ab8;
+  border-color: #c4b5fd;
+}
+
+.nav-date-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #374151;
+  min-width: 100px;
+  text-align: center;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.nav-date-label:hover {
+  background: #f3f4f6;
+}
+
+/* Range mode label */
+.nav-range-label {
+  cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  min-width: unset;
+}
+
+.nav-range-btn {
+  border: none;
+  background: none;
+  color: #374151;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.125rem 0.25rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.nav-range-btn:hover {
+  background: #f3f4f6;
+}
+
+/* Hidden native date picker, positioned absolutely so the popup appears near the label */
+.nav-date-picker {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  width: 0;
+  height: 0;
+  border: none;
+  padding: 0;
+  pointer-events: none;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .date-nav .nav-btn {
+    background: #374151;
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .date-nav .nav-btn:hover:not(:disabled) {
+    background: #4b5563;
+  }
+
+  .nav-date-label {
+    color: #d1d5db;
+  }
+
+  .nav-date-label:hover {
+    background: #374151;
+  }
+
+  .nav-range-btn {
+    color: #d1d5db;
+  }
+
+  .nav-range-btn:hover {
+    background: #374151;
+  }
+}

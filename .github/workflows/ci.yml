@@ -11,13 +11,39 @@ on:
       - develop
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      node: ${{ steps.filter.outputs.node }}
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            node:
+              - 'apps/backend/**'
+              - 'apps/web/**'
+              - 'packages/api-spec/**'
+              - 'scripts/**'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/ci.yml'
+            android:
+              - 'apps/android/**'
+              - 'packages/api-spec/**'
+              - '.github/workflows/ci.yml'
+
   node:
     name: Node (test, check, build)
+    needs: changes
+    if: needs.changes.outputs.node == 'true'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -25,7 +51,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '25'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -34,36 +60,25 @@ jobs:
       - name: Build api-spec package
         run: pnpm --filter @aurboda/api-spec build
 
-      - name: Run TypeScript checks
+      - name: Run TypeScript checks and lint
         run: pnpm check
 
       - name: Run backend tests with coverage
-        run: pnpm --filter aurboda-backend test run --coverage
+        run: pnpm --filter aurboda-backend exec vitest run --coverage
 
-      - name: Upload backend coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: apps/backend/coverage/coverage-final.json
-          flags: backend
-          fail_ci_if_error: false
+      - name: Check coverage against baseline
+        run: node scripts/check-coverage.mjs apps/backend/coverage/coverage-final.json apps/backend/coverage-baseline.json
 
-      - name: Run web tests with coverage
-        run: pnpm --filter aurboda-web test run --coverage
-
-      - name: Upload web coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: apps/web/coverage/coverage-final.json
-          flags: web
-          fail_ci_if_error: false
+      - name: Run web tests
+        run: pnpm --filter aurboda-web test
 
       - name: Build web
         run: pnpm --filter aurboda-web build
 
   android:
     name: Android (test, build)
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
 
     defaults:
@@ -72,7 +87,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -92,7 +107,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '25'
           cache: 'pnpm'
 
       - name: Install api-spec dependencies
@@ -108,16 +123,28 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "aurbodaApiToken=${{ secrets.AURBODA_API_TOKEN }}" >> local.properties
 
-      - name: Run unit tests with coverage
-        run: ./gradlew testDebugUnitTest jacocoTestReport
-
-      - name: Upload Android coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: apps/android/app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml
-          flags: android
-          fail_ci_if_error: false
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
+
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [node, android]
+    steps:
+      - name: Check job results
+        run: |
+          echo "Node: ${{ needs.node.result }}"
+          echo "Android: ${{ needs.android.result }}"
+          if [[ "${{ needs.node.result }}" == "failure" || "${{ needs.android.result }}" == "failure" ]]; then
+            echo "❌ One or more jobs failed"
+            exit 1
+          fi
+          if [[ "${{ needs.node.result }}" == "cancelled" || "${{ needs.android.result }}" == "cancelled" ]]; then
+            echo "⚠️ One or more jobs were cancelled"
+            exit 1
+          fi
+          echo "✅ All jobs passed or were skipped"

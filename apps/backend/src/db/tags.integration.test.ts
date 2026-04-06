@@ -3,18 +3,29 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+
 import {
   deleteTag,
+  deleteTagDefinition,
   findMergeableTag,
   getProgrammaticTags,
+  getTagDefinitionById,
+  getTagDefinitions,
   getTags,
   getUniqueTags,
+  hardDeleteTagsByExternalIdPrefix,
+  hardDeleteTagsBySource,
   insertTag,
+  insertTagDefinition,
   isProgrammaticTag,
+  mergeTagDefinitions,
+  resolveOrCreateTagDefinition,
+  resolveTagDefinition,
+  updateTagDefinition,
   updateTagEndTime,
   updateTagNameByKey,
-} from '../db'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
+} from '../db/index.ts'
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 
 const CONTAINER_TIMEOUT = 60_000
 
@@ -37,7 +48,7 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-1',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'coffee',
       })
@@ -55,7 +66,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T11:00:00Z'),
         external_id: 'tag-2',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'meditation',
       })
@@ -71,14 +82,14 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-3',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'coffee',
       })
 
       await insertTag(user, {
         external_id: 'tag-3',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T11:00:00Z'),
         tag: 'tea',
       })
@@ -140,19 +151,19 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-a',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-14T10:00:00Z'),
         tag: 'before-range',
       })
       await insertTag(user, {
         external_id: 'tag-b',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'in-range',
       })
       await insertTag(user, {
         external_id: 'tag-c',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-16T10:00:00Z'),
         tag: 'after-range',
       })
@@ -178,7 +189,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T11:00:00Z'),
         external_id: 'tag-within',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'meditation',
       })
@@ -196,7 +207,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-14T12:00:00Z'),
         external_id: 'tag-before',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-14T10:00:00Z'),
         tag: 'old-meeting',
       })
@@ -211,7 +222,7 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-x',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-10T10:00:00Z'),
         tag: 'old-tag',
       })
@@ -227,7 +238,7 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-to-delete',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'temporary',
       })
@@ -254,7 +265,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T09:59:00Z'),
         external_id: 'mergeable-tag',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'computer:dharma',
       })
@@ -271,7 +282,7 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'point-tag',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T09:58:00Z'),
         tag: 'coffee',
       })
@@ -289,7 +300,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T09:50:00Z'),
         external_id: 'old-tag',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'computer:dharma',
       })
@@ -299,7 +310,7 @@ describe('Tags Integration Tests', () => {
       expect(result).toBeUndefined()
     })
 
-    test('only finds manual source tags', async () => {
+    test('only finds user-created (aurboda/manual) source tags by default', async () => {
       const user = getTestUser()
 
       await insertTag(user, {
@@ -313,6 +324,24 @@ describe('Tags Integration Tests', () => {
       const result = await findMergeableTag(user, 'meditation', new Date('2024-01-15T10:00:00Z'), 180)
 
       expect(result).toBeUndefined()
+    })
+
+    test('finds legacy manual source tags by default', async () => {
+      const user = getTestUser()
+
+      await insertTag(user, {
+        end_time: new Date('2024-01-15T09:59:00Z'),
+        external_id: 'legacy-manual-tag',
+        source: 'manual',
+        start_time: new Date('2024-01-15T09:00:00Z'),
+        tag: 'coffee',
+      })
+
+      const result = await findMergeableTag(user, 'coffee', new Date('2024-01-15T10:00:00Z'), 180)
+
+      expect(result).toBeDefined()
+      expect(result!.external_id).toBe('legacy-manual-tag')
+      expect(result!.source).toBe('manual')
     })
 
     test('finds lastfm-auto source tags when source parameter is specified', async () => {
@@ -339,7 +368,7 @@ describe('Tags Integration Tests', () => {
       expect(result!.source).toBe('lastfm-auto')
     })
 
-    test('does not find lastfm-auto source tags when searching for manual', async () => {
+    test('does not find lastfm-auto source tags with default sources', async () => {
       const user = getTestUser()
 
       await insertTag(user, {
@@ -361,7 +390,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T09:59:00Z'),
         external_id: 'different-tag',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T09:00:00Z'),
         tag: 'different-name',
       })
@@ -379,7 +408,7 @@ describe('Tags Integration Tests', () => {
       await insertTag(user, {
         end_time: new Date('2024-01-15T10:30:00Z'),
         external_id: 'tag-to-update',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'session',
       })
@@ -458,19 +487,19 @@ describe('Tags Integration Tests', () => {
 
       await insertTag(user, {
         external_id: 'tag-1',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'coffee',
       })
       await insertTag(user, {
         external_id: 'tag-2',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T11:00:00Z'),
         tag: 'meditation',
       })
       await insertTag(user, {
         external_id: 'tag-3',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T12:00:00Z'),
         tag: 'coffee', // duplicate
       })
@@ -516,7 +545,7 @@ describe('Tags Integration Tests', () => {
       expect(tags).toEqual([])
     })
 
-    test('returns tags with tag_key set (mapped tags)', async () => {
+    test('returns tags with tag_key set as programmatic', async () => {
       const user = getTestUser()
       const uuid1 = '067e2862-8cf8-4307-a621-0636dd379cda'
       const uuid2 = '4ddc8bc2-911d-467d-8c9d-dac2ece87d0a'
@@ -545,13 +574,15 @@ describe('Tags Integration Tests', () => {
       })
 
       const tags = await getProgrammaticTags(user)
+      const programmatic = tags.filter((t) => t.isProgrammatic)
 
-      expect(tags).toHaveLength(2)
+      expect(programmatic).toHaveLength(2)
       // Sorted by latest time descending
-      expect(tags[0].tagKey).toBe(uuid2)
-      expect(tags[0].count).toBe(1)
-      expect(tags[1].tagKey).toBe(uuid1)
-      expect(tags[1].count).toBe(2)
+      expect(programmatic[0].tagKey).toBe(uuid2)
+      expect(programmatic[0].count).toBe(1)
+      expect(programmatic[0].isProgrammatic).toBe(true)
+      expect(programmatic[1].tagKey).toBe(uuid1)
+      expect(programmatic[1].count).toBe(2)
     })
 
     test('falls back to programmatic tag names without tag_key (pre-migration)', async () => {
@@ -573,12 +604,14 @@ describe('Tags Integration Tests', () => {
       })
 
       const tags = await getProgrammaticTags(user)
+      const programmatic = tags.filter((t) => t.isProgrammatic)
 
-      expect(tags).toHaveLength(2)
-      expect(tags.map((t) => t.tagKey).sort()).toEqual([uuid, 'tag_sleep_sauna'])
+      expect(programmatic).toHaveLength(2)
+      expect(programmatic.map((t) => t.tagKey).sort()).toEqual([uuid, 'tag_sleep_sauna'])
+      expect(programmatic.every((t) => t.isProgrammatic)).toBe(true)
     })
 
-    test('excludes regular human-readable tags', async () => {
+    test('includes regular human-readable tags as non-programmatic', async () => {
       const user = getTestUser()
       const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
 
@@ -587,25 +620,57 @@ describe('Tags Integration Tests', () => {
         source: 'oura',
         start_time: new Date('2024-01-15T10:00:00Z'),
         tag: 'Food',
-        tag_key: uuid, // should be included (has tag_key)
+        tag_key: uuid,
       })
       await insertTag(user, {
         external_id: 'tag-2',
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T11:00:00Z'),
-        tag: 'coffee', // should be excluded (no tag_key, not programmatic)
+        tag: 'coffee',
       })
       await insertTag(user, {
         external_id: 'tag-3',
-        source: 'manual',
+        source: 'lastfm-auto',
         start_time: new Date('2024-01-15T12:00:00Z'),
-        tag: 'Food', // should be excluded (no tag_key, not programmatic)
+        tag: 'VocalExercise',
+      })
+
+      const tags = await getProgrammaticTags(user)
+
+      // All tags should be returned
+      expect(tags).toHaveLength(3)
+
+      // Programmatic tag (has tag_key)
+      const ouraTag = tags.find((t) => t.tagKey === uuid)
+      expect(ouraTag).toBeDefined()
+      expect(ouraTag!.isProgrammatic).toBe(true)
+
+      // Non-programmatic tags (manual and lastfm-auto)
+      const coffeeTag = tags.find((t) => t.tagKey === 'coffee')
+      expect(coffeeTag).toBeDefined()
+      expect(coffeeTag!.isProgrammatic).toBe(false)
+
+      const vocalTag = tags.find((t) => t.tagKey === 'VocalExercise')
+      expect(vocalTag).toBeDefined()
+      expect(vocalTag!.isProgrammatic).toBe(false)
+    })
+
+    test('includes calendar tags as non-programmatic', async () => {
+      const user = getTestUser()
+
+      await insertTag(user, {
+        external_id: 'cal-1',
+        source: 'calendar',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: '[Work] Standup',
       })
 
       const tags = await getProgrammaticTags(user)
 
       expect(tags).toHaveLength(1)
-      expect(tags[0].tagKey).toBe(uuid)
+      expect(tags[0].tagKey).toBe('[Work] Standup')
+      expect(tags[0].isProgrammatic).toBe(false)
+      expect(tags[0].count).toBe(1)
     })
 
     test('deduplicates between tag_key and fallback results', async () => {
@@ -633,6 +698,339 @@ describe('Tags Integration Tests', () => {
       // Should not duplicate - tag_key result should take precedence
       const uuidEntries = tags.filter((t) => t.tagKey === uuid)
       expect(uuidEntries).toHaveLength(1)
+    })
+  })
+
+  describe('hardDeleteTagsBySource', () => {
+    test('deletes all tags with the given source including soft-deleted', async () => {
+      const user = getTestUser()
+
+      await insertTag(user, {
+        external_id: 'lastfm-auto-rule1-1000',
+        source: 'lastfm-auto',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Guitar',
+      })
+      await insertTag(user, {
+        external_id: 'lastfm-auto-rule1-2000',
+        source: 'lastfm-auto',
+        start_time: new Date('2024-01-15T11:00:00Z'),
+        tag: 'Guitar',
+      })
+      // Soft-delete one
+      await deleteTag(user, 'lastfm-auto-rule1-2000')
+
+      // Tag from a different source (should survive)
+      await insertTag(user, {
+        external_id: 'manual-tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T12:00:00Z'),
+        tag: 'coffee',
+      })
+
+      const deleted = await hardDeleteTagsBySource(user, 'lastfm-auto')
+      expect(deleted).toBe(2)
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags).toHaveLength(1)
+      expect(tags[0].tag).toBe('coffee')
+    })
+
+    test('returns 0 when no tags match', async () => {
+      const user = getTestUser()
+
+      const deleted = await hardDeleteTagsBySource(user, 'nonexistent-source')
+      expect(deleted).toBe(0)
+    })
+  })
+
+  // ============================================================================
+  // Tag Definitions
+  // ============================================================================
+
+  describe('insertTagDefinition', () => {
+    test('creates a definition with name and aliases', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee', aliases: ['kaffe'] })
+
+      expect(def.name).toBe('Coffee')
+      expect(def.aliases).toContain('coffee') // name auto-added as lowercase
+      expect(def.aliases).toContain('kaffe')
+      expect(def.id).toBeTruthy()
+    })
+
+    test('auto-includes lowercased name in aliases', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Sex' })
+
+      expect(def.aliases).toEqual(['sex'])
+    })
+
+    test('stores icon', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee', icon: 'coffee' })
+
+      expect(def.icon).toBe('coffee')
+    })
+  })
+
+  describe('getTagDefinitions', () => {
+    test('returns definitions with counts', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+      await insertTag(user, {
+        external_id: 'tag-2',
+        source: 'aurboda',
+        start_time: new Date('2024-01-16T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+
+      const defs = await getTagDefinitions(user)
+      expect(defs).toHaveLength(1)
+      expect(defs[0].name).toBe('Coffee')
+      expect(defs[0].count).toBe(2)
+    })
+
+    test('returns empty array when no definitions', async () => {
+      const user = getTestUser()
+      const defs = await getTagDefinitions(user)
+      expect(defs).toEqual([])
+    })
+  })
+
+  describe('resolveTagDefinition', () => {
+    test('resolves by alias match (case-insensitive)', async () => {
+      const user = getTestUser()
+      await insertTagDefinition(user, { name: 'Coffee', aliases: ['kaffe'] })
+
+      const found = await resolveTagDefinition(user, 'kaffe')
+      expect(found).not.toBeNull()
+      expect(found!.name).toBe('Coffee')
+    })
+
+    test('resolves by name (auto-alias)', async () => {
+      const user = getTestUser()
+      await insertTagDefinition(user, { name: 'Sex' })
+
+      const found = await resolveTagDefinition(user, 'sex')
+      expect(found).not.toBeNull()
+      expect(found!.name).toBe('Sex')
+    })
+
+    test('returns null when no match', async () => {
+      const user = getTestUser()
+      const found = await resolveTagDefinition(user, 'nonexistent')
+      expect(found).toBeNull()
+    })
+  })
+
+  describe('resolveOrCreateTagDefinition', () => {
+    test('returns existing when alias matches', async () => {
+      const user = getTestUser()
+      const original = await insertTagDefinition(user, { name: 'Coffee' })
+
+      const resolved = await resolveOrCreateTagDefinition(user, 'coffee')
+      expect(resolved.id).toBe(original.id)
+    })
+
+    test('creates new when no match', async () => {
+      const user = getTestUser()
+      const resolved = await resolveOrCreateTagDefinition(user, 'NewTag')
+
+      expect(resolved.name).toBe('NewTag')
+      expect(resolved.aliases).toContain('newtag')
+    })
+  })
+
+  describe('updateTagDefinition', () => {
+    test('updates name and propagates to linked tags', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+
+      const updated = await updateTagDefinition(user, def.id, { name: 'Espresso' })
+      expect(updated!.name).toBe('Espresso')
+      expect(updated!.aliases).toContain('espresso')
+
+      // Verify tag was renamed
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags[0].tag).toBe('Espresso')
+    })
+  })
+
+  describe('deleteTagDefinition', () => {
+    test('deletes definition and unlinks tags', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+
+      const deleted = await deleteTagDefinition(user, def.id)
+      expect(deleted).toBe(true)
+
+      // Tag still exists but unlinked
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags).toHaveLength(1)
+      expect(tags[0].tag_definition_id).toBeUndefined()
+
+      const defs = await getTagDefinitions(user)
+      expect(defs).toHaveLength(0)
+    })
+  })
+
+  describe('mergeTagDefinitions', () => {
+    test('merges aliases, re-links tags, deletes source', async () => {
+      const user = getTestUser()
+      const source = await insertTagDefinition(user, { name: 'Ejaculation', aliases: ['ejac'] })
+      const target = await insertTagDefinition(user, { name: 'Sex' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Ejaculation',
+        tag_definition_id: source.id,
+      })
+      await insertTag(user, {
+        external_id: 'tag-2',
+        source: 'aurboda',
+        start_time: new Date('2024-01-16T10:00:00Z'),
+        tag: 'Sex',
+        tag_definition_id: target.id,
+      })
+
+      const result = await mergeTagDefinitions(user, source.id, target.id)
+      expect(result).not.toBeNull()
+      expect(result!.name).toBe('Sex')
+      expect(result!.aliases).toContain('ejaculation')
+      expect(result!.aliases).toContain('ejac')
+      expect(result!.aliases).toContain('sex')
+
+      // All tags now link to target
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-16T23:59:59Z'))
+      expect(tags).toHaveLength(2)
+      expect(tags.every((t) => t.tag_definition_id === target.id)).toBe(true)
+      // Merged tags get target's display name
+      expect(tags.every((t) => t.tag === 'Sex')).toBe(true)
+
+      // Source definition is deleted
+      const sourceDef = await getTagDefinitionById(user, source.id)
+      expect(sourceDef).toBeNull()
+    })
+
+    test('returns null when merging into self', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+      const result = await mergeTagDefinitions(user, def.id, def.id)
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('insertTag with tag_definition_id', () => {
+    test('stores tag_definition_id on insert', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags[0].tag_definition_id).toBe(def.id)
+    })
+
+    test('preserves tag_definition_id on upsert', async () => {
+      const user = getTestUser()
+      const def = await insertTagDefinition(user, { name: 'Coffee' })
+
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+        tag_definition_id: def.id,
+      })
+
+      // Upsert without tag_definition_id should preserve it
+      await insertTag(user, {
+        external_id: 'tag-1',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Coffee',
+      })
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags[0].tag_definition_id).toBe(def.id)
+    })
+  })
+
+  describe('hardDeleteTagsByExternalIdPrefix', () => {
+    test('deletes tags matching the external_id prefix', async () => {
+      const user = getTestUser()
+      const ruleId = 'abc-123'
+
+      await insertTag(user, {
+        external_id: `lastfm-auto-${ruleId}-1000`,
+        source: 'lastfm-auto',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        tag: 'Guitar',
+      })
+      await insertTag(user, {
+        external_id: `lastfm-session-${ruleId}-2000`,
+        source: 'lastfm-auto',
+        start_time: new Date('2024-01-15T11:00:00Z'),
+        tag: 'Guitar',
+      })
+      // Tag from a different rule (should survive)
+      await insertTag(user, {
+        external_id: 'lastfm-auto-other-rule-3000',
+        source: 'lastfm-auto',
+        start_time: new Date('2024-01-15T12:00:00Z'),
+        tag: 'Drums',
+      })
+
+      const deleted1 = await hardDeleteTagsByExternalIdPrefix(user, `lastfm-auto-${ruleId}-`)
+      expect(deleted1).toBe(1)
+
+      const deleted2 = await hardDeleteTagsByExternalIdPrefix(user, `lastfm-session-${ruleId}-`)
+      expect(deleted2).toBe(1)
+
+      const tags = await getTags(user, new Date('2024-01-15T00:00:00Z'), new Date('2024-01-15T23:59:59Z'))
+      expect(tags).toHaveLength(1)
+      expect(tags[0].tag).toBe('Drums')
+    })
+
+    test('returns 0 when no tags match', async () => {
+      const user = getTestUser()
+
+      const deleted = await hardDeleteTagsByExternalIdPrefix(user, 'nonexistent-prefix-')
+      expect(deleted).toBe(0)
     })
   })
 })

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { formatAddress, formatDisplayName, NominatimAddress } from './geocoding'
+
+import { formatAddress, formatDisplayName, type NominatimAddress } from './geocoding.ts'
 
 describe('formatAddress', () => {
   test('formats street address with house number', () => {

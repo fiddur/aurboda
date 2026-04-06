@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+
 import {
   baseResponseSchema,
   createDataArrayResponseSchema,
@@ -11,7 +12,7 @@ import {
   iso8601DateTimeSchema,
   syncStatusSchema,
   timeRangeQuerySchema,
-} from './common.js'
+} from './common.ts'
 
 // Shared sync options fields
 const fullResyncSchema = z.boolean().optional().meta({
@@ -54,9 +55,12 @@ export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
  */
 export const syncStatusQuerySchema = z
   .object({
-    provider: z.enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'all']).optional().meta({
-      description: 'Provider to check (defaults to all)',
-    }),
+    provider: z
+      .enum(['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+      .optional()
+      .meta({
+        description: 'Provider to check (defaults to all)',
+      }),
   })
   .meta({ id: 'SyncStatusQuery' })
 
@@ -65,9 +69,11 @@ export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
 /**
  * Sync provider schema (for MCP).
  */
-export const syncProviderSchema = z.enum(['oura', 'rescuetime', 'calendar', 'lastfm', 'all']).meta({
-  description: 'Which provider to check',
-})
+export const syncProviderSchema = z
+  .enum(['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+  .meta({
+    description: 'Which provider to check',
+  })
 
 export type SyncProviderType = z.infer<typeof syncProviderSchema>
 
@@ -82,6 +88,18 @@ export const syncOuraBodySchema = z
   .meta({ id: 'SyncOuraBody' })
 
 export type SyncOuraBody = z.infer<typeof syncOuraBodySchema>
+
+/**
+ * Sync Garmin body schema.
+ */
+export const syncGarminBodySchema = z
+  .object({
+    full_resync: fullResyncSchema,
+    start_date: startDateSyncSchema,
+  })
+  .meta({ id: 'SyncGarminBody' })
+
+export type SyncGarminBody = z.infer<typeof syncGarminBodySchema>
 
 /**
  * Sync RescueTime body schema.
@@ -130,11 +148,24 @@ export const dailyAggregateSchema = z
     data_origins: z.array(z.string()).meta({ description: 'Contributing app package names' }),
     date: dateOnlySchema,
     metric: z.enum(cumulativeMetrics).meta({ description: 'Cumulative metric type' }),
+    timezone: z
+      .string()
+      .meta({
+        description: 'IANA timezone of the device when the aggregate was computed (e.g. "Europe/Stockholm")',
+        example: 'Europe/Stockholm',
+      })
+      .optional(),
     value: z.number().meta({ description: 'Aggregated value for the day' }),
   })
   .meta({ id: 'DailyAggregate' })
 
-export type DailyAggregate = z.infer<typeof dailyAggregateSchema>
+export interface DailyAggregate {
+  data_origins: string[]
+  date: string
+  metric: (typeof cumulativeMetrics)[number]
+  timezone?: string
+  value: number
+}
 
 /**
  * Daily aggregates request body schema.
@@ -252,7 +283,15 @@ export type SyncResultStatus = z.infer<typeof syncResultStatusSchema>
  * Oura data types that can be synced.
  */
 export const ouraDataTypeSchema = z
-  .enum(['dailyCardiovascularAge', 'dailyReadiness', 'dailyResilience', 'dailySleep', 'sessions', 'tags'])
+  .enum([
+    'dailyCardiovascularAge',
+    'dailyReadiness',
+    'dailyResilience',
+    'dailySleep',
+    'sessions',
+    'sleep',
+    'tags',
+  ])
   .meta({
     description: 'Oura data type',
     id: 'OuraDataType',
@@ -274,6 +313,50 @@ export const ouraSyncResultSchema = z
   .meta({ id: 'OuraSyncResult' })
 
 export type OuraSyncResult = z.infer<typeof ouraSyncResultSchema>
+
+/**
+ * Garmin data types that can be synced.
+ */
+export const garminDataTypeSchema = z
+  .enum([
+    'dailySummary',
+    'heartRate',
+    'hrv',
+    'sleep',
+    'stress',
+    'bodyBattery',
+    'activities',
+    'spo2',
+    'respiration',
+    'trainingReadiness',
+    'intensityMinutes',
+  ])
+  .meta({
+    description: 'Garmin data type',
+    id: 'GarminDataType',
+  })
+
+export type GarminDataType = z.infer<typeof garminDataTypeSchema>
+
+/**
+ * Garmin sync result for a single data type.
+ */
+export const garminSyncResultSchema = z
+  .object({
+    data_type: garminDataTypeSchema,
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    errors_by_day: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of days that had fetch errors (data still synced for other days)' }),
+    records_processed: z.number().int().meta({ description: 'Number of records processed' }),
+    retry_after: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
+    status: syncResultStatusSchema,
+  })
+  .meta({ id: 'GarminSyncResult' })
+
+export type GarminSyncResult = z.infer<typeof garminSyncResultSchema>
 
 /**
  * RescueTime sync result.
@@ -299,6 +382,28 @@ export const ouraSyncResponseSchema = baseResponseSchema
   .meta({ id: 'OuraSyncResponse' })
 
 export type OuraSyncResponse = z.infer<typeof ouraSyncResponseSchema>
+
+/**
+ * Garmin sync response with typed results.
+ */
+export const garminSyncResponseSchema = baseResponseSchema
+  .extend({
+    results: z.array(garminSyncResultSchema).optional().meta({ description: 'Sync results per data type' }),
+  })
+  .meta({ id: 'GarminSyncResponse' })
+
+export type GarminSyncResponse = z.infer<typeof garminSyncResponseSchema>
+
+/**
+ * Garmin sync status response.
+ */
+export const garminSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Garmin sync states' }),
+  })
+  .meta({ id: 'GarminSyncStatusResponse' })
+
+export type GarminSyncStatusResponse = z.infer<typeof garminSyncStatusResponseSchema>
 
 /**
  * RescueTime sync response with typed result.
@@ -498,6 +603,59 @@ export const addLastFmTagRuleBodySchema = z
 export type AddLastFmTagRuleBody = z.infer<typeof addLastFmTagRuleBodySchema>
 
 /**
+ * Update Last.fm tag rule body schema.
+ * All fields are optional — only provided fields are updated.
+ */
+export const updateLastFmTagRuleBodySchema = z
+  .object({
+    artist_name: z
+      .string()
+      .optional()
+      .meta({ description: 'Artist name to match (for artist or track_artist match type)' }),
+    artist_names: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Multiple artist names to match (takes precedence over artist_name when set)' }),
+    match_mode: lastFmMatchModeSchema.optional().meta({ description: 'Match mode' }),
+    match_type: lastFmMatchTypeSchema.optional().meta({ description: 'Type of match' }),
+    merge_gap_seconds: z.number().int().positive().nullable().optional().meta({
+      description: 'Session merge gap in seconds. Set to null to remove.',
+    }),
+    rule_name: z.string().min(1).optional().meta({ description: 'Human-readable name for the rule' }),
+    tag_name: z.string().min(1).optional().meta({ description: 'Tag to create when rule matches' }),
+    track_name: z
+      .string()
+      .optional()
+      .meta({ description: 'Track name to match (for track or track_artist match type)' }),
+  })
+  .meta({
+    description: 'Partial update body for a Last.fm tag rule. Only provided fields are updated.',
+    id: 'UpdateLastFmTagRuleBody',
+  })
+
+export type UpdateLastFmTagRuleBody = z.infer<typeof updateLastFmTagRuleBodySchema>
+
+/**
+ * Update Last.fm tag rule response.
+ */
+export const updateLastFmTagRuleResponseSchema = baseResponseSchema
+  .extend({
+    data: lastFmTagRuleSchema
+      .extend({
+        tags_applied: z
+          .number()
+          .int()
+          .optional()
+          .meta({ description: 'Number of tags retroactively created after re-applying the updated rule' }),
+      })
+      .optional()
+      .meta({ description: 'Updated tag rule' }),
+  })
+  .meta({ id: 'UpdateLastFmTagRuleResponse' })
+
+export type UpdateLastFmTagRuleResponse = z.infer<typeof updateLastFmTagRuleResponseSchema>
+
+/**
  * Last.fm tag rules response.
  */
 export const lastFmTagRulesResponseSchema = baseResponseSchema
@@ -513,11 +671,43 @@ export type LastFmTagRulesResponse = z.infer<typeof lastFmTagRulesResponseSchema
  */
 export const addLastFmTagRuleResponseSchema = baseResponseSchema
   .extend({
-    data: lastFmTagRuleSchema.optional().meta({ description: 'Created tag rule' }),
+    data: lastFmTagRuleSchema
+      .extend({
+        tags_applied: z
+          .number()
+          .int()
+          .optional()
+          .meta({ description: 'Number of tags retroactively created from existing scrobbles' }),
+      })
+      .optional()
+      .meta({ description: 'Created tag rule' }),
   })
   .meta({ id: 'AddLastFmTagRuleResponse' })
 
 export type AddLastFmTagRuleResponse = z.infer<typeof addLastFmTagRuleResponseSchema>
+
+/**
+ * Delete Last.fm tag rule response.
+ */
+export const deleteLastFmTagRuleResponseSchema = baseResponseSchema
+  .extend({
+    tags_removed: z.number().int().optional().meta({ description: 'Number of auto-generated tags removed' }),
+  })
+  .meta({ id: 'DeleteLastFmTagRuleResponse' })
+
+export type DeleteLastFmTagRuleResponse = z.infer<typeof deleteLastFmTagRuleResponseSchema>
+
+/**
+ * Last.fm retag response.
+ */
+export const retagLastFmResponseSchema = baseResponseSchema
+  .extend({
+    tags_created: z.number().int().optional().meta({ description: 'Number of tags created' }),
+    tags_deleted: z.number().int().optional().meta({ description: 'Number of tags deleted' }),
+  })
+  .meta({ id: 'RetagLastFmResponse' })
+
+export type RetagLastFmResponse = z.infer<typeof retagLastFmResponseSchema>
 
 // ============================================================================
 // Last.fm scrobbles query schemas
@@ -552,3 +742,78 @@ export const scrobblesResponseSchema = createDataArrayResponseSchema(scrobbleSch
 })
 
 export type ScrobblesResponse = z.infer<typeof scrobblesResponseSchema>
+
+// ============================================================================
+// ActivityWatch push sync schemas
+// ============================================================================
+
+/**
+ * A single ActivityWatch event (from aw-watcher-window or aw-watcher-android).
+ */
+export const activityWatchEventSchema = z
+  .object({
+    app: z.string().meta({ description: 'Application name' }),
+    duration: z.number().meta({ description: 'Duration in seconds' }),
+    timestamp: iso8601DateTimeSchema.meta({ description: 'Event start time (ISO 8601)' }),
+    title: z.string().optional().meta({ description: 'Window title' }),
+  })
+  .meta({ id: 'ActivityWatchEvent' })
+
+export type ActivityWatchEvent = z.infer<typeof activityWatchEventSchema>
+
+/**
+ * Request body for POST /sync/activitywatch.
+ * Sent by the push agent on each device.
+ */
+export const syncActivityWatchBodySchema = z
+  .object({
+    device_name: z.string().max(100).optional().meta({
+      description: 'Hostname or user-configured device name. Defaults to empty string (single-device setup).',
+    }),
+    events: z.array(activityWatchEventSchema).min(1).meta({ description: 'ActivityWatch events to store' }),
+    is_mobile: z.boolean().optional().meta({
+      description: 'Whether the events come from a mobile device. Defaults to false.',
+    }),
+  })
+  .meta({ id: 'SyncActivityWatchBody' })
+
+export type SyncActivityWatchBody = z.infer<typeof syncActivityWatchBodySchema>
+
+/**
+ * ActivityWatch sync result.
+ */
+export const activityWatchSyncResultSchema = z
+  .object({
+    device_name: z.string().meta({ description: 'Device name used for deduplication' }),
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    records_stored: z.number().int().meta({ description: 'Number of events stored' }),
+    status: syncResultStatusSchema,
+  })
+  .meta({ id: 'ActivityWatchSyncResult' })
+
+export type ActivityWatchSyncResult = z.infer<typeof activityWatchSyncResultSchema>
+
+/**
+ * ActivityWatch sync response.
+ */
+export const activityWatchSyncResponseSchema = baseResponseSchema
+  .extend({
+    result: activityWatchSyncResultSchema.optional().meta({ description: 'Sync result' }),
+  })
+  .meta({ id: 'ActivityWatchSyncResponse' })
+
+export type ActivityWatchSyncResponse = z.infer<typeof activityWatchSyncResponseSchema>
+
+/**
+ * ActivityWatch sync status response.
+ */
+export const activityWatchSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z
+      .array(providerSyncStatusSchema)
+      .optional()
+      .meta({ description: 'ActivityWatch sync states per device' }),
+  })
+  .meta({ id: 'ActivityWatchSyncStatusResponse' })
+
+export type ActivityWatchSyncStatusResponse = z.infer<typeof activityWatchSyncStatusResponseSchema>

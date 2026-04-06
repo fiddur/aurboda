@@ -6,11 +6,12 @@
  */
 import type {
   ActivityType,
-  CustomMetricDefinition,
+  BiologicalSex,
   DashboardConfig,
   DataSource,
-  Goal,
+  GarminDataType,
   MetricType,
+  TrainingLoadSettings,
 } from '@aurboda/api-spec'
 
 // ============================================================================
@@ -62,6 +63,7 @@ export interface BucketedMetricData {
   min: number
   max: number
   count: number
+  sum: number
 }
 
 // ============================================================================
@@ -77,13 +79,20 @@ export interface Activity {
   title?: string
   notes?: string
   data?: Record<string, unknown>
+  deleted_at?: Date
+}
+
+export interface MergedActivity extends Activity {
+  source_ids?: string[] // only set when 2+ activities were merged
 }
 
 export interface ActivityUpdate {
+  activity_type?: ActivityType
   start_time?: Date
   end_time?: Date
   title?: string
   notes?: string
+  data?: Record<string, unknown>
 }
 
 // ============================================================================
@@ -169,6 +178,19 @@ export interface DetectedLocationUpdate {
 }
 
 // ============================================================================
+// Tag Definitions
+// ============================================================================
+
+export interface TagDefinition {
+  id: string
+  name: string
+  icon?: string
+  aliases: string[]
+  created_at: Date
+  updated_at: Date
+}
+
+// ============================================================================
 // Tags
 // ============================================================================
 
@@ -178,8 +200,10 @@ export interface Tag {
   external_id?: string
   tag: string
   tag_key?: string
+  tag_definition_id?: string
   start_time: Date
   end_time?: Date
+  deleted_at?: Date
 }
 
 // ============================================================================
@@ -187,14 +211,69 @@ export interface Tag {
 // ============================================================================
 
 export interface ProductivityRecord {
+  id?: string
   source?: DataSource
   start_time: Date
   end_time: Date
   activity: string
+  title?: string
   category?: string
   productivity?: number
   duration_sec: number
   is_mobile?: boolean
+  device_name?: string
+  resolved_category?: string[]
+  deleted_at?: Date
+}
+
+// ============================================================================
+// Screentime Categories
+// ============================================================================
+
+export interface ScreentimeCategory {
+  id: string
+  name: string[]
+  rule_type: 'regex' | 'none'
+  rule_regex?: string
+  ignore_case: boolean
+  color?: string
+  score?: number
+  exclude_from_screentime?: boolean
+  sort_order: number
+  created_at: Date
+  updated_at: Date
+}
+
+export interface ScreentimeCategoryInput {
+  name: string[]
+  rule_type: 'regex' | 'none'
+  rule_regex?: string
+  ignore_case?: boolean
+  color?: string
+  score?: number
+  exclude_from_screentime?: boolean
+  sort_order?: number
+}
+
+// ============================================================================
+// Notes
+// ============================================================================
+
+export type EntityType = 'activity' | 'tag' | 'productivity' | 'metric' | 'report'
+
+export interface Note {
+  id: string
+  entity_type: EntityType
+  entity_id: string
+  content: string
+  /** Data source that created this note (e.g. 'oura'). Null for user-created notes. */
+  source?: DataSource
+  /** Inherited from the parent entity's start_time. Null for metric notes (composite key). */
+  start_time?: Date
+  /** Inherited from the parent entity's end_time, if any. */
+  end_time?: Date
+  created_at: Date
+  updated_at: Date
 }
 
 // ============================================================================
@@ -213,6 +292,105 @@ export interface LabResult {
   flag?: 'normal' | 'high' | 'low' | 'critical'
   lab_name?: string
   notes?: string
+}
+
+// ============================================================================
+// Reports (structured lab results)
+// ============================================================================
+
+export type ReportConfidence = 'measured' | 'estimated' | 'derived'
+export type ReportFlag = 'critical_low' | 'low' | 'normal' | 'high' | 'critical_high'
+
+export interface ReportEntry {
+  id: string
+  report_id: string
+  metric: string
+  value: number
+  unit: string
+  method?: string
+  confidence?: ReportConfidence
+  reference_low?: number
+  reference_high?: number
+  flag?: ReportFlag
+}
+
+export interface Report {
+  id: string
+  report_type: string
+  report_date: Date
+  location?: string
+  notes?: string
+  created_at: Date
+  entries: ReportEntry[]
+}
+
+// ============================================================================
+// Meals
+// ============================================================================
+
+export type NutrientValue = number | { value: number; unit: string }
+export type Micros = Record<string, NutrientValue>
+
+export interface MealFoodItem {
+  food_item_id?: string
+  name: string
+  quantity?: number
+  unit?: string
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  fiber?: number
+  micros?: Micros
+}
+
+export interface Meal {
+  id: string
+  source: string
+  meal_type?: string
+  name?: string
+  time: Date
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  fiber?: number
+  food_items?: MealFoodItem[]
+  micros?: Micros
+  notes?: string
+  sensitivities?: string[]
+  created_at: Date
+}
+
+// ============================================================================
+// Food Items (canonical library)
+// ============================================================================
+
+export interface FoodItemEntity {
+  id: string
+  name: string
+  name_lower: string
+  source: string
+  default_quantity?: number
+  default_unit?: string
+  // All ~65 nutrient fields are optional numbers.
+  // Using Record for the nutrient fields to avoid 65 lines of boilerplate.
+  // At runtime these are individual columns, but in TypeScript we use an index signature.
+  [nutrient: string]: string | number | Date | undefined
+  created_at: Date
+  updated_at: Date
+}
+
+export interface MealFoodItemLink {
+  id: string
+  meal_id: string
+  food_item_id: string
+  food_item_name?: string // populated via JOIN
+  quantity?: number
+  unit?: string
+  sort_order: number
+  // Nutrient snapshot — same fields as FoodItemEntity
+  [nutrient: string]: string | number | Date | undefined
 }
 
 // ============================================================================
@@ -268,13 +446,20 @@ export interface CalendarConfig {
 export interface UserSettings {
   birth_date?: string // YYYY-MM-DD
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
-  custom_metrics?: CustomMetricDefinition[] // User-defined custom metric types
   dashboard?: DashboardConfig // Custom dashboard configuration
-  goals?: Goal[] // User-defined goals for tracking metrics
+  device_timezone?: string // IANA timezone from the Android device (e.g. "Europe/Stockholm")
   hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   lastfm_username?: string // Last.fm username for scrobble sync
   rescue_time_key?: string // RescueTime API key (personal token)
+  sex?: BiologicalSex // Biological sex for calorie calculation
+  item_icons?: Record<string, string> // Unified icon mappings for all timeline items (tags, activities, exercise types)
+  tag_icons?: Record<string, string> // Deprecated: tag-only icons (migrated to item_icons)
+  food_sensitivity_map?: Record<string, string[]> // Food item name -> sensitivity areas
+  meal_slots?: Array<{ name: string; default_hour: number }> // Meal slots for quick-logging
+  sensitivity_areas?: string[] // Sensitivity areas to track in meals
   tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names
+  training_load?: TrainingLoadSettings // Training load (Banister model) parameters
+  garmin_disabled_data_types?: GarminDataType[] // Garmin data types to skip during sync
 }
 
 // ============================================================================

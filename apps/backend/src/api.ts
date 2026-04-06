@@ -4,16 +4,25 @@
  * Route handlers are split into focused modules under routes/.
  * This file handles: server setup, middleware, auth routes, and router mounting.
  */
-import { type LoginResponse, type ServerStatusResponse, type SignupResponse } from '@aurboda/api-spec'
-import { json } from 'body-parser'
+import type { LoginResponse, ServerStatusResponse, SignupResponse } from '@aurboda/api-spec'
+
 import cors from 'cors'
-import express, { RequestHandler } from 'express'
+import express, { json, type RequestHandler } from 'express'
 import { Client } from 'pg'
-import { createAuth } from './auth'
+
+import type { OuraDataType } from './oura-sync.ts'
+
+import { processActivityWatchEvents } from './activitywatch-sync.ts'
+import { createAuth } from './auth.ts'
 import {
+  ackOutboundSync,
   deleteHealthConnectRecords,
   getAllSyncStates,
   getDetectedLocationById,
+  getOutboundSyncHistory,
+  getPendingOutboundSync,
+  reportSyncFailure,
+  requeueOutboundSync,
   initializeSchema,
   insertLocation,
   insertPlace,
@@ -21,40 +30,57 @@ import {
   makeNewUserDb,
   migrateSchema,
   processDailyAggregate,
+  processHealthConnectBatch,
   processHealthConnectData,
   query,
   resetSyncState,
   schemaInitialized,
   updateDetectedLocation,
-} from './db'
-import { syncAllCalendars } from './ical-sync'
-import { createLastFmRouter } from './lastfm-router'
-import { syncLastFmData } from './lastfm-sync'
-import { createMcpRouter } from './mcp'
-import { createDbSessionStore } from './mcp-session-store'
-import { ouraClient } from './oura'
-import type { OuraDataType } from './oura-sync'
-import { syncAllOuraData, syncOuraDataType } from './oura-sync'
-import { createOwnTracksRouter } from './owntracks'
-import { syncRescueTimeData } from './rescuetime-sync'
-import { createActivitiesRouter } from './routes/activities-router'
-import { createAdminRouter } from './routes/admin-router'
-import { createCorrelationsRouter } from './routes/correlations-router'
-import { createDashboardRouter } from './routes/dashboard-router'
-import { createLocationsRouter } from './routes/locations-router'
-import { createMetricsRouter } from './routes/metrics-router'
-import { createSettingsRouter } from './routes/settings-router'
-import { createTagsRouter } from './routes/tags-router'
-import { createTrendsRouter } from './routes/trends-router'
-import { getCentralDb, initializeCentralDb } from './services/central-db'
-import { createDetectionTrigger, DetectionTrigger } from './services/detection-trigger'
-import { runDetectionForUser } from './services/detection-worker'
-import { createGeocodeQueue, GeocodeQueue } from './services/geocode-queue'
-import { createInvitationAuth } from './services/invitation'
-import { createOuraWebhookManager, type OuraWebhookManager } from './services/oura-webhook-manager'
-import { getSettings } from './services/settings'
-import { createSyncProvider } from './services/sync-provider'
-import { createSyncRouter } from './sync-router'
+  upsertUserSettings,
+} from './db/index.ts'
+import { syncAllGarminData } from './garmin-sync.ts'
+import { garminClient } from './garmin.ts'
+import { syncAllCalendars } from './ical-sync.ts'
+import { createLastFmRouter } from './lastfm-router.ts'
+import { syncLastFmData } from './lastfm-sync.ts'
+import { createMcpRouter } from './mcp.ts'
+import { syncAllOuraData, syncOuraDataType } from './oura-sync.ts'
+import { ouraClient } from './oura.ts'
+import { createOwnTracksRouter } from './owntracks.ts'
+import { syncRescueTimeData } from './rescuetime-sync.ts'
+import { createActivitiesRouter } from './routes/activities-router.ts'
+import { createActivityTypesRouter } from './routes/activity-types-router.ts'
+import { createAdminRouter } from './routes/admin-router.ts'
+import { createAuditLogRouter } from './routes/audit-log-router.ts'
+import { createChartDataRouter } from './routes/chart-data-router.ts'
+import { createCorrelationsRouter } from './routes/correlations-router.ts'
+import { createDashboardRouter } from './routes/dashboard-router.ts'
+import { createDeductionRulesRouter } from './routes/deduction-rules-router.ts'
+import { createFoodItemsRouter } from './routes/food-items-router.ts'
+import { createIconsRouter } from './routes/icons-router.ts'
+import { createLocationsRouter } from './routes/locations-router.ts'
+import { createMealsRouter } from './routes/meals-router.ts'
+import { createMetricsRouter } from './routes/metrics-router.ts'
+import { createNotesRouter } from './routes/notes-router.ts'
+import { createOAuthRouter } from './routes/oauth-router.ts'
+import { createReportsRouter } from './routes/reports-router.ts'
+import { createScreentimeCategoriesRouter } from './routes/screentime-categories-router.ts'
+import { createSettingsRouter } from './routes/settings-router.ts'
+import { createTagsRouter } from './routes/tags-router.ts'
+import { createTrainingLoadRouter } from './routes/training-load-router.ts'
+import { createTrendsRouter } from './routes/trends-router.ts'
+import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
+import { triggerCalorieComputation } from './services/calorie-computation.ts'
+import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
+import { createDefaultEngineDeps } from './services/deduction-deps.ts'
+import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
+import { runDetectionForUser } from './services/detection-worker.ts'
+import { createGeocodeQueue, type GeocodeQueue } from './services/geocode-queue.ts'
+import { createInvitationAuth } from './services/invitation.ts'
+import { createOuraWebhookManager, type OuraWebhookManager } from './services/oura-webhook-manager.ts'
+import { getSettings } from './services/settings.ts'
+import { createSyncProvider } from './services/sync-provider.ts'
+import { createSyncRouter } from './sync-router.ts'
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -66,7 +92,9 @@ declare global {
 }
 
 const main = async () => {
-  const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 })
+  const unauthorized = Object.assign(new Error('Unauthorized'), {
+    status: 401,
+  })
   const forbidden = Object.assign(new Error('Forbidden'), { status: 403 })
 
   const sessionSecret = process.env.SESSION_SECRET ?? ''
@@ -82,8 +110,13 @@ const main = async () => {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
 
+  // Create Garmin client (no server-side credentials needed - uses per-user session tokens)
+  const garmin = garminClient()
+
   // Create sync provider for auto-syncing data before queries
   const syncProvider = createSyncProvider({
+    garmin,
+    getLastFmApiKey: () => centralDb.getLastFmApiKey(),
     oura,
   })
 
@@ -95,20 +128,40 @@ const main = async () => {
   // CORS must come first for preflight requests
   httpd.use(cors({ origin: true }))
 
+  // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
+  httpd.use(createOAuthRouter({ centralDb, loginToUserDb, webHost }))
+
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
-  // Use database-backed session store for persistence across restarts
-  httpd.use('/mcp', createMcpRouter(auth, oura, syncProvider, { sessionStore: createDbSessionStore() }))
+  // Stateless mode — no session tracking needed (tools only, no subscriptions)
+  httpd.use('/mcp', createMcpRouter(auth, { centralDb, garmin, oura, sync: syncProvider }))
 
   httpd.use(json({ limit: '10mb' }))
 
+  // Log mutations to the user's audit log (GET requests are silent)
   httpd.use((req, res, next) => {
-    const sanitizedBody =
-      req.body && typeof req.body === 'object' ?
-        Object.fromEntries(
-          Object.entries(req.body).map(([k, v]) => (k === 'password' ? [k, '[REDACTED]'] : [k, v])),
-        )
-      : req.body
-    console.log(req.path, sanitizedBody)
+    if (req.method !== 'GET' && req.method !== 'OPTIONS' && req.method !== 'HEAD') {
+      const user = (() => {
+        try {
+          const authHeader = req.headers.authorization
+          if (typeof authHeader === 'string') {
+            return auth.getUsernameFromToken(authHeader.slice('bearer '.length))
+          }
+        } catch {}
+        return undefined
+      })()
+
+      if (user) {
+        const sanitizedBody =
+          req.body && typeof req.body === 'object'
+            ? Object.fromEntries(
+                Object.entries(req.body as Record<string, unknown>).map(([k, v]) =>
+                  k === 'password' ? [k, '[REDACTED]'] : [k, v],
+                ),
+              )
+            : undefined
+        auditInfo(user, 'data', `${req.method} ${req.path}`, sanitizedBody)
+      }
+    }
     next()
   })
 
@@ -140,6 +193,13 @@ const main = async () => {
   // Auth routes (stay here - tightly coupled to server setup)
   // ==========================================================================
 
+  httpd.get('/version', (_req, res) => {
+    res.json({
+      build_sha: process.env.BUILD_SHA ?? 'dev',
+      success: true,
+    })
+  })
+
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
     const signupMode = await centralDb.getSignupMode()
     res.json({
@@ -163,7 +223,10 @@ const main = async () => {
     // In invite_only mode, require valid invitation token
     if (signupMode === 'invite_only') {
       if (!invitation || typeof invitation !== 'string') {
-        res.status(403).json({ error: 'An invitation is required to sign up', success: false })
+        res.status(403).json({
+          error: 'An invitation is required to sign up',
+          success: false,
+        })
         return
       }
       const validation = invitationAuth.validateInvitationToken(invitation)
@@ -175,7 +238,10 @@ const main = async () => {
     }
 
     if (!user || typeof user !== 'string' || !password || typeof password !== 'string') {
-      res.status(400).json({ error: 'Username and password are required', success: false })
+      res.status(400).json({
+        error: 'Username and password are required',
+        success: false,
+      })
       return
     }
 
@@ -250,14 +316,19 @@ const main = async () => {
           // Run migrations for existing databases
           await migrateSchema(user)
         }
-      } catch (err) {
-        console.log(err)
+      } catch {
         return next(unauthorized)
       }
     } else return next(unauthorized)
 
     const token = auth.createToken(user)
     const isAdmin = await centralDb.isAdmin(user)
+
+    // Prune old audit log entries in the background
+    centralDb
+      .getAuditLogRetentionDays()
+      .then((days) => pruneAuditLog(user, days))
+      .catch(() => {})
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ is_admin: isAdmin, refresh: token, token }))
@@ -266,6 +337,13 @@ const main = async () => {
   httpd.post('/refresh', async (req, res) => {
     const { refresh } = req.body
     res.end(JSON.stringify({ refresh, token: refresh }))
+  })
+
+  // Generate a fresh API token for the authenticated user (e.g. for push agents like ActivityWatch)
+  httpd.get('/auth/token', authMiddleware, (req, res) => {
+    const user = req.user!
+    const token = auth.createToken(user)
+    res.json({ success: true, token })
   })
 
   // ==========================================================================
@@ -320,23 +398,44 @@ const main = async () => {
     '/sync',
     createSyncRouter(
       {
+        ackOutboundSync,
         deleteHealthConnectRecords,
+        getOutboundSyncHistory,
+        getActivityWatchSyncStates: (user) => transformSyncStates(user, 'activitywatch'),
         getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
+        getGarminSyncStates: (user) => transformSyncStates(user, 'garmin'),
         getLastFmApiKey: () => centralDb.getLastFmApiKey(),
         getLastFmSyncStates: (user) => transformSyncStates(user, 'lastfm'),
         getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
+        getPendingOutboundSync,
         getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),
         getSettings,
+        processActivityWatchEvents,
         processDailyAggregate,
+        processHealthConnectBatch,
         processHealthConnectData,
+        reportSyncFailure,
+        requeueOutboundSync,
         resetCalendarSyncState: (user) => resetSyncState(user, 'calendar'),
+        resetGarminSyncState: (user, dataType) => resetSyncState(user, 'garmin', dataType),
         resetLastFmSyncState: (user) => resetSyncState(user, 'lastfm'),
         resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
         syncCalendars: (user, calendars) => syncAllCalendars(user, calendars),
+        syncGarmin: async (user, options) => {
+          const results = await syncAllGarminData(user, garmin, options)
+          return results.map((r) => ({
+            ...r,
+            retry_after: r.retry_after?.toISOString(),
+          }))
+        },
         syncLastFm: transformLastFmSyncResult,
         syncOura: transformOuraSyncResults,
         syncRescueTime: transformRescueTimeSyncResult,
+        triggerCalorieComputation: (user: string, start: Date, end: Date) =>
+          triggerCalorieComputation(user, start, end),
+        upsertUserSettings: (user: string, settings: Record<string, unknown>) =>
+          upsertUserSettings(user, settings),
       },
       authMiddleware,
     ),
@@ -346,6 +445,60 @@ const main = async () => {
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)
+
+  // Garmin Connect auth endpoints (login with credentials, tokens-only stored)
+  httpd.post('/auth/garmin/login', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { email, password } = req.body ?? {}
+
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and password are required', success: false })
+      return
+    }
+
+    try {
+      const result = await garmin.login(user, email, password)
+      if ('mfa_required' in result) {
+        res.json({ mfa_required: true, success: false })
+      } else {
+        res.json({ success: true })
+      }
+    } catch (error) {
+      auditError(user, 'auth', 'Garmin login endpoint error', { error: String(error) })
+      const message = error instanceof Error ? error.message : 'Login failed'
+      res.status(401).json({ error: message, success: false })
+    }
+  })
+
+  httpd.post('/auth/garmin/mfa', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const { mfa_code } = req.body ?? {}
+
+    if (!mfa_code) {
+      res.status(400).json({ error: 'MFA code is required', success: false })
+      return
+    }
+
+    try {
+      await garmin.verifyMfa(user, mfa_code)
+      res.json({ success: true })
+    } catch (error) {
+      auditError(user, 'auth', 'Garmin MFA endpoint error', { error: String(error) })
+      const message = error instanceof Error ? error.message : 'MFA verification failed'
+      res.status(401).json({ error: message, success: false })
+    }
+  })
+
+  httpd.post('/auth/garmin/disconnect', authMiddleware, async (req, res) => {
+    const user = req.user!
+    try {
+      await garmin.disconnect(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Disconnect failed'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
 
   // ==========================================================================
   // Oura webhook push integration (admin-configurable via Web UI)
@@ -417,12 +570,23 @@ const main = async () => {
 
   httpd.use(createMetricsRouter(authMiddleware, syncProvider))
   httpd.use('/tags', createTagsRouter(authMiddleware, syncProvider))
+  httpd.use('/icons', createIconsRouter(authMiddleware))
+  httpd.use('/notes', createNotesRouter(authMiddleware))
+  httpd.use('/meals', createMealsRouter(authMiddleware))
+  httpd.use('/food-items', createFoodItemsRouter(authMiddleware))
+  httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(createActivitiesRouter(authMiddleware, syncProvider))
+  httpd.use('/activity-types', createActivityTypesRouter(authMiddleware))
+  httpd.use('/deduction-rules', createDeductionRulesRouter(authMiddleware, createDefaultEngineDeps()))
   httpd.use('/locations', createLocationsRouter(authMiddleware))
   httpd.use(createSettingsRouter(authMiddleware))
+  httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
+  httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))
+  httpd.use('/chart-data', createChartDataRouter(authMiddleware))
+  httpd.use('/screentime-categories', createScreentimeCategoriesRouter(authMiddleware))
   httpd.use(
     '/admin',
     createAdminRouter(

@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createDetectionTrigger, DetectionTriggerDeps } from './detection-trigger'
+
+// Mock audit log to avoid DB connections in unit tests
+vi.mock('./audit-log.ts', () => ({
+  auditError: vi.fn(),
+  auditInfo: vi.fn(),
+  auditWarn: vi.fn(),
+}))
+
+import { createDetectionTrigger, type DetectionTriggerDeps } from './detection-trigger.ts'
 
 describe('createDetectionTrigger', () => {
   const createMockDeps = (): DetectionTriggerDeps => ({
@@ -164,25 +172,24 @@ describe('createDetectionTrigger', () => {
   })
 
   test('handles detection errors gracefully', async () => {
+    const { auditError } = await import('./audit-log.ts')
     const deps = createMockDeps()
     vi.mocked(deps.runDetectionForUser).mockRejectedValue(new Error('Detection failed'))
     const trigger = createDetectionTrigger(deps)
 
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
     trigger.triggerDetectionForUser('testuser')
     await vi.advanceTimersByTimeAsync(5000)
 
-    // Should have logged the error
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Detection failed for user testuser'),
-      expect.any(Error),
+    // Should have logged the error via audit log
+    expect(auditError).toHaveBeenCalledWith(
+      'testuser',
+      'data',
+      'Location detection failed',
+      expect.objectContaining({ error: expect.stringContaining('Detection failed') }),
     )
 
-    // Should still clean up pending detection
+    // Should still clean up pending detection despite the error
     expect(trigger.hasPendingDetection('testuser')).toBe(false)
-
-    consoleSpy.mockRestore()
   })
 
   test('cleans up pending detection after completion', async () => {

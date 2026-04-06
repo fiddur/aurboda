@@ -5,6 +5,9 @@
  */
 
 import { addHours, isBefore } from 'date-fns'
+
+import type { OuraWebhookSubscription } from './central-db.ts'
+
 import {
   OURA_DATA_TYPES,
   OURA_EVENT_TYPES,
@@ -12,8 +15,7 @@ import {
   type OuraRenewResponse,
   type OuraSubscriptionResponse,
   type OuraWebhookDataType,
-} from '../oura-webhook-api'
-import type { OuraWebhookSubscription } from './central-db'
+} from '../oura-webhook-api.ts'
 
 const RENEWAL_INTERVAL_MS = 12 * 60 * 60 * 1000 // 12 hours
 const RENEWAL_THRESHOLD_HOURS = 24

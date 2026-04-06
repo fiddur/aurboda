@@ -4,28 +4,42 @@
 import {
   addCustomMetricBodySchema,
   addMetricBodySchema,
+  bulkMetricItemSchema,
   customMetricDefinitionSchema,
+  recalculateCaloriesBodySchema,
+  tzSchema,
   updateCustomMetricBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
+
+import { auditError, auditInfo } from '../services/audit-log.ts'
+import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
 import {
   addCustomMetric,
   addMetric,
+  bulkAddMetrics,
   deleteCustomMetric,
   deleteMetric,
   deleteMetricData,
   getCustomMetrics,
   updateCustomMetric,
-} from '../services/mutations'
-import { errorResponse, jsonResponse, type McpServer, metricDescription, parseOptionalDate } from './helpers'
+} from '../services/mutations.ts'
+import {
+  errorResponse,
+  jsonResponse,
+  type McpServer,
+  metricDescription,
+  parseOptionalDate,
+  tzJsonResponse,
+} from './helpers.ts'
 
 export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: add_metric
   server.tool(
     'add_metric',
     'Add a manual health metric measurement. Use this to log data not captured automatically.',
-    { ...addMetricBodySchema.shape },
-    async ({ metric, time, value }) => {
+    { ...addMetricBodySchema.shape, tz: tzSchema },
+    async ({ metric, time, value, tz }) => {
       const measurementTime = time ? parseOptionalDate(time) : new Date()
       if (!measurementTime) {
         return errorResponse('Invalid time format. Use ISO 8601 format.')
@@ -35,7 +49,39 @@ export const registerMetricTools = (server: McpServer, user: string) => {
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to add metric')
       }
-      return jsonResponse(result)
+      return tzJsonResponse(result, tz)
+    },
+  )
+
+  // Tool: add_metrics_bulk
+  server.tool(
+    'add_metrics_bulk',
+    'Bulk insert metric data points for efficient batch imports. Accepts up to 10,000 items per call. Each item requires metric, value, and time. Items with validation errors are skipped (not inserted), and their errors are returned separately.',
+    {
+      data: z.array(bulkMetricItemSchema).min(1).max(10_000).describe('Array of metric data points'),
+      source: z
+        .string()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe('Default data source for all items (defaults to "aurboda")'),
+      tz: tzSchema,
+    },
+    async ({ data, source, tz }) => {
+      const items = data.map((item) => ({
+        metric: item.metric,
+        source: item.source,
+        time: parseOptionalDate(item.time) ?? new Date(),
+        value: item.value,
+      }))
+
+      const invalidTime = data.findIndex((item) => parseOptionalDate(item.time) === null)
+      if (invalidTime !== -1) {
+        return errorResponse(`Invalid time format at index ${invalidTime}. Use ISO 8601 format.`)
+      }
+
+      const result = await bulkAddMetrics(user, items, source)
+      return tzJsonResponse(result, tz)
     },
   )
 
@@ -117,18 +163,21 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: delete_metric
   server.tool(
     'delete_metric',
-    'Delete a single manual metric measurement by metric name and time. Only manual entries can be deleted.',
+    'Delete a single metric measurement by metric name, time, and source (soft delete). Works for any source.',
     {
       metric: z.string().describe(metricDescription),
+      source: z
+        .string()
+        .describe('Data source of the measurement (e.g. manual, oura, garmin, health_connect)'),
       time: z.string().describe('Measurement time in ISO 8601 format (must match exactly)'),
     },
-    async ({ metric, time }) => {
+    async ({ metric, source, time }) => {
       const measurementTime = parseOptionalDate(time)
       if (!measurementTime) {
         return errorResponse('Invalid time format. Use ISO 8601 format.')
       }
 
-      const result = await deleteMetric(user, metric, measurementTime)
+      const result = await deleteMetric(user, metric, measurementTime, source)
       return jsonResponse(result)
     },
   )
@@ -143,6 +192,36 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     async ({ metric }) => {
       const result = await deleteMetricData(user, metric)
       return jsonResponse(result)
+    },
+  )
+
+  // Tool: recalculate_calories
+  server.tool(
+    'recalculate_calories',
+    'Recalculate calories burned from HR data for a time range. Requires sex and birth_date in settings. Uses weight from Health Connect and VO2 max (measured or age/sex fallback). Omit start/end to recompute all historical data. Full recomputes run asynchronously and return immediately.',
+    {
+      ...recalculateCaloriesBodySchema.shape,
+      end: z.string().optional(),
+      start: z.string().optional(),
+      tz: tzSchema,
+    },
+    async ({ start, end, tz }) => {
+      if (!start || !end) {
+        // Full recompute runs async — fire and forget, return immediately
+        computeAndStoreCaloriesAll(user).then(
+          (result) =>
+            auditInfo(user, 'data', `Async calorie recompute done: ${result.points_stored} points`, {
+              days: result.days_processed,
+            }),
+          (error) => auditError(user, 'data', 'Async calorie recompute failed', { error: String(error) }),
+        )
+        return tzJsonResponse(
+          { started: true, message: 'Full calorie recomputation started in background' },
+          tz,
+        )
+      }
+      const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
+      return tzJsonResponse({ ...result, success: true }, tz)
     },
   )
 }

@@ -1,8 +1,13 @@
 import type { ProgrammaticTag } from '@aurboda/api-spec'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
-import { fetchProgrammaticTags, setTagMapping } from '../state/api'
 
+import { fetchProgrammaticTags, fetchTagMappings, setTagMapping } from '../state/api'
+import { suggestEmoji } from '../utils/emojiLookup'
+import { IconInput } from './IconInput'
+import { SaveStatusIndicator, useSaveStatus } from './SaveStatusIndicator'
+import { SettingsSection } from './SettingsSection'
 import './TagMappingsSettings.css'
 
 // Helper to check if a string is a UUID
@@ -17,49 +22,92 @@ const formatTagKey = (tagKey: string): string => {
   return tagKey
 }
 
-type RowStatus = 'idle' | 'saving' | 'saved' | 'error'
+/** Determine what changed vs server state and return the name to save, or null if no save needed. */
+function getBlurSavePayload(
+  localValue: string | undefined,
+  localIcon: string | undefined,
+  currentName: string | null | undefined,
+  currentIcon: string | null | undefined,
+): { name: string; iconChanged: boolean } | null {
+  if (localValue === undefined && localIcon === undefined) return null
+
+  const serverName = currentName ?? ''
+  const nameChanged = localValue !== undefined && localValue !== serverName
+  const iconChanged = localIcon !== undefined && localIcon !== (currentIcon ?? '')
+  if (!nameChanged && !iconChanged) return null
+
+  const name = (localValue ?? currentName ?? '').trim()
+  if (!name) return null
+
+  return { iconChanged, name }
+}
 
 function TagMappingRow({
+  currentIcon,
   onSave,
   tag,
 }: {
   tag: ProgrammaticTag
-  onSave: (tagKey: string, name: string) => Promise<void>
+  currentIcon?: string
+  onSave: (tagKey: string, name: string, icon?: string) => Promise<void>
 }) {
   const [localValue, setLocalValue] = useState<string | undefined>(undefined)
-  const [status, setStatus] = useState<RowStatus>('idle')
+  const [localIcon, setLocalIcon] = useState<string | undefined>(undefined)
+  const [status, setStatus] = useSaveStatus(3000)
+  const [suggestedEmoji, setSuggestedEmoji] = useState<string | undefined>(undefined)
 
-  // Clear saved indicator after 3 seconds
-  useEffect(() => {
-    if (status !== 'saved') return
-    const timer = setTimeout(() => setStatus('idle'), 3000)
-    return () => clearTimeout(timer)
-  }, [status])
+  const isProgrammatic = tag.is_programmatic
 
   const displayValue = localValue ?? tag.current_name ?? ''
-  const isUnmapped = !tag.current_name
+  const displayIcon = localIcon ?? currentIcon ?? ''
+  const isUnmapped = isProgrammatic && !tag.current_name
+
+  // Auto-suggest emoji when name changes
+  useEffect(() => {
+    const name = localValue ?? tag.current_name
+    if (name && !currentIcon && localIcon === undefined) {
+      const suggestion = suggestEmoji(name)
+      setSuggestedEmoji(suggestion)
+    } else {
+      setSuggestedEmoji(undefined)
+    }
+  }, [localValue, tag.current_name, currentIcon, localIcon])
 
   const handleBlur = async () => {
-    if (localValue === undefined) return
-
-    const serverValue = tag.current_name ?? ''
-    if (localValue === serverValue) {
+    const payload = getBlurSavePayload(localValue, localIcon, tag.current_name, currentIcon)
+    if (!payload) {
       setLocalValue(undefined)
+      setLocalIcon(undefined)
       return
     }
 
-    if (!localValue.trim()) {
-      setLocalValue(undefined)
-      return
-    }
-
-    setStatus('saving')
+    setStatus({ status: 'saving' })
     try {
-      await onSave(tag.tag_key, localValue.trim())
+      await onSave(tag.tag_key, payload.name, payload.iconChanged ? localIcon : undefined)
       setLocalValue(undefined)
-      setStatus('saved')
+      setLocalIcon(undefined)
+      setStatus({ status: 'saved' })
     } catch {
-      setStatus('error')
+      setStatus({ status: 'error' })
+    }
+  }
+
+  const handleAcceptSuggestion = async () => {
+    if (!suggestedEmoji) return
+
+    const name = (localValue ?? tag.current_name ?? '').trim()
+    if (!name) return
+
+    setSuggestedEmoji(undefined)
+    setStatus({ status: 'saving' })
+    try {
+      await onSave(tag.tag_key, name, suggestedEmoji)
+      setLocalValue(undefined)
+      setLocalIcon(undefined)
+      setStatus({ status: 'saved' })
+    } catch {
+      setLocalIcon(suggestedEmoji)
+      setStatus({ status: 'error' })
     }
   }
 
@@ -73,7 +121,10 @@ function TagMappingRow({
         </span>
         <span class="tag-latest">
           Last: {date.toLocaleDateString()}{' '}
-          {date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+          {date.toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
         </span>
       </div>
 
@@ -83,28 +134,34 @@ function TagMappingRow({
           value={displayValue}
           onInput={(e) => setLocalValue((e.target as HTMLInputElement).value)}
           onBlur={() => void handleBlur()}
-          placeholder="Enter display name..."
+          placeholder={isProgrammatic ? 'Enter display name...' : undefined}
           class={isUnmapped ? 'unmapped' : ''}
-          disabled={status === 'saving'}
+          disabled={status.status === 'saving' || !isProgrammatic}
+          readOnly={!isProgrammatic}
         />
-        <span class="row-status">
-          {status === 'saving' && <span class="status-saving" title="Saving..." />}
-          {status === 'saved' && (
-            <span class="status-saved" title="Saved">
-              &#10003;
-            </span>
-          )}
-          {status === 'error' && (
-            <span class="status-error" title="Failed to save">
-              !
-            </span>
-          )}
-        </span>
+        <SaveStatusIndicator state={status} variant="compact" />
       </div>
 
-      <div class="tag-uuid" title={tag.tag_key}>
-        {formatTagKey(tag.tag_key)}
+      <div class="tag-icon-field">
+        <IconInput
+          value={displayIcon}
+          onChange={setLocalIcon}
+          onBlur={() => void handleBlur()}
+          placeholder="Icon"
+          inputClass="tag-icon-input"
+          previewClass="tag-icon-preview"
+          size={16}
+          suggestedEmoji={suggestedEmoji}
+          onAcceptSuggestion={() => void handleAcceptSuggestion()}
+          disabled={status.status === 'saving'}
+        />
       </div>
+
+      {isProgrammatic && (
+        <div class="tag-uuid" title={tag.tag_key}>
+          {formatTagKey(tag.tag_key)}
+        </div>
+      )}
     </div>
   )
 }
@@ -117,49 +174,50 @@ export function TagMappingsSettings() {
     queryKey: ['programmaticTags'],
   })
 
+  const { data: mappingsData } = useQuery({
+    queryFn: fetchTagMappings,
+    queryKey: ['tag-mappings'],
+    staleTime: 30 * 60 * 1000,
+  })
+
   const mutation = useMutation({
-    mutationFn: ({ tagKey, name }: { tagKey: string; name: string }) => setTagMapping(tagKey, name),
+    mutationFn: ({ tagKey, name, icon }: { tagKey: string; name: string; icon?: string }) =>
+      setTagMapping(tagKey, name, icon),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['programmaticTags'] })
       queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+      queryClient.invalidateQueries({ queryKey: ['tag-mappings'] })
     },
   })
 
-  const handleSave = async (tagKey: string, name: string): Promise<void> => {
-    await mutation.mutateAsync({ name, tagKey })
+  const handleSave = async (tagKey: string, name: string, icon?: string): Promise<void> => {
+    await mutation.mutateAsync({ icon, name, tagKey })
   }
 
-  if (isLoading) {
-    return (
-      <section class="settings-section tag-mappings-section">
-        <h2>Tag Mappings</h2>
-        <p class="loading">Loading tags...</p>
-      </section>
-    )
-  }
-
-  const unmappedCount = tags?.filter((t) => !t.current_name).length ?? 0
+  const unmappedCount = tags?.filter((t) => t.is_programmatic && !t.current_name).length ?? 0
+  const icons = mappingsData?.icons ?? {}
 
   return (
-    <section class="settings-section tag-mappings-section">
-      <div class="section-header">
-        <h2>Tag Mappings</h2>
-        {unmappedCount > 0 && <span class="unmapped-badge">{unmappedCount} unnamed</span>}
+    <SettingsSection
+      title="Tag Mappings"
+      class="tag-mappings-section"
+      description="Set display names for programmatic tags and icons for any tag. Icons can be emoji characters or image URLs. Changes save automatically when you leave the field."
+      headerExtra={unmappedCount > 0 && <span class="unmapped-badge">{unmappedCount} unnamed</span>}
+      isLoading={isLoading}
+      loadingMessage="Loading tags..."
+      isEmpty={!tags || tags.length === 0}
+      emptyMessage="No tags found. Tags will appear here after syncing data."
+    >
+      <div class="tag-mappings-list">
+        {(tags ?? []).map((tag) => (
+          <TagMappingRow
+            key={tag.tag_key}
+            tag={tag}
+            currentIcon={icons[tag.current_name ?? ''] ?? icons[tag.tag_key]}
+            onSave={handleSave}
+          />
+        ))}
       </div>
-
-      <p class="section-description">
-        Set display names for programmatic tags (UUIDs, tag_* prefixes). Tags without names will show their
-        raw identifier. Changes save automatically when you leave the field.
-      </p>
-
-      {!tags || tags.length === 0 ?
-        <p class="no-tags">No programmatic tags found. Tags will appear here after syncing data.</p>
-      : <div class="tag-mappings-list">
-          {tags.map((tag) => (
-            <TagMappingRow key={tag.tag_key} tag={tag} onSave={handleSave} />
-          ))}
-        </div>
-      }
-    </section>
+    </SettingsSection>
   )
 }

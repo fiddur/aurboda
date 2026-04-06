@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["oxc", "eslint", "typescript", "unicorn", "import"],
+  "options": {},
+  "rules": {
+    "complexity": [2, { "max": 15 }],
+    "max-depth": [2, { "max": 5 }],
+    "no-shadow": 2,
+    "no-unused-vars": [
+      2,
+      {
+        "fix": { "imports": "fix", "variables": "suggestion" },
+        "varsIgnorePattern": "^_",
+        "argsIgnorePattern": "^_"
+      }
+    ],
+    "eqeqeq": [2, "smart"],
+    "no-var": 2,
+    "prefer-const": [2, { "destructuring": "all" }],
+    "curly": [2, "multi-line"],
+    "no-unused-expressions": 2,
+    "import/no-cycle": 2,
+    "import/no-duplicates": 2,
+    "import/no-self-import": 2,
+    "typescript/consistent-type-imports": 2,
+    "typescript/no-require-imports": 2,
+    "typescript/no-import-type-side-effects": 2,
+    "typescript/ban-ts-comment": [
+      2,
+      {
+        "minimumDescriptionLength": 2,
+        "ts-expect-error": "allow-with-description",
+        "ts-nocheck": "allow-with-description",
+        "ts-check": false,
+        "ts-ignore": true
+      }
+    ],
+    "unicorn/prefer-node-protocol": 2,
+    "unicorn/prefer-string-replace-all": 2,
+    "unicorn/prefer-includes": 2,
+    "unicorn/no-instanceof-builtins": 2,
+    "unicorn/error-message": 2
+  },
+  "ignorePatterns": ["**/generated/**", "**/dist/**", "**/node_modules/**", "**/coverage/**"]
+}

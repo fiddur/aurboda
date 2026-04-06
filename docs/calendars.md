@@ -5,6 +5,7 @@ Aurboda can sync events from any calendar that provides an ICS URL. Events are s
 ## Data Synced
 
 Calendar events are stored as **tags** with:
+
 - Tag text: event summary (title)
 - Start time and end time from the event
 - Source: `calendar`
@@ -39,6 +40,7 @@ Most calendar providers offer ICS export URLs:
 - **MCP:** `sync_calendars()`
 
 Options:
+
 - `full_resync: true` -- Re-fetch and reprocess all events
 
 ### Auto-Sync
@@ -53,6 +55,7 @@ Calendar data is automatically refreshed before tag-related queries if the last 
 4. Each calendar tracks its own sync state independently
 
 Results show events processed per calendar:
+
 ```json
 {
   "results": [

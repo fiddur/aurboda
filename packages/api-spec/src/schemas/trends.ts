@@ -6,16 +6,19 @@
  */
 
 import { z } from 'zod'
-import { baseResponseSchema } from './common.js'
+
+import { baseResponseSchema } from './common.ts'
 
 /**
  * Source type for trend calculation.
  */
-export const trendSourceTypeSchema = z.enum(['tag', 'metric']).meta({
-  description: 'Type of data source for trend calculation',
-  example: 'tag',
-  id: 'TrendSourceType',
-})
+export const trendSourceTypeSchema = z
+  .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
+  .meta({
+    description: 'Type of data source for trend calculation',
+    example: 'tag',
+    id: 'TrendSourceType',
+  })
 
 export type TrendSourceType = z.infer<typeof trendSourceTypeSchema>
 
@@ -75,6 +78,11 @@ export const getTrendQuerySchema = z
       .meta({ description: 'How many days of historical data to include' }),
     pattern: z.string().meta({ description: 'For tags: regex pattern to match. For metrics: metric name.' }),
     source_type: trendSourceTypeSchema.meta({ description: 'Type of source: tag or metric' }),
+    tag_definition_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Tag definition ID (alternative to pattern for tag trends)' }),
   })
   .meta({ id: 'GetTrendQuery' })
 
@@ -132,8 +140,16 @@ export const trendQuerySchema = z
     display_period: trendDisplayPeriodSchema.optional(),
     half_life_days: z.string().optional().meta({ description: 'EMA half-life in days', example: '15' }),
     lookback_days: z.string().optional().meta({ description: 'Days of historical data', example: '90' }),
-    pattern: z.string(),
+    pattern: z
+      .string()
+      .optional()
+      .meta({ description: 'Pattern (required unless tag_definition_id is provided)' }),
     source_type: trendSourceTypeSchema,
+    tag_definition_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Tag definition ID (alternative to pattern for tag trends)' }),
   })
   .meta({ id: 'TrendQuery' })
 

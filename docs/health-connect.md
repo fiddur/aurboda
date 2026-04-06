@@ -6,46 +6,48 @@
 
 ### Metrics (time series)
 
-| Health Connect Record | Aurboda Metric |
-|----------------------|----------------|
-| HeartRateRecord | `heart_rate` |
-| HeartRateVariabilityRmssdRecord | `hrv_rmssd` |
-| RestingHeartRateRecord | `resting_heart_rate` |
-| WeightRecord | `weight` |
-| BodyFatRecord | `body_fat` |
-| BoneMassRecord | `bone_mass` |
-| LeanBodyMassRecord | `lean_body_mass` |
-| BodyWaterMassRecord | `body_water_mass` |
-| HeightRecord | `height` |
-| BloodPressureRecord | `blood_pressure_systolic`, `blood_pressure_diastolic` |
-| BloodGlucoseRecord | `blood_glucose` |
-| BodyTemperatureRecord | `body_temperature` |
-| BasalBodyTemperatureRecord | `basal_body_temperature` |
-| OxygenSaturationRecord | `spo2` |
-| RespiratoryRateRecord | `respiratory_rate` |
-| Vo2MaxRecord | `vo2_max` |
-| BasalMetabolicRateRecord | `calories_basal` |
+| Health Connect Record           | Aurboda Metric                                        |
+| ------------------------------- | ----------------------------------------------------- |
+| HeartRateRecord                 | `heart_rate`                                          |
+| HeartRateVariabilityRmssdRecord | `hrv_rmssd`                                           |
+| RestingHeartRateRecord          | `resting_heart_rate`                                  |
+| WeightRecord                    | `weight`                                              |
+| BodyFatRecord                   | `body_fat`                                            |
+| BoneMassRecord                  | `bone_mass`                                           |
+| LeanBodyMassRecord              | `lean_body_mass`                                      |
+| BodyWaterMassRecord             | `body_water_mass`                                     |
+| HeightRecord                    | `height`                                              |
+| BloodPressureRecord             | `blood_pressure_systolic`, `blood_pressure_diastolic` |
+| BloodGlucoseRecord              | `blood_glucose`                                       |
+| BodyTemperatureRecord           | `body_temperature`                                    |
+| BasalBodyTemperatureRecord      | `basal_body_temperature`                              |
+| OxygenSaturationRecord          | `spo2`                                                |
+| RespiratoryRateRecord           | `respiratory_rate`                                    |
+| Vo2MaxRecord                    | `vo2_max`                                             |
+| BasalMetabolicRateRecord        | `calories_basal`                                      |
+| SpeedRecord                     | `speed` (m/s, from exercise samples)                  |
+| PowerRecord                     | `power` (watts, from exercise samples)                |
 
 ### Cumulative Metrics (daily aggregates)
 
 These metrics use Health Connect's built-in deduplication to avoid double-counting across sources (e.g., Fitbit + phone sensor):
 
-| Health Connect Record | Aurboda Metric |
-|----------------------|----------------|
-| StepsRecord | `steps` |
-| DistanceRecord | `distance` |
-| FloorsClimbedRecord | `floors_climbed` |
+| Health Connect Record      | Aurboda Metric    |
+| -------------------------- | ----------------- |
+| StepsRecord                | `steps`           |
+| DistanceRecord             | `distance`        |
+| FloorsClimbedRecord        | `floors_climbed`  |
 | ActiveCaloriesBurnedRecord | `calories_active` |
-| TotalCaloriesBurnedRecord | `calories_total` |
+| TotalCaloriesBurnedRecord  | `calories_total`  |
 
 These are sent as daily aggregates (one value per day) rather than raw records.
 
 ### Activities
 
-| Health Connect Record | Aurboda Activity Type |
-|----------------------|----------------------|
+| Health Connect Record | Aurboda Activity Type                                    |
+| --------------------- | -------------------------------------------------------- |
 | ExerciseSessionRecord | `exercise` (with exercise type, title, notes, GPS route) |
-| SleepSessionRecord | `sleep` (with sleep stage breakdowns) |
+| SleepSessionRecord    | `sleep` (with sleep stage breakdowns)                    |
 
 ## Admin Setup
 
@@ -60,6 +62,7 @@ Build from source or install from releases. The app requires Android with Health
 ### 2. Log In
 
 On first launch, enter:
+
 - **Server URL** (e.g., `https://aurboda.net`)
 - **Username**
 - **Auth token** (from the web interface)
@@ -104,8 +107,8 @@ HeartRateRecord data (which can contain thousands of samples) is sent in chunks 
 
 ### Scheduling
 
-| Mode | Interval | Conditions |
-|------|----------|------------|
-| Background | Every 15 minutes | Requires network connection |
+| Mode                  | Interval         | Conditions                      |
+| --------------------- | ---------------- | ------------------------------- |
+| Background            | Every 15 minutes | Requires network connection     |
 | Foreground (app open) | Every 60 seconds | Only if background sync enabled |
-| Manual | On demand | "Fetch New Data" button |
+| Manual                | On demand        | "Fetch New Data" button         |

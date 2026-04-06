@@ -6,17 +6,27 @@
  */
 
 import { isBefore, subMinutes } from 'date-fns'
-import { getSyncState } from '../db'
-import { syncAllCalendars } from '../ical-sync'
-import { ouraClient } from '../oura'
-import { isRateLimited as isOuraRateLimited, OuraDataType, syncOuraDataType } from '../oura-sync'
+
+import type { GarminClient } from '../garmin.ts'
+import type { ouraClient } from '../oura.ts'
+import type { SyncProvider } from './queries.ts'
+
+import { getSyncState } from '../db/index.ts'
+import {
+  type GarminDataType,
+  isRateLimited as isGarminRateLimited,
+  syncGarminDataType,
+} from '../garmin-sync.ts'
+import { syncAllCalendars } from '../ical-sync.ts'
+import { syncLastFmData } from '../lastfm-sync.ts'
+import { isRateLimited as isOuraRateLimited, type OuraDataType, syncOuraDataType } from '../oura-sync.ts'
 import {
   isRateLimited as isRescueTimeRateLimited,
   needsSync as rescueTimeNeedsSync,
   syncRescueTimeData,
-} from '../rescuetime-sync'
-import { SyncProvider } from './queries'
-import { getSettings } from './settings'
+} from '../rescuetime-sync.ts'
+import { auditError, auditInfo, auditWarn } from './audit-log.ts'
+import { getSettings } from './settings.ts'
 
 /** Default sync threshold - sync if last sync was more than 30 minutes ago */
 const DEFAULT_SYNC_THRESHOLD_MINUTES = 30
@@ -24,6 +34,10 @@ const DEFAULT_SYNC_THRESHOLD_MINUTES = 30
 type OuraClientType = ReturnType<typeof ouraClient>
 
 export interface SyncProviderConfig {
+  /** Garmin Connect client (optional - if not provided, Garmin sync is disabled) */
+  garmin?: GarminClient
+  /** Callback to get the Last.fm API key (optional - if not provided, Last.fm sync is disabled) */
+  getLastFmApiKey?: () => Promise<string | null>
   /** Oura API client (optional - if not provided, Oura sync is disabled) */
   oura?: OuraClientType
   /** Sync threshold in minutes (default: 30) */
@@ -51,10 +65,62 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
           return
         }
 
-        console.log('Auto-syncing calendars...')
+        auditInfo(user, 'sync', 'Auto-syncing calendars')
         await syncAllCalendars(user, settings.calendars)
       } catch (error) {
-        console.error('Failed to auto-sync calendars:', error)
+        auditError(user, 'sync', 'Failed to auto-sync calendars', { error: String(error) })
+      }
+    },
+
+    syncGarminIfNeeded: async (user: string, dataType: string): Promise<void> => {
+      if (!config.garmin) return
+
+      try {
+        // Check if this data type is disabled in user settings
+        const settings = await getSettings(user)
+        if (settings.garmin_disabled_data_types?.includes(dataType as GarminDataType)) return
+
+        const syncState = await getSyncState(user, 'garmin', dataType)
+
+        if (isGarminRateLimited(syncState)) {
+          auditWarn(user, 'sync', `Garmin ${dataType} sync skipped - rate limited`, {
+            retry_after: syncState?.retry_after?.toISOString(),
+          })
+          return
+        }
+
+        const thresholdTime = subMinutes(new Date(), threshold)
+        if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
+          return
+        }
+
+        auditInfo(user, 'sync', `Auto-syncing Garmin ${dataType}`)
+        await syncGarminDataType(user, config.garmin, dataType as GarminDataType)
+      } catch (error) {
+        auditError(user, 'sync', `Failed to auto-sync Garmin ${dataType}`, { error: String(error) })
+      }
+    },
+
+    syncLastFmIfNeeded: async (user: string): Promise<void> => {
+      if (!config.getLastFmApiKey) return
+
+      try {
+        const settings = await getSettings(user)
+        if (!settings.lastfm_username) return
+
+        const apiKey = await config.getLastFmApiKey()
+        if (!apiKey) return
+
+        const syncState = await getSyncState(user, 'lastfm', 'scrobbles')
+        const thresholdTime = subMinutes(new Date(), threshold)
+        if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
+          return
+        }
+
+        auditInfo(user, 'sync', 'Auto-syncing Last.fm scrobbles')
+        await syncLastFmData(user, apiKey, settings.lastfm_username)
+      } catch (error) {
+        auditError(user, 'sync', 'Failed to auto-sync Last.fm', { error: String(error) })
       }
     },
 
@@ -67,7 +133,9 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
 
         // Skip if rate limited
         if (isOuraRateLimited(syncState)) {
-          console.log(`Oura ${dataType} sync skipped - rate limited until ${syncState?.retry_after}`)
+          auditWarn(user, 'sync', `Oura ${dataType} sync skipped - rate limited`, {
+            retry_after: syncState?.retry_after?.toISOString(),
+          })
           return
         }
 
@@ -77,11 +145,11 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
           return // Recently synced, no need to sync again
         }
 
-        console.log(`Auto-syncing Oura ${dataType}...`)
+        auditInfo(user, 'sync', `Auto-syncing Oura ${dataType}`)
         const accessToken = await config.oura.getAccessToken(user)
         await syncOuraDataType(user, config.oura, ouraDataType, accessToken)
       } catch (error) {
-        console.error(`Failed to auto-sync Oura ${dataType}:`, error)
+        auditError(user, 'sync', `Failed to auto-sync Oura ${dataType}`, { error: String(error) })
       }
     },
 
@@ -95,10 +163,10 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         if (isRescueTimeRateLimited(syncState)) return
         if (!rescueTimeNeedsSync(syncState, threshold)) return
 
-        console.log('Auto-syncing RescueTime productivity...')
+        auditInfo(user, 'sync', 'Auto-syncing RescueTime productivity')
         await syncRescueTimeData(user, settings.rescue_time_key)
       } catch (error) {
-        console.error('Failed to auto-sync RescueTime:', error)
+        auditError(user, 'sync', 'Failed to auto-sync RescueTime', { error: String(error) })
       }
     },
   }

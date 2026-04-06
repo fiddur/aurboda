@@ -1,0 +1,287 @@
+.chart-page {
+  width: 100%;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.chart-page h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.chart-page-description {
+  color: #6b7280;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0 0 1.5rem 0;
+}
+
+/* Controls panel */
+.chart-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.chart-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.chart-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  flex: 1;
+  min-width: 140px;
+}
+
+.chart-controls label.source-picker {
+  flex: 2;
+  min-width: 200px;
+}
+
+.chart-controls select,
+.chart-controls input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #1f2937;
+  background: #fff;
+}
+
+.chart-controls select:focus,
+.chart-controls input:focus {
+  outline: none;
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+/* Chart type toggle */
+.chart-type-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.chart-type-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: #fff;
+  color: #374151;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.chart-type-btn:not(:last-child) {
+  border-right: 1px solid #d1d5db;
+}
+
+.chart-type-btn.active {
+  background: #8b5cf6;
+  color: #fff;
+}
+
+.chart-type-btn:hover:not(.active) {
+  background: #f3f4f6;
+}
+
+/* Chart area */
+.chart-display {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.chart-current-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.chart-current-number {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.chart-current-unit {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.chart-loading,
+.chart-error,
+.chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: #9ca3af;
+}
+
+.chart-error {
+  color: #dc2626;
+}
+
+/* Login prompt */
+.chart-login-prompt {
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.chart-login-prompt h2 {
+  font-size: 1.25rem;
+  color: #374151;
+  margin-bottom: 1rem;
+}
+
+.chart-login-prompt a {
+  display: inline-block;
+  padding: 0.625rem 1.5rem;
+  background: #8b5cf6;
+  color: #fff;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.chart-login-prompt a:hover {
+  background: #7c3aed;
+}
+
+/* Add to Dashboard button */
+.add-to-dashboard-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.btn-add-to-dashboard {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: #673ab8;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-add-to-dashboard:hover {
+  background: #5b32a3;
+}
+
+.add-to-dash-success {
+  text-align: center;
+  padding: 1.5rem;
+  color: #059669;
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .chart-page h1 {
+    color: #f9fafb;
+  }
+
+  .chart-page-description {
+    color: #9ca3af;
+  }
+
+  .chart-controls {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .chart-controls label {
+    color: #e5e7eb;
+  }
+
+  .chart-controls select,
+  .chart-controls input {
+    background: #111827;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
+  .chart-type-toggle {
+    border-color: #4b5563;
+  }
+
+  .chart-type-btn {
+    background: #111827;
+    color: #e5e7eb;
+  }
+
+  .chart-type-btn:not(:last-child) {
+    border-right-color: #4b5563;
+  }
+
+  .chart-type-btn:hover:not(.active) {
+    background: #1f2937;
+  }
+
+  .chart-display {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .chart-current-value {
+    background: #111827;
+  }
+
+  .chart-current-number {
+    color: #f9fafb;
+  }
+
+  .chart-login-prompt h2 {
+    color: #e5e7eb;
+  }
+
+  .add-to-dash-success {
+    color: #34d399;
+  }
+}
+
+/* Responsive */
+@media (max-width: 639px) {
+  .chart-page {
+    padding: 1rem;
+  }
+
+  .chart-controls-row {
+    flex-direction: column;
+  }
+
+  .chart-controls label {
+    min-width: 100%;
+  }
+}

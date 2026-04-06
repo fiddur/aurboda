@@ -7,15 +7,17 @@
  */
 
 import {
+  type CustomMetricDefinition,
   displayPeriodMultipliers,
-  isValidMetric,
+  exerciseTypes,
   type MetricType,
   type TrendDisplayPeriod,
   type TrendHistoryPoint,
   type TrendResult,
   type TrendSourceType,
 } from '@aurboda/api-spec'
-import { query } from '../db'
+
+import { query } from '../db/index.ts'
 
 /**
  * Natural log of 2, used for EMA decay calculation.
@@ -25,11 +27,13 @@ const LN2 = 0.693147
 
 export interface GetTrendInput {
   aggregation?: 'count' | 'mean' | 'sum'
+  custom_metrics?: CustomMetricDefinition[]
   display_period?: TrendDisplayPeriod
   half_life_days?: number
   lookback_days?: number
   pattern: string
   source_type: TrendSourceType
+  tag_definition_id?: string
 }
 
 /**
@@ -93,6 +97,76 @@ const calculateTagTrend = async (
     ORDER BY day
     `,
     [pattern, lookbackDays, LN2, multiplier, halfLifeDays],
+  )
+
+  const history: TrendHistoryPoint[] = result.rows.map((row) => ({
+    date: row.day.toISOString().split('T')[0],
+    value: Number(row.ema_value),
+  }))
+
+  const currentValue = history.length > 0 ? history[history.length - 1].value : 0
+
+  return { currentValue, history }
+}
+
+/**
+ * Calculate the EMA-weighted trend for tags linked to a tag definition.
+ *
+ * Uses tag_definition_id for exact relational matching instead of regex on tag names.
+ */
+const calculateTagTrendByDefinition = async (
+  user: string,
+  tagDefinitionId: string,
+  halfLifeDays: number,
+  lookbackDays: number,
+  displayPeriod: TrendDisplayPeriod,
+): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
+  const multiplier = displayPeriodMultipliers[displayPeriod]
+
+  const result = await query(
+    user,
+    `
+    WITH date_range AS (
+      SELECT generate_series(
+        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
+        CURRENT_DATE,
+        '1 day'
+      )::date AS day
+    ),
+    daily_counts AS (
+      SELECT
+        d.day,
+        COALESCE(t.cnt, 0) as cnt
+      FROM date_range d
+      LEFT JOIN (
+        SELECT
+          date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
+          count(*) as cnt
+        FROM tags
+        WHERE tag_definition_id = $1
+          AND deleted_at IS NULL
+          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+        GROUP BY 1
+      ) t ON d.day = t.day
+    ),
+    ema_calc AS (
+      SELECT
+        dc.day,
+        $4::float * SUM(dc2.cnt::float * EXP(-$3::float * (dc.day - dc2.day)::float / $5::float)) /
+        NULLIF(SUM(EXP(-$3::float * (dc.day - dc2.day)::float / $5::float)), 0) as ema_value
+      FROM daily_counts dc
+      CROSS JOIN LATERAL (
+        SELECT day, cnt
+        FROM daily_counts
+        WHERE day <= dc.day AND day > dc.day - INTERVAL '1 day' * LEAST($2::integer, 90)
+      ) dc2
+      GROUP BY dc.day
+    )
+    SELECT day, COALESCE(ema_value, 0) as ema_value
+    FROM ema_calc
+    ORDER BY day
+    `,
+    [tagDefinitionId, lookbackDays, LN2, multiplier, halfLifeDays],
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
@@ -179,7 +253,161 @@ const calculateMetricTrend = async (
 }
 
 /**
- * Get the trend for a tag pattern or metric.
+ * Calculate the EMA-weighted trend for time spent in a productivity category.
+ *
+ * Aggregates daily total duration (in hours) of productivity records whose
+ * resolved_category path starts with the given category path, then applies EMA.
+ * Pattern is the category path joined by ' > ', e.g. "Work > Programming".
+ */
+const calculateProductivityCategoryTrend = async (
+  user: string,
+  categoryPath: string,
+  halfLifeDays: number,
+  lookbackDays: number,
+  displayPeriod: TrendDisplayPeriod,
+): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
+  const multiplier = displayPeriodMultipliers[displayPeriod]
+
+  // Convert "Work > Programming" to a PostgreSQL array prefix match.
+  // We use array_to_string to convert resolved_category to a string that starts with the path.
+  const result = await query(
+    user,
+    `
+    WITH date_range AS (
+      SELECT generate_series(
+        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
+        CURRENT_DATE,
+        '1 day'
+      )::date AS day
+    ),
+    daily_values AS (
+      SELECT
+        d.day,
+        t.daily_hours
+      FROM date_range d
+      LEFT JOIN (
+        SELECT
+          date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
+          SUM(duration_sec) / 3600.0 as daily_hours
+        FROM productivity
+        WHERE deleted_at IS NULL
+          AND resolved_category IS NOT NULL
+          AND array_to_string(resolved_category, ' > ') LIKE $1 || '%'
+          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+        GROUP BY 1
+      ) t ON d.day = t.day
+    ),
+    ema_calc AS (
+      SELECT
+        dv.day,
+        $4::float * SUM(COALESCE(dv2.daily_hours, 0) * EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)) /
+        NULLIF(SUM(EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)), 0) as ema_value
+      FROM daily_values dv
+      CROSS JOIN LATERAL (
+        SELECT day, daily_hours
+        FROM daily_values
+        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * LEAST($2::integer, 90)
+      ) dv2
+      GROUP BY dv.day
+    )
+    SELECT day, COALESCE(ema_value, 0) as ema_value
+    FROM ema_calc
+    ORDER BY day
+    `,
+    [categoryPath, lookbackDays, LN2, multiplier, halfLifeDays],
+  )
+
+  const history: TrendHistoryPoint[] = result.rows.map((row) => ({
+    date: row.day.toISOString().split('T')[0],
+    value: Number(row.ema_value),
+  }))
+
+  const currentValue = history.length > 0 ? history[history.length - 1].value : 0
+
+  return { currentValue, history }
+}
+
+/**
+ * Calculate the EMA-weighted trend for a specific exercise type (or activity type).
+ *
+ * Queries the activities table for exercises matching either exerciseTypeName (string)
+ * or exerciseType (numeric HC value). Counts occurrences per day and sums duration in hours.
+ * Pattern is the exercise type name (e.g. "yoga", "running").
+ */
+const calculateActivityTypeTrend = async (
+  user: string,
+  pattern: string,
+  halfLifeDays: number,
+  lookbackDays: number,
+  displayPeriod: TrendDisplayPeriod,
+): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
+  const multiplier = displayPeriodMultipliers[displayPeriod]
+
+  const result = await query(
+    user,
+    `
+    WITH date_range AS (
+      SELECT generate_series(
+        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
+        CURRENT_DATE,
+        '1 day'
+      )::date AS day
+    ),
+    daily_values AS (
+      SELECT
+        d.day,
+        t.daily_hours
+      FROM date_range d
+      LEFT JOIN (
+        SELECT
+          date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
+          SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 as daily_hours
+        FROM activities
+        WHERE activity_type = 'exercise'
+          AND deleted_at IS NULL
+          AND (data->>'exerciseTypeName' = $1 OR data->>'exerciseType' = $6)
+          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+        GROUP BY 1
+      ) t ON d.day = t.day
+    ),
+    ema_calc AS (
+      SELECT
+        dv.day,
+        $4::float * SUM(COALESCE(dv2.daily_hours, 0) * EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)) /
+        NULLIF(SUM(EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)), 0) as ema_value
+      FROM daily_values dv
+      CROSS JOIN LATERAL (
+        SELECT day, daily_hours
+        FROM daily_values
+        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * LEAST($2::integer, 90)
+      ) dv2
+      GROUP BY dv.day
+    )
+    SELECT day, COALESCE(ema_value, 0) as ema_value
+    FROM ema_calc
+    ORDER BY day
+    `,
+    [pattern, lookbackDays, LN2, multiplier, halfLifeDays, getExerciseTypeValueStr(pattern)],
+  )
+
+  const history: TrendHistoryPoint[] = result.rows.map((row) => ({
+    date: row.day.toISOString().split('T')[0],
+    value: Number(row.ema_value),
+  }))
+
+  const currentValue = history.length > 0 ? history[history.length - 1].value : 0
+
+  return { currentValue, history }
+}
+
+/** Get the numeric exercise type value as a string for SQL matching, or empty string if unknown. */
+const getExerciseTypeValueStr = (name: string): string => {
+  const value = exerciseTypes[name as keyof typeof exerciseTypes]
+  return value !== undefined ? String(value) : ''
+}
+
+/**
+ * Get the trend for a tag pattern, metric, productivity category, or activity type.
  */
 export const getTrend = async (user: string, input: GetTrendInput): Promise<TrendResult> => {
   const {
@@ -198,13 +426,15 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
   }
 
   if (sourceType === 'tag') {
-    const { currentValue, history } = await calculateTagTrend(
-      user,
-      pattern,
-      halfLifeDays,
-      lookbackDays,
-      displayPeriod,
-    )
+    const { currentValue, history } = input.tag_definition_id
+      ? await calculateTagTrendByDefinition(
+          user,
+          input.tag_definition_id,
+          halfLifeDays,
+          lookbackDays,
+          displayPeriod,
+        )
+      : await calculateTagTrend(user, pattern, halfLifeDays, lookbackDays, displayPeriod)
 
     return {
       aggregation: 'count',
@@ -217,12 +447,48 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       pattern,
       source_type: sourceType,
     }
+  } else if (sourceType === 'activity_type') {
+    const { currentValue, history } = await calculateActivityTypeTrend(
+      user,
+      pattern,
+      halfLifeDays,
+      lookbackDays,
+      displayPeriod,
+    )
+
+    return {
+      aggregation: 'sum',
+      current_value: currentValue,
+      display_period: displayPeriod,
+      display_unit: `hours ${displayUnits[displayPeriod]}`,
+      half_life_days: halfLifeDays,
+      history,
+      lookback_days: lookbackDays,
+      pattern,
+      source_type: sourceType,
+    }
+  } else if (sourceType === 'productivity_category') {
+    const { currentValue, history } = await calculateProductivityCategoryTrend(
+      user,
+      pattern,
+      halfLifeDays,
+      lookbackDays,
+      displayPeriod,
+    )
+
+    return {
+      aggregation: 'sum',
+      current_value: currentValue,
+      display_period: displayPeriod,
+      display_unit: `hours ${displayUnits[displayPeriod]}`,
+      half_life_days: halfLifeDays,
+      history,
+      lookback_days: lookbackDays,
+      pattern,
+      source_type: sourceType,
+    }
   } else {
     // Metric source
-    if (!isValidMetric(pattern)) {
-      throw new Error(`Invalid metric: ${pattern}`)
-    }
-
     const metricAggregation = aggregation === 'count' ? 'mean' : aggregation
 
     const { currentValue, history } = await calculateMetricTrend(

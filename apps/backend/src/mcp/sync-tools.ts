@@ -2,25 +2,46 @@
  * MCP sync tools - data synchronization with external services.
  */
 import {
+  outboundSyncAckItemSchema,
   syncCalendarsBodySchema,
+  syncGarminBodySchema,
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncProviderSchema,
   syncRescueTimeBodySchema,
+  tzSchema,
 } from '@aurboda/api-spec'
-import { getAllSyncStates } from '../db'
-import { syncAllCalendars } from '../ical-sync'
-import { syncLastFmData } from '../lastfm-sync'
-import { ouraClient } from '../oura'
-import { syncAllOuraData } from '../oura-sync'
-import { syncRescueTimeData } from '../rescuetime-sync'
-import { getCentralDb } from '../services/central-db'
-import { getSettings } from '../services/settings'
-import { errorResponse, jsonResponse, type McpServer } from './helpers'
+import { z } from 'zod'
+
+import type { GarminClient } from '../garmin.ts'
+import type { ouraClient } from '../oura.ts'
+
+import {
+  ackOutboundSync,
+  getAllSyncStates,
+  getOAuthToken,
+  getOutboundSyncHistory,
+  getPendingOutboundSync,
+  requeueOutboundSync,
+} from '../db/index.ts'
+import { type GarminDataType, syncAllGarminData } from '../garmin-sync.ts'
+import { syncAllCalendars } from '../ical-sync.ts'
+import { syncLastFmData } from '../lastfm-sync.ts'
+import { syncAllOuraData } from '../oura-sync.ts'
+import { syncRescueTimeData } from '../rescuetime-sync.ts'
+import { getCentralDb } from '../services/central-db.ts'
+import { getSettings } from '../services/settings.ts'
+import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
+import { formatInTz } from './tz-utils.ts'
 
 type OuraClient = ReturnType<typeof ouraClient>
 
-export const registerSyncTools = (server: McpServer, user: string, oura?: OuraClient) => {
+export const registerSyncTools = (
+  server: McpServer,
+  user: string,
+  oura?: OuraClient,
+  garmin?: GarminClient,
+) => {
   // Tool: sync_oura
   server.tool(
     'sync_oura',
@@ -33,6 +54,45 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
 
       try {
         const results = await syncAllOuraData(user, oura, {
+          fullResync: full_resync,
+          startDate: start_date ? new Date(start_date) : undefined,
+        })
+
+        const summary = results.map((r) => ({
+          data_type: r.data_type,
+          error: r.error,
+          records_processed: r.records_processed,
+          status: r.status,
+        }))
+
+        return jsonResponse({ results: summary, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  // Tool: sync_garmin
+  server.tool(
+    'sync_garmin',
+    'Sync data from Garmin Connect. Fetches daily summary, heart rate, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness, and intensity minutes.',
+    { ...syncGarminBodySchema.shape },
+    async ({ full_resync, start_date }) => {
+      if (!garmin) {
+        return errorResponse('Garmin integration is not available.')
+      }
+
+      // Verify user has connected Garmin
+      const garminToken = await getOAuthToken(user, 'garmin')
+      if (!garminToken || !garminToken.access_token) {
+        return errorResponse('Garmin Connect is not connected. Please connect Garmin in Settings first.')
+      }
+
+      try {
+        const settings = await getSettings(user)
+        const results = await syncAllGarminData(user, garmin, {
+          disabledTypes: settings.garmin_disabled_data_types as GarminDataType[],
           fullResync: full_resync,
           startDate: start_date ? new Date(start_date) : undefined,
         })
@@ -148,33 +208,129 @@ export const registerSyncTools = (server: McpServer, user: string, oura?: OuraCl
   )
 
   // Tool: get_sync_status
+  const syncProviders = ['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch'] as const
+
   server.tool(
     'get_sync_status',
-    'Get the current sync status for Oura, RescueTime, Calendar, and Last.fm data sources. Shows last sync time, status, and any errors.',
+    'Get the current sync status for Oura, Garmin, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors.',
     {
       provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
+      tz: tzSchema,
     },
-    async ({ provider = 'all' }) => {
+    async ({ provider = 'all', tz }) => {
       try {
         const states: Record<string, unknown[]> = {}
+        const providers = provider === 'all' ? syncProviders : syncProviders.filter((p) => p === provider)
 
-        if (provider === 'all' || provider === 'oura') {
-          states.oura = await getAllSyncStates(user, 'oura')
+        for (const p of providers) {
+          states[p] = await getAllSyncStates(user, p)
         }
 
-        if (provider === 'all' || provider === 'rescuetime') {
-          states.rescuetime = await getAllSyncStates(user, 'rescuetime')
-        }
+        return tzJsonResponse({ states, success: true }, tz)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
 
-        if (provider === 'all' || provider === 'calendar') {
-          states.calendar = await getAllSyncStates(user, 'calendar')
-        }
+  // Tool: get_outbound_sync
+  server.tool(
+    'get_outbound_sync',
+    'Get pending outbound sync entries that need to be written to Health Connect. Returns changes (inserts, updates, deletes) queued for the Android app to apply.',
+    {
+      limit: z.number().int().min(1).max(500).optional().describe('Max entries to return (default 100)'),
+      tz: tzSchema,
+    },
+    async ({ limit, tz }) => {
+      try {
+        const { entries, total_pending } = await getPendingOutboundSync(user, limit)
+        return tzJsonResponse(
+          {
+            count: entries.length,
+            data: entries.map((e) => ({
+              ...e,
+              created_at: formatInTz(e.created_at, tz),
+              synced_at: e.synced_at ? formatInTz(e.synced_at, tz) : undefined,
+            })),
+            success: true,
+            total_pending,
+          },
+          tz,
+        )
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
 
-        if (provider === 'all' || provider === 'lastfm') {
-          states.lastfm = await getAllSyncStates(user, 'lastfm')
+  // Tool: ack_outbound_sync
+  server.tool(
+    'ack_outbound_sync',
+    'Acknowledge that outbound sync entries were successfully written to Health Connect. Pass the entry ID and optionally the Health Connect record ID assigned after writing.',
+    {
+      entries: z
+        .array(z.object({ ...outboundSyncAckItemSchema.shape }))
+        .min(1)
+        .describe('Entries to acknowledge'),
+    },
+    async ({ entries }) => {
+      try {
+        let acknowledged = 0
+        for (const entry of entries) {
+          const ok = await ackOutboundSync(user, entry.id, entry.hc_record_id)
+          if (ok) acknowledged++
         }
+        return jsonResponse({ acknowledged, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
 
-        return jsonResponse({ states, success: true })
+  // Tool: requeue_outbound_sync
+  server.tool(
+    'requeue_outbound_sync',
+    'Re-queue a failed or synced outbound sync entry for retry to Health Connect.',
+    {
+      id: z.string().uuid().describe('The outbound sync queue entry ID to re-queue'),
+    },
+    async ({ id }) => {
+      try {
+        const requeued = await requeueOutboundSync(user, id)
+        return jsonResponse({ requeued, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  // Tool: get_outbound_sync_history
+  server.tool(
+    'get_outbound_sync_history',
+    'Get outbound sync history including completed and failed entries. Shows fail_count and fail_reason for debugging sync issues.',
+    {
+      limit: z.number().int().min(1).max(500).optional().describe('Max entries to return (default 50)'),
+      tz: tzSchema,
+    },
+    async ({ limit, tz }) => {
+      try {
+        const entries = await getOutboundSyncHistory(user, limit)
+        return tzJsonResponse(
+          {
+            count: entries.length,
+            data: entries.map((e) => ({
+              ...e,
+              created_at: formatInTz(e.created_at, tz),
+              synced_at: e.synced_at ? formatInTz(e.synced_at, tz) : undefined,
+            })),
+            success: true,
+          },
+          tz,
+        )
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })

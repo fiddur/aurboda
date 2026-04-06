@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+
 import {
   createInMemorySessionStore,
   DEFAULT_SESSION_INACTIVITY_MS,
-  McpSessionStore,
-} from './mcp-session-store'
+  type McpSessionStore,
+} from './mcp-session-store.ts'
 
 describe('createInMemorySessionStore', () => {
   let store: McpSessionStore

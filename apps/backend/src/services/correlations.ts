@@ -6,10 +6,11 @@
  * activity sources (RescueTime, locations, tags, activities).
  */
 
-import { type MetricType } from '@aurboda/api-spec'
-import { getActivities, getProductivity, getTags, getTimeSeries, getTimeSeriesStats } from '../db'
-import { getPlaceVisits } from './locations'
-import { SyncProvider } from './queries'
+import type { MetricType } from '@aurboda/api-spec'
+
+import { getActivities, getProductivity, getTags, getTimeSeries, getTimeSeriesStats } from '../db/index.ts'
+import { getPlaceVisits } from './locations.ts'
+import { queryMetrics, type SyncProvider } from './queries.ts'
 
 // ============================================================================
 // Types
@@ -358,9 +359,31 @@ const chiSquaredTest = (
 
 /**
  * Get HRV/HR data points that fall within a time range.
+ * Uses binary search since data is sorted by time (from SQL ORDER BY).
  */
 const getDataInRange = (data: [Date, number][], start: Date, end: Date): number[] => {
-  return data.filter(([time]) => time >= start && time <= end).map(([, value]) => value)
+  const startMs = start.getTime()
+  const endMs = end.getTime()
+
+  // Binary search for first index where time >= start
+  let lo = 0
+  let hi = data.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (data[mid][0].getTime() < startMs) lo = mid + 1
+    else hi = mid
+  }
+  const startIdx = lo
+
+  // Binary search for first index where time > end
+  hi = data.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (data[mid][0].getTime() <= endMs) lo = mid + 1
+    else hi = mid
+  }
+
+  return data.slice(startIdx, lo).map(([, v]) => v)
 }
 
 /**
@@ -381,13 +404,13 @@ const calculateHrvStats = (hrvValues: number[], hrValues: number[], durationMinu
 const addBaselineDelta = (stats: HrvStats, baseline: HrvStats): HrvStatsWithDelta => ({
   ...stats,
   hr_delta_from_baseline:
-    stats.mean_hr !== null && baseline.mean_hr !== null ?
-      Math.round((stats.mean_hr - baseline.mean_hr) * 10) / 10
-    : null,
+    stats.mean_hr !== null && baseline.mean_hr !== null
+      ? Math.round((stats.mean_hr - baseline.mean_hr) * 10) / 10
+      : null,
   hrv_delta_from_baseline:
-    stats.mean_hrv !== null && baseline.mean_hrv !== null ?
-      Math.round((stats.mean_hrv - baseline.mean_hrv) * 10) / 10
-    : null,
+    stats.mean_hrv !== null && baseline.mean_hrv !== null
+      ? Math.round((stats.mean_hrv - baseline.mean_hrv) * 10) / 10
+      : null,
 })
 
 // ============================================================================
@@ -420,12 +443,20 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
   const prevEnd30day = new Date(start30day)
   prevEnd30day.setMilliseconds(-1)
 
-  // Fetch all stats in parallel
-  const [hrvStats7day, hrvStats30day, hrvStatsPrev30day, hrStats7day, hrStats30day, hrStatsPrev30day] =
+  // Compute average from sleep HRV data (contextual metric, not stored directly)
+  const getSleepHrvAvg = async (start: Date, end: Date): Promise<number | null> => {
+    const result = await queryMetrics(user, 'hrv_sleep', start, end)
+    if (result.count === 0) return null
+    const sum = result.data.reduce((acc, d) => acc + d.value, 0)
+    return sum / result.count
+  }
+
+  // Fetch sleep HRV and resting HR stats in parallel
+  const [hrvAvg7day, hrvAvg30day, hrvAvgPrev30day, hrStats7day, hrStats30day, hrStatsPrev30day] =
     await Promise.all([
-      getTimeSeriesStats(user, ['hrv_rmssd'], start7day, end7day),
-      getTimeSeriesStats(user, ['hrv_rmssd'], start30day, end30day),
-      getTimeSeriesStats(user, ['hrv_rmssd'], prevStart30day, prevEnd30day),
+      getSleepHrvAvg(start7day, end7day),
+      getSleepHrvAvg(start30day, end30day),
+      getSleepHrvAvg(prevStart30day, prevEnd30day),
       getTimeSeriesStats(user, ['resting_heart_rate'], start7day, end7day),
       getTimeSeriesStats(user, ['resting_heart_rate'], start30day, end30day),
       getTimeSeriesStats(user, ['resting_heart_rate'], prevStart30day, prevEnd30day),
@@ -433,19 +464,19 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
 
   // Calculate trends
   const hrvTrend =
-    hrvStats30day[0]?.avg && hrvStatsPrev30day[0]?.avg ?
-      ((hrvStats30day[0].avg - hrvStatsPrev30day[0].avg) / hrvStatsPrev30day[0].avg) * 100
-    : null
+    hrvAvg30day !== null && hrvAvgPrev30day !== null
+      ? ((hrvAvg30day - hrvAvgPrev30day) / hrvAvgPrev30day) * 100
+      : null
 
   const hrTrend =
-    hrStats30day[0]?.avg && hrStatsPrev30day[0]?.avg ?
-      ((hrStats30day[0].avg - hrStatsPrev30day[0].avg) / hrStatsPrev30day[0].avg) * 100
-    : null
+    hrStats30day[0]?.avg && hrStatsPrev30day[0]?.avg
+      ? ((hrStats30day[0].avg - hrStatsPrev30day[0].avg) / hrStatsPrev30day[0].avg) * 100
+      : null
 
   return {
     hrv: {
-      avg7day: hrvStats7day[0]?.avg ? Math.round(hrvStats7day[0].avg * 10) / 10 : null,
-      avg30day: hrvStats30day[0]?.avg ? Math.round(hrvStats30day[0].avg * 10) / 10 : null,
+      avg7day: hrvAvg7day !== null ? Math.round(hrvAvg7day * 10) / 10 : null,
+      avg30day: hrvAvg30day !== null ? Math.round(hrvAvg30day * 10) / 10 : null,
       trend_percent: hrvTrend !== null ? Math.round(hrvTrend * 10) / 10 : null,
     },
     period: {
@@ -508,7 +539,7 @@ export async function getHrvActivitiesCorrelation(
   >()
 
   for (const record of productivity) {
-    const category = record.category || 'Uncategorized'
+    const category = record.resolved_category?.join(' > ') || record.category || 'Uncategorized'
     if (!productivityByCategory.has(category)) {
       productivityByCategory.set(category, { hrValues: [], hrvValues: [], minutes: 0, scores: [] })
     }
@@ -536,9 +567,9 @@ export async function getHrvActivitiesCorrelation(
 
     // Calculate correlation between productivity score and HRV
     const correlation =
-      data.scores.length >= 3 && data.hrvValues.length === data.scores.length ?
-        pearsonCorrelation(data.scores, data.hrvValues)
-      : null
+      data.scores.length >= 3 && data.hrvValues.length === data.scores.length
+        ? pearsonCorrelation(data.scores, data.hrvValues)
+        : null
 
     productivityCorrelations.push({
       ...statsWithDelta,
@@ -732,10 +763,12 @@ export async function getActivityImpact(
   if (activityType === 'productivity_category' || activityType === 'productivity_app') {
     const productivity = await getProductivity(user, start, end)
     for (const record of productivity) {
+      const resolvedCatStr = record.resolved_category?.join(' > ')
       const matches =
-        activityType === 'productivity_category' ?
-          record.category?.toLowerCase() === activity.toLowerCase()
-        : record.activity.toLowerCase().includes(activity.toLowerCase())
+        activityType === 'productivity_category'
+          ? resolvedCatStr?.toLowerCase() === activity.toLowerCase() ||
+            record.category?.toLowerCase() === activity.toLowerCase()
+          : record.activity.toLowerCase().includes(activity.toLowerCase())
 
       if (matches) {
         occurrences.push({
@@ -990,9 +1023,9 @@ export async function getEventProbability(
     },
     statistical_significance: {
       chi_squared:
-        chiSquaredResult?.chiSquared !== undefined ?
-          Math.round(chiSquaredResult.chiSquared * 100) / 100
-        : null,
+        chiSquaredResult?.chiSquared !== undefined
+          ? Math.round(chiSquaredResult.chiSquared * 100) / 100
+          : null,
       p_value:
         chiSquaredResult?.pValue !== undefined ? Math.round(chiSquaredResult.pValue * 1000) / 1000 : null,
     },
@@ -1082,14 +1115,14 @@ export async function getGenericCorrelation(
 
   // Fetch data in parallel
   const [activities, tags, productivity, metricData] = await Promise.all([
-    needsActivities ?
-      getActivities(user, ['exercise', 'meditation', 'nap', 'sleep'], start, end)
-    : Promise.resolve([]),
+    needsActivities
+      ? getActivities(user, ['exercise', 'meditation', 'nap', 'sleep'], start, end)
+      : Promise.resolve([]),
     needsTags ? getTags(user, start, end) : Promise.resolve([]),
     needsProductivity ? getProductivity(user, start, end) : Promise.resolve([]),
-    needsMetrics && outcome.type === 'metric' ?
-      getTimeSeries(user, outcome.metric as MetricType, start, end)
-    : Promise.resolve([] as [Date, number][]),
+    needsMetrics && outcome.type === 'metric'
+      ? getTimeSeries(user, outcome.metric as MetricType, start, end)
+      : Promise.resolve([] as [Date, number][]),
   ])
 
   // Build a list of all trigger events with timestamps
@@ -1118,11 +1151,13 @@ export async function getGenericCorrelation(
       }
     } else if (trigger.type === 'productivity_category') {
       for (const prod of productivity) {
-        if (prod.category && matchesPattern(prod.category, trigger.pattern)) {
+        const resolvedCatStr = prod.resolved_category?.join(' > ')
+        const catStr = resolvedCatStr || prod.category
+        if (catStr && matchesPattern(catStr, trigger.pattern)) {
           triggerEvents.push({
             time: prod.start_time,
             type: 'productivity_category',
-            value: prod.category,
+            value: catStr,
           })
         }
       }
@@ -1215,9 +1250,9 @@ export async function getGenericCorrelation(
 
   // Get outcome events/data for tag outcomes
   const outcomeTagEvents =
-    outcome.type === 'tag' ?
-      tags.filter((t) => matchesPattern(t.tag, outcome.pattern)).map((t) => t.start_time)
-    : []
+    outcome.type === 'tag'
+      ? tags.filter((t) => matchesPattern(t.tag, outcome.pattern)).map((t) => t.start_time)
+      : []
 
   for (const lag of lagWindows) {
     const lagMs = parseLagWindow(lag)
@@ -1273,9 +1308,9 @@ export async function getGenericCorrelation(
 
       const baselineMean = mean(baselineValues)
       const delta =
-        meanAfter !== null && baselineMean !== null ?
-          Math.round((meanAfter - baselineMean) * 100) / 100
-        : null
+        meanAfter !== null && baselineMean !== null
+          ? Math.round((meanAfter - baselineMean) * 100) / 100
+          : null
 
       postTrigger[lag] = {
         delta_from_baseline: delta,
@@ -1295,8 +1330,9 @@ export async function getGenericCorrelation(
         for (const prod of productivity) {
           if (prod.start_time <= windowEnd || prod.start_time > lagEnd) continue
 
+          const prodCatStr = prod.resolved_category?.join(' > ') || prod.category
           const matchesCategory =
-            !outcome.category || (prod.category && matchesPattern(prod.category, outcome.category))
+            !outcome.category || (prodCatStr && matchesPattern(prodCatStr, outcome.category))
           const matchesApp = !outcome.app || matchesPattern(prod.activity, outcome.app)
 
           if (matchesCategory && matchesApp) {
@@ -1328,9 +1364,9 @@ export async function getGenericCorrelation(
       const avgMinutesPerDay = daysCounted > 0 ? totalMinutes / (daysCounted * lagDays) : 0
       const baselineAvgMinutes = baselineDays > 0 ? baselineTotalMinutes / baselineDays : 0
       const delta =
-        avgMinutesPerDay > 0 && baselineAvgMinutes > 0 ?
-          Math.round((avgMinutesPerDay - baselineAvgMinutes) * 100) / 100
-        : null
+        avgMinutesPerDay > 0 && baselineAvgMinutes > 0
+          ? Math.round((avgMinutesPerDay - baselineAvgMinutes) * 100) / 100
+          : null
 
       postTrigger[lag] = {
         avg_minutes_per_day: Math.round(avgMinutesPerDay * 100) / 100,
@@ -1419,9 +1455,9 @@ export async function getGenericCorrelation(
     post_trigger: postTrigger,
     statistical_significance: {
       chi_squared:
-        chiSquaredResult?.chiSquared !== undefined ?
-          Math.round(chiSquaredResult.chiSquared * 100) / 100
-        : null,
+        chiSquaredResult?.chiSquared !== undefined
+          ? Math.round(chiSquaredResult.chiSquared * 100) / 100
+          : null,
       p_value:
         chiSquaredResult?.pValue !== undefined ? Math.round(chiSquaredResult.pValue * 1000) / 1000 : null,
     },

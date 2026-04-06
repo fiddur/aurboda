@@ -1,36 +1,59 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Trends route group.
  *
  * Handles: /trends
  */
 import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import { getTrend } from '../services/trends'
-import { validateQuery } from '../validation'
+
+import { getCustomMetrics } from '../services/mutations.ts'
+import { getTrend } from '../services/trends.ts'
+import { typedRouter } from '../typed-router.ts'
+import { validateQuery } from '../validation.ts'
 
 export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /trends - Get time-weighted trend for tags or metrics
-  router.get<Record<string, never>, TrendResponse, unknown, TrendQuery>(
+  router.get<Record<string, string>, TrendResponse, unknown, TrendQuery>(
     '/',
     authMiddleware,
     validateQuery(trendQuerySchema),
     async (req, res) => {
-      const { aggregation, display_period, half_life_days, lookback_days, pattern, source_type } = req.query
+      const {
+        aggregation,
+        display_period,
+        half_life_days,
+        lookback_days,
+        pattern,
+        source_type,
+        tag_definition_id,
+      } = req.query
       const user = req.user!
+
+      // Require pattern or tag_definition_id
+      if (!pattern && !tag_definition_id) {
+        return res
+          .status(400)
+          .json({ error: 'Either pattern or tag_definition_id is required', success: false })
+      }
 
       const halfLifeDays = half_life_days ? parseInt(half_life_days, 10) : undefined
       const lookbackDays = lookback_days ? parseInt(lookback_days, 10) : undefined
 
       try {
+        const customMetrics = await getCustomMetrics(user)
+
         const result = await getTrend(user, {
           aggregation,
+          custom_metrics: customMetrics,
           display_period,
           half_life_days: halfLifeDays,
           lookback_days: lookbackDays,
-          pattern,
+          pattern: pattern ?? '',
           source_type,
+          tag_definition_id,
         })
         res.json({ data: result, success: true })
       } catch (error) {
@@ -40,5 +63,5 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  return router
+  return router as unknown as Router
 }

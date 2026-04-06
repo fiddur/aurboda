@@ -1,7 +1,7 @@
 .settings-page {
-  max-width: 600px;
-  margin: 0 auto;
+  width: 100%;
   padding: 2rem;
+  box-sizing: border-box;
 }
 
 .settings-page h1 {
@@ -89,9 +89,10 @@
   margin-bottom: 0;
 }
 
-.form-field input[type="date"],
-.form-field input[type="password"],
-.form-field input[type="text"] {
+.form-field input[type='date'],
+.form-field input[type='password'],
+.form-field input[type='text'],
+.form-field select {
   padding: 0.5rem;
   font-size: 1rem;
   border: 1px solid #ccc;
@@ -100,7 +101,8 @@
   max-width: 300px;
 }
 
-.form-field input[type="date"] {
+.form-field input[type='date'],
+.form-field select {
   max-width: 200px;
 }
 
@@ -127,6 +129,30 @@
 .connect-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.oura-connected-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.oura-resync-button {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.oura-sync-message {
+  font-size: 0.8rem;
+}
+
+.oura-sync-message.done {
+  color: #4caf50;
+}
+
+.oura-sync-message.error {
+  color: #f44336;
 }
 
 .field-description {
@@ -195,8 +221,8 @@
   margin-bottom: 0.5rem;
 }
 
-.add-calendar-form .form-field input[type="text"],
-.add-calendar-form .form-field input[type="url"] {
+.add-calendar-form .form-field input[type='text'],
+.add-calendar-form .form-field input[type='url'] {
   padding: 0.5rem;
   font-size: 1rem;
   border: 1px solid #ccc;
@@ -227,7 +253,7 @@
   gap: 0.5rem;
 }
 
-.zone-input input[type="number"] {
+.zone-input input[type='number'] {
   width: 80px;
   padding: 0.5rem;
   font-size: 1rem;
@@ -238,6 +264,31 @@
 
 .zone-input .unit {
   color: #666;
+}
+
+.activitywatch-token-section {
+  margin-top: 0.75rem;
+}
+
+.token-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.token-display {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem;
+  font-size: 0.8rem;
+  font-family: monospace;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f5f5f5;
+  color: #333;
+  cursor: text;
 }
 
 .reset-zones-button {
@@ -254,9 +305,135 @@
   background: #f5f5f5;
 }
 
+/* Custom metrics */
+.custom-metrics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.custom-metric-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+}
+
+.custom-metric-item.editing {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.custom-metric-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.custom-metric-name {
+  font-weight: 600;
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.custom-metric-unit {
+  font-size: 0.85rem;
+  color: #6b7280;
+  padding: 0.125rem 0.5rem;
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.custom-metric-desc {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.custom-metric-range {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.custom-metric-actions {
+  display: flex;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.custom-metric-edit-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.custom-metric-input {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+  flex: 1;
+}
+
+.custom-metric-input.wide {
+  flex: 2;
+}
+
+.custom-metric-input:focus {
+  outline: none;
+  border-color: #673ab8;
+  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+}
+
+.custom-metric-add-form {
+  margin-top: 0.75rem;
+}
+
+.custom-metric-add-form h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.5rem;
+}
+
+.custom-metric-add-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.custom-metric-error {
+  color: #ef4444;
+  font-size: 0.85rem;
+  margin: 0.25rem 0;
+}
+
 @media (prefers-color-scheme: dark) {
   .settings-section {
     border-bottom-color: #444;
+  }
+
+  .custom-metric-item {
+    border-color: #444;
+  }
+
+  .custom-metric-unit {
+    background: #374151;
+    color: #9ca3af;
+  }
+
+  .custom-metric-input {
+    border-color: #4b5563;
+  }
+
+  .custom-metric-input:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
   }
 
   .section-description,
@@ -273,24 +450,25 @@
     color: #aaa;
   }
 
-  .add-calendar-form .form-field input[type="text"],
-  .add-calendar-form .form-field input[type="url"] {
+  .add-calendar-form .form-field input[type='text'],
+  .add-calendar-form .form-field input[type='url'] {
     background: #333;
     border-color: #555;
     color: #fff;
   }
 
-  .form-field input[type="date"],
-  .form-field input[type="password"],
-  .form-field input[type="text"],
-  .zone-input input[type="number"] {
+  .form-field input[type='date'],
+  .form-field input[type='password'],
+  .form-field input[type='text'],
+  .form-field select,
+  .zone-input input[type='number'] {
     background: #333;
     border-color: #555;
     color: #fff;
   }
 
-  .form-field input[type="password"]::placeholder,
-  .form-field input[type="text"]::placeholder {
+  .form-field input[type='password']::placeholder,
+  .form-field input[type='text']::placeholder {
     color: #888;
   }
 
@@ -301,6 +479,12 @@
 
   .reset-zones-button:hover {
     background: #444;
+  }
+
+  .token-display {
+    background: #2a2a2a;
+    border-color: #555;
+    color: #ddd;
   }
 }
 

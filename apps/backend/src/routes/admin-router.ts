@@ -11,11 +11,13 @@ import {
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
 } from '@aurboda/api-spec'
-import { RequestHandler, Router } from 'express'
-import type { CentralDb } from '../services/central-db'
-import type { InvitationAuth } from '../services/invitation'
-import type { OuraWebhookManager } from '../services/oura-webhook-manager'
-import { validateBody } from '../validation'
+import { type RequestHandler, Router } from 'express'
+
+import type { CentralDb } from '../services/central-db.ts'
+import type { InvitationAuth } from '../services/invitation.ts'
+import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+
+import { validateBody } from '../validation.ts'
 
 export const createAdminRouter = (
   authMiddleware: RequestHandler,
@@ -37,8 +39,10 @@ export const createAdminRouter = (
       const adminCount = await centralDb.getAdminCount()
       const lastFmApiKey = await centralDb.getLastFmApiKey()
       const ouraWebhookEnabled = await centralDb.getOuraWebhookEnabled()
+      const auditLogRetentionDays = await centralDb.getAuditLogRetentionDays()
       res.json({
         admin_count: adminCount,
+        audit_log_retention_days: auditLogRetentionDays,
         lastfm_api_key_set: !!lastFmApiKey,
         oura_webhook_available: ouraWebhookManager?.canEnable() ?? false,
         oura_webhook_enabled: ouraWebhookEnabled,
@@ -55,9 +59,12 @@ export const createAdminRouter = (
     adminMiddleware,
     validateBody(updateAdminSettingsBodySchema),
     async (req, res) => {
-      const { lastfm_api_key, oura_webhook_enabled, signup_mode } = req.body
+      const { audit_log_retention_days, lastfm_api_key, oura_webhook_enabled, signup_mode } = req.body
       if (signup_mode) {
         await centralDb.setSignupMode(signup_mode)
+      }
+      if (audit_log_retention_days !== undefined) {
+        await centralDb.setAuditLogRetentionDays(audit_log_retention_days)
       }
       if (lastfm_api_key !== undefined) {
         await centralDb.setLastFmApiKey(lastfm_api_key)
@@ -76,8 +83,10 @@ export const createAdminRouter = (
       const adminCount = await centralDb.getAdminCount()
       const lastFmApiKey = await centralDb.getLastFmApiKey()
       const ouraWebhookEnabledValue = await centralDb.getOuraWebhookEnabled()
+      const currentRetentionDays = await centralDb.getAuditLogRetentionDays()
       res.json({
         admin_count: adminCount,
+        audit_log_retention_days: currentRetentionDays,
         lastfm_api_key_set: !!lastFmApiKey,
         oura_webhook_available: ouraWebhookManager?.canEnable() ?? false,
         oura_webhook_enabled: ouraWebhookEnabledValue,

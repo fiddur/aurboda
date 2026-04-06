@@ -1,7 +1,7 @@
 /**
  * Barrel re-export for all database modules.
  *
- * All consumers can continue importing from './db' or '../db' unchanged.
+ * All consumers can continue importing from './db.ts' or '../db' unchanged.
  */
 
 // Types (interfaces & type aliases)
@@ -15,6 +15,7 @@ export type {
   DetectedLocation,
   DetectedLocationInput,
   DetectedLocationUpdate,
+  EntityType,
   GeocodeStatus,
   LabResult,
   LastFmMatchMode,
@@ -23,19 +24,32 @@ export type {
   LastFmTagRuleInput,
   Location,
   McpSessionRecord,
+  FoodItemEntity,
+  Meal,
+  MealFoodItem,
+  MealFoodItemLink,
+  MergedActivity,
+  Micros,
   MetricStats,
   NamedLocation,
   NamedLocationInput,
+  Note,
   OAuthToken,
   Place,
   ProductivityRecord,
   RawRecord,
+  Report,
+  ReportConfidence,
+  ReportEntry,
+  ReportFlag,
+  ScreentimeCategory,
+  ScreentimeCategoryInput,
   SyncState,
   SyncStatus,
   Tag,
   TimeSeriesPoint,
   UserSettings,
-} from './types'
+} from './types.ts'
 
 // Connection & schema management
 export {
@@ -47,33 +61,70 @@ export {
   migrateSchema,
   query,
   schemaInitialized,
-} from './connection'
+} from './connection.ts'
 
 // Raw records
-export { getScrobbles, insertRawRecord, type ScrobbleRecord } from './raw-records'
+export { getAllScrobbles, getScrobbles, insertRawRecord, type ScrobbleRecord } from './raw-records.ts'
 
 // Time series
 export {
+  deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
   getDailyAggregates,
+  getDistinctMetrics,
+  getRawDailySum,
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
+  getTimeSeriesWithSource,
   insertTimeSeries,
-} from './time-series'
+} from './time-series.ts'
+
+// Deduction Rules
+export {
+  deleteDeductionRule,
+  deleteRuleActivities,
+  deleteStaleRuleActivities,
+  getDeductionRule,
+  getDeductionRules,
+  getEnabledDeductionRules,
+  insertDeductionRule,
+  insertDeductionRuleRun,
+  updateDeductionRule,
+} from './deduction-rules.ts'
+
+// Activity Type Definitions
+export {
+  activityTypeExists,
+  deleteActivityTypeDefinition,
+  getActivityTypeDefinition,
+  getActivityTypeDefinitions,
+  getActivityTypeNames,
+  insertActivityTypeDefinition,
+  updateActivityTypeDefinition,
+} from './activity-type-definitions.ts'
 
 // Activities
 export {
+  checkActivityConflict,
   deleteActivity,
+  deleteGarminActivityWithWrongType,
+  findMergedGroupForActivity,
   getActivities,
+  getActivitiesNeedingDetail,
   getActivityById,
+  getNearbyActivities,
+  getOverlappingActivities,
   getSleepSessions,
   insertActivity,
+  insertNewActivity,
+  markActivityDetailSynced,
   mergeOverlappingActivities,
+  restoreActivity,
   updateActivity,
-} from './activities'
+} from './activities.ts'
 
 // Locations
 export {
@@ -92,46 +143,173 @@ export {
   insertPlace,
   updateDetectedLocation,
   updateNamedLocation,
-} from './locations'
+} from './locations.ts'
 
 // Tags
 export {
   deleteTag,
+  deleteTagById,
+  deleteTagDefinition,
   findMergeableTag,
   getProgrammaticTags,
+  getTagById,
+  getTagDefinitionById,
+  getTagDefinitions,
   getTags,
   getUniqueTags,
+  hardDeleteTagsByExternalIdPrefix,
+  hardDeleteTagsBySource,
   insertTag,
+  insertTagDefinition,
   isProgrammaticTag,
+  mergeTagDefinitions,
+  resolveOrCreateTagDefinition,
+  resolveTagDefinition,
+  restoreTag,
+  updateTag,
+  updateTagDefinition,
   updateTagEndTime,
   updateTagNameByKey,
-} from './tags'
+} from './tags.ts'
 
 // Productivity
-export { getProductivity, insertProductivity } from './productivity'
+export {
+  batchUpdateResolvedCategory,
+  deleteProductivityRecord,
+  getAllProductivityForCategorization,
+  getDistinctApps,
+  getProductivity,
+  type ProductivityBucketRow,
+  getProductivityBucketed,
+  getProductivityById,
+  insertProductivity,
+  restoreProductivityRecord,
+} from './productivity.ts'
 
-// Lab results
-export { getLabResults, insertLabResult } from './lab-results'
+// Screentime categories
+export {
+  bulkInsertScreentimeCategories,
+  deleteAllScreentimeCategories,
+  deleteScreentimeCategoryWithChildren,
+  getScreentimeCategories,
+  getScreentimeCategoryById,
+  insertScreentimeCategory,
+  moveScreentimeCategory,
+  updateScreentimeCategory,
+  upsertScreentimeCategory,
+} from './screentime-categories.ts'
+
+// Notes
+export {
+  deleteNote,
+  getNoteById,
+  getNotesByEntityIds,
+  getNotesForEntity,
+  getNotesForTimeRange,
+  insertNote,
+  updateNote,
+  updateNoteTimesForEntity,
+  upsertSyncedNote,
+} from './notes.ts'
+
+// Food Items
+export {
+  deleteFoodItem,
+  findOrCreateFoodItem,
+  getFoodItemById,
+  getFoodItemByName,
+  listFoodItems,
+  searchFoodItems,
+  updateFoodItem,
+  upsertFoodItem,
+} from './food-items.ts'
+export { getMealFoodItems, getMealFoodItemsBatch, setMealFoodItems } from './meal-food-items.ts'
+
+// Meals
+export {
+  deleteMeal,
+  getMealById,
+  getMealLogCompleted,
+  getMeals,
+  insertMeal,
+  upsertMeal,
+  setMealLogCompleted,
+  unsetMealLogCompleted,
+  updateMeal,
+} from './meals.ts'
+
+// Lab results (legacy)
+export { getLabResults, insertLabResult } from './lab-results.ts'
+
+// Reports (structured lab results)
+export {
+  deleteReport,
+  getLatestMetricValue,
+  getReportById,
+  getReportEntryMetrics,
+  getReports,
+  insertReport,
+  updateReport,
+} from './reports.ts'
 
 // OAuth
-export { getOAuthToken, upsertOAuthToken } from './oauth'
+export { getOAuthToken, upsertOAuthToken } from './oauth.ts'
 
 // Sync state
-export { getAllSyncStates, getSyncState, resetSyncState, upsertSyncState } from './sync-state'
+export { getAllSyncStates, getSyncState, resetSyncState, upsertSyncState } from './sync-state.ts'
 
 // Health Connect
 export {
   deleteHealthConnectRecords,
   getDailyAggregateValue,
   processDailyAggregate,
+  processHealthConnectBatch,
   processHealthConnectData,
-} from './health-connect'
+} from './health-connect.ts'
+
+// Outbound sync queue
+export {
+  ackOutboundSync,
+  enqueueOutboundSync,
+  failOutboundSync,
+  findHcRecordId,
+  getOutboundSyncHistory,
+  getPendingOutboundSync,
+  reportSyncFailure,
+  requeueOutboundSync,
+  type EnqueueOutboundSyncInput,
+  type OutboundSyncEntry,
+  type OutboundSyncOperation,
+  type OutboundSyncStatus,
+  type PendingOutboundSyncResult,
+} from './outbound-sync.ts'
+
+// Uploaded icons
+export { deleteIcon, getIcon, insertIcon } from './icons.ts'
 
 // Settings
-export { getUserSettings, upsertUserSettings } from './settings'
+export { getUserSettings, upsertUserSettings } from './settings.ts'
+
+// Goals
+export { deleteGoal, getGoals, insertGoal, replaceGoals } from './goals.ts'
+
+// Custom metric definitions
+export {
+  bulkInsertCustomMetricDefinitions,
+  deleteCustomMetricDefinition,
+  getCustomMetricByName,
+  getCustomMetricDefinitions,
+  insertCustomMetricDefinition,
+  updateCustomMetricDefinition,
+} from './custom-metrics.ts'
 
 // Last.fm tag rules
-export { deleteLastFmTagRule, getLastFmTagRules, insertLastFmTagRule } from './lastfm-rules'
+export {
+  deleteLastFmTagRule,
+  getLastFmTagRules,
+  insertLastFmTagRule,
+  updateLastFmTagRule,
+} from './lastfm-rules.ts'
 
 // MCP sessions
 export {
@@ -141,7 +319,16 @@ export {
   getMcpSessionsForUser,
   saveMcpSession,
   touchMcpSession,
-} from './mcp-sessions'
+} from './mcp-sessions.ts'
+
+// Audit log
+export {
+  cleanupAuditLog,
+  insertAuditLog,
+  queryAuditLog,
+  type AuditLogQueryParams,
+  type AuditLogRow,
+} from './audit-log.ts'
 
 // Row mappers (re-export for consumers that need them directly)
 export {
@@ -149,12 +336,17 @@ export {
   mapDetectedLocationRow,
   mapLastFmTagRuleRow,
   mapMcpSessionRow,
+  mapMealRow,
   mapNamedLocationRow,
+  mapNoteRow,
+  mapReportEntryRow,
+  mapReportRow,
   mapSyncStateRow,
   mapTagRow,
   parseActivityType,
   parseDataSource,
+  parseEntityType,
   parseGeocodeStatus,
   parseMetricType,
   parseSyncStatus,
-} from './row-mappers'
+} from './row-mappers.ts'

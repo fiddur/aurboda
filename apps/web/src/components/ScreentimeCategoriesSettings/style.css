@@ -1,0 +1,187 @@
+/* Screentime Categories Settings — Navigation list */
+.sc-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sc-header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.sc-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.sc-row:last-child {
+  border-bottom: none;
+}
+
+.sc-row-link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  flex: 1;
+}
+
+.sc-row-link:hover .sc-name {
+  color: #673ab8;
+}
+
+.sc-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.sc-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: color 0.15s;
+}
+
+.sc-excluded-badge {
+  font-size: 0.7rem;
+  color: #9ca3af;
+  background: #f3f4f6;
+  padding: 0.1rem 0.375rem;
+  border-radius: 3px;
+  font-style: italic;
+}
+
+.sc-regex {
+  font-size: 0.8rem;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-actions {
+  display: flex;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.sc-trash-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 1rem;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+
+.sc-trash-btn:hover {
+  opacity: 1;
+}
+
+.sc-trash-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+/* Actions section (import, defaults) */
+.sc-actions-section {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 1rem;
+}
+
+.sc-action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.sc-import-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.sc-input {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.85rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+
+.sc-input.wide {
+  min-width: 250px;
+}
+
+.sc-empty {
+  color: #9ca3af;
+  font-size: 0.9rem;
+  font-style: italic;
+  padding: 1rem 0;
+}
+
+.sc-error {
+  color: #ef4444;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .sc-list {
+    border-color: #333;
+  }
+
+  .sc-row {
+    border-bottom-color: #333;
+  }
+
+  .sc-row-link:hover .sc-name {
+    color: #8b5cf6;
+  }
+
+  .sc-regex {
+    background: #374151;
+    color: #9ca3af;
+  }
+
+  .sc-excluded-badge {
+    background: #374151;
+  }
+
+  .sc-input {
+    border-color: #4b5563;
+  }
+
+  .sc-actions-section {
+    border-top-color: #333;
+  }
+}

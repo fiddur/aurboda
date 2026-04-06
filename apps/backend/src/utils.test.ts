@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { reduceTimeSeries } from './utils'
+
+import { reduceTimeSeries } from './utils.ts'
 
 describe('reduceTimeSeries', () => {
   test('removes duplicate dates keeping first occurrence', () => {

@@ -7,7 +7,9 @@ import {
   eventProbabilityInputSchema,
   genericCorrelationBodySchema,
   hrvCorrelationInputSchema,
+  tzSchema,
 } from '@aurboda/api-spec'
+
 import {
   getActivityImpact,
   getBaseline,
@@ -16,8 +18,8 @@ import {
   getHrvActivitiesCorrelation,
   type OutcomeConfig,
   type TriggerCondition,
-} from '../services/correlations'
-import { jsonResponse, type McpServer, type SyncProvider } from './helpers'
+} from '../services/correlations.ts'
+import { type McpServer, type SyncProvider, tzJsonResponse } from './helpers.ts'
 
 export const registerCorrelationTools = (server: McpServer, user: string, sync?: SyncProvider) => {
   // Tool: get_baseline
@@ -28,11 +30,12 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
       reference_date: dateOnlySchema
         .optional()
         .describe('Reference date for baseline calculation in YYYY-MM-DD format. Defaults to today.'),
+      tz: tzSchema,
     },
-    async ({ reference_date }) => {
+    async ({ reference_date, tz }) => {
       const referenceDate = reference_date ? new Date(reference_date) : undefined
       const baseline = await getBaseline(user, referenceDate)
-      return jsonResponse({ data: baseline, success: true })
+      return tzJsonResponse({ data: baseline, success: true }, tz)
     },
   )
 
@@ -40,11 +43,11 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
   server.tool(
     'get_hrv_activities_correlation',
     'Get HRV correlations with various activities. Returns Pearson correlation coefficients between HRV and productivity, locations, activities, and tags.',
-    { ...hrvCorrelationInputSchema.shape },
-    async ({ period_days }) => {
+    { ...hrvCorrelationInputSchema.shape, tz: tzSchema },
+    async ({ period_days, tz }) => {
       const periodDays = period_days ?? 30
       const correlations = await getHrvActivitiesCorrelation(user, periodDays, sync)
-      return jsonResponse({ data: correlations, success: true })
+      return tzJsonResponse({ data: correlations, success: true }, tz)
     },
   )
 
@@ -52,13 +55,13 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
   server.tool(
     'get_activity_impact',
     'Get the impact of a specific activity/tag on HRV and heart rate. Compares metric values before, during, and after the activity using time windows.',
-    { ...activityImpactInputSchema.shape },
-    async ({ activity, activity_type, period_days, window_minutes }) => {
+    { ...activityImpactInputSchema.shape, tz: tzSchema },
+    async ({ activity, activity_type, period_days, window_minutes, tz }) => {
       const periodDays = period_days ?? 90
       const windowMinutes = window_minutes ?? 30
 
       const impact = await getActivityImpact(user, activity, activity_type, windowMinutes, periodDays, sync)
-      return jsonResponse({ data: impact, success: true })
+      return tzJsonResponse({ data: impact, success: true }, tz)
     },
   )
 
@@ -66,8 +69,8 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
   server.tool(
     'get_event_probability',
     'Get the probability correlation between two events. Analyzes whether one event (trigger) increases or decreases the probability of another event (outcome) occurring within specified time windows. Uses chi-squared test for statistical significance.',
-    { ...eventProbabilityInputSchema.shape },
-    async ({ lag_windows, outcome_pattern, period_days, trigger_type, trigger_value }) => {
+    { ...eventProbabilityInputSchema.shape, tz: tzSchema },
+    async ({ lag_windows, outcome_pattern, period_days, trigger_type, trigger_value, tz }) => {
       const probability = await getEventProbability(
         user,
         { type: trigger_type, value: trigger_value },
@@ -76,7 +79,7 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
         period_days ?? 365,
         sync,
       )
-      return jsonResponse({ data: probability, success: true })
+      return tzJsonResponse({ data: probability, success: true }, tz)
     },
   )
 
@@ -90,8 +93,8 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
 Examples:
 - "Does meditation correlate with more productive time?" -> trigger: tag "meditation", outcome: productivity
 - "When I exercise 3x and tag FatCoffee 5x in a week, does my weight change?" -> compound triggers, metric outcome`,
-    { ...genericCorrelationBodySchema.shape },
-    async ({ lag_windows, outcome, period_days, triggers }) => {
+    { ...genericCorrelationBodySchema.shape, tz: tzSchema },
+    async ({ lag_windows, outcome, period_days, triggers, tz }) => {
       const result = await getGenericCorrelation(
         user,
         triggers as TriggerCondition[],
@@ -100,7 +103,7 @@ Examples:
         period_days ?? 90,
         sync,
       )
-      return jsonResponse({ data: result, success: true })
+      return tzJsonResponse({ data: result, success: true }, tz)
     },
   )
 }

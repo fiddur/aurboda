@@ -1,5 +1,4 @@
-Aurboda App
-===========
+# Aurboda App
 
 Companion Android app for [Aurboda](https://github.com/fiddur/aurboda) Quantified Self aggregation.
 

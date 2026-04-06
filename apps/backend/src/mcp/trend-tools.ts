@@ -2,8 +2,10 @@
  * MCP trend analysis tools.
  */
 import { getTrendQuerySchema } from '@aurboda/api-spec'
-import { getTrend } from '../services/trends'
-import { jsonResponse, type McpServer } from './helpers'
+
+import { getCustomMetrics } from '../services/mutations.ts'
+import { getTrend } from '../services/trends.ts'
+import { jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerTrendTools = (server: McpServer, user: string) => {
   // Tool: get_trend
@@ -22,15 +24,27 @@ Common half-life values:
 - 15 days (responsive): Balanced, good default
 - 30 days (stable): Smooths out short-term variation`,
     { ...getTrendQuerySchema.shape },
-    async ({ aggregation, display_period, half_life_days, lookback_days, pattern, source_type }) => {
+    async ({
+      aggregation,
+      display_period,
+      half_life_days,
+      lookback_days,
+      pattern,
+      source_type,
+      tag_definition_id,
+    }) => {
       try {
+        const customMetrics = await getCustomMetrics(user)
+
         const result = await getTrend(user, {
           aggregation,
+          custom_metrics: customMetrics,
           display_period,
           half_life_days,
           lookback_days,
-          pattern,
+          pattern: pattern ?? '',
           source_type,
+          tag_definition_id,
         })
         return jsonResponse({ data: result, success: true })
       } catch (error) {

@@ -10,8 +10,9 @@ import {
   type GoalProgress,
   type MetricType,
 } from '@aurboda/api-spec'
-import { getDailyAggregates, getDailyAggregateValue, getTimeSeries } from '../db'
-import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones, getSettings } from './settings'
+
+import { getDailyAggregates, getDailyAggregateValue, getRawDailySum, getTimeSeries } from '../db/index.ts'
+import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
 
 /**
  * Get all dates in a range (inclusive).
@@ -66,10 +67,12 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
       return values.reduce<number>((sum, v) => sum + (v ?? 0), 0)
     }
 
-    // Fall back to raw data if no aggregates exist
+    // Fall back to raw data from ALL sources if no aggregates exist.
+    // This may double-count but is better than showing 0.
+    return getRawDailySum(user, metric, start, end)
   }
 
-  // For non-cumulative metrics or fallback, use daily aggregates and sum them
+  // For non-cumulative metrics, use daily aggregates and sum them
   const dailyData = await getDailyAggregates(user, [metric], start, end)
   return dailyData.reduce((sum, day) => sum + day.sum, 0)
 }
@@ -79,8 +82,7 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
  * Returns current value and "losing tomorrow" value for each goal.
  */
 export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> => {
-  const settings = await getSettings(user)
-  const goals = getEffectiveGoals(settings)
+  const goals = await getEffectiveGoals(user)
 
   if (goals.length === 0) {
     return []
@@ -96,10 +98,7 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
     if (isCalendarBasedUnit(unit)) {
       // Calendar-based: "1d" = today only, "7d" = today + 6 previous days
       // Calculate days based on unit: d=days, w=weeks (7 days each), M=months (30 days each)
-      const daysInWindow =
-        unit === 'd' ? value
-        : unit === 'w' ? value * 7
-        : value * 30
+      const daysInWindow = unit === 'd' ? value : unit === 'w' ? value * 7 : value * 30
       windowStart = new Date(now)
       windowStart.setUTCHours(0, 0, 0, 0)
       windowStart.setUTCDate(windowStart.getUTCDate() - (daysInWindow - 1))

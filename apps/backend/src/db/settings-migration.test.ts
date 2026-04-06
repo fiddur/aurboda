@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { migrateSettingsToSnakeCase } from './settings'
+
+import { migrateSettingsToSnakeCase } from './settings.ts'
 
 describe('migrateSettingsToSnakeCase', () => {
   test('returns null for already snake_case settings', () => {
@@ -154,6 +155,38 @@ describe('migrateSettingsToSnakeCase', () => {
     expect(result).toEqual({
       birth_date: '1990-01-15',
       dashboard: { version: 1 },
+    })
+  })
+
+  test('migrates tag_icons to item_icons', () => {
+    const settings = {
+      tag_icons: { Coffee: '☕', Meditation: '🧘' },
+      tag_mappings: { 'some-uuid': 'Coffee' },
+    }
+
+    const result = migrateSettingsToSnakeCase(settings)
+
+    expect(result).toEqual({
+      item_icons: { Coffee: '☕', Meditation: '🧘' },
+      tag_mappings: { 'some-uuid': 'Coffee' },
+    })
+    // tag_icons key should be gone after migration
+    expect(result).not.toHaveProperty('tag_icons')
+  })
+
+  test('migrates tag_icons alongside camelCase keys', () => {
+    const settings = {
+      birthDate: '1990-01-15',
+      tag_icons: { Running: '🏃' },
+      tagMappings: { 'some-uuid': 'Running' },
+    }
+
+    const result = migrateSettingsToSnakeCase(settings)
+
+    expect(result).toEqual({
+      birth_date: '1990-01-15',
+      item_icons: { Running: '🏃' },
+      tag_mappings: { 'some-uuid': 'Running' },
     })
   })
 

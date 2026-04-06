@@ -3,27 +3,41 @@
  *
  * Replaces inline `as Type` casts with validated type guards.
  */
-import { activityTypes, type ActivityType, type DataSource, type MetricType } from '@aurboda/api-spec'
+import type { ActivityType, DataSource, MetricType } from '@aurboda/api-spec'
 import type { QueryResultRow } from 'pg'
+
 import type {
   Activity,
   DetectedLocation,
+  EntityType,
   GeocodeStatus,
   LastFmTagRule,
   McpSessionRecord,
+  Meal,
+  MealFoodItem,
+  Micros,
   NamedLocation,
+  Note,
+  Report,
+  ReportConfidence,
+  ReportEntry,
+  ReportFlag,
   SyncState,
   SyncStatus,
   Tag,
-} from './types'
+  TagDefinition,
+} from './types.ts'
 
 // ============================================================================
 // Type Guards
 // ============================================================================
 
 const VALID_DATA_SOURCES = [
+  'aurboda',
+  'deduction-rule',
   'health_connect',
   'health_connect_aggregate',
+  'lab_report',
   'oura',
   'garmin',
   'rescuetime',
@@ -35,12 +49,13 @@ const VALID_DATA_SOURCES = [
 
 const VALID_GEOCODE_STATUSES = ['pending', 'geocoding', 'success', 'failed'] as const
 const VALID_SYNC_STATUSES = ['idle', 'syncing', 'error', 'rate_limited'] as const
+const VALID_ENTITY_TYPES = ['activity', 'tag', 'productivity', 'metric'] as const
 const VALID_LASTFM_MATCH_TYPES = ['track', 'artist', 'track_artist'] as const
 const VALID_LASTFM_MATCH_MODES = ['exact', 'contains'] as const
 
 export const parseActivityType = (value: unknown): ActivityType => {
-  if (typeof value === 'string' && (activityTypes as readonly string[]).includes(value)) {
-    return value as ActivityType
+  if (typeof value === 'string' && /^[a-z][a-z0-9_]*$/.test(value)) {
+    return value
   }
   throw new Error(`Invalid ActivityType: ${JSON.stringify(value)}`)
 }
@@ -64,6 +79,13 @@ export const parseSyncStatus = (value: unknown): SyncStatus => {
     return value as SyncStatus
   }
   throw new Error(`Invalid SyncStatus: ${JSON.stringify(value)}`)
+}
+
+export const parseEntityType = (value: unknown): EntityType => {
+  if (typeof value === 'string' && (VALID_ENTITY_TYPES as readonly string[]).includes(value)) {
+    return value as EntityType
+  }
+  throw new Error(`Invalid EntityType: ${JSON.stringify(value)}`)
 }
 
 export const parseMetricType = (value: unknown): MetricType => {
@@ -95,6 +117,7 @@ const parseLastFmMatchMode = (value: unknown) => {
 export const mapActivityRow = (row: QueryResultRow): Activity => ({
   activity_type: parseActivityType(row.activity_type),
   data: row.data,
+  deleted_at: row.deleted_at ? new Date(row.deleted_at) : undefined,
   end_time: row.end_time ? new Date(row.end_time) : undefined,
   id: row.id,
   notes: row.notes,
@@ -141,13 +164,24 @@ export const mapSyncStateRow = (row: QueryResultRow): SyncState => ({
 })
 
 export const mapTagRow = (row: QueryResultRow): Tag => ({
+  deleted_at: row.deleted_at ? new Date(row.deleted_at) : undefined,
   end_time: row.end_time ? new Date(row.end_time) : undefined,
   external_id: row.external_id,
   id: row.id,
   source: row.source,
   start_time: new Date(row.start_time),
   tag: row.tag,
+  tag_definition_id: row.tag_definition_id ?? undefined,
   tag_key: row.tag_key ?? undefined,
+})
+
+export const mapTagDefinitionRow = (row: QueryResultRow): TagDefinition => ({
+  aliases: row.aliases ?? [],
+  created_at: new Date(row.created_at),
+  icon: row.icon ?? undefined,
+  id: row.id,
+  name: row.name,
+  updated_at: new Date(row.updated_at),
 })
 
 export const mapMcpSessionRow = (row: QueryResultRow): McpSessionRecord => ({
@@ -168,4 +202,82 @@ export const mapLastFmTagRuleRow = (row: QueryResultRow): LastFmTagRule => ({
   rule_name: row.rule_name,
   tag_name: row.tag_name,
   track_name: row.track_name ?? undefined,
+})
+
+export const mapNoteRow = (row: QueryResultRow): Note => ({
+  content: row.content,
+  created_at: new Date(row.created_at),
+  end_time: row.end_time ? new Date(row.end_time) : undefined,
+  entity_id: row.entity_id,
+  entity_type: parseEntityType(row.entity_type),
+  id: row.id,
+  source: row.source ? parseDataSource(row.source) : undefined,
+  start_time: row.start_time ? new Date(row.start_time) : undefined,
+  updated_at: new Date(row.updated_at),
+})
+
+// ============================================================================
+// Meal Row Mappers
+// ============================================================================
+
+export const mapMealRow = (row: QueryResultRow): Meal => ({
+  calories: row.calories ?? undefined,
+  carbs: row.carbs ?? undefined,
+  created_at: new Date(row.created_at),
+  fat: row.fat ?? undefined,
+  fiber: row.fiber ?? undefined,
+  food_items: row.food_items ? (row.food_items as MealFoodItem[]) : undefined,
+  id: row.id,
+  meal_type: row.meal_type ?? undefined,
+  micros: row.micros ? (row.micros as Micros) : undefined,
+  name: row.name ?? undefined,
+  notes: row.notes ?? undefined,
+  protein: row.protein ?? undefined,
+  sensitivities: row.sensitivities ?? undefined,
+  source: row.source,
+  time: new Date(row.time),
+})
+
+// ============================================================================
+// Report Row Mappers
+// ============================================================================
+
+const VALID_CONFIDENCES = ['measured', 'estimated', 'derived'] as const
+const VALID_REPORT_FLAGS = ['critical_low', 'low', 'normal', 'high', 'critical_high'] as const
+
+const parseConfidence = (value: unknown): ReportConfidence | undefined => {
+  if (typeof value === 'string' && (VALID_CONFIDENCES as readonly string[]).includes(value)) {
+    return value as ReportConfidence
+  }
+  return undefined
+}
+
+const parseReportFlag = (value: unknown): ReportFlag | undefined => {
+  if (typeof value === 'string' && (VALID_REPORT_FLAGS as readonly string[]).includes(value)) {
+    return value as ReportFlag
+  }
+  return undefined
+}
+
+export const mapReportEntryRow = (row: QueryResultRow): ReportEntry => ({
+  confidence: parseConfidence(row.confidence),
+  flag: parseReportFlag(row.flag),
+  id: row.id,
+  method: row.method ?? undefined,
+  metric: row.metric,
+  reference_high: row.reference_high ?? undefined,
+  reference_low: row.reference_low ?? undefined,
+  report_id: row.report_id,
+  unit: row.unit,
+  value: row.value,
+})
+
+export const mapReportRow = (row: QueryResultRow, entries: ReportEntry[]): Report => ({
+  created_at: new Date(row.created_at),
+  entries,
+  id: row.id,
+  location: row.location ?? undefined,
+  notes: row.notes ?? undefined,
+  report_date: new Date(row.report_date),
+  report_type: row.report_type,
 })

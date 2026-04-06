@@ -1,9 +1,10 @@
+import type { LastFmTagRule, LastFmTagRuleInput } from './types.ts'
+
 /**
  * Last.fm auto-tagging rules CRUD.
  */
-import { query } from './connection'
-import { mapLastFmTagRuleRow } from './row-mappers'
-import type { LastFmTagRule, LastFmTagRuleInput } from './types'
+import { query } from './connection.ts'
+import { mapLastFmTagRuleRow } from './row-mappers.ts'
 
 const LASTFM_RULE_COLUMNS = `id, rule_name, match_type, track_name, artist_name, match_mode, tag_name,
      merge_gap_seconds, artist_names, created_at`
@@ -44,6 +45,72 @@ export const insertLastFmTagRule = async (user: string, rule: LastFmTagRuleInput
     ],
   )
 
+  return mapLastFmTagRuleRow(result.rows[0])
+}
+
+/**
+ * Update a Last.fm tag rule by ID.
+ */
+type UpdateLastFmTagRuleInput = Omit<Partial<LastFmTagRuleInput>, 'merge_gap_seconds'> & {
+  merge_gap_seconds?: number | null
+}
+
+export const updateLastFmTagRule = async (
+  user: string,
+  ruleId: string,
+  rule: UpdateLastFmTagRuleInput,
+): Promise<LastFmTagRule | null> => {
+  const setClauses: string[] = []
+  const values: unknown[] = []
+  let paramIndex = 1
+
+  if (rule.rule_name !== undefined) {
+    setClauses.push(`rule_name = $${paramIndex++}`)
+    values.push(rule.rule_name)
+  }
+  if (rule.match_type !== undefined) {
+    setClauses.push(`match_type = $${paramIndex++}`)
+    values.push(rule.match_type)
+  }
+  if (rule.track_name !== undefined) {
+    setClauses.push(`track_name = $${paramIndex++}`)
+    values.push(rule.track_name || null)
+  }
+  if (rule.artist_name !== undefined) {
+    setClauses.push(`artist_name = $${paramIndex++}`)
+    values.push(rule.artist_name || null)
+  }
+  if (rule.artist_names !== undefined) {
+    setClauses.push(`artist_names = $${paramIndex++}`)
+    values.push(rule.artist_names ? JSON.stringify(rule.artist_names) : null)
+  }
+  if (rule.match_mode !== undefined) {
+    setClauses.push(`match_mode = $${paramIndex++}`)
+    values.push(rule.match_mode)
+  }
+  if (rule.tag_name !== undefined) {
+    setClauses.push(`tag_name = $${paramIndex++}`)
+    values.push(rule.tag_name)
+  }
+  if (rule.merge_gap_seconds !== undefined) {
+    setClauses.push(`merge_gap_seconds = $${paramIndex++}`)
+    values.push(rule.merge_gap_seconds ?? null)
+  }
+
+  if (setClauses.length === 0) return null
+
+  values.push(ruleId)
+
+  const result = await query(
+    user,
+    `UPDATE lastfm_tag_rules
+     SET ${setClauses.join(', ')}
+     WHERE id = $${paramIndex}
+     RETURNING ${LASTFM_RULE_COLUMNS}`,
+    values,
+  )
+
+  if (result.rows.length === 0) return null
   return mapLastFmTagRuleRow(result.rows[0])
 }
 

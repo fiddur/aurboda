@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
+
+import * as db from '../db/index.ts'
 import {
   getActivityImpact,
   getBaseline,
   getEventProbability,
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
-} from './correlations'
-import * as locations from './locations'
+} from './correlations.ts'
+import * as locations from './locations.ts'
+import * as queries from './queries.ts'
 
 // Mock db module
 vi.mock('../db', () => ({
@@ -23,24 +25,57 @@ vi.mock('./locations', () => ({
   getPlaceVisits: vi.fn(),
 }))
 
+// Mock queries module (for queryMetrics used by getBaseline)
+vi.mock('./queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof queries>()
+  return {
+    ...actual,
+    queryMetrics: vi.fn(),
+  }
+})
+
 describe('correlations service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   describe('getBaseline', () => {
-    test('returns HRV and resting HR baseline statistics', async () => {
-      // Mock stats - order: HRV 7-day, HRV 30-day, HRV prev-30, HR 7-day, HR 30-day, HR prev-30
+    const emptyHrvResult = { count: 0, data: [], metric: 'hrv_sleep', unit: 'ms' }
+
+    test('returns sleep HRV and resting HR baseline statistics', async () => {
+      // Mock queryMetrics for sleep HRV (3 calls: 7-day, 30-day, prev-30)
+      vi.mocked(queries.queryMetrics)
+        .mockResolvedValueOnce({
+          count: 3,
+          data: [
+            { time: '2024-01-13T02:00:00Z', value: 40 },
+            { time: '2024-01-14T02:00:00Z', value: 46 },
+            { time: '2024-01-15T02:00:00Z', value: 50.5 },
+          ],
+          metric: 'hrv_sleep',
+          unit: 'ms',
+        }) // 7-day sleep HRV (avg = 45.5)
+        .mockResolvedValueOnce({
+          count: 2,
+          data: [
+            { time: '2024-01-01T02:00:00Z', value: 42 },
+            { time: '2024-01-10T02:00:00Z', value: 46.4 },
+          ],
+          metric: 'hrv_sleep',
+          unit: 'ms',
+        }) // 30-day sleep HRV (avg = 44.2)
+        .mockResolvedValueOnce({
+          count: 2,
+          data: [
+            { time: '2023-12-01T02:00:00Z', value: 41 },
+            { time: '2023-12-15T02:00:00Z', value: 45 },
+          ],
+          metric: 'hrv_sleep',
+          unit: 'ms',
+        }) // previous 30-day sleep HRV (avg = 43.0)
+
+      // Mock resting HR stats (3 calls: 7-day, 30-day, prev-30)
       vi.mocked(db.getTimeSeriesStats)
-        .mockResolvedValueOnce([
-          { avg: 45.5, count: 100, max: 80, metric: 'hrv_rmssd', min: 20, stddev: 5, unit: 'ms' },
-        ]) // 7-day HRV
-        .mockResolvedValueOnce([
-          { avg: 44.2, count: 400, max: 85, metric: 'hrv_rmssd', min: 18, stddev: 6, unit: 'ms' },
-        ]) // 30-day HRV
-        .mockResolvedValueOnce([
-          { avg: 43.0, count: 400, max: 82, metric: 'hrv_rmssd', min: 17, stddev: 5, unit: 'ms' },
-        ]) // previous 30-day HRV
         .mockResolvedValueOnce([
           { avg: 60.3, count: 100, max: 70, metric: 'resting_heart_rate', min: 52, stddev: 3, unit: 'bpm' },
         ]) // 7-day resting HR
@@ -53,10 +88,19 @@ describe('correlations service', () => {
 
       const result = await getBaseline('testuser')
 
-      expect(result.hrv.avg7day).toBe(45.5)
-      expect(result.hrv.avg30day).toBe(44.2)
+      // Verify HRV is fetched via queryMetrics('hrv_sleep'), not getTimeSeriesStats('hrv_rmssd')
+      expect(queries.queryMetrics).toHaveBeenCalledTimes(3)
+      for (const [, metric] of vi.mocked(queries.queryMetrics).mock.calls) {
+        expect(metric).toBe('hrv_sleep')
+      }
+
+      // Verify averages are computed correctly from the data points
+      expect(result.hrv.avg7day).toBe(45.5) // (40 + 46 + 50.5) / 3
+      expect(result.hrv.avg30day).toBe(44.2) // (42 + 46.4) / 2
       expect(result.resting_hr.avg7day).toBe(60.3)
       expect(result.resting_hr.avg30day).toBe(61.1)
+
+      // Verify trends are calculated (30-day vs previous 30-day)
       expect(result.hrv.trend_percent).not.toBeNull()
       expect(result.resting_hr.trend_percent).not.toBeNull()
       expect(result.period.start).toBeDefined()
@@ -64,9 +108,13 @@ describe('correlations service', () => {
     })
 
     test('handles missing data gracefully', async () => {
+      vi.mocked(queries.queryMetrics).mockResolvedValue(emptyHrvResult)
       vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
 
       const result = await getBaseline('testuser')
+
+      // Should still call queryMetrics for sleep HRV even when empty
+      expect(queries.queryMetrics).toHaveBeenCalledTimes(3)
 
       expect(result.hrv.avg7day).toBeNull()
       expect(result.hrv.avg30day).toBeNull()
@@ -75,17 +123,25 @@ describe('correlations service', () => {
     })
 
     test('uses reference date when provided', async () => {
+      vi.mocked(queries.queryMetrics).mockResolvedValue(emptyHrvResult)
       vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
 
       const referenceDate = new Date('2024-01-15T12:00:00Z')
       await getBaseline('testuser', referenceDate)
 
-      // Should be called with dates calculated from reference date
+      // queryMetrics called for sleep HRV with dates from reference date
+      expect(queries.queryMetrics).toHaveBeenCalled()
+      const hrvCalls = vi.mocked(queries.queryMetrics).mock.calls
+      // First call: 7-day sleep HRV ending on reference date
+      const [, metric, , endDate] = hrvCalls[0]
+      expect(metric).toBe('hrv_sleep')
+      expect(endDate.toISOString().split('T')[0]).toBe('2024-01-15')
+
+      // getTimeSeriesStats called for resting HR with dates from reference date
       expect(db.getTimeSeriesStats).toHaveBeenCalled()
-      const calls = vi.mocked(db.getTimeSeriesStats).mock.calls
-      // First call should be for 7-day HRV ending on reference date
-      const [, , , endDate] = calls[0]
-      expect(new Date(endDate).toISOString().split('T')[0]).toBe('2024-01-15')
+      const hrCalls = vi.mocked(db.getTimeSeriesStats).mock.calls
+      const [, , , hrEndDate] = hrCalls[0]
+      expect(new Date(hrEndDate).toISOString().split('T')[0]).toBe('2024-01-15')
     })
   })
 
@@ -157,6 +213,8 @@ describe('correlations service', () => {
 
       const syncProvider = {
         syncCalendarsIfNeeded: vi.fn().mockResolvedValue(undefined),
+        syncGarminIfNeeded: vi.fn().mockResolvedValue(undefined),
+        syncLastFmIfNeeded: vi.fn().mockResolvedValue(undefined),
         syncOuraIfNeeded: vi.fn().mockResolvedValue(undefined),
         syncRescueTimeIfNeeded: vi.fn().mockResolvedValue(undefined),
       }

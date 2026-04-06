@@ -25,11 +25,11 @@ The endpoint uses HTTP Basic Authentication with your existing Aurboda credentia
 3. Set **Mode** to **HTTP**
 4. Configure the following:
 
-| Setting | Value |
-|---------|-------|
-| URL | `https://aurboda.net/api/ownTracks` |
-| Username | Your Aurboda username |
-| Password | Your Aurboda password |
+| Setting  | Value                               |
+| -------- | ----------------------------------- |
+| URL      | `https://aurboda.net/api/ownTracks` |
+| Username | Your Aurboda username               |
+| Password | Your Aurboda password               |
 
 **Note:** No trailing slash is needed on the URL.
 
@@ -42,6 +42,7 @@ If self-hosting, adjust the URL based on your deployment. The backend endpoint i
 ### Location (`_type: "location"`)
 
 Location updates are stored with:
+
 - Coordinates (latitude, longitude)
 - Timestamp
 - Accuracy
@@ -52,6 +53,7 @@ Location updates are stored with:
 ### Waypoint (`_type: "waypoint"`)
 
 Waypoints/geofences are stored as places with:
+
 - Name (description)
 - Coordinates
 - Radius
@@ -68,6 +70,7 @@ Other message types (transitions, etc.) are accepted with a `200 OK` response bu
 ## Response
 
 Successful requests return:
+
 ```
 []
 ```
@@ -76,10 +79,10 @@ This empty JSON array response is expected by OwnTracks and indicates success.
 
 ## Error Responses
 
-| Status | Description |
-|--------|-------------|
-| 401 | Missing or invalid credentials |
-| 500 | Server error |
+| Status | Description                    |
+| ------ | ------------------------------ |
+| 401    | Missing or invalid credentials |
+| 500    | Server error                   |
 
 ## Security
 
@@ -90,11 +93,13 @@ This empty JSON array response is expected by OwnTracks and indicates success.
 ## Troubleshooting
 
 ### "Unauthorized" error
+
 - Verify your username and password are correct
 - Ensure you're using the same credentials as for the web interface
 - Check that HTTP Basic Auth is being sent (not Bearer token)
 
 ### No data appearing
+
 - Verify the URL doesn't have typos
 - Check that the app is set to HTTP mode (not MQTT)
 - Ensure the app has location permissions

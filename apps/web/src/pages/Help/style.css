@@ -1,8 +1,7 @@
 .help-page {
   width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
   padding: 2rem;
+  box-sizing: border-box;
   box-sizing: border-box;
 }
 
@@ -61,6 +60,14 @@
 /* Data sources section */
 .help-page .data-sources {
   margin-bottom: 3rem;
+}
+
+.help-page .section-description {
+  color: #4b5563;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: -1rem 0 1.5rem 0;
+  max-width: 700px;
 }
 
 .help-page .sources-grid {
@@ -217,7 +224,8 @@
     color: #f9fafb;
   }
 
-  .help-page .page-subtitle {
+  .help-page .page-subtitle,
+  .help-page .section-description {
     color: #9ca3af;
   }
 

@@ -6,8 +6,10 @@
  */
 
 import type { CalendarSyncResult } from '@aurboda/api-spec'
+
 import ical from 'node-ical'
-import { insertRawRecord, insertTag, upsertSyncState } from './db'
+
+import { insertRawRecord, insertTag, upsertSyncState } from './db/index.ts'
 
 export interface CalendarEvent {
   uid: string
@@ -50,10 +52,9 @@ export const parseICalEvents = (icsText: string): CalendarEvent[] => {
     if (!vevent.uid || !vevent.summary) continue
 
     const start = vevent.start instanceof Date ? vevent.start : new Date(String(vevent.start))
-    const end =
-      vevent.end ?
-        vevent.end instanceof Date ?
-          vevent.end
+    const end = vevent.end
+      ? vevent.end instanceof Date
+        ? vevent.end
         : new Date(String(vevent.end))
       : undefined
 

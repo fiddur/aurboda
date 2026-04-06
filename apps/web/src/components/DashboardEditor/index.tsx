@@ -3,8 +3,11 @@
  */
 
 import type { DashboardWidget, SectionType } from '@aurboda/api-spec'
+
 import { useState } from 'preact/hooks'
 
+import { getMetricDisplayName } from '../../utils/metricLabels'
+import { MetricPicker } from '../MetricPicker'
 import './style.css'
 
 interface DashboardEditorProps {
@@ -74,6 +77,18 @@ const widgetTemplates: WidgetTemplate[] = [
   {
     allowedSections: ['charts'],
     defaultConfig: () => ({
+      bucket_size: '1d',
+      lookback_days: 30,
+      pattern: 'coffee',
+      source_type: 'tag',
+    }),
+    description: 'Bucketed bar chart for tags, metrics, or categories',
+    label: 'Bar Chart',
+    type: 'bar_chart',
+  },
+  {
+    allowedSections: ['charts'],
+    defaultConfig: () => ({
       activity: 'exercise',
       activity_type: 'activity_type',
       period_days: 90,
@@ -81,6 +96,16 @@ const widgetTemplates: WidgetTemplate[] = [
     description: 'Activity impact on HRV/HR timeline',
     label: 'Correlation Impact',
     type: 'correlation',
+  },
+  {
+    allowedSections: ['charts'],
+    defaultConfig: () => ({
+      lookback_days: 7,
+      show_targets: true,
+    }),
+    description: 'Heart rate zone progress bars with targets',
+    label: 'HR Zones',
+    type: 'hr_zones',
   },
   {
     allowedSections: ['links'],
@@ -95,29 +120,14 @@ const widgetTemplates: WidgetTemplate[] = [
   },
 ]
 
-// Metric options for metric widgets
-const metricOptions = [
-  { label: 'HRV (7-day)', value: 'hrv_7day' },
-  { label: 'HRV (30-day)', value: 'hrv_30day' },
-  { label: 'Resting HR (7-day)', value: 'rhr_7day' },
-  { label: 'Resting HR (30-day)', value: 'rhr_30day' },
-  { label: 'Sleep Score', value: 'sleep_score' },
-  { label: 'Readiness Score', value: 'readiness_score' },
-  { label: 'Steps', value: 'steps' },
-  { label: 'Zone 2 (Weekly)', value: 'zone2_weekly' },
-  { label: 'Weight', value: 'weight' },
-  { label: 'Body Fat', value: 'body_fat' },
-]
-
 // Link options for quick link widgets
 const linkOptions = [
   { icon: 'timeline', label: 'Timeline', value: '/timeline' },
   { icon: 'sleep', label: 'Sleep', value: '/sleep' },
-  { icon: 'hr-zones', label: 'HR Zones', value: '/hr-zones' },
   { icon: 'correlations', label: 'Correlations', value: '/correlations' },
   { icon: 'goals', label: 'Goals', value: '/goals' },
   { icon: 'places', label: 'Places', value: '/places' },
-  { icon: 'trends', label: 'Trends', value: '/trends' },
+  { icon: 'trends', label: 'Chart', value: '/chart' },
   { icon: 'settings', label: 'Settings', value: '/settings' },
 ]
 
@@ -160,21 +170,13 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
           <div class="config-form">
             <div class="form-group">
               <label>Metric</label>
-              <select
+              <MetricPicker
                 value={(configValues.metric as string) ?? 'hrv_7day'}
-                onChange={(e) => {
-                  const metric = (e.target as HTMLSelectElement).value
-                  const option = metricOptions.find((o) => o.value === metric)
+                onChange={(metric) => {
                   updateConfig('metric', metric)
-                  updateConfig('title', option?.label ?? metric)
+                  updateConfig('title', getMetricDisplayName(metric))
                 }}
-              >
-                {metricOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div class="form-group">
               <label>Title</label>
@@ -201,16 +203,10 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
           <div class="config-form">
             <div class="form-group">
               <label>Metric</label>
-              <select
+              <MetricPicker
                 value={(configValues.metric as string) ?? 'sleep_score'}
-                onChange={(e) => updateConfig('metric', (e.target as HTMLSelectElement).value)}
-              >
-                {metricOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(metric) => updateConfig('metric', metric)}
+              />
             </div>
             <div class="form-group">
               <label>Lookback Days</label>
@@ -267,13 +263,21 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
               </select>
             </div>
             <div class="form-group">
-              <label>Pattern</label>
-              <input
-                type="text"
-                value={(configValues.pattern as string) ?? ''}
-                onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
-                placeholder="e.g., coffee, exercise"
-              />
+              <label>{(configValues.source_type as string) === 'metric' ? 'Metric' : 'Pattern'}</label>
+              {(configValues.source_type as string) === 'metric' ? (
+                <MetricPicker
+                  value={(configValues.pattern as string) ?? ''}
+                  onChange={(metric) => updateConfig('pattern', metric)}
+                  placeholder="Search metrics..."
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={(configValues.pattern as string) ?? ''}
+                  onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
+                  placeholder="e.g., coffee, exercise"
+                />
+              )}
             </div>
             <div class="form-group">
               <label>Display Period</label>
@@ -311,6 +315,34 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 onChange={(e) => updateConfig('activity', (e.target as HTMLInputElement).value)}
                 placeholder="e.g., coffee, exercise, gym"
               />
+            </div>
+          </div>
+        )
+
+      case 'hr_zones':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>Lookback Days</label>
+              <input
+                type="number"
+                value={(configValues.lookback_days as number) ?? 7}
+                onChange={(e) =>
+                  updateConfig('lookback_days', parseInt((e.target as HTMLInputElement).value, 10))
+                }
+                min={1}
+                max={90}
+              />
+            </div>
+            <div class="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={(configValues.show_targets as boolean) ?? true}
+                  onChange={(e) => updateConfig('show_targets', (e.target as HTMLInputElement).checked)}
+                />{' '}
+                Show target percentages
+              </label>
             </div>
           </div>
         )
@@ -373,7 +405,7 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
         </div>
 
         <div class="modal-content">
-          {!selectedTemplate ?
+          {!selectedTemplate ? (
             <div class="widget-picker">
               {availableTemplates.map((template) => (
                 <button
@@ -386,7 +418,8 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 </button>
               ))}
             </div>
-          : <div class="widget-config">
+          ) : (
+            <div class="widget-config">
               <button class="back-btn" onClick={() => setSelectedTemplate(null)}>
                 <svg
                   width="16"
@@ -402,7 +435,7 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
               </button>
               {renderConfigForm()}
             </div>
-          }
+          )}
         </div>
 
         {selectedTemplate && (

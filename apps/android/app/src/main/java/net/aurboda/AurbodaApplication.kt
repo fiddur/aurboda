@@ -9,21 +9,21 @@ private const val PREFS_NAME = "AurbodaAppPrefs"
 private const val BACKGROUND_SYNC_ENABLED_KEY = "backgroundSyncEnabled"
 
 class AurbodaApplication : Application() {
-    override fun onCreate() {
-        super.onCreate()
+  override fun onCreate() {
+    super.onCreate()
 
-        // Schedule background sync if it was previously enabled
-        // This ensures sync continues after app restarts, device reboots, etc.
-        if (isBackgroundSyncEnabled(this)) {
-            Log.d(TAG, "Background sync was previously enabled, scheduling worker")
-            HealthConnectSyncWorker.schedule(this)
-        } else {
-            Log.d(TAG, "Background sync is not enabled")
-        }
+    // Schedule background sync if it was previously enabled
+    // This ensures sync continues after app restarts, device reboots, etc.
+    if (isBackgroundSyncEnabled(this)) {
+      Log.d(TAG, "Background sync was previously enabled, scheduling worker")
+      SyncWorker.schedule(this)
+    } else {
+      Log.d(TAG, "Background sync is not enabled")
     }
+  }
 
-    private fun isBackgroundSyncEnabled(context: Context): Boolean {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean(BACKGROUND_SYNC_ENABLED_KEY, false)
-    }
+  private fun isBackgroundSyncEnabled(context: Context): Boolean {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    return prefs.getBoolean(BACKGROUND_SYNC_ENABLED_KEY, false)
+  }
 }

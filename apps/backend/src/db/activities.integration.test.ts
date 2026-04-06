@@ -1,14 +1,16 @@
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper'
+
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   deleteActivity,
   getActivities,
   getActivityById,
+  getOverlappingActivities,
   getSleepSessions,
   insertActivity,
   updateActivity,
-} from './activities'
+} from './activities.ts'
 
 // Increase timeout for container startup
 const CONTAINER_TIMEOUT = 60_000
@@ -239,7 +241,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
         title: 'Morning run',
       })
@@ -271,7 +273,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
@@ -291,6 +293,166 @@ describe('Activities Integration Tests', () => {
     })
   })
 
+  describe('getOverlappingActivities', () => {
+    test('returns overlapping activities of the same type', async () => {
+      const user = getTestUser()
+      const id1 = randomUUID()
+      const id2 = randomUUID()
+
+      // Two overlapping exercises from different sources
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: id1,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        title: 'From Gravl',
+      })
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:45:00Z'),
+        id: id2,
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:05:00Z'),
+        title: 'From Fitbit',
+      })
+
+      const activity = await getActivityById(user, id1)
+      expect(activity).not.toBeNull()
+
+      const overlapping = await getOverlappingActivities(user, activity!)
+      expect(overlapping).toHaveLength(2)
+      expect(overlapping.map((a) => a.id).sort()).toEqual([id1, id2].sort())
+    })
+
+    test('does not return non-overlapping activities', async () => {
+      const user = getTestUser()
+      const id1 = randomUUID()
+      const id2 = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: id1,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T15:00:00Z'),
+        id: id2,
+        source: 'garmin',
+        start_time: new Date('2024-01-15T14:00:00Z'),
+      })
+
+      const activity = await getActivityById(user, id1)
+      const overlapping = await getOverlappingActivities(user, activity!)
+      expect(overlapping).toHaveLength(1)
+      expect(overlapping[0]!.id).toBe(id1)
+    })
+
+    test('does not return activities of a different type', async () => {
+      const user = getTestUser()
+      const id1 = randomUUID()
+      const id2 = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: id1,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      await insertActivity(user, {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T10:30:00Z'),
+        id: id2,
+        source: 'oura',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const activity = await getActivityById(user, id1)
+      const overlapping = await getOverlappingActivities(user, activity!)
+      expect(overlapping).toHaveLength(1)
+      expect(overlapping[0]!.id).toBe(id1)
+    })
+
+    test('excludes deleted activities', async () => {
+      const user = getTestUser()
+      const id1 = randomUUID()
+      const id2 = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: id1,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:45:00Z'),
+        id: id2,
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:05:00Z'),
+      })
+
+      await deleteActivity(user, id2)
+
+      const activity = await getActivityById(user, id1)
+      const overlapping = await getOverlappingActivities(user, activity!)
+      expect(overlapping).toHaveLength(1)
+      expect(overlapping[0]!.id).toBe(id1)
+    })
+
+    test('finds transitively connected activities', async () => {
+      const user = getTestUser()
+      const idA = randomUUID()
+      const idB = randomUUID()
+      const idC = randomUUID()
+
+      // A: 10:00-10:30, B: 10:20-11:00, C: 10:50-11:30
+      // A overlaps B, B overlaps C, but A does NOT directly overlap C
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:30:00Z'),
+        id: idA,
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        title: 'Part A',
+      })
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: idB,
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:20:00Z'),
+        title: 'Part B',
+      })
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:30:00Z'),
+        id: idC,
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:50:00Z'),
+        title: 'Part C',
+      })
+
+      const activity = await getActivityById(user, idA)
+      expect(activity).not.toBeNull()
+
+      const overlapping = await getOverlappingActivities(user, activity!)
+      expect(overlapping).toHaveLength(3)
+      expect(overlapping.map((a) => a.id).sort()).toEqual([idA, idB, idC].sort())
+    })
+  })
+
   describe('updateActivity', () => {
     test('updates activity times', async () => {
       const user = getTestUser()
@@ -300,7 +462,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
@@ -322,7 +484,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         end_time: new Date('2024-01-15T11:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T10:00:00Z'),
       })
 
@@ -355,7 +517,7 @@ describe('Activities Integration Tests', () => {
         activity_type: 'meditation',
         end_time: new Date('2024-01-15T08:00:00Z'),
         id: activityId,
-        source: 'manual',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T07:30:00Z'),
         title: 'Morning meditation',
       })
@@ -364,6 +526,94 @@ describe('Activities Integration Tests', () => {
 
       expect(updated).not.toBeNull()
       expect(updated?.title).toBe('Morning meditation')
+    })
+
+    test('updates data field on activity', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const updated = await updateActivity(user, activityId, {
+        data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated?.data).toEqual({ exerciseType: 81, exerciseTypeName: 'weightlifting' })
+    })
+
+    test('replaces entire data field (no partial merge at db level)', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { calories: 300, exerciseType: 70, exerciseTypeName: 'strength_training' },
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      // DB layer replaces data entirely; merging is done in the service layer
+      const updated = await updateActivity(user, activityId, {
+        data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated?.data).toEqual({ exerciseType: 81, exerciseTypeName: 'weightlifting' })
+    })
+
+    test('preserves data when updating other fields', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const updated = await updateActivity(user, activityId, {
+        title: 'Heavy lifting session',
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated?.title).toBe('Heavy lifting session')
+      expect(updated?.data).toEqual({ exerciseType: 81, exerciseTypeName: 'weightlifting' })
+    })
+
+    test('updates data and other fields together', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: activityId,
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+
+      const updated = await updateActivity(user, activityId, {
+        data: { exerciseType: 56, exerciseTypeName: 'running' },
+        notes: 'Morning run in the park',
+        title: 'Morning Run',
+      })
+
+      expect(updated).not.toBeNull()
+      expect(updated?.title).toBe('Morning Run')
+      expect(updated?.notes).toBe('Morning run in the park')
+      expect(updated?.data).toEqual({ exerciseType: 56, exerciseTypeName: 'running' })
     })
   })
 })

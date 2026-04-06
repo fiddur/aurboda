@@ -1,4 +1,4 @@
-import express, { RequestHandler } from 'express'
+import express, { type RequestHandler } from 'express'
 import request from 'supertest'
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'

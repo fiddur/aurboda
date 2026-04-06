@@ -18,14 +18,14 @@
   },
   "scripts": {
     "build": "tsc",
-    "generate:openapi": "tsx src/openapi.ts",
+    "generate:openapi": "node src/openapi.ts",
     "generate:ts": "openapi-ts",
     "generate:kotlin": "rm -rf ./generated/kotlin && npx @openapitools/openapi-generator-cli generate -i ./generated/openapi.yaml -g kotlin -o ./generated/kotlin --global-property models --additional-properties=serializationLibrary=kotlinx_serialization,packageName=net.aurboda.api,modelPackage=net.aurboda.api.models,dateLibrary=string --type-mappings=decimal=kotlin.Double,number=kotlin.Double,UUID=kotlin.String,uri=kotlin.String,URI=kotlin.String,AnyType=kotlin.String,object=kotlin.String && pnpm generate:kotlin:fixup",
     "generate:kotlin:fixup": "find ./generated/kotlin -name '*.kt' -exec sed -i 's/@Contextual //g' {} + && find ./generated/kotlin -name '*.kt' -exec sed -i '/^import kotlinx.serialization.Contextual$/d' {} + && find ./generated/kotlin -name '*.kt' -exec sed -i '/^import java\\.net\\.URI$/d' {} + && find ./generated/kotlin -name '*.kt' -exec sed -i 's/) : kotlin.collections.HashMap<String, kotlin.String>()() {/) {/g' {} +",
-    "generate:html": "tsx src/generate-html.ts",
+    "generate:html": "node src/generate-html.ts",
     "generate": "pnpm generate:openapi && pnpm generate:ts && pnpm generate:kotlin",
-    "fix": "eslint --fix",
-    "check": "tsc --noEmit && eslint"
+    "fix": "oxfmt . && oxlint --fix",
+    "check": "tsgo --noEmit && oxlint"
   },
   "dependencies": {
     "zod": "^4.3.5"
@@ -34,7 +34,6 @@
     "@hey-api/openapi-ts": "^0.64.0",
     "@openapitools/openapi-generator-cli": "^2.16.0",
     "@types/node": "^22.18.3",
-    "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "yaml": "^2.7.0",
     "zod-openapi": "^5.4.3"

@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest'
+
 import type { HrZoneThresholds, PeriodMetricStats } from '../state/api'
+
 import {
   defaultHrZoneThresholds,
   findMetricTimeSeconds,

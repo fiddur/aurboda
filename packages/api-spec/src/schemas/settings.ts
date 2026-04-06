@@ -3,9 +3,12 @@
  */
 
 import { z } from 'zod'
-import { baseResponseSchema, hrZoneSourceSchema } from './common.js'
-import { dashboardConfigSchema } from './dashboard.js'
-import { goalsSchema } from './goals.js'
+
+import { baseResponseSchema, hrZoneSourceSchema } from './common.ts'
+import { dashboardConfigSchema } from './dashboard.ts'
+import { goalsSchema } from './goals.ts'
+import { garminDataTypeSchema } from './sync.ts'
+import { trainingLoadSettingsSchema } from './training-load.ts'
 
 // Shared HR zone threshold field
 const hrZoneThresholdSchema = z.number().int().positive()
@@ -48,6 +51,17 @@ export const hrZoneSecsSchema = z
 export type HrZoneSecs = z.infer<typeof hrZoneSecsSchema>
 
 /**
+ * Biological sex schema (used for calorie calculation formulas).
+ */
+export const biologicalSexSchema = z.enum(['male', 'female']).meta({
+  description: 'Biological sex (used for calorie calculation formulas)',
+  example: 'male',
+  id: 'BiologicalSex',
+})
+
+export type BiologicalSex = z.infer<typeof biologicalSexSchema>
+
+/**
  * Birth date schema (YYYY-MM-DD format).
  */
 export const birthDateSchema = z.iso.date().meta({
@@ -78,6 +92,32 @@ export const tagMappingsSchema = z.record(z.string(), z.string()).meta({
 })
 
 /**
+ * Tag icons schema (tag key or display name -> emoji/URL).
+ * @deprecated Use itemIconsSchema instead.
+ */
+export const tagIconsSchema = z.record(z.string(), z.string()).meta({
+  description: 'Tag icon mappings (tag key or display name -> emoji character or image URL)',
+  id: 'TagIcons',
+})
+
+/**
+ * Item icons schema — unified icon mappings for all timeline items.
+ *
+ * Keys use a prefix convention:
+ * - Tag names or tag_keys: "Coffee", "meditation" (no prefix, backwards-compatible with tag_icons)
+ * - Activity types: "activity:sleep", "activity:nap", "activity:meditation"
+ * - Exercise types: "exercise:Running", "exercise:Biking", etc.
+ * - Screentime categories: "category:Work", "category:Work > Programming"
+ *
+ * Values are emoji characters or image URLs. An empty string explicitly clears the default icon.
+ */
+export const itemIconsSchema = z.record(z.string(), z.string()).meta({
+  description:
+    'Unified icon mappings for all timeline items (tags, activities, exercise types, screentime categories). Keys use prefix convention: activity:sleep, exercise:Running, category:Work > Programming, or plain tag names.',
+  id: 'ItemIcons',
+})
+
+/**
  * Calendar config schema (name + ICS URL pair).
  */
 export const calendarConfigSchema = z
@@ -100,6 +140,44 @@ export const calendarsSchema = z.array(calendarConfigSchema).meta({
 export type TagMappings = z.infer<typeof tagMappingsSchema>
 
 /**
+ * A configured meal slot for quick-logging.
+ */
+export const mealSlotSchema = z
+  .object({
+    default_hour: z.number().int().min(0).max(23).meta({ description: 'Default hour of day (0-23)' }),
+    name: z.string().min(1).meta({ description: 'Meal slot name (e.g., "Breakfast", "Lunch")' }),
+  })
+  .meta({ id: 'MealSlot', description: 'A configured meal slot for quick-logging' })
+
+export type MealSlot = z.infer<typeof mealSlotSchema>
+
+/**
+ * Array of configured meal slots.
+ */
+export const mealSlotsSchema = z.array(mealSlotSchema).meta({
+  id: 'MealSlots',
+  description: 'Configured meal slots for quick-logging',
+})
+
+/**
+ * Sensitivity areas for meal tracking.
+ */
+export const sensitivityAreasSchema = z.array(z.string().min(1)).meta({
+  id: 'SensitivityAreas',
+  description: 'Sensitivity areas to track in meals (e.g., "gluten", "dairy", "red_meat")',
+})
+
+/**
+ * Food-to-sensitivity mapping.
+ * Maps exact food item names to sensitivity areas they contain.
+ * E.g., { "Toasted rye bread": ["gluten"], "Milk": ["dairy"] }
+ */
+export const foodSensitivityMapSchema = z.record(z.string(), z.array(z.string())).meta({
+  id: 'FoodSensitivityMap',
+  description: 'Mapping from food item names to sensitivity areas they contain',
+})
+
+/**
  * Update settings input schema.
  */
 export const updateSettingsInputSchema = z
@@ -119,14 +197,39 @@ export const updateSettingsInputSchema = z
     hr_zone_start: hrZoneThresholdsSchema.nullable().optional().meta({
       description: 'Custom HR zone thresholds (set to null to clear)',
     }),
+    item_icons: itemIconsSchema.nullable().optional().meta({
+      description:
+        'Unified icon mappings for all timeline items — tags, activities, exercise types (set to null to clear all)',
+    }),
+    food_sensitivity_map: foodSensitivityMapSchema.nullable().optional().meta({
+      description: 'Food-to-sensitivity mapping (set to null to clear)',
+    }),
+    meal_slots: mealSlotsSchema.nullable().optional().meta({
+      description: 'Configured meal slots for quick-logging (set to null to clear)',
+    }),
     lastfm_username: lastFmUsernameSchema.nullable().optional().meta({
       description: 'Last.fm username for scrobble sync (set to null to clear)',
     }),
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
     }),
+    sensitivity_areas: sensitivityAreasSchema.nullable().optional().meta({
+      description: 'Sensitivity areas to track in meals (set to null to clear)',
+    }),
+    sex: biologicalSexSchema.nullable().optional().meta({
+      description: 'Biological sex for calorie calculation (set to null to clear)',
+    }),
+    tag_icons: tagIconsSchema.nullable().optional().meta({
+      description: 'Tag icon mappings (deprecated, use item_icons instead; set to null to clear all)',
+    }),
     tag_mappings: tagMappingsSchema.nullable().optional().meta({
       description: 'Tag name mappings (set to null to clear all)',
+    }),
+    training_load: trainingLoadSettingsSchema.nullable().optional().meta({
+      description: 'Training load (Banister model) parameters (set to null to reset to defaults)',
+    }),
+    garmin_disabled_data_types: z.array(garminDataTypeSchema).nullable().optional().meta({
+      description: 'Garmin data types to skip during sync (set to null to clear, enabling all)',
     }),
   })
   .meta({ id: 'UpdateSettingsInput' })
@@ -138,22 +241,68 @@ export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
  */
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
-    birth_date: z.string().nullable().meta({ description: 'Birth date in YYYY-MM-DD format' }),
-    calendars: calendarsSchema.meta({ description: 'Calendar ICS URL configurations' }),
+    birth_date: z.string().nullable().default(null).meta({ description: 'Birth date in YYYY-MM-DD format' }),
+    calendars: calendarsSchema.default([]).meta({ description: 'Calendar ICS URL configurations' }),
     dashboard: dashboardConfigSchema
       .nullable()
+      .default(null)
       .meta({ description: 'Custom dashboard configuration (null = use default)' }),
+    food_sensitivity_map: foodSensitivityMapSchema
+      .default({})
+      .meta({ description: 'Food-to-sensitivity mapping' }),
+    garmin_connected: z
+      .boolean()
+      .default(false)
+      .meta({ description: 'Whether Garmin Connect is connected via stored session' }),
+    garmin_disabled_data_types: z
+      .array(garminDataTypeSchema)
+      .default([])
+      .meta({ description: 'Garmin data types currently disabled for sync' }),
     goals: goalsSchema.meta({ description: 'User goals for tracking metrics' }),
     hr_zone_start: hrZoneThresholdsSchema.meta({ description: 'Effective HR zone thresholds' }),
-    hr_zone_start_source: hrZoneSourceSchema.meta({
+    hr_zone_start_source: hrZoneSourceSchema.default('default').meta({
       description: 'Source of HR zone thresholds',
     }),
-    lastfm_configured: z.boolean().meta({ description: 'Whether Last.fm API key is configured on server' }),
-    lastfm_username: z.string().nullable().meta({ description: 'Last.fm username for scrobble sync' }),
-    oura_configured: z.boolean().meta({ description: 'Whether Oura OAuth is configured on server' }),
-    oura_connected: z.boolean().meta({ description: 'Whether Oura is connected via OAuth' }),
-    rescue_time_key: z.string().nullable().meta({ description: 'RescueTime API key' }),
-    tag_mappings: tagMappingsSchema.meta({ description: 'Tag name mappings from UUIDs to display names' }),
+    item_icons: itemIconsSchema.default({}).meta({
+      description:
+        'Unified icon mappings for all timeline items — tags, activities, exercise types (tag key or name -> emoji/URL)',
+    }),
+    lastfm_configured: z
+      .boolean()
+      .default(false)
+      .meta({ description: 'Whether Last.fm API key is configured on server' }),
+    lastfm_username: z
+      .string()
+      .nullable()
+      .default(null)
+      .meta({ description: 'Last.fm username for scrobble sync' }),
+    meal_slots: mealSlotsSchema.default([]).meta({ description: 'Configured meal slots for quick-logging' }),
+    oura_configured: z
+      .boolean()
+      .default(false)
+      .meta({ description: 'Whether Oura OAuth is configured on server' }),
+    oura_connected: z.boolean().default(false).meta({ description: 'Whether Oura is connected via OAuth' }),
+    rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
+    sensitivity_areas: sensitivityAreasSchema
+      .default([])
+      .meta({ description: 'Sensitivity areas to track in meals' }),
+    sex: biologicalSexSchema
+      .nullable()
+      .default(null)
+      .meta({ description: 'Biological sex for calorie calculation' }),
+    tag_icons: tagIconsSchema.default({}).meta({
+      description: 'Tag icon mappings (deprecated, use item_icons)',
+    }),
+    tag_mappings: tagMappingsSchema
+      .default({})
+      .meta({ description: 'Tag name mappings from UUIDs to display names' }),
+    training_load: trainingLoadSettingsSchema
+      .nullable()
+      .default(null)
+      .meta({ description: 'Training load (Banister model) parameters (null = defaults)' }),
+    tz: z.string().nullable().default(null).meta({
+      description: 'User timezone (IANA format, e.g. Europe/Stockholm). Auto-detected from device.',
+    }),
   })
   .meta({ id: 'UserSettingsResponse' })
 

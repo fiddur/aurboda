@@ -7,8 +7,9 @@
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import { Client } from 'pg'
-import { _setClientForUser } from '../db'
-import { createTableStatements, tableCreationOrder } from '../schema'
+
+import { _setClientForUser } from '../db/index.ts'
+import { createTableStatements, tableCreationOrder } from '../schema.ts'
 
 let container: StartedPostgreSqlContainer | null = null
 let client: Client | null = null
@@ -73,7 +74,14 @@ export const cleanTestDb = async (): Promise<void> => {
 
   // Truncate tables in reverse order to handle foreign keys
   const tables = [
+    'meal_food_items',
+    'food_items',
+    'report_entries',
+    'reports',
+    'meals',
+    'notes',
     'tags',
+    'tag_definitions',
     'time_series',
     'activities',
     'productivity',
@@ -88,6 +96,8 @@ export const cleanTestDb = async (): Promise<void> => {
     'user_settings',
     'mcp_sessions',
     'lastfm_tag_rules',
+    'outbound_sync_queue',
+    'screentime_categories',
   ]
 
   for (const table of tables) {

@@ -3,7 +3,7 @@
  */
 
 import type { RequestHandler } from 'express'
-import { z } from 'zod'
+import type { z } from 'zod'
 
 /**
  * Create a validation middleware for request body using a Zod schema.

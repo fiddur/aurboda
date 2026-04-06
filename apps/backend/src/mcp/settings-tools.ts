@@ -1,23 +1,24 @@
 /**
  * MCP user settings and tag mapping tools.
  */
-import { setTagMappingBodySchema, updateSettingsInputSchema } from '@aurboda/api-spec'
+import { setTagMappingBodySchema, tzSchema, updateSettingsInputSchema } from '@aurboda/api-spec'
+
+import { getProgrammaticTags, getUniqueTags, getUserSettings } from '../db/index.ts'
+import { getGoalsProgress } from '../services/goals.ts'
 import {
-  getProgrammaticTags,
-  getUniqueTags,
-  getUserSettings,
-  updateTagNameByKey,
-  upsertUserSettings,
-} from '../db'
-import { getGoalsProgress } from '../services/goals'
-import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings'
-import { jsonResponse, type McpServer } from './helpers'
+  getSettingsResponse,
+  getTagMappings,
+  setTagMapping,
+  validateAndUpdateSettings,
+} from '../services/settings.ts'
+import { jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
+import { formatInTz } from './tz-utils.ts'
 
 export const registerSettingsTools = (server: McpServer, user: string) => {
   // Tool: get_user_settings
   server.tool(
     'get_user_settings',
-    'Get user settings including birth date and effective HR zones. HR zones are used to calculate time spent in different heart rate zones during exercise.',
+    "Get user settings including birth date, effective HR zones, and timezone (tz). The tz field returns the auto-detected timezone from the user's device — use it as the tz parameter for all other tools that require it.",
     {},
     async () => {
       const result = await getSettingsResponse(user)
@@ -50,21 +51,22 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
   // Tool: get_programmatic_tags
   server.tool(
     'get_programmatic_tags',
-    'Get all programmatic tags (UUIDs, tag_* prefixes) with their current mapped names. These are tags that look like they need human-readable display names. Tags without a currentName are unmapped.',
-    {},
-    async () => {
+    'Get all tags available for mapping. Includes programmatic tags (UUIDs, tag_* prefixes) that need human-readable display names, plus all other tags so icons can be set on any tag. Tags with is_programmatic=true and no current_name are unmapped.',
+    { tz: tzSchema },
+    async ({ tz }) => {
       const tags = await getProgrammaticTags(user)
       const settings = await getUserSettings(user)
       const mappings = settings?.tag_mappings ?? {}
 
       const data = tags.map((tag) => ({
         count: tag.count,
-        current_name: mappings[tag.tagKey] ?? null,
-        latest_time: tag.latestTime.toISOString(),
+        current_name: tag.isProgrammatic ? (mappings[tag.tagKey] ?? null) : tag.tagKey,
+        is_programmatic: tag.isProgrammatic,
+        latest_time: formatInTz(tag.latestTime, tz),
         tag_key: tag.tagKey,
       }))
 
-      return jsonResponse({ data, success: true })
+      return tzJsonResponse({ data, success: true }, tz)
     },
   )
 
@@ -73,22 +75,16 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     'set_tag_mapping',
     'Set a display name for a programmatic tag (UUID, tag_* prefix, etc.). Use after get_programmatic_tags to name unmapped tags.',
     { ...setTagMappingBodySchema.shape },
-    async ({ name, tag_key }) => {
-      const settings = await getUserSettings(user)
-      const currentMappings = settings?.tag_mappings ?? {}
-      const newMappings = { ...currentMappings, [tag_key]: name }
-
-      await upsertUserSettings(user, { tag_mappings: newMappings })
-      await updateTagNameByKey(user, tag_key, name)
-
-      return jsonResponse({ mapping: newMappings, success: true })
+    async ({ name, tag_key, icon }) => {
+      const mapping = await setTagMapping(user, tag_key, name, icon)
+      return jsonResponse({ mapping, success: true })
     },
   )
 
   // Tool: get_tag_mappings
   server.tool('get_tag_mappings', 'Get all current tag mappings (tag key -> display name).', {}, async () => {
-    const settings = await getUserSettings(user)
-    return jsonResponse({ mappings: settings?.tag_mappings ?? {}, success: true })
+    const result = await getTagMappings(user)
+    return jsonResponse({ ...result, success: true })
   })
 
   // Tool: get_goal_progress

@@ -3,94 +3,34 @@
  *
  * Handles fetching data from Oura API and storing it in the database.
  * Supports incremental sync with rate limit handling.
+ *
+ * Data processing (transforming Oura responses into DB records) lives in oura-process.ts.
  */
 
 import { addMinutes, isFuture, subDays } from 'date-fns'
-import {
-  getSyncState,
-  getUserSettings,
-  insertActivity,
-  insertRawRecord,
-  insertTag,
-  insertTimeSeries,
-  SyncState,
-  Tag,
-  TimeSeriesPoint,
-  upsertSyncState,
-} from './db'
-import { ouraClient } from './oura'
-import { MetricType } from './schema'
 
-/** Oura data types that can be synced */
-export type OuraDataType =
-  | 'dailyCardiovascularAge'
-  | 'dailyReadiness'
-  | 'dailyResilience'
-  | 'dailySleep'
-  | 'sessions'
-  | 'tags'
+import type { ouraClient } from './oura.ts'
+
+import { getSyncState, getUserSettings, type SyncState, upsertSyncState } from './db/index.ts'
+import { type OuraDataType, processOuraData } from './oura-process.ts'
+import { triggerCalorieComputation } from './services/calorie-computation.ts'
+
+// Re-export for consumers that import from oura-sync
+export {
+  computeSleepMinutes,
+  convertOuraSleepPhases,
+  processOuraData,
+  type OuraDataType,
+} from './oura-process.ts'
 
 /** Default start date for historical sync (90 days back) */
 const DEFAULT_SYNC_HISTORY_DAYS = 90
 
+/** Overlap buffer for incremental syncs to catch retroactive edits (in days). */
+const INCREMENTAL_SYNC_OVERLAP_DAYS = 2
+
 /** Backoff intervals for rate limiting (in minutes) */
 const RATE_LIMIT_BACKOFF = [1, 5, 15, 60]
-
-interface OuraDailyRecord {
-  id: string
-  timestamp?: string
-  day?: string
-}
-
-interface OuraCardiovascularAge extends OuraDailyRecord {
-  vascular_age: number
-}
-
-interface OuraReadiness extends OuraDailyRecord {
-  score: number
-  temperature_deviation?: number
-  temperature_trend_deviation?: number
-  contributors?: Record<string, number>
-}
-
-interface OuraResilience extends OuraDailyRecord {
-  level: string
-  contributors?: {
-    sleep_recovery?: number
-    daytime_recovery?: number
-    stress?: number
-  }
-}
-
-interface OuraSleep extends OuraDailyRecord {
-  score: number
-  contributors?: {
-    deep_sleep?: number
-    efficiency?: number
-    latency?: number
-    rem_sleep?: number
-    restfulness?: number
-    timing?: number
-    total_sleep?: number
-  }
-}
-
-/** Oura interval-based time series data (HR, HRV, motion) */
-interface OuraIntervalData {
-  interval: number // interval in seconds
-  items: (number | null)[]
-}
-
-interface OuraSession {
-  id: string
-  startTime: Date
-  endTime: Date
-  type: string
-  mood?: string
-  heartRate?: OuraIntervalData
-  hrv?: OuraIntervalData
-  motion?: unknown
-}
 
 /**
  * Calculate retry time based on Retry-After header or exponential backoff.
@@ -115,286 +55,6 @@ export const isRateLimited = (syncState: SyncState | null): boolean => {
   return syncState.status === 'rate_limited' && isFuture(syncState.retry_after)
 }
 
-/**
- * Process Oura cardiovascular age data.
- */
-const processCardiovascularAge = async (user: string, data: OuraCardiovascularAge[]) => {
-  const points: TimeSeriesPoint[] = []
-
-  for (const record of data) {
-    const time = new Date(record.timestamp || record.day || '')
-
-    await insertRawRecord(user, {
-      data: record as unknown as Record<string, unknown>,
-      external_id: record.id,
-      record_type: 'daily_cardiovascular_age',
-      recorded_at: time,
-      source: 'oura',
-    })
-
-    if (record.vascular_age !== undefined) {
-      points.push({
-        metric: 'cardiovascular_age',
-        source: 'oura',
-        time,
-        value: record.vascular_age,
-      })
-    }
-  }
-
-  if (points.length > 0) {
-    await insertTimeSeries(user, points)
-  }
-}
-
-/**
- * Process Oura readiness data.
- */
-const processReadiness = async (user: string, data: OuraReadiness[]) => {
-  const points: TimeSeriesPoint[] = []
-
-  for (const record of data) {
-    const time = new Date(record.timestamp || record.day || '')
-
-    await insertRawRecord(user, {
-      data: record as unknown as Record<string, unknown>,
-      external_id: record.id,
-      record_type: 'daily_readiness',
-      recorded_at: time,
-      source: 'oura',
-    })
-
-    if (record.score !== undefined) {
-      points.push({
-        metric: 'readiness_score',
-        source: 'oura',
-        time,
-        value: record.score,
-      })
-    }
-  }
-
-  if (points.length > 0) {
-    await insertTimeSeries(user, points)
-  }
-}
-
-/**
- * Process Oura resilience data.
- */
-const processResilience = async (user: string, data: OuraResilience[]) => {
-  const points: TimeSeriesPoint[] = []
-  const levelToScore: Record<string, number> = {
-    exceptional: 100,
-    limited: 25,
-    solid: 75,
-    strong: 50,
-  }
-
-  for (const record of data) {
-    const time = new Date(record.timestamp || record.day || '')
-
-    await insertRawRecord(user, {
-      data: record as unknown as Record<string, unknown>,
-      external_id: record.id,
-      record_type: 'daily_resilience',
-      recorded_at: time,
-      source: 'oura',
-    })
-
-    if (record.level && record.level in levelToScore) {
-      points.push({
-        metric: 'resilience_score',
-        source: 'oura',
-        time,
-        value: levelToScore[record.level],
-      })
-    }
-  }
-
-  if (points.length > 0) {
-    await insertTimeSeries(user, points)
-  }
-}
-
-/** Mapping from Oura sleep contributor names to our metric types */
-const sleepContributorMetricMap: Record<string, MetricType> = {
-  deep_sleep: 'sleep_deep_score',
-  efficiency: 'sleep_efficiency',
-  latency: 'sleep_latency',
-  rem_sleep: 'sleep_rem_score',
-  restfulness: 'sleep_restfulness',
-  timing: 'sleep_timing',
-  total_sleep: 'sleep_total_score',
-}
-
-/**
- * Process Oura daily sleep data.
- */
-const processDailySleep = async (user: string, data: OuraSleep[]) => {
-  const points: TimeSeriesPoint[] = []
-
-  for (const record of data) {
-    const time = new Date(record.timestamp || record.day || '')
-
-    await insertRawRecord(user, {
-      data: record as unknown as Record<string, unknown>,
-      external_id: record.id,
-      record_type: 'daily_sleep',
-      recorded_at: time,
-      source: 'oura',
-    })
-
-    if (record.score !== undefined) {
-      points.push({
-        metric: 'sleep_score',
-        source: 'oura',
-        time,
-        value: record.score,
-      })
-    }
-
-    // Extract sleep contributors as separate metrics
-    if (record.contributors) {
-      for (const [key, value] of Object.entries(record.contributors)) {
-        const metric = sleepContributorMetricMap[key]
-        if (metric && value !== undefined) {
-          points.push({
-            metric,
-            source: 'oura',
-            time,
-            value,
-          })
-        }
-      }
-    }
-  }
-
-  if (points.length > 0) {
-    await insertTimeSeries(user, points)
-  }
-}
-
-/**
- * Extract time series points from Oura interval-based data.
- */
-const extractIntervalPoints = (
-  startTime: Date,
-  intervalData: OuraIntervalData | undefined,
-  metric: MetricType,
-): TimeSeriesPoint[] => {
-  if (!intervalData?.items) return []
-
-  const points: TimeSeriesPoint[] = []
-  const intervalMs = intervalData.interval * 1000
-
-  for (let i = 0; i < intervalData.items.length; i++) {
-    const value = intervalData.items[i]
-    if (value !== null) {
-      points.push({
-        metric,
-        source: 'oura',
-        time: new Date(startTime.getTime() + i * intervalMs),
-        value,
-      })
-    }
-  }
-
-  return points
-}
-
-/**
- * Process Oura session data (meditation).
- */
-const processSessions = async (user: string, data: OuraSession[]) => {
-  for (const record of data) {
-    await insertRawRecord(user, {
-      data: record as unknown as Record<string, unknown>,
-      external_id: record.id,
-      record_type: 'session',
-      recorded_at: record.startTime,
-      source: 'oura',
-    })
-
-    await insertActivity(user, {
-      activity_type: 'meditation',
-      data: {
-        heartRate: record.heartRate,
-        hrv: record.hrv,
-        mood: record.mood,
-        motion: record.motion,
-        sessionType: record.type,
-      },
-      end_time: record.endTime,
-      source: 'oura',
-      start_time: record.startTime,
-      title: record.type,
-    })
-
-    // Extract HR and HRV samples to time series
-    const hrPoints = extractIntervalPoints(record.startTime, record.heartRate, 'heart_rate')
-    const hrvPoints = extractIntervalPoints(record.startTime, record.hrv, 'hrv_rmssd')
-    const timeSeriesPoints = [...hrPoints, ...hrvPoints]
-
-    if (timeSeriesPoints.length > 0) {
-      await insertTimeSeries(user, timeSeriesPoints)
-    }
-  }
-}
-
-/**
- * Process Oura tag data.
- */
-const processTags = async (user: string, data: Tag[]) => {
-  for (const record of data) {
-    await insertRawRecord(user, {
-      data: record as unknown as Record<string, unknown>,
-      external_id: record.external_id,
-      record_type: 'enhanced_tag',
-      recorded_at: record.start_time,
-      source: 'oura',
-    })
-
-    await insertTag(user, record)
-  }
-}
-
-/**
- * Process Oura data and store in database.
- *
- * @param user - The user identifier
- * @param dataType - The type of Oura data being processed
- * @param data - Array of Oura records
- */
-export const processOuraData = async (
-  user: string,
-  dataType: OuraDataType,
-  data: unknown[],
-): Promise<void> => {
-  if (!data || data.length === 0) return
-
-  switch (dataType) {
-    case 'dailyCardiovascularAge':
-      await processCardiovascularAge(user, data as OuraCardiovascularAge[])
-      break
-    case 'dailyReadiness':
-      await processReadiness(user, data as OuraReadiness[])
-      break
-    case 'dailyResilience':
-      await processResilience(user, data as OuraResilience[])
-      break
-    case 'dailySleep':
-      await processDailySleep(user, data as OuraSleep[])
-      break
-    case 'sessions':
-      await processSessions(user, data as OuraSession[])
-      break
-    case 'tags':
-      await processTags(user, data as Tag[])
-      break
-  }
-}
-
 /** Result of a sync operation */
 export interface SyncResult {
   data_type: OuraDataType
@@ -407,7 +67,7 @@ export interface SyncResult {
 /**
  * Sync a single Oura data type.
  */
-/* eslint-disable complexity -- TODO: refactor */
+/* eslint-disable complexity -- switch over 7 Oura data types + error handling is inherently branchy */
 export const syncOuraDataType = async (
   user: string,
   oura: ReturnType<typeof ouraClient>,
@@ -435,7 +95,8 @@ export const syncOuraDataType = async (
   if (options.fullResync || !syncState?.last_sync_time) {
     start = options.startDate || subDays(end, DEFAULT_SYNC_HISTORY_DAYS)
   } else {
-    start = syncState.last_sync_time
+    // Add overlap buffer to catch retroactive edits in Oura
+    start = subDays(syncState.last_sync_time, INCREMENTAL_SYNC_OVERLAP_DAYS)
   }
 
   // Mark as syncing
@@ -465,6 +126,9 @@ export const syncOuraDataType = async (
       case 'sessions':
         data = await oura.getSessions(start, end, accessToken)
         break
+      case 'sleep':
+        data = await oura.getSleep(start, end, accessToken)
+        break
       case 'tags': {
         const settings = await getUserSettings(user)
         data = await oura.getTags(start, end, accessToken, settings?.tag_mappings)
@@ -473,6 +137,11 @@ export const syncOuraDataType = async (
     }
 
     await processOuraData(user, dataType, data)
+
+    // Trigger calorie computation for data types that include HR samples
+    if ((dataType === 'sleep' || dataType === 'sessions') && data.length > 0) {
+      await triggerCalorieComputation(user, start, end)
+    }
 
     // Update sync state on success
     await upsertSyncState(user, {
@@ -543,6 +212,7 @@ export const syncAllOuraData = async (
     'dailyResilience',
     'dailySleep',
     'sessions',
+    'sleep',
     'tags',
   ]
 

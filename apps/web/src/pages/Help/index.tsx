@@ -1,14 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+
 import {
   fetchActivities,
+  fetchActivityWatchStatus,
   fetchHeartRate,
   fetchPlaces,
   fetchProductivity,
   fetchUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-
 import './style.css'
 
 interface DataSourceStatus {
@@ -135,13 +136,22 @@ export function Help() {
     staleTime: 5 * 60 * 1000,
   })
 
+  // Fetch ActivityWatch sync status (distinct from RescueTime)
+  const awStatusQuery = useQuery({
+    enabled: !!isLoggedIn,
+    queryFn: fetchActivityWatchStatus,
+    queryKey: ['awStatus'],
+    staleTime: 5 * 60 * 1000,
+  })
+
   const isLoading =
     heartRateQuery.isLoading ||
     sleepQuery.isLoading ||
     exerciseQuery.isLoading ||
     productivityQuery.isLoading ||
     locationsQuery.isLoading ||
-    settingsQuery.isLoading
+    settingsQuery.isLoading ||
+    awStatusQuery.isLoading
 
   const hasHeartRate = (heartRateQuery.data?.length ?? 0) > 0
   const hasSleep = (sleepQuery.data?.length ?? 0) > 0
@@ -150,6 +160,10 @@ export function Help() {
   const hasLocations = (locationsQuery.data?.length ?? 0) > 0
   const isOuraConnected = settingsQuery.data?.oura_connected ?? false
   const isRescueTimeConfigured = !!settingsQuery.data?.rescue_time_key
+  const hasActivityWatch = (awStatusQuery.data?.length ?? 0) > 0
+  const awProductivity = (productivityQuery.data ?? []).filter((r) => r.source === 'activitywatch')
+  const hasAwDesktop = awProductivity.some((r) => !r.is_mobile)
+  const hasAwMobile = awProductivity.some((r) => r.is_mobile)
 
   if (!isLoggedIn) {
     return (
@@ -165,13 +179,13 @@ export function Help() {
 
   return (
     <div class="help-page">
-      <header class="page-header">
+      <div class="page-header">
         <h1>Getting Started</h1>
         <p class="page-subtitle">
           Connect your data sources to start tracking. Below you can see which sources are active and how to
           set up any that are missing.
         </p>
-      </header>
+      </div>
 
       {isLoading && <div class="loading">Checking your data sources...</div>}
 
@@ -182,9 +196,8 @@ export function Help() {
           <DataSourceCard
             name="Heart Rate & HRV"
             status={{
-              description:
-                hasHeartRate ?
-                  'Heart rate data detected in the last 7 days.'
+              description: hasHeartRate
+                ? 'Heart rate data detected in the last 7 days.'
                 : 'No heart rate data in the last 7 days.',
               hasData: hasHeartRate,
             }}
@@ -205,8 +218,9 @@ export function Help() {
           <DataSourceCard
             name="Sleep Tracking"
             status={{
-              description:
-                hasSleep ? 'Sleep data detected in the last 7 days.' : 'No sleep data in the last 7 days.',
+              description: hasSleep
+                ? 'Sleep data detected in the last 7 days.'
+                : 'No sleep data in the last 7 days.',
               hasData: hasSleep,
               isConfigured: isOuraConnected,
             }}
@@ -221,9 +235,8 @@ export function Help() {
           <DataSourceCard
             name="Exercise & Activities"
             status={{
-              description:
-                hasExercise ?
-                  'Exercise data detected in the last 7 days.'
+              description: hasExercise
+                ? 'Exercise data detected in the last 7 days.'
                 : 'No exercise data in the last 7 days.',
               hasData: hasExercise,
             }}
@@ -243,10 +256,9 @@ export function Help() {
           <DataSourceCard
             name="Oura Ring"
             status={{
-              description:
-                isOuraConnected ? 'Oura Ring is connected.' : (
-                  'Oura Ring not connected. Connect for sleep scores, readiness, and HRV.'
-                ),
+              description: isOuraConnected
+                ? 'Oura Ring is connected.'
+                : 'Oura Ring not connected. Connect for sleep scores, readiness, and HRV.',
               hasData: isOuraConnected,
             }}
             setupSteps={[
@@ -261,32 +273,10 @@ export function Help() {
           />
 
           <DataSourceCard
-            name="RescueTime (Productivity)"
-            status={{
-              description:
-                hasProductivity ? 'Productivity data detected in the last 7 days.'
-                : isRescueTimeConfigured ? 'RescueTime configured but no recent data synced.'
-                : 'RescueTime not configured.',
-              hasData: hasProductivity,
-              isConfigured: isRescueTimeConfigured,
-            }}
-            setupSteps={[
-              'Sign up for RescueTime and install their app on your devices.',
-              'Get your API key from RescueTime API settings.',
-              'Enter the API key in Settings > Data Sources.',
-            ]}
-            links={[
-              { text: 'Go to Settings', url: '/settings' },
-              { text: 'RescueTime API Settings', url: 'https://www.rescuetime.com/anapi/manage' },
-            ]}
-          />
-
-          <DataSourceCard
             name="Location Tracking (OwnTracks)"
             status={{
-              description:
-                hasLocations ?
-                  'Location data detected in the last 7 days.'
+              description: hasLocations
+                ? 'Location data detected in the last 7 days.'
                 : 'No location data in the last 7 days.',
               hasData: hasLocations,
             }}
@@ -302,6 +292,89 @@ export function Help() {
                 url: 'https://github.com/fiddur/aurboda/blob/develop/docs/owntracks.md',
               },
               { text: 'OwnTracks Website', url: 'https://owntracks.org/' },
+            ]}
+          />
+        </div>
+      </section>
+
+      <section class="data-sources">
+        <h2>Screen Time</h2>
+        <p class="section-description">
+          Track which apps and websites you use. Data from both sources is combined into the Screen Time
+          column in the Day view.
+        </p>
+
+        <div class="sources-grid">
+          <DataSourceCard
+            name="RescueTime"
+            status={{
+              description:
+                isRescueTimeConfigured && hasProductivity
+                  ? 'Screen time data detected in the last 7 days.'
+                  : isRescueTimeConfigured
+                    ? 'RescueTime configured but no recent data synced.'
+                    : 'RescueTime not configured.',
+              hasData: isRescueTimeConfigured && hasProductivity,
+              isConfigured: isRescueTimeConfigured,
+            }}
+            setupSteps={[
+              'Sign up for RescueTime and install their app on your devices.',
+              'Get your API key from RescueTime API settings.',
+              'Enter the API key in Settings > Data Sources.',
+            ]}
+            links={[
+              { text: 'Go to Settings', url: '/settings' },
+              { text: 'RescueTime API Settings', url: 'https://www.rescuetime.com/anapi/manage' },
+            ]}
+          />
+
+          <DataSourceCard
+            name="ActivityWatch (Desktop)"
+            status={{
+              description: hasAwDesktop
+                ? 'Desktop screen time data syncing.'
+                : hasActivityWatch
+                  ? 'ActivityWatch syncing, but no desktop data in the last 7 days.'
+                  : 'ActivityWatch desktop not set up.',
+              hasData: hasAwDesktop,
+            }}
+            setupSteps={[
+              'Install ActivityWatch on your computer.',
+              'Generate an API token in Settings.',
+              'Set up the push agent script to sync data to Aurboda.',
+            ]}
+            links={[
+              { text: 'Go to Settings', url: '/settings' },
+              {
+                text: 'Setup Guide',
+                url: 'https://github.com/fiddur/aurboda/blob/develop/docs/activitywatch.md',
+              },
+              { text: 'ActivityWatch Website', url: 'https://activitywatch.net/' },
+            ]}
+          />
+
+          <DataSourceCard
+            name="ActivityWatch (Mobile)"
+            status={{
+              description: hasAwMobile
+                ? 'Mobile screen time data syncing.'
+                : 'ActivityWatch mobile not set up.',
+              hasData: hasAwMobile,
+            }}
+            setupSteps={[
+              'Install ActivityWatch for Android from GitHub.',
+              'Install the Aurboda Android app.',
+              'Enable "ActivityWatch Sync" in Aurboda\'s Sync tab.',
+            ]}
+            links={[
+              {
+                text: 'ActivityWatch for Android',
+                url: 'https://github.com/ActivityWatch/aw-android/releases',
+              },
+              {
+                text: 'Download Aurboda APK',
+                url: 'https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk',
+              },
             ]}
           />
         </div>

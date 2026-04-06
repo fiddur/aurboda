@@ -1,7 +1,12 @@
+import type { Request, Response } from 'express'
+
 import axios from 'axios'
 import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture } from 'date-fns'
-import { Request, Response } from 'express'
-import { getOAuthToken, initializeSchema, schemaInitialized, Tag, upsertOAuthToken } from './db'
+
+import { getOAuthToken, initializeSchema, schemaInitialized, type Tag, upsertOAuthToken } from './db/index.ts'
+
+/** Tag with optional Oura comment, used during sync processing. */
+export type OuraTagWithComment = Tag & { comment?: string }
 
 type OuraTag = {
   id: string
@@ -9,6 +14,7 @@ type OuraTag = {
   start_time: string
   end_time: string
   custom_name: string | null
+  comment: string | null
 }
 
 type OuraSession = {
@@ -20,6 +26,22 @@ type OuraSession = {
   heart_rate_variability: unknown
   mood: string
   motion_count: unknown
+}
+
+/** Raw Oura sleep period record from /v2/usercollection/sleep */
+export type OuraSleepPeriodRaw = {
+  id: string
+  type: string // 'long_sleep' | 'sleep' | 'rest'
+  bedtime_start: string
+  bedtime_end: string
+  sleep_phase_5_min: string | null
+  heart_rate: { interval: number; items: (number | null)[] } | null
+  heart_rate_variability: { interval: number; items: (number | null)[] } | null
+  average_hrv: number | null
+  lowest_heart_rate: number | null
+  average_heart_rate: number | null
+  readiness_score_delta: number | null
+  day: string
 }
 
 export interface OuraClientOptions {
@@ -35,7 +57,6 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
       `https://api.ouraring.com/v2/usercollection/${type}?start_date=${formatISO(start, { representation: 'date' })}&end_date=${formatISO(addDays(end, 1), { representation: 'date' })}`,
       { headers: { Authorization: `Bearer ${token}` } },
     )
-    console.log(type, start, end, response.data)
     return response.data.data
   }
 
@@ -53,7 +74,6 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
 
   return {
     async authCb(req: Request, res: Response) {
-      console.log(req.query)
       const { code, scope, state, error } = req.query as Record<string, string | undefined>
 
       if (error) {
@@ -76,7 +96,6 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
       tokenUrl.searchParams.append('redirect_uri', redirectUri)
 
       const response = await axios.post(tokenUrl.toString())
-      console.log(response.data)
 
       const { access_token, refresh_token, expires_in } = response.data
 
@@ -93,7 +112,6 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
         const personalInfo = await getPersonalInfo(access_token)
         if (personalInfo?.id) {
           await options.onUserAuthenticated(personalInfo.id, user)
-          console.log(`Stored Oura user mapping: ${personalInfo.id} -> ${user}`)
         }
       }
 
@@ -117,7 +135,6 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
       tokenUrl.searchParams.append('client_secret', secret)
 
       const response = await axios.post(tokenUrl.toString())
-      console.log(response.data)
       const { access_token, refresh_token, expires_in } = response.data
 
       await upsertOAuthToken(user, {
@@ -153,6 +170,7 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
         ({ timestamp }: { timestamp: string }) => isBefore(timestamp, end) && isAfter(timestamp, start),
       )
     },
+
     async getSessions(start: Date, end: Date, token: string) {
       // id: 'ab6b5798-2ecf-41cd-a0dc-7974796e49a4',
       // day: '2025-09-06',
@@ -178,24 +196,32 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
 
       return sessions
     },
+
+    async getSleep(start: Date, end: Date, token: string): Promise<OuraSleepPeriodRaw[]> {
+      const data = (await getGeneric('sleep', start, end, token)) as OuraSleepPeriodRaw[]
+      return data.filter(
+        ({ bedtime_start, bedtime_end }) => isBefore(bedtime_start, end) && isAfter(bedtime_end, start),
+      )
+    },
     async getTags(
       start: Date,
       end: Date,
       token: string,
       tagMappings?: Record<string, string>,
-    ): Promise<Tag[]> {
+    ): Promise<OuraTagWithComment[]> {
       const data: OuraTag[] = await getGeneric('enhanced_tag', start, end, token)
       const tags = data
         .map(
-          (tag): Tag => ({
+          (tag): OuraTagWithComment => ({
+            comment: tag.comment ?? undefined,
             end_time: tag.end_time ? new Date(tag.end_time) : undefined,
             external_id: tag.id,
             source: 'oura',
             start_time: new Date(tag.start_time),
             tag:
-              tag.tag_type_code && tagMappings && tag.tag_type_code in tagMappings ?
-                tagMappings[tag.tag_type_code]
-              : tag.custom_name || tag.tag_type_code || 'unknown',
+              tag.tag_type_code && tagMappings && tag.tag_type_code in tagMappings
+                ? tagMappings[tag.tag_type_code]
+                : tag.custom_name || tag.tag_type_code || 'unknown',
             tag_key: tag.tag_type_code ?? undefined,
           }),
         )

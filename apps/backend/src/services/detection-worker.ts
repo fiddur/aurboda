@@ -6,18 +6,18 @@
  */
 
 import {
-  DetectedLocation,
-  DetectedLocationInput,
+  type DetectedLocation,
+  type DetectedLocationInput,
   getDetectedLocations as getStoredDetectedLocations,
   insertDetectedLocation,
   updateDetectedLocation,
-} from '../db'
+} from '../db/index.ts'
 import {
   clusterStays,
-  DetectedLocation as DetectedCluster,
+  type DetectedLocation as DetectedCluster,
   detectStays,
   getLocationPoints,
-} from './locations'
+} from './locations.ts'
 
 // ============================================================================
 // Configuration
@@ -74,7 +74,12 @@ export const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2
  */
 export type DetectionAction =
   | { type: 'create'; cluster: DetectedCluster }
-  | { type: 'update'; id: string; cluster: DetectedCluster; needsReGeocode: boolean }
+  | {
+      type: 'update'
+      id: string
+      cluster: DetectedCluster
+      needsReGeocode: boolean
+    }
   | { type: 'skip'; cluster: DetectedCluster; reason: string }
 
 /**

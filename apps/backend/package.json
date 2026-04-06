@@ -1,19 +1,41 @@
 {
   "name": "aurboda-backend",
   "version": "1.0.0",
+  "type": "module",
   "main": "src/api.ts",
   "scripts": {
-    "fix": "eslint --fix",
-    "start": "tsx src/api.ts",
-    "watch": "tsx watch --watch-preserve-output src/api.ts",
-    "lint": "eslint",
-    "test": "vitest",
-    "migrate": "tsx src/migrate.ts",
-    "check": "tsc --noEmit && eslint"
+    "fix": "oxfmt . && oxlint --fix",
+    "start": "node src/api.ts",
+    "watch": "node --watch src/api.ts",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "migrate": "node src/migrate.ts",
+    "check": "tsgo --noEmit && oxlint"
+  },
+  "dependencies": {
+    "@aurboda/api-spec": "workspace:*",
+    "@flow-js/garmin-connect": "github:fiddur/garmin-connect#feat/mfa-support",
+    "@js-temporal/polyfill": "^0.5.1",
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@types/multer": "^2.1.0",
+    "axios": "^1.11.0",
+    "cors": "^2.8.5",
+    "d3": "^7.9.0",
+    "date-fns": "^4.1.0",
+    "env-schema": "^6.0.0",
+    "express": "^5.1.0",
+    "fit-file-parser": "^2.3.3",
+    "jsdom": "^26.1.0",
+    "multer": "^2.1.1",
+    "node-ical": "^0.25.1",
+    "pg": "^8.13.1",
+    "pg-boss": "^12.5.4",
+    "pg-format": "^1.0.4",
+    "sharp": "^0.34.5",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^11.11.0",
-    "@types/body-parser": "^1.19.6",
     "@types/cors": "^2.8.19",
     "@types/d3": "^7.4.3",
     "@types/express": "^5.0.3",
@@ -23,26 +45,9 @@
     "@types/pg": "^8.11.10",
     "@types/pg-format": "^1.0.5",
     "@types/supertest": "^6.0.3",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4",
     "supertest": "^7.2.2",
     "testcontainers": "^11.11.0",
-    "vitest": "^3.2.4"
-  },
-  "dependencies": {
-    "@aurboda/api-spec": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.25.2",
-    "axios": "^1.11.0",
-    "body-parser": "^1.20.3",
-    "cors": "^2.8.5",
-    "d3": "^7.9.0",
-    "date-fns": "^4.1.0",
-    "env-schema": "^6.0.0",
-    "express": "^5.1.0",
-    "jsdom": "^26.1.0",
-    "node-ical": "^0.25.1",
-    "pg": "^8.13.1",
-    "pg-boss": "^12.5.4",
-    "pg-format": "^1.0.4",
-    "zod": "^4.3.5"
+    "vitest": "^4"
   }
 }

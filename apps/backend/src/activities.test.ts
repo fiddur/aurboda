@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest'
-import { mergeOverlappingActivities, type Activity } from './db'
+
+import {
+  findMergedGroupForActivity,
+  mergeOverlappingActivities,
+  type Activity,
+  type MergedActivity,
+} from './db/index.ts'
 
 describe('mergeOverlappingActivities', () => {
   const makeActivity = (overrides: Partial<Activity>): Activity => ({
@@ -340,5 +346,229 @@ describe('mergeOverlappingActivities', () => {
     const result = mergeOverlappingActivities(activities)
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('first-id')
+  })
+
+  test('single activity has no source_ids', () => {
+    const activity = makeActivity({
+      end_time: new Date('2024-01-15T11:00:00Z'),
+      id: 'only-id',
+      title: 'Solo workout',
+    })
+    const result = mergeOverlappingActivities([activity]) as MergedActivity[]
+    expect(result).toHaveLength(1)
+    expect(result[0].source_ids).toBeUndefined()
+  })
+
+  test('two merged activities have source_ids with both IDs', () => {
+    const activities = [
+      makeActivity({
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'first-id',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T11:30:00Z'),
+        id: 'second-id',
+        start_time: new Date('2024-01-15T10:30:00Z'),
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities) as MergedActivity[]
+    expect(result).toHaveLength(1)
+    expect(result[0].source_ids).toEqual(['first-id', 'second-id'])
+  })
+
+  test('two separate groups each track source_ids independently', () => {
+    const activities = [
+      makeActivity({
+        end_time: new Date('2024-01-15T08:00:00Z'),
+        id: 'morning-a',
+        start_time: new Date('2024-01-15T07:00:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T08:30:00Z'),
+        id: 'morning-b',
+        start_time: new Date('2024-01-15T07:30:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T19:00:00Z'),
+        id: 'evening-a',
+        start_time: new Date('2024-01-15T18:00:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T19:30:00Z'),
+        id: 'evening-b',
+        start_time: new Date('2024-01-15T18:30:00Z'),
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities) as MergedActivity[]
+    expect(result).toHaveLength(2)
+    expect(result[0].source_ids).toEqual(['morning-a', 'morning-b'])
+    expect(result[1].source_ids).toEqual(['evening-a', 'evening-b'])
+  })
+
+  test('three merged activities track all source_ids', () => {
+    const activities = [
+      makeActivity({
+        end_time: new Date('2024-01-15T10:30:00Z'),
+        id: 'id-1',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'id-2',
+        start_time: new Date('2024-01-15T10:15:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T11:30:00Z'),
+        id: 'id-3',
+        start_time: new Date('2024-01-15T10:45:00Z'),
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities) as MergedActivity[]
+    expect(result).toHaveLength(1)
+    expect(result[0].source_ids).toEqual(['id-1', 'id-2', 'id-3'])
+  })
+})
+
+describe('findMergedGroupForActivity', () => {
+  const makeActivity = (overrides: Partial<Activity>): Activity => ({
+    activity_type: 'exercise',
+    source: 'health_connect',
+    start_time: new Date('2024-01-15T10:00:00Z'),
+    ...overrides,
+  })
+
+  test('returns the single activity when no merge group exists', () => {
+    const activities = [
+      makeActivity({
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'solo-id',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+    ]
+    const merged = mergeOverlappingActivities(activities)
+    const group = findMergedGroupForActivity(merged, activities, 'solo-id')
+    expect(group).toHaveLength(1)
+    expect(group[0].id).toBe('solo-id')
+  })
+
+  test('returns empty array for non-existent activity ID', () => {
+    const activities = [
+      makeActivity({
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'real-id',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+    ]
+    const merged = mergeOverlappingActivities(activities)
+    const group = findMergedGroupForActivity(merged, activities, 'non-existent')
+    expect(group).toHaveLength(0)
+  })
+
+  test('finds transitive chain: A overlaps B, B overlaps C, but A does not overlap C', () => {
+    // A: 10:00-10:30, B: 10:20-11:00, C: 10:50-11:30
+    // A overlaps B (10:30 >= 10:20), B overlaps C (11:00 >= 10:50), A does NOT directly overlap C
+    const activities = [
+      makeActivity({
+        end_time: new Date('2024-01-15T10:30:00Z'),
+        id: 'A',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'B',
+        start_time: new Date('2024-01-15T10:20:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T11:30:00Z'),
+        id: 'C',
+        start_time: new Date('2024-01-15T10:50:00Z'),
+      }),
+    ]
+    const merged = mergeOverlappingActivities(activities)
+    expect(merged).toHaveLength(1) // all merged transitively
+
+    const group = findMergedGroupForActivity(merged, activities, 'A')
+    expect(group).toHaveLength(3)
+    expect(group.map((a) => a.id).sort()).toEqual(['A', 'B', 'C'])
+  })
+
+  test('returns only the correct group when there are separate groups', () => {
+    const activities = [
+      // Morning group
+      makeActivity({
+        end_time: new Date('2024-01-15T08:00:00Z'),
+        id: 'morning-a',
+        start_time: new Date('2024-01-15T07:00:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T08:30:00Z'),
+        id: 'morning-b',
+        start_time: new Date('2024-01-15T07:30:00Z'),
+      }),
+      // Evening group
+      makeActivity({
+        end_time: new Date('2024-01-15T19:00:00Z'),
+        id: 'evening-a',
+        start_time: new Date('2024-01-15T18:00:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T19:30:00Z'),
+        id: 'evening-b',
+        start_time: new Date('2024-01-15T18:30:00Z'),
+      }),
+    ]
+    const merged = mergeOverlappingActivities(activities)
+
+    const morningGroup = findMergedGroupForActivity(merged, activities, 'morning-a')
+    expect(morningGroup).toHaveLength(2)
+    expect(morningGroup.map((a) => a.id).sort()).toEqual(['morning-a', 'morning-b'])
+
+    const eveningGroup = findMergedGroupForActivity(merged, activities, 'evening-b')
+    expect(eveningGroup).toHaveLength(2)
+    expect(eveningGroup.map((a) => a.id).sort()).toEqual(['evening-a', 'evening-b'])
+  })
+
+  test('real-world scenario: 4 activities with transitive chaining', () => {
+    // Simulates: Health Connect 10:27-11:37, Gravl 10:27-10:40, Polar 10:27-11:32, Manual 11:32-12:37
+    // HC overlaps Gravl, HC overlaps Polar, Polar overlaps Manual
+    // HC does NOT directly overlap Manual (11:37 >= 11:32 — actually it does in this case)
+    // Let's make it so HC ends at 11:30 and Manual starts at 11:32 to be truly transitive
+    const activities = [
+      makeActivity({
+        end_time: new Date('2024-01-15T10:40:00Z'),
+        id: 'gravl',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:27:00Z'),
+        title: 'Weightlifting',
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T11:30:00Z'),
+        id: 'hc',
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:27:00Z'),
+      }),
+      makeActivity({
+        data: { exerciseTypeName: 'Strength training' },
+        end_time: new Date('2024-01-15T11:32:00Z'),
+        id: 'polar',
+        source: 'oura',
+        start_time: new Date('2024-01-15T10:27:00Z'),
+      }),
+      makeActivity({
+        end_time: new Date('2024-01-15T12:37:00Z'),
+        id: 'manual',
+        source: 'manual',
+        start_time: new Date('2024-01-15T11:32:00Z'),
+        title: 'Extra sets',
+      }),
+    ]
+    const merged = mergeOverlappingActivities(activities)
+    expect(merged).toHaveLength(1)
+
+    // Looking up any activity in the group should return all 4
+    const group = findMergedGroupForActivity(merged, activities, 'gravl')
+    expect(group).toHaveLength(4)
+    expect(group.map((a) => a.id).sort()).toEqual(['gravl', 'hc', 'manual', 'polar'])
   })
 })

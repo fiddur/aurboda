@@ -1,18 +1,18 @@
 {
   "name": "aurboda-web",
-  "type": "module",
+  "description": "Visualize some Quantified Self data",
   "license": "AGPL-3.0-or-later",
   "author": "Fredrik Liljegren <fredrik@liljegren.org>",
-  "description": "Visualize some Quantified Self data",
+  "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest",
-    "lint": "eslint src",
-    "fix": "eslint --fix src",
-    "typecheck": "tsc --noEmit",
-    "check": "tsc --noEmit && eslint src"
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json",
+    "fix": "oxfmt . && oxlint -c ../../.oxlintrc.json --fix",
+    "typecheck": "tsgo --noEmit",
+    "check": "tsgo --noEmit && oxlint -c ../../.oxlintrc.json"
   },
   "dependencies": {
     "@aurboda/api-spec": "workspace:*",
@@ -23,6 +23,7 @@
     "d3": "^7.9.0",
     "date-fns": "^4.1.0",
     "leaflet": "^1.9.4",
+    "marked": "^17.0.3",
     "preact": "^10.27.2",
     "preact-iso": "^2.10.0",
     "react-leaflet": "^5.0.0"
@@ -31,16 +32,8 @@
     "@preact/preset-vite": "^2.10.2",
     "@types/d3": "^7.4.3",
     "@types/leaflet": "^1.9.21",
-    "@vitest/coverage-v8": "^3.2.4",
-    "eslint": "^9.36.0",
-    "eslint-config-preact": "^2.0.0",
-    "eslint-plugin-prettier": "^5.5.4",
-    "eslint-plugin-sort-keys": "^2.3.5",
     "vite": "^7.1.7",
-    "vitest": "^3.2.4"
-  },
-  "eslintConfig": {
-    "extends": "preact"
+    "vitest": "^4"
   },
   "packageManager": "pnpm@10.15.1+sha512.34e538c329b5553014ca8e8f4535997f96180a1d0f614339357449935350d924e22f8614682191264ec33d1462ac21561aff97f6bb18065351c162c7e8f6de67"
 }

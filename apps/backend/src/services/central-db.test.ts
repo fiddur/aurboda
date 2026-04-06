@@ -1,6 +1,8 @@
-import pg from 'pg'
+import type pg from 'pg'
+
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { createCentralDb, type CentralDb, type SignupMode } from './central-db'
+
+import { createCentralDb, type CentralDb, type SignupMode } from './central-db.ts'
 
 // Mock pg.Client
 vi.mock('pg', () => {
@@ -434,6 +436,192 @@ describe('central-db', () => {
       const result = await centralDb.deleteAllOuraWebhookSubscriptions()
 
       expect(result).toBe(5)
+    })
+  })
+
+  describe('createOAuthClient', () => {
+    test('inserts OAuth client', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      await centralDb.createOAuthClient({
+        client_id: 'aur_test123',
+        client_name: 'Test Client',
+        redirect_uris: ['https://example.com/cb'],
+        token_endpoint_auth_method: 'none',
+      })
+
+      expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO oauth_clients'), [
+        'aur_test123',
+        'Test Client',
+        '["https://example.com/cb"]',
+        'none',
+      ])
+    })
+  })
+
+  describe('getOAuthClient', () => {
+    test('returns client when found', async () => {
+      const row = {
+        client_id: 'aur_test',
+        client_name: 'Test',
+        redirect_uris: ['https://example.com/cb'],
+        token_endpoint_auth_method: 'none',
+        created_at: new Date(),
+      }
+      mockClient.query.mockResolvedValue({ rows: [row] })
+
+      const result = await centralDb.getOAuthClient('aur_test')
+
+      expect(result).toEqual(row)
+    })
+
+    test('returns null when not found', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      const result = await centralDb.getOAuthClient('unknown')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('saveAuthorizationCode', () => {
+    test('inserts authorization code', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+      const expiresAt = new Date()
+
+      await centralDb.saveAuthorizationCode({
+        code: 'test-code',
+        client_id: 'aur_test',
+        username: 'testuser',
+        redirect_uri: 'https://example.com/cb',
+        code_challenge: 'challenge',
+        code_challenge_method: 'S256',
+        expires_at: expiresAt,
+      })
+
+      expect(mockClient.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO oauth_authorization_codes'),
+        ['test-code', 'aur_test', 'testuser', 'https://example.com/cb', 'challenge', 'S256', expiresAt],
+      )
+    })
+  })
+
+  describe('consumeAuthorizationCode', () => {
+    test('returns and marks code as used atomically', async () => {
+      const row = {
+        code: 'test-code',
+        client_id: 'aur_test',
+        username: 'testuser',
+        redirect_uri: 'https://example.com/cb',
+        code_challenge: 'challenge',
+        code_challenge_method: 'S256',
+        expires_at: new Date(),
+        used: true,
+      }
+      mockClient.query.mockResolvedValue({ rows: [row] })
+
+      const result = await centralDb.consumeAuthorizationCode('test-code')
+
+      expect(result).toEqual(row)
+      expect(mockClient.query).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE oauth_authorization_codes'),
+        ['test-code'],
+      )
+    })
+
+    test('returns null for already-used or expired code', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      const result = await centralDb.consumeAuthorizationCode('used-code')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('saveOAuthToken', () => {
+    test('inserts OAuth token', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+      const now = new Date()
+
+      await centralDb.saveOAuthToken({
+        token: 'aur_at_test',
+        token_type: 'access',
+        client_id: 'aur_test',
+        username: 'testuser',
+        expires_at: now,
+        revoked: false,
+        parent_token: null,
+        created_at: now,
+      })
+
+      expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO oauth_tokens'), [
+        'aur_at_test',
+        'access',
+        'aur_test',
+        'testuser',
+        now,
+        false,
+        null,
+      ])
+    })
+  })
+
+  describe('getOAuthToken', () => {
+    test('returns valid token', async () => {
+      const row = {
+        token: 'aur_at_test',
+        token_type: 'access',
+        client_id: 'aur_test',
+        username: 'testuser',
+        expires_at: new Date(Date.now() + 3600_000),
+        revoked: false,
+        parent_token: null,
+        created_at: new Date(),
+      }
+      mockClient.query.mockResolvedValue({ rows: [row] })
+
+      const result = await centralDb.getOAuthToken('aur_at_test')
+
+      expect(result).toEqual(row)
+    })
+
+    test('returns null for revoked/expired token', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      const result = await centralDb.getOAuthToken('revoked')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('revokeOAuthToken', () => {
+    test('returns true when token revoked', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 1 })
+
+      const result = await centralDb.revokeOAuthToken('aur_at_test')
+
+      expect(result).toBe(true)
+    })
+
+    test('returns false when token not found', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 0 })
+
+      const result = await centralDb.revokeOAuthToken('unknown')
+
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('cleanupExpiredOAuth', () => {
+    test('deletes expired codes and tokens', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 0 })
+
+      await centralDb.cleanupExpiredOAuth()
+
+      expect(mockClient.query).toHaveBeenCalledWith(
+        expect.stringContaining('DELETE FROM oauth_authorization_codes'),
+      )
+      expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM oauth_tokens'))
     })
   })
 })

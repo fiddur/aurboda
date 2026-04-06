@@ -1,0 +1,526 @@
+.metric-meta-page {
+  width: 100%;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+/* Header */
+.metric-meta-header {
+  margin-bottom: 2rem;
+}
+
+.metric-meta-header h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: #1f2937;
+}
+
+.metric-meta-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.metric-meta-subtitle code {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  background: #f3f4f6;
+  border-radius: 4px;
+  color: #6b7280;
+}
+
+.metric-meta-unit-badge {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  background: #eff6ff;
+  color: #2563eb;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.metric-meta-type-badge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  background: #f3f4f6;
+  color: #6b7280;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.metric-meta-type-badge.custom {
+  background: #faf5ff;
+  color: #7c3aed;
+}
+
+/* Sections */
+.metric-meta-section {
+  margin-bottom: 2rem;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.metric-meta-section h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 1rem;
+}
+
+.metric-meta-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.metric-meta-section-header h2 {
+  margin: 0;
+}
+
+.metric-meta-chart-link {
+  font-size: 0.85rem;
+  color: #7c3aed;
+  text-decoration: none;
+  margin-left: auto;
+  margin-right: 0.75rem;
+}
+
+.metric-meta-chart-link:hover {
+  text-decoration: underline;
+}
+
+.metric-meta-section-header select {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #374151;
+  background: #fff;
+}
+
+/* Field rows */
+.metric-meta-field-row {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.metric-meta-field-row:last-child {
+  margin-bottom: 0;
+}
+
+.metric-meta-field-label {
+  min-width: 100px;
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+/* Custom metric editor */
+.metric-meta-custom-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.metric-meta-custom-fields {
+  flex: 1;
+}
+
+.metric-meta-custom-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.metric-meta-edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.metric-meta-edit-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.metric-meta-edit-grid input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: #1f2937;
+  background: #fff;
+}
+
+.metric-meta-edit-grid input:focus {
+  outline: none;
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.metric-meta-edit-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Trend value */
+.metric-meta-trend-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+
+.metric-meta-trend-number {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.metric-meta-trend-unit {
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+/* Recent values */
+.metric-meta-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.metric-meta-recent-item {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: 1px solid #f3f4f6;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.metric-meta-recent-item:hover {
+  background: #f9fafb;
+}
+
+.metric-meta-recent-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.metric-meta-recent-time {
+  color: #6b7280;
+}
+
+.metric-meta-recent-value {
+  font-weight: 600;
+  color: #374151;
+}
+
+.metric-meta-delete-btn {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0.5rem 0.75rem;
+  line-height: 1;
+  border-left: 1px solid #f3f4f6;
+}
+
+.metric-meta-delete-btn:hover {
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.metric-meta-delete-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.metric-meta-empty {
+  color: #9ca3af;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 1rem;
+}
+
+.metric-meta-more {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  text-align: center;
+  margin: 0.5rem 0 0;
+}
+
+/* Source filter chips */
+.source-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-bottom: 1rem;
+}
+
+.source-chip {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.source-chip:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.source-chip.active {
+  background: #673ab8;
+  border-color: #673ab8;
+  color: white;
+}
+
+/* Quick links */
+.metric-meta-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.metric-meta-link {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 0.85rem;
+  color: #374151;
+  transition: all 0.15s;
+}
+
+.metric-meta-link:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+/* Buttons */
+.metric-meta-page .btn-primary {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  background: #673ab8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.metric-meta-page .btn-primary:hover:not(:disabled) {
+  background: #5e35b1;
+}
+
+.metric-meta-page .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.metric-meta-page .btn-secondary {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.metric-meta-page .btn-secondary:hover {
+  background: #f3f4f6;
+}
+
+.metric-meta-page .loading,
+.metric-meta-page .error {
+  text-align: center;
+  padding: 1rem;
+  color: #6b7280;
+}
+
+.metric-meta-page .error {
+  color: #dc2626;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .metric-meta-header h1 {
+    color: #f9fafb;
+  }
+
+  .metric-meta-subtitle code {
+    background: #374151;
+    color: #9ca3af;
+  }
+
+  .metric-meta-unit-badge {
+    background: #1e3a5f;
+    color: #60a5fa;
+  }
+
+  .metric-meta-type-badge {
+    background: #374151;
+    color: #9ca3af;
+  }
+
+  .metric-meta-type-badge.custom {
+    background: #2e1065;
+    color: #c4b5fd;
+  }
+
+  .metric-meta-section {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .metric-meta-section h2 {
+    color: #e5e7eb;
+  }
+
+  .metric-meta-section-header select {
+    background: #111827;
+    border-color: #4b5563;
+    color: #e5e7eb;
+  }
+
+  .metric-meta-field-label {
+    color: #9ca3af;
+  }
+
+  .metric-meta-edit-grid input {
+    background: #111827;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
+  .metric-meta-edit-grid input:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+  }
+
+  .metric-meta-trend-number {
+    color: #f9fafb;
+  }
+
+  .metric-meta-trend-unit {
+    color: #9ca3af;
+  }
+
+  .metric-meta-recent-item {
+    border-color: #374151;
+  }
+
+  .metric-meta-recent-item:hover {
+    background: #111827;
+  }
+
+  .metric-meta-recent-time {
+    color: #9ca3af;
+  }
+
+  .metric-meta-recent-value {
+    color: #e5e7eb;
+  }
+
+  .metric-meta-chart-link {
+    color: #a78bfa;
+  }
+
+  .metric-meta-delete-btn {
+    color: #6b7280;
+    border-left-color: #374151;
+  }
+
+  .metric-meta-delete-btn:hover {
+    color: #f87171;
+    background: #1f1215;
+  }
+
+  .metric-meta-link {
+    border-color: #374151;
+    color: #d1d5db;
+  }
+
+  .metric-meta-link:hover {
+    background: #374151;
+    border-color: #4b5563;
+  }
+
+  .metric-meta-page .btn-secondary {
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .metric-meta-page .btn-secondary:hover {
+    background: #374151;
+  }
+
+  .source-chip {
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+
+  .source-chip:hover {
+    background: #374151;
+    border-color: #6b7280;
+  }
+
+  .source-chip.active {
+    background: #7c3aed;
+    border-color: #7c3aed;
+    color: white;
+  }
+}
+
+/* Responsive */
+@media (max-width: 639px) {
+  .metric-meta-page {
+    padding: 1rem;
+  }
+
+  .metric-meta-header h1 {
+    font-size: 1.35rem;
+  }
+
+  .metric-meta-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-meta-field-row {
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .metric-meta-field-label {
+    min-width: auto;
+  }
+
+  .metric-meta-links {
+    flex-direction: column;
+  }
+
+  .metric-meta-link {
+    text-align: center;
+  }
+}

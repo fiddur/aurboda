@@ -1,21 +1,21 @@
 {
-	"compilerOptions": {
-		"target": "ES2022",
-		"module": "ESNext",
-		"moduleResolution": "bundler",
-		"noEmit": true,
-		"allowJs": true,
-		"checkJs": true,
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
 
-		/* Preact Config */
-		"jsx": "react-jsx",
-		"jsxImportSource": "preact",
-		"skipLibCheck": true,
-		"paths": {
-			"react": ["./node_modules/preact/compat/"],
-			"react-dom": ["./node_modules/preact/compat/"]
-		}
-	},
-	"include": ["node_modules/vite/client.d.ts", "**/*"],
-	"exclude": ["dist", "coverage"]
+    /* Preact Config */
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "skipLibCheck": true,
+    "paths": {
+      "react": ["./node_modules/preact/compat/"],
+      "react-dom": ["./node_modules/preact/compat/"]
+    }
+  },
+  "include": ["node_modules/vite/client.d.ts", "**/*"],
+  "exclude": ["dist", "coverage"]
 }

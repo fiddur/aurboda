@@ -1,0 +1,16 @@
+.confirm-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.confirm-inline > span {
+  color: #666;
+}
+
+@media (prefers-color-scheme: dark) {
+  .confirm-inline > span {
+    color: #9ca3af;
+  }
+}

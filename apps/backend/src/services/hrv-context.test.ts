@@ -3,7 +3,8 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { classifyHrvByContext } from './hrv-context'
+
+import { classifyHrvByContext } from './hrv-context.ts'
 
 describe('classifyHrvByContext', () => {
   test('classifies HRV samples as sleep when in sleep window', () => {

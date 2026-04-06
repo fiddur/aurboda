@@ -19,6 +19,9 @@
     <!-- Activity recognition for phone step counter (Android 10+) -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
+    <!-- Auto-reconnect BLE devices after boot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
     <!-- Alphabetically Sorted Health Permissions -->
@@ -61,10 +64,20 @@
     <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
     <uses-permission android:name="android.permission.health.READ_WHEELCHAIR_PUSHES" />
 
-    <!-- Write permissions for BLE sensor data -->
+    <!-- Write permissions for BLE sensor data and outbound sync -->
+    <uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.WRITE_BODY_FAT" />
+    <uses-permission android:name="android.permission.health.WRITE_BODY_WATER_MASS" />
+    <uses-permission android:name="android.permission.health.WRITE_BONE_MASS" />
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
     <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
     <uses-permission android:name="android.permission.health.WRITE_HEART_RATE_VARIABILITY" />
+    <uses-permission android:name="android.permission.health.WRITE_HEIGHT" />
+    <uses-permission android:name="android.permission.health.WRITE_LEAN_BODY_MASS" />
+    <uses-permission android:name="android.permission.health.WRITE_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.WRITE_SLEEP" />
     <uses-permission android:name="android.permission.health.WRITE_STEPS" />
+    <uses-permission android:name="android.permission.health.WRITE_WEIGHT" />
 
     <application
         android:name=".AurbodaApplication"
@@ -130,6 +143,16 @@
             android:name=".ble.SensorService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Auto-reconnect BLE devices on boot and Bluetooth state change -->
+        <receiver
+            android:name=".ble.BleAutoConnectReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
         <!-- FileProvider for APK installation -->
         <provider

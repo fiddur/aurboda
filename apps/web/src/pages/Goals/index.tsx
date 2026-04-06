@@ -1,34 +1,11 @@
 import { metricUnits } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
+
+import { GoalsSettings } from '../../components/GoalsSettings'
 import { fetchGoalsProgress, fetchUserSettings, type GoalProgress } from '../../state/api'
 import { auth } from '../../state/auth'
-
+import { metricLabels } from '../../utils/metricLabels'
 import './style.css'
-
-// Friendly names for metrics
-const metricLabels: Record<string, string> = {
-  calories_active: 'Active Calories',
-  calories_basal: 'Basal Calories',
-  calories_total: 'Total Calories',
-  distance: 'Distance',
-  floors_climbed: 'Floors Climbed',
-  heart_rate: 'Heart Rate',
-  hr_zone_0_sec: 'Zone 0 (Below Z1)',
-  hr_zone_1_sec: 'Zone 1',
-  hr_zone_2_sec: 'Zone 2',
-  hr_zone_3_sec: 'Zone 3',
-  hr_zone_4_sec: 'Zone 4',
-  hr_zone_5_sec: 'Zone 5',
-  hrv_rmssd: 'HRV (RMSSD)',
-  readiness_score: 'Readiness Score',
-  resilience_score: 'Resilience Score',
-  resting_heart_rate: 'Resting HR',
-  sleep_score: 'Sleep Score',
-  spo2: 'SpO2',
-  steps: 'Steps',
-  vo2_max: 'VO2 Max',
-  weight: 'Weight',
-}
 
 // Format value for display (e.g., seconds to hours:minutes)
 const formatValue = (metric: string, value: number): string => {
@@ -176,9 +153,7 @@ export function Goals() {
     return (
       <div class="goals-page">
         <h1>Goals</h1>
-        <p class="no-goals">
-          No goals set. Visit <a href="/settings">Settings</a> to create goals.
-        </p>
+        <GoalsSettings goals={goals} />
       </div>
     )
   }
@@ -214,11 +189,14 @@ export function Goals() {
       </div>
 
       <p class="goals-footer">
-        {allSameWindow ?
+        {allSameWindow ? (
           <>Rolling {goals[0]?.window ?? '7d'} window from today.</>
-        : <>Rolling windows from today.</>}{' '}
-        <a href="/settings">Edit goals</a>
+        ) : (
+          <>Rolling windows from today.</>
+        )}
       </p>
+
+      <GoalsSettings goals={goals} />
     </div>
   )
 }

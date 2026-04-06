@@ -13,6 +13,83 @@ import androidx.core.content.FileProvider
 import java.io.File
 
 private const val TAG = "UpdateDownloader"
+private const val UPDATE_PREFS = "AurbodaUpdatePrefs"
+private const val KEY_DOWNLOAD_ID = "pendingDownloadId"
+private const val KEY_DOWNLOAD_VERSION = "pendingDownloadVersion"
+
+sealed class DownloadState {
+    data class Downloaded(val apkFile: File) : DownloadState()
+    data object InProgress : DownloadState()
+    data object None : DownloadState()
+}
+
+fun getExistingDownloadState(context: Context, versionName: String): DownloadState {
+    val prefs = context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+    val savedVersion = prefs.getString(KEY_DOWNLOAD_VERSION, null)
+    val savedDownloadId = prefs.getLong(KEY_DOWNLOAD_ID, -1)
+
+    // Check if we have a saved download for this version
+    if (savedVersion == versionName && savedDownloadId != -1L) {
+        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val query = DownloadManager.Query().setFilterById(savedDownloadId)
+        val cursor = downloadManager.query(query)
+        if (cursor.moveToFirst()) {
+            val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+            val status = cursor.getInt(statusIndex)
+            cursor.close()
+            return when (status) {
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    val apkFile = findDownloadedApk(context, versionName)
+                    if (apkFile != null) DownloadState.Downloaded(apkFile)
+                    else {
+                        clearSavedDownload(context)
+                        DownloadState.None
+                    }
+                }
+                DownloadManager.STATUS_RUNNING, DownloadManager.STATUS_PENDING -> {
+                    DownloadState.InProgress
+                }
+                else -> {
+                    // Failed or paused — clear and let user retry
+                    clearSavedDownload(context)
+                    DownloadState.None
+                }
+            }
+        }
+        cursor.close()
+        // Download ID not found in DownloadManager (e.g., cleared by system)
+        clearSavedDownload(context)
+    } else if (savedVersion != versionName) {
+        // Different version — clear stale download state
+        clearSavedDownload(context)
+    }
+
+    // No saved download — check if APK file happens to exist
+    val apkFile = findDownloadedApk(context, versionName)
+    if (apkFile != null) return DownloadState.Downloaded(apkFile)
+
+    return DownloadState.None
+}
+
+private fun findDownloadedApk(context: Context, versionName: String): File? {
+    val downloadDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return null
+    val apkFile = File(downloadDir, "aurboda-$versionName.apk")
+    return if (apkFile.exists() && apkFile.length() > 0) apkFile else null
+}
+
+private fun saveDownload(context: Context, downloadId: Long, versionName: String) {
+    context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE).edit()
+        .putLong(KEY_DOWNLOAD_ID, downloadId)
+        .putString(KEY_DOWNLOAD_VERSION, versionName)
+        .apply()
+}
+
+private fun clearSavedDownload(context: Context) {
+    context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE).edit()
+        .remove(KEY_DOWNLOAD_ID)
+        .remove(KEY_DOWNLOAD_VERSION)
+        .apply()
+}
 
 fun downloadUpdate(
     context: Context,
@@ -41,6 +118,7 @@ fun downloadUpdate(
 
     val downloadId = downloadManager.enqueue(request)
     Log.d(TAG, "Started download with ID: $downloadId")
+    saveDownload(context, downloadId, versionName)
 
     val receiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
@@ -60,6 +138,7 @@ fun downloadUpdate(
                         val reasonIndex = cursor.getColumnIndex(DownloadManager.COLUMN_REASON)
                         val reason = cursor.getInt(reasonIndex)
                         Log.e(TAG, "Download failed with status $status, reason $reason")
+                        clearSavedDownload(context)
                         onDownloadFailed("Download failed (reason: $reason)")
                     }
                 }

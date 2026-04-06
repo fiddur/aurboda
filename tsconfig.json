@@ -1,4 +1,9 @@
 {
-  "extends": "@tsconfig/node22/tsconfig.json",
-  "compilerOptions": { "outDir": "./lib" }
+  "extends": "@tsconfig/node24/tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./lib",
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "rewriteRelativeImportExtensions": true
+  }
 }

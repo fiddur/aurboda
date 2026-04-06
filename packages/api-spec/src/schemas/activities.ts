@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+
 import {
   activityTypeSchema,
   baseResponseSchema,
@@ -10,8 +11,9 @@ import {
   durationMinutesSchema,
   iso8601DateTimeSchema,
   timeRangeQuerySchema,
-} from './common.js'
-import { hrZoneSecsSchema } from './settings.js'
+} from './common.ts'
+import { commentSchema } from './notes.ts'
+import { hrZoneSecsSchema } from './settings.ts'
 
 /**
  * Health Connect exercise types mapping.
@@ -118,6 +120,15 @@ export const exerciseTypeSchema = z
 
 export const isValidExerciseType = (name: string): name is ExerciseTypeName => name in exerciseTypes
 
+/** Reverse lookup: Health Connect exercise type integer → exercise type name. */
+const exerciseTypesByValue = Object.fromEntries(
+  Object.entries(exerciseTypes).map(([name, value]) => [value, name]),
+) as Record<number, ExerciseTypeName>
+
+/** Get the exercise type name from its Health Connect integer value, or undefined if unknown. */
+export const getExerciseTypeName = (value: number): ExerciseTypeName | undefined =>
+  exerciseTypesByValue[value]
+
 export const getExerciseTypeValue = (name: ExerciseTypeName): number => exerciseTypes[name]
 
 /**
@@ -127,7 +138,9 @@ export const activitySchema = z
   .object({
     activity_type: z.string().meta({ description: 'Activity type' }),
     avg_hrv: z.number().optional().meta({ description: 'Average HRV (ms) during the activity' }),
+    comments: z.array(commentSchema).optional().meta({ description: 'Attached comments' }),
     data: z.record(z.string(), z.unknown()).optional(),
+    deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
     duration: durationMinutesSchema.optional(),
     end_time: iso8601DateTimeSchema.optional(),
     hr_zone_secs: hrZoneSecsSchema.optional().meta({
@@ -137,11 +150,58 @@ export const activitySchema = z
     notes: z.string().optional().meta({ description: 'Activity notes' }),
     source: z.string().optional().meta({ description: 'Data source' }),
     start_time: iso8601DateTimeSchema,
+    time_in_bed: durationMinutesSchema.optional().meta({
+      description: 'Time in bed in minutes (end_time - start_time). Only present for sleep activities.',
+    }),
     title: z.string().optional().meta({ description: 'Activity title' }),
+    total_sleep: durationMinutesSchema.optional().meta({
+      description:
+        'Actual sleep time in minutes, excluding awake periods. Only present for sleep activities with stage data.',
+    }),
   })
   .meta({ id: 'Activity' })
 
 export type Activity = z.infer<typeof activitySchema>
+
+/**
+ * Source record schema for multi-source merged activities.
+ */
+export const sourceRecordSchema = z
+  .object({
+    data_origin: z.string().optional().meta({ description: 'Health Connect data origin package' }),
+    end_time: iso8601DateTimeSchema.optional(),
+    exercise_type_name: z
+      .string()
+      .optional()
+      .meta({ description: 'Exercise type name (e.g. weightlifting)' }),
+    id: z.string().uuid().meta({ description: 'Activity ID' }),
+    source: z.string().meta({ description: 'Data source' }),
+    start_time: iso8601DateTimeSchema,
+    title: z.string().optional().meta({ description: 'Activity title' }),
+  })
+  .meta({ description: 'Individual source record within a merged activity', id: 'SourceRecord' })
+
+export type SourceRecord = z.infer<typeof sourceRecordSchema>
+
+/**
+ * Activity detail response schema (single activity with optional merge info).
+ */
+export const activityDetailSchema = activitySchema
+  .extend({
+    merged_end_time: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Merged end time across all overlapping sources' }),
+    merged_start_time: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Merged start time across all overlapping sources' }),
+    source_records: z
+      .array(sourceRecordSchema)
+      .optional()
+      .meta({ description: 'Individual source records when activity is merged from multiple sources' }),
+  })
+  .meta({ id: 'ActivityDetail' })
+
+export type ActivityDetail = z.infer<typeof activityDetailSchema>
 
 /**
  * Activities query schema.
@@ -237,7 +297,11 @@ export type DeleteActivityResponse = z.infer<typeof deleteActivityResponseSchema
  */
 export const updateActivityBodySchema = z
   .object({
+    activity_type: activityTypeSchema.optional().meta({ description: 'New activity type' }),
     end_time: iso8601DateTimeSchema.optional().meta({ description: 'New end time of the activity' }),
+    exercise_type: exerciseTypeSchema.optional().meta({
+      description: 'New exercise type name (only for exercise activities)',
+    }),
     notes: z.string().optional().meta({ description: 'New activity notes' }),
     start_time: iso8601DateTimeSchema.optional().meta({ description: 'New start time of the activity' }),
     title: z.string().optional().meta({ description: 'New activity title' }),
@@ -267,3 +331,54 @@ export const updateActivityResponseSchema = baseResponseSchema
   .meta({ id: 'UpdateActivityResponse' })
 
 export type UpdateActivityResponse = z.infer<typeof updateActivityResponseSchema>
+
+/**
+ * Merge activities request body schema.
+ */
+export const mergeActivitiesBodySchema = z
+  .object({
+    activity_ids: z
+      .array(z.string().uuid())
+      .min(2)
+      .meta({ description: 'IDs of activities to merge (minimum 2)' }),
+    notes: z.string().optional().meta({ description: 'Optional notes override for the merged activity' }),
+    title: z.string().optional().meta({ description: 'Optional title override for the merged activity' }),
+  })
+  .meta({ id: 'MergeActivitiesBody', description: 'Request body for merging multiple activities into one' })
+
+export type MergeActivitiesBody = z.infer<typeof mergeActivitiesBodySchema>
+
+/**
+ * Merge activities response schema.
+ */
+export const mergeActivitiesResponseSchema = baseResponseSchema
+  .extend({
+    data: activitySchema.optional(),
+  })
+  .meta({ id: 'MergeActivitiesResponse' })
+
+export type MergeActivitiesResponse = z.infer<typeof mergeActivitiesResponseSchema>
+
+/**
+ * Nearby activities query schema.
+ */
+export const nearbyActivitiesQuerySchema = z
+  .object({
+    hours: z.coerce
+      .number()
+      .optional()
+      .default(6)
+      .meta({ description: 'Hours before/after to search for nearby activities' }),
+  })
+  .meta({ id: 'NearbyActivitiesQuery' })
+
+export type NearbyActivitiesQuery = z.infer<typeof nearbyActivitiesQuerySchema>
+
+/**
+ * Nearby activities response schema.
+ */
+export const nearbyActivitiesResponseSchema = createDataArrayResponseSchema(activitySchema).meta({
+  id: 'NearbyActivitiesResponse',
+})
+
+export type NearbyActivitiesResponse = z.infer<typeof nearbyActivitiesResponseSchema>

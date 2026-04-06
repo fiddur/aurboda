@@ -1,5 +1,8 @@
+import type { AxiosError } from 'axios'
+
 import { signal } from '@preact/signals'
-import axios, { AxiosError } from 'axios'
+import axios from 'axios'
+
 import { API_URL } from '../config'
 
 export type SignupMode = 'open' | 'invite_only' | 'closed'

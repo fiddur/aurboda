@@ -9,10 +9,19 @@ import {
   type HrZoneSource,
   type HrZoneThresholds,
   updateSettingsInputSchema,
+  userSettingsResponseSchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
-import { getOAuthToken, getUserSettings, upsertUserSettings } from '../db'
-import { getCentralDb } from './central-db'
+
+import {
+  getGoals,
+  getOAuthToken,
+  getUserSettings,
+  replaceGoals,
+  updateTagNameByKey,
+  upsertUserSettings,
+} from '../db/index.ts'
+import { getCentralDb } from './central-db.ts'
 
 // Re-export types from api-spec for use by other modules
 export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
@@ -21,7 +30,7 @@ export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
 // Types
 // ============================================================================
 
-import type { UserSettings } from '../db/types'
+import type { UserSettings } from '../db/types.ts'
 export type { UserSettings }
 
 // Use UserSettingsResponse from api-spec but allow error field for validation failures
@@ -120,88 +129,172 @@ export const getEffectiveHrZones = async (
 }
 
 /**
- * Get effective goals for a user (user goals or defaults).
+ * Get effective goals for a user (from goals table, falling back to defaults).
  */
-export const getEffectiveGoals = (settings: UserSettings): Goal[] => {
-  // If goals is undefined, return defaults. If empty array, return empty.
-  return settings.goals ?? defaultGoals
+export const getEffectiveGoals = async (user: string): Promise<Goal[]> => {
+  const goals = await getGoals(user)
+  // If the goals table is empty, return defaults
+  return goals.length > 0 ? goals : defaultGoals
 }
 
 /**
- * Get settings response in the format used by both API and MCP.
+ * Build the settings updates object for a tag mapping change.
+ * Handles both the mapping itself and any icon set/clear.
  */
+export const buildTagMappingUpdates = (
+  currentSettings: UserSettings,
+  tagKey: string,
+  name: string,
+  icon?: string,
+): Partial<UserSettings> => {
+  const currentMappings = currentSettings.tag_mappings ?? {}
+  const updates: Partial<UserSettings> = {
+    tag_mappings: { ...currentMappings, [tagKey]: name },
+  }
+
+  if (icon !== undefined) {
+    const currentIcons = currentSettings.item_icons ?? {}
+    if (icon) {
+      updates.item_icons = { ...currentIcons, [name]: icon }
+    } else {
+      // Empty string clears the icon — remove entries for both display name and tag_key
+      const newIcons = { ...currentIcons }
+      delete newIcons[name]
+      delete newIcons[tagKey]
+      updates.item_icons = newIcons
+    }
+  }
+
+  return updates
+}
+
+/**
+ * Set a tag mapping (display name + optional icon) and rename existing tag records.
+ * Used by both REST API and MCP tools.
+ */
+export const setTagMapping = async (
+  user: string,
+  tagKey: string,
+  name: string,
+  icon?: string,
+): Promise<Record<string, string>> => {
+  const settings = await getSettings(user)
+  const updates = buildTagMappingUpdates(settings, tagKey, name, icon)
+  await upsertUserSettings(user, updates)
+  await updateTagNameByKey(user, tagKey, name)
+  return updates.tag_mappings!
+}
+
+/**
+ * Get tag mappings and icons for a user.
+ * Used by both REST API and MCP tools.
+ */
+export const getTagMappings = async (
+  user: string,
+): Promise<{ mappings: Record<string, string>; icons: Record<string, string> }> => {
+  const settings = await getSettings(user)
+  return {
+    icons: settings.item_icons ?? {},
+    mappings: settings.tag_mappings ?? {},
+  }
+}
+
+/**
+ * Map DB settings to response fields, applying schema defaults for missing values.
+ * Fields with different DB vs response names are mapped explicitly.
+ */
+/** Schema for applying defaults to DB settings. Uses .default() from the response schema. */
+const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
+  birth_date: true,
+  calendars: true,
+  dashboard: true,
+  food_sensitivity_map: true,
+  garmin_disabled_data_types: true,
+  item_icons: true,
+  lastfm_username: true,
+  meal_slots: true,
+  rescue_time_key: true,
+  sensitivity_areas: true,
+  sex: true,
+  tag_icons: true,
+  tag_mappings: true,
+  training_load: true,
+  tz: true,
+})
+
+const withDefaults = (settings: UserSettings) =>
+  settingsWithDefaultsSchema.parse({
+    ...settings,
+    tag_icons: settings.item_icons,
+    tz: settings.device_timezone,
+  })
+
 export const getSettingsResponse = async (user: string): Promise<SettingsResponse> => {
   const settings = await getSettings(user)
   const { zones, source } = await getEffectiveHrZones(user)
   const ouraToken = await getOAuthToken(user, 'oura')
-  const ouraConfigured = !!(process.env.OURA_CLIENT && process.env.OURA_SECRET)
-  const lastFmApiKey = await getCentralDb().getLastFmApiKey()
-  const lastFmConfigured = !!lastFmApiKey
+  const garminToken = await getOAuthToken(user, 'garmin')
+  const lastFmConfigured = !!(await getCentralDb().getLastFmApiKey())
+
+  const goals = await getEffectiveGoals(user)
 
   return {
-    birth_date: settings.birth_date ?? null,
-    calendars: settings.calendars ?? [],
-    dashboard: settings.dashboard ?? null,
-    goals: getEffectiveGoals(settings),
+    ...withDefaults(settings),
+    garmin_connected: garminToken !== null && garminToken.access_token !== '',
+    goals,
     hr_zone_start: zones,
     hr_zone_start_source: source,
     lastfm_configured: lastFmConfigured,
-    lastfm_username: settings.lastfm_username ?? null,
-    oura_configured: ouraConfigured,
+    oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
     oura_connected: ouraToken !== null,
-    rescue_time_key: settings.rescue_time_key ?? null,
     success: true,
-    tag_mappings: settings.tag_mappings ?? {},
   }
 }
 
-/**
- * Validate and update user settings.
- * Returns a SettingsResponse with either success or error.
- */
+const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => ({
+  ...settingsWithDefaultsSchema.parse({}),
+  error: errorMessage,
+  goals: defaultGoals,
+  hr_zone_start: calculateDefaultHrZones(null),
+  hr_zone_start_source: 'default' as const,
+  lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
+  oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
+  garmin_connected: false,
+  oura_connected: false,
+  success: false,
+})
+
 export const validateAndUpdateSettings = async (user: string, input: unknown): Promise<SettingsResponse> => {
-  // Validate input
   const parsed = updateSettingsInputSchema.safeParse(input)
   if (!parsed.success) {
-    const errorMessage = parsed.error.issues.map((e) => e.message).join('; ')
-    return {
-      birth_date: null,
-      calendars: [],
-      dashboard: null,
-      error: errorMessage,
-      goals: defaultGoals,
-      hr_zone_start: calculateDefaultHrZones(null),
-      hr_zone_start_source: 'default',
-      lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
-      lastfm_username: null,
-      oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
-      oura_connected: false,
-      rescue_time_key: null,
-      success: false,
-      tag_mappings: {},
-    }
+    return buildErrorSettingsResponse(parsed.error.issues.map((e) => e.message).join('; '))
   }
 
-  // Build updates object, converting null to undefined (which clears/resets the field in storage)
-  const settingsFields = [
-    'birth_date',
-    'calendars',
-    'dashboard',
-    'goals',
-    'hr_zone_start',
-    'lastfm_username',
-    'rescue_time_key',
-    'tag_mappings',
-  ] as const
+  // Handle goals separately — stored in their own table now
+  if (parsed.data.goals !== undefined) {
+    const newGoals = parsed.data.goals === null ? [] : parsed.data.goals
+    await replaceGoals(user, newGoals)
+  }
+
+  // Build updates object, converting null to undefined (which clears/resets the field in storage).
+  // Derive field list from the schema to keep it in sync with api-spec.
+  const settingsFields = Object.keys(updateSettingsInputSchema.shape).filter((k) => k !== 'goals')
   const updates: Partial<UserSettings> = {}
   for (const field of settingsFields) {
-    if (parsed.data[field] !== undefined) {
-      ;(updates as Record<string, unknown>)[field] =
-        parsed.data[field] === null ? undefined : parsed.data[field]
+    const value = parsed.data[field as keyof typeof parsed.data]
+    if (value !== undefined) {
+      ;(updates as Record<string, unknown>)[field] = value === null ? undefined : value
     }
   }
 
-  // Apply updates
+  // Shallow-merge dict fields so partial updates don't wipe existing entries.
+  // e.g. updating one exercise icon shouldn't delete all tag icons.
+  if (updates.item_icons) {
+    const current = await getSettings(user)
+    updates.item_icons = { ...current.item_icons, ...updates.item_icons }
+  }
+
+  // Apply updates (only if there are non-goals fields to update)
   await updateSettingsInternal(user, updates)
 
   // Return updated settings

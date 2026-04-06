@@ -539,6 +539,75 @@
   color: #673ab8;
 }
 
+/* HR Zones widget */
+.dashboard .hr-zones-widget {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+}
+
+.dashboard .hr-zones-widget-loading {
+  text-align: center;
+  padding: 1rem;
+  color: #9ca3af;
+}
+
+.dashboard .hr-zones-widget-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dashboard .hr-zones-widget-bar {
+  padding: 0.25rem 0;
+}
+
+.dashboard .hr-zones-widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.dashboard .hr-zones-widget-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.dashboard .hr-zones-widget-time {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.dashboard .hr-zones-widget-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dashboard .hr-zones-widget-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.dashboard .hr-zones-widget-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.dashboard .hr-zones-widget-percent {
+  width: 2.5rem;
+  text-align: right;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
 /* Charts grid for trend/correlation widgets */
 .dashboard .charts-grid {
   display: grid;
@@ -546,8 +615,8 @@
   gap: 1rem;
 }
 
-/* Trend chart widget styles */
-.dashboard .trend-chart-widget,
+/* Chart widget styles (trend, bar, correlation) */
+.dashboard .chart-widget,
 .dashboard .correlation-widget {
   background: #f9fafb;
   border-radius: 12px;
@@ -555,11 +624,28 @@
   border: 1px solid #e5e7eb;
 }
 
-.dashboard .trend-chart-widget h4,
+.dashboard .chart-widget-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.2s;
+}
+
+.dashboard .chart-widget-link:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard .chart-widget h4,
 .dashboard .correlation-widget h4 {
   margin: 0 0 0.75rem 0;
   font-size: 1rem;
   color: #374151;
+}
+
+.dashboard .chart-widget-value {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
 }
 
 .dashboard .chart-loading,
@@ -691,15 +777,33 @@
     color: #a855f7;
   }
 
-  .dashboard .trend-chart-widget,
+  .dashboard .hr-zones-widget {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .dashboard .hr-zones-widget-label,
+  .dashboard .hr-zones-widget-time {
+    color: #d1d5db;
+  }
+
+  .dashboard .hr-zones-widget-percent {
+    color: #9ca3af;
+  }
+
+  .dashboard .chart-widget,
   .dashboard .correlation-widget {
     background: #1f2937;
     border-color: #374151;
   }
 
-  .dashboard .trend-chart-widget h4,
+  .dashboard .chart-widget h4,
   .dashboard .correlation-widget h4 {
     color: #d1d5db;
+  }
+
+  .dashboard .chart-widget-value {
+    color: #9ca3af;
   }
 
   .dashboard .add-section-placeholder {

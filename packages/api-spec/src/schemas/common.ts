@@ -54,6 +54,14 @@ export const validMetrics = [
   'hr_zone_3_sec',
   'hr_zone_4_sec',
   'hr_zone_5_sec',
+  'training_impulse',
+  'activity_impulse',
+  'stress_level',
+  'body_battery',
+  'training_readiness',
+  'intensity_minutes',
+  'speed',
+  'power',
 ] as const
 
 export const metricTypeSchema = z.enum(validMetrics).meta({
@@ -103,28 +111,60 @@ export const isContextualHrvMetric = (metric: MetricType): boolean =>
   (contextualHrvMetrics as readonly string[]).includes(metric)
 
 /**
- * Valid activity types.
+ * Built-in activity types (always available, cannot be deleted).
  */
-export const activityTypes = ['sleep', 'exercise', 'meditation', 'nap'] as const
+export const builtinActivityTypes = ['sleep', 'exercise', 'meditation', 'nap', 'rest'] as const
+export type BuiltinActivityType = (typeof builtinActivityTypes)[number]
+
+/** @deprecated Use builtinActivityTypes. Kept for backward compatibility. */
+export const activityTypes = builtinActivityTypes
 
 /**
- * Activity types for activities table.
+ * Activity type identifier — any snake_case string (built-in or custom).
+ * Validated against activity_type_definitions table at runtime.
  */
-export const activityTypeSchema = z.enum(activityTypes).meta({
-  description: 'Type of activity',
-  example: 'exercise',
-  id: 'ActivityType',
-})
+export const activityTypeSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/)
+  .meta({
+    description: 'Activity type identifier (built-in or custom)',
+    example: 'exercise',
+    id: 'ActivityType',
+  })
 
-export type ActivityType = z.infer<typeof activityTypeSchema>
+export type ActivityType = string
+
+/**
+ * Display categories for grouping activity types in the timeline.
+ */
+export const displayCategories = [
+  'sleep_rest',
+  'exercise',
+  'meditation',
+  'wellness',
+  'productivity',
+  'travel',
+  'other',
+] as const
+export type DisplayCategory = (typeof displayCategories)[number]
+
+export const displayCategorySchema = z.enum(displayCategories).meta({
+  description: 'Display category for grouping in timeline',
+  id: 'DisplayCategory',
+})
 
 /**
  * Supported data sources.
  */
 export const dataSourceSchema = z
   .enum([
+    'activitywatch',
+    'aurboda',
+    'aurboda_gap_fill',
+    'deduction-rule',
     'health_connect',
     'health_connect_aggregate',
+    'lab_report',
     'oura',
     'garmin',
     'rescuetime',
@@ -152,6 +192,16 @@ export const iso8601DateTimeSchema = z.iso.datetime().meta({
 })
 
 /**
+ * IANA timezone string schema (e.g. "Europe/Stockholm").
+ */
+export const tzSchema = z.string().meta({
+  description:
+    'IANA timezone (e.g. "Europe/Stockholm"). Required for correct timestamp formatting and date interpretation.',
+  example: 'Europe/Stockholm',
+  id: 'Timezone',
+})
+
+/**
  * Date-only string schema (YYYY-MM-DD).
  */
 export const dateOnlySchema = z.iso.date().meta({
@@ -164,6 +214,7 @@ export const dateOnlySchema = z.iso.date().meta({
  * Unit definitions for metrics.
  */
 export const metricUnits: Record<MetricType, string> = {
+  activity_impulse: 'impulse',
   basal_body_temperature: 'celsius',
   blood_glucose: 'mmol/L',
   blood_pressure_diastolic: 'mmHg',
@@ -206,8 +257,15 @@ export const metricUnits: Record<MetricType, string> = {
   sleep_total_score: 'score',
   spo2: 'percent',
   steps: 'count',
+  training_impulse: 'TRIMP',
+  stress_level: 'score',
+  body_battery: 'score',
+  training_readiness: 'score',
+  intensity_minutes: 'min',
   vo2_max: 'mL/kg/min',
   weight: 'kg',
+  speed: 'm/s',
+  power: 'W',
 }
 
 /**
@@ -265,6 +323,37 @@ export const isValidMetricOrCustom = (
 ): boolean => isValidMetric(metric) || customMetrics.some((m) => m.name === metric)
 
 /**
+ * Aggregation type for metrics: 'sum' for cumulative totals, 'avg' for instantaneous values.
+ * Determines how values are combined in time buckets.
+ */
+export type MetricAggregation = 'avg' | 'sum'
+
+/**
+ * Metrics that should be summed when bucketed (cumulative totals).
+ * All other metrics default to averaging.
+ */
+export const sumMetrics: MetricType[] = [
+  'steps',
+  'distance',
+  'floors_climbed',
+  'calories_active',
+  'calories_total',
+  'calories_basal',
+  'hr_zone_0_sec',
+  'hr_zone_1_sec',
+  'hr_zone_2_sec',
+  'hr_zone_3_sec',
+  'hr_zone_4_sec',
+  'hr_zone_5_sec',
+  'training_impulse',
+  'activity_impulse',
+]
+
+/** Get the aggregation type for a metric (sum or avg). */
+export const getMetricAggregation = (metric: string): MetricAggregation =>
+  (sumMetrics as string[]).includes(metric) ? 'sum' : 'avg'
+
+/**
  * Cumulative metrics that are summed over a day and can have duplicate sources.
  */
 export const cumulativeMetrics: MetricType[] = [
@@ -274,6 +363,30 @@ export const cumulativeMetrics: MetricType[] = [
   'calories_active',
   'calories_total',
 ]
+
+/**
+ * Trusted sources for cumulative metrics.
+ * health_connect_aggregate: deduplicated daily totals from Health Connect
+ * aurboda: computed values (e.g., calorie calculation from HR data)
+ */
+export const cumulativeSources: DataSource[] = ['health_connect_aggregate', 'aurboda']
+
+/**
+ * Metrics where aurboda-computed per-minute data should be used exclusively
+ * instead of mixing with 'health_connect_aggregate' daily totals.
+ *
+ * When aurboda computes per-minute values (e.g., calories from HR data),
+ * the daily aggregate from Health Connect is redundant and would produce
+ * nonsense if AVG'd with per-minute values in the same bucket.
+ */
+export const aurbodaOnlyMetrics: MetricType[] = ['calories_active']
+
+/**
+ * Sources used for aurboda-only metrics: HR-computed values and gap-fill estimates.
+ * Gap-fill uses a separate source so HR computation can detect and replace gap-filled
+ * minutes when real HR data arrives later.
+ */
+export const aurbodaOnlySources: DataSource[] = ['aurboda', 'aurboda_gap_fill']
 
 /**
  * Place visit source schema.

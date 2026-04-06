@@ -6,8 +6,11 @@
  */
 
 import { Router } from 'express'
-import type { OuraDataType } from './oura-sync'
-import { ouraWebhookDataTypeMap, type OuraWebhookDataType } from './oura-webhook-api'
+
+import type { OuraDataType } from './oura-sync.ts'
+
+import { ouraWebhookDataTypeMap, type OuraWebhookDataType } from './oura-webhook-api.ts'
+import { auditError, auditInfo } from './services/audit-log.ts'
 
 const DEBOUNCE_MS = 5000
 
@@ -36,7 +39,9 @@ export const createOuraWebhookRouter = (deps: OuraWebhookRouterDeps): OuraWebhoo
     const timeout = setTimeout(() => {
       pendingSyncs.delete(key)
       deps.syncOuraDataTypeForUser(username, dataType).catch((error) => {
-        console.error(`Webhook-triggered sync failed for ${username}/${dataType}:`, error)
+        auditError(username, 'sync', `Webhook-triggered Oura sync failed for ${dataType}`, {
+          error: String(error),
+        })
       })
     }, DEBOUNCE_MS)
 
@@ -71,7 +76,6 @@ export const createOuraWebhookRouter = (deps: OuraWebhookRouterDeps): OuraWebhoo
     // Map Oura data type to our internal type
     const ourDataType = ouraWebhookDataTypeMap[data_type as OuraWebhookDataType]
     if (!ourDataType) {
-      console.log(`Oura webhook: ignoring unknown data_type=${data_type} event_type=${event_type}`)
       res.json({ status: 'ok' })
       return
     }
@@ -79,12 +83,11 @@ export const createOuraWebhookRouter = (deps: OuraWebhookRouterDeps): OuraWebhoo
     // Look up local username from Oura user ID
     const username = await deps.getUsernameByOuraUserId(user_id)
     if (!username) {
-      console.log(`Oura webhook: ignoring unknown user_id=${user_id}`)
       res.json({ status: 'ok' })
       return
     }
 
-    console.log(`Oura webhook: ${event_type} ${data_type} for user ${username}, scheduling sync`)
+    auditInfo(username, 'sync', `Oura webhook: ${event_type} ${data_type}, scheduling sync`)
     scheduleDebouncedSync(username, ourDataType)
 
     res.json({ status: 'ok' })

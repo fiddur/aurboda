@@ -1,8 +1,9 @@
+import type { UserSettings } from './types.ts'
+
 /**
  * User settings storage and retrieval.
  */
-import { query } from './connection'
-import type { UserSettings } from './types'
+import { query } from './connection.ts'
 
 // ============================================================================
 // One-time migration from camelCase to snake_case JSONB keys
@@ -14,6 +15,7 @@ const topLevelRenames: Record<string, string> = {
   hrZoneStart: 'hr_zone_start',
   lastFmUsername: 'lastfm_username',
   rescueTimeKey: 'rescue_time_key',
+  tag_icons: 'item_icons',
   tagMappings: 'tag_mappings',
 }
 
@@ -50,14 +52,13 @@ const migrateDashboardConfig = (dashboard: Record<string, unknown>): Record<stri
     ...dashboard,
     sections: sections.map((section: Record<string, unknown>) => ({
       ...section,
-      widgets:
-        Array.isArray(section.widgets) ?
-          (section.widgets as Array<Record<string, unknown>>).map((widget) => ({
+      widgets: Array.isArray(section.widgets)
+        ? (section.widgets as Array<Record<string, unknown>>).map((widget) => ({
             ...widget,
             config:
-              widget.config && typeof widget.config === 'object' ?
-                renameKeys(widget.config as Record<string, unknown>, widgetConfigRenames)
-              : widget.config,
+              widget.config && typeof widget.config === 'object'
+                ? renameKeys(widget.config as Record<string, unknown>, widgetConfigRenames)
+                : widget.config,
           }))
         : section.widgets,
     })),
@@ -120,34 +121,13 @@ export const upsertUserSettings = async (
   // Get existing settings
   const existing = (await getUserSettings(user)) ?? {}
 
-  // Merge updates
-  const merged: UserSettings = { ...existing }
-  if (updates.birth_date !== undefined) {
-    merged.birth_date = updates.birth_date
-  }
-  if (updates.calendars !== undefined) {
-    merged.calendars = updates.calendars
-  }
-  if (updates.custom_metrics !== undefined) {
-    merged.custom_metrics = updates.custom_metrics
-  }
-  if (updates.dashboard !== undefined) {
-    merged.dashboard = updates.dashboard
-  }
-  if (updates.goals !== undefined) {
-    merged.goals = updates.goals
-  }
-  if (updates.hr_zone_start !== undefined) {
-    merged.hr_zone_start = updates.hr_zone_start
-  }
-  if (updates.lastfm_username !== undefined) {
-    merged.lastfm_username = updates.lastfm_username
-  }
-  if (updates.rescue_time_key !== undefined) {
-    merged.rescue_time_key = updates.rescue_time_key
-  }
-  if (updates.tag_mappings !== undefined) {
-    merged.tag_mappings = updates.tag_mappings
+  // Merge updates into existing settings — only defined values override.
+  // Deprecated: tag_icons merges into item_icons for backwards compatibility.
+  const { tag_icons, ...rest } = updates
+  const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
+  const merged: UserSettings = { ...existing, ...defined }
+  if (tag_icons !== undefined) {
+    merged.item_icons = { ...merged.item_icons, ...tag_icons }
   }
 
   // Check if settings row exists

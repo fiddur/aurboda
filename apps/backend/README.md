@@ -6,7 +6,7 @@ This repo aims to collect a user's self quantification data into a single useful
 
 1. Setup PostgreSQL (see below)
 2. Setup `.env` (see `.env.sample`)
-3. `corepack use && pnpm i`
+3. `pnpm i`
 
 ### Start web (for user creation and authorization)
 
@@ -45,6 +45,7 @@ sudo -u postgres psql -c "CREATE USER aurboda_service WITH ENCRYPTED PASSWORD 'y
 ### Database Naming Convention
 
 Each user gets their own database named `aurboda_{username}`. For example:
+
 - User `fiddur` -> Database `aurboda_fiddur`
 - User `alice` -> Database `aurboda_alice`
 
@@ -59,6 +60,7 @@ sudo -u postgres psql -c "GRANT <username> TO <PGUSER>"
 ```
 
 Example:
+
 ```bash
 sudo -u postgres psql -c "GRANT fiddur TO aurboda_service"
 ```

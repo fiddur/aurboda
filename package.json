@@ -1,13 +1,11 @@
 {
   "name": "aurboda",
   "version": "1.0.0",
-  "type": "module",
   "description": "Collect, aggregate, visualize your Quantified Self data",
+  "keywords": [],
   "license": "AGPL-3.0-or-later",
   "author": "Fredrik Liljegren <fredrik@liljegren.org>",
-  "engines": {
-    "node": "~22"
-  },
+  "type": "module",
   "scripts": {
     "dev:backend": "pnpm --filter aurboda-backend start",
     "dev:web": "pnpm --filter aurboda-web dev",
@@ -15,27 +13,18 @@
     "test:android": "cd apps/android && ./gradlew test",
     "build": "pnpm --filter aurboda-web build && pnpm build:android",
     "build:android": "cd apps/android && ./gradlew assembleDebug",
-    "check": "pnpm --filter aurboda-backend check && pnpm --filter aurboda-web check",
-    "fix": "pnpm --filter aurboda-backend fix && pnpm --filter aurboda-web fix"
+    "check": "pnpm --filter aurboda-backend check && pnpm --filter aurboda-web check && pnpm --filter @aurboda/api-spec check",
+    "fix": "oxfmt . && oxlint --fix"
   },
   "devDependencies": {
-    "@eslint/js": "^9.13.0",
-    "@types/eslint": "^9.6.1",
-    "@typescript-eslint/eslint-plugin": "^8.12.2",
-    "@typescript-eslint/parser": "^8.12.2",
-    "@tsconfig/node22": "^22.0.2",
-    "eslint": "^9.36.0",
-    "eslint-config-preact": "^2.0.0",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.4",
-    "eslint-plugin-sort-keys": "^2.3.5",
-    "globals": "^15.11.0",
-    "prettier": "^3.6.2",
-    "prettier-plugin-organize-imports": "^4.3.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.6.3",
-    "typescript-eslint": "^8.12.2"
+    "@tsconfig/node24": "^24.0.4",
+    "@typescript/native-preview": "^7.0.0-0",
+    "oxfmt": "^0",
+    "oxlint": "^1",
+    "typescript": "^5.6.3"
   },
-  "keywords": [],
+  "engines": {
+    "node": "~25"
+  },
   "packageManager": "pnpm@10.15.1"
 }

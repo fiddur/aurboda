@@ -1,8 +1,3 @@
-.lastfm-rules-section .loading {
-  color: #666;
-  font-style: italic;
-}
-
 .rules-list {
   display: flex;
   flex-direction: column;
@@ -38,6 +33,27 @@
   white-space: nowrap;
 }
 
+.rule-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.edit-rule-button {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  background: transparent;
+  border: 1px solid #1976d2;
+  color: #1976d2;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.edit-rule-button:hover {
+  background: #1976d2;
+  color: white;
+}
+
 .remove-rule-button {
   padding: 0.25rem 0.5rem;
   font-size: 0.8rem;
@@ -52,6 +68,63 @@
 .remove-rule-button:hover {
   background: #f44336;
   color: white;
+}
+
+/* Edit mode for rule items */
+.rule-item.editing {
+  flex-direction: column;
+  align-items: stretch;
+  background: #fafafa;
+}
+
+.rule-edit-fields {
+  width: 100%;
+}
+
+.rule-edit-fields .form-field {
+  margin-bottom: 0.75rem;
+}
+
+.rule-edit-fields .form-field label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.rule-edit-fields .form-field input,
+.rule-edit-fields .form-field select {
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 100%;
+}
+
+.rule-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.cancel-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: transparent;
+  border: 1px solid #999;
+  color: #666;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cancel-button:hover {
+  background: #e0e0e0;
+}
+
+.rule-edit-error {
+  color: #f44336;
+  font-size: 0.8rem;
+  margin: 0.5rem 0 0 0;
 }
 
 .add-rule-form {
@@ -166,10 +239,6 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .lastfm-rules-section .loading {
-    color: #aaa;
-  }
-
   .rule-item {
     border-color: #444;
   }
@@ -215,6 +284,36 @@
   .rule-merge-info {
     color: #64b5f6;
   }
+
+  .edit-rule-button {
+    border-color: #64b5f6;
+    color: #64b5f6;
+  }
+
+  .edit-rule-button:hover {
+    background: #1976d2;
+    color: white;
+  }
+
+  .rule-item.editing {
+    background: #1e1e1e;
+  }
+
+  .rule-edit-fields .form-field input,
+  .rule-edit-fields .form-field select {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+  }
+
+  .cancel-button {
+    border-color: #666;
+    color: #aaa;
+  }
+
+  .cancel-button:hover {
+    background: #444;
+  }
 }
 
 @media (max-width: 639px) {
@@ -229,7 +328,7 @@
     gap: 0.5rem;
   }
 
-  .remove-rule-button {
+  .rule-actions {
     align-self: flex-end;
   }
 }

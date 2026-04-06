@@ -1,8 +1,9 @@
 import type { ProgrammaticTag } from '@aurboda/api-spec'
+
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { fetchProgrammaticTags, fetchUniqueTags } from '../state/api'
 
+import { fetchProgrammaticTags, fetchUniqueTags } from '../state/api'
 import './TagPicker.css'
 
 interface TagEntry {

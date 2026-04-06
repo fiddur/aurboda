@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
-import { getTrend } from './trends'
+
+import * as db from '../db/index.ts'
+import { getTrend } from './trends.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
@@ -89,13 +90,24 @@ describe('getTrend', () => {
     expect(result.current_value).toBe(71.5)
   })
 
-  test('throws error for invalid metric', async () => {
-    await expect(
-      getTrend('testuser', {
-        pattern: 'invalid_metric_name',
-        source_type: 'metric',
-      }),
-    ).rejects.toThrow('Invalid metric: invalid_metric_name')
+  test('accepts custom metrics when provided', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        { day: new Date('2026-01-20'), ema_value: 3.5 },
+        { day: new Date('2026-02-02'), ema_value: 2.1 },
+      ],
+    } as never)
+
+    const result = await getTrend('testuser', {
+      aggregation: 'mean',
+      custom_metrics: [{ name: 'fissure_pain', unit: 'score' }],
+      pattern: 'fissure_pain',
+      source_type: 'metric',
+    })
+
+    expect(result.source_type).toBe('metric')
+    expect(result.pattern).toBe('fissure_pain')
+    expect(result.current_value).toBe(2.1)
   })
 
   test('handles empty data', async () => {
@@ -127,6 +139,28 @@ describe('getTrend', () => {
 
     expect(result.history[0].date).toBe('2026-01-15')
     expect(result.history[1].date).toBe('2026-02-02')
+  })
+
+  test('returns trend data for productivity_category', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        { day: new Date('2026-01-15'), ema_value: 2.3 },
+        { day: new Date('2026-02-02'), ema_value: 3.1 },
+      ],
+    } as never)
+
+    const result = await getTrend('testuser', {
+      display_period: 'daily',
+      pattern: 'Work > Programming',
+      source_type: 'productivity_category',
+    })
+
+    expect(result.source_type).toBe('productivity_category')
+    expect(result.pattern).toBe('Work > Programming')
+    expect(result.aggregation).toBe('sum')
+    expect(result.display_unit).toBe('hours per day')
+    expect(result.current_value).toBe(3.1)
+    expect(result.history).toHaveLength(2)
   })
 
   test('uses sum aggregation for metrics when specified', async () => {

@@ -3,7 +3,8 @@
  */
 
 import { z } from 'zod'
-import { baseResponseSchema, metricTypeSchema } from './common.js'
+
+import { baseResponseSchema, metricTypeSchema } from './common.ts'
 
 /**
  * Duration string for goal window (e.g., '7d', '2w', '1M').

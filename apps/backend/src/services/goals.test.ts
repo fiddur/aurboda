@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
-import { getGoalsProgress } from './goals'
-import * as settings from './settings'
+
+import * as db from '../db/index.ts'
+import { getGoalsProgress } from './goals.ts'
+import * as settings from './settings.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
   getDailyAggregateValue: vi.fn(),
   getDailyAggregates: vi.fn(),
+  getGoals: vi.fn(),
+  getRawDailySum: vi.fn(),
   getTimeSeries: vi.fn(),
 }))
 
@@ -15,7 +18,6 @@ vi.mock('./settings', () => ({
   computeHrZoneSecs: vi.fn(),
   getEffectiveGoals: vi.fn(),
   getEffectiveHrZones: vi.fn(),
-  getSettings: vi.fn(),
 }))
 
 describe('getGoalsProgress', () => {
@@ -30,8 +32,7 @@ describe('getGoalsProgress', () => {
   })
 
   test('returns empty array when no goals', async () => {
-    vi.mocked(settings.getSettings).mockResolvedValue({})
-    vi.mocked(settings.getEffectiveGoals).mockReturnValue([])
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([])
 
     const result = await getGoalsProgress('testuser')
 
@@ -39,8 +40,7 @@ describe('getGoalsProgress', () => {
   })
 
   test('uses getDailyAggregateValue for cumulative metrics like steps', async () => {
-    vi.mocked(settings.getSettings).mockResolvedValue({})
-    vi.mocked(settings.getEffectiveGoals).mockReturnValue([
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
       { id: 'goal-1', metric: 'steps', min: 10000, window: '1d' },
     ])
 
@@ -63,27 +63,29 @@ describe('getGoalsProgress', () => {
     expect(db.getDailyAggregates).not.toHaveBeenCalled()
   })
 
-  test('falls back to getDailyAggregates when no aggregate value exists', async () => {
-    vi.mocked(settings.getSettings).mockResolvedValue({})
-    vi.mocked(settings.getEffectiveGoals).mockReturnValue([
+  test('falls back to getRawDailySum when no aggregate value exists for cumulative metric', async () => {
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
       { id: 'goal-1', metric: 'steps', min: 10000, window: '1d' },
     ])
 
     // No aggregate value exists
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
-    vi.mocked(db.getDailyAggregates).mockResolvedValue([
-      { avg: 4672, date: '2026-02-02', metric: 'steps', sum: 4672 },
-    ])
+    // getRawDailySum queries ALL sources as fallback
+    vi.mocked(db.getRawDailySum)
+      .mockResolvedValueOnce(4672) // current window
+      .mockResolvedValueOnce(4672) // losingTomorrow window
 
     const result = await getGoalsProgress('testuser')
 
     expect(result).toHaveLength(1)
     expect(result[0].current).toBe(4672)
+    // Should use getRawDailySum as fallback, not getDailyAggregates
+    expect(db.getRawDailySum).toHaveBeenCalled()
+    expect(db.getDailyAggregates).not.toHaveBeenCalled()
   })
 
   test('sums aggregate values across multiple days for 7d window', async () => {
-    vi.mocked(settings.getSettings).mockResolvedValue({})
-    vi.mocked(settings.getEffectiveGoals).mockReturnValue([
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
       { id: 'goal-1', metric: 'steps', min: 70000, window: '7d' },
     ])
 
@@ -110,8 +112,7 @@ describe('getGoalsProgress', () => {
   })
 
   test('uses rolling time for hour-based windows (24h spans 2 calendar days at noon)', async () => {
-    vi.mocked(settings.getSettings).mockResolvedValue({})
-    vi.mocked(settings.getEffectiveGoals).mockReturnValue([
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
       { id: 'goal-1', metric: 'steps', min: 10000, window: '24h' },
     ])
 
@@ -133,8 +134,7 @@ describe('getGoalsProgress', () => {
   })
 
   test('uses getTimeSeries for HR zone metrics', async () => {
-    vi.mocked(settings.getSettings).mockResolvedValue({})
-    vi.mocked(settings.getEffectiveGoals).mockReturnValue([
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
       { id: 'goal-1', metric: 'hr_zone_2_sec', min: 9000, window: '7d' },
     ])
     vi.mocked(settings.getEffectiveHrZones).mockResolvedValue({
@@ -157,8 +157,7 @@ describe('getGoalsProgress', () => {
   })
 
   test('uses getDailyAggregates for non-cumulative metrics', async () => {
-    vi.mocked(settings.getSettings).mockResolvedValue({})
-    vi.mocked(settings.getEffectiveGoals).mockReturnValue([
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
       { id: 'goal-1', metric: 'weight', min: 70, window: '1d' },
     ])
     vi.mocked(db.getDailyAggregates).mockResolvedValue([

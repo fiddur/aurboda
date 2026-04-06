@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+
 import {
   addressNullableSchema,
   addressSchema,
@@ -19,7 +20,7 @@ import {
   placeSourceSchema,
   radiusSchema,
   timeRangeQuerySchema,
-} from './common.js'
+} from './common.ts'
 
 // Shared location name field
 const locationNameSchema = z.string().meta({ description: 'Location name', example: 'Home' })

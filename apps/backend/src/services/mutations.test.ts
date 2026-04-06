@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import * as db from '../db'
+
+import * as db from '../db/index.ts'
+import { parseMetricEntityId, toMetricEntityId } from './metric-entity-id.ts'
 import {
   addActivity,
   addCustomMetric,
   addMetric,
   addTag,
+  bulkAddMetrics,
   deleteActivity,
   deleteCustomMetric,
   deleteMetric,
@@ -13,23 +16,45 @@ import {
   getCustomMetrics,
   updateActivity,
   updateCustomMetric,
-} from './mutations'
+  updateTag,
+} from './mutations.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
+  activityTypeExists: vi.fn().mockResolvedValue(true),
+  checkActivityConflict: vi.fn().mockResolvedValue(false),
   deleteActivity: vi.fn(),
+  deleteCustomMetricDefinition: vi.fn(),
   deleteTag: vi.fn(),
   deleteTimeSeriesMetric: vi.fn(),
   deleteTimeSeriesPoint: vi.fn(),
+  enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
+  findHcRecordId: vi.fn().mockResolvedValue(null),
   findMergeableTag: vi.fn(),
   getActivityById: vi.fn(),
+  getCustomMetricByName: vi.fn(),
+  getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
+  getTagById: vi.fn(),
   getUserSettings: vi.fn(),
+  insertCustomMetricDefinition: vi.fn(),
   insertActivity: vi.fn(),
   insertTag: vi.fn(),
   insertTimeSeries: vi.fn(),
+  resolveOrCreateTagDefinition: vi
+    .fn()
+    .mockImplementation((_user: string, tagName: string) =>
+      Promise.resolve({ aliases: [tagName.toLowerCase()], id: 'def-uuid', name: tagName }),
+    ),
   updateActivity: vi.fn(),
+  updateCustomMetricDefinition: vi.fn(),
+  updateTag: vi.fn(),
   updateTagEndTime: vi.fn(),
   upsertUserSettings: vi.fn(),
+}))
+
+// Mock notes service to avoid testing note-sync behavior here
+vi.mock('./notes', () => ({
+  syncNoteTimesForEntity: vi.fn().mockResolvedValue(undefined),
 }))
 
 describe('addTag', () => {
@@ -38,7 +63,7 @@ describe('addTag', () => {
   })
 
   test('creates a tag with start time only', async () => {
-    vi.mocked(db.insertTag).mockResolvedValue(undefined)
+    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
 
     const result = await addTag('testuser', {
       start_time: new Date('2024-01-15T10:00:00Z'),
@@ -54,14 +79,15 @@ describe('addTag', () => {
     expect(db.insertTag).toHaveBeenCalledWith('testuser', {
       end_time: undefined,
       external_id: expect.any(String),
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T10:00:00Z'),
       tag: 'coffee',
+      tag_definition_id: 'def-uuid',
     })
   })
 
   test('creates a tag with start and end time', async () => {
-    vi.mocked(db.insertTag).mockResolvedValue(undefined)
+    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
 
     const result = await addTag('testuser', {
       end_time: new Date('2024-01-15T11:00:00Z'),
@@ -76,14 +102,15 @@ describe('addTag', () => {
     expect(db.insertTag).toHaveBeenCalledWith('testuser', {
       end_time: new Date('2024-01-15T11:00:00Z'),
       external_id: expect.any(String),
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T10:00:00Z'),
       tag: 'meditation',
+      tag_definition_id: 'def-uuid',
     })
   })
 
   test('does not include merged field when mergeSpan not specified', async () => {
-    vi.mocked(db.insertTag).mockResolvedValue(undefined)
+    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
 
     const result = await addTag('testuser', {
       start_time: new Date('2024-01-15T10:00:00Z'),
@@ -98,7 +125,7 @@ describe('addTag', () => {
 
   test('creates new tag with merged: false when no mergeable tag found', async () => {
     vi.mocked(db.findMergeableTag).mockResolvedValue(undefined)
-    vi.mocked(db.insertTag).mockResolvedValue(undefined)
+    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
 
     const result = await addTag('testuser', {
       mergeSpan: 180,
@@ -126,7 +153,7 @@ describe('addTag', () => {
       end_time: new Date('2024-01-15T09:59:00Z'),
       external_id: 'existing-tag-id',
       id: 'db-id',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T09:00:00Z'),
       tag: 'computer:dharma',
     })
@@ -141,7 +168,7 @@ describe('addTag', () => {
     expect(result.success).toBe(true)
     expect(result.merged).toBe(true)
     expect(result.extendedBySeconds).toBe(60) // From 09:59:00 to 10:00:00
-    expect(result.id).toBe('existing-tag-id')
+    expect(result.id).toBe('db-id')
     expect(result.start_time).toBe('2024-01-15T09:00:00.000Z') // Original start
     expect(result.end_time).toBe('2024-01-15T10:00:00.000Z') // New end
 
@@ -158,7 +185,7 @@ describe('addTag', () => {
       end_time: new Date('2024-01-15T09:59:00Z'),
       external_id: 'existing-tag-id',
       id: 'db-id',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T09:00:00Z'),
       tag: 'computer:dharma',
     })
@@ -189,7 +216,7 @@ describe('addTag', () => {
       end_time: undefined,
       external_id: 'existing-tag-id',
       id: 'db-id',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-01-15T09:59:00Z'),
       tag: 'computer:dharma',
     })
@@ -238,7 +265,7 @@ describe('addMetric', () => {
     expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
       {
         metric: 'weight',
-        source: 'manual',
+        source: 'aurboda',
         time: new Date('2024-01-15T08:00:00Z'),
         unit: 'kg',
         value: 75.5,
@@ -325,7 +352,7 @@ describe('addActivity', () => {
       end_time: new Date('2024-03-15T11:45:00Z'),
       id: expect.any(String),
       notes: undefined,
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:30:00Z'),
       title: undefined,
     })
@@ -354,7 +381,7 @@ describe('addActivity', () => {
       end_time: new Date('2024-03-15T11:45:00Z'),
       id: expect.any(String),
       notes: 'Dumbbell Bench Press: 12×30kg, 8×35kg',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:30:00Z'),
       title: 'Upper body',
     })
@@ -403,7 +430,7 @@ describe('addActivity', () => {
       end_time: new Date('2024-03-15T07:30:00Z'),
       id: expect.any(String),
       notes: undefined,
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T07:00:00Z'),
       title: 'Morning meditation',
     })
@@ -429,27 +456,17 @@ describe('addCustomMetric', () => {
   })
 
   test('creates a custom metric definition', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({ custom_metrics: [] })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
 
     const result = await addCustomMetric('testuser', { name: 'mood', unit: 'score' })
 
     expect(result.success).toBe(true)
     expect(result.data).toEqual({ name: 'mood', unit: 'score' })
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    expect(db.insertCustomMetricDefinition).toHaveBeenCalledWith('testuser', { name: 'mood', unit: 'score' })
   })
 
   test('creates a custom metric with all fields', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({ custom_metrics: [] })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { description: 'Daily mood rating', max_value: 10, min_value: 1, name: 'mood', unit: 'score' },
-      ],
-    })
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
 
     const result = await addCustomMetric('testuser', {
       description: 'Daily mood rating',
@@ -470,55 +487,26 @@ describe('addCustomMetric', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('conflicts with a built-in metric')
-    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+    expect(db.insertCustomMetricDefinition).not.toHaveBeenCalled()
   })
 
   test('rejects duplicate custom metric name', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue({ name: 'mood', unit: 'score' })
 
     const result = await addCustomMetric('testuser', { name: 'mood', unit: 'points' })
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('already exists')
-    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+    expect(db.insertCustomMetricDefinition).not.toHaveBeenCalled()
   })
 
-  test('appends to existing custom metrics', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { name: 'mood', unit: 'score' },
-        { name: 'caffeine_mg', unit: 'mg' },
-      ],
-    })
-
-    const result = await addCustomMetric('testuser', { name: 'caffeine_mg', unit: 'mg' })
-
-    expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [
-        { name: 'mood', unit: 'score' },
-        { name: 'caffeine_mg', unit: 'mg' },
-      ],
-    })
-  })
-
-  test('works when no settings exist', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+  test('works when no metrics exist yet', async () => {
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
 
     const result = await addCustomMetric('testuser', { name: 'mood', unit: 'score' })
 
     expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    expect(db.insertCustomMetricDefinition).toHaveBeenCalledWith('testuser', { name: 'mood', unit: 'score' })
   })
 })
 
@@ -528,41 +516,19 @@ describe('deleteCustomMetric', () => {
   })
 
   test('deletes an existing custom metric', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { name: 'mood', unit: 'score' },
-        { name: 'caffeine_mg', unit: 'mg' },
-      ],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'caffeine_mg', unit: 'mg' }],
-    })
+    vi.mocked(db.deleteCustomMetricDefinition).mockResolvedValue(true)
 
     const result = await deleteCustomMetric('testuser', 'mood')
 
     expect(result.success).toBe(true)
     expect(result.deleted).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [{ name: 'caffeine_mg', unit: 'mg' }],
-    })
+    expect(db.deleteCustomMetricDefinition).toHaveBeenCalledWith('testuser', 'mood')
   })
 
   test('returns false when metric not found', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.deleteCustomMetricDefinition).mockResolvedValue(false)
 
     const result = await deleteCustomMetric('testuser', 'nonexistent')
-
-    expect(result.success).toBe(false)
-    expect(result.deleted).toBe(false)
-    expect(db.upsertUserSettings).not.toHaveBeenCalled()
-  })
-
-  test('returns false when no custom metrics exist', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
-
-    const result = await deleteCustomMetric('testuser', 'mood')
 
     expect(result.success).toBe(false)
     expect(result.deleted).toBe(false)
@@ -574,13 +540,11 @@ describe('getCustomMetrics', () => {
     vi.clearAllMocks()
   })
 
-  test('returns custom metrics from settings', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { name: 'mood', unit: 'score' },
-        { name: 'caffeine_mg', unit: 'mg' },
-      ],
-    })
+  test('returns custom metrics from database', async () => {
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([
+      { name: 'mood', unit: 'score' },
+      { name: 'caffeine_mg', unit: 'mg' },
+    ])
 
     const result = await getCustomMetrics('testuser')
 
@@ -591,7 +555,7 @@ describe('getCustomMetrics', () => {
   })
 
   test('returns empty array when no custom metrics', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     const result = await getCustomMetrics('testuser')
 
@@ -606,9 +570,7 @@ describe('addMetric with custom metrics', () => {
 
   test('adds a custom metric measurement', async () => {
     vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([{ name: 'mood', unit: 'score' }])
 
     const result = await addMetric('testuser', {
       metric: 'mood',
@@ -624,7 +586,7 @@ describe('addMetric with custom metrics', () => {
     expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
       {
         metric: 'mood',
-        source: 'manual',
+        source: 'aurboda',
         time: new Date('2024-01-15T08:00:00Z'),
         unit: 'score',
         value: 8,
@@ -633,7 +595,7 @@ describe('addMetric with custom metrics', () => {
   })
 
   test('rejects unknown metric name', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({ custom_metrics: [] })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     const result = await addMetric('testuser', {
       metric: 'unknown_metric',
@@ -647,9 +609,9 @@ describe('addMetric with custom metrics', () => {
   })
 
   test('validates custom metric value against min/max', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, min_value: 1, name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([
+      { max_value: 10, min_value: 1, name: 'mood', unit: 'score' },
+    ])
 
     const result = await addMetric('testuser', {
       metric: 'mood',
@@ -663,9 +625,9 @@ describe('addMetric with custom metrics', () => {
   })
 
   test('validates custom metric value against min', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, min_value: 1, name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([
+      { max_value: 10, min_value: 1, name: 'mood', unit: 'score' },
+    ])
 
     const result = await addMetric('testuser', {
       metric: 'mood',
@@ -676,6 +638,166 @@ describe('addMetric with custom metrics', () => {
     expect(result.success).toBe(false)
     expect(result.error).toContain('below minimum')
     expect(db.insertTimeSeries).not.toHaveBeenCalled()
+  })
+})
+
+describe('bulkAddMetrics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('inserts multiple built-in metrics in a single batch', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+      { metric: 'heart_rate', time: new Date('2024-01-15T10:05:00Z'), value: 75 },
+      { metric: 'weight', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+    ])
+
+    expect(result.success).toBe(true)
+    expect(result.inserted).toBe(3)
+    expect(result.errors).toHaveLength(0)
+
+    expect(db.insertTimeSeries).toHaveBeenCalledTimes(1)
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      {
+        metric: 'heart_rate',
+        source: 'aurboda',
+        time: new Date('2024-01-15T10:00:00Z'),
+        unit: 'bpm',
+        value: 72,
+      },
+      {
+        metric: 'heart_rate',
+        source: 'aurboda',
+        time: new Date('2024-01-15T10:05:00Z'),
+        unit: 'bpm',
+        value: 75,
+      },
+      {
+        metric: 'weight',
+        source: 'aurboda',
+        time: new Date('2024-01-15T08:00:00Z'),
+        unit: 'kg',
+        value: 75.5,
+      },
+    ])
+  })
+
+  test('collects per-item errors without failing the batch', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+      { metric: 'invalid_metric', time: new Date('2024-01-15T10:05:00Z'), value: 42 },
+      { metric: 'weight', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
+    ])
+
+    expect(result.success).toBe(true)
+    expect(result.inserted).toBe(2)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toEqual({
+      error: 'Invalid metric "invalid_metric"',
+      index: 1,
+    })
+  })
+
+  test('validates custom metric ranges', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([
+      { max_value: 10, min_value: 1, name: 'mood', unit: 'score' },
+    ])
+
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'mood', time: new Date('2024-01-15T10:00:00Z'), value: 5 },
+      { metric: 'mood', time: new Date('2024-01-15T11:00:00Z'), value: 15 },
+      { metric: 'mood', time: new Date('2024-01-15T12:00:00Z'), value: 0 },
+    ])
+
+    expect(result.success).toBe(true)
+    expect(result.inserted).toBe(1)
+    expect(result.errors).toHaveLength(2)
+    expect(result.errors[0].index).toBe(1)
+    expect(result.errors[0].error).toContain('exceeds maximum')
+    expect(result.errors[1].index).toBe(2)
+    expect(result.errors[1].error).toContain('below minimum')
+  })
+
+  test('uses default source when no per-item source specified', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+
+    await bulkAddMetrics(
+      'testuser',
+      [{ metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 }],
+      'oura',
+    )
+
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      expect.objectContaining({ source: 'oura' }),
+    ])
+  })
+
+  test('per-item source overrides default source', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+
+    await bulkAddMetrics(
+      'testuser',
+      [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+        { metric: 'heart_rate', time: new Date('2024-01-15T10:05:00Z'), value: 75 },
+      ],
+      'oura',
+    )
+
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      expect.objectContaining({ source: 'garmin' }),
+      expect.objectContaining({ source: 'oura' }),
+    ])
+  })
+
+  test('defaults source to aurboda when not specified', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+
+    await bulkAddMetrics('testuser', [
+      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+    ])
+
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      expect.objectContaining({ source: 'aurboda' }),
+    ])
+  })
+
+  test('does not call insertTimeSeries when all items are invalid', async () => {
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'unknown1', time: new Date('2024-01-15T10:00:00Z'), value: 1 },
+      { metric: 'unknown2', time: new Date('2024-01-15T10:05:00Z'), value: 2 },
+    ])
+
+    expect(result.success).toBe(true)
+    expect(result.inserted).toBe(0)
+    expect(result.errors).toHaveLength(2)
+    expect(db.insertTimeSeries).not.toHaveBeenCalled()
+  })
+
+  test('calls getCustomMetricDefinitions only once for the entire batch', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([{ name: 'mood', unit: 'score' }])
+
+    await bulkAddMetrics('testuser', [
+      { metric: 'mood', time: new Date('2024-01-15T10:00:00Z'), value: 5 },
+      { metric: 'mood', time: new Date('2024-01-15T11:00:00Z'), value: 7 },
+      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+    ])
+
+    expect(db.getCustomMetricDefinitions).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -716,14 +838,14 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
     vi.mocked(db.updateActivity).mockResolvedValue({
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T12:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T09:00:00Z'),
     })
 
@@ -736,6 +858,7 @@ describe('updateActivity', () => {
     expect(result.start_time).toBe('2024-03-15T09:00:00.000Z')
     expect(result.end_time).toBe('2024-03-15T12:00:00.000Z')
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
       end_time: new Date('2024-03-15T12:00:00Z'),
       notes: undefined,
       start_time: new Date('2024-03-15T09:00:00Z'),
@@ -748,7 +871,7 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
     vi.mocked(db.updateActivity).mockResolvedValue({
@@ -756,7 +879,7 @@ describe('updateActivity', () => {
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
       notes: 'Felt great!',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
       title: 'Morning workout',
     })
@@ -789,7 +912,7 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -807,7 +930,7 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -825,7 +948,7 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      source: 'manual',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -838,6 +961,310 @@ describe('updateActivity', () => {
     expect(result.error).toBe('end_time must be after start_time')
     expect(db.updateActivity).not.toHaveBeenCalled()
   })
+
+  test('merges data with existing activity data', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 70, exerciseTypeName: 'strength_training' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+    })
+
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: undefined,
+      notes: undefined,
+      start_time: undefined,
+      title: undefined,
+    })
+  })
+
+  test('merges new data fields while preserving existing ones', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { calories: 300, exerciseType: 70, exerciseTypeName: 'strength_training' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { calories: 300, exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+    })
+
+    // Should merge: existing {calories, exerciseType, exerciseTypeName} + new {exerciseType, exerciseTypeName}
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
+      data: { calories: 300, exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: undefined,
+      notes: undefined,
+      start_time: undefined,
+      title: undefined,
+    })
+  })
+
+  test('sets data on activity with no existing data', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 56, exerciseTypeName: 'running' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      data: { exerciseType: 56, exerciseTypeName: 'running' },
+    })
+
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
+      data: { exerciseType: 56, exerciseTypeName: 'running' },
+      end_time: undefined,
+      notes: undefined,
+      start_time: undefined,
+      title: undefined,
+    })
+  })
+
+  test('does not pass data when input has no data field', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 70 },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 70 },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      notes: 'Updated notes',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      notes: 'Updated notes',
+    })
+
+    // data should be undefined (not touched) when not provided in input
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
+      data: undefined,
+      end_time: undefined,
+      notes: 'Updated notes',
+      start_time: undefined,
+      title: undefined,
+    })
+  })
+
+  test('updates data and other fields together', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+      title: 'Heavy lifting',
+    })
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      title: 'Heavy lifting',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.title).toBe('Heavy lifting')
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: undefined,
+      data: { exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      end_time: undefined,
+      notes: undefined,
+      start_time: undefined,
+      title: 'Heavy lifting',
+    })
+  })
+
+  test('updates activity_type successfully', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'garmin',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.checkActivityConflict).mockResolvedValue(false)
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'meditation',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'garmin',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      activity_type: 'meditation',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.activity_type).toBe('meditation')
+    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
+      activity_type: 'meditation',
+      data: undefined,
+      end_time: undefined,
+      notes: undefined,
+      start_time: undefined,
+      title: undefined,
+    })
+  })
+
+  test('returns error when activity_type change would violate unique constraint', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'garmin',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.checkActivityConflict).mockResolvedValue(true)
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      activity_type: 'meditation',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Cannot change activity type')
+    expect(db.updateActivity).not.toHaveBeenCalled()
+  })
+
+  test('skips conflict check when activity_type is not changing', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+      title: 'Updated',
+    })
+
+    await updateActivity('testuser', 'activity-123', { title: 'Updated' })
+
+    expect(db.checkActivityConflict).not.toHaveBeenCalled()
+  })
+
+  test('enqueues HC delete when changing from exercise to meditation (aurboda source)', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.checkActivityConflict).mockResolvedValue(false)
+    vi.mocked(db.findHcRecordId).mockResolvedValue('hc-record-456')
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'meditation',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      activity_type: 'meditation',
+    })
+
+    // Should enqueue a delete for the old exercise HC record
+    expect(db.enqueueOutboundSync).toHaveBeenCalledWith('testuser', {
+      entity_id: 'activity-123',
+      entity_type: 'activity',
+      hc_record_type: 'ExerciseSessionRecord',
+      operation: 'delete',
+      payload: { hc_record_id: 'hc-record-456' },
+    })
+    // Should NOT enqueue an insert for meditation (not HC-syncable)
+    expect(db.enqueueOutboundSync).toHaveBeenCalledTimes(1)
+  })
+
+  test('enqueues HC insert when changing from meditation to exercise (aurboda source)', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'meditation',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.checkActivityConflict).mockResolvedValue(false)
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      activity_type: 'exercise',
+    })
+
+    // Should enqueue an insert for the new exercise HC record
+    expect(db.enqueueOutboundSync).toHaveBeenCalledWith('testuser', {
+      entity_id: 'activity-123',
+      entity_type: 'activity',
+      hc_record_type: 'ExerciseSessionRecord',
+      operation: 'insert',
+      payload: expect.objectContaining({ activity_type: 'exercise' }),
+    })
+  })
 })
 
 describe('updateCustomMetric', () => {
@@ -846,28 +1273,19 @@ describe('updateCustomMetric', () => {
   })
 
   test('updates unit field', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'points' }],
-    })
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({ name: 'mood', unit: 'points' })
 
     const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
 
     expect(result.success).toBe(true)
     expect(result.data?.unit).toBe('points')
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [{ name: 'mood', unit: 'points' }],
-    })
   })
 
   test('updates description field', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ description: 'Daily mood rating', name: 'mood', unit: 'score' }],
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      description: 'Daily mood rating',
+      name: 'mood',
+      unit: 'score',
     })
 
     const result = await updateCustomMetric('testuser', 'mood', { description: 'Daily mood rating' })
@@ -877,11 +1295,10 @@ describe('updateCustomMetric', () => {
   })
 
   test('clears min_value with null', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, min_value: 1, name: 'mood', unit: 'score' }],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, name: 'mood', unit: 'score' }],
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      max_value: 10,
+      name: 'mood',
+      unit: 'score',
     })
 
     const result = await updateCustomMetric('testuser', 'mood', { minValue: null })
@@ -892,11 +1309,10 @@ describe('updateCustomMetric', () => {
   })
 
   test('clears max_value with null', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ max_value: 10, min_value: 1, name: 'mood', unit: 'score' }],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [{ min_value: 1, name: 'mood', unit: 'score' }],
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      min_value: 1,
+      name: 'mood',
+      unit: 'score',
     })
 
     const result = await updateCustomMetric('testuser', 'mood', { maxValue: null })
@@ -907,27 +1323,21 @@ describe('updateCustomMetric', () => {
   })
 
   test('returns error when metric not found', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [{ name: 'mood', unit: 'score' }],
-    })
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue(null)
 
     const result = await updateCustomMetric('testuser', 'nonexistent', { unit: 'mg' })
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('not found')
-    expect(db.upsertUserSettings).not.toHaveBeenCalled()
   })
 
   test('partial update preserves other fields', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { description: 'Daily mood', max_value: 10, min_value: 1, name: 'mood', unit: 'score' },
-      ],
-    })
-    vi.mocked(db.upsertUserSettings).mockResolvedValue({
-      custom_metrics: [
-        { description: 'Daily mood', max_value: 10, min_value: 1, name: 'mood', unit: 'points' },
-      ],
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      description: 'Daily mood',
+      max_value: 10,
+      min_value: 1,
+      name: 'mood',
+      unit: 'points',
     })
 
     const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
@@ -940,20 +1350,6 @@ describe('updateCustomMetric', () => {
       name: 'mood',
       unit: 'points',
     })
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      custom_metrics: [
-        { description: 'Daily mood', max_value: 10, min_value: 1, name: 'mood', unit: 'points' },
-      ],
-    })
-  })
-
-  test('returns error when no settings exist', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue(null)
-
-    const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
-
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('not found')
   })
 })
 
@@ -962,10 +1358,10 @@ describe('deleteMetric', () => {
     vi.clearAllMocks()
   })
 
-  test('deletes a manual measurement and returns success', async () => {
+  test('deletes a measurement and returns success', async () => {
     vi.mocked(db.deleteTimeSeriesPoint).mockResolvedValue(true)
 
-    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'))
+    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'), 'manual')
 
     expect(result.success).toBe(true)
     expect(result.deleted).toBe(true)
@@ -975,13 +1371,14 @@ describe('deleteMetric', () => {
       'testuser',
       'weight',
       new Date('2024-01-15T08:00:00Z'),
+      'manual',
     )
   })
 
   test('returns false when measurement not found', async () => {
     vi.mocked(db.deleteTimeSeriesPoint).mockResolvedValue(false)
 
-    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'))
+    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'), 'manual')
 
     expect(result.success).toBe(false)
     expect(result.deleted).toBe(false)
@@ -1011,5 +1408,133 @@ describe('deleteMetricData', () => {
 
     expect(result.success).toBe(true)
     expect(result.deletedCount).toBe(0)
+  })
+})
+
+describe('toMetricEntityId', () => {
+  test('constructs composite key from parts', () => {
+    const result = toMetricEntityId(new Date('2024-01-15T10:30:00.000Z'), 'heart_rate', 'oura')
+    expect(result).toBe('2024-01-15T10:30:00.000Z|heart_rate|oura')
+  })
+
+  test('preserves millisecond precision', () => {
+    const result = toMetricEntityId(new Date('2024-01-15T10:30:00.123Z'), 'weight', 'manual')
+    expect(result).toBe('2024-01-15T10:30:00.123Z|weight|manual')
+  })
+})
+
+describe('parseMetricEntityId', () => {
+  test('parses valid composite key', () => {
+    const result = parseMetricEntityId('2024-01-15T10:30:00.000Z|heart_rate|oura')
+    expect(result).toEqual({
+      metric: 'heart_rate',
+      source: 'oura',
+      time: new Date('2024-01-15T10:30:00.000Z'),
+    })
+  })
+
+  test('returns null for invalid format (too few parts)', () => {
+    expect(parseMetricEntityId('2024-01-15T10:30:00.000Z|heart_rate')).toBeNull()
+  })
+
+  test('returns null for invalid format (too many parts)', () => {
+    expect(parseMetricEntityId('a|b|c|d')).toBeNull()
+  })
+
+  test('returns null for invalid time', () => {
+    expect(parseMetricEntityId('not-a-date|heart_rate|oura')).toBeNull()
+  })
+
+  test('returns null for empty metric', () => {
+    expect(parseMetricEntityId('2024-01-15T10:30:00.000Z||oura')).toBeNull()
+  })
+
+  test('returns null for empty source', () => {
+    expect(parseMetricEntityId('2024-01-15T10:30:00.000Z|heart_rate|')).toBeNull()
+  })
+
+  test('roundtrips with toMetricEntityId', () => {
+    const time = new Date('2024-01-15T10:30:00.000Z')
+    const entityId = toMetricEntityId(time, 'weight', 'aurboda')
+    const parsed = parseMetricEntityId(entityId)
+
+    expect(parsed).toEqual({
+      metric: 'weight',
+      source: 'aurboda',
+      time,
+    })
+  })
+})
+
+describe('updateTag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns error when tag not found', async () => {
+    vi.mocked(db.getTagById).mockResolvedValue(null)
+
+    const result = await updateTag('testuser', 'nonexistent-id', {
+      start_time: new Date('2024-01-15T10:00:00Z'),
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Tag not found')
+  })
+
+  test('updates start_time', async () => {
+    vi.mocked(db.getTagById).mockResolvedValue({
+      id: 'tag-id',
+      source: 'aurboda',
+      start_time: new Date('2024-01-15T09:00:00Z'),
+      end_time: new Date('2024-01-15T10:00:00Z'),
+      tag: 'test',
+    })
+    vi.mocked(db.updateTag).mockResolvedValue(true)
+
+    const result = await updateTag('testuser', 'tag-id', {
+      start_time: new Date('2024-01-15T08:00:00Z'),
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.updateTag).toHaveBeenCalledWith('testuser', 'tag-id', {
+      start_time: new Date('2024-01-15T08:00:00Z'),
+    })
+  })
+
+  test('rejects end_time before start_time', async () => {
+    vi.mocked(db.getTagById).mockResolvedValue({
+      id: 'tag-id',
+      source: 'aurboda',
+      start_time: new Date('2024-01-15T10:00:00Z'),
+      tag: 'test',
+    })
+
+    const result = await updateTag('testuser', 'tag-id', {
+      end_time: new Date('2024-01-15T09:00:00Z'),
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('end_time must be after start_time')
+  })
+
+  test('clears end_time with null', async () => {
+    vi.mocked(db.getTagById).mockResolvedValue({
+      id: 'tag-id',
+      source: 'aurboda',
+      start_time: new Date('2024-01-15T09:00:00Z'),
+      end_time: new Date('2024-01-15T10:00:00Z'),
+      tag: 'test',
+    })
+    vi.mocked(db.updateTag).mockResolvedValue(true)
+
+    const result = await updateTag('testuser', 'tag-id', {
+      end_time: null,
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.updateTag).toHaveBeenCalledWith('testuser', 'tag-id', {
+      end_time: null,
+    })
   })
 })

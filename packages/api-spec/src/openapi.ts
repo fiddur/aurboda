@@ -5,38 +5,17 @@
  * Run with: pnpm generate:openapi
  */
 
-import * as fs from 'fs'
+import * as fs from 'node:fs'
 import * as yaml from 'yaml'
 import { z } from 'zod'
 import { createDocument } from 'zod-openapi'
 
-// Import zod-openapi to get TypeScript support for meta() OpenAPI properties
-import 'zod-openapi'
-
+import { activitiesResponseSchema } from './schemas/activities.ts'
+import { loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
 // Import all schemas
-import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.js'
-
-import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.js'
-
-import {
-  addMetricBodySchema,
-  addMetricResponseSchema,
-  queryMetricsResponseSchema,
-} from './schemas/metrics.js'
-
-import { dailySummaryResponseSchema } from './schemas/daily-summary.js'
-
-import { periodSummaryResponseSchema } from './schemas/period-summary.js'
-
-import {
-  addTagBodySchema,
-  addTagResponseSchema,
-  deleteTagResponseSchema,
-  tagsResponseSchema,
-} from './schemas/tags.js'
-
-import { activitiesResponseSchema } from './schemas/activities.js'
-
+import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
+import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
+import { goalsProgressResponseSchema } from './schemas/goals.ts'
 import {
   addNamedLocationBodySchema,
   addNamedLocationResponseSchema,
@@ -45,8 +24,20 @@ import {
   namedLocationsResponseSchema,
   promoteDetectedLocationBodySchema,
   updateNamedLocationBodySchema,
-} from './schemas/locations.js'
-
+} from './schemas/locations.ts'
+import {
+  addMetricBodySchema,
+  addMetricResponseSchema,
+  queryMetricsResponseSchema,
+} from './schemas/metrics.ts'
+import {
+  outboundSyncAckBodySchema,
+  outboundSyncAckResponseSchema,
+  outboundSyncResponseSchema,
+} from './schemas/outbound-sync.ts'
+import { periodSummaryResponseSchema } from './schemas/period-summary.ts'
+import { productivityResponseSchema } from './schemas/productivity.ts'
+import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
 import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
@@ -55,13 +46,13 @@ import {
   syncRescueTimeBodySchema,
   syncResponseSchema,
   syncStatusResponseSchema,
-} from './schemas/sync.js'
-
-import { loginBodySchema, loginResponseSchema } from './schemas/admin.js'
-
-import { productivityResponseSchema } from './schemas/productivity.js'
-
-import { goalsProgressResponseSchema } from './schemas/goals.js'
+} from './schemas/sync.ts'
+import {
+  addTagBodySchema,
+  addTagResponseSchema,
+  deleteTagResponseSchema,
+  tagsResponseSchema,
+} from './schemas/tags.ts'
 
 // Error response
 const errorResponseSchema = z
@@ -116,13 +107,17 @@ const openApiDocument = createDocument({
         requestParams: {
           query: z.object({
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+            start: iso8601DateTimeSchema.meta({
+              description: 'Start date/time',
+            }),
             types: z.string().optional().meta({ description: 'Comma-separated activity types' }),
           }),
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: activitiesResponseSchema } },
+            content: {
+              'application/json': { schema: activitiesResponseSchema },
+            },
             description: 'Successful response',
           },
         },
@@ -139,12 +134,16 @@ const openApiDocument = createDocument({
           'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, tags, productivity, and visited places.',
         requestParams: {
           query: z.object({
-            date: dateOnlySchema.meta({ description: 'Date in YYYY-MM-DD format' }),
+            date: dateOnlySchema.meta({
+              description: 'Date in YYYY-MM-DD format',
+            }),
           }),
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: dailySummaryResponseSchema } },
+            content: {
+              'application/json': { schema: dailySummaryResponseSchema },
+            },
             description: 'Successful response',
           },
           400: {
@@ -165,7 +164,9 @@ const openApiDocument = createDocument({
           'Get progress toward all user goals. Returns current value, min/max targets, and how much will be lost when the oldest day exits the rolling window.',
         responses: {
           200: {
-            content: { 'application/json': { schema: goalsProgressResponseSchema } },
+            content: {
+              'application/json': { schema: goalsProgressResponseSchema },
+            },
             description: 'Successful response',
           },
         },
@@ -182,12 +183,16 @@ const openApiDocument = createDocument({
         requestParams: {
           query: z.object({
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+            start: iso8601DateTimeSchema.meta({
+              description: 'Start date/time',
+            }),
           }),
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: locationsResponseSchema } },
+            content: {
+              'application/json': { schema: locationsResponseSchema },
+            },
             description: 'Successful response',
           },
         },
@@ -207,12 +212,16 @@ const openApiDocument = createDocument({
               .number()
               .optional()
               .meta({ description: 'Minimum stay duration in minutes' }),
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+            start: iso8601DateTimeSchema.meta({
+              description: 'Start date/time',
+            }),
           }),
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: detectedLocationsResponseSchema } },
+            content: {
+              'application/json': { schema: detectedLocationsResponseSchema },
+            },
             description: 'Successful response',
           },
         },
@@ -225,11 +234,15 @@ const openApiDocument = createDocument({
       post: {
         description: 'Create a named location from detected coordinates.',
         requestBody: {
-          content: { 'application/json': { schema: promoteDetectedLocationBodySchema } },
+          content: {
+            'application/json': { schema: promoteDetectedLocationBodySchema },
+          },
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: addNamedLocationResponseSchema } },
+            content: {
+              'application/json': { schema: addNamedLocationResponseSchema },
+            },
             description: 'Successful response',
           },
           400: {
@@ -247,7 +260,9 @@ const openApiDocument = createDocument({
         description: 'Get all stored detected locations with visit statistics.',
         responses: {
           200: {
-            content: { 'application/json': { schema: detectedLocationsResponseSchema } },
+            content: {
+              'application/json': { schema: detectedLocationsResponseSchema },
+            },
             description: 'Successful response',
           },
         },
@@ -261,7 +276,9 @@ const openApiDocument = createDocument({
         description: 'Get all user-defined named locations.',
         responses: {
           200: {
-            content: { 'application/json': { schema: namedLocationsResponseSchema } },
+            content: {
+              'application/json': { schema: namedLocationsResponseSchema },
+            },
             description: 'Successful response',
           },
         },
@@ -272,11 +289,15 @@ const openApiDocument = createDocument({
       post: {
         description: 'Create a named location.',
         requestBody: {
-          content: { 'application/json': { schema: addNamedLocationBodySchema } },
+          content: {
+            'application/json': { schema: addNamedLocationBodySchema },
+          },
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: addNamedLocationResponseSchema } },
+            content: {
+              'application/json': { schema: addNamedLocationResponseSchema },
+            },
             description: 'Successful response',
           },
           400: {
@@ -293,7 +314,9 @@ const openApiDocument = createDocument({
       delete: {
         description: 'Delete a named location by its ID.',
         requestParams: {
-          path: z.object({ id: z.string().uuid().meta({ description: 'Location ID' }) }),
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Location ID' }),
+          }),
         },
         responses: {
           200: {
@@ -312,14 +335,20 @@ const openApiDocument = createDocument({
       patch: {
         description: 'Update an existing named location.',
         requestBody: {
-          content: { 'application/json': { schema: updateNamedLocationBodySchema } },
+          content: {
+            'application/json': { schema: updateNamedLocationBodySchema },
+          },
         },
         requestParams: {
-          path: z.object({ id: z.string().uuid().meta({ description: 'Location ID' }) }),
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Location ID' }),
+          }),
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: addNamedLocationResponseSchema } },
+            content: {
+              'application/json': { schema: addNamedLocationResponseSchema },
+            },
             description: 'Successful response',
           },
           404: {
@@ -362,7 +391,9 @@ const openApiDocument = createDocument({
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: addMetricResponseSchema } },
+            content: {
+              'application/json': { schema: addMetricResponseSchema },
+            },
             description: 'Successful response',
           },
           400: {
@@ -384,12 +415,16 @@ const openApiDocument = createDocument({
           path: z.object({ metric: metricTypeSchema }),
           query: z.object({
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+            start: iso8601DateTimeSchema.meta({
+              description: 'Start date/time',
+            }),
           }),
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: queryMetricsResponseSchema } },
+            content: {
+              'application/json': { schema: queryMetricsResponseSchema },
+            },
             description: 'Successful response',
           },
           400: {
@@ -416,12 +451,16 @@ const openApiDocument = createDocument({
           query: z.object({
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
             metrics: z.string().meta({ description: 'Comma-separated list of metrics' }),
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+            start: iso8601DateTimeSchema.meta({
+              description: 'Start date/time',
+            }),
           }),
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: periodSummaryResponseSchema } },
+            content: {
+              'application/json': { schema: periodSummaryResponseSchema },
+            },
             description: 'Successful response',
           },
           400: {
@@ -442,12 +481,16 @@ const openApiDocument = createDocument({
         requestParams: {
           query: z.object({
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+            start: iso8601DateTimeSchema.meta({
+              description: 'Start date/time',
+            }),
           }),
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: productivityResponseSchema } },
+            content: {
+              'application/json': { schema: productivityResponseSchema },
+            },
             description: 'Successful response',
           },
         },
@@ -461,7 +504,9 @@ const openApiDocument = createDocument({
         description:
           'Upload Health Connect records of a specific type (e.g., HeartRateRecord, SleepSessionRecord).',
         requestBody: {
-          content: { 'application/json': { schema: healthConnectSyncBodySchema } },
+          content: {
+            'application/json': { schema: healthConnectSyncBodySchema },
+          },
         },
         requestParams: {
           path: z.object({
@@ -489,7 +534,9 @@ const openApiDocument = createDocument({
       post: {
         description: 'Upload daily aggregate data from Health Connect (steps, distance, calories, floors).',
         requestBody: {
-          content: { 'application/json': { schema: dailyAggregatesBodySchema } },
+          content: {
+            'application/json': { schema: dailyAggregatesBodySchema },
+          },
         },
         responses: {
           200: {
@@ -510,7 +557,9 @@ const openApiDocument = createDocument({
       post: {
         description: 'Report deleted Health Connect records that should be removed from the backend.',
         requestBody: {
-          content: { 'application/json': { schema: healthConnectDeletionsBodySchema } },
+          content: {
+            'application/json': { schema: healthConnectDeletionsBodySchema },
+          },
         },
         responses: {
           200: {
@@ -546,6 +595,48 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Sync Oura data',
+        tags: ['Sync'],
+      },
+    },
+
+    // --- Sync: Outbound (backend -> Health Connect) ---
+    '/sync/outbound': {
+      get: {
+        description:
+          'Get pending outbound sync entries. The Android app polls this to discover changes that need to be written to Health Connect.',
+        responses: {
+          200: {
+            content: {
+              'application/json': { schema: outboundSyncResponseSchema },
+            },
+            description: 'Pending outbound sync entries',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get pending outbound sync entries',
+        tags: ['Sync'],
+      },
+    },
+
+    '/sync/outbound/ack': {
+      post: {
+        description:
+          'Acknowledge that outbound sync entries have been written to Health Connect. Optionally includes the Health Connect record ID for future reference.',
+        requestBody: {
+          content: {
+            'application/json': { schema: outboundSyncAckBodySchema },
+          },
+        },
+        responses: {
+          200: {
+            content: {
+              'application/json': { schema: outboundSyncAckResponseSchema },
+            },
+            description: 'Acknowledgement result',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Acknowledge outbound sync entries',
         tags: ['Sync'],
       },
     },
@@ -587,7 +678,9 @@ const openApiDocument = createDocument({
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: syncStatusResponseSchema } },
+            content: {
+              'application/json': { schema: syncStatusResponseSchema },
+            },
             description: 'Successful response',
           },
         },
@@ -604,7 +697,9 @@ const openApiDocument = createDocument({
         requestParams: {
           query: z.object({
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-            start: iso8601DateTimeSchema.meta({ description: 'Start date/time' }),
+            start: iso8601DateTimeSchema.meta({
+              description: 'Start date/time',
+            }),
           }),
         },
         responses: {
@@ -647,7 +742,9 @@ const openApiDocument = createDocument({
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: deleteTagResponseSchema } },
+            content: {
+              'application/json': { schema: deleteTagResponseSchema },
+            },
             description: 'Successful response',
           },
           404: {
@@ -668,7 +765,9 @@ const openApiDocument = createDocument({
           'Get user settings including birth date and effective HR zones. HR zones are used to calculate time spent in different heart rate zones during exercise.',
         responses: {
           200: {
-            content: { 'application/json': { schema: userSettingsResponseSchema } },
+            content: {
+              'application/json': { schema: userSettingsResponseSchema },
+            },
             description: 'Successful response',
           },
         },
@@ -680,11 +779,15 @@ const openApiDocument = createDocument({
         description:
           'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
         requestBody: {
-          content: { 'application/json': { schema: updateSettingsInputSchema } },
+          content: {
+            'application/json': { schema: updateSettingsInputSchema },
+          },
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: userSettingsResponseSchema } },
+            content: {
+              'application/json': { schema: userSettingsResponseSchema },
+            },
             description: 'Successful response',
           },
           400: {
@@ -712,7 +815,10 @@ const openApiDocument = createDocument({
     { description: 'Named and detected locations', name: 'Locations' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
     { description: 'User settings and preferences', name: 'Settings' },
-    { description: 'Data synchronization with external services', name: 'Sync' },
+    {
+      description: 'Data synchronization with external services',
+      name: 'Sync',
+    },
   ],
 })
 

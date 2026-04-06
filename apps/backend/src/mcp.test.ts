@@ -1,12 +1,12 @@
 import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createAuth } from './auth'
-import * as db from './db'
-import { createMcpRouter } from './mcp'
-import { createInMemorySessionStore, McpSessionStore } from './mcp-session-store'
-import * as mutations from './services/mutations'
-import * as queries from './services/queries'
+
+import { createAuth } from './auth.ts'
+import * as db from './db/index.ts'
+import { createMcpRouter } from './mcp.ts'
+import * as mutations from './services/mutations.ts'
+import * as queries from './services/queries.ts'
 
 // Mock the services
 vi.mock('./services/queries', () => ({
@@ -24,22 +24,59 @@ vi.mock('./services/mutations', () => ({
   addCustomMetric: vi.fn(),
   addMetric: vi.fn(),
   addTag: vi.fn(),
+  deleteActivity: vi.fn(),
   deleteCustomMetric: vi.fn(),
   deleteTag: vi.fn(),
   getCustomMetrics: vi.fn().mockResolvedValue([]),
+  restoreActivity: vi.fn(),
+  updateActivity: vi.fn(),
 }))
 
 // Mock db for sync status and stored detected locations
 vi.mock('./db', () => ({
+  activityTypeExists: vi.fn().mockResolvedValue(true),
+  deleteActivityTypeDefinition: vi.fn().mockResolvedValue(false),
+  deleteDeductionRule: vi.fn().mockResolvedValue(false),
+  deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
+  deleteRuleActivities: vi.fn().mockResolvedValue(0),
+  deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
+  getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
+  getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
+  getActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
   getAllSyncStates: vi.fn(),
+  getDeductionRule: vi.fn().mockResolvedValue(null),
+  getDeductionRules: vi.fn().mockResolvedValue([]),
+  getEnabledDeductionRules: vi.fn().mockResolvedValue([]),
   getDetectedLocations: vi.fn(),
+  getOAuthToken: vi.fn().mockResolvedValue(null),
   getProgrammaticTags: vi.fn().mockResolvedValue([]),
+  getSyncState: vi.fn().mockResolvedValue(null),
   getUniqueTags: vi.fn().mockResolvedValue([]),
   getUserSettings: vi.fn().mockResolvedValue(null),
+  insertActivity: vi.fn().mockResolvedValue(undefined),
+  insertActivityTypeDefinition: vi.fn(),
+  insertDeductionRule: vi.fn().mockResolvedValue({ conditions: [], enabled: true, id: 'mock-id', name: 'mock', output_activity_type: 'test', priority: 0 }),
+  insertDeductionRuleRun: vi.fn().mockResolvedValue(undefined),
+  insertRawRecord: vi.fn().mockResolvedValue(undefined),
+  insertTimeSeries: vi.fn().mockResolvedValue(undefined),
+  updateActivityTypeDefinition: vi.fn(),
+  updateDeductionRule: vi.fn().mockResolvedValue(null),
+  upsertSyncState: vi.fn().mockResolvedValue(undefined),
   upsertUserSettings: vi.fn(),
 }))
 
 // Mock the sync modules
+vi.mock('./services/deduction-deps', () => ({
+  createDefaultEngineDeps: vi.fn().mockReturnValue({
+    deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
+    getActivities: vi.fn().mockResolvedValue([]),
+    getScreentime: vi.fn().mockResolvedValue([]),
+    getTags: vi.fn().mockResolvedValue([]),
+    insertActivity: vi.fn().mockResolvedValue(undefined),
+    insertRuleRun: vi.fn().mockResolvedValue(undefined),
+  }),
+}))
+
 vi.mock('./oura-sync', () => ({
   syncAllOuraData: vi.fn(),
 }))
@@ -52,7 +89,7 @@ const auth = createAuth('very very secretvery very secret') // 32 bytes for AES-
 
 function createTestApp() {
   const app = express()
-  // MCP router must be mounted BEFORE body-parser, as the MCP SDK handles its own body parsing
+  // MCP router must be mounted BEFORE body-parser — stateless mode (no sessions)
   app.use('/mcp', createMcpRouter(auth))
   return app
 }
@@ -110,7 +147,7 @@ describe('MCP Server', () => {
       expect(response.body.error).toBe('Unauthorized')
     })
 
-    test('accepts valid bearer token and returns session ID', async () => {
+    test('accepts valid bearer token in stateless mode', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
@@ -128,113 +165,42 @@ describe('MCP Server', () => {
         })
 
       expect(response.status).toBe(200)
-      expect(response.headers['mcp-session-id']).toBeDefined()
+      // Stateless mode: no session ID in response
+      expect(response.headers['mcp-session-id']).toBeUndefined()
     })
   })
 
-  describe('Authentication - GET /mcp (SSE endpoint)', () => {
-    test('returns 401 without authorization header', async () => {
+  describe('Stateless mode - GET /mcp (SSE not supported)', () => {
+    test('returns 405 for GET requests', async () => {
       const app = createTestApp()
-      const response = await request(app)
-        .get('/mcp')
-        .set('Accept', 'text/event-stream')
-        .set('Mcp-Session-Id', 'some-session-id')
+      const response = await request(app).get('/mcp').set('Accept', 'text/event-stream')
 
-      expect(response.status).toBe(401)
-      expect(response.body.error).toBe('Unauthorized')
-    })
-
-    test('returns 400 for missing session ID', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const response = await request(app).get('/mcp').set('Authorization', `Bearer ${token}`)
-
-      expect(response.status).toBe(400)
-      expect(response.body.error).toBe('Invalid or missing session ID')
-    })
-
-    test('returns 400 for invalid session ID', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const response = await request(app)
-        .get('/mcp')
-        .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', 'nonexistent-session')
-
-      expect(response.status).toBe(400)
-      expect(response.body.error).toBe('Invalid or missing session ID')
+      expect(response.status).toBe(405)
+      expect(response.body.error).toBe('SSE not supported in stateless mode')
     })
   })
 
-  describe('Authentication - DELETE /mcp (end session)', () => {
-    test('returns 401 without authorization header', async () => {
+  describe('Stateless mode - DELETE /mcp (no sessions)', () => {
+    test('returns 405 for DELETE requests', async () => {
       const app = createTestApp()
-      const response = await mcpDelete(app).set('Mcp-Session-Id', 'some-session-id')
-
-      expect(response.status).toBe(401)
-      expect(response.body.error).toBe('Unauthorized')
-    })
-
-    test('returns 400 for missing session ID', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const response = await mcpDelete(app).set('Authorization', `Bearer ${token}`)
-
-      expect(response.status).toBe(400)
-      expect(response.body.error).toBe('Invalid or missing session ID')
-    })
-
-    test('returns 400 for invalid session ID', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
       const response = await mcpDelete(app)
-        .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', 'invalid-session-id')
 
-      expect(response.status).toBe(400)
-      expect(response.body.error).toBe('Invalid or missing session ID')
+      expect(response.status).toBe(405)
+      expect(response.body.error).toBe('No sessions in stateless mode')
     })
   })
-
-  // Note: Session isolation via POST is handled by checking session.user !== user
-  // in mcp.ts POST handler. Due to complexity of MCP SDK's internal session state,
-  // full integration testing of session isolation requires using a real MCP client.
-  // The GET and DELETE endpoints' session isolation is tested via the "returns 400
-  // for invalid session ID" tests which verify sessions are properly scoped.
 
   describe('Tool: query_period_summary', () => {
-    async function initializeSession(app: express.Express, token: string) {
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-      return response.headers['mcp-session-id'] as string
-    }
-
     async function callTool(
       app: express.Express,
       token: string,
-      sessionId: string,
       toolName: string,
       args: Record<string, unknown>,
     ) {
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
         .send({
-          id: 2,
+          id: 1,
           jsonrpc: '2.0',
           method: 'tools/call',
           params: { arguments: args, name: toolName },
@@ -242,17 +208,23 @@ describe('MCP Server', () => {
 
       // Parse SSE response
       const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let toolResult: any = null
+      try {
+        toolResult = JSON.parse(parsed.result.content[0].text)
+      } catch {
+        // Error responses may contain plain text instead of JSON
+      }
       return {
         ...response,
         parsed,
-        toolResult: JSON.parse(parsed.result.content[0].text),
+        toolResult,
       }
     }
 
     test('returns aggregated stats for valid metrics', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       // Mock service response
       vi.mocked(queries.getPeriodSummary).mockResolvedValue({
@@ -275,10 +247,11 @@ describe('MCP Server', () => {
         start: '2024-01-01T00:00:00.000Z',
       })
 
-      const response = await callTool(app, token, sessionId, 'query_period_summary', {
+      const response = await callTool(app, token, 'query_period_summary', {
         end: '2024-01-31T23:59:59Z',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -304,63 +277,21 @@ describe('MCP Server', () => {
     test('returns error for invalid date format', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
-        .send({
-          id: 2,
-          jsonrpc: '2.0',
-          method: 'tools/call',
-          params: {
-            arguments: {
-              end: 'not-a-date',
-              metrics: ['hrv_rmssd'],
-              start: '2024-01-01T00:00:00Z',
-            },
-            name: 'query_period_summary',
-          },
-        })
+      const response = await callTool(app, token, 'query_period_summary', {
+        end: 'not-a-date',
+        metrics: ['hrv_rmssd'],
+        start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
+      })
 
-      expect(response.status).toBe(200)
-      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
       // Schema validation catches invalid dates before our handler runs
-      expect(parsed.result.content[0].text).toMatch(/Invalid (date|ISO datetime)/i)
-    })
-
-    test('returns error for invalid metrics', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
-
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
-        .send({
-          id: 2,
-          jsonrpc: '2.0',
-          method: 'tools/call',
-          params: {
-            arguments: {
-              end: '2024-01-31T23:59:59Z',
-              metrics: ['invalid_metric', 'hrv_rmssd'],
-              start: '2024-01-01T00:00:00Z',
-            },
-            name: 'query_period_summary',
-          },
-        })
-
-      expect(response.status).toBe(200)
-      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
-      expect(parsed.result.content[0].text).toContain('Invalid metrics')
-      expect(parsed.result.content[0].text).toContain('invalid_metric')
+      expect(response.parsed.result.content[0].text).toMatch(/Invalid (date|ISO datetime)/i)
     })
 
     test('calculates change from previous period', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(queries.getPeriodSummary).mockResolvedValue({
         end: '2024-01-31T23:59:59.000Z',
@@ -382,10 +313,11 @@ describe('MCP Server', () => {
         start: '2024-01-01T00:00:00.000Z',
       })
 
-      const response = await callTool(app, token, sessionId, 'query_period_summary', {
+      const response = await callTool(app, token, 'query_period_summary', {
         end: '2024-01-31T23:59:59Z',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -395,7 +327,6 @@ describe('MCP Server', () => {
     test('identifies outliers beyond 2 stddev', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(queries.getPeriodSummary).mockResolvedValue({
         end: '2024-01-31T23:59:59.000Z',
@@ -418,10 +349,11 @@ describe('MCP Server', () => {
         start: '2024-01-01T00:00:00.000Z',
       })
 
-      const response = await callTool(app, token, sessionId, 'query_period_summary', {
+      const response = await callTool(app, token, 'query_period_summary', {
         end: '2024-01-31T23:59:59Z',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -432,7 +364,6 @@ describe('MCP Server', () => {
     test('handles metrics with no data', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(queries.getPeriodSummary).mockResolvedValue({
         end: '2024-01-31T23:59:59.000Z',
@@ -454,10 +385,11 @@ describe('MCP Server', () => {
         start: '2024-01-01T00:00:00.000Z',
       })
 
-      const response = await callTool(app, token, sessionId, 'query_period_summary', {
+      const response = await callTool(app, token, 'query_period_summary', {
         end: '2024-01-31T23:59:59Z',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -469,8 +401,6 @@ describe('MCP Server', () => {
     test('calculates completeness percentage correctly', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
-
       vi.mocked(queries.getPeriodSummary).mockResolvedValue({
         end: '2024-01-31T23:59:59.000Z',
         metrics: [
@@ -491,10 +421,11 @@ describe('MCP Server', () => {
         start: '2024-01-01T00:00:00.000Z',
       })
 
-      const response = await callTool(app, token, sessionId, 'query_period_summary', {
+      const response = await callTool(app, token, 'query_period_summary', {
         end: '2024-01-31T23:59:59Z',
         metrics: ['hrv_rmssd'],
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -503,34 +434,16 @@ describe('MCP Server', () => {
   })
 
   describe('Tool: query_tags', () => {
-    async function initializeSession(app: express.Express, token: string) {
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-      return response.headers['mcp-session-id'] as string
-    }
-
     async function callTool(
       app: express.Express,
       token: string,
-      sessionId: string,
       toolName: string,
       args: Record<string, unknown>,
     ) {
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
         .send({
-          id: 2,
+          id: 1,
           jsonrpc: '2.0',
           method: 'tools/call',
           params: { arguments: args, name: toolName },
@@ -547,23 +460,25 @@ describe('MCP Server', () => {
     test('returns tags for valid time range', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(queries.queryTags).mockResolvedValue([
         {
+          comments: [],
           start_time: '2024-01-15T14:30:00Z',
           tag: 'coffee',
         },
         {
+          comments: [],
           end_time: '2024-01-15T16:00:00Z',
           start_time: '2024-01-15T15:00:00Z',
           tag: 'meeting',
         },
       ])
 
-      const response = await callTool(app, token, sessionId, 'query_tags', {
+      const response = await callTool(app, token, 'query_tags', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -582,13 +497,13 @@ describe('MCP Server', () => {
     test('returns empty array when no tags exist', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(queries.queryTags).mockResolvedValue([])
 
-      const response = await callTool(app, token, sessionId, 'query_tags', {
+      const response = await callTool(app, token, 'query_tags', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -597,35 +512,127 @@ describe('MCP Server', () => {
     })
   })
 
-  describe('Tool: query_activities', () => {
-    async function initializeSession(app: express.Express, token: string) {
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-      return response.headers['mcp-session-id'] as string
-    }
-
+  describe('Tool: get_programmatic_tags', () => {
     async function callTool(
       app: express.Express,
       token: string,
-      sessionId: string,
       toolName: string,
       args: Record<string, unknown>,
     ) {
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
         .send({
-          id: 2,
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: args, name: toolName },
+        })
+
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return {
+        ...response,
+        parsed,
+        toolResult: JSON.parse(parsed.result.content[0].text),
+      }
+    }
+
+    test('returns programmatic tags with is_programmatic flag and mapped name', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
+      vi.mocked(db.getProgrammaticTags).mockResolvedValue([
+        { count: 5, isProgrammatic: true, latestTime: new Date('2024-01-15T12:00:00Z'), tagKey: uuid },
+      ])
+      vi.mocked(db.getUserSettings).mockResolvedValue({
+        tag_mappings: { [uuid]: 'Food' },
+      })
+
+      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(response.toolResult.data).toHaveLength(1)
+      expect(response.toolResult.data[0]).toEqual({
+        count: 5,
+        current_name: 'Food',
+        is_programmatic: true,
+        latest_time: '2024-01-15T12:00:00+00:00',
+        tag_key: uuid,
+      })
+    })
+
+    test('returns non-programmatic tags with current_name set to tag name', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(db.getProgrammaticTags).mockResolvedValue([
+        {
+          count: 3,
+          isProgrammatic: false,
+          latestTime: new Date('2024-01-15T14:00:00Z'),
+          tagKey: 'VocalExercise',
+        },
+        { count: 10, isProgrammatic: false, latestTime: new Date('2024-01-15T16:00:00Z'), tagKey: 'coffee' },
+      ])
+      vi.mocked(db.getUserSettings).mockResolvedValue(null)
+
+      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(response.toolResult.data).toHaveLength(2)
+      // Non-programmatic tags use their tag name as current_name
+      expect(response.toolResult.data[0]).toEqual({
+        count: 3,
+        current_name: 'VocalExercise',
+        is_programmatic: false,
+        latest_time: '2024-01-15T14:00:00+00:00',
+        tag_key: 'VocalExercise',
+      })
+      expect(response.toolResult.data[1]).toEqual({
+        count: 10,
+        current_name: 'coffee',
+        is_programmatic: false,
+        latest_time: '2024-01-15T16:00:00+00:00',
+        tag_key: 'coffee',
+      })
+    })
+
+    test('returns mixed programmatic and non-programmatic tags', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
+      vi.mocked(db.getProgrammaticTags).mockResolvedValue([
+        { count: 2, isProgrammatic: true, latestTime: new Date('2024-01-15T10:00:00Z'), tagKey: uuid },
+        { count: 7, isProgrammatic: false, latestTime: new Date('2024-01-15T12:00:00Z'), tagKey: 'coffee' },
+      ])
+      vi.mocked(db.getUserSettings).mockResolvedValue(null)
+
+      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
+
+      expect(response.toolResult.data).toHaveLength(2)
+      // Programmatic tag without mapping has null current_name
+      expect(response.toolResult.data[0].is_programmatic).toBe(true)
+      expect(response.toolResult.data[0].current_name).toBeNull()
+      // Non-programmatic tag always has current_name = tag name
+      expect(response.toolResult.data[1].is_programmatic).toBe(false)
+      expect(response.toolResult.data[1].current_name).toBe('coffee')
+    })
+  })
+
+  describe('Tool: query_activities', () => {
+    async function callTool(
+      app: express.Express,
+      token: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
           jsonrpc: '2.0',
           method: 'tools/call',
           params: { arguments: args, name: toolName },
@@ -642,11 +649,11 @@ describe('MCP Server', () => {
     test('returns activities for valid time range', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(queries.queryActivities).mockResolvedValue([
         {
           activity_type: 'sleep',
+          comments: [],
           duration: 480,
           end_time: '2024-01-15T07:00:00Z',
           source: 'health_connect',
@@ -655,6 +662,7 @@ describe('MCP Server', () => {
         },
         {
           activity_type: 'exercise',
+          comments: [],
           duration: 45,
           end_time: '2024-01-15T09:45:00Z',
           hr_zone_secs: { 0: 60, 1: 300, 2: 900, 3: 1200, 4: 240, 5: 0 },
@@ -664,9 +672,10 @@ describe('MCP Server', () => {
         },
       ])
 
-      const response = await callTool(app, token, sessionId, 'query_activities', {
+      const response = await callTool(app, token, 'query_activities', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -680,11 +689,11 @@ describe('MCP Server', () => {
     test('filters by activity types when provided', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(queries.queryActivities).mockResolvedValue([
         {
           activity_type: 'exercise',
+          comments: [],
           duration: 45,
           end_time: '2024-01-15T09:45:00Z',
           source: 'health_connect',
@@ -693,10 +702,11 @@ describe('MCP Server', () => {
         },
       ])
 
-      const response = await callTool(app, token, sessionId, 'query_activities', {
+      const response = await callTool(app, token, 'query_activities', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
         types: ['exercise'],
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -712,34 +722,16 @@ describe('MCP Server', () => {
   })
 
   describe('Tool: query_productivity', () => {
-    async function initializeSession(app: express.Express, token: string) {
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-      return response.headers['mcp-session-id'] as string
-    }
-
     async function callTool(
       app: express.Express,
       token: string,
-      sessionId: string,
       toolName: string,
       args: Record<string, unknown>,
     ) {
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
         .send({
-          id: 2,
+          id: 1,
           jsonrpc: '2.0',
           method: 'tools/call',
           params: { arguments: args, name: toolName },
@@ -756,12 +748,12 @@ describe('MCP Server', () => {
     test('returns productivity data for valid time range', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(queries.queryProductivity).mockResolvedValue([
         {
           activity: 'Visual Studio Code',
           category: 'Software Development',
+          comments: [],
           duration_sec: 7200,
           end_time: '2024-01-15T17:00:00Z',
           productivity: 2,
@@ -770,6 +762,7 @@ describe('MCP Server', () => {
         {
           activity: 'Twitter',
           category: 'Social Networking',
+          comments: [],
           duration_sec: 1800,
           end_time: '2024-01-15T18:00:00Z',
           productivity: -2,
@@ -777,9 +770,10 @@ describe('MCP Server', () => {
         },
       ])
 
-      const response = await callTool(app, token, sessionId, 'query_productivity', {
+      const response = await callTool(app, token, 'query_productivity', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -797,34 +791,16 @@ describe('MCP Server', () => {
   })
 
   describe('Tool: query_locations', () => {
-    async function initializeSession(app: express.Express, token: string) {
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-      return response.headers['mcp-session-id'] as string
-    }
-
     async function callTool(
       app: express.Express,
       token: string,
-      sessionId: string,
       toolName: string,
       args: Record<string, unknown>,
     ) {
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
         .send({
-          id: 2,
+          id: 1,
           jsonrpc: '2.0',
           method: 'tools/call',
           params: { arguments: args, name: toolName },
@@ -841,7 +817,6 @@ describe('MCP Server', () => {
     test('returns location visits for valid time range', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(queries.queryLocations).mockResolvedValue([
         {
@@ -864,9 +839,10 @@ describe('MCP Server', () => {
         },
       ])
 
-      const response = await callTool(app, token, sessionId, 'query_locations', {
+      const response = await callTool(app, token, 'query_locations', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -881,13 +857,13 @@ describe('MCP Server', () => {
     test('returns empty array when no visits exist', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(queries.queryLocations).mockResolvedValue([])
 
-      const response = await callTool(app, token, sessionId, 'query_locations', {
+      const response = await callTool(app, token, 'query_locations', {
         end: '2024-01-31T23:59:59Z',
         start: '2024-01-01T00:00:00Z',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -897,34 +873,16 @@ describe('MCP Server', () => {
   })
 
   describe('Tool: get_stored_detected_locations', () => {
-    async function initializeSession(app: express.Express, token: string) {
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-      return response.headers['mcp-session-id'] as string
-    }
-
     async function callTool(
       app: express.Express,
       token: string,
-      sessionId: string,
       toolName: string,
       args: Record<string, unknown>,
     ) {
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
         .send({
-          id: 2,
+          id: 1,
           jsonrpc: '2.0',
           method: 'tools/call',
           params: { arguments: args, name: toolName },
@@ -941,7 +899,6 @@ describe('MCP Server', () => {
     test('returns stored detected locations with addresses', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(db.getDetectedLocations).mockResolvedValue([
         {
@@ -974,7 +931,7 @@ describe('MCP Server', () => {
         },
       ])
 
-      const response = await callTool(app, token, sessionId, 'get_stored_detected_locations', {})
+      const response = await callTool(app, token, 'get_stored_detected_locations', {})
 
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
@@ -988,11 +945,10 @@ describe('MCP Server', () => {
     test('returns empty array when no stored locations exist', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(db.getDetectedLocations).mockResolvedValue([])
 
-      const response = await callTool(app, token, sessionId, 'get_stored_detected_locations', {})
+      const response = await callTool(app, token, 'get_stored_detected_locations', {})
 
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
@@ -1001,34 +957,16 @@ describe('MCP Server', () => {
   })
 
   describe('Tool: add_activity', () => {
-    async function initializeSession(app: express.Express, token: string) {
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-      return response.headers['mcp-session-id'] as string
-    }
-
     async function callTool(
       app: express.Express,
       token: string,
-      sessionId: string,
       toolName: string,
       args: Record<string, unknown>,
     ) {
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
         .send({
-          id: 2,
+          id: 1,
           jsonrpc: '2.0',
           method: 'tools/call',
           params: { arguments: args, name: toolName },
@@ -1045,7 +983,6 @@ describe('MCP Server', () => {
     test('creates exercise activity with exercise_type name', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(mutations.addActivity).mockResolvedValue({
         activity_type: 'exercise',
@@ -1056,12 +993,13 @@ describe('MCP Server', () => {
         title: 'Upper body',
       })
 
-      const response = await callTool(app, token, sessionId, 'add_activity', {
+      const response = await callTool(app, token, 'add_activity', {
         activity_type: 'exercise',
         end_time: '2024-03-15T11:45:00Z',
         exercise_type: 'weightlifting',
         start_time: '2024-03-15T10:30:00Z',
         title: 'Upper body',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -1083,7 +1021,6 @@ describe('MCP Server', () => {
     test('creates activity without exercise_type', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(mutations.addActivity).mockResolvedValue({
         activity_type: 'meditation',
@@ -1094,11 +1031,12 @@ describe('MCP Server', () => {
         title: 'Morning meditation',
       })
 
-      const response = await callTool(app, token, sessionId, 'add_activity', {
+      const response = await callTool(app, token, 'add_activity', {
         activity_type: 'meditation',
         end_time: '2024-03-15T07:30:00Z',
         start_time: '2024-03-15T07:00:00Z',
         title: 'Morning meditation',
+        tz: 'UTC',
       })
 
       expect(response.status).toBe(200)
@@ -1116,13 +1054,11 @@ describe('MCP Server', () => {
     test('returns error for invalid exercise_type name', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
         .send({
-          id: 2,
+          id: 1,
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
@@ -1131,6 +1067,7 @@ describe('MCP Server', () => {
               end_time: '2024-03-15T11:45:00Z',
               exercise_type: 'invalid_exercise_type',
               start_time: '2024-03-15T10:30:00Z',
+              tz: 'UTC',
             },
             name: 'add_activity',
           },
@@ -1145,7 +1082,6 @@ describe('MCP Server', () => {
     test('returns error when end_time is before start_time', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
-      const sessionId = await initializeSession(app, token)
 
       vi.mocked(mutations.addActivity).mockResolvedValue({
         error: 'end_time must be after start_time',
@@ -1154,9 +1090,8 @@ describe('MCP Server', () => {
 
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
         .send({
-          id: 2,
+          id: 1,
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
@@ -1164,6 +1099,7 @@ describe('MCP Server', () => {
               activity_type: 'exercise',
               end_time: '2024-03-15T09:00:00Z',
               start_time: '2024-03-15T10:30:00Z',
+              tz: 'UTC',
             },
             name: 'add_activity',
           },
@@ -1175,177 +1111,179 @@ describe('MCP Server', () => {
     })
   })
 
-  describe('Session Persistence', () => {
-    function createTestAppWithStore(sessionStore: McpSessionStore) {
-      const app = express()
-      app.use('/mcp', createMcpRouter(auth, undefined, undefined, { sessionStore }))
-      return app
+  describe('Tool: update_activity', () => {
+    async function callTool(
+      app: express.Express,
+      token: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: args, name: toolName },
+        })
+
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return {
+        ...response,
+        parsed,
+        toolResult: JSON.parse(parsed.result.content[0].text),
+      }
     }
 
-    test('session can be restored after simulated restart', async () => {
-      const sessionStore = createInMemorySessionStore()
-      const app1 = createTestAppWithStore(sessionStore)
+    const testActivityId = '00000000-0000-4000-a000-000000000001'
+
+    test('updates activity with exercise_type', async () => {
+      const app = createTestApp()
       const token = auth.createToken('testuser')
 
-      // Create session on first "instance"
-      const initResponse = await mcpPost(app1)
+      vi.mocked(mutations.updateActivity).mockResolvedValue({
+        activity_type: 'exercise',
+        end_time: '2024-03-15T11:00:00.000Z',
+        id: testActivityId,
+        start_time: '2024-03-15T10:00:00.000Z',
+        success: true,
+        title: 'Workout',
+      })
+
+      const response = await callTool(app, token, 'update_activity', {
+        exercise_type: 'weightlifting',
+        id: testActivityId,
+        title: 'Workout',
+        tz: 'UTC',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(mutations.updateActivity).toHaveBeenCalledWith('testuser', testActivityId, {
+        data: {
+          exerciseType: 81,
+          exerciseTypeName: 'weightlifting',
+        },
+        end_time: undefined,
+        notes: undefined,
+        start_time: undefined,
+        title: 'Workout',
+      })
+    })
+
+    test('updates activity without exercise_type', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(mutations.updateActivity).mockResolvedValue({
+        activity_type: 'exercise',
+        end_time: '2024-03-15T11:00:00.000Z',
+        id: testActivityId,
+        notes: 'Great session',
+        start_time: '2024-03-15T10:00:00.000Z',
+        success: true,
+      })
+
+      const response = await callTool(app, token, 'update_activity', {
+        id: testActivityId,
+        notes: 'Great session',
+        tz: 'UTC',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(mutations.updateActivity).toHaveBeenCalledWith('testuser', testActivityId, {
+        data: undefined,
+        end_time: undefined,
+        notes: 'Great session',
+        start_time: undefined,
+        title: undefined,
+      })
+    })
+
+    test('returns error for invalid exercise_type', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
         .send({
           id: 1,
           jsonrpc: '2.0',
-          method: 'initialize',
+          method: 'tools/call',
           params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-
-      expect(initResponse.status).toBe(200)
-      const sessionId = initResponse.headers['mcp-session-id'] as string
-      expect(sessionId).toBeDefined()
-
-      // Simulate restart by creating a new app instance (fresh in-memory sessions)
-      // but using the same session store
-      const app2 = createTestAppWithStore(sessionStore)
-
-      // Use the same session ID - it should be restored from store
-      // Note: The McpServer instance is recreated, so we need to re-initialize
-      // but the session ID is preserved (the key benefit of persistence)
-      const response = await mcpPost(app2)
-        .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
-        .send({
-          id: 2,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
+            arguments: {
+              exercise_type: 'not_a_real_exercise',
+              id: testActivityId,
+              tz: 'UTC',
+            },
+            name: 'update_activity',
           },
         })
 
       expect(response.status).toBe(200)
-      // The session ID should be preserved (same as before)
-      expect(response.headers['mcp-session-id']).toBe(sessionId)
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      expect(parsed.result.content[0].text).toContain('Invalid exercise_type')
+      expect(mutations.updateActivity).not.toHaveBeenCalled()
     })
 
-    test('session store saves new sessions', async () => {
-      const sessionStore = createInMemorySessionStore()
-      const app = createTestAppWithStore(sessionStore)
+    test('passes time updates as Date objects', async () => {
+      const app = createTestApp()
       const token = auth.createToken('testuser')
 
-      const initResponse = await mcpPost(app)
+      vi.mocked(mutations.updateActivity).mockResolvedValue({
+        activity_type: 'exercise',
+        end_time: '2024-03-15T12:00:00.000Z',
+        id: testActivityId,
+        start_time: '2024-03-15T09:00:00.000Z',
+        success: true,
+      })
+
+      await callTool(app, token, 'update_activity', {
+        end_time: '2024-03-15T12:00:00Z',
+        id: testActivityId,
+        start_time: '2024-03-15T09:00:00Z',
+        tz: 'UTC',
+      })
+
+      expect(mutations.updateActivity).toHaveBeenCalledWith('testuser', testActivityId, {
+        data: undefined,
+        end_time: expect.any(Date),
+        notes: undefined,
+        start_time: expect.any(Date),
+        title: undefined,
+      })
+    })
+
+    test('returns error from service on failure', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(mutations.updateActivity).mockResolvedValue({
+        error: 'Activity not found',
+        id: testActivityId,
+        success: false,
+      })
+
+      const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
         .send({
           id: 1,
           jsonrpc: '2.0',
-          method: 'initialize',
+          method: 'tools/call',
           params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-
-      expect(initResponse.status).toBe(200)
-      const sessionId = initResponse.headers['mcp-session-id'] as string
-
-      // Verify session was saved to store
-      const record = await sessionStore.get('testuser', sessionId)
-      expect(record).not.toBeNull()
-      expect(record!.username).toBe('testuser')
-      expect(record!.session_id).toBe(sessionId)
-    })
-
-    test('session is deleted from store on DELETE', async () => {
-      const sessionStore = createInMemorySessionStore()
-      const app = createTestAppWithStore(sessionStore)
-      const token = auth.createToken('testuser')
-
-      // Create session
-      const initResponse = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-
-      const sessionId = initResponse.headers['mcp-session-id'] as string
-
-      // Delete session
-      await mcpDelete(app).set('Authorization', `Bearer ${token}`).set('Mcp-Session-Id', sessionId)
-
-      // Verify session was removed from store
-      const record = await sessionStore.get('testuser', sessionId)
-      expect(record).toBeNull()
-    })
-
-    test('expired sessions are not restored', async () => {
-      vi.useFakeTimers()
-      const sessionStore = createInMemorySessionStore()
-
-      // Create session at "time zero"
-      const day1 = new Date('2024-01-01T10:00:00Z')
-      vi.setSystemTime(day1)
-
-      const app1 = createTestAppWithStore(sessionStore)
-      const token = auth.createToken('testuser')
-
-      const initResponse = await mcpPost(app1)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
-          },
-        })
-
-      expect(initResponse.status).toBe(200)
-      const sessionId = initResponse.headers['mcp-session-id'] as string
-
-      // Jump forward 8 days (past the 7-day expiry)
-      const day9 = new Date('2024-01-09T10:00:00Z')
-      vi.setSystemTime(day9)
-
-      // Simulate restart with fresh app
-      const app2 = createTestAppWithStore(sessionStore)
-
-      // Try to use the old session - should fail because it's expired
-      // Since the session can't be restored, the system will create a new one
-      // So the response will succeed but with a DIFFERENT session ID
-      const response = await mcpPost(app2)
-        .set('Authorization', `Bearer ${token}`)
-        .set('Mcp-Session-Id', sessionId)
-        .send({
-          id: 2,
-          jsonrpc: '2.0',
-          method: 'initialize',
-          params: {
-            capabilities: {},
-            clientInfo: { name: 'test-client', version: '1.0.0' },
-            protocolVersion: '2024-11-05',
+            arguments: {
+              id: testActivityId,
+              title: 'New title',
+              tz: 'UTC',
+            },
+            name: 'update_activity',
           },
         })
 
       expect(response.status).toBe(200)
-      // A new session should have been created
-      const newSessionId = response.headers['mcp-session-id'] as string
-      expect(newSessionId).toBeDefined()
-      expect(newSessionId).not.toBe(sessionId)
-
-      vi.useRealTimers()
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      expect(parsed.result.content[0].text).toContain('Activity not found')
     })
   })
 })

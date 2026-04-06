@@ -3,8 +3,10 @@
  */
 
 import type { MetricCardConfig } from '@aurboda/api-spec'
+
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, startOfDay, subDays } from 'date-fns'
+
 import { fetchBaseline, fetchPeriodSummary, type BaselineData, type PeriodMetricStats } from '../../state/api'
 
 // Trend indicator component
@@ -12,14 +14,8 @@ function TrendIndicator({ value, inverse = false }: { value: number | null; inve
   if (value === null) return null
 
   const isPositive = inverse ? value < 0 : value > 0
-  const arrow =
-    value > 0 ? '\u2191'
-    : value < 0 ? '\u2193'
-    : '\u2192'
-  const className =
-    isPositive ? 'trend-positive'
-    : value === 0 ? 'trend-neutral'
-    : 'trend-negative'
+  const arrow = value > 0 ? '\u2191' : value < 0 ? '\u2193' : '\u2192'
+  const className = isPositive ? 'trend-positive' : value === 0 ? 'trend-neutral' : 'trend-negative'
 
   return (
     <span class={`trend-indicator ${className}`}>
@@ -75,8 +71,8 @@ const extractPeriodValue = (
 ): { value: number | string | null; trend: number | null; subtitle: string | undefined } => {
   if (!periodSummary) return { subtitle: undefined, trend: null, value: null }
 
-  const apiMetric = metricToApiMetric[metric]
-  const stats = apiMetric ? periodSummary[apiMetric] : null
+  const apiMetric = metricToApiMetric[metric] ?? metric
+  const stats = periodSummary[apiMetric]
 
   if (!stats) return { subtitle: undefined, trend: null, value: null }
 
@@ -119,11 +115,11 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
   // Fetch period summary for other metrics
   const end = endOfDay(new Date())
   const start30days = startOfDay(subDays(new Date(), 30))
-  const apiMetric = metricToApiMetric[metric]
+  const apiMetric = metricToApiMetric[metric] ?? metric
 
   const periodSummaryQuery = useQuery({
-    enabled: !isBaseline && !!apiMetric,
-    queryFn: () => fetchPeriodSummary(start30days, end, apiMetric ? [apiMetric] : []),
+    enabled: !isBaseline,
+    queryFn: () => fetchPeriodSummary(start30days, end, [apiMetric]),
     queryKey: ['periodSummary', metric],
     staleTime: 5 * 60 * 1000,
   })
@@ -158,14 +154,16 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
         {trend !== null && <TrendIndicator value={trend} inverse={trend_inverse} />}
       </div>
       <div class="metric-value">
-        {isLoading ?
+        {isLoading ? (
           <span class="loading-placeholder">...</span>
-        : value !== null ?
+        ) : value !== null ? (
           <>
             <span class="value">{typeof value === 'number' ? value.toFixed(1) : value}</span>
             {unit && <span class="unit">{unit}</span>}
           </>
-        : <span class="no-data">No data</span>}
+        ) : (
+          <span class="no-data">No data</span>
+        )}
       </div>
       {(configSubtitle || dynamicSubtitle) && (
         <div class="metric-subtitle">{configSubtitle ?? dynamicSubtitle}</div>

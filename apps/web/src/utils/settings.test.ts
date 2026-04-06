@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest'
+
 import type { HrZoneThresholds, UserSettingsResponse } from '../state/api'
+
 import { defaultHrZoneThresholds } from './hrZones'
 import {
   computeSettingsUpdateParams,
