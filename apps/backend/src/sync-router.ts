@@ -1,3 +1,4 @@
+import type { RequestHandler, Router } from 'express'
 import type { ParamsDictionary } from 'express-serve-static-core'
 
 import {
@@ -54,8 +55,8 @@ import {
   type SyncRescueTimeBody,
   type SyncResponse,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
+import { typedRouter } from './typed-router.ts'
 import { validateBody } from './validation.ts'
 
 /**
@@ -156,7 +157,7 @@ export interface SyncRouterDeps {
  * the generic /sync/:recordType route to avoid Express matching issues.
  */
 export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // ===========================================================================
   // Specific sync routes - MUST be defined BEFORE /sync/:recordType
@@ -669,5 +670,5 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     },
   )
 
-  return router
+  return router as unknown as Router
 }

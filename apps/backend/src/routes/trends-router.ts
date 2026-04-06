@@ -1,20 +1,22 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Trends route group.
  *
  * Handles: /trends
  */
 import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import { getCustomMetrics } from '../services/mutations.ts'
 import { getTrend } from '../services/trends.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
 export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /trends - Get time-weighted trend for tags or metrics
-  router.get<Record<string, never>, TrendResponse, unknown, TrendQuery>(
+  router.get<Record<string, string>, TrendResponse, unknown, TrendQuery>(
     '/',
     authMiddleware,
     validateQuery(trendQuerySchema),
@@ -61,5 +63,5 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  return router
+  return router as unknown as Router
 }
