@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Tags route group.
  *
@@ -27,7 +29,6 @@ import {
   updateTagBodySchema,
   updateTagDefinitionBodySchema,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import {
   deleteTagDefinition,
@@ -44,13 +45,14 @@ import {
 import { addTag, deleteTag, deleteTagById, restoreTag, updateTag } from '../services/mutations.ts'
 import { queryTags, type SyncProvider } from '../services/queries.ts'
 import { getTagMappings, setTagMapping } from '../services/settings.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: SyncProvider): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /tags - Query tags for a time range
-  router.get<Record<string, never>, TagsResponse, unknown, TagsQuery>(
+  router.get<Record<string, string>, TagsResponse, unknown, TagsQuery>(
     '/',
     authMiddleware,
     validateQuery(tagsQuerySchema),
@@ -64,7 +66,7 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   )
 
   // POST /tags - Add a manual tag
-  router.post<Record<string, never>, AddTagResponse, AddTagBody>(
+  router.post<Record<string, string>, AddTagResponse, AddTagBody>(
     '/',
     authMiddleware,
     validateBody(addTagBodySchema),
@@ -99,32 +101,36 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   )
 
   // GET /tags/id/:id - Get a single tag by ID (for detail page)
-  router.get<{ id: string }>('/id/:id', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const user = req.user!
+  router.get<{ id: string }, { success: boolean; data?: unknown; error?: string }>(
+    '/id/:id',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
 
-    const tag = await getTagById(user, id, true)
-    if (!tag) {
-      return res.status(404).json({ error: 'Tag not found', success: false })
-    }
+      const tag = await getTagById(user, id, true)
+      if (!tag) {
+        return res.status(404).json({ error: 'Tag not found', success: false })
+      }
 
-    res.json({
-      data: {
-        deleted_at: tag.deleted_at?.toISOString(),
-        end_time: tag.end_time?.toISOString(),
-        external_id: tag.external_id,
-        id: tag.id,
-        source: tag.source,
-        start_time: tag.start_time.toISOString(),
-        tag: tag.tag,
-        tag_key: tag.tag_key,
-      },
-      success: true,
-    })
-  })
+      res.json({
+        data: {
+          deleted_at: tag.deleted_at?.toISOString(),
+          end_time: tag.end_time?.toISOString(),
+          external_id: tag.external_id,
+          id: tag.id,
+          source: tag.source,
+          start_time: tag.start_time.toISOString(),
+          tag: tag.tag,
+          tag_key: tag.tag_key,
+        },
+        success: true,
+      })
+    },
+  )
 
   // PATCH /tags/id/:id - Update a tag's times
-  router.patch<{ id: string }, unknown, UpdateTagBody>(
+  router.patch<{ id: string }, { success: boolean; error?: string }, UpdateTagBody>(
     '/id/:id',
     authMiddleware,
     validateBody(updateTagBodySchema),
@@ -147,40 +153,48 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   )
 
   // DELETE /tags/id/:id - Soft-delete a tag by UUID (not external_id)
-  router.delete<{ id: string }>('/id/:id', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const user = req.user!
+  router.delete<{ id: string }, { success: boolean; error?: string }>(
+    '/id/:id',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
 
-    const result = await deleteTagById(user, id)
-    if (!result.success) {
-      return res.status(404).json({ error: 'Tag not found', success: false })
-    }
+      const result = await deleteTagById(user, id)
+      if (!result.success) {
+        return res.status(404).json({ error: 'Tag not found', success: false })
+      }
 
-    res.json({ success: true })
-  })
+      res.json({ success: true })
+    },
+  )
 
   // POST /tags/id/:id/restore - Restore a soft-deleted tag
-  router.post<{ id: string }>('/id/:id/restore', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const user = req.user!
+  router.post<{ id: string }, { success: boolean; error?: string }>(
+    '/id/:id/restore',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
 
-    const result = await restoreTag(user, id)
-    if (!result.success) {
-      return res.status(404).json({ error: 'Tag not found or not deleted', success: false })
-    }
+      const result = await restoreTag(user, id)
+      if (!result.success) {
+        return res.status(404).json({ error: 'Tag not found or not deleted', success: false })
+      }
 
-    res.json({ success: true })
-  })
+      res.json({ success: true })
+    },
+  )
 
   // GET /tags/unique - Get all unique tag names
-  router.get<Record<string, never>, UniqueTagsResponse>('/unique', authMiddleware, async (req, res) => {
+  router.get<Record<string, string>, UniqueTagsResponse>('/unique', authMiddleware, async (req, res) => {
     const user = req.user!
     const tags = await getUniqueTags(user)
     res.json({ data: tags, success: true })
   })
 
   // GET /tags/programmatic - Get all tags with their current mappings (for tag mapper)
-  router.get<Record<string, never>, ProgrammaticTagsResponse>(
+  router.get<Record<string, string>, ProgrammaticTagsResponse>(
     '/programmatic',
     authMiddleware,
     async (req, res) => {
@@ -203,7 +217,7 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   )
 
   // POST /tags/mapping - Set a tag mapping
-  router.post<Record<string, never>, SetTagMappingResponse, SetTagMappingBody>(
+  router.post<Record<string, string>, SetTagMappingResponse, SetTagMappingBody>(
     '/mapping',
     authMiddleware,
     validateBody(setTagMappingBodySchema),
@@ -218,7 +232,7 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   )
 
   // GET /tags/mappings - Get all tag mappings
-  router.get<Record<string, never>, TagMappingsResponse>('/mappings', authMiddleware, async (req, res) => {
+  router.get<Record<string, string>, TagMappingsResponse>('/mappings', authMiddleware, async (req, res) => {
     const user = req.user!
     const result = await getTagMappings(user)
     res.json({ ...result, success: true })
@@ -229,7 +243,7 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   // ============================================================================
 
   // GET /tags/definitions - List all tag definitions with counts
-  router.get<Record<string, never>, TagDefinitionsResponse>(
+  router.get<Record<string, string>, TagDefinitionsResponse>(
     '/definitions',
     authMiddleware,
     async (req, res) => {
@@ -250,29 +264,33 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   )
 
   // GET /tags/definitions/:id - Get a single tag definition
-  router.get<{ id: string }>('/definitions/:id', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const definition = await getTagDefinitionById(user, req.params.id)
-    if (!definition) {
-      return res.status(404).json({ error: 'Tag definition not found', success: false })
-    }
-    res.json({
-      data: {
-        aliases: definition.aliases,
-        count: definition.count,
-        created_at: definition.created_at.toISOString(),
-        icon: definition.icon ?? null,
-        id: definition.id,
-        latest_time: definition.latest_time?.toISOString(),
-        name: definition.name,
-        updated_at: definition.updated_at.toISOString(),
-      },
-      success: true,
-    })
-  })
+  router.get<{ id: string }, { success: boolean; data?: unknown; error?: string }>(
+    '/definitions/:id',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const definition = await getTagDefinitionById(user, req.params.id)
+      if (!definition) {
+        return res.status(404).json({ error: 'Tag definition not found', success: false })
+      }
+      res.json({
+        data: {
+          aliases: definition.aliases,
+          count: definition.count,
+          created_at: definition.created_at.toISOString(),
+          icon: definition.icon ?? null,
+          id: definition.id,
+          latest_time: definition.latest_time?.toISOString(),
+          name: definition.name,
+          updated_at: definition.updated_at.toISOString(),
+        },
+        success: true,
+      })
+    },
+  )
 
   // POST /tags/definitions - Create a tag definition
-  router.post<Record<string, never>, unknown, CreateTagDefinitionBody>(
+  router.post<Record<string, string>, { success: boolean; data: unknown }, CreateTagDefinitionBody>(
     '/definitions',
     authMiddleware,
     validateBody(createTagDefinitionBodySchema),
@@ -294,7 +312,7 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   )
 
   // PATCH /tags/definitions/:id - Update a tag definition
-  router.patch<{ id: string }, unknown, UpdateTagDefinitionBody>(
+  router.patch<{ id: string }, { success: boolean; data?: unknown; error?: string }, UpdateTagDefinitionBody>(
     '/definitions/:id',
     authMiddleware,
     validateBody(updateTagDefinitionBodySchema),
@@ -319,17 +337,21 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
   )
 
   // DELETE /tags/definitions/:id - Delete a tag definition
-  router.delete<{ id: string }>('/definitions/:id', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const deleted = await deleteTagDefinition(user, req.params.id)
-    if (!deleted) {
-      return res.status(404).json({ error: 'Tag definition not found', success: false })
-    }
-    res.json({ success: true })
-  })
+  router.delete<{ id: string }, { success: boolean; error?: string }>(
+    '/definitions/:id',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const deleted = await deleteTagDefinition(user, req.params.id)
+      if (!deleted) {
+        return res.status(404).json({ error: 'Tag definition not found', success: false })
+      }
+      res.json({ success: true })
+    },
+  )
 
   // POST /tags/definitions/:id/merge - Merge this definition into another
-  router.post<{ id: string }, unknown, MergeTagDefinitionsBody>(
+  router.post<{ id: string }, { success: boolean; data?: unknown; error?: string }, MergeTagDefinitionsBody>(
     '/definitions/:id/merge',
     authMiddleware,
     validateBody(mergeTagDefinitionsBodySchema),
@@ -356,5 +378,5 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
     },
   )
 
-  return router
+  return router as unknown as Router
 }

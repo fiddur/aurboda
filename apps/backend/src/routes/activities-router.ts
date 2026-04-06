@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Activities and productivity route group.
  *
@@ -26,7 +28,6 @@ import {
   updateActivityBodySchema,
   type UpdateActivityResponse,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 import multer from 'multer'
 
 import {
@@ -59,6 +60,7 @@ import {
   type SyncProvider,
 } from '../services/queries.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../services/settings.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 /** Compute HR zone seconds and avg HRV for an exercise activity time range. */
@@ -154,10 +156,10 @@ export const createActivitiesRouter = (
   authMiddleware: RequestHandler,
   syncProvider?: SyncProvider,
 ): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /activities - Query activities for a time range
-  router.get<Record<string, never>, ActivitiesResponse, unknown, ActivitiesQuery>(
+  router.get<Record<string, string>, ActivitiesResponse, unknown, ActivitiesQuery>(
     '/activities',
     authMiddleware,
     validateQuery(activitiesQuerySchema),
@@ -174,7 +176,7 @@ export const createActivitiesRouter = (
 
   // POST /activities - Add a manual activity
 
-  router.post<Record<string, never>, AddActivityResponse, AddActivityBody>(
+  router.post<Record<string, string>, AddActivityResponse, AddActivityBody>(
     '/activities',
     authMiddleware,
     validateBody(addActivityBodySchema),
@@ -234,7 +236,10 @@ export const createActivitiesRouter = (
     storage: multer.memoryStorage(),
   })
 
-  router.post('/activities/upload-fit', authMiddleware, upload.single('fit_file'), async (req, res) => {
+  router.post<
+    Record<string, string>,
+    { success: boolean; data?: AddActivityResponse['data'] | AddActivityResponse['data'][]; error?: string }
+  >('/activities/upload-fit', authMiddleware, upload.single('fit_file'), async (req, res) => {
     const user = req.user!
     const file = req.file
 
@@ -302,7 +307,7 @@ export const createActivitiesRouter = (
   })
 
   // POST /activities/merge - Merge multiple activities into one
-  router.post<Record<string, never>, MergeActivitiesResponse, MergeActivitiesBody>(
+  router.post<Record<string, string>, MergeActivitiesResponse, MergeActivitiesBody>(
     '/activities/merge',
     authMiddleware,
     validateBody(mergeActivitiesBodySchema),
@@ -332,39 +337,43 @@ export const createActivitiesRouter = (
   )
 
   // GET /activities/:id/nearby - Get nearby same-type activities for merge suggestions
-  router.get<{ id: string }>('/activities/:id/nearby', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const user = req.user!
-    const hours = Number(req.query.hours) || 6
+  router.get<{ id: string }, { success: boolean; data: unknown[]; error?: string }>(
+    '/activities/:id/nearby',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
+      const hours = Number(req.query.hours) || 6
 
-    const activity = await getActivityById(user, id)
-    if (!activity) {
-      return res.status(404).json({ data: [], error: 'Activity not found', success: false })
-    }
+      const activity = await getActivityById(user, id)
+      if (!activity) {
+        return res.status(404).json({ data: [], error: 'Activity not found', success: false })
+      }
 
-    const nearby = await getNearbyActivities(
-      user,
-      id,
-      activity.activity_type,
-      activity.start_time,
-      activity.end_time,
-      hours,
-    )
+      const nearby = await getNearbyActivities(
+        user,
+        id,
+        activity.activity_type,
+        activity.start_time,
+        activity.end_time,
+        hours,
+      )
 
-    res.json({
-      data: nearby.map((a) => ({
-        activity_type: a.activity_type,
-        data: a.data,
-        end_time: a.end_time?.toISOString(),
-        id: a.id,
-        notes: a.notes,
-        source: a.source,
-        start_time: a.start_time.toISOString(),
-        title: a.title,
-      })),
-      success: true,
-    })
-  })
+      res.json({
+        data: nearby.map((a) => ({
+          activity_type: a.activity_type,
+          data: a.data,
+          end_time: a.end_time?.toISOString(),
+          id: a.id,
+          notes: a.notes,
+          source: a.source,
+          start_time: a.start_time.toISOString(),
+          title: a.title,
+        })),
+        success: true,
+      })
+    },
+  )
 
   // DELETE /activities/:id - Delete an activity by ID
   router.delete<{ id: string }, DeleteActivityResponse>(
@@ -439,64 +448,72 @@ export const createActivitiesRouter = (
 
   // GET /activities/:id - Get a single activity by ID (for detail page)
   // Supports merged: prefix — merged:<uuid> returns merged view, plain uuid returns raw activity
-  router.get<{ id: string }>('/activities/:id', authMiddleware, async (req, res) => {
-    const rawId = req.params.id
-    const user = req.user!
+  router.get<{ id: string }, { success: boolean; data?: unknown; error?: string }>(
+    '/activities/:id',
+    authMiddleware,
+    async (req, res) => {
+      const rawId = req.params.id
+      const user = req.user!
 
-    const isMerged = rawId.startsWith('merged:')
-    const realId = isMerged ? rawId.slice('merged:'.length) : rawId
+      const isMerged = rawId.startsWith('merged:')
+      const realId = isMerged ? rawId.slice('merged:'.length) : rawId
 
-    const activity = await getActivityById(user, realId, true)
-    if (!activity) {
-      return res.status(404).json({ error: 'Activity not found', success: false })
-    }
+      const activity = await getActivityById(user, realId, true)
+      if (!activity) {
+        return res.status(404).json({ error: 'Activity not found', success: false })
+      }
 
-    // Compute HR zones and avg HRV for exercise activities
-    let exerciseMetrics: { hr_zone_secs?: Record<number, number>; avg_hrv?: number } = {}
-    if (activity.activity_type === 'exercise' && activity.end_time) {
-      exerciseMetrics = await computeExerciseMetrics(user, activity.start_time, activity.end_time)
-    }
+      // Compute HR zones and avg HRV for exercise activities
+      let exerciseMetrics: { hr_zone_secs?: Record<number, number>; avg_hrv?: number } = {}
+      if (activity.activity_type === 'exercise' && activity.end_time) {
+        exerciseMetrics = await computeExerciseMetrics(user, activity.start_time, activity.end_time)
+      }
 
-    // For merged: prefix, fetch overlapping activities and return merged view
-    if (isMerged && !activity.deleted_at) {
-      const data = await buildMergedResponse(user, activity, exerciseMetrics)
-      return res.json({ data, success: true })
-    }
+      // For merged: prefix, fetch overlapping activities and return merged view
+      if (isMerged && !activity.deleted_at) {
+        const data = await buildMergedResponse(user, activity, exerciseMetrics)
+        return res.json({ data, success: true })
+      }
 
-    // Plain UUID: return raw single activity (no overlap lookup)
-    res.json({
-      data: {
-        activity_type: activity.activity_type,
-        avg_hrv: exerciseMetrics.avg_hrv,
-        data: activity.data,
-        deleted_at: activity.deleted_at?.toISOString(),
-        end_time: activity.end_time?.toISOString(),
-        hr_zone_secs: exerciseMetrics.hr_zone_secs,
-        id: activity.id,
-        notes: activity.notes,
-        source: activity.source,
-        start_time: activity.start_time.toISOString(),
-        title: activity.title,
-      },
-      success: true,
-    })
-  })
+      // Plain UUID: return raw single activity (no overlap lookup)
+      res.json({
+        data: {
+          activity_type: activity.activity_type,
+          avg_hrv: exerciseMetrics.avg_hrv,
+          data: activity.data,
+          deleted_at: activity.deleted_at?.toISOString(),
+          end_time: activity.end_time?.toISOString(),
+          hr_zone_secs: exerciseMetrics.hr_zone_secs,
+          id: activity.id,
+          notes: activity.notes,
+          source: activity.source,
+          start_time: activity.start_time.toISOString(),
+          title: activity.title,
+        },
+        success: true,
+      })
+    },
+  )
 
   // POST /activities/:id/restore - Restore a soft-deleted activity
-  router.post<{ id: string }>('/activities/:id/restore', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const user = req.user!
+  router.post<{ id: string }, { success: boolean; error?: string }>(
+    '/activities/:id/restore',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
 
-    const result = await restoreActivity(user, id)
-    if (!result.success) {
-      return res.status(404).json({ error: 'Activity not found or not deleted', success: false })
-    }
+      const result = await restoreActivity(user, id)
+      if (!result.success) {
+        return res.status(404).json({ error: 'Activity not found or not deleted', success: false })
+      }
 
-    res.json({ success: true })
-  })
+      res.json({ success: true })
+    },
+  )
 
   // GET /productivity/bucketed - Get screentime bucketed by time and category
-  router.get<Record<string, never>, ScreentimeBucketedResponse, unknown, ScreentimeBucketedQuery>(
+  router.get<Record<string, string>, ScreentimeBucketedResponse, unknown, ScreentimeBucketedQuery>(
     '/productivity/bucketed',
     authMiddleware,
     validateQuery(screentimeBucketedQuerySchema),
@@ -519,66 +536,82 @@ export const createActivitiesRouter = (
   )
 
   // GET /productivity/apps - Get distinct app names with their categories
-  router.get('/productivity/apps', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const apps = await getDistinctApps(user)
-    res.json({ data: apps, success: true })
-  })
+  router.get<Record<string, string>, { success: boolean; data: unknown[] }>(
+    '/productivity/apps',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const apps = await getDistinctApps(user)
+      res.json({ data: apps, success: true })
+    },
+  )
 
   // GET /productivity/:id - Get a single productivity record by ID
-  router.get<{ id: string }>('/productivity/:id', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const record = await getProductivityById(user, req.params.id)
-    if (!record) {
-      return res.status(404).json({ error: 'Productivity record not found', success: false })
-    }
-    res.json({
-      data: {
-        activity: record.activity,
-        category: record.category,
-        device_name: record.device_name,
-        duration_sec: record.duration_sec,
-        end_time: record.end_time.toISOString(),
-        id: record.id,
-        is_mobile: record.is_mobile,
-        productivity: record.productivity,
-        resolved_category: record.resolved_category,
-        source: record.source,
-        start_time: record.start_time.toISOString(),
-        title: record.title,
-      },
-      success: true,
-    })
-  })
+  router.get<{ id: string }, { success: boolean; data?: unknown; error?: string }>(
+    '/productivity/:id',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const record = await getProductivityById(user, req.params.id)
+      if (!record) {
+        return res.status(404).json({ error: 'Productivity record not found', success: false })
+      }
+      res.json({
+        data: {
+          activity: record.activity,
+          category: record.category,
+          device_name: record.device_name,
+          duration_sec: record.duration_sec,
+          end_time: record.end_time.toISOString(),
+          id: record.id,
+          is_mobile: record.is_mobile,
+          productivity: record.productivity,
+          resolved_category: record.resolved_category,
+          source: record.source,
+          start_time: record.start_time.toISOString(),
+          title: record.title,
+        },
+        success: true,
+      })
+    },
+  )
 
   // DELETE /productivity/:id - Soft-delete a productivity record
-  router.delete<{ id: string }>('/productivity/:id', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const user = req.user!
+  router.delete<{ id: string }, { success: boolean; error?: string }>(
+    '/productivity/:id',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
 
-    const result = await deleteProductivity(user, id)
-    if (!result.success) {
-      return res.status(404).json({ error: 'Productivity record not found', success: false })
-    }
+      const result = await deleteProductivity(user, id)
+      if (!result.success) {
+        return res.status(404).json({ error: 'Productivity record not found', success: false })
+      }
 
-    res.json({ success: true })
-  })
+      res.json({ success: true })
+    },
+  )
 
   // POST /productivity/:id/restore - Restore a soft-deleted productivity record
-  router.post<{ id: string }>('/productivity/:id/restore', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const user = req.user!
+  router.post<{ id: string }, { success: boolean; error?: string }>(
+    '/productivity/:id/restore',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const user = req.user!
 
-    const result = await restoreProductivity(user, id)
-    if (!result.success) {
-      return res.status(404).json({ error: 'Record not found or not deleted', success: false })
-    }
+      const result = await restoreProductivity(user, id)
+      if (!result.success) {
+        return res.status(404).json({ error: 'Record not found or not deleted', success: false })
+      }
 
-    res.json({ success: true })
-  })
+      res.json({ success: true })
+    },
+  )
 
   // GET /productivity - Query productivity data for a time range
-  router.get<Record<string, never>, ProductivityResponse, unknown, ProductivityQuery>(
+  router.get<Record<string, string>, ProductivityResponse, unknown, ProductivityQuery>(
     '/productivity',
     authMiddleware,
     validateQuery(productivityQuerySchema),
@@ -591,5 +624,5 @@ export const createActivitiesRouter = (
     },
   )
 
-  return router
+  return router as unknown as Router
 }

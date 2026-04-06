@@ -1,19 +1,21 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Chart data route group.
  *
  * Handles: /chart-data
  */
 import { type ChartDataHttpQuery, chartDataHttpQuerySchema, type ChartDataResponse } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import { getChartData } from '../services/chart-data.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
 export const createChartDataRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /chart-data — bucketed aggregation for bar charts
-  router.get<Record<string, never>, ChartDataResponse, unknown, ChartDataHttpQuery>(
+  router.get<Record<string, string>, ChartDataResponse, unknown, ChartDataHttpQuery>(
     '/',
     authMiddleware,
     validateQuery(chartDataHttpQuerySchema),
@@ -45,5 +47,5 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  return router
+  return router as unknown as Router
 }

@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Notes route group.
  *
@@ -14,16 +16,16 @@ import {
   type UpdateNoteBody,
   updateNoteBodySchema,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from '../services/mutations.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /notes - Get notes for an entity
-  router.get<Record<string, never>, NotesResponse, unknown, NotesQuery>(
+  router.get<Record<string, string>, NotesResponse, unknown, NotesQuery>(
     '/',
     authMiddleware,
     validateQuery(notesQuerySchema),
@@ -37,7 +39,7 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
   )
 
   // POST /notes - Add a note
-  router.post<Record<string, never>, NoteResponse, AddNoteBody>(
+  router.post<Record<string, string>, NoteResponse, AddNoteBody>(
     '/',
     authMiddleware,
     validateBody(addNoteBodySchema),
@@ -89,5 +91,5 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
     res.json({ success: true })
   })
 
-  return router
+  return router as unknown as Router
 }

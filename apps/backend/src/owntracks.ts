@@ -1,4 +1,6 @@
-import { Router } from 'express'
+import type { Router } from 'express'
+
+import { typedRouter } from './typed-router.ts'
 
 export interface OwnTracksDeps {
   loginToUserDb: (user: string, password: string) => Promise<void>
@@ -58,9 +60,9 @@ export function parseBasicAuth(
  * Create OwnTracks router with injected dependencies for testability.
  */
 export function createOwnTracksRouter(deps: OwnTracksDeps): Router {
-  const router = Router()
+  const router = typedRouter()
 
-  router.post('/', async (req, res) => {
+  router.post<Record<string, string>, { error: string }>('/', async (req, res) => {
     const credentials = parseBasicAuth(req.headers.authorization)
     if (!credentials) {
       res.status(401).set('WWW-Authenticate', 'Basic realm="OwnTracks"').json({ error: 'Unauthorized' })
@@ -118,5 +120,5 @@ export function createOwnTracksRouter(deps: OwnTracksDeps): Router {
     }
   })
 
-  return router
+  return router as unknown as Router
 }

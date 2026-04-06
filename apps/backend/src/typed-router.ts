@@ -12,7 +12,7 @@
  *   router.get<{ id: string }, MyResponse>('/:id', ...)   // OK
  *   router.get('/', (req, res) => res.json({ x: 1 }))    // ERROR: not assignable to never
  */
-import type { ParamsDictionary, RequestHandler, RequestHandlerParams } from 'express-serve-static-core'
+import type { ParamsDictionary, Query, RequestHandler, RequestHandlerParams } from 'express-serve-static-core'
 
 import { Router } from 'express'
 
@@ -21,13 +21,25 @@ import { Router } from 'express'
  * Keeps the same overload structure as Express's IRouterMatcher but with stricter defaults.
  */
 interface StrictRouterMatcher<T> {
-  <P extends ParamsDictionary = ParamsDictionary, ResBody = never, ReqBody = unknown>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ReqBody stays `any` for Express compat; ResBody is the enforced contract
+  <
+    P extends ParamsDictionary = ParamsDictionary,
+    ResBody = never,
+    ReqBody = any,
+    ReqQuery extends Query = Query,
+  >(
     path: string,
-    ...handlers: Array<RequestHandler<P, ResBody, ReqBody>>
+    ...handlers: Array<RequestHandler<P, ResBody, ReqBody, ReqQuery>>
   ): T
-  <P extends ParamsDictionary = ParamsDictionary, ResBody = never, ReqBody = unknown>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  <
+    P extends ParamsDictionary = ParamsDictionary,
+    ResBody = never,
+    ReqBody = any,
+    ReqQuery extends Query = Query,
+  >(
     path: string,
-    ...handlers: Array<RequestHandlerParams<P, ResBody, ReqBody>>
+    ...handlers: Array<RequestHandlerParams<P, ResBody, ReqBody, ReqQuery>>
   ): T
 }
 
