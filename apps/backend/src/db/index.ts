@@ -102,7 +102,11 @@ export {
   getActivityTypeDefinition,
   getActivityTypeDefinitions,
   getActivityTypeNames,
+  getHealthConnectExerciseType,
   insertActivityTypeDefinition,
+  resolveActivityTypeByAlias,
+  resolveActivityTypeFromHcExerciseType,
+  resolveOrCreateActivityType,
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 
@@ -118,6 +122,7 @@ export {
   getNearbyActivities,
   getOverlappingActivities,
   getSleepSessions,
+  insertActivities,
   insertActivity,
   insertNewActivity,
   markActivityDetailSynced,

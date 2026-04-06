@@ -332,7 +332,7 @@ describe('addActivity', () => {
   })
 
   test('creates an exercise activity with required fields', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
 
     const result = await addActivity('testuser', {
       activity_type: 'exercise',
@@ -359,7 +359,7 @@ describe('addActivity', () => {
   })
 
   test('creates an activity with all fields', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
 
     const result = await addActivity('testuser', {
       activity_type: 'exercise',
@@ -412,7 +412,7 @@ describe('addActivity', () => {
   })
 
   test('creates meditation activity', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
 
     const result = await addActivity('testuser', {
       activity_type: 'meditation',
@@ -437,7 +437,7 @@ describe('addActivity', () => {
   })
 
   test('creates nap activity', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
 
     const result = await addActivity('testuser', {
       activity_type: 'nap',

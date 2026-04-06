@@ -90,10 +90,12 @@ export interface DeleteTagResult {
 export interface AddActivityInput {
   activity_type: ActivityType
   start_time: Date
-  end_time: Date
+  end_time?: Date
   title?: string
   notes?: string
   data?: Record<string, unknown>
+  external_id?: string
+  merge_span?: number
 }
 
 export interface AddActivityResult {
@@ -428,8 +430,8 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
     }
   }
 
-  // Validate that endTime is after startTime
-  if (input.end_time <= input.start_time) {
+  // Validate that endTime is after startTime (if provided)
+  if (input.end_time && input.end_time <= input.start_time) {
     return {
       error: 'end_time must be after start_time',
       success: false,
@@ -463,7 +465,7 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
           payload: {
             activity_type: input.activity_type,
             data: input.data,
-            end_time: input.end_time.toISOString(),
+            end_time: input.end_time?.toISOString(),
             notes: input.notes,
             start_time: input.start_time.toISOString(),
             title: input.title,
@@ -477,7 +479,7 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
 
   return {
     activity_type: input.activity_type,
-    end_time: input.end_time.toISOString(),
+    end_time: input.end_time?.toISOString(),
     id,
     notes: input.notes,
     start_time: input.start_time.toISOString(),

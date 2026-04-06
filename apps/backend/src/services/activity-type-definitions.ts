@@ -30,6 +30,7 @@ export const addActivityTypeDefinition = async (
     display_category: string
     color?: string
     icon?: string
+    aliases?: string[]
   },
 ): Promise<ActivityTypeDefinitionResult> => {
   // Block names that conflict with built-in types
@@ -54,7 +55,9 @@ export const updateActivityTypeDefinition = async (
     display_name?: string
     display_category?: string
     color?: string
-    icon?: string
+    icon?: string | null
+    aliases?: string[]
+    show_on_timeline?: boolean
   },
 ): Promise<ActivityTypeDefinitionResult> => {
   const existing = await dbGet(user, name)

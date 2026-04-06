@@ -143,6 +143,7 @@ export const activitySchema = z
     deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
     duration: durationMinutesSchema.optional(),
     end_time: iso8601DateTimeSchema.optional(),
+    external_id: z.string().optional().meta({ description: 'External ID from source system' }),
     hr_zone_secs: hrZoneSecsSchema.optional().meta({
       description: 'Time spent in each HR zone (for exercise)',
     }),
@@ -232,9 +233,15 @@ export type ActivitiesResponse = z.infer<typeof activitiesResponseSchema>
 export const addActivityBodySchema = z
   .object({
     activity_type: activityTypeSchema.meta({ description: 'Type of activity' }),
-    end_time: iso8601DateTimeSchema.meta({ description: 'End time of the activity' }),
+    end_time: iso8601DateTimeSchema.optional().meta({
+      description: 'End time (omit for point-in-time activities)',
+    }),
     exercise_type: exerciseTypeSchema.optional().meta({
       description: 'Exercise type name (only for exercise activities)',
+    }),
+    merge_span: z.number().int().positive().max(3600).optional().meta({
+      description:
+        'If provided, merge with existing activity of same type if its end_time is within this many seconds of new start_time. Max 3600.',
     }),
     notes: z.string().optional().meta({
       description:

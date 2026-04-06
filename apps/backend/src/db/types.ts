@@ -73,6 +73,7 @@ export interface BucketedMetricData {
 export interface Activity {
   id?: string
   source: DataSource
+  external_id?: string
   activity_type: ActivityType
   start_time: Date
   end_time?: Date

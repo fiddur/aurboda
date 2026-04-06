@@ -10,6 +10,10 @@ import { baseResponseSchema, createDataArrayResponseSchema, displayCategorySchem
  */
 export const activityTypeDefinitionSchema = z
   .object({
+    aliases: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Lowercase match strings for resolving tags/imports to this type' }),
     color: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/)
@@ -22,6 +26,15 @@ export const activityTypeDefinitionSchema = z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)
       .meta({ description: 'Snake_case identifier used as activity_type value' }),
+    health_connect_exercise_type: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Health Connect exercise type integer value' }),
+    health_connect_record_type: z
+      .string()
+      .optional()
+      .meta({ description: 'Health Connect record type (e.g. ExerciseSessionRecord)' }),
     show_on_timeline: z.boolean().meta({ description: 'Whether to show on the timeline' }),
   })
   .meta({ id: 'ActivityTypeDefinition', description: 'Activity type definition with display metadata' })
@@ -33,6 +46,10 @@ export type ActivityTypeDefinition = z.infer<typeof activityTypeDefinitionSchema
  */
 export const addActivityTypeDefinitionBodySchema = z
   .object({
+    aliases: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Lowercase match strings (name is always auto-included)' }),
     color: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/)
@@ -59,6 +76,10 @@ export type AddActivityTypeDefinitionBody = z.infer<typeof addActivityTypeDefini
  */
 export const updateActivityTypeDefinitionBodySchema = z
   .object({
+    aliases: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Replace aliases (name is always auto-included)' }),
     color: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/)
@@ -66,7 +87,7 @@ export const updateActivityTypeDefinitionBodySchema = z
       .meta({ description: 'New hex color' }),
     display_category: displayCategorySchema.optional().meta({ description: 'New display category' }),
     display_name: z.string().optional().meta({ description: 'New display name' }),
-    icon: z.string().optional().meta({ description: 'New icon' }),
+    icon: z.string().nullable().optional().meta({ description: 'New icon (null to clear)' }),
     show_on_timeline: z.boolean().optional().meta({ description: 'Whether to show on the timeline' }),
   })
   .meta({ id: 'UpdateActivityTypeDefinitionBody' })

@@ -329,6 +329,117 @@ const migrateTagDefinitionFk = async (db: Client) => {
 }
 
 /**
+ * Convert a display string to snake_case identifier.
+ * "Coffee" → "coffee", "Hot Bath" → "hot_bath", "[Work] Meeting" → "work_meeting"
+ */
+const toSnakeCase = (s: string): string =>
+  s
+    .replace(/[[\]()]/g, '') // remove brackets/parens
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_') // non-alphanumeric → underscore
+    .replace(/^_|_$/g, '') // trim leading/trailing underscores
+    .replace(/_+/g, '_') // collapse multiple underscores
+    || 'unknown'
+
+/**
+ * Migrate tags into activities and tag_definitions into activity_type_definitions.
+ * Idempotent: checks if migration already happened.
+ */
+const migrateTagsToActivities = async (db: Client, existingTableNames: Set<string>) => {
+  if (!existingTableNames.has('tags')) return
+
+  // Check if migration already happened (tags table is empty or activities already have external_id data)
+  const tagCount = await query(db, `SELECT count(*) FROM tags WHERE deleted_at IS NULL`)
+  if (parseInt(tagCount.rows[0].count, 10) === 0) return
+
+  // Check if we already migrated (any activity has external_id)
+  const migratedCheck = await query(
+    db,
+    `SELECT 1 FROM activities WHERE external_id IS NOT NULL LIMIT 1`,
+  )
+  if (migratedCheck.rows.length > 0) return
+
+  console.log('  🔄 Migrating tags into activities...')
+
+  // Step 1: Merge tag_definitions into activity_type_definitions
+  if (existingTableNames.has('tag_definitions') && existingTableNames.has('activity_type_definitions')) {
+    // For each tag definition, create or update an activity_type_definition
+    const defs = await query(db, `SELECT id, name, icon, aliases, show_on_timeline FROM tag_definitions`)
+    for (const def of defs.rows) {
+      const name = toSnakeCase(def.name as string)
+      const displayName = def.name as string
+      const icon = def.icon as string | null
+      const aliases = (def.aliases as string[]) ?? []
+      const showOnTimeline = (def.show_on_timeline as boolean) ?? true
+
+      await query(
+        db,
+        `INSERT INTO activity_type_definitions (name, display_name, display_category, icon, aliases, show_on_timeline)
+         VALUES ($1, $2, 'other', $3, $4, $5)
+         ON CONFLICT (name) DO UPDATE SET
+           icon = COALESCE(EXCLUDED.icon, activity_type_definitions.icon),
+           aliases = (
+             SELECT array_agg(DISTINCT elem)
+             FROM unnest(activity_type_definitions.aliases || EXCLUDED.aliases) AS elem
+           ),
+           show_on_timeline = EXCLUDED.show_on_timeline,
+           updated_at = NOW()`,
+        [name, displayName, icon, aliases, showOnTimeline],
+      )
+    }
+  }
+
+  // Step 2: Flatten exercise subtypes in existing activities
+  // exercise + exerciseTypeName → the exercise type directly
+  await query(
+    db,
+    `UPDATE activities
+     SET activity_type = data->>'exerciseTypeName'
+     WHERE activity_type = 'exercise'
+       AND data->>'exerciseTypeName' IS NOT NULL
+       AND data->>'exerciseTypeName' != ''`,
+  )
+
+  // Step 3: Insert tags as activities
+  // Use tag_definition name (snake_cased) as activity_type, or the tag text itself
+  await query(
+    db,
+    `INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, data, deleted_at)
+     SELECT
+       t.id,
+       t.source,
+       t.external_id,
+       COALESCE(
+         (SELECT lower(regexp_replace(regexp_replace(trim(both '_' from regexp_replace(lower(td.name), '[^a-z0-9]+', '_', 'g')), '_+', '_', 'g'), '^_|_$', '', 'g'))
+          FROM tag_definitions td WHERE td.id = t.tag_definition_id),
+         lower(regexp_replace(regexp_replace(trim(both '_' from regexp_replace(lower(t.tag), '[^a-z0-9]+', '_', 'g')), '_+', '_', 'g'), '^_|_$', '', 'g'))
+       ),
+       t.start_time,
+       t.end_time,
+       CASE
+         WHEN t.tag_definition_id IS NOT NULL THEN NULL
+         WHEN t.tag ~ '\\[.*\\]' THEN regexp_replace(t.tag, '^\\[.*?\\]\\s*', '')
+         ELSE NULL
+       END,
+       CASE
+         WHEN t.tag_key IS NOT NULL THEN jsonb_build_object('tag_key', t.tag_key)
+         ELSE NULL
+       END,
+       t.deleted_at
+     FROM tags t
+     ON CONFLICT DO NOTHING`,
+  )
+
+  // Step 4: Update notes entity_type from 'tag' to 'activity'
+  if (existingTableNames.has('notes')) {
+    await query(db, `UPDATE notes SET entity_type = 'activity' WHERE entity_type = 'tag'`)
+  }
+
+  console.log('  ✅ Tags migrated into activities')
+}
+
+/**
  * Run database migrations for a user.
  * Checks which tables exist and creates missing ones.
  */
@@ -356,6 +467,25 @@ export const migrateSchema = async (user: string) => {
   }
   if (existingTableNames.has('activities')) {
     await query(db, `ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
+    await query(db, `ALTER TABLE activities ADD COLUMN IF NOT EXISTS external_id VARCHAR(255)`)
+    // Widen activity_type from VARCHAR(50) to VARCHAR(100) for longer type names
+    await query(db, `ALTER TABLE activities ALTER COLUMN activity_type TYPE VARCHAR(100)`)
+    // Replace old unique constraint with two partial indexes
+    await query(db, `ALTER TABLE activities DROP CONSTRAINT IF EXISTS unique_activity`)
+  }
+  if (existingTableNames.has('activity_type_definitions')) {
+    await query(
+      db,
+      `ALTER TABLE activity_type_definitions ADD COLUMN IF NOT EXISTS aliases TEXT[] NOT NULL DEFAULT '{}'`,
+    )
+    await query(
+      db,
+      `ALTER TABLE activity_type_definitions ADD COLUMN IF NOT EXISTS health_connect_record_type VARCHAR(100)`,
+    )
+    await query(
+      db,
+      `ALTER TABLE activity_type_definitions ADD COLUMN IF NOT EXISTS health_connect_exercise_type INTEGER`,
+    )
   }
   if (existingTableNames.has('time_series')) {
     await query(db, `ALTER TABLE time_series ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
@@ -444,6 +574,9 @@ export const migrateSchema = async (user: string) => {
 
   // Backfill tag_definitions from existing tags and tag_mappings
   await backfillTagDefinitions(db, existingTableNames)
+
+  // Migrate tags into activities and tag_definitions into activity_type_definitions
+  await migrateTagsToActivities(db, existingTableNames)
 
   // Migrate goals and custom_metrics from user_settings JSONB to their own tables
   await migrateGoalsAndCustomMetrics(db, existingTableNames)

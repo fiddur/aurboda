@@ -185,7 +185,7 @@ export const createActivitiesRouter = (
       const user = req.user!
 
       const startDate = new Date(start_time)
-      const endDate = new Date(end_time)
+      const endDate = end_time ? new Date(end_time) : undefined
 
       // Validate and convert exercise_type name to value if provided
       let data: Record<string, unknown> | undefined

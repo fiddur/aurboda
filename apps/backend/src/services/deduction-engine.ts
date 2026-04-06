@@ -39,7 +39,7 @@ export interface DeductionEngineDeps {
   getActivities: (user: string, activityType: string, window: EvaluationWindow) => Promise<TimeRange[]>
   getTags: (user: string, tagName: string, window: EvaluationWindow) => Promise<TimeRange[]>
   getScreentime: (user: string, category: string[], window: EvaluationWindow) => Promise<TimeRange[]>
-  insertActivity: (user: string, activity: Activity) => Promise<void>
+  insertActivity: (user: string, activity: Activity) => Promise<string | void>
   deleteStaleRuleActivities: (
     user: string,
     ruleId: string,
