@@ -32,8 +32,8 @@ import {
 
 import {
   deleteTagDefinition,
+  getActivityById,
   getProgrammaticTags,
-  getTagById,
   getTagDefinitionById,
   getTagDefinitions,
   getUniqueTags,
@@ -108,21 +108,22 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
       const { id } = req.params
       const user = req.user!
 
-      const tag = await getTagById(user, id, true)
-      if (!tag) {
+      // Tags are now activities
+      const activity = await getActivityById(user, id, true)
+      if (!activity) {
         return res.status(404).json({ error: 'Tag not found', success: false })
       }
 
       res.json({
         data: {
-          deleted_at: tag.deleted_at?.toISOString(),
-          end_time: tag.end_time?.toISOString(),
-          external_id: tag.external_id,
-          id: tag.id,
-          source: tag.source,
-          start_time: tag.start_time.toISOString(),
-          tag: tag.tag,
-          tag_key: tag.tag_key,
+          deleted_at: activity.deleted_at?.toISOString(),
+          end_time: activity.end_time?.toISOString(),
+          external_id: activity.external_id,
+          id: activity.id,
+          source: activity.source,
+          start_time: activity.start_time.toISOString(),
+          tag: activity.title ?? activity.activity_type,
+          tag_key: (activity.data as Record<string, unknown> | undefined)?.tag_key as string | undefined,
         },
         success: true,
       })
