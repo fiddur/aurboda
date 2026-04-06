@@ -111,6 +111,7 @@ export {
   checkActivityConflict,
   deleteActivity,
   deleteGarminActivityWithWrongType,
+  findMergeableActivity,
   findMergedGroupForActivity,
   getActivities,
   getActivitiesNeedingDetail,
@@ -118,12 +119,16 @@ export {
   getNearbyActivities,
   getOverlappingActivities,
   getSleepSessions,
+  hardDeleteActivitiesByExternalIdPrefix,
+  hardDeleteActivitiesBySource,
+  insertActivities,
   insertActivity,
   insertNewActivity,
   markActivityDetailSynced,
   mergeOverlappingActivities,
   restoreActivity,
   updateActivity,
+  updateActivityEndTimeByExternalId,
 } from './activities.ts'
 
 // Locations

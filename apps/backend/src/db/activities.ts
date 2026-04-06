@@ -462,3 +462,67 @@ export const markActivityDetailSynced = async (user: string, id: string): Promis
     id,
   ])
 }
+
+/** Hard-delete all activities from a given source. Used for lastfm-auto retag cleanup. */
+export const hardDeleteActivitiesBySource = async (user: string, source: string): Promise<number> => {
+  const result = await query(user, `DELETE FROM activities WHERE source = $1`, [source])
+  return result.rowCount ?? 0
+}
+
+/** Hard-delete activities by source and external_id prefix. */
+export const hardDeleteActivitiesByExternalIdPrefix = async (
+  user: string,
+  source: string,
+  prefix: string,
+): Promise<number> => {
+  const result = await query(
+    user,
+    `DELETE FROM activities WHERE source = $1 AND external_id LIKE $2`,
+    [source, `${prefix}%`],
+  )
+  return result.rowCount ?? 0
+}
+
+/** Find a mergeable activity of the same type near a given time. */
+export const findMergeableActivity = async (
+  user: string,
+  activityType: string,
+  startTime: Date,
+  mergeSpanSeconds: number,
+  source?: string,
+): Promise<Activity | null> => {
+  const windowStart = new Date(startTime.getTime() - mergeSpanSeconds * 1000)
+  const sourceClause = source ? ' AND source = $4' : ''
+  const params: unknown[] = [activityType, windowStart, startTime]
+  if (source) params.push(source)
+
+  const result = await query(
+    user,
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
+     FROM activities
+     WHERE activity_type = $1
+       AND deleted_at IS NULL
+       AND (
+         (end_time IS NOT NULL AND end_time >= $2 AND end_time <= $3)
+         OR (end_time IS NULL AND start_time >= $2 AND start_time <= $3)
+       )${sourceClause}
+     ORDER BY COALESCE(end_time, start_time) DESC
+     LIMIT 1`,
+    params,
+  )
+  if (result.rows.length === 0) return null
+  return mapActivityRow(result.rows[0])
+}
+
+/** Update an activity's end_time by external_id. */
+export const updateActivityEndTimeByExternalId = async (
+  user: string,
+  externalId: string,
+  endTime: Date,
+): Promise<void> => {
+  await query(
+    user,
+    `UPDATE activities SET end_time = $1 WHERE external_id = $2 AND deleted_at IS NULL`,
+    [endTime, externalId],
+  )
+}

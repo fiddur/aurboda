@@ -14,14 +14,21 @@ import {
 vi.mock('./db', () => ({
   getSyncState: vi.fn(),
   getUserSettings: vi.fn(),
-  insertActivity: vi.fn(),
+  insertActivity: vi.fn().mockResolvedValue('activity-uuid-123'),
   insertRawRecord: vi.fn(),
-  insertTag: vi.fn().mockResolvedValue('tag-uuid-123'),
   insertTimeSeries: vi.fn(),
-  resolveOrCreateTagDefinition: vi
+  resolveOrCreateActivityType: vi
     .fn()
-    .mockImplementation((_user: string, tagName: string) =>
-      Promise.resolve({ aliases: [tagName.toLowerCase()], id: 'def-uuid', name: tagName }),
+    .mockImplementation((_user: string, displayName: string) =>
+      Promise.resolve(
+        displayName
+          .replace(/[[\]()]/g, '')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_|_$/g, '')
+          .replace(/_+/g, '_') || 'unknown',
+      ),
     ),
   upsertSyncState: vi.fn(),
   upsertSyncedNote: vi.fn(),
@@ -789,15 +796,14 @@ describe('processOuraData', () => {
         source: 'oura',
       })
 
-      expect(db.insertTag).toHaveBeenCalledWith(
-        user,
-        expect.objectContaining({
-          external_id: 'tag-1',
-          source: 'oura',
-          tag: 'Morning Coffee',
-          tag_definition_id: 'def-uuid',
-        }),
-      )
+      expect(db.insertActivity).toHaveBeenCalledWith(user, {
+        activity_type: 'morning_coffee',
+        data: undefined,
+        end_time: new Date('2025-01-01T08:05:00Z'),
+        external_id: 'tag-1',
+        source: 'oura',
+        start_time: new Date('2025-01-01T08:00:00Z'),
+      })
     })
 
     test('processes tag data without end_time', async () => {
@@ -814,10 +820,14 @@ describe('processOuraData', () => {
 
       await processOuraData(user, 'tags', data)
 
-      expect(db.insertTag).toHaveBeenCalledWith(
-        user,
-        expect.objectContaining({ external_id: 'tag-2', tag: 'stress_high', tag_definition_id: 'def-uuid' }),
-      )
+      expect(db.insertActivity).toHaveBeenCalledWith(user, {
+        activity_type: 'stress_high',
+        data: undefined,
+        end_time: undefined,
+        external_id: 'tag-2',
+        source: 'oura',
+        start_time: new Date('2025-01-01T14:00:00Z'),
+      })
     })
 
     test('handles tag with unknown type', async () => {
@@ -834,10 +844,14 @@ describe('processOuraData', () => {
 
       await processOuraData(user, 'tags', data)
 
-      expect(db.insertTag).toHaveBeenCalledWith(
-        user,
-        expect.objectContaining({ external_id: 'tag-3', tag: 'unknown', tag_definition_id: 'def-uuid' }),
-      )
+      expect(db.insertActivity).toHaveBeenCalledWith(user, {
+        activity_type: 'unknown',
+        data: undefined,
+        end_time: undefined,
+        external_id: 'tag-3',
+        source: 'oura',
+        start_time: new Date('2025-01-01T14:00:00Z'),
+      })
     })
 
     test('upserts synced note when tag has a comment', async () => {
@@ -856,8 +870,8 @@ describe('processOuraData', () => {
 
       expect(db.upsertSyncedNote).toHaveBeenCalledWith(
         user,
-        'tag',
-        'tag-uuid-123',
+        'activity',
+        'activity-uuid-123',
         'oura',
         'Felt great after this',
         new Date('2025-01-01T08:00:00Z'),
@@ -880,8 +894,8 @@ describe('processOuraData', () => {
 
       expect(db.upsertSyncedNote).toHaveBeenCalledWith(
         user,
-        'tag',
-        'tag-uuid-123',
+        'activity',
+        'activity-uuid-123',
         'oura',
         undefined,
         new Date('2025-01-01T08:00:00Z'),

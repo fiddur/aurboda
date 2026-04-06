@@ -7,8 +7,8 @@ vi.mock('./db', () => ({
   getAllSyncStates: vi.fn().mockResolvedValue([]),
   getSyncState: vi.fn().mockResolvedValue(null),
   getUserSettings: vi.fn().mockResolvedValue(null),
+  insertActivity: vi.fn().mockResolvedValue('mock-activity-id'),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
-  insertTag: vi.fn().mockResolvedValue(undefined),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -113,7 +113,7 @@ describe('syncCalendar', () => {
     vi.clearAllMocks()
   })
 
-  test('stores events as tags and raw records', async () => {
+  test('stores events as activities and raw records', async () => {
     const fetchIcs = vi.fn().mockResolvedValue(sampleIcs)
 
     const result = await syncCalendar(user, calendar, { fetchIcs })
@@ -122,14 +122,16 @@ describe('syncCalendar', () => {
     expect(result.events_processed).toBe(2)
     expect(result.calendar).toBe('Work')
 
-    // Should have called insertTag for each event
-    expect(db.insertTag).toHaveBeenCalledTimes(2)
-    expect(db.insertTag).toHaveBeenCalledWith(user, {
+    // Should have called insertActivity for each event
+    expect(db.insertActivity).toHaveBeenCalledTimes(2)
+    expect(db.insertActivity).toHaveBeenCalledWith(user, {
+      activity_type: 'calendar_event',
+      data: { calendar_name: 'Work' },
       end_time: new Date('2025-01-15T11:00:00.000Z'),
       external_id: 'event-1@example.com',
       source: 'calendar',
       start_time: new Date('2025-01-15T10:00:00.000Z'),
-      tag: '[Work] Team Standup',
+      title: 'Team Standup',
     })
 
     // Should have called insertRawRecord for each event
