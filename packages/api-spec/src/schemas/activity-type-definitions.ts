@@ -22,6 +22,7 @@ export const activityTypeDefinitionSchema = z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)
       .meta({ description: 'Snake_case identifier used as activity_type value' }),
+    show_on_timeline: z.boolean().meta({ description: 'Whether to show on the timeline' }),
   })
   .meta({ id: 'ActivityTypeDefinition', description: 'Activity type definition with display metadata' })
 
@@ -44,6 +45,10 @@ export const addActivityTypeDefinitionBodySchema = z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)
       .meta({ description: 'Snake_case identifier (e.g. "sauna", "driving")' }),
+    show_on_timeline: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Whether to show on the timeline (defaults to true)' }),
   })
   .meta({ id: 'AddActivityTypeDefinitionBody' })
 
@@ -62,6 +67,7 @@ export const updateActivityTypeDefinitionBodySchema = z
     display_category: displayCategorySchema.optional().meta({ description: 'New display category' }),
     display_name: z.string().optional().meta({ description: 'New display name' }),
     icon: z.string().optional().meta({ description: 'New icon' }),
+    show_on_timeline: z.boolean().optional().meta({ description: 'Whether to show on the timeline' }),
   })
   .meta({ id: 'UpdateActivityTypeDefinitionBody' })
 

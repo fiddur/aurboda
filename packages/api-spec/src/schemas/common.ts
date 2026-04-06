@@ -161,6 +161,7 @@ export const dataSourceSchema = z
     'activitywatch',
     'aurboda',
     'aurboda_gap_fill',
+    'deduction-rule',
     'health_connect',
     'health_connect_aggregate',
     'lab_report',

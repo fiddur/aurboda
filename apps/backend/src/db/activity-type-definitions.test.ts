@@ -36,13 +36,21 @@ describe('activity-type-definitions db', () => {
           icon: null,
           is_builtin: true,
           name: 'sleep',
+          show_on_timeline: true,
         },
       ],
     })
 
     const result = await getActivityTypeDefinitions(user)
     expect(result).toEqual([
-      { color: '#3b82f6', display_category: 'sleep_rest', display_name: 'Sleep', is_builtin: true, name: 'sleep' },
+      {
+        color: '#3b82f6',
+        display_category: 'sleep_rest',
+        display_name: 'Sleep',
+        is_builtin: true,
+        name: 'sleep',
+        show_on_timeline: true,
+      },
     ])
   })
 
@@ -67,6 +75,7 @@ describe('activity-type-definitions db', () => {
           icon: '🧖',
           is_builtin: false,
           name: 'sauna',
+          show_on_timeline: true,
         },
       ],
     })
@@ -79,11 +88,18 @@ describe('activity-type-definitions db', () => {
       icon: '🧖',
       is_builtin: false,
       name: 'sauna',
+      show_on_timeline: true,
     })
   })
 
   test('activityTypeExists returns true when exists', async () => {
-    mockQuery.mockResolvedValue({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [{ '?column?': 1 }] })
+    mockQuery.mockResolvedValue({
+      command: 'SELECT',
+      fields: [],
+      oid: 0,
+      rowCount: 1,
+      rows: [{ '?column?': 1 }],
+    })
 
     expect(await activityTypeExists(user, 'sleep')).toBe(true)
   })
@@ -108,6 +124,7 @@ describe('activity-type-definitions db', () => {
           icon: null,
           is_builtin: false,
           name: 'sauna',
+          show_on_timeline: true,
         },
       ],
     })
@@ -142,6 +159,7 @@ describe('activity-type-definitions db', () => {
           icon: '🔥',
           is_builtin: false,
           name: 'sauna',
+          show_on_timeline: true,
         },
       ],
     })
@@ -170,6 +188,7 @@ describe('activity-type-definitions db', () => {
           icon: null,
           is_builtin: false,
           name: 'sauna',
+          show_on_timeline: true,
         },
       ],
     })

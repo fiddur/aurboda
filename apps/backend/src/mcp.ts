@@ -21,6 +21,7 @@ import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
+import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
 import { registerFoodItemTools } from './mcp/food-item-tools.ts'
 import { registerLastFmTools } from './mcp/lastfm-tools.ts'
 import { registerLocationTools } from './mcp/location-tools.ts'
@@ -35,6 +36,7 @@ import { registerSyncTools } from './mcp/sync-tools.ts'
 import { registerTagTools } from './mcp/tag-tools.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
+import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
 
 type OuraClientType = ReturnType<typeof ouraClient>
@@ -57,6 +59,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerMetricTools(server, user)
   registerActivityTools(server, user)
   registerActivityTypeTools(server, user)
+  registerDeductionRuleTools(server, user, createDefaultEngineDeps())
   registerSyncTools(server, user, deps.oura, deps.garmin)
   registerLastFmTools(server, user)
   registerSettingsTools(server, user)

@@ -12,9 +12,10 @@ const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
   ...(row.icon != null ? { icon: row.icon as string } : {}),
   is_builtin: row.is_builtin as boolean,
   name: row.name as string,
+  show_on_timeline: (row.show_on_timeline as boolean) ?? true,
 })
 
-const SELECT_COLS = 'name, display_name, display_category, color, icon, is_builtin'
+const SELECT_COLS = 'name, display_name, display_category, color, icon, is_builtin, show_on_timeline'
 
 export const getActivityTypeDefinitions = async (user: string): Promise<ActivityTypeDefinition[]> => {
   const result = await query(
@@ -42,14 +43,28 @@ export const activityTypeExists = async (user: string, name: string): Promise<bo
 
 export const insertActivityTypeDefinition = async (
   user: string,
-  def: { name: string; display_name: string; display_category: string; color?: string; icon?: string },
+  def: {
+    name: string
+    display_name: string
+    display_category: string
+    color?: string
+    icon?: string
+    show_on_timeline?: boolean
+  },
 ): Promise<ActivityTypeDefinition> => {
   const result = await query(
     user,
-    `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon)
-     VALUES ($1, $2, $3, COALESCE($4, '#6b7280'), $5)
+    `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, show_on_timeline)
+     VALUES ($1, $2, $3, COALESCE($4, '#6b7280'), $5, COALESCE($6, true))
      RETURNING ${SELECT_COLS}`,
-    [def.name, def.display_name, def.display_category, def.color ?? null, def.icon ?? null],
+    [
+      def.name,
+      def.display_name,
+      def.display_category,
+      def.color ?? null,
+      def.icon ?? null,
+      def.show_on_timeline ?? null,
+    ],
   )
   return mapRow(result.rows[0])
 }
@@ -62,6 +77,7 @@ export const updateActivityTypeDefinition = async (
     display_category?: string
     color?: string
     icon?: string
+    show_on_timeline?: boolean
   },
 ): Promise<ActivityTypeDefinition | null> => {
   const setClauses: string[] = []
@@ -83,6 +99,10 @@ export const updateActivityTypeDefinition = async (
   if (updates.icon !== undefined) {
     setClauses.push(`icon = $${paramIndex++}`)
     values.push(updates.icon)
+  }
+  if (updates.show_on_timeline !== undefined) {
+    setClauses.push(`show_on_timeline = $${paramIndex++}`)
+    values.push(updates.show_on_timeline)
   }
 
   if (setClauses.length === 0) return getActivityTypeDefinition(user, name)
