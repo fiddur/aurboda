@@ -3,7 +3,7 @@
  */
 import { setTagMappingBodySchema, tzSchema, updateSettingsInputSchema } from '@aurboda/api-spec'
 
-import { getProgrammaticTags, getUniqueTags, getUserSettings } from '../db/index.ts'
+import { getActivityTypeNames, getUserSettings } from '../db/index.ts'
 import { getGoalsProgress } from '../services/goals.ts'
 import {
   getSettingsResponse,
@@ -40,33 +40,11 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
   // Tool: get_unique_tags
   server.tool(
     'get_unique_tags',
-    'Get all unique tag names that have been recorded. Returns a list of tag strings.',
+    'Get all activity type names that have been defined. Returns a list of type identifier strings.',
     {},
     async () => {
-      const tags = await getUniqueTags(user)
-      return jsonResponse({ data: tags, success: true })
-    },
-  )
-
-  // Tool: get_programmatic_tags
-  server.tool(
-    'get_programmatic_tags',
-    'Get all tags available for mapping. Includes programmatic tags (UUIDs, tag_* prefixes) that need human-readable display names, plus all other tags so icons can be set on any tag. Tags with is_programmatic=true and no current_name are unmapped.',
-    { tz: tzSchema },
-    async ({ tz }) => {
-      const tags = await getProgrammaticTags(user)
-      const settings = await getUserSettings(user)
-      const mappings = settings?.tag_mappings ?? {}
-
-      const data = tags.map((tag) => ({
-        count: tag.count,
-        current_name: tag.isProgrammatic ? (mappings[tag.tagKey] ?? null) : tag.tagKey,
-        is_programmatic: tag.isProgrammatic,
-        latest_time: formatInTz(tag.latestTime, tz),
-        tag_key: tag.tagKey,
-      }))
-
-      return tzJsonResponse({ data, success: true }, tz)
+      const types = await getActivityTypeNames(user)
+      return jsonResponse({ data: types, success: true })
     },
   )
 

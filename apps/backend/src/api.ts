@@ -66,7 +66,7 @@ import { createOAuthRouter } from './routes/oauth-router.ts'
 import { createReportsRouter } from './routes/reports-router.ts'
 import { createScreentimeCategoriesRouter } from './routes/screentime-categories-router.ts'
 import { createSettingsRouter } from './routes/settings-router.ts'
-import { createTagsRouter } from './routes/tags-router.ts'
+// tags-router removed: tags are now activities
 import { createTrainingLoadRouter } from './routes/training-load-router.ts'
 import { createTrendsRouter } from './routes/trends-router.ts'
 import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
@@ -569,7 +569,7 @@ const main = async () => {
   // ==========================================================================
 
   httpd.use(createMetricsRouter(authMiddleware, syncProvider))
-  httpd.use('/tags', createTagsRouter(authMiddleware, syncProvider))
+  // /tags routes removed: tags are now activities
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/notes', createNotesRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
