@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Correlations route group.
  *
@@ -20,7 +22,6 @@ import {
   hrvActivitiesQuerySchema,
   type HrvActivitiesResponse,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import type { SyncProvider } from '../services/queries.ts'
 
@@ -31,13 +32,14 @@ import {
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
 } from '../services/correlations.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createCorrelationsRouter = (
   authMiddleware: RequestHandler,
   syncProvider?: SyncProvider,
 ): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /correlations/baseline - Get HRV baseline statistics
   router.get<Record<string, never>, BaselineResponse, unknown, BaselineQuery>(
@@ -136,5 +138,5 @@ export const createCorrelationsRouter = (
     },
   )
 
-  return router
+  return router as unknown as Router
 }

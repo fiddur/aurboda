@@ -7,11 +7,13 @@
  * GET /icons/:user/:id — serve an icon (public, cached 1 year)
  * DELETE /icons/:id — delete an icon (authenticated)
  */
-import { type RequestHandler, Router } from 'express'
+import type { RequestHandler, Router } from 'express'
+
 import multer from 'multer'
 
 import { getIcon } from '../db/icons.ts'
 import { isAllowedContentType, processAndStoreIcon, removeIcon } from '../services/icons.ts'
+import { typedRouter } from '../typed-router.ts'
 
 const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -21,7 +23,7 @@ const upload = multer({
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const createIconsRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /icons/:user/:id — serve icon (no auth, for <img src>)
   router.get<{ user: string; id: string }>('/:user/:id', async (req, res) => {
@@ -87,5 +89,5 @@ export const createIconsRouter = (authMiddleware: RequestHandler): Router => {
     res.json({ success: true })
   })
 
-  return router
+  return router as unknown as Router
 }

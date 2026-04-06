@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Dashboard route group.
  *
@@ -9,14 +11,14 @@ import {
   type UpdateDashboardInput,
   updateDashboardInputSchema,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import { upsertUserSettings } from '../db/index.ts'
 import { getSettings } from '../services/settings.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
 export const createDashboardRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /dashboard - Get user's dashboard configuration
   router.get<Record<string, never>, DashboardResponse>('/', authMiddleware, async (req, res) => {
@@ -44,5 +46,5 @@ export const createDashboardRouter = (authMiddleware: RequestHandler): Router =>
     res.json({ dashboard: defaultDashboardConfig, success: true })
   })
 
-  return router
+  return router as unknown as Router
 }

@@ -5,7 +5,7 @@
  * server discovery, authorization, token exchange, and dynamic client
  * registration. Endpoints are mounted at the domain root level.
  */
-import express, { Router, type Request, type Response } from 'express'
+import express, { type Router, type Request, type Response } from 'express'
 
 import type { CentralDb } from '../services/central-db.ts'
 
@@ -15,6 +15,7 @@ import {
   refreshAccessToken,
   registerClient,
 } from '../services/oauth.ts'
+import { typedRouter } from '../typed-router.ts'
 
 // ============================================================================
 // Types
@@ -87,7 +88,7 @@ const escapeHtml = (str: string): string =>
 
 export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
   const { centralDb, loginToUserDb, webHost } = deps
-  const router = Router()
+  const router = typedRouter()
   const oauthDeps = { centralDb }
 
   // OAuth metadata discovery
@@ -242,5 +243,5 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
     }
   })
 
-  return router
+  return router as unknown as Router
 }

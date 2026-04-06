@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Screentime categories route group.
  *
@@ -11,7 +13,6 @@ import {
   type UpdateScreentimeCategoryBody,
   updateScreentimeCategoryBodySchema,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import {
   createCategory,
@@ -25,10 +26,11 @@ import {
   removeCategory,
   upsertCategory,
 } from '../services/screentime-categories.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
 export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET / - List all categories
   router.get('/', authMiddleware, async (req, res) => {
@@ -171,5 +173,5 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
     res.json({ data: defaultScreentimeCategories, success: true })
   })
 
-  return router
+  return router as unknown as Router
 }

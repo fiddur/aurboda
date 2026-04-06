@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Admin route group.
  *
@@ -11,12 +13,12 @@ import {
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 
+import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
 export const createAdminRouter = (
@@ -27,7 +29,7 @@ export const createAdminRouter = (
   webHost: string,
   ouraWebhookManager?: OuraWebhookManager | null,
 ): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /admin/settings - Get admin settings
   router.get<Record<string, never>, AdminSettingsResponse>(
@@ -116,5 +118,5 @@ export const createAdminRouter = (
     },
   )
 
-  return router
+  return router as unknown as Router
 }

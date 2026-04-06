@@ -4,8 +4,9 @@
  * CRUD + search for canonical food item library.
  */
 
+import type { RequestHandler, Router } from 'express'
+
 import { addFoodItemBodySchema, foodItemsQuerySchema, updateFoodItemBodySchema } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import {
   deleteFoodItem,
@@ -15,6 +16,7 @@ import {
   updateFoodItem,
   upsertFoodItem,
 } from '../db/index.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 const handleSearch: RequestHandler = async (req, res) => {
@@ -50,7 +52,7 @@ const handleDelete: RequestHandler<{ id: string }> = async (req, res) => {
 }
 
 export const createFoodItemsRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   router.get('/', authMiddleware, validateQuery(foodItemsQuerySchema), handleSearch)
   router.get('/:id', authMiddleware, handleGetById)
@@ -58,5 +60,5 @@ export const createFoodItemsRouter = (authMiddleware: RequestHandler): Router =>
   router.patch('/:id', authMiddleware, validateBody(updateFoodItemBodySchema), handleUpdate)
   router.delete('/:id', authMiddleware, handleDelete)
 
-  return router
+  return router as unknown as Router
 }

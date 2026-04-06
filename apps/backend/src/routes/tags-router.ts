@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Tags route group.
  *
@@ -27,7 +29,6 @@ import {
   updateTagBodySchema,
   updateTagDefinitionBodySchema,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import {
   deleteTagDefinition,
@@ -44,10 +45,11 @@ import {
 import { addTag, deleteTag, deleteTagById, restoreTag, updateTag } from '../services/mutations.ts'
 import { queryTags, type SyncProvider } from '../services/queries.ts'
 import { getTagMappings, setTagMapping } from '../services/settings.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: SyncProvider): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /tags - Query tags for a time range
   router.get<Record<string, never>, TagsResponse, unknown, TagsQuery>(
@@ -356,5 +358,5 @@ export const createTagsRouter = (authMiddleware: RequestHandler, syncProvider?: 
     },
   )
 
-  return router
+  return router as unknown as Router
 }

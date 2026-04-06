@@ -4,6 +4,7 @@
  * Provides REST API endpoints for managing Last.fm auto-tagging rules.
  */
 
+import type { RequestHandler, Router } from 'express'
 import type { ParamsDictionary } from 'express-serve-static-core'
 
 import {
@@ -18,7 +19,6 @@ import {
   type UpdateLastFmTagRuleBody,
   type UpdateLastFmTagRuleResponse,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import {
   deleteLastFmTagRule,
@@ -30,13 +30,14 @@ import {
   type LastFmMatchType,
 } from './db/index.ts'
 import { applyRuleRetroactively, cleanupRuleTags, retagAllScrobbles } from './lastfm-sync.ts'
+import { typedRouter } from './typed-router.ts'
 import { validateBody } from './validation.ts'
 
 /**
  * Creates the Last.fm router with tag rules CRUD endpoints.
  */
 export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /lastfm/scrobbles - Query scrobbles by time range
   router.get<ParamsDictionary, ScrobblesResponse>('/scrobbles', authMiddleware, async (req, res) => {
@@ -261,5 +262,5 @@ export const createLastFmRouter = (authMiddleware: RequestHandler): Router => {
     }
   })
 
-  return router
+  return router as unknown as Router
 }

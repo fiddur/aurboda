@@ -1,16 +1,18 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Training load route group.
  *
  * Handles: /training-load
  */
 import { type TrainingLoadQuery, trainingLoadQuerySchema, type TrainingLoadResponse } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
 export const createTrainingLoadRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
   const deps = createTrainingLoadDeps()
 
   // GET /training-load - Get training load time series (ATL, CTL, TSB, TRIMP)
@@ -40,5 +42,5 @@ export const createTrainingLoadRouter = (authMiddleware: RequestHandler): Router
     },
   )
 
-  return router
+  return router as unknown as Router
 }

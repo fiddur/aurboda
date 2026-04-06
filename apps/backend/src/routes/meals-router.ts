@@ -1,13 +1,15 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Meals route group.
  *
  * Handles: /meals/*
  */
 import { addMealBodySchema, mealsQuerySchema, updateMealBodySchema } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import { getMealLogCompleted, setMealLogCompleted, unsetMealLogCompleted } from '../db/index.ts'
 import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from '../services/meals.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 /** Check if a date is marked as logging-complete. Returns undefined if no date provided. */
@@ -64,7 +66,7 @@ const handleUnsetLogCompleted: RequestHandler<{ date: string }> = async (req, re
 }
 
 export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   router.get('/', authMiddleware, validateQuery(mealsQuerySchema), handleQueryMeals)
 
@@ -80,5 +82,5 @@ export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
   router.patch('/:id', authMiddleware, validateBody(updateMealBodySchema), handleUpdateMeal)
   router.delete('/:id', authMiddleware, handleDeleteMeal)
 
-  return router
+  return router as unknown as Router
 }

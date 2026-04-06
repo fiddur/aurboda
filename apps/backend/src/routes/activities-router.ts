@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Activities and productivity route group.
  *
@@ -26,7 +28,6 @@ import {
   updateActivityBodySchema,
   type UpdateActivityResponse,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 import multer from 'multer'
 
 import {
@@ -59,6 +60,7 @@ import {
   type SyncProvider,
 } from '../services/queries.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../services/settings.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 /** Compute HR zone seconds and avg HRV for an exercise activity time range. */
@@ -154,7 +156,7 @@ export const createActivitiesRouter = (
   authMiddleware: RequestHandler,
   syncProvider?: SyncProvider,
 ): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /activities - Query activities for a time range
   router.get<Record<string, never>, ActivitiesResponse, unknown, ActivitiesQuery>(
@@ -591,5 +593,5 @@ export const createActivitiesRouter = (
     },
   )
 
-  return router
+  return router as unknown as Router
 }

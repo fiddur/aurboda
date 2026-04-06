@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Locations route group.
  *
@@ -20,7 +22,6 @@ import {
   type UpdateNamedLocationBody,
   updateNamedLocationBodySchema,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import { getDetectedLocations as getStoredDetectedLocations } from '../db/index.ts'
 import {
@@ -31,10 +32,11 @@ import {
   updateNamedLocation,
 } from '../services/locations.ts'
 import { queryLocations } from '../services/queries.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createLocationsRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
   // GET /locations - Query location data for a time range
   router.get<Record<string, never>, LocationsResponse, unknown, LocationsQuery>(
@@ -161,5 +163,5 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  return router
+  return router as unknown as Router
 }
