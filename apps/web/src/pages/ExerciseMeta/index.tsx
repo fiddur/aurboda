@@ -10,7 +10,7 @@ import { IconInput } from '../../components/IconInput'
 import { IconPreview } from '../../components/IconPreview'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { useSaveStatus } from '../../components/SaveStatusIndicator'
-import { fetchTagMappings, fetchTrend, type FetchTrendParams, updateUserSettings } from '../../state/api'
+import { fetchItemIcons, fetchTrend, type FetchTrendParams, updateUserSettings } from '../../state/api'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { MiniTrendChart } from '../TagMeta/MiniTrendChart'
 import '../TagMeta/style.css'
@@ -73,7 +73,7 @@ function ExerciseIconSettings({ exerciseType, currentIcon }: { exerciseType: str
     onError: () => setSaveStatus({ status: 'error' }),
     onSuccess: () => {
       setSaveStatus({ status: 'saved' })
-      queryClient.invalidateQueries({ queryKey: ['tag-mappings'] })
+      queryClient.invalidateQueries({ queryKey: ['item-icons'] })
       queryClient.invalidateQueries({ queryKey: ['userSettings'] })
       setIconValue(undefined)
     },
@@ -116,12 +116,11 @@ export function ExerciseMeta() {
 
   const [lookback, setLookback] = useState(90)
 
-  const { data: mappingsData } = useQuery({
-    queryFn: fetchTagMappings,
-    queryKey: ['tag-mappings'],
+  const { data: itemIcons = {} } = useQuery({
+    queryFn: fetchItemIcons,
+    queryKey: ['item-icons'],
     staleTime: 30 * 60 * 1000,
   })
-  const itemIcons = mappingsData?.icons ?? {}
   const icon = resolveItemIcon(`exercise:${displayName}`, itemIcons) ?? ''
 
   return (

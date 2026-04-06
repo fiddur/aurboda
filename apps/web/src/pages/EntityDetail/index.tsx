@@ -15,9 +15,9 @@ import type { Activity, ExerciseTypeName, SourceRecord } from '../../state/api'
 
 import {
   fetchActivityById,
+  fetchItemIcons,
   fetchProductivityById,
   fetchScreentimeCategories,
-  fetchTagMappings,
   updateActivity,
 } from '../../state/api'
 import { resolveItemIcon } from '../../utils/emojiLookup'
@@ -202,12 +202,11 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     staleTime: 60_000,
   })
 
-  const { data: mappingsData } = useQuery({
-    queryFn: fetchTagMappings,
-    queryKey: ['tag-mappings'],
+  const { data: itemIcons = {} } = useQuery({
+    queryFn: fetchItemIcons,
+    queryKey: ['item-icons'],
     staleTime: 30 * 60 * 1000,
   })
-  const itemIcons = mappingsData?.icons ?? {}
 
   const invalidate = useCallback(
     () =>
@@ -329,12 +328,11 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: mappingsData } = useQuery({
-    queryFn: fetchTagMappings,
-    queryKey: ['tag-mappings'],
+  const { data: itemIcons = {} } = useQuery({
+    queryFn: fetchItemIcons,
+    queryKey: ['item-icons'],
     staleTime: 30 * 60 * 1000,
   })
-  const itemIcons = mappingsData?.icons ?? {}
 
   const invalidate = useCallback(
     () =>
@@ -372,29 +370,29 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
   )
 }
 
-const VALID_ENTITY_TYPES = new Set<string>(['activity', 'tag', 'productivity', 'metric'])
+const VALID_ENTITY_TYPES = new Set<string>(['activity', 'productivity', 'metric'])
 
 export const EntityDetail = () => {
   const { params } = useRoute()
-  const entityType = params.type as EntityType
+  const rawEntityType = params.type as string
   const entityId = decodeURIComponent(params.id as string)
 
-  // Tags are now activities — treat tag entity type as activity
-  const effectiveType = entityType === 'tag' ? 'activity' : entityType
+  // Tags are now activities — redirect tag routes to activity
+  const entityType: EntityType = rawEntityType === 'tag' ? 'activity' : (rawEntityType as EntityType)
 
-  if (!VALID_ENTITY_TYPES.has(entityType)) {
+  if (!VALID_ENTITY_TYPES.has(entityType) && rawEntityType !== 'tag') {
     return (
       <div class="entity-detail-page">
-        <p class="error">Unknown entity type: {entityType}</p>
+        <p class="error">Unknown entity type: {rawEntityType}</p>
       </div>
     )
   }
 
   return (
     <div class="entity-detail-page">
-      {effectiveType === 'activity' && <ActivityContent entityId={entityId} />}
-      {effectiveType === 'productivity' && <ProductivityContent entityId={entityId} />}
-      {effectiveType === 'metric' && <MetricContent entityId={entityId} />}
+      {entityType === 'activity' && <ActivityContent entityId={entityId} />}
+      {entityType === 'productivity' && <ProductivityContent entityId={entityId} />}
+      {entityType === 'metric' && <MetricContent entityId={entityId} />}
     </div>
   )
 }

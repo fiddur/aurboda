@@ -1,10 +1,10 @@
 /**
- * Tag meta page — overview of a tag type (e.g. "Coffee").
- * Shows icon, display name, trend chart, occurrence count, inline settings, and merge UI.
+ * Activity type meta page — overview of an activity type (e.g. "Coffee").
+ * Shows icon, display name, trend chart, and occurrence count.
  *
  * Accepts both `/tag/:tagKey` (legacy) and `/tag/:definitionId` (UUID) routes.
  */
-import type { ProgrammaticTag, TagDefinition } from '@aurboda/api-spec'
+import type { TagDefinition } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
@@ -12,9 +12,10 @@ import { useState } from 'preact/hooks'
 
 import {
   fetchActivityTypeDefinitions,
+  fetchItemIcons,
   fetchTagDefinitionById,
-  fetchTagMappings,
   fetchTrend,
+  type ActivityTypeDefinition,
   type FetchTrendParams,
 } from '../../state/api'
 import { MiniTrendChart } from './MiniTrendChart'
@@ -80,17 +81,16 @@ function TagTrendSection({
 
 function TagHeader({
   definition,
-  tagInfo,
+  typeDef,
   shownIcon,
   shownName,
 }: {
   definition?: TagDefinition
-  tagInfo: ProgrammaticTag | undefined
+  typeDef?: ActivityTypeDefinition
   shownIcon: string
   shownName: string
 }) {
-  const count = definition?.count ?? tagInfo?.count
-  const latestTime = definition?.latest_time ?? tagInfo?.latest_time
+  const count = definition?.count
 
   return (
     <div class="tag-meta-header">
@@ -103,56 +103,39 @@ function TagHeader({
           <span class="tag-meta-stat">
             <strong>{count}</strong> occurrence{count !== 1 ? 's' : ''}
           </span>
-          {latestTime && <span class="tag-meta-stat">Last: {new Date(latestTime).toLocaleDateString()}</span>}
         </div>
       )}
-      {definition?.aliases && definition.aliases.length > 0 && (
+      {typeDef && (
         <div class="tag-meta-stats">
-          <span class="tag-meta-stat">Aliases: {definition.aliases.join(', ')}</span>
+          <span class="tag-meta-stat">Category: {typeDef.display_category}</span>
+          {typeDef.is_builtin && <span class="tag-meta-stat">Built-in</span>}
         </div>
       )}
     </div>
   )
 }
 
-// Merge section removed — activity type definitions don't support merge
-function MergeSection(_props: { definitionId: string }) {
-  return null
-}
+const findTypeDef = (
+  defs: ActivityTypeDefinition[] | undefined,
+  key: string,
+): ActivityTypeDefinition | undefined => defs?.find((d) => d.name === key || d.display_name === key)
 
-/** Find the programmatic tag matching either a definition or a raw param. */
-const findTagInfo = (
-  tags: ProgrammaticTag[] | undefined,
+const resolveDisplayName = (
   definition: TagDefinition | undefined,
-  rawParam: string,
-  isUuid: boolean,
-): ProgrammaticTag | undefined => {
-  if (isUuid) {
-    return tags?.find(
-      (t) => definition && (t.tag_key === definition.name || t.current_name === definition.name),
-    )
-  }
-  return tags?.find((t) => t.tag_key === rawParam || t.current_name === rawParam)
-}
+  typeDef: ActivityTypeDefinition | undefined,
+  fallback: string,
+): string => definition?.name ?? typeDef?.display_name ?? typeDef?.name ?? fallback
 
-/** Resolve the canonical display name from available sources. */
-const resolveName = (
+const resolveDisplayIcon = (
   definition: TagDefinition | undefined,
-  tagInfo: ProgrammaticTag | undefined,
-  mappings: Record<string, string>,
-  rawParam: string,
-): string => definition?.name ?? tagInfo?.current_name ?? mappings[rawParam] ?? rawParam
-
-/** Resolve the icon from available sources. */
-const resolveIcon = (
-  definition: TagDefinition | undefined,
+  typeDef: ActivityTypeDefinition | undefined,
   icons: Record<string, string>,
   name: string,
-  tagKey: string,
-): string => definition?.icon ?? icons[name] ?? icons[tagKey] ?? ''
+  key: string,
+): string => definition?.icon ?? typeDef?.icon ?? icons[name] ?? icons[key] ?? ''
 
-/** Resolve tag identity from URL param (UUID for definition, or tag name key). */
-function useTagResolution(rawParam: string) {
+/** Resolve activity type identity from URL param (UUID for definition, or type name). */
+function useTypeResolution(rawParam: string) {
   const isUuid = UUID_RE.test(rawParam)
 
   const { data: definition } = useQuery({
@@ -162,52 +145,39 @@ function useTagResolution(rawParam: string) {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Use activity type definitions instead of programmatic tags
   const { data: activityTypeDefs } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activity-type-definitions'],
     staleTime: 5 * 60 * 1000,
   })
 
-  // Convert activity type definitions to ProgrammaticTag shape for compatibility
-  const tags: ProgrammaticTag[] | undefined = activityTypeDefs?.map((d) => ({
-    count: 0,
-    current_name: d.display_name || d.name,
-    is_programmatic: !d.is_builtin,
-    latest_time: new Date().toISOString(),
-    tag_key: d.name,
-  }))
-
-  const { data: mappingsData } = useQuery({
-    queryFn: fetchTagMappings,
-    queryKey: ['tag-mappings'],
+  const { data: icons = {} } = useQuery({
+    queryFn: fetchItemIcons,
+    queryKey: ['item-icons'],
     staleTime: 30 * 60 * 1000,
   })
 
-  const tagInfo = findTagInfo(tags, definition, rawParam, isUuid)
-  const mappings = mappingsData?.mappings ?? {}
-  const icons = mappingsData?.icons ?? {}
   const definitionId = isUuid ? rawParam : undefined
-  const effectiveTagKey = definition?.name ?? tagInfo?.tag_key ?? rawParam
-  const currentName = resolveName(definition, tagInfo, mappings, rawParam)
-  const currentIcon = resolveIcon(definition, icons, currentName, effectiveTagKey)
+  const effectiveKey = definition?.name ?? rawParam
+  const typeDef = findTypeDef(activityTypeDefs, effectiveKey)
+  const currentName = resolveDisplayName(definition, typeDef, rawParam)
+  const currentIcon = resolveDisplayIcon(definition, typeDef, icons, currentName, effectiveKey)
 
-  return { currentIcon, currentName, definition, definitionId, effectiveTagKey, tagInfo }
+  return { currentIcon, currentName, definition, definitionId, effectiveTagKey: effectiveKey, typeDef }
 }
 
 export function TagMeta() {
   const { params } = useRoute()
   const rawParam = decodeURIComponent(params.tagKey as string)
   const [lookback, setLookback] = useState(90)
-  const { currentIcon, currentName, definition, definitionId, effectiveTagKey, tagInfo } =
-    useTagResolution(rawParam)
+  const { currentIcon, currentName, definition, definitionId, effectiveTagKey, typeDef } =
+    useTypeResolution(rawParam)
 
   return (
     <div class="tag-meta-page">
-      <TagHeader definition={definition} tagInfo={tagInfo} shownIcon={currentIcon} shownName={currentName} />
+      <TagHeader definition={definition} typeDef={typeDef} shownIcon={currentIcon} shownName={currentName} />
 
       <TagSettingsSection
-        tagInfo={tagInfo}
         effectiveTagKey={effectiveTagKey}
         currentName={currentName}
         currentIcon={currentIcon}
@@ -231,9 +201,6 @@ export function TagMeta() {
         <TagTrendSection definitionId={definitionId} tagKey={effectiveTagKey} lookback={lookback} />
       </section>
 
-      {/* Merge section — only when viewing by definition */}
-      {definitionId && <MergeSection definitionId={definitionId} />}
-
       {/* Quick links */}
       <section class="tag-meta-section">
         <h2>Related</h2>
@@ -246,9 +213,6 @@ export function TagMeta() {
           </a>
           <a href="/timeline" class="tag-meta-link">
             Timeline
-          </a>
-          <a href="/data-sources/aurboda" class="tag-meta-link">
-            All Tag Mappings
           </a>
         </div>
       </section>
