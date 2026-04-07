@@ -614,6 +614,18 @@ export const getNonSleepActivitiesMerged = async (
   return mergeOverlappingActivities(activities)
 }
 
+/** Get all activities in a date range (all types, unmerged individual records). */
+export const getAllActivitiesInRange = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
+  const result = await query(
+    user,
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
+     FROM activities WHERE deleted_at IS NULL AND start_time >= $1 AND start_time <= $2
+     ORDER BY start_time`,
+    [start, end],
+  )
+  return result.rows.map(mapActivityRow)
+}
+
 /** Hard-delete all activities from a given source. Used for lastfm-auto retag cleanup. */
 export const hardDeleteActivitiesBySource = async (user: string, source: string): Promise<number> => {
   const result = await query(user, `DELETE FROM activities WHERE source = $1`, [source])
