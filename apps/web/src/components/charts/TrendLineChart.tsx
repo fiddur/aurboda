@@ -239,9 +239,10 @@ export function TrendLineChart({ data, color, height = 200, width, compact = fal
     const yExtent = d3.extent(parsedData, (d) => d.value) as [number, number]
     const yRange = yExtent[1] - yExtent[0]
     const yPadding = yRange * 0.1 || 1
+    const yMin = yExtent[0] >= 0 ? Math.max(0, yExtent[0] - yPadding) : yExtent[0] - yPadding
     const y = d3
       .scaleLinear()
-      .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+      .domain([yMin, yExtent[1] + yPadding])
       .nice()
       .range([innerHeight, 0])
 
