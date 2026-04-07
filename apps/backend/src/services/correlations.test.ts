@@ -329,15 +329,13 @@ describe('correlations service', () => {
 
       vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
         {
-          activity_type: 'exercise' as const,
+          activity_type: 'exercise',
           end_time: day1End,
           id: 'a1',
           source: 'health_connect' as const,
           start_time: day1,
         },
-      ])
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
-        { external_id: 'o1', source: 'manual' as const, start_time: day1Later, activity_type: 'headache' },
+        { activity_type: 'headache', external_id: 'o1', source: 'manual' as const, start_time: day1Later },
       ])
 
       const result = await getEventProbability(
@@ -386,7 +384,6 @@ describe('correlations service', () => {
           { external_id: 't2', source: 'manual' as const, start_time: day2, activity_type: 'meditation' },
           { external_id: 'o1', source: 'manual' as const, start_time: day1Later, activity_type: 'fatcoffee' },
         ])
-        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
         vi.mocked(db.getProductivity).mockResolvedValue([])
         vi.mocked(db.getTimeSeries).mockResolvedValue([])
 
@@ -507,8 +504,7 @@ describe('correlations service', () => {
         // Weight measurement after the week
         const weightDay = new Date(baseDate.getTime() + 10 * 24 * 60 * 60 * 1000)
 
-        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue(exercises)
-        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue(tags)
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([...exercises, ...tags])
         vi.mocked(db.getProductivity).mockResolvedValue([])
         vi.mocked(db.getTimeSeries).mockResolvedValue([[weightDay, 79.5]] as [Date, number][])
 
@@ -592,7 +588,6 @@ describe('correlations service', () => {
         vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
           { external_id: 't1', source: 'manual' as const, start_time: day1, activity_type: 'meditation' },
         ])
-        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
         vi.mocked(db.getProductivity).mockResolvedValue([
           {
             activity: 'vscode',
