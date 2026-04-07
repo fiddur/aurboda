@@ -31,6 +31,7 @@ import {
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
   getTimeSeriesWithSource,
+  type MergedActivity,
   type ProductivityRecord,
 } from '../db/index.ts'
 import { getScreentimeCategories } from '../db/screentime-categories.ts'
@@ -738,6 +739,12 @@ export const computeStressZoneSecs = (
   const lastZone = getStressZone(filtered[filtered.length - 1][1])
   result[lastZone] += Math.min(meanGap, STRESS_MAX_GAP_SECONDS)
 
+  // Round to whole seconds
+  result.rest = Math.round(result.rest)
+  result.low = Math.round(result.low)
+  result.medium = Math.round(result.medium)
+  result.high = Math.round(result.high)
+
   return result
 }
 
@@ -815,7 +822,70 @@ export const buildScreentimeSpans = (
     spans.push(current)
   }
 
-  return spans.sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+  // Filter out spans shorter than 60 seconds
+  return spans
+    .filter((s) => s.end_time.getTime() - s.start_time.getTime() >= 60_000)
+    .sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+}
+
+// ============================================================================
+// Cross-type activity merging
+// ============================================================================
+
+const isGenericExercise = (a: MergedActivity): boolean => {
+  const dataObj = a.data as Record<string, unknown> | undefined
+  const code = dataObj?.exerciseType
+  return a.activity_type === 'exercise' && (code === 0 || code === 2 || !code)
+}
+
+const hasSubstantialOverlap = (
+  gStart: number,
+  gEnd: number,
+  other: MergedActivity,
+): boolean => {
+  const oStart = other.start_time.getTime()
+  const oEnd = other.end_time?.getTime() ?? oStart
+  const overlapStart = Math.max(gStart, oStart)
+  const overlapEnd = Math.min(gEnd, oEnd)
+  if (overlapEnd <= overlapStart) return false
+  const genericDuration = gEnd - gStart
+  return genericDuration > 0 && (overlapEnd - overlapStart) / genericDuration > 0.5
+}
+
+/**
+ * Merge generic "other_workout" exercises with overlapping specific activities.
+ * E.g. Garmin syncs Meditation while Health Connect pushes other_workout at the same time.
+ * The more specific activity type wins; the generic exercise is absorbed.
+ */
+export const mergeGenericExercises = (activities: MergedActivity[]): MergedActivity[] => {
+  const genericExercises: MergedActivity[] = []
+  const others: MergedActivity[] = []
+
+  for (const a of activities) {
+    ;(isGenericExercise(a) ? genericExercises : others).push(a)
+  }
+
+  if (genericExercises.length === 0) return activities
+
+  const absorbed = new Set<MergedActivity>()
+  for (const generic of genericExercises) {
+    const gStart = generic.start_time.getTime()
+    const gEnd = generic.end_time?.getTime() ?? gStart
+
+    const match = others.find((o) => !absorbed.has(o) && hasSubstantialOverlap(gStart, gEnd, o))
+
+    if (match) {
+      if (generic.start_time < match.start_time) match.start_time = generic.start_time
+      if (generic.end_time && (!match.end_time || generic.end_time > match.end_time)) {
+        match.end_time = generic.end_time
+      }
+      absorbed.add(generic)
+    }
+  }
+
+  return [...others, ...genericExercises.filter((g) => !absorbed.has(g))].sort(
+    (a, b) => a.start_time.getTime() - b.start_time.getTime(),
+  )
 }
 
 /**
@@ -920,6 +990,14 @@ export async function getDailySummary(
     .filter((c) => c.exclude_from_screentime)
     .map((c) => c.name)
 
+  // Build category score lookup: JSON(name) → score
+  const categoryScoreMap = new Map<string, number>()
+  for (const cat of screentimeCategories) {
+    if (cat.score !== undefined) {
+      categoryScoreMap.set(JSON.stringify(cat.name), cat.score)
+    }
+  }
+
   const productivitySummary: ProductivitySummary | null =
     productivity.length > 0
       ? (() => {
@@ -933,10 +1011,13 @@ export async function getDailySummary(
 
           for (const record of productivity) {
             totals.total_duration_sec += record.duration_sec
-            if (record.productivity !== undefined && record.productivity !== null) {
-              if (record.productivity >= 1) totals.productive_sec += record.duration_sec
-              if (record.productivity >= 2) totals.very_productive_sec += record.duration_sec
-              if (record.productivity <= -1) totals.distracting_sec += record.duration_sec
+            // Use record productivity, falling back to category score
+            const score =
+              record.productivity ?? categoryScoreMap.get(JSON.stringify(record.resolved_category ?? []))
+            if (score !== undefined && score !== null) {
+              if (score >= 1) totals.productive_sec += record.duration_sec
+              if (score >= 2) totals.very_productive_sec += record.duration_sec
+              if (score <= -1) totals.distracting_sec += record.duration_sec
             }
             const cat = record.resolved_category
             const isExcl =
@@ -982,12 +1063,16 @@ export async function getDailySummary(
   // Get user's HR zones for exercise session HR zone calculation
   const { zones: hrZones } = await getEffectiveHrZones(user)
 
+  // Merge generic exercises (other_workout) with overlapping specific activities.
+  // E.g. Garmin syncs Meditation and Health Connect pushes other_workout at the same time.
+  const mergedActivities = mergeGenericExercises(allActivities)
+
   // Fetch comments for all activities
-  const activityIds = allActivities.map((a) => a.id).filter((id): id is string => id !== undefined)
+  const activityIds = mergedActivities.map((a) => a.id).filter((id): id is string => id !== undefined)
   const commentsMap = await getCommentsMap(user, 'activity', activityIds)
 
   // Build unified activities array from DB activities
-  const activities: ActivitySummary[] = allActivities.map((s) => {
+  const activities: ActivitySummary[] = mergedActivities.map((s) => {
     const dataObj = s.data as Record<string, unknown> | undefined
     const exerciseTypeCode = dataObj?.exerciseType
     const exerciseType =
@@ -1006,8 +1091,8 @@ export async function getDailySummary(
     const comments = s.id ? commentsMap.get(s.id) : undefined
     if (comments && comments.length > 0) activity.comments = comments
 
-    // HR zones for exercise sessions with end time
-    if (s.end_time && s.activity_type === 'exercise') {
+    // HR zones for activities with time range
+    if (s.end_time) {
       const sessionHrData = heartRateData.filter(([time]) => time >= s.start_time && time <= s.end_time!)
       if (sessionHrData.length > 0) {
         activity.hr_zone_secs = computeHrZoneSecs(sessionHrData, hrZones)
@@ -1110,17 +1195,19 @@ export async function getDailySummary(
       updated_at: n.updated_at.toISOString(),
     })),
     oura_scores: ouraScores,
-    places: placeVisits.map((p) => ({
-      address: p.address,
-      detected_location_id: p.detected_location_id,
-      duration: p.duration_minutes,
-      end_time: p.end_time.toISOString(),
-      lat: p.lat,
-      lon: p.lon,
-      name: p.name,
-      source: p.source,
-      start_time: p.start_time.toISOString(),
-    })),
+    places: placeVisits
+      .filter((p) => p.duration_minutes > 0)
+      .map((p) => ({
+        address: p.address,
+        detected_location_id: p.detected_location_id,
+        duration: p.duration_minutes,
+        end_time: p.end_time.toISOString(),
+        lat: p.lat,
+        lon: p.lon,
+        name: p.name,
+        source: p.source,
+        start_time: p.start_time.toISOString(),
+      })),
     productivity: productivitySummary,
     sleep_sessions: sleepSessionSummaries,
     steps: { total: totalSteps },
