@@ -121,6 +121,7 @@ export {
   getActivitiesByCategory,
   getActivitiesExcludingCategories,
   getActivitiesNeedingDetail,
+  getNonSleepActivitiesMerged,
   getAllActivityTypeNames,
   getActivityById,
   getNearbyActivities,
