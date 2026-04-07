@@ -101,7 +101,57 @@ export const mergeOverlappingActivities = (activities: Activity[]): MergedActivi
   }
 
   // Sort final result by start time
-  return result.sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+  result.sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+
+  // Second pass: absorb generic exercises (other_workout, unknown, no subtype)
+  // into overlapping specific activities of a different type.
+  return absorbGenericExercises(result)
+}
+
+const GENERIC_EXERCISE_CODES = new Set([0, 2]) // UNKNOWN=0, OTHER_WORKOUT=2
+
+const isGenericExercise = (a: MergedActivity): boolean => {
+  if (a.activity_type !== 'exercise') return false
+  const code = (a.data as Record<string, unknown> | undefined)?.exerciseType
+  return !code || GENERIC_EXERCISE_CODES.has(code as number)
+}
+
+/**
+ * Absorb generic exercises into overlapping specific activities.
+ * The specific activity's time range is extended to cover the generic's range.
+ * Requires input sorted by start_time.
+ */
+const absorbGenericExercises = (sorted: MergedActivity[]): MergedActivity[] => {
+  const absorbed = new Set<number>()
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (!isGenericExercise(sorted[i]) || absorbed.has(i)) continue
+
+    const generic = sorted[i]
+    const gStart = generic.start_time.getTime()
+    const gEnd = generic.end_time?.getTime() ?? gStart
+    if (gEnd <= gStart) continue
+
+    // Find a specific activity that overlaps >50% of the generic's duration
+    for (let j = 0; j < sorted.length; j++) {
+      if (j === i || absorbed.has(j) || isGenericExercise(sorted[j])) continue
+      const other = sorted[j]
+      const oStart = other.start_time.getTime()
+      const oEnd = other.end_time?.getTime() ?? oStart
+      const overlapMs = Math.min(gEnd, oEnd) - Math.max(gStart, oStart)
+      if (overlapMs > 0 && overlapMs / (gEnd - gStart) > 0.5) {
+        // Extend the specific activity to cover the generic's range
+        if (generic.start_time < other.start_time) other.start_time = generic.start_time
+        if (generic.end_time && (!other.end_time || generic.end_time > other.end_time)) {
+          other.end_time = generic.end_time
+        }
+        absorbed.add(i)
+        break
+      }
+    }
+  }
+
+  return sorted.filter((_, i) => !absorbed.has(i))
 }
 
 /**
