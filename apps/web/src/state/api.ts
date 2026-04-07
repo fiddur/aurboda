@@ -686,7 +686,24 @@ export const fetchItemIcons = async (): Promise<Record<string, string>> => {
   return settings.item_icons ?? {}
 }
 
-// ==========================================================================
+// Add a custom activity type definition
+export const addActivityTypeDefinition = async (body: {
+  name: string
+  display_name: string
+  display_category: string
+  color?: string
+  icon?: string
+  show_on_timeline?: boolean
+}): Promise<ActivityTypeDefinition> => {
+  const { token } = auth.value
+  const response = await axios.post<{ data: ActivityTypeDefinition; success: boolean }>(
+    `${API_URL}/activity-types`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
+}
+
 // Update activity type definition (show_on_timeline, color, icon, display_name, etc.)
 export const updateActivityTypeDefinition = async (
   name: string,
@@ -705,6 +722,30 @@ export const updateActivityTypeDefinition = async (
     { headers: { Authorization: `Bearer ${token}` } },
   )
   return response.data.data
+}
+
+// Rename an activity type's snake_case identifier
+export const renameActivityType = async (
+  name: string,
+  new_name: string,
+): Promise<{
+  success: boolean
+  activities_updated?: number
+  deduction_rules_updated?: number
+  data?: ActivityTypeDefinition
+}> => {
+  const { token } = auth.value
+  const response = await axios.post<{
+    success: boolean
+    activities_updated?: number
+    deduction_rules_updated?: number
+    data?: ActivityTypeDefinition
+  }>(
+    `${API_URL}/activity-types/${encodeURIComponent(name)}/rename`,
+    { new_name },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
 }
 
 export const mergeActivityTypeApi = async (

@@ -7,7 +7,11 @@ import { useMemo, useState } from 'preact/hooks'
 
 import type { ActivityTypeDefinition } from '../../state/api'
 
-import { fetchActivityTypeDefinitions, updateActivityTypeDefinition } from '../../state/api'
+import {
+  addActivityTypeDefinition,
+  fetchActivityTypeDefinitions,
+  updateActivityTypeDefinition,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
 
@@ -26,6 +30,113 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 const CATEGORY_ORDER = ['sleep_rest', 'exercise', 'meditation', 'wellness', 'productivity', 'travel', 'other']
+
+const toSnakeName = (s: string) =>
+  s
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, '_')
+    .replaceAll(/^_|_$/g, '')
+
+// ============================================================================
+// Add activity type form
+// ============================================================================
+
+function AddActivityTypeForm({ onDone }: { onDone: () => void }) {
+  const queryClient = useQueryClient()
+  const [displayName, setDisplayName] = useState('')
+  const [snakeName, setSnakeName] = useState('')
+  const [snakeEdited, setSnakeEdited] = useState(false)
+  const [category, setCategory] = useState('other')
+  const [error, setError] = useState('')
+
+  const addMutation = useMutation({
+    mutationFn: () =>
+      addActivityTypeDefinition({
+        display_category: category,
+        display_name: displayName.trim(),
+        name: snakeName,
+      }),
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setError(msg ?? 'Failed to add activity type')
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
+      onDone()
+    },
+  })
+
+  const derivedSnake = toSnakeName(displayName)
+  const effectiveSnake = snakeEdited ? snakeName : derivedSnake
+  const valid = effectiveSnake.length > 0 && displayName.trim().length > 0
+
+  return (
+    <div class="at-add-form">
+      <div class="at-add-fields">
+        <label>
+          <span class="at-add-label">Display Name</span>
+          <input
+            type="text"
+            value={displayName}
+            onInput={(e) => {
+              setDisplayName((e.target as HTMLInputElement).value)
+              if (!snakeEdited) setSnakeName(toSnakeName((e.target as HTMLInputElement).value))
+            }}
+            placeholder="e.g. Sauna"
+            class="at-add-input"
+            autoFocus
+          />
+        </label>
+        <label>
+          <span class="at-add-label">Identifier (snake_case)</span>
+          <input
+            type="text"
+            value={snakeEdited ? snakeName : derivedSnake}
+            onInput={(e) => {
+              setSnakeEdited(true)
+              setSnakeName((e.target as HTMLInputElement).value)
+            }}
+            placeholder="e.g. sauna"
+            class="at-add-input"
+          />
+        </label>
+        <label>
+          <span class="at-add-label">Category</span>
+          <select
+            value={category}
+            onChange={(e) => setCategory((e.target as HTMLSelectElement).value)}
+            class="at-add-input"
+          >
+            {CATEGORY_ORDER.map((cat) => (
+              <option key={cat} value={cat}>
+                {CATEGORY_LABELS[cat]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {error && <p class="at-add-error">{error}</p>}
+      <div class="at-add-actions">
+        <button
+          type="button"
+          class="at-add-save"
+          disabled={!valid || addMutation.isPending}
+          onClick={() => {
+            setError('')
+            if (!snakeEdited) setSnakeName(derivedSnake)
+            addMutation.mutate()
+          }}
+        >
+          {addMutation.isPending ? 'Adding...' : 'Add'}
+        </button>
+        <button type="button" class="at-add-cancel" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ============================================================================
 // Toggle row
@@ -111,6 +222,7 @@ function CategoryGroup({ category, types }: { category: string; types: ActivityT
 export function ActivityTypes() {
   const isLoggedIn = auth.value.token
   const [search, setSearch] = useState('')
+  const [showAdd, setShowAdd] = useState(false)
 
   const { data: definitions = [], isLoading } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
@@ -156,7 +268,7 @@ export function ActivityTypes() {
         </p>
       </div>
 
-      <div class="at-search">
+      <div class="at-toolbar">
         <input
           type="text"
           placeholder="Search by name..."
@@ -164,7 +276,14 @@ export function ActivityTypes() {
           onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
           class="at-search-input"
         />
+        {!showAdd && (
+          <button type="button" class="at-add-btn" onClick={() => setShowAdd(true)}>
+            + Add Type
+          </button>
+        )}
       </div>
+
+      {showAdd && <AddActivityTypeForm onDone={() => setShowAdd(false)} />}
 
       {isLoading ? (
         <p class="loading">Loading activity types...</p>

@@ -115,13 +115,50 @@ export const activityTypeDefinitionResponseSchema = baseResponseSchema
 export type ActivityTypeDefinitionResponse = z.infer<typeof activityTypeDefinitionResponseSchema>
 
 // =============================================================================
-// Merge Activity Type
+// Rename Activity Type
 // =============================================================================
 
 const activityTypeNameSchema = z
   .string()
   .regex(/^[a-z][a-z0-9_]*$/)
   .meta({ description: 'Activity type name (snake_case)' })
+
+/**
+ * Rename a custom activity type's snake_case identifier.
+ * Updates all references (activities, deduction rules).
+ */
+export const renameActivityTypeBodySchema = z
+  .object({
+    new_name: activityTypeNameSchema.meta({ description: 'New snake_case identifier for the activity type' }),
+  })
+  .meta({ id: 'RenameActivityTypeBody' })
+
+export type RenameActivityTypeBody = z.infer<typeof renameActivityTypeBodySchema>
+
+/**
+ * Rename activity type response.
+ */
+export const renameActivityTypeResponseSchema = baseResponseSchema
+  .extend({
+    activities_updated: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of activities updated to the new name' }),
+    data: activityTypeDefinitionSchema.optional().meta({ description: 'Updated activity type definition' }),
+    deduction_rules_updated: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of deduction rules updated' }),
+  })
+  .meta({ id: 'RenameActivityTypeResponse' })
+
+export type RenameActivityTypeResponse = z.infer<typeof renameActivityTypeResponseSchema>
+
+// =============================================================================
+// Merge Activity Type
+// =============================================================================
 
 /**
  * Merge a custom activity type into another activity type (built-in or custom).

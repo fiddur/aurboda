@@ -104,6 +104,7 @@ export {
   getHealthConnectExerciseType,
   insertActivityTypeDefinition,
   mergeActivityTypeDefinition,
+  renameActivityTypeDefinition,
   resolveActivityTypeByAlias,
   resolveActivityTypeFromHcExerciseType,
   resolveOrCreateActivityType,

@@ -12,6 +12,7 @@ import {
   deleteActivityTypeDefinition,
   listActivityTypeDefinitions,
   mergeActivityType,
+  renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
@@ -60,6 +61,23 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
       const result = await deleteActivityTypeDefinition(user, name)
       if (!result.success) return errorResponse(result.error ?? 'Failed to delete activity type')
       return jsonResponse({ deleted: true, name })
+    },
+  )
+
+  server.tool(
+    'rename_activity_type',
+    "Rename a custom activity type's snake_case identifier. Updates all activities and deduction rules that reference the old name. Built-in types cannot be renamed.",
+    {
+      name: z.string().describe('Current name of the activity type to rename'),
+      new_name: z
+        .string()
+        .regex(/^[a-z][a-z0-9_]*$/)
+        .describe('New snake_case name'),
+    },
+    async ({ name, new_name }) => {
+      const result = await renameActivityTypeDefinition(user, name, new_name)
+      if (!result.success) return errorResponse(result.error ?? 'Failed to rename activity type')
+      return jsonResponse(result)
     },
   )
 
