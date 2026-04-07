@@ -1,6 +1,6 @@
 /**
- * Chart data service — bucketed aggregation of tags, metrics,
- * productivity categories, and activity types.
+ * Chart data service — bucketed aggregation of activity types, metrics,
+ * and productivity categories.
  *
  * Returns time-bucketed data for bar chart visualizations.
  */
@@ -65,10 +65,10 @@ export interface ChartDataInput {
   tag_definition_id?: string
 }
 
-/** Query bucketed tag counts by tag_definition_id. */
-const queryTagsByDefinition = async (
+/** Query bucketed activity counts by activity_type name (formerly tag_definition_id). */
+const queryActivitiesByType = async (
   user: string,
-  tagDefinitionId: string,
+  activityType: string,
   start: string,
   end: string,
   bucketSize: string,
@@ -78,13 +78,13 @@ const queryTagsByDefinition = async (
     user,
     `SELECT ${bucket.expr} AS bucket_start,
             count(*) AS value
-       FROM tags
-      WHERE tag_definition_id = $${bucket.params.length + 1}
+       FROM activities
+      WHERE activity_type = $${bucket.params.length + 1}
         AND deleted_at IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
-    [...bucket.params, tagDefinitionId, start, end],
+    [...bucket.params, activityType, start, end],
   )
   return result.rows.map((row) => ({
     bucket_start: row.bucket_start.toISOString(),
@@ -92,8 +92,8 @@ const queryTagsByDefinition = async (
   }))
 }
 
-/** Query bucketed tag counts by regex pattern. */
-const queryTagsByPattern = async (
+/** Query bucketed activity counts by activity_type regex pattern. */
+const queryActivitiesByTypePattern = async (
   user: string,
   pattern: string,
   start: string,
@@ -105,8 +105,8 @@ const queryTagsByPattern = async (
     user,
     `SELECT ${bucket.expr} AS bucket_start,
             count(*) AS value
-       FROM tags
-      WHERE tag ~* $${bucket.params.length + 1}
+       FROM activities
+      WHERE activity_type ~* $${bucket.params.length + 1}
         AND deleted_at IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
@@ -211,10 +211,10 @@ export const getChartData = async (user: string, input: ChartDataInput): Promise
   switch (source_type) {
     case 'tag':
       if (tag_definition_id) {
-        return queryTagsByDefinition(user, tag_definition_id, start, end, bucket_size)
+        return queryActivitiesByType(user, tag_definition_id, start, end, bucket_size)
       }
       if (!pattern) return []
-      return queryTagsByPattern(user, pattern, start, end, bucket_size)
+      return queryActivitiesByTypePattern(user, pattern, start, end, bucket_size)
 
     case 'metric':
       if (!pattern) return []

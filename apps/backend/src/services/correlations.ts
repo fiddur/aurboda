@@ -549,7 +549,13 @@ export async function getHrvActivitiesCorrelation(
   for (const record of productivity) {
     const category = record.resolved_category?.join(' > ') || record.category || 'Uncategorized'
     if (!productivityByCategory.has(category)) {
-      productivityByCategory.set(category, { hrValues: [], hrvValues: [], minutes: 0, scores: [], stressValues: [] })
+      productivityByCategory.set(category, {
+        hrValues: [],
+        hrvValues: [],
+        minutes: 0,
+        scores: [],
+        stressValues: [],
+      })
     }
     const cat = productivityByCategory.get(category)!
     cat.minutes += record.duration_sec / 60
@@ -633,13 +639,27 @@ export async function getHrvActivitiesCorrelation(
   // === Activity correlations (unified — includes former tags) ===
   const activityByType = new Map<
     string,
-    { hrvValues: number[]; hrValues: number[]; stressValues: number[]; minutes: number; count: number; hasDuration: boolean }
+    {
+      hrvValues: number[]
+      hrValues: number[]
+      stressValues: number[]
+      minutes: number
+      count: number
+      hasDuration: boolean
+    }
   >()
 
   for (const activity of activities) {
     const type = activity.activity_type
     if (!activityByType.has(type)) {
-      activityByType.set(type, { count: 0, hasDuration: false, hrValues: [], hrvValues: [], minutes: 0, stressValues: [] })
+      activityByType.set(type, {
+        count: 0,
+        hasDuration: false,
+        hrValues: [],
+        hrvValues: [],
+        minutes: 0,
+        stressValues: [],
+      })
     }
     const act = activityByType.get(type)!
     act.count++
@@ -898,7 +918,9 @@ export async function getEventProbability(
   }
 
   // Get all outcome events (activities matching pattern)
-  const outcomeEvents = allActivities.filter((a) => outcomeRegex.test(a.activity_type)).map((a) => a.start_time)
+  const outcomeEvents = allActivities
+    .filter((a) => outcomeRegex.test(a.activity_type))
+    .map((a) => a.start_time)
 
   // Calculate baseline probability (outcome on any given day)
   const daysWithOutcome = new Set<string>()
@@ -1067,7 +1089,8 @@ export async function getGenericCorrelation(
   }
 
   // Determine which data we need based on triggers and outcome
-  const needsActivities = triggers.some((t) => t.type === 'activity' || t.type === 'tag') || outcome.type === 'tag'
+  const needsActivities =
+    triggers.some((t) => t.type === 'activity' || t.type === 'tag') || outcome.type === 'tag'
   const needsProductivity =
     triggers.some((t) => t.type === 'productivity_category' || t.type === 'productivity_app') ||
     outcome.type === 'productivity'

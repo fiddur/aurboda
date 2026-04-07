@@ -838,11 +838,7 @@ const isGenericExercise = (a: MergedActivity): boolean => {
   return a.activity_type === 'exercise' && (code === 0 || code === 2 || !code)
 }
 
-const hasSubstantialOverlap = (
-  gStart: number,
-  gEnd: number,
-  other: MergedActivity,
-): boolean => {
+const hasSubstantialOverlap = (gStart: number, gEnd: number, other: MergedActivity): boolean => {
   const oStart = other.start_time.getTime()
   const oEnd = other.end_time?.getTime() ?? oStart
   const overlapStart = Math.max(gStart, oStart)

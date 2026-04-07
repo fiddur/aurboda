@@ -687,3 +687,20 @@ export const updateActivityEndTimeByExternalId = async (
     externalId,
   ])
 }
+
+/**
+ * Update activity_type for all activities with a given tag_key in their data.
+ * Used when a user renames a programmatic tag via tag mappings.
+ */
+export const updateActivityTypeByTagKey = async (
+  user: string,
+  tagKey: string,
+  newActivityType: string,
+): Promise<number> => {
+  const result = await query(
+    user,
+    `UPDATE activities SET activity_type = $1 WHERE data->>'tag_key' = $2 AND deleted_at IS NULL`,
+    [newActivityType, tagKey],
+  )
+  return result.rowCount ?? 0
+}

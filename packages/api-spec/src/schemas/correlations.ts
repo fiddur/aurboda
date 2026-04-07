@@ -31,7 +31,10 @@ export const hrvStatsWithDeltaSchema = hrvStatsSchema
   .extend({
     hr_delta_from_baseline: z.number().nullable().meta({ description: 'HR change from baseline' }),
     hrv_delta_from_baseline: z.number().nullable().meta({ description: 'HRV change from baseline' }),
-    stress_delta_from_baseline: z.number().nullable().meta({ description: 'Stress level change from baseline' }),
+    stress_delta_from_baseline: z
+      .number()
+      .nullable()
+      .meta({ description: 'Stress level change from baseline' }),
   })
   .meta({ id: 'HrvStatsWithDelta' })
 
@@ -122,7 +125,10 @@ export type LocationCorrelation = z.infer<typeof locationCorrelationSchema>
 export const activityCorrelationSchema = hrvStatsWithDeltaSchema
   .extend({
     activity_type: z.string().meta({ description: 'Activity type' }),
-    avg_duration_min: z.number().optional().meta({ description: 'Average duration in minutes (undefined for point activities)' }),
+    avg_duration_min: z
+      .number()
+      .optional()
+      .meta({ description: 'Average duration in minutes (undefined for point activities)' }),
     occurrences: z.number().int().meta({ description: 'Number of occurrences' }),
   })
   .meta({ id: 'ActivityCorrelation' })
