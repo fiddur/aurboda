@@ -565,7 +565,7 @@ export const createTableStatements: Record<string, string> = {
       display_name      VARCHAR(255) NOT NULL,
       display_category  VARCHAR(50) NOT NULL DEFAULT 'other',
       color             VARCHAR(7) NOT NULL DEFAULT '#6b7280',
-      icon              VARCHAR(50),
+      icon              TEXT,
       aliases           TEXT[] NOT NULL DEFAULT '{}',
       health_connect_record_type VARCHAR(100),
       health_connect_exercise_type INTEGER,

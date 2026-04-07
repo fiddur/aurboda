@@ -20,7 +20,7 @@ export interface ActivityDraft {
 interface EditableActivityFieldsProps {
   title: string
   displayStart: Date
-  displayEnd: Date
+  displayEnd?: Date
   notes?: string
   isEditing: boolean
   draft: ActivityDraft
@@ -147,13 +147,17 @@ export const EditableActivityFields = ({
         <div class="field-row">
           <span class="field-label">Time</span>
           <span class="field-value">
-            {formatDateTime(displayStart)} – {formatTime(displayEnd)}
+            {displayEnd
+              ? `${formatDateTime(displayStart)} – ${formatTime(displayEnd)}`
+              : formatDateTime(displayStart)}
           </span>
         </div>
-        <div class="field-row">
-          <span class="field-label">{durationLabel}</span>
-          <span class="field-value">{formatDuration(displayStart, displayEnd)}</span>
-        </div>
+        {displayEnd && (
+          <div class="field-row">
+            <span class="field-label">{durationLabel}</span>
+            <span class="field-value">{formatDuration(displayStart, displayEnd)}</span>
+          </div>
+        )}
         {notes && (
           <div class="field-row">
             <span class="field-label">Notes</span>

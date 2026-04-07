@@ -71,8 +71,7 @@ const GenericActivityDetail = ({
   typeDefinitions?: ActivityTypeDefinition[]
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
-  const displayEnd =
-    activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
+  const displayEnd = activity.merged_end_time ?? activity.end_time
   const exerciseType = resolveExerciseType(activity)
   const typeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
   const typeIcon = typeDef?.icon ?? resolveItemIcon(`activity:${activity.activity_type}`, itemIcons)
@@ -106,7 +105,9 @@ const GenericActivityDetail = ({
         </div>
       )}
 
-      <ActivityChart start={displayStart} end={displayEnd} defaultMetrics={['heart_rate', 'hrv_rmssd']} />
+      {displayEnd && (
+        <ActivityChart start={displayStart} end={displayEnd} defaultMetrics={['heart_rate', 'hrv_rmssd']} />
+      )}
     </div>
   )
 }
