@@ -35,9 +35,10 @@ export function SparklineChart({
 
     const yExtent = d3.extent(data, (d) => d[1]) as [number, number]
     const yPadding = (yExtent[1] - yExtent[0]) * 0.1 || 5
+    const yMin = yExtent[0] >= 0 ? Math.max(0, yExtent[0] - yPadding) : yExtent[0] - yPadding
     const y = d3
       .scaleLinear()
-      .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+      .domain([yMin, yExtent[1] + yPadding])
       .range([innerHeight, 0])
 
     const line = d3
