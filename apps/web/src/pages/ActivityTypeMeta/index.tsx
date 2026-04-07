@@ -98,8 +98,9 @@ function SettingsSection({
     mutationFn: async () => {
       const updates: Record<string, string> = {}
       if (iconValue !== undefined && iconValue !== currentIcon) updates.icon = iconValue
-      if (displayNameValue !== undefined && displayNameValue !== currentDisplayName)
-        {updates.display_name = displayNameValue}
+      if (displayNameValue !== undefined && displayNameValue !== currentDisplayName) {
+        updates.display_name = displayNameValue
+      }
       await updateActivityTypeDefinition(name, updates)
     },
     onError: () => setSaveStatus({ status: 'error' }),

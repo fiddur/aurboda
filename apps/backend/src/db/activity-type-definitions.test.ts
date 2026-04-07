@@ -285,7 +285,13 @@ describe('activity-type-definitions db', () => {
         ],
       })
       // 2. Check if new name exists — it does
-      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [{ '?column?': 1 }] })
+      .mockResolvedValueOnce({
+        command: 'SELECT',
+        fields: [],
+        oid: 0,
+        rowCount: 1,
+        rows: [{ '?column?': 1 }],
+      })
 
     const result = await renameActivityTypeDefinition(user, 'sauna', 'hot_bath')
     expect(result).toBeNull()

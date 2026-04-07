@@ -6,6 +6,7 @@ import {
   deleteActivityTypeDefinition,
   listActivityTypeDefinitions,
   mergeActivityType,
+  renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 
@@ -15,6 +16,7 @@ vi.mock('../db', () => ({
   getActivityTypeDefinitions: vi.fn(),
   insertActivityTypeDefinition: vi.fn(),
   mergeActivityTypeDefinition: vi.fn(),
+  renameActivityTypeDefinition: vi.fn(),
   updateActivityTypeDefinition: vi.fn(),
 }))
 
@@ -174,6 +176,60 @@ describe('deleteActivityTypeDefinition', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('not found')
+  })
+})
+
+describe('renameActivityTypeDefinition', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('returns error when old and new name are the same', async () => {
+    const result = await renameActivityTypeDefinition(user, 'sauna', 'sauna')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('same as the current name')
+  })
+
+  test('returns error when renaming a built-in type', async () => {
+    const result = await renameActivityTypeDefinition(user, 'sleep', 'slumber')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Cannot rename built-in')
+  })
+
+  test('returns error when renaming to a built-in type name', async () => {
+    const result = await renameActivityTypeDefinition(user, 'sauna', 'exercise')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Cannot rename to built-in')
+  })
+
+  test('returns error when db rename fails', async () => {
+    vi.mocked(db.renameActivityTypeDefinition).mockResolvedValue(null)
+
+    const result = await renameActivityTypeDefinition(user, 'sauna', 'hot_sauna')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not found')
+  })
+
+  test('renames custom type successfully', async () => {
+    const renamedDef = {
+      color: '#ef4444',
+      display_category: 'wellness' as const,
+      display_name: 'Sauna',
+      is_builtin: false,
+      name: 'hot_sauna',
+      show_on_timeline: true,
+    }
+    vi.mocked(db.renameActivityTypeDefinition).mockResolvedValue({
+      activities_updated: 3,
+      deduction_rules_updated: 1,
+      definition: renamedDef,
+    })
+
+    const result = await renameActivityTypeDefinition(user, 'sauna', 'hot_sauna')
+
+    expect(result.success).toBe(true)
+    expect(result.data).toEqual(renamedDef)
+    expect(result.activities_updated).toBe(3)
+    expect(result.deduction_rules_updated).toBe(1)
+    expect(db.renameActivityTypeDefinition).toHaveBeenCalledWith(user, 'sauna', 'hot_sauna')
   })
 })
 
