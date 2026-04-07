@@ -2,9 +2,9 @@
  * Metric meta page — overview of a metric type (e.g. "weight", "body_fat", or custom metrics).
  * Shows description, unit, trend chart, recent values, and edit for custom metrics.
  */
-import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
+import { metricUnits as builtinMetricUnits, validMetrics } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRoute } from 'preact-iso'
+import { useLocation, useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { MiniTrendChart } from '../../components/MiniTrendChart'
@@ -13,6 +13,7 @@ import {
   fetchCustomMetrics,
   fetchMetricTimeSeriesWithSource,
   fetchTrend,
+  mergeCustomMetricApi,
   updateCustomMetric,
   type CustomMetricDefinition,
   type FetchTrendParams,
@@ -293,10 +294,157 @@ function CustomMetricEditor({
   )
 }
 
+function MergeMetricSection({
+  metricName,
+  customMetrics,
+}: {
+  metricName: string
+  customMetrics: CustomMetricDefinition[]
+}) {
+  const queryClient = useQueryClient()
+  const { route } = useLocation()
+  const [showMerge, setShowMerge] = useState(false)
+  const [target, setTarget] = useState('')
+  const [confirmText, setConfirmText] = useState('')
+
+  const mergeMutation = useMutation({
+    mutationFn: () => mergeCustomMetricApi(metricName, target),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['custom-metrics'] })
+      queryClient.invalidateQueries({ queryKey: ['customMetrics'] })
+      queryClient.invalidateQueries({ queryKey: ['trend'] })
+      queryClient.invalidateQueries({ queryKey: ['metric-recent'] })
+      route(`/metric/${encodeURIComponent(target)}`)
+      alert(
+        `Merged ${result.rows_reassigned ?? 0} data points into "${target}"` +
+          (result.rows_skipped ? ` (${result.rows_skipped} skipped as duplicates)` : ''),
+      )
+    },
+  })
+
+  // Build list of target options: built-in metrics + other custom metrics
+  const options = [
+    ...validMetrics.filter((m) => m !== metricName).map((m) => ({ label: formatMetricLabel(m), value: m })),
+    ...customMetrics
+      .filter((m) => m.name !== metricName)
+      .map((m) => ({ label: `${formatMetricLabel(m.name)} (custom)`, value: m.name })),
+  ].sort((a, b) => a.label.localeCompare(b.label))
+
+  if (!showMerge) {
+    return (
+      <section class="metric-meta-section">
+        <h2>Merge</h2>
+        <p class="metric-meta-merge-desc">
+          Merge all data from this custom metric into another metric, then delete this definition.
+        </p>
+        <button type="button" class="btn-secondary" onClick={() => setShowMerge(true)}>
+          Merge into...
+        </button>
+      </section>
+    )
+  }
+
+  const ready = target && confirmText === metricName
+
+  return (
+    <section class="metric-meta-section">
+      <h2>Merge</h2>
+      <div class="metric-meta-merge-form">
+        <label>
+          <span class="metric-meta-field-label">Target metric</span>
+          <select value={target} onChange={(e) => setTarget((e.target as HTMLSelectElement).value)}>
+            <option value="">Select target...</option>
+            {options.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {target && (
+          <label>
+            <span class="metric-meta-field-label">
+              Type <code>{metricName}</code> to confirm
+            </span>
+            <input
+              type="text"
+              value={confirmText}
+              onInput={(e) => setConfirmText((e.target as HTMLInputElement).value)}
+              placeholder={metricName}
+            />
+          </label>
+        )}
+        <div class="metric-meta-edit-actions">
+          <button
+            type="button"
+            class="btn-danger"
+            disabled={!ready || mergeMutation.isPending}
+            onClick={() => mergeMutation.mutate()}
+          >
+            {mergeMutation.isPending ? 'Merging...' : `Merge into ${target}`}
+          </button>
+          <button type="button" class="btn-secondary" onClick={() => setShowMerge(false)}>
+            Cancel
+          </button>
+        </div>
+        {mergeMutation.error && <p class="error">Merge failed. Please try again.</p>}
+      </div>
+    </section>
+  )
+}
+
+function MetricTypeInfo({
+  metricName,
+  customMetric,
+  customMetrics,
+  unit,
+}: {
+  metricName: string
+  customMetric: CustomMetricDefinition | undefined
+  customMetrics: CustomMetricDefinition[] | undefined
+  unit: string
+}) {
+  const queryClient = useQueryClient()
+
+  const handleCustomUpdated = () => {
+    queryClient.invalidateQueries({ queryKey: ['custom-metrics'] })
+    queryClient.invalidateQueries({ queryKey: ['customMetrics'] })
+  }
+
+  if (customMetric) {
+    return (
+      <>
+        <section class="metric-meta-section">
+          <h2>Definition</h2>
+          <CustomMetricEditor metric={customMetric} onUpdated={handleCustomUpdated} />
+        </section>
+        {customMetrics && <MergeMetricSection metricName={metricName} customMetrics={customMetrics} />}
+      </>
+    )
+  }
+
+  if (metricName in (builtinMetricUnits as Record<string, string>)) {
+    return (
+      <section class="metric-meta-section">
+        <h2>Info</h2>
+        <div class="metric-meta-field-row">
+          <span class="metric-meta-field-label">Type</span>
+          <span>Built-in metric</span>
+        </div>
+        <div class="metric-meta-field-row">
+          <span class="metric-meta-field-label">Unit</span>
+          <span>{unit}</span>
+        </div>
+      </section>
+    )
+  }
+
+  return null
+}
+
 export function MetricMeta() {
   const { params } = useRoute()
   const metricName = decodeURIComponent(params.metricName as string)
-  const queryClient = useQueryClient()
 
   const [lookback, setLookback] = useState(90)
 
@@ -328,11 +476,6 @@ export function MetricMeta() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const handleCustomUpdated = () => {
-    queryClient.invalidateQueries({ queryKey: ['custom-metrics'] })
-    queryClient.invalidateQueries({ queryKey: ['customMetrics'] })
-  }
-
   return (
     <div class="metric-meta-page">
       <div class="metric-meta-header">
@@ -345,28 +488,12 @@ export function MetricMeta() {
         </div>
       </div>
 
-      {/* Custom metric settings */}
-      {customMetric && (
-        <section class="metric-meta-section">
-          <h2>Definition</h2>
-          <CustomMetricEditor metric={customMetric} onUpdated={handleCustomUpdated} />
-        </section>
-      )}
-
-      {/* Built-in metric info */}
-      {isBuiltIn && (
-        <section class="metric-meta-section">
-          <h2>Info</h2>
-          <div class="metric-meta-field-row">
-            <span class="metric-meta-field-label">Type</span>
-            <span>Built-in metric</span>
-          </div>
-          <div class="metric-meta-field-row">
-            <span class="metric-meta-field-label">Unit</span>
-            <span>{unit}</span>
-          </div>
-        </section>
-      )}
+      <MetricTypeInfo
+        metricName={metricName}
+        customMetric={customMetric}
+        customMetrics={customMetrics}
+        unit={unit}
+      />
 
       {/* Trend */}
       <section class="metric-meta-section">

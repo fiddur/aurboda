@@ -11,6 +11,7 @@ import {
   addActivityTypeDefinition,
   deleteActivityTypeDefinition,
   listActivityTypeDefinitions,
+  mergeActivityType,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
@@ -59,6 +60,20 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
       const result = await deleteActivityTypeDefinition(user, name)
       if (!result.success) return errorResponse(result.error ?? 'Failed to delete activity type')
       return jsonResponse({ deleted: true, name })
+    },
+  )
+
+  server.tool(
+    'merge_activity_type',
+    'Merge a custom activity type into another activity type (built-in or custom). All activities are reassigned, aliases are merged, deduction rules are updated, and the source custom type definition is deleted. Built-in types cannot be used as the source.',
+    {
+      source: z.string().describe('Name of the custom activity type to merge away'),
+      target: z.string().describe('Name of the target activity type to merge into'),
+    },
+    async ({ source, target }) => {
+      const result = await mergeActivityType(user, source, target)
+      if (!result.success) return errorResponse(result.error ?? 'Failed to merge activity type')
+      return jsonResponse(result)
     },
   )
 }

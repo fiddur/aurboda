@@ -223,6 +223,101 @@ export const resolveActivityTypeFromHcExerciseType = async (
   return result.rows[0].name as string
 }
 
+/**
+ * Merge a custom activity type into another activity type.
+ * Merges aliases, reassigns all activities, updates deduction rules, then deletes the source.
+ */
+export const mergeActivityTypeDefinition = async (
+  user: string,
+  sourceName: string,
+  targetName: string,
+): Promise<{
+  activities_reassigned: number
+  deduction_rules_updated: number
+  target: ActivityTypeDefinition
+} | null> => {
+  if (sourceName === targetName) return null
+
+  // Get source — must exist and not be built-in
+  const sourceResult = await query(
+    user,
+    `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`,
+    [sourceName],
+  )
+  if (sourceResult.rows.length === 0) return null
+  const sourceDef = mapRow(sourceResult.rows[0])
+  if (sourceDef.is_builtin) return null
+
+  // Get target — must exist
+  const targetResult = await query(
+    user,
+    `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`,
+    [targetName],
+  )
+  if (targetResult.rows.length === 0) return null
+  const targetDef = mapRow(targetResult.rows[0])
+
+  // Merge aliases from source into target
+  const mergedAliases = normalizeAliases(targetDef.name, [
+    ...(targetDef.aliases ?? []),
+    ...(sourceDef.aliases ?? []),
+  ])
+  await query(user, `UPDATE activity_type_definitions SET aliases = $1, updated_at = NOW() WHERE name = $2`, [
+    mergedAliases,
+    targetName,
+  ])
+
+  // Reassign all activities from source to target
+  const activitiesResult = await query(
+    user,
+    `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 AND deleted_at IS NULL`,
+    [targetName, sourceName],
+  )
+  const activities_reassigned = activitiesResult.rowCount ?? 0
+
+  // Update deduction rules: output_activity_type
+  const outputResult = await query(
+    user,
+    `UPDATE deduction_rules SET output_activity_type = $1, updated_at = NOW() WHERE output_activity_type = $2`,
+    [targetName, sourceName],
+  )
+  let deduction_rules_updated = outputResult.rowCount ?? 0
+
+  // Update deduction rules: conditions JSONB where kind = 'activity' references the source type
+  const conditionsResult = await query(
+    user,
+    `UPDATE deduction_rules
+     SET conditions = (
+       SELECT jsonb_agg(
+         CASE
+           WHEN elem->>'kind' = 'activity' AND elem->>'activity_type' = $2
+           THEN jsonb_set(elem, '{activity_type}', to_jsonb($1::text))
+           ELSE elem
+         END
+       )
+       FROM jsonb_array_elements(conditions::jsonb) AS elem
+     ),
+     updated_at = NOW()
+     WHERE EXISTS (
+       SELECT 1 FROM jsonb_array_elements(conditions::jsonb) AS elem
+       WHERE elem->>'kind' = 'activity' AND elem->>'activity_type' = $2
+     )`,
+    [targetName, sourceName],
+  )
+  deduction_rules_updated += conditionsResult.rowCount ?? 0
+
+  // Delete source definition
+  await query(user, `DELETE FROM activity_type_definitions WHERE name = $1 AND is_builtin = false`, [
+    sourceName,
+  ])
+
+  // Return updated target
+  const updated = await getActivityTypeDefinition(user, targetName)
+  if (!updated) return null
+
+  return { activities_reassigned, deduction_rules_updated, target: updated }
+}
+
 export const deleteActivityTypeDefinition = async (user: string, name: string): Promise<boolean> => {
   const result = await query(
     user,

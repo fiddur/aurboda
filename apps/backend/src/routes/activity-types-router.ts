@@ -10,6 +10,9 @@ import {
   type ActivityTypeDefinitionsResponse,
   type AddActivityTypeDefinitionBody,
   addActivityTypeDefinitionBodySchema,
+  type MergeActivityTypeBody,
+  mergeActivityTypeBodySchema,
+  type MergeActivityTypeResponse,
   type UpdateActivityTypeDefinitionBody,
   updateActivityTypeDefinitionBodySchema,
 } from '@aurboda/api-spec'
@@ -18,6 +21,7 @@ import {
   addActivityTypeDefinition,
   deleteActivityTypeDefinition,
   listActivityTypeDefinitions,
+  mergeActivityType,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
 import { typedRouter } from '../typed-router.ts'
@@ -58,6 +62,23 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
       }
 
       res.status(201).json({ data: result.data, success: true })
+    },
+  )
+
+  // POST /merge - Merge a custom activity type into another
+  router.post<Record<string, string>, MergeActivityTypeResponse, MergeActivityTypeBody>(
+    '/merge',
+    authMiddleware,
+    validateBody(mergeActivityTypeBodySchema),
+    async (req, res) => {
+      const { source, target } = req.body
+      const user = req.user!
+      const result = await mergeActivityType(user, source, target)
+      if (!result.success) {
+        const status = result.error?.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json(result)
     },
   )
 

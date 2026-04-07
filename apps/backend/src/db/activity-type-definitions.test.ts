@@ -7,6 +7,7 @@ import {
   getActivityTypeDefinitions,
   getActivityTypeNames,
   insertActivityTypeDefinition,
+  mergeActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 
@@ -222,5 +223,96 @@ describe('activity-type-definitions db', () => {
 
     const result = await getActivityTypeNames(user)
     expect(result).toEqual(['exercise', 'sleep'])
+  })
+
+  test('mergeActivityTypeDefinition returns null for self-merge', async () => {
+    const result = await mergeActivityTypeDefinition(user, 'sauna', 'sauna')
+    expect(result).toBeNull()
+    expect(mockQuery).not.toHaveBeenCalled()
+  })
+
+  test('mergeActivityTypeDefinition returns null when source not found', async () => {
+    mockQuery.mockResolvedValue({ command: 'SELECT', fields: [], oid: 0, rowCount: 0, rows: [] })
+
+    const result = await mergeActivityTypeDefinition(user, 'nonexistent', 'exercise')
+    expect(result).toBeNull()
+  })
+
+  test('mergeActivityTypeDefinition returns null when source is built-in', async () => {
+    mockQuery.mockResolvedValue({
+      command: 'SELECT',
+      fields: [],
+      oid: 0,
+      rowCount: 1,
+      rows: [
+        {
+          aliases: ['exercise'],
+          color: '#3b82f6',
+          display_category: 'exercise',
+          display_name: 'Exercise',
+          icon: null,
+          is_builtin: true,
+          name: 'exercise',
+          show_on_timeline: true,
+        },
+      ],
+    })
+
+    const result = await mergeActivityTypeDefinition(user, 'exercise', 'sauna')
+    expect(result).toBeNull()
+  })
+
+  test('mergeActivityTypeDefinition merges custom type into target', async () => {
+    const sourceDef = {
+      aliases: ['old_sauna'],
+      color: '#ef4444',
+      display_category: 'wellness',
+      display_name: 'Old Sauna',
+      icon: null,
+      is_builtin: false,
+      name: 'old_sauna',
+      show_on_timeline: true,
+    }
+    const targetDef = {
+      aliases: ['sauna'],
+      color: '#f97316',
+      display_category: 'wellness',
+      display_name: 'Sauna',
+      icon: '🧖',
+      is_builtin: false,
+      name: 'sauna',
+      show_on_timeline: true,
+    }
+
+    mockQuery
+      // 1. Get source definition
+      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [sourceDef] })
+      // 2. Get target definition
+      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [targetDef] })
+      // 3. Update target aliases
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
+      // 4. Reassign activities
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 3, rows: [] })
+      // 5. Update deduction rules output_activity_type
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
+      // 6. Update deduction rules conditions
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
+      // 7. Delete source
+      .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
+      // 8. Get updated target (getActivityTypeDefinition)
+      .mockResolvedValueOnce({
+        command: 'SELECT',
+        fields: [],
+        oid: 0,
+        rowCount: 1,
+        rows: [{ ...targetDef, aliases: ['sauna', 'old_sauna'] }],
+      })
+
+    const result = await mergeActivityTypeDefinition(user, 'old_sauna', 'sauna')
+
+    expect(result).not.toBeNull()
+    expect(result!.activities_reassigned).toBe(3)
+    expect(result!.deduction_rules_updated).toBe(1)
+    expect(result!.target.name).toBe('sauna')
   })
 })

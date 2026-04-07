@@ -10,6 +10,7 @@ import {
   getActivityTypeDefinition as dbGet,
   getActivityTypeDefinitions as dbList,
   insertActivityTypeDefinition as dbInsert,
+  mergeActivityTypeDefinition as dbMerge,
   updateActivityTypeDefinition as dbUpdate,
 } from '../db/index.ts'
 
@@ -87,4 +88,46 @@ export const deleteActivityTypeDefinition = async (
   }
 
   return { success: true }
+}
+
+// =============================================================================
+// Merge
+// =============================================================================
+
+export interface MergeActivityTypeResult {
+  success: boolean
+  error?: string
+  activities_reassigned?: number
+  deduction_rules_updated?: number
+  target?: ActivityTypeDefinition
+}
+
+/**
+ * Merge a custom activity type into another activity type.
+ * All activities are reassigned, aliases merged, deduction rules updated, source deleted.
+ */
+export const mergeActivityType = async (
+  user: string,
+  source: string,
+  target: string,
+): Promise<MergeActivityTypeResult> => {
+  if (source === target) {
+    return { error: 'Source and target cannot be the same activity type.', success: false }
+  }
+
+  if ((builtinActivityTypes as readonly string[]).includes(source)) {
+    return { error: `Cannot merge built-in activity type "${source}".`, success: false }
+  }
+
+  const result = await dbMerge(user, source, target)
+  if (!result) {
+    return { error: `Activity type "${source}" or "${target}" not found.`, success: false }
+  }
+
+  return {
+    activities_reassigned: result.activities_reassigned,
+    deduction_rules_updated: result.deduction_rules_updated,
+    success: true,
+    target: result.target,
+  }
 }
