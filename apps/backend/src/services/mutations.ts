@@ -397,7 +397,12 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
 
   // If merge_span is specified, try to extend an existing activity instead of creating new
   if (input.merge_span) {
-    const existing = await findMergeableActivity(user, input.activity_type, input.start_time, input.merge_span)
+    const existing = await findMergeableActivity(
+      user,
+      input.activity_type,
+      input.start_time,
+      input.merge_span,
+    )
     if (existing?.id) {
       const newEndTime = input.end_time ?? input.start_time
       await dbUpdateActivity(user, existing.id, { end_time: newEndTime })

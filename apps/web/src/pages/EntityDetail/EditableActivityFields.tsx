@@ -3,6 +3,7 @@
  * in either read mode (plain text) or edit mode (input fields).
  */
 import type { ActivityTypeDefinition } from '../../state/api'
+
 import { IconPreview } from '../../components/IconPreview'
 import { toDisplayName } from '../../utils/displayName'
 import { formatDateTime, formatDuration, formatTime } from './format-utils'
@@ -70,7 +71,9 @@ export const EditableActivityFields = ({
                 <select
                   class="edit-datetime-input"
                   value={draft.activity_type}
-                  onChange={(e) => onDraftChange({ ...draft, activity_type: (e.target as HTMLSelectElement).value })}
+                  onChange={(e) =>
+                    onDraftChange({ ...draft, activity_type: (e.target as HTMLSelectElement).value })
+                  }
                 >
                   {typeDefinitions.map((def) => (
                     <option key={def.name} value={def.name}>

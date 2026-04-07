@@ -147,8 +147,23 @@ export type PlaceSummary = z.infer<typeof placeSummarySchema>
 /**
  * Productivity summary schema.
  */
+export const screentimeCategorySummarySchema = z
+  .object({
+    duration_sec: z.number().meta({ description: 'Total time in this category in seconds' }),
+    path: z
+      .array(z.string())
+      .meta({ description: 'Category path, e.g. ["Work", "Programming"]. Empty array means uncategorized.' }),
+  })
+  .meta({ id: 'ScreentimeCategorySummary' })
+
+export type ScreentimeCategorySummary = z.infer<typeof screentimeCategorySummarySchema>
+
 export const productivitySummarySchema = z
   .object({
+    categories: z
+      .array(screentimeCategorySummarySchema)
+      .optional()
+      .meta({ description: 'Screen time broken down by category, sorted by duration descending' }),
     distracting_sec: z.number().meta({ description: 'Distracting time in seconds' }),
     productive_sec: z.number().meta({ description: 'Productive time in seconds' }),
     total_duration_sec: z.number().meta({ description: 'Total tracked time in seconds' }),

@@ -41,6 +41,12 @@ vi.mock('../db', () => ({
   getUserSettings: vi.fn(),
 }))
 
+// Mock the screentime-categories module
+import * as screentimeCategoriesDb from '../db/screentime-categories.ts'
+vi.mock('../db/screentime-categories', () => ({
+  getScreentimeCategories: vi.fn().mockResolvedValue([]),
+}))
+
 // Mock the locations service
 vi.mock('./locations', () => ({
   getPlaceVisits: vi.fn(),
@@ -225,6 +231,7 @@ describe('getDailySummary', () => {
 
     // Productivity
     expect(result.productivity).toEqual({
+      categories: [{ duration_sec: 4200, path: [] }],
       distracting_sec: 600,
       productive_sec: 3600,
       total_duration_sec: 4200,
@@ -860,6 +867,114 @@ describe('getDailySummary', () => {
     expect(result.exercise_sessions[0]).not.toHaveProperty('data')
     // Sleep sessions should not have raw data blob
     expect(result.sleep_sessions[0]).not.toHaveProperty('data')
+  })
+
+  test('includes category breakdown in productivity summary', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
+    vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([
+      {
+        activity: 'VS Code',
+        duration_sec: 3600,
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        productivity: 2,
+        resolved_category: ['Work', 'Programming'],
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'Slack',
+        duration_sec: 1800,
+        end_time: new Date('2024-01-15T12:30:00Z'),
+        productivity: 1,
+        resolved_category: ['Work', 'Communication'],
+        start_time: new Date('2024-01-15T12:00:00Z'),
+      },
+      {
+        activity: 'YouTube',
+        duration_sec: 600,
+        end_time: new Date('2024-01-15T13:10:00Z'),
+        productivity: -1,
+        resolved_category: ['Entertainment'],
+        start_time: new Date('2024-01-15T13:00:00Z'),
+      },
+      {
+        activity: 'Unknown App',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T14:05:00Z'),
+        productivity: 0,
+        start_time: new Date('2024-01-15T14:00:00Z'),
+      },
+    ])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.productivity!.categories).toEqual([
+      { duration_sec: 3600, path: ['Work', 'Programming'] },
+      { duration_sec: 1800, path: ['Work', 'Communication'] },
+      { duration_sec: 600, path: ['Entertainment'] },
+      { duration_sec: 300, path: [] },
+    ])
+  })
+
+  test('excludes categories marked with exclude_from_screentime', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getActivitiesByCategory).mockResolvedValue([])
+    vi.mocked(db.getActivitiesExcludingCategories).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([
+      {
+        activity: 'VS Code',
+        duration_sec: 3600,
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        productivity: 2,
+        resolved_category: ['Work', 'Programming'],
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity: 'System Idle',
+        duration_sec: 1200,
+        end_time: new Date('2024-01-15T12:20:00Z'),
+        productivity: 0,
+        resolved_category: ['System'],
+        start_time: new Date('2024-01-15T12:00:00Z'),
+      },
+      {
+        activity: 'System Update',
+        duration_sec: 300,
+        end_time: new Date('2024-01-15T13:05:00Z'),
+        productivity: 0,
+        resolved_category: ['System', 'Updates'],
+        start_time: new Date('2024-01-15T13:00:00Z'),
+      },
+    ])
+    vi.mocked(screentimeCategoriesDb.getScreentimeCategories).mockResolvedValue([
+      {
+        created_at: new Date(),
+        exclude_from_screentime: true,
+        id: 'cat-1',
+        ignore_case: true,
+        name: ['System'],
+        rule_type: 'regex',
+        sort_order: 0,
+        updated_at: new Date(),
+      },
+    ])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    // System and System > Updates should be excluded, totals still include all
+    expect(result.productivity!.total_duration_sec).toBe(5100)
+    expect(result.productivity!.categories).toEqual([
+      { duration_sec: 3600, path: ['Work', 'Programming'] },
+    ])
   })
 })
 

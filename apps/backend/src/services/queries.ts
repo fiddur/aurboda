@@ -33,6 +33,7 @@ import {
   getTimeSeriesWithSource,
   type ProductivityRecord,
 } from '../db/index.ts'
+import { getScreentimeCategories } from '../db/screentime-categories.ts'
 import {
   type ActivityType,
   getMetricAggregation,
@@ -184,6 +185,7 @@ export interface ProductivitySummary {
   productive_sec: number
   very_productive_sec: number
   distracting_sec: number
+  categories?: Array<{ path: string[]; duration_sec: number }>
 }
 
 export interface OuraScores {
@@ -730,6 +732,7 @@ export async function getDailySummary(
     dayNotes,
     dayMeals,
     stepsAggregate,
+    screentimeCategories,
   ] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
@@ -747,6 +750,7 @@ export async function getDailySummary(
     getNotesForTimeRange(user, start, end),
     getMeals(user, { start, end }),
     getDailyAggregateValue(user, 'steps', date),
+    getScreentimeCategories(user),
   ])
 
   // Calculate heart rate stats
@@ -765,21 +769,48 @@ export async function getDailySummary(
   const totalSteps =
     stepsAggregate !== null ? stepsAggregate : stepsData.reduce((sum, [, value]) => sum + value, 0)
 
-  // Calculate productivity summary
+  // Calculate productivity summary with category breakdown
+  const excludedCategoryPaths = screentimeCategories
+    .filter((c) => c.exclude_from_screentime)
+    .map((c) => c.name)
+
+  const isExcluded = (resolvedCategory: string[] | undefined): boolean =>
+    resolvedCategory !== undefined &&
+    excludedCategoryPaths.some(
+      (excluded) =>
+        resolvedCategory.length >= excluded.length && excluded.every((seg, i) => seg === resolvedCategory[i]),
+    )
+
   const productivitySummary: ProductivitySummary | null =
     productivity.length > 0
-      ? productivity.reduce(
-          (acc, record) => {
-            acc.total_duration_sec += record.duration_sec
+      ? (() => {
+          const categoryMap = new Map<string, number>()
+          const totals = {
+            distracting_sec: 0,
+            productive_sec: 0,
+            total_duration_sec: 0,
+            very_productive_sec: 0,
+          }
+
+          for (const record of productivity) {
+            totals.total_duration_sec += record.duration_sec
             if (record.productivity !== undefined && record.productivity !== null) {
-              if (record.productivity >= 1) acc.productive_sec += record.duration_sec
-              if (record.productivity >= 2) acc.very_productive_sec += record.duration_sec
-              if (record.productivity <= -1) acc.distracting_sec += record.duration_sec
+              if (record.productivity >= 1) totals.productive_sec += record.duration_sec
+              if (record.productivity >= 2) totals.very_productive_sec += record.duration_sec
+              if (record.productivity <= -1) totals.distracting_sec += record.duration_sec
             }
-            return acc
-          },
-          { distracting_sec: 0, productive_sec: 0, total_duration_sec: 0, very_productive_sec: 0 },
-        )
+            if (!isExcluded(record.resolved_category)) {
+              const key = JSON.stringify(record.resolved_category ?? [])
+              categoryMap.set(key, (categoryMap.get(key) ?? 0) + record.duration_sec)
+            }
+          }
+
+          const categories = [...categoryMap.entries()]
+            .map(([key, duration_sec]) => ({ duration_sec, path: JSON.parse(key) as string[] }))
+            .sort((a, b) => b.duration_sec - a.duration_sec)
+
+          return { ...totals, categories }
+        })()
       : null
 
   // Build Oura scores object (get first value for each metric if available)

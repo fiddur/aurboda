@@ -103,7 +103,10 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
   })
 
   const allDefs = activityTypeDefs ?? []
-  const builtinDefs = allDefs.filter((d: ActivityTypeDefinition) => d.is_builtin && ['exercise', 'meditation', 'nap', 'rest', 'sleep'].includes(d.name))
+  const builtinDefs = allDefs.filter(
+    (d: ActivityTypeDefinition) =>
+      d.is_builtin && ['exercise', 'meditation', 'nap', 'rest', 'sleep'].includes(d.name),
+  )
   const customDefs = allDefs.filter((d: ActivityTypeDefinition) => !builtinDefs.includes(d))
 
   const mutation = useMutation({
