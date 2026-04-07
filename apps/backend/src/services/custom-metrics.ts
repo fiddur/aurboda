@@ -11,9 +11,10 @@ import {
   getCustomMetricByName,
   getCustomMetricDefinitions,
   insertCustomMetricDefinition,
+  mergeCustomMetric,
   updateCustomMetricDefinition,
 } from '../db/index.ts'
-import { isValidMetric } from '../schema.ts'
+import { isValidMetric, metricUnits, type MetricType } from '../schema.ts'
 
 export interface CustomMetricResult {
   success: boolean
@@ -165,4 +166,55 @@ export async function deleteMetricData(user: string, metric: string): Promise<De
  */
 export async function getCustomMetrics(user: string): Promise<CustomMetricDefinition[]> {
   return getCustomMetricDefinitions(user)
+}
+
+// =============================================================================
+// Merge
+// =============================================================================
+
+export interface MergeCustomMetricResult {
+  success: boolean
+  error?: string
+  rows_reassigned?: number
+  rows_skipped?: number
+}
+
+/**
+ * Merge a custom metric into another metric (built-in or custom).
+ * All time_series data is reassigned; the source definition is deleted.
+ */
+export async function mergeCustomMetricService(
+  user: string,
+  source: string,
+  target: string,
+): Promise<MergeCustomMetricResult> {
+  if (source === target) {
+    return { error: 'Source and target cannot be the same metric.', success: false }
+  }
+
+  // Source must be a custom metric
+  const sourceMetric = await getCustomMetricByName(user, source)
+  if (!sourceMetric) {
+    return { error: `Custom metric "${source}" not found.`, success: false }
+  }
+
+  // Target must be a valid metric (built-in or custom)
+  let targetUnit: string
+  if (isValidMetric(target)) {
+    targetUnit = metricUnits[target as MetricType]
+  } else {
+    const targetMetric = await getCustomMetricByName(user, target)
+    if (!targetMetric) {
+      return { error: `Target metric "${target}" does not exist.`, success: false }
+    }
+    targetUnit = targetMetric.unit
+  }
+
+  const result = await mergeCustomMetric(user, source, target, targetUnit)
+
+  return {
+    rows_reassigned: result.rows_reassigned,
+    rows_skipped: result.rows_skipped,
+    success: true,
+  }
 }

@@ -352,6 +352,58 @@
   background: #f3f4f6;
 }
 
+.metric-meta-page .btn-danger {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.metric-meta-page .btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.metric-meta-page .btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.metric-meta-merge-desc {
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.metric-meta-merge-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.metric-meta-merge-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.metric-meta-merge-form select,
+.metric-meta-merge-form input {
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.metric-meta-merge-form code {
+  font-size: 0.8rem;
+  background: #f3f4f6;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+}
+
 .metric-meta-page .loading,
 .metric-meta-page .error {
   text-align: center;

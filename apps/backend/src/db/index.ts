@@ -104,6 +104,7 @@ export {
   getActivityTypeNames,
   getHealthConnectExerciseType,
   insertActivityTypeDefinition,
+  mergeActivityTypeDefinition,
   resolveActivityTypeByAlias,
   resolveActivityTypeFromHcExerciseType,
   resolveOrCreateActivityType,
@@ -314,6 +315,7 @@ export {
   getCustomMetricByName,
   getCustomMetricDefinitions,
   insertCustomMetricDefinition,
+  mergeCustomMetric,
   updateCustomMetricDefinition,
 } from './custom-metrics.ts'
 

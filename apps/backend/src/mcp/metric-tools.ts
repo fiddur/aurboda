@@ -14,6 +14,7 @@ import { z } from 'zod'
 
 import { auditError, auditInfo } from '../services/audit-log.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
+import { mergeCustomMetricService } from '../services/custom-metrics.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -222,6 +223,23 @@ export const registerMetricTools = (server: McpServer, user: string) => {
       }
       const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
       return tzJsonResponse({ ...result, success: true }, tz)
+    },
+  )
+
+  // Tool: merge_custom_metric
+  server.tool(
+    'merge_custom_metric',
+    'Merge a custom metric into another metric (built-in or custom). All time_series data points are reassigned to the target metric and the source custom metric definition is deleted. Duplicate data points (same time + source) are skipped.',
+    {
+      source: z.string().describe('Name of the custom metric to merge away'),
+      target: z.string().describe('Name of the target metric to merge into (built-in or custom)'),
+    },
+    async ({ source, target }) => {
+      const result = await mergeCustomMetricService(user, source, target)
+      if (!result.success) {
+        return errorResponse(result.error ?? 'Failed to merge custom metric')
+      }
+      return jsonResponse(result)
     },
   )
 }
