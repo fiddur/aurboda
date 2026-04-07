@@ -7,6 +7,7 @@ import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
 import { NotFound } from './pages/_404.jsx'
+import { ActivityTypeMeta } from './pages/ActivityTypeMeta/index.jsx'
 import { ActivityTypes } from './pages/ActivityTypes/index.jsx'
 import { AddData } from './pages/AddData/index.jsx'
 import { AdminSettings } from './pages/AdminSettings/index.jsx'
@@ -28,7 +29,6 @@ import { RescueTimeSource } from './pages/DataSources/RescueTimeSource.jsx'
 import { DeductionRules } from './pages/DeductionRules/index.jsx'
 import { DeductionRuleDetail } from './pages/DeductionRules/RuleDetail.jsx'
 import { EntityDetail } from './pages/EntityDetail/index.jsx'
-import { ExerciseMeta } from './pages/ExerciseMeta/index.jsx'
 import { FoodItemDetail } from './pages/FoodItems/FoodItemDetail.jsx'
 import { FoodItems } from './pages/FoodItems/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
@@ -47,7 +47,6 @@ import { ScreentimeCategories } from './pages/ScreentimeCategories/index.jsx'
 import { Settings } from './pages/Settings/index.jsx'
 import { Signup } from './pages/Signup/index.jsx'
 import { Sleep } from './pages/Sleep/index.jsx'
-import { TagMeta } from './pages/TagMeta/index.jsx'
 import { Terms } from './pages/Terms/index.jsx'
 import { Timeline } from './pages/Timeline/index.jsx'
 import { queryClient } from './state/queryClient.js'
@@ -79,8 +78,7 @@ export function App() {
               <Route path="/reports/:id" component={ReportDetail} />
               <Route path="/reports" component={Reports} />
               <Route path="/detail/:type/:id" component={EntityDetail} />
-              <Route path="/tag/:tagKey" component={TagMeta} />
-              <Route path="/exercise/:type" component={ExerciseMeta} />
+              <Route path="/activity-type/:name" component={ActivityTypeMeta} />
               <Route path="/metric/:metricName" component={MetricMeta} />
               <Route path="/sleep" component={Sleep} />
               <Route path="/correlations" component={Correlations} />

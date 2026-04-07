@@ -58,7 +58,9 @@ function TypeRow({ def }: { def: ActivityTypeDefinition }) {
     <div class="at-row" id={def.name}>
       <div class="at-info">
         <span class="at-color-dot" style={{ background: def.color }} />
-        <span class="at-display-name">{def.display_name}</span>
+        <a href={`/activity-type/${def.name}`} class="at-display-name">
+          {def.display_name}
+        </a>
         <span class="at-name-muted">{def.name}</span>
       </div>
       <div class="at-actions">

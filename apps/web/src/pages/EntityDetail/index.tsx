@@ -80,7 +80,9 @@ const GenericActivityDetail = ({
   return (
     <div class="entity-info">
       <div class="entity-meta">
-        <a href={`/activity-types#${activity.activity_type}`} class="entity-type-badge">{typeDisplayName}</a>
+        <a href={`/activity-type/${activity.activity_type}`} class="entity-type-badge">
+          {typeDisplayName}
+        </a>
         {activity.source && <span class="entity-source">Source: {activity.source}</span>}
       </div>
 

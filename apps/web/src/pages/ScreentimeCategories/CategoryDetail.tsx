@@ -12,6 +12,7 @@ import { useRoute } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
 import { IconInput } from '../../components/IconInput'
+import { MiniTrendChart } from '../../components/MiniTrendChart'
 import {
   type DistinctApp,
   type FetchTrendParams,
@@ -28,7 +29,6 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { isEmoji, suggestEmoji } from '../../utils/emojiLookup'
-import { MiniTrendChart } from '../TagMeta/MiniTrendChart'
 import './style.css'
 
 // ============================================================================
