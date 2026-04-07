@@ -15,7 +15,6 @@ import {
   latSchema,
   lonSchema,
   placeSourceSchema,
-  tagTextSchema,
 } from './common.ts'
 import { commentSchema, noteSchema } from './notes.ts'
 import { hrZoneSecsSchema } from './settings.ts'
@@ -33,6 +32,21 @@ export const heartRateStatsSchema = z
   .meta({ id: 'HeartRateStats' })
 
 export type HeartRateStats = z.infer<typeof heartRateStatsSchema>
+
+/**
+ * Stress zone seconds schema — time spent in each stress level band.
+ * Based on Garmin stress levels (0-100 scale).
+ */
+export const stressZoneSecsSchema = z
+  .object({
+    high: z.number().meta({ description: 'Seconds at high stress (76-100)' }),
+    low: z.number().meta({ description: 'Seconds at low stress (26-50)' }),
+    medium: z.number().meta({ description: 'Seconds at medium stress (51-75)' }),
+    rest: z.number().meta({ description: 'Seconds at rest/no stress (0-25)' }),
+  })
+  .meta({ description: 'Time spent in each stress level band', id: 'StressZoneSecs' })
+
+export type StressZoneSecs = z.infer<typeof stressZoneSecsSchema>
 
 /**
  * Sleep location schema — best-guess location where the person slept.
@@ -92,38 +106,39 @@ export const sleepSessionSummarySchema = z
 export type SleepSessionSummary = z.infer<typeof sleepSessionSummarySchema>
 
 /**
- * Session summary schema (for exercise, meditation).
+ * Activity summary schema — unified activity in the daily timeline.
+ * Covers exercises, meditations, tags, screen time categories, and all other activities.
  */
-export const sessionSummarySchema = z
+export const activitySummarySchema = z
   .object({
-    duration: durationMinutesSchema.optional(),
+    activity_type: z
+      .string()
+      .meta({ description: 'Activity type (e.g., "exercise", "meditation", "screentime", "coffee")' }),
+    category_path: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description:
+          'Screen time category path (e.g., ["Work & Dev", "Software Dev"]). Only present for screentime activities.',
+      }),
+    comments: z.array(commentSchema).optional().meta({ description: 'Comments attached to this activity' }),
     end_time: iso8601DateTimeSchema.optional(),
     exercise_type: exerciseTypeSchema.optional().meta({
-      description: 'Human-readable exercise type name (e.g., "yoga", "running", "weightlifting")',
+      description:
+        'Human-readable exercise type name (e.g., "yoga", "running"). Only present for exercise activities.',
     }),
     hr_zone_secs: hrZoneSecsSchema.optional().meta({
-      description: 'Time spent in each HR zone during session',
+      description: 'Time spent in each HR zone during this activity',
     }),
     start_time: iso8601DateTimeSchema,
-    title: z.string().optional().meta({ description: 'Session title' }),
+    stress_zone_secs: stressZoneSecsSchema.optional().meta({
+      description: 'Time spent in each stress level band during this activity',
+    }),
+    title: z.string().optional().meta({ description: 'Activity title or display name' }),
   })
-  .meta({ id: 'SessionSummary' })
+  .meta({ description: 'A single activity in the daily timeline', id: 'ActivitySummary' })
 
-export type SessionSummary = z.infer<typeof sessionSummarySchema>
-
-/**
- * Tag summary schema.
- */
-export const tagSummarySchema = z
-  .object({
-    comments: z.array(commentSchema).optional().meta({ description: 'Comments attached to this tag' }),
-    end_time: iso8601DateTimeSchema.optional(),
-    start_time: iso8601DateTimeSchema,
-    tag: tagTextSchema,
-  })
-  .meta({ id: 'TagSummary' })
-
-export type TagSummary = z.infer<typeof tagSummarySchema>
+export type ActivitySummary = z.infer<typeof activitySummarySchema>
 
 /**
  * Place summary schema.
@@ -182,7 +197,7 @@ export const ouraScoresSchema = z
     readiness_score: z.number().nullable().meta({ description: 'Oura readiness score (0-100)' }),
     resilience_score: z.number().nullable().meta({ description: 'Oura resilience score (0-100)' }),
     sleep_score: z.number().nullable().meta({
-      description: 'Oura sleep score (0-100). Evaluates the primary_sleep session for this date.',
+      description: 'Oura sleep score (0-100). Evaluates the primary sleep session for this date.',
     }),
   })
   .meta({ id: 'OuraScores' })
@@ -216,37 +231,34 @@ export type MealSummary = z.infer<typeof mealSummarySchema>
  */
 export const dailySummaryResultSchema = z
   .object({
-    date: dateOnlySchema,
-    evening_sleep: sleepSessionSummarySchema.nullable().meta({
+    activities: z.array(activitySummarySchema).meta({
       description:
-        'Sleep session that started on this date but continues into the next day (fell asleep tonight). Will appear as the primary_sleep on the next day. Null if no evening sleep was started.',
+        'Unified chronological timeline of all activities: exercises, meditations, screen time categories, custom activities, etc. Sorted by start_time. Screen time entries have category_path set. Exercise entries have exercise_type and hr_zone_secs. Activities with stress data have stress_zone_secs.',
     }),
-    exercise_sessions: z.array(sessionSummarySchema),
+    date: dateOnlySchema,
     heart_rate: heartRateStatsSchema.nullable(),
     meals: z.array(mealSummarySchema).meta({
       description: 'Meals logged on this day, with macros and food item names',
     }),
     notes: z.array(noteSchema).meta({
-      description: 'All notes whose time range overlaps this day, across all entity types',
+      description:
+        'Notes not attached to any activity in the activities list (orphaned or non-activity notes)',
     }),
     oura_scores: ouraScoresSchema.nullable().meta({
-      description:
-        'Oura scores for this date. The sleep_score evaluates the primary_sleep session (the sleep the user woke up from on this date).',
+      description: 'Oura scores for this date.',
     }),
     places: z.array(placeSummarySchema),
-    primary_sleep: sleepSessionSummarySchema.nullable().meta({
-      description:
-        'The main sleep session for this date — the one the user woke up from on this date (following Oura convention). The oura_scores.sleep_score evaluates this session. Null if no primary sleep ended on this date.',
-    }),
     productivity: productivitySummarySchema.nullable(),
     sleep_sessions: z.array(sleepSessionSummarySchema).meta({
       description:
-        'All sleep sessions overlapping this date (kept for backward compatibility). Prefer using primary_sleep and evening_sleep for unambiguous sleep attribution.',
+        'All sleep sessions overlapping this date, with sleep stages, location, and date attribution.',
     }),
     steps: z.object({
       total: z.number().meta({ description: 'Total steps for the day' }),
     }),
-    tags: z.array(tagSummarySchema),
+    stress_zones: stressZoneSecsSchema.nullable().meta({
+      description: 'Day-level stress zone summary — total seconds in each stress band for the whole day',
+    }),
   })
   .meta({ id: 'DailySummaryResult' })
 

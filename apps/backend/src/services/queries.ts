@@ -16,12 +16,12 @@ import { Temporal } from '@js-temporal/polyfill'
 
 import {
   getActivities,
-  getActivitiesByCategory,
   getActivitiesExcludingCategories,
   getDailyAggregates,
   getDailyAggregateValue,
   getDistinctMetrics,
   getMeals,
+  getNonSleepActivitiesMerged,
   getNotesByEntityIds,
   getNotesForTimeRange,
   getProductivity,
@@ -133,6 +133,25 @@ export interface SessionSummary {
   hr_zone_secs?: HrZoneSecs
 }
 
+export interface StressZoneSecs {
+  rest: number
+  low: number
+  medium: number
+  high: number
+}
+
+export interface ActivitySummary {
+  activity_type: string
+  start_time: string
+  end_time?: string
+  title?: string
+  comments?: CommentSummary[]
+  exercise_type?: ExerciseTypeName
+  hr_zone_secs?: HrZoneSecs
+  stress_zone_secs?: StressZoneSecs
+  category_path?: string[]
+}
+
 export interface SleepLocation {
   name: string
   source: 'named' | 'detected' | 'owntracks' | 'unknown'
@@ -209,18 +228,16 @@ export interface MealSummary {
 
 export interface DailySummaryResult {
   date: string
+  activities: ActivitySummary[]
   heart_rate: HeartRateStats | null
   meals: MealSummary[]
   notes: NoteSummary[]
   steps: { total: number }
-  primary_sleep: SleepSessionSummary | null
-  evening_sleep: SleepSessionSummary | null
   sleep_sessions: SleepSessionSummary[]
-  exercise_sessions: SessionSummary[]
-  tags: TagSummary[]
   productivity: ProductivitySummary | null
   places: PlaceSummary[]
   oura_scores: OuraScores | null
+  stress_zones: StressZoneSecs | null
 }
 
 export interface PeriodMetricStats {
@@ -672,6 +689,135 @@ export const computeSleepStageSummary = (
   }
 }
 
+// ============================================================================
+// Stress zone computation
+// ============================================================================
+
+const STRESS_MAX_GAP_SECONDS = 300 // 5 minutes — stress samples are typically 3 minutes apart
+const STRESS_SINGLE_SAMPLE_SECONDS = 180 // Garmin reports every ~3 minutes
+
+/**
+ * Compute time spent in each stress zone for a time window.
+ * Uses the same gap-based accumulation pattern as computeHrZoneSecs.
+ */
+export const computeStressZoneSecs = (
+  stressData: [Date, number][],
+  start?: Date,
+  end?: Date,
+): StressZoneSecs => {
+  const result: StressZoneSecs = { high: 0, low: 0, medium: 0, rest: 0 }
+
+  // Filter to time window if specified
+  const filtered = start && end ? stressData.filter(([time]) => time >= start && time <= end) : stressData
+
+  if (filtered.length === 0) return result
+
+  const getStressZone = (level: number): keyof StressZoneSecs => {
+    if (level <= 25) return 'rest'
+    if (level <= 50) return 'low'
+    if (level <= 75) return 'medium'
+    return 'high'
+  }
+
+  if (filtered.length === 1) {
+    result[getStressZone(filtered[0][1])] = STRESS_SINGLE_SAMPLE_SECONDS
+    return result
+  }
+
+  const gaps: number[] = []
+  for (let i = 0; i < filtered.length - 1; i++) {
+    const [time, level] = filtered[i]
+    const nextTime = filtered[i + 1][0]
+    const gapSec = Math.min((nextTime.getTime() - time.getTime()) / 1000, STRESS_MAX_GAP_SECONDS)
+    gaps.push(gapSec)
+    result[getStressZone(level)] += gapSec
+  }
+
+  // Last sample: use mean gap
+  const meanGap = gaps.reduce((a, b) => a + b, 0) / gaps.length
+  const lastZone = getStressZone(filtered[filtered.length - 1][1])
+  result[lastZone] += Math.min(meanGap, STRESS_MAX_GAP_SECONDS)
+
+  return result
+}
+
+// ============================================================================
+// Screen time → activity spans
+// ============================================================================
+
+const SCREENTIME_MERGE_GAP_MS = 10 * 60 * 1000 // 10 minutes
+
+interface ScreentimeSpan {
+  category_path: string[]
+  start_time: Date
+  end_time: Date
+  duration_sec: number
+}
+
+/**
+ * Convert productivity records into merged screen time activity spans by category.
+ * Skips uncategorized records and excluded categories.
+ */
+export const buildScreentimeSpans = (
+  records: ProductivityRecord[],
+  excludedPaths: string[][],
+): ScreentimeSpan[] => {
+  const isExcluded = (cat: string[] | undefined): boolean =>
+    cat === undefined ||
+    cat.length === 0 ||
+    excludedPaths.some(
+      (excluded) => cat.length >= excluded.length && excluded.every((seg, i) => seg === cat[i]),
+    )
+
+  // Group by category
+  const byCategory = new Map<string, ProductivityRecord[]>()
+  for (const record of records) {
+    if (isExcluded(record.resolved_category)) continue
+    const key = JSON.stringify(record.resolved_category)
+    const group = byCategory.get(key) ?? []
+    group.push(record)
+    byCategory.set(key, group)
+  }
+
+  const spans: ScreentimeSpan[] = []
+
+  for (const [key, group] of byCategory) {
+    const categoryPath = JSON.parse(key) as string[]
+    const sorted = [...group].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+
+    let current = {
+      category_path: categoryPath,
+      duration_sec: sorted[0].duration_sec,
+      end_time: sorted[0].end_time,
+      start_time: sorted[0].start_time,
+    }
+
+    for (let i = 1; i < sorted.length; i++) {
+      const next = sorted[i]
+      const gap = next.start_time.getTime() - current.end_time.getTime()
+
+      if (gap <= SCREENTIME_MERGE_GAP_MS) {
+        // Merge: extend end time, accumulate duration
+        if (next.end_time > current.end_time) {
+          current.end_time = next.end_time
+        }
+        current.duration_sec += next.duration_sec
+      } else {
+        spans.push(current)
+        current = {
+          category_path: categoryPath,
+          duration_sec: next.duration_sec,
+          end_time: next.end_time,
+          start_time: next.start_time,
+        }
+      }
+    }
+    spans.push(current)
+  }
+
+  return spans.sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+}
+
 /**
  * Get a comprehensive summary of health data for a specific day.
  * @param sync Optional sync provider to auto-refresh stale data before querying
@@ -724,8 +870,7 @@ export async function getDailySummary(
     heartRateData,
     stepsData,
     sleepSessions,
-    exerciseSessions,
-    tags,
+    allActivities,
     productivity,
     placeVisits,
     ouraMetrics,
@@ -733,12 +878,12 @@ export async function getDailySummary(
     dayMeals,
     stepsAggregate,
     screentimeCategories,
+    stressData,
   ] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
     getSleepSessions(user, start, end),
-    getActivitiesByCategory(user, 'exercise', start, end),
-    queryTagActivities(user, start, end),
+    getNonSleepActivitiesMerged(user, start, end),
     getProductivity(user, start, end),
     getPlaceVisits(user, start, end),
     getTimeSeriesMultiMetric(
@@ -751,6 +896,7 @@ export async function getDailySummary(
     getMeals(user, { start, end }),
     getDailyAggregateValue(user, 'steps', date),
     getScreentimeCategories(user),
+    getTimeSeries(user, 'stress_level', start, end),
   ])
 
   // Calculate heart rate stats
@@ -774,13 +920,6 @@ export async function getDailySummary(
     .filter((c) => c.exclude_from_screentime)
     .map((c) => c.name)
 
-  const isExcluded = (resolvedCategory: string[] | undefined): boolean =>
-    resolvedCategory !== undefined &&
-    excludedCategoryPaths.some(
-      (excluded) =>
-        resolvedCategory.length >= excluded.length && excluded.every((seg, i) => seg === resolvedCategory[i]),
-    )
-
   const productivitySummary: ProductivitySummary | null =
     productivity.length > 0
       ? (() => {
@@ -799,8 +938,14 @@ export async function getDailySummary(
               if (record.productivity >= 2) totals.very_productive_sec += record.duration_sec
               if (record.productivity <= -1) totals.distracting_sec += record.duration_sec
             }
-            if (!isExcluded(record.resolved_category)) {
-              const key = JSON.stringify(record.resolved_category ?? [])
+            const cat = record.resolved_category
+            const isExcl =
+              cat !== undefined &&
+              excludedCategoryPaths.some(
+                (excluded) => cat.length >= excluded.length && excluded.every((seg, i) => seg === cat[i]),
+              )
+            if (!isExcl) {
+              const key = JSON.stringify(cat ?? [])
               categoryMap.set(key, (categoryMap.get(key) ?? 0) + record.duration_sec)
             }
           }
@@ -837,53 +982,86 @@ export async function getDailySummary(
   // Get user's HR zones for exercise session HR zone calculation
   const { zones: hrZones } = await getEffectiveHrZones(user)
 
-  // Compute HR zones for exercise sessions (filter already-fetched HR data in memory)
-  const exerciseSessionsWithHrZones: SessionSummary[] = exerciseSessions.map((s) => {
-    // Resolve human-readable exercise type name from numeric Health Connect ID
+  // Fetch comments for all activities
+  const activityIds = allActivities.map((a) => a.id).filter((id): id is string => id !== undefined)
+  const commentsMap = await getCommentsMap(user, 'activity', activityIds)
+
+  // Build unified activities array from DB activities
+  const activities: ActivitySummary[] = allActivities.map((s) => {
     const dataObj = s.data as Record<string, unknown> | undefined
     const exerciseTypeCode = dataObj?.exerciseType
     const exerciseType =
       typeof exerciseTypeCode === 'number' ? getExerciseTypeName(exerciseTypeCode) : undefined
 
-    const sessionSummary: SessionSummary = {
-      duration: s.end_time
-        ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)
-        : undefined,
+    const activity: ActivitySummary = {
+      activity_type: s.activity_type,
       end_time: s.end_time?.toISOString(),
-      exercise_type: exerciseType,
       start_time: s.start_time.toISOString(),
       title: s.title,
     }
 
-    // Only compute HR zones for sessions with end time
-    if (s.end_time) {
+    if (exerciseType) activity.exercise_type = exerciseType
+
+    // Comments
+    const comments = s.id ? commentsMap.get(s.id) : undefined
+    if (comments && comments.length > 0) activity.comments = comments
+
+    // HR zones for exercise sessions with end time
+    if (s.end_time && s.activity_type === 'exercise') {
       const sessionHrData = heartRateData.filter(([time]) => time >= s.start_time && time <= s.end_time!)
       if (sessionHrData.length > 0) {
-        sessionSummary.hr_zone_secs = computeHrZoneSecs(sessionHrData, hrZones)
+        activity.hr_zone_secs = computeHrZoneSecs(sessionHrData, hrZones)
       }
     }
 
-    return sessionSummary
+    // Stress zones for activities with time range
+    if (s.end_time && stressData.length > 0) {
+      const zones = computeStressZoneSecs(stressData, s.start_time, s.end_time)
+      const hasStressData = zones.rest + zones.low + zones.medium + zones.high > 0
+      if (hasStressData) activity.stress_zone_secs = zones
+    }
+
+    return activity
   })
 
-  // Fetch tag comments
-  const tagIds = tags.map((t) => t.id).filter((id): id is string => id !== undefined)
-  const tagCommentsMap = await getCommentsMap(user, 'activity', tagIds)
+  // Build screen time activity spans and add to activities
+  const screentimeSpans = buildScreentimeSpans(productivity, excludedCategoryPaths)
+  for (const span of screentimeSpans) {
+    const activity: ActivitySummary = {
+      activity_type: 'screentime',
+      category_path: span.category_path,
+      end_time: span.end_time.toISOString(),
+      start_time: span.start_time.toISOString(),
+      title: span.category_path.join(' > '),
+    }
+
+    // Stress zones for screen time spans
+    if (stressData.length > 0) {
+      const zones = computeStressZoneSecs(stressData, span.start_time, span.end_time)
+      const hasStressData = zones.rest + zones.low + zones.medium + zones.high > 0
+      if (hasStressData) activity.stress_zone_secs = zones
+    }
+
+    activities.push(activity)
+  }
+
+  // Sort all activities chronologically
+  activities.sort((a, b) => a.start_time.localeCompare(b.start_time))
+
+  // Day-level stress zones
+  const stressZones: StressZoneSecs | null = stressData.length > 0 ? computeStressZoneSecs(stressData) : null
 
   // Build sleep session summaries with sleep_date and sleep_location
-  const dateStr = date.toISOString().split('T')[0]
   const sleepSessionSummaries: SleepSessionSummary[] = sleepSessions.map((s) => {
     const timeInBed = s.end_time
       ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)
       : undefined
     const totalSleep = computeSleepMinutes(s.data as Record<string, unknown> | undefined)
 
-    // sleep_date = wake-up date (end_time date), or start_time date if still sleeping
     const sleepDate = s.end_time
       ? s.end_time.toISOString().split('T')[0]
       : s.start_time.toISOString().split('T')[0]
 
-    // Find the best-guess sleep location from place visits overlapping the sleep window
     const sleepLocation = findSleepLocation(s.start_time, s.end_time ?? end, placeVisits)
 
     return {
@@ -898,19 +1076,17 @@ export async function getDailySummary(
     }
   })
 
-  // Classify sleep sessions:
-  // primary_sleep = session where the user woke up on this date (end_time is on this date)
-  // evening_sleep = session that started on this date but ends on the next day (or is ongoing)
-  const primarySleep = sleepSessionSummaries.find((s) => s.end_time && s.end_time.startsWith(dateStr)) ?? null
-  const eveningSleep =
-    sleepSessionSummaries.find(
-      (s) => s.start_time.startsWith(dateStr) && (!s.end_time || !s.end_time.startsWith(dateStr)),
-    ) ?? null
+  // Filter notes: only include orphaned notes (not attached to an activity in the list)
+  const activityIdSet = new Set(activityIds)
+  const orphanedNotes = dayNotes.filter(
+    (n) => !(n.entity_type === 'activity' && n.entity_id && activityIdSet.has(n.entity_id)),
+  )
+
+  const dateStr = date.toISOString().split('T')[0]
 
   return {
+    activities,
     date: dateStr,
-    evening_sleep: eveningSleep,
-    exercise_sessions: exerciseSessionsWithHrZones,
     heart_rate: heartRateStats,
     meals: dayMeals.map((m) => ({
       calories: m.calories,
@@ -923,7 +1099,7 @@ export async function getDailySummary(
       protein: m.protein,
       time: m.time.toISOString(),
     })),
-    notes: dayNotes.map((n) => ({
+    notes: orphanedNotes.map((n) => ({
       content: n.content,
       created_at: n.created_at.toISOString(),
       end_time: n.end_time?.toISOString(),
@@ -945,16 +1121,10 @@ export async function getDailySummary(
       source: p.source,
       start_time: p.start_time.toISOString(),
     })),
-    primary_sleep: primarySleep,
     productivity: productivitySummary,
     sleep_sessions: sleepSessionSummaries,
     steps: { total: totalSteps },
-    tags: tags.map((t) => ({
-      comments: t.id ? (tagCommentsMap.get(t.id) ?? []) : [],
-      end_time: t.end_time?.toISOString(),
-      start_time: t.start_time.toISOString(),
-      tag: t.title ?? t.activity_type,
-    })),
+    stress_zones: stressZones,
   }
 }
 
