@@ -428,23 +428,7 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
      ON CONFLICT DO NOTHING`,
   )
 
-  // Step 4: Create activity_type_definitions for any activity_type that doesn't have one yet
-  await query(
-    db,
-    `INSERT INTO activity_type_definitions (name, display_name, display_category)
-     SELECT DISTINCT a.activity_type,
-       initcap(replace(a.activity_type, '_', ' ')),
-       'other'
-     FROM activities a
-     WHERE NOT EXISTS (
-       SELECT 1 FROM activity_type_definitions atd WHERE atd.name = a.activity_type
-     )
-       AND a.activity_type ~ '^[a-z][a-z0-9_]*$'
-       AND a.deleted_at IS NULL
-     ON CONFLICT (name) DO NOTHING`,
-  )
-
-  // Step 5: Update notes entity_type from 'tag' to 'activity'
+  // Step 4: Update notes entity_type from 'tag' to 'activity'
   if (existingTableNames.has('notes')) {
     await query(db, `UPDATE notes SET entity_type = 'activity' WHERE entity_type = 'tag'`)
   }
@@ -601,6 +585,24 @@ export const migrateSchema = async (user: string) => {
 
   // Migrate tags into activities and tag_definitions into activity_type_definitions
   await migrateTagsToActivities(db, existingTableNames)
+
+  // Ensure every activity_type in use has a corresponding definition (idempotent)
+  if (existingTableNames.has('activity_type_definitions') && existingTableNames.has('activities')) {
+    await query(
+      db,
+      `INSERT INTO activity_type_definitions (name, display_name, display_category)
+       SELECT DISTINCT a.activity_type,
+         initcap(replace(a.activity_type, '_', ' ')),
+         'other'
+       FROM activities a
+       WHERE NOT EXISTS (
+         SELECT 1 FROM activity_type_definitions atd WHERE atd.name = a.activity_type
+       )
+         AND a.activity_type ~ '^[a-z][a-z0-9_]*$'
+         AND a.deleted_at IS NULL
+       ON CONFLICT (name) DO NOTHING`,
+    )
+  }
 
   // Migrate goals and custom_metrics from user_settings JSONB to their own tables
   await migrateGoalsAndCustomMetrics(db, existingTableNames)

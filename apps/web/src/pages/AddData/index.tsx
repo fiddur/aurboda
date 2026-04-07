@@ -1,18 +1,16 @@
-import { exerciseTypeNames, type ExerciseTypeName } from '@aurboda/api-spec'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
+import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { MetricPicker } from '../../components/MetricPicker'
 import {
   addActivity,
   addMetric,
   addNote,
-  fetchActivityTypeDefinitions,
   uploadFitFile,
   type ActivityType,
-  type ActivityTypeDefinition,
 } from '../../state/api'
 import './style.css'
 
@@ -85,8 +83,7 @@ const FitUpload = ({ onCreated }: FormProps) => {
 
 const AddActivityForm = ({ onCreated }: FormProps) => {
   const queryClient = useQueryClient()
-  const [activityType, setActivityType] = useState<ActivityType>('exercise')
-  const [exerciseType, setExerciseType] = useState<ExerciseTypeName>('other_workout')
+  const [activityType, setActivityType] = useState<ActivityType>('')
   const [title, setTitle] = useState('')
   const [startTime, setStartTime] = useState(nowLocal())
   const [endTime, setEndTime] = useState(nowLocal())
@@ -96,25 +93,12 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
-  const { data: activityTypeDefs } = useQuery({
-    queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activity-type-definitions'],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const allDefs = activityTypeDefs ?? []
-  const builtinDefs = allDefs.filter(
-    (d: ActivityTypeDefinition) =>
-      d.is_builtin && ['exercise', 'meditation', 'nap', 'rest', 'sleep'].includes(d.name),
-  )
-  const customDefs = allDefs.filter((d: ActivityTypeDefinition) => !builtinDefs.includes(d))
-
   const mutation = useMutation({
     mutationFn: async () => {
+      if (!activityType) throw new Error('Please select an activity type')
       const result = await addActivity({
         activity_type: activityType,
         ...(hasEndTime ? { end_time: new Date(endTime).toISOString() } : {}),
-        ...(activityType === 'exercise' ? { exercise_type: exerciseType } : {}),
         ...(notes ? { notes } : {}),
         start_time: new Date(startTime).toISOString(),
         ...(title ? { title } : {}),
@@ -153,49 +137,8 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
 
       <div class="form-field">
         <label>Activity Type</label>
-        <select
-          value={activityType}
-          onChange={(e) => {
-            const val = (e.target as HTMLSelectElement).value as ActivityType
-            setActivityType(val)
-            // Default to having end time for most types
-            setHasEndTime(true)
-          }}
-        >
-          <optgroup label="Built-in">
-            {builtinDefs.map((d: ActivityTypeDefinition) => (
-              <option key={d.name} value={d.name}>
-                {d.display_name || d.name}
-              </option>
-            ))}
-          </optgroup>
-          {customDefs.length > 0 && (
-            <optgroup label="Other">
-              {customDefs.map((d: ActivityTypeDefinition) => (
-                <option key={d.name} value={d.name}>
-                  {d.display_name || d.name}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
+        <ActivityTypePicker value={activityType} onChange={setActivityType} />
       </div>
-
-      {activityType === 'exercise' && (
-        <div class="form-field">
-          <label>Exercise Type</label>
-          <select
-            value={exerciseType}
-            onChange={(e) => setExerciseType((e.target as HTMLSelectElement).value as ExerciseTypeName)}
-          >
-            {exerciseTypeNames.map((name) => (
-              <option key={name} value={name}>
-                {name.replaceAll('_', ' ')}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
       <div class="form-field">
         <label>Title</label>
