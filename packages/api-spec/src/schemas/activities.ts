@@ -233,6 +233,9 @@ export type ActivitiesResponse = z.infer<typeof activitiesResponseSchema>
 export const addActivityBodySchema = z
   .object({
     activity_type: activityTypeSchema.meta({ description: 'Type of activity' }),
+    data: z.record(z.string(), z.unknown()).optional().meta({
+      description: 'Structured data for this activity (type-specific fields)',
+    }),
     end_time: iso8601DateTimeSchema.optional().meta({
       description: 'End time (omit for point-in-time activities)',
     }),

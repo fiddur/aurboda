@@ -184,14 +184,14 @@ export const createActivitiesRouter = (
     authMiddleware,
     validateBody(addActivityBodySchema),
     async (req, res) => {
-      const { activity_type, start_time, end_time, title, notes, exercise_type } = req.body
+      const { activity_type, start_time, end_time, title, notes, exercise_type, merge_span, data: bodyData } = req.body
       const user = req.user!
 
       const startDate = new Date(start_time)
       const endDate = end_time ? new Date(end_time) : undefined
 
-      // Validate and convert exercise_type name to value if provided
-      let data: Record<string, unknown> | undefined
+      // Build data: merge body data with exercise_type conversion if provided
+      let data: Record<string, unknown> | undefined = bodyData as Record<string, unknown> | undefined
       if (exercise_type !== undefined) {
         if (!isValidExerciseType(exercise_type)) {
           return res.status(400).json({
@@ -200,6 +200,7 @@ export const createActivitiesRouter = (
           })
         }
         data = {
+          ...data,
           exerciseType: getExerciseTypeValue(exercise_type),
           exerciseTypeName: exercise_type,
         }
@@ -209,6 +210,7 @@ export const createActivitiesRouter = (
         activity_type,
         data,
         end_time: endDate,
+        merge_span,
         notes,
         start_time: startDate,
         title,

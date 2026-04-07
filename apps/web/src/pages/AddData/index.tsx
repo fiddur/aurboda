@@ -102,8 +102,9 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
     staleTime: 5 * 60 * 1000,
   })
 
-  const builtinTypes = ['exercise', 'meditation', 'nap', 'rest', 'sleep']
-  const customDefs = (activityTypeDefs ?? []).filter((d: ActivityTypeDefinition) => !d.is_builtin)
+  const allDefs = activityTypeDefs ?? []
+  const builtinDefs = allDefs.filter((d: ActivityTypeDefinition) => d.is_builtin && ['exercise', 'meditation', 'nap', 'rest', 'sleep'].includes(d.name))
+  const customDefs = allDefs.filter((d: ActivityTypeDefinition) => !builtinDefs.includes(d))
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -154,19 +155,19 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
           onChange={(e) => {
             const val = (e.target as HTMLSelectElement).value as ActivityType
             setActivityType(val)
-            // Default to having end time for builtin types, optional for custom
-            setHasEndTime(builtinTypes.includes(val))
+            // Default to having end time for most types
+            setHasEndTime(true)
           }}
         >
           <optgroup label="Built-in">
-            <option value="exercise">Exercise</option>
-            <option value="meditation">Meditation</option>
-            <option value="nap">Nap</option>
-            <option value="rest">Rest</option>
-            <option value="sleep">Sleep</option>
+            {builtinDefs.map((d: ActivityTypeDefinition) => (
+              <option key={d.name} value={d.name}>
+                {d.display_name || d.name}
+              </option>
+            ))}
           </optgroup>
           {customDefs.length > 0 && (
-            <optgroup label="Custom">
+            <optgroup label="Other">
               {customDefs.map((d: ActivityTypeDefinition) => (
                 <option key={d.name} value={d.name}>
                   {d.display_name || d.name}
