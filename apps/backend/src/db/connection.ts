@@ -494,6 +494,8 @@ export const migrateSchema = async (user: string) => {
       db,
       `ALTER TABLE activity_type_definitions ADD COLUMN IF NOT EXISTS health_connect_exercise_type INTEGER`,
     )
+    // Widen icon from VARCHAR(50) to TEXT to support URLs
+    await query(db, `ALTER TABLE activity_type_definitions ALTER COLUMN icon TYPE TEXT`)
   }
   if (existingTableNames.has('time_series')) {
     await query(db, `ALTER TABLE time_series ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
