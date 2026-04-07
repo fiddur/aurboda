@@ -14,7 +14,6 @@ import {
   type HrvStatsWithDelta,
   type LocationCorrelation,
   type ProductivityCorrelation,
-  type TagCorrelation,
 } from '../../state/api'
 import './style.css'
 
@@ -480,40 +479,7 @@ export function Correlations() {
             </section>
           )}
 
-          {/* Tags */}
-          {correlations.correlations.tags.length > 0 && (
-            <section class="table-section">
-              <h2>Tags</h2>
-              <div class="table-container">
-                <table class="correlations-table">
-                  <thead>
-                    <tr>
-                      <th>Tag</th>
-                      <th>Type</th>
-                      <th>HRV</th>
-                      <th>Δ HRV</th>
-                      <th>HR</th>
-                      <th>Δ HR</th>
-                      <th>Samples</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {correlations.correlations.tags.map((t: TagCorrelation) => (
-                      <CorrelationRow
-                        key={t.tag}
-                        name={t.tag}
-                        stats={t}
-                        onSelect={() => handleSelectActivity(t.tag, 'tag')}
-                        selected={isActivitySelected(selectedActivity.value, t.tag, 'tag')}
-                        type="tag"
-                        extra={`${t.occurrences}×`}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
+          {/* Tags section removed — tags are now activities */}
         </>
       )}
 
