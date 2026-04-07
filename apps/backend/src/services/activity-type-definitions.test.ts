@@ -5,6 +5,7 @@ import {
   addActivityTypeDefinition,
   deleteActivityTypeDefinition,
   listActivityTypeDefinitions,
+  mergeActivityType,
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 
@@ -13,6 +14,7 @@ vi.mock('../db', () => ({
   getActivityTypeDefinition: vi.fn(),
   getActivityTypeDefinitions: vi.fn(),
   insertActivityTypeDefinition: vi.fn(),
+  mergeActivityTypeDefinition: vi.fn(),
   updateActivityTypeDefinition: vi.fn(),
 }))
 
@@ -172,5 +174,54 @@ describe('deleteActivityTypeDefinition', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('not found')
+  })
+})
+
+describe('mergeActivityType', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('returns error when source equals target', async () => {
+    const result = await mergeActivityType(user, 'sauna', 'sauna')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('same activity type')
+  })
+
+  test('returns error when source is built-in', async () => {
+    const result = await mergeActivityType(user, 'exercise', 'sauna')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Cannot merge built-in')
+  })
+
+  test('returns error when source or target not found', async () => {
+    vi.mocked(db.mergeActivityTypeDefinition).mockResolvedValue(null)
+
+    const result = await mergeActivityType(user, 'old_type', 'new_type')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not found')
+  })
+
+  test('merges custom type into target successfully', async () => {
+    const targetDef = {
+      aliases: ['sauna', 'old_sauna'],
+      color: '#ef4444',
+      display_category: 'wellness' as const,
+      display_name: 'Sauna',
+      is_builtin: false,
+      name: 'sauna',
+      show_on_timeline: true,
+    }
+    vi.mocked(db.mergeActivityTypeDefinition).mockResolvedValue({
+      activities_reassigned: 5,
+      deduction_rules_updated: 1,
+      target: targetDef,
+    })
+
+    const result = await mergeActivityType(user, 'old_sauna', 'sauna')
+
+    expect(result.success).toBe(true)
+    expect(result.activities_reassigned).toBe(5)
+    expect(result.deduction_rules_updated).toBe(1)
+    expect(result.target).toEqual(targetDef)
+    expect(db.mergeActivityTypeDefinition).toHaveBeenCalledWith(user, 'old_sauna', 'sauna')
   })
 })

@@ -22,6 +22,9 @@ import {
   type DeleteMetricQuery,
   deleteMetricQuerySchema,
   type LatestMetricResponse,
+  type MergeCustomMetricBody,
+  mergeCustomMetricBodySchema,
+  type MergeCustomMetricResponse,
   type PeriodSummaryQuery,
   periodSummaryQuerySchema,
   type PeriodSummaryResponse,
@@ -41,6 +44,7 @@ import type { MetricType } from '../schema.ts'
 
 import { auditError, auditInfo } from '../services/audit-log.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
+import { mergeCustomMetricService } from '../services/custom-metrics.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -130,6 +134,22 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
         return res.status(404).json({ error: `Custom metric "${name}" not found`, success: false })
       }
       res.json({ success: true })
+    },
+  )
+
+  // POST /metrics/custom/merge - Merge a custom metric into another metric
+  router.post<Record<string, string>, MergeCustomMetricResponse, MergeCustomMetricBody>(
+    '/metrics/custom/merge',
+    authMiddleware,
+    validateBody(mergeCustomMetricBodySchema),
+    async (req, res) => {
+      const { source, target } = req.body
+      const user = req.user!
+      const result = await mergeCustomMetricService(user, source, target)
+      if (!result.success) {
+        return res.status(400).json({ error: result.error, success: false })
+      }
+      res.json(result)
     },
   )
 

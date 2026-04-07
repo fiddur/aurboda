@@ -241,6 +241,77 @@
   color: #dc2626;
 }
 
+.activity-type-meta-page .btn-secondary {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.activity-type-meta-page .btn-secondary:hover {
+  background: #f3f4f6;
+}
+
+.activity-type-meta-page .btn-danger {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.activity-type-meta-page .btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.activity-type-meta-page .btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.activity-type-meta-merge-desc {
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.activity-type-meta-merge-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.activity-type-meta-merge-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.activity-type-meta-merge-form select,
+.activity-type-meta-merge-form input {
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.activity-type-meta-merge-form code {
+  font-size: 0.8rem;
+  background: #f3f4f6;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+}
+
+.activity-type-meta-merge-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
   .activity-type-meta-title-row h1 {
@@ -313,6 +384,27 @@
   .activity-type-meta-link:hover {
     background: #374151;
     border-color: #4b5563;
+  }
+
+  .activity-type-meta-page .btn-secondary {
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .activity-type-meta-page .btn-secondary:hover {
+    background: #374151;
+  }
+
+  .activity-type-meta-merge-form select,
+  .activity-type-meta-merge-form input {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
+  .activity-type-meta-merge-form code {
+    background: #374151;
+    color: #d1d5db;
   }
 }
 

@@ -418,3 +418,40 @@ export const latestMetricResponseSchema = baseResponseSchema
   .meta({ id: 'LatestMetricResponse' })
 
 export type LatestMetricResponse = z.infer<typeof latestMetricResponseSchema>
+
+// =============================================================================
+// Merge Custom Metric
+// =============================================================================
+
+/**
+ * Merge a custom metric into another metric (built-in or custom).
+ * All time_series data is reassigned; the source definition is deleted.
+ */
+export const mergeCustomMetricBodySchema = z
+  .object({
+    source: metricNameSchema.meta({ description: 'Custom metric to merge away' }),
+    target: metricNameSchema.meta({ description: 'Target metric to merge into (built-in or custom)' }),
+  })
+  .meta({ id: 'MergeCustomMetricBody' })
+
+export type MergeCustomMetricBody = z.infer<typeof mergeCustomMetricBodySchema>
+
+/**
+ * Merge custom metric response.
+ */
+export const mergeCustomMetricResponseSchema = baseResponseSchema
+  .extend({
+    rows_reassigned: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of time_series rows moved to the target metric' }),
+    rows_skipped: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of rows skipped due to duplicate (time, source) conflicts' }),
+  })
+  .meta({ id: 'MergeCustomMetricResponse' })
+
+export type MergeCustomMetricResponse = z.infer<typeof mergeCustomMetricResponseSchema>

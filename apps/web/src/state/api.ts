@@ -808,6 +808,19 @@ export const updateActivityTypeDefinition = async (
   return response.data.data
 }
 
+export const mergeActivityTypeApi = async (
+  source: string,
+  target: string,
+): Promise<{ success: boolean; activities_reassigned?: number; deduction_rules_updated?: number }> => {
+  const { token } = auth.value
+  const response = await axios.post<{
+    success: boolean
+    activities_reassigned?: number
+    deduction_rules_updated?: number
+  }>(`${API_URL}/activity-types/merge`, { source, target }, { headers: { Authorization: `Bearer ${token}` } })
+  return response.data
+}
+
 // Deduction rules CRUD
 export const fetchDeductionRules = async (): Promise<DeductionRule[]> => {
   const { token } = auth.value
@@ -1525,6 +1538,19 @@ export const deleteCustomMetric = async (name: string): Promise<void> => {
   await axios.delete(`${API_URL}/metrics/custom/${encodeURIComponent(name)}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
+}
+
+export const mergeCustomMetricApi = async (
+  source: string,
+  target: string,
+): Promise<{ success: boolean; rows_reassigned?: number; rows_skipped?: number }> => {
+  const { token } = auth.value
+  const response = await axios.post<{ success: boolean; rows_reassigned?: number; rows_skipped?: number }>(
+    `${API_URL}/metrics/custom/merge`,
+    { source, target },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
 }
 
 // ============================================================================

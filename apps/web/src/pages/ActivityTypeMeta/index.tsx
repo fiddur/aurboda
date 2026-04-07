@@ -3,7 +3,7 @@
  * Shows icon, display_name, category badge, trend chart, recent occurrences, and related links.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRoute } from 'preact-iso'
+import { useLocation, useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { IconInput } from '../../components/IconInput'
@@ -15,6 +15,7 @@ import {
   fetchActivities,
   fetchActivityTypeDefinitions,
   fetchTrend,
+  mergeActivityTypeApi,
   updateActivityTypeDefinition,
   type ActivityTypeDefinition,
   type FetchTrendParams,
@@ -171,6 +172,103 @@ function RecentOccurrences({ name }: { name: string }) {
   )
 }
 
+function MergeActivityTypeSection({
+  name,
+  definitions,
+}: {
+  name: string
+  definitions: ActivityTypeDefinition[]
+}) {
+  const queryClient = useQueryClient()
+  const { route } = useLocation()
+  const [showMerge, setShowMerge] = useState(false)
+  const [target, setTarget] = useState('')
+  const [confirmText, setConfirmText] = useState('')
+
+  const mergeMutation = useMutation({
+    mutationFn: () => mergeActivityTypeApi(name, target),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
+      queryClient.invalidateQueries({ queryKey: ['recent-activities'] })
+      route(`/activity-type/${encodeURIComponent(target)}`)
+      alert(
+        `Merged ${result.activities_reassigned ?? 0} activities into "${target}"` +
+          (result.deduction_rules_updated
+            ? ` (${result.deduction_rules_updated} deduction rules updated)`
+            : ''),
+      )
+    },
+  })
+
+  const options = definitions
+    .filter((d) => d.name !== name)
+    .map((d) => ({ label: d.display_name, value: d.name }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+
+  if (!showMerge) {
+    return (
+      <section class="activity-type-meta-section">
+        <h2>Merge</h2>
+        <p class="activity-type-meta-merge-desc">
+          Merge all activities from this custom type into another type, then delete this definition.
+        </p>
+        <button type="button" class="btn-secondary" onClick={() => setShowMerge(true)}>
+          Merge into...
+        </button>
+      </section>
+    )
+  }
+
+  const ready = target && confirmText === name
+
+  return (
+    <section class="activity-type-meta-section">
+      <h2>Merge</h2>
+      <div class="activity-type-meta-merge-form">
+        <label>
+          <span class="activity-type-meta-field-label">Target activity type</span>
+          <select value={target} onChange={(e) => setTarget((e.target as HTMLSelectElement).value)}>
+            <option value="">Select target...</option>
+            {options.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {target && (
+          <label>
+            <span class="activity-type-meta-field-label">
+              Type <code>{name}</code> to confirm
+            </span>
+            <input
+              type="text"
+              value={confirmText}
+              onInput={(e) => setConfirmText((e.target as HTMLInputElement).value)}
+              placeholder={name}
+            />
+          </label>
+        )}
+        <div class="activity-type-meta-merge-actions">
+          <button
+            type="button"
+            class="btn-danger"
+            disabled={!ready || mergeMutation.isPending}
+            onClick={() => mergeMutation.mutate()}
+          >
+            {mergeMutation.isPending ? 'Merging...' : `Merge into ${target}`}
+          </button>
+          <button type="button" class="btn-secondary" onClick={() => setShowMerge(false)}>
+            Cancel
+          </button>
+        </div>
+        {mergeMutation.error && <p class="error">Merge failed. Please try again.</p>}
+      </div>
+    </section>
+  )
+}
+
 export function ActivityTypeMeta() {
   const { params } = useRoute()
   const name = decodeURIComponent(params.name as string)
@@ -230,6 +328,11 @@ export function ActivityTypeMeta() {
         <h2>Recent Occurrences</h2>
         <RecentOccurrences name={name} />
       </section>
+
+      {/* Merge (custom types only) */}
+      {typeDef && !typeDef.is_builtin && definitions && (
+        <MergeActivityTypeSection name={name} definitions={definitions} />
+      )}
 
       <section class="activity-type-meta-section">
         <h2>Related</h2>

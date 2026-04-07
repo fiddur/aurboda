@@ -113,3 +113,46 @@ export const activityTypeDefinitionResponseSchema = baseResponseSchema
   .meta({ id: 'ActivityTypeDefinitionResponse' })
 
 export type ActivityTypeDefinitionResponse = z.infer<typeof activityTypeDefinitionResponseSchema>
+
+// =============================================================================
+// Merge Activity Type
+// =============================================================================
+
+const activityTypeNameSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/)
+  .meta({ description: 'Activity type name (snake_case)' })
+
+/**
+ * Merge a custom activity type into another activity type (built-in or custom).
+ * All activities are reassigned; aliases are merged; the source definition is deleted.
+ */
+export const mergeActivityTypeBodySchema = z
+  .object({
+    source: activityTypeNameSchema.meta({ description: 'Custom activity type to merge away' }),
+    target: activityTypeNameSchema.meta({ description: 'Target activity type to merge into' }),
+  })
+  .meta({ id: 'MergeActivityTypeBody' })
+
+export type MergeActivityTypeBody = z.infer<typeof mergeActivityTypeBodySchema>
+
+/**
+ * Merge activity type response.
+ */
+export const mergeActivityTypeResponseSchema = baseResponseSchema
+  .extend({
+    activities_reassigned: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of activities moved to the target type' }),
+    deduction_rules_updated: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of deduction rules updated to reference the target type' }),
+    target: activityTypeDefinitionSchema.optional().meta({ description: 'Updated target definition' }),
+  })
+  .meta({ id: 'MergeActivityTypeResponse' })
+
+export type MergeActivityTypeResponse = z.infer<typeof mergeActivityTypeResponseSchema>
