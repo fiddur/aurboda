@@ -484,8 +484,10 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE activities ADD COLUMN IF NOT EXISTS external_id VARCHAR(255)`)
     // Widen activity_type from VARCHAR(50) to VARCHAR(100) for longer type names
     await query(db, `ALTER TABLE activities ALTER COLUMN activity_type TYPE VARCHAR(100)`)
-    // Replace old unique constraint with two partial indexes
+    // Replace old unique constraint and non-unique index with partial unique indexes
     await query(db, `ALTER TABLE activities DROP CONSTRAINT IF EXISTS unique_activity`)
+    // Drop old non-unique idx_activities_type_time so we can recreate as UNIQUE with WHERE clause
+    await query(db, `DROP INDEX IF EXISTS idx_activities_type_time`)
     await query(
       db,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_ext_id ON activities (source, external_id) WHERE external_id IS NOT NULL`,
