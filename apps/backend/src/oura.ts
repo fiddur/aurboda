@@ -3,10 +3,18 @@ import type { Request, Response } from 'express'
 import axios from 'axios'
 import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture } from 'date-fns'
 
-import { getOAuthToken, initializeSchema, schemaInitialized, type Tag, upsertOAuthToken } from './db/index.ts'
+import { getOAuthToken, initializeSchema, schemaInitialized, upsertOAuthToken } from './db/index.ts'
 
-/** Tag with optional Oura comment, used during sync processing. */
-export type OuraTagWithComment = Tag & { comment?: string }
+/** Oura tag record used during sync processing (mapped to activities). */
+export interface OuraTagWithComment {
+  source: 'oura'
+  external_id: string
+  tag: string
+  tag_key?: string
+  start_time: Date
+  end_time?: Date
+  comment?: string
+}
 
 type OuraTag = {
   id: string

@@ -46,7 +46,6 @@ export type {
   ScreentimeCategoryInput,
   SyncState,
   SyncStatus,
-  Tag,
   TimeSeriesPoint,
   UserSettings,
 } from './types.ts'
@@ -140,6 +139,7 @@ export {
   restoreActivity,
   updateActivity,
   updateActivityEndTimeByExternalId,
+  updateActivityTypeByTagKey,
 } from './activities.ts'
 
 // Locations
@@ -160,33 +160,6 @@ export {
   updateDetectedLocation,
   updateNamedLocation,
 } from './locations.ts'
-
-// Tags
-export {
-  deleteTag,
-  deleteTagById,
-  deleteTagDefinition,
-  findMergeableTag,
-  getProgrammaticTags,
-  getTagById,
-  getTagDefinitionById,
-  getTagDefinitions,
-  getTags,
-  getUniqueTags,
-  hardDeleteTagsByExternalIdPrefix,
-  hardDeleteTagsBySource,
-  insertTag,
-  insertTagDefinition,
-  isProgrammaticTag,
-  mergeTagDefinitions,
-  resolveOrCreateTagDefinition,
-  resolveTagDefinition,
-  restoreTag,
-  updateTag,
-  updateTagDefinition,
-  updateTagEndTime,
-  updateTagNameByKey,
-} from './tags.ts'
 
 // Productivity
 export {
@@ -359,7 +332,6 @@ export {
   mapReportEntryRow,
   mapReportRow,
   mapSyncStateRow,
-  mapTagRow,
   parseActivityType,
   parseDataSource,
   parseEntityType,

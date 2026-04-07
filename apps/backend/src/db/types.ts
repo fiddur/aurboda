@@ -179,35 +179,6 @@ export interface DetectedLocationUpdate {
 }
 
 // ============================================================================
-// Tag Definitions
-// ============================================================================
-
-export interface TagDefinition {
-  id: string
-  name: string
-  icon?: string
-  aliases: string[]
-  created_at: Date
-  updated_at: Date
-}
-
-// ============================================================================
-// Tags
-// ============================================================================
-
-export interface Tag {
-  id?: string
-  source: DataSource
-  external_id?: string
-  tag: string
-  tag_key?: string
-  tag_definition_id?: string
-  start_time: Date
-  end_time?: Date
-  deleted_at?: Date
-}
-
-// ============================================================================
 // Productivity
 // ============================================================================
 

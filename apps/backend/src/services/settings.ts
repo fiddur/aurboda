@@ -18,7 +18,7 @@ import {
   getOAuthToken,
   getUserSettings,
   replaceGoals,
-  updateTagNameByKey,
+  updateActivityTypeByTagKey,
   upsertUserSettings,
 } from '../db/index.ts'
 import { getCentralDb } from './central-db.ts'
@@ -181,7 +181,7 @@ export const setTagMapping = async (
   const settings = await getSettings(user)
   const updates = buildTagMappingUpdates(settings, tagKey, name, icon)
   await upsertUserSettings(user, updates)
-  await updateTagNameByKey(user, tagKey, name)
+  await updateActivityTypeByTagKey(user, tagKey, name)
   return updates.tag_mappings!
 }
 

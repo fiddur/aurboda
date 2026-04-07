@@ -28,13 +28,14 @@ const getActivities = async (
 }
 
 const getTags = async (user: string, tagName: string, window: EvaluationWindow): Promise<TimeRange[]> => {
+  // Tags have been absorbed into activities — query activities table instead
   const result = await query(
     user,
-    `SELECT start_time, end_time FROM tags
-     WHERE tag = $1
+    `SELECT start_time, end_time FROM activities
+     WHERE activity_type = $1
        AND deleted_at IS NULL
-       AND ((end_time IS NOT NULL AND start_time < $3 AND end_time > $2)
-            OR (end_time IS NULL AND start_time >= $2 AND start_time <= $3))
+       AND start_time < $3
+       AND (end_time > $2 OR end_time IS NULL)
      ORDER BY start_time`,
     [tagName, window.start, window.end],
   )

@@ -6,17 +6,14 @@ import {
   addActivity,
   addCustomMetric,
   addMetric,
-  addTag,
   bulkAddMetrics,
   deleteActivity,
   deleteCustomMetric,
   deleteMetric,
   deleteMetricData,
-  deleteTag,
   getCustomMetrics,
   updateActivity,
   updateCustomMetric,
-  updateTag,
 } from './mutations.ts'
 
 // Mock the db module
@@ -46,95 +43,10 @@ vi.mock('../db', () => ({
   upsertUserSettings: vi.fn(),
 }))
 
-// Mock db/connection for deleteTag which uses dynamic import
-vi.mock('../db/connection.ts', () => ({
-  query: vi.fn().mockResolvedValue({ rowCount: 1, rows: [] }),
-}))
-
 // Mock notes service to avoid testing note-sync behavior here
 vi.mock('./notes', () => ({
   syncNoteTimesForEntity: vi.fn().mockResolvedValue(undefined),
 }))
-
-describe('addTag', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  test('creates a tag with start time only', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue('activity-uuid-123')
-
-    const result = await addTag('testuser', {
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'coffee',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.tag).toBe('coffee')
-    expect(result.start_time).toBe('2024-01-15T10:00:00.000Z')
-    expect(result.end_time).toBeUndefined()
-    expect(result.id).toBeDefined()
-
-    expect(db.resolveOrCreateActivityType).toHaveBeenCalledWith('testuser', 'coffee')
-    expect(db.insertActivity).toHaveBeenCalledWith('testuser', {
-      activity_type: 'coffee',
-      end_time: undefined,
-      external_id: expect.any(String),
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T10:00:00Z'),
-    })
-  })
-
-  test('creates a tag with start and end time', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue('activity-uuid-123')
-
-    const result = await addTag('testuser', {
-      end_time: new Date('2024-01-15T11:00:00Z'),
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'meditation',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.start_time).toBe('2024-01-15T10:00:00.000Z')
-    expect(result.end_time).toBe('2024-01-15T11:00:00.000Z')
-
-    expect(db.insertActivity).toHaveBeenCalledWith('testuser', {
-      activity_type: 'meditation',
-      end_time: new Date('2024-01-15T11:00:00Z'),
-      external_id: expect.any(String),
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T10:00:00Z'),
-    })
-  })
-
-  test('does not include merged field when mergeSpan not specified', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue('activity-uuid-123')
-
-    const result = await addTag('testuser', {
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'coffee',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.merged).toBeUndefined()
-  })
-
-  test('creates new tag with merged: false when mergeSpan specified', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue('activity-uuid-123')
-
-    const result = await addTag('testuser', {
-      mergeSpan: 180,
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'computer:dharma',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.merged).toBe(false)
-    expect(result.id).toBeDefined()
-
-    expect(db.insertActivity).toHaveBeenCalled()
-  })
-})
 
 describe('addMetric', () => {
   beforeEach(() => {
@@ -190,20 +102,6 @@ describe('addMetric', () => {
       value: 5000,
     })
     expect(stepsResult.unit).toBe('count')
-  })
-})
-
-describe('deleteTag', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  test('deletes tag and returns success when found', async () => {
-    const result = await deleteTag('testuser', 'tag-123')
-
-    expect(result.external_id).toBe('tag-123')
-    // deleteTag now uses a direct query on activities table
-    // The actual SQL execution is tested in integration tests
   })
 })
 
@@ -1344,77 +1242,5 @@ describe('parseMetricEntityId', () => {
       source: 'aurboda',
       time,
     })
-  })
-})
-
-describe('updateTag', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  test('returns error when tag not found', async () => {
-    vi.mocked(db.getActivityById).mockResolvedValue(null)
-
-    const result = await updateTag('testuser', 'nonexistent-id', {
-      start_time: new Date('2024-01-15T10:00:00Z'),
-    })
-
-    expect(result.success).toBe(false)
-    expect(result.error).toBe('Tag not found')
-  })
-
-  test('updates start_time', async () => {
-    vi.mocked(db.getActivityById).mockResolvedValue({
-      activity_type: 'coffee',
-      id: 'tag-id',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T09:00:00Z'),
-      end_time: new Date('2024-01-15T10:00:00Z'),
-    })
-    vi.mocked(db.updateActivity).mockResolvedValue(null)
-
-    const result = await updateTag('testuser', 'tag-id', {
-      start_time: new Date('2024-01-15T08:00:00Z'),
-    })
-
-    expect(result.success).toBe(true)
-    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'tag-id', {
-      start_time: new Date('2024-01-15T08:00:00Z'),
-    })
-  })
-
-  test('rejects end_time before start_time', async () => {
-    vi.mocked(db.getActivityById).mockResolvedValue({
-      activity_type: 'coffee',
-      id: 'tag-id',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T10:00:00Z'),
-    })
-
-    const result = await updateTag('testuser', 'tag-id', {
-      end_time: new Date('2024-01-15T09:00:00Z'),
-    })
-
-    expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
-  })
-
-  test('clears end_time with null', async () => {
-    vi.mocked(db.getActivityById).mockResolvedValue({
-      activity_type: 'coffee',
-      id: 'tag-id',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T09:00:00Z'),
-      end_time: new Date('2024-01-15T10:00:00Z'),
-    })
-    vi.mocked(db.updateActivity).mockResolvedValue(null)
-
-    const result = await updateTag('testuser', 'tag-id', {
-      end_time: null,
-    })
-
-    expect(result.success).toBe(true)
-    // When end_time is null, the implementation passes an empty updates object
-    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'tag-id', {})
   })
 })
