@@ -15,6 +15,7 @@ import {
   activityTypeExists,
   checkActivityConflict,
   deleteActivity as dbDeleteActivity,
+  findMergeableActivity,
   getActivityById as dbGetActivityById,
   insertActivity as dbInsertActivity,
   insertNewActivity as dbInsertNewActivity,
@@ -391,6 +392,23 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
     return {
       error: 'end_time must be after start_time',
       success: false,
+    }
+  }
+
+  // If merge_span is specified, try to extend an existing activity instead of creating new
+  if (input.merge_span) {
+    const existing = await findMergeableActivity(user, input.activity_type, input.start_time, input.merge_span)
+    if (existing?.id) {
+      const newEndTime = input.end_time ?? input.start_time
+      await dbUpdateActivity(user, existing.id, { end_time: newEndTime })
+      return {
+        activity_type: existing.activity_type,
+        end_time: newEndTime.toISOString(),
+        id: existing.id,
+        start_time: existing.start_time.toISOString(),
+        success: true,
+        title: existing.title,
+      }
     }
   }
 

@@ -184,7 +184,7 @@ export const createActivitiesRouter = (
     authMiddleware,
     validateBody(addActivityBodySchema),
     async (req, res) => {
-      const { activity_type, start_time, end_time, title, notes, exercise_type } = req.body
+      const { activity_type, start_time, end_time, title, notes, exercise_type, merge_span } = req.body
       const user = req.user!
 
       const startDate = new Date(start_time)
@@ -209,6 +209,7 @@ export const createActivitiesRouter = (
         activity_type,
         data,
         end_time: endDate,
+        merge_span,
         notes,
         start_time: startDate,
         title,
