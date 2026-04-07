@@ -537,6 +537,7 @@ export const getDailyAggregateValue = async (
     `SELECT value FROM time_series
      WHERE metric = $1 AND source = ANY($4)
      AND time >= $2 AND time < $3
+     ORDER BY value DESC
      LIMIT 1`,
     [metric, start, end, cumulativeSources],
   )
