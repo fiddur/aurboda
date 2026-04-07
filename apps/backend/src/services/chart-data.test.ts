@@ -13,7 +13,7 @@ describe('getChartData', () => {
     vi.clearAllMocks()
   })
 
-  test('returns bucketed tag counts by tag_definition_id', async () => {
+  test('returns bucketed activity counts by activity type name', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [
         { bucket_start: new Date('2026-01-01T00:00:00Z'), value: 3n },
@@ -40,7 +40,7 @@ describe('getChartData', () => {
     expect(call[2]![0]).toBe('day')
   })
 
-  test('returns bucketed tag counts by pattern', async () => {
+  test('returns bucketed activity counts by pattern', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ bucket_start: new Date('2026-01-06T00:00:00Z'), value: 7n }],
     } as never)
@@ -62,7 +62,7 @@ describe('getChartData', () => {
     expect(call[2]![0]).toBe('week')
   })
 
-  test('returns empty array for tags without pattern or tag_definition_id', async () => {
+  test('returns empty array for tag source without pattern or tag_definition_id', async () => {
     const result = await getChartData('testuser', {
       aggregation: 'count',
       bucket_size: '1d',

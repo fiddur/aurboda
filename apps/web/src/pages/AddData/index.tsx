@@ -5,13 +5,7 @@ import { useCallback, useState } from 'preact/hooks'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { MetricPicker } from '../../components/MetricPicker'
-import {
-  addActivity,
-  addMetric,
-  addNote,
-  uploadFitFile,
-  type ActivityType,
-} from '../../state/api'
+import { addActivity, addMetric, addNote, uploadFitFile, type ActivityType } from '../../state/api'
 import './style.css'
 
 type Tab = 'activity' | 'metric'

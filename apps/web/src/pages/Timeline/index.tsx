@@ -1,8 +1,6 @@
 /* eslint-disable max-lines -- large visualization component */
 import {
   getExerciseTypeName as getExerciseTypeNameFromValue,
-  metricUnits as builtinMetricUnits,
-  type QueryMetricsBucketedResponse,
   type ScreentimeCategory,
 } from '@aurboda/api-spec'
 import { signal, useSignalEffect } from '@preact/signals'
@@ -19,7 +17,6 @@ import {
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
   fetchMeals,
-  fetchCustomMetrics,
   fetchPlaces,
   fetchProductivity,
   fetchScreentimeCategories,
@@ -179,7 +176,7 @@ if (_initialHash.from) {
 
 // ── Column definitions ────────────────────────────────────────────────────────
 
-const BASE_COLUMNS: Column[] = ['Activity', 'Location', 'Tags / Events', 'Screen Time']
+const BASE_COLUMNS: Column[] = ['Activity', 'Location', 'Screen Time']
 const MUSIC_COLOR = '#ec4899'
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -201,27 +198,10 @@ const hrZoneColors: Record<number, string> = {
 }
 
 const TAG_COLOR = '#8b5cf6'
-const METRIC_COLOR = '#14b8a6'
 const NOW_COLOR = '#ef4444'
-
-/** Max data points per metric across the time range to be treated as "occasional" (shown as point markers). */
-const OCCASIONAL_METRIC_MAX_COUNT = 10
 
 /** Metrics to exclude from the unified bucketed query (fetched via separate endpoints). */
 const TIMELINE_EXCLUDED_METRICS = ['training_impulse', 'activity_impulse']
-
-/** Core metrics used for band/bar charts and sparklines. */
-const CORE_CHART_METRICS = new Set([
-  'heart_rate',
-  'hrv_rmssd',
-  'hrv_sleep',
-  'hrv_awake',
-  'hrv_activity',
-  'steps',
-  'calories_active',
-  'calories_total',
-  'calories_basal',
-])
 
 const tagSourceColors: Record<string, string> = {
   calendar: '#f59e0b',
@@ -341,9 +321,8 @@ const buildSleepDetails = (a: Activity, end: Date, sleepByDate: SleepMetricsByDa
 }
 
 const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = {
-  activity: (item) =>
-    item.column === 'Activity' || item.column === 'Tags / Events' || item.column === 'Screen Time',
-  calendar: (item) => item.column === 'Tags / Events' && item.color === tagSourceColors.calendar,
+  activity: (item) => item.column === 'Activity' || item.column === 'Screen Time',
+  calendar: (item) => item.column === 'Activity' && item.color === tagSourceColors.calendar,
   calories: () => false, // metrics sub-toggles handled at draw level
   exercise: (item) => item.column === 'Activity' && item.activity_type === 'exercise',
   hr: () => false,
@@ -359,12 +338,11 @@ const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = 
     item.column === 'Activity' && ['sleep', 'nap', 'rest'].includes(item.activity_type ?? ''),
   steps: () => false,
   tags: (item) =>
-    // Tags in Tags/Events column (excluding calendar and metrics)
-    (item.column === 'Tags / Events' &&
-      item.color !== tagSourceColors.calendar &&
-      item.color !== METRIC_COLOR) ||
-    // Duration tags promoted to Activity column (activity entity without a built-in activity_type)
-    (item.column === 'Activity' && item.entity_type === 'activity' && !item.activity_type),
+    // Tag activities in Activity column (not calendar, not built-in activity types)
+    item.column === 'Activity' &&
+    item.entity_type === 'activity' &&
+    item.color !== tagSourceColors.calendar &&
+    !item.activity_type,
   screen_time_h: () => false, // horizontal screentime bar controlled at draw level
   training_load: () => false,
 }
@@ -399,7 +377,7 @@ const categorizeTagActivities = (activities: Activity[], itemIcons: Record<strin
         itemIcons[displayName] ?? itemIcons[displayName.toLowerCase()] ?? itemIcons[a.activity_type]
       return {
         color: getActivityColor(a),
-        column: 'Tags / Events' as Column,
+        column: 'Activity' as Column,
         end,
         entity_id: a.id,
         entity_type: 'activity' as const,
@@ -428,7 +406,7 @@ const categorizeMeals = (meals: Meal[], itemIcons: Record<string, string>): Char
     const details = [m.name, m.calories ? `${m.calories} kcal` : undefined].filter(Boolean) as string[]
     return {
       color: '#f59e0b',
-      column: 'Tags / Events' as Column,
+      column: 'Activity' as Column,
       end,
       entity_id: m.id,
       entity_type: 'meal' as const,
@@ -444,70 +422,6 @@ const categorizeMeals = (meals: Meal[], itemIcons: Record<string, string>): Char
       },
     }
   })
-
-const formatMetricLabel = (metric: string): string =>
-  metric.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
-
-/**
- * Extract occasional (sparse) metrics from bucketed data as point ChartItems.
- * A metric is "occasional" if it has data in ≤ OCCASIONAL_METRIC_MAX_COUNT buckets
- * and is not a core chart metric (HR, HRV, steps, calories).
- */
-const categorizeOccasionalMetrics = (
-  data: QueryMetricsBucketedResponse | undefined,
-  metricUnitsMap: Record<string, string>,
-): ChartItem[] => {
-  if (!data?.buckets?.length) return []
-
-  // Count how many buckets each metric appears in
-  const metricBucketCounts: Record<string, number> = {}
-  for (const bucket of data.buckets) {
-    for (const metric of Object.keys(bucket.metrics)) {
-      metricBucketCounts[metric] = (metricBucketCounts[metric] ?? 0) + 1
-    }
-  }
-
-  // Find occasional metrics: sparse, non-core
-  const occasionalMetrics = new Set(
-    Object.entries(metricBucketCounts)
-      .filter(([metric, count]) => count <= OCCASIONAL_METRIC_MAX_COUNT && !CORE_CHART_METRICS.has(metric))
-      .map(([metric]) => metric),
-  )
-
-  if (occasionalMetrics.size === 0) return []
-
-  const items: ChartItem[] = []
-  for (const bucket of data.buckets) {
-    const bucketStart = new Date(bucket.start)
-    for (const [metric, stats] of Object.entries(bucket.metrics)) {
-      if (!occasionalMetrics.has(metric)) continue
-
-      const unit = metricUnitsMap[metric] ?? ''
-      const displayValue = Number(stats.avg.toFixed(2))
-      const valueStr = `${displayValue}${unit ? ` ${unit}` : ''}`
-      const metricLabel = formatMetricLabel(metric)
-      const end = new Date(bucketStart.getTime() + 15 * 60000)
-      const entityId = `${bucketStart.toISOString()}|${metric}`
-
-      items.push({
-        color: METRIC_COLOR,
-        column: 'Tags / Events' as Column,
-        end,
-        entity_id: entityId,
-        entity_type: 'metric' as const,
-        isPoint: true,
-        label: `${metricLabel}: ${valueStr}`,
-        start: bucketStart,
-        tooltip: {
-          details: [`Value: ${valueStr}`, 'Metric measurement'],
-          time: formatTime(bucketStart),
-          title: metricLabel,
-        },
-      })
-    }
-  }
-  return items
-}
 
 const getResolvedColor = (p: ProductivityRecord, categories: ScreentimeCategory[]): string => {
   if (p.resolved_category && p.resolved_category.length > 0 && categories.length > 0) {
@@ -822,20 +736,6 @@ export const Timeline = () => {
     staleTime: 30 * 60 * 1000,
   })
 
-  const customMetricsQuery = useQuery({
-    queryFn: fetchCustomMetrics,
-    queryKey: ['custom-metrics'],
-    staleTime: 30 * 60 * 1000,
-  })
-
-  const allMetricUnits = useMemo(() => {
-    const units: Record<string, string> = { ...builtinMetricUnits }
-    for (const m of customMetricsQuery.data ?? []) {
-      units[m.name] = m.unit
-    }
-    return units
-  }, [customMetricsQuery.data])
-
   // ── Refs ───────────────────────────────────────────────────────────────────
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -911,11 +811,6 @@ export const Timeline = () => {
   const musicItems = useMemo(() => (hasLastFm ? categorizeMusic(scrobbles) : []), [hasLastFm, scrobbles])
   const showMusicColumn = musicItems.length > 0
 
-  const occasionalMetricItems = useMemo(
-    () => categorizeOccasionalMetrics(bucketedMetricsQuery.data, allMetricUnits),
-    [bucketedMetricsQuery.data, allMetricUnits],
-  )
-
   const sparklineBuckets = useMemo(
     () => parseBucketedData(bucketedMetricsQuery.data),
     [bucketedMetricsQuery.data],
@@ -950,11 +845,11 @@ export const Timeline = () => {
     [activities, tagActivities, itemIcons, sleepMetricsByDate, scrobbles],
   )
 
-  // Activities that should stay in the Tags / Events column (not pulled into Activity)
+  // Tag activities not already included in activityItems (point activities, excluded sources, etc.)
   const nonBuiltinTagActivities = useMemo(
     () =>
       tagActivities.filter((a) => {
-        if (!a.end_time) return true // point activities always go to Tags column
+        if (!a.end_time) return true // point activities are separate items
         if (a.source && EXCLUDED_ACTIVITY_SOURCES.has(a.source)) return true
         for (const prefix of EXCLUDED_ACTIVITY_PREFIXES) {
           if (a.activity_type.startsWith(prefix)) return true
@@ -1055,7 +950,6 @@ export const Timeline = () => {
       ...categorizeLocations(places, uniquePlaceNames),
       ...categorizeTagActivities(nonBuiltinTagActivities, itemIcons),
       ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
-      ...occasionalMetricItems,
       ...musicItems,
       ...mealItems,
     ],
@@ -1067,7 +961,6 @@ export const Timeline = () => {
       itemIcons,
       productivity,
       screentimeCategoriesQuery.data,
-      occasionalMetricItems,
       musicItems,
       mealItems,
     ],
@@ -1491,10 +1384,8 @@ export const Timeline = () => {
         ? computeYScales(metricBuckets, trackMetrics, metricsTrackBottom, barAggBuckets)
         : null
 
-    // Combine activity items and all non-hidden tags (point and duration) into the activity lane
-    const visibleActivityItems = activityItems.filter((i) => !isItemHidden(i))
-    const visibleTagItems = chartItems.filter((i) => i.column === 'Tags / Events' && !isItemHidden(i))
-    const allActivityLaneItems = [...visibleActivityItems, ...visibleTagItems]
+    // All Activity-column items for the activity lane
+    const allActivityLaneItems = chartItems.filter((i) => i.column === 'Activity')
     const packedActivityItems = packLanes(
       allActivityLaneItems,
       (i) => i.start,
@@ -2467,7 +2358,6 @@ const mergeSmallItems = (
         Music: 'music',
         'Screen Time': 'screentime',
         'Sleep / Rest': 'activity',
-        'Tags / Events': 'tag',
       }
       const dataType = columnToDataType[first.column]
       const allDataTypes = ['activity', 'tag', 'location', 'music', 'meal', 'report', 'screentime']

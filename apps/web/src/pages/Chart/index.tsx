@@ -2,17 +2,11 @@
  * Chart exploration page — configurable trend + bar chart with URL-driven state.
  *
  * Reads/writes config via query params so charts are shareable/bookmarkable:
- *   /chart?source_type=tag&tag_definition_id=<uuid>&lookback_days=90&display_period=monthly&half_life_days=15
+ *   /chart?source_type=tag&tag_definition_id=<name>&lookback_days=90&display_period=monthly&half_life_days=15
  *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=mean
  *   /chart?source_type=tag&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
  */
-import type {
-  DashboardConfig,
-  DashboardSection,
-  DashboardWidget,
-  SectionType,
-  TagDefinition,
-} from '@aurboda/api-spec'
+import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
@@ -23,11 +17,12 @@ import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { MetricPicker } from '../../components/MetricPicker'
 import { TagPicker } from '../../components/TagPicker'
 import {
+  type ActivityTypeDefinition,
+  fetchActivityTypeDefinitions,
   fetchChartData,
   type FetchChartDataParams,
   fetchDashboard,
   fetchScreentimeCategories,
-  fetchTagDefinitions,
   fetchTrend,
   type FetchTrendParams,
   saveDashboard,
@@ -141,13 +136,13 @@ function CategoryPicker({ value, onChange }: { value: string; onChange: (v: stri
   )
 }
 
-/** Tag definition picker -- searchable dropdown of all definitions. */
-function TagDefinitionPicker({
+/** Activity type picker -- searchable dropdown of all activity type definitions. */
+function ActivityTypePicker({
   definitions,
   selectedId,
   onChange,
 }: {
-  definitions: TagDefinition[]
+  definitions: ActivityTypeDefinition[]
   selectedId: string
   onChange: (id: string, pattern: string) => void
 }) {
@@ -157,8 +152,8 @@ function TagDefinitionPicker({
       search
         ? definitions.filter(
             (d) =>
-              d.name.toLowerCase().includes(search.toLowerCase()) ||
-              d.aliases.some((a) => a.toLowerCase().includes(search.toLowerCase())),
+              (d.display_name || d.name).toLowerCase().includes(search.toLowerCase()) ||
+              (d.aliases ?? []).some((a) => a.toLowerCase().includes(search.toLowerCase())),
           )
         : definitions,
     [definitions, search],
@@ -170,22 +165,22 @@ function TagDefinitionPicker({
         type="text"
         value={search}
         onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
-        placeholder="Search tag definitions..."
+        placeholder="Search activity types..."
       />
       <select
         value={selectedId}
         onChange={(e) => {
-          const id = (e.target as HTMLSelectElement).value
-          const def = definitions.find((d) => d.id === id)
-          onChange(id, def ? def.aliases.join('|') : '')
+          const name = (e.target as HTMLSelectElement).value
+          const def = definitions.find((d) => d.name === name)
+          onChange(name, def ? (def.aliases ?? []).join('|') : '')
         }}
         style={{ marginTop: '0.25rem' }}
       >
-        <option value="">Select a tag definition...</option>
+        <option value="">Select an activity type...</option>
         {filtered.map((def) => (
-          <option key={def.id} value={def.id}>
+          <option key={def.name} value={def.name}>
             {def.icon ? `${def.icon} ` : ''}
-            {def.name} ({def.aliases.join(', ')})
+            {def.display_name || def.name}
           </option>
         ))}
       </select>
@@ -201,9 +196,9 @@ function SourcePicker({
   state: ChartState
   onUpdate: (patch: Partial<ChartState>) => void
 }) {
-  const { data: tagDefinitions = [] } = useQuery({
-    queryFn: fetchTagDefinitions,
-    queryKey: ['tag-definitions'],
+  const { data: activityTypes = [] } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activity-type-definitions'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -226,11 +221,11 @@ function SourcePicker({
       </label>
 
       <label class="source-picker">
-        {state.source_type === 'tag' && tagDefinitions.length > 0 ? (
+        {state.source_type === 'tag' && activityTypes.length > 0 ? (
           <>
-            Tag Definition
-            <TagDefinitionPicker
-              definitions={tagDefinitions}
+            Activity Type
+            <ActivityTypePicker
+              definitions={activityTypes}
               selectedId={state.tag_definition_id}
               onChange={(id, pattern) => onUpdate({ tag_definition_id: id, pattern })}
             />

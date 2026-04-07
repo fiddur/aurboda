@@ -23,7 +23,6 @@ import {
   enqueueOutboundSync,
   findHcRecordId,
   insertTimeSeries,
-  resolveOrCreateActivityType,
   type TimeSeriesPoint,
 } from '../db/index.ts'
 import {
@@ -43,23 +42,6 @@ import { syncNoteTimesForEntity } from './notes.ts'
 // Types
 // ============================================================================
 
-export interface AddTagInput {
-  tag: string
-  start_time: Date
-  end_time?: Date
-  mergeSpan?: number
-}
-
-export interface AddTagResult {
-  success: boolean
-  id: string
-  tag: string
-  start_time: string
-  end_time?: string
-  merged?: boolean
-  extendedBySeconds?: number
-}
-
 export interface AddMetricInput {
   metric: string
   value: number
@@ -74,12 +56,6 @@ export interface AddMetricResult {
   unit: string
   time: string
   entity_id?: string
-}
-
-export interface DeleteTagResult {
-  success: boolean
-  deleted: boolean
-  external_id: string
 }
 
 export interface AddActivityInput {
@@ -151,64 +127,6 @@ export interface UpdateActivityResult {
 // ============================================================================
 // Mutation Functions
 // ============================================================================
-
-/**
- * Add a manual tag/label to mark an activity or event.
- *
- * If mergeSpan is provided, attempts to merge with an existing tag of the same
- * name if its end_time (or start_time for point-in-time tags) is within
- * mergeSpan seconds of the new start_time.
- */
-export async function addTag(user: string, input: AddTagInput): Promise<AddTagResult> {
-  const activityType = await resolveOrCreateActivityType(user, input.tag)
-  const externalId = randomUUID()
-  const dbId = await dbInsertActivity(user, {
-    activity_type: activityType,
-    end_time: input.end_time,
-    external_id: externalId,
-    source: 'aurboda',
-    start_time: input.start_time,
-  })
-  return {
-    end_time: input.end_time?.toISOString(),
-    id: dbId,
-    start_time: input.start_time.toISOString(),
-    success: true,
-    tag: input.tag,
-    ...(input.mergeSpan !== undefined ? { merged: false } : {}),
-  }
-}
-
-export interface UpdateTagInput {
-  start_time?: Date
-  end_time?: Date | null
-}
-
-export interface UpdateTagResult {
-  success: boolean
-  error?: string
-}
-
-export async function updateTag(user: string, id: string, input: UpdateTagInput): Promise<UpdateTagResult> {
-  const existing = await dbGetActivityById(user, id)
-  if (!existing) {
-    return { error: 'Tag not found', success: false }
-  }
-
-  const finalStartTime = input.start_time ?? existing.start_time
-  const finalEndTime = input.end_time === null ? undefined : (input.end_time ?? existing.end_time)
-
-  if (finalEndTime && finalEndTime <= finalStartTime) {
-    return { error: 'end_time must be after start_time', success: false }
-  }
-
-  const updates: { start_time?: Date; end_time?: Date } = {}
-  if (input.start_time !== undefined) updates.start_time = input.start_time
-  if (input.end_time !== undefined && input.end_time !== null) updates.end_time = input.end_time
-
-  await dbUpdateActivity(user, id, updates)
-  return { success: true }
-}
 
 /** Validate custom metric value range; returns error string if invalid, null if ok. */
 function validateCustomMetricRange(
@@ -357,20 +275,6 @@ export async function bulkAddMetrics(
     inserted: validPoints.length,
     success: true,
   }
-}
-
-/**
- * Delete a tag by its external ID.
- */
-export async function deleteTag(user: string, externalId: string): Promise<DeleteTagResult> {
-  const { query } = await import('../db/connection.ts')
-  const result = await query(
-    user,
-    `UPDATE activities SET deleted_at = NOW() WHERE external_id = $1 AND deleted_at IS NULL`,
-    [externalId],
-  )
-  const deleted = (result.rowCount ?? 0) > 0
-  return { deleted, external_id: externalId, success: deleted }
 }
 
 /**
@@ -827,13 +731,7 @@ export async function mergeActivities(
 }
 
 // Re-export restore and delete-by-id functions
-export {
-  deleteProductivity,
-  deleteTagById,
-  restoreActivity,
-  restoreProductivity,
-  restoreTag,
-} from './restore.ts'
+export { deleteProductivity, restoreActivity, restoreProductivity } from './restore.ts'
 export type { RestoreResult } from './restore.ts'
 
 // Re-export notes functions for backward compatibility

@@ -127,8 +127,6 @@ describe('MCP Server', () => {
     // Restore default mock implementations cleared by resetAllMocks
     vi.mocked(mutations.getCustomMetrics).mockResolvedValue([])
     vi.mocked(db.getUserSettings).mockResolvedValue(null)
-    vi.mocked(db.getUniqueTags).mockResolvedValue([])
-    vi.mocked(db.getProgrammaticTags).mockResolvedValue([])
   })
 
   afterEach(() => {

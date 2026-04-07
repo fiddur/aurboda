@@ -24,8 +24,6 @@ import type {
   ReportFlag,
   SyncState,
   SyncStatus,
-  Tag,
-  TagDefinition,
 } from './types.ts'
 
 // ============================================================================
@@ -165,27 +163,6 @@ export const mapSyncStateRow = (row: QueryResultRow): SyncState => ({
   status: parseSyncStatus(row.status),
   sync_start_date: row.sync_start_date ? new Date(row.sync_start_date) : undefined,
   updated_at: row.updated_at ? new Date(row.updated_at) : undefined,
-})
-
-export const mapTagRow = (row: QueryResultRow): Tag => ({
-  deleted_at: row.deleted_at ? new Date(row.deleted_at) : undefined,
-  end_time: row.end_time ? new Date(row.end_time) : undefined,
-  external_id: row.external_id,
-  id: row.id,
-  source: row.source,
-  start_time: new Date(row.start_time),
-  tag: row.tag,
-  tag_definition_id: row.tag_definition_id ?? undefined,
-  tag_key: row.tag_key ?? undefined,
-})
-
-export const mapTagDefinitionRow = (row: QueryResultRow): TagDefinition => ({
-  aliases: row.aliases ?? [],
-  created_at: new Date(row.created_at),
-  icon: row.icon ?? undefined,
-  id: row.id,
-  name: row.name,
-  updated_at: new Date(row.updated_at),
 })
 
 export const mapMcpSessionRow = (row: QueryResultRow): McpSessionRecord => ({
