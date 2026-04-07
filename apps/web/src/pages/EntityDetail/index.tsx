@@ -21,6 +21,7 @@ import {
   fetchScreentimeCategories,
   updateActivity,
 } from '../../state/api'
+import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
@@ -73,17 +74,19 @@ const GenericActivityDetail = ({
   const displayEnd =
     activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
   const exerciseType = resolveExerciseType(activity)
-  const icon = resolveItemIcon(`activity:${activity.activity_type}`, itemIcons)
+  const typeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
+  const typeIcon = typeDef?.icon ?? resolveItemIcon(`activity:${activity.activity_type}`, itemIcons)
+  const typeDisplayName = typeDef?.display_name ?? toDisplayName(activity.activity_type)
 
   return (
     <div class="entity-info">
       <div class="entity-meta">
-        <span class="entity-type-badge">{activity.activity_type}</span>
+        <span class="entity-type-badge">{typeDisplayName}</span>
         {activity.source && <span class="entity-source">Source: {activity.source}</span>}
       </div>
 
       <EditableActivityFields
-        title={activity.title || exerciseType || activity.activity_type}
+        title={activity.title || exerciseType || typeDisplayName}
         displayStart={displayStart}
         displayEnd={displayEnd}
         notes={activity.notes}
@@ -91,7 +94,7 @@ const GenericActivityDetail = ({
         draft={draft}
         onDraftChange={onDraftChange}
         typeDefinitions={typeDefinitions}
-        icon={icon}
+        icon={typeIcon}
       />
 
       {!isEditing && activity.avg_hrv !== undefined && (

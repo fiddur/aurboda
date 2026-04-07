@@ -604,6 +604,19 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
+  // Copy icons from old tag_definitions to activity_type_definitions (idempotent)
+  if (existingTableNames.has('tag_definitions') && existingTableNames.has('activity_type_definitions')) {
+    await query(
+      db,
+      `UPDATE activity_type_definitions atd
+       SET icon = td.icon, updated_at = NOW()
+       FROM tag_definitions td
+       WHERE lower(regexp_replace(regexp_replace(trim(both '_' from regexp_replace(lower(td.name), '[^a-z0-9]+', '_', 'g')), '_+', '_', 'g'), '^_|_$', '', 'g')) = atd.name
+         AND td.icon IS NOT NULL
+         AND atd.icon IS NULL`,
+    )
+  }
+
   // Migrate goals and custom_metrics from user_settings JSONB to their own tables
   await migrateGoalsAndCustomMetrics(db, existingTableNames)
 }
