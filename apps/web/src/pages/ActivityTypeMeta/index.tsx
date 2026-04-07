@@ -16,6 +16,7 @@ import {
   fetchActivityTypeDefinitions,
   fetchTrend,
   mergeActivityTypeApi,
+  renameActivityType,
   updateActivityTypeDefinition,
   type ActivityTypeDefinition,
   type FetchTrendParams,
@@ -79,14 +80,27 @@ function ActivityTypeTrendSection({
   )
 }
 
-function IconSettingsSection({ name, currentIcon }: { name: string; currentIcon: string }) {
+function SettingsSection({
+  name,
+  currentIcon,
+  currentDisplayName,
+}: {
+  name: string
+  currentIcon: string
+  currentDisplayName: string
+}) {
   const queryClient = useQueryClient()
   const [iconValue, setIconValue] = useState<string | undefined>(undefined)
+  const [displayNameValue, setDisplayNameValue] = useState<string | undefined>(undefined)
   const [saveStatus, setSaveStatus] = useSaveStatus(3000)
 
   const saveMutation = useMutation({
-    mutationFn: async (icon: string) => {
-      await updateActivityTypeDefinition(name, { icon })
+    mutationFn: async () => {
+      const updates: Record<string, string> = {}
+      if (iconValue !== undefined && iconValue !== currentIcon) updates.icon = iconValue
+      if (displayNameValue !== undefined && displayNameValue !== currentDisplayName)
+        {updates.display_name = displayNameValue}
+      await updateActivityTypeDefinition(name, updates)
     },
     onError: () => setSaveStatus({ status: 'error' }),
     onSuccess: () => {
@@ -95,18 +109,31 @@ function IconSettingsSection({ name, currentIcon }: { name: string; currentIcon:
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
       queryClient.invalidateQueries({ queryKey: ['item-icons'] })
       setIconValue(undefined)
+      setDisplayNameValue(undefined)
     },
   })
 
   const suggested = suggestEmoji(name)
   const shownIcon = iconValue ?? currentIcon
+  const shownDisplayName = displayNameValue ?? currentDisplayName
 
-  const hasChanges = iconValue !== undefined && iconValue !== currentIcon
+  const hasChanges =
+    (iconValue !== undefined && iconValue !== currentIcon) ||
+    (displayNameValue !== undefined && displayNameValue !== currentDisplayName)
 
   return (
     <section class="activity-type-meta-section">
       <h2>Settings</h2>
       <div class="activity-type-meta-settings-grid">
+        <label>
+          <span class="activity-type-meta-field-label">Display Name</span>
+          <input
+            type="text"
+            class="activity-type-meta-text-input"
+            value={shownDisplayName}
+            onInput={(e) => setDisplayNameValue((e.target as HTMLInputElement).value)}
+          />
+        </label>
         <label>
           <span class="activity-type-meta-field-label">Icon</span>
           <div class="activity-type-meta-icon-row">
@@ -123,9 +150,12 @@ function IconSettingsSection({ name, currentIcon }: { name: string; currentIcon:
         <SaveCancelRow
           onSave={() => {
             setSaveStatus({ status: 'saving' })
-            saveMutation.mutate(iconValue ?? '')
+            saveMutation.mutate()
           }}
-          onCancel={() => setIconValue(undefined)}
+          onCancel={() => {
+            setIconValue(undefined)
+            setDisplayNameValue(undefined)
+          }}
           isPending={saveMutation.isPending}
           saveStatus={saveStatus}
           saveStatusVariant="compact"
@@ -169,6 +199,85 @@ function RecentOccurrences({ name }: { name: string }) {
         <p class="activity-type-meta-empty">+{activities.length - 10} more in last 30 days</p>
       )}
     </div>
+  )
+}
+
+function RenameSection({ name }: { name: string }) {
+  const queryClient = useQueryClient()
+  const { route } = useLocation()
+  const [showRename, setShowRename] = useState(false)
+  const [newName, setNewName] = useState(name)
+  const [error, setError] = useState('')
+
+  const renameMutation = useMutation({
+    mutationFn: () => renameActivityType(name, newName),
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setError(msg ?? 'Rename failed')
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
+      queryClient.invalidateQueries({ queryKey: ['recent-activities'] })
+      route(`/activity-type/${encodeURIComponent(newName)}`)
+      alert(
+        `Renamed to "${newName}"` +
+          (result.activities_updated ? ` (${result.activities_updated} activities updated)` : ''),
+      )
+    },
+  })
+
+  const valid = /^[a-z][a-z0-9_]*$/.test(newName) && newName !== name
+
+  if (!showRename) {
+    return (
+      <section class="activity-type-meta-section">
+        <h2>Rename</h2>
+        <p class="activity-type-meta-merge-desc">
+          Change the snake_case identifier for this activity type. All activities and deduction rules will be
+          updated.
+        </p>
+        <button type="button" class="btn-secondary" onClick={() => setShowRename(true)}>
+          Rename...
+        </button>
+      </section>
+    )
+  }
+
+  return (
+    <section class="activity-type-meta-section">
+      <h2>Rename</h2>
+      <div class="activity-type-meta-merge-form">
+        <label>
+          <span class="activity-type-meta-field-label">
+            Current: <code>{name}</code>
+          </span>
+          <input
+            type="text"
+            value={newName}
+            onInput={(e) => {
+              setNewName((e.target as HTMLInputElement).value)
+              setError('')
+            }}
+            placeholder="new_snake_name"
+          />
+        </label>
+        {error && <p class="error">{error}</p>}
+        <div class="activity-type-meta-merge-actions">
+          <button
+            type="button"
+            class="btn-primary"
+            disabled={!valid || renameMutation.isPending}
+            onClick={() => renameMutation.mutate()}
+          >
+            {renameMutation.isPending ? 'Renaming...' : 'Rename'}
+          </button>
+          <button type="button" class="btn-secondary" onClick={() => setShowRename(false)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -305,7 +414,7 @@ export function ActivityTypeMeta() {
         </div>
       </div>
 
-      <IconSettingsSection name={name} currentIcon={icon} />
+      <SettingsSection name={name} currentIcon={icon} currentDisplayName={displayName} />
 
       <section class="activity-type-meta-section">
         <div class="activity-type-meta-section-header">
@@ -329,9 +438,12 @@ export function ActivityTypeMeta() {
         <RecentOccurrences name={name} />
       </section>
 
-      {/* Merge (custom types only) */}
-      {typeDef && !typeDef.is_builtin && definitions && (
-        <MergeActivityTypeSection name={name} definitions={definitions} />
+      {/* Rename & Merge (custom types only) */}
+      {typeDef && !typeDef.is_builtin && (
+        <>
+          <RenameSection name={name} />
+          {definitions && <MergeActivityTypeSection name={name} definitions={definitions} />}
+        </>
       )}
 
       <section class="activity-type-meta-section">

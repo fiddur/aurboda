@@ -13,6 +13,9 @@ import {
   type MergeActivityTypeBody,
   mergeActivityTypeBodySchema,
   type MergeActivityTypeResponse,
+  type RenameActivityTypeBody,
+  renameActivityTypeBodySchema,
+  type RenameActivityTypeResponse,
   type UpdateActivityTypeDefinitionBody,
   updateActivityTypeDefinitionBodySchema,
 } from '@aurboda/api-spec'
@@ -22,6 +25,7 @@ import {
   deleteActivityTypeDefinition,
   listActivityTypeDefinitions,
   mergeActivityType,
+  renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
 import { typedRouter } from '../typed-router.ts'
@@ -79,6 +83,31 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
         return res.status(status).json({ error: result.error, success: false })
       }
       res.json(result)
+    },
+  )
+
+  // POST /:name/rename - Rename a custom activity type
+  router.post<{ name: string }, RenameActivityTypeResponse, RenameActivityTypeBody>(
+    '/:name/rename',
+    authMiddleware,
+    validateBody(renameActivityTypeBodySchema),
+    async (req, res) => {
+      const { name } = req.params
+      const { new_name } = req.body
+      const user = req.user!
+      const result = await renameActivityTypeDefinition(user, name, new_name)
+
+      if (!result.success) {
+        const status = result.error?.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+
+      res.json({
+        activities_updated: result.activities_updated,
+        data: result.data,
+        deduction_rules_updated: result.deduction_rules_updated,
+        success: true,
+      })
     },
   )
 

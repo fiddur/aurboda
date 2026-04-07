@@ -318,6 +318,95 @@ export const mergeActivityTypeDefinition = async (
   return { activities_reassigned, deduction_rules_updated, target: updated }
 }
 
+/**
+ * Rename an activity type's snake_case name.
+ * Updates the definition, reassigns all activities, and updates deduction rules.
+ * Only allowed for custom (non-built-in) types. New name must not already exist.
+ */
+export const renameActivityTypeDefinition = async (
+  user: string,
+  oldName: string,
+  newName: string,
+): Promise<{
+  activities_updated: number
+  deduction_rules_updated: number
+  definition: ActivityTypeDefinition
+} | null> => {
+  if (oldName === newName) return null
+
+  // Verify source exists and is not built-in
+  const sourceResult = await query(
+    user,
+    `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`,
+    [oldName],
+  )
+  if (sourceResult.rows.length === 0) return null
+  const sourceDef = mapRow(sourceResult.rows[0])
+  if (sourceDef.is_builtin) return null
+
+  // Verify new name doesn't already exist
+  const existingResult = await query(
+    user,
+    `SELECT 1 FROM activity_type_definitions WHERE name = $1 LIMIT 1`,
+    [newName],
+  )
+  if (existingResult.rows.length > 0) return null
+
+  // Update the definition name and aliases
+  const updatedAliases = normalizeAliases(
+    newName,
+    (sourceDef.aliases ?? []).filter((a) => a !== oldName),
+  )
+  const defResult = await query(
+    user,
+    `UPDATE activity_type_definitions SET name = $1, aliases = $2, updated_at = NOW() WHERE name = $3
+     RETURNING ${SELECT_COLS}`,
+    [newName, updatedAliases, oldName],
+  )
+  if (defResult.rows.length === 0) return null
+
+  // Reassign all activities
+  const activitiesResult = await query(
+    user,
+    `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 AND deleted_at IS NULL`,
+    [newName, oldName],
+  )
+  const activities_updated = activitiesResult.rowCount ?? 0
+
+  // Update deduction rules: output_activity_type
+  const outputResult = await query(
+    user,
+    `UPDATE deduction_rules SET output_activity_type = $1, updated_at = NOW() WHERE output_activity_type = $2`,
+    [newName, oldName],
+  )
+  let deduction_rules_updated = outputResult.rowCount ?? 0
+
+  // Update deduction rules: conditions JSONB
+  const conditionsResult = await query(
+    user,
+    `UPDATE deduction_rules
+     SET conditions = (
+       SELECT jsonb_agg(
+         CASE
+           WHEN elem->>'kind' = 'activity' AND elem->>'activity_type' = $2
+           THEN jsonb_set(elem, '{activity_type}', to_jsonb($1::text))
+           ELSE elem
+         END
+       )
+       FROM jsonb_array_elements(conditions::jsonb) AS elem
+     ),
+     updated_at = NOW()
+     WHERE EXISTS (
+       SELECT 1 FROM jsonb_array_elements(conditions::jsonb) AS elem
+       WHERE elem->>'kind' = 'activity' AND elem->>'activity_type' = $2
+     )`,
+    [newName, oldName],
+  )
+  deduction_rules_updated += conditionsResult.rowCount ?? 0
+
+  return { activities_updated, deduction_rules_updated, definition: mapRow(defResult.rows[0]) }
+}
+
 export const deleteActivityTypeDefinition = async (user: string, name: string): Promise<boolean> => {
   const result = await query(
     user,

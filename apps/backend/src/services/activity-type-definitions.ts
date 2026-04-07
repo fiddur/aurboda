@@ -11,6 +11,7 @@ import {
   getActivityTypeDefinitions as dbList,
   insertActivityTypeDefinition as dbInsert,
   mergeActivityTypeDefinition as dbMerge,
+  renameActivityTypeDefinition as dbRename,
   updateActivityTypeDefinition as dbUpdate,
 } from '../db/index.ts'
 
@@ -88,6 +89,48 @@ export const deleteActivityTypeDefinition = async (
   }
 
   return { success: true }
+}
+
+// =============================================================================
+// Rename
+// =============================================================================
+
+export interface RenameActivityTypeResult {
+  success: boolean
+  error?: string
+  data?: ActivityTypeDefinition
+  activities_updated?: number
+  deduction_rules_updated?: number
+}
+
+export const renameActivityTypeDefinition = async (
+  user: string,
+  oldName: string,
+  newName: string,
+): Promise<RenameActivityTypeResult> => {
+  if (oldName === newName) {
+    return { error: 'New name is the same as the current name.', success: false }
+  }
+
+  if ((builtinActivityTypes as readonly string[]).includes(oldName)) {
+    return { error: `Cannot rename built-in activity type "${oldName}".`, success: false }
+  }
+
+  if ((builtinActivityTypes as readonly string[]).includes(newName)) {
+    return { error: `Cannot rename to built-in activity type name "${newName}".`, success: false }
+  }
+
+  const result = await dbRename(user, oldName, newName)
+  if (!result) {
+    return { error: `Activity type "${oldName}" not found or "${newName}" already exists.`, success: false }
+  }
+
+  return {
+    activities_updated: result.activities_updated,
+    data: result.definition,
+    deduction_rules_updated: result.deduction_rules_updated,
+    success: true,
+  }
 }
 
 // =============================================================================
