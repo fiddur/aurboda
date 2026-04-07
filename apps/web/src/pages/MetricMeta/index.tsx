@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
+import { MiniTrendChart } from '../../components/MiniTrendChart'
 import {
   deleteMetricPoint,
   fetchCustomMetrics,
@@ -19,7 +20,6 @@ import {
 } from '../../state/api'
 import { buildChartUrl } from '../../utils/chart-url'
 import { formatDateTime } from '../EntityDetail/format-utils'
-import { MiniTrendChart } from '../TagMeta/MiniTrendChart'
 import './style.css'
 
 const LOOKBACK_OPTIONS = [

@@ -189,9 +189,8 @@ const queryActivityTypeBuckets = async (
     `SELECT ${bucket.expr} AS bucket_start,
             SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 AS value
        FROM activities
-      WHERE activity_type = 'exercise'
+      WHERE activity_type = $${bucket.params.length + 1}
         AND deleted_at IS NULL
-        AND (data->>'exerciseTypeName' = $${bucket.params.length + 1} OR data->>'exerciseType' = $${bucket.params.length + 1})
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
