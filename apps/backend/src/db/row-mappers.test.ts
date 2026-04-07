@@ -7,7 +7,6 @@ import {
   mapMcpSessionRow,
   mapNamedLocationRow,
   mapSyncStateRow,
-  mapTagRow,
   parseActivityType,
   parseDataSource,
   parseGeocodeStatus,
@@ -273,44 +272,6 @@ describe('mapSyncStateRow', () => {
     const result = mapSyncStateRow(row)
     expect(result.status).toBe('rate_limited')
     expect(result.retry_after).toEqual(new Date('2024-01-15T11:00:00Z'))
-  })
-})
-
-describe('mapTagRow', () => {
-  test('maps a database row to Tag', () => {
-    const row = {
-      end_time: '2024-01-15T11:00:00Z',
-      external_id: 'ext-1',
-      id: 'tag-1',
-      source: 'aurboda',
-      start_time: '2024-01-15T10:00:00Z',
-      tag: 'coffee',
-    }
-
-    const result = mapTagRow(row)
-
-    expect(result).toEqual({
-      end_time: new Date('2024-01-15T11:00:00Z'),
-      external_id: 'ext-1',
-      id: 'tag-1',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'coffee',
-    })
-  })
-
-  test('handles null end_time', () => {
-    const row = {
-      end_time: null,
-      external_id: 'ext-1',
-      id: 'tag-1',
-      source: 'aurboda',
-      start_time: '2024-01-15T10:00:00Z',
-      tag: 'coffee',
-    }
-
-    const result = mapTagRow(row)
-    expect(result.end_time).toBeUndefined()
   })
 })
 

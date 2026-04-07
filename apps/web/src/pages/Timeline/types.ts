@@ -1,11 +1,4 @@
-export type Column =
-  | 'Activity'
-  | 'Sleep / Rest'
-  | 'Exercise'
-  | 'Location'
-  | 'Tags / Events'
-  | 'Screen Time'
-  | 'Music'
+export type Column = 'Activity' | 'Sleep / Rest' | 'Exercise' | 'Location' | 'Screen Time' | 'Music'
 
 export type Orientation = 'horizontal' | 'vertical'
 

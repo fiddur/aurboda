@@ -40,11 +40,7 @@ export function ActivityTypePicker({
   const query = inputValue.toLowerCase()
 
   const filtered = query
-    ? allDefs.filter(
-        (d) =>
-          d.display_name.toLowerCase().includes(query) ||
-          d.name.includes(query),
-      )
+    ? allDefs.filter((d) => d.display_name.toLowerCase().includes(query) || d.name.includes(query))
     : allDefs
 
   // If the user typed something that doesn't match any existing type, offer to create it
@@ -148,9 +144,7 @@ export function ActivityTypePicker({
               }}
               onMouseEnter={() => setHighlightedIndex(flatList.length)}
             >
-              <span class="metric-option-label">
-                Create "{toDisplayName(snakeInput)}"
-              </span>
+              <span class="metric-option-label">Create "{toDisplayName(snakeInput)}"</span>
               <span class="metric-option-key">{snakeInput}</span>
             </li>
           )}

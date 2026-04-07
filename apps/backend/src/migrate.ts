@@ -25,7 +25,6 @@ import {
   insertLocation,
   insertPlace,
   insertRawRecord,
-  insertTag,
   insertTimeSeries,
   type TimeSeriesPoint,
   upsertOAuthToken,
@@ -326,12 +325,12 @@ async function migrateTags(db: Client, user: string) {
   console.log(`  Found ${result.rowCount} tag records`)
 
   for (const row of result.rows) {
-    await insertTag(user, {
+    await insertActivity(user, {
+      activity_type: row.tag.toLowerCase().replaceAll(/\s+/g, '_'),
       end_time: row.end_time ? new Date(row.end_time) : undefined,
       external_id: row.id,
       source: (row.source || 'oura') as DataSource,
       start_time: new Date(row.start_time),
-      tag: row.tag,
     })
   }
 

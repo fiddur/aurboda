@@ -22,12 +22,12 @@ export const ACTIVITY_TYPE_MERGE_MAP: Record<string, string[]> = {
 }
 
 /**
- * Activity sources that should NOT be pulled into the Activity lane.
- * These are always shown in the Tags/Events column.
+ * Activity sources that should NOT be merged into built-in activity items.
+ * They still appear in the Activity lane but as separate items.
  */
 export const EXCLUDED_ACTIVITY_SOURCES = new Set(['lastfm', 'lastfm-auto'])
 
-/** Activity types that start with these prefixes should stay in the Tags column. */
+/** Activity types that start with these prefixes are excluded from duration merging. */
 export const EXCLUDED_ACTIVITY_PREFIXES = ['computer:']
 
 /** Returns true if an activity (with end_time) should appear in the Activity lane. */

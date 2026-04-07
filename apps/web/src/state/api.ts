@@ -13,7 +13,6 @@ import type {
   AddCustomMetricBody,
   AddReportBody,
   AddLastFmTagRuleBody,
-  CreateTagDefinitionBody,
   AddLastFmTagRuleResponse,
   AddMetricBody,
   AddMetricResponse,
@@ -81,7 +80,6 @@ import type {
   ScreentimeCategoryResponse,
   ScrobblesResponse,
   SyncResponse,
-  TagDefinition,
   TrainingLoadResponse,
   TrainingLoadResult,
   TrendDisplayPeriod,
@@ -91,7 +89,6 @@ import type {
   TrendSourceType,
   UpdateActivityBody,
   UpdateCustomMetricBody,
-  UpdateTagDefinitionBody,
   UpdateLastFmTagRuleBody,
   UpdateLastFmTagRuleResponse,
   UpdateReportBody,
@@ -222,7 +219,6 @@ export type {
   NamedLocation,
   PeriodMetricStats,
   ProductivityCorrelation,
-  TagDefinition,
   TrendDisplayPeriod,
   TrendResult,
   TrendSourceType,
@@ -691,101 +687,6 @@ export const fetchItemIcons = async (): Promise<Record<string, string>> => {
 }
 
 // ==========================================================================
-// Tag Definitions API
-// ==========================================================================
-
-export const fetchTagDefinitions = async (): Promise<TagDefinition[]> => {
-  // Tag definitions are now activity type definitions
-  const definitions = await fetchActivityTypeDefinitions()
-  return definitions.map((d) => ({
-    aliases: [],
-    count: undefined,
-    icon: d.icon,
-    id: d.name,
-    latest_time: undefined,
-    name: d.display_name || d.name,
-  }))
-}
-
-export const fetchTagDefinitionById = async (id: string): Promise<TagDefinition> => {
-  const { token } = auth.value
-  const response = await axios.get<{ data: ActivityTypeDefinition; success: boolean }>(
-    `${API_URL}/activity-types/${encodeURIComponent(id)}`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  )
-  const d = response.data.data
-  return {
-    aliases: [],
-    count: undefined,
-    icon: d.icon,
-    id: d.name,
-    latest_time: undefined,
-    name: d.display_name || d.name,
-  }
-}
-
-export const createTagDefinition = async (body: CreateTagDefinitionBody): Promise<TagDefinition> => {
-  const { token } = auth.value
-  const response = await axios.post<{ data: ActivityTypeDefinition; success: boolean }>(
-    `${API_URL}/activity-types`,
-    {
-      color: '#8b5cf6',
-      display_category: 'tags',
-      display_name: body.name,
-      icon: body.icon,
-      name: body.name.toLowerCase().replaceAll(/\s+/g, '_'),
-    },
-    { headers: { Authorization: `Bearer ${token}` } },
-  )
-  const d = response.data.data
-  return {
-    aliases: [],
-    count: undefined,
-    icon: d.icon,
-    id: d.name,
-    latest_time: undefined,
-    name: d.display_name || d.name,
-  }
-}
-
-export const updateTagDefinitionApi = async (
-  id: string,
-  body: UpdateTagDefinitionBody,
-): Promise<TagDefinition> => {
-  const { token } = auth.value
-  // Activity type definitions are identified by name, not UUID
-  const response = await axios.patch<{ data: ActivityTypeDefinition; success: boolean }>(
-    `${API_URL}/activity-types/${encodeURIComponent(id)}`,
-    {
-      ...(body.name ? { display_name: body.name } : {}),
-      ...(body.icon !== undefined ? { icon: body.icon } : {}),
-    },
-    { headers: { Authorization: `Bearer ${token}` } },
-  )
-  const d = response.data.data
-  return {
-    aliases: [],
-    count: undefined,
-    icon: d.icon,
-    id: d.name,
-    latest_time: undefined,
-    name: d.display_name || d.name,
-  }
-}
-
-export const deleteTagDefinitionApi = async (id: string): Promise<void> => {
-  const { token } = auth.value
-  await axios.delete(`${API_URL}/activity-types/${encodeURIComponent(id)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-}
-
-export const mergeTagDefinitionsApi = async (sourceId: string, targetId: string): Promise<TagDefinition> => {
-  // Merge is no longer supported at the activity-types level
-  // This is a no-op that returns the target definition
-  return fetchTagDefinitionById(targetId)
-}
-
 // Update activity type definition (show_on_timeline, color, icon, display_name, etc.)
 export const updateActivityTypeDefinition = async (
   name: string,

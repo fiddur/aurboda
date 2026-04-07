@@ -114,13 +114,10 @@ export const activitySummarySchema = z
     activity_type: z
       .string()
       .meta({ description: 'Activity type (e.g., "exercise", "meditation", "screentime", "coffee")' }),
-    category_path: z
-      .array(z.string())
-      .optional()
-      .meta({
-        description:
-          'Screen time category path (e.g., ["Work & Dev", "Software Dev"]). Only present for screentime activities.',
-      }),
+    category_path: z.array(z.string()).optional().meta({
+      description:
+        'Screen time category path (e.g., ["Work & Dev", "Software Dev"]). Only present for screentime activities.',
+    }),
     comments: z.array(commentSchema).optional().meta({ description: 'Comments attached to this activity' }),
     end_time: iso8601DateTimeSchema.optional(),
     exercise_type: exerciseTypeSchema.optional().meta({
