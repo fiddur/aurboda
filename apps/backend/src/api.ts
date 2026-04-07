@@ -166,21 +166,25 @@ const main = async () => {
   })
 
   // Track which users have been migrated this server lifetime
-  const migratedUsers = new Set<string>()
+  const migratedUsers = new Map<string, Promise<void>>()
 
-  const authMiddleware: RequestHandler = (req, res, next) => {
+  const authMiddleware: RequestHandler = async (req, res, next) => {
     try {
       if (typeof req.headers.authorization === 'string') {
         const token = req.headers.authorization.slice('bearer '.length)
         const user = auth.getUsernameFromToken(token)
         req.user = user
 
-        // Run schema migration once per user per server lifetime (non-blocking)
+        // Run schema migration once per user per server lifetime (blocking on first request)
         if (!migratedUsers.has(user)) {
-          migratedUsers.add(user)
-          migrateSchema(user).catch((err) =>
+          const migrationPromise = migrateSchema(user).catch((err) =>
             console.error(`⚠️ Migration failed for ${user}:`, err),
           )
+          migratedUsers.set(user, migrationPromise)
+          await migrationPromise
+        } else {
+          // Subsequent requests wait if migration is still in progress
+          await migratedUsers.get(user)
         }
 
         return next()
