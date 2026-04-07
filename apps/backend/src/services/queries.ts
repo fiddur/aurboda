@@ -31,7 +31,6 @@ import {
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
   getTimeSeriesWithSource,
-  type MergedActivity,
   type ProductivityRecord,
 } from '../db/index.ts'
 import { getScreentimeCategories } from '../db/screentime-categories.ts'
@@ -828,66 +827,6 @@ export const buildScreentimeSpans = (
     .sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 }
 
-// ============================================================================
-// Cross-type activity merging
-// ============================================================================
-
-const isGenericExercise = (a: MergedActivity): boolean => {
-  const dataObj = a.data as Record<string, unknown> | undefined
-  const code = dataObj?.exerciseType
-  return a.activity_type === 'exercise' && (code === 0 || code === 2 || !code)
-}
-
-const hasSubstantialOverlap = (
-  gStart: number,
-  gEnd: number,
-  other: MergedActivity,
-): boolean => {
-  const oStart = other.start_time.getTime()
-  const oEnd = other.end_time?.getTime() ?? oStart
-  const overlapStart = Math.max(gStart, oStart)
-  const overlapEnd = Math.min(gEnd, oEnd)
-  if (overlapEnd <= overlapStart) return false
-  const genericDuration = gEnd - gStart
-  return genericDuration > 0 && (overlapEnd - overlapStart) / genericDuration > 0.5
-}
-
-/**
- * Merge generic "other_workout" exercises with overlapping specific activities.
- * E.g. Garmin syncs Meditation while Health Connect pushes other_workout at the same time.
- * The more specific activity type wins; the generic exercise is absorbed.
- */
-export const mergeGenericExercises = (activities: MergedActivity[]): MergedActivity[] => {
-  const genericExercises: MergedActivity[] = []
-  const others: MergedActivity[] = []
-
-  for (const a of activities) {
-    ;(isGenericExercise(a) ? genericExercises : others).push(a)
-  }
-
-  if (genericExercises.length === 0) return activities
-
-  const absorbed = new Set<MergedActivity>()
-  for (const generic of genericExercises) {
-    const gStart = generic.start_time.getTime()
-    const gEnd = generic.end_time?.getTime() ?? gStart
-
-    const match = others.find((o) => !absorbed.has(o) && hasSubstantialOverlap(gStart, gEnd, o))
-
-    if (match) {
-      if (generic.start_time < match.start_time) match.start_time = generic.start_time
-      if (generic.end_time && (!match.end_time || generic.end_time > match.end_time)) {
-        match.end_time = generic.end_time
-      }
-      absorbed.add(generic)
-    }
-  }
-
-  return [...others, ...genericExercises.filter((g) => !absorbed.has(g))].sort(
-    (a, b) => a.start_time.getTime() - b.start_time.getTime(),
-  )
-}
-
 /**
  * Get a comprehensive summary of health data for a specific day.
  * @param sync Optional sync provider to auto-refresh stale data before querying
@@ -1063,16 +1002,12 @@ export async function getDailySummary(
   // Get user's HR zones for exercise session HR zone calculation
   const { zones: hrZones } = await getEffectiveHrZones(user)
 
-  // Merge generic exercises (other_workout) with overlapping specific activities.
-  // E.g. Garmin syncs Meditation and Health Connect pushes other_workout at the same time.
-  const mergedActivities = mergeGenericExercises(allActivities)
-
-  // Fetch comments for all activities
-  const activityIds = mergedActivities.map((a) => a.id).filter((id): id is string => id !== undefined)
+  // Fetch comments for all activities (generic exercises already absorbed at DB merge level)
+  const activityIds = allActivities.map((a) => a.id).filter((id): id is string => id !== undefined)
   const commentsMap = await getCommentsMap(user, 'activity', activityIds)
 
   // Build unified activities array from DB activities
-  const activities: ActivitySummary[] = mergedActivities.map((s) => {
+  const activities: ActivitySummary[] = allActivities.map((s) => {
     const dataObj = s.data as Record<string, unknown> | undefined
     const exerciseTypeCode = dataObj?.exerciseType
     const exerciseType =
