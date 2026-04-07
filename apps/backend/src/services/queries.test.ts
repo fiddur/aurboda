@@ -41,6 +41,11 @@ vi.mock('../db', () => ({
   getUserSettings: vi.fn(),
 }))
 
+// Mock the screentime-categories module
+vi.mock('../db/screentime-categories', () => ({
+  getScreentimeCategories: vi.fn().mockResolvedValue([]),
+}))
+
 // Mock the locations service
 vi.mock('./locations', () => ({
   getPlaceVisits: vi.fn(),
@@ -225,6 +230,7 @@ describe('getDailySummary', () => {
 
     // Productivity
     expect(result.productivity).toEqual({
+      categories: [{ duration_sec: 4200, path: [] }],
       distracting_sec: 600,
       productive_sec: 3600,
       total_duration_sec: 4200,

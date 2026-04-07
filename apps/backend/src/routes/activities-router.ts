@@ -168,9 +168,7 @@ export const createActivitiesRouter = (
       const user = req.user!
 
       // When no types specified, query all activity types (not just those with definitions)
-      const types = typesParam
-        ? typesParam.split(',')
-        : await getAllActivityTypeNames(user)
+      const types = typesParam ? typesParam.split(',') : await getAllActivityTypeNames(user)
 
       const activities = await queryActivities(user, types, new Date(start), new Date(end), syncProvider)
       res.json({ data: activities, success: true })
@@ -184,7 +182,16 @@ export const createActivitiesRouter = (
     authMiddleware,
     validateBody(addActivityBodySchema),
     async (req, res) => {
-      const { activity_type, start_time, end_time, title, notes, exercise_type, merge_span, data: bodyData } = req.body
+      const {
+        activity_type,
+        start_time,
+        end_time,
+        title,
+        notes,
+        exercise_type,
+        merge_span,
+        data: bodyData,
+      } = req.body
       const user = req.user!
 
       const startDate = new Date(start_time)
