@@ -428,7 +428,23 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
      ON CONFLICT DO NOTHING`,
   )
 
-  // Step 4: Update notes entity_type from 'tag' to 'activity'
+  // Step 4: Create activity_type_definitions for any activity_type that doesn't have one yet
+  await query(
+    db,
+    `INSERT INTO activity_type_definitions (name, display_name, display_category)
+     SELECT DISTINCT a.activity_type,
+       initcap(replace(a.activity_type, '_', ' ')),
+       'other'
+     FROM activities a
+     WHERE NOT EXISTS (
+       SELECT 1 FROM activity_type_definitions atd WHERE atd.name = a.activity_type
+     )
+       AND a.activity_type ~ '^[a-z][a-z0-9_]*$'
+       AND a.deleted_at IS NULL
+     ON CONFLICT (name) DO NOTHING`,
+  )
+
+  // Step 5: Update notes entity_type from 'tag' to 'activity'
   if (existingTableNames.has('notes')) {
     await query(db, `UPDATE notes SET entity_type = 'activity' WHERE entity_type = 'tag'`)
   }
@@ -470,6 +486,14 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE activities ALTER COLUMN activity_type TYPE VARCHAR(100)`)
     // Replace old unique constraint with two partial indexes
     await query(db, `ALTER TABLE activities DROP CONSTRAINT IF EXISTS unique_activity`)
+    await query(
+      db,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_ext_id ON activities (source, external_id) WHERE external_id IS NOT NULL`,
+    )
+    await query(
+      db,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_type_time ON activities (source, activity_type, start_time) WHERE external_id IS NULL`,
+    )
   }
   if (existingTableNames.has('activity_type_definitions')) {
     await query(

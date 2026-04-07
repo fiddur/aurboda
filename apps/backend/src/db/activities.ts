@@ -517,7 +517,7 @@ export const deleteGarminActivityWithWrongType = async (
     user,
     `DELETE FROM activities
      WHERE source = 'garmin'
-       AND (data->>'garmin_activity_id')::int = $1
+       AND (data->>'garmin_activity_id')::bigint = $1
        AND activity_type != $2
        AND deleted_at IS NULL
      RETURNING id`,
