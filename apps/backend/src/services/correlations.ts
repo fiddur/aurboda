@@ -8,7 +8,7 @@
 
 import type { MetricType } from '@aurboda/api-spec'
 
-import { getActivities, getProductivity, getTags, getTimeSeries, getTimeSeriesStats } from '../db/index.ts'
+import { getAllActivitiesInRange, getProductivity, getTimeSeries, getTimeSeriesStats } from '../db/index.ts'
 import { getPlaceVisits } from './locations.ts'
 import { queryMetrics, type SyncProvider } from './queries.ts'
 
@@ -22,6 +22,8 @@ export interface HrvStats {
   stddev_hrv: number | null
   mean_hr: number | null
   stddev_hr: number | null
+  mean_stress: number | null
+  stddev_stress: number | null
   sample_minutes: number
   sample_count: number
 }
@@ -30,6 +32,7 @@ export interface HrvStats {
 export interface HrvStatsWithDelta extends HrvStats {
   hrv_delta_from_baseline: number | null
   hr_delta_from_baseline: number | null
+  stress_delta_from_baseline: number | null
 }
 
 /** Baseline statistics result */
@@ -67,13 +70,7 @@ export interface LocationCorrelation extends HrvStatsWithDelta {
 export interface ActivityCorrelation extends HrvStatsWithDelta {
   activity_type: string
   occurrences: number
-  avg_duration_min: number
-}
-
-/** Correlation by tag */
-export interface TagCorrelation extends HrvStatsWithDelta {
-  tag: string
-  occurrences: number
+  avg_duration_min?: number
 }
 
 /** Movement state correlation */
@@ -93,7 +90,6 @@ export interface HrvActivitiesResult {
     productivity: ProductivityCorrelation[]
     locations: LocationCorrelation[]
     activities: ActivityCorrelation[]
-    tags: TagCorrelation[]
   }
 }
 
@@ -389,13 +385,20 @@ const getDataInRange = (data: [Date, number][], start: Date, end: Date): number[
 /**
  * Calculate HRV stats from raw data arrays.
  */
-const calculateHrvStats = (hrvValues: number[], hrValues: number[], durationMinutes: number): HrvStats => ({
+const calculateHrvStats = (
+  hrvValues: number[],
+  hrValues: number[],
+  durationMinutes: number,
+  stressValues: number[] = [],
+): HrvStats => ({
   mean_hr: mean(hrValues),
   mean_hrv: mean(hrvValues),
+  mean_stress: stressValues.length > 0 ? mean(stressValues) : null,
   sample_count: hrvValues.length,
   sample_minutes: Math.round(durationMinutes),
   stddev_hr: stddev(hrValues),
   stddev_hrv: stddev(hrvValues),
+  stddev_stress: stressValues.length > 0 ? stddev(stressValues) : null,
 })
 
 /**
@@ -410,6 +413,10 @@ const addBaselineDelta = (stats: HrvStats, baseline: HrvStats): HrvStatsWithDelt
   hrv_delta_from_baseline:
     stats.mean_hrv !== null && baseline.mean_hrv !== null
       ? Math.round((stats.mean_hrv - baseline.mean_hrv) * 10) / 10
+      : null,
+  stress_delta_from_baseline:
+    stats.mean_stress !== null && baseline.mean_stress !== null
+      ? Math.round((stats.mean_stress - baseline.mean_stress) * 10) / 10
       : null,
 })
 
@@ -517,31 +524,32 @@ export async function getHrvActivitiesCorrelation(
   }
 
   // Fetch all data in parallel
-  const [hrvData, hrData, productivity, locations, activities, tags] = await Promise.all([
+  const [hrvData, hrData, stressData, productivity, locations, activities] = await Promise.all([
     getTimeSeries(user, 'hrv_rmssd', start, end),
     getTimeSeries(user, 'heart_rate', start, end),
+    getTimeSeries(user, 'stress_level', start, end),
     getProductivity(user, start, end),
     getPlaceVisits(user, start, end),
-    getActivities(user, ['exercise', 'meditation', 'nap'], start, end),
-    getTags(user, start, end),
+    getAllActivitiesInRange(user, start, end),
   ])
 
   // Calculate baseline stats
   const baselineHrvValues = hrvData.map(([, v]) => v)
   const baselineHrValues = hrData.map(([, v]) => v)
+  const baselineStressValues = stressData.map(([, v]) => v)
   const totalMinutes = periodDays * 24 * 60
-  const baseline = calculateHrvStats(baselineHrvValues, baselineHrValues, totalMinutes)
+  const baseline = calculateHrvStats(baselineHrvValues, baselineHrValues, totalMinutes, baselineStressValues)
 
   // === Productivity correlations by category ===
   const productivityByCategory = new Map<
     string,
-    { hrvValues: number[]; hrValues: number[]; minutes: number; scores: number[] }
+    { hrvValues: number[]; hrValues: number[]; stressValues: number[]; minutes: number; scores: number[] }
   >()
 
   for (const record of productivity) {
     const category = record.resolved_category?.join(' > ') || record.category || 'Uncategorized'
     if (!productivityByCategory.has(category)) {
-      productivityByCategory.set(category, { hrValues: [], hrvValues: [], minutes: 0, scores: [] })
+      productivityByCategory.set(category, { hrValues: [], hrvValues: [], minutes: 0, scores: [], stressValues: [] })
     }
     const cat = productivityByCategory.get(category)!
     cat.minutes += record.duration_sec / 60
@@ -549,8 +557,10 @@ export async function getHrvActivitiesCorrelation(
     // Get HRV/HR during this productivity window
     const hrvInWindow = getDataInRange(hrvData, record.start_time, record.end_time)
     const hrInWindow = getDataInRange(hrData, record.start_time, record.end_time)
+    const stressInWindow = getDataInRange(stressData, record.start_time, record.end_time)
     cat.hrvValues.push(...hrvInWindow)
     cat.hrValues.push(...hrInWindow)
+    cat.stressValues.push(...stressInWindow)
 
     if (record.productivity !== undefined && record.productivity !== null) {
       // Add productivity score for correlation calculation - one score per HRV value
@@ -562,7 +572,7 @@ export async function getHrvActivitiesCorrelation(
   for (const [category, data] of productivityByCategory) {
     if (data.minutes < 10) continue // Skip categories with < 10 min data
 
-    const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes)
+    const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes, data.stressValues)
     const statsWithDelta = addBaselineDelta(stats, baseline)
 
     // Calculate correlation between productivity score and HRV
@@ -584,13 +594,13 @@ export async function getHrvActivitiesCorrelation(
   // === Location correlations ===
   const locationByName = new Map<
     string,
-    { hrvValues: number[]; hrValues: number[]; minutes: number; visits: number }
+    { hrvValues: number[]; hrValues: number[]; stressValues: number[]; minutes: number; visits: number }
   >()
 
   for (const visit of locations) {
     const name = visit.name || 'Unknown'
     if (!locationByName.has(name)) {
-      locationByName.set(name, { hrValues: [], hrvValues: [], minutes: 0, visits: 0 })
+      locationByName.set(name, { hrValues: [], hrvValues: [], minutes: 0, stressValues: [], visits: 0 })
     }
     const loc = locationByName.get(name)!
     loc.minutes += visit.duration_minutes
@@ -598,15 +608,17 @@ export async function getHrvActivitiesCorrelation(
 
     const hrvInWindow = getDataInRange(hrvData, visit.start_time, visit.end_time)
     const hrInWindow = getDataInRange(hrData, visit.start_time, visit.end_time)
+    const stressInWindow = getDataInRange(stressData, visit.start_time, visit.end_time)
     loc.hrvValues.push(...hrvInWindow)
     loc.hrValues.push(...hrInWindow)
+    loc.stressValues.push(...stressInWindow)
   }
 
   const locationCorrelations: LocationCorrelation[] = []
   for (const [name, data] of locationByName) {
     if (data.minutes < 30) continue // Skip locations with < 30 min
 
-    const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes)
+    const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes, data.stressValues)
     const statsWithDelta = addBaselineDelta(stats, baseline)
 
     locationCorrelations.push({
@@ -618,28 +630,44 @@ export async function getHrvActivitiesCorrelation(
 
   locationCorrelations.sort((a, b) => b.sample_minutes - a.sample_minutes)
 
-  // === Activity correlations ===
+  // === Activity correlations (unified — includes former tags) ===
   const activityByType = new Map<
     string,
-    { hrvValues: number[]; hrValues: number[]; minutes: number; count: number }
+    { hrvValues: number[]; hrValues: number[]; stressValues: number[]; minutes: number; count: number; hasDuration: boolean }
   >()
 
   for (const activity of activities) {
     const type = activity.activity_type
     if (!activityByType.has(type)) {
-      activityByType.set(type, { count: 0, hrValues: [], hrvValues: [], minutes: 0 })
+      activityByType.set(type, { count: 0, hasDuration: false, hrValues: [], hrvValues: [], minutes: 0, stressValues: [] })
     }
     const act = activityByType.get(type)!
     act.count++
 
     if (activity.end_time) {
+      // Duration activity — use actual event window
+      act.hasDuration = true
       const durationMin = (activity.end_time.getTime() - activity.start_time.getTime()) / 1000 / 60
       act.minutes += durationMin
 
       const hrvInWindow = getDataInRange(hrvData, activity.start_time, activity.end_time)
       const hrInWindow = getDataInRange(hrData, activity.start_time, activity.end_time)
+      const stressInWindow = getDataInRange(stressData, activity.start_time, activity.end_time)
       act.hrvValues.push(...hrvInWindow)
       act.hrValues.push(...hrInWindow)
+      act.stressValues.push(...stressInWindow)
+    } else {
+      // Point activity — use ±30min contextual window
+      const windowStart = new Date(activity.start_time.getTime() - 30 * 60 * 1000)
+      const windowEnd = new Date(activity.start_time.getTime() + 30 * 60 * 1000)
+      act.minutes += 60 // contextual window is ~60 min
+
+      const hrvInWindow = getDataInRange(hrvData, windowStart, windowEnd)
+      const hrInWindow = getDataInRange(hrData, windowStart, windowEnd)
+      const stressInWindow = getDataInRange(stressData, windowStart, windowEnd)
+      act.hrvValues.push(...hrvInWindow)
+      act.hrValues.push(...hrInWindow)
+      act.stressValues.push(...stressInWindow)
     }
   }
 
@@ -647,60 +675,18 @@ export async function getHrvActivitiesCorrelation(
   for (const [type, data] of activityByType) {
     if (data.count < 1) continue
 
-    const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes)
+    const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes, data.stressValues)
     const statsWithDelta = addBaselineDelta(stats, baseline)
 
     activityCorrelations.push({
       ...statsWithDelta,
       activity_type: type,
-      avg_duration_min: data.count > 0 ? Math.round(data.minutes / data.count) : 0,
+      ...(data.hasDuration ? { avg_duration_min: Math.round(data.minutes / data.count) } : {}),
       occurrences: data.count,
     })
   }
 
   activityCorrelations.sort((a, b) => b.occurrences - a.occurrences)
-
-  // === Tag correlations ===
-  const tagByName = new Map<
-    string,
-    { hrvValues: number[]; hrValues: number[]; minutes: number; count: number }
-  >()
-
-  for (const tag of tags) {
-    const name = tag.tag
-    if (!tagByName.has(name)) {
-      tagByName.set(name, { count: 0, hrValues: [], hrvValues: [], minutes: 0 })
-    }
-    const t = tagByName.get(name)!
-    t.count++
-
-    // For tags, look at a window around the tag time (30 min before and after)
-    const windowStart = new Date(tag.start_time.getTime() - 30 * 60 * 1000)
-    const windowEnd = tag.end_time ?? new Date(tag.start_time.getTime() + 30 * 60 * 1000)
-    const durationMin = (windowEnd.getTime() - tag.start_time.getTime()) / 1000 / 60
-    t.minutes += durationMin
-
-    const hrvInWindow = getDataInRange(hrvData, windowStart, windowEnd)
-    const hrInWindow = getDataInRange(hrData, windowStart, windowEnd)
-    t.hrvValues.push(...hrvInWindow)
-    t.hrValues.push(...hrInWindow)
-  }
-
-  const tagCorrelations: TagCorrelation[] = []
-  for (const [name, data] of tagByName) {
-    if (data.count < 2) continue // Skip tags with < 2 occurrences
-
-    const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes)
-    const statsWithDelta = addBaselineDelta(stats, baseline)
-
-    tagCorrelations.push({
-      ...statsWithDelta,
-      occurrences: data.count,
-      tag: name,
-    })
-  }
-
-  tagCorrelations.sort((a, b) => b.occurrences - a.occurrences)
 
   return {
     baseline,
@@ -708,7 +694,6 @@ export async function getHrvActivitiesCorrelation(
       activities: activityCorrelations,
       locations: locationCorrelations,
       productivity: productivityCorrelations,
-      tags: tagCorrelations,
     },
     period: {
       days: periodDays,
@@ -725,7 +710,7 @@ export async function getHrvActivitiesCorrelation(
 export async function getActivityImpact(
   user: string,
   activity: string,
-  activityType: 'productivity_category' | 'productivity_app' | 'location' | 'tag' | 'activity_type',
+  activityType: 'productivity_category' | 'productivity_app' | 'location' | 'tag' | 'activity_type', // 'tag' kept for backward compat
   windowMinutes: number = 30,
   periodDays: number = 90,
   sync?: SyncProvider,
@@ -789,30 +774,14 @@ export async function getActivityImpact(
         })
       }
     }
-  } else if (activityType === 'tag') {
-    const tags = await getTags(user, start, end)
-    for (const tag of tags) {
-      if (tag.tag.toLowerCase().includes(activity.toLowerCase())) {
-        const endTime = tag.end_time ?? new Date(tag.start_time.getTime() + 5 * 60 * 1000) // Default 5 min for point tags
+  } else if (activityType === 'activity_type' || activityType === 'tag') {
+    const allActivities = await getAllActivitiesInRange(user, start, end)
+    for (const act of allActivities) {
+      if (act.activity_type.toLowerCase().includes(activity.toLowerCase())) {
+        const endTime = act.end_time ?? new Date(act.start_time.getTime() + 5 * 60 * 1000)
         occurrences.push({
-          durationMin: (endTime.getTime() - tag.start_time.getTime()) / 1000 / 60,
+          durationMin: (endTime.getTime() - act.start_time.getTime()) / 1000 / 60,
           endTime,
-          startTime: tag.start_time,
-        })
-      }
-    }
-  } else if (activityType === 'activity_type') {
-    const activities = await getActivities(
-      user,
-      [activity as 'exercise' | 'meditation' | 'nap' | 'sleep'],
-      start,
-      end,
-    )
-    for (const act of activities) {
-      if (act.end_time) {
-        occurrences.push({
-          durationMin: (act.end_time.getTime() - act.start_time.getTime()) / 1000 / 60,
-          endTime: act.end_time,
           startTime: act.start_time,
         })
       }
@@ -920,24 +889,16 @@ export async function getEventProbability(
   // Get trigger events
   let triggerEvents: Date[] = []
 
-  if (trigger.type === 'tag') {
-    const tags = await getTags(user, start, end)
-    triggerEvents = tags
-      .filter((t) => t.tag.toLowerCase().includes(trigger.value.toLowerCase()))
-      .map((t) => t.start_time)
-  } else if (trigger.type === 'activity') {
-    const activities = await getActivities(
-      user,
-      [trigger.value as 'exercise' | 'meditation' | 'nap' | 'sleep'],
-      start,
-      end,
-    )
-    triggerEvents = activities.map((a) => a.start_time)
+  const allActivities = await getAllActivitiesInRange(user, start, end)
+
+  if (trigger.type === 'tag' || trigger.type === 'activity') {
+    triggerEvents = allActivities
+      .filter((a) => a.activity_type.toLowerCase().includes(trigger.value.toLowerCase()))
+      .map((a) => a.start_time)
   }
 
-  // Get all outcome events (tags matching pattern)
-  const allTags = await getTags(user, start, end)
-  const outcomeEvents = allTags.filter((t) => outcomeRegex.test(t.tag)).map((t) => t.start_time)
+  // Get all outcome events (activities matching pattern)
+  const outcomeEvents = allActivities.filter((a) => outcomeRegex.test(a.activity_type)).map((a) => a.start_time)
 
   // Calculate baseline probability (outcome on any given day)
   const daysWithOutcome = new Set<string>()
@@ -1106,19 +1067,15 @@ export async function getGenericCorrelation(
   }
 
   // Determine which data we need based on triggers and outcome
-  const needsActivities = triggers.some((t) => t.type === 'activity') || (outcome.type === 'tag' && false) // activities for triggers
-  const needsTags = triggers.some((t) => t.type === 'tag') || outcome.type === 'tag'
+  const needsActivities = triggers.some((t) => t.type === 'activity' || t.type === 'tag') || outcome.type === 'tag'
   const needsProductivity =
     triggers.some((t) => t.type === 'productivity_category' || t.type === 'productivity_app') ||
     outcome.type === 'productivity'
   const needsMetrics = outcome.type === 'metric'
 
   // Fetch data in parallel
-  const [activities, tags, productivity, metricData] = await Promise.all([
-    needsActivities
-      ? getActivities(user, ['exercise', 'meditation', 'nap', 'sleep'], start, end)
-      : Promise.resolve([]),
-    needsTags ? getTags(user, start, end) : Promise.resolve([]),
+  const [activities, productivity, metricData] = await Promise.all([
+    needsActivities ? getAllActivitiesInRange(user, start, end) : Promise.resolve([]),
     needsProductivity ? getProductivity(user, start, end) : Promise.resolve([]),
     needsMetrics && outcome.type === 'metric'
       ? getTimeSeries(user, outcome.metric as MetricType, start, end)
@@ -1140,12 +1097,13 @@ export async function getGenericCorrelation(
         }
       }
     } else if (trigger.type === 'tag') {
-      for (const tag of tags) {
-        if (matchesPattern(tag.tag, trigger.pattern)) {
+      // Tags are now activities — match by activity_type
+      for (const act of activities) {
+        if (matchesPattern(act.activity_type, trigger.pattern)) {
           triggerEvents.push({
-            time: tag.start_time,
+            time: act.start_time,
             type: 'tag',
-            value: tag.tag,
+            value: act.activity_type,
           })
         }
       }
@@ -1251,7 +1209,7 @@ export async function getGenericCorrelation(
   // Get outcome events/data for tag outcomes
   const outcomeTagEvents =
     outcome.type === 'tag'
-      ? tags.filter((t) => matchesPattern(t.tag, outcome.pattern)).map((t) => t.start_time)
+      ? activities.filter((a) => matchesPattern(a.activity_type, outcome.pattern)).map((a) => a.start_time)
       : []
 
   for (const lag of lagWindows) {

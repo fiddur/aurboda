@@ -13,9 +13,8 @@ import * as queries from './queries.ts'
 
 // Mock db module
 vi.mock('../db', () => ({
-  getActivities: vi.fn(),
+  getAllActivitiesInRange: vi.fn(),
   getProductivity: vi.fn(),
-  getTags: vi.fn(),
   getTimeSeries: vi.fn(),
   getTimeSeriesStats: vi.fn(),
 }))
@@ -175,7 +174,7 @@ describe('correlations service', () => {
           start_time: yesterday,
         },
       ])
-      vi.mocked(db.getActivities).mockResolvedValue([
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
         {
           activity_type: 'exercise' as const,
           end_time: new Date(yesterday.getTime() + 3600000),
@@ -184,13 +183,13 @@ describe('correlations service', () => {
           start_time: yesterday,
         },
       ])
-      vi.mocked(db.getTags).mockResolvedValue([
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
         {
           end_time: new Date(yesterday.getTime() + 300000),
           external_id: 'tag1',
           source: 'manual' as const,
           start_time: yesterday,
-          tag: 'coffee',
+          activity_type: 'coffee',
         },
       ])
 
@@ -201,15 +200,14 @@ describe('correlations service', () => {
       expect(result.correlations.productivity).toBeInstanceOf(Array)
       expect(result.correlations.locations).toBeInstanceOf(Array)
       expect(result.correlations.activities).toBeInstanceOf(Array)
-      expect(result.correlations.tags).toBeInstanceOf(Array)
     })
 
     test('calls sync provider when provided', async () => {
       vi.mocked(db.getTimeSeries).mockResolvedValue([])
       vi.mocked(db.getProductivity).mockResolvedValue([])
       vi.mocked(locations.getPlaceVisits).mockResolvedValue([])
-      vi.mocked(db.getActivities).mockResolvedValue([])
-      vi.mocked(db.getTags).mockResolvedValue([])
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
 
       const syncProvider = {
         syncCalendarsIfNeeded: vi.fn().mockResolvedValue(undefined),
@@ -238,13 +236,13 @@ describe('correlations service', () => {
         [new Date(baseTime.getTime() + 20 * 60 * 1000), 50], // after15
         [new Date(baseTime.getTime() + 35 * 60 * 1000), 52], // after30
       ] as [Date, number][])
-      vi.mocked(db.getTags).mockResolvedValue([
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
         {
           end_time: new Date(baseTime.getTime() + 10 * 60 * 1000),
           external_id: 'tag1',
           source: 'manual' as const,
           start_time: baseTime,
-          tag: 'coffee',
+          activity_type: 'coffee',
         },
       ])
 
@@ -262,7 +260,7 @@ describe('correlations service', () => {
 
     test('returns zero occurrences when no matching tags', async () => {
       vi.mocked(db.getTimeSeries).mockResolvedValue([])
-      vi.mocked(db.getTags).mockResolvedValue([])
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
 
       const result = await getActivityImpact('testuser', 'nonexistent', 'tag', 30, 90)
 
@@ -298,12 +296,12 @@ describe('correlations service', () => {
       const day1Later = new Date('2024-01-01T18:00:00Z')
       const day2 = new Date('2024-01-02T10:00:00Z')
 
-      vi.mocked(db.getTags).mockResolvedValue([
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
         // Trigger events (gym)
-        { external_id: 't1', source: 'manual' as const, start_time: day1, tag: 'gym' },
-        { external_id: 't2', source: 'manual' as const, start_time: day2, tag: 'gym' },
+        { external_id: 't1', source: 'manual' as const, start_time: day1, activity_type: 'gym' },
+        { external_id: 't2', source: 'manual' as const, start_time: day2, activity_type: 'gym' },
         // Outcome events (headache)
-        { external_id: 'o1', source: 'manual' as const, start_time: day1Later, tag: 'headache' },
+        { external_id: 'o1', source: 'manual' as const, start_time: day1Later, activity_type: 'headache' },
       ])
 
       const result = await getEventProbability(
@@ -329,7 +327,7 @@ describe('correlations service', () => {
       const day1End = new Date('2024-01-01T11:00:00Z')
       const day1Later = new Date('2024-01-01T18:00:00Z')
 
-      vi.mocked(db.getActivities).mockResolvedValue([
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
         {
           activity_type: 'exercise' as const,
           end_time: day1End,
@@ -338,8 +336,8 @@ describe('correlations service', () => {
           start_time: day1,
         },
       ])
-      vi.mocked(db.getTags).mockResolvedValue([
-        { external_id: 'o1', source: 'manual' as const, start_time: day1Later, tag: 'headache' },
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+        { external_id: 'o1', source: 'manual' as const, start_time: day1Later, activity_type: 'headache' },
       ])
 
       const result = await getEventProbability(
@@ -357,8 +355,8 @@ describe('correlations service', () => {
     test('returns zero probability when no outcomes', async () => {
       const day1 = new Date('2024-01-01T10:00:00Z')
 
-      vi.mocked(db.getTags).mockResolvedValue([
-        { external_id: 't1', source: 'manual' as const, start_time: day1, tag: 'gym' },
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+        { external_id: 't1', source: 'manual' as const, start_time: day1, activity_type: 'gym' },
       ])
 
       const result = await getEventProbability(
@@ -383,12 +381,12 @@ describe('correlations service', () => {
         const day2 = new Date(now.getTime() - 9 * 24 * 60 * 60 * 1000) // 9 days ago
         day2.setHours(10, 0, 0, 0)
 
-        vi.mocked(db.getTags).mockResolvedValue([
-          { external_id: 't1', source: 'manual' as const, start_time: day1, tag: 'meditation' },
-          { external_id: 't2', source: 'manual' as const, start_time: day2, tag: 'meditation' },
-          { external_id: 'o1', source: 'manual' as const, start_time: day1Later, tag: 'fatcoffee' },
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+          { external_id: 't1', source: 'manual' as const, start_time: day1, activity_type: 'meditation' },
+          { external_id: 't2', source: 'manual' as const, start_time: day2, activity_type: 'meditation' },
+          { external_id: 'o1', source: 'manual' as const, start_time: day1Later, activity_type: 'fatcoffee' },
         ])
-        vi.mocked(db.getActivities).mockResolvedValue([])
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
         vi.mocked(db.getProductivity).mockResolvedValue([])
         vi.mocked(db.getTimeSeries).mockResolvedValue([])
 
@@ -425,7 +423,7 @@ describe('correlations service', () => {
         const week2WeightDay = new Date(week1Day1.getTime() + 11 * 24 * 60 * 60 * 1000)
         week2WeightDay.setHours(8, 0, 0, 0)
 
-        vi.mocked(db.getActivities).mockResolvedValue([
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
           {
             activity_type: 'exercise' as const,
             end_time: new Date(week1Day1.getTime() + 3600000),
@@ -448,7 +446,7 @@ describe('correlations service', () => {
             start_time: week1Day3,
           },
         ])
-        vi.mocked(db.getTags).mockResolvedValue([])
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
         vi.mocked(db.getProductivity).mockResolvedValue([])
         vi.mocked(db.getTimeSeries).mockResolvedValue([
           [week1WeightDay, 80.5],
@@ -502,15 +500,15 @@ describe('correlations service', () => {
             external_id: `fc${i}`,
             source: 'manual' as const,
             start_time: new Date(day.getTime() + 6 * 60 * 60 * 1000), // Morning coffee
-            tag: 'fatcoffee',
+            activity_type: 'fatcoffee',
           })
         }
 
         // Weight measurement after the week
         const weightDay = new Date(baseDate.getTime() + 10 * 24 * 60 * 60 * 1000)
 
-        vi.mocked(db.getActivities).mockResolvedValue(exercises)
-        vi.mocked(db.getTags).mockResolvedValue(tags)
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue(exercises)
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue(tags)
         vi.mocked(db.getProductivity).mockResolvedValue([])
         vi.mocked(db.getTimeSeries).mockResolvedValue([[weightDay, 79.5]] as [Date, number][])
 
@@ -538,7 +536,7 @@ describe('correlations service', () => {
         baseDate.setHours(10, 0, 0, 0)
 
         // Only 2 exercise sessions (need 3)
-        vi.mocked(db.getActivities).mockResolvedValue([
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
           {
             activity_type: 'exercise' as const,
             end_time: new Date(baseDate.getTime() + 3600000),
@@ -561,10 +559,10 @@ describe('correlations service', () => {
             external_id: `fc${i}`,
             source: 'manual' as const,
             start_time: new Date(baseDate.getTime() + i * 24 * 60 * 60 * 1000),
-            tag: 'fatcoffee',
+            activity_type: 'fatcoffee',
           })
         }
-        vi.mocked(db.getTags).mockResolvedValue(tags)
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue(tags)
         vi.mocked(db.getProductivity).mockResolvedValue([])
         vi.mocked(db.getTimeSeries).mockResolvedValue([])
 
@@ -591,10 +589,10 @@ describe('correlations service', () => {
         day1.setHours(7, 0, 0, 0)
         const day1Work = new Date(day1.getTime() + 2 * 60 * 60 * 1000) // 2 hours later (9am)
 
-        vi.mocked(db.getTags).mockResolvedValue([
-          { external_id: 't1', source: 'manual' as const, start_time: day1, tag: 'meditation' },
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+          { external_id: 't1', source: 'manual' as const, start_time: day1, activity_type: 'meditation' },
         ])
-        vi.mocked(db.getActivities).mockResolvedValue([])
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
         vi.mocked(db.getProductivity).mockResolvedValue([
           {
             activity: 'vscode',
@@ -640,7 +638,7 @@ describe('correlations service', () => {
         const baselineWeight = new Date(exerciseDay.getTime() + 11 * 24 * 60 * 60 * 1000)
         baselineWeight.setHours(8, 0, 0, 0)
 
-        vi.mocked(db.getActivities).mockResolvedValue([
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
           {
             activity_type: 'exercise' as const,
             end_time: new Date(exerciseDay.getTime() + 3600000),
@@ -649,7 +647,7 @@ describe('correlations service', () => {
             start_time: exerciseDay,
           },
         ])
-        vi.mocked(db.getTags).mockResolvedValue([])
+        vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
         vi.mocked(db.getProductivity).mockResolvedValue([])
         vi.mocked(db.getTimeSeries).mockResolvedValue([
           [postExerciseWeight, 79.0], // After exercise
