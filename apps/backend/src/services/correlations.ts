@@ -47,6 +47,11 @@ export interface BaselineResult {
     avg30day: number | null
     trend_percent: number | null
   }
+  stress: {
+    avg7day: number | null
+    avg30day: number | null
+    trend_percent: number | null
+  }
   period: {
     start: string
     end: string
@@ -114,6 +119,13 @@ export interface ActivityImpactResult {
     after30min: TimeWindowStats
   }
   hr_timeline: {
+    before30min: TimeWindowStats
+    before15min: TimeWindowStats
+    during: TimeWindowStats
+    after15min: TimeWindowStats
+    after30min: TimeWindowStats
+  }
+  stress_timeline: {
     before30min: TimeWindowStats
     before15min: TimeWindowStats
     during: TimeWindowStats
@@ -458,16 +470,28 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
     return sum / result.count
   }
 
-  // Fetch sleep HRV and resting HR stats in parallel
-  const [hrvAvg7day, hrvAvg30day, hrvAvgPrev30day, hrStats7day, hrStats30day, hrStatsPrev30day] =
-    await Promise.all([
-      getSleepHrvAvg(start7day, end7day),
-      getSleepHrvAvg(start30day, end30day),
-      getSleepHrvAvg(prevStart30day, prevEnd30day),
-      getTimeSeriesStats(user, ['resting_heart_rate'], start7day, end7day),
-      getTimeSeriesStats(user, ['resting_heart_rate'], start30day, end30day),
-      getTimeSeriesStats(user, ['resting_heart_rate'], prevStart30day, prevEnd30day),
-    ])
+  // Fetch sleep HRV, resting HR, and stress stats in parallel
+  const [
+    hrvAvg7day,
+    hrvAvg30day,
+    hrvAvgPrev30day,
+    hrStats7day,
+    hrStats30day,
+    hrStatsPrev30day,
+    stressStats7day,
+    stressStats30day,
+    stressStatsPrev30day,
+  ] = await Promise.all([
+    getSleepHrvAvg(start7day, end7day),
+    getSleepHrvAvg(start30day, end30day),
+    getSleepHrvAvg(prevStart30day, prevEnd30day),
+    getTimeSeriesStats(user, ['resting_heart_rate'], start7day, end7day),
+    getTimeSeriesStats(user, ['resting_heart_rate'], start30day, end30day),
+    getTimeSeriesStats(user, ['resting_heart_rate'], prevStart30day, prevEnd30day),
+    getTimeSeriesStats(user, ['stress_level'], start7day, end7day),
+    getTimeSeriesStats(user, ['stress_level'], start30day, end30day),
+    getTimeSeriesStats(user, ['stress_level'], prevStart30day, prevEnd30day),
+  ])
 
   // Calculate trends
   const hrvTrend =
@@ -478,6 +502,11 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
   const hrTrend =
     hrStats30day[0]?.avg && hrStatsPrev30day[0]?.avg
       ? ((hrStats30day[0].avg - hrStatsPrev30day[0].avg) / hrStatsPrev30day[0].avg) * 100
+      : null
+
+  const stressTrend =
+    stressStats30day[0]?.avg && stressStatsPrev30day[0]?.avg
+      ? ((stressStats30day[0].avg - stressStatsPrev30day[0].avg) / stressStatsPrev30day[0].avg) * 100
       : null
 
   return {
@@ -494,6 +523,11 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
       avg7day: hrStats7day[0]?.avg ? Math.round(hrStats7day[0].avg * 10) / 10 : null,
       avg30day: hrStats30day[0]?.avg ? Math.round(hrStats30day[0].avg * 10) / 10 : null,
       trend_percent: hrTrend !== null ? Math.round(hrTrend * 10) / 10 : null,
+    },
+    stress: {
+      avg7day: stressStats7day[0]?.avg ? Math.round(stressStats7day[0].avg * 10) / 10 : null,
+      avg30day: stressStats30day[0]?.avg ? Math.round(stressStats30day[0].avg * 10) / 10 : null,
+      trend_percent: stressTrend !== null ? Math.round(stressTrend * 10) / 10 : null,
     },
   }
 }
@@ -751,10 +785,11 @@ export async function getActivityImpact(
     ])
   }
 
-  // Fetch HRV/HR data
-  const [hrvData, hrData] = await Promise.all([
+  // Fetch HRV/HR/stress data
+  const [hrvData, hrData, stressData] = await Promise.all([
     getTimeSeries(user, 'hrv_rmssd', start, end),
     getTimeSeries(user, 'heart_rate', start, end),
+    getTimeSeries(user, 'stress_level', start, end),
   ])
 
   // Find activity occurrences based on type
@@ -808,13 +843,13 @@ export async function getActivityImpact(
     }
   }
 
-  // Collect HRV/HR for each time window
+  // Collect HRV/HR/stress for each time window
   const windows = {
-    after15min: { hr: [] as number[], hrv: [] as number[] },
-    after30min: { hr: [] as number[], hrv: [] as number[] },
-    before15min: { hr: [] as number[], hrv: [] as number[] },
-    before30min: { hr: [] as number[], hrv: [] as number[] },
-    during: { hr: [] as number[], hrv: [] as number[] },
+    after15min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
+    after30min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
+    before15min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
+    before30min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
+    during: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
   }
 
   let totalDurationMin = 0
@@ -827,25 +862,30 @@ export async function getActivityImpact(
     const before30End = new Date(occ.startTime.getTime() - (windowMinutes / 2) * 60 * 1000)
     windows.before30min.hrv.push(...getDataInRange(hrvData, before30Start, before30End))
     windows.before30min.hr.push(...getDataInRange(hrData, before30Start, before30End))
+    windows.before30min.stress.push(...getDataInRange(stressData, before30Start, before30End))
 
     // Before 15 min (from -15 to 0)
     const before15Start = new Date(occ.startTime.getTime() - (windowMinutes / 2) * 60 * 1000)
     windows.before15min.hrv.push(...getDataInRange(hrvData, before15Start, occ.startTime))
     windows.before15min.hr.push(...getDataInRange(hrData, before15Start, occ.startTime))
+    windows.before15min.stress.push(...getDataInRange(stressData, before15Start, occ.startTime))
 
     // During
     windows.during.hrv.push(...getDataInRange(hrvData, occ.startTime, occ.endTime))
     windows.during.hr.push(...getDataInRange(hrData, occ.startTime, occ.endTime))
+    windows.during.stress.push(...getDataInRange(stressData, occ.startTime, occ.endTime))
 
     // After 15 min (from end to +15)
     const after15End = new Date(occ.endTime.getTime() + (windowMinutes / 2) * 60 * 1000)
     windows.after15min.hrv.push(...getDataInRange(hrvData, occ.endTime, after15End))
     windows.after15min.hr.push(...getDataInRange(hrData, occ.endTime, after15End))
+    windows.after15min.stress.push(...getDataInRange(stressData, occ.endTime, after15End))
 
     // After 30 min (from +15 to +30)
     const after30End = new Date(occ.endTime.getTime() + windowMinutes * 60 * 1000)
     windows.after30min.hrv.push(...getDataInRange(hrvData, after15End, after30End))
     windows.after30min.hr.push(...getDataInRange(hrData, after15End, after30End))
+    windows.after30min.stress.push(...getDataInRange(stressData, after15End, after30End))
   }
 
   const calculateWindowStats = (values: number[]): TimeWindowStats => ({
@@ -873,6 +913,13 @@ export async function getActivityImpact(
       during: calculateWindowStats(windows.during.hrv),
     },
     occurrences: occurrences.length,
+    stress_timeline: {
+      after15min: calculateWindowStats(windows.after15min.stress),
+      after30min: calculateWindowStats(windows.after30min.stress),
+      before15min: calculateWindowStats(windows.before15min.stress),
+      before30min: calculateWindowStats(windows.before30min.stress),
+      during: calculateWindowStats(windows.during.stress),
+    },
   }
 }
 

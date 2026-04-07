@@ -73,7 +73,7 @@ describe('correlations service', () => {
           unit: 'ms',
         }) // previous 30-day sleep HRV (avg = 43.0)
 
-      // Mock resting HR stats (3 calls: 7-day, 30-day, prev-30)
+      // Mock resting HR stats (3 calls: 7-day, 30-day, prev-30) and stress stats (3 calls)
       vi.mocked(db.getTimeSeriesStats)
         .mockResolvedValueOnce([
           { avg: 60.3, count: 100, max: 70, metric: 'resting_heart_rate', min: 52, stddev: 3, unit: 'bpm' },
@@ -84,6 +84,15 @@ describe('correlations service', () => {
         .mockResolvedValueOnce([
           { avg: 62.5, count: 400, max: 73, metric: 'resting_heart_rate', min: 51, stddev: 4, unit: 'bpm' },
         ]) // previous 30-day HR
+        .mockResolvedValueOnce([
+          { avg: 35.2, count: 100, max: 80, metric: 'stress_level', min: 10, stddev: 12, unit: '' },
+        ]) // 7-day stress
+        .mockResolvedValueOnce([
+          { avg: 37.5, count: 400, max: 85, metric: 'stress_level', min: 8, stddev: 14, unit: '' },
+        ]) // 30-day stress
+        .mockResolvedValueOnce([
+          { avg: 40.0, count: 400, max: 90, metric: 'stress_level', min: 12, stddev: 15, unit: '' },
+        ]) // previous 30-day stress
 
       const result = await getBaseline('testuser')
 
@@ -98,10 +107,13 @@ describe('correlations service', () => {
       expect(result.hrv.avg30day).toBe(44.2) // (42 + 46.4) / 2
       expect(result.resting_hr.avg7day).toBe(60.3)
       expect(result.resting_hr.avg30day).toBe(61.1)
+      expect(result.stress.avg7day).toBe(35.2)
+      expect(result.stress.avg30day).toBe(37.5)
 
       // Verify trends are calculated (30-day vs previous 30-day)
       expect(result.hrv.trend_percent).not.toBeNull()
       expect(result.resting_hr.trend_percent).not.toBeNull()
+      expect(result.stress.trend_percent).not.toBeNull()
       expect(result.period.start).toBeDefined()
       expect(result.period.end).toBeDefined()
     })
@@ -119,6 +131,8 @@ describe('correlations service', () => {
       expect(result.hrv.avg30day).toBeNull()
       expect(result.resting_hr.avg7day).toBeNull()
       expect(result.resting_hr.avg30day).toBeNull()
+      expect(result.stress.avg7day).toBeNull()
+      expect(result.stress.avg30day).toBeNull()
     })
 
     test('uses reference date when provided', async () => {
@@ -136,10 +150,10 @@ describe('correlations service', () => {
       expect(metric).toBe('hrv_sleep')
       expect(endDate.toISOString().split('T')[0]).toBe('2024-01-15')
 
-      // getTimeSeriesStats called for resting HR with dates from reference date
-      expect(db.getTimeSeriesStats).toHaveBeenCalled()
-      const hrCalls = vi.mocked(db.getTimeSeriesStats).mock.calls
-      const [, , , hrEndDate] = hrCalls[0]
+      // getTimeSeriesStats called for resting HR and stress with dates from reference date
+      expect(db.getTimeSeriesStats).toHaveBeenCalledTimes(6) // 3 for HR + 3 for stress
+      const statsCalls = vi.mocked(db.getTimeSeriesStats).mock.calls
+      const [, , , hrEndDate] = statsCalls[0]
       expect(new Date(hrEndDate).toISOString().split('T')[0]).toBe('2024-01-15')
     })
   })
@@ -253,9 +267,13 @@ describe('correlations service', () => {
       expect(result.occurrences).toBe(1)
       expect(result.hrv_timeline).toBeDefined()
       expect(result.hr_timeline).toBeDefined()
+      expect(result.stress_timeline).toBeDefined()
       expect(result.hrv_timeline.before30min).toBeDefined()
       expect(result.hrv_timeline.during).toBeDefined()
       expect(result.hrv_timeline.after30min).toBeDefined()
+      expect(result.stress_timeline.before30min).toBeDefined()
+      expect(result.stress_timeline.during).toBeDefined()
+      expect(result.stress_timeline.after30min).toBeDefined()
     })
 
     test('returns zero occurrences when no matching tags', async () => {

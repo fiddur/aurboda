@@ -73,6 +73,11 @@ export const baselineDataSchema = z
       avg30day: z.number().nullable(),
       trend_percent: z.number().nullable(),
     }),
+    stress: z.object({
+      avg7day: z.number().nullable(),
+      avg30day: z.number().nullable(),
+      trend_percent: z.number().nullable().meta({ description: 'Change from previous 30-day period' }),
+    }),
   })
   .meta({ id: 'BaselineData' })
 
@@ -222,6 +227,13 @@ export const activityImpactDataSchema = z
       during: timeWindowStatsSchema,
     }),
     occurrences: z.number().int().meta({ description: 'Number of activity occurrences found' }),
+    stress_timeline: z.object({
+      after15min: timeWindowStatsSchema,
+      after30min: timeWindowStatsSchema,
+      before15min: timeWindowStatsSchema,
+      before30min: timeWindowStatsSchema,
+      during: timeWindowStatsSchema,
+    }),
   })
   .meta({ id: 'ActivityImpactData' })
 
