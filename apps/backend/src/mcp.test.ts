@@ -644,7 +644,8 @@ describe('MCP Server', () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
-      vi.mocked(queries.queryProductivity).mockResolvedValue([
+      vi.mocked(queries.queryProductivity).mockResolvedValue({
+        data: [
         {
           activity: 'Visual Studio Code',
           category: 'Software Development',
@@ -663,7 +664,8 @@ describe('MCP Server', () => {
           productivity: -2,
           start_time: '2024-01-15T17:30:00Z',
         },
-      ])
+      ],
+      })
 
       const response = await callTool(app, token, 'query_productivity', {
         end: '2024-01-31T23:59:59Z',

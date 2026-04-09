@@ -171,8 +171,8 @@ Use cases:
     'Query productivity data (from RescueTime) for a time range. Returns application/website usage with productivity scores.',
     { ...timeRangeQuerySchema.shape, tz: tzSchema },
     async ({ end, start, tz }) => {
-      const productivity = await queryProductivity(user, new Date(start), new Date(end), sync)
-      return tzJsonResponse({ data: productivity, success: true }, tz)
+      const result = await queryProductivity(user, new Date(start), new Date(end), sync)
+      return tzJsonResponse({ data: result.data, success: true }, tz)
     },
   )
 

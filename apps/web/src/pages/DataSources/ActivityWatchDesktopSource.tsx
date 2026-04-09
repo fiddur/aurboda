@@ -21,7 +21,7 @@ export function ActivityWatchDesktopSource() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const awProductivity = (productivityQuery.data ?? []).filter(
+  const awProductivity = (productivityQuery.data?.records ?? []).filter(
     (r) => r.source === 'activitywatch' && !r.is_mobile,
   )
   const hasData = awProductivity.length > 0
