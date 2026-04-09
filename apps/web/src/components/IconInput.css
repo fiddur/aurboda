@@ -4,6 +4,7 @@
   border: 1px solid var(--border-color, #ccc);
   border-radius: 4px;
   background: var(--bg-secondary, #f5f5f5);
+  color: var(--text-color, #222);
   cursor: pointer;
   white-space: nowrap;
 }
