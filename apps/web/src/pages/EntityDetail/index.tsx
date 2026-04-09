@@ -2,12 +2,12 @@
  * Entity detail page — shows an activity, tag, productivity record, or metric data point
  * with notes and action buttons (delete / restore).
  *
- * Activities dispatch to type-specific detail components:
- * - sleep/nap -> SleepDetail (hypnogram, Oura metrics, HR/HRV)
- * - exercise  -> ExerciseDetail (HR chart, HR zones)
- * - other     -> generic ActivityDetail (HR/HRV chart)
+ * Activity detail is data-driven: features are shown based on what data exists
+ * (sleep stages, HR zones, exercise type) rather than hard-coded by display_category.
  */
+import { exerciseTypeNames, getExerciseTypeName as getExerciseTypeNameFromValue } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { format } from 'date-fns'
 import { useRoute } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
@@ -16,7 +16,9 @@ import type { Activity, ActivityTypeDefinition, ExerciseTypeName, SourceRecord }
 import {
   fetchActivityById,
   fetchActivityTypeDefinitions,
+  fetchBucketedMetrics,
   fetchItemIcons,
+  fetchMetricTimeSeries,
   fetchProductivityById,
   fetchScreentimeCategories,
   updateActivity,
@@ -26,14 +28,21 @@ import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
-import { ExerciseDetail, resolveExerciseType } from './ExerciseDetail'
 import { formatDateTimeLocal, formatTime } from './format-utils'
 import { MergePanel } from './MergePanel'
 import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
-import { SleepDetail } from './SleepDetail'
+import {
+  computeSleepMinutesFromStages,
+  formatMinutesAsHM,
+  OURA_METRIC_LABELS,
+  OURA_METRIC_UNITS,
+  OURA_SLEEP_METRICS,
+  type OuraSleepMetricKey,
+  parseSleepStages,
+} from './sleep-utils'
 import './style.css'
 
 const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
@@ -54,8 +63,104 @@ const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
   </div>
 )
 
-/** Generic activity detail for types other than sleep/exercise. */
-const GenericActivityDetail = ({
+// ── Exercise helpers ──────────────────────────────────────────────────────────
+
+const formatExerciseTypeName = (name: string): string => name.replaceAll('_', ' ')
+
+/** Resolve exercise type name from activity data (supports both string name and numeric HC value). */
+export const resolveExerciseType = (activity: Activity): string | undefined => {
+  const data = activity.data as Record<string, unknown> | undefined
+  return (
+    (data?.exerciseTypeName as string | undefined) ??
+    (typeof data?.exerciseType === 'number' ? getExerciseTypeNameFromValue(data.exerciseType) : undefined)
+  )
+}
+
+// ── HR Zone Bar ───────────────────────────────────────────────────────────────
+
+const hrZoneLabels = ['Rest', 'Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 'Zone 5']
+const hrZoneColors = ['#22c55e', '#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444']
+
+const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
+  const total = Object.values(zones).reduce((s, v) => s + v, 0)
+  if (total <= 0) return null
+
+  return (
+    <div class="hr-zones-detail">
+      <h3>HR Zones</h3>
+      <div class="hr-zone-visual-bar">
+        {[0, 1, 2, 3, 4, 5].map((z) => {
+          const secs = zones[z] ?? 0
+          const pct = (secs / total) * 100
+          if (pct <= 0) return null
+          return (
+            <span
+              key={z}
+              class="hr-zone-segment"
+              style={{ background: hrZoneColors[z], width: `${pct}%` }}
+              title={`${hrZoneLabels[z]}: ${Math.round(secs / 60)}m`}
+            />
+          )
+        })}
+      </div>
+      <div class="hr-zone-legend">
+        {[0, 1, 2, 3, 4, 5].map((z) => {
+          const secs = zones[z] ?? 0
+          if (secs <= 0) return null
+          return (
+            <span key={z} class="hr-zone-entry">
+              <span class="hr-zone-dot" style={{ background: hrZoneColors[z] }} />
+              {hrZoneLabels[z]}: {Math.round(secs / 60)}m
+            </span>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Oura Sleep Metrics ────────────────────────────────────────────────────────
+
+const extractOuraMetrics = (
+  buckets: Array<{ metrics: Record<string, { avg: number }> }>,
+): Partial<Record<OuraSleepMetricKey, number>> => {
+  const result: Partial<Record<OuraSleepMetricKey, number>> = {}
+  for (const bucket of buckets) {
+    for (const [metric, stats] of Object.entries(bucket.metrics)) {
+      if (OURA_SLEEP_METRICS.includes(metric as OuraSleepMetricKey)) {
+        result[metric as OuraSleepMetricKey] = stats.avg
+      }
+    }
+  }
+  return result
+}
+
+const OuraMetricsCards = ({ metrics }: { metrics: Partial<Record<OuraSleepMetricKey, number>> }) => (
+  <div class="detail-section">
+    <h3>Oura Sleep Metrics</h3>
+    <div class="metric-cards">
+      {OURA_SLEEP_METRICS.map((key) => {
+        const value = metrics[key]
+        if (value === undefined) return null
+        return (
+          <div class="metric-card" key={key}>
+            <div class="metric-card-label">{OURA_METRIC_LABELS[key]}</div>
+            <div class="metric-card-value">
+              {Math.round(value)}
+              {OURA_METRIC_UNITS[key] && <span class="metric-card-unit">{OURA_METRIC_UNITS[key]}</span>}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  </div>
+)
+
+// ── Unified Activity Detail ──────────────────────────────────────────────────
+
+/** Data-driven activity detail: shows features based on what data exists, not display_category. */
+// eslint-disable-next-line complexity -- unified component replaces 3 separate ones
+const ActivityDetailContent = ({
   activity,
   isEditing,
   draft,
@@ -71,76 +176,70 @@ const GenericActivityDetail = ({
   typeDefinitions?: ActivityTypeDefinition[]
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
-  const displayEnd = activity.merged_end_time ?? activity.end_time
+  const displayEnd =
+    activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
+  const musicStart = displayStart
+  const musicEnd = displayEnd
+  const hasSourceRecords = activity.source_records && activity.source_records.length > 1
+
+  // Resolve type info
   const exerciseType = resolveExerciseType(activity)
   const typeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
-  const typeIcon = typeDef?.icon ?? resolveItemIcon(`activity:${activity.activity_type}`, itemIcons)
-  const typeDisplayName = typeDef?.display_name ?? toDisplayName(activity.activity_type)
+  const exerciseSubType = (activity.data as Record<string, unknown> | undefined)?.activity_type_key as
+    | string
+    | undefined
+  const subTypeDef = exerciseSubType ? typeDefinitions?.find((d) => d.name === exerciseSubType) : undefined
+  const typeDisplayName = exerciseType
+    ? formatExerciseTypeName(exerciseType)
+    : (typeDef?.display_name ?? toDisplayName(activity.activity_type))
 
-  return (
-    <div class="entity-info">
-      <div class="entity-meta">
-        <a href={`/activity-type/${activity.activity_type}`} class="entity-type-badge">
-          {typeDisplayName}
-        </a>
-        {activity.source && <span class="entity-source">Source: {activity.source}</span>}
-      </div>
+  // Resolve icon: exercise sub-type → exercise icon key → type def → activity icon
+  const exerciseDisplayName = exerciseType ? formatExerciseTypeName(exerciseType) : undefined
+  const exerciseIconKey = exerciseDisplayName ? `exercise:${exerciseDisplayName}` : undefined
+  const icon =
+    (exerciseIconKey && resolveItemIcon(exerciseIconKey, itemIcons)) ??
+    subTypeDef?.icon ??
+    typeDef?.icon ??
+    resolveItemIcon(`activity:${activity.activity_type}`, itemIcons)
 
-      <EditableActivityFields
-        title={activity.title || exerciseType || typeDisplayName}
-        displayStart={displayStart}
-        displayEnd={displayEnd}
-        notes={activity.notes}
-        isEditing={isEditing}
-        draft={draft}
-        onDraftChange={onDraftChange}
-        typeDefinitions={typeDefinitions}
-        icon={typeIcon}
-        titleHref={`/activity-type/${activity.activity_type}`}
-      />
+  // Data-driven: what exists on this activity?
+  const stages = parseSleepStages(activity.data as Record<string, unknown> | undefined)
+  const hasSleepStages = stages.length > 0
+  const hrZoneSecs = activity.hr_zone_secs as Record<number, number> | undefined
+  const hasHrZones = hrZoneSecs && Object.values(hrZoneSecs).some((v) => v > 0)
+  const sleepMinutes = activity.total_sleep ?? (hasSleepStages ? computeSleepMinutesFromStages(stages) : undefined)
+  const hasEndTime = Boolean(activity.end_time || activity.merged_end_time)
+  const hasExerciseType = Boolean(exerciseType)
 
-      {!isEditing && activity.avg_hrv !== undefined && (
-        <div class="entity-fields">
-          <div class="field-row">
-            <span class="field-label">Avg HRV</span>
-            <span class="field-value">{activity.avg_hrv} ms</span>
-          </div>
-        </div>
-      )}
+  // Oura sleep metrics (only fetch when sleep stages exist)
+  const endDateStr = hasSleepStages ? format(displayEnd, 'yyyy-MM-dd') : ''
+  const ouraQuery = useQuery({
+    enabled: hasSleepStages,
+    queryFn: () => {
+      const dayStart = new Date(`${endDateStr}T00:00:00`)
+      const dayEnd = new Date(`${endDateStr}T23:59:59`)
+      return fetchBucketedMetrics(dayStart, dayEnd, [...OURA_SLEEP_METRICS], '1d')
+    },
+    queryKey: ['detail-oura-sleep', endDateStr],
+    staleTime: 5 * 60 * 1000,
+  })
+  const ouraMetrics = hasSleepStages ? extractOuraMetrics(ouraQuery.data?.buckets ?? []) : {}
+  const hasOuraMetrics = Object.keys(ouraMetrics).length > 0
 
-      {displayEnd && (
-        <ActivityChart start={displayStart} end={displayEnd} defaultMetrics={['heart_rate', 'hrv_rmssd']} />
-      )}
-    </div>
-  )
-}
+  // Active calories (only fetch when exercise type exists)
+  const caloriesQuery = useQuery({
+    enabled: hasExerciseType && hasEndTime,
+    queryFn: () => fetchMetricTimeSeries('calories_active', displayStart, displayEnd),
+    queryKey: ['detail-calories', displayStart.toISOString(), displayEnd.toISOString()],
+    staleTime: 5 * 60 * 1000,
+  })
+  const totalCalories =
+    hasExerciseType && caloriesQuery.data && caloriesQuery.data.length > 0
+      ? Math.round(caloriesQuery.data.reduce((sum, [, val]) => sum + val, 0))
+      : undefined
 
-/** Dispatch to type-specific activity detail component. */
-const ActivityDetailDispatch = ({
-  activity,
-  isEditing,
-  draft,
-  onDraftChange,
-  itemIcons,
-  typeDefinitions,
-}: {
-  activity: Activity
-  isEditing: boolean
-  draft: ActivityDraft
-  onDraftChange: (d: ActivityDraft) => void
-  itemIcons: Record<string, string>
-  typeDefinitions?: ActivityTypeDefinition[]
-}) => {
-  const musicStart = activity.merged_start_time ?? activity.start_time
-  const musicEnd =
-    activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
-
-  // Use display_category from type definitions to decide which detail component to show
-  const typeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
-  const displayCategory = typeDef?.display_category ?? 'other'
-  const isSleep = displayCategory === 'sleep_rest'
-  const isExercise = displayCategory === 'exercise'
-  const hasSourceRecords = activity.source_records && activity.source_records.length > 1
+  // Badge link: exercise sub-type or activity type
+  const badgeHref = `/activity-type/${encodeURIComponent(exerciseType ?? activity.activity_type)}`
 
   return (
     <>
@@ -148,35 +247,105 @@ const ActivityDetailDispatch = ({
         <div class="merged-indicator">Merged from {activity.source_records!.length} sources</div>
       )}
 
-      {isSleep && (
-        <SleepDetail
-          activity={activity}
+      <div class="entity-info">
+        <div class="entity-meta">
+          <a href={badgeHref} class="entity-type-badge">
+            {typeDisplayName}
+          </a>
+          {activity.source && <span class="entity-source">Source: {activity.source}</span>}
+        </div>
+
+        <EditableActivityFields
+          title={activity.title || exerciseDisplayName || typeDisplayName}
+          displayStart={displayStart}
+          displayEnd={displayEnd}
+          notes={activity.notes}
           isEditing={isEditing}
           draft={draft}
           onDraftChange={onDraftChange}
-          itemIcons={itemIcons}
           typeDefinitions={typeDefinitions}
+          icon={icon}
+          durationLabel={hasSleepStages ? 'In Bed' : undefined}
         />
-      )}
-      {isExercise && (
-        <ExerciseDetail
-          activity={activity}
-          isEditing={isEditing}
-          draft={draft}
-          onDraftChange={onDraftChange}
-          itemIcons={itemIcons}
-          typeDefinitions={typeDefinitions}
-        />
-      )}
-      {!isSleep && !isExercise && (
-        <GenericActivityDetail
-          activity={activity}
-          isEditing={isEditing}
-          draft={draft}
-          onDraftChange={onDraftChange}
-          itemIcons={itemIcons}
-          typeDefinitions={typeDefinitions}
-        />
+
+        {/* Exercise type selector (edit mode, when exercise type data exists) */}
+        {isEditing && hasExerciseType && (
+          <div class="entity-fields" style={{ marginTop: '0.5rem' }}>
+            <div class="field-row">
+              <span class="field-label">Exercise Type</span>
+              <span class="field-value">
+                <select
+                  class="edit-datetime-input"
+                  value={draft.exercise_type ?? exerciseType ?? ''}
+                  onChange={(e) => onDraftChange({ ...draft, exercise_type: (e.target as HTMLSelectElement).value })}
+                >
+                  <option value="">-- Select --</option>
+                  {exerciseTypeNames.map((name) => (
+                    <option key={name} value={name}>
+                      {formatExerciseTypeName(name)}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Read-only stats — shown based on data presence, not activity type */}
+        {!isEditing && (
+          <>
+            {hasExerciseType && (
+              <div class="entity-fields">
+                <div class="field-row">
+                  <span class="field-label">Exercise Type</span>
+                  <span class="field-value">
+                    <a href={badgeHref} class="entity-meta-link">
+                      {formatExerciseTypeName(exerciseType!)}
+                    </a>
+                  </span>
+                </div>
+              </div>
+            )}
+            {totalCalories !== undefined && (
+              <div class="entity-fields">
+                <div class="field-row">
+                  <span class="field-label">Active Calories</span>
+                  <span class="field-value">{totalCalories} kcal</span>
+                </div>
+              </div>
+            )}
+            {sleepMinutes !== undefined && (
+              <div class="entity-fields">
+                <div class="field-row">
+                  <span class="field-label">Asleep</span>
+                  <span class="field-value">{formatMinutesAsHM(sleepMinutes)}</span>
+                </div>
+              </div>
+            )}
+            {activity.avg_hrv !== undefined && (
+              <div class="entity-fields">
+                <div class="field-row">
+                  <span class="field-label">Avg HRV</span>
+                  <span class="field-value">{activity.avg_hrv} ms</span>
+                </div>
+              </div>
+            )}
+            {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
+          </>
+        )}
+      </div>
+
+      {hasOuraMetrics && <OuraMetricsCards metrics={ouraMetrics} />}
+
+      {hasEndTime && (
+        <div class="detail-grid-full">
+          <ActivityChart
+            start={displayStart}
+            end={displayEnd}
+            stages={hasSleepStages ? stages : undefined}
+            defaultMetrics={['heart_rate', 'hrv_rmssd']}
+          />
+        </div>
       )}
 
       {hasSourceRecords && <SourceRecordsSection records={activity.source_records!} />}
@@ -323,7 +492,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         onStartMerging={!activity.deleted_at && !isMergedActivity ? () => setIsMerging(true) : undefined}
       />
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
-      <ActivityDetailDispatch
+      <ActivityDetailContent
         activity={activity}
         isEditing={isEditing}
         draft={draft}

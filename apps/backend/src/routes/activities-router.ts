@@ -68,8 +68,8 @@ import { computeHrZoneSecs, getEffectiveHrZones } from '../services/settings.ts'
 import { typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-/** Compute HR zone seconds and avg HRV for an exercise activity time range. */
-const computeExerciseMetrics = async (
+/** Compute HR zone seconds and avg HRV for any activity time range. */
+const computeActivityMetrics = async (
   user: string,
   start: Date,
   end: Date,
@@ -95,7 +95,7 @@ type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 const buildMergedResponse = async (
   user: string,
   activity: NonNullable<ActivityRow>,
-  exerciseMetrics: { hr_zone_secs?: HrZoneSecs; avg_hrv?: number },
+  activityMetrics: { hr_zone_secs?: HrZoneSecs; avg_hrv?: number },
 ) => {
   const overlapping = await getOverlappingActivities(user, activity)
   const hasMultipleSources = overlapping.length > 1
@@ -134,10 +134,10 @@ const buildMergedResponse = async (
     {},
   )
 
-  // For merged exercise, recompute HR zones using full merged time range
-  let metrics = exerciseMetrics
-  if (activity.activity_type === 'exercise' && mergedStartTime && mergedEndTime) {
-    metrics = await computeExerciseMetrics(user, new Date(mergedStartTime), new Date(mergedEndTime))
+  // For merged activities, recompute HR zones using full merged time range
+  let metrics = activityMetrics
+  if (mergedStartTime && mergedEndTime) {
+    metrics = await computeActivityMetrics(user, new Date(mergedStartTime), new Date(mergedEndTime))
   }
 
   return {
@@ -473,15 +473,15 @@ export const createActivitiesRouter = (
       return res.status(404).json({ error: 'Activity not found', success: false })
     }
 
-    // Compute HR zones and avg HRV for exercise activities
-    let exerciseMetrics: { hr_zone_secs?: HrZoneSecs; avg_hrv?: number } = {}
-    if (activity.activity_type === 'exercise' && activity.end_time) {
-      exerciseMetrics = await computeExerciseMetrics(user, activity.start_time, activity.end_time)
+    // Compute HR zones and avg HRV for any activity with a time range
+    let activityMetrics: { hr_zone_secs?: HrZoneSecs; avg_hrv?: number } = {}
+    if (activity.end_time) {
+      activityMetrics = await computeActivityMetrics(user, activity.start_time, activity.end_time)
     }
 
     // For merged: prefix, fetch overlapping activities and return merged view
     if (isMerged && !activity.deleted_at) {
-      const data = await buildMergedResponse(user, activity, exerciseMetrics)
+      const data = await buildMergedResponse(user, activity, activityMetrics)
       return res.json({ data, success: true })
     }
 
@@ -489,11 +489,11 @@ export const createActivitiesRouter = (
     res.json({
       data: {
         activity_type: activity.activity_type,
-        avg_hrv: exerciseMetrics.avg_hrv,
+        avg_hrv: activityMetrics.avg_hrv,
         data: activity.data,
         deleted_at: activity.deleted_at?.toISOString(),
         end_time: activity.end_time?.toISOString(),
-        hr_zone_secs: exerciseMetrics.hr_zone_secs,
+        hr_zone_secs: activityMetrics.hr_zone_secs,
         id: activity.id,
         notes: activity.notes,
         source: activity.source,
