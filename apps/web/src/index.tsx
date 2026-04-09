@@ -98,7 +98,6 @@ export function App() {
               <Route path="/data-sources/owntracks" component={OwnTracksSource} />
               <Route path="/data-sources/calendars" component={CalendarsSource} />
               <Route path="/activity-types" component={ActivityTypes} />
-              <Route path="/deduction-rules/new" component={DeductionRuleDetail} />
               <Route path="/deduction-rules/:id" component={DeductionRuleDetail} />
               <Route path="/deduction-rules" component={DeductionRules} />
               <Route path="/screentime-categories/:id" component={CategoryDetail} />
