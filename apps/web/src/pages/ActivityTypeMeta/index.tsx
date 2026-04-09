@@ -411,6 +411,48 @@ function MergeActivityTypeSection({
   )
 }
 
+function resolveTypeDef(typeDef: ActivityTypeDefinition | undefined, name: string) {
+  const displayName = typeDef?.display_name ?? toDisplayName(name)
+  const icon = typeDef?.icon ?? ''
+  const color = typeDef?.color ?? '#6b7280'
+  const category = typeDef?.display_category ?? 'other'
+  const showOnTimeline = typeDef?.show_on_timeline ?? true
+  const isDuration = DURATION_CATEGORIES.has(category)
+  return { displayName, icon, color, category, showOnTimeline, isDuration }
+}
+
+function ActivityTypeHeader({
+  name,
+  displayName,
+  icon,
+  color,
+  category,
+}: {
+  name: string
+  displayName: string
+  icon: string
+  color: string
+  category: string
+}) {
+  return (
+    <div class="activity-type-meta-header">
+      <div class="activity-type-meta-title-row">
+        {icon ? (
+          <IconPreview icon={icon} size={32} />
+        ) : (
+          <span class="activity-type-meta-icon-placeholder">?</span>
+        )}
+        <h1>{displayName}</h1>
+      </div>
+      <div class="activity-type-meta-badges">
+        <span class="activity-type-meta-category-badge">{toDisplayName(category)}</span>
+        <span class="activity-type-meta-color-dot" style={{ background: color }} />
+        {name !== displayName && <span class="activity-type-meta-name-muted">{name}</span>}
+      </div>
+    </div>
+  )
+}
+
 export function ActivityTypeMeta() {
   const { params } = useRoute()
   const name = decodeURIComponent(params.name as string)
@@ -422,36 +464,24 @@ export function ActivityTypeMeta() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const typeDef: ActivityTypeDefinition | undefined = definitions?.find((d) => d.name === name)
-  const displayName = typeDef?.display_name ?? toDisplayName(name)
-  const icon = typeDef?.icon ?? ''
-  const color = typeDef?.color ?? '#6b7280'
-  const category = typeDef?.display_category ?? 'other'
-  const isDuration = DURATION_CATEGORIES.has(category)
+  const typeDef = definitions?.find((d) => d.name === name)
+  const { displayName, icon, color, category, showOnTimeline, isDuration } = resolveTypeDef(typeDef, name)
 
   return (
     <div class="activity-type-meta-page">
-      <div class="activity-type-meta-header">
-        <div class="activity-type-meta-title-row">
-          {icon ? (
-            <IconPreview icon={icon} size={32} />
-          ) : (
-            <span class="activity-type-meta-icon-placeholder">?</span>
-          )}
-          <h1>{displayName}</h1>
-        </div>
-        <div class="activity-type-meta-badges">
-          <span class="activity-type-meta-category-badge">{toDisplayName(category)}</span>
-          <span class="activity-type-meta-color-dot" style={{ background: color }} />
-          {name !== displayName && <span class="activity-type-meta-name-muted">{name}</span>}
-        </div>
-      </div>
+      <ActivityTypeHeader
+        name={name}
+        displayName={displayName}
+        icon={icon}
+        color={color}
+        category={category}
+      />
 
       <SettingsSection
         name={name}
         currentIcon={icon}
         currentDisplayName={displayName}
-        showOnTimeline={typeDef?.show_on_timeline ?? true}
+        showOnTimeline={showOnTimeline}
       />
 
       <section class="activity-type-meta-section">
