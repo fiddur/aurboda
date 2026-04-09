@@ -33,7 +33,7 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
   const router = typedRouter()
 
   // GET / - List all categories
-  router.get<Record<string, string>, { success: boolean; data: unknown[] }>(
+  router.get<Record<string, never>, { success: boolean; data: unknown[] }>(
     '/',
     authMiddleware,
     async (req, res) => {
@@ -59,7 +59,7 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
   )
 
   // POST / - Create a category
-  router.post<Record<string, string>, { success: boolean; data: unknown }>(
+  router.post<Record<string, never>, { success: boolean; data: unknown }>(
     '/',
     authMiddleware,
     validateBody(createScreentimeCategoryBodySchema),
@@ -146,7 +146,7 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
   )
 
   // POST /import-activitywatch - Import categories from ActivityWatch
-  router.post<Record<string, string>, { success: boolean; data?: unknown; error?: string }>(
+  router.post<Record<string, never>, { success: boolean; data?: unknown; error?: string }>(
     '/import-activitywatch',
     authMiddleware,
     validateBody(importAwCategoriesBodySchema),
@@ -173,7 +173,7 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
   )
 
   // POST /recategorize - Force full recategorization
-  router.post<Record<string, string>, { success: boolean; records_updated?: number; error?: string }>(
+  router.post<Record<string, never>, { success: boolean; records_updated?: number; error?: string }>(
     '/recategorize',
     authMiddleware,
     async (req, res) => {
@@ -193,7 +193,7 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
   )
 
   // GET /defaults - Get default category suggestions
-  router.get<Record<string, string>, { success: boolean; data: unknown[] }>(
+  router.get<Record<string, never>, { success: boolean; data: unknown[] }>(
     '/defaults',
     authMiddleware,
     async (_req, res) => {

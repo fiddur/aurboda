@@ -38,7 +38,7 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
   const router = typedRouter()
 
   // GET /locations - Query location data for a time range
-  router.get<Record<string, string>, LocationsResponse, unknown, LocationsQuery>(
+  router.get<Record<string, never>, LocationsResponse, unknown, LocationsQuery>(
     '/',
     authMiddleware,
     validateQuery(locationsQuerySchema),
@@ -52,13 +52,13 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
   )
 
   // GET /locations/named - List all named locations
-  router.get<Record<string, string>, NamedLocationsResponse>('/named', authMiddleware, async (req, res) => {
+  router.get<Record<string, never>, NamedLocationsResponse>('/named', authMiddleware, async (req, res) => {
     const locations = await getNamedLocations(req.user!)
     res.json({ data: locations, success: true })
   })
 
   // POST /locations/named - Create a named location
-  router.post<Record<string, string>, AddNamedLocationResponse, AddNamedLocationBody>(
+  router.post<Record<string, never>, AddNamedLocationResponse, AddNamedLocationBody>(
     '/named',
     authMiddleware,
     validateBody(addNamedLocationBodySchema),
@@ -109,7 +109,7 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
   )
 
   // GET /locations/detected - Get computed detected location clusters
-  router.get<Record<string, string>, DetectedLocationsResponse, unknown, DetectedLocationsQuery>(
+  router.get<Record<string, never>, DetectedLocationsResponse, unknown, DetectedLocationsQuery>(
     '/detected',
     authMiddleware,
     validateQuery(detectedLocationsQuerySchema),
@@ -136,7 +136,7 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
   )
 
   // GET /locations/detected/stored - Get stored detected locations with addresses
-  router.get<Record<string, string>, DetectedLocationsResponse>(
+  router.get<Record<string, never>, DetectedLocationsResponse>(
     '/detected/stored',
     authMiddleware,
     async (req, res) => {
@@ -153,7 +153,7 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
   )
 
   // POST /locations/detected/promote - Promote detected location to named
-  router.post<Record<string, string>, AddNamedLocationResponse, PromoteDetectedLocationBody>(
+  router.post<Record<string, never>, AddNamedLocationResponse, PromoteDetectedLocationBody>(
     '/detected/promote',
     authMiddleware,
     validateBody(promoteDetectedLocationBodySchema),

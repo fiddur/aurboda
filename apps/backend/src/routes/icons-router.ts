@@ -48,7 +48,7 @@ export const createIconsRouter = (authMiddleware: RequestHandler): Router => {
   )
 
   // POST /icons — upload an icon
-  router.post<Record<string, string>, { success: boolean; id?: string; url?: string; error?: string }>(
+  router.post<Record<string, never>, { success: boolean; id?: string; url?: string; error?: string }>(
     '/',
     authMiddleware,
     upload.single('icon'),

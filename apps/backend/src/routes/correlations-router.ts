@@ -42,7 +42,7 @@ export const createCorrelationsRouter = (
   const router = typedRouter()
 
   // GET /correlations/baseline - Get HRV baseline statistics
-  router.get<Record<string, string>, BaselineResponse, unknown, BaselineQuery>(
+  router.get<Record<string, never>, BaselineResponse, unknown, BaselineQuery>(
     '/baseline',
     authMiddleware,
     validateQuery(baselineQuerySchema),
@@ -57,7 +57,7 @@ export const createCorrelationsRouter = (
   )
 
   // GET /correlations/hrv-activities - Get HRV correlations with activities
-  router.get<Record<string, string>, HrvActivitiesResponse, unknown, HrvActivitiesQuery>(
+  router.get<Record<string, never>, HrvActivitiesResponse, unknown, HrvActivitiesQuery>(
     '/hrv-activities',
     authMiddleware,
     validateQuery(hrvActivitiesQuerySchema),
@@ -97,7 +97,7 @@ export const createCorrelationsRouter = (
   )
 
   // POST /correlations/event-probability - Get event probability correlation
-  router.post<Record<string, string>, EventProbabilityResponse, EventProbabilityBody>(
+  router.post<Record<string, never>, EventProbabilityResponse, EventProbabilityBody>(
     '/event-probability',
     authMiddleware,
     validateBody(eventProbabilityBodySchema),
@@ -118,7 +118,7 @@ export const createCorrelationsRouter = (
   )
 
   // POST /correlations/generic - Generic correlation analysis
-  router.post<Record<string, string>, GenericCorrelationResponse, GenericCorrelationBody>(
+  router.post<Record<string, never>, GenericCorrelationResponse, GenericCorrelationBody>(
     '/generic',
     authMiddleware,
     validateBody(genericCorrelationBodySchema),

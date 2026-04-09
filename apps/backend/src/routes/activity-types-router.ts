@@ -35,7 +35,7 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
   const router = typedRouter()
 
   // GET / - List all activity type definitions
-  router.get<Record<string, string>, ActivityTypeDefinitionsResponse>(
+  router.get<Record<string, never>, ActivityTypeDefinitionsResponse>(
     '/',
     authMiddleware,
     async (req, res) => {
@@ -46,7 +46,7 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
   )
 
   // POST / - Create a custom activity type
-  router.post<Record<string, string>, ActivityTypeDefinitionResponse, AddActivityTypeDefinitionBody>(
+  router.post<Record<string, never>, ActivityTypeDefinitionResponse, AddActivityTypeDefinitionBody>(
     '/',
     authMiddleware,
     validateBody(addActivityTypeDefinitionBodySchema),
@@ -70,7 +70,7 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
   )
 
   // POST /merge - Merge a custom activity type into another
-  router.post<Record<string, string>, MergeActivityTypeResponse, MergeActivityTypeBody>(
+  router.post<Record<string, never>, MergeActivityTypeResponse, MergeActivityTypeBody>(
     '/merge',
     authMiddleware,
     validateBody(mergeActivityTypeBodySchema),

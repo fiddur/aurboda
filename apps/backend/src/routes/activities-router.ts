@@ -159,7 +159,7 @@ export const createActivitiesRouter = (
   const router = typedRouter()
 
   // GET /activities - Query activities for a time range
-  router.get<Record<string, string>, ActivitiesResponse, unknown, ActivitiesQuery>(
+  router.get<Record<string, never>, ActivitiesResponse, unknown, ActivitiesQuery>(
     '/activities',
     authMiddleware,
     validateQuery(activitiesQuerySchema),
@@ -177,7 +177,7 @@ export const createActivitiesRouter = (
 
   // POST /activities - Add a manual activity
 
-  router.post<Record<string, string>, AddActivityResponse, AddActivityBody>(
+  router.post<Record<string, never>, AddActivityResponse, AddActivityBody>(
     '/activities',
     authMiddleware,
     validateBody(addActivityBodySchema),
@@ -249,7 +249,7 @@ export const createActivitiesRouter = (
   })
 
   router.post<
-    Record<string, string>,
+    Record<string, never>,
     { success: boolean; data?: AddActivityResponse['data'] | AddActivityResponse['data'][]; error?: string }
   >('/activities/upload-fit', authMiddleware, upload.single('fit_file'), async (req, res) => {
     const user = req.user!
@@ -319,7 +319,7 @@ export const createActivitiesRouter = (
   })
 
   // POST /activities/merge - Merge multiple activities into one
-  router.post<Record<string, string>, MergeActivitiesResponse, MergeActivitiesBody>(
+  router.post<Record<string, never>, MergeActivitiesResponse, MergeActivitiesBody>(
     '/activities/merge',
     authMiddleware,
     validateBody(mergeActivitiesBodySchema),
@@ -525,7 +525,7 @@ export const createActivitiesRouter = (
   )
 
   // GET /productivity/bucketed - Get screentime bucketed by time and category
-  router.get<Record<string, string>, ScreentimeBucketedResponse, unknown, ScreentimeBucketedQuery>(
+  router.get<Record<string, never>, ScreentimeBucketedResponse, unknown, ScreentimeBucketedQuery>(
     '/productivity/bucketed',
     authMiddleware,
     validateQuery(screentimeBucketedQuerySchema),
@@ -548,7 +548,7 @@ export const createActivitiesRouter = (
   )
 
   // GET /productivity/apps - Get distinct app names with their categories
-  router.get<Record<string, string>, { success: boolean; data: unknown[] }>(
+  router.get<Record<string, never>, { success: boolean; data: unknown[] }>(
     '/productivity/apps',
     authMiddleware,
     async (req, res) => {
@@ -623,7 +623,7 @@ export const createActivitiesRouter = (
   )
 
   // GET /productivity - Query productivity data for a time range
-  router.get<Record<string, string>, ProductivityResponse, unknown, ProductivityQuery>(
+  router.get<Record<string, never>, ProductivityResponse, unknown, ProductivityQuery>(
     '/productivity',
     authMiddleware,
     validateQuery(productivityQuerySchema),

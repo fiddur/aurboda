@@ -25,7 +25,7 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
   const router = typedRouter()
 
   // GET /notes - Get notes for an entity
-  router.get<Record<string, string>, NotesResponse, unknown, NotesQuery>(
+  router.get<Record<string, never>, NotesResponse, unknown, NotesQuery>(
     '/',
     authMiddleware,
     validateQuery(notesQuerySchema),
@@ -39,7 +39,7 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
   )
 
   // POST /notes - Add a note
-  router.post<Record<string, string>, NoteResponse, AddNoteBody>(
+  router.post<Record<string, never>, NoteResponse, AddNoteBody>(
     '/',
     authMiddleware,
     validateBody(addNoteBodySchema),

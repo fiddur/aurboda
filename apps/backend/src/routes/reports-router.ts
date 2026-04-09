@@ -26,7 +26,7 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
   const router = typedRouter()
 
   // GET /reports - Query reports with optional filters
-  router.get<Record<string, string>, ReportsResponse, unknown, ReportsQuery>(
+  router.get<Record<string, never>, ReportsResponse, unknown, ReportsQuery>(
     '/',
     authMiddleware,
     validateQuery(reportsQuerySchema),
@@ -54,7 +54,7 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
   })
 
   // POST /reports - Create a new report
-  router.post<Record<string, string>, ReportResponse, AddReportBody>(
+  router.post<Record<string, never>, ReportResponse, AddReportBody>(
     '/',
     authMiddleware,
     validateBody(addReportBodySchema),
