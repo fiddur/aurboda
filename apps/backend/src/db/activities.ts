@@ -258,7 +258,7 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
          end_time = EXCLUDED.end_time,
          title = EXCLUDED.title,
          notes = EXCLUDED.notes,
-         data = EXCLUDED.data
+         data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
        WHERE activities.deleted_at IS NULL
        RETURNING id`,
       [
@@ -285,7 +285,7 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
        end_time = EXCLUDED.end_time,
        title = EXCLUDED.title,
        notes = EXCLUDED.notes,
-       data = EXCLUDED.data
+       data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
      WHERE activities.deleted_at IS NULL
      RETURNING id`,
     [
@@ -334,7 +334,7 @@ export const insertActivities = async (user: string, activities: Activity[]) => 
            end_time = EXCLUDED.end_time,
            title = EXCLUDED.title,
            notes = EXCLUDED.notes,
-           data = EXCLUDED.data
+           data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
          WHERE activities.deleted_at IS NULL`,
         values,
       ),
@@ -363,7 +363,7 @@ export const insertActivities = async (user: string, activities: Activity[]) => 
            end_time = EXCLUDED.end_time,
            title = EXCLUDED.title,
            notes = EXCLUDED.notes,
-           data = EXCLUDED.data
+           data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
          WHERE activities.deleted_at IS NULL`,
         values,
       ),
