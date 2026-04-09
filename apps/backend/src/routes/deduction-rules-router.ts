@@ -36,14 +36,12 @@ export const createDeductionRulesRouter = (
 ): Router => {
   const router = typedRouter()
 
-  // GET / - List all deduction rules
   router.get<Record<string, never>, DeductionRulesResponse>('/', authMiddleware, async (req, res) => {
     const user = req.user!
     const rules = await getDeductionRules(user)
     res.json({ data: rules, success: true })
   })
 
-  // POST / - Create a deduction rule
   router.post<Record<string, never>, DeductionRuleResponse, AddDeductionRuleBody>(
     '/',
     authMiddleware,
@@ -81,7 +79,6 @@ export const createDeductionRulesRouter = (
     },
   )
 
-  // PATCH /:id - Update a deduction rule
   router.patch<{ id: string }, DeductionRuleResponse, UpdateDeductionRuleBody>(
     '/:id',
     authMiddleware,
@@ -115,7 +112,6 @@ export const createDeductionRulesRouter = (
     },
   )
 
-  // DELETE /:id - Delete a deduction rule
   router.delete<{ id: string }, DeductionRuleResponse>('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params
     const user = req.user!
@@ -131,7 +127,6 @@ export const createDeductionRulesRouter = (
     res.json({ success: true })
   })
 
-  // POST /evaluate - Manually trigger rule evaluation
   router.post<Record<string, never>, EvaluateDeductionRulesResponse>(
     '/evaluate',
     authMiddleware,

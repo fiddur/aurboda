@@ -34,7 +34,6 @@ import { validateBody } from '../validation.ts'
 export const createActivityTypesRouter = (authMiddleware: RequestHandler): Router => {
   const router = typedRouter()
 
-  // GET / - List all activity type definitions
   router.get<Record<string, never>, ActivityTypeDefinitionsResponse>(
     '/',
     authMiddleware,
@@ -45,7 +44,6 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  // POST / - Create a custom activity type
   router.post<Record<string, never>, ActivityTypeDefinitionResponse, AddActivityTypeDefinitionBody>(
     '/',
     authMiddleware,
@@ -69,7 +67,6 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  // POST /merge - Merge a custom activity type into another
   router.post<Record<string, never>, MergeActivityTypeResponse, MergeActivityTypeBody>(
     '/merge',
     authMiddleware,
@@ -86,7 +83,6 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  // POST /:name/rename - Rename a custom activity type
   router.post<{ name: string }, RenameActivityTypeResponse, RenameActivityTypeBody>(
     '/:name/rename',
     authMiddleware,
@@ -111,7 +107,6 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  // PATCH /:name - Update an activity type definition
   router.patch<{ name: string }, ActivityTypeDefinitionResponse, UpdateActivityTypeDefinitionBody>(
     '/:name',
     authMiddleware,
@@ -130,7 +125,6 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  // DELETE /:name - Delete a custom activity type
   router.delete<{ name: string }, ActivityTypeDefinitionResponse>(
     '/:name',
     authMiddleware,

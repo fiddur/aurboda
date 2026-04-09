@@ -25,7 +25,6 @@ export const createDashboardRouter = (authMiddleware: RequestHandler): Router =>
     res.json({ dashboard, success: true })
   })
 
-  // PUT /dashboard - Replace entire dashboard configuration
   router.put<Record<string, never>, DashboardResponse, UpdateDashboardInput>(
     '/',
     authMiddleware,
@@ -37,7 +36,6 @@ export const createDashboardRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  // POST /dashboard/reset - Reset dashboard to default configuration
   router.post<Record<string, never>, DashboardResponse>('/reset', authMiddleware, async (req, res) => {
     const user = req.user!
     await upsertUserSettings(user, { dashboard: undefined })

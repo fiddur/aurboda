@@ -52,7 +52,6 @@ export const createAdminRouter = (
     },
   )
 
-  // PATCH /admin/settings - Update admin settings
   router.patch<Record<string, never>, AdminSettingsResponse, UpdateAdminSettingsBody>(
     '/settings',
     authMiddleware,
@@ -96,7 +95,6 @@ export const createAdminRouter = (
     },
   )
 
-  // POST /admin/invitations - Create a new invitation
   router.post<Record<string, never>, InvitationResponse, CreateInvitationBody>(
     '/invitations',
     authMiddleware,

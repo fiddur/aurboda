@@ -163,7 +163,6 @@ export const createActivitiesRouter = (
 ): Router => {
   const router = typedRouter()
 
-  // GET /activities - Query activities for a time range
   router.get<Record<string, never>, ActivitiesResponse, unknown, ActivitiesQuery>(
     '/activities',
     authMiddleware,
@@ -179,8 +178,6 @@ export const createActivitiesRouter = (
       res.json({ data: activities, success: true })
     },
   )
-
-  // POST /activities - Add a manual activity
 
   router.post<Record<string, never>, AddActivityResponse, AddActivityBody>(
     '/activities',
@@ -245,8 +242,6 @@ export const createActivitiesRouter = (
       })
     },
   )
-
-  // POST /activities/upload-fit - Import activities from a FIT file
 
   const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 },
@@ -323,7 +318,6 @@ export const createActivitiesRouter = (
     }
   })
 
-  // POST /activities/merge - Merge multiple activities into one
   router.post<Record<string, never>, MergeActivitiesResponse, MergeActivitiesBody>(
     '/activities/merge',
     authMiddleware,
@@ -353,7 +347,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // GET /activities/:id/nearby - Get nearby same-type activities for merge suggestions
   router.get<{ id: string }, NearbyActivitiesResponse>(
     '/activities/:id/nearby',
     authMiddleware,
@@ -392,7 +385,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // DELETE /activities/:id - Delete an activity by ID
   router.delete<{ id: string }, DeleteActivityResponse>(
     '/activities/:id',
     authMiddleware,
@@ -410,7 +402,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // PATCH /activities/:id - Update an activity by ID
   router.patch<{ id: string }, UpdateActivityResponse, UpdateActivityBody>(
     '/activities/:id',
     authMiddleware,
@@ -463,8 +454,7 @@ export const createActivitiesRouter = (
     },
   )
 
-  // GET /activities/:id - Get a single activity by ID (for detail page)
-  // Supports merged: prefix — merged:<uuid> returns merged view, plain uuid returns raw activity
+  // Supports merged: prefix -- merged:<uuid> returns merged view, plain uuid returns raw activity
   router.get<{ id: string }, ActivityDetailResponse>('/activities/:id', authMiddleware, async (req, res) => {
     const rawId = req.params.id
     const user = req.user!
@@ -508,7 +498,6 @@ export const createActivitiesRouter = (
     })
   })
 
-  // POST /activities/:id/restore - Restore a soft-deleted activity
   router.post<{ id: string }, { success: boolean; error?: string }>(
     '/activities/:id/restore',
     authMiddleware,
@@ -525,7 +514,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // GET /productivity/bucketed - Get screentime bucketed by time and category
   router.get<Record<string, never>, ScreentimeBucketedResponse, unknown, ScreentimeBucketedQuery>(
     '/productivity/bucketed',
     authMiddleware,
@@ -548,7 +536,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // GET /productivity/apps - Get distinct app names with their categories
   router.get<Record<string, never>, DistinctAppsResponse>(
     '/productivity/apps',
     authMiddleware,
@@ -562,7 +549,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // GET /productivity/:id - Get a single productivity record by ID
   router.get<{ id: string }, ProductivityRecordResponse>(
     '/productivity/:id',
     authMiddleware,
@@ -592,7 +578,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // DELETE /productivity/:id - Soft-delete a productivity record
   router.delete<{ id: string }, { success: boolean; error?: string }>(
     '/productivity/:id',
     authMiddleware,
@@ -609,7 +594,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // POST /productivity/:id/restore - Restore a soft-deleted productivity record
   router.post<{ id: string }, { success: boolean; error?: string }>(
     '/productivity/:id/restore',
     authMiddleware,
@@ -626,7 +610,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // GET /productivity - Query productivity data for a time range
   router.get<Record<string, never>, ProductivityResponse, unknown, ProductivityQuery>(
     '/productivity',
     authMiddleware,

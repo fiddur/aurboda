@@ -25,7 +25,6 @@ import { validateBody, validateQuery } from '../validation.ts'
 export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
   const router = typedRouter()
 
-  // GET /reports - Query reports with optional filters
   router.get<Record<string, never>, ReportsResponse, unknown, ReportsQuery>(
     '/',
     authMiddleware,
@@ -39,7 +38,6 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // GET /reports/:id - Get a single report
   router.get<{ id: string }, ReportResponse>('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params
     const user = req.user!
@@ -53,7 +51,6 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
     res.json({ data: result.data, success: true })
   })
 
-  // POST /reports - Create a new report
   router.post<Record<string, never>, ReportResponse, AddReportBody>(
     '/',
     authMiddleware,
@@ -77,7 +74,6 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // PATCH /reports/:id - Update a report
   router.patch<{ id: string }, UpdateReportResponse, UpdateReportBody>(
     '/:id',
     authMiddleware,
@@ -102,7 +98,6 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // DELETE /reports/:id - Delete a report
   router.delete<{ id: string }, DeleteReportResponse>('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params
     const user = req.user!

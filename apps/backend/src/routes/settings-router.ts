@@ -28,7 +28,6 @@ export const createSettingsRouter = (authMiddleware: RequestHandler): Router => 
     },
   )
 
-  // PATCH /user/settings - Update user settings
   router.patch<Record<string, never>, UserSettingsResponse, UpdateSettingsInput>(
     '/user/settings',
     authMiddleware,
@@ -42,7 +41,6 @@ export const createSettingsRouter = (authMiddleware: RequestHandler): Router => 
     },
   )
 
-  // GET /goals/progress - Get progress toward all user goals
   router.get<Record<string, never>, GoalsProgressResponse>(
     '/goals/progress',
     authMiddleware,

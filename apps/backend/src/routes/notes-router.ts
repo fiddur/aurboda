@@ -24,7 +24,6 @@ import { validateBody, validateQuery } from '../validation.ts'
 export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
   const router = typedRouter()
 
-  // GET /notes - Get notes for an entity
   router.get<Record<string, never>, NotesResponse, unknown, NotesQuery>(
     '/',
     authMiddleware,
@@ -38,7 +37,6 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // POST /notes - Add a note
   router.post<Record<string, never>, NoteResponse, AddNoteBody>(
     '/',
     authMiddleware,
@@ -57,7 +55,6 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // PATCH /notes/:id - Update a note
   router.patch<{ id: string }, NoteResponse, UpdateNoteBody>(
     '/:id',
     authMiddleware,
@@ -77,7 +74,6 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // DELETE /notes/:id - Delete a note
   router.delete<{ id: string }, DeleteNoteResponse>('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params
     const user = req.user!
