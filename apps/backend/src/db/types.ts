@@ -7,10 +7,17 @@
 import type {
   ActivityType,
   BiologicalSex,
+  Confidence,
   DashboardConfig,
   DataSource,
+  EntityType,
   GarminDataType,
+  GeocodeStatus,
+  LastFmMatchMode,
+  LastFmMatchType,
   MetricType,
+  ReportFlag,
+  SyncStatus,
   TrainingLoadSettings,
 } from '@aurboda/api-spec'
 
@@ -139,7 +146,7 @@ export interface NamedLocationInput {
   radius?: number
 }
 
-export type GeocodeStatus = 'pending' | 'geocoding' | 'success' | 'failed'
+export type { GeocodeStatus }
 
 export interface DetectedLocation {
   id: string
@@ -231,7 +238,7 @@ export interface ScreentimeCategoryInput {
 // Notes
 // ============================================================================
 
-export type EntityType = 'activity' | 'tag' | 'productivity' | 'metric' | 'report'
+export type { EntityType }
 
 export interface Note {
   id: string
@@ -270,8 +277,8 @@ export interface LabResult {
 // Reports (structured lab results)
 // ============================================================================
 
-export type ReportConfidence = 'measured' | 'estimated' | 'derived'
-export type ReportFlag = 'critical_low' | 'low' | 'normal' | 'high' | 'critical_high'
+export type ReportConfidence = Confidence
+export type { ReportFlag }
 
 export interface ReportEntry {
   id: string
@@ -381,7 +388,7 @@ export interface OAuthToken {
 // Sync State
 // ============================================================================
 
-export type SyncStatus = 'idle' | 'syncing' | 'error' | 'rate_limited'
+export type { SyncStatus }
 
 export interface SyncState {
   id?: string
@@ -438,8 +445,7 @@ export interface UserSettings {
 // Last.fm Tag Rules
 // ============================================================================
 
-export type LastFmMatchType = 'track' | 'artist' | 'track_artist'
-export type LastFmMatchMode = 'exact' | 'contains'
+export type { LastFmMatchType, LastFmMatchMode }
 
 export interface LastFmTagRule {
   id: string

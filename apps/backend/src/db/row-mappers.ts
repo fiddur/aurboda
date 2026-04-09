@@ -1,10 +1,23 @@
+import type { QueryResultRow } from 'pg'
+
 /**
  * Row mapper functions for converting PostgreSQL rows to typed objects.
  *
  * Replaces inline `as Type` casts with validated type guards.
  */
-import type { ActivityType, DataSource, MetricType } from '@aurboda/api-spec'
-import type { QueryResultRow } from 'pg'
+import {
+  confidenceSchema,
+  dataSourceSchema,
+  entityTypes,
+  geocodeStatusSchema,
+  lastFmMatchModeSchema,
+  lastFmMatchTypeSchema,
+  reportFlagSchema,
+  syncStatusSchema,
+  type ActivityType,
+  type DataSource,
+  type MetricType,
+} from '@aurboda/api-spec'
 
 import type {
   Activity,
@@ -30,29 +43,12 @@ import type {
 // Type Guards
 // ============================================================================
 
-const VALID_DATA_SOURCES = [
-  'activitywatch',
-  'aurboda',
-  'aurboda_gap_fill',
-  'deduction-rule',
-  'health_connect',
-  'health_connect_aggregate',
-  'lab_report',
-  'oura',
-  'garmin',
-  'rescuetime',
-  'owntracks',
-  'calendar',
-  'manual',
-  'lastfm',
-  'lastfm-auto',
-] as const
-
-const VALID_GEOCODE_STATUSES = ['pending', 'geocoding', 'success', 'failed'] as const
-const VALID_SYNC_STATUSES = ['idle', 'syncing', 'error', 'rate_limited'] as const
-const VALID_ENTITY_TYPES = ['activity', 'tag', 'productivity', 'metric'] as const
-const VALID_LASTFM_MATCH_TYPES = ['track', 'artist', 'track_artist'] as const
-const VALID_LASTFM_MATCH_MODES = ['exact', 'contains'] as const
+const VALID_DATA_SOURCES = dataSourceSchema.options
+const VALID_GEOCODE_STATUSES = geocodeStatusSchema.options
+const VALID_SYNC_STATUSES = syncStatusSchema.options
+const VALID_ENTITY_TYPES = entityTypes
+const VALID_LASTFM_MATCH_TYPES = lastFmMatchTypeSchema.options
+const VALID_LASTFM_MATCH_MODES = lastFmMatchModeSchema.options
 
 export const parseActivityType = (value: unknown): ActivityType => {
   if (typeof value === 'string' && /^[a-z][a-z0-9_]*$/.test(value)) {
@@ -223,8 +219,8 @@ export const mapMealRow = (row: QueryResultRow): Meal => ({
 // Report Row Mappers
 // ============================================================================
 
-const VALID_CONFIDENCES = ['measured', 'estimated', 'derived'] as const
-const VALID_REPORT_FLAGS = ['critical_low', 'low', 'normal', 'high', 'critical_high'] as const
+const VALID_CONFIDENCES = confidenceSchema.options
+const VALID_REPORT_FLAGS = reportFlagSchema.options
 
 const parseConfidence = (value: unknown): ReportConfidence | undefined => {
   if (typeof value === 'string' && (VALID_CONFIDENCES as readonly string[]).includes(value)) {
