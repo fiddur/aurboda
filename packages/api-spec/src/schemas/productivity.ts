@@ -24,6 +24,7 @@ export const productivityRecordSchema = z
     category: z.string().optional().meta({ description: 'Original category (from RescueTime)' }),
     comments: z.array(commentSchema).optional().meta({ description: 'Attached comments' }),
     deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
+    device_name: z.string().optional().meta({ description: 'Device name (from ActivityWatch)' }),
     duration_sec: z.number().int().meta({ description: 'Duration in seconds' }),
     end_time: iso8601DateTimeSchema,
     id: z.string().uuid().optional().meta({ description: 'Productivity record ID' }),

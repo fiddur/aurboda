@@ -9,17 +9,22 @@ import {
   type ActivitiesQuery,
   activitiesQuerySchema,
   type ActivitiesResponse,
+  type ActivityDetailResponse,
   type AddActivityBody,
+  type HrZoneSecs,
   addActivityBodySchema,
   type AddActivityResponse,
   type DeleteActivityResponse,
+  type DistinctAppsResponse,
   getExerciseTypeValue,
   isValidExerciseType,
   type MergeActivitiesBody,
   mergeActivitiesBodySchema,
   type MergeActivitiesResponse,
+  type NearbyActivitiesResponse,
   type ProductivityQuery,
   productivityQuerySchema,
+  type ProductivityRecordResponse,
   type ProductivityResponse,
   type ScreentimeBucketedQuery,
   screentimeBucketedQuerySchema,
@@ -68,7 +73,7 @@ const computeExerciseMetrics = async (
   user: string,
   start: Date,
   end: Date,
-): Promise<{ hr_zone_secs?: Record<number, number>; avg_hrv?: number }> => {
+): Promise<{ hr_zone_secs?: HrZoneSecs; avg_hrv?: number }> => {
   const [hrData, { zones: hrZones }, hrvData] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getEffectiveHrZones(user),
@@ -90,7 +95,7 @@ type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 const buildMergedResponse = async (
   user: string,
   activity: NonNullable<ActivityRow>,
-  exerciseMetrics: { hr_zone_secs?: Record<number, number>; avg_hrv?: number },
+  exerciseMetrics: { hr_zone_secs?: HrZoneSecs; avg_hrv?: number },
 ) => {
   const overlapping = await getOverlappingActivities(user, activity)
   const hasMultipleSources = overlapping.length > 1
@@ -349,7 +354,7 @@ export const createActivitiesRouter = (
   )
 
   // GET /activities/:id/nearby - Get nearby same-type activities for merge suggestions
-  router.get<{ id: string }, { success: boolean; data: unknown[]; error?: string }>(
+  router.get<{ id: string }, NearbyActivitiesResponse>(
     '/activities/:id/nearby',
     authMiddleware,
     async (req, res) => {
@@ -460,52 +465,48 @@ export const createActivitiesRouter = (
 
   // GET /activities/:id - Get a single activity by ID (for detail page)
   // Supports merged: prefix — merged:<uuid> returns merged view, plain uuid returns raw activity
-  router.get<{ id: string }, { success: boolean; data?: unknown; error?: string }>(
-    '/activities/:id',
-    authMiddleware,
-    async (req, res) => {
-      const rawId = req.params.id
-      const user = req.user!
+  router.get<{ id: string }, ActivityDetailResponse>('/activities/:id', authMiddleware, async (req, res) => {
+    const rawId = req.params.id
+    const user = req.user!
 
-      const isMerged = rawId.startsWith('merged:')
-      const realId = isMerged ? rawId.slice('merged:'.length) : rawId
+    const isMerged = rawId.startsWith('merged:')
+    const realId = isMerged ? rawId.slice('merged:'.length) : rawId
 
-      const activity = await getActivityById(user, realId, true)
-      if (!activity) {
-        return res.status(404).json({ error: 'Activity not found', success: false })
-      }
+    const activity = await getActivityById(user, realId, true)
+    if (!activity) {
+      return res.status(404).json({ error: 'Activity not found', success: false })
+    }
 
-      // Compute HR zones and avg HRV for exercise activities
-      let exerciseMetrics: { hr_zone_secs?: Record<number, number>; avg_hrv?: number } = {}
-      if (activity.activity_type === 'exercise' && activity.end_time) {
-        exerciseMetrics = await computeExerciseMetrics(user, activity.start_time, activity.end_time)
-      }
+    // Compute HR zones and avg HRV for exercise activities
+    let exerciseMetrics: { hr_zone_secs?: HrZoneSecs; avg_hrv?: number } = {}
+    if (activity.activity_type === 'exercise' && activity.end_time) {
+      exerciseMetrics = await computeExerciseMetrics(user, activity.start_time, activity.end_time)
+    }
 
-      // For merged: prefix, fetch overlapping activities and return merged view
-      if (isMerged && !activity.deleted_at) {
-        const data = await buildMergedResponse(user, activity, exerciseMetrics)
-        return res.json({ data, success: true })
-      }
+    // For merged: prefix, fetch overlapping activities and return merged view
+    if (isMerged && !activity.deleted_at) {
+      const data = await buildMergedResponse(user, activity, exerciseMetrics)
+      return res.json({ data, success: true })
+    }
 
-      // Plain UUID: return raw single activity (no overlap lookup)
-      res.json({
-        data: {
-          activity_type: activity.activity_type,
-          avg_hrv: exerciseMetrics.avg_hrv,
-          data: activity.data,
-          deleted_at: activity.deleted_at?.toISOString(),
-          end_time: activity.end_time?.toISOString(),
-          hr_zone_secs: exerciseMetrics.hr_zone_secs,
-          id: activity.id,
-          notes: activity.notes,
-          source: activity.source,
-          start_time: activity.start_time.toISOString(),
-          title: activity.title,
-        },
-        success: true,
-      })
-    },
-  )
+    // Plain UUID: return raw single activity (no overlap lookup)
+    res.json({
+      data: {
+        activity_type: activity.activity_type,
+        avg_hrv: exerciseMetrics.avg_hrv,
+        data: activity.data,
+        deleted_at: activity.deleted_at?.toISOString(),
+        end_time: activity.end_time?.toISOString(),
+        hr_zone_secs: exerciseMetrics.hr_zone_secs,
+        id: activity.id,
+        notes: activity.notes,
+        source: activity.source,
+        start_time: activity.start_time.toISOString(),
+        title: activity.title,
+      },
+      success: true,
+    })
+  })
 
   // POST /activities/:id/restore - Restore a soft-deleted activity
   router.post<{ id: string }, { success: boolean; error?: string }>(
@@ -548,18 +549,21 @@ export const createActivitiesRouter = (
   )
 
   // GET /productivity/apps - Get distinct app names with their categories
-  router.get<Record<string, never>, { success: boolean; data: unknown[] }>(
+  router.get<Record<string, never>, DistinctAppsResponse>(
     '/productivity/apps',
     authMiddleware,
     async (req, res) => {
       const user = req.user!
       const apps = await getDistinctApps(user)
-      res.json({ data: apps, success: true })
+      res.json({
+        data: apps.map((a) => ({ ...a, last_seen: a.last_seen.toISOString() })),
+        success: true,
+      })
     },
   )
 
   // GET /productivity/:id - Get a single productivity record by ID
-  router.get<{ id: string }, { success: boolean; data?: unknown; error?: string }>(
+  router.get<{ id: string }, ProductivityRecordResponse>(
     '/productivity/:id',
     authMiddleware,
     async (req, res) => {

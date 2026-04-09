@@ -21,6 +21,7 @@ import {
   type DailySummaryResponse,
   type DeleteMetricQuery,
   deleteMetricQuerySchema,
+  type DeleteMetricResponse,
   type LatestMetricResponse,
   type MergeCustomMetricBody,
   mergeCustomMetricBodySchema,
@@ -252,7 +253,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
   )
 
   // DELETE /metrics/:metric - Delete a single measurement (soft delete)
-  router.delete<{ metric: string }, unknown, unknown, DeleteMetricQuery>(
+  router.delete<{ metric: string }, DeleteMetricResponse, unknown, DeleteMetricQuery>(
     '/metrics/:metric',
     authMiddleware,
     validateQuery(deleteMetricQuerySchema),
@@ -262,7 +263,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const user = req.user!
       const result = await deleteMetric(user, metric, new Date(time), source)
       if (!result.deleted) {
-        return res.status(404).json({ error: 'Measurement not found', success: false })
+        return res.status(404).json({ deleted: false, error: 'Measurement not found', success: false })
       }
       res.json({ ...result, success: true })
     },
