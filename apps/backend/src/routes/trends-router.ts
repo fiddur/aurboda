@@ -15,8 +15,7 @@ import { validateQuery } from '../validation.ts'
 export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
   const router = typedRouter()
 
-  // GET /trends - Get time-weighted trend for tags or metrics
-  router.get<Record<string, string>, TrendResponse, unknown, TrendQuery>(
+  router.get<Record<string, never>, TrendResponse, unknown, TrendQuery>(
     '/',
     authMiddleware,
     validateQuery(trendQuerySchema),

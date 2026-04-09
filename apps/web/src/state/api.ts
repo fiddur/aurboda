@@ -1697,7 +1697,7 @@ export interface MealsResult {
 
 export const fetchMeals = async (params?: MealsQuery): Promise<MealsResult> => {
   const { token } = auth.value
-  const response = await axios.get<MealsResponse & { log_completed?: boolean }>(`${API_URL}/meals`, {
+  const response = await axios.get<MealsResponse>(`${API_URL}/meals`, {
     headers: { Authorization: `Bearer ${token}` },
     params,
   })

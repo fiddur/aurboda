@@ -35,13 +35,49 @@ All field names use **snake_case** everywhere: schemas, REST API, MCP tools, DB 
 
 ### How each layer uses api-spec
 
-**REST API routers** (`apps/backend/src/routes/`) — import schemas for request validation:
+**REST API routers** (`apps/backend/src/routes/`) — use `typedRouter()` with fully typed route definitions:
 
 ```typescript
-import { addTagBodySchema, type AddTagBody } from '@aurboda/api-spec'
-// Use with validation middleware:
-router.post('/', authMiddleware, validateBody(addTagBodySchema), async (req, res) => { ... })
+import { type AddTagBody, addTagBodySchema, type TagResponse } from '@aurboda/api-spec'
+import { typedRouter } from '../typed-router.ts'
+
+const router = typedRouter()
+
+// All 4 generic params: <PathParams, ResponseBody, RequestBody, QueryParams>
+router.post<Record<string, never>, TagResponse, AddTagBody>(
+  '/',
+  authMiddleware,
+  validateBody(addTagBodySchema),
+  async (req, res) => {
+    // req.body is typed as AddTagBody, res.json() expects TagResponse
+  },
+)
+
+// Route with path params:
+router.get<{ id: string }, TagResponse>('/:id', authMiddleware, async (req, res) => { ... })
+
+// Route with query params (GET — no request body):
+router.get<Record<string, never>, TagsResponse, unknown, TagsQuery>(
+  '/',
+  authMiddleware,
+  validateQuery(tagsQuerySchema),
+  async (req, res) => { ... },
+)
+
+return router as unknown as Router
 ```
+
+**Routing conventions:**
+
+- Always use `typedRouter()` (never plain `Router()`)
+- Handlers are inline in the route definition (not separate `const handleX` functions)
+- `PathParams`: `Record<string, never>` for no params, `{ id: string }` for `/:id`. Never `Record<string, string>`.
+- `ResponseBody`: Must be an api-spec response type. Never `unknown`, `any`, or inline `{ success: boolean; data: unknown }`.
+- `RequestBody`: api-spec body type for POST/PUT/PATCH. `unknown` for GET/DELETE (no body).
+- `QueryParams`: api-spec query type when the route accepts query params.
+- No `as Type` casts on `req.body` — set the `ReqBody` generic instead.
+- No `// GET /path - description` comments above routes — the method and path are already visible in the code.
+- DB types with `Date` must be serialized to ISO strings before responding (use a serializer function at the boundary).
 
 **MCP tools** (`apps/backend/src/mcp/`) — use `.shape` to extract the flat field record that `server.tool()` expects:
 

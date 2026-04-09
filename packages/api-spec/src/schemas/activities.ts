@@ -8,6 +8,7 @@ import {
   activityTypeSchema,
   baseResponseSchema,
   createDataArrayResponseSchema,
+  createDataResponseSchema,
   durationMinutesSchema,
   iso8601DateTimeSchema,
   timeRangeQuerySchema,
@@ -392,3 +393,12 @@ export const nearbyActivitiesResponseSchema = createDataArrayResponseSchema(acti
 })
 
 export type NearbyActivitiesResponse = z.infer<typeof nearbyActivitiesResponseSchema>
+
+/**
+ * Single activity detail response (for activity detail page).
+ */
+export const activityDetailResponseSchema = createDataResponseSchema(activitySchema).meta({
+  id: 'ActivityDetailResponse',
+})
+
+export type ActivityDetailResponse = z.infer<typeof activityDetailResponseSchema>

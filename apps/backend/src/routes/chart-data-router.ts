@@ -14,8 +14,7 @@ import { validateQuery } from '../validation.ts'
 export const createChartDataRouter = (authMiddleware: RequestHandler): Router => {
   const router = typedRouter()
 
-  // GET /chart-data — bucketed aggregation for bar charts
-  router.get<Record<string, string>, ChartDataResponse, unknown, ChartDataHttpQuery>(
+  router.get<Record<string, never>, ChartDataResponse, unknown, ChartDataHttpQuery>(
     '/',
     authMiddleware,
     validateQuery(chartDataHttpQuerySchema),

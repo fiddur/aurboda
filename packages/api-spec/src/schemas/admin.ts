@@ -102,6 +102,32 @@ export const loginResponseSchema = z
 export type LoginResponse = z.infer<typeof loginResponseSchema>
 
 // ============================================================================
+// Version and auth token endpoints
+// ============================================================================
+
+/**
+ * Version response schema.
+ */
+export const versionResponseSchema = baseResponseSchema
+  .extend({
+    build_sha: z.string().meta({ description: 'Build commit SHA or "dev"' }),
+  })
+  .meta({ id: 'VersionResponse' })
+
+export type VersionResponse = z.infer<typeof versionResponseSchema>
+
+/**
+ * Auth token response schema.
+ */
+export const authTokenResponseSchema = baseResponseSchema
+  .extend({
+    token: z.string().meta({ description: 'Fresh API token' }),
+  })
+  .meta({ id: 'AuthTokenResponse' })
+
+export type AuthTokenResponse = z.infer<typeof authTokenResponseSchema>
+
+// ============================================================================
 // Admin settings endpoints
 // ============================================================================
 

@@ -4,7 +4,13 @@
  * Route handlers are split into focused modules under routes/.
  * This file handles: server setup, middleware, auth routes, and router mounting.
  */
-import type { LoginResponse, ServerStatusResponse, SignupResponse } from '@aurboda/api-spec'
+import type {
+  AuthTokenResponse,
+  LoginResponse,
+  ServerStatusResponse,
+  SignupResponse,
+  VersionResponse,
+} from '@aurboda/api-spec'
 
 import cors from 'cors'
 import express, { json, type RequestHandler } from 'express'
@@ -210,7 +216,7 @@ const main = async () => {
   // Auth routes (stay here - tightly coupled to server setup)
   // ==========================================================================
 
-  httpd.get('/version', (_req, res) => {
+  httpd.get<Record<string, never>, VersionResponse>('/version', (_req, res) => {
     res.json({
       build_sha: process.env.BUILD_SHA ?? 'dev',
       success: true,
@@ -351,13 +357,8 @@ const main = async () => {
     res.end(JSON.stringify({ is_admin: isAdmin, refresh: token, token }))
   })
 
-  httpd.post('/refresh', async (req, res) => {
-    const { refresh } = req.body
-    res.end(JSON.stringify({ refresh, token: refresh }))
-  })
-
   // Generate a fresh API token for the authenticated user (e.g. for push agents like ActivityWatch)
-  httpd.get('/auth/token', authMiddleware, (req, res) => {
+  httpd.get<Record<string, never>, AuthTokenResponse>('/auth/token', authMiddleware, (req, res) => {
     const user = req.user!
     const token = auth.createToken(user)
     res.json({ success: true, token })

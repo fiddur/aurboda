@@ -25,7 +25,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const createIconsRouter = (authMiddleware: RequestHandler): Router => {
   const router = typedRouter()
 
-  // GET /icons/:user/:id — serve icon (no auth, for <img src>)
   router.get<{ user: string; id: string }, { error: string; success: boolean } | Buffer>(
     '/:user/:id',
     async (req, res) => {
@@ -47,8 +46,7 @@ export const createIconsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // POST /icons — upload an icon
-  router.post<Record<string, string>, { success: boolean; id?: string; url?: string; error?: string }>(
+  router.post<Record<string, never>, { success: boolean; id?: string; url?: string; error?: string }>(
     '/',
     authMiddleware,
     upload.single('icon'),
@@ -79,7 +77,6 @@ export const createIconsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // DELETE /icons/:id — delete an icon
   router.delete<{ id: string }, { success: boolean; error?: string }>(
     '/:id',
     authMiddleware,

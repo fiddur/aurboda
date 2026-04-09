@@ -15,8 +15,7 @@ export const createTrainingLoadRouter = (authMiddleware: RequestHandler): Router
   const router = typedRouter()
   const deps = createTrainingLoadDeps()
 
-  // GET /training-load - Get training load time series (ATL, CTL, TSB, TRIMP)
-  router.get<Record<string, string>, TrainingLoadResponse, unknown, TrainingLoadQuery>(
+  router.get<Record<string, never>, TrainingLoadResponse, unknown, TrainingLoadQuery>(
     '/',
     authMiddleware,
     validateQuery(trainingLoadQuerySchema),
