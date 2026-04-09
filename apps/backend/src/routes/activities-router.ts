@@ -625,15 +625,8 @@ export const createActivitiesRouter = (
       const user = req.user!
 
       const gapMs = merge_gap_ms ? parseInt(merge_gap_ms, 10) : undefined
-      const productivity = await queryProductivity(
-        user,
-        new Date(start),
-        new Date(end),
-        syncProvider,
-        merge_by,
-        gapMs,
-      )
-      res.json({ data: productivity, success: true })
+      const result = await queryProductivity(user, new Date(start), new Date(end), syncProvider, merge_by, gapMs)
+      res.json({ categories: result.categories, data: result.data, success: true })
     },
   )
 

@@ -344,13 +344,18 @@ export const fetchActivities = async (
   }))
 }
 
+export interface ProductivityResult {
+  records: ProductivityRecord[]
+  categories?: Record<string, { name: string[]; color?: string; score?: number }>
+}
+
 // Fetch productivity data (RescueTime) for the specified date range
 export const fetchProductivity = async (
   start: Date,
   end: Date,
   mergeBy?: 'category',
   mergeGapMs?: number,
-): Promise<ProductivityRecord[]> => {
+): Promise<ProductivityResult> => {
   const { token } = auth.value
   const params: ProductivityQuery = {
     end: end.toISOString(),
@@ -363,11 +368,14 @@ export const fetchProductivity = async (
     params,
   })
 
-  return (response.data.data ?? []).map((record) => ({
-    ...record,
-    end_time: new Date(record.end_time),
-    start_time: new Date(record.start_time),
-  }))
+  return {
+    categories: response.data.categories,
+    records: (response.data.data ?? []).map((record) => ({
+      ...record,
+      end_time: new Date(record.end_time),
+      start_time: new Date(record.start_time),
+    })),
+  }
 }
 
 // Fetch a single productivity record by ID

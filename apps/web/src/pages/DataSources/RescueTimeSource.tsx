@@ -40,7 +40,7 @@ export function RescueTimeSource() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const hasProductivity = (productivityQuery.data?.length ?? 0) > 0
+  const hasProductivity = (productivityQuery.data?.records?.length ?? 0) > 0
   const isConfigured = !!userSettings?.rescue_time_key
 
   const [rescueTimeKey, setRescueTimeKey] = useState<string>('')

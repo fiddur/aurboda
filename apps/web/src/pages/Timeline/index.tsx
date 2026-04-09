@@ -467,18 +467,19 @@ const categorizeProductivity = (
     const categoryPath = record.resolved_category?.join(' > ') ?? ''
     const label = record.resolved_category?.at(-1) ?? record.activity
     const apps = record.activity.split(', ')
-    const isMerged = (record.source_ids?.length ?? 0) > 1
 
-    // Link: single source → detail page; merged → /data filtered to time range
-    const href = isMerged
-      ? `/data?date=${format(record.start_time, 'yyyy-MM-dd')}&from=${record.start_time.toISOString()}&to=${record.end_time.toISOString()}&hide=activity,location,music,meal,report`
-      : undefined
+    // Link: category_id → category page; single source without category → detail page
+    const href = record.category_id
+      ? `/screentime-categories/${record.category_id}`
+      : record.id
+        ? undefined
+        : undefined
 
     return {
       color: getResolvedColor(record, categories),
       column: 'Screen Time' as Column,
       end: record.end_time,
-      entity_id: isMerged ? undefined : record.id,
+      entity_id: record.category_id ? undefined : record.id,
       entity_type: 'productivity' as const,
       href,
       icon: resolveCategoryIcon(record.resolved_category, itemIcons),
@@ -787,7 +788,7 @@ export const Timeline = () => {
     () => (tagActivitiesQuery.data ?? []).filter((a) => !hiddenTypes.has(a.activity_type ?? '')),
     [tagActivitiesQuery.data, hiddenTypes],
   )
-  const productivity = productivityQuery.data ?? []
+  const productivity = productivityQuery.data?.records ?? []
   const scrobbles = scrobblesQuery.data ?? []
 
   // Extract sleep score metrics from unified bucketed data, keyed by date

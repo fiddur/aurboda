@@ -32,6 +32,7 @@ import {
   getTimeSeriesStats,
   getTimeSeriesWithSource,
   type ProductivityRecord,
+  type ScreentimeCategory,
 } from '../db/index.ts'
 import { getScreentimeCategories } from '../db/screentime-categories.ts'
 import {
@@ -1641,12 +1642,19 @@ export interface ProductivityResult {
   activity: string
   title?: string
   category?: string
+  category_id?: string
   productivity?: number
   duration_sec: number
   is_mobile?: boolean
   source?: DataSource
   resolved_category?: string[]
   comments: CommentSummary[]
+}
+
+export interface CategoryInfo {
+  name: string[]
+  color?: string
+  score?: number
 }
 
 /**
@@ -1844,22 +1852,43 @@ const promoteOverlappingSubcategories = (
 
 /**
  * Merge app-level records by resolved category and promote overlapping subcategories.
- * Returns one ProductivityResult per category span, with aggregated duration and source_ids.
+ * Returns one ProductivityResult per category span (with category_id),
+ * plus a normalized categories map for the frontend to resolve IDs to metadata.
  * Excluded and uncategorized records are dropped.
  */
 export function mergeByCategorySpans(
   records: MergeRecord[],
   gapMs: number,
-  excludedCategories: Set<string>,
-): ProductivityResult[] {
+  categories: ScreentimeCategory[],
+): { results: ProductivityResult[]; categoriesMap: Record<string, CategoryInfo> } {
+  const excludedPaths = new Set(
+    categories.filter((c) => c.exclude_from_screentime).map((c) => c.name.join(' > ')),
+  )
+
+  // Build a lookup from category path → category record (deepest match wins)
+  const categoryByPath = new Map<string, ScreentimeCategory>()
+  for (const cat of categories) {
+    categoryByPath.set(cat.name.join(' > '), cat)
+  }
+
+  // Resolve a groupKey to the best matching category (walk from exact to parent)
+  const resolveCategory = (groupKey: string): ScreentimeCategory | undefined => {
+    const parts = groupKey.split(' > ')
+    for (let depth = parts.length; depth > 0; depth--) {
+      const path = parts.slice(0, depth).join(' > ')
+      const cat = categoryByPath.get(path)
+      if (cat) return cat
+    }
+    return undefined
+  }
+
   // Filter out excluded and uncategorized records
   const categorized = records.filter((r) => {
     const key = categoryGroupKey(r)
     if (key === '') return false
-    // Check if any ancestor is excluded
     if (r.resolved_category) {
       for (let depth = r.resolved_category.length; depth > 0; depth--) {
-        if (excludedCategories.has(r.resolved_category.slice(0, depth).join(' > '))) return false
+        if (excludedPaths.has(r.resolved_category.slice(0, depth).join(' > '))) return false
       }
     }
     return true
@@ -1876,20 +1905,28 @@ export function mergeByCategorySpans(
 
   const categorySpans: CategoryMergedSpan[] = []
   for (const [key, recs] of byKey) {
-    // Records within each key are already sorted by start_time from the DB/app-merge
     categorySpans.push(...mergeAdjacentByCategory(recs, gapMs, key))
   }
 
   // Promote overlapping subcategories to parent level
   const promoted = promoteOverlappingSubcategories(categorySpans, gapMs)
 
-  return promoted.map((span) => {
+  // Build the normalized categories map and results
+  const categoriesMap: Record<string, CategoryInfo> = {}
+
+  const results = promoted.map((span) => {
     const allSourceIds = span.records.flatMap((r) => (r.source_ids.length > 0 ? r.source_ids : r.id ? [r.id] : []))
     const totalDuration = span.records.reduce((sum, r) => sum + r.duration_sec, 0)
     const uniqueApps = [...new Set(span.records.map((r) => r.activity))]
 
+    const cat = resolveCategory(span.groupKey)
+    if (cat && !categoriesMap[cat.id]) {
+      categoriesMap[cat.id] = { color: cat.color, name: cat.name, score: cat.score }
+    }
+
     return {
       activity: uniqueApps.length === 1 ? uniqueApps[0]! : uniqueApps.join(', '),
+      category_id: cat?.id,
       comments: [],
       duration_sec: totalDuration,
       end_time: span.end.toISOString(),
@@ -1898,6 +1935,8 @@ export function mergeByCategorySpans(
       start_time: span.start.toISOString(),
     }
   })
+
+  return { categoriesMap, results }
 }
 
 /**
@@ -1914,7 +1953,7 @@ export async function queryProductivity(
   sync?: SyncProvider,
   mergeBy?: 'category',
   mergeGapMs?: number,
-): Promise<ProductivityResult[]> {
+): Promise<{ data: ProductivityResult[]; categories?: Record<string, CategoryInfo> }> {
   // Fire-and-forget: trigger background sync so data is fresh for the next request
   if (sync) {
     void sync.syncRescueTimeIfNeeded(user)
@@ -1926,33 +1965,33 @@ export async function queryProductivity(
   // When merge_by=category, do category-level merge + overlap promotion on the server
   if (mergeBy === 'category') {
     const categories = await getScreentimeCategories(user)
-    const excludedSet = new Set(
-      categories.filter((c) => c.exclude_from_screentime).map((c) => c.name.join(' > ')),
-    )
-    return mergeByCategorySpans(merged, mergeGapMs ?? MERGE_GAP_MS, excludedSet)
+    const { categoriesMap, results } = mergeByCategorySpans(merged, mergeGapMs ?? MERGE_GAP_MS, categories)
+    return { categories: categoriesMap, data: results }
   }
 
   // Default: return app-level merged records
   const allIds = merged.flatMap((p) => (p.source_ids.length > 0 ? p.source_ids : p.id ? [p.id] : []))
   const commentsMap = await getCommentsMap(user, 'productivity', allIds)
-  return merged.map((p) => {
-    const comments = p.source_ids.flatMap((sid) => commentsMap.get(sid) ?? [])
-    return {
-      activity: p.activity,
-      category: p.category,
-      comments,
-      duration_sec: p.duration_sec,
-      end_time: p.end_time.toISOString(),
-      id: p.id,
-      is_mobile: p.is_mobile,
-      productivity: p.productivity,
-      resolved_category: p.resolved_category,
-      source: p.source,
-      source_ids: p.source_ids.length > 1 ? p.source_ids : undefined,
-      start_time: p.start_time.toISOString(),
-      title: p.title,
-    }
-  })
+  return {
+    data: merged.map((p) => {
+      const comments = p.source_ids.flatMap((sid) => commentsMap.get(sid) ?? [])
+      return {
+        activity: p.activity,
+        category: p.category,
+        comments,
+        duration_sec: p.duration_sec,
+        end_time: p.end_time.toISOString(),
+        id: p.id,
+        is_mobile: p.is_mobile,
+        productivity: p.productivity,
+        resolved_category: p.resolved_category,
+        source: p.source,
+        source_ids: p.source_ids.length > 1 ? p.source_ids : undefined,
+        start_time: p.start_time.toISOString(),
+        title: p.title,
+      }
+    }),
+  }
 }
 
 /**

@@ -2911,9 +2911,9 @@ describe('queryProductivity with comments', () => {
 
     const result = await queryProductivity('testuser', new Date('2024-01-15'), new Date('2024-01-16'))
 
-    expect(result).toHaveLength(1)
-    expect(result[0].comments).toHaveLength(1)
-    expect(result[0].comments[0].content).toBe('Deep focus session')
+    expect(result.data).toHaveLength(1)
+    expect(result.data[0].comments).toHaveLength(1)
+    expect(result.data[0].comments[0].content).toBe('Deep focus session')
   })
 
   test('returns empty comments array when no notes exist', async () => {
@@ -2930,6 +2930,6 @@ describe('queryProductivity with comments', () => {
 
     const result = await queryProductivity('testuser', new Date('2024-01-15'), new Date('2024-01-16'))
 
-    expect(result[0].comments).toEqual([])
+    expect(result.data[0].comments).toEqual([])
   })
 })
