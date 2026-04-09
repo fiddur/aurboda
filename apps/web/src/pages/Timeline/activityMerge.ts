@@ -114,11 +114,15 @@ export const createDurationActivityItem = (
   existingItems: ChartItem[],
   overlaps: OverlapWarning[],
   itemIcons: Record<string, string>,
+  typeDefinitions?: Map<string, { icon?: string }>,
 ): ChartItem => {
   const actEnd = activity.end_time!
   const displayName = activity.title ?? toDisplayName(activity.activity_type)
   const icon =
-    itemIcons[displayName] ?? itemIcons[displayName.toLowerCase()] ?? itemIcons[activity.activity_type]
+    itemIcons[displayName] ??
+    itemIcons[displayName.toLowerCase()] ??
+    itemIcons[activity.activity_type] ??
+    typeDefinitions?.get(activity.activity_type)?.icon
 
   // Detect overlaps with existing activity items
   let overlapWarning: string | undefined
@@ -177,7 +181,7 @@ const getActivityMeta = (
   activityColors: Record<string, string>,
   exerciseColor: (a: Activity) => string,
   getExerciseTypeName: (a: Activity) => string,
-  typeDefinitions?: Map<string, { display_name: string; color: string }>,
+  typeDefinitions?: Map<string, { display_name: string; color: string; icon?: string }>,
 ): ActivityMeta | null => {
   const type = a.activity_type
   if (!type) return null
@@ -259,7 +263,7 @@ export const buildActivityColumnItems = (
   sleepMetricsByDate: Map<string, Record<string, number>>,
   buildSleepDetails: (a: Activity, end: Date) => string[],
   scrobbles: { artist: string; track: string; recorded_at: Date }[],
-  typeDefinitions?: Map<string, { display_name: string; color: string }>,
+  typeDefinitions?: Map<string, { display_name: string; color: string; icon?: string }>,
 ): { items: ChartItem[]; overlaps: OverlapWarning[] } => {
   const items: ChartItem[] = []
   const overlaps: OverlapWarning[] = []
@@ -272,9 +276,9 @@ export const buildActivityColumnItems = (
     const end = a.end_time ?? new Date(a.start_time.getTime() + 60 * 60000)
     const details = buildActivityDetails(a, end, buildSleepDetails, scrobbles)
 
-    // Resolve icon from user overrides or defaults
+    // Resolve icon from user overrides, defaults, or type definition
     const iconKey = getActivityIconKey(a, getExerciseTypeName)
-    const icon = resolveItemIcon(iconKey, itemIcons)
+    const icon = resolveItemIcon(iconKey, itemIcons) ?? typeDefinitions?.get(a.activity_type)?.icon
 
     items.push({
       activity_type: meta.actType,
@@ -301,7 +305,7 @@ export const buildActivityColumnItems = (
   for (const act of durationActivities) {
     const merged = tryMergeActivityIntoItem(act, items)
     if (!merged) {
-      items.push(createDurationActivityItem(act, items, overlaps, itemIcons))
+      items.push(createDurationActivityItem(act, items, overlaps, itemIcons, typeDefinitions))
     }
   }
 
