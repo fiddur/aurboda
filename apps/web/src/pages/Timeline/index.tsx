@@ -461,6 +461,7 @@ const categorizeProductivity = (
   productivity: ProductivityRecord[],
   categories: ScreentimeCategory[],
   itemIcons: Record<string, string>,
+  mergeParams?: { mergeGapMs: number; categoryDepth?: number },
 ): ChartItem[] => {
   // Filter out records matching excluded categories (e.g. plasmashell/idle)
   const filtered = productivity.filter(
@@ -469,7 +470,7 @@ const categorizeProductivity = (
       p.resolved_category.length === 0 ||
       !isExcludedCategory(p.resolved_category, categories),
   )
-  const spans = mergeProductivitySpans(filtered)
+  const spans = mergeProductivitySpans(filtered, mergeParams?.mergeGapMs, mergeParams?.categoryDepth)
 
   return spans.map((span) => {
     const isCategorized = span.groupKey !== ''
@@ -487,12 +488,19 @@ const categorizeProductivity = (
         ? uniqueApps.join(', ')
         : `${uniqueApps.slice(0, 3).join(', ')} +${uniqueApps.length - 3}`
 
+    // Link: single record → detail page (via entity_id); merged → /data filtered to time range
+    const href =
+      span.records.length === 1
+        ? undefined
+        : `/data?date=${format(span.start, 'yyyy-MM-dd')}&from=${span.start.toISOString()}&to=${span.end.toISOString()}&hide=activity,location,music,meal,report`
+
     return {
       color: getResolvedColor(representative, categories),
       column: 'Screen Time' as Column,
       end: span.end,
       entity_id: span.records.length === 1 ? representative.id : undefined,
       entity_type: 'productivity' as const,
+      href,
       icon: resolveCategoryIcon(representative.resolved_category, itemIcons),
       isPoint: false,
       label,
@@ -959,12 +967,25 @@ export const Timeline = () => {
     [mealsQuery.data, itemIcons],
   )
 
+  // Zoom-adaptive merge parameters for screen time spans in the activity lane.
+  // Zoomed out → merge subcategories into top-level with larger gap; zoomed in → full depth.
+  const screentimeMergeParams = useMemo(() => {
+    if (barBucketSize === '1w') return { categoryDepth: 1 as const, mergeGapMs: 4 * 60 * 60 * 1000 }
+    if (barBucketSize === '1d') return { categoryDepth: 1 as const, mergeGapMs: 60 * 60 * 1000 }
+    return { categoryDepth: undefined, mergeGapMs: 10 * 60 * 1000 }
+  }, [barBucketSize])
+
   const allChartItems = useMemo(
     () => [
       ...activityItems,
       ...categorizeLocations(places, uniquePlaceNames),
       ...categorizeTagActivities(nonBuiltinTagActivities, itemIcons, typeDefsMap),
-      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
+      ...categorizeProductivity(
+        productivity,
+        screentimeCategoriesQuery.data ?? [],
+        itemIcons,
+        screentimeMergeParams,
+      ),
       ...musicItems,
       ...mealItems,
     ],
@@ -977,6 +998,7 @@ export const Timeline = () => {
       typeDefsMap,
       productivity,
       screentimeCategoriesQuery.data,
+      screentimeMergeParams,
       musicItems,
       mealItems,
     ],
@@ -1401,7 +1423,9 @@ export const Timeline = () => {
         : null
 
     // All Activity-column items for the activity lane
-    const allActivityLaneItems = chartItems.filter((i) => i.column === 'Activity')
+    const allActivityLaneItems = chartItems.filter(
+      (i) => i.column === 'Activity' || i.column === 'Screen Time',
+    )
     const packedActivityItems = packLanes(
       allActivityLaneItems,
       (i) => i.start,
@@ -2206,15 +2230,11 @@ export const Timeline = () => {
                 { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
                 { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
                 { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
-                ...(orientation === 'vertical'
-                  ? [
-                      {
-                        cat: 'screentime' as LegendCategory,
-                        color: productivityColors[1]!,
-                        label: 'Screen Time',
-                      },
-                    ]
-                  : []),
+                {
+                  cat: 'screentime' as LegendCategory,
+                  color: productivityColors[1]!,
+                  label: 'Screen Time',
+                },
               ].map(({ cat, color, label }) => (
                 <button
                   key={cat}
