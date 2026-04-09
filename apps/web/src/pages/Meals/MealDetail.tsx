@@ -632,7 +632,14 @@ export function MealDetail() {
         {/* Nutrient sidebar — shown beside the card on wide screens */}
         {!isEditing &&
           (meal.nutrients && Object.keys(meal.nutrients).length > 0 ? (
-            <NutrientBreakdown nutrients={meal.nutrients} />
+            <div>
+              <NutrientBreakdown nutrients={meal.nutrients} />
+              {meal.nutrient_data_incomplete && (
+                <p class="incomplete-notice">
+                  Some food items lack nutrient data — totals may be understated.
+                </p>
+              )}
+            </div>
           ) : (
             <div class="nutrient-breakdown nutrient-placeholder" />
           ))}
