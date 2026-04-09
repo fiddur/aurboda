@@ -1,18 +1,19 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Audit log route group.
  *
  * Handles: /user/audit-log
  */
-import { auditLogQuerySchema } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
+import { type AuditLogResponse, auditLogQuerySchema } from '@aurboda/api-spec'
 
 import { getAuditLog } from '../services/audit-log.ts'
+import { typedRouter } from '../typed-router.ts'
 
 export const createAuditLogRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
+  const router = typedRouter()
 
-  // GET /user/audit-log - Get audit log entries
-  router.get('/user/audit-log', authMiddleware, async (req, res) => {
+  router.get<Record<string, never>, AuditLogResponse>('/user/audit-log', authMiddleware, async (req, res) => {
     const parsed = auditLogQuerySchema.safeParse(req.query)
     if (!parsed.success) {
       res.status(400).json({ data: [], error: 'Invalid query parameters', success: false, total: 0 })
@@ -42,5 +43,5 @@ export const createAuditLogRouter = (authMiddleware: RequestHandler): Router => 
     })
   })
 
-  return router
+  return router as unknown as Router
 }

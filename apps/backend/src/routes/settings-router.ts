@@ -1,3 +1,5 @@
+import type { RequestHandler, Router } from 'express'
+
 /**
  * Settings and goals route group.
  *
@@ -9,16 +11,14 @@ import {
   updateSettingsInputSchema,
   type UserSettingsResponse,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import { getGoalsProgress } from '../services/goals.ts'
 import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings.ts'
+import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
 export const createSettingsRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
-
-  // GET /user/settings - Get user settings with effective HR zones
+  const router = typedRouter()
   router.get<Record<string, never>, UserSettingsResponse>(
     '/user/settings',
     authMiddleware,
@@ -52,5 +52,5 @@ export const createSettingsRouter = (authMiddleware: RequestHandler): Router => 
     },
   )
 
-  return router
+  return router as unknown as Router
 }

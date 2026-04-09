@@ -24,7 +24,7 @@ export interface NutrientFieldDef {
  * All nutrient fields, in display order.
  * This is the single source of truth for nutrient columns across the system.
  */
-export const NUTRIENT_FIELDS: NutrientFieldDef[] = [
+export const NUTRIENT_FIELDS = [
   // Macros (also on meals table directly)
   { category: 'macro', label: 'Calories', name: 'calories', unit: 'kcal' },
   { category: 'macro', label: 'Protein', name: 'protein', unit: 'g' },
@@ -103,7 +103,7 @@ export const NUTRIENT_FIELDS: NutrientFieldDef[] = [
   { category: 'other', label: 'Phytate', name: 'phytate', unit: 'mg' },
   { category: 'other', label: 'Ash', name: 'ash', unit: 'g' },
   { category: 'other', label: 'Salt', name: 'salt', unit: 'g' },
-]
+] as const satisfies readonly NutrientFieldDef[]
 
 /** All nutrient field names. */
 export const NUTRIENT_FIELD_NAMES = NUTRIENT_FIELDS.map((f) => f.name)
@@ -115,7 +115,16 @@ export const nutrientColumnsDDL = (): string =>
 /**
  * Zod schema with all nutrient fields as optional numbers.
  * Used for food item and meal_food_item validation.
+ *
+ * The type assertion ensures TypeScript infers individual named fields
+ * (e.g. `{ calories?: number; protein?: number; ... }`) instead of a
+ * `Record<string, number | undefined>` index signature. Without this,
+ * extending the schema with non-number fields (like FoodItemEntity.name)
+ * would create an impossible type.
  */
+type NutrientFieldName = (typeof NUTRIENT_FIELDS)[number]['name']
+type NutrientSchemaShape = { [K in NutrientFieldName]: z.ZodOptional<z.ZodNumber> }
+
 export const nutrientFieldsSchema = z.object(
   Object.fromEntries(
     NUTRIENT_FIELDS.map((f) => [
@@ -125,7 +134,7 @@ export const nutrientFieldsSchema = z.object(
         .optional()
         .meta({ description: `${f.label} (${f.unit})` }),
     ]),
-  ),
+  ) as unknown as NutrientSchemaShape,
 )
 
 export type NutrientFields = z.infer<typeof nutrientFieldsSchema>
