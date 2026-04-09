@@ -472,14 +472,10 @@ const categorizeProductivity = (
   )
   const spans = mergeProductivitySpans(filtered, mergeGapMs)
 
-  return spans.map((span) => {
-    const isCategorized = span.groupKey !== ''
+  // Only show categorized spans on the timeline — uncategorized app noise is excluded
+  return spans.filter((s) => s.groupKey !== '').map((span) => {
     const representative = span.records[0]
-    const label = isCategorized
-      ? (span.groupKey.split(' > ').pop() ?? span.groupKey)
-      : span.records.length === 1
-        ? representative.activity
-        : `${span.records.length} screen time`
+    const label = span.groupKey.split(' > ').pop() ?? span.groupKey
 
     // Build tooltip details listing constituent apps
     const uniqueApps = [...new Set(span.records.map((r) => r.activity))]
@@ -507,7 +503,7 @@ const categorizeProductivity = (
       start: span.start,
       tooltip: {
         details: [
-          isCategorized ? span.groupKey : '',
+          span.groupKey,
           span.records.length > 1
             ? `${span.records.length} records: ${tooltipApps}`
             : representative.activity,
