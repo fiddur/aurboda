@@ -1,7 +1,7 @@
 /**
  * Activity type definition service — CRUD for custom activity types.
  */
-import type { ActivityTypeDefinition } from '@aurboda/api-spec'
+import type { ActivityTypeDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
 
 import { builtinActivityTypes } from '@aurboda/api-spec'
 
@@ -33,6 +33,7 @@ export const addActivityTypeDefinition = async (
     color?: string
     icon?: string
     aliases?: string[]
+    data_schema?: DataSchemaDefinition
   },
 ): Promise<ActivityTypeDefinitionResult> => {
   // Block names that conflict with built-in types
@@ -60,6 +61,7 @@ export const updateActivityTypeDefinition = async (
     icon?: string | null
     aliases?: string[]
     show_on_timeline?: boolean
+    data_schema?: DataSchemaDefinition | null
   },
 ): Promise<ActivityTypeDefinitionResult> => {
   const existing = await dbGet(user, name)

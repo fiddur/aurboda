@@ -496,6 +496,7 @@ export const migrateSchema = async (user: string) => {
     )
     // Widen icon from VARCHAR(50) to TEXT to support URLs
     await query(db, `ALTER TABLE activity_type_definitions ALTER COLUMN icon TYPE TEXT`)
+    await query(db, `ALTER TABLE activity_type_definitions ADD COLUMN IF NOT EXISTS data_schema JSONB`)
   }
   if (existingTableNames.has('time_series')) {
     await query(db, `ALTER TABLE time_series ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)

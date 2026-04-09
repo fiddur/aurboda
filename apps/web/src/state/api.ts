@@ -33,6 +33,7 @@ import type {
   CustomMetricsListResponse,
   DashboardConfig,
   DashboardResponse,
+  DataSchemaDefinition,
   ExerciseTypeName,
   GarminSyncResponse,
   GarminSyncStatusResponse,
@@ -115,6 +116,7 @@ export interface ActivityTypeDefinition {
   aliases?: string[]
   is_builtin: boolean
   show_on_timeline: boolean
+  data_schema?: DataSchemaDefinition
 }
 
 export interface DeductionRuleCondition {
@@ -730,6 +732,7 @@ export const updateActivityTypeDefinition = async (
     color: string
     icon: string
     show_on_timeline: boolean
+    data_schema: DataSchemaDefinition | null
   }>,
 ): Promise<ActivityTypeDefinition> => {
   const { token } = auth.value
