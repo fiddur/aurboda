@@ -116,7 +116,7 @@ const ExerciseStats = ({
         <div class="field-row">
           <span class="field-label">Exercise Type</span>
           <span class="field-value">
-            <a href={`/exercise/${encodeURIComponent(exerciseType)}`} class="entity-meta-link">
+            <a href={`/activity-type/${encodeURIComponent(exerciseType)}`} class="entity-meta-link">
               {formatExerciseTypeName(exerciseType)}
             </a>
           </span>
@@ -179,7 +179,7 @@ export const ExerciseDetail = ({
       <div class="entity-info">
         <div class="entity-meta">
           {exerciseType ? (
-            <a href={`/exercise/${encodeURIComponent(exerciseType)}`} class="entity-type-badge">
+            <a href={`/activity-type/${encodeURIComponent(exerciseType)}`} class="entity-type-badge">
               {formatExerciseTypeName(exerciseType)}
             </a>
           ) : (

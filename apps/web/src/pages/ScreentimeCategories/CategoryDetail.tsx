@@ -8,8 +8,9 @@
 import type { ScreentimeCategory } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { format, subDays } from 'date-fns'
 import { useRoute } from 'preact-iso'
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 
 import { IconInput } from '../../components/IconInput'
 import { MiniTrendChart } from '../../components/MiniTrendChart'
@@ -17,6 +18,7 @@ import {
   type DistinctApp,
   type FetchTrendParams,
   fetchDistinctApps,
+  fetchProductivity,
   fetchScreentimeCategories,
   fetchScreentimeCategoryById,
   fetchTrend,
@@ -748,6 +750,63 @@ function AddConfirmDialog({
 }
 
 // ============================================================================
+// Recent entries section
+// ============================================================================
+
+function RecentEntries({ categoryPath }: { categoryPath: string[] }) {
+  const now = new Date()
+  const start = subDays(now, 7)
+
+  const query = useQuery({
+    queryFn: () => fetchProductivity(start, now),
+    queryKey: ['category-recent-entries', categoryPath.join('>')],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const entries = useMemo(() => {
+    const records = query.data?.records ?? []
+    return records
+      .filter((r) => {
+        if (!r.resolved_category || r.resolved_category.length < categoryPath.length) return false
+        return categoryPath.every((seg, i) => r.resolved_category![i] === seg)
+      })
+      .sort((a, b) => b.start_time.getTime() - a.start_time.getTime())
+      .slice(0, 50)
+  }, [query.data, categoryPath])
+
+  if (query.isLoading) return <div class="category-section"><p class="loading">Loading recent entries...</p></div>
+  if (entries.length === 0) return null
+
+  return (
+    <div class="category-section">
+      <h3>Recent entries <span class="count-badge">{entries.length}</span></h3>
+      <ul class="category-apps-list">
+        {entries.map((entry) => (
+          <li key={`${entry.start_time.toISOString()}-${entry.activity}`}>
+            <a
+              href={entry.id ? `/detail/productivity/${encodeURIComponent(entry.id)}` : undefined}
+              class="category-app-row"
+            >
+              <span class="category-app-name">{entry.activity}</span>
+              <span class="category-app-stats">
+                {format(entry.start_time, 'MMM d HH:mm')} – {format(entry.end_time, 'HH:mm')}
+                {' · '}
+                {formatDuration(entry.duration_sec)}
+                {entry.resolved_category && entry.resolved_category.length > categoryPath.length && (
+                  <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>
+                    {entry.resolved_category.slice(categoryPath.length).join(' > ')}
+                  </span>
+                )}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// ============================================================================
 // Trend section
 // ============================================================================
 
@@ -1103,6 +1162,7 @@ function ExistingCategoryPage({
         onMoved={onFieldSaved}
       />
       <CategoryTrendSection categoryPath={category.name.join(' > ')} color={category.color ?? '#673ab8'} />
+      <RecentEntries categoryPath={category.name} />
       <ChildCategoriesList children={children} distinctApps={distinctApps} icons={icons} />
       <MatchedAppList apps={matchedApps} category={category} onAppRemoved={onFieldSaved} />
       <UncategorizedAppList apps={uncategorized} category={category} onAppAdded={onFieldSaved} />
