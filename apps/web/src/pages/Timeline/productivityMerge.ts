@@ -4,6 +4,10 @@
  * Records sharing the same resolved_category (or both uncategorized) are merged
  * when they overlap or are within a short gap. This prevents dozens of tiny
  * window-level ActivityWatch records from creating a mess of lanes on the timeline.
+ *
+ * After per-subcategory merging, overlapping subcategory spans from the same
+ * parent category are promoted to the parent level (e.g. interleaved
+ * "Work > Programming" and "Work > Communication" become "Work").
  */
 import type { ProductivityRecord } from '../../state/api'
 
@@ -11,15 +15,9 @@ import type { ProductivityRecord } from '../../state/api'
  * Group key for merging productivity records.
  * Records with the same category path are merged together.
  * Uncategorized records share a common empty-string key.
- *
- * When `depth` is provided, the category path is truncated to that depth,
- * allowing subcategories to merge into their parent (e.g. depth=1 merges
- * "Work > Programming" and "Work > Design" into "Work").
  */
-export const productivityGroupKey = (p: ProductivityRecord, depth?: number): string =>
-  p.resolved_category && p.resolved_category.length > 0
-    ? (depth ? p.resolved_category.slice(0, depth) : p.resolved_category).join(' > ')
-    : ''
+export const productivityGroupKey = (p: ProductivityRecord): string =>
+  p.resolved_category && p.resolved_category.length > 0 ? p.resolved_category.join(' > ') : ''
 
 /** Default gap threshold for merging adjacent same-category records (2 minutes). */
 export const MERGE_GAP_MS = 2 * 60 * 1000
@@ -54,12 +52,82 @@ const mergeAdjacentRecords = (
 }
 
 /**
+ * Promote overlapping subcategory spans to their parent category.
+ *
+ * When spans from different subcategories of the same parent overlap or are
+ * within gapMs of each other, they merge into a single parent-level span.
+ * A solid block of a single subcategory (e.g. 2 hours of just "Programming")
+ * stays at the subcategory level.
+ */
+export const promoteOverlappingSubcategories = (
+  spans: MergedProductivitySpan[],
+  gapMs: number,
+): MergedProductivitySpan[] => {
+  // Group by top-level category (only spans with depth > 1 are candidates)
+  const byParent = new Map<string, MergedProductivitySpan[]>()
+  const result: MergedProductivitySpan[] = []
+
+  for (const span of spans) {
+    const sepIdx = span.groupKey.indexOf(' > ')
+    if (sepIdx === -1) {
+      // Top-level or uncategorized — no promotion possible
+      result.push(span)
+      continue
+    }
+    const parent = span.groupKey.slice(0, sepIdx)
+    const list = byParent.get(parent)
+    if (list) list.push(span)
+    else byParent.set(parent, [span])
+  }
+
+  for (const [parent, childSpans] of byParent) {
+    childSpans.sort((a, b) => a.start.getTime() - b.start.getTime())
+
+    // Sweep-line: merge overlapping/adjacent spans, tracking if multiple subcategories contributed
+    let currentStart = childSpans[0]!.start
+    let currentEnd = childSpans[0]!.end
+    let currentKey = childSpans[0]!.groupKey
+    let currentRecords = [...childSpans[0]!.records]
+    let multipleSubcats = false
+
+    for (let i = 1; i < childSpans.length; i++) {
+      const next = childSpans[i]!
+      if (next.start.getTime() <= currentEnd.getTime() + gapMs) {
+        // Overlapping/adjacent — merge
+        if (next.groupKey !== currentKey) multipleSubcats = true
+        if (next.end > currentEnd) currentEnd = next.end
+        currentRecords.push(...next.records)
+      } else {
+        // Emit current span
+        result.push({
+          end: currentEnd,
+          groupKey: multipleSubcats ? parent : currentKey,
+          records: currentRecords,
+          start: currentStart,
+        })
+        currentStart = next.start
+        currentEnd = next.end
+        currentKey = next.groupKey
+        currentRecords = [...next.records]
+        multipleSubcats = false
+      }
+    }
+    result.push({
+      end: currentEnd,
+      groupKey: multipleSubcats ? parent : currentKey,
+      records: currentRecords,
+      start: currentStart,
+    })
+  }
+
+  return result.sort((a, b) => a.start.getTime() - b.start.getTime())
+}
+
+/**
  * Merge adjacent/overlapping productivity records that share the same category.
  * Adjacent records within the merge gap are merged into a single span.
  *
  * @param mergeGapMs - Gap threshold in ms; records within this gap are merged (default 2 min).
- * @param categoryDepth - When set, truncates category paths to this depth before grouping,
- *   so subcategories merge into their parent category.
  *
  * Uncategorized records that overlap with categorized spans are excluded to avoid
  * giant background blobs covering the entire day on the timeline.
@@ -67,7 +135,6 @@ const mergeAdjacentRecords = (
 export const mergeProductivitySpans = (
   productivity: ProductivityRecord[],
   mergeGapMs = MERGE_GAP_MS,
-  categoryDepth?: number,
 ): MergedProductivitySpan[] => {
   if (productivity.length === 0) return []
 
@@ -79,7 +146,7 @@ export const mergeProductivitySpans = (
   const uncategorizedRecords: ProductivityRecord[] = []
 
   for (const record of sorted) {
-    const key = productivityGroupKey(record, categoryDepth)
+    const key = productivityGroupKey(record)
     if (key === '') {
       uncategorizedRecords.push(record)
     } else {
@@ -94,15 +161,18 @@ export const mergeProductivitySpans = (
     categorizedSpans.push(...mergeAdjacentRecords(records, mergeGapMs, key))
   }
 
-  // Phase 2: Filter uncategorized records — exclude those fully covered by a categorized span
+  // Phase 2: Promote overlapping subcategory spans to parent level
+  const promoted = promoteOverlappingSubcategories(categorizedSpans, mergeGapMs)
+
+  // Phase 3: Filter uncategorized records — exclude those fully covered by a categorized span
   const visibleUncategorized = uncategorizedRecords.filter((record) => {
     const rs = record.start_time.getTime()
     const re = record.end_time.getTime()
-    return !categorizedSpans.some((span) => span.start.getTime() <= rs && span.end.getTime() >= re)
+    return !promoted.some((span) => span.start.getTime() <= rs && span.end.getTime() >= re)
   })
 
-  // Phase 3: Merge the remaining uncategorized records
+  // Phase 4: Merge the remaining uncategorized records
   const uncategorizedSpans = mergeAdjacentRecords(visibleUncategorized, mergeGapMs, '')
 
-  return [...categorizedSpans, ...uncategorizedSpans].sort((a, b) => a.start.getTime() - b.start.getTime())
+  return [...promoted, ...uncategorizedSpans].sort((a, b) => a.start.getTime() - b.start.getTime())
 }

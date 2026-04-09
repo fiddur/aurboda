@@ -461,7 +461,7 @@ const categorizeProductivity = (
   productivity: ProductivityRecord[],
   categories: ScreentimeCategory[],
   itemIcons: Record<string, string>,
-  mergeParams?: { mergeGapMs: number; categoryDepth?: number },
+  mergeGapMs?: number,
 ): ChartItem[] => {
   // Filter out records matching excluded categories (e.g. plasmashell/idle)
   const filtered = productivity.filter(
@@ -470,7 +470,7 @@ const categorizeProductivity = (
       p.resolved_category.length === 0 ||
       !isExcludedCategory(p.resolved_category, categories),
   )
-  const spans = mergeProductivitySpans(filtered, mergeParams?.mergeGapMs, mergeParams?.categoryDepth)
+  const spans = mergeProductivitySpans(filtered, mergeGapMs)
 
   return spans.map((span) => {
     const isCategorized = span.groupKey !== ''
@@ -967,12 +967,12 @@ export const Timeline = () => {
     [mealsQuery.data, itemIcons],
   )
 
-  // Zoom-adaptive merge parameters for screen time spans in the activity lane.
-  // Zoomed out → merge subcategories into top-level with larger gap; zoomed in → full depth.
-  const screentimeMergeParams = useMemo(() => {
-    if (barBucketSize === '1w') return { categoryDepth: 1 as const, mergeGapMs: 4 * 60 * 60 * 1000 }
-    if (barBucketSize === '1d') return { categoryDepth: 1 as const, mergeGapMs: 60 * 60 * 1000 }
-    return { categoryDepth: undefined, mergeGapMs: 10 * 60 * 1000 }
+  // Zoom-adaptive merge gap for screen time spans — larger gap when zoomed out
+  // reduces clutter. Subcategory promotion is handled automatically by overlap detection.
+  const screentimeMergeGapMs = useMemo(() => {
+    if (barBucketSize === '1w') return 4 * 60 * 60 * 1000 // 4h gap at week+ view
+    if (barBucketSize === '1d') return 60 * 60 * 1000 // 1h gap at multi-day view
+    return 10 * 60 * 1000 // 10min gap at day view
   }, [barBucketSize])
 
   const allChartItems = useMemo(
@@ -980,12 +980,7 @@ export const Timeline = () => {
       ...activityItems,
       ...categorizeLocations(places, uniquePlaceNames),
       ...categorizeTagActivities(nonBuiltinTagActivities, itemIcons, typeDefsMap),
-      ...categorizeProductivity(
-        productivity,
-        screentimeCategoriesQuery.data ?? [],
-        itemIcons,
-        screentimeMergeParams,
-      ),
+      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons, screentimeMergeGapMs),
       ...musicItems,
       ...mealItems,
     ],
@@ -998,7 +993,7 @@ export const Timeline = () => {
       typeDefsMap,
       productivity,
       screentimeCategoriesQuery.data,
-      screentimeMergeParams,
+      screentimeMergeGapMs,
       musicItems,
       mealItems,
     ],
