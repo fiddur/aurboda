@@ -11,6 +11,7 @@ import {
   getDailySummary,
   getPeriodSummary,
   mergeProductivitySpans,
+  mergeByCategorySpans,
   parseBucketSize,
   queryActivities,
   queryMetrics,
@@ -2931,5 +2932,150 @@ describe('queryProductivity with comments', () => {
     const result = await queryProductivity('testuser', new Date('2024-01-15'), new Date('2024-01-16'))
 
     expect(result.data[0].comments).toEqual([])
+  })
+})
+
+describe('mergeByCategorySpans', () => {
+  const mkRecord = (
+    start: string,
+    end: string,
+    activity: string,
+    resolved_category?: string[],
+    id?: string,
+  ) => ({
+    activity,
+    duration_sec: (new Date(end).getTime() - new Date(start).getTime()) / 1000,
+    end_time: new Date(end),
+    id,
+    resolved_category,
+    source_ids: id ? [id] : [],
+    start_time: new Date(start),
+  })
+
+  const workDevCategory = {
+    color: '#4ade80',
+    created_at: new Date(),
+    exclude_from_screentime: false,
+    id: 'cat-work',
+    ignore_case: true,
+    name: ['Work & Dev'],
+    rule_type: 'none' as const,
+    score: 2,
+    sort_order: 0,
+    updated_at: new Date(),
+  }
+
+  const softwareDevCategory = {
+    ...workDevCategory,
+    id: 'cat-softdev',
+    name: ['Work & Dev', 'Software Dev'],
+    rule_type: 'regex' as const,
+  }
+
+  const communicationCategory = {
+    ...workDevCategory,
+    id: 'cat-comm',
+    name: ['Work & Dev', 'Communication'],
+    rule_type: 'regex' as const,
+  }
+
+  const excludedCategory = {
+    ...workDevCategory,
+    exclude_from_screentime: true,
+    id: 'cat-excluded',
+    name: ['Excluded'],
+  }
+
+  const categories = [workDevCategory, softwareDevCategory, communicationCategory, excludedCategory]
+
+  test('merges same-category adjacent records', () => {
+    const records = [
+      mkRecord('2024-01-15T08:00:00Z', '2024-01-15T08:30:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r1'),
+      mkRecord('2024-01-15T08:31:00Z', '2024-01-15T09:00:00Z', 'Alacritty', ['Work & Dev', 'Software Dev'], 'r2'),
+    ]
+    const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].resolved_category).toEqual(['Work & Dev', 'Software Dev'])
+    expect(results[0].source_ids).toEqual(['r1', 'r2'])
+  })
+
+  test('promotes overlapping subcategories to parent', () => {
+    const records = [
+      mkRecord('2024-01-15T08:00:00Z', '2024-01-15T08:30:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r1'),
+      mkRecord('2024-01-15T08:25:00Z', '2024-01-15T09:00:00Z', 'Slack', ['Work & Dev', 'Communication'], 'r2'),
+    ]
+    const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].resolved_category).toEqual(['Work & Dev'])
+    expect(results[0].category_id).toBe('cat-work')
+  })
+
+  test('keeps non-overlapping subcategories separate', () => {
+    const records = [
+      mkRecord('2024-01-15T08:00:00Z', '2024-01-15T09:00:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r1'),
+      mkRecord('2024-01-15T10:00:00Z', '2024-01-15T11:00:00Z', 'Slack', ['Work & Dev', 'Communication'], 'r2'),
+    ]
+    const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
+
+    expect(results).toHaveLength(2)
+    expect(results[0].resolved_category).toEqual(['Work & Dev', 'Software Dev'])
+    expect(results[1].resolved_category).toEqual(['Work & Dev', 'Communication'])
+  })
+
+  test('filters out excluded categories', () => {
+    const records = [
+      mkRecord('2024-01-15T08:00:00Z', '2024-01-15T08:30:00Z', 'plasmashell', ['Excluded'], 'r1'),
+      mkRecord('2024-01-15T08:00:00Z', '2024-01-15T09:00:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r2'),
+    ]
+    const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].activity).toBe('Emacs')
+  })
+
+  test('filters out uncategorized records', () => {
+    const records = [
+      mkRecord('2024-01-15T08:00:00Z', '2024-01-15T08:30:00Z', 'random-app', undefined, 'r1'),
+      mkRecord('2024-01-15T08:00:00Z', '2024-01-15T09:00:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r2'),
+    ]
+    const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
+
+    expect(results).toHaveLength(1)
+    expect(results[0].activity).toBe('Emacs')
+  })
+
+  test('returns categories map with resolved category metadata', () => {
+    const records = [
+      mkRecord('2024-01-15T08:00:00Z', '2024-01-15T09:00:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r1'),
+    ]
+    const { categoriesMap } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
+
+    expect(categoriesMap['cat-softdev']).toEqual({
+      color: '#4ade80',
+      name: ['Work & Dev', 'Software Dev'],
+      score: 2,
+    })
+  })
+
+  test('joins multiple apps in activity field', () => {
+    const records = [
+      mkRecord('2024-01-15T08:00:00Z', '2024-01-15T08:30:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r1'),
+      mkRecord('2024-01-15T08:25:00Z', '2024-01-15T09:00:00Z', 'Slack', ['Work & Dev', 'Communication'], 'r2'),
+    ]
+    const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
+
+    expect(results[0].activity).toBe('Emacs, Slack')
+  })
+
+  test('sums duration_sec from constituent records', () => {
+    const records = [
+      mkRecord('2024-01-15T08:00:00Z', '2024-01-15T08:30:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r1'),
+      mkRecord('2024-01-15T08:31:00Z', '2024-01-15T09:00:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r2'),
+    ]
+    const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
+
+    expect(results[0].duration_sec).toBe(1800 + 1740)
   })
 })
