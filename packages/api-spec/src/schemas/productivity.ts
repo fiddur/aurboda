@@ -56,11 +56,14 @@ export type ProductivityRecord = z.infer<typeof productivityRecordSchema>
  */
 export const productivityQuerySchema = timeRangeQuerySchema
   .extend({
-    merge_by: z.enum(['category']).optional().meta({
-      description:
-        'Merge strategy: "category" merges by resolved_category with overlap promotion ' +
-        '(interleaved subcategories promoted to parent). When set, merge_gap_ms controls gap tolerance.',
-    }),
+    merge_by: z
+      .enum(['category'])
+      .optional()
+      .meta({
+        description:
+          'Merge strategy: "category" merges by resolved_category with overlap promotion ' +
+          '(interleaved subcategories promoted to parent). When set, merge_gap_ms controls gap tolerance.',
+      }),
     merge_gap_ms: z
       .string()
       .optional()

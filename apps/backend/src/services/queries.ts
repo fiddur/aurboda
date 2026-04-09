@@ -1915,7 +1915,9 @@ export function mergeByCategorySpans(
   const categoriesMap: Record<string, CategoryInfo> = {}
 
   const results = promoted.map((span) => {
-    const allSourceIds = span.records.flatMap((r) => (r.source_ids.length > 0 ? r.source_ids : r.id ? [r.id] : []))
+    const allSourceIds = span.records.flatMap((r) =>
+      r.source_ids.length > 0 ? r.source_ids : r.id ? [r.id] : [],
+    )
     const totalDuration = span.records.reduce((sum, r) => sum + r.duration_sec, 0)
     const uniqueApps = [...new Set(span.records.map((r) => r.activity))]
 

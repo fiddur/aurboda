@@ -624,10 +624,7 @@ export const Timeline = () => {
   // Zoom-adaptive merge gap for backend category merging — larger gap when zoomed out.
   // Computed early (before queries) so it can be included in the query key.
   const screentimeMergeGapMs = useMemo(() => {
-    const days = differenceInCalendarDays(
-      new Date(toDate.value),
-      new Date(fromDate.value),
-    )
+    const days = differenceInCalendarDays(new Date(toDate.value), new Date(fromDate.value))
     if (days > 50) return 4 * 60 * 60 * 1000 // 4h gap at week+ view
     if (days > 2) return 60 * 60 * 1000 // 1h gap at multi-day view
     return 10 * 60 * 1000 // 10min gap at day view

@@ -774,12 +774,20 @@ function RecentEntries({ categoryPath }: { categoryPath: string[] }) {
       .slice(0, 50)
   }, [query.data, categoryPath])
 
-  if (query.isLoading) return <div class="category-section"><p class="loading">Loading recent entries...</p></div>
+  if (query.isLoading) {
+    return (
+      <div class="category-section">
+        <p class="loading">Loading recent entries...</p>
+      </div>
+    )
+  }
   if (entries.length === 0) return null
 
   return (
     <div class="category-section">
-      <h3>Recent entries <span class="count-badge">{entries.length}</span></h3>
+      <h3>
+        Recent entries <span class="count-badge">{entries.length}</span>
+      </h3>
       <ul class="category-apps-list">
         {entries.map((entry) => (
           <li key={`${entry.start_time.toISOString()}-${entry.activity}`}>
