@@ -424,7 +424,7 @@ export type HrZoneSource = z.infer<typeof hrZoneSourceSchema>
 /**
  * Sync status schema.
  */
-export const syncStatusSchema = z.enum(['idle', 'syncing', 'error']).meta({
+export const syncStatusSchema = z.enum(['idle', 'syncing', 'error', 'rate_limited']).meta({
   description: 'Status of sync operation',
   example: 'idle',
   id: 'SyncStatus',
