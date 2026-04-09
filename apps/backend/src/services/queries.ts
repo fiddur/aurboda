@@ -1738,16 +1738,182 @@ export function mergeProductivitySpans(
   return phase2.sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 }
 
+/** Internal type for category-merged spans. */
+interface CategoryMergedSpan {
+  start: Date
+  end: Date
+  groupKey: string
+  records: MergeRecord[]
+}
+
+/**
+ * Group key for category merging. Returns the full resolved_category path joined
+ * by ' > ', or empty string for uncategorized records.
+ */
+const categoryGroupKey = (r: ProductivityRecord): string =>
+  r.resolved_category && r.resolved_category.length > 0 ? r.resolved_category.join(' > ') : ''
+
+/**
+ * Merge adjacent records sharing the same category group key within a gap tolerance.
+ */
+const mergeAdjacentByCategory = (
+  records: MergeRecord[],
+  gapMs: number,
+  groupKey: string,
+): CategoryMergedSpan[] => {
+  const spans: CategoryMergedSpan[] = []
+  let open: CategoryMergedSpan | null = null
+
+  for (const record of records) {
+    if (open && record.start_time.getTime() <= open.end.getTime() + gapMs) {
+      if (record.end_time > open.end) open.end = record.end_time
+      open.records.push(record)
+    } else {
+      if (open) spans.push(open)
+      open = { end: record.end_time, groupKey, records: [record], start: record.start_time }
+    }
+  }
+  if (open) spans.push(open)
+  return spans
+}
+
+/**
+ * Promote overlapping subcategory spans to their parent category.
+ * When spans from different subcategories of the same parent overlap within gapMs,
+ * they merge into a single parent-level span (e.g. interleaved "Work > Programming"
+ * and "Work > Communication" become "Work").
+ */
+const promoteOverlappingSubcategories = (
+  spans: CategoryMergedSpan[],
+  gapMs: number,
+): CategoryMergedSpan[] => {
+  const byParent = new Map<string, CategoryMergedSpan[]>()
+  const result: CategoryMergedSpan[] = []
+
+  for (const span of spans) {
+    const sepIdx = span.groupKey.indexOf(' > ')
+    if (sepIdx === -1) {
+      result.push(span)
+      continue
+    }
+    const parent = span.groupKey.slice(0, sepIdx)
+    const list = byParent.get(parent)
+    if (list) list.push(span)
+    else byParent.set(parent, [span])
+  }
+
+  for (const [parent, childSpans] of byParent) {
+    childSpans.sort((a, b) => a.start.getTime() - b.start.getTime())
+
+    let currentStart = childSpans[0]!.start
+    let currentEnd = childSpans[0]!.end
+    let currentKey = childSpans[0]!.groupKey
+    let currentRecords = [...childSpans[0]!.records]
+    let multipleSubcats = false
+
+    for (let i = 1; i < childSpans.length; i++) {
+      const next = childSpans[i]!
+      if (next.start.getTime() <= currentEnd.getTime() + gapMs) {
+        if (next.groupKey !== currentKey) multipleSubcats = true
+        if (next.end > currentEnd) currentEnd = next.end
+        currentRecords.push(...next.records)
+      } else {
+        result.push({
+          end: currentEnd,
+          groupKey: multipleSubcats ? parent : currentKey,
+          records: currentRecords,
+          start: currentStart,
+        })
+        currentStart = next.start
+        currentEnd = next.end
+        currentKey = next.groupKey
+        currentRecords = [...next.records]
+        multipleSubcats = false
+      }
+    }
+    result.push({
+      end: currentEnd,
+      groupKey: multipleSubcats ? parent : currentKey,
+      records: currentRecords,
+      start: currentStart,
+    })
+  }
+
+  return result.sort((a, b) => a.start.getTime() - b.start.getTime())
+}
+
+/**
+ * Merge app-level records by resolved category and promote overlapping subcategories.
+ * Returns one ProductivityResult per category span, with aggregated duration and source_ids.
+ * Excluded and uncategorized records are dropped.
+ */
+export function mergeByCategorySpans(
+  records: MergeRecord[],
+  gapMs: number,
+  excludedCategories: Set<string>,
+): ProductivityResult[] {
+  // Filter out excluded and uncategorized records
+  const categorized = records.filter((r) => {
+    const key = categoryGroupKey(r)
+    if (key === '') return false
+    // Check if any ancestor is excluded
+    if (r.resolved_category) {
+      for (let depth = r.resolved_category.length; depth > 0; depth--) {
+        if (excludedCategories.has(r.resolved_category.slice(0, depth).join(' > '))) return false
+      }
+    }
+    return true
+  })
+
+  // Group by category key and merge adjacent within gap
+  const byKey = new Map<string, MergeRecord[]>()
+  for (const record of categorized) {
+    const key = categoryGroupKey(record)
+    const list = byKey.get(key)
+    if (list) list.push(record)
+    else byKey.set(key, [record])
+  }
+
+  const categorySpans: CategoryMergedSpan[] = []
+  for (const [key, recs] of byKey) {
+    // Records within each key are already sorted by start_time from the DB/app-merge
+    categorySpans.push(...mergeAdjacentByCategory(recs, gapMs, key))
+  }
+
+  // Promote overlapping subcategories to parent level
+  const promoted = promoteOverlappingSubcategories(categorySpans, gapMs)
+
+  return promoted.map((span) => {
+    const allSourceIds = span.records.flatMap((r) => (r.source_ids.length > 0 ? r.source_ids : r.id ? [r.id] : []))
+    const totalDuration = span.records.reduce((sum, r) => sum + r.duration_sec, 0)
+    const uniqueApps = [...new Set(span.records.map((r) => r.activity))]
+
+    return {
+      activity: uniqueApps.length === 1 ? uniqueApps[0]! : uniqueApps.join(', '),
+      comments: [],
+      duration_sec: totalDuration,
+      end_time: span.end.toISOString(),
+      resolved_category: span.groupKey.split(' > '),
+      source_ids: allSourceIds.length > 1 ? allSourceIds : undefined,
+      start_time: span.start.toISOString(),
+    }
+  })
+}
+
 /**
  * Query productivity data for a time range.
  * Merges consecutive spans for the same activity to reduce visual clutter.
  * @param sync Optional sync provider to auto-refresh stale data before querying
+ * @param mergeBy When 'category', merges by resolved_category with overlap promotion
+ * @param mergeGapMs Gap tolerance for category merging (default 2 min)
  */
 export async function queryProductivity(
   user: string,
   start: Date,
   end: Date,
   sync?: SyncProvider,
+  mergeBy?: 'category',
+  mergeGapMs?: number,
 ): Promise<ProductivityResult[]> {
   // Fire-and-forget: trigger background sync so data is fresh for the next request
   if (sync) {
@@ -1756,11 +1922,20 @@ export async function queryProductivity(
 
   const productivity = await getProductivity(user, start, end)
   const merged = mergeProductivitySpans(productivity)
-  // Fetch comments for all source IDs so comments on any constituent record surface
+
+  // When merge_by=category, do category-level merge + overlap promotion on the server
+  if (mergeBy === 'category') {
+    const categories = await getScreentimeCategories(user)
+    const excludedSet = new Set(
+      categories.filter((c) => c.exclude_from_screentime).map((c) => c.name.join(' > ')),
+    )
+    return mergeByCategorySpans(merged, mergeGapMs ?? MERGE_GAP_MS, excludedSet)
+  }
+
+  // Default: return app-level merged records
   const allIds = merged.flatMap((p) => (p.source_ids.length > 0 ? p.source_ids : p.id ? [p.id] : []))
   const commentsMap = await getCommentsMap(user, 'productivity', allIds)
   return merged.map((p) => {
-    // Collect comments from all source IDs for this merged span
     const comments = p.source_ids.flatMap((sid) => commentsMap.get(sid) ?? [])
     return {
       activity: p.activity,

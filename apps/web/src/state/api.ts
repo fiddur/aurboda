@@ -323,10 +323,12 @@ export const fetchActivities = async (
   start: Date,
   end: Date,
   types?: ActivityType[],
+  excludeTypes?: string[],
 ): Promise<Activity[]> => {
   const { token } = auth.value
   const params: ActivitiesQuery = {
     end: end.toISOString(),
+    exclude_types: excludeTypes?.join(','),
     start: start.toISOString(),
     types: types?.join(','),
   }
@@ -343,10 +345,17 @@ export const fetchActivities = async (
 }
 
 // Fetch productivity data (RescueTime) for the specified date range
-export const fetchProductivity = async (start: Date, end: Date): Promise<ProductivityRecord[]> => {
+export const fetchProductivity = async (
+  start: Date,
+  end: Date,
+  mergeBy?: 'category',
+  mergeGapMs?: number,
+): Promise<ProductivityRecord[]> => {
   const { token } = auth.value
   const params: ProductivityQuery = {
     end: end.toISOString(),
+    merge_by: mergeBy,
+    merge_gap_ms: mergeGapMs?.toString(),
     start: start.toISOString(),
   }
   const response = await axios.get<ProductivityResponse>(`${API_URL}/productivity`, {

@@ -51,7 +51,19 @@ export type ProductivityRecord = z.infer<typeof productivityRecordSchema>
 /**
  * Productivity query schema.
  */
-export const productivityQuerySchema = timeRangeQuerySchema.meta({ id: 'ProductivityQuery' })
+export const productivityQuerySchema = timeRangeQuerySchema
+  .extend({
+    merge_by: z.enum(['category']).optional().meta({
+      description:
+        'Merge strategy: "category" merges by resolved_category with overlap promotion ' +
+        '(interleaved subcategories promoted to parent). When set, merge_gap_ms controls gap tolerance.',
+    }),
+    merge_gap_ms: z
+      .string()
+      .optional()
+      .meta({ description: 'Merge gap tolerance in ms (default 120000 = 2 min)', example: '600000' }),
+  })
+  .meta({ id: 'ProductivityQuery' })
 
 export type ProductivityQuery = z.infer<typeof productivityQuerySchema>
 

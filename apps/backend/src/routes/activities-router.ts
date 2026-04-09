@@ -168,11 +168,17 @@ export const createActivitiesRouter = (
     authMiddleware,
     validateQuery(activitiesQuerySchema),
     async (req, res) => {
-      const { start, end, types: typesParam } = req.query
+      const { start, end, types: typesParam, exclude_types: excludeTypesParam } = req.query
       const user = req.user!
 
       // When no types specified, query all activity types (not just those with definitions)
-      const types = typesParam ? typesParam.split(',') : await getAllActivityTypeNames(user)
+      let types = typesParam ? typesParam.split(',') : await getAllActivityTypeNames(user)
+
+      // Filter out excluded types when specified
+      if (excludeTypesParam) {
+        const excludeSet = new Set(excludeTypesParam.split(','))
+        types = types.filter((t) => !excludeSet.has(t))
+      }
 
       const activities = await queryActivities(user, types, new Date(start), new Date(end), syncProvider)
       res.json({ data: activities, success: true })
@@ -615,10 +621,18 @@ export const createActivitiesRouter = (
     authMiddleware,
     validateQuery(productivityQuerySchema),
     async (req, res) => {
-      const { start, end } = req.query
+      const { start, end, merge_by, merge_gap_ms } = req.query
       const user = req.user!
 
-      const productivity = await queryProductivity(user, new Date(start), new Date(end), syncProvider)
+      const gapMs = merge_gap_ms ? parseInt(merge_gap_ms, 10) : undefined
+      const productivity = await queryProductivity(
+        user,
+        new Date(start),
+        new Date(end),
+        syncProvider,
+        merge_by,
+        gapMs,
+      )
       res.json({ data: productivity, success: true })
     },
   )
