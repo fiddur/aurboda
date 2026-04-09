@@ -6,7 +6,6 @@ import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../..
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { SettingsSection } from '../../components/SettingsSection'
-import { TimelineIconsSettings } from '../../components/TimelineIconsSettings'
 import { fetchUserSettings, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
@@ -207,8 +206,6 @@ export function Settings() {
       </SettingsSection>
 
       <MealPreferencesSettings />
-
-      <TimelineIconsSettings />
 
       <section class="settings-section">
         <p class="section-description">
