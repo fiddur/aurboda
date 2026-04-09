@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { Activity, ActivityTypeDefinition } from '../../state/api'
 
 import { fetchMetricTimeSeries } from '../../state/api'
+import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
@@ -178,13 +179,12 @@ export const ExerciseDetail = ({
     <>
       <div class="entity-info">
         <div class="entity-meta">
-          {exerciseType ? (
-            <a href={`/activity-type/${encodeURIComponent(exerciseType)}`} class="entity-type-badge">
-              {formatExerciseTypeName(exerciseType)}
-            </a>
-          ) : (
-            <span class="entity-type-badge">{activity.activity_type}</span>
-          )}
+          <a
+            href={`/activity-type/${encodeURIComponent(exerciseType ?? activity.activity_type)}`}
+            class="entity-type-badge"
+          >
+            {exerciseType ? formatExerciseTypeName(exerciseType) : toDisplayName(activity.activity_type)}
+          </a>
           {activity.source && <span class="entity-source">Source: {activity.source}</span>}
         </div>
 

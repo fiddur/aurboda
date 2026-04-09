@@ -106,7 +106,9 @@ export const SleepDetail = ({
     <>
       <div class="entity-info">
         <div class="entity-meta">
-          <span class="entity-type-badge">{activity.activity_type}</span>
+          <a href={`/activity-type/${encodeURIComponent(activity.activity_type)}`} class="entity-type-badge">
+            {activity.activity_type}
+          </a>
           {activity.source && <span class="entity-source">Source: {activity.source}</span>}
         </div>
 
