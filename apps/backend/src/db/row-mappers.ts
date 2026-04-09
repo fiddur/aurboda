@@ -1,10 +1,11 @@
+import type { QueryResultRow } from 'pg'
+
 /**
  * Row mapper functions for converting PostgreSQL rows to typed objects.
  *
  * Replaces inline `as Type` casts with validated type guards.
  */
-import type { ActivityType, DataSource, MetricType } from '@aurboda/api-spec'
-import type { QueryResultRow } from 'pg'
+import { entityTypes, type ActivityType, type DataSource, type MetricType } from '@aurboda/api-spec'
 
 import type {
   Activity,
@@ -50,7 +51,7 @@ const VALID_DATA_SOURCES = [
 
 const VALID_GEOCODE_STATUSES = ['pending', 'geocoding', 'success', 'failed'] as const
 const VALID_SYNC_STATUSES = ['idle', 'syncing', 'error', 'rate_limited'] as const
-const VALID_ENTITY_TYPES = ['activity', 'tag', 'productivity', 'metric'] as const
+const VALID_ENTITY_TYPES = entityTypes
 const VALID_LASTFM_MATCH_TYPES = ['track', 'artist', 'track_artist'] as const
 const VALID_LASTFM_MATCH_MODES = ['exact', 'contains'] as const
 

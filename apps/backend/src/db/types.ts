@@ -9,6 +9,7 @@ import type {
   BiologicalSex,
   DashboardConfig,
   DataSource,
+  EntityType,
   GarminDataType,
   MetricType,
   TrainingLoadSettings,
@@ -231,7 +232,7 @@ export interface ScreentimeCategoryInput {
 // Notes
 // ============================================================================
 
-export type EntityType = 'activity' | 'tag' | 'productivity' | 'metric' | 'report'
+export type { EntityType }
 
 export interface Note {
   id: string
