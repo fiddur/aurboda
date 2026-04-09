@@ -230,9 +230,14 @@ export type MealResponse = z.infer<typeof mealResponseSchema>
 /**
  * Multiple meals response.
  */
-export const mealsResponseSchema = createDataArrayResponseSchema(mealSchema).meta({
-  id: 'MealsResponse',
-})
+export const mealsResponseSchema = createDataArrayResponseSchema(mealSchema)
+  .extend({
+    log_completed: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Whether meal logging is marked complete for the queried date' }),
+  })
+  .meta({ id: 'MealsResponse' })
 
 export type MealsResponse = z.infer<typeof mealsResponseSchema>
 

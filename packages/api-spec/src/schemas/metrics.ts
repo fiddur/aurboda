@@ -220,6 +220,20 @@ export const deleteMetricQuerySchema = z
 export type DeleteMetricQuery = z.infer<typeof deleteMetricQuerySchema>
 
 /**
+ * Delete metric response.
+ */
+export const deleteMetricResponseSchema = baseResponseSchema
+  .extend({
+    deleted: z.boolean().meta({ description: 'Whether the measurement was deleted' }),
+    metric: z.string().optional().meta({ description: 'Metric name' }),
+    source: z.string().optional().meta({ description: 'Data source' }),
+    time: iso8601DateTimeSchema.optional().meta({ description: 'Measurement time' }),
+  })
+  .meta({ id: 'DeleteMetricResponse' })
+
+export type DeleteMetricResponse = z.infer<typeof deleteMetricResponseSchema>
+
+/**
  * Custom metric response.
  */
 export const customMetricResponseSchema = baseResponseSchema

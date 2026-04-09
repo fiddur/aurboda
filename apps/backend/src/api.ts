@@ -351,11 +351,6 @@ const main = async () => {
     res.end(JSON.stringify({ is_admin: isAdmin, refresh: token, token }))
   })
 
-  httpd.post('/refresh', async (req, res) => {
-    const { refresh } = req.body
-    res.end(JSON.stringify({ refresh, token: refresh }))
-  })
-
   // Generate a fresh API token for the authenticated user (e.g. for push agents like ActivityWatch)
   httpd.get('/auth/token', authMiddleware, (req, res) => {
     const user = req.user!

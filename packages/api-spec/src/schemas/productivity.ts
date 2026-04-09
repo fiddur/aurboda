@@ -7,6 +7,7 @@ import { z } from 'zod'
 import {
   baseResponseSchema,
   createDataArrayResponseSchema,
+  createDataResponseSchema,
   dataSourceSchema,
   iso8601DateTimeSchema,
   timeRangeQuerySchema,
@@ -61,6 +62,42 @@ export const productivityResponseSchema = createDataArrayResponseSchema(producti
 })
 
 export type ProductivityResponse = z.infer<typeof productivityResponseSchema>
+
+/**
+ * Single productivity record response.
+ */
+export const productivityRecordResponseSchema = createDataResponseSchema(productivityRecordSchema).meta({
+  id: 'ProductivityRecordResponse',
+})
+
+export type ProductivityRecordResponse = z.infer<typeof productivityRecordResponseSchema>
+
+/**
+ * Distinct app/title combination with usage stats.
+ */
+export const distinctAppSchema = z
+  .object({
+    activity: z.string().meta({ description: 'Application name' }),
+    last_seen: iso8601DateTimeSchema.meta({ description: 'Most recent occurrence' }),
+    record_count: z.number().int().meta({ description: 'Number of productivity records' }),
+    resolved_category: z.array(z.string()).optional().meta({
+      description: 'Resolved category path from screentime rules',
+    }),
+    title: z.string().optional().meta({ description: 'Window title' }),
+    total_duration_sec: z.number().int().meta({ description: 'Total duration in seconds' }),
+  })
+  .meta({ id: 'DistinctApp' })
+
+export type DistinctApp = z.infer<typeof distinctAppSchema>
+
+/**
+ * Distinct apps response.
+ */
+export const distinctAppsResponseSchema = createDataArrayResponseSchema(distinctAppSchema).meta({
+  id: 'DistinctAppsResponse',
+})
+
+export type DistinctAppsResponse = z.infer<typeof distinctAppsResponseSchema>
 
 /**
  * Category duration within a screentime bucket.
