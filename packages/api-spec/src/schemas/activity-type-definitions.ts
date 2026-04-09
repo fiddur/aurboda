@@ -4,6 +4,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, createDataArrayResponseSchema, displayCategorySchema } from './common.ts'
+import { dataSchemaDefinitionSchema } from './data-schema.ts'
 
 /**
  * Activity type definition schema.
@@ -18,6 +19,9 @@ export const activityTypeDefinitionSchema = z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/)
       .meta({ description: 'Hex color for timeline rendering' }),
+    data_schema: dataSchemaDefinitionSchema
+      .optional()
+      .meta({ description: 'Schema defining expected data fields for this activity type' }),
     display_category: displayCategorySchema,
     display_name: z.string().meta({ description: 'Human-readable display name' }),
     icon: z.string().optional().meta({ description: 'Emoji or icon identifier' }),
@@ -55,6 +59,9 @@ export const addActivityTypeDefinitionBodySchema = z
       .regex(/^#[0-9a-fA-F]{6}$/)
       .optional()
       .meta({ description: 'Hex color (defaults to #6b7280)' }),
+    data_schema: dataSchemaDefinitionSchema
+      .optional()
+      .meta({ description: 'Schema defining expected data fields' }),
     display_category: displayCategorySchema.meta({ description: 'Display category for timeline grouping' }),
     display_name: z.string().meta({ description: 'Human-readable display name' }),
     icon: z.string().optional().meta({ description: 'Emoji or icon identifier' }),
@@ -85,6 +92,10 @@ export const updateActivityTypeDefinitionBodySchema = z
       .regex(/^#[0-9a-fA-F]{6}$/)
       .optional()
       .meta({ description: 'New hex color' }),
+    data_schema: dataSchemaDefinitionSchema
+      .nullable()
+      .optional()
+      .meta({ description: 'New data schema (null to clear)' }),
     display_category: displayCategorySchema.optional().meta({ description: 'New display category' }),
     display_name: z.string().optional().meta({ description: 'New display name' }),
     icon: z.string().nullable().optional().meta({ description: 'New icon (null to clear)' }),

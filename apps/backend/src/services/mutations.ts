@@ -17,6 +17,7 @@ import {
   deleteActivity as dbDeleteActivity,
   findMergeableActivity,
   getActivityById as dbGetActivityById,
+  getActivityTypeDefinition,
   insertActivity as dbInsertActivity,
   insertNewActivity as dbInsertNewActivity,
   updateActivity as dbUpdateActivity,
@@ -36,6 +37,7 @@ import {
 } from '../schema.ts'
 import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
+import { validateActivityData } from './data-schema-validation.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 
 // ============================================================================
@@ -278,6 +280,22 @@ export async function bulkAddMetrics(
 }
 
 /**
+ * Validate activity data against the activity type's schema, if one is defined.
+ * Returns an error string if validation fails, or undefined if it passes.
+ */
+const validateDataForType = async (
+  user: string,
+  activityType: string,
+  data: Record<string, unknown> | undefined,
+): Promise<string | undefined> => {
+  const typeDef = await getActivityTypeDefinition(user, activityType)
+  if (!typeDef?.data_schema) return undefined
+  const validation = validateActivityData(data, typeDef.data_schema)
+  if (!validation.valid) return `Data validation failed: ${validation.errors?.join(', ')}`
+  return undefined
+}
+
+/**
  * Add an activity (exercise, meditation, nap, etc.).
  *
  * Validates that end_time is after start_time.
@@ -290,6 +308,10 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
       success: false,
     }
   }
+
+  // Validate data against activity type schema (if defined)
+  const dataError = await validateDataForType(user, input.activity_type, input.data)
+  if (dataError) return { error: dataError, success: false }
 
   // Validate that endTime is after startTime (if provided)
   if (input.end_time && input.end_time <= input.start_time) {
@@ -494,6 +516,13 @@ export async function updateActivity(
 
   // Merge new data fields into existing data (preserving fields not being updated)
   const mergedData = input.data ? { ...(existing.data as Record<string, unknown>), ...input.data } : undefined
+
+  // Validate merged data against activity type schema (if defined)
+  if (mergedData) {
+    const finalType = input.activity_type ?? existing.activity_type
+    const dataError = await validateDataForType(user, finalType, mergedData)
+    if (dataError) return { error: dataError, id, success: false }
+  }
 
   const updated = await dbUpdateActivity(user, id, {
     activity_type: input.activity_type,

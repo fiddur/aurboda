@@ -2991,7 +2991,13 @@ describe('mergeByCategorySpans', () => {
   test('merges same-category adjacent records', () => {
     const records = [
       mkRecord('2024-01-15T08:00:00Z', '2024-01-15T08:30:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r1'),
-      mkRecord('2024-01-15T08:31:00Z', '2024-01-15T09:00:00Z', 'Alacritty', ['Work & Dev', 'Software Dev'], 'r2'),
+      mkRecord(
+        '2024-01-15T08:31:00Z',
+        '2024-01-15T09:00:00Z',
+        'Alacritty',
+        ['Work & Dev', 'Software Dev'],
+        'r2',
+      ),
     ]
     const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
 
@@ -3003,7 +3009,13 @@ describe('mergeByCategorySpans', () => {
   test('promotes overlapping subcategories to parent', () => {
     const records = [
       mkRecord('2024-01-15T08:00:00Z', '2024-01-15T08:30:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r1'),
-      mkRecord('2024-01-15T08:25:00Z', '2024-01-15T09:00:00Z', 'Slack', ['Work & Dev', 'Communication'], 'r2'),
+      mkRecord(
+        '2024-01-15T08:25:00Z',
+        '2024-01-15T09:00:00Z',
+        'Slack',
+        ['Work & Dev', 'Communication'],
+        'r2',
+      ),
     ]
     const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
 
@@ -3015,7 +3027,13 @@ describe('mergeByCategorySpans', () => {
   test('keeps non-overlapping subcategories separate', () => {
     const records = [
       mkRecord('2024-01-15T08:00:00Z', '2024-01-15T09:00:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r1'),
-      mkRecord('2024-01-15T10:00:00Z', '2024-01-15T11:00:00Z', 'Slack', ['Work & Dev', 'Communication'], 'r2'),
+      mkRecord(
+        '2024-01-15T10:00:00Z',
+        '2024-01-15T11:00:00Z',
+        'Slack',
+        ['Work & Dev', 'Communication'],
+        'r2',
+      ),
     ]
     const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
 
@@ -3062,7 +3080,13 @@ describe('mergeByCategorySpans', () => {
   test('joins multiple apps in activity field', () => {
     const records = [
       mkRecord('2024-01-15T08:00:00Z', '2024-01-15T08:30:00Z', 'Emacs', ['Work & Dev', 'Software Dev'], 'r1'),
-      mkRecord('2024-01-15T08:25:00Z', '2024-01-15T09:00:00Z', 'Slack', ['Work & Dev', 'Communication'], 'r2'),
+      mkRecord(
+        '2024-01-15T08:25:00Z',
+        '2024-01-15T09:00:00Z',
+        'Slack',
+        ['Work & Dev', 'Communication'],
+        'r2',
+      ),
     ]
     const { results } = mergeByCategorySpans(records, 2 * 60 * 1000, categories)
 

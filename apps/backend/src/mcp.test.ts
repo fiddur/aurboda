@@ -646,25 +646,25 @@ describe('MCP Server', () => {
 
       vi.mocked(queries.queryProductivity).mockResolvedValue({
         data: [
-        {
-          activity: 'Visual Studio Code',
-          category: 'Software Development',
-          comments: [],
-          duration_sec: 7200,
-          end_time: '2024-01-15T17:00:00Z',
-          productivity: 2,
-          start_time: '2024-01-15T09:00:00Z',
-        },
-        {
-          activity: 'Twitter',
-          category: 'Social Networking',
-          comments: [],
-          duration_sec: 1800,
-          end_time: '2024-01-15T18:00:00Z',
-          productivity: -2,
-          start_time: '2024-01-15T17:30:00Z',
-        },
-      ],
+          {
+            activity: 'Visual Studio Code',
+            category: 'Software Development',
+            comments: [],
+            duration_sec: 7200,
+            end_time: '2024-01-15T17:00:00Z',
+            productivity: 2,
+            start_time: '2024-01-15T09:00:00Z',
+          },
+          {
+            activity: 'Twitter',
+            category: 'Social Networking',
+            comments: [],
+            duration_sec: 1800,
+            end_time: '2024-01-15T18:00:00Z',
+            productivity: -2,
+            start_time: '2024-01-15T17:30:00Z',
+          },
+        ],
       })
 
       const response = await callTool(app, token, 'query_productivity', {

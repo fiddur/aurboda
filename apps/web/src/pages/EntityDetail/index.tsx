@@ -34,6 +34,7 @@ import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
+import { SchemaDataFields } from './SchemaDataFields'
 import {
   computeSleepMinutesFromStages,
   formatMinutesAsHM,
@@ -207,7 +208,8 @@ const ActivityDetailContent = ({
   const hasSleepStages = stages.length > 0
   const hrZoneSecs = activity.hr_zone_secs as Record<number, number> | undefined
   const hasHrZones = hrZoneSecs && Object.values(hrZoneSecs).some((v) => v > 0)
-  const sleepMinutes = activity.total_sleep ?? (hasSleepStages ? computeSleepMinutesFromStages(stages) : undefined)
+  const sleepMinutes =
+    activity.total_sleep ?? (hasSleepStages ? computeSleepMinutesFromStages(stages) : undefined)
   const hasEndTime = Boolean(activity.end_time || activity.merged_end_time)
   const hasExerciseType = Boolean(exerciseType)
 
@@ -277,7 +279,9 @@ const ActivityDetailContent = ({
                 <select
                   class="edit-datetime-input"
                   value={draft.exercise_type ?? exerciseType ?? ''}
-                  onChange={(e) => onDraftChange({ ...draft, exercise_type: (e.target as HTMLSelectElement).value })}
+                  onChange={(e) =>
+                    onDraftChange({ ...draft, exercise_type: (e.target as HTMLSelectElement).value })
+                  }
                 >
                   <option value="">-- Select --</option>
                   {exerciseTypeNames.map((name) => (
@@ -331,6 +335,12 @@ const ActivityDetailContent = ({
               </div>
             )}
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
+            {typeDef?.data_schema && activity.data && (
+              <SchemaDataFields
+                data={activity.data as Record<string, unknown>}
+                schema={typeDef.data_schema}
+              />
+            )}
           </>
         )}
       </div>
