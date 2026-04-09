@@ -1,42 +1,10 @@
 /**
- * Default emoji icons for activity types and exercise types on the timeline.
- * These are applied automatically unless the user overrides them in item_icons settings.
+ * Default emoji icons for timeline items.
+ * Activity and exercise type icons are managed via activity type definitions (/activity-types).
  *
- * Keys use a prefix convention to avoid collision with tag names:
- * - Activity types: 'activity:sleep', 'activity:nap', 'activity:meditation'
- * - Exercise types: 'exercise:Running', 'exercise:Biking', etc. (matching exerciseTypeNames display labels)
+ * Keys use a prefix convention to avoid collision with tag names.
  */
 export const DEFAULT_ITEM_ICONS: Record<string, string> = {
-  // Activity types
-  'activity:meditation': '🧘',
-  'activity:nap': '💤',
-  'activity:rest': '😌',
-  'activity:sleep': '😴',
-
-  // Exercise types (keyed by display name from exerciseTypeNames)
-  'exercise:Biking': '🚴',
-  'exercise:Boot Camp': '🏋️',
-  'exercise:Calisthenics': '🤸',
-  'exercise:Dancing': '💃',
-  'exercise:Elliptical': '🏃',
-  'exercise:HIIT': '🔥',
-  'exercise:Hiking': '🥾',
-  'exercise:Ice Skating': '⛸️',
-  'exercise:Pilates': '🧘',
-  'exercise:Rock Climbing': '🧗',
-  'exercise:Rowing': '🚣',
-  'exercise:Running': '🏃',
-  'exercise:Soccer': '⚽',
-  'exercise:Stair Climbing': '🪜',
-  'exercise:Strength Training': '💪',
-  'exercise:Stretching': '🧘',
-  'exercise:Swimming (Open Water)': '🏊',
-  'exercise:Swimming (Pool)': '🏊',
-  'exercise:Treadmill': '🏃',
-  'exercise:Walking': '🚶',
-  'exercise:Weightlifting': '🏋️',
-  'exercise:Workout': '🏋️',
-
   // Meal types
   'meal:breakfast': '🍳',
   'meal:lunch': '🍽️',
@@ -44,7 +12,6 @@ export const DEFAULT_ITEM_ICONS: Record<string, string> = {
   'meal:snack': '🍿',
   'meal:drink': '☕',
   'meal:default': '🍽️',
-  'exercise:Yoga': '🧘',
 }
 
 /**

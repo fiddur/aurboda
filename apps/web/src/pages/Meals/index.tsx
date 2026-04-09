@@ -207,7 +207,9 @@ function MealSlotRow({
   return (
     <div class={`meal-slot-row ${primaryMeal ? 'has-meal' : ''}`}>
       <div class="slot-top">
-        <span class="slot-name">{slot.name}</span>
+        <a href={`/meal-type/${encodeURIComponent(slot.name.toLowerCase())}`} class="slot-name">
+          {slot.name}
+        </a>
 
         <div class="time-selector">
           {timeOptions.map((t) => (
@@ -367,7 +369,9 @@ function OtherMeals({
       {meals.map((meal) => (
         <div key={meal.id} class="meal-slot-row has-meal">
           <div class="slot-top">
-            <span class="slot-name">{formatMealType(meal.meal_type)}</span>
+            <a href={`/meal-type/${encodeURIComponent(meal.meal_type ?? 'default')}`} class="slot-name">
+              {formatMealType(meal.meal_type)}
+            </a>
             <span class="meal-time">{format(meal.time, 'HH:mm')}</span>
             <ConfirmButton
               label="Delete"

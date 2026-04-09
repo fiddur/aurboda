@@ -24,12 +24,12 @@ describe('resolveItemIcon', () => {
     expect(resolveItemIcon('exercise:yoga', { 'exercise:Yoga': '' })).toBeUndefined()
   })
 
-  it('falls back to defaults when no user icon set', () => {
-    expect(resolveItemIcon('exercise:Running', {})).toBe('🏃')
+  it('falls back to defaults for meal types', () => {
+    expect(resolveItemIcon('meal:breakfast', {})).toBe('🍳')
   })
 
-  it('falls back to defaults case-insensitively', () => {
-    expect(resolveItemIcon('exercise:running', {})).toBe('🏃')
+  it('falls back to defaults case-insensitively for meal types', () => {
+    expect(resolveItemIcon('meal:Breakfast', {})).toBe('🍳')
   })
 
   it('returns undefined when no match found', () => {
@@ -37,6 +37,6 @@ describe('resolveItemIcon', () => {
   })
 
   it('prefers user icon over default', () => {
-    expect(resolveItemIcon('exercise:Running', { 'exercise:Running': '🦵' })).toBe('🦵')
+    expect(resolveItemIcon('meal:breakfast', { 'meal:breakfast': '🥞' })).toBe('🥞')
   })
 })

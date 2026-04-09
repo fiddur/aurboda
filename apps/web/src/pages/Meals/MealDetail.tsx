@@ -495,7 +495,13 @@ export function MealDetail() {
             {isEditing ? (
               <MealTypeEditor value={editType} onChange={(v) => setEditing({ ...editing, meal_type: v })} />
             ) : (
-              <span class="detail-value">{meal.meal_type ?? '—'}</span>
+              <span class="detail-value">
+                {meal.meal_type ? (
+                  <a href={`/meal-type/${encodeURIComponent(meal.meal_type)}`}>{meal.meal_type}</a>
+                ) : (
+                  '—'
+                )}
+              </span>
             )}
           </div>
 
