@@ -84,10 +84,12 @@ function SettingsSection({
   name,
   currentIcon,
   currentDisplayName,
+  showOnTimeline,
 }: {
   name: string
   currentIcon: string
   currentDisplayName: string
+  showOnTimeline: boolean
 }) {
   const queryClient = useQueryClient()
   const [iconValue, setIconValue] = useState<string | undefined>(undefined)
@@ -111,6 +113,27 @@ function SettingsSection({
       queryClient.invalidateQueries({ queryKey: ['item-icons'] })
       setIconValue(undefined)
       setDisplayNameValue(undefined)
+    },
+  })
+
+  const timelineToggleMutation = useMutation({
+    mutationFn: () => updateActivityTypeDefinition(name, { show_on_timeline: !showOnTimeline }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['activity-type-definitions'] })
+      const previous = queryClient.getQueryData<ActivityTypeDefinition[]>(['activity-type-definitions'])
+      queryClient.setQueryData<ActivityTypeDefinition[]>(['activity-type-definitions'], (old) =>
+        old?.map((t) => (t.name === name ? { ...t, show_on_timeline: !showOnTimeline } : t)),
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['activity-type-definitions'], context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
     },
   })
 
@@ -147,6 +170,15 @@ function SettingsSection({
           </div>
         </label>
       </div>
+      <label class="activity-type-meta-timeline-toggle">
+        <input
+          type="checkbox"
+          checked={showOnTimeline}
+          onChange={() => timelineToggleMutation.mutate()}
+          disabled={timelineToggleMutation.isPending}
+        />
+        <span>Show on timeline</span>
+      </label>
       {hasChanges && (
         <SaveCancelRow
           onSave={() => {
@@ -379,6 +411,48 @@ function MergeActivityTypeSection({
   )
 }
 
+function resolveTypeDef(typeDef: ActivityTypeDefinition | undefined, name: string) {
+  const displayName = typeDef?.display_name ?? toDisplayName(name)
+  const icon = typeDef?.icon ?? ''
+  const color = typeDef?.color ?? '#6b7280'
+  const category = typeDef?.display_category ?? 'other'
+  const showOnTimeline = typeDef?.show_on_timeline ?? true
+  const isDuration = DURATION_CATEGORIES.has(category)
+  return { displayName, icon, color, category, showOnTimeline, isDuration }
+}
+
+function ActivityTypeHeader({
+  name,
+  displayName,
+  icon,
+  color,
+  category,
+}: {
+  name: string
+  displayName: string
+  icon: string
+  color: string
+  category: string
+}) {
+  return (
+    <div class="activity-type-meta-header">
+      <div class="activity-type-meta-title-row">
+        {icon ? (
+          <IconPreview icon={icon} size={32} />
+        ) : (
+          <span class="activity-type-meta-icon-placeholder">?</span>
+        )}
+        <h1>{displayName}</h1>
+      </div>
+      <div class="activity-type-meta-badges">
+        <span class="activity-type-meta-category-badge">{toDisplayName(category)}</span>
+        <span class="activity-type-meta-color-dot" style={{ background: color }} />
+        {name !== displayName && <span class="activity-type-meta-name-muted">{name}</span>}
+      </div>
+    </div>
+  )
+}
+
 export function ActivityTypeMeta() {
   const { params } = useRoute()
   const name = decodeURIComponent(params.name as string)
@@ -390,32 +464,25 @@ export function ActivityTypeMeta() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const typeDef: ActivityTypeDefinition | undefined = definitions?.find((d) => d.name === name)
-  const displayName = typeDef?.display_name ?? toDisplayName(name)
-  const icon = typeDef?.icon ?? ''
-  const color = typeDef?.color ?? '#6b7280'
-  const category = typeDef?.display_category ?? 'other'
-  const isDuration = DURATION_CATEGORIES.has(category)
+  const typeDef = definitions?.find((d) => d.name === name)
+  const { displayName, icon, color, category, showOnTimeline, isDuration } = resolveTypeDef(typeDef, name)
 
   return (
     <div class="activity-type-meta-page">
-      <div class="activity-type-meta-header">
-        <div class="activity-type-meta-title-row">
-          {icon ? (
-            <IconPreview icon={icon} size={32} />
-          ) : (
-            <span class="activity-type-meta-icon-placeholder">?</span>
-          )}
-          <h1>{displayName}</h1>
-        </div>
-        <div class="activity-type-meta-badges">
-          <span class="activity-type-meta-category-badge">{toDisplayName(category)}</span>
-          <span class="activity-type-meta-color-dot" style={{ background: color }} />
-          {name !== displayName && <span class="activity-type-meta-name-muted">{name}</span>}
-        </div>
-      </div>
+      <ActivityTypeHeader
+        name={name}
+        displayName={displayName}
+        icon={icon}
+        color={color}
+        category={category}
+      />
 
-      <SettingsSection name={name} currentIcon={icon} currentDisplayName={displayName} />
+      <SettingsSection
+        name={name}
+        currentIcon={icon}
+        currentDisplayName={displayName}
+        showOnTimeline={showOnTimeline}
+      />
 
       <section class="activity-type-meta-section">
         <div class="activity-type-meta-section-header">
