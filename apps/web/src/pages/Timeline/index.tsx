@@ -54,10 +54,9 @@ import {
   mergeScrobblesIntoSessions,
   MUSIC_STAFF_HEIGHT,
 } from './drawMusicStaff'
-import { drawScreentimeBars, isExcludedCategory, SCREENTIME_COLOR } from './drawScreentimeTrack'
+import { drawScreentimeBars, SCREENTIME_COLOR } from './drawScreentimeTrack'
 import { CTL_COLOR, drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
-import { mergeProductivitySpans } from './productivityMerge'
 import './style.css'
 
 // ── Signals (module-level, persist across SPA navigations) ────────────────────
@@ -461,57 +460,44 @@ const categorizeProductivity = (
   productivity: ProductivityRecord[],
   categories: ScreentimeCategory[],
   itemIcons: Record<string, string>,
-): ChartItem[] => {
-  // Filter out records matching excluded categories (e.g. plasmashell/idle)
-  const filtered = productivity.filter(
-    (p) =>
-      !p.resolved_category ||
-      p.resolved_category.length === 0 ||
-      !isExcludedCategory(p.resolved_category, categories),
-  )
-  const spans = mergeProductivitySpans(filtered)
+): ChartItem[] =>
+  // Backend returns pre-merged, pre-filtered category spans (merge_by=category).
+  // Each record is already a category-level span with resolved_category set.
+  productivity.map((record) => {
+    const categoryPath = record.resolved_category?.join(' > ') ?? ''
+    const label = record.resolved_category?.at(-1) ?? record.activity
+    const apps = record.activity.split(', ')
 
-  return spans.map((span) => {
-    const isCategorized = span.groupKey !== ''
-    const representative = span.records[0]
-    const label = isCategorized
-      ? (span.groupKey.split(' > ').pop() ?? span.groupKey)
-      : span.records.length === 1
-        ? representative.activity
-        : `${span.records.length} screen time`
-
-    // Build tooltip details listing constituent apps
-    const uniqueApps = [...new Set(span.records.map((r) => r.activity))]
-    const tooltipApps =
-      uniqueApps.length <= 4
-        ? uniqueApps.join(', ')
-        : `${uniqueApps.slice(0, 3).join(', ')} +${uniqueApps.length - 3}`
+    // Link: category_id → category page; single source without category → detail page
+    const href = record.category_id
+      ? `/screentime-categories/${record.category_id}`
+      : record.id
+        ? undefined
+        : undefined
 
     return {
-      color: getResolvedColor(representative, categories),
+      color: getResolvedColor(record, categories),
       column: 'Screen Time' as Column,
-      end: span.end,
-      entity_id: span.records.length === 1 ? representative.id : undefined,
+      end: record.end_time,
+      entity_id: record.category_id ? undefined : record.id,
       entity_type: 'productivity' as const,
-      icon: resolveCategoryIcon(representative.resolved_category, itemIcons),
+      href,
+      icon: resolveCategoryIcon(record.resolved_category, itemIcons),
       isPoint: false,
       label,
-      start: span.start,
+      start: record.start_time,
       tooltip: {
         details: [
-          isCategorized ? span.groupKey : '',
-          span.records.length > 1
-            ? `${span.records.length} records: ${tooltipApps}`
-            : representative.activity,
-          span.records.length === 1 && representative.title ? `Title: ${representative.title}` : '',
-          formatDuration(span.start, span.end),
+          categoryPath,
+          apps.length > 1 ? `Apps: ${record.activity}` : record.activity,
+          record.title ? `Title: ${record.title}` : '',
+          formatDuration(record.start_time, record.end_time),
         ].filter(Boolean),
-        time: `${formatTime(span.start)} – ${formatTime(span.end)}`,
+        time: `${formatTime(record.start_time)} – ${formatTime(record.end_time)}`,
         title: label,
       },
     }
   })
-}
 
 // ── Tooltip HTML builder ──────────────────────────────────────────────────────
 
@@ -635,6 +621,18 @@ export const Timeline = () => {
   const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
   hiddenCategoriesRef.current = hiddenCategories
 
+  // Zoom-adaptive merge gap for backend category merging — larger gap when zoomed out.
+  // Computed early (before queries) so it can be included in the query key.
+  const screentimeMergeGapMs = useMemo(() => {
+    const days = differenceInCalendarDays(
+      new Date(toDate.value),
+      new Date(fromDate.value),
+    )
+    if (days > 50) return 4 * 60 * 60 * 1000 // 4h gap at week+ view
+    if (days > 2) return 60 * 60 * 1000 // 1h gap at multi-day view
+    return 10 * 60 * 1000 // 10min gap at day view
+  }, [fromDate.value, toDate.value])
+
   // ── Data queries ───────────────────────────────────────────────────────────
 
   const activitiesQuery = useQuery({
@@ -661,13 +659,11 @@ export const Timeline = () => {
   })
 
   // Fetch non-builtin activities (tags/events - activities not in sleep_rest/exercise categories)
-  const EXCLUDED_BUILTIN_TYPES = new Set(['sleep', 'nap', 'rest', 'exercise'])
+  const EXCLUDED_BUILTIN_TYPES = ['sleep', 'nap', 'rest', 'exercise']
   const tagActivitiesQuery = useQuery({
     placeholderData: keepPreviousData,
-    queryFn: async () => {
-      const allActivities = await fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5))
-      return allActivities.filter((a) => !EXCLUDED_BUILTIN_TYPES.has(a.activity_type))
-    },
+    queryFn: () =>
+      fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), undefined, EXCLUDED_BUILTIN_TYPES),
     queryKey: ['timeline-tag-activities', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
   })
@@ -683,8 +679,8 @@ export const Timeline = () => {
   const productivityQuery = useQuery({
     enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
     placeholderData: keepPreviousData,
-    queryFn: () => fetchProductivity(fetchStart, fetchEnd),
-    queryKey: ['timeline-productivity', fromDate.value, toDate.value],
+    queryFn: () => fetchProductivity(fetchStart, fetchEnd, 'category', screentimeMergeGapMs),
+    queryKey: ['timeline-productivity', fromDate.value, toDate.value, screentimeMergeGapMs],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -792,7 +788,7 @@ export const Timeline = () => {
     () => (tagActivitiesQuery.data ?? []).filter((a) => !hiddenTypes.has(a.activity_type ?? '')),
     [tagActivitiesQuery.data, hiddenTypes],
   )
-  const productivity = productivityQuery.data ?? []
+  const productivity = productivityQuery.data?.records ?? []
   const scrobbles = scrobblesQuery.data ?? []
 
   // Extract sleep score metrics from unified bucketed data, keyed by date
@@ -1401,7 +1397,9 @@ export const Timeline = () => {
         : null
 
     // All Activity-column items for the activity lane
-    const allActivityLaneItems = chartItems.filter((i) => i.column === 'Activity')
+    const allActivityLaneItems = chartItems.filter(
+      (i) => i.column === 'Activity' || i.column === 'Screen Time',
+    )
     const packedActivityItems = packLanes(
       allActivityLaneItems,
       (i) => i.start,
@@ -2206,15 +2204,11 @@ export const Timeline = () => {
                 { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
                 { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
                 { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
-                ...(orientation === 'vertical'
-                  ? [
-                      {
-                        cat: 'screentime' as LegendCategory,
-                        color: productivityColors[1]!,
-                        label: 'Screen Time',
-                      },
-                    ]
-                  : []),
+                {
+                  cat: 'screentime' as LegendCategory,
+                  color: productivityColors[1]!,
+                  label: 'Screen Time',
+                },
               ].map(({ cat, color, label }) => (
                 <button
                   key={cat}

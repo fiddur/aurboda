@@ -22,6 +22,9 @@ export const productivityRecordSchema = z
   .object({
     activity: z.string().meta({ description: 'Activity/application name' }),
     category: z.string().optional().meta({ description: 'Original category (from RescueTime)' }),
+    category_id: z.string().uuid().optional().meta({
+      description: 'Screentime category ID (present when merge_by=category)',
+    }),
     comments: z.array(commentSchema).optional().meta({ description: 'Attached comments' }),
     deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
     device_name: z.string().optional().meta({ description: 'Device name (from ActivityWatch)' }),
@@ -51,16 +54,45 @@ export type ProductivityRecord = z.infer<typeof productivityRecordSchema>
 /**
  * Productivity query schema.
  */
-export const productivityQuerySchema = timeRangeQuerySchema.meta({ id: 'ProductivityQuery' })
+export const productivityQuerySchema = timeRangeQuerySchema
+  .extend({
+    merge_by: z.enum(['category']).optional().meta({
+      description:
+        'Merge strategy: "category" merges by resolved_category with overlap promotion ' +
+        '(interleaved subcategories promoted to parent). When set, merge_gap_ms controls gap tolerance.',
+    }),
+    merge_gap_ms: z
+      .string()
+      .optional()
+      .meta({ description: 'Merge gap tolerance in ms (default 120000 = 2 min)', example: '600000' }),
+  })
+  .meta({ id: 'ProductivityQuery' })
 
 export type ProductivityQuery = z.infer<typeof productivityQuerySchema>
 
 /**
- * Productivity response schema.
+ * Screentime category metadata included in normalized productivity responses.
  */
-export const productivityResponseSchema = createDataArrayResponseSchema(productivityRecordSchema).meta({
-  id: 'ProductivityResponse',
-})
+export const screentimeCategoryInfoSchema = z
+  .object({
+    color: z.string().optional().meta({ description: 'Category color (hex)' }),
+    name: z.array(z.string()).meta({ description: 'Category path, e.g. ["Work & Dev", "Software Dev"]' }),
+    score: z.number().int().optional().meta({ description: 'Productivity score (-2 to 2)' }),
+  })
+  .meta({ id: 'ScreentimeCategoryInfo' })
+
+/**
+ * Productivity response schema.
+ * When merge_by=category, includes a `categories` map keyed by category UUID.
+ */
+export const productivityResponseSchema = createDataArrayResponseSchema(productivityRecordSchema)
+  .extend({
+    categories: z
+      .record(z.string(), screentimeCategoryInfoSchema)
+      .optional()
+      .meta({ description: 'Category metadata map keyed by UUID (present when merge_by=category)' }),
+  })
+  .meta({ id: 'ProductivityResponse' })
 
 export type ProductivityResponse = z.infer<typeof productivityResponseSchema>
 

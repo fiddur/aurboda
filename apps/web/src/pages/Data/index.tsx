@@ -320,7 +320,7 @@ export const Data = () => {
     scrobblesQuery.data ?? [],
     mealsQuery.data?.meals ?? [],
     reportsQuery.data ?? [],
-    productivityQuery.data ?? [],
+    productivityQuery.data?.records ?? [],
     dateStr,
   )
 

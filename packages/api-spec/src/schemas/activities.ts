@@ -211,8 +211,12 @@ export type ActivityDetail = z.infer<typeof activityDetailSchema>
 export const activitiesQuerySchema = timeRangeQuerySchema
   .extend({
     types: z.string().optional().meta({
-      description: 'Comma-separated activity types',
+      description: 'Comma-separated activity types to include',
       example: 'sleep,exercise',
+    }),
+    exclude_types: z.string().optional().meta({
+      description: 'Comma-separated activity types to exclude',
+      example: 'sleep,exercise,nap,rest',
     }),
   })
   .meta({ id: 'ActivitiesQuery' })

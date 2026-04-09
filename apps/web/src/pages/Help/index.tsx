@@ -156,12 +156,12 @@ export function Help() {
   const hasHeartRate = (heartRateQuery.data?.length ?? 0) > 0
   const hasSleep = (sleepQuery.data?.length ?? 0) > 0
   const hasExercise = (exerciseQuery.data?.length ?? 0) > 0
-  const hasProductivity = (productivityQuery.data?.length ?? 0) > 0
+  const hasProductivity = (productivityQuery.data?.records?.length ?? 0) > 0
   const hasLocations = (locationsQuery.data?.length ?? 0) > 0
   const isOuraConnected = settingsQuery.data?.oura_connected ?? false
   const isRescueTimeConfigured = !!settingsQuery.data?.rescue_time_key
   const hasActivityWatch = (awStatusQuery.data?.length ?? 0) > 0
-  const awProductivity = (productivityQuery.data ?? []).filter((r) => r.source === 'activitywatch')
+  const awProductivity = (productivityQuery.data?.records ?? []).filter((r) => r.source === 'activitywatch')
   const hasAwDesktop = awProductivity.some((r) => !r.is_mobile)
   const hasAwMobile = awProductivity.some((r) => r.is_mobile)
 
