@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { MealFoodItemLink } from '../db/types.ts'
+
 import * as db from '../db/index.ts'
-import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from './meals.ts'
+import {
+  addMeal,
+  deleteMealById,
+  getMeal,
+  hasIncompleteNutrients,
+  queryMeals,
+  updateMealById,
+} from './meals.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
@@ -233,5 +242,113 @@ describe('updateMealById', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Meal not found')
+  })
+})
+
+// ── hasIncompleteNutrients ─────────────────────────────────────────────────
+
+const makeLink = (overrides: Partial<MealFoodItemLink> = {}): MealFoodItemLink =>
+  ({
+    id: 'link-1',
+    meal_id: 'meal-1',
+    food_item_id: 'fi-1',
+    food_item_name: 'Test food',
+    sort_order: 0,
+    calories: 200,
+    protein: 10,
+    carbs: 25,
+    fat: 8,
+    ...overrides,
+  }) as unknown as MealFoodItemLink
+
+describe('hasIncompleteNutrients', () => {
+  test('returns false when all items have calories', () => {
+    const links = [makeLink({ calories: 200 }), makeLink({ id: 'link-2', calories: 150 })]
+    expect(hasIncompleteNutrients(links)).toBe(false)
+  })
+
+  test('returns true when an item has undefined calories', () => {
+    const links = [makeLink({ calories: 200 }), makeLink({ id: 'link-2', calories: undefined })]
+    expect(hasIncompleteNutrients(links)).toBe(true)
+  })
+
+  test('returns false for empty array', () => {
+    expect(hasIncompleteNutrients([])).toBe(false)
+  })
+
+  test('returns false when calories is zero', () => {
+    const links = [makeLink({ calories: 0 })]
+    expect(hasIncompleteNutrients(links)).toBe(false)
+  })
+})
+
+// ── nutrient_data_incomplete in getMeal ─────────────────────────────────────
+
+const mockGetMealFoodItemsBatch = vi.mocked(db.getMealFoodItemsBatch)
+
+describe('getMeal nutrient_data_incomplete', () => {
+  test('sets nutrient_data_incomplete when a food item lacks calories', async () => {
+    mockGetMealById.mockResolvedValue({
+      created_at: new Date('2025-06-15T10:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'lunch',
+      source: 'manual',
+      time: new Date('2025-06-15T12:00:00Z'),
+    })
+    mockGetMealFoodItemsBatch.mockResolvedValue(
+      new Map([
+        [
+          'meal-1',
+          [
+            makeLink({ calories: 200, food_item_name: 'Apple' }),
+            makeLink({ id: 'link-2', calories: undefined, food_item_name: 'Mystery item' }),
+          ],
+        ],
+      ]),
+    )
+
+    const result = await getMeal('testuser', 'meal-1')
+
+    expect(result.success).toBe(true)
+    expect(result.data!.nutrient_data_incomplete).toBe(true)
+  })
+
+  test('does not set nutrient_data_incomplete when all items have calories', async () => {
+    mockGetMealById.mockResolvedValue({
+      created_at: new Date('2025-06-15T10:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'lunch',
+      source: 'manual',
+      time: new Date('2025-06-15T12:00:00Z'),
+    })
+    mockGetMealFoodItemsBatch.mockResolvedValue(
+      new Map([
+        [
+          'meal-1',
+          [makeLink({ calories: 200, food_item_name: 'Apple' }), makeLink({ id: 'link-2', calories: 150 })],
+        ],
+      ]),
+    )
+
+    const result = await getMeal('testuser', 'meal-1')
+
+    expect(result.success).toBe(true)
+    expect(result.data!.nutrient_data_incomplete).toBeUndefined()
+  })
+
+  test('does not set nutrient_data_incomplete when meal has no food items', async () => {
+    mockGetMealById.mockResolvedValue({
+      created_at: new Date('2025-06-15T10:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'lunch',
+      source: 'manual',
+      time: new Date('2025-06-15T12:00:00Z'),
+    })
+    mockGetMealFoodItemsBatch.mockResolvedValue(new Map())
+
+    const result = await getMeal('testuser', 'meal-1')
+
+    expect(result.success).toBe(true)
+    expect(result.data!.nutrient_data_incomplete).toBeUndefined()
   })
 })

@@ -84,6 +84,7 @@ interface MealResponse {
   micros?: Micros
   notes?: string
   nutrients?: Record<string, number>
+  nutrient_data_incomplete?: boolean
   sensitivities?: string[]
   created_at: string
 }
@@ -104,7 +105,9 @@ interface MealsResult {
 // Helpers
 // ============================================================================
 
-const formatMeal = (meal: Meal & { nutrients?: Record<string, number> }): MealResponse => ({
+type EnrichedMeal = Meal & { nutrients?: Record<string, number>; nutrient_data_incomplete?: boolean }
+
+const formatMeal = (meal: EnrichedMeal): MealResponse => ({
   calories: meal.calories,
   carbs: meal.carbs,
   created_at: meal.created_at.toISOString(),
@@ -116,6 +119,7 @@ const formatMeal = (meal: Meal & { nutrients?: Record<string, number> }): MealRe
   micros: meal.micros,
   name: meal.name,
   notes: meal.notes,
+  nutrient_data_incomplete: meal.nutrient_data_incomplete,
   nutrients: meal.nutrients,
   protein: meal.protein,
   sensitivities: meal.sensitivities,
@@ -155,11 +159,12 @@ const aggregateNutrients = (links: MealFoodItemLink[]): Record<string, number> =
   return totals
 }
 
+/** Check if any food item in the junction links lacks calorie data. */
+export const hasIncompleteNutrients = (links: MealFoodItemLink[]): boolean =>
+  links.some((link) => link.calories === undefined || link.calories === null)
+
 /** Attach food items and aggregated nutrients from junction table to meals. */
-const attachFoodItems = async (
-  user: string,
-  meals: Meal[],
-): Promise<Array<Meal & { nutrients?: Record<string, number> }>> => {
+const attachFoodItems = async (user: string, meals: Meal[]): Promise<EnrichedMeal[]> => {
   const mealIds = meals.map((m) => m.id)
   const junctionMap = await getMealFoodItemsBatch(user, mealIds)
 
@@ -167,7 +172,13 @@ const attachFoodItems = async (
     const links = junctionMap.get(meal.id)
     if (links && links.length > 0) {
       const nutrients = aggregateNutrients(links)
-      return { ...meal, food_items: linksToFoodItems(links), nutrients }
+      const incomplete = hasIncompleteNutrients(links)
+      return {
+        ...meal,
+        food_items: linksToFoodItems(links),
+        nutrients,
+        ...(incomplete ? { nutrient_data_incomplete: true } : {}),
+      }
     }
     // Fall back to JSONB food_items if no junction rows exist (legacy data)
     return meal

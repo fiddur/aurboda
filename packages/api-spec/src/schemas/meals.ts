@@ -117,6 +117,10 @@ export const mealSchema = z
       .optional()
       .meta({ description: 'Meal name/description (e.g., "Rye bread with peanut butter and banana")' }),
     notes: z.string().optional().meta({ description: 'Free text notes' }),
+    nutrient_data_incomplete: z.boolean().optional().meta({
+      description:
+        'True if any food item in the meal lacks calorie data, indicating nutrient totals may be understated',
+    }),
     protein: z.number().optional().meta({ description: 'Total protein in grams' }),
     sensitivities: z
       .array(z.string())

@@ -35,35 +35,11 @@ const DEFAULT_MEAL_SLOTS: MealSlot[] = [
 
 const formatTime = (hour: number, minute: number): string => `${hour}:${String(minute).padStart(2, '0')}`
 
-interface TimeOption {
-  hour: number
-  minute: number
-  label: string
-}
-
-/** Build time selector options: preset hours ± 1, plus the actual meal time if non-round. */
-const buildTimeOptions = (defaultHour: number, mealHour: number, mealMinute: number): TimeOption[] => {
-  const presets: TimeOption[] = [defaultHour - 1, defaultHour, defaultHour + 1]
-    .filter((h) => h >= 0 && h <= 23)
-    .map((h) => ({ hour: h, minute: 0, label: formatTime(h, 0) }))
-
-  // If meal has a non-round time that isn't already a preset, insert it sorted
-  if (mealMinute !== 0) {
-    const mealKey = mealHour * 60 + mealMinute
-    const alreadyPresent = presets.some((p) => p.hour === mealHour && p.minute === mealMinute)
-    if (!alreadyPresent) {
-      const mealOption: TimeOption = {
-        hour: mealHour,
-        minute: mealMinute,
-        label: formatTime(mealHour, mealMinute),
-      }
-      const idx = presets.findIndex((p) => p.hour * 60 + p.minute > mealKey)
-      if (idx === -1) presets.push(mealOption)
-      else presets.splice(idx, 0, mealOption)
-    }
-  }
-
-  return presets
+/** Convert total minutes since midnight to HH:MM string. */
+const minutesToTime = (totalMinutes: number): string => {
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  return formatTime(h, m)
 }
 
 const formatMealType = (type?: string): string =>
@@ -159,7 +135,16 @@ function MealDetails({
           ))}
         </div>
       )}
-      {hasCalories && <span class="meal-calories">{meal.calories} kcal</span>}
+      {hasCalories && (
+        <span class="meal-calories">
+          {meal.nutrient_data_incomplete && (
+            <span class="incomplete-indicator" title="Some food items lack nutrient data">
+              ~
+            </span>
+          )}
+          {meal.calories} kcal
+        </span>
+      )}
       {meal.notes && <div class="meal-notes">{meal.notes}</div>}
       {meal.source && meal.source !== 'manual' && <span class="meal-source">via {meal.source}</span>}
     </div>
@@ -174,6 +159,7 @@ interface MealSlotRowProps {
   onToggleSensitivity: (slot: MealSlot, area: string, existingMeal?: Meal) => void
   onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
   onChangeTime: (meal: Meal, hour: number, minute?: number) => void
+  onCreateAtTime: (slot: MealSlot, hour: number, minute: number) => void
   onCreateAndOpen: (slot: MealSlot) => void
   onDelete: (id: string) => void
   isDeletePending: boolean
@@ -188,6 +174,7 @@ function MealSlotRow({
   onToggleSensitivity,
   onToggleFoodMapping,
   onChangeTime,
+  onCreateAtTime,
   onCreateAndOpen,
   onDelete,
   isDeletePending,
@@ -201,8 +188,28 @@ function MealSlotRow({
   const mealH = primaryMeal ? primaryMeal.time.getHours() : slot.default_hour
   const mealM = primaryMeal ? primaryMeal.time.getMinutes() : 0
 
-  // Build time options: preset hours + actual meal time if non-round
-  const timeOptions = buildTimeOptions(slot.default_hour, mealH, mealM)
+  // Slider range: ±1.5 hours from default, clamped to 0–23:55
+  const sliderMin = Math.max(0, (slot.default_hour - 1.5) * 60)
+  const sliderMax = Math.min(23 * 60 + 55, (slot.default_hour + 1.5) * 60)
+  const currentMinutes = mealH * 60 + mealM
+  const [sliderValue, setSliderValue] = useState(currentMinutes)
+  const [dragging, setDragging] = useState(false)
+
+  // Sync slider position with actual meal time when not dragging
+  useEffect(() => {
+    if (!dragging) setSliderValue(mealH * 60 + mealM)
+  }, [mealH, mealM, dragging])
+
+  const handleSliderRelease = () => {
+    setDragging(false)
+    const hour = Math.floor(sliderValue / 60)
+    const minute = sliderValue % 60
+    if (primaryMeal) {
+      onChangeTime(primaryMeal, hour, minute)
+    } else {
+      onCreateAtTime(slot, hour, minute)
+    }
+  }
 
   return (
     <div class={`meal-slot-row ${primaryMeal ? 'has-meal' : ''}`}>
@@ -211,21 +218,22 @@ function MealSlotRow({
           {slot.name}
         </a>
 
-        <div class="time-selector">
-          {timeOptions.map((t) => (
-            <button
-              key={t.label}
-              type="button"
-              class={`time-btn ${mealH === t.hour && mealM === t.minute ? 'active' : ''}`}
-              onClick={() => {
-                if (primaryMeal) onChangeTime(primaryMeal, t.hour, t.minute)
-              }}
-              disabled={!primaryMeal && t.hour !== slot.default_hour}
-              title={!primaryMeal ? 'Log a meal first to change the time' : `Set time to ${t.label}`}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div class="time-slider-wrapper">
+          <span class="time-label">{minutesToTime(dragging ? sliderValue : currentMinutes)}</span>
+          <input
+            type="range"
+            class="time-slider"
+            min={sliderMin}
+            max={sliderMax}
+            step={5}
+            value={dragging ? sliderValue : currentMinutes}
+            onInput={(e) => {
+              setDragging(true)
+              setSliderValue(parseInt((e.target as HTMLInputElement).value, 10))
+            }}
+            onMouseUp={handleSliderRelease}
+            onTouchEnd={handleSliderRelease}
+          />
         </div>
 
         {isSaving && <span class="saving-indicator" />}
@@ -314,6 +322,7 @@ const aggregateDayNutrients = (meals: Meal[]): Record<string, number> => {
 function DayNutrientSummary({ meals }: { meals: Meal[] }) {
   const nutrients = aggregateDayNutrients(meals)
   const hasNutrients = Object.keys(nutrients).length > 0
+  const isIncomplete = meals.some((m) => m.nutrient_data_incomplete)
 
   return (
     <div class={`day-nutrient-summary${hasNutrients ? '' : ' empty'}`}>
@@ -322,6 +331,9 @@ function DayNutrientSummary({ meals }: { meals: Meal[] }) {
       ) : (
         <>
           <h3>Day Totals</h3>
+          {isIncomplete && (
+            <p class="incomplete-notice">Some food items lack nutrient data — totals may be understated.</p>
+          )}
           {NUTRIENT_CATEGORIES.map(({ key, label }) => {
             const fields = NUTRIENT_FIELDS.filter(
               (f) => f.category === key && nutrients[f.name] !== undefined,
@@ -577,6 +589,33 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     route(`/meals/${id}?edit=1`)
   }
 
+  const handleCreateAtTime = (slot: MealSlot, hour: number, minute: number) => {
+    const slotName = slot.name.toLowerCase()
+    const id = crypto.randomUUID()
+    const mealTime = new Date(dayKey)
+    mealTime.setHours(hour, minute, 0, 0)
+    upsertMutation.mutate({
+      id,
+      meal_type: slotName,
+      source: 'manual',
+      time: mealTime.toISOString(),
+    })
+  }
+
+  const handleCreateAdHocMeal = async () => {
+    const id = crypto.randomUUID()
+    const mealTime = new Date()
+    const dayDate = new Date(dayKey)
+    mealTime.setFullYear(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate())
+    await addMealApi({
+      id,
+      source: 'manual',
+      time: mealTime.toISOString(),
+    })
+    queryClient.invalidateQueries({ queryKey: ['meals'] })
+    route(`/meals/${id}?edit=1`)
+  }
+
   const otherMeals = getOtherMeals(meals ?? [], mealSlots)
   const foodSensitivityMap: Record<string, string[]> = settings?.food_sensitivity_map ?? {}
   const queryClient = useQueryClient()
@@ -625,6 +664,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
               onToggleSensitivity={handleToggleSensitivity}
               onToggleFoodMapping={handleToggleFoodMapping}
               onChangeTime={handleChangeTime}
+              onCreateAtTime={handleCreateAtTime}
               onCreateAndOpen={handleCreateAndOpen}
               onDelete={(id) => deleteMutation.mutate(id)}
               isDeletePending={deleteMutation.isPending}
@@ -632,6 +672,10 @@ function MealsContent({ dayKey }: { dayKey: string }) {
             />
           ))}
         </div>
+
+        <button type="button" class="btn-add-meal" onClick={handleCreateAdHocMeal}>
+          + Add meal
+        </button>
 
         <OtherMeals
           meals={otherMeals}
