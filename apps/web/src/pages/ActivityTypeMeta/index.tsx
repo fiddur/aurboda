@@ -84,10 +84,12 @@ function SettingsSection({
   name,
   currentIcon,
   currentDisplayName,
+  showOnTimeline,
 }: {
   name: string
   currentIcon: string
   currentDisplayName: string
+  showOnTimeline: boolean
 }) {
   const queryClient = useQueryClient()
   const [iconValue, setIconValue] = useState<string | undefined>(undefined)
@@ -111,6 +113,27 @@ function SettingsSection({
       queryClient.invalidateQueries({ queryKey: ['item-icons'] })
       setIconValue(undefined)
       setDisplayNameValue(undefined)
+    },
+  })
+
+  const timelineToggleMutation = useMutation({
+    mutationFn: () => updateActivityTypeDefinition(name, { show_on_timeline: !showOnTimeline }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['activity-type-definitions'] })
+      const previous = queryClient.getQueryData<ActivityTypeDefinition[]>(['activity-type-definitions'])
+      queryClient.setQueryData<ActivityTypeDefinition[]>(['activity-type-definitions'], (old) =>
+        old?.map((t) => (t.name === name ? { ...t, show_on_timeline: !showOnTimeline } : t)),
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['activity-type-definitions'], context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
     },
   })
 
@@ -147,6 +170,15 @@ function SettingsSection({
           </div>
         </label>
       </div>
+      <label class="activity-type-meta-timeline-toggle">
+        <input
+          type="checkbox"
+          checked={showOnTimeline}
+          onChange={() => timelineToggleMutation.mutate()}
+          disabled={timelineToggleMutation.isPending}
+        />
+        <span>Show on timeline</span>
+      </label>
       {hasChanges && (
         <SaveCancelRow
           onSave={() => {
@@ -415,7 +447,12 @@ export function ActivityTypeMeta() {
         </div>
       </div>
 
-      <SettingsSection name={name} currentIcon={icon} currentDisplayName={displayName} />
+      <SettingsSection
+        name={name}
+        currentIcon={icon}
+        currentDisplayName={displayName}
+        showOnTimeline={typeDef?.show_on_timeline ?? true}
+      />
 
       <section class="activity-type-meta-section">
         <div class="activity-type-meta-section-header">

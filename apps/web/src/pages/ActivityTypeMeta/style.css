@@ -161,6 +161,31 @@
   border-radius: 4px;
 }
 
+/* Timeline toggle */
+.activity-type-meta-timeline-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: #374151;
+  cursor: pointer;
+  flex-direction: row;
+}
+
+.activity-type-meta-timeline-toggle input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #673ab8;
+  cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+  .activity-type-meta-timeline-toggle {
+    color: #d1d5db;
+  }
+}
+
 /* Trend */
 .activity-type-meta-trend-value {
   display: flex;
