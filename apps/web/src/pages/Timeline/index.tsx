@@ -365,7 +365,11 @@ const categorizeLocations = (places: Place[], uniquePlaceNames: string[]): Chart
     },
   }))
 
-const categorizeTagActivities = (activities: Activity[], itemIcons: Record<string, string>): ChartItem[] =>
+const categorizeTagActivities = (
+  activities: Activity[],
+  itemIcons: Record<string, string>,
+  typeDefsMap?: Map<string, { icon?: string }>,
+): ChartItem[] =>
   activities
     .filter((a) => a.source !== 'lastfm')
     .map((a) => {
@@ -374,7 +378,10 @@ const categorizeTagActivities = (activities: Activity[], itemIcons: Record<strin
       const sourceLabel = a.source ? ` (${a.source})` : ''
       const displayName = a.title ?? toDisplayName(a.activity_type)
       const icon =
-        itemIcons[displayName] ?? itemIcons[displayName.toLowerCase()] ?? itemIcons[a.activity_type]
+        itemIcons[displayName] ??
+        itemIcons[displayName.toLowerCase()] ??
+        itemIcons[a.activity_type] ??
+        typeDefsMap?.get(a.activity_type)?.icon
       return {
         color: getActivityColor(a),
         column: 'Activity' as Column,
@@ -764,6 +771,13 @@ export const Timeline = () => {
     queryKey: ['activityTypeDefinitions'],
     staleTime: 5 * 60_000,
   })
+  const typeDefsMap = useMemo(
+    () =>
+      new Map(
+        activityTypeDefs.map((t) => [t.name, { color: t.color, display_name: t.display_name, icon: t.icon }]),
+      ),
+    [activityTypeDefs],
+  )
   const hiddenTypes = useMemo(
     () => new Set(activityTypeDefs.filter((t) => !t.show_on_timeline).map((t) => t.name)),
     [activityTypeDefs],
@@ -841,8 +855,9 @@ export const Timeline = () => {
         sleepMetricsByDate,
         (a, end) => buildSleepDetails(a, end, sleepMetricsByDate),
         scrobbles,
+        typeDefsMap,
       ),
-    [activities, tagActivities, itemIcons, sleepMetricsByDate, scrobbles],
+    [activities, tagActivities, itemIcons, sleepMetricsByDate, scrobbles, typeDefsMap],
   )
 
   // Tag activities not already included in activityItems (point activities, excluded sources, etc.)
@@ -948,7 +963,7 @@ export const Timeline = () => {
     () => [
       ...activityItems,
       ...categorizeLocations(places, uniquePlaceNames),
-      ...categorizeTagActivities(nonBuiltinTagActivities, itemIcons),
+      ...categorizeTagActivities(nonBuiltinTagActivities, itemIcons, typeDefsMap),
       ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
       ...musicItems,
       ...mealItems,
@@ -959,6 +974,7 @@ export const Timeline = () => {
       uniquePlaceNames,
       nonBuiltinTagActivities,
       itemIcons,
+      typeDefsMap,
       productivity,
       screentimeCategoriesQuery.data,
       musicItems,

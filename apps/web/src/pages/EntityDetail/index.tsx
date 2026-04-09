@@ -96,6 +96,7 @@ const GenericActivityDetail = ({
         onDraftChange={onDraftChange}
         typeDefinitions={typeDefinitions}
         icon={typeIcon}
+        titleHref={`/activity-type/${activity.activity_type}`}
       />
 
       {!isEditing && activity.avg_hrv !== undefined && (
