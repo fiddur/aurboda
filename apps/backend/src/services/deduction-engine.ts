@@ -1,12 +1,13 @@
 /**
- * Deduction engine — evaluates rules to automatically create activities from data conditions.
+ * Deduction engine — evaluates rules to automatically create or enrich activities from data conditions.
  *
  * Core algorithm:
  * 1. Each condition resolves to TimeRange[] within an evaluation window
  * 2. Multiple conditions are intersected (AND logic)
  * 3. Optional merge_gap coalesces nearby ranges
- * 4. Resulting ranges become activities with source 'deduction-rule'
- * 5. Rules are evaluated in priority order for chaining support
+ * 4. In 'create' mode: resulting ranges become activities with source 'deduction-rule'
+ * 5. In 'enrich' mode: matching target activities have output_data merged into their data
+ * 6. Rules are evaluated in priority order for chaining support
  */
 
 import type { Condition, DeductionRule } from '@aurboda/api-spec'
@@ -39,7 +40,23 @@ export interface DeductionEngineDeps {
   getActivities: (user: string, activityType: string, window: EvaluationWindow) => Promise<TimeRange[]>
   getTags: (user: string, tagName: string, window: EvaluationWindow) => Promise<TimeRange[]>
   getScreentime: (user: string, category: string[], window: EvaluationWindow) => Promise<TimeRange[]>
+  getActivitiesWithData: (
+    user: string,
+    activityType: string,
+    field: string,
+    operator: string,
+    value: string | number | boolean | undefined,
+    window: EvaluationWindow,
+  ) => Promise<TimeRange[]>
+  getLocationVisits: (user: string, locationName: string, window: EvaluationWindow) => Promise<TimeRange[]>
   insertActivity: (user: string, activity: Activity) => Promise<string | void>
+  enrichActivities: (
+    user: string,
+    activityType: string,
+    ranges: TimeRange[],
+    data: Record<string, unknown>,
+    ruleId: string,
+  ) => Promise<string[]>
   deleteStaleRuleActivities: (
     user: string,
     ruleId: string,
@@ -57,6 +74,7 @@ export interface DeductionEngineDeps {
       duration_ms: number
     },
   ) => Promise<void>
+  getEarliestActivityTime: (user: string) => Promise<Date | null>
 }
 
 // ============================================================================
@@ -143,8 +161,27 @@ const resolveScreentimeCategory: ConditionResolver = async (user, condition, win
   return deps.getScreentime(user, condition.category, window)
 }
 
+const resolveActivityData: ConditionResolver = async (user, condition, window, deps) => {
+  if (condition.kind !== 'activity_data') return []
+  return deps.getActivitiesWithData(
+    user,
+    condition.activity_type,
+    condition.field,
+    condition.operator,
+    condition.value,
+    window,
+  )
+}
+
+const resolveLocation: ConditionResolver = async (user, condition, window, deps) => {
+  if (condition.kind !== 'location') return []
+  return deps.getLocationVisits(user, condition.location_name, window)
+}
+
 const conditionResolvers: Record<string, ConditionResolver> = {
   activity: resolveActivity,
+  activity_data: resolveActivityData,
+  location: resolveLocation,
   screentime_category: resolveScreentimeCategory,
   tag: resolveTag,
 }
@@ -154,16 +191,15 @@ const conditionResolvers: Record<string, ConditionResolver> = {
 // ============================================================================
 
 /**
- * Evaluate a single deduction rule within a time window.
- * Returns IDs of activities created/kept.
+ * Resolve conditions and intersect time ranges for a rule.
+ * Shared between create, enrich, and dry-run paths.
  */
-export const evaluateRule = async (
+const resolveConditions = async (
   user: string,
   rule: DeductionRule,
   window: EvaluationWindow,
   deps: DeductionEngineDeps,
-): Promise<string[]> => {
-  // Resolve each condition to time ranges
+): Promise<TimeRange[]> => {
   const rangeSets: TimeRange[][] = []
   for (const condition of rule.conditions) {
     const resolver = conditionResolvers[condition.kind]
@@ -174,25 +210,67 @@ export const evaluateRule = async (
 
   if (rangeSets.length === 0) return []
 
-  // Intersect all range sets (AND logic)
   let result = rangeSets[0]
   for (let i = 1; i < rangeSets.length; i++) {
     result = intersectTimeRanges(result, rangeSets[i])
-    if (result.length === 0) return [] // Early exit
+    if (result.length === 0) return []
   }
 
-  // Apply merge gap if configured
   if (rule.merge_gap_seconds) {
     result = mergeRangesWithGap(result, rule.merge_gap_seconds * 1000)
   }
 
-  // Create activities for each resulting range
+  return result
+}
+
+export interface EvaluateRuleResult {
+  affected_ids: string[]
+  would_affect: number
+}
+
+/**
+ * Evaluate a single deduction rule within a time window.
+ * When dryRun is true, returns the count of activities that would be affected without making changes.
+ */
+export const evaluateRule = async (
+  user: string,
+  rule: DeductionRule,
+  window: EvaluationWindow,
+  deps: DeductionEngineDeps,
+  dryRun = false,
+): Promise<EvaluateRuleResult> => {
+  const result = await resolveConditions(user, rule, window, deps)
+  if (result.length === 0) return { affected_ids: [], would_affect: 0 }
+
+  // Enrich mode: patch existing activities
+  if (rule.mode === 'enrich' && rule.target_activity_type) {
+    if (dryRun) {
+      // Count how many target activities overlap the ranges without modifying them
+      const targetRanges = await deps.getActivities(user, rule.target_activity_type, window)
+      const overlapping = intersectTimeRanges(result, targetRanges)
+      return { affected_ids: [], would_affect: overlapping.length }
+    }
+    const enrichedIds = await deps.enrichActivities(
+      user,
+      rule.target_activity_type,
+      result,
+      rule.output_data ?? {},
+      rule.id,
+    )
+    return { affected_ids: enrichedIds, would_affect: enrichedIds.length }
+  }
+
+  // Create mode (default)
+  if (dryRun) {
+    return { affected_ids: [], would_affect: result.length }
+  }
+
   const createdIds: string[] = []
   for (const range of result) {
     const id = randomUUID()
     await deps.insertActivity(user, {
       activity_type: rule.output_activity_type,
-      data: { rule_id: rule.id, rule_name: rule.name },
+      data: { rule_id: rule.id, rule_name: rule.name, ...rule.output_data },
       end_time: range.end,
       id,
       source: 'deduction-rule',
@@ -202,7 +280,7 @@ export const evaluateRule = async (
     createdIds.push(id)
   }
 
-  return createdIds
+  return { affected_ids: createdIds, would_affect: createdIds.length }
 }
 
 /**
@@ -214,6 +292,7 @@ export const evaluateAllRules = async (
   rules: DeductionRule[],
   window: EvaluationWindow,
   deps: DeductionEngineDeps,
+  dryRun = false,
 ): Promise<{ rules_evaluated: number; activities_created: number }> => {
   // Group by priority
   const byPriority = new Map<number, DeductionRule[]>()
@@ -231,24 +310,43 @@ export const evaluateAllRules = async (
     const group = byPriority.get(priority)!
     for (const rule of group) {
       const startMs = Date.now()
-      const createdIds = await evaluateRule(user, rule, window, deps)
+      const { affected_ids, would_affect } = await evaluateRule(user, rule, window, deps, dryRun)
 
-      // Clean up stale activities from previous evaluations
-      await deps.deleteStaleRuleActivities(user, rule.id, window.start, window.end, createdIds)
+      if (!dryRun) {
+        // Clean up stale activities from previous evaluations (only for create mode)
+        if (rule.mode !== 'enrich') {
+          await deps.deleteStaleRuleActivities(user, rule.id, window.start, window.end, affected_ids)
+        }
 
-      const durationMs = Date.now() - startMs
-      await deps.insertRuleRun(user, {
-        activities_created: createdIds.length,
-        duration_ms: durationMs,
-        rule_id: rule.id,
-        window_end: window.end,
-        window_start: window.start,
-      })
+        const durationMs = Date.now() - startMs
+        await deps.insertRuleRun(user, {
+          activities_created: affected_ids.length,
+          duration_ms: durationMs,
+          rule_id: rule.id,
+          window_end: window.end,
+          window_start: window.start,
+        })
+      }
 
-      totalActivities += createdIds.length
+      totalActivities += dryRun ? would_affect : affected_ids.length
       totalRules++
     }
   }
 
   return { activities_created: totalActivities, rules_evaluated: totalRules }
+}
+
+/**
+ * Build a full retroactive evaluation window for a user.
+ * Goes back to the earliest activity, or falls back to the given number of days.
+ */
+export const buildFullWindow = async (
+  user: string,
+  deps: DeductionEngineDeps,
+  fallbackDays = 90,
+): Promise<EvaluationWindow> => {
+  const end = new Date()
+  const earliest = await deps.getEarliestActivityTime(user)
+  const start = earliest ?? new Date(end.getTime() - fallbackDays * 24 * 60 * 60 * 1000)
+  return { end, start }
 }

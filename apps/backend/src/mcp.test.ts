@@ -76,7 +76,11 @@ vi.mock('./db', () => ({
 vi.mock('./services/deduction-deps', () => ({
   createDefaultEngineDeps: vi.fn().mockReturnValue({
     deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
+    enrichActivities: vi.fn().mockResolvedValue([]),
     getActivities: vi.fn().mockResolvedValue([]),
+    getActivitiesWithData: vi.fn().mockResolvedValue([]),
+    getEarliestActivityTime: vi.fn().mockResolvedValue(null),
+    getLocationVisits: vi.fn().mockResolvedValue([]),
     getScreentime: vi.fn().mockResolvedValue([]),
     getTags: vi.fn().mockResolvedValue([]),
     insertActivity: vi.fn().mockResolvedValue(undefined),

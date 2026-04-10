@@ -11,6 +11,7 @@ import {
   type DeductionRuleResponse,
   type DeductionRulesResponse,
   type EvaluateDeductionRulesResponse,
+  type PreviewDeductionRuleResponse,
   type UpdateDeductionRuleBody,
   updateDeductionRuleBodySchema,
 } from '@aurboda/api-spec'
@@ -26,7 +27,7 @@ import {
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
-import { evaluateAllRules } from '../services/deduction-engine.ts'
+import { buildFullWindow, evaluateAllRules } from '../services/deduction-engine.ts'
 import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -48,34 +49,89 @@ export const createDeductionRulesRouter = (
     validateBody(addDeductionRuleBodySchema),
     async (req, res) => {
       const user = req.user!
-      const { name, conditions, output_activity_type, output_title, merge_gap_seconds, priority, enabled } =
-        req.body
+      const {
+        name,
+        conditions,
+        output_activity_type,
+        output_title,
+        merge_gap_seconds,
+        priority,
+        enabled,
+        mode,
+        output_data,
+        target_activity_type,
+      } = req.body
 
-      // Validate output activity type exists
       if (!(await activityTypeExists(user, output_activity_type))) {
         return res
           .status(400)
           .json({ error: `Unknown activity type: "${output_activity_type}"`, success: false })
       }
 
+      if (mode === 'enrich' && !target_activity_type) {
+        return res
+          .status(400)
+          .json({ error: 'target_activity_type is required when mode is "enrich"', success: false })
+      }
+
       const rule = await insertDeductionRule(user, {
         conditions,
         enabled,
         merge_gap_seconds,
+        mode,
         name,
         output_activity_type,
+        output_data: output_data as Record<string, unknown> | undefined,
         output_title,
         priority,
+        target_activity_type,
       })
 
-      // Retroactive evaluation: apply rule to last 90 days
-      const window = {
-        end: new Date(),
-        start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-      }
+      // Retroactive evaluation over full history
+      const window = await buildFullWindow(user, engineDeps)
       await evaluateAllRules(user, [rule], window, engineDeps)
 
       res.status(201).json({ data: rule, success: true })
+    },
+  )
+
+  router.post<Record<string, never>, PreviewDeductionRuleResponse, AddDeductionRuleBody>(
+    '/preview',
+    authMiddleware,
+    validateBody(addDeductionRuleBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { output_activity_type } = req.body
+
+      if (!(await activityTypeExists(user, output_activity_type))) {
+        return res
+          .status(400)
+          .json({
+            error: `Unknown activity type: "${output_activity_type}"`,
+            sample_days: 0,
+            success: false,
+            would_affect: 0,
+          })
+      }
+
+      const tempRule = {
+        conditions: req.body.conditions,
+        enabled: true,
+        id: 'preview',
+        merge_gap_seconds: req.body.merge_gap_seconds,
+        mode: req.body.mode,
+        name: req.body.name,
+        output_activity_type,
+        output_data: req.body.output_data as Record<string, unknown> | undefined,
+        output_title: req.body.output_title,
+        priority: req.body.priority ?? 0,
+        target_activity_type: req.body.target_activity_type,
+      }
+
+      const window = { end: new Date(), start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) }
+      const result = await evaluateAllRules(user, [tempRule], window, engineDeps, true)
+
+      res.json({ sample_days: 90, success: true, would_affect: result.activities_created })
     },
   )
 
@@ -98,13 +154,10 @@ export const createDeductionRulesRouter = (
         return res.status(404).json({ error: 'Deduction rule not found', success: false })
       }
 
-      // Re-evaluate retroactively
+      // Re-evaluate retroactively over full history
       await deleteRuleActivities(user, id)
       if (updated.enabled) {
-        const window = {
-          end: new Date(),
-          start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-        }
+        const window = await buildFullWindow(user, engineDeps)
         await evaluateAllRules(user, [updated], window, engineDeps)
       }
 
@@ -116,7 +169,6 @@ export const createDeductionRulesRouter = (
     const { id } = req.params
     const user = req.user!
 
-    // Delete activities produced by this rule first
     await deleteRuleActivities(user, id)
 
     const deleted = await deleteDeductionRule(user, id)
@@ -134,12 +186,8 @@ export const createDeductionRulesRouter = (
       const user = req.user!
       const rules = await getEnabledDeductionRules(user)
 
-      const window = {
-        end: new Date(),
-        start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-      }
+      const window = await buildFullWindow(user, engineDeps)
 
-      // Delete all rule-generated activities and re-evaluate fresh
       for (const rule of rules) {
         await deleteRuleActivities(user, rule.id)
       }

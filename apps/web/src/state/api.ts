@@ -120,10 +120,14 @@ export interface ActivityTypeDefinition {
 }
 
 export interface DeductionRuleCondition {
-  kind: 'activity' | 'tag' | 'screentime_category'
+  kind: 'activity' | 'tag' | 'screentime_category' | 'activity_data' | 'location'
   activity_type?: string
   tag_name?: string
   category?: string[]
+  field?: string
+  operator?: 'eq' | 'neq' | 'exists' | 'not_exists'
+  value?: string | number | boolean
+  location_name?: string
 }
 
 export interface DeductionRule {
@@ -135,6 +139,9 @@ export interface DeductionRule {
   output_activity_type: string
   output_title?: string
   merge_gap_seconds?: number
+  mode?: 'create' | 'enrich'
+  output_data?: Record<string, unknown>
+  target_activity_type?: string
   created_at?: string
 }
 
@@ -791,6 +798,26 @@ export const fetchDeductionRules = async (): Promise<DeductionRule[]> => {
   return response.data.data ?? []
 }
 
+export const previewDeductionRule = async (body: {
+  name: string
+  conditions: DeductionRuleCondition[]
+  output_activity_type: string
+  output_title?: string
+  merge_gap_seconds?: number
+  priority?: number
+  mode?: 'create' | 'enrich'
+  output_data?: Record<string, unknown>
+  target_activity_type?: string
+}): Promise<{ would_affect: number; sample_days: number }> => {
+  const { token } = auth.value
+  const response = await axios.post<{ success: boolean; would_affect: number; sample_days: number }>(
+    `${API_URL}/deduction-rules/preview`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return { sample_days: response.data.sample_days, would_affect: response.data.would_affect }
+}
+
 export const createDeductionRule = async (body: {
   name: string
   conditions: DeductionRuleCondition[]
@@ -799,6 +826,9 @@ export const createDeductionRule = async (body: {
   merge_gap_seconds?: number
   priority?: number
   enabled?: boolean
+  mode?: 'create' | 'enrich'
+  output_data?: Record<string, unknown>
+  target_activity_type?: string
 }): Promise<DeductionRule> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; data: DeductionRule }>(
@@ -819,6 +849,9 @@ export const updateDeductionRule = async (
     merge_gap_seconds: number | null
     priority: number
     enabled: boolean
+    mode: 'create' | 'enrich'
+    output_data: Record<string, unknown> | null
+    target_activity_type: string | null
   }>,
 ): Promise<DeductionRule> => {
   const { token } = auth.value

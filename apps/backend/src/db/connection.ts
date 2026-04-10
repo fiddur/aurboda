@@ -536,6 +536,15 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE outbound_sync_queue ADD COLUMN IF NOT EXISTS fail_reason TEXT`)
   }
 
+  if (existingTableNames.has('deduction_rules')) {
+    await query(
+      db,
+      `ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS mode VARCHAR(10) NOT NULL DEFAULT 'create'`,
+    )
+    await query(db, `ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS output_data JSONB`)
+    await query(db, `ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS target_activity_type VARCHAR(100)`)
+  }
+
   // Migrate notes entity_id from UUID to TEXT (supports composite keys for metrics)
   if (existingTableNames.has('notes')) {
     await query(db, `ALTER TABLE notes ALTER COLUMN entity_id TYPE TEXT`)

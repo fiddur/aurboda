@@ -10,15 +10,118 @@ import './style.css'
 
 const KIND_LABELS: Record<string, string> = {
   activity: 'Activity Type',
+  activity_data: 'Activity Data Field',
+  location: 'Location',
   screentime_category: 'Screentime Category',
   tag: 'Tag Name',
 }
 
-const KINDS: Array<DeductionRuleCondition['kind']> = ['activity', 'tag', 'screentime_category']
+const KINDS: Array<DeductionRuleCondition['kind']> = [
+  'activity',
+  'tag',
+  'screentime_category',
+  'activity_data',
+  'location',
+]
+
+const OPERATOR_LABELS: Record<string, string> = {
+  eq: 'equals',
+  exists: 'exists',
+  neq: 'not equals',
+  not_exists: 'not exists',
+}
+
+// ============================================================================
+// Condition body renderers (extracted to reduce complexity)
+// ============================================================================
+
+function ActivityTypeSelect({
+  condition,
+  onChange,
+  definitions,
+}: {
+  condition: DeductionRuleCondition
+  onChange: (c: DeductionRuleCondition) => void
+  definitions: { name: string; display_name: string }[]
+}) {
+  return (
+    <select
+      value={condition.activity_type ?? ''}
+      onChange={(e) => onChange({ ...condition, activity_type: (e.target as HTMLSelectElement).value })}
+      class="condition-field-select"
+    >
+      <option value="">-- select activity type --</option>
+      {definitions.map((d) => (
+        <option key={d.name} value={d.name}>
+          {d.display_name} ({d.name})
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function ActivityDataBody({
+  condition,
+  onChange,
+  definitions,
+}: {
+  condition: DeductionRuleCondition
+  onChange: (c: DeductionRuleCondition) => void
+  definitions: { name: string; display_name: string }[]
+}) {
+  const needsValue = condition.operator === 'eq' || condition.operator === 'neq'
+  return (
+    <div class="condition-data-fields">
+      <ActivityTypeSelect condition={condition} onChange={onChange} definitions={definitions} />
+      <div class="condition-data-row">
+        <input
+          type="text"
+          value={condition.field ?? ''}
+          onInput={(e) => onChange({ ...condition, field: (e.target as HTMLInputElement).value })}
+          placeholder="Field name"
+          class="condition-field-input condition-field-narrow"
+        />
+        <select
+          value={condition.operator ?? 'eq'}
+          onChange={(e) =>
+            onChange({
+              ...condition,
+              operator: (e.target as HTMLSelectElement).value as DeductionRuleCondition['operator'],
+            })
+          }
+          class="condition-field-select condition-field-narrow"
+        >
+          {Object.entries(OPERATOR_LABELS).map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
+            </option>
+          ))}
+        </select>
+        {needsValue && (
+          <input
+            type="text"
+            value={String(condition.value ?? '')}
+            onInput={(e) => onChange({ ...condition, value: (e.target as HTMLInputElement).value })}
+            placeholder="Value"
+            class="condition-field-input condition-field-narrow"
+          />
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ============================================================================
 // Single condition card
 // ============================================================================
+
+const KIND_DEFAULTS: Record<string, Partial<DeductionRuleCondition>> = {
+  activity: { activity_type: '' },
+  activity_data: { activity_type: '', field: '', operator: 'eq', value: '' },
+  location: { location_name: '' },
+  screentime_category: { category: [] },
+  tag: { tag_name: '' },
+}
 
 function ConditionCard({
   condition,
@@ -40,12 +143,10 @@ function ConditionCard({
   })
 
   const handleKindChange = (newKind: DeductionRuleCondition['kind']) => {
-    const base: DeductionRuleCondition = { kind: newKind }
-    if (newKind === 'activity') base.activity_type = ''
-    if (newKind === 'tag') base.tag_name = ''
-    if (newKind === 'screentime_category') base.category = []
-    onChange(index, base)
+    onChange(index, { kind: newKind, ...KIND_DEFAULTS[newKind] } as DeductionRuleCondition)
   }
+
+  const update = (c: DeductionRuleCondition) => onChange(index, c)
 
   return (
     <div class="condition-card">
@@ -77,27 +178,14 @@ function ConditionCard({
 
       <div class="condition-card-body">
         {condition.kind === 'activity' && (
-          <select
-            value={condition.activity_type ?? ''}
-            onChange={(e) =>
-              onChange(index, { ...condition, activity_type: (e.target as HTMLSelectElement).value })
-            }
-            class="condition-field-select"
-          >
-            <option value="">-- select activity type --</option>
-            {definitions.map((d) => (
-              <option key={d.name} value={d.name}>
-                {d.display_name} ({d.name})
-              </option>
-            ))}
-          </select>
+          <ActivityTypeSelect condition={condition} onChange={update} definitions={definitions} />
         )}
 
         {condition.kind === 'tag' && (
           <input
             type="text"
             value={condition.tag_name ?? ''}
-            onInput={(e) => onChange(index, { ...condition, tag_name: (e.target as HTMLInputElement).value })}
+            onInput={(e) => update({ ...condition, tag_name: (e.target as HTMLInputElement).value })}
             placeholder="Tag name"
             class="condition-field-input"
           />
@@ -108,7 +196,7 @@ function ConditionCard({
             type="text"
             value={condition.category?.join(', ') ?? ''}
             onInput={(e) =>
-              onChange(index, {
+              update({
                 ...condition,
                 category: (e.target as HTMLInputElement).value
                   .split(',')
@@ -117,6 +205,20 @@ function ConditionCard({
               })
             }
             placeholder="Category path (comma-separated, e.g. Work, Programming)"
+            class="condition-field-input"
+          />
+        )}
+
+        {condition.kind === 'activity_data' && (
+          <ActivityDataBody condition={condition} onChange={update} definitions={definitions} />
+        )}
+
+        {condition.kind === 'location' && (
+          <input
+            type="text"
+            value={condition.location_name ?? ''}
+            onInput={(e) => update({ ...condition, location_name: (e.target as HTMLInputElement).value })}
+            placeholder="Named location (e.g. Home, Office)"
             class="condition-field-input"
           />
         )}
