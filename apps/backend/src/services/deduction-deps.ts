@@ -132,6 +132,7 @@ const enrichActivities = async (
   ranges: TimeRange[],
   data: Record<string, unknown>,
   ruleId: string,
+  ruleName: string,
 ): Promise<string[]> => {
   if (ranges.length === 0 || Object.keys(data).length === 0) return []
 
@@ -165,7 +166,7 @@ const enrichActivities = async (
       if (Object.keys(patch).length === 0) continue
 
       // Track enrichment provenance
-      patch._enriched_by = ruleId
+      patch._enriched_by = { rule_id: ruleId, rule_name: ruleName }
 
       await query(
         user,

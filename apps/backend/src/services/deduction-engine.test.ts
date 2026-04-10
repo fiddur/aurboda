@@ -327,6 +327,7 @@ describe('evaluateRule', () => {
       [{ end: d(11), start: d(10) }],
       { partner: 'Sara' },
       'rule-1',
+      'Sauna tag to activity',
     )
     expect(deps.insertActivity).not.toHaveBeenCalled()
   })
