@@ -64,13 +64,10 @@ export const chartDataQuerySchema = z
       .uuid()
       .optional()
       .meta({ description: 'Tag definition ID (alternative to pattern for tags)' }),
-    breakdown_field: z
-      .string()
-      .optional()
-      .meta({
-        description:
-          'Data field to break down by (for activity_type source). Returns series per distinct value.',
-      }),
+    breakdown_fields: z.array(z.string()).optional().meta({
+      description:
+        'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys.',
+    }),
   })
   .meta({ id: 'ChartDataQuery', description: 'Query parameters for bucketed chart data' })
 
@@ -82,7 +79,10 @@ export type ChartDataQuery = z.infer<typeof chartDataQuerySchema>
 export const chartDataHttpQuerySchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional(),
-    breakdown_field: z.string().optional().meta({ description: 'Data field to break down by' }),
+    breakdown_fields: z
+      .string()
+      .optional()
+      .meta({ description: 'Comma-separated data fields to break down by' }),
     bucket_size: z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).optional(),
     end: z.string().meta({ description: 'End of time range (ISO 8601 string)' }),
     pattern: z.string().optional().meta({ description: 'Pattern to match' }),
@@ -129,7 +129,10 @@ export const chartDataResponseSchema = baseResponseSchema
   .extend({
     data: z
       .object({
-        breakdown_field: z.string().optional().meta({ description: 'Field used for breakdown, if any' }),
+        breakdown_fields: z
+          .array(z.string())
+          .optional()
+          .meta({ description: 'Fields used for breakdown, if any' }),
         breakdown_series: z
           .array(z.string())
           .optional()
