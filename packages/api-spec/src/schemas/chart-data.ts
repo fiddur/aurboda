@@ -64,6 +64,13 @@ export const chartDataQuerySchema = z
       .uuid()
       .optional()
       .meta({ description: 'Tag definition ID (alternative to pattern for tags)' }),
+    breakdown_field: z
+      .string()
+      .optional()
+      .meta({
+        description:
+          'Data field to break down by (for activity_type source). Returns series per distinct value.',
+      }),
   })
   .meta({ id: 'ChartDataQuery', description: 'Query parameters for bucketed chart data' })
 
@@ -75,6 +82,7 @@ export type ChartDataQuery = z.infer<typeof chartDataQuerySchema>
 export const chartDataHttpQuerySchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional(),
+    breakdown_field: z.string().optional().meta({ description: 'Data field to break down by' }),
     bucket_size: z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).optional(),
     end: z.string().meta({ description: 'End of time range (ISO 8601 string)' }),
     pattern: z.string().optional().meta({ description: 'Pattern to match' }),
@@ -103,13 +111,30 @@ export const chartDataBucketSchema = z
 export type ChartDataBucket = z.infer<typeof chartDataBucketSchema>
 
 /**
+ * A breakdown bucket — one bucket with multiple series (keyed by field value).
+ */
+export const chartDataBreakdownBucketSchema = z
+  .object({
+    bucket_start: z.string().meta({ description: 'Start of the bucket (ISO 8601 datetime)' }),
+    series: z.record(z.string(), z.number()).meta({ description: 'Map of field value to aggregated value' }),
+  })
+  .meta({ id: 'ChartDataBreakdownBucket', description: 'A bucket with breakdown by data field value' })
+
+export type ChartDataBreakdownBucket = z.infer<typeof chartDataBreakdownBucketSchema>
+
+/**
  * Response schema for chart data endpoint.
  */
 export const chartDataResponseSchema = baseResponseSchema
   .extend({
     data: z
       .object({
-        buckets: z.array(chartDataBucketSchema),
+        breakdown_field: z.string().optional().meta({ description: 'Field used for breakdown, if any' }),
+        breakdown_series: z
+          .array(z.string())
+          .optional()
+          .meta({ description: 'Distinct field values in breakdown' }),
+        buckets: z.array(z.union([chartDataBucketSchema, chartDataBreakdownBucketSchema])),
       })
       .optional(),
   })
