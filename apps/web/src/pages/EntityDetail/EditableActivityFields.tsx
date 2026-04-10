@@ -15,6 +15,7 @@ export interface ActivityDraft {
   end_time: string
   notes: string
   exercise_type?: string
+  data?: Record<string, unknown>
 }
 
 interface EditableActivityFieldsProps {
