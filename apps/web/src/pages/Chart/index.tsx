@@ -417,25 +417,78 @@ function ChartControls({
   )
 }
 
-function TrendDisplay({ params }: { params: FetchTrendParams }) {
+const SERIES_COLORS = ['#8b5cf6', '#f97316', '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#ec4899', '#14b8a6']
+
+function BreakdownLegend({ series, colors }: { series: string[]; colors: string[] }) {
+  return (
+    <div class="breakdown-legend">
+      {series.map((name, i) => (
+        <span key={name} class="breakdown-legend-item">
+          <span class="breakdown-legend-dot" style={{ background: colors[i % colors.length] }} />
+          {name}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function BreakdownTrendDisplay({ params }: { params: FetchChartDataParams }) {
+  const breakdownQuery = useQuery({
+    enabled: Boolean(params.breakdown_fields?.length),
+    queryFn: () => fetchChartData(params),
+    queryKey: ['chart-data-trend-breakdown', params],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  if (breakdownQuery.isLoading) return <div class="chart-loading">Loading breakdown data...</div>
+  if (breakdownQuery.isError) return <div class="chart-error">Failed to load breakdown data.</div>
+
+  const result = breakdownQuery.data
+  if (!result?.breakdown_buckets?.length) return <div class="chart-empty">No breakdown data.</div>
+
+  const series = result.breakdown_series ?? []
+  return (
+    <div class="chart-display">
+      <BreakdownLegend series={series} colors={SERIES_COLORS} />
+      <TrendLineChart
+        data={[]}
+        color="#8b5cf6"
+        height={350}
+        multiSeries={series.map((name, i) => ({
+          color: SERIES_COLORS[i % SERIES_COLORS.length],
+          data: result.breakdown_buckets!.map((b) => ({
+            date: b.bucket_start,
+            value: b.series[name] ?? 0,
+          })),
+          name,
+        }))}
+      />
+    </div>
+  )
+}
+
+function TrendDisplay({
+  params,
+  breakdownParams,
+}: {
+  params: FetchTrendParams
+  breakdownParams?: FetchChartDataParams
+}) {
   const trendQuery = useQuery({
-    enabled: Boolean(params.pattern),
+    enabled: Boolean(params.pattern) && !breakdownParams?.breakdown_fields?.length,
     queryFn: () => fetchTrend(params),
     queryKey: ['trend', params],
     staleTime: 5 * 60 * 1000,
   })
 
-  if (!params.pattern) {
-    return <div class="chart-empty">Select a source to view trend data.</div>
+  if (!params.pattern) return <div class="chart-empty">Select a source to view trend data.</div>
+
+  if (breakdownParams?.breakdown_fields?.length) {
+    return <BreakdownTrendDisplay params={breakdownParams} />
   }
 
-  if (trendQuery.isLoading) {
-    return <div class="chart-loading">Loading trend data...</div>
-  }
-
-  if (trendQuery.isError || !trendQuery.data) {
-    return <div class="chart-error">Failed to load trend data.</div>
-  }
+  if (trendQuery.isLoading) return <div class="chart-loading">Loading trend data...</div>
+  if (trendQuery.isError || !trendQuery.data) return <div class="chart-error">Failed to load trend data.</div>
 
   const { current_value, display_unit, history } = trendQuery.data
 
@@ -472,33 +525,24 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
 
   const result = barQuery.data
 
-  // Breakdown mode: render one bar chart per series
+  // Breakdown mode: render grouped bar chart with all series
   if (result?.breakdown_buckets?.length) {
     const series = result.breakdown_series ?? []
-    const colors = ['#8b5cf6', '#f97316', '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#ec4899', '#14b8a6']
     return (
       <div class="chart-display">
-        <div class="breakdown-legend">
-          {series.map((name, i) => (
-            <span key={name} class="breakdown-legend-item">
-              <span class="breakdown-legend-dot" style={{ background: colors[i % colors.length] }} />
-              {name}
-            </span>
-          ))}
-        </div>
-        {series.map((name, i) => (
-          <div key={name} class="breakdown-series">
-            <h4 class="breakdown-series-title">{name}</h4>
-            <BarChart
-              data={result.breakdown_buckets!.map((b) => ({
-                bucket_start: b.bucket_start,
-                value: b.series[name] ?? 0,
-              }))}
-              color={colors[i % colors.length]}
-              height={150}
-            />
-          </div>
-        ))}
+        <BreakdownLegend series={series} colors={SERIES_COLORS} />
+        <BarChart
+          data={[]}
+          height={350}
+          multiSeries={series.map((name, i) => ({
+            color: SERIES_COLORS[i % SERIES_COLORS.length],
+            data: result.breakdown_buckets!.map((b) => ({
+              bucket_start: b.bucket_start,
+              value: b.series[name] ?? 0,
+            })),
+            name,
+          }))}
+        />
       </div>
     )
   }
@@ -732,7 +776,7 @@ export function Chart() {
       {state.chart_type === 'trend' ? (
         <TrendDisplay
           params={{
-            aggregation: state.source_type === 'metric' ? state.aggregation : 'count',
+            aggregation: state.aggregation,
             display_period: state.display_period,
             half_life_days: state.half_life_days,
             lookback_days: state.lookback_days,
@@ -740,6 +784,20 @@ export function Chart() {
             source_type: state.source_type,
             ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
           }}
+          breakdownParams={
+            state.breakdown_fields.length > 0
+              ? {
+                  aggregation: state.aggregation,
+                  breakdown_fields: state.breakdown_fields,
+                  bucket_size:
+                    state.display_period === 'daily' ? '1d' : state.display_period === 'weekly' ? '1w' : '1M',
+                  end,
+                  pattern: state.pattern || undefined,
+                  source_type: state.source_type,
+                  start,
+                }
+              : undefined
+          }
         />
       ) : (
         <BarDisplay

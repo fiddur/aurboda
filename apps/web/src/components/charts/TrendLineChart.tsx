@@ -10,6 +10,12 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import './TrendLineChart.css'
 
+export interface LineSeriesData {
+  name: string
+  color: string
+  data: { date: string; value: number }[]
+}
+
 export interface TrendLineChartProps {
   /** Data points to render — must have at least 2 entries. */
   data: { date: string; value: number }[]
@@ -21,6 +27,8 @@ export interface TrendLineChartProps {
   width?: number
   /** Compact mode — hides tooltip crosshair and grid lines (for widgets). */
   compact?: boolean
+  /** Multiple named series — renders overlaid lines. Overrides data/color when present. */
+  multiSeries?: LineSeriesData[]
 }
 
 interface ParsedPoint {
@@ -130,6 +138,46 @@ function renderDots(
     .attr('fill', color)
 }
 
+/** Render multiple overlaid series (area + line for each). */
+function renderMultiSeries(
+  g: d3.Selection<SVGGElement, unknown, null, undefined>,
+  series: LineSeriesData[],
+  innerWidth: number,
+  innerHeight: number,
+  compact: boolean,
+) {
+  const allPoints = series.flatMap((s) => s.data.map((d) => ({ date: new Date(d.date), value: d.value })))
+  if (allPoints.length < 2) return
+
+  const x = d3
+    .scaleTime()
+    .domain(d3.extent(allPoints, (d) => d.date) as [Date, Date])
+    .range([0, innerWidth])
+
+  const yExtent = d3.extent(allPoints, (d) => d.value) as [number, number]
+  const yRange = yExtent[1] - yExtent[0]
+  const yPadding = yRange * 0.1 || 1
+  const yMin = yExtent[0] >= 0 ? Math.max(0, yExtent[0] - yPadding) : yExtent[0] - yPadding
+  const y = d3
+    .scaleLinear()
+    .domain([yMin, yExtent[1] + yPadding])
+    .nice()
+    .range([innerHeight, 0])
+
+  const dateExtent = d3.extent(allPoints, (d) => d.date) as [Date, Date]
+  const { axisFormat } = buildDateFormat(dateExtent)
+
+  if (!compact) renderGrid(g, y, innerWidth)
+
+  for (const s of series) {
+    const parsed = s.data.map((d) => ({ date: new Date(d.date), value: d.value }))
+    if (parsed.length < 2) continue
+    renderAreaAndLine(g, parsed, x, y, innerHeight, s.color)
+  }
+
+  renderAxes(g, x, y, innerWidth, innerHeight, axisFormat)
+}
+
 /** Attach tooltip crosshair + highlight dot behaviour. */
 function attachTooltip(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
@@ -204,13 +252,22 @@ function attachTooltip(
     })
 }
 
-export function TrendLineChart({ data, color, height = 200, width, compact = false }: TrendLineChartProps) {
+export function TrendLineChart({
+  data,
+  color,
+  height = 200,
+  width,
+  compact = false,
+  multiSeries,
+}: TrendLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
 
+  const effectiveData = multiSeries ? (multiSeries[0]?.data ?? []) : data
+
   useEffect(() => {
-    if (!svgRef.current || !containerRef.current || data.length < 2) return
+    if (!svgRef.current || !containerRef.current) return
 
     const container = containerRef.current
     const chartWidth = width ?? container.clientWidth
@@ -220,67 +277,65 @@ export function TrendLineChart({ data, color, height = 200, width, compact = fal
     svg.selectAll('*').remove()
     svg.attr('width', chartWidth).attr('height', chartHeight)
 
-    const margin = compact
-      ? { bottom: 30, left: 50, right: 20, top: 20 }
-      : { bottom: 30, left: 50, right: 20, top: 20 }
+    const margin = { bottom: 30, left: 50, right: 20, top: 20 }
     const innerWidth = chartWidth - margin.left - margin.right
     const innerHeight = chartHeight - margin.top - margin.bottom
 
-    const parsedData: ParsedPoint[] = data.map((d) => ({
-      date: new Date(d.date),
-      value: d.value,
-    }))
+    if (multiSeries && multiSeries.length > 0) {
+      const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
+      renderMultiSeries(g, multiSeries, innerWidth, innerHeight, compact)
+    } else {
+      // Single series (original behavior)
+      const parsedData: ParsedPoint[] = data.map((d) => ({
+        date: new Date(d.date),
+        value: d.value,
+      }))
+      if (parsedData.length < 2) return
 
-    const x = d3
-      .scaleTime()
-      .domain(d3.extent(parsedData, (d) => d.date) as [Date, Date])
-      .range([0, innerWidth])
+      const x = d3
+        .scaleTime()
+        .domain(d3.extent(parsedData, (d) => d.date) as [Date, Date])
+        .range([0, innerWidth])
 
-    const yExtent = d3.extent(parsedData, (d) => d.value) as [number, number]
-    const yRange = yExtent[1] - yExtent[0]
-    const yPadding = yRange * 0.1 || 1
-    const yMin = yExtent[0] >= 0 ? Math.max(0, yExtent[0] - yPadding) : yExtent[0] - yPadding
-    const y = d3
-      .scaleLinear()
-      .domain([yMin, yExtent[1] + yPadding])
-      .nice()
-      .range([innerHeight, 0])
+      const yExtent = d3.extent(parsedData, (d) => d.value) as [number, number]
+      const yRange = yExtent[1] - yExtent[0]
+      const yPadding = yRange * 0.1 || 1
+      const yMin = yExtent[0] >= 0 ? Math.max(0, yExtent[0] - yPadding) : yExtent[0] - yPadding
+      const y = d3
+        .scaleLinear()
+        .domain([yMin, yExtent[1] + yPadding])
+        .nice()
+        .range([innerHeight, 0])
 
-    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
+      const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
 
-    const dateExtent = d3.extent(parsedData, (d) => d.date) as [Date, Date]
-    const { axisFormat, tooltipFormat } = buildDateFormat(dateExtent)
+      const dateExtent = d3.extent(parsedData, (d) => d.date) as [Date, Date]
+      const { axisFormat, tooltipFormat } = buildDateFormat(dateExtent)
 
-    if (!compact) {
-      renderGrid(g, y, innerWidth)
+      if (!compact) renderGrid(g, y, innerWidth)
+      renderAreaAndLine(g, parsedData, x, y, innerHeight, color)
+      if (!compact) renderDots(g, parsedData, x, y, color)
+      renderAxes(g, x, y, innerWidth, innerHeight, axisFormat)
+
+      if (!compact && tooltipRef.current) {
+        attachTooltip(
+          g,
+          parsedData,
+          x,
+          y,
+          innerWidth,
+          innerHeight,
+          color,
+          container,
+          tooltipRef.current,
+          margin,
+          tooltipFormat,
+        )
+      }
     }
+  }, [data, color, height, width, compact, multiSeries])
 
-    renderAreaAndLine(g, parsedData, x, y, innerHeight, color)
-
-    if (!compact) {
-      renderDots(g, parsedData, x, y, color)
-    }
-
-    renderAxes(g, x, y, innerWidth, innerHeight, axisFormat)
-
-    if (!compact && tooltipRef.current) {
-      attachTooltip(
-        g,
-        parsedData,
-        x,
-        y,
-        innerWidth,
-        innerHeight,
-        color,
-        container,
-        tooltipRef.current,
-        margin,
-        tooltipFormat,
-      )
-    }
-  }, [data, color, height, width, compact])
-
-  if (data.length < 2) {
+  if (effectiveData.length < 2) {
     return <div class="trend-line-chart-placeholder">Insufficient data for chart</div>
   }
 
