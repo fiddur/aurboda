@@ -21,7 +21,7 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): Router =>
     async (req, res) => {
       const {
         aggregation,
-        breakdown_field,
+        breakdown_fields: breakdownFieldsStr,
         bucket_size,
         end,
         pattern,
@@ -29,6 +29,12 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): Router =>
         start,
         tag_definition_id,
       } = req.query
+      const breakdown_fields = breakdownFieldsStr
+        ? breakdownFieldsStr
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined
       const user = req.user!
 
       if (!pattern && !tag_definition_id) {
@@ -40,7 +46,7 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): Router =>
       try {
         const result = await getChartData(user, {
           aggregation: aggregation ?? 'count',
-          breakdown_field,
+          breakdown_fields,
           bucket_size: bucket_size ?? '1d',
           end,
           pattern,
@@ -50,7 +56,7 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): Router =>
         })
         res.json({
           data: {
-            breakdown_field: result.breakdown_field,
+            breakdown_fields: result.breakdown_fields,
             breakdown_series: result.breakdown_series,
             buckets: result.buckets,
           },

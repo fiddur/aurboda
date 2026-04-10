@@ -63,6 +63,7 @@ const BUCKET_SIZE_OPTIONS: { label: string; value: BucketSize }[] = [
 
 interface ChartState {
   aggregation: 'count' | 'mean' | 'sum'
+  breakdown_fields: string[]
   bucket_size: BucketSize
   chart_type: ChartType
   display_period: TrendDisplayPeriod
@@ -77,13 +78,14 @@ interface ChartState {
 function parseQuery(query: Record<string, string>): ChartState {
   return {
     aggregation: (query.aggregation ?? 'count') as 'count' | 'mean' | 'sum',
+    breakdown_fields: query.breakdown_fields ? query.breakdown_fields.split(',').filter(Boolean) : [],
     bucket_size: (query.bucket_size ?? '1d') as BucketSize,
     chart_type: (query.chart_type ?? 'trend') as ChartType,
     display_period: (query.display_period ?? 'monthly') as TrendDisplayPeriod,
     half_life_days: Number(query.half_life_days) || 15,
     lookback_days: Number(query.lookback_days) || 90,
     pattern: query.pattern ?? '',
-    source_type: (query.source_type ?? 'tag') as SourceType,
+    source_type: (query.source_type ?? 'activity_type') as SourceType,
     tag_definition_id: query.tag_definition_id ?? '',
   }
 }
@@ -246,12 +248,19 @@ function SourcePicker({
         ) : state.source_type === 'activity_type' ? (
           <>
             Activity Type
-            <input
-              type="text"
+            <select
               value={state.pattern}
-              onInput={(e) => onUpdate({ pattern: (e.target as HTMLInputElement).value })}
-              placeholder="e.g. running, cycling..."
-            />
+              onChange={(e) =>
+                onUpdate({ breakdown_fields: [], pattern: (e.target as HTMLSelectElement).value })
+              }
+            >
+              <option value="">-- select --</option>
+              {activityTypes.map((d) => (
+                <option key={d.name} value={d.name}>
+                  {d.display_name} ({d.name})
+                </option>
+              ))}
+            </select>
           </>
         ) : (
           <>
@@ -264,6 +273,34 @@ function SourcePicker({
           </>
         )}
       </label>
+
+      {state.source_type === 'activity_type' &&
+        state.pattern &&
+        (() => {
+          const typeDef = activityTypes.find((d) => d.name === state.pattern)
+          const categoricalFields = typeDef?.data_schema?.fields.filter((f) => f.is_categorical) ?? []
+          if (categoricalFields.length === 0) return null
+          return (
+            <div class="breakdown-fields">
+              <span class="breakdown-label">Breakdown by:</span>
+              {categoricalFields.map((field) => (
+                <label key={field.name} class="breakdown-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={state.breakdown_fields.includes(field.name)}
+                    onChange={() => {
+                      const next = state.breakdown_fields.includes(field.name)
+                        ? state.breakdown_fields.filter((f) => f !== field.name)
+                        : [...state.breakdown_fields, field.name]
+                      onUpdate({ breakdown_fields: next })
+                    }}
+                  />
+                  {field.label ?? field.name}
+                </label>
+              ))}
+            </div>
+          )
+        })()}
     </div>
   )
 }
@@ -360,7 +397,7 @@ function ChartControls({
           </label>
         )}
 
-        {state.source_type === 'metric' && (
+        {(state.source_type === 'metric' || state.source_type === 'activity_type') && (
           <label>
             Aggregation
             <select
@@ -369,8 +406,8 @@ function ChartControls({
                 onUpdate({ aggregation: (e.target as HTMLSelectElement).value as 'count' | 'mean' | 'sum' })
               }
             >
-              <option value="mean">Average</option>
-              <option value="sum">Sum</option>
+              {state.source_type === 'metric' && <option value="mean">Average</option>}
+              <option value="sum">Sum (hours)</option>
               <option value="count">Count</option>
             </select>
           </label>
@@ -434,6 +471,38 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
   }
 
   const result = barQuery.data
+
+  // Breakdown mode: render one bar chart per series
+  if (result?.breakdown_buckets?.length) {
+    const series = result.breakdown_series ?? []
+    const colors = ['#8b5cf6', '#f97316', '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#ec4899', '#14b8a6']
+    return (
+      <div class="chart-display">
+        <div class="breakdown-legend">
+          {series.map((name, i) => (
+            <span key={name} class="breakdown-legend-item">
+              <span class="breakdown-legend-dot" style={{ background: colors[i % colors.length] }} />
+              {name}
+            </span>
+          ))}
+        </div>
+        {series.map((name, i) => (
+          <div key={name} class="breakdown-series">
+            <h4 class="breakdown-series-title">{name}</h4>
+            <BarChart
+              data={result.breakdown_buckets!.map((b) => ({
+                bucket_start: b.bucket_start,
+                value: b.series[name] ?? 0,
+              }))}
+              color={colors[i % colors.length]}
+              height={150}
+            />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   const buckets = result?.buckets ?? []
 
   return (
@@ -675,7 +744,8 @@ export function Chart() {
       ) : (
         <BarDisplay
           params={{
-            aggregation: state.source_type === 'metric' ? state.aggregation : 'count',
+            aggregation: state.aggregation,
+            breakdown_fields: state.breakdown_fields.length > 0 ? state.breakdown_fields : undefined,
             bucket_size: state.bucket_size,
             end,
             pattern: state.pattern || undefined,
