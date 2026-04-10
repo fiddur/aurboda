@@ -30,10 +30,10 @@ describe('getChartData', () => {
       tag_definition_id: '550e8400-e29b-41d4-a716-446655440000',
     })
 
-    expect(result).toHaveLength(2)
-    expect(result[0].bucket_start).toBe('2026-01-01T00:00:00.000Z')
-    expect(result[0].value).toBe(3)
-    expect(result[1].value).toBe(5)
+    expect(result.buckets).toHaveLength(2)
+    expect(result.buckets[0].bucket_start).toBe('2026-01-01T00:00:00.000Z')
+    expect((result.buckets[0] as { value: number }).value).toBe(3)
+    expect((result.buckets[1] as { value: number }).value).toBe(5)
 
     // Verify the SQL uses date_trunc with 'day'
     const call = vi.mocked(db.query).mock.calls[0]
@@ -54,15 +54,15 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result).toHaveLength(1)
-    expect(result[0].value).toBe(7)
+    expect(result.buckets).toHaveLength(1)
+    expect((result.buckets[0] as { value: number }).value).toBe(7)
 
     // Verify the SQL uses date_trunc with 'week'
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[2]![0]).toBe('week')
   })
 
-  test('returns empty array for tag source without pattern or tag_definition_id', async () => {
+  test('returns empty buckets for tag source without pattern or tag_definition_id', async () => {
     const result = await getChartData('testuser', {
       aggregation: 'count',
       bucket_size: '1d',
@@ -71,7 +71,7 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result).toEqual([])
+    expect(result.buckets).toEqual([])
     expect(db.query).not.toHaveBeenCalled()
   })
 
@@ -92,8 +92,8 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result).toHaveLength(2)
-    expect(result[0].value).toBe(72.5)
+    expect(result.buckets).toHaveLength(2)
+    expect((result.buckets[0] as { value: number }).value).toBe(72.5)
 
     // Verify the SQL uses date_trunc with 'month'
     const call = vi.mocked(db.query).mock.calls[0]
@@ -116,8 +116,8 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result).toHaveLength(1)
-    expect(result[0].value).toBe(8500)
+    expect(result.buckets).toHaveLength(1)
+    expect((result.buckets[0] as { value: number }).value).toBe(8500)
 
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[1]).toContain('SUM(value)')
@@ -137,8 +137,8 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result).toHaveLength(1)
-    expect(result[0].value).toBe(24)
+    expect(result.buckets).toHaveLength(1)
+    expect((result.buckets[0] as { value: number }).value).toBe(24)
 
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[1]).toContain('COUNT(*)')
@@ -161,9 +161,9 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result).toHaveLength(2)
-    expect(result[0].value).toBe(3.5)
-    expect(result[1].value).toBe(4.2)
+    expect(result.buckets).toHaveLength(2)
+    expect((result.buckets[0] as { value: number }).value).toBe(3.5)
+    expect((result.buckets[1] as { value: number }).value).toBe(4.2)
   })
 
   test('returns bucketed activity type hours', async () => {
@@ -180,8 +180,8 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result).toHaveLength(1)
-    expect(result[0].value).toBe(2.75)
+    expect(result.buckets).toHaveLength(1)
+    expect((result.buckets[0] as { value: number }).value).toBe(2.75)
   })
 
   test('uses date_trunc with hour for 1h bucket size', async () => {
@@ -201,9 +201,9 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result).toHaveLength(2)
-    expect(result[0].bucket_start).toBe('2026-01-01T10:00:00.000Z')
-    expect(result[0].value).toBe(2)
+    expect(result.buckets).toHaveLength(2)
+    expect(result.buckets[0].bucket_start).toBe('2026-01-01T10:00:00.000Z')
+    expect((result.buckets[0] as { value: number }).value).toBe(2)
 
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[1]).toContain('date_trunc')
@@ -227,16 +227,16 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result).toHaveLength(2)
-    expect(result[0].bucket_start).toBe('2026-01-01T10:00:00.000Z')
-    expect(result[1].value).toBe(2)
+    expect(result.buckets).toHaveLength(2)
+    expect(result.buckets[0].bucket_start).toBe('2026-01-01T10:00:00.000Z')
+    expect((result.buckets[1] as { value: number }).value).toBe(2)
 
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[1]).toContain('date_bin')
     expect(call[2]![0]).toBe('15 minutes')
   })
 
-  test('returns empty array for metric without pattern', async () => {
+  test('returns empty buckets for metric without pattern', async () => {
     const result = await getChartData('testuser', {
       aggregation: 'mean',
       bucket_size: '1d',
@@ -245,7 +245,100 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result).toEqual([])
+    expect(result.buckets).toEqual([])
+    expect(db.query).not.toHaveBeenCalled()
+  })
+
+  test('activity_type with count aggregation uses count(*)', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [{ bucket_start: new Date('2026-01-01T00:00:00Z'), value: 5n }],
+    } as never)
+
+    const result = await getChartData('testuser', {
+      aggregation: 'count',
+      bucket_size: '1d',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'sex',
+      source_type: 'activity_type',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(result.buckets).toHaveLength(1)
+    expect((result.buckets[0] as { value: number }).value).toBe(5)
+    const sql = vi.mocked(db.query).mock.calls[0][1] as string
+    expect(sql).toContain('count(*)')
+  })
+
+  test('activity_type with breakdown_fields returns breakdown buckets', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        { bucket_start: new Date('2026-01-01T00:00:00Z'), field_0: 'Sara', value: 2 },
+        { bucket_start: new Date('2026-01-01T00:00:00Z'), field_0: 'Other', value: 1 },
+        { bucket_start: new Date('2026-01-08T00:00:00Z'), field_0: 'Sara', value: 3 },
+      ],
+    } as never)
+
+    const result = await getChartData('testuser', {
+      aggregation: 'count',
+      breakdown_fields: ['partner'],
+      bucket_size: '1w',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'sex',
+      source_type: 'activity_type',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(result.breakdown_fields).toEqual(['partner'])
+    expect(result.breakdown_series).toEqual(['Other', 'Sara'])
+    expect(result.buckets).toHaveLength(2)
+
+    const first = result.buckets[0] as { series: Record<string, number> }
+    expect(first.series).toEqual({ Other: 1, Sara: 2 })
+  })
+
+  test('multi-field breakdown produces compound series keys', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        {
+          bucket_start: new Date('2026-01-01T00:00:00Z'),
+          field_0: 'spanda',
+          field_1: 'external',
+          value: 3.5,
+        },
+        { bucket_start: new Date('2026-01-01T00:00:00Z'), field_0: 'spanda', field_1: 'laptop', value: 1.0 },
+      ],
+    } as never)
+
+    const result = await getChartData('testuser', {
+      aggregation: 'sum',
+      breakdown_fields: ['device', 'display'],
+      bucket_size: '1d',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'computer_active',
+      source_type: 'activity_type',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(result.breakdown_fields).toEqual(['device', 'display'])
+    expect(result.breakdown_series).toEqual(['spanda / external', 'spanda / laptop'])
+
+    const first = result.buckets[0] as { series: Record<string, number> }
+    expect(first.series['spanda / external']).toBe(3.5)
+    expect(first.series['spanda / laptop']).toBe(1.0)
+  })
+
+  test('breakdown_fields with invalid name returns empty', async () => {
+    const result = await getChartData('testuser', {
+      aggregation: 'count',
+      breakdown_fields: ['DROP TABLE'],
+      bucket_size: '1d',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'test',
+      source_type: 'activity_type',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(result.buckets).toEqual([])
     expect(db.query).not.toHaveBeenCalled()
   })
 })

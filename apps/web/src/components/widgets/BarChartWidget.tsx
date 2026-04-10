@@ -91,7 +91,7 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
   return (
     <a href={chartUrl} class="chart-widget chart-widget-link">
       <h4>{displayTitle}</h4>
-      <BarChart data={chartQuery.data} color="#8b5cf6" height={200} />
+      <BarChart data={chartQuery.data.buckets} color="#8b5cf6" height={200} />
     </a>
   )
 }

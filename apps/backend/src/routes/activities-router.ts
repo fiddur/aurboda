@@ -38,6 +38,7 @@ import multer from 'multer'
 import {
   getActivityById,
   getAllActivityTypeNames,
+  getDeductionRule,
   getDistinctApps,
   getNearbyActivities,
   getOverlappingActivities,
@@ -414,11 +415,11 @@ export const createActivitiesRouter = (
     validateBody(updateActivityBodySchema),
     async (req, res) => {
       const { id } = req.params
-      const { activity_type, start_time, end_time, title, notes, exercise_type } = req.body
+      const { activity_type, start_time, end_time, title, notes, exercise_type, data: bodyData } = req.body
       const user = req.user!
 
-      // Convert exercise_type name to data object if provided
-      let data: Record<string, unknown> | undefined
+      // Merge exercise_type into data if provided
+      let data: Record<string, unknown> | undefined = bodyData as Record<string, unknown> | undefined
       if (exercise_type !== undefined) {
         if (!isValidExerciseType(exercise_type)) {
           return res.status(400).json({
@@ -427,6 +428,7 @@ export const createActivitiesRouter = (
           })
         }
         data = {
+          ...data,
           exerciseType: getExerciseTypeValue(exercise_type),
           exerciseTypeName: exercise_type,
         }
@@ -485,6 +487,21 @@ export const createActivitiesRouter = (
       return res.json({ data, success: true })
     }
 
+    // Resolve referenced deduction rules from activity data
+    const referencedRules: Record<string, string> = {}
+    const activityData = activity.data as Record<string, unknown> | undefined
+    if (activityData) {
+      const ruleIds = [
+        typeof activityData._enriched_by === 'string' ? activityData._enriched_by : undefined,
+        typeof activityData.rule_id === 'string' ? activityData.rule_id : undefined,
+      ].filter((id): id is string => id !== undefined)
+
+      for (const ruleId of ruleIds) {
+        const rule = await getDeductionRule(user, ruleId)
+        if (rule) referencedRules[ruleId] = rule.name
+      }
+    }
+
     // Plain UUID: return raw single activity (no overlap lookup)
     res.json({
       data: {
@@ -500,6 +517,7 @@ export const createActivitiesRouter = (
         start_time: activity.start_time.toISOString(),
         title: activity.title,
       },
+      referenced_rules: Object.keys(referencedRules).length > 0 ? referencedRules : undefined,
       success: true,
     })
   })
@@ -625,7 +643,14 @@ export const createActivitiesRouter = (
       const user = req.user!
 
       const gapMs = merge_gap_ms ? parseInt(merge_gap_ms, 10) : undefined
-      const result = await queryProductivity(user, new Date(start), new Date(end), syncProvider, merge_by, gapMs)
+      const result = await queryProductivity(
+        user,
+        new Date(start),
+        new Date(end),
+        syncProvider,
+        merge_by,
+        gapMs,
+      )
       res.json({ categories: result.categories, data: result.data, success: true })
     },
   )

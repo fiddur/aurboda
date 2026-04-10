@@ -14,6 +14,19 @@ import {
 const d = (h: number, m = 0) =>
   new Date(`2024-01-15T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00Z`)
 
+const makeDeps = (): DeductionEngineDeps => ({
+  deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
+  enrichActivities: vi.fn().mockResolvedValue([]),
+  getActivities: vi.fn().mockResolvedValue([]),
+  getActivitiesWithData: vi.fn().mockResolvedValue([]),
+  getEarliestActivityTime: vi.fn().mockResolvedValue(null),
+  getLocationVisits: vi.fn().mockResolvedValue([]),
+  getScreentime: vi.fn().mockResolvedValue([]),
+  getTags: vi.fn().mockResolvedValue([]),
+  insertActivity: vi.fn().mockResolvedValue(undefined),
+  insertRuleRun: vi.fn().mockResolvedValue(undefined),
+})
+
 describe('intersectTimeRanges', () => {
   test('returns empty for non-overlapping ranges', () => {
     const a: TimeRange[] = [{ end: d(10), start: d(9) }]
@@ -95,14 +108,7 @@ describe('evaluateRule', () => {
   let deps: DeductionEngineDeps
 
   beforeEach(() => {
-    deps = {
-      deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
-      getActivities: vi.fn().mockResolvedValue([]),
-      getScreentime: vi.fn().mockResolvedValue([]),
-      getTags: vi.fn().mockResolvedValue([]),
-      insertActivity: vi.fn().mockResolvedValue(undefined),
-      insertRuleRun: vi.fn().mockResolvedValue(undefined),
-    }
+    deps = makeDeps()
   })
 
   const window = { end: d(23), start: d(0) }
@@ -120,9 +126,9 @@ describe('evaluateRule', () => {
   test('creates activities from single tag condition', async () => {
     vi.mocked(deps.getTags).mockResolvedValue([{ end: d(11), start: d(10) }])
 
-    const ids = await evaluateRule(user, makeRule(), window, deps)
+    const { affected_ids } = await evaluateRule(user, makeRule(), window, deps)
 
-    expect(ids).toHaveLength(1)
+    expect(affected_ids).toHaveLength(1)
     expect(deps.insertActivity).toHaveBeenCalledWith(
       user,
       expect.objectContaining({
@@ -137,8 +143,8 @@ describe('evaluateRule', () => {
   test('creates no activities when condition returns empty', async () => {
     vi.mocked(deps.getTags).mockResolvedValue([])
 
-    const ids = await evaluateRule(user, makeRule(), window, deps)
-    expect(ids).toHaveLength(0)
+    const { affected_ids } = await evaluateRule(user, makeRule(), window, deps)
+    expect(affected_ids).toHaveLength(0)
     expect(deps.insertActivity).not.toHaveBeenCalled()
   })
 
@@ -155,9 +161,9 @@ describe('evaluateRule', () => {
     vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(10), start: d(9) }])
     vi.mocked(deps.getTags).mockResolvedValue([{ end: d(10, 30), start: d(9, 30) }])
 
-    const ids = await evaluateRule(user, rule, window, deps)
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
 
-    expect(ids).toHaveLength(1)
+    expect(affected_ids).toHaveLength(1)
     expect(deps.insertActivity).toHaveBeenCalledWith(
       user,
       expect.objectContaining({
@@ -179,8 +185,8 @@ describe('evaluateRule', () => {
     vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(10), start: d(9) }])
     vi.mocked(deps.getTags).mockResolvedValue([{ end: d(12), start: d(11) }])
 
-    const ids = await evaluateRule(user, rule, window, deps)
-    expect(ids).toHaveLength(0)
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
+    expect(affected_ids).toHaveLength(0)
   })
 
   test('applies merge_gap_seconds to coalesce nearby ranges', async () => {
@@ -192,9 +198,9 @@ describe('evaluateRule', () => {
       { end: d(10, 30), start: d(10, 5) },
     ])
 
-    const ids = await evaluateRule(user, rule, window, deps)
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
 
-    expect(ids).toHaveLength(1) // Merged into one
+    expect(affected_ids).toHaveLength(1) // Merged into one
     expect(deps.insertActivity).toHaveBeenCalledWith(
       user,
       expect.objectContaining({
@@ -204,7 +210,7 @@ describe('evaluateRule', () => {
     )
   })
 
-  test('stores rule_id in activity data', async () => {
+  test('stores rule_id and rule_name in activity data', async () => {
     vi.mocked(deps.getTags).mockResolvedValue([{ end: d(11), start: d(10) }])
 
     await evaluateRule(user, makeRule(), window, deps)
@@ -216,6 +222,146 @@ describe('evaluateRule', () => {
       }),
     )
   })
+
+  // --- output_data tests ---
+
+  test('merges output_data into created activity data', async () => {
+    vi.mocked(deps.getTags).mockResolvedValue([{ end: d(11), start: d(10) }])
+
+    const rule = makeRule({ output_data: { device: 'spanda', display: 'external_monitor' } })
+    await evaluateRule(user, rule, window, deps)
+
+    expect(deps.insertActivity).toHaveBeenCalledWith(
+      user,
+      expect.objectContaining({
+        data: {
+          device: 'spanda',
+          display: 'external_monitor',
+          rule_id: 'rule-1',
+          rule_name: 'Sauna tag to activity',
+        },
+      }),
+    )
+  })
+
+  // --- activity_data condition tests ---
+
+  test('resolves activity_data condition with eq operator', async () => {
+    const rule = makeRule({
+      conditions: [
+        {
+          activity_type: 'computer_active',
+          field: 'display',
+          kind: 'activity_data',
+          operator: 'eq',
+          value: 'external',
+        },
+      ],
+    })
+
+    vi.mocked(deps.getActivitiesWithData).mockResolvedValue([{ end: d(11), start: d(10) }])
+
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
+    expect(affected_ids).toHaveLength(1)
+    expect(deps.getActivitiesWithData).toHaveBeenCalledWith(
+      user,
+      'computer_active',
+      'display',
+      'eq',
+      'external',
+      window,
+    )
+  })
+
+  test('resolves activity_data condition with not_exists operator', async () => {
+    const rule = makeRule({
+      conditions: [{ activity_type: 'sex', field: 'partner', kind: 'activity_data', operator: 'not_exists' }],
+    })
+
+    vi.mocked(deps.getActivitiesWithData).mockResolvedValue([{ end: d(11), start: d(10) }])
+
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
+    expect(affected_ids).toHaveLength(1)
+    expect(deps.getActivitiesWithData).toHaveBeenCalledWith(
+      user,
+      'sex',
+      'partner',
+      'not_exists',
+      undefined,
+      window,
+    )
+  })
+
+  // --- location condition tests ---
+
+  test('resolves location condition', async () => {
+    const rule = makeRule({
+      conditions: [{ kind: 'location', location_name: 'Hokos' }],
+    })
+
+    vi.mocked(deps.getLocationVisits).mockResolvedValue([{ end: d(18), start: d(8) }])
+
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
+    expect(affected_ids).toHaveLength(1)
+    expect(deps.getLocationVisits).toHaveBeenCalledWith(user, 'Hokos', window)
+  })
+
+  // --- enrich mode tests ---
+
+  test('enrich mode calls enrichActivities instead of insertActivity', async () => {
+    vi.mocked(deps.getTags).mockResolvedValue([{ end: d(11), start: d(10) }])
+    vi.mocked(deps.enrichActivities).mockResolvedValue(['activity-1'])
+
+    const rule = makeRule({
+      mode: 'enrich',
+      output_activity_type: 'sex',
+      output_data: { partner: 'Sara' },
+    })
+
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
+
+    expect(affected_ids).toEqual(['activity-1'])
+    expect(deps.enrichActivities).toHaveBeenCalledWith(
+      user,
+      'sex',
+      [{ end: d(11), start: d(10) }],
+      { partner: 'Sara' },
+      'rule-1',
+    )
+    expect(deps.insertActivity).not.toHaveBeenCalled()
+  })
+
+  // --- dry-run tests ---
+
+  test('dry-run in create mode returns count without creating', async () => {
+    vi.mocked(deps.getTags).mockResolvedValue([
+      { end: d(11), start: d(10) },
+      { end: d(15), start: d(14) },
+    ])
+
+    const { affected_ids, would_affect } = await evaluateRule(user, makeRule(), window, deps, true)
+
+    expect(would_affect).toBe(2)
+    expect(affected_ids).toHaveLength(0)
+    expect(deps.insertActivity).not.toHaveBeenCalled()
+  })
+
+  test('dry-run in enrich mode returns count without enriching', async () => {
+    vi.mocked(deps.getTags).mockResolvedValue([{ end: d(11), start: d(10) }])
+    vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(11), start: d(10) }])
+
+    const rule = makeRule({
+      mode: 'enrich',
+      output_activity_type: 'sex',
+      output_data: { partner: 'Sara' },
+    })
+
+    const { affected_ids, would_affect } = await evaluateRule(user, rule, window, deps, true)
+
+    expect(would_affect).toBe(1)
+    expect(affected_ids).toHaveLength(0)
+    expect(deps.enrichActivities).not.toHaveBeenCalled()
+  })
 })
 
 describe('evaluateAllRules', () => {
@@ -224,14 +370,7 @@ describe('evaluateAllRules', () => {
   const window = { end: d(23), start: d(0) }
 
   beforeEach(() => {
-    deps = {
-      deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
-      getActivities: vi.fn().mockResolvedValue([]),
-      getScreentime: vi.fn().mockResolvedValue([]),
-      getTags: vi.fn().mockResolvedValue([]),
-      insertActivity: vi.fn().mockResolvedValue(undefined),
-      insertRuleRun: vi.fn().mockResolvedValue(undefined),
-    }
+    deps = makeDeps()
   })
 
   test('evaluates rules in priority order', async () => {
@@ -316,5 +455,27 @@ describe('evaluateAllRules', () => {
       window.end,
       expect.any(Array),
     )
+  })
+
+  test('does not clean up stale activities for enrich mode rules', async () => {
+    const rules: DeductionRule[] = [
+      {
+        conditions: [{ kind: 'tag', tag_name: 'sauna' }],
+        enabled: true,
+        id: 'rule-1',
+        mode: 'enrich',
+        name: 'Enrich rule',
+        output_activity_type: 'sex',
+        output_data: { partner: 'Sara' },
+        priority: 0,
+      },
+    ]
+
+    vi.mocked(deps.getTags).mockResolvedValue([{ end: d(11), start: d(10) }])
+    vi.mocked(deps.enrichActivities).mockResolvedValue(['a1'])
+
+    await evaluateAllRules(user, rules, window, deps)
+
+    expect(deps.deleteStaleRuleActivities).not.toHaveBeenCalled()
   })
 })

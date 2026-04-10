@@ -1,13 +1,14 @@
 /**
  * Activity type definition CRUD operations.
  */
-import type { ActivityTypeDefinition, DisplayCategory } from '@aurboda/api-spec'
+import type { ActivityTypeDefinition, DataSchemaDefinition, DisplayCategory } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
   aliases: (row.aliases as string[]) ?? [],
   color: row.color as string,
+  ...(row.data_schema != null ? { data_schema: row.data_schema as DataSchemaDefinition } : {}),
   display_category: row.display_category as DisplayCategory,
   display_name: row.display_name as string,
   ...(row.icon != null ? { icon: row.icon as string } : {}),
@@ -17,7 +18,7 @@ const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
 })
 
 const SELECT_COLS =
-  'name, display_name, display_category, color, icon, aliases, health_connect_record_type, health_connect_exercise_type, is_builtin, show_on_timeline'
+  'name, display_name, display_category, color, icon, aliases, health_connect_record_type, health_connect_exercise_type, is_builtin, show_on_timeline, data_schema'
 
 export const getActivityTypeDefinitions = async (user: string): Promise<ActivityTypeDefinition[]> => {
   const result = await query(
@@ -63,13 +64,14 @@ export const insertActivityTypeDefinition = async (
     icon?: string
     aliases?: string[]
     show_on_timeline?: boolean
+    data_schema?: DataSchemaDefinition
   },
 ): Promise<ActivityTypeDefinition> => {
   const aliases = normalizeAliases(def.name, def.aliases)
   const result = await query(
     user,
-    `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, aliases, show_on_timeline)
-     VALUES ($1, $2, $3, COALESCE($4, '#6b7280'), $5, $6, COALESCE($7, true))
+    `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, aliases, show_on_timeline, data_schema)
+     VALUES ($1, $2, $3, COALESCE($4, '#6b7280'), $5, $6, COALESCE($7, true), $8)
      RETURNING ${SELECT_COLS}`,
     [
       def.name,
@@ -79,6 +81,7 @@ export const insertActivityTypeDefinition = async (
       def.icon ?? null,
       aliases,
       def.show_on_timeline ?? null,
+      def.data_schema ? JSON.stringify(def.data_schema) : null,
     ],
   )
   return mapRow(result.rows[0])
@@ -94,6 +97,7 @@ export const updateActivityTypeDefinition = async (
     icon?: string | null
     aliases?: string[]
     show_on_timeline?: boolean
+    data_schema?: DataSchemaDefinition | null
   },
 ): Promise<ActivityTypeDefinition | null> => {
   const setClauses: string[] = []
@@ -123,6 +127,10 @@ export const updateActivityTypeDefinition = async (
   if (updates.show_on_timeline !== undefined) {
     setClauses.push(`show_on_timeline = $${paramIndex++}`)
     values.push(updates.show_on_timeline)
+  }
+  if (updates.data_schema !== undefined) {
+    setClauses.push(`data_schema = $${paramIndex++}`)
+    values.push(updates.data_schema ? JSON.stringify(updates.data_schema) : null)
   }
 
   if (setClauses.length === 0) return getActivityTypeDefinition(user, name)

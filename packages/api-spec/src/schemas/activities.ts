@@ -313,6 +313,9 @@ export type DeleteActivityResponse = z.infer<typeof deleteActivityResponseSchema
 export const updateActivityBodySchema = z
   .object({
     activity_type: activityTypeSchema.optional().meta({ description: 'New activity type' }),
+    data: z.record(z.string(), z.unknown()).optional().meta({
+      description: 'Updated structured data fields (merged with existing data)',
+    }),
     end_time: iso8601DateTimeSchema.optional().meta({ description: 'New end time of the activity' }),
     exercise_type: exerciseTypeSchema.optional().meta({
       description: 'New exercise type name (only for exercise activities)',
@@ -400,9 +403,17 @@ export type NearbyActivitiesResponse = z.infer<typeof nearbyActivitiesResponseSc
 
 /**
  * Single activity detail response (for activity detail page).
+ * Includes referenced_rules map for resolving rule IDs to names.
  */
-export const activityDetailResponseSchema = createDataResponseSchema(activitySchema).meta({
-  id: 'ActivityDetailResponse',
-})
+export const activityDetailResponseSchema = createDataResponseSchema(activitySchema)
+  .extend({
+    referenced_rules: z
+      .record(z.string(), z.string())
+      .optional()
+      .meta({ description: 'Map of rule ID to rule name for deduction rules referenced in activity data' }),
+  })
+  .meta({
+    id: 'ActivityDetailResponse',
+  })
 
 export type ActivityDetailResponse = z.infer<typeof activityDetailResponseSchema>

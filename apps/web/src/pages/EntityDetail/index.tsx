@@ -34,6 +34,7 @@ import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
+import { SchemaDataFields } from './SchemaDataFields'
 import {
   computeSleepMinutesFromStages,
   formatMinutesAsHM,
@@ -167,6 +168,7 @@ const ActivityDetailContent = ({
   onDraftChange,
   itemIcons,
   typeDefinitions,
+  referencedRules,
 }: {
   activity: Activity
   isEditing: boolean
@@ -174,6 +176,7 @@ const ActivityDetailContent = ({
   onDraftChange: (d: ActivityDraft) => void
   itemIcons: Record<string, string>
   typeDefinitions?: ActivityTypeDefinition[]
+  referencedRules?: Record<string, string>
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
@@ -207,7 +210,8 @@ const ActivityDetailContent = ({
   const hasSleepStages = stages.length > 0
   const hrZoneSecs = activity.hr_zone_secs as Record<number, number> | undefined
   const hasHrZones = hrZoneSecs && Object.values(hrZoneSecs).some((v) => v > 0)
-  const sleepMinutes = activity.total_sleep ?? (hasSleepStages ? computeSleepMinutesFromStages(stages) : undefined)
+  const sleepMinutes =
+    activity.total_sleep ?? (hasSleepStages ? computeSleepMinutesFromStages(stages) : undefined)
   const hasEndTime = Boolean(activity.end_time || activity.merged_end_time)
   const hasExerciseType = Boolean(exerciseType)
 
@@ -277,7 +281,9 @@ const ActivityDetailContent = ({
                 <select
                   class="edit-datetime-input"
                   value={draft.exercise_type ?? exerciseType ?? ''}
-                  onChange={(e) => onDraftChange({ ...draft, exercise_type: (e.target as HTMLSelectElement).value })}
+                  onChange={(e) =>
+                    onDraftChange({ ...draft, exercise_type: (e.target as HTMLSelectElement).value })
+                  }
                 >
                   <option value="">-- Select --</option>
                   {exerciseTypeNames.map((name) => (
@@ -289,6 +295,17 @@ const ActivityDetailContent = ({
               </span>
             </div>
           </div>
+        )}
+
+        {/* Schema data fields — editable in edit mode, read-only otherwise */}
+        {typeDef?.data_schema && (isEditing || activity.data) && (
+          <SchemaDataFields
+            data={isEditing ? (draft.data ?? {}) : ((activity.data as Record<string, unknown>) ?? {})}
+            schema={typeDef.data_schema}
+            isEditing={isEditing}
+            onDataChange={isEditing ? (newData) => onDraftChange({ ...draft, data: newData }) : undefined}
+            referencedRules={referencedRules}
+          />
         )}
 
         {/* Read-only stats — shown based on data presence, not activity type */}
@@ -364,6 +381,7 @@ const makeDraft = (activity: Activity): ActivityDraft => {
   const exerciseType = resolveExerciseType(activity)
   return {
     activity_type: activity.activity_type,
+    data: (activity.data as Record<string, unknown>) ?? {},
     end_time: formatDateTimeLocal(displayEnd),
     exercise_type: exerciseType,
     notes: activity.notes ?? '',
@@ -379,7 +397,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   const rawEntityId = isMerged ? entityId.slice('merged:'.length) : entityId
 
   const {
-    data: activity,
+    data: activityResult,
     isLoading,
     isError,
   } = useQuery({
@@ -387,6 +405,8 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     queryKey: ['entity-detail', 'activity', entityId],
     staleTime: 60_000,
   })
+  const activity = activityResult?.activity
+  const referencedRules = activityResult?.referenced_rules
 
   const { data: itemIcons = {} } = useQuery({
     queryFn: fetchItemIcons,
@@ -419,6 +439,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   const [isMerging, setIsMerging] = useState(false)
   const emptyDraft: ActivityDraft = {
     activity_type: '',
+    data: {},
     end_time: '',
     notes: '',
     start_time: '',
@@ -444,6 +465,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         title?: string
         notes?: string
         exercise_type?: ExerciseTypeName
+        data?: Record<string, unknown>
       } = {}
       const orig = makeDraft(activity)
       if (draft.activity_type !== orig.activity_type) body.activity_type = draft.activity_type
@@ -457,6 +479,9 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       if (draft.notes !== orig.notes) body.notes = draft.notes
       if (draft.exercise_type !== orig.exercise_type && draft.exercise_type) {
         body.exercise_type = draft.exercise_type as ExerciseTypeName
+      }
+      if (draft.data && JSON.stringify(draft.data) !== JSON.stringify(orig.data)) {
+        body.data = draft.data
       }
       if (Object.keys(body).length === 0) return Promise.resolve()
       return updateActivity(rawEntityId, body)
@@ -499,6 +524,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         onDraftChange={setDraft}
         itemIcons={itemIcons}
         typeDefinitions={typeDefinitions}
+        referencedRules={referencedRules}
       />
       <NotesSection entityType="activity" entityId={rawEntityId} allEntityIds={allEntityIds} />
     </>

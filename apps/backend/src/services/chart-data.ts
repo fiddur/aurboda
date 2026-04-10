@@ -5,7 +5,7 @@
  * Returns time-bucketed data for bar chart visualizations.
  */
 
-import type { ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
+import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
 
 import { query } from '../db/index.ts'
 
@@ -57,6 +57,7 @@ export const buildBucketExpr = (
 
 export interface ChartDataInput {
   aggregation: 'count' | 'mean' | 'sum'
+  breakdown_fields?: string[]
   bucket_size: '1m' | '5m' | '15m' | '1M' | '1d' | '1h' | '1w'
   end: string
   pattern?: string
@@ -182,12 +183,17 @@ const queryActivityTypeBuckets = async (
   start: string,
   end: string,
   bucketSize: string,
+  aggregation = 'sum',
 ): Promise<ChartDataBucket[]> => {
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
+  const valueExpr =
+    aggregation === 'count'
+      ? 'count(*)'
+      : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
-            SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 AS value
+            ${valueExpr} AS value
        FROM activities
       WHERE activity_type = $${bucket.params.length + 1}
         AND deleted_at IS NULL
@@ -203,29 +209,136 @@ const queryActivityTypeBuckets = async (
 }
 
 /**
+ * Query activity type data broken down by one or more data fields.
+ * Multiple fields produce compound series keys like "spanda / external_monitor".
+ */
+const queryActivityTypeBreakdown = async (
+  user: string,
+  activityType: string,
+  fields: string[],
+  start: string,
+  end: string,
+  bucketSize: string,
+  aggregation = 'sum',
+): Promise<{ buckets: ChartDataBreakdownBucket[]; series: string[] }> => {
+  // Sanitize all field names
+  for (const field of fields) {
+    if (!/^[a-z][a-z0-9_]*$/.test(field)) return { buckets: [], series: [] }
+  }
+
+  const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
+  const valueExpr =
+    aggregation === 'count'
+      ? 'count(*)'
+      : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
+
+  // Build SELECT and GROUP BY for each breakdown field
+  const fieldSelects = fields.map((f, i) => `COALESCE(data->>'${f}', '(none)') AS field_${i}`)
+  const fieldGroupBys = fields.map((_, i) => `field_${i}`)
+
+  const result = await query(
+    user,
+    `SELECT ${bucket.expr} AS bucket_start,
+            ${fieldSelects.join(', ')},
+            ${valueExpr} AS value
+       FROM activities
+      WHERE activity_type = $${bucket.params.length + 1}
+        AND deleted_at IS NULL
+        AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
+      GROUP BY 1, ${fieldGroupBys.join(', ')}
+      ORDER BY 1`,
+    [...bucket.params, activityType, start, end],
+  )
+
+  // Pivot rows into breakdown buckets with compound series keys
+  const seriesSet = new Set<string>()
+  const bucketMap = new Map<string, Record<string, number>>()
+  for (const row of result.rows) {
+    const bucketStart = (row.bucket_start as Date).toISOString()
+    const keyParts = fields.map((_, i) => row[`field_${i}`] as string)
+    const seriesKey = keyParts.join(' / ')
+    const value = Number(row.value)
+    seriesSet.add(seriesKey)
+    const existing = bucketMap.get(bucketStart) ?? {}
+    existing[seriesKey] = value
+    bucketMap.set(bucketStart, existing)
+  }
+
+  const series = [...seriesSet].sort()
+  const buckets: ChartDataBreakdownBucket[] = [...bucketMap.entries()].map(([bucketStart, seriesData]) => ({
+    bucket_start: bucketStart,
+    series: seriesData,
+  }))
+
+  return { buckets, series }
+}
+
+/**
  * Get bucketed chart data for the given source type and parameters.
  */
-export const getChartData = async (user: string, input: ChartDataInput): Promise<ChartDataBucket[]> => {
+export const getChartData = async (
+  user: string,
+  input: ChartDataInput,
+): Promise<{
+  buckets: (ChartDataBucket | ChartDataBreakdownBucket)[]
+  breakdown_fields?: string[]
+  breakdown_series?: string[]
+}> => {
   const { aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } = input
+
+  // Breakdown mode for activity types
+  if (
+    source_type === 'activity_type' &&
+    pattern &&
+    input.breakdown_fields &&
+    input.breakdown_fields.length > 0
+  ) {
+    const result = await queryActivityTypeBreakdown(
+      user,
+      pattern,
+      input.breakdown_fields,
+      start,
+      end,
+      bucket_size,
+      aggregation,
+    )
+    return {
+      breakdown_fields: input.breakdown_fields,
+      breakdown_series: result.series,
+      buckets: result.buckets,
+    }
+  }
+
+  let buckets: ChartDataBucket[]
 
   switch (source_type) {
     case 'tag':
       if (tag_definition_id) {
-        return queryActivitiesByType(user, tag_definition_id, start, end, bucket_size)
+        buckets = await queryActivitiesByType(user, tag_definition_id, start, end, bucket_size)
+      } else if (pattern) {
+        buckets = await queryActivitiesByTypePattern(user, pattern, start, end, bucket_size)
+      } else {
+        buckets = []
       }
-      if (!pattern) return []
-      return queryActivitiesByTypePattern(user, pattern, start, end, bucket_size)
+      break
 
     case 'metric':
-      if (!pattern) return []
-      return queryMetricBuckets(user, pattern, start, end, bucket_size, aggregation)
+      buckets = pattern ? await queryMetricBuckets(user, pattern, start, end, bucket_size, aggregation) : []
+      break
 
     case 'productivity_category':
-      if (!pattern) return []
-      return queryProductivityCategoryBuckets(user, pattern, start, end, bucket_size)
+      buckets = pattern ? await queryProductivityCategoryBuckets(user, pattern, start, end, bucket_size) : []
+      break
 
     case 'activity_type':
-      if (!pattern) return []
-      return queryActivityTypeBuckets(user, pattern, start, end, bucket_size)
+      buckets = pattern
+        ? await queryActivityTypeBuckets(user, pattern, start, end, bucket_size, aggregation)
+        : []
+      break
+
+    default:
+      buckets = []
   }
+
+  return { buckets }
 }

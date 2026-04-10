@@ -30,10 +30,42 @@ export const screentimeCategoryConditionSchema = z
   })
   .meta({ description: 'Matches time ranges of productivity records in the given category path' })
 
+export const activityDataConditionSchema = z
+  .object({
+    activity_type: activityTypeSchema,
+    field: z.string().meta({ description: 'Data field key to match on' }),
+    kind: z.literal('activity_data'),
+    operator: z.enum(['eq', 'neq', 'exists', 'not_exists']).meta({
+      description: 'Comparison operator (eq/neq require value; exists/not_exists do not)',
+    }),
+    value: z
+      .union([z.string(), z.number(), z.boolean()])
+      .optional()
+      .meta({ description: 'Value to compare against (required for eq/neq)' }),
+  })
+  .meta({ description: 'Matches time ranges where an activity has a specific data field value' })
+
+export const locationConditionSchema = z
+  .object({
+    kind: z.literal('location'),
+    location_name: z.string().meta({ description: 'Named location name to match' }),
+  })
+  .meta({ description: 'Matches time ranges where the user is at a named location' })
+
+export const afterDateConditionSchema = z
+  .object({
+    date: z.string().meta({ description: 'ISO 8601 date (e.g. "2024-06-01") — only match after this date' }),
+    kind: z.literal('after_date'),
+  })
+  .meta({ description: 'Restricts matches to after a given date' })
+
 export const conditionSchema = z.discriminatedUnion('kind', [
   activityConditionSchema,
   tagConditionSchema,
   screentimeCategoryConditionSchema,
+  activityDataConditionSchema,
+  locationConditionSchema,
+  afterDateConditionSchema,
 ])
 
 export type Condition = z.infer<typeof conditionSchema>
@@ -41,6 +73,12 @@ export type Condition = z.infer<typeof conditionSchema>
 /**
  * Deduction rule schema.
  */
+export const deductionRuleModeSchema = z
+  .enum(['create', 'enrich'])
+  .meta({ id: 'DeductionRuleMode', description: 'Whether to create new activities or enrich existing ones' })
+
+export type DeductionRuleMode = z.infer<typeof deductionRuleModeSchema>
+
 export const deductionRuleSchema = z
   .object({
     conditions: z
@@ -55,10 +93,18 @@ export const deductionRuleSchema = z
       .int()
       .optional()
       .meta({ description: 'Coalesce nearby matches within this gap' }),
+    mode: deductionRuleModeSchema.optional().meta({
+      description: 'create (default): create new activities. enrich: patch data onto existing activities.',
+    }),
     name: z.string().meta({ description: 'Human-readable rule name' }),
     output_activity_type: activityTypeSchema.meta({
-      description: 'Activity type to create when conditions match',
+      description:
+        'In create mode: activity type to create. In enrich mode: activity type to patch data onto.',
     }),
+    output_data: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .meta({ description: 'Static data fields to set on created/enriched activities' }),
     output_title: z.string().optional().meta({ description: 'Optional title for created activities' }),
     priority: z
       .number()
@@ -67,7 +113,10 @@ export const deductionRuleSchema = z
       .max(2)
       .meta({ description: 'Evaluation order (0=first, max 2 for chaining)' }),
   })
-  .meta({ id: 'DeductionRule', description: 'Rule that creates activities when data conditions are met' })
+  .meta({
+    id: 'DeductionRule',
+    description: 'Rule that creates or enriches activities when data conditions are met',
+  })
 
 export type DeductionRule = z.infer<typeof deductionRuleSchema>
 
@@ -87,8 +136,17 @@ export const addDeductionRuleBodySchema = z
       .positive()
       .optional()
       .meta({ description: 'Coalesce nearby matches within this gap (seconds)' }),
+    mode: deductionRuleModeSchema
+      .optional()
+      .meta({ description: 'create (default) or enrich existing activities' }),
     name: z.string().meta({ description: 'Human-readable rule name' }),
-    output_activity_type: activityTypeSchema.meta({ description: 'Activity type to create' }),
+    output_activity_type: activityTypeSchema.meta({
+      description: 'In create mode: type to create. In enrich mode: type to patch data onto.',
+    }),
+    output_data: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .meta({ description: 'Static data fields for created/enriched activities' }),
     output_title: z.string().optional().meta({ description: 'Optional title for created activities' }),
     priority: z
       .number()
@@ -116,8 +174,14 @@ export const updateDeductionRuleBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'New merge gap (null to remove)' }),
+    mode: deductionRuleModeSchema.optional().meta({ description: 'New mode' }),
     name: z.string().optional().meta({ description: 'New name' }),
     output_activity_type: activityTypeSchema.optional().meta({ description: 'New output activity type' }),
+    output_data: z
+      .record(z.string(), z.unknown())
+      .nullable()
+      .optional()
+      .meta({ description: 'New output data (null to clear)' }),
     output_title: z.string().nullable().optional().meta({ description: 'New title (null to remove)' }),
     priority: z.number().int().min(0).max(2).optional().meta({ description: 'New priority' }),
   })
@@ -156,3 +220,18 @@ export const evaluateDeductionRulesResponseSchema = baseResponseSchema
   .meta({ id: 'EvaluateDeductionRulesResponse' })
 
 export type EvaluateDeductionRulesResponse = z.infer<typeof evaluateDeductionRulesResponseSchema>
+
+/**
+ * Preview deduction rule response — dry-run showing how many activities would be affected.
+ */
+export const previewDeductionRuleResponseSchema = baseResponseSchema
+  .extend({
+    would_affect: z
+      .number()
+      .int()
+      .meta({ description: 'Number of activities that would be created or enriched' }),
+    sample_days: z.number().int().meta({ description: 'Number of days sampled in preview' }),
+  })
+  .meta({ id: 'PreviewDeductionRuleResponse' })
+
+export type PreviewDeductionRuleResponse = z.infer<typeof previewDeductionRuleResponseSchema>

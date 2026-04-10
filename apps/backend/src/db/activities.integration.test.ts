@@ -6,9 +6,11 @@ import {
   deleteActivity,
   getActivities,
   getActivityById,
+  getActivitiesNeedingDetail,
   getOverlappingActivities,
   getSleepSessions,
   insertActivity,
+  markActivityDetailSynced,
   updateActivity,
 } from './activities.ts'
 
@@ -83,6 +85,49 @@ describe('Activities Integration Tests', () => {
       expect(activities).toHaveLength(1)
       expect(activities[0].title).toBe('Sleep v2')
       expect(activities[0].end_time).toEqual(new Date('2024-01-16T07:00:00Z'))
+    })
+
+    test('merges data on upsert, preserving existing keys like detail_synced', async () => {
+      const user = getTestUser()
+
+      // First insert: Garmin activity with some data
+      const activityId = await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { garmin_activity_id: 123, calories: 200 },
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        title: 'Run',
+      })
+
+      // Mark detail as synced (simulates what happens after fetching per-second metrics)
+      await markActivityDetailSynced(user, activityId)
+
+      // Re-sync: upsert same activity with updated data (without detail_synced)
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { garmin_activity_id: 123, calories: 250 },
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        title: 'Run',
+      })
+
+      const activities = await getActivities(
+        user,
+        'exercise',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+
+      expect(activities).toHaveLength(1)
+      expect(activities[0].data).toEqual({
+        calories: 250,
+        detail_synced: true,
+        garmin_activity_id: 123,
+      })
+
+      // Should NOT need detail re-sync
+      const needingDetail = await getActivitiesNeedingDetail(user)
+      expect(needingDetail).toHaveLength(0)
     })
   })
 

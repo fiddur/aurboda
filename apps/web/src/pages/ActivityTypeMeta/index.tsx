@@ -2,9 +2,11 @@
  * Activity type meta page — overview of an activity type (e.g. "coffee", "strength_training").
  * Shows icon, display_name, category badge, trend chart, recent occurrences, and related links.
  */
+import type { DataFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useRoute } from 'preact-iso'
-import { useState } from 'preact/hooks'
+import { useCallback, useState } from 'preact/hooks'
 
 import { IconInput } from '../../components/IconInput'
 import { IconPreview } from '../../components/IconPreview'
@@ -411,6 +413,162 @@ function MergeActivityTypeSection({
   )
 }
 
+const FIELD_TYPES = ['string', 'number', 'boolean'] as const
+
+const emptyField = (): DataFieldDefinition => ({ name: '', type: 'string' })
+
+function DataSchemaSection({
+  name,
+  dataSchema,
+}: {
+  name: string
+  dataSchema: DataSchemaDefinition | undefined
+}) {
+  const queryClient = useQueryClient()
+  const [fields, setFields] = useState<DataFieldDefinition[]>(dataSchema?.fields ?? [])
+  const [saveStatus, setSaveStatus] = useSaveStatus(3000)
+
+  // Reset local state when upstream changes
+  const currentJson = JSON.stringify(dataSchema?.fields ?? [])
+  const [lastSyncedJson, setLastSyncedJson] = useState(currentJson)
+  if (currentJson !== lastSyncedJson) {
+    setFields(dataSchema?.fields ?? [])
+    setLastSyncedJson(currentJson)
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const validFields = fields.filter((f) => /^[a-z][a-z0-9_]*$/.test(f.name))
+      const schema: DataSchemaDefinition | null = validFields.length > 0 ? { fields: validFields } : null
+      await updateActivityTypeDefinition(name, { data_schema: schema })
+    },
+    onError: () => setSaveStatus({ status: 'error' }),
+    onSuccess: () => {
+      setSaveStatus({ status: 'saved' })
+      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
+    },
+  })
+
+  const updateField = useCallback((index: number, patch: Partial<DataFieldDefinition>) => {
+    setFields((prev) => prev.map((f, i) => (i === index ? ({ ...f, ...patch } as DataFieldDefinition) : f)))
+  }, [])
+
+  const removeField = useCallback((index: number) => {
+    setFields((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
+  const hasChanges = JSON.stringify(fields) !== currentJson
+
+  return (
+    <section class="activity-type-meta-section">
+      <h2>Data Schema</h2>
+      {fields.length === 0 ? (
+        <p class="activity-type-meta-empty">
+          No data schema defined. Add fields to validate and display custom data.
+        </p>
+      ) : (
+        <table class="activity-type-meta-schema-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Label</th>
+              <th>Required</th>
+              <th title="Suitable for chart breakdowns by distinct values (e.g. device names, locations). Not for continuous numbers.">
+                Categorical
+              </th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {fields.map((field, i) => (
+              <tr key={i}>
+                <td>
+                  <input
+                    type="text"
+                    class="activity-type-meta-schema-input"
+                    value={field.name}
+                    placeholder="field_name"
+                    onInput={(e) => updateField(i, { name: (e.target as HTMLInputElement).value })}
+                  />
+                </td>
+                <td>
+                  <select
+                    class="activity-type-meta-schema-input"
+                    value={field.type}
+                    onChange={(e) =>
+                      updateField(i, {
+                        type: (e.target as HTMLSelectElement).value as DataFieldDefinition['type'],
+                      })
+                    }
+                  >
+                    {FIELD_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    class="activity-type-meta-schema-input"
+                    value={field.label ?? ''}
+                    placeholder="Display label"
+                    onInput={(e) =>
+                      updateField(i, { label: (e.target as HTMLInputElement).value || undefined })
+                    }
+                  />
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={field.required ?? false}
+                    onChange={() => updateField(i, { required: !field.required || undefined })}
+                  />
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={field.is_categorical ?? false}
+                    onChange={() => updateField(i, { is_categorical: !field.is_categorical || undefined })}
+                  />
+                </td>
+                <td>
+                  <button type="button" class="btn-icon-small" onClick={() => removeField(i)}>
+                    x
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <button
+        type="button"
+        class="btn-secondary"
+        style={{ marginTop: '0.5rem' }}
+        onClick={() => setFields((prev) => [...prev, emptyField()])}
+      >
+        + Add Field
+      </button>
+      {hasChanges && (
+        <SaveCancelRow
+          onSave={() => {
+            setSaveStatus({ status: 'saving' })
+            saveMutation.mutate()
+          }}
+          onCancel={() => setFields(dataSchema?.fields ?? [])}
+          isPending={saveMutation.isPending}
+          saveStatus={saveStatus}
+          saveStatusVariant="compact"
+        />
+      )}
+    </section>
+  )
+}
+
 function resolveTypeDef(typeDef: ActivityTypeDefinition | undefined, name: string) {
   const displayName = typeDef?.display_name ?? toDisplayName(name)
   const icon = typeDef?.icon ?? ''
@@ -483,6 +641,8 @@ export function ActivityTypeMeta() {
         currentDisplayName={displayName}
         showOnTimeline={showOnTimeline}
       />
+
+      <DataSchemaSection name={name} dataSchema={typeDef?.data_schema} />
 
       <section class="activity-type-meta-section">
         <div class="activity-type-meta-section-header">

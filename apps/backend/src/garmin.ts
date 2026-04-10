@@ -100,7 +100,7 @@ export interface GarminActivityDetailResponse {
     unit: { key: string }
   }>
   activityDetailMetrics: Array<{
-    metrics: number[]
+    metrics: unknown[]
   }>
 }
 

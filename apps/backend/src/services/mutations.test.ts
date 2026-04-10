@@ -20,6 +20,7 @@ import {
 vi.mock('../db', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   checkActivityConflict: vi.fn().mockResolvedValue(false),
+  getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
   deleteActivity: vi.fn(),
   deleteCustomMetricDefinition: vi.fn(),
   deleteTimeSeriesMetric: vi.fn(),

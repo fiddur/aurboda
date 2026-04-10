@@ -62,6 +62,15 @@ export const validMetrics = [
   'intensity_minutes',
   'speed',
   'power',
+  'run_cadence',
+  'stride_length',
+  'ground_contact_time',
+  'vertical_ratio',
+  'elevation',
+  'vertical_oscillation',
+  'vertical_speed',
+  'grade_adjusted_speed',
+  'performance_condition',
 ] as const
 
 export const metricTypeSchema = z.enum(validMetrics).meta({
@@ -266,6 +275,15 @@ export const metricUnits: Record<MetricType, string> = {
   weight: 'kg',
   speed: 'm/s',
   power: 'W',
+  run_cadence: 'spm',
+  stride_length: 'm',
+  ground_contact_time: 'ms',
+  vertical_ratio: 'percent',
+  elevation: 'm',
+  vertical_oscillation: 'cm',
+  vertical_speed: 'm/s',
+  grade_adjusted_speed: 'm/s',
+  performance_condition: 'score',
 }
 
 /**

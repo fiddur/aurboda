@@ -1,7 +1,7 @@
 /**
  * Deduction rule CRUD operations.
  */
-import type { Condition, DeductionRule } from '@aurboda/api-spec'
+import type { Condition, DeductionRule, DeductionRuleMode } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
 
@@ -11,14 +11,16 @@ const mapRow = (row: Record<string, unknown>): DeductionRule => ({
   enabled: row.enabled as boolean,
   id: row.id as string,
   ...(row.merge_gap_seconds != null ? { merge_gap_seconds: row.merge_gap_seconds as number } : {}),
+  ...(row.mode && row.mode !== 'create' ? { mode: row.mode as DeductionRuleMode } : {}),
   name: row.name as string,
   output_activity_type: row.output_activity_type as string,
+  ...(row.output_data != null ? { output_data: row.output_data as Record<string, unknown> } : {}),
   ...(row.output_title != null ? { output_title: row.output_title as string } : {}),
   priority: row.priority as number,
 })
 
 const SELECT_COLS =
-  'id, name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, created_at'
+  'id, name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, created_at'
 
 export const getDeductionRules = async (user: string): Promise<DeductionRule[]> => {
   const result = await query(user, `SELECT ${SELECT_COLS} FROM deduction_rules ORDER BY priority, name`)
@@ -49,12 +51,14 @@ export const insertDeductionRule = async (
     merge_gap_seconds?: number
     priority?: number
     enabled?: boolean
+    mode?: DeductionRuleMode
+    output_data?: Record<string, unknown>
   },
 ): Promise<DeductionRule> => {
   const result = await query(
     user,
-    `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds)
-     VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7)
+    `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data)
+     VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7, COALESCE($8, 'create'), $9)
      RETURNING ${SELECT_COLS}`,
     [
       rule.name,
@@ -64,6 +68,8 @@ export const insertDeductionRule = async (
       rule.output_activity_type,
       rule.output_title ?? null,
       rule.merge_gap_seconds ?? null,
+      rule.mode ?? null,
+      rule.output_data ? JSON.stringify(rule.output_data) : null,
     ],
   )
   return mapRow(result.rows[0])
@@ -80,6 +86,8 @@ export const updateDeductionRule = async (
     output_activity_type?: string
     output_title?: string | null
     merge_gap_seconds?: number | null
+    mode?: DeductionRuleMode
+    output_data?: Record<string, unknown> | null
   },
 ): Promise<DeductionRule | null> => {
   const setClauses: string[] = []
@@ -114,7 +122,14 @@ export const updateDeductionRule = async (
     setClauses.push(`merge_gap_seconds = $${paramIndex++}`)
     values.push(updates.merge_gap_seconds)
   }
-
+  if (updates.mode !== undefined) {
+    setClauses.push(`mode = $${paramIndex++}`)
+    values.push(updates.mode)
+  }
+  if (updates.output_data !== undefined) {
+    setClauses.push(`output_data = $${paramIndex++}`)
+    values.push(updates.output_data ? JSON.stringify(updates.output_data) : null)
+  }
   if (setClauses.length === 0) return getDeductionRule(user, id)
 
   setClauses.push(`updated_at = NOW()`)

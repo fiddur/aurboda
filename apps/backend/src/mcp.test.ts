@@ -55,6 +55,7 @@ vi.mock('./db', () => ({
   getUserSettings: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertActivityTypeDefinition: vi.fn(),
+  insertLocations: vi.fn().mockResolvedValue(undefined),
   insertDeductionRule: vi.fn().mockResolvedValue({
     conditions: [],
     enabled: true,
@@ -66,6 +67,7 @@ vi.mock('./db', () => ({
   insertDeductionRuleRun: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
+  softDeleteLocationRange: vi.fn().mockResolvedValue(undefined),
   updateActivityTypeDefinition: vi.fn(),
   updateDeductionRule: vi.fn().mockResolvedValue(null),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
@@ -76,7 +78,11 @@ vi.mock('./db', () => ({
 vi.mock('./services/deduction-deps', () => ({
   createDefaultEngineDeps: vi.fn().mockReturnValue({
     deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
+    enrichActivities: vi.fn().mockResolvedValue([]),
     getActivities: vi.fn().mockResolvedValue([]),
+    getActivitiesWithData: vi.fn().mockResolvedValue([]),
+    getEarliestActivityTime: vi.fn().mockResolvedValue(null),
+    getLocationVisits: vi.fn().mockResolvedValue([]),
     getScreentime: vi.fn().mockResolvedValue([]),
     getTags: vi.fn().mockResolvedValue([]),
     insertActivity: vi.fn().mockResolvedValue(undefined),
@@ -646,25 +652,25 @@ describe('MCP Server', () => {
 
       vi.mocked(queries.queryProductivity).mockResolvedValue({
         data: [
-        {
-          activity: 'Visual Studio Code',
-          category: 'Software Development',
-          comments: [],
-          duration_sec: 7200,
-          end_time: '2024-01-15T17:00:00Z',
-          productivity: 2,
-          start_time: '2024-01-15T09:00:00Z',
-        },
-        {
-          activity: 'Twitter',
-          category: 'Social Networking',
-          comments: [],
-          duration_sec: 1800,
-          end_time: '2024-01-15T18:00:00Z',
-          productivity: -2,
-          start_time: '2024-01-15T17:30:00Z',
-        },
-      ],
+          {
+            activity: 'Visual Studio Code',
+            category: 'Software Development',
+            comments: [],
+            duration_sec: 7200,
+            end_time: '2024-01-15T17:00:00Z',
+            productivity: 2,
+            start_time: '2024-01-15T09:00:00Z',
+          },
+          {
+            activity: 'Twitter',
+            category: 'Social Networking',
+            comments: [],
+            duration_sec: 1800,
+            end_time: '2024-01-15T18:00:00Z',
+            productivity: -2,
+            start_time: '2024-01-15T17:30:00Z',
+          },
+        ],
       })
 
       const response = await callTool(app, token, 'query_productivity', {

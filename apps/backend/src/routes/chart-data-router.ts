@@ -19,7 +19,22 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): Router =>
     authMiddleware,
     validateQuery(chartDataHttpQuerySchema),
     async (req, res) => {
-      const { aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } = req.query
+      const {
+        aggregation,
+        breakdown_fields: breakdownFieldsStr,
+        bucket_size,
+        end,
+        pattern,
+        source_type,
+        start,
+        tag_definition_id,
+      } = req.query
+      const breakdown_fields = breakdownFieldsStr
+        ? breakdownFieldsStr
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined
       const user = req.user!
 
       if (!pattern && !tag_definition_id) {
@@ -29,8 +44,9 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): Router =>
       }
 
       try {
-        const buckets = await getChartData(user, {
+        const result = await getChartData(user, {
           aggregation: aggregation ?? 'count',
+          breakdown_fields,
           bucket_size: bucket_size ?? '1d',
           end,
           pattern,
@@ -38,7 +54,14 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): Router =>
           start,
           tag_definition_id,
         })
-        res.json({ data: { buckets }, success: true })
+        res.json({
+          data: {
+            breakdown_fields: result.breakdown_fields,
+            breakdown_series: result.breakdown_series,
+            buckets: result.buckets,
+          },
+          success: true,
+        })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(400).json({ error: message, success: false })

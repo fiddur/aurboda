@@ -144,6 +144,7 @@ export const createTableStatements: Record<string, string> = {
       altitude        DOUBLE PRECISION,
       velocity        DOUBLE PRECISION,
       regions         VARCHAR[] DEFAULT '{}',
+      deleted_at      TIMESTAMPTZ,
       CONSTRAINT unique_location UNIQUE (source, time)
     )
   `,

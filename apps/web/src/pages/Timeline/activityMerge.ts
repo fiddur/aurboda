@@ -279,12 +279,14 @@ export const buildActivityColumnItems = (
     // Resolve icon from user overrides, defaults, or type definition.
     // For exercises, also check the sub-type key (e.g. "strength_training") in type definitions.
     const iconKey = getActivityIconKey(a, getExerciseTypeName)
-    const exerciseSubType = a.activity_type === 'exercise'
-      ? (a.data as Record<string, unknown> | undefined)?.activity_type_key as string | undefined
-      : undefined
-    const icon = resolveItemIcon(iconKey, itemIcons)
-      ?? (exerciseSubType && typeDefinitions?.get(exerciseSubType)?.icon)
-      ?? typeDefinitions?.get(a.activity_type)?.icon
+    const exerciseSubType =
+      a.activity_type === 'exercise'
+        ? ((a.data as Record<string, unknown> | undefined)?.activity_type_key as string | undefined)
+        : undefined
+    const icon =
+      resolveItemIcon(iconKey, itemIcons) ??
+      (exerciseSubType && typeDefinitions?.get(exerciseSubType)?.icon) ??
+      typeDefinitions?.get(a.activity_type)?.icon
 
     items.push({
       activity_type: meta.actType,

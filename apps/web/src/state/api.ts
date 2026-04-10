@@ -33,6 +33,7 @@ import type {
   CustomMetricsListResponse,
   DashboardConfig,
   DashboardResponse,
+  DataSchemaDefinition,
   ExerciseTypeName,
   GarminSyncResponse,
   GarminSyncStatusResponse,
@@ -115,13 +116,19 @@ export interface ActivityTypeDefinition {
   aliases?: string[]
   is_builtin: boolean
   show_on_timeline: boolean
+  data_schema?: DataSchemaDefinition
 }
 
 export interface DeductionRuleCondition {
-  kind: 'activity' | 'tag' | 'screentime_category'
+  kind: 'activity' | 'tag' | 'screentime_category' | 'activity_data' | 'location' | 'after_date'
   activity_type?: string
   tag_name?: string
   category?: string[]
+  field?: string
+  operator?: 'eq' | 'neq' | 'exists' | 'not_exists'
+  value?: string | number | boolean
+  location_name?: string
+  date?: string
 }
 
 export interface DeductionRule {
@@ -133,6 +140,8 @@ export interface DeductionRule {
   output_activity_type: string
   output_title?: string
   merge_gap_seconds?: number
+  mode?: 'create' | 'enrich'
+  output_data?: Record<string, unknown>
   created_at?: string
 }
 
@@ -730,6 +739,7 @@ export const updateActivityTypeDefinition = async (
     color: string
     icon: string
     show_on_timeline: boolean
+    data_schema: DataSchemaDefinition | null
   }>,
 ): Promise<ActivityTypeDefinition> => {
   const { token } = auth.value
@@ -788,6 +798,25 @@ export const fetchDeductionRules = async (): Promise<DeductionRule[]> => {
   return response.data.data ?? []
 }
 
+export const previewDeductionRule = async (body: {
+  name: string
+  conditions: DeductionRuleCondition[]
+  output_activity_type: string
+  output_title?: string
+  merge_gap_seconds?: number
+  priority?: number
+  mode?: 'create' | 'enrich'
+  output_data?: Record<string, unknown>
+}): Promise<{ would_affect: number; sample_days: number }> => {
+  const { token } = auth.value
+  const response = await axios.post<{ success: boolean; would_affect: number; sample_days: number }>(
+    `${API_URL}/deduction-rules/preview`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return { sample_days: response.data.sample_days, would_affect: response.data.would_affect }
+}
+
 export const createDeductionRule = async (body: {
   name: string
   conditions: DeductionRuleCondition[]
@@ -796,6 +825,8 @@ export const createDeductionRule = async (body: {
   merge_gap_seconds?: number
   priority?: number
   enabled?: boolean
+  mode?: 'create' | 'enrich'
+  output_data?: Record<string, unknown>
 }): Promise<DeductionRule> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; data: DeductionRule }>(
@@ -816,6 +847,8 @@ export const updateDeductionRule = async (
     merge_gap_seconds: number | null
     priority: number
     enabled: boolean
+    mode: 'create' | 'enrich'
+    output_data: Record<string, unknown> | null
   }>,
 ): Promise<DeductionRule> => {
   const { token } = auth.value
@@ -1321,7 +1354,12 @@ export const restoreProductivity = async (id: string): Promise<void> => {
 // Entity Detail Fetching
 // ============================================================================
 
-export const fetchActivityById = async (id: string): Promise<Activity> => {
+export interface ActivityDetailResult {
+  activity: Activity
+  referenced_rules?: Record<string, string>
+}
+
+export const fetchActivityById = async (id: string): Promise<ActivityDetailResult> => {
   const { token } = auth.value
   const response = await axios.get(`${API_URL}/activities/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -1329,12 +1367,15 @@ export const fetchActivityById = async (id: string): Promise<Activity> => {
 
   const d = response.data.data
   return {
-    ...d,
-    end_time: d.end_time ? new Date(d.end_time) : undefined,
-    merged_end_time: d.merged_end_time ? new Date(d.merged_end_time) : undefined,
-    merged_start_time: d.merged_start_time ? new Date(d.merged_start_time) : undefined,
-    source_records: d.source_records,
-    start_time: new Date(d.start_time),
+    activity: {
+      ...d,
+      end_time: d.end_time ? new Date(d.end_time) : undefined,
+      merged_end_time: d.merged_end_time ? new Date(d.merged_end_time) : undefined,
+      merged_start_time: d.merged_start_time ? new Date(d.merged_start_time) : undefined,
+      source_records: d.source_records,
+      start_time: new Date(d.start_time),
+    },
+    referenced_rules: response.data.referenced_rules,
   }
 }
 
@@ -1811,9 +1852,17 @@ export interface FetchChartDataParams {
   tag_definition_id?: string
   bucket_size?: '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
   aggregation?: 'count' | 'sum' | 'mean'
+  breakdown_fields?: string[]
 }
 
-export const fetchChartData = async (params: FetchChartDataParams): Promise<ChartDataBucket[]> => {
+export interface ChartDataResult {
+  buckets: ChartDataBucket[]
+  breakdown_fields?: string[]
+  breakdown_series?: string[]
+  breakdown_buckets?: Array<{ bucket_start: string; series: Record<string, number> }>
+}
+
+export const fetchChartData = async (params: FetchChartDataParams): Promise<ChartDataResult> => {
   const { token } = auth.value
   const query: Record<string, string> = {
     source_type: params.source_type,
@@ -1824,13 +1873,24 @@ export const fetchChartData = async (params: FetchChartDataParams): Promise<Char
   if (params.tag_definition_id) query.tag_definition_id = params.tag_definition_id
   if (params.bucket_size) query.bucket_size = params.bucket_size
   if (params.aggregation) query.aggregation = params.aggregation
+  if (params.breakdown_fields?.length) query.breakdown_fields = params.breakdown_fields.join(',')
 
   const response = await axios.get<ChartDataResponse>(`${API_URL}/chart-data`, {
     headers: { Authorization: `Bearer ${token}` },
     params: query,
   })
 
-  return response.data.data?.buckets ?? []
+  const data = response.data.data
+  if (data?.breakdown_fields?.length) {
+    return {
+      breakdown_buckets: data.buckets as Array<{ bucket_start: string; series: Record<string, number> }>,
+      breakdown_fields: data.breakdown_fields,
+      breakdown_series: data.breakdown_series,
+      buckets: [],
+    }
+  }
+
+  return { buckets: (data?.buckets ?? []) as ChartDataBucket[] }
 }
 
 // ============================================================================

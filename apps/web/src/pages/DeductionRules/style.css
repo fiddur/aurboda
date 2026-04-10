@@ -249,6 +249,41 @@
   border-top: 1px solid #e5e7eb;
 }
 
+.output-data-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.output-data-row {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.output-data-key {
+  flex: 1;
+}
+
+.output-data-value {
+  flex: 2;
+}
+
+.rule-preview-btn {
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.rule-preview-btn:hover {
+  background: #f3f4f6;
+}
+
+.rule-preview-result {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
   .rules-list {

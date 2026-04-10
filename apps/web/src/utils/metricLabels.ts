@@ -38,6 +38,16 @@ export const metricLabels: Record<string, string> = {
   intensity_minutes: 'Intensity Minutes',
   respiratory_rate: 'Respiratory Rate',
   cardiovascular_age: 'Cardiovascular Age',
+  // Running dynamics
+  run_cadence: 'Run Cadence',
+  stride_length: 'Stride Length',
+  ground_contact_time: 'Ground Contact Time',
+  vertical_ratio: 'Vertical Ratio',
+  elevation: 'Elevation',
+  vertical_oscillation: 'Vertical Oscillation',
+  vertical_speed: 'Vertical Speed',
+  grade_adjusted_speed: 'Grade Adjusted Speed',
+  performance_condition: 'Performance Condition',
 }
 
 /**

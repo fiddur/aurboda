@@ -496,6 +496,10 @@ export const migrateSchema = async (user: string) => {
     )
     // Widen icon from VARCHAR(50) to TEXT to support URLs
     await query(db, `ALTER TABLE activity_type_definitions ALTER COLUMN icon TYPE TEXT`)
+    await query(db, `ALTER TABLE activity_type_definitions ADD COLUMN IF NOT EXISTS data_schema JSONB`)
+  }
+  if (existingTableNames.has('locations')) {
+    await query(db, `ALTER TABLE locations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
   }
   if (existingTableNames.has('time_series')) {
     await query(db, `ALTER TABLE time_series ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
@@ -533,6 +537,14 @@ export const migrateSchema = async (user: string) => {
       `ALTER TABLE outbound_sync_queue ADD COLUMN IF NOT EXISTS fail_count INT NOT NULL DEFAULT 0`,
     )
     await query(db, `ALTER TABLE outbound_sync_queue ADD COLUMN IF NOT EXISTS fail_reason TEXT`)
+  }
+
+  if (existingTableNames.has('deduction_rules')) {
+    await query(
+      db,
+      `ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS mode VARCHAR(10) NOT NULL DEFAULT 'create'`,
+    )
+    await query(db, `ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS output_data JSONB`)
   }
 
   // Migrate notes entity_id from UUID to TEXT (supports composite keys for metrics)
