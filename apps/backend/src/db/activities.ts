@@ -704,18 +704,29 @@ export const hardDeleteActivitiesByExternalIdPrefix = async (
   return result.rowCount ?? 0
 }
 
-/** Find a mergeable activity of the same type near a given time. */
+/** Find a mergeable activity of the same type near a given time.
+ *  When matchData is provided, only matches activities whose data contains all the same key-value pairs. */
 export const findMergeableActivity = async (
   user: string,
   activityType: string,
   startTime: Date,
   mergeSpanSeconds: number,
   source?: string,
+  matchData?: Record<string, unknown>,
 ): Promise<Activity | null> => {
   const windowStart = new Date(startTime.getTime() - mergeSpanSeconds * 1000)
-  const sourceClause = source ? ' AND source = $4' : ''
   const params: unknown[] = [activityType, windowStart, startTime]
-  if (source) params.push(source)
+  let nextParam = 4
+
+  const clauses: string[] = []
+  if (source) {
+    clauses.push(`AND source = $${nextParam++}`)
+    params.push(source)
+  }
+  if (matchData && Object.keys(matchData).length > 0) {
+    clauses.push(`AND data @> $${nextParam++}::jsonb`)
+    params.push(JSON.stringify(matchData))
+  }
 
   const result = await query(
     user,
@@ -726,7 +737,7 @@ export const findMergeableActivity = async (
        AND (
          (end_time IS NOT NULL AND end_time >= $2 AND end_time <= $3)
          OR (end_time IS NULL AND start_time >= $2 AND start_time <= $3)
-       )${sourceClause}
+       )${clauses.join(' ')}
      ORDER BY COALESCE(end_time, start_time) DESC
      LIMIT 1`,
     params,
