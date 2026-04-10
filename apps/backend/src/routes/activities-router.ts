@@ -38,6 +38,7 @@ import multer from 'multer'
 import {
   getActivityById,
   getAllActivityTypeNames,
+  getDeductionRule,
   getDistinctApps,
   getNearbyActivities,
   getOverlappingActivities,
@@ -485,6 +486,21 @@ export const createActivitiesRouter = (
       return res.json({ data, success: true })
     }
 
+    // Resolve referenced deduction rules from activity data
+    const referencedRules: Record<string, string> = {}
+    const activityData = activity.data as Record<string, unknown> | undefined
+    if (activityData) {
+      const ruleIds = [
+        typeof activityData._enriched_by === 'string' ? activityData._enriched_by : undefined,
+        typeof activityData.rule_id === 'string' ? activityData.rule_id : undefined,
+      ].filter((id): id is string => id !== undefined)
+
+      for (const ruleId of ruleIds) {
+        const rule = await getDeductionRule(user, ruleId)
+        if (rule) referencedRules[ruleId] = rule.name
+      }
+    }
+
     // Plain UUID: return raw single activity (no overlap lookup)
     res.json({
       data: {
@@ -500,6 +516,7 @@ export const createActivitiesRouter = (
         start_time: activity.start_time.toISOString(),
         title: activity.title,
       },
+      referenced_rules: Object.keys(referencedRules).length > 0 ? referencedRules : undefined,
       success: true,
     })
   })
