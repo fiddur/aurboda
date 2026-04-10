@@ -144,6 +144,7 @@ Row mappers in `db/row-mappers.ts` use type guards with api-spec constants (e.g.
 
 - Prefer code that is testable without heavy mocking.
 - Prefer functional style, no classes.
+- Store data in normalized form: reference entities by ID, not by duplicating names or other mutable fields. Resolve names at query time (e.g. in the API response layer) so data stays consistent when referenced entities are renamed.
 
 ## Testing
 

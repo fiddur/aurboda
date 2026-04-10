@@ -213,10 +213,10 @@ function SourcePicker({
             onUpdate({ source_type, pattern: '', tag_definition_id: '' })
           }}
         >
-          <option value="tag">Tag</option>
+          <option value="activity_type">Activity Type</option>
+          <option value="tag">Activity (count)</option>
           <option value="metric">Metric</option>
           <option value="productivity_category">Screentime Category</option>
-          <option value="activity_type">Activity Type</option>
         </select>
       </label>
 
@@ -433,7 +433,8 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
     return <div class="chart-error">Failed to load chart data.</div>
   }
 
-  const buckets = barQuery.data ?? []
+  const result = barQuery.data
+  const buckets = result?.buckets ?? []
 
   return (
     <div class="chart-display">
