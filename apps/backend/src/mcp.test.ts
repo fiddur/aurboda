@@ -55,6 +55,7 @@ vi.mock('./db', () => ({
   getUserSettings: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertActivityTypeDefinition: vi.fn(),
+  insertLocations: vi.fn().mockResolvedValue(undefined),
   insertDeductionRule: vi.fn().mockResolvedValue({
     conditions: [],
     enabled: true,
@@ -66,6 +67,7 @@ vi.mock('./db', () => ({
   insertDeductionRuleRun: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
+  softDeleteLocationRange: vi.fn().mockResolvedValue(undefined),
   updateActivityTypeDefinition: vi.fn(),
   updateDeductionRule: vi.fn().mockResolvedValue(null),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
