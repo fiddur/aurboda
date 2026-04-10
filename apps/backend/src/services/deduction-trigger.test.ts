@@ -15,7 +15,11 @@ const d = (h: number, m = 0) =>
 const makeDeps = (overrides: Partial<DeductionTriggerDeps> = {}): DeductionTriggerDeps => ({
   engineDeps: {
     deleteStaleRuleActivities: vi.fn(),
+    enrichActivities: vi.fn(),
     getActivities: vi.fn(),
+    getActivitiesWithData: vi.fn(),
+    getEarliestActivityTime: vi.fn(),
+    getLocationVisits: vi.fn(),
     getScreentime: vi.fn(),
     getTags: vi.fn(),
     insertActivity: vi.fn(),

@@ -475,7 +475,9 @@ function DataSchemaSection({
               <th>Type</th>
               <th>Label</th>
               <th>Required</th>
-              <th>Categorical</th>
+              <th title="Suitable for chart breakdowns by distinct values (e.g. device names, locations). Not for continuous numbers.">
+                Categorical
+              </th>
               <th />
             </tr>
           </thead>
