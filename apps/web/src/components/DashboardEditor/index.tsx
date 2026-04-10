@@ -259,7 +259,6 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 onChange={(e) => updateConfig('source_type', (e.target as HTMLSelectElement).value)}
               >
                 <option value="activity_type">Activity Type</option>
-                <option value="tag">Activity (count)</option>
                 <option value="metric">Metric</option>
               </select>
             </div>

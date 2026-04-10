@@ -108,7 +108,7 @@ export const trendChartConfigSchema = z
     half_life_days: z.number().int().positive().optional().meta({ description: 'EMA half-life in days' }),
     lookback_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
     pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
-    source_type: z.enum(['tag', 'metric']).meta({ description: 'Data source type' }),
+    source_type: z.enum(['tag', 'metric', 'activity_type']).meta({ description: 'Data source type' }),
     tag_definition_id: z
       .string()
       .uuid()
