@@ -16,6 +16,7 @@ import {
   locationsQuerySchema,
   type LocationsResponse,
   type NamedLocationsResponse,
+  type RawLocationsResponse,
   type PromoteDetectedLocationBody,
   promoteDetectedLocationBodySchema,
   type UpdateNamedLocationBody,
@@ -27,6 +28,7 @@ import {
   deleteNamedLocation,
   getDetectedLocations,
   getNamedLocations,
+  getRawLocationPoints,
   insertNamedLocation,
   updateNamedLocation,
 } from '../services/locations.ts'
@@ -47,6 +49,20 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
 
       const places = await queryLocations(user, new Date(start), new Date(end))
       res.json({ data: places, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, RawLocationsResponse, unknown, LocationsQuery>(
+    '/raw',
+    authMiddleware,
+    validateQuery(locationsQuerySchema),
+    async (req, res) => {
+      const { start, end } = req.query
+      const points = await getRawLocationPoints(req.user!, new Date(start), new Date(end))
+      res.json({
+        data: points.map((p) => ({ lat: p.lat, lon: p.lon, time: p.time.toISOString() })),
+        success: true,
+      })
     },
   )
 

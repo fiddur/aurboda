@@ -61,12 +61,28 @@ const formatDuration = (start: Date, end: Date): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-const activityToItem = (a: Activity): DataItem => {
+/** Find the place with the most overlap for a given time window. */
+const findPrimaryPlace = (start: Date, end: Date, places: Place[]): string | undefined => {
+  let best: { name: string; overlap: number } | undefined
+  for (const p of places) {
+    const overlapStart = Math.max(start.getTime(), p.start_time.getTime())
+    const overlapEnd = Math.min(end.getTime(), p.end_time.getTime())
+    const overlap = overlapEnd - overlapStart
+    if (overlap > 0 && (!best || overlap > best.overlap)) {
+      best = { name: p.region, overlap }
+    }
+  }
+  return best?.name
+}
+
+const activityToItem = (a: Activity, places: Place[]): DataItem => {
   const end = a.end_time ?? new Date(a.start_time.getTime() + 60 * 60000)
   const label = a.title ?? toDisplayName(a.activity_type)
+  const location = findPrimaryPlace(a.start_time, end, places)
+  const timeStr = `${format(a.start_time, 'HH:mm')} – ${format(end, 'HH:mm')} · ${formatDuration(a.start_time, end)}`
   return {
     color: ACTIVITY_COLORS[a.activity_type] ?? '#6b7280',
-    detail: `${format(a.start_time, 'HH:mm')} – ${format(end, 'HH:mm')} · ${formatDuration(a.start_time, end)}`,
+    detail: location ? `${timeStr} · @ ${location}` : timeStr,
     end,
     href: a.id ? `/detail/activity/${encodeURIComponent(a.id)}` : undefined,
     label,
@@ -85,10 +101,12 @@ const placeToItem = (p: Place, dateStr: string): DataItem => ({
   type: 'location',
 })
 
-const mealToItem = (m: Meal): DataItem => {
+const mealToItem = (m: Meal, places: Place[]): DataItem => {
   const parts = [format(m.time, 'HH:mm')]
   if (m.meal_type) parts.push(m.meal_type)
   if (m.calories) parts.push(`${Math.round(m.calories)} kcal`)
+  const location = findPrimaryPlace(m.time, new Date(m.time.getTime() + 30 * 60000), places)
+  if (location) parts.push(`@ ${location}`)
   return {
     color: MEAL_COLOR,
     detail: parts.join(' · '),
@@ -108,12 +126,16 @@ const reportToItem = (r: Report): DataItem => ({
   type: 'report',
 })
 
-const productivityToItem = (p: ProductivityRecord): DataItem => {
+const productivityToItem = (p: ProductivityRecord, places: Place[]): DataItem => {
   const dur = Math.round(p.duration_sec / 60)
   const category = p.resolved_category?.join(' > ') ?? p.category ?? ''
+  const location = findPrimaryPlace(p.start_time, p.end_time, places)
+  const parts = [`${format(p.start_time, 'HH:mm')} – ${format(p.end_time, 'HH:mm')} · ${dur}m`]
+  if (category) parts.push(category)
+  if (location) parts.push(`@ ${location}`)
   return {
     color: SCREENTIME_COLOR,
-    detail: `${format(p.start_time, 'HH:mm')} – ${format(p.end_time, 'HH:mm')} · ${dur}m${category ? ` · ${category}` : ''}`,
+    detail: parts.join(' · '),
     end: p.end_time,
     href: p.id ? `/detail/productivity/${encodeURIComponent(p.id)}` : undefined,
     label: p.activity,
@@ -156,7 +178,7 @@ const buildItems = (
 ): DataItem[] => {
   const items: DataItem[] = []
   if (activeTypes.has('activity')) {
-    for (const a of activities) items.push(activityToItem(a))
+    for (const a of activities) items.push(activityToItem(a, places))
   }
   if (activeTypes.has('location')) {
     for (const p of places) items.push(placeToItem(p, dateStr))
@@ -173,13 +195,13 @@ const buildItems = (
     }
   }
   if (activeTypes.has('meal')) {
-    for (const m of meals) items.push(mealToItem(m))
+    for (const m of meals) items.push(mealToItem(m, places))
   }
   if (activeTypes.has('report')) {
     for (const r of reports) items.push(reportToItem(r))
   }
   if (activeTypes.has('screentime')) {
-    for (const p of productivity) items.push(productivityToItem(p))
+    for (const p of productivity) items.push(productivityToItem(p, places))
   }
   return items.sort((a, b) => a.start.getTime() - b.start.getTime())
 }

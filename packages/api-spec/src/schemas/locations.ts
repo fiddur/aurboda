@@ -81,6 +81,28 @@ export const placeVisitSchema = z
 export type PlaceVisit = z.infer<typeof placeVisitSchema>
 
 /**
+ * Raw GPS location point schema.
+ */
+export const rawLocationPointSchema = z
+  .object({
+    lat: latSchema,
+    lon: lonSchema,
+    time: iso8601DateTimeSchema,
+  })
+  .meta({ id: 'RawLocationPoint', description: 'Raw GPS location point' })
+
+export type RawLocationPoint = z.infer<typeof rawLocationPointSchema>
+
+/**
+ * Raw locations response schema.
+ */
+export const rawLocationsResponseSchema = createDataArrayResponseSchema(rawLocationPointSchema).meta({
+  id: 'RawLocationsResponse',
+})
+
+export type RawLocationsResponse = z.infer<typeof rawLocationsResponseSchema>
+
+/**
  * Locations query schema.
  */
 export const locationsQuerySchema = timeRangeQuerySchema.meta({ id: 'LocationsQuery' })

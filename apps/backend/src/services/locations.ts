@@ -363,6 +363,30 @@ export const matchLocationToDetected = (
 }
 
 /**
+ * Get raw GPS points for a time range, suitable for rendering a path on a map.
+ */
+export const getRawLocationPoints = async (
+  user: string,
+  start: Date,
+  end: Date,
+): Promise<{ lat: number; lon: number; time: Date }[]> => {
+  const result = await query(
+    user,
+    `SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time
+     FROM locations
+     WHERE time >= $1 AND time <= $2
+     ORDER BY time`,
+    [start, end],
+  )
+
+  return result.rows.map((row) => ({
+    lat: Number(row.lat),
+    lon: Number(row.lon),
+    time: new Date(row.time),
+  }))
+}
+
+/**
  * Get place visits for a time range, using named locations when available.
  * Falls back to detected locations, then OwnTracks regions.
  */

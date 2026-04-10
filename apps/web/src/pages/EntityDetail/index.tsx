@@ -26,9 +26,11 @@ import {
 import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
+import { ActivityMap } from './ActivityMap'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
 import { formatDateTimeLocal, formatTime } from './format-utils'
+import { LocationInfo } from './LocationInfo'
 import { MergePanel } from './MergePanel'
 import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
@@ -214,6 +216,7 @@ const ActivityDetailContent = ({
     activity.total_sleep ?? (hasSleepStages ? computeSleepMinutesFromStages(stages) : undefined)
   const hasEndTime = Boolean(activity.end_time || activity.merged_end_time)
   const hasExerciseType = Boolean(exerciseType)
+  const [hoverTime, setHoverTime] = useState<Date | null>(null)
 
   // Oura sleep metrics (only fetch when sleep stages exist)
   const endDateStr = hasSleepStages ? format(displayEnd, 'yyyy-MM-dd') : ''
@@ -352,6 +355,8 @@ const ActivityDetailContent = ({
         )}
       </div>
 
+      {hasEndTime && !isEditing && <LocationInfo start={displayStart} end={displayEnd} />}
+
       {hasOuraMetrics && <OuraMetricsCards metrics={ouraMetrics} />}
 
       {hasEndTime && (
@@ -361,7 +366,9 @@ const ActivityDetailContent = ({
             end={displayEnd}
             stages={hasSleepStages ? stages : undefined}
             defaultMetrics={['heart_rate', 'hrv_rmssd']}
+            onHoverTime={setHoverTime}
           />
+          <ActivityMap start={displayStart} end={displayEnd} hoverTime={hoverTime} />
         </div>
       )}
 
@@ -587,6 +594,7 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
         isSaving={false}
       />
       <ProductivityDetail record={record} categories={categories} itemIcons={itemIcons} />
+      <LocationInfo start={record.start_time} end={record.end_time} />
       <NotesSection entityType="productivity" entityId={entityId} allEntityIds={allEntityIds} />
     </>
   )
