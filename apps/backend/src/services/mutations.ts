@@ -328,6 +328,8 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
       input.activity_type,
       input.start_time,
       input.merge_span,
+      undefined,
+      input.data,
     )
     if (existing?.id) {
       const newEndTime = input.end_time ?? input.start_time
