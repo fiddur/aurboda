@@ -314,8 +314,8 @@ describe('evaluateRule', () => {
 
     const rule = makeRule({
       mode: 'enrich',
+      output_activity_type: 'sex',
       output_data: { partner: 'Sara' },
-      target_activity_type: 'sex',
     })
 
     const { affected_ids } = await evaluateRule(user, rule, window, deps)
@@ -352,8 +352,8 @@ describe('evaluateRule', () => {
 
     const rule = makeRule({
       mode: 'enrich',
+      output_activity_type: 'sex',
       output_data: { partner: 'Sara' },
-      target_activity_type: 'sex',
     })
 
     const { affected_ids, would_affect } = await evaluateRule(user, rule, window, deps, true)
@@ -465,10 +465,9 @@ describe('evaluateAllRules', () => {
         id: 'rule-1',
         mode: 'enrich',
         name: 'Enrich rule',
-        output_activity_type: 'sauna',
+        output_activity_type: 'sex',
         output_data: { partner: 'Sara' },
         priority: 0,
-        target_activity_type: 'sex',
       },
     ]
 

@@ -120,7 +120,7 @@ export interface ActivityTypeDefinition {
 }
 
 export interface DeductionRuleCondition {
-  kind: 'activity' | 'tag' | 'screentime_category' | 'activity_data' | 'location'
+  kind: 'activity' | 'tag' | 'screentime_category' | 'activity_data' | 'location' | 'after_date'
   activity_type?: string
   tag_name?: string
   category?: string[]
@@ -128,6 +128,7 @@ export interface DeductionRuleCondition {
   operator?: 'eq' | 'neq' | 'exists' | 'not_exists'
   value?: string | number | boolean
   location_name?: string
+  date?: string
 }
 
 export interface DeductionRule {
@@ -141,7 +142,6 @@ export interface DeductionRule {
   merge_gap_seconds?: number
   mode?: 'create' | 'enrich'
   output_data?: Record<string, unknown>
-  target_activity_type?: string
   created_at?: string
 }
 
@@ -807,7 +807,6 @@ export const previewDeductionRule = async (body: {
   priority?: number
   mode?: 'create' | 'enrich'
   output_data?: Record<string, unknown>
-  target_activity_type?: string
 }): Promise<{ would_affect: number; sample_days: number }> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; would_affect: number; sample_days: number }>(
@@ -828,7 +827,6 @@ export const createDeductionRule = async (body: {
   enabled?: boolean
   mode?: 'create' | 'enrich'
   output_data?: Record<string, unknown>
-  target_activity_type?: string
 }): Promise<DeductionRule> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; data: DeductionRule }>(
@@ -851,7 +849,6 @@ export const updateDeductionRule = async (
     enabled: boolean
     mode: 'create' | 'enrich'
     output_data: Record<string, unknown> | null
-    target_activity_type: string | null
   }>,
 ): Promise<DeductionRule> => {
   const { token } = auth.value

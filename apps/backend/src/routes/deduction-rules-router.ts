@@ -59,19 +59,12 @@ export const createDeductionRulesRouter = (
         enabled,
         mode,
         output_data,
-        target_activity_type,
       } = req.body
 
       if (!(await activityTypeExists(user, output_activity_type))) {
         return res
           .status(400)
           .json({ error: `Unknown activity type: "${output_activity_type}"`, success: false })
-      }
-
-      if (mode === 'enrich' && !target_activity_type) {
-        return res
-          .status(400)
-          .json({ error: 'target_activity_type is required when mode is "enrich"', success: false })
       }
 
       const rule = await insertDeductionRule(user, {
@@ -84,7 +77,6 @@ export const createDeductionRulesRouter = (
         output_data: output_data as Record<string, unknown> | undefined,
         output_title,
         priority,
-        target_activity_type,
       })
 
       // Retroactive evaluation over full history
@@ -104,14 +96,12 @@ export const createDeductionRulesRouter = (
       const { output_activity_type } = req.body
 
       if (!(await activityTypeExists(user, output_activity_type))) {
-        return res
-          .status(400)
-          .json({
-            error: `Unknown activity type: "${output_activity_type}"`,
-            sample_days: 0,
-            success: false,
-            would_affect: 0,
-          })
+        return res.status(400).json({
+          error: `Unknown activity type: "${output_activity_type}"`,
+          sample_days: 0,
+          success: false,
+          would_affect: 0,
+        })
       }
 
       const tempRule = {
@@ -125,7 +115,6 @@ export const createDeductionRulesRouter = (
         output_data: req.body.output_data as Record<string, unknown> | undefined,
         output_title: req.body.output_title,
         priority: req.body.priority ?? 0,
-        target_activity_type: req.body.target_activity_type,
       }
 
       const window = { end: new Date(), start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) }

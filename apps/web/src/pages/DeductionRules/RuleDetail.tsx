@@ -181,7 +181,6 @@ function NewRuleForm() {
   const [conditions, setConditions] = useState<DeductionRuleCondition[]>([{ kind: 'activity' }])
   const [mode, setMode] = useState<'create' | 'enrich'>('create')
   const [outputData, setOutputData] = useState<Record<string, unknown>>({})
-  const [targetActivityType, setTargetActivityType] = useState('')
   const [previewResult, setPreviewResult] = useState<{ would_affect: number; sample_days: number } | null>(
     null,
   )
@@ -202,7 +201,6 @@ function NewRuleForm() {
     output_data: Object.keys(outputData).length > 0 ? outputData : undefined,
     output_title: outputTitle || undefined,
     priority,
-    target_activity_type: mode === 'enrich' ? targetActivityType || undefined : undefined,
   })
 
   const createMutation = useMutation({
@@ -250,24 +248,6 @@ function NewRuleForm() {
           </div>
 
           <ActivityTypePicker value={outputType} onChange={setOutputType} definitions={definitions} />
-
-          {mode === 'enrich' && (
-            <div class="rule-field">
-              <span class="rule-field-label">Target Activity Type</span>
-              <select
-                value={targetActivityType}
-                onChange={(e) => setTargetActivityType((e.target as HTMLSelectElement).value)}
-                class="rule-field-select"
-              >
-                <option value="">-- select target --</option>
-                {definitions.map((d) => (
-                  <option key={d.name} value={d.name}>
-                    {d.display_name} ({d.name})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
 
           <OutputDataEditor data={outputData} onChange={setOutputData} />
 

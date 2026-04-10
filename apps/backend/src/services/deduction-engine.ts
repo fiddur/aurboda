@@ -178,9 +178,17 @@ const resolveLocation: ConditionResolver = async (user, condition, window, deps)
   return deps.getLocationVisits(user, condition.location_name, window)
 }
 
+const resolveAfterDate: ConditionResolver = async (_user, condition, window) => {
+  if (condition.kind !== 'after_date') return []
+  const since = new Date(condition.date)
+  if (since >= window.end) return []
+  return [{ start: since > window.start ? since : window.start, end: window.end }]
+}
+
 const conditionResolvers: Record<string, ConditionResolver> = {
   activity: resolveActivity,
   activity_data: resolveActivityData,
+  after_date: resolveAfterDate,
   location: resolveLocation,
   screentime_category: resolveScreentimeCategory,
   tag: resolveTag,
@@ -243,16 +251,16 @@ export const evaluateRule = async (
   if (result.length === 0) return { affected_ids: [], would_affect: 0 }
 
   // Enrich mode: patch existing activities
-  if (rule.mode === 'enrich' && rule.target_activity_type) {
+  if (rule.mode === 'enrich') {
     if (dryRun) {
       // Count how many target activities overlap the ranges without modifying them
-      const targetRanges = await deps.getActivities(user, rule.target_activity_type, window)
+      const targetRanges = await deps.getActivities(user, rule.output_activity_type, window)
       const overlapping = intersectTimeRanges(result, targetRanges)
       return { affected_ids: [], would_affect: overlapping.length }
     }
     const enrichedIds = await deps.enrichActivities(
       user,
-      rule.target_activity_type,
+      rule.output_activity_type,
       result,
       rule.output_data ?? {},
       rule.id,

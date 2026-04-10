@@ -17,11 +17,10 @@ const mapRow = (row: Record<string, unknown>): DeductionRule => ({
   ...(row.output_data != null ? { output_data: row.output_data as Record<string, unknown> } : {}),
   ...(row.output_title != null ? { output_title: row.output_title as string } : {}),
   priority: row.priority as number,
-  ...(row.target_activity_type != null ? { target_activity_type: row.target_activity_type as string } : {}),
 })
 
 const SELECT_COLS =
-  'id, name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, target_activity_type, created_at'
+  'id, name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, created_at'
 
 export const getDeductionRules = async (user: string): Promise<DeductionRule[]> => {
   const result = await query(user, `SELECT ${SELECT_COLS} FROM deduction_rules ORDER BY priority, name`)
@@ -54,13 +53,12 @@ export const insertDeductionRule = async (
     enabled?: boolean
     mode?: DeductionRuleMode
     output_data?: Record<string, unknown>
-    target_activity_type?: string
   },
 ): Promise<DeductionRule> => {
   const result = await query(
     user,
-    `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, target_activity_type)
-     VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7, COALESCE($8, 'create'), $9, $10)
+    `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data)
+     VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7, COALESCE($8, 'create'), $9)
      RETURNING ${SELECT_COLS}`,
     [
       rule.name,
@@ -72,7 +70,6 @@ export const insertDeductionRule = async (
       rule.merge_gap_seconds ?? null,
       rule.mode ?? null,
       rule.output_data ? JSON.stringify(rule.output_data) : null,
-      rule.target_activity_type ?? null,
     ],
   )
   return mapRow(result.rows[0])
@@ -91,7 +88,6 @@ export const updateDeductionRule = async (
     merge_gap_seconds?: number | null
     mode?: DeductionRuleMode
     output_data?: Record<string, unknown> | null
-    target_activity_type?: string | null
   },
 ): Promise<DeductionRule | null> => {
   const setClauses: string[] = []
@@ -134,11 +130,6 @@ export const updateDeductionRule = async (
     setClauses.push(`output_data = $${paramIndex++}`)
     values.push(updates.output_data ? JSON.stringify(updates.output_data) : null)
   }
-  if (updates.target_activity_type !== undefined) {
-    setClauses.push(`target_activity_type = $${paramIndex++}`)
-    values.push(updates.target_activity_type)
-  }
-
   if (setClauses.length === 0) return getDeductionRule(user, id)
 
   setClauses.push(`updated_at = NOW()`)
