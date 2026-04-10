@@ -19,30 +19,24 @@ const formatValue = (value: unknown, unit?: string): string => {
   return unit ? `${str} ${unit}` : str
 }
 
-const EnrichedByLink = ({ value }: { value: unknown }) => {
-  if (typeof value === 'object' && value !== null && 'rule_id' in value) {
-    const { rule_id, rule_name } = value as { rule_id: string; rule_name: string }
-    return (
-      <div class="field-row" style={{ opacity: 0.7 }}>
-        <span class="field-label">Enriched by</span>
-        <span class="field-value">
-          <a href={`/deduction-rules/${rule_id}`}>{rule_name}</a>
-        </span>
-      </div>
-    )
-  }
-  // Legacy format: just a rule ID string
-  if (typeof value === 'string') {
-    return (
-      <div class="field-row" style={{ opacity: 0.7 }}>
-        <span class="field-label">Enriched by</span>
-        <span class="field-value">
-          <a href={`/deduction-rules/${value}`}>{value.slice(0, 8)}...</a>
-        </span>
-      </div>
-    )
-  }
-  return null
+const RuleLink = ({
+  ruleId,
+  referencedRules,
+  label,
+}: {
+  ruleId: string
+  referencedRules?: Record<string, string>
+  label: string
+}) => {
+  const ruleName = referencedRules?.[ruleId]
+  return (
+    <div class="field-row" style={{ opacity: 0.7 }}>
+      <span class="field-label">{label}</span>
+      <span class="field-value">
+        <a href={`/deduction-rules/${ruleId}`}>{ruleName ?? ruleId.slice(0, 8) + '...'}</a>
+      </span>
+    </div>
+  )
 }
 
 const FieldInput = ({
@@ -125,15 +119,19 @@ export const SchemaDataFields = ({
   schema,
   isEditing,
   onDataChange,
+  referencedRules,
 }: {
   data: Record<string, unknown>
   schema: DataSchemaDefinition
   isEditing?: boolean
   onDataChange?: (data: Record<string, unknown>) => void
+  referencedRules?: Record<string, string>
 }) => {
   const schemaFieldNames = new Set(schema.fields.map((f) => f.name))
   const extraKeys = Object.keys(data).filter((k) => !schemaFieldNames.has(k) && !INTERNAL_KEYS.has(k))
-  const enrichedBy = data._enriched_by
+
+  const enrichedByRuleId = typeof data._enriched_by === 'string' ? data._enriched_by : undefined
+  const createdByRuleId = typeof data.rule_id === 'string' ? data.rule_id : undefined
 
   const updateField = (name: string, value: unknown) => {
     if (!onDataChange) return
@@ -166,7 +164,12 @@ export const SchemaDataFields = ({
             </div>
           )
         })}
-        {enrichedBy && <EnrichedByLink value={enrichedBy} />}
+        {enrichedByRuleId && (
+          <RuleLink ruleId={enrichedByRuleId} referencedRules={referencedRules} label="Enriched by" />
+        )}
+        {createdByRuleId && (
+          <RuleLink ruleId={createdByRuleId} referencedRules={referencedRules} label="Created by rule" />
+        )}
       </div>
     )
   }
@@ -193,7 +196,12 @@ export const SchemaDataFields = ({
           </div>
         )
       })}
-      {enrichedBy && <EnrichedByLink value={enrichedBy} />}
+      {enrichedByRuleId && (
+        <RuleLink ruleId={enrichedByRuleId} referencedRules={referencedRules} label="Enriched by" />
+      )}
+      {createdByRuleId && (
+        <RuleLink ruleId={createdByRuleId} referencedRules={referencedRules} label="Created by rule" />
+      )}
     </div>
   )
 }

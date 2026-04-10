@@ -403,9 +403,17 @@ export type NearbyActivitiesResponse = z.infer<typeof nearbyActivitiesResponseSc
 
 /**
  * Single activity detail response (for activity detail page).
+ * Includes referenced_rules map for resolving rule IDs to names.
  */
-export const activityDetailResponseSchema = createDataResponseSchema(activitySchema).meta({
-  id: 'ActivityDetailResponse',
-})
+export const activityDetailResponseSchema = createDataResponseSchema(activitySchema)
+  .extend({
+    referenced_rules: z
+      .record(z.string(), z.string())
+      .optional()
+      .meta({ description: 'Map of rule ID to rule name for deduction rules referenced in activity data' }),
+  })
+  .meta({
+    id: 'ActivityDetailResponse',
+  })
 
 export type ActivityDetailResponse = z.infer<typeof activityDetailResponseSchema>
