@@ -75,7 +75,7 @@ import { createSettingsRouter } from './routes/settings-router.ts'
 // tags-router removed: tags are now activities
 import { createTrainingLoadRouter } from './routes/training-load-router.ts'
 import { createTrendsRouter } from './routes/trends-router.ts'
-import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
+import { auditError, auditInfo, auditWarn, pruneAuditLog } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
@@ -144,6 +144,7 @@ const main = async () => {
   httpd.use(json({ limit: '10mb' }))
 
   // Log mutations to the user's audit log (GET requests are silent)
+  // Log level is based on response status: 4xx → warn, 5xx → error, otherwise → info
   httpd.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'OPTIONS' && req.method !== 'HEAD') {
       const user = (() => {
@@ -165,7 +166,32 @@ const main = async () => {
                 ),
               )
             : undefined
-        auditInfo(user, 'data', `${req.method} ${req.path}`, sanitizedBody)
+
+        // Capture response body for error logging by intercepting res.json()
+        let responseBody: unknown
+        const originalJson = res.json.bind(res)
+        res.json = (body: unknown) => {
+          responseBody = body
+          return originalJson(body)
+        }
+
+        res.on('finish', () => {
+          if (res.statusCode >= 500) {
+            auditError(user, 'data', `${req.method} ${req.path}`, {
+              ...sanitizedBody,
+              status: res.statusCode,
+              response: responseBody,
+            })
+          } else if (res.statusCode >= 400) {
+            auditWarn(user, 'data', `${req.method} ${req.path}`, {
+              ...sanitizedBody,
+              status: res.statusCode,
+              response: responseBody,
+            })
+          } else {
+            auditInfo(user, 'data', `${req.method} ${req.path}`, sanitizedBody)
+          }
+        })
       }
     }
     next()
