@@ -1,3 +1,8 @@
+/**
+ * Location, Place, Named Location, and Detected Location CRUD operations.
+ */
+import format from 'pg-format'
+
 import type {
   DetectedLocation,
   DetectedLocationInput,
@@ -7,11 +12,6 @@ import type {
   NamedLocationInput,
   Place,
 } from './types.ts'
-
-/**
- * Location, Place, Named Location, and Detected Location CRUD operations.
- */
-import format from 'pg-format'
 
 import { query } from './connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update.ts'

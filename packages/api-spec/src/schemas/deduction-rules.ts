@@ -9,12 +9,30 @@ import { activityTypeSchema, baseResponseSchema, createDataArrayResponseSchema }
  * Condition kinds for deduction rules.
  * Each condition resolves to time ranges; multiple conditions are AND-ed (must overlap).
  */
+export const dataFilterSchema = z.object({
+  field: z.string().meta({ description: 'Data field key to match on' }),
+  operator: z.enum(['eq', 'neq', 'exists', 'not_exists']).meta({ description: 'Comparison operator' }),
+  value: z
+    .union([z.string(), z.number(), z.boolean()])
+    .optional()
+    .meta({ description: 'Value to compare against (required for eq/neq)' }),
+})
+
+export type DataFilter = z.infer<typeof dataFilterSchema>
+
 export const activityConditionSchema = z
   .object({
     activity_type: activityTypeSchema,
+    data_filters: z
+      .array(dataFilterSchema)
+      .optional()
+      .meta({ description: 'Optional data field filters — all must match (AND logic)' }),
     kind: z.literal('activity'),
   })
-  .meta({ description: 'Matches time ranges where an activity of the given type exists' })
+  .meta({
+    description:
+      'Matches time ranges where an activity of the given type exists, optionally filtered by data fields',
+  })
 
 export const tagConditionSchema = z
   .object({

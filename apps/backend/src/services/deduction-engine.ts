@@ -48,6 +48,12 @@ export interface DeductionEngineDeps {
     value: string | number | boolean | undefined,
     window: EvaluationWindow,
   ) => Promise<TimeRange[]>
+  getActivitiesWithDataFilters: (
+    user: string,
+    activityType: string,
+    filters: Array<{ field: string; operator: string; value?: string | number | boolean }>,
+    window: EvaluationWindow,
+  ) => Promise<TimeRange[]>
   getLocationVisits: (user: string, locationName: string, window: EvaluationWindow) => Promise<TimeRange[]>
   insertActivity: (user: string, activity: Activity) => Promise<string | void>
   enrichActivities: (
@@ -148,6 +154,9 @@ type ConditionResolver = (
 
 const resolveActivity: ConditionResolver = async (user, condition, window, deps) => {
   if (condition.kind !== 'activity') return []
+  if (condition.data_filters?.length) {
+    return deps.getActivitiesWithDataFilters(user, condition.activity_type, condition.data_filters, window)
+  }
   return deps.getActivities(user, condition.activity_type, window)
 }
 

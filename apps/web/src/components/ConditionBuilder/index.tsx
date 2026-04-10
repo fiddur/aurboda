@@ -3,7 +3,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 
-import type { DeductionRuleCondition } from '../../state/api'
+import type { DataFilter, DeductionRuleCondition } from '../../state/api'
 
 import { fetchActivityTypeDefinitions, fetchNamedLocations } from '../../state/api'
 import './style.css'
@@ -113,6 +113,76 @@ function ActivityDataBody({
   )
 }
 
+function DataFiltersInline({
+  filters,
+  onChange,
+  schemaFields,
+}: {
+  filters: DataFilter[]
+  onChange: (filters: DataFilter[]) => void
+  schemaFields: Array<{ name: string; label?: string }>
+}) {
+  const updateFilter = (i: number, patch: Partial<DataFilter>) => {
+    onChange(filters.map((f, idx) => (idx === i ? { ...f, ...patch } : f)))
+  }
+  const removeFilter = (i: number) => onChange(filters.filter((_, idx) => idx !== i))
+  const addFilter = () =>
+    onChange([...filters, { field: schemaFields[0]?.name ?? '', operator: 'eq', value: '' }])
+
+  return (
+    <div class="condition-data-filters-inline">
+      {filters.map((filter, i) => (
+        <div class="condition-data-row" key={i}>
+          <select
+            value={filter.field}
+            onChange={(e) => updateFilter(i, { field: (e.target as HTMLSelectElement).value })}
+            class="condition-field-select condition-field-narrow"
+          >
+            {schemaFields.map((f) => (
+              <option key={f.name} value={f.name}>
+                {f.label ?? f.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filter.operator}
+            onChange={(e) =>
+              updateFilter(i, { operator: (e.target as HTMLSelectElement).value as DataFilter['operator'] })
+            }
+            class="condition-field-select condition-field-narrow"
+          >
+            {Object.entries(OPERATOR_LABELS).map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </select>
+          {(filter.operator === 'eq' || filter.operator === 'neq') && (
+            <input
+              type="text"
+              value={String(filter.value ?? '')}
+              onInput={(e) => updateFilter(i, { value: (e.target as HTMLInputElement).value })}
+              placeholder="Value"
+              class="condition-field-input condition-field-narrow"
+            />
+          )}
+          <button
+            type="button"
+            class="condition-remove-btn"
+            onClick={() => removeFilter(i)}
+            title="Remove filter"
+          >
+            &#x2715;
+          </button>
+        </div>
+      ))}
+      <button type="button" class="condition-add-filter-btn" onClick={addFilter}>
+        + Where...
+      </button>
+    </div>
+  )
+}
+
 // ============================================================================
 // Single condition card
 // ============================================================================
@@ -187,7 +257,23 @@ function ConditionCard({
 
       <div class="condition-card-body">
         {condition.kind === 'activity' && (
-          <ActivityTypeSelect condition={condition} onChange={update} definitions={definitions} />
+          <>
+            <ActivityTypeSelect condition={condition} onChange={update} definitions={definitions} />
+            {(() => {
+              const typeDef = definitions.find((d) => d.name === condition.activity_type)
+              const schemaFields = (
+                typeDef as { data_schema?: { fields: Array<{ name: string; label?: string }> } }
+              )?.data_schema?.fields
+              if (!schemaFields?.length) return null
+              return (
+                <DataFiltersInline
+                  filters={condition.data_filters ?? []}
+                  onChange={(data_filters) => update({ ...condition, data_filters })}
+                  schemaFields={schemaFields}
+                />
+              )
+            })()}
+          </>
         )}
 
         {condition.kind === 'tag' && (
