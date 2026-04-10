@@ -8,7 +8,7 @@
 import type { IActivity } from '@flow-js/garmin-connect/dist/garmin/types/activity'
 import type { SleepData } from '@flow-js/garmin-connect/dist/garmin/types/sleep'
 
-import type { Activity, RawRecord, TimeSeriesPoint } from './db/types.ts'
+import type { Activity, Location, RawRecord, TimeSeriesPoint } from './db/types.ts'
 import type {
   GarminActivityDetailResponse,
   GarminBodyBatteryData,
@@ -24,8 +24,10 @@ import type {
 import {
   deleteGarminActivityWithWrongType,
   insertActivity,
+  insertLocations,
   insertRawRecord,
   insertTimeSeries,
+  softDeleteLocationRange,
 } from './db/index.ts'
 
 // ============================================================================
@@ -65,16 +67,20 @@ export const garminDataTypes: GarminDataType[] = [
 
 export interface GarminProcessDeps {
   deleteGarminActivityWithWrongType: typeof deleteGarminActivityWithWrongType
+  insertActivity: typeof insertActivity
+  insertLocations: typeof insertLocations
   insertRawRecord: typeof insertRawRecord
   insertTimeSeries: typeof insertTimeSeries
-  insertActivity: typeof insertActivity
+  softDeleteLocationRange: typeof softDeleteLocationRange
 }
 
 const defaultDeps: GarminProcessDeps = {
   deleteGarminActivityWithWrongType,
   insertActivity,
+  insertLocations,
   insertRawRecord,
   insertTimeSeries,
+  softDeleteLocationRange,
 }
 
 /** Garmin activity typeKeys that map to the 'meditation' activity type. */
@@ -560,12 +566,46 @@ const processIntensityMinutes = async (
 // Activity Detail (per-second metrics from /activity-service/activity/{id}/details)
 // ---------------------------------------------------------------------------
 
+interface DetailMetricMapping {
+  metric: string
+  unit: string
+  /** Allow zero and negative values (e.g. elevation, vertical speed). Default: filter <= 0. */
+  allowNegative?: boolean
+  /** Transform the raw value (e.g. cm → m). */
+  transform?: (v: number) => number
+}
+
 /** Metrics to extract from activity detail, mapped to our metric names. */
-const DETAIL_METRIC_MAP: Record<string, { metric: string; unit: string }> = {
+const DETAIL_METRIC_MAP: Record<string, DetailMetricMapping> = {
   directBodyBattery: { metric: 'body_battery', unit: 'score' },
   directCurrentStress: { metric: 'stress_level', unit: 'score' },
+  directDoubleCadence: { metric: 'run_cadence', unit: 'spm' },
+  directElevation: { allowNegative: true, metric: 'elevation', unit: 'm' },
+  directGradeAdjustedSpeed: { metric: 'grade_adjusted_speed', unit: 'm/s' },
+  directGroundContactTime: { metric: 'ground_contact_time', unit: 'ms' },
   directHeartRate: { metric: 'heart_rate', unit: 'bpm' },
+  directPerformanceCondition: { allowNegative: true, metric: 'performance_condition', unit: 'score' },
+  directPower: { metric: 'power', unit: 'W' },
   directRespirationRate: { metric: 'respiratory_rate', unit: 'brpm' },
+  directSpeed: { metric: 'speed', unit: 'm/s' },
+  directStrideLength: { metric: 'stride_length', transform: (v) => v / 100, unit: 'm' },
+  directVerticalOscillation: { metric: 'vertical_oscillation', unit: 'cm' },
+  directVerticalRatio: { metric: 'vertical_ratio', unit: 'percent' },
+  directVerticalSpeed: { allowNegative: true, metric: 'vertical_speed', unit: 'm/s' },
+}
+
+/**
+ * Extract a numeric value from a Garmin metric entry.
+ * Some values are plain numbers, others are {source, parsedValue} objects.
+ */
+export const extractNumericValue = (value: unknown): number | null => {
+  if (value == null) return null
+  if (typeof value === 'number') return value
+  if (typeof value === 'object' && 'parsedValue' in (value as Record<string, unknown>)) {
+    const parsed = (value as { parsedValue: unknown }).parsedValue
+    return typeof parsed === 'number' ? parsed : null
+  }
+  return null
 }
 
 /** Build a map of garminKey → metricsIndex from dynamic metricDescriptors. */
@@ -581,20 +621,33 @@ const buildMetricIndexMap = (
 
 /** Extract time series points from a single activity detail metrics entry. */
 const extractDetailPoints = (
-  metrics: number[],
+  metrics: unknown[],
   time: Date,
   indexMap: Map<string, number>,
 ): TimeSeriesPoint[] => {
   const points: TimeSeriesPoint[] = []
-  for (const [garminKey, { metric, unit }] of Object.entries(DETAIL_METRIC_MAP)) {
+  for (const [garminKey, mapping] of Object.entries(DETAIL_METRIC_MAP)) {
     const idx = indexMap.get(garminKey)
     if (idx === undefined) continue
-    const value = metrics[idx]
-    if (value == null || value <= 0) continue
-    points.push({ metric, source: 'garmin', time, unit, value })
+    const raw = extractNumericValue(metrics[idx])
+    if (raw == null) continue
+    if (!mapping.allowNegative && raw <= 0) continue
+    const value = mapping.transform ? mapping.transform(raw) : raw
+    points.push({ metric: mapping.metric, source: 'garmin', time, unit: mapping.unit, value })
   }
   return points
 }
+
+/** Extract a GPS location point from a detail metrics entry. */
+const extractGpsPoint = (metrics: unknown[], time: Date, latIdx: number, lonIdx: number): Location | null => {
+  const lat = extractNumericValue(metrics[latIdx])
+  const lon = extractNumericValue(metrics[lonIdx])
+  if (lat == null || lon == null || (lat === 0 && lon === 0)) return null
+  return { lat, lon, source: 'garmin' as const, time }
+}
+
+/** GPS downsampling interval in milliseconds (1 point per minute). */
+const GPS_DOWNSAMPLE_MS = 60_000
 
 export const processActivityDetail = async (
   user: string,
@@ -607,24 +660,47 @@ export const processActivityDetail = async (
   const tsIdx = indexMap.get('directTimestamp')
   if (tsIdx === undefined) return 0
 
+  const latIdx = indexMap.get('directLatitude')
+  const lonIdx = indexMap.get('directLongitude')
+
   const points: TimeSeriesPoint[] = []
+  const gpsPoints: Location[] = []
+  let lastGpsTime = 0
+
   for (const entry of data.activityDetailMetrics) {
-    const ts = entry.metrics[tsIdx]
+    const ts = extractNumericValue(entry.metrics[tsIdx])
     if (!ts || ts <= 0) continue
-    points.push(...extractDetailPoints(entry.metrics, new Date(ts), indexMap))
+    const time = new Date(ts)
+
+    points.push(...extractDetailPoints(entry.metrics, time, indexMap))
+
+    // Extract GPS, downsampled to ~1 point per minute
+    if (latIdx !== undefined && lonIdx !== undefined && ts - lastGpsTime >= GPS_DOWNSAMPLE_MS) {
+      const gps = extractGpsPoint(entry.metrics, time, latIdx, lonIdx)
+      if (gps) {
+        gpsPoints.push(gps)
+        lastGpsTime = ts
+      }
+    }
   }
+
+  const firstTs = extractNumericValue(data.activityDetailMetrics[0]!.metrics[tsIdx])
+  if (!firstTs) return 0
 
   await deps.insertRawRecord(
     user,
-    makeRaw(
-      'garmin_activity_detail',
-      `garmin-activity-detail-${data.activityId}`,
-      new Date(data.activityDetailMetrics[0]!.metrics[tsIdx]!),
-      data,
-    ),
+    makeRaw('garmin_activity_detail', `garmin-activity-detail-${data.activityId}`, new Date(firstTs), data),
   )
 
   if (points.length > 0) await deps.insertTimeSeries(user, points)
+
+  // Batch-insert GPS locations and soft-delete conflicting OwnTracks data
+  if (gpsPoints.length > 0) {
+    const start = gpsPoints[0].time
+    const end = gpsPoints[gpsPoints.length - 1].time
+    await deps.softDeleteLocationRange(user, 'owntracks', start, end)
+    await deps.insertLocations(user, gpsPoints)
+  }
 
   return points.length
 }
