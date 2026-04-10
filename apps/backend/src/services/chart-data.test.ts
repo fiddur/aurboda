@@ -248,6 +248,68 @@ describe('getChartData', () => {
     expect(result.buckets).toEqual([])
     expect(db.query).not.toHaveBeenCalled()
   })
+
+  test('activity_type with count aggregation uses count(*)', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [{ bucket_start: new Date('2026-01-01T00:00:00Z'), value: 5n }],
+    } as never)
+
+    const result = await getChartData('testuser', {
+      aggregation: 'count',
+      bucket_size: '1d',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'sex',
+      source_type: 'activity_type',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(result.buckets).toHaveLength(1)
+    expect((result.buckets[0] as { value: number }).value).toBe(5)
+    const sql = vi.mocked(db.query).mock.calls[0][1] as string
+    expect(sql).toContain('count(*)')
+  })
+
+  test('activity_type with breakdown_field returns breakdown buckets', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        { bucket_start: new Date('2026-01-01T00:00:00Z'), field_value: 'Sara', value: 2 },
+        { bucket_start: new Date('2026-01-01T00:00:00Z'), field_value: 'Other', value: 1 },
+        { bucket_start: new Date('2026-01-08T00:00:00Z'), field_value: 'Sara', value: 3 },
+      ],
+    } as never)
+
+    const result = await getChartData('testuser', {
+      aggregation: 'count',
+      breakdown_field: 'partner',
+      bucket_size: '1w',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'sex',
+      source_type: 'activity_type',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(result.breakdown_field).toBe('partner')
+    expect(result.breakdown_series).toEqual(['Other', 'Sara'])
+    expect(result.buckets).toHaveLength(2)
+
+    const first = result.buckets[0] as { series: Record<string, number> }
+    expect(first.series).toEqual({ Other: 1, Sara: 2 })
+  })
+
+  test('breakdown_field with invalid name returns empty', async () => {
+    const result = await getChartData('testuser', {
+      aggregation: 'count',
+      breakdown_field: 'DROP TABLE',
+      bucket_size: '1d',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'test',
+      source_type: 'activity_type',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(result.buckets).toEqual([])
+    expect(db.query).not.toHaveBeenCalled()
+  })
 })
 
 describe('buildBucketExpr', () => {
