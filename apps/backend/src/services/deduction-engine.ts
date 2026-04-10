@@ -56,6 +56,7 @@ export interface DeductionEngineDeps {
     ranges: TimeRange[],
     data: Record<string, unknown>,
     ruleId: string,
+    ruleName: string,
   ) => Promise<string[]>
   deleteStaleRuleActivities: (
     user: string,
@@ -264,6 +265,7 @@ export const evaluateRule = async (
       result,
       rule.output_data ?? {},
       rule.id,
+      rule.name,
     )
     return { affected_ids: enrichedIds, would_affect: enrichedIds.length }
   }
