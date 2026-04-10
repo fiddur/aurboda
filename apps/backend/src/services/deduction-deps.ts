@@ -117,6 +117,55 @@ const getActivitiesWithData = async (
   }))
 }
 
+const getActivitiesWithDataFilters = async (
+  user: string,
+  activityType: string,
+  filters: Array<{ field: string; operator: string; value?: string | number | boolean }>,
+  window: EvaluationWindow,
+): Promise<TimeRange[]> => {
+  const params: unknown[] = [activityType, window.start, window.end]
+  const whereClauses: string[] = []
+
+  for (const filter of filters) {
+    if (!/^[a-z][a-z0-9_]*$/.test(filter.field)) return []
+
+    switch (filter.operator) {
+      case 'eq':
+        whereClauses.push(`AND data->>'${filter.field}' = $${params.length + 1}`)
+        params.push(String(filter.value))
+        break
+      case 'neq':
+        whereClauses.push(
+          `AND (data->>'${filter.field}' IS NULL OR data->>'${filter.field}' != $${params.length + 1})`,
+        )
+        params.push(String(filter.value))
+        break
+      case 'exists':
+        whereClauses.push(`AND data ? '${filter.field}'`)
+        break
+      case 'not_exists':
+        whereClauses.push(`AND (data IS NULL OR NOT data ? '${filter.field}')`)
+        break
+    }
+  }
+
+  const result = await query(
+    user,
+    `SELECT start_time, end_time FROM activities
+     WHERE activity_type = $1
+       AND deleted_at IS NULL
+       AND start_time < $3
+       AND (end_time > $2 OR end_time IS NULL)
+       ${whereClauses.join(' ')}
+     ORDER BY start_time`,
+    params,
+  )
+  return result.rows.map((r) => ({
+    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + 60 * 60 * 1000),
+    start: r.start_time as Date,
+  }))
+}
+
 const getLocationVisits = async (
   user: string,
   locationName: string,
@@ -192,6 +241,7 @@ export const createDefaultEngineDeps = (): DeductionEngineDeps => ({
   enrichActivities,
   getActivities,
   getActivitiesWithData,
+  getActivitiesWithDataFilters,
   getEarliestActivityTime,
   getLocationVisits,
   getScreentime,

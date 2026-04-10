@@ -81,6 +81,7 @@ vi.mock('./services/deduction-deps', () => ({
     enrichActivities: vi.fn().mockResolvedValue([]),
     getActivities: vi.fn().mockResolvedValue([]),
     getActivitiesWithData: vi.fn().mockResolvedValue([]),
+    getActivitiesWithDataFilters: vi.fn().mockResolvedValue([]),
     getEarliestActivityTime: vi.fn().mockResolvedValue(null),
     getLocationVisits: vi.fn().mockResolvedValue([]),
     getScreentime: vi.fn().mockResolvedValue([]),

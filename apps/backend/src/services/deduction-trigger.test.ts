@@ -18,6 +18,7 @@ const makeDeps = (overrides: Partial<DeductionTriggerDeps> = {}): DeductionTrigg
     enrichActivities: vi.fn(),
     getActivities: vi.fn(),
     getActivitiesWithData: vi.fn(),
+    getActivitiesWithDataFilters: vi.fn(),
     getEarliestActivityTime: vi.fn(),
     getLocationVisits: vi.fn(),
     getScreentime: vi.fn(),
