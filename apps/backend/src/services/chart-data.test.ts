@@ -269,18 +269,18 @@ describe('getChartData', () => {
     expect(sql).toContain('count(*)')
   })
 
-  test('activity_type with breakdown_field returns breakdown buckets', async () => {
+  test('activity_type with breakdown_fields returns breakdown buckets', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [
-        { bucket_start: new Date('2026-01-01T00:00:00Z'), field_value: 'Sara', value: 2 },
-        { bucket_start: new Date('2026-01-01T00:00:00Z'), field_value: 'Other', value: 1 },
-        { bucket_start: new Date('2026-01-08T00:00:00Z'), field_value: 'Sara', value: 3 },
+        { bucket_start: new Date('2026-01-01T00:00:00Z'), field_0: 'Sara', value: 2 },
+        { bucket_start: new Date('2026-01-01T00:00:00Z'), field_0: 'Other', value: 1 },
+        { bucket_start: new Date('2026-01-08T00:00:00Z'), field_0: 'Sara', value: 3 },
       ],
     } as never)
 
     const result = await getChartData('testuser', {
       aggregation: 'count',
-      breakdown_field: 'partner',
+      breakdown_fields: ['partner'],
       bucket_size: '1w',
       end: '2026-01-31T23:59:59Z',
       pattern: 'sex',
@@ -288,7 +288,7 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(result.breakdown_field).toBe('partner')
+    expect(result.breakdown_fields).toEqual(['partner'])
     expect(result.breakdown_series).toEqual(['Other', 'Sara'])
     expect(result.buckets).toHaveLength(2)
 
@@ -296,10 +296,41 @@ describe('getChartData', () => {
     expect(first.series).toEqual({ Other: 1, Sara: 2 })
   })
 
-  test('breakdown_field with invalid name returns empty', async () => {
+  test('multi-field breakdown produces compound series keys', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        {
+          bucket_start: new Date('2026-01-01T00:00:00Z'),
+          field_0: 'spanda',
+          field_1: 'external',
+          value: 3.5,
+        },
+        { bucket_start: new Date('2026-01-01T00:00:00Z'), field_0: 'spanda', field_1: 'laptop', value: 1.0 },
+      ],
+    } as never)
+
+    const result = await getChartData('testuser', {
+      aggregation: 'sum',
+      breakdown_fields: ['device', 'display'],
+      bucket_size: '1d',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'computer_active',
+      source_type: 'activity_type',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(result.breakdown_fields).toEqual(['device', 'display'])
+    expect(result.breakdown_series).toEqual(['spanda / external', 'spanda / laptop'])
+
+    const first = result.buckets[0] as { series: Record<string, number> }
+    expect(first.series['spanda / external']).toBe(3.5)
+    expect(first.series['spanda / laptop']).toBe(1.0)
+  })
+
+  test('breakdown_fields with invalid name returns empty', async () => {
     const result = await getChartData('testuser', {
       aggregation: 'count',
-      breakdown_field: 'DROP TABLE',
+      breakdown_fields: ['DROP TABLE'],
       bucket_size: '1d',
       end: '2026-01-31T23:59:59Z',
       pattern: 'test',

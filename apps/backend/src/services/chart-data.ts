@@ -57,7 +57,7 @@ export const buildBucketExpr = (
 
 export interface ChartDataInput {
   aggregation: 'count' | 'mean' | 'sum'
-  breakdown_field?: string
+  breakdown_fields?: string[]
   bucket_size: '1m' | '5m' | '15m' | '1M' | '1d' | '1h' | '1w'
   end: string
   pattern?: string
@@ -209,49 +209,58 @@ const queryActivityTypeBuckets = async (
 }
 
 /**
- * Query activity type data broken down by a data field's distinct values.
+ * Query activity type data broken down by one or more data fields.
+ * Multiple fields produce compound series keys like "spanda / external_monitor".
  */
 const queryActivityTypeBreakdown = async (
   user: string,
   activityType: string,
-  field: string,
+  fields: string[],
   start: string,
   end: string,
   bucketSize: string,
   aggregation = 'sum',
 ): Promise<{ buckets: ChartDataBreakdownBucket[]; series: string[] }> => {
-  // Sanitize field name
-  if (!/^[a-z][a-z0-9_]*$/.test(field)) return { buckets: [], series: [] }
+  // Sanitize all field names
+  for (const field of fields) {
+    if (!/^[a-z][a-z0-9_]*$/.test(field)) return { buckets: [], series: [] }
+  }
 
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
   const valueExpr =
     aggregation === 'count'
       ? 'count(*)'
       : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
+
+  // Build SELECT and GROUP BY for each breakdown field
+  const fieldSelects = fields.map((f, i) => `COALESCE(data->>'${f}', '(none)') AS field_${i}`)
+  const fieldGroupBys = fields.map((_, i) => `field_${i}`)
+
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
-            COALESCE(data->>'${field}', '(none)') AS field_value,
+            ${fieldSelects.join(', ')},
             ${valueExpr} AS value
        FROM activities
       WHERE activity_type = $${bucket.params.length + 1}
         AND deleted_at IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
-      GROUP BY 1, 2
+      GROUP BY 1, ${fieldGroupBys.join(', ')}
       ORDER BY 1`,
     [...bucket.params, activityType, start, end],
   )
 
-  // Pivot rows into breakdown buckets
+  // Pivot rows into breakdown buckets with compound series keys
   const seriesSet = new Set<string>()
   const bucketMap = new Map<string, Record<string, number>>()
   for (const row of result.rows) {
     const bucketStart = (row.bucket_start as Date).toISOString()
-    const fieldValue = row.field_value as string
+    const keyParts = fields.map((_, i) => row[`field_${i}`] as string)
+    const seriesKey = keyParts.join(' / ')
     const value = Number(row.value)
-    seriesSet.add(fieldValue)
+    seriesSet.add(seriesKey)
     const existing = bucketMap.get(bucketStart) ?? {}
-    existing[fieldValue] = value
+    existing[seriesKey] = value
     bucketMap.set(bucketStart, existing)
   }
 
@@ -272,24 +281,29 @@ export const getChartData = async (
   input: ChartDataInput,
 ): Promise<{
   buckets: (ChartDataBucket | ChartDataBreakdownBucket)[]
-  breakdown_field?: string
+  breakdown_fields?: string[]
   breakdown_series?: string[]
 }> => {
   const { aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } = input
 
   // Breakdown mode for activity types
-  if (source_type === 'activity_type' && pattern && input.breakdown_field) {
+  if (
+    source_type === 'activity_type' &&
+    pattern &&
+    input.breakdown_fields &&
+    input.breakdown_fields.length > 0
+  ) {
     const result = await queryActivityTypeBreakdown(
       user,
       pattern,
-      input.breakdown_field,
+      input.breakdown_fields,
       start,
       end,
       bucket_size,
       aggregation,
     )
     return {
-      breakdown_field: input.breakdown_field,
+      breakdown_fields: input.breakdown_fields,
       breakdown_series: result.series,
       buckets: result.buckets,
     }
