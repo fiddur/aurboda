@@ -2,22 +2,20 @@
  * Chart exploration page — configurable trend + bar chart with URL-driven state.
  *
  * Reads/writes config via query params so charts are shareable/bookmarkable:
- *   /chart?source_type=tag&tag_definition_id=<name>&lookback_days=90&display_period=monthly&half_life_days=15
+ *   /chart?source_type=activity_type&pattern=coffee&lookback_days=90&display_period=monthly&half_life_days=15
  *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=mean
- *   /chart?source_type=tag&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
+ *   /chart?source_type=activity_type&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
  */
 import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
-import { useCallback, useMemo, useState } from 'preact/hooks'
+import { useCallback, useState } from 'preact/hooks'
 
 import { BarChart } from '../../components/charts/BarChart'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { MetricPicker } from '../../components/MetricPicker'
-import { TagPicker } from '../../components/TagPicker'
 import {
-  type ActivityTypeDefinition,
   fetchActivityTypeDefinitions,
   fetchChartData,
   type FetchChartDataParams,
@@ -107,6 +105,9 @@ function syncUrl(state: ChartState) {
   if (state.source_type === 'metric' && state.aggregation !== 'count') {
     params.set('aggregation', state.aggregation)
   }
+  if (state.breakdown_fields.length > 0) {
+    params.set('breakdown_fields', state.breakdown_fields.join(','))
+  }
   history.replaceState(null, '', `${window.location.pathname}?${params}`)
 }
 
@@ -138,58 +139,6 @@ function CategoryPicker({ value, onChange }: { value: string; onChange: (v: stri
   )
 }
 
-/** Activity type picker -- searchable dropdown of all activity type definitions. */
-function ActivityTypePicker({
-  definitions,
-  selectedId,
-  onChange,
-}: {
-  definitions: ActivityTypeDefinition[]
-  selectedId: string
-  onChange: (id: string, pattern: string) => void
-}) {
-  const [search, setSearch] = useState('')
-  const filtered = useMemo(
-    () =>
-      search
-        ? definitions.filter(
-            (d) =>
-              (d.display_name || d.name).toLowerCase().includes(search.toLowerCase()) ||
-              (d.aliases ?? []).some((a) => a.toLowerCase().includes(search.toLowerCase())),
-          )
-        : definitions,
-    [definitions, search],
-  )
-
-  return (
-    <div>
-      <input
-        type="text"
-        value={search}
-        onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
-        placeholder="Search activity types..."
-      />
-      <select
-        value={selectedId}
-        onChange={(e) => {
-          const name = (e.target as HTMLSelectElement).value
-          const def = definitions.find((d) => d.name === name)
-          onChange(name, def ? (def.aliases ?? []).join('|') : '')
-        }}
-        style={{ marginTop: '0.25rem' }}
-      >
-        <option value="">Select an activity type...</option>
-        {filtered.map((def) => (
-          <option key={def.name} value={def.name}>
-            {def.icon ? `${def.icon} ` : ''}
-            {def.display_name || def.name}
-          </option>
-        ))}
-      </select>
-    </div>
-  )
-}
-
 /** Source picker shared between both chart modes. */
 function SourcePicker({
   state,
@@ -216,31 +165,13 @@ function SourcePicker({
           }}
         >
           <option value="activity_type">Activity Type</option>
-          <option value="tag">Activity (count)</option>
           <option value="metric">Metric</option>
           <option value="productivity_category">Screentime Category</option>
         </select>
       </label>
 
       <label class="source-picker">
-        {state.source_type === 'tag' && activityTypes.length > 0 ? (
-          <>
-            Activity Type
-            <ActivityTypePicker
-              definitions={activityTypes}
-              selectedId={state.tag_definition_id}
-              onChange={(id, pattern) => onUpdate({ tag_definition_id: id, pattern })}
-            />
-          </>
-        ) : state.source_type === 'tag' ? (
-          <>
-            Tags
-            <TagPicker
-              selectedTags={state.pattern ? state.pattern.split('|').filter(Boolean) : []}
-              onChange={(tags) => onUpdate({ pattern: tags.join('|') })}
-            />
-          </>
-        ) : state.source_type === 'productivity_category' ? (
+        {state.source_type === 'productivity_category' ? (
           <>
             Category
             <CategoryPicker value={state.pattern} onChange={(pattern) => onUpdate({ pattern })} />
@@ -584,7 +515,10 @@ function buildWidgetFromState(state: ChartState, title: string): DashboardWidget
       half_life_days: state.half_life_days,
       lookback_days: state.lookback_days,
       pattern: state.pattern,
-      source_type: state.source_type === 'tag' || state.source_type === 'metric' ? state.source_type : 'tag',
+      source_type:
+        state.source_type === 'activity_type' || state.source_type === 'metric'
+          ? state.source_type
+          : 'activity_type',
       ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
       ...(title ? { title } : {}),
     },
@@ -789,8 +723,7 @@ export function Chart() {
               ? {
                   aggregation: state.aggregation,
                   breakdown_fields: state.breakdown_fields,
-                  bucket_size:
-                    state.display_period === 'daily' ? '1d' : state.display_period === 'weekly' ? '1w' : '1M',
+                  bucket_size: '1d',
                   end,
                   pattern: state.pattern || undefined,
                   source_type: state.source_type,
