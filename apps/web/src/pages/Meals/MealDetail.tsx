@@ -13,6 +13,7 @@ import {
   type FoodItemEntity,
   updateMealApi,
 } from '../../state/api'
+import { LocationInfo, MEAL_LOCATION_WINDOW_MS } from '../EntityDetail/LocationInfo'
 import './MealDetail.css'
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -555,6 +556,11 @@ export function MealDetail() {
               <span class="detail-value">—</span>
             )}
           </div>
+
+          {/* Location */}
+          {!isEditing && (
+            <LocationInfo start={meal.time} end={new Date(meal.time.getTime() + MEAL_LOCATION_WINDOW_MS)} />
+          )}
 
           {/* Food Items */}
           <div class="detail-row detail-row-block">

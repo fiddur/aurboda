@@ -728,6 +728,86 @@ a.entity-type-badge:hover {
   color: #dc2626;
 }
 
+/* Location info */
+.location-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.location-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #374151;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.location-link:hover {
+  border-bottom-color: #673ab8;
+}
+
+.location-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.location-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: #374151;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.location-entry:hover {
+  color: #673ab8;
+}
+
+.location-name {
+  flex-shrink: 0;
+}
+
+.location-duration {
+  color: #9ca3af;
+  font-size: 0.8rem;
+}
+
+.field-row-top {
+  align-items: flex-start;
+}
+
+/* Activity GPS map */
+.activity-map-container {
+  width: 100%;
+  height: 300px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 1rem;
+}
+
+.activity-map-container .leaflet-container {
+  height: 100%;
+  width: 100%;
+}
+
+.activity-map-highlight {
+  width: 14px;
+  height: 14px;
+  background: #673ab8;
+  border: 2px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+}
+
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
   .deleted-banner {
@@ -758,6 +838,30 @@ a.entity-type-badge:hover {
 
   .field-value {
     color: #d1d5db;
+  }
+
+  .location-link {
+    color: #d1d5db;
+  }
+
+  .location-link:hover {
+    border-bottom-color: #8b5cf6;
+  }
+
+  .location-entry {
+    color: #d1d5db;
+  }
+
+  .location-entry:hover {
+    color: #8b5cf6;
+  }
+
+  .location-duration {
+    color: #6b7280;
+  }
+
+  .activity-map-container {
+    border-color: #374151;
   }
 
   .entity-actions {

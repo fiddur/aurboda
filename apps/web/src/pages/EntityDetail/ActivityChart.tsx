@@ -22,6 +22,7 @@ interface ActivityChartProps {
   end: Date
   stages?: SleepStage[]
   defaultMetrics?: string[]
+  onHoverTime?: (time: Date | null) => void
 }
 
 const CHART_HEIGHT = 260
@@ -337,6 +338,7 @@ const renderChart = ({
   end,
   svgRef,
   tooltipRef,
+  onHoverTimeRef,
 }: {
   containerRef: { current: HTMLDivElement | null }
   hasHypnogram: boolean
@@ -346,6 +348,7 @@ const renderChart = ({
   end: Date
   svgRef: { current: SVGSVGElement | null }
   tooltipRef: { current: HTMLDivElement | null }
+  onHoverTimeRef: { current: ((time: Date | null) => void) | undefined }
 }) => {
   if (!svgRef.current || !containerRef.current) return
 
@@ -400,6 +403,7 @@ const renderChart = ({
     .on('mousemove', (event: MouseEvent) => {
       const [mx] = d3.pointer(event)
       const time = xScale.invert(mx)
+      onHoverTimeRef.current?.(time)
 
       crosshair.attr('x1', mx).attr('x2', mx).style('display', null)
 
@@ -424,6 +428,7 @@ const renderChart = ({
     .on('mouseleave', () => {
       crosshair.style('display', 'none')
       if (tooltip) tooltip.style.display = 'none'
+      onHoverTimeRef.current?.(null)
     })
 }
 
@@ -521,10 +526,19 @@ const useMetricChartData = (start: Date, end: Date, chartWidthPx: number) => {
   })
 }
 
-export const ActivityChart = ({ start, end, stages, defaultMetrics = [] }: ActivityChartProps) => {
+export const ActivityChart = ({
+  start,
+  end,
+  stages,
+  defaultMetrics = [],
+  onHoverTime,
+}: ActivityChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
+  const onHoverTimeRef = useRef(onHoverTime)
+
+  onHoverTimeRef.current = onHoverTime
 
   // Measure chart inner width (container minus margins) for pixel-accurate bucket sizing
   const [chartWidthPx, setChartWidthPx] = useState(0)
@@ -617,6 +631,7 @@ export const ActivityChart = ({ start, end, stages, defaultMetrics = [] }: Activ
         end,
         svgRef,
         tooltipRef,
+        onHoverTimeRef,
       }),
     [start, end, stages, hasHypnogram, overlays],
   )

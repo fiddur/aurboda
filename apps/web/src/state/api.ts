@@ -54,6 +54,7 @@ import type {
   LocationsResponse,
   NamedLocation,
   NamedLocationsResponse,
+  RawLocationsResponse,
   OuraSyncResponse,
   OuraSyncStatusResponse,
   PeriodMetricStats,
@@ -526,6 +527,27 @@ export const fetchPlaceVisits = async (start: Date, end: Date): Promise<PlaceVis
     durationMinutes: place.duration,
     end_time: new Date(place.end_time),
     start_time: new Date(place.start_time),
+  }))
+}
+
+// Fetch raw GPS location points for the specified date range
+export const fetchRawLocations = async (
+  start: Date,
+  end: Date,
+): Promise<{ lat: number; lon: number; time: Date }[]> => {
+  const { token } = auth.value
+  const params: LocationsQuery = {
+    end: end.toISOString(),
+    start: start.toISOString(),
+  }
+  const response = await axios.get<RawLocationsResponse>(`${API_URL}/locations/raw`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+
+  return (response.data.data ?? []).map((point) => ({
+    ...point,
+    time: new Date(point.time),
   }))
 }
 
