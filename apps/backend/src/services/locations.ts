@@ -238,7 +238,7 @@ export const getLocationPoints = async (user: string, start: Date, end: Date): P
     user,
     `SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time
      FROM locations
-     WHERE time >= $1 AND time <= $2
+     WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
      ORDER BY time`,
     [start, end],
   )

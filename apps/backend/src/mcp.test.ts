@@ -55,7 +55,7 @@ vi.mock('./db', () => ({
   getUserSettings: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertActivityTypeDefinition: vi.fn(),
-  insertLocation: vi.fn().mockResolvedValue(undefined),
+  insertLocations: vi.fn().mockResolvedValue(undefined),
   insertDeductionRule: vi.fn().mockResolvedValue({
     conditions: [],
     enabled: true,

@@ -24,7 +24,7 @@ import type {
 import {
   deleteGarminActivityWithWrongType,
   insertActivity,
-  insertLocation,
+  insertLocations,
   insertRawRecord,
   insertTimeSeries,
   softDeleteLocationRange,
@@ -68,7 +68,7 @@ export const garminDataTypes: GarminDataType[] = [
 export interface GarminProcessDeps {
   deleteGarminActivityWithWrongType: typeof deleteGarminActivityWithWrongType
   insertActivity: typeof insertActivity
-  insertLocation: typeof insertLocation
+  insertLocations: typeof insertLocations
   insertRawRecord: typeof insertRawRecord
   insertTimeSeries: typeof insertTimeSeries
   softDeleteLocationRange: typeof softDeleteLocationRange
@@ -77,7 +77,7 @@ export interface GarminProcessDeps {
 const defaultDeps: GarminProcessDeps = {
   deleteGarminActivityWithWrongType,
   insertActivity,
-  insertLocation,
+  insertLocations,
   insertRawRecord,
   insertTimeSeries,
   softDeleteLocationRange,
@@ -602,7 +602,8 @@ export const extractNumericValue = (value: unknown): number | null => {
   if (value == null) return null
   if (typeof value === 'number') return value
   if (typeof value === 'object' && 'parsedValue' in (value as Record<string, unknown>)) {
-    return (value as { parsedValue: number }).parsedValue
+    const parsed = (value as { parsedValue: unknown }).parsedValue
+    return typeof parsed === 'number' ? parsed : null
   }
   return null
 }
@@ -683,7 +684,8 @@ export const processActivityDetail = async (
     }
   }
 
-  const firstTs = extractNumericValue(data.activityDetailMetrics[0]!.metrics[tsIdx])!
+  const firstTs = extractNumericValue(data.activityDetailMetrics[0]!.metrics[tsIdx])
+  if (!firstTs) return 0
 
   await deps.insertRawRecord(
     user,
@@ -692,14 +694,12 @@ export const processActivityDetail = async (
 
   if (points.length > 0) await deps.insertTimeSeries(user, points)
 
-  // Insert GPS locations and soft-delete conflicting OwnTracks data
+  // Batch-insert GPS locations and soft-delete conflicting OwnTracks data
   if (gpsPoints.length > 0) {
     const start = gpsPoints[0].time
     const end = gpsPoints[gpsPoints.length - 1].time
     await deps.softDeleteLocationRange(user, 'owntracks', start, end)
-    for (const gps of gpsPoints) {
-      await deps.insertLocation(user, gps)
-    }
+    await deps.insertLocations(user, gpsPoints)
   }
 
   return points.length

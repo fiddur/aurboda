@@ -155,6 +155,7 @@ export {
   getNamedLocations,
   insertDetectedLocation,
   insertLocation,
+  insertLocations,
   insertNamedLocation,
   insertPlace,
   softDeleteLocationRange,

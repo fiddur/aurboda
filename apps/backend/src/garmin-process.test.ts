@@ -8,7 +8,7 @@ import { extractNumericValue, processActivityDetail, processGarminData } from '.
 const mockDeps: GarminProcessDeps = {
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
-  insertLocation: vi.fn().mockResolvedValue(undefined),
+  insertLocations: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
   softDeleteLocationRange: vi.fn().mockResolvedValue(undefined),
@@ -1403,20 +1403,11 @@ describe('processActivityDetail', () => {
       new Date(1700000062000),
     )
 
-    // Should insert 2 GPS points
-    expect(mockDeps.insertLocation).toHaveBeenCalledTimes(2)
-    expect(mockDeps.insertLocation).toHaveBeenCalledWith(user, {
-      lat: 57.65,
-      lon: 12.62,
-      source: 'garmin',
-      time: new Date(1700000001000),
-    })
-    expect(mockDeps.insertLocation).toHaveBeenCalledWith(user, {
-      lat: 57.66,
-      lon: 12.63,
-      source: 'garmin',
-      time: new Date(1700000062000),
-    })
+    // Should batch-insert 2 GPS points
+    expect(mockDeps.insertLocations).toHaveBeenCalledWith(user, [
+      { lat: 57.65, lon: 12.62, source: 'garmin', time: new Date(1700000001000) },
+      { lat: 57.66, lon: 12.63, source: 'garmin', time: new Date(1700000062000) },
+    ])
   })
 
   test('downsamples GPS to ~1 point per minute', async () => {
@@ -1437,13 +1428,9 @@ describe('processActivityDetail', () => {
 
     await processActivityDetail(user, detail, mockDeps)
 
-    expect(mockDeps.insertLocation).toHaveBeenCalledTimes(1)
-    expect(mockDeps.insertLocation).toHaveBeenCalledWith(user, {
-      lat: 57.65,
-      lon: 12.62,
-      source: 'garmin',
-      time: new Date(1700000001000),
-    })
+    expect(mockDeps.insertLocations).toHaveBeenCalledWith(user, [
+      { lat: 57.65, lon: 12.62, source: 'garmin', time: new Date(1700000001000) },
+    ])
   })
 
   test('does not insert GPS when latitude/longitude are 0', async () => {
@@ -1459,7 +1446,7 @@ describe('processActivityDetail', () => {
 
     await processActivityDetail(user, detail, mockDeps)
 
-    expect(mockDeps.insertLocation).not.toHaveBeenCalled()
+    expect(mockDeps.insertLocations).not.toHaveBeenCalled()
     expect(mockDeps.softDeleteLocationRange).not.toHaveBeenCalled()
   })
 })

@@ -11,6 +11,8 @@ import type {
 /**
  * Location, Place, Named Location, and Detected Location CRUD operations.
  */
+import format from 'pg-format'
+
 import { query } from './connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update.ts'
 import { mapDetectedLocationRow, mapNamedLocationRow } from './row-mappers.ts'
@@ -35,6 +37,33 @@ export const insertLocation = async (user: string, location: Location) => {
       location.velocity,
       location.regions || [],
     ],
+  )
+}
+
+/** Batch-insert multiple locations in a single query. */
+export const insertLocations = async (user: string, locations: Location[]): Promise<void> => {
+  if (locations.length === 0) return
+
+  const values = locations.map((loc) => [
+    loc.source || 'owntracks',
+    loc.time,
+    loc.lon,
+    loc.lat,
+    loc.accuracy ?? null,
+    loc.altitude ?? null,
+    loc.velocity ?? null,
+    loc.regions || [],
+  ])
+
+  await query(
+    user,
+    format(
+      `INSERT INTO locations (source, time, location, accuracy, altitude, velocity, regions)
+       SELECT v.source, v.time, ST_MakePoint(v.lon, v.lat)::geography, v.accuracy, v.altitude, v.velocity, v.regions
+       FROM (VALUES %L) AS v(source, time, lon, lat, accuracy, altitude, velocity, regions)
+       ON CONFLICT (source, time) DO NOTHING`,
+      values,
+    ),
   )
 }
 
