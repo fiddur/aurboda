@@ -3,13 +3,15 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { GarminProcessDeps } from './garmin-process.ts'
 import type { GarminActivityDetailResponse } from './garmin.ts'
 
-import { processActivityDetail, processGarminData } from './garmin-process.ts'
+import { extractNumericValue, processActivityDetail, processGarminData } from './garmin-process.ts'
 
 const mockDeps: GarminProcessDeps = {
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
+  insertLocation: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
+  softDeleteLocationRange: vi.fn().mockResolvedValue(undefined),
 }
 
 /** Helper: noon UTC for a given date string. */
@@ -1260,5 +1262,231 @@ describe('processActivityDetail', () => {
         expect.objectContaining({ metric: 'heart_rate', value: 80 }),
       ]),
     )
+  })
+
+  test('extracts running dynamics metrics (cadence, stride, power, etc)', async () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [
+        {
+          metrics: [
+            { source: '1.7E12', parsedValue: 1700000001000 }, // directTimestamp
+            { source: '167.0', parsedValue: 167 }, // directDoubleCadence
+            87.3, // directStrideLength (cm)
+            { source: '290.0', parsedValue: 290 }, // directGroundContactTime
+            9.09, // directVerticalRatio
+            161.2, // directElevation
+            { source: '362.0', parsedValue: 362 }, // directPower
+            2.42, // directSpeed
+            7.94, // directVerticalOscillation
+            -0.2, // directVerticalSpeed (negative = descending)
+            2.43, // directGradeAdjustedSpeed
+          ],
+        },
+      ],
+      activityId: 88888,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directDoubleCadence', metricsIndex: 1, unit: { key: 'spm' } },
+        { key: 'directStrideLength', metricsIndex: 2, unit: { key: 'centimeter' } },
+        { key: 'directGroundContactTime', metricsIndex: 3, unit: { key: 'ms' } },
+        { key: 'directVerticalRatio', metricsIndex: 4, unit: { key: 'dimensionless' } },
+        { key: 'directElevation', metricsIndex: 5, unit: { key: 'meter' } },
+        { key: 'directPower', metricsIndex: 6, unit: { key: 'watt' } },
+        { key: 'directSpeed', metricsIndex: 7, unit: { key: 'mps' } },
+        { key: 'directVerticalOscillation', metricsIndex: 8, unit: { key: 'centimeter' } },
+        { key: 'directVerticalSpeed', metricsIndex: 9, unit: { key: 'mps' } },
+        { key: 'directGradeAdjustedSpeed', metricsIndex: 10, unit: { key: 'mps' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    const t = new Date(1700000001000)
+
+    expect(points).toEqual(
+      expect.arrayContaining([
+        { metric: 'run_cadence', source: 'garmin', time: t, unit: 'spm', value: 167 },
+        { metric: 'stride_length', source: 'garmin', time: t, unit: 'm', value: 0.873 },
+        { metric: 'ground_contact_time', source: 'garmin', time: t, unit: 'ms', value: 290 },
+        { metric: 'vertical_ratio', source: 'garmin', time: t, unit: 'percent', value: 9.09 },
+        { metric: 'elevation', source: 'garmin', time: t, unit: 'm', value: 161.2 },
+        { metric: 'power', source: 'garmin', time: t, unit: 'W', value: 362 },
+        { metric: 'speed', source: 'garmin', time: t, unit: 'm/s', value: 2.42 },
+        { metric: 'vertical_oscillation', source: 'garmin', time: t, unit: 'cm', value: 7.94 },
+        { metric: 'vertical_speed', source: 'garmin', time: t, unit: 'm/s', value: -0.2 },
+        { metric: 'grade_adjusted_speed', source: 'garmin', time: t, unit: 'm/s', value: 2.43 },
+      ]),
+    )
+  })
+
+  test('handles parsedValue objects in metric values', async () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [
+        {
+          metrics: [
+            { source: '1.7E12', parsedValue: 1700000001000 },
+            { source: '74.0', parsedValue: 74 },
+          ],
+        },
+      ],
+      activityId: 77777,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directHeartRate', metricsIndex: 1, unit: { key: 'bpm' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    expect(points).toHaveLength(1)
+    expect(points[0]).toMatchObject({ metric: 'heart_rate', value: 74 })
+  })
+
+  test('allows negative elevation values', async () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [{ metrics: [1700000001000, -10.5] }],
+      activityId: 66666,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directElevation', metricsIndex: 1, unit: { key: 'meter' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    expect(points).toHaveLength(1)
+    expect(points[0]).toMatchObject({ metric: 'elevation', value: -10.5 })
+  })
+
+  test('converts stride length from cm to m', async () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [{ metrics: [1700000001000, 95.5] }],
+      activityId: 55555,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directStrideLength', metricsIndex: 1, unit: { key: 'centimeter' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    expect(points).toHaveLength(1)
+    expect(points[0]).toMatchObject({ metric: 'stride_length', value: 0.955 })
+  })
+
+  test('extracts GPS locations and soft-deletes owntracks', async () => {
+    // GPS points 61s apart — both should be included (> 60s downsample interval)
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [
+        { metrics: [1700000001000, 57.65, 12.62] },
+        { metrics: [1700000062000, 57.66, 12.63] },
+      ],
+      activityId: 44444,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directLatitude', metricsIndex: 1, unit: { key: 'dd' } },
+        { key: 'directLongitude', metricsIndex: 2, unit: { key: 'dd' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    // Should soft-delete owntracks in the time range
+    expect(mockDeps.softDeleteLocationRange).toHaveBeenCalledWith(
+      user,
+      'owntracks',
+      new Date(1700000001000),
+      new Date(1700000062000),
+    )
+
+    // Should insert 2 GPS points
+    expect(mockDeps.insertLocation).toHaveBeenCalledTimes(2)
+    expect(mockDeps.insertLocation).toHaveBeenCalledWith(user, {
+      lat: 57.65,
+      lon: 12.62,
+      source: 'garmin',
+      time: new Date(1700000001000),
+    })
+    expect(mockDeps.insertLocation).toHaveBeenCalledWith(user, {
+      lat: 57.66,
+      lon: 12.63,
+      source: 'garmin',
+      time: new Date(1700000062000),
+    })
+  })
+
+  test('downsamples GPS to ~1 point per minute', async () => {
+    // 3 points within 60 seconds — only first should be inserted
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [
+        { metrics: [1700000001000, 57.65, 12.62] },
+        { metrics: [1700000030000, 57.66, 12.63] },
+        { metrics: [1700000059000, 57.67, 12.64] },
+      ],
+      activityId: 33333,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directLatitude', metricsIndex: 1, unit: { key: 'dd' } },
+        { key: 'directLongitude', metricsIndex: 2, unit: { key: 'dd' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    expect(mockDeps.insertLocation).toHaveBeenCalledTimes(1)
+    expect(mockDeps.insertLocation).toHaveBeenCalledWith(user, {
+      lat: 57.65,
+      lon: 12.62,
+      source: 'garmin',
+      time: new Date(1700000001000),
+    })
+  })
+
+  test('does not insert GPS when latitude/longitude are 0', async () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [{ metrics: [1700000001000, 0, 0] }],
+      activityId: 22222,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directLatitude', metricsIndex: 1, unit: { key: 'dd' } },
+        { key: 'directLongitude', metricsIndex: 2, unit: { key: 'dd' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    expect(mockDeps.insertLocation).not.toHaveBeenCalled()
+    expect(mockDeps.softDeleteLocationRange).not.toHaveBeenCalled()
+  })
+})
+
+// ============================================================================
+// extractNumericValue
+// ============================================================================
+
+describe('extractNumericValue', () => {
+  test('returns plain numbers as-is', () => {
+    expect(extractNumericValue(42)).toBe(42)
+    expect(extractNumericValue(0)).toBe(0)
+    expect(extractNumericValue(-5.5)).toBe(-5.5)
+  })
+
+  test('extracts parsedValue from objects', () => {
+    expect(extractNumericValue({ source: '77.0', parsedValue: 77 })).toBe(77)
+    expect(extractNumericValue({ source: '0.0', parsedValue: 0 })).toBe(0)
+  })
+
+  test('returns null for null/undefined', () => {
+    expect(extractNumericValue(null)).toBeNull()
+    expect(extractNumericValue(undefined)).toBeNull()
+  })
+
+  test('returns null for non-numeric types', () => {
+    expect(extractNumericValue('string')).toBeNull()
+    expect(extractNumericValue({})).toBeNull()
   })
 })

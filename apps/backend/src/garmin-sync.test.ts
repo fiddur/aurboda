@@ -16,9 +16,11 @@ vi.mock('./db', () => ({
   getActivitiesNeedingDetail: vi.fn().mockResolvedValue([]),
   getSyncState: vi.fn(),
   insertActivity: vi.fn(),
+  insertLocation: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn(),
   insertTimeSeries: vi.fn(),
   markActivityDetailSynced: vi.fn().mockResolvedValue(undefined),
+  softDeleteLocationRange: vi.fn().mockResolvedValue(undefined),
   upsertSyncState: vi.fn(),
 }))
 

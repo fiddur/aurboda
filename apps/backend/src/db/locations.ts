@@ -38,12 +38,27 @@ export const insertLocation = async (user: string, location: Location) => {
   )
 }
 
+/** Soft-delete locations from a given source within a time range. */
+export const softDeleteLocationRange = async (
+  user: string,
+  source: string,
+  start: Date,
+  end: Date,
+): Promise<void> => {
+  await query(
+    user,
+    `UPDATE locations SET deleted_at = NOW()
+     WHERE source = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL`,
+    [source, start, end],
+  )
+}
+
 export const getLocations = async (user: string, start: Date, end: Date) => {
   const result = await query(
     user,
     `SELECT time, ST_AsGeoJSON(location) AS location, regions
      FROM locations
-     WHERE time >= $1 AND time <= $2
+     WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
      ORDER BY time`,
     [start, end],
   )

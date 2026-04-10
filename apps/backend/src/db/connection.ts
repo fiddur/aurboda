@@ -498,6 +498,9 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE activity_type_definitions ALTER COLUMN icon TYPE TEXT`)
     await query(db, `ALTER TABLE activity_type_definitions ADD COLUMN IF NOT EXISTS data_schema JSONB`)
   }
+  if (existingTableNames.has('locations')) {
+    await query(db, `ALTER TABLE locations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
+  }
   if (existingTableNames.has('time_series')) {
     await query(db, `ALTER TABLE time_series ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
   }
