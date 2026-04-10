@@ -7,6 +7,11 @@ import { format } from 'date-fns'
 
 import { fetchPlaceVisits, type PlaceVisit } from '../../state/api'
 
+/** How far after a meal's time to look for location data (meals have no end_time). */
+export const MEAL_LOCATION_WINDOW_MS = 60 * 60_000 // 1 hour
+
+const LOCATION_STALE_TIME_MS = 5 * 60_000 // 5 minutes
+
 const SOURCE_COLORS: Record<string, string> = {
   detected: '#f97316',
   named: '#22c55e',
@@ -40,7 +45,7 @@ export const LocationInfo = ({ start, end }: { start: Date; end: Date }) => {
     enabled: end > start,
     queryFn: () => fetchPlaceVisits(start, end),
     queryKey: ['entity-places', start.toISOString(), end.toISOString()],
-    staleTime: 5 * 60 * 1000,
+    staleTime: LOCATION_STALE_TIME_MS,
   })
 
   if (!places || places.length === 0) return null

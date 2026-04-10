@@ -10,19 +10,18 @@ import { useEffect, useRef } from 'preact/hooks'
 import { fetchRawLocations } from '../../state/api'
 import { interpolatePosition } from './chart-utils'
 
-// Fix Leaflet default marker icon path issue with bundlers
-// @ts-expect-error - Leaflet marker icon fix
-delete L.Icon.Default.prototype._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-})
+const MIN_POINTS_FOR_PATH = 2
+const LOCATION_STALE_TIME_MS = 5 * 60_000 // 5 minutes
+const PATH_COLOR = '#673ab8'
+const PATH_WEIGHT = 3
+const PATH_OPACITY = 0.8
+const FIT_BOUNDS_PADDING = 20
 
+const HIGHLIGHT_MARKER_SIZE = 14
 const HIGHLIGHT_ICON = L.divIcon({
   className: 'activity-map-highlight',
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
+  iconSize: [HIGHLIGHT_MARKER_SIZE, HIGHLIGHT_MARKER_SIZE],
+  iconAnchor: [HIGHLIGHT_MARKER_SIZE / 2, HIGHLIGHT_MARKER_SIZE / 2],
 })
 
 interface ActivityMapProps {
@@ -39,12 +38,12 @@ export const ActivityMap = ({ start, end, hoverTime }: ActivityMapProps) => {
   const { data: points } = useQuery({
     queryFn: () => fetchRawLocations(start, end),
     queryKey: ['raw-locations', start.toISOString(), end.toISOString()],
-    staleTime: 5 * 60 * 1000,
+    staleTime: LOCATION_STALE_TIME_MS,
   })
 
   // Initialize map + draw polyline when points load
   useEffect(() => {
-    if (!mapContainerRef.current || !points || points.length < 2) return
+    if (!mapContainerRef.current || !points || points.length < MIN_POINTS_FOR_PATH) return
 
     // Clean up previous map if any
     if (mapRef.current) {
@@ -53,9 +52,7 @@ export const ActivityMap = ({ start, end, hoverTime }: ActivityMapProps) => {
       highlightMarkerRef.current = null
     }
 
-    const map = L.map(mapContainerRef.current, {
-      zoomControl: true,
-    })
+    const map = L.map(mapContainerRef.current, { zoomControl: true })
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -63,8 +60,12 @@ export const ActivityMap = ({ start, end, hoverTime }: ActivityMapProps) => {
     }).addTo(map)
 
     const latLngs: L.LatLngExpression[] = points.map((p) => [p.lat, p.lon])
-    const polyline = L.polyline(latLngs, { color: '#673ab8', weight: 3, opacity: 0.8 }).addTo(map)
-    map.fitBounds(polyline.getBounds(), { padding: [20, 20] })
+    const polyline = L.polyline(latLngs, {
+      color: PATH_COLOR,
+      weight: PATH_WEIGHT,
+      opacity: PATH_OPACITY,
+    }).addTo(map)
+    map.fitBounds(polyline.getBounds(), { padding: [FIT_BOUNDS_PADDING, FIT_BOUNDS_PADDING] })
 
     mapRef.current = map
 
@@ -78,7 +79,7 @@ export const ActivityMap = ({ start, end, hoverTime }: ActivityMapProps) => {
   // Move highlight marker when hoverTime changes
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !points || points.length < 2) return
+    if (!map || !points || points.length < MIN_POINTS_FOR_PATH) return
 
     if (!hoverTime) {
       if (highlightMarkerRef.current) {
@@ -99,7 +100,7 @@ export const ActivityMap = ({ start, end, hoverTime }: ActivityMapProps) => {
   }, [hoverTime, points])
 
   // Don't render if no GPS data
-  if (!points || points.length < 2) return null
+  if (!points || points.length < MIN_POINTS_FOR_PATH) return null
 
   return <div ref={mapContainerRef} class="activity-map-container" />
 }

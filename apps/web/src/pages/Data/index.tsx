@@ -18,6 +18,7 @@ import {
   type Report,
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
+import { MEAL_LOCATION_WINDOW_MS } from '../EntityDetail/LocationInfo'
 import './style.css'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -105,7 +106,7 @@ const mealToItem = (m: Meal, places: Place[]): DataItem => {
   const parts = [format(m.time, 'HH:mm')]
   if (m.meal_type) parts.push(m.meal_type)
   if (m.calories) parts.push(`${Math.round(m.calories)} kcal`)
-  const location = findPrimaryPlace(m.time, new Date(m.time.getTime() + 30 * 60000), places)
+  const location = findPrimaryPlace(m.time, new Date(m.time.getTime() + MEAL_LOCATION_WINDOW_MS), places)
   if (location) parts.push(`@ ${location}`)
   return {
     color: MEAL_COLOR,
