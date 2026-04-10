@@ -46,7 +46,7 @@ Condition kinds:
 
 Modes:
 - "create" (default): creates new activities of output_activity_type
-- "enrich": patches output_data onto existing activities of target_activity_type (only fills missing fields)
+- "enrich": patches output_data onto existing activities of output_activity_type (only fills missing fields)
 
 Use output_data to set custom data fields on created/enriched activities.
 Multiple conditions use AND logic — all must overlap in time. The rule is applied retroactively to all historical data.`,
@@ -56,10 +56,6 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
         return errorResponse(
           `Unknown activity type: "${params.output_activity_type}". Create it first with add_activity_type.`,
         )
-      }
-
-      if (params.mode === 'enrich' && !params.target_activity_type) {
-        return errorResponse('target_activity_type is required when mode is "enrich"')
       }
 
       const rule = await insertDeductionRule(user, params)
@@ -148,7 +144,6 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
         output_data: params.output_data as Record<string, unknown> | undefined,
         output_title: params.output_title,
         priority: params.priority ?? 0,
-        target_activity_type: params.target_activity_type,
       }
 
       const window = { end: new Date(), start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) }

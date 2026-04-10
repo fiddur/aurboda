@@ -52,12 +52,20 @@ export const locationConditionSchema = z
   })
   .meta({ description: 'Matches time ranges where the user is at a named location' })
 
+export const afterDateConditionSchema = z
+  .object({
+    date: z.string().meta({ description: 'ISO 8601 date (e.g. "2024-06-01") — only match after this date' }),
+    kind: z.literal('after_date'),
+  })
+  .meta({ description: 'Restricts matches to after a given date' })
+
 export const conditionSchema = z.discriminatedUnion('kind', [
   activityConditionSchema,
   tagConditionSchema,
   screentimeCategoryConditionSchema,
   activityDataConditionSchema,
   locationConditionSchema,
+  afterDateConditionSchema,
 ])
 
 export type Condition = z.infer<typeof conditionSchema>
@@ -90,7 +98,8 @@ export const deductionRuleSchema = z
     }),
     name: z.string().meta({ description: 'Human-readable rule name' }),
     output_activity_type: activityTypeSchema.meta({
-      description: 'Activity type to create when conditions match (used in create mode)',
+      description:
+        'In create mode: activity type to create. In enrich mode: activity type to patch data onto.',
     }),
     output_data: z
       .record(z.string(), z.unknown())
@@ -103,9 +112,6 @@ export const deductionRuleSchema = z
       .min(0)
       .max(2)
       .meta({ description: 'Evaluation order (0=first, max 2 for chaining)' }),
-    target_activity_type: activityTypeSchema
-      .optional()
-      .meta({ description: 'Activity type to enrich (required when mode=enrich)' }),
   })
   .meta({
     id: 'DeductionRule',
@@ -134,7 +140,9 @@ export const addDeductionRuleBodySchema = z
       .optional()
       .meta({ description: 'create (default) or enrich existing activities' }),
     name: z.string().meta({ description: 'Human-readable rule name' }),
-    output_activity_type: activityTypeSchema.meta({ description: 'Activity type to create' }),
+    output_activity_type: activityTypeSchema.meta({
+      description: 'In create mode: type to create. In enrich mode: type to patch data onto.',
+    }),
     output_data: z
       .record(z.string(), z.unknown())
       .optional()
@@ -147,9 +155,6 @@ export const addDeductionRuleBodySchema = z
       .max(2)
       .optional()
       .meta({ description: 'Evaluation order (0=first, max 2). Defaults to 0.' }),
-    target_activity_type: activityTypeSchema
-      .optional()
-      .meta({ description: 'Activity type to enrich (required when mode=enrich)' }),
   })
   .meta({ id: 'AddDeductionRuleBody' })
 
@@ -179,10 +184,6 @@ export const updateDeductionRuleBodySchema = z
       .meta({ description: 'New output data (null to clear)' }),
     output_title: z.string().nullable().optional().meta({ description: 'New title (null to remove)' }),
     priority: z.number().int().min(0).max(2).optional().meta({ description: 'New priority' }),
-    target_activity_type: activityTypeSchema
-      .nullable()
-      .optional()
-      .meta({ description: 'New target activity type (null to clear)' }),
   })
   .meta({ id: 'UpdateDeductionRuleBody' })
 

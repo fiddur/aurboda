@@ -5,12 +5,13 @@ import { useQuery } from '@tanstack/react-query'
 
 import type { DeductionRuleCondition } from '../../state/api'
 
-import { fetchActivityTypeDefinitions } from '../../state/api'
+import { fetchActivityTypeDefinitions, fetchNamedLocations } from '../../state/api'
 import './style.css'
 
 const KIND_LABELS: Record<string, string> = {
   activity: 'Activity Type',
   activity_data: 'Activity Data Field',
+  after_date: 'Since Date',
   location: 'Location',
   screentime_category: 'Screentime Category',
   tag: 'Tag Name',
@@ -22,6 +23,7 @@ const KINDS: Array<DeductionRuleCondition['kind']> = [
   'screentime_category',
   'activity_data',
   'location',
+  'after_date',
 ]
 
 const OPERATOR_LABELS: Record<string, string> = {
@@ -118,6 +120,7 @@ function ActivityDataBody({
 const KIND_DEFAULTS: Record<string, Partial<DeductionRuleCondition>> = {
   activity: { activity_type: '' },
   activity_data: { activity_type: '', field: '', operator: 'eq', value: '' },
+  after_date: { date: new Date().toISOString().slice(0, 10) },
   location: { location_name: '' },
   screentime_category: { category: [] },
   tag: { tag_name: '' },
@@ -139,6 +142,12 @@ function ConditionCard({
   const { data: definitions = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
+    staleTime: 5 * 60_000,
+  })
+
+  const { data: namedLocations = [] } = useQuery({
+    queryFn: fetchNamedLocations,
+    queryKey: ['namedLocations'],
     staleTime: 5 * 60_000,
   })
 
@@ -214,11 +223,28 @@ function ConditionCard({
         )}
 
         {condition.kind === 'location' && (
+          <>
+            <input
+              type="text"
+              list="named-locations-list"
+              value={condition.location_name ?? ''}
+              onInput={(e) => update({ ...condition, location_name: (e.target as HTMLInputElement).value })}
+              placeholder="Start typing a location name..."
+              class="condition-field-input"
+            />
+            <datalist id="named-locations-list">
+              {namedLocations.map((loc) => (
+                <option key={loc.name} value={loc.name} />
+              ))}
+            </datalist>
+          </>
+        )}
+
+        {condition.kind === 'after_date' && (
           <input
-            type="text"
-            value={condition.location_name ?? ''}
-            onInput={(e) => update({ ...condition, location_name: (e.target as HTMLInputElement).value })}
-            placeholder="Named location (e.g. Home, Office)"
+            type="date"
+            value={condition.date ?? ''}
+            onInput={(e) => update({ ...condition, date: (e.target as HTMLInputElement).value })}
             class="condition-field-input"
           />
         )}
