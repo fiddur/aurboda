@@ -297,6 +297,17 @@ const ActivityDetailContent = ({
           </div>
         )}
 
+        {/* Schema data fields — editable in edit mode, read-only otherwise */}
+        {typeDef?.data_schema && (isEditing || activity.data) && (
+          <SchemaDataFields
+            data={isEditing ? (draft.data ?? {}) : ((activity.data as Record<string, unknown>) ?? {})}
+            schema={typeDef.data_schema}
+            isEditing={isEditing}
+            onDataChange={isEditing ? (newData) => onDraftChange({ ...draft, data: newData }) : undefined}
+            referencedRules={referencedRules}
+          />
+        )}
+
         {/* Read-only stats — shown based on data presence, not activity type */}
         {!isEditing && (
           <>
@@ -337,13 +348,6 @@ const ActivityDetailContent = ({
               </div>
             )}
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
-            {typeDef?.data_schema && activity.data && (
-              <SchemaDataFields
-                data={activity.data as Record<string, unknown>}
-                schema={typeDef.data_schema}
-                referencedRules={referencedRules}
-              />
-            )}
           </>
         )}
       </div>
@@ -377,6 +381,7 @@ const makeDraft = (activity: Activity): ActivityDraft => {
   const exerciseType = resolveExerciseType(activity)
   return {
     activity_type: activity.activity_type,
+    data: (activity.data as Record<string, unknown>) ?? {},
     end_time: formatDateTimeLocal(displayEnd),
     exercise_type: exerciseType,
     notes: activity.notes ?? '',
@@ -434,6 +439,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   const [isMerging, setIsMerging] = useState(false)
   const emptyDraft: ActivityDraft = {
     activity_type: '',
+    data: {},
     end_time: '',
     notes: '',
     start_time: '',
@@ -459,6 +465,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         title?: string
         notes?: string
         exercise_type?: ExerciseTypeName
+        data?: Record<string, unknown>
       } = {}
       const orig = makeDraft(activity)
       if (draft.activity_type !== orig.activity_type) body.activity_type = draft.activity_type
@@ -472,6 +479,9 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       if (draft.notes !== orig.notes) body.notes = draft.notes
       if (draft.exercise_type !== orig.exercise_type && draft.exercise_type) {
         body.exercise_type = draft.exercise_type as ExerciseTypeName
+      }
+      if (draft.data && JSON.stringify(draft.data) !== JSON.stringify(orig.data)) {
+        body.data = draft.data
       }
       if (Object.keys(body).length === 0) return Promise.resolve()
       return updateActivity(rawEntityId, body)
