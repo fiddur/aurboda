@@ -138,16 +138,21 @@ function renderDots(
     .attr('fill', color)
 }
 
-/** Render multiple overlaid series (area + line for each). */
+/** Render multiple overlaid series (area + line for each). Returns scales for tooltip attachment. */
 function renderMultiSeries(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   series: LineSeriesData[],
   innerWidth: number,
   innerHeight: number,
   compact: boolean,
-) {
+): {
+  x: d3.ScaleTime<number, number>
+  y: d3.ScaleLinear<number, number>
+  parsedSeries: { name: string; color: string; data: ParsedPoint[] }[]
+  tooltipFormat: (date: Date) => string
+} | null {
   const allPoints = series.flatMap((s) => s.data.map((d) => ({ date: new Date(d.date), value: d.value })))
-  if (allPoints.length < 2) return
+  if (allPoints.length < 2) return null
 
   const x = d3
     .scaleTime()
@@ -165,17 +170,24 @@ function renderMultiSeries(
     .range([innerHeight, 0])
 
   const dateExtent = d3.extent(allPoints, (d) => d.date) as [Date, Date]
-  const { axisFormat } = buildDateFormat(dateExtent)
+  const { axisFormat, tooltipFormat } = buildDateFormat(dateExtent)
 
   if (!compact) renderGrid(g, y, innerWidth)
 
-  for (const s of series) {
-    const parsed = s.data.map((d) => ({ date: new Date(d.date), value: d.value }))
-    if (parsed.length < 2) continue
-    renderAreaAndLine(g, parsed, x, y, innerHeight, s.color)
+  const parsedSeries = series.map((s) => ({
+    color: s.color,
+    data: s.data.map((d) => ({ date: new Date(d.date), value: d.value })),
+    name: s.name,
+  }))
+
+  for (const s of parsedSeries) {
+    if (s.data.length < 2) continue
+    renderAreaAndLine(g, s.data, x, y, innerHeight, s.color)
   }
 
   renderAxes(g, x, y, innerWidth, innerHeight, axisFormat)
+
+  return { parsedSeries, tooltipFormat, x, y }
 }
 
 /** Attach tooltip crosshair + highlight dot behaviour. */
@@ -252,6 +264,153 @@ function attachTooltip(
     })
 }
 
+/** Attach tooltip for multi-series: shows all series values at the hovered date. */
+function attachMultiSeriesTooltip(
+  g: d3.Selection<SVGGElement, unknown, null, undefined>,
+  parsedSeries: { name: string; color: string; data: ParsedPoint[] }[],
+  x: d3.ScaleTime<number, number>,
+  y: d3.ScaleLinear<number, number>,
+  innerWidth: number,
+  innerHeight: number,
+  container: HTMLDivElement,
+  tooltip: HTMLDivElement,
+  margin: { top: number; left: number },
+  tooltipFormat: (date: Date) => string,
+) {
+  const crosshair = g
+    .append('line')
+    .attr('y1', 0)
+    .attr('y2', innerHeight)
+    .attr('stroke', 'currentColor')
+    .attr('stroke-opacity', 0.4)
+    .attr('stroke-dasharray', '4 3')
+    .attr('pointer-events', 'none')
+    .style('display', 'none')
+
+  // One highlight dot per series
+  const dots = parsedSeries.map((s) =>
+    g
+      .append('circle')
+      .attr('r', 4)
+      .attr('fill', s.color)
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 2)
+      .attr('pointer-events', 'none')
+      .style('display', 'none'),
+  )
+
+  const bisector = d3.bisector<ParsedPoint, Date>((d) => d.date).left
+
+  g.append('rect')
+    .attr('width', innerWidth)
+    .attr('height', innerHeight)
+    .attr('fill', 'transparent')
+    .attr('pointer-events', 'all')
+    .on('mousemove', (event: MouseEvent) => {
+      const [mx] = d3.pointer(event)
+      const dateAtMouse = x.invert(mx)
+
+      crosshair.attr('x1', mx).attr('x2', mx).style('display', null)
+
+      const lines: string[] = []
+      let dateLabel = ''
+
+      for (let i = 0; i < parsedSeries.length; i++) {
+        const s = parsedSeries[i]
+        if (s.data.length === 0) continue
+        const idx = bisector(s.data, dateAtMouse, 1)
+        const d0 = s.data[idx - 1]
+        const d1 = s.data[idx]
+        if (!d0) continue
+        const nearest =
+          d1 && dateAtMouse.getTime() - d0.date.getTime() > d1.date.getTime() - dateAtMouse.getTime()
+            ? d1
+            : d0
+
+        if (!dateLabel) dateLabel = tooltipFormat(nearest.date)
+
+        const cx = x(nearest.date)
+        const cy = y(nearest.value)
+        dots[i].attr('cx', cx).attr('cy', cy).style('display', null)
+
+        lines.push(`${s.name}: ${nearest.value.toFixed(1)}`)
+      }
+
+      tooltip.innerHTML = `<strong>${dateLabel}</strong><br/>${lines.join('<br/>')}`
+      tooltip.style.display = 'block'
+
+      const containerRect = container.getBoundingClientRect()
+      const tooltipX = mx + margin.left
+      const tooltipWidth = tooltip.offsetWidth
+      const left =
+        tooltipX + tooltipWidth + 12 > containerRect.width ? tooltipX - tooltipWidth - 12 : tooltipX + 12
+      tooltip.style.left = `${left}px`
+      tooltip.style.top = `${margin.top + 8}px`
+    })
+    .on('mouseleave', () => {
+      crosshair.style('display', 'none')
+      for (const dot of dots) dot.style('display', 'none')
+      tooltip.style.display = 'none'
+    })
+}
+
+/** Render a single series with optional tooltip. */
+function renderSingleSeries(
+  svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
+  data: { date: string; value: number }[],
+  color: string,
+  innerWidth: number,
+  innerHeight: number,
+  margin: { top: number; bottom: number; left: number; right: number },
+  compact: boolean,
+  container: HTMLDivElement,
+  tooltip: HTMLDivElement | null,
+) {
+  const parsedData: ParsedPoint[] = data.map((d) => ({ date: new Date(d.date), value: d.value }))
+  if (parsedData.length < 2) return
+
+  const x = d3
+    .scaleTime()
+    .domain(d3.extent(parsedData, (d) => d.date) as [Date, Date])
+    .range([0, innerWidth])
+
+  const yExtent = d3.extent(parsedData, (d) => d.value) as [number, number]
+  const yRange = yExtent[1] - yExtent[0]
+  const yPadding = yRange * 0.1 || 1
+  const yMin = yExtent[0] >= 0 ? Math.max(0, yExtent[0] - yPadding) : yExtent[0] - yPadding
+  const y = d3
+    .scaleLinear()
+    .domain([yMin, yExtent[1] + yPadding])
+    .nice()
+    .range([innerHeight, 0])
+
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
+
+  const dateExtent = d3.extent(parsedData, (d) => d.date) as [Date, Date]
+  const { axisFormat, tooltipFormat } = buildDateFormat(dateExtent)
+
+  if (!compact) renderGrid(g, y, innerWidth)
+  renderAreaAndLine(g, parsedData, x, y, innerHeight, color)
+  if (!compact) renderDots(g, parsedData, x, y, color)
+  renderAxes(g, x, y, innerWidth, innerHeight, axisFormat)
+
+  if (!compact && tooltip) {
+    attachTooltip(
+      g,
+      parsedData,
+      x,
+      y,
+      innerWidth,
+      innerHeight,
+      color,
+      container,
+      tooltip,
+      margin,
+      tooltipFormat,
+    )
+  }
+}
+
 export function TrendLineChart({
   data,
   color,
@@ -283,55 +442,34 @@ export function TrendLineChart({
 
     if (multiSeries && multiSeries.length > 0) {
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
-      renderMultiSeries(g, multiSeries, innerWidth, innerHeight, compact)
-    } else {
-      // Single series (original behavior)
-      const parsedData: ParsedPoint[] = data.map((d) => ({
-        date: new Date(d.date),
-        value: d.value,
-      }))
-      if (parsedData.length < 2) return
+      const result = renderMultiSeries(g, multiSeries, innerWidth, innerHeight, compact)
 
-      const x = d3
-        .scaleTime()
-        .domain(d3.extent(parsedData, (d) => d.date) as [Date, Date])
-        .range([0, innerWidth])
-
-      const yExtent = d3.extent(parsedData, (d) => d.value) as [number, number]
-      const yRange = yExtent[1] - yExtent[0]
-      const yPadding = yRange * 0.1 || 1
-      const yMin = yExtent[0] >= 0 ? Math.max(0, yExtent[0] - yPadding) : yExtent[0] - yPadding
-      const y = d3
-        .scaleLinear()
-        .domain([yMin, yExtent[1] + yPadding])
-        .nice()
-        .range([innerHeight, 0])
-
-      const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
-
-      const dateExtent = d3.extent(parsedData, (d) => d.date) as [Date, Date]
-      const { axisFormat, tooltipFormat } = buildDateFormat(dateExtent)
-
-      if (!compact) renderGrid(g, y, innerWidth)
-      renderAreaAndLine(g, parsedData, x, y, innerHeight, color)
-      if (!compact) renderDots(g, parsedData, x, y, color)
-      renderAxes(g, x, y, innerWidth, innerHeight, axisFormat)
-
-      if (!compact && tooltipRef.current) {
-        attachTooltip(
+      if (!compact && tooltipRef.current && result) {
+        attachMultiSeriesTooltip(
           g,
-          parsedData,
-          x,
-          y,
+          result.parsedSeries,
+          result.x,
+          result.y,
           innerWidth,
           innerHeight,
-          color,
           container,
           tooltipRef.current,
           margin,
-          tooltipFormat,
+          result.tooltipFormat,
         )
       }
+    } else {
+      renderSingleSeries(
+        svg,
+        data,
+        color,
+        innerWidth,
+        innerHeight,
+        margin,
+        compact,
+        container,
+        tooltipRef.current,
+      )
     }
   }, [data, color, height, width, compact, multiSeries])
 

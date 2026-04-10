@@ -105,6 +105,9 @@ function syncUrl(state: ChartState) {
   if (state.source_type === 'metric' && state.aggregation !== 'count') {
     params.set('aggregation', state.aggregation)
   }
+  if (state.breakdown_fields.length > 0) {
+    params.set('breakdown_fields', state.breakdown_fields.join(','))
+  }
   history.replaceState(null, '', `${window.location.pathname}?${params}`)
 }
 
@@ -720,8 +723,7 @@ export function Chart() {
               ? {
                   aggregation: state.aggregation,
                   breakdown_fields: state.breakdown_fields,
-                  bucket_size:
-                    state.display_period === 'daily' ? '1d' : state.display_period === 'weekly' ? '1w' : '1M',
+                  bucket_size: '1d',
                   end,
                   pattern: state.pattern || undefined,
                   source_type: state.source_type,
