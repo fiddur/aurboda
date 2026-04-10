@@ -120,9 +120,16 @@ export interface ActivityTypeDefinition {
   data_schema?: DataSchemaDefinition
 }
 
+export interface DataFilter {
+  field: string
+  operator: 'eq' | 'neq' | 'exists' | 'not_exists'
+  value?: string | number | boolean
+}
+
 export interface DeductionRuleCondition {
   kind: 'activity' | 'tag' | 'screentime_category' | 'activity_data' | 'location' | 'after_date'
   activity_type?: string
+  data_filters?: DataFilter[]
   tag_name?: string
   category?: string[]
   field?: string
