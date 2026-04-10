@@ -168,6 +168,7 @@ const ActivityDetailContent = ({
   onDraftChange,
   itemIcons,
   typeDefinitions,
+  referencedRules,
 }: {
   activity: Activity
   isEditing: boolean
@@ -175,6 +176,7 @@ const ActivityDetailContent = ({
   onDraftChange: (d: ActivityDraft) => void
   itemIcons: Record<string, string>
   typeDefinitions?: ActivityTypeDefinition[]
+  referencedRules?: Record<string, string>
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd =
@@ -339,6 +341,7 @@ const ActivityDetailContent = ({
               <SchemaDataFields
                 data={activity.data as Record<string, unknown>}
                 schema={typeDef.data_schema}
+                referencedRules={referencedRules}
               />
             )}
           </>
@@ -389,7 +392,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   const rawEntityId = isMerged ? entityId.slice('merged:'.length) : entityId
 
   const {
-    data: activity,
+    data: activityResult,
     isLoading,
     isError,
   } = useQuery({
@@ -397,6 +400,8 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     queryKey: ['entity-detail', 'activity', entityId],
     staleTime: 60_000,
   })
+  const activity = activityResult?.activity
+  const referencedRules = activityResult?.referenced_rules
 
   const { data: itemIcons = {} } = useQuery({
     queryFn: fetchItemIcons,
@@ -509,6 +514,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         onDraftChange={setDraft}
         itemIcons={itemIcons}
         typeDefinitions={typeDefinitions}
+        referencedRules={referencedRules}
       />
       <NotesSection entityType="activity" entityId={rawEntityId} allEntityIds={allEntityIds} />
     </>

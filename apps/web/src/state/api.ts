@@ -1354,7 +1354,12 @@ export const restoreProductivity = async (id: string): Promise<void> => {
 // Entity Detail Fetching
 // ============================================================================
 
-export const fetchActivityById = async (id: string): Promise<Activity> => {
+export interface ActivityDetailResult {
+  activity: Activity
+  referenced_rules?: Record<string, string>
+}
+
+export const fetchActivityById = async (id: string): Promise<ActivityDetailResult> => {
   const { token } = auth.value
   const response = await axios.get(`${API_URL}/activities/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -1362,12 +1367,15 @@ export const fetchActivityById = async (id: string): Promise<Activity> => {
 
   const d = response.data.data
   return {
-    ...d,
-    end_time: d.end_time ? new Date(d.end_time) : undefined,
-    merged_end_time: d.merged_end_time ? new Date(d.merged_end_time) : undefined,
-    merged_start_time: d.merged_start_time ? new Date(d.merged_start_time) : undefined,
-    source_records: d.source_records,
-    start_time: new Date(d.start_time),
+    activity: {
+      ...d,
+      end_time: d.end_time ? new Date(d.end_time) : undefined,
+      merged_end_time: d.merged_end_time ? new Date(d.merged_end_time) : undefined,
+      merged_start_time: d.merged_start_time ? new Date(d.merged_start_time) : undefined,
+      source_records: d.source_records,
+      start_time: new Date(d.start_time),
+    },
+    referenced_rules: response.data.referenced_rules,
   }
 }
 
