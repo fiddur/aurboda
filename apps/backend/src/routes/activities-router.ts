@@ -35,6 +35,8 @@ import {
 } from '@aurboda/api-spec'
 import multer from 'multer'
 
+import type { ActivityNotifier } from '../services/deduction-queue.ts'
+
 import {
   getActivityById,
   getAllActivityTypeNames,
@@ -161,6 +163,7 @@ const buildMergedResponse = async (
 export const createActivitiesRouter = (
   authMiddleware: RequestHandler,
   syncProvider?: SyncProvider,
+  onActivityMutated?: ActivityNotifier,
 ): Router => {
   const router = typedRouter()
 
@@ -222,15 +225,19 @@ export const createActivitiesRouter = (
         }
       }
 
-      const result = await addActivity(user, {
-        activity_type,
-        data,
-        end_time: endDate,
-        merge_span,
-        notes,
-        start_time: startDate,
-        title,
-      })
+      const result = await addActivity(
+        user,
+        {
+          activity_type,
+          data,
+          end_time: endDate,
+          merge_span,
+          notes,
+          start_time: startDate,
+          title,
+        },
+        onActivityMutated,
+      )
 
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })
@@ -280,14 +287,18 @@ export const createActivitiesRouter = (
             : undefined,
         }
 
-        const result = await addActivity(user, {
-          activity_type: fitAct.activity_type,
-          data,
-          end_time: fitAct.end_time,
-          notes: fitAct.notes,
-          start_time: fitAct.start_time,
-          title: fitAct.title,
-        })
+        const result = await addActivity(
+          user,
+          {
+            activity_type: fitAct.activity_type,
+            data,
+            end_time: fitAct.end_time,
+            notes: fitAct.notes,
+            start_time: fitAct.start_time,
+            title: fitAct.title,
+          },
+          onActivityMutated,
+        )
 
         if (!result.success) {
           res.status(400).json({ error: result.error, success: false })
@@ -333,7 +344,7 @@ export const createActivitiesRouter = (
       const { activity_ids, title, notes } = req.body
       const user = req.user!
 
-      const result = await mergeActivities(user, { activity_ids, notes, title })
+      const result = await mergeActivities(user, { activity_ids, notes, title }, undefined, onActivityMutated)
 
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })
@@ -434,14 +445,19 @@ export const createActivitiesRouter = (
         }
       }
 
-      const result = await updateActivity(user, id, {
-        activity_type,
-        data,
-        end_time: end_time ? new Date(end_time) : undefined,
-        notes,
-        start_time: start_time ? new Date(start_time) : undefined,
-        title,
-      })
+      const result = await updateActivity(
+        user,
+        id,
+        {
+          activity_type,
+          data,
+          end_time: end_time ? new Date(end_time) : undefined,
+          notes,
+          start_time: start_time ? new Date(start_time) : undefined,
+          title,
+        },
+        onActivityMutated,
+      )
 
       if (!result.success) {
         const status = result.error === 'Activity not found' ? 404 : 400

@@ -15,6 +15,8 @@ import type { Auth } from './auth.ts'
 import type { GarminClient } from './garmin.ts'
 import type { ouraClient } from './oura.ts'
 import type { CentralDb } from './services/central-db.ts'
+import type { DeductionEngineDeps } from './services/deduction-engine.ts'
+import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'
 import type { SyncProvider } from './services/queries.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
@@ -43,7 +45,10 @@ type OuraClientType = ReturnType<typeof ouraClient>
 
 interface McpDeps {
   centralDb?: CentralDb
+  deductionQueue?: DeductionQueue
+  engineDeps?: DeductionEngineDeps
   garmin?: GarminClient
+  onActivityMutated?: ActivityNotifier
   oura?: OuraClientType
   sync?: SyncProvider
 }
@@ -54,11 +59,13 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     version: '1.0.0',
   })
 
+  const engineDeps = deps.engineDeps ?? createDefaultEngineDeps()
+
   registerQueryTools(server, user, deps.sync)
   registerMetricTools(server, user)
-  registerActivityTools(server, user)
+  registerActivityTools(server, user, deps.onActivityMutated)
   registerActivityTypeTools(server, user)
-  registerDeductionRuleTools(server, user, createDefaultEngineDeps())
+  registerDeductionRuleTools(server, user, engineDeps, deps.deductionQueue)
   registerSyncTools(server, user, deps.oura, deps.garmin)
   registerLastFmTools(server, user)
   registerSettingsTools(server, user)

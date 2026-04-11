@@ -1,37 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-// Mock pg-boss
-const mockBossStart = vi.fn()
-const mockBossStop = vi.fn()
-const mockBossCreateQueue = vi.fn()
-const mockBossSend = vi.fn()
-const mockBossWork = vi.fn()
-const mockBossOn = vi.fn()
-
-vi.mock('pg-boss', () => {
-  const MockPgBoss = vi.fn()
-  MockPgBoss.prototype.createQueue = mockBossCreateQueue
-  MockPgBoss.prototype.on = mockBossOn
-  MockPgBoss.prototype.send = mockBossSend
-  MockPgBoss.prototype.start = mockBossStart
-  MockPgBoss.prototype.stop = mockBossStop
-  MockPgBoss.prototype.work = mockBossWork
-  return { PgBoss: MockPgBoss }
-})
-
-// Mock pg
-const mockPgConnect = vi.fn()
-const mockPgEnd = vi.fn()
-const mockPgQuery = vi.fn()
-
-vi.mock('pg', () => {
-  const MockClient = vi.fn()
-  MockClient.prototype.connect = mockPgConnect
-  MockClient.prototype.end = mockPgEnd
-  MockClient.prototype.query = mockPgQuery
-  return { default: { Client: MockClient } }
-})
-
 // Mock geocoding
 vi.mock('./geocoding', () => ({
   reverseGeocode: vi.fn().mockResolvedValue({
@@ -40,108 +8,50 @@ vi.mock('./geocoding', () => ({
   }),
 }))
 
-describe('createGeocodeQueue', () => {
-  const originalEnv = process.env
+const createMockBoss = () => ({
+  createQueue: vi.fn().mockResolvedValue(undefined),
+  send: vi.fn().mockResolvedValue('job-123'),
+  work: vi.fn().mockResolvedValue(undefined),
+})
 
+describe('createGeocodeQueue', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env = {
-      ...originalEnv,
-      PGHOST: 'localhost',
-      PGPASSWORD: 'testpass',
-      PGPORT: '5432',
-      PGUSER: 'testuser',
-    }
-    mockPgConnect.mockResolvedValue(undefined)
-    mockPgEnd.mockResolvedValue(undefined)
-    mockBossStart.mockResolvedValue(undefined)
-    mockBossCreateQueue.mockResolvedValue(undefined)
-    mockBossWork.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
-    process.env = originalEnv
+    vi.restoreAllMocks()
   })
 
-  test('returns null when PGUSER is not set', async () => {
-    delete process.env.PGUSER
-
+  test('creates queue and registers worker', async () => {
+    const boss = createMockBoss()
     const { createGeocodeQueue } = await import('./geocode-queue.js')
-    const result = await createGeocodeQueue({
-      updateDetectedLocation: vi.fn(),
-    })
 
-    expect(result).toBeNull()
-  })
-
-  test('returns null when PGPASSWORD is not set', async () => {
-    delete process.env.PGPASSWORD
-
-    const { createGeocodeQueue } = await import('./geocode-queue.js')
-    const result = await createGeocodeQueue({
-      updateDetectedLocation: vi.fn(),
-    })
-
-    expect(result).toBeNull()
-  })
-
-  test('creates queue and returns interface when credentials are set', async () => {
-    vi.resetModules()
-
-    const { createGeocodeQueue } = await import('./geocode-queue.js')
-    const mockUpdateLocation = vi.fn()
-
-    const queue = await createGeocodeQueue({
-      updateDetectedLocation: mockUpdateLocation,
-    })
-
-    expect(queue).not.toBeNull()
-    expect(queue!.getBoss).toBeDefined()
-    expect(queue!.enqueueJob).toBeDefined()
-    expect(queue!.enqueueJobs).toBeDefined()
-    expect(queue!.stop).toBeDefined()
-  })
-
-  test('getBoss returns the boss instance', async () => {
-    vi.resetModules()
-
-    const { createGeocodeQueue } = await import('./geocode-queue.js')
-    const queue = await createGeocodeQueue({
+    const queue = await createGeocodeQueue(boss as never, {
       updateDetectedLocation: vi.fn(),
     })
 
     expect(queue).not.toBeNull()
-    const boss = queue!.getBoss()
-    expect(boss).not.toBeNull()
-  })
-
-  test('stop calls boss.stop', async () => {
-    vi.resetModules()
-    mockBossStop.mockResolvedValue(undefined)
-
-    const { createGeocodeQueue } = await import('./geocode-queue.js')
-    const queue = await createGeocodeQueue({
-      updateDetectedLocation: vi.fn(),
-    })
-
-    expect(queue).not.toBeNull()
-    await queue!.stop()
-
-    expect(mockBossStop).toHaveBeenCalled()
+    expect(queue.enqueueJob).toBeDefined()
+    expect(queue.enqueueJobs).toBeDefined()
+    expect(boss.createQueue).toHaveBeenCalledWith('geocode-location')
+    expect(boss.work).toHaveBeenCalledWith(
+      'geocode-location',
+      { batchSize: 1, pollingIntervalSeconds: 2 },
+      expect.any(Function),
+    )
   })
 
   test('enqueueJob sends job to boss and updates location status', async () => {
-    vi.resetModules()
-    mockBossSend.mockResolvedValue('job-123')
-
+    const boss = createMockBoss()
     const mockUpdateLocation = vi.fn().mockResolvedValue({})
     const { createGeocodeQueue } = await import('./geocode-queue.js')
-    const queue = await createGeocodeQueue({
+
+    const queue = await createGeocodeQueue(boss as never, {
       updateDetectedLocation: mockUpdateLocation,
     })
 
-    expect(queue).not.toBeNull()
-    const jobId = await queue!.enqueueJob({
+    const jobId = await queue.enqueueJob({
       detectedLocationId: 'loc-1',
       lat: 59.3293,
       lon: 18.0686,
@@ -149,7 +59,7 @@ describe('createGeocodeQueue', () => {
     })
 
     expect(jobId).toBe('job-123')
-    expect(mockBossSend).toHaveBeenCalledWith(
+    expect(boss.send).toHaveBeenCalledWith(
       'geocode-location',
       {
         detectedLocationId: 'loc-1',
@@ -167,19 +77,16 @@ describe('createGeocodeQueue', () => {
   })
 
   test('enqueueJob returns null on error', async () => {
-    vi.resetModules()
-    mockBossSend.mockRejectedValue(new Error('Queue error'))
-
-    const mockUpdateLocation = vi.fn()
+    const boss = createMockBoss()
+    boss.send.mockRejectedValue(new Error('Queue error'))
     const { createGeocodeQueue } = await import('./geocode-queue.js')
-    const queue = await createGeocodeQueue({
-      updateDetectedLocation: mockUpdateLocation,
+
+    const queue = await createGeocodeQueue(boss as never, {
+      updateDetectedLocation: vi.fn(),
     })
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    expect(queue).not.toBeNull()
-    const jobId = await queue!.enqueueJob({
+    const jobId = await queue.enqueueJob({
       detectedLocationId: 'loc-1',
       lat: 59.3293,
       lon: 18.0686,
@@ -191,22 +98,20 @@ describe('createGeocodeQueue', () => {
   })
 
   test('enqueueJobs enqueues multiple jobs', async () => {
-    vi.resetModules()
-    mockBossSend.mockResolvedValue('job-id')
-
+    const boss = createMockBoss()
     const mockUpdateLocation = vi.fn().mockResolvedValue({})
     const { createGeocodeQueue } = await import('./geocode-queue.js')
-    const queue = await createGeocodeQueue({
+
+    const queue = await createGeocodeQueue(boss as never, {
       updateDetectedLocation: mockUpdateLocation,
     })
 
-    expect(queue).not.toBeNull()
-    await queue!.enqueueJobs('testuser', [
+    await queue.enqueueJobs('testuser', [
       { id: 'loc-1', lat: 59.3, lon: 18.0 },
       { id: 'loc-2', lat: 59.4, lon: 18.1 },
     ])
 
-    expect(mockBossSend).toHaveBeenCalledTimes(2)
+    expect(boss.send).toHaveBeenCalledTimes(2)
     expect(mockUpdateLocation).toHaveBeenCalledTimes(2)
   })
 })

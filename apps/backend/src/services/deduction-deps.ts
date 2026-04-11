@@ -1,10 +1,15 @@
 import type { DeductionEngineDeps, EvaluationWindow, TimeRange } from './deduction-engine.ts'
+import type { ActivityNotifier } from './deduction-queue.ts'
 
 import { query } from '../db/connection.ts'
 /**
  * Default dependencies for the deduction engine, wired to real DB functions.
  */
-import { deleteStaleRuleActivities, insertActivity, insertDeductionRuleRun } from '../db/index.ts'
+import {
+  deleteStaleRuleActivities,
+  insertActivity as dbInsertActivity,
+  insertDeductionRuleRun,
+} from '../db/index.ts'
 import { getPlaceVisits } from './locations.ts'
 
 const getActivities = async (
@@ -236,7 +241,7 @@ const getEarliestActivityTime = async (user: string): Promise<Date | null> => {
   return (result.rows[0]?.earliest as Date) ?? null
 }
 
-export const createDefaultEngineDeps = (): DeductionEngineDeps => ({
+export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionEngineDeps => ({
   deleteStaleRuleActivities,
   enrichActivities,
   getActivities,
@@ -246,6 +251,21 @@ export const createDefaultEngineDeps = (): DeductionEngineDeps => ({
   getLocationVisits,
   getScreentime,
   getTags,
-  insertActivity,
+  insertActivity: async (user, activity) => {
+    const id = await dbInsertActivity(user, activity)
+    if (notifier) {
+      const ruleId = (activity.data as Record<string, unknown> | undefined)?.rule_id as string | undefined
+      try {
+        notifier(
+          user,
+          activity.activity_type,
+          activity.start_time,
+          activity.end_time ?? activity.start_time,
+          ruleId,
+        )
+      } catch {}
+    }
+    return id
+  },
   insertRuleRun: insertDeductionRuleRun,
 })

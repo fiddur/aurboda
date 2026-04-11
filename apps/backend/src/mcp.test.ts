@@ -909,17 +909,21 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.id).toBe('test-uuid')
-      expect(mutations.addActivity).toHaveBeenCalledWith('testuser', {
-        activity_type: 'exercise',
-        data: {
-          exerciseType: 81,
-          exerciseTypeName: 'weightlifting',
+      expect(mutations.addActivity).toHaveBeenCalledWith(
+        'testuser',
+        {
+          activity_type: 'exercise',
+          data: {
+            exerciseType: 81,
+            exerciseTypeName: 'weightlifting',
+          },
+          end_time: expect.any(Date),
+          notes: undefined,
+          start_time: expect.any(Date),
+          title: 'Upper body',
         },
-        end_time: expect.any(Date),
-        notes: undefined,
-        start_time: expect.any(Date),
-        title: 'Upper body',
-      })
+        undefined,
+      )
     })
 
     test('creates activity without exercise_type', async () => {
@@ -945,14 +949,18 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
-      expect(mutations.addActivity).toHaveBeenCalledWith('testuser', {
-        activity_type: 'meditation',
-        data: undefined,
-        end_time: expect.any(Date),
-        notes: undefined,
-        start_time: expect.any(Date),
-        title: 'Morning meditation',
-      })
+      expect(mutations.addActivity).toHaveBeenCalledWith(
+        'testuser',
+        {
+          activity_type: 'meditation',
+          data: undefined,
+          end_time: expect.any(Date),
+          notes: undefined,
+          start_time: expect.any(Date),
+          title: 'Morning meditation',
+        },
+        undefined,
+      )
     })
 
     test('returns error for invalid exercise_type name', async () => {
@@ -1063,16 +1071,21 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
-      expect(mutations.updateActivity).toHaveBeenCalledWith('testuser', testActivityId, {
-        data: {
-          exerciseType: 81,
-          exerciseTypeName: 'weightlifting',
+      expect(mutations.updateActivity).toHaveBeenCalledWith(
+        'testuser',
+        testActivityId,
+        {
+          data: {
+            exerciseType: 81,
+            exerciseTypeName: 'weightlifting',
+          },
+          end_time: undefined,
+          notes: undefined,
+          start_time: undefined,
+          title: 'Workout',
         },
-        end_time: undefined,
-        notes: undefined,
-        start_time: undefined,
-        title: 'Workout',
-      })
+        undefined,
+      )
     })
 
     test('updates activity without exercise_type', async () => {
@@ -1096,13 +1109,18 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
-      expect(mutations.updateActivity).toHaveBeenCalledWith('testuser', testActivityId, {
-        data: undefined,
-        end_time: undefined,
-        notes: 'Great session',
-        start_time: undefined,
-        title: undefined,
-      })
+      expect(mutations.updateActivity).toHaveBeenCalledWith(
+        'testuser',
+        testActivityId,
+        {
+          data: undefined,
+          end_time: undefined,
+          notes: 'Great session',
+          start_time: undefined,
+          title: undefined,
+        },
+        undefined,
+      )
     })
 
     test('returns error for invalid exercise_type', async () => {
@@ -1150,13 +1168,18 @@ describe('MCP Server', () => {
         tz: 'UTC',
       })
 
-      expect(mutations.updateActivity).toHaveBeenCalledWith('testuser', testActivityId, {
-        data: undefined,
-        end_time: expect.any(Date),
-        notes: undefined,
-        start_time: expect.any(Date),
-        title: undefined,
-      })
+      expect(mutations.updateActivity).toHaveBeenCalledWith(
+        'testuser',
+        testActivityId,
+        {
+          data: undefined,
+          end_time: expect.any(Date),
+          notes: undefined,
+          start_time: expect.any(Date),
+          title: undefined,
+        },
+        undefined,
+      )
     })
 
     test('returns error from service on failure', async () => {

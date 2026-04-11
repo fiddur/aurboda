@@ -17,6 +17,7 @@ import {
 } from '@aurboda/api-spec'
 
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
+import type { DeductionQueue } from '../services/deduction-queue.ts'
 
 import {
   activityTypeExists,
@@ -27,13 +28,14 @@ import {
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
-import { buildFullWindow, evaluateAllRules } from '../services/deduction-engine.ts'
+import { evaluateAllRules } from '../services/deduction-engine.ts'
 import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
 export const createDeductionRulesRouter = (
   authMiddleware: RequestHandler,
   engineDeps: DeductionEngineDeps,
+  deductionQueue?: DeductionQueue,
 ): Router => {
   const router = typedRouter()
 
@@ -79,9 +81,8 @@ export const createDeductionRulesRouter = (
         priority,
       })
 
-      // Retroactive evaluation over full history
-      const window = await buildFullWindow(user, engineDeps)
-      await evaluateAllRules(user, [rule], window, engineDeps)
+      // Queue async retroactive evaluation over full history
+      deductionQueue?.enqueueRuleCrud({ user, rule_ids: [rule.id], mode: 'created' })
 
       res.status(201).json({ data: rule, success: true })
     },
@@ -143,11 +144,16 @@ export const createDeductionRulesRouter = (
         return res.status(404).json({ error: 'Deduction rule not found', success: false })
       }
 
-      // Re-evaluate retroactively over full history
-      await deleteRuleActivities(user, id)
+      // Queue async re-evaluation over full history
       if (updated.enabled) {
-        const window = await buildFullWindow(user, engineDeps)
-        await evaluateAllRules(user, [updated], window, engineDeps)
+        deductionQueue?.enqueueRuleCrud({
+          user,
+          rule_ids: [updated.id],
+          mode: 'updated',
+          cleanup_rule_ids: [id],
+        })
+      } else {
+        await deleteRuleActivities(user, id)
       }
 
       res.json({ data: updated, success: true })
@@ -175,14 +181,14 @@ export const createDeductionRulesRouter = (
       const user = req.user!
       const rules = await getEnabledDeductionRules(user)
 
-      const window = await buildFullWindow(user, engineDeps)
+      deductionQueue?.enqueueRuleCrud({
+        cleanup_rule_ids: rules.map((r) => r.id),
+        mode: 'evaluate_all',
+        rule_ids: rules.map((r) => r.id),
+        user,
+      })
 
-      for (const rule of rules) {
-        await deleteRuleActivities(user, rule.id)
-      }
-
-      const result = await evaluateAllRules(user, rules, window, engineDeps)
-      res.json({ ...result, success: true })
+      res.json({ activities_created: 0, rules_evaluated: rules.length, success: true })
     },
   )
 

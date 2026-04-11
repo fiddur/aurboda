@@ -41,6 +41,17 @@ export const getDeductionRule = async (user: string, id: string): Promise<Deduct
   return mapRow(result.rows[0])
 }
 
+export const getDeductionRulesByIds = async (user: string, ids: string[]): Promise<DeductionRule[]> => {
+  if (ids.length === 0) return []
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ')
+  const result = await query(
+    user,
+    `SELECT ${SELECT_COLS} FROM deduction_rules WHERE id IN (${placeholders}) ORDER BY priority, name`,
+    ids,
+  )
+  return result.rows.map(mapRow)
+}
+
 export const insertDeductionRule = async (
   user: string,
   rule: {
