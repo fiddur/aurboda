@@ -223,6 +223,9 @@ export const activitiesQuerySchema = timeRangeQuerySchema
         'Filter by JSONB data field values. Format: "field:value" (comma-separated for multiple). Use "(none)" for null/empty.',
       example: 'partner:Sara',
     }),
+    deduction_rule_id: z.string().uuid().optional().meta({
+      description: 'Filter to activities created or enriched by a specific deduction rule',
+    }),
   })
   .meta({ id: 'ActivitiesQuery' })
 

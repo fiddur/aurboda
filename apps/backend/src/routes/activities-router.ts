@@ -180,6 +180,7 @@ export const createActivitiesRouter = (
         types: typesParam,
         exclude_types: excludeTypesParam,
         data_filter: dataFilterStr,
+        deduction_rule_id: deductionRuleId,
       } = req.query
       const user = req.user!
 
@@ -213,6 +214,7 @@ export const createActivitiesRouter = (
         new Date(end),
         syncProvider,
         dataFilters,
+        deductionRuleId,
       )
       res.json({ data: activities, success: true })
     },
