@@ -12,6 +12,7 @@ import {
   deleteMetric,
   deleteMetricData,
   getCustomMetrics,
+  mergeActivities,
   updateActivity,
   updateCustomMetric,
 } from './mutations.ts'
@@ -1380,5 +1381,38 @@ describe('parseMetricEntityId', () => {
       source: 'aurboda',
       time,
     })
+  })
+})
+
+describe('mergeActivities', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('calls onMutated callback after successful merge', async () => {
+    const onMutated = vi.fn()
+    const deps = {
+      deleteActivity: vi.fn().mockResolvedValue(true),
+      getActivityById: vi.fn().mockImplementation((_user: string, id: string) =>
+        Promise.resolve({
+          activity_type: 'exercise',
+          end_time: id === 'a1' ? new Date('2024-03-15T11:00:00Z') : new Date('2024-03-15T12:30:00Z'),
+          id,
+          source: 'aurboda',
+          start_time: id === 'a1' ? new Date('2024-03-15T10:00:00Z') : new Date('2024-03-15T12:00:00Z'),
+        }),
+      ),
+      insertNewActivity: vi.fn().mockResolvedValue('merged-id'),
+    }
+
+    const result = await mergeActivities('testuser', { activity_ids: ['a1', 'a2'] }, deps, onMutated)
+
+    expect(result.success).toBe(true)
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'exercise',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T12:30:00Z'),
+    )
   })
 })
