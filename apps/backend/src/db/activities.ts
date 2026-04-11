@@ -800,3 +800,22 @@ export const updateActivityTypeByTagKey = async (
   )
   return result.rowCount ?? 0
 }
+
+/**
+ * Migrate activities with generic 'exercise' type to their specific type from data.activity_type_key.
+ * Also cleans up redundant exercise type fields from the data JSONB.
+ * Returns the number of activities updated.
+ */
+export const migrateExerciseTypes = async (user: string): Promise<number> => {
+  const result = await query(
+    user,
+    `UPDATE activities
+     SET activity_type = data->>'activity_type_key',
+         data = data - 'activity_type_key' - 'exerciseType' - 'exerciseTypeName'
+     WHERE activity_type = 'exercise'
+       AND data->>'activity_type_key' IS NOT NULL
+       AND data->>'activity_type_key' != 'unknown'
+       AND deleted_at IS NULL`,
+  )
+  return result.rowCount ?? 0
+}
