@@ -27,6 +27,7 @@ vi.mock('../db', () => ({
   deleteTimeSeriesPoint: vi.fn(),
   enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
   findHcRecordId: vi.fn().mockResolvedValue(null),
+  findMergeableActivity: vi.fn().mockResolvedValue(null),
   getActivityById: vi.fn(),
   getCustomMetricByName: vi.fn(),
   getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
@@ -227,6 +228,72 @@ describe('addActivity', () => {
 
     expect(result.success).toBe(true)
     expect(result.activity_type).toBe('nap')
+  })
+
+  test('calls onMutated callback after successful insert', async () => {
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
+    const onMutated = vi.fn()
+
+    await addActivity(
+      'testuser',
+      {
+        activity_type: 'exercise',
+        end_time: new Date('2024-03-15T11:00:00Z'),
+        start_time: new Date('2024-03-15T10:00:00Z'),
+      },
+      onMutated,
+    )
+
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'exercise',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T11:00:00Z'),
+    )
+  })
+
+  test('calls onMutated callback after merge-span extension', async () => {
+    vi.mocked(db.findMergeableActivity).mockResolvedValue({
+      activity_type: 'computer_active',
+      id: 'existing-id',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    } as never)
+    vi.mocked(db.updateActivity).mockResolvedValue({} as never)
+    const onMutated = vi.fn()
+
+    await addActivity(
+      'testuser',
+      {
+        activity_type: 'computer_active',
+        merge_span: 120,
+        start_time: new Date('2024-03-15T10:05:00Z'),
+      },
+      onMutated,
+    )
+
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'computer_active',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T10:05:00Z'),
+    )
+  })
+
+  test('does not call onMutated on validation failure', async () => {
+    vi.mocked(db.activityTypeExists).mockResolvedValue(false)
+    const onMutated = vi.fn()
+
+    await addActivity(
+      'testuser',
+      {
+        activity_type: 'nonexistent',
+        start_time: new Date('2024-03-15T10:00:00Z'),
+      },
+      onMutated,
+    )
+
+    expect(onMutated).not.toHaveBeenCalled()
+    vi.mocked(db.activityTypeExists).mockResolvedValue(true)
   })
 })
 
@@ -1044,6 +1111,76 @@ describe('updateActivity', () => {
       operation: 'insert',
       payload: expect.objectContaining({ activity_type: 'exercise' }),
     })
+  })
+
+  test('calls onMutated callback after successful update', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T12:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T09:00:00Z'),
+    })
+    const onMutated = vi.fn()
+
+    await updateActivity('testuser', 'activity-123', { title: 'Updated' }, onMutated)
+
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'exercise',
+      new Date('2024-03-15T09:00:00Z'),
+      new Date('2024-03-15T12:00:00Z'),
+    )
+  })
+
+  test('calls onMutated for both old and new type on type change', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'nap',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'rest',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    const onMutated = vi.fn()
+
+    await updateActivity('testuser', 'activity-123', { activity_type: 'rest' }, onMutated)
+
+    expect(onMutated).toHaveBeenCalledTimes(2)
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'rest',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T11:00:00Z'),
+    )
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'nap',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T11:00:00Z'),
+    )
+  })
+
+  test('does not call onMutated when activity not found', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue(null)
+    const onMutated = vi.fn()
+
+    await updateActivity('testuser', 'nonexistent', { title: 'x' }, onMutated)
+
+    expect(onMutated).not.toHaveBeenCalled()
   })
 })
 
