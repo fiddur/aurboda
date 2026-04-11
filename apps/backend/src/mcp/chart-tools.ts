@@ -20,10 +20,20 @@ Examples:
 - Weekly average weight: source_type="metric", pattern="weight", bucket_size="1w", aggregation="mean"
 - Monthly programming hours: source_type="productivity_category", pattern="Work > Programming", bucket_size="1M"`,
     { ...chartDataQuerySchema.shape },
-    async ({ aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id }) => {
+    async ({
+      aggregation,
+      breakdown_fields,
+      bucket_size,
+      end,
+      pattern,
+      source_type,
+      start,
+      tag_definition_id,
+    }) => {
       try {
         const buckets = await getChartData(user, {
           aggregation,
+          breakdown_fields,
           bucket_size,
           end,
           pattern,

@@ -26,6 +26,7 @@ Common half-life values:
     { ...getTrendQuerySchema.shape },
     async ({
       aggregation,
+      breakdown_fields,
       display_period,
       half_life_days,
       lookback_days,
@@ -38,6 +39,7 @@ Common half-life values:
 
         const result = await getTrend(user, {
           aggregation,
+          breakdown_fields,
           custom_metrics: customMetrics,
           display_period,
           half_life_days,
