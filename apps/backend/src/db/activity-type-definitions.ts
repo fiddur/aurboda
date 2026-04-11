@@ -182,7 +182,10 @@ export const resolveOrCreateActivityType = async (
       .replaceAll(/^_|_$/g, '')
       .replaceAll(/_+/g, '_') || 'unknown'
 
-  const existing = await getActivityTypeDefinition(user, snakeName)
+  // Ensure name starts with a letter (activity_type schema requires ^[a-z])
+  const safeName = /^[a-z]/.test(snakeName) ? snakeName : `t_${snakeName}`
+
+  const existing = await getActivityTypeDefinition(user, safeName)
   if (existing) return existing.name
 
   // Try alias match
@@ -194,7 +197,7 @@ export const resolveOrCreateActivityType = async (
     aliases: [displayName.toLowerCase()],
     display_category: displayCategory,
     display_name: displayName,
-    name: snakeName,
+    name: safeName,
   })
   return created.name
 }

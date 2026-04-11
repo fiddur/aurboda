@@ -646,7 +646,7 @@ export const getActivitiesByCategory = async (
 export const getAllActivityTypeNames = async (user: string): Promise<string[]> => {
   const result = await query(
     user,
-    `SELECT DISTINCT activity_type FROM activities WHERE deleted_at IS NULL ORDER BY activity_type`,
+    `SELECT DISTINCT activity_type FROM activities WHERE deleted_at IS NULL AND activity_type ~ '^[a-z][a-z0-9_]*$' ORDER BY activity_type`,
   )
   return result.rows.map((r) => r.activity_type as string)
 }
