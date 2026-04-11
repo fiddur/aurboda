@@ -255,17 +255,13 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
     const id = await dbInsertActivity(user, activity)
     if (notifier) {
       const ruleId = (activity.data as Record<string, unknown> | undefined)?.rule_id as string | undefined
-      try {
-        notifier(
-          user,
-          activity.activity_type,
-          activity.start_time,
-          activity.end_time ?? activity.start_time,
-          ruleId,
-        )
-      } catch (err) {
-        console.warn('⚠️ Deduction notification failed:', err)
-      }
+      notifier(
+        user,
+        activity.activity_type,
+        activity.start_time,
+        activity.end_time ?? activity.start_time,
+        ruleId,
+      )
     }
     return id
   },

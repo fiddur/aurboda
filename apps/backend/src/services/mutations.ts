@@ -341,11 +341,7 @@ export async function addActivity(
       const newEndTime = input.end_time ?? input.start_time
       await dbUpdateActivity(user, existing.id, { end_time: newEndTime })
 
-      try {
-        onMutated?.(user, existing.activity_type, existing.start_time, newEndTime)
-      } catch (err) {
-        console.warn('⚠️ Deduction notification failed:', err)
-      }
+      onMutated?.(user, existing.activity_type, existing.start_time, newEndTime)
 
       return {
         activity_type: existing.activity_type,
@@ -371,10 +367,7 @@ export async function addActivity(
     title: input.title,
   })
 
-  // Notify deduction queue (best-effort, never fails the mutation)
-  try {
-    onMutated?.(user, input.activity_type, input.start_time, input.end_time ?? input.start_time)
-  } catch {}
+  onMutated?.(user, input.activity_type, input.start_time, input.end_time ?? input.start_time)
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
@@ -567,14 +560,11 @@ export async function updateActivity(
     (err) => auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }),
   )
 
-  // Notify deduction queue (best-effort)
-  try {
-    onMutated?.(user, updated.activity_type, updated.start_time, updated.end_time ?? updated.start_time)
-    // If type changed, also notify for the old type so rules depending on it can re-evaluate
-    if (isTypeChanging) {
-      onMutated?.(user, existing.activity_type, existing.start_time, existing.end_time ?? existing.start_time)
-    }
-  } catch {}
+  onMutated?.(user, updated.activity_type, updated.start_time, updated.end_time ?? updated.start_time)
+  // If type changed, also notify for the old type so rules depending on it can re-evaluate
+  if (isTypeChanging) {
+    onMutated?.(user, existing.activity_type, existing.start_time, existing.end_time ?? existing.start_time)
+  }
 
   // Enqueue outbound sync if this is an aurboda-owned activity (best-effort)
   try {
@@ -779,10 +769,7 @@ export async function mergeActivities(
     }
   }
 
-  // Notify deduction queue (best-effort)
-  try {
-    onMutated?.(user, sorted[0].activity_type, merged.start_time, merged.end_time ?? merged.start_time)
-  } catch {}
+  onMutated?.(user, sorted[0].activity_type, merged.start_time, merged.end_time ?? merged.start_time)
 
   return {
     activity_type: sorted[0].activity_type,
