@@ -2,7 +2,8 @@
  * D3 bar chart component for bucketed chart data.
  *
  * Renders vertical bars with responsive width, tooltip on hover,
- * click-to-navigate support, and smart date formatting based on data density.
+ * real <a> links for navigation (middle-click, right-click, URL preview),
+ * and smart date formatting based on data density.
  */
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
@@ -29,8 +30,8 @@ export interface BarChartProps {
   height?: number
   /** Multiple named series — renders grouped bars. Overrides data/color when present. */
   multiSeries?: BarSeriesData[]
-  /** Called when a bar is clicked with bucket and optional series info. */
-  onBarClick?: (info: BarClickInfo) => void
+  /** Returns an href for a bar click — enables real <a> links with middle-click support. */
+  getBarHref?: (info: BarClickInfo) => string
 }
 
 interface ParsedBar {
@@ -113,7 +114,22 @@ function positionTooltip(
   tooltip.style.top = `${margin.top + 8}px`
 }
 
-/** Render single-series bars with tooltip and click. */
+/** Create an SVG <a> wrapper for a bar, or a <g> if no href. Returns d3 selection. */
+function createBarWrapper(
+  g: d3.Selection<SVGGElement, unknown, null, undefined>,
+  href: string | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- D3 selection type unions are unwieldy
+): d3.Selection<any, unknown, null, undefined> {
+  if (href) {
+    const a = document.createElementNS('http://www.w3.org/2000/svg', 'a')
+    a.setAttribute('href', href)
+    g.node()!.appendChild(a)
+    return d3.select(a)
+  }
+  return g.append('g')
+}
+
+/** Render single-series bars wrapped in <a> links when getBarHref is provided. */
 function renderBars(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   bars: ParsedBar[],
@@ -125,35 +141,35 @@ function renderBars(
   container: HTMLDivElement,
   margin: { left: number; top: number },
   dateFormat: (date: Date) => string,
-  onBarClick?: (info: BarClickInfo) => void,
+  getBarHref?: (info: BarClickInfo) => string,
 ) {
-  g.selectAll('.bar')
-    .data(bars)
-    .join('rect')
-    .attr('class', 'bar')
-    .attr('x', (d) => x(d.date.toISOString()) ?? 0)
-    .attr('y', (d) => y(d.value))
-    .attr('width', x.bandwidth())
-    .attr('height', (d) => innerHeight - y(d.value))
-    .attr('fill', color)
-    .attr('rx', 2)
-    .style('cursor', onBarClick ? 'pointer' : 'default')
-    .on('mouseenter', (event: MouseEvent, d) => {
-      d3.select(event.target as SVGRectElement).attr('fill-opacity', 0.8)
-      tooltip.textContent = `${dateFormat(d.date)}: ${d.value.toFixed(1)}`
-      tooltip.style.display = 'block'
-    })
-    .on('mousemove', (event: MouseEvent) => positionTooltip(event, container, tooltip, margin))
-    .on('mouseleave', (event: MouseEvent) => {
-      d3.select(event.target as SVGRectElement).attr('fill-opacity', 1)
-      tooltip.style.display = 'none'
-    })
-    .on('click', (_event: MouseEvent, d) => {
-      onBarClick?.({ bucket_start: d.date.toISOString() })
-    })
+  for (const d of bars) {
+    const href = getBarHref?.({ bucket_start: d.date.toISOString() })
+    const wrapper = createBarWrapper(g, href)
+    wrapper
+      .append('rect')
+      .attr('class', 'bar')
+      .attr('x', x(d.date.toISOString()) ?? 0)
+      .attr('y', y(d.value))
+      .attr('width', x.bandwidth())
+      .attr('height', innerHeight - y(d.value))
+      .attr('fill', color)
+      .attr('rx', 2)
+      .style('cursor', getBarHref ? 'pointer' : 'default')
+      .on('mouseenter', (event: MouseEvent) => {
+        d3.select(event.target as SVGRectElement).attr('fill-opacity', 0.8)
+        tooltip.textContent = `${dateFormat(d.date)}: ${d.value.toFixed(1)}`
+        tooltip.style.display = 'block'
+      })
+      .on('mousemove', (event: MouseEvent) => positionTooltip(event, container, tooltip, margin))
+      .on('mouseleave', (event: MouseEvent) => {
+        d3.select(event.target as SVGRectElement).attr('fill-opacity', 1)
+        tooltip.style.display = 'none'
+      })
+  }
 }
 
-/** Render multi-series grouped bars with tooltip and click. */
+/** Render multi-series grouped bars wrapped in <a> links. */
 function renderMultiSeriesBars(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   multiSeries: BarSeriesData[],
@@ -166,7 +182,7 @@ function renderMultiSeriesBars(
   container: HTMLDivElement,
   margin: { left: number; top: number },
   dateFormat: (date: Date) => string,
-  onBarClick?: (info: BarClickInfo) => void,
+  getBarHref?: (info: BarClickInfo) => string,
 ) {
   // Build lookup: bucket -> series -> value
   const bucketValues = new Map<string, Map<string, number>>()
@@ -178,11 +194,9 @@ function renderMultiSeriesBars(
   }
 
   const showBucketTooltip = (bucket: string) => {
-    // Highlight all bars in this bucket
     g.selectAll<SVGRectElement, string>('[data-bucket]').attr('fill-opacity', (b) =>
       b === bucket ? 0.8 : 0.3,
     )
-    // Build tooltip HTML
     const dateLabel = dateFormat(new Date(bucket))
     const values = bucketValues.get(bucket)
     const lines = multiSeries
@@ -203,28 +217,30 @@ function renderMultiSeriesBars(
   for (let si = 0; si < multiSeries.length; si++) {
     const series = multiSeries[si]
     const dataMap = new Map(series.data.map((d) => [d.bucket_start, d.value]))
-    g.selectAll(`.bar-s${si}`)
-      .data(allBuckets)
-      .join('rect')
-      .attr('class', `bar-s${si}`)
-      .attr('data-bucket', (bucket) => bucket)
-      .attr('x', (bucket) => (x0(bucket) ?? 0) + (x1(series.name) ?? 0))
-      .attr('y', (bucket) => y(dataMap.get(bucket) ?? 0))
-      .attr('width', x1.bandwidth())
-      .attr('height', (bucket) => innerHeight - y(dataMap.get(bucket) ?? 0))
-      .attr('fill', series.color)
-      .attr('rx', 1)
-      .style('cursor', onBarClick ? 'pointer' : 'default')
-      .on('mouseenter', (_event: MouseEvent, bucket) => showBucketTooltip(bucket))
-      .on('mousemove', (event: MouseEvent) => positionTooltip(event, container, tooltip, margin))
-      .on('mouseleave', () => hideBucketTooltip())
-      .on('click', (_event: MouseEvent, bucket) => {
-        onBarClick?.({ bucket_start: bucket, series_name: series.name })
-      })
+
+    for (const bucket of allBuckets) {
+      const href = getBarHref?.({ bucket_start: bucket, series_name: series.name })
+      const wrapper = createBarWrapper(g, href)
+      const value = dataMap.get(bucket) ?? 0
+      wrapper
+        .append('rect')
+        .attr('class', `bar-s${si}`)
+        .attr('data-bucket', bucket)
+        .attr('x', (x0(bucket) ?? 0) + (x1(series.name) ?? 0))
+        .attr('y', y(value))
+        .attr('width', x1.bandwidth())
+        .attr('height', innerHeight - y(value))
+        .attr('fill', series.color)
+        .attr('rx', 1)
+        .style('cursor', getBarHref ? 'pointer' : 'default')
+        .on('mouseenter', () => showBucketTooltip(bucket))
+        .on('mousemove', (event: MouseEvent) => positionTooltip(event, container, tooltip, margin))
+        .on('mouseleave', () => hideBucketTooltip())
+    }
   }
 }
 
-export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries, onBarClick }: BarChartProps) {
+export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries, getBarHref }: BarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -287,7 +303,7 @@ export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries, o
           container,
           margin,
           dateFormat,
-          onBarClick,
+          getBarHref,
         )
       }
     } else {
@@ -326,11 +342,11 @@ export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries, o
           container,
           margin,
           dateFormat,
-          onBarClick,
+          getBarHref,
         )
       }
     }
-  }, [data, color, height, multiSeries, onBarClick])
+  }, [data, color, height, multiSeries, getBarHref])
 
   if (effectiveData.length === 0) {
     return <div class="bar-chart-placeholder">No data for the selected range</div>
