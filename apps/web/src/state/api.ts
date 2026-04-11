@@ -77,6 +77,7 @@ import type {
   Report as ApiReport,
   ReportResponse,
   ReportsResponse,
+  ResyncActivityDetailResponse,
   ScreentimeCategory,
   ScreentimeCategoryListResponse,
   ScreentimeCategoryResponse,
@@ -1944,5 +1945,15 @@ export const fetchAuditLog = async (params: FetchAuditLogParams = {}): Promise<A
     headers: { Authorization: `Bearer ${token}` },
     params,
   })
+  return response.data
+}
+
+export const resyncActivityDetail = async (activityId: string): Promise<ResyncActivityDetailResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<ResyncActivityDetailResponse>(
+    `${API_URL}/activities/${activityId}/resync-detail`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
   return response.data
 }
