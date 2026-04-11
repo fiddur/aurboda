@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+// Mock audit-log (imported by geocode-queue)
+vi.mock('./audit-log', () => ({
+  auditError: vi.fn(),
+  auditInfo: vi.fn(),
+  auditWarn: vi.fn(),
+}))
+
 // Mock geocoding
 vi.mock('./geocoding', () => ({
   reverseGeocode: vi.fn().mockResolvedValue({
@@ -7,6 +14,8 @@ vi.mock('./geocoding', () => ({
     success: true,
   }),
 }))
+
+import { createGeocodeQueue } from './geocode-queue.ts'
 
 const createMockBoss = () => ({
   createQueue: vi.fn().mockResolvedValue(undefined),
@@ -25,7 +34,6 @@ describe('createGeocodeQueue', () => {
 
   test('creates queue and registers worker', async () => {
     const boss = createMockBoss()
-    const { createGeocodeQueue } = await import('./geocode-queue.js')
 
     const queue = await createGeocodeQueue(boss as never, {
       updateDetectedLocation: vi.fn(),
@@ -45,7 +53,6 @@ describe('createGeocodeQueue', () => {
   test('enqueueJob sends job to boss and updates location status', async () => {
     const boss = createMockBoss()
     const mockUpdateLocation = vi.fn().mockResolvedValue({})
-    const { createGeocodeQueue } = await import('./geocode-queue.js')
 
     const queue = await createGeocodeQueue(boss as never, {
       updateDetectedLocation: mockUpdateLocation,
@@ -79,13 +86,11 @@ describe('createGeocodeQueue', () => {
   test('enqueueJob returns null on error', async () => {
     const boss = createMockBoss()
     boss.send.mockRejectedValue(new Error('Queue error'))
-    const { createGeocodeQueue } = await import('./geocode-queue.js')
 
     const queue = await createGeocodeQueue(boss as never, {
       updateDetectedLocation: vi.fn(),
     })
 
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const jobId = await queue.enqueueJob({
       detectedLocationId: 'loc-1',
       lat: 59.3293,
@@ -94,13 +99,11 @@ describe('createGeocodeQueue', () => {
     })
 
     expect(jobId).toBeNull()
-    consoleSpy.mockRestore()
   })
 
   test('enqueueJobs enqueues multiple jobs', async () => {
     const boss = createMockBoss()
     const mockUpdateLocation = vi.fn().mockResolvedValue({})
-    const { createGeocodeQueue } = await import('./geocode-queue.js')
 
     const queue = await createGeocodeQueue(boss as never, {
       updateDetectedLocation: mockUpdateLocation,
