@@ -440,34 +440,38 @@ const computeBucketEnd = (start: Date, bucketSize: string): Date => {
   return end
 }
 
+/** Build a /data URL for a bar click. */
+const buildBarDataHref = (
+  info: BarClickInfo,
+  pattern: string,
+  bucketSize: string,
+  breakdownFields?: string[],
+): string => {
+  const bucketStart = new Date(info.bucket_start)
+  const bucketEnd = computeBucketEnd(bucketStart, bucketSize)
+
+  const urlParams = new URLSearchParams()
+  urlParams.set('from', bucketStart.toISOString())
+  urlParams.set('to', bucketEnd.toISOString())
+  urlParams.set('date', bucketStart.toISOString().slice(0, 10))
+  urlParams.set('types', pattern)
+  urlParams.set('hide', 'location,music,meal,report,screentime')
+
+  if (info.series_name && breakdownFields?.length) {
+    const values = info.series_name.split(' / ')
+    const filters = breakdownFields.map((field, i) => `${field}:${values[i] ?? '(none)'}`).join(',')
+    urlParams.set('data_filter', filters)
+  }
+
+  return `/data?${urlParams}`
+}
+
 function BarDisplay({ params }: { params: FetchChartDataParams }) {
-  const { route } = useLocation()
-
-  const handleBarClick = useCallback(
-    (info: BarClickInfo) => {
-      if (params.source_type !== 'activity_type' || !params.pattern) return
-
-      const bucketStart = new Date(info.bucket_start)
-      const bucketEnd = computeBucketEnd(bucketStart, params.bucket_size ?? '1d')
-
-      const urlParams = new URLSearchParams()
-      urlParams.set('from', bucketStart.toISOString())
-      urlParams.set('to', bucketEnd.toISOString())
-      urlParams.set('date', bucketStart.toISOString().slice(0, 10))
-      urlParams.set('types', params.pattern)
-
-      if (info.series_name && params.breakdown_fields?.length) {
-        const values = info.series_name.split(' / ')
-        const filters = params.breakdown_fields
-          .map((field, i) => `${field}:${values[i] ?? '(none)'}`)
-          .join(',')
-        urlParams.set('data_filter', filters)
-      }
-
-      route(`/data?${urlParams}`)
-    },
-    [params, route],
-  )
+  const getBarHref =
+    params.source_type === 'activity_type' && params.pattern
+      ? (info: BarClickInfo) =>
+          buildBarDataHref(info, params.pattern!, params.bucket_size ?? '1d', params.breakdown_fields)
+      : undefined
 
   const barQuery = useQuery({
     enabled: Boolean(params.pattern || params.tag_definition_id),
@@ -489,7 +493,6 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
   }
 
   const result = barQuery.data
-  const onBarClick = params.source_type === 'activity_type' ? handleBarClick : undefined
 
   if (result?.breakdown_buckets?.length) {
     const series = result.breakdown_series ?? []
@@ -499,7 +502,7 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
         <BarChart
           data={[]}
           height={350}
-          onBarClick={onBarClick}
+          getBarHref={getBarHref}
           multiSeries={series.map((name, i) => ({
             color: SERIES_COLORS[i % SERIES_COLORS.length],
             data: result.breakdown_buckets!.map((b) => ({
@@ -517,7 +520,7 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
 
   return (
     <div class="chart-display">
-      <BarChart data={buckets} color="#8b5cf6" height={350} onBarClick={onBarClick} />
+      <BarChart data={buckets} color="#8b5cf6" height={350} getBarHref={getBarHref} />
     </div>
   )
 }
