@@ -166,7 +166,7 @@ export const createActivitiesRouter = (
   authMiddleware: RequestHandler,
   syncProvider?: SyncProvider,
   onActivityMutated?: ActivityNotifier,
-  resyncActivityDetail?: (user: string, activityId: string) => Promise<number>,
+  resyncActivityDetail?: (user: string, activityId: string, garminActivityId: number) => Promise<number>,
 ): Router => {
   const router = typedRouter()
 
@@ -700,14 +700,38 @@ export const createActivitiesRouter = (
         return
       }
 
-      const garminActivityId = (activity.data as Record<string, unknown> | undefined)?.garmin_activity_id
+      // Look for garmin_activity_id in this activity and its overlapping (merged) sources
+      const getData = (a: { data?: unknown }) =>
+        (a.data as Record<string, unknown> | undefined)?.garmin_activity_id as number | undefined
+
+      let garminActivityId = getData(activity)
+      let garminSourceId = activity.id!
+
       if (!garminActivityId) {
-        res.status(400).json({ points: 0, success: false, error: 'Activity has no Garmin activity ID' })
+        const overlapping = await getOverlappingActivities(user, activity)
+        for (const src of overlapping) {
+          const gid = getData(src)
+          if (gid) {
+            garminActivityId = gid
+            garminSourceId = src.id!
+            break
+          }
+        }
+      }
+
+      if (!garminActivityId) {
+        res
+          .status(400)
+          .json({
+            points: 0,
+            success: false,
+            error: 'No Garmin activity ID found in activity or its merged sources',
+          })
         return
       }
 
       try {
-        const points = await resyncActivityDetail(user, id)
+        const points = await resyncActivityDetail(user, garminSourceId, garminActivityId)
         res.json({ points, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
