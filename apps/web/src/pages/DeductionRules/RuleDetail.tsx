@@ -3,6 +3,7 @@
  * Handles both editing existing rules and creating new ones (/deduction-rules/new).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { formatISO } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
@@ -431,10 +432,29 @@ function EditRuleForm({ id }: { id: string }) {
         <section class="rule-section">
           <AutoSaveText label="Name" value={rule.name} onSave={(v) => autoSave({ name: v })} />
 
+          <div class="rule-field">
+            <span class="rule-field-label">Mode</span>
+            <select
+              value={rule.mode ?? 'create'}
+              onChange={(e) =>
+                autoSave({ mode: (e.target as HTMLSelectElement).value as 'create' | 'enrich' })
+              }
+              class="rule-field-select"
+            >
+              <option value="create">Create new activities</option>
+              <option value="enrich">Enrich existing activities</option>
+            </select>
+          </div>
+
           <ActivityTypePicker
             value={rule.output_activity_type}
             onChange={(v) => autoSave({ output_activity_type: v })}
             definitions={definitions}
+          />
+
+          <OutputDataEditor
+            data={rule.output_data ?? {}}
+            onChange={(data) => autoSave({ output_data: Object.keys(data).length > 0 ? data : null })}
           />
 
           <AutoSaveText
@@ -490,6 +510,16 @@ function EditRuleForm({ id }: { id: string }) {
               {updateMutation.isPending ? 'Saving...' : 'Save Conditions'}
             </button>
           )}
+        </section>
+
+        <section class="rule-section">
+          <a
+            href={`/data?date=${formatISO(new Date(), { representation: 'date' })}&types=${encodeURIComponent(rule.output_activity_type)}&deduction_rule_id=${id}&hide=location,music,meal,report,screentime`}
+            class="note-action-btn"
+            style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}
+          >
+            View activities (last 90 days)
+          </a>
         </section>
 
         <section class="rule-section rule-danger-zone">
