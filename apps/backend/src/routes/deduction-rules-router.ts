@@ -82,7 +82,9 @@ export const createDeductionRulesRouter = (
       })
 
       // Queue async retroactive evaluation over full history
-      deductionQueue?.enqueueRuleCrud({ user, rule_ids: [rule.id], mode: 'created' })
+      if (deductionQueue) {
+        deductionQueue.enqueueRuleCrud({ user, rule_ids: [rule.id], mode: 'created' })
+      }
 
       res.status(201).json({ data: rule, success: true })
     },
@@ -145,14 +147,14 @@ export const createDeductionRulesRouter = (
       }
 
       // Queue async re-evaluation over full history
-      if (updated.enabled) {
-        deductionQueue?.enqueueRuleCrud({
+      if (updated.enabled && deductionQueue) {
+        deductionQueue.enqueueRuleCrud({
           user,
           rule_ids: [updated.id],
           mode: 'updated',
           cleanup_rule_ids: [id],
         })
-      } else {
+      } else if (!updated.enabled) {
         await deleteRuleActivities(user, id)
       }
 
@@ -181,14 +183,16 @@ export const createDeductionRulesRouter = (
       const user = req.user!
       const rules = await getEnabledDeductionRules(user)
 
-      deductionQueue?.enqueueRuleCrud({
-        cleanup_rule_ids: rules.map((r) => r.id),
-        mode: 'evaluate_all',
-        rule_ids: rules.map((r) => r.id),
-        user,
-      })
+      if (deductionQueue) {
+        deductionQueue.enqueueRuleCrud({
+          cleanup_rule_ids: rules.map((r) => r.id),
+          mode: 'evaluate_all',
+          rule_ids: rules.map((r) => r.id),
+          user,
+        })
+      }
 
-      res.json({ activities_created: 0, rules_evaluated: rules.length, success: true })
+      res.json({ rules_evaluated: rules.length, success: true })
     },
   )
 

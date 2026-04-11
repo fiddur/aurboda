@@ -19,7 +19,7 @@ export type { Job } from 'pg-boss'
 const DEFAULT_DB = 'aurboda'
 
 const getDbParams = () => ({
-  database: process.env.GEOCODE_DB || DEFAULT_DB,
+  database: process.env.PGBOSS_DB || process.env.GEOCODE_DB || DEFAULT_DB,
   host: process.env.PGHOST || 'localhost',
   password: process.env.PGPASSWORD,
   port: parseInt(process.env.PGPORT || '5432', 10),

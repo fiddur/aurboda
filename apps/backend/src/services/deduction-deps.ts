@@ -263,7 +263,9 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
           activity.end_time ?? activity.start_time,
           ruleId,
         )
-      } catch {}
+      } catch (err) {
+        console.warn('⚠️ Deduction notification failed:', err)
+      }
     }
     return id
   },

@@ -343,7 +343,9 @@ export async function addActivity(
 
       try {
         onMutated?.(user, existing.activity_type, existing.start_time, newEndTime)
-      } catch {}
+      } catch (err) {
+        console.warn('⚠️ Deduction notification failed:', err)
+      }
 
       return {
         activity_type: existing.activity_type,

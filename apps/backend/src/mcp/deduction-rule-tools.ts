@@ -63,9 +63,14 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
       const rule = await insertDeductionRule(user, params)
 
       // Queue async retroactive evaluation
-      deductionQueue?.enqueueRuleCrud({ user, rule_ids: [rule.id], mode: 'created' })
+      if (deductionQueue) {
+        deductionQueue.enqueueRuleCrud({ user, rule_ids: [rule.id], mode: 'created' })
+      }
 
-      return jsonResponse({ ...rule, evaluation_status: 'queued' })
+      return jsonResponse({
+        ...rule,
+        evaluation_status: deductionQueue ? 'queued' : 'unavailable',
+      })
     },
   )
 
@@ -85,14 +90,14 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
       if (!updated) return errorResponse('Deduction rule not found')
 
       // Queue async re-evaluation
-      if (updated.enabled) {
-        deductionQueue?.enqueueRuleCrud({
+      if (updated.enabled && deductionQueue) {
+        deductionQueue.enqueueRuleCrud({
           user,
           rule_ids: [updated.id],
           mode: 'updated',
           cleanup_rule_ids: [id],
         })
-      } else {
+      } else if (!updated.enabled) {
         await deleteRuleActivities(user, id)
       }
 
@@ -119,14 +124,19 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
     async () => {
       const rules = await getEnabledDeductionRules(user)
 
-      deductionQueue?.enqueueRuleCrud({
-        cleanup_rule_ids: rules.map((r) => r.id),
-        mode: 'evaluate_all',
-        rule_ids: rules.map((r) => r.id),
-        user,
-      })
+      if (deductionQueue) {
+        deductionQueue.enqueueRuleCrud({
+          cleanup_rule_ids: rules.map((r) => r.id),
+          mode: 'evaluate_all',
+          rule_ids: rules.map((r) => r.id),
+          user,
+        })
+      }
 
-      return jsonResponse({ evaluation_status: 'queued', rules_queued: rules.length })
+      return jsonResponse({
+        evaluation_status: deductionQueue ? 'queued' : 'unavailable',
+        rules_queued: rules.length,
+      })
     },
   )
 

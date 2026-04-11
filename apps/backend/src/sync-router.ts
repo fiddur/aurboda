@@ -59,6 +59,9 @@ import {
 import { typedRouter } from './typed-router.ts'
 import { validateBody } from './validation.ts'
 
+/** Default lookback window for sync-triggered deduction evaluation (30 days). */
+const DEFAULT_SYNC_LOOKBACK_MS = 30 * 86400000
+
 /**
  * Dependencies for sync router - allows testing with mocks
  */
@@ -206,7 +209,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
         deps.onActivitySynced?.(
           user,
           '*',
-          start_date ? new Date(start_date) : new Date(Date.now() - 30 * 86400000),
+          start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
           new Date(),
         )
         res.json({ results, success: true })
@@ -266,7 +269,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
         deps.onActivitySynced?.(
           user,
           '*',
-          start_date ? new Date(start_date) : new Date(Date.now() - 30 * 86400000),
+          start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
           new Date(),
         )
         res.json({ results, success: true })
@@ -386,7 +389,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
 
       try {
         const results = await deps.syncCalendars(user, calendars, { fullResync: full_resync })
-        deps.onActivitySynced?.(user, '*', new Date(Date.now() - 30 * 86400000), new Date())
+        deps.onActivitySynced?.(user, '*', new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS), new Date())
         res.json({ results, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -455,7 +458,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
         deps.onActivitySynced?.(
           user,
           '*',
-          start_date ? new Date(start_date) : new Date(Date.now() - 30 * 86400000),
+          start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
           new Date(),
         )
         res.json({ result, success: true })
