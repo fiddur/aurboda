@@ -1227,6 +1227,7 @@ export interface FetchTrendParams {
   display_period?: TrendDisplayPeriod
   aggregation?: 'count' | 'sum' | 'mean'
   tag_definition_id?: string
+  breakdown_fields?: string[]
 }
 
 // Fetch trend data with EMA calculation
@@ -1242,6 +1243,7 @@ export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult>
   if (params.half_life_days) query.half_life_days = params.half_life_days.toString()
   if (params.lookback_days) query.lookback_days = params.lookback_days.toString()
   if (params.tag_definition_id) query.tag_definition_id = params.tag_definition_id
+  if (params.breakdown_fields?.length) query.breakdown_fields = params.breakdown_fields.join(',')
 
   const response = await axios.get<TrendResponse>(`${API_URL}/trends`, {
     headers: { Authorization: `Bearer ${token}` },

@@ -26,6 +26,7 @@ const LN2 = 0.693147
 
 export interface GetTrendInput {
   aggregation?: 'count' | 'mean' | 'sum'
+  breakdown_fields?: string[]
   custom_metrics?: CustomMetricDefinition[]
   display_period?: TrendDisplayPeriod
   half_life_days?: number
@@ -326,6 +327,177 @@ const calculateActivityTypeCountTrend = async (
 }
 
 /**
+ * Compute EMA over daily values using the same formula as the SQL-based functions.
+ * For each day, ema = multiplier * sum(value_i * weight_i) / sum(weight_i)
+ * where weight_i = exp(-LN2 * daysAgo / halfLife) and the lookback window is
+ * min(lookbackDays, 90).
+ */
+const computeEma = (
+  dailyValues: Map<string, number>,
+  days: string[],
+  halfLifeDays: number,
+  lookbackDays: number,
+  multiplier: number,
+): TrendHistoryPoint[] => {
+  const windowDays = Math.min(lookbackDays, 90)
+  const history: TrendHistoryPoint[] = []
+
+  for (let i = 0; i < days.length; i++) {
+    let weightedSum = 0
+    let weightSum = 0
+    const currentDay = new Date(days[i]).getTime()
+
+    for (let j = i; j >= 0 && i - j <= windowDays; j--) {
+      const pastDay = new Date(days[j]).getTime()
+      const daysAgo = (currentDay - pastDay) / (1000 * 60 * 60 * 24)
+      const weight = Math.exp((-LN2 * daysAgo) / halfLifeDays)
+      const value = dailyValues.get(days[j]) ?? 0
+      weightedSum += value * weight
+      weightSum += weight
+    }
+
+    if (weightSum > 0) {
+      history.push({ date: days[i], value: (multiplier * weightedSum) / weightSum })
+    }
+  }
+
+  return history
+}
+
+/**
+ * Calculate EMA-weighted trend for an activity type broken down by one or more data fields.
+ * Groups daily values by breakdown field, then computes EMA independently per series.
+ */
+const calculateActivityTypeBreakdownTrend = async (
+  user: string,
+  pattern: string,
+  breakdownFields: string[],
+  halfLifeDays: number,
+  lookbackDays: number,
+  displayPeriod: TrendDisplayPeriod,
+  aggregation: 'count' | 'sum',
+): Promise<{ series: string[]; histories: Record<string, TrendHistoryPoint[]> }> => {
+  for (const field of breakdownFields) {
+    if (!/^[a-z][a-z0-9_]*$/.test(field)) return { histories: {}, series: [] }
+  }
+
+  const multiplier = displayPeriodMultipliers[displayPeriod]
+  const fieldSelects = breakdownFields.map((f, i) => `COALESCE(data->>'${f}', '(none)') AS field_${i}`)
+  const fieldGroupBys = breakdownFields.map((_, i) => `field_${i}`)
+  const valueExpr =
+    aggregation === 'count'
+      ? 'count(*)'
+      : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
+
+  const result = await query(
+    user,
+    `SELECT date_trunc('day', start_time AT TIME ZONE 'UTC')::date AS day,
+            ${fieldSelects.join(', ')},
+            ${valueExpr} AS value
+       FROM activities
+      WHERE activity_type = $1
+        AND deleted_at IS NULL
+        AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+      GROUP BY 1, ${fieldGroupBys.join(', ')}
+      ORDER BY 1`,
+    [pattern, lookbackDays],
+  )
+
+  // Build per-series daily values
+  const seriesDaily = new Map<string, Map<string, number>>()
+  for (const row of result.rows) {
+    const keyParts = breakdownFields.map((_, i) => row[`field_${i}`] as string)
+    const seriesKey = keyParts.join(' / ')
+    const day = (row.day as Date).toISOString().split('T')[0]
+    const value = Number(row.value)
+
+    if (!seriesDaily.has(seriesKey)) seriesDaily.set(seriesKey, new Map())
+    seriesDaily.get(seriesKey)!.set(day, value)
+  }
+
+  // Generate full date range
+  const days: string[] = []
+  const now = new Date()
+  now.setUTCHours(0, 0, 0, 0)
+  for (let d = lookbackDays; d >= 0; d--) {
+    const date = new Date(now)
+    date.setUTCDate(date.getUTCDate() - d)
+    days.push(date.toISOString().split('T')[0])
+  }
+
+  // Compute EMA per series
+  const series = [...seriesDaily.keys()].sort()
+  const histories: Record<string, TrendHistoryPoint[]> = {}
+  for (const s of series) {
+    histories[s] = computeEma(seriesDaily.get(s)!, days, halfLifeDays, lookbackDays, multiplier)
+  }
+
+  return { histories, series }
+}
+
+const displayUnits: Record<TrendDisplayPeriod, string> = {
+  daily: 'per day',
+  monthly: 'per month',
+  weekly: 'per week',
+}
+
+/** Build the activity_type trend result, with optional breakdown. */
+const getActivityTypeTrend = async (
+  user: string,
+  input: GetTrendInput & { aggregation: 'count' | 'mean' | 'sum' },
+  halfLifeDays: number,
+  lookbackDays: number,
+  displayPeriod: TrendDisplayPeriod,
+): Promise<TrendResult> => {
+  const effectiveAggregation = input.aggregation === 'mean' ? 'sum' : input.aggregation
+  const displayUnit =
+    effectiveAggregation === 'count' ? displayUnits[displayPeriod] : `hours ${displayUnits[displayPeriod]}`
+
+  if (input.breakdown_fields?.length) {
+    const breakdown = await calculateActivityTypeBreakdownTrend(
+      user,
+      input.pattern,
+      input.breakdown_fields,
+      halfLifeDays,
+      lookbackDays,
+      displayPeriod,
+      effectiveAggregation,
+    )
+
+    return {
+      aggregation: effectiveAggregation,
+      breakdown_histories: breakdown.histories,
+      breakdown_series: breakdown.series,
+      current_value: 0,
+      display_period: displayPeriod,
+      display_unit: displayUnit,
+      half_life_days: halfLifeDays,
+      history: [],
+      lookback_days: lookbackDays,
+      pattern: input.pattern,
+      source_type: 'activity_type',
+    }
+  }
+
+  const { currentValue, history } =
+    effectiveAggregation === 'count'
+      ? await calculateActivityTypeCountTrend(user, input.pattern, halfLifeDays, lookbackDays, displayPeriod)
+      : await calculateActivityTypeTrend(user, input.pattern, halfLifeDays, lookbackDays, displayPeriod)
+
+  return {
+    aggregation: effectiveAggregation,
+    current_value: currentValue,
+    display_period: displayPeriod,
+    display_unit: displayUnit,
+    half_life_days: halfLifeDays,
+    history,
+    lookback_days: lookbackDays,
+    pattern: input.pattern,
+    source_type: 'activity_type',
+  }
+}
+
+/**
  * Get the trend for a tag pattern, metric, productivity category, or activity type.
  */
 export const getTrend = async (user: string, input: GetTrendInput): Promise<TrendResult> => {
@@ -337,12 +509,6 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
     pattern,
     source_type: sourceType,
   } = input
-
-  const displayUnits: Record<TrendDisplayPeriod, string> = {
-    daily: 'per day',
-    monthly: 'per month',
-    weekly: 'per week',
-  }
 
   if (sourceType === 'tag') {
     // Tags are now activities — delegate to activity_type count trend
@@ -366,26 +532,7 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       source_type: sourceType,
     }
   } else if (sourceType === 'activity_type') {
-    const effectiveAggregation = aggregation === 'mean' ? 'sum' : aggregation
-    const { currentValue, history } =
-      effectiveAggregation === 'count'
-        ? await calculateActivityTypeCountTrend(user, pattern, halfLifeDays, lookbackDays, displayPeriod)
-        : await calculateActivityTypeTrend(user, pattern, halfLifeDays, lookbackDays, displayPeriod)
-
-    return {
-      aggregation: effectiveAggregation,
-      current_value: currentValue,
-      display_period: displayPeriod,
-      display_unit:
-        effectiveAggregation === 'count'
-          ? displayUnits[displayPeriod]
-          : `hours ${displayUnits[displayPeriod]}`,
-      half_life_days: halfLifeDays,
-      history,
-      lookback_days: lookbackDays,
-      pattern,
-      source_type: sourceType,
-    }
+    return getActivityTypeTrend(user, { ...input, aggregation }, halfLifeDays, lookbackDays, displayPeriod)
   } else if (sourceType === 'productivity_category') {
     const { currentValue, history } = await calculateProductivityCategoryTrend(
       user,

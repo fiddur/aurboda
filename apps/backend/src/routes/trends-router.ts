@@ -22,6 +22,7 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
     async (req, res) => {
       const {
         aggregation,
+        breakdown_fields: breakdownFieldsStr,
         display_period,
         half_life_days,
         lookback_days,
@@ -29,6 +30,12 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
         source_type,
         tag_definition_id,
       } = req.query
+      const breakdown_fields = breakdownFieldsStr
+        ? breakdownFieldsStr
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined
       const user = req.user!
 
       // Require pattern or tag_definition_id
@@ -46,6 +53,7 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
 
         const result = await getTrend(user, {
           aggregation,
+          breakdown_fields,
           custom_metrics: customMetrics,
           display_period,
           half_life_days: halfLifeDays,

@@ -83,6 +83,13 @@ export const getTrendQuerySchema = z
       .uuid()
       .optional()
       .meta({ description: 'Tag definition ID (alternative to pattern for tag trends)' }),
+    breakdown_fields: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description:
+          'Data fields to break down by (for activity_type source). Produces per-series EMA histories.',
+      }),
   })
   .meta({ id: 'GetTrendQuery' })
 
@@ -111,6 +118,14 @@ export const trendResultSchema = z
     display_unit: z.string().meta({ description: 'Human-readable unit (e.g., "per month")' }),
     half_life_days: z.number().meta({ description: 'Half-life used for calculation' }),
     history: z.array(trendHistoryPointSchema).meta({ description: 'Historical trend values' }),
+    breakdown_series: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Distinct series names when breakdown is used' }),
+    breakdown_histories: z
+      .record(z.string(), z.array(trendHistoryPointSchema))
+      .optional()
+      .meta({ description: 'Per-series EMA trend histories keyed by series name' }),
     lookback_days: z.number().meta({ description: 'Days of data included' }),
     pattern: z.string().meta({ description: 'Pattern used for matching' }),
     source_type: trendSourceTypeSchema.meta({ description: 'Source type queried' }),
@@ -150,6 +165,10 @@ export const trendQuerySchema = z
       .uuid()
       .optional()
       .meta({ description: 'Tag definition ID (alternative to pattern for tag trends)' }),
+    breakdown_fields: z
+      .string()
+      .optional()
+      .meta({ description: 'Comma-separated data fields to break down by' }),
   })
   .meta({ id: 'TrendQuery' })
 
