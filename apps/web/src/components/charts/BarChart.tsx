@@ -187,12 +187,14 @@ export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries }:
       renderGrid(g, y, innerWidth)
       renderAxes(g, x0, y, bars, innerWidth, innerHeight, dateFormat)
 
-      // Render grouped bars
-      for (const series of multiSeries) {
+      // Render grouped bars (use index for selector to avoid invalid CSS from special chars in names)
+      for (let si = 0; si < multiSeries.length; si++) {
+        const series = multiSeries[si]
         const dataMap = new Map(series.data.map((d) => [d.bucket_start, d.value]))
-        g.selectAll(`.bar-${series.name}`)
+        g.selectAll(`.bar-s${si}`)
           .data(allBuckets)
           .join('rect')
+          .attr('class', `bar-s${si}`)
           .attr('x', (bucket) => (x0(bucket) ?? 0) + (x1(series.name) ?? 0))
           .attr('y', (bucket) => y(dataMap.get(bucket) ?? 0))
           .attr('width', x1.bandwidth())
