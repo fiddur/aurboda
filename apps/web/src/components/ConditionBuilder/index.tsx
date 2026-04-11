@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { DataFilter, DeductionRuleCondition } from '../../state/api'
 
 import { fetchActivityTypeDefinitions, fetchNamedLocations } from '../../state/api'
+import { ActivityTypePicker } from '../ActivityTypePicker'
 import './style.css'
 
 const KIND_LABELS: Record<string, string> = {
@@ -40,41 +41,30 @@ const OPERATOR_LABELS: Record<string, string> = {
 function ActivityTypeSelect({
   condition,
   onChange,
-  definitions,
 }: {
   condition: DeductionRuleCondition
   onChange: (c: DeductionRuleCondition) => void
-  definitions: { name: string; display_name: string }[]
 }) {
   return (
-    <select
+    <ActivityTypePicker
       value={condition.activity_type ?? ''}
-      onChange={(e) => onChange({ ...condition, activity_type: (e.target as HTMLSelectElement).value })}
-      class="condition-field-select"
-    >
-      <option value="">-- select activity type --</option>
-      {definitions.map((d) => (
-        <option key={d.name} value={d.name}>
-          {d.display_name} ({d.name})
-        </option>
-      ))}
-    </select>
+      onChange={(activity_type) => onChange({ ...condition, activity_type })}
+      placeholder="Search activity types..."
+    />
   )
 }
 
 function ActivityDataBody({
   condition,
   onChange,
-  definitions,
 }: {
   condition: DeductionRuleCondition
   onChange: (c: DeductionRuleCondition) => void
-  definitions: { name: string; display_name: string }[]
 }) {
   const needsValue = condition.operator === 'eq' || condition.operator === 'neq'
   return (
     <div class="condition-data-fields">
-      <ActivityTypeSelect condition={condition} onChange={onChange} definitions={definitions} />
+      <ActivityTypeSelect condition={condition} onChange={onChange} />
       <div class="condition-data-row">
         <input
           type="text"
@@ -258,7 +248,7 @@ function ConditionCard({
       <div class="condition-card-body">
         {condition.kind === 'activity' && (
           <>
-            <ActivityTypeSelect condition={condition} onChange={update} definitions={definitions} />
+            <ActivityTypeSelect condition={condition} onChange={update} />
             {(() => {
               const typeDef = definitions.find((d) => d.name === condition.activity_type)
               const schemaFields = (
@@ -304,9 +294,7 @@ function ConditionCard({
           />
         )}
 
-        {condition.kind === 'activity_data' && (
-          <ActivityDataBody condition={condition} onChange={update} definitions={definitions} />
-        )}
+        {condition.kind === 'activity_data' && <ActivityDataBody condition={condition} onChange={update} />}
 
         {condition.kind === 'location' && (
           <>

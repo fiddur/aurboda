@@ -7,15 +7,15 @@ import { formatISO } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
-import type { ActivityTypeDefinition, DeductionRule, DeductionRuleCondition } from '../../state/api'
+import type { DeductionRule, DeductionRuleCondition } from '../../state/api'
 
+import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { ConditionBuilder } from '../../components/ConditionBuilder'
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { SaveStatusIndicator, useSaveStatus } from '../../components/SaveStatusIndicator'
 import {
   createDeductionRule,
   deleteDeductionRule,
-  fetchActivityTypeDefinitions,
   fetchDeductionRules,
   previewDeductionRule,
   updateDeductionRule,
@@ -57,30 +57,11 @@ function TextField({
   )
 }
 
-function ActivityTypePicker({
-  value,
-  onChange,
-  definitions,
-}: {
-  value: string
-  onChange: (v: string) => void
-  definitions: ActivityTypeDefinition[]
-}) {
+function OutputActivityTypePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <div class="rule-field">
       <span class="rule-field-label">Output Activity Type</span>
-      <select
-        value={value}
-        onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
-        class="rule-field-select"
-      >
-        <option value="">-- select --</option>
-        {definitions.map((d) => (
-          <option key={d.name} value={d.name}>
-            {d.display_name} ({d.name})
-          </option>
-        ))}
-      </select>
+      <ActivityTypePicker value={value} onChange={onChange} placeholder="Search activity types..." />
     </div>
   )
 }
@@ -218,12 +199,6 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
   // Track previous rule values for auto-save field-change detection
   const prevRule = useRef(rule)
 
-  const { data: definitions = [] } = useQuery({
-    queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activityTypeDefinitions'],
-    staleTime: 5 * 60_000,
-  })
-
   // Sync local state when server data refreshes (edit mode)
   useEffect(() => {
     if (rule) {
@@ -333,13 +308,12 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
             </select>
           </div>
 
-          <ActivityTypePicker
+          <OutputActivityTypePicker
             value={fields.outputType}
             onChange={(v) => {
               updateField('outputType', v)
               autoSave({ output_activity_type: v })
             }}
-            definitions={definitions}
           />
 
           <OutputDataEditor

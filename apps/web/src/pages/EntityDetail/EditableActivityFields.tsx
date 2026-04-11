@@ -2,10 +2,8 @@
  * Shared component that renders activity title, time, duration, and notes
  * in either read mode (plain text) or edit mode (input fields).
  */
-import type { ActivityTypeDefinition } from '../../state/api'
-
+import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { IconPreview } from '../../components/IconPreview'
-import { toDisplayName } from '../../utils/displayName'
 import { formatDateTime, formatDuration, formatTime } from './format-utils'
 
 export interface ActivityDraft {
@@ -26,8 +24,6 @@ interface EditableActivityFieldsProps {
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (draft: ActivityDraft) => void
-  /** All available activity type definitions for the type selector. */
-  typeDefinitions?: ActivityTypeDefinition[]
   /** Label for the duration row (e.g. "In Bed" for sleep). Defaults to "Duration". */
   durationLabel?: string
   /** Icon (emoji or URL) to display next to the title. */
@@ -44,7 +40,6 @@ export const EditableActivityFields = ({
   isEditing,
   draft,
   onDraftChange,
-  typeDefinitions,
   durationLabel = 'Duration',
   icon,
   titleHref,
@@ -64,28 +59,18 @@ export const EditableActivityFields = ({
           onInput={(e) => onDraftChange({ ...draft, title: (e.target as HTMLInputElement).value })}
         />
 
-        {typeDefinitions && (
-          <div class="entity-fields" style={{ marginBottom: '0.5rem' }}>
-            <div class="field-row">
-              <span class="field-label">Type</span>
-              <span class="field-value">
-                <select
-                  class="edit-datetime-input"
-                  value={draft.activity_type}
-                  onChange={(e) =>
-                    onDraftChange({ ...draft, activity_type: (e.target as HTMLSelectElement).value })
-                  }
-                >
-                  {typeDefinitions.map((def) => (
-                    <option key={def.name} value={def.name}>
-                      {def.display_name || toDisplayName(def.name)}
-                    </option>
-                  ))}
-                </select>
-              </span>
-            </div>
+        <div class="entity-fields" style={{ marginBottom: '0.5rem' }}>
+          <div class="field-row">
+            <span class="field-label">Type</span>
+            <span class="field-value">
+              <ActivityTypePicker
+                value={draft.activity_type}
+                onChange={(activity_type) => onDraftChange({ ...draft, activity_type })}
+                placeholder="Search activity types..."
+              />
+            </span>
           </div>
-        )}
+        </div>
 
         <div class="entity-fields">
           <div class="field-row">
