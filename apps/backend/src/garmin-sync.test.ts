@@ -6,6 +6,7 @@ import {
   calculateRetryAfter,
   garminDataTypes,
   isRateLimited,
+  syncActivityDetails,
   syncAllGarminData,
   syncGarminDataType,
 } from './garmin-sync.ts'
@@ -265,6 +266,59 @@ describe('syncGarminDataType', () => {
     const expectedStart = subDays(lastSyncTime, 2)
     // Allow 1 second tolerance for test execution time
     expect(Math.abs(capturedDates[0]!.getTime() - expectedStart.getTime())).toBeLessThan(1000)
+  })
+})
+
+describe('syncActivityDetails', () => {
+  const user = 'testuser'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('fetches detail for activities without detail_synced', async () => {
+    const activity = {
+      activity_type: 'exercise' as const,
+      data: { garmin_activity_id: 12345 },
+      end_time: new Date(),
+      id: 'test-id',
+      source: 'health_connect' as const,
+      start_time: new Date(),
+    }
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([activity])
+
+    const mockGarmin = createMockGarmin()
+    await syncActivityDetails(user, mockGarmin as never)
+
+    expect(db.getActivitiesNeedingDetail).toHaveBeenCalledWith(user, { forceAll: false })
+    expect(mockGarmin.getActivityDetail).toHaveBeenCalledWith(user, 12345)
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'test-id')
+  })
+
+  test('passes forceAll when fullResync is true', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([])
+
+    const mockGarmin = createMockGarmin()
+    await syncActivityDetails(user, mockGarmin as never, { fullResync: true })
+
+    expect(db.getActivitiesNeedingDetail).toHaveBeenCalledWith(user, { forceAll: true })
+  })
+
+  test('skips activities without garmin_activity_id', async () => {
+    const activity = {
+      activity_type: 'exercise' as const,
+      data: {},
+      end_time: new Date(),
+      id: 'test-id',
+      source: 'garmin' as const,
+      start_time: new Date(),
+    }
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([activity])
+
+    const mockGarmin = createMockGarmin()
+    await syncActivityDetails(user, mockGarmin as never)
+
+    expect(mockGarmin.getActivityDetail).not.toHaveBeenCalled()
   })
 })
 

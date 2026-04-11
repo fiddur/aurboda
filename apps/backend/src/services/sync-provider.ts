@@ -15,6 +15,7 @@ import { getSyncState } from '../db/index.ts'
 import {
   type GarminDataType,
   isRateLimited as isGarminRateLimited,
+  syncActivityDetails,
   syncGarminDataType,
 } from '../garmin-sync.ts'
 import { syncAllCalendars } from '../ical-sync.ts'
@@ -96,6 +97,11 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
 
         auditInfo(user, 'sync', `Auto-syncing Garmin ${dataType}`)
         await syncGarminDataType(user, config.garmin, dataType as GarminDataType)
+
+        // After syncing activities, also fetch per-second detail data (GPS, HR, etc.)
+        if (dataType === 'activities') {
+          await syncActivityDetails(user, config.garmin)
+        }
       } catch (error) {
         auditError(user, 'sync', `Failed to auto-sync Garmin ${dataType}`, { error: String(error) })
       }
