@@ -5,9 +5,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatISO } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
-import type { ActivityTypeDefinition, DeductionRuleCondition } from '../../state/api'
+import type { ActivityTypeDefinition, DeductionRule, DeductionRuleCondition } from '../../state/api'
 
 import { ConditionBuilder } from '../../components/ConditionBuilder'
 import { ConfirmButton } from '../../components/ConfirmButton'
@@ -24,50 +24,38 @@ import { auth } from '../../state/auth'
 import './style.css'
 
 // ============================================================================
-// Auto-save text input
+// Field components
 // ============================================================================
 
-function AutoSaveText({
+function TextField({
   label,
   value,
-  onSave,
+  onChange,
+  onBlur,
   placeholder,
   type = 'text',
 }: {
   label: string
   value: string
-  onSave: (v: string) => void
+  onChange: (v: string) => void
+  onBlur?: () => void
   placeholder?: string
   type?: string
 }) {
-  const [local, setLocal] = useState(value)
-
-  useEffect(() => {
-    setLocal(value)
-  }, [value])
-
-  const handleBlur = () => {
-    if (local !== value) onSave(local)
-  }
-
   return (
     <div class="rule-field">
       <span class="rule-field-label">{label}</span>
       <input
         type={type}
-        value={local}
-        onInput={(e) => setLocal((e.target as HTMLInputElement).value)}
-        onBlur={handleBlur}
+        value={value}
+        onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+        onBlur={onBlur}
         placeholder={placeholder}
         class="rule-field-input"
       />
     </div>
   )
 }
-
-// ============================================================================
-// Activity type picker
-// ============================================================================
 
 function ActivityTypePicker({
   value,
@@ -96,10 +84,6 @@ function ActivityTypePicker({
     </div>
   )
 }
-
-// ============================================================================
-// Output data key-value editor
-// ============================================================================
 
 function OutputDataEditor({
   data,
@@ -166,25 +150,73 @@ function OutputDataEditor({
 }
 
 // ============================================================================
-// New rule form
+// Unified rule form
 // ============================================================================
 
-function NewRuleForm() {
+interface RuleFormFields {
+  conditions: DeductionRuleCondition[]
+  enabled: boolean
+  mergeGapMinutes: string
+  mode: 'create' | 'enrich'
+  name: string
+  outputData: Record<string, unknown>
+  outputTitle: string
+  outputType: string
+  priority: number
+}
+
+const defaultFields: RuleFormFields = {
+  conditions: [{ kind: 'activity' }],
+  enabled: true,
+  mergeGapMinutes: '',
+  mode: 'create',
+  name: '',
+  outputData: {},
+  outputTitle: '',
+  outputType: '',
+  priority: 1,
+}
+
+const ruleToFields = (rule: DeductionRule): RuleFormFields => ({
+  conditions: rule.conditions,
+  enabled: rule.enabled,
+  mergeGapMinutes: rule.merge_gap_seconds ? String(rule.merge_gap_seconds / 60) : '',
+  mode: rule.mode ?? 'create',
+  name: rule.name,
+  outputData: rule.output_data ?? {},
+  outputTitle: rule.output_title ?? '',
+  outputType: rule.output_activity_type,
+  priority: rule.priority,
+})
+
+const fieldsToBuildBody = (f: RuleFormFields) => ({
+  conditions: f.conditions,
+  enabled: f.enabled,
+  merge_gap_seconds: f.mergeGapMinutes ? Number(f.mergeGapMinutes) * 60 : undefined,
+  mode: f.mode !== 'create' ? f.mode : undefined,
+  name: f.name,
+  output_activity_type: f.outputType,
+  output_data: Object.keys(f.outputData).length > 0 ? f.outputData : undefined,
+  output_title: f.outputTitle || undefined,
+  priority: f.priority,
+})
+
+// eslint-disable-next-line complexity -- unified form handling create + edit modes
+function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
+  const isNew = !rule
   const { route } = useLocation()
   const queryClient = useQueryClient()
+  const [saveStatus, setSaveStatus] = useSaveStatus(3000)
 
-  const [name, setName] = useState('')
-  const [outputType, setOutputType] = useState('')
-  const [outputTitle, setOutputTitle] = useState('')
-  const [mergeGapMinutes, setMergeGapMinutes] = useState('')
-  const [priority, setPriority] = useState(1)
-  const [enabled, setEnabled] = useState(true)
-  const [conditions, setConditions] = useState<DeductionRuleCondition[]>([{ kind: 'activity' }])
-  const [mode, setMode] = useState<'create' | 'enrich'>('create')
-  const [outputData, setOutputData] = useState<Record<string, unknown>>({})
-  const [previewResult, setPreviewResult] = useState<{ would_affect: number; sample_days: number } | null>(
-    null,
-  )
+  const [fields, setFields] = useState<RuleFormFields>(rule ? ruleToFields(rule) : defaultFields)
+  const [conditionsDirty, setConditionsDirty] = useState(false)
+  const [previewResult, setPreviewResult] = useState<{
+    would_affect: number
+    sample_days: number
+  } | null>(null)
+
+  // Track previous rule values for auto-save field-change detection
+  const prevRule = useRef(rule)
 
   const { data: definitions = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
@@ -192,55 +224,108 @@ function NewRuleForm() {
     staleTime: 5 * 60_000,
   })
 
-  const buildBody = () => ({
-    conditions,
-    enabled,
-    merge_gap_seconds: mergeGapMinutes ? Number(mergeGapMinutes) * 60 : undefined,
-    mode: mode !== 'create' ? mode : undefined,
-    name,
-    output_activity_type: outputType,
-    output_data: Object.keys(outputData).length > 0 ? outputData : undefined,
-    output_title: outputTitle || undefined,
-    priority,
+  // Sync local state when server data refreshes (edit mode)
+  useEffect(() => {
+    if (rule) {
+      setFields(ruleToFields(rule))
+      setConditionsDirty(false)
+      prevRule.current = rule
+    }
+  }, [rule])
+
+  // ── Mutations ──
+
+  const updateMutation = useMutation({
+    mutationFn: (body: Parameters<typeof updateDeductionRule>[1]) => updateDeductionRule(id!, body),
+    onMutate: () => setSaveStatus({ status: 'saving' }),
+    onSuccess: () => {
+      setSaveStatus({ status: 'saved' })
+      queryClient.invalidateQueries({ queryKey: ['deductionRules'] })
+    },
+    onError: () => setSaveStatus({ status: 'error' }),
   })
 
   const createMutation = useMutation({
-    mutationFn: () => createDeductionRule(buildBody()),
+    mutationFn: () => createDeductionRule(fieldsToBuildBody(fields)),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['deductionRules'] })
       route(`/deduction-rules/${created.id}`)
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteDeductionRule(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deductionRules'] })
+      route('/deduction-rules')
+    },
+  })
+
   const previewMutation = useMutation({
-    mutationFn: () => previewDeductionRule(buildBody()),
+    mutationFn: () => previewDeductionRule(fieldsToBuildBody(fields)),
     onSuccess: (result) => setPreviewResult(result),
   })
+
+  // ── Field helpers ──
+
+  const autoSave = useCallback(
+    (body: Parameters<typeof updateDeductionRule>[1]) => {
+      if (!isNew) updateMutation.mutate(body)
+    },
+    [isNew, updateMutation.mutate],
+  )
+
+  const updateField = <K extends keyof RuleFormFields>(key: K, value: RuleFormFields[K]) => {
+    setFields((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleConditionsChange = useCallback((newConditions: DeductionRuleCondition[]) => {
+    setFields((prev) => ({ ...prev, conditions: newConditions }))
+    setConditionsDirty(true)
+  }, [])
+
+  const saveConditions = useCallback(() => {
+    autoSave({ conditions: fields.conditions })
+    setConditionsDirty(false)
+  }, [fields.conditions, autoSave])
+
+  const canSubmit = Boolean(fields.name && fields.outputType)
+
+  // ── Render ──
 
   return (
     <div class="data-sources-page">
       <div class="page-header">
-        <h1>New Deduction Rule</h1>
+        <div class="rule-header-row">
+          <h1>{isNew ? 'New Deduction Rule' : fields.name}</h1>
+          {!isNew && <SaveStatusIndicator state={saveStatus} variant="compact" />}
+        </div>
+        {!isNew && (
+          <a href="/deduction-rules" class="rule-back-link">
+            Back to rules
+          </a>
+        )}
       </div>
 
       <div class="rule-detail">
         <section class="rule-section">
-          <div class="rule-field">
-            <span class="rule-field-label">Name</span>
-            <input
-              type="text"
-              value={name}
-              onInput={(e) => setName((e.target as HTMLInputElement).value)}
-              placeholder="Rule name"
-              class="rule-field-input"
-            />
-          </div>
+          <TextField
+            label="Name"
+            value={fields.name}
+            onChange={(v) => updateField('name', v)}
+            onBlur={() => !isNew && fields.name !== rule?.name && autoSave({ name: fields.name })}
+            placeholder="Rule name"
+          />
 
           <div class="rule-field">
             <span class="rule-field-label">Mode</span>
             <select
-              value={mode}
-              onChange={(e) => setMode((e.target as HTMLSelectElement).value as 'create' | 'enrich')}
+              value={fields.mode}
+              onChange={(e) => {
+                const v = (e.target as HTMLSelectElement).value as 'create' | 'enrich'
+                updateField('mode', v)
+                autoSave({ mode: v })
+              }}
               class="rule-field-select"
             >
               <option value="create">Create new activities</option>
@@ -248,37 +333,58 @@ function NewRuleForm() {
             </select>
           </div>
 
-          <ActivityTypePicker value={outputType} onChange={setOutputType} definitions={definitions} />
+          <ActivityTypePicker
+            value={fields.outputType}
+            onChange={(v) => {
+              updateField('outputType', v)
+              autoSave({ output_activity_type: v })
+            }}
+            definitions={definitions}
+          />
 
-          <OutputDataEditor data={outputData} onChange={setOutputData} />
+          <OutputDataEditor
+            data={fields.outputData}
+            onChange={(data) => {
+              updateField('outputData', data)
+              autoSave({ output_data: Object.keys(data).length > 0 ? data : null })
+            }}
+          />
 
-          <div class="rule-field">
-            <span class="rule-field-label">Output Title</span>
-            <input
-              type="text"
-              value={outputTitle}
-              onInput={(e) => setOutputTitle((e.target as HTMLInputElement).value)}
-              placeholder="Optional title"
-              class="rule-field-input"
-            />
-          </div>
+          <TextField
+            label="Output Title"
+            value={fields.outputTitle}
+            onChange={(v) => updateField('outputTitle', v)}
+            onBlur={() =>
+              !isNew &&
+              fields.outputTitle !== (rule?.output_title ?? '') &&
+              autoSave({ output_title: fields.outputTitle || null })
+            }
+            placeholder="Optional title"
+          />
 
-          <div class="rule-field">
-            <span class="rule-field-label">Merge Gap (minutes)</span>
-            <input
-              type="number"
-              value={mergeGapMinutes}
-              onInput={(e) => setMergeGapMinutes((e.target as HTMLInputElement).value)}
-              placeholder="e.g. 5"
-              class="rule-field-input"
-            />
-          </div>
+          <TextField
+            label="Merge Gap (minutes)"
+            value={fields.mergeGapMinutes}
+            onChange={(v) => updateField('mergeGapMinutes', v)}
+            onBlur={() => {
+              if (isNew) return
+              const current = fields.mergeGapMinutes ? Number(fields.mergeGapMinutes) * 60 : null
+              const prev = rule?.merge_gap_seconds ?? null
+              if (current !== prev) autoSave({ merge_gap_seconds: current })
+            }}
+            placeholder="e.g. 5"
+            type="number"
+          />
 
           <div class="rule-field">
             <span class="rule-field-label">Priority</span>
             <select
-              value={priority}
-              onChange={(e) => setPriority(Number((e.target as HTMLSelectElement).value))}
+              value={fields.priority}
+              onChange={(e) => {
+                const v = Number((e.target as HTMLSelectElement).value)
+                updateField('priority', v)
+                autoSave({ priority: v })
+              }}
               class="rule-field-select"
             >
               <option value={0}>0 - Low</option>
@@ -289,7 +395,15 @@ function NewRuleForm() {
 
           <div class="rule-field">
             <label class="rule-checkbox">
-              <input type="checkbox" checked={enabled} onChange={() => setEnabled(!enabled)} />
+              <input
+                type="checkbox"
+                checked={fields.enabled}
+                onChange={() => {
+                  const v = !fields.enabled
+                  updateField('enabled', v)
+                  autoSave({ enabled: v })
+                }}
+              />
               <span>Enabled</span>
             </label>
           </div>
@@ -297,105 +411,82 @@ function NewRuleForm() {
 
         <section class="rule-section">
           <h2>Conditions</h2>
-          <ConditionBuilder conditions={conditions} onChange={setConditions} />
+          <ConditionBuilder conditions={fields.conditions} onChange={handleConditionsChange} />
+          {!isNew && conditionsDirty && (
+            <button
+              type="button"
+              class="note-action-btn"
+              onClick={saveConditions}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? 'Saving...' : 'Save Conditions'}
+            </button>
+          )}
         </section>
 
-        <div class="rule-footer">
-          <button
-            type="button"
-            class="note-action-btn rule-preview-btn"
-            onClick={() => previewMutation.mutate()}
-            disabled={previewMutation.isPending || !name || !outputType}
-          >
-            {previewMutation.isPending ? 'Previewing...' : 'Preview'}
-          </button>
-          <button
-            type="button"
-            class="note-action-btn"
-            onClick={() => createMutation.mutate()}
-            disabled={createMutation.isPending || !name || !outputType}
-          >
-            {createMutation.isPending ? 'Creating...' : 'Create Rule'}
-          </button>
-          {previewResult && (
-            <span class="rule-preview-result">
-              Would affect {previewResult.would_affect} activities ({previewResult.sample_days}-day sample)
-            </span>
-          )}
-          {createMutation.isError && <p class="rule-error">{(createMutation.error as Error).message}</p>}
-        </div>
+        {isNew ? (
+          <div class="rule-footer">
+            <button
+              type="button"
+              class="note-action-btn rule-preview-btn"
+              onClick={() => previewMutation.mutate()}
+              disabled={previewMutation.isPending || !canSubmit}
+            >
+              {previewMutation.isPending ? 'Previewing...' : 'Preview'}
+            </button>
+            <button
+              type="button"
+              class="note-action-btn"
+              onClick={() => createMutation.mutate()}
+              disabled={createMutation.isPending || !canSubmit}
+            >
+              {createMutation.isPending ? 'Creating...' : 'Create Rule'}
+            </button>
+            {previewResult && (
+              <span class="rule-preview-result">
+                Would affect {previewResult.would_affect} activities ({previewResult.sample_days}-day sample)
+              </span>
+            )}
+            {createMutation.isError && <p class="rule-error">{(createMutation.error as Error).message}</p>}
+          </div>
+        ) : (
+          <>
+            <section class="rule-section">
+              <a
+                href={`/data?date=${formatISO(new Date(), { representation: 'date' })}&types=${encodeURIComponent(fields.outputType)}&deduction_rule_id=${id}&hide=location,music,meal,report,screentime`}
+                class="note-action-btn"
+                style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}
+              >
+                View activities (last 90 days)
+              </a>
+            </section>
+
+            <section class="rule-section rule-danger-zone">
+              <ConfirmButton
+                label="Delete Rule"
+                confirmMessage={`Delete rule "${fields.name}"?`}
+                onConfirm={() => deleteMutation.mutate()}
+                isPending={deleteMutation.isPending}
+                pendingLabel="Deleting..."
+              />
+            </section>
+          </>
+        )}
       </div>
     </div>
   )
 }
 
 // ============================================================================
-// Edit rule form
+// Main export — fetches data for edit, dispatches to RuleForm
 // ============================================================================
 
-function EditRuleForm({ id }: { id: string }) {
-  const { route } = useLocation()
-  const queryClient = useQueryClient()
-  const [saveStatus, setSaveStatus] = useSaveStatus(3000)
-
+function EditRuleLoader({ id }: { id: string }) {
   const { data: rule, isLoading } = useQuery({
     queryFn: fetchDeductionRules,
     queryKey: ['deductionRules'],
     select: (data) => data.find((r) => r.id === id),
   })
-
-  const { data: definitions = [] } = useQuery({
-    queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activityTypeDefinitions'],
-    staleTime: 5 * 60_000,
-  })
-
-  const [conditions, setConditions] = useState<DeductionRuleCondition[]>([])
-  const [conditionsDirty, setConditionsDirty] = useState(false)
-
-  useEffect(() => {
-    if (rule) {
-      setConditions(rule.conditions)
-      setConditionsDirty(false)
-    }
-  }, [rule])
-
-  const updateMutation = useMutation({
-    mutationFn: (body: Parameters<typeof updateDeductionRule>[1]) => updateDeductionRule(id, body),
-    onMutate: () => setSaveStatus({ status: 'saving' }),
-    onSuccess: () => {
-      setSaveStatus({ status: 'saved' })
-      queryClient.invalidateQueries({ queryKey: ['deductionRules'] })
-    },
-    onError: () => {
-      setSaveStatus({ status: 'error' })
-    },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteDeductionRule(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deductionRules'] })
-      route('/deduction-rules')
-    },
-  })
-
-  const autoSave = useCallback(
-    (body: Parameters<typeof updateDeductionRule>[1]) => {
-      updateMutation.mutate(body)
-    },
-    [updateMutation.mutate],
-  )
-
-  const handleConditionsChange = useCallback((newConditions: DeductionRuleCondition[]) => {
-    setConditions(newConditions)
-    setConditionsDirty(true)
-  }, [])
-
-  const saveConditions = useCallback(() => {
-    autoSave({ conditions })
-    setConditionsDirty(false)
-  }, [conditions, autoSave])
 
   if (isLoading) {
     return (
@@ -414,131 +505,8 @@ function EditRuleForm({ id }: { id: string }) {
     )
   }
 
-  const mergeGapMinutes = rule.merge_gap_seconds ? String(rule.merge_gap_seconds / 60) : ''
-
-  return (
-    <div class="data-sources-page">
-      <div class="page-header">
-        <div class="rule-header-row">
-          <h1>{rule.name}</h1>
-          <SaveStatusIndicator state={saveStatus} variant="compact" />
-        </div>
-        <a href="/deduction-rules" class="rule-back-link">
-          Back to rules
-        </a>
-      </div>
-
-      <div class="rule-detail">
-        <section class="rule-section">
-          <AutoSaveText label="Name" value={rule.name} onSave={(v) => autoSave({ name: v })} />
-
-          <div class="rule-field">
-            <span class="rule-field-label">Mode</span>
-            <select
-              value={rule.mode ?? 'create'}
-              onChange={(e) =>
-                autoSave({ mode: (e.target as HTMLSelectElement).value as 'create' | 'enrich' })
-              }
-              class="rule-field-select"
-            >
-              <option value="create">Create new activities</option>
-              <option value="enrich">Enrich existing activities</option>
-            </select>
-          </div>
-
-          <ActivityTypePicker
-            value={rule.output_activity_type}
-            onChange={(v) => autoSave({ output_activity_type: v })}
-            definitions={definitions}
-          />
-
-          <OutputDataEditor
-            data={rule.output_data ?? {}}
-            onChange={(data) => autoSave({ output_data: Object.keys(data).length > 0 ? data : null })}
-          />
-
-          <AutoSaveText
-            label="Output Title"
-            value={rule.output_title ?? ''}
-            onSave={(v) => autoSave({ output_title: v || null })}
-            placeholder="Optional title"
-          />
-
-          <AutoSaveText
-            label="Merge Gap (minutes)"
-            value={mergeGapMinutes}
-            onSave={(v) => autoSave({ merge_gap_seconds: v ? Number(v) * 60 : null })}
-            placeholder="e.g. 5"
-            type="number"
-          />
-
-          <div class="rule-field">
-            <span class="rule-field-label">Priority</span>
-            <select
-              value={rule.priority}
-              onChange={(e) => autoSave({ priority: Number((e.target as HTMLSelectElement).value) })}
-              class="rule-field-select"
-            >
-              <option value={0}>0 - Low</option>
-              <option value={1}>1 - Normal</option>
-              <option value={2}>2 - High</option>
-            </select>
-          </div>
-
-          <div class="rule-field">
-            <label class="rule-checkbox">
-              <input
-                type="checkbox"
-                checked={rule.enabled}
-                onChange={() => autoSave({ enabled: !rule.enabled })}
-              />
-              <span>Enabled</span>
-            </label>
-          </div>
-        </section>
-
-        <section class="rule-section">
-          <h2>Conditions</h2>
-          <ConditionBuilder conditions={conditions} onChange={handleConditionsChange} />
-          {conditionsDirty && (
-            <button
-              type="button"
-              class="note-action-btn"
-              onClick={saveConditions}
-              disabled={updateMutation.isPending}
-            >
-              {updateMutation.isPending ? 'Saving...' : 'Save Conditions'}
-            </button>
-          )}
-        </section>
-
-        <section class="rule-section">
-          <a
-            href={`/data?date=${formatISO(new Date(), { representation: 'date' })}&types=${encodeURIComponent(rule.output_activity_type)}&deduction_rule_id=${id}&hide=location,music,meal,report,screentime`}
-            class="note-action-btn"
-            style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}
-          >
-            View activities (last 90 days)
-          </a>
-        </section>
-
-        <section class="rule-section rule-danger-zone">
-          <ConfirmButton
-            label="Delete Rule"
-            confirmMessage={`Delete rule "${rule.name}"?`}
-            onConfirm={() => deleteMutation.mutate()}
-            isPending={deleteMutation.isPending}
-            pendingLabel="Deleting..."
-          />
-        </section>
-      </div>
-    </div>
-  )
+  return <RuleForm id={id} rule={rule} />
 }
-
-// ============================================================================
-// Main export — dispatches between new and edit
-// ============================================================================
 
 export function DeductionRuleDetail() {
   const { params } = useRoute()
@@ -553,8 +521,8 @@ export function DeductionRuleDetail() {
   }
 
   if (id === 'new') {
-    return <NewRuleForm />
+    return <RuleForm />
   }
 
-  return <EditRuleForm id={id} />
+  return <EditRuleLoader id={id} />
 }
