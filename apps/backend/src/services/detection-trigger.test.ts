@@ -14,8 +14,6 @@ describe('createDetectionTrigger', () => {
     geocodeQueue: {
       enqueueJob: vi.fn().mockResolvedValue('job-id'),
       enqueueJobs: vi.fn(),
-      getBoss: vi.fn().mockReturnValue({}),
-      stop: vi.fn(),
     },
     getDetectedLocationById: vi.fn().mockResolvedValue({
       id: 'loc-1',

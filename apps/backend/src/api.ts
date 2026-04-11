@@ -41,6 +41,9 @@ import {
   query,
   resetSyncState,
   schemaInitialized,
+  deleteRuleActivities,
+  getDeductionRulesByIds,
+  getEnabledDeductionRules,
   updateDetectedLocation,
   upsertUserSettings,
 } from './db/index.ts'
@@ -79,11 +82,18 @@ import { auditError, auditInfo, auditWarn, pruneAuditLog } from './services/audi
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
+import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
+import {
+  type ActivityNotifier,
+  createDeductionQueue,
+  type DeductionQueue,
+} from './services/deduction-queue.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
-import { createGeocodeQueue, type GeocodeQueue } from './services/geocode-queue.ts'
+import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { createOuraWebhookManager, type OuraWebhookManager } from './services/oura-webhook-manager.ts'
+import { createPgBoss } from './services/pg-boss.ts'
 import { getSettings } from './services/settings.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createSyncRouter } from './sync-router.ts'
@@ -97,6 +107,7 @@ declare global {
   }
 }
 
+// eslint-disable-next-line complexity -- server setup orchestration
 const main = async () => {
   const unauthorized = Object.assign(new Error('Unauthorized'), {
     status: 401,
@@ -126,6 +137,39 @@ const main = async () => {
     oura,
   })
 
+  // Initialize shared pg-boss instance and job queues (before MCP mount)
+  const boss = await createPgBoss()
+
+  let deductionQueue: DeductionQueue | null = null
+  const activityNotifier: ActivityNotifier = (user, activityType, start, end, sourceRuleId) => {
+    deductionQueue?.enqueueEvaluation({
+      activity_type: activityType,
+      source_rule_id: sourceRuleId,
+      user,
+      window_end: end.toISOString(),
+      window_start: start.toISOString(),
+    })
+  }
+  const engineDeps = createDefaultEngineDeps(activityNotifier)
+
+  if (boss) {
+    try {
+      deductionQueue = await createDeductionQueue(boss, {
+        buildFullWindow: (user) => buildFullWindow(user, engineDeps),
+        deleteRuleActivities,
+        engineDeps,
+        evaluateAllRules,
+        getDeductionRules: getDeductionRulesByIds,
+        getEnabledRules: getEnabledDeductionRules,
+      })
+    } catch (error) {
+      console.error('Failed to initialize deduction queue:', error)
+    }
+  }
+  if (!deductionQueue) {
+    console.warn('⚠️ Deduction auto-evaluation disabled - rules will only run on manual trigger')
+  }
+
   const httpd = express()
 
   const userDb = new Client({ database: 'postgres' })
@@ -139,7 +183,18 @@ const main = async () => {
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
-  httpd.use('/mcp', createMcpRouter(auth, { centralDb, garmin, oura, sync: syncProvider }))
+  httpd.use(
+    '/mcp',
+    createMcpRouter(auth, {
+      centralDb,
+      deductionQueue: deductionQueue ?? undefined,
+      engineDeps,
+      garmin,
+      onActivityMutated: activityNotifier,
+      oura,
+      sync: syncProvider,
+    }),
+  )
 
   httpd.use(json({ limit: '10mb' }))
 
@@ -480,6 +535,7 @@ const main = async () => {
           triggerCalorieComputation(user, start, end),
         upsertUserSettings: (user: string, settings: Record<string, unknown>) =>
           upsertUserSettings(user, settings),
+        onActivitySynced: activityNotifier,
       },
       authMiddleware,
     ),
@@ -580,15 +636,17 @@ const main = async () => {
     }
   }
 
-  // Initialize geocode queue (creates 'aurboda' database if needed)
-  let geocodeQueue: GeocodeQueue | null = null
-  try {
-    geocodeQueue = await createGeocodeQueue({ updateDetectedLocation })
-  } catch (error) {
-    console.error('Failed to initialize geocode queue:', error)
+  // Initialize geocode queue (uses shared boss)
+  let geocodeQueue: Awaited<ReturnType<typeof createGeocodeQueue>> | null = null
+  if (boss) {
+    try {
+      geocodeQueue = await createGeocodeQueue(boss, { updateDetectedLocation })
+    } catch (error) {
+      console.error('Failed to initialize geocode queue:', error)
+    }
   }
   if (!geocodeQueue) {
-    console.warn('Geocoding disabled - detected locations will not be reverse geocoded')
+    console.warn('⚠️ Geocoding disabled - detected locations will not be reverse geocoded')
   }
 
   // Create detection trigger with geocode queue
@@ -619,9 +677,12 @@ const main = async () => {
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware))
   httpd.use('/reports', createReportsRouter(authMiddleware))
-  httpd.use(createActivitiesRouter(authMiddleware, syncProvider))
+  httpd.use(createActivitiesRouter(authMiddleware, syncProvider, activityNotifier))
   httpd.use('/activity-types', createActivityTypesRouter(authMiddleware))
-  httpd.use('/deduction-rules', createDeductionRulesRouter(authMiddleware, createDefaultEngineDeps()))
+  httpd.use(
+    '/deduction-rules',
+    createDeductionRulesRouter(authMiddleware, engineDeps, deductionQueue ?? undefined),
+  )
   httpd.use('/locations', createLocationsRouter(authMiddleware))
   httpd.use(createSettingsRouter(authMiddleware))
   httpd.use(createAuditLogRouter(authMiddleware))
@@ -659,8 +720,8 @@ const main = async () => {
     if (ouraWebhookManager) {
       ouraWebhookManager.shutdown()
     }
-    if (geocodeQueue) {
-      await geocodeQueue.stop()
+    if (boss) {
+      await boss.stop()
     }
     await new Promise<void>((resolve, reject) => {
       server.close((err) => {

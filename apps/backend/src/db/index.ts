@@ -88,6 +88,7 @@ export {
   deleteStaleRuleActivities,
   getDeductionRule,
   getDeductionRules,
+  getDeductionRulesByIds,
   getEnabledDeductionRules,
   insertDeductionRule,
   insertDeductionRuleRun,

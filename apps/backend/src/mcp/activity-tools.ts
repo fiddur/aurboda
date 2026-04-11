@@ -12,6 +12,8 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
+import type { ActivityNotifier } from '../services/deduction-queue.ts'
+
 import {
   addActivity,
   deleteActivity,
@@ -21,7 +23,11 @@ import {
 } from '../services/mutations.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
-export const registerActivityTools = (server: McpServer, user: string) => {
+export const registerActivityTools = (
+  server: McpServer,
+  user: string,
+  onActivityMutated?: ActivityNotifier,
+) => {
   // Tool: add_activity
   server.tool(
     'add_activity',
@@ -54,14 +60,18 @@ export const registerActivityTools = (server: McpServer, user: string) => {
         }
       }
 
-      const result = await addActivity(user, {
-        activity_type,
-        data,
-        end_time: endDate,
-        notes,
-        start_time: startDate,
-        title,
-      })
+      const result = await addActivity(
+        user,
+        {
+          activity_type,
+          data,
+          end_time: endDate,
+          notes,
+          start_time: startDate,
+          title,
+        },
+        onActivityMutated,
+      )
 
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to add activity')
@@ -123,14 +133,19 @@ export const registerActivityTools = (server: McpServer, user: string) => {
         }
       }
 
-      const result = await updateActivity(user, id, {
-        activity_type,
-        data,
-        end_time: end_time ? new Date(end_time) : undefined,
-        notes,
-        start_time: start_time ? new Date(start_time) : undefined,
-        title,
-      })
+      const result = await updateActivity(
+        user,
+        id,
+        {
+          activity_type,
+          data,
+          end_time: end_time ? new Date(end_time) : undefined,
+          notes,
+          start_time: start_time ? new Date(start_time) : undefined,
+          title,
+        },
+        onActivityMutated,
+      )
 
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to update activity')
@@ -151,7 +166,7 @@ export const registerActivityTools = (server: McpServer, user: string) => {
       tz: tzSchema,
     },
     async ({ activity_ids, notes, title, tz }) => {
-      const result = await mergeActivities(user, { activity_ids, notes, title })
+      const result = await mergeActivities(user, { activity_ids, notes, title }, undefined, onActivityMutated)
 
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to merge activities')

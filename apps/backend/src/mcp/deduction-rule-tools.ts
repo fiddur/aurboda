@@ -5,6 +5,7 @@ import { addDeductionRuleBodySchema, updateDeductionRuleBodySchema } from '@aurb
 import { z } from 'zod'
 
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
+import type { DeductionQueue } from '../services/deduction-queue.ts'
 
 import {
   activityTypeExists,
@@ -15,13 +16,14 @@ import {
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
-import { buildFullWindow, evaluateAllRules } from '../services/deduction-engine.ts'
+import { evaluateAllRules } from '../services/deduction-engine.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerDeductionRuleTools = (
   server: McpServer,
   user: string,
   engineDeps: DeductionEngineDeps,
+  deductionQueue?: DeductionQueue,
 ) => {
   server.tool(
     'list_deduction_rules',
@@ -60,11 +62,15 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
 
       const rule = await insertDeductionRule(user, params)
 
-      // Retroactive evaluation over full history
-      const window = await buildFullWindow(user, engineDeps)
-      const result = await evaluateAllRules(user, [rule], window, engineDeps)
+      // Queue async retroactive evaluation
+      if (deductionQueue) {
+        deductionQueue.enqueueRuleCrud({ user, rule_ids: [rule.id], mode: 'created' })
+      }
 
-      return jsonResponse({ ...rule, retroactive_activities_created: result.activities_created })
+      return jsonResponse({
+        ...rule,
+        evaluation_status: deductionQueue ? 'queued' : 'unavailable',
+      })
     },
   )
 
@@ -83,11 +89,16 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
       const updated = await updateDeductionRule(user, id, updates)
       if (!updated) return errorResponse('Deduction rule not found')
 
-      // Re-evaluate retroactively over full history
-      await deleteRuleActivities(user, id)
-      if (updated.enabled) {
-        const window = await buildFullWindow(user, engineDeps)
-        await evaluateAllRules(user, [updated], window, engineDeps)
+      // Queue async re-evaluation
+      if (updated.enabled && deductionQueue) {
+        deductionQueue.enqueueRuleCrud({
+          user,
+          rule_ids: [updated.id],
+          mode: 'updated',
+          cleanup_rule_ids: [id],
+        })
+      } else if (!updated.enabled) {
+        await deleteRuleActivities(user, id)
       }
 
       return jsonResponse(updated)
@@ -112,14 +123,20 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
     {},
     async () => {
       const rules = await getEnabledDeductionRules(user)
-      const window = await buildFullWindow(user, engineDeps)
 
-      for (const rule of rules) {
-        await deleteRuleActivities(user, rule.id)
+      if (deductionQueue) {
+        deductionQueue.enqueueRuleCrud({
+          cleanup_rule_ids: rules.map((r) => r.id),
+          mode: 'evaluate_all',
+          rule_ids: rules.map((r) => r.id),
+          user,
+        })
       }
 
-      const result = await evaluateAllRules(user, rules, window, engineDeps)
-      return jsonResponse(result)
+      return jsonResponse({
+        evaluation_status: deductionQueue ? 'queued' : 'unavailable',
+        rules_queued: rules.length,
+      })
     },
   )
 

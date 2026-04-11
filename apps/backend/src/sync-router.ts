@@ -59,6 +59,9 @@ import {
 import { typedRouter } from './typed-router.ts'
 import { validateBody } from './validation.ts'
 
+/** Default lookback window for sync-triggered deduction evaluation (30 days). */
+const DEFAULT_SYNC_LOOKBACK_MS = 30 * 86400000
+
 /**
  * Dependencies for sync router - allows testing with mocks
  */
@@ -148,6 +151,7 @@ export interface SyncRouterDeps {
   ) => Promise<{ retrying: boolean; fail_count: number }>
   requeueOutboundSync: (user: string, id: string) => Promise<boolean>
   getOutboundSyncHistory: (user: string, limit?: number) => Promise<OutboundSyncEntry[]>
+  onActivitySynced?: (user: string, activityType: string, start: Date, end: Date) => void
 }
 
 /**
@@ -202,6 +206,12 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
           startDate: start_date ? new Date(start_date) : undefined,
         })
 
+        deps.onActivitySynced?.(
+          user,
+          '*',
+          start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
+          new Date(),
+        )
         res.json({ results, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -256,6 +266,12 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
           startDate: start_date ? new Date(start_date) : undefined,
         })
 
+        deps.onActivitySynced?.(
+          user,
+          '*',
+          start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
+          new Date(),
+        )
         res.json({ results, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -373,6 +389,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
 
       try {
         const results = await deps.syncCalendars(user, calendars, { fullResync: full_resync })
+        deps.onActivitySynced?.(user, '*', new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS), new Date())
         res.json({ results, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -438,6 +455,12 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
           startDate: start_date ? new Date(start_date) : undefined,
         })
 
+        deps.onActivitySynced?.(
+          user,
+          '*',
+          start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
+          new Date(),
+        )
         res.json({ result, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -486,6 +509,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
 
       try {
         const result = await deps.processActivityWatchEvents(user, events, deviceName, is_mobile)
+        deps.onActivitySynced?.(user, '*', new Date(Date.now() - 86400000), new Date())
         res.json({ result, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -650,6 +674,9 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
 
       // Process all records in batch (bulk inserts)
       await deps.processHealthConnectBatch(user, recordType, records)
+
+      // Notify deduction queue
+      deps.onActivitySynced?.(user, '*', new Date(Date.now() - 86400000), new Date())
 
       // Trigger calorie computation when HR data is ingested
       if (recordType === 'HeartRateRecord' && records.length > 0) {

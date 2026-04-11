@@ -10,6 +10,7 @@ import type { ActivityType, CustomMetricDefinition, DataSource } from '@aurboda/
 import { randomUUID } from 'node:crypto'
 
 import type { Activity } from '../db/types.ts'
+import type { ActivityNotifier } from './deduction-queue.ts'
 
 import {
   activityTypeExists,
@@ -300,7 +301,12 @@ const validateDataForType = async (
  *
  * Validates that end_time is after start_time.
  */
-export async function addActivity(user: string, input: AddActivityInput): Promise<AddActivityResult> {
+// eslint-disable-next-line complexity -- notification callbacks add branches
+export async function addActivity(
+  user: string,
+  input: AddActivityInput,
+  onMutated?: ActivityNotifier,
+): Promise<AddActivityResult> {
   // Validate activity type exists
   if (!(await activityTypeExists(user, input.activity_type))) {
     return {
@@ -334,6 +340,9 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
     if (existing?.id) {
       const newEndTime = input.end_time ?? input.start_time
       await dbUpdateActivity(user, existing.id, { end_time: newEndTime })
+
+      onMutated?.(user, existing.activity_type, existing.start_time, newEndTime)
+
       return {
         activity_type: existing.activity_type,
         end_time: newEndTime.toISOString(),
@@ -357,6 +366,8 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
     start_time: input.start_time,
     title: input.title,
   })
+
+  onMutated?.(user, input.activity_type, input.start_time, input.end_time ?? input.start_time)
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
@@ -466,6 +477,7 @@ export async function updateActivity(
   user: string,
   id: string,
   input: UpdateActivityInput,
+  onMutated?: ActivityNotifier,
 ): Promise<UpdateActivityResult> {
   // First, get the existing activity to validate times
   const existing = await dbGetActivityById(user, id)
@@ -547,6 +559,12 @@ export async function updateActivity(
   syncNoteTimesForEntity(user, 'activity', id, updated.start_time, updated.end_time ?? undefined).catch(
     (err) => auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }),
   )
+
+  onMutated?.(user, updated.activity_type, updated.start_time, updated.end_time ?? updated.start_time)
+  // If type changed, also notify for the old type so rules depending on it can re-evaluate
+  if (isTypeChanging) {
+    onMutated?.(user, existing.activity_type, existing.start_time, existing.end_time ?? existing.start_time)
+  }
 
   // Enqueue outbound sync if this is an aurboda-owned activity (best-effort)
   try {
@@ -703,6 +721,7 @@ export async function mergeActivities(
     getActivityById: dbGetActivityById,
     insertNewActivity: dbInsertNewActivity,
   },
+  onMutated?: ActivityNotifier,
 ): Promise<MergeActivitiesResult> {
   if (input.activity_ids.length < 2) {
     return { error: 'At least 2 activity IDs are required', success: false }
@@ -749,6 +768,8 @@ export async function mergeActivities(
       await deps.deleteActivity(user, activity.id)
     }
   }
+
+  onMutated?.(user, sorted[0].activity_type, merged.start_time, merged.end_time ?? merged.start_time)
 
   return {
     activity_type: sorted[0].activity_type,
