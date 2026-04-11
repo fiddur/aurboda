@@ -83,8 +83,10 @@ const defaultDeps: GarminProcessDeps = {
   softDeleteLocationRange,
 }
 
-/** Garmin activity typeKeys that map to the 'meditation' activity type. */
-const meditationTypeKeys = new Set(['meditation', 'breathwork'])
+/** Garmin activity typeKeys that should be mapped to a different activity type name. */
+const garminTypeKeyOverrides: Record<string, string> = {
+  breathwork: 'meditation',
+}
 
 // ============================================================================
 // Main dispatcher
@@ -412,7 +414,7 @@ const processActivities = async (
     await deps.insertRawRecord(user, makeRaw('garmin_activity', externalId, startTime, act))
 
     const activityTypeKey = act.activityType?.typeKey ?? 'unknown'
-    const activityType = meditationTypeKeys.has(activityTypeKey) ? 'meditation' : 'exercise'
+    const activityType = garminTypeKeyOverrides[activityTypeKey] ?? activityTypeKey
     const exerciseTitle = act.activityName || activityTypeKey
 
     // Clean up any existing activity with a different type (handles re-sync after type mapping changes)
@@ -421,7 +423,6 @@ const processActivities = async (
     const activity: Activity = {
       activity_type: activityType,
       data: {
-        activity_type_key: activityTypeKey,
         average_hr: act.averageHR,
         calories: act.calories,
         distance: act.distance,
