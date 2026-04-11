@@ -271,7 +271,6 @@ const ActivityDetailContent = ({
           isEditing={isEditing}
           draft={draft}
           onDraftChange={onDraftChange}
-          typeDefinitions={typeDefinitions}
           icon={icon}
           durationLabel={hasSleepStages ? 'In Bed' : undefined}
         />
