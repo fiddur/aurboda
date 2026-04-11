@@ -259,20 +259,36 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       const { full_resync, start_date } = req.body
 
       try {
+        // Prevent concurrent syncs
+        const states = await deps.getGarminSyncStates(user)
+        if (states.some((s) => s.status === 'syncing')) {
+          res.status(202).json({ status: 'already_syncing', success: true })
+          return
+        }
+
         const settings = await deps.getSettings(user)
-        const results = await deps.syncGarmin(user, {
+        const syncOptions = {
           disabledTypes: settings.garmin_disabled_data_types,
           fullResync: full_resync,
           startDate: start_date ? new Date(start_date) : undefined,
-        })
+        }
 
-        deps.onActivitySynced?.(
-          user,
-          '*',
-          start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
-          new Date(),
-        )
-        res.json({ results, success: true })
+        // Fire-and-forget: run sync in background, return immediately
+        deps
+          .syncGarmin(user, syncOptions)
+          .then(() => {
+            deps.onActivitySynced?.(
+              user,
+              '*',
+              start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
+              new Date(),
+            )
+          })
+          .catch(() => {
+            // Errors are already recorded in sync_state by syncGarminDataType
+          })
+
+        res.status(202).json({ status: 'syncing', success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message, success: false })
