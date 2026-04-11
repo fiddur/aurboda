@@ -23,6 +23,7 @@ import {
   type MergeActivitiesResponse,
   type NearbyActivitiesResponse,
   type ProductivityQuery,
+  type ResyncActivityDetailResponse,
   productivityQuerySchema,
   type ProductivityRecordResponse,
   type ProductivityResponse,
@@ -164,6 +165,7 @@ export const createActivitiesRouter = (
   authMiddleware: RequestHandler,
   syncProvider?: SyncProvider,
   onActivityMutated?: ActivityNotifier,
+  resyncActivityDetail?: (user: string, activityId: string) => Promise<number>,
 ): Router => {
   const router = typedRouter()
 
@@ -676,6 +678,40 @@ export const createActivitiesRouter = (
       }
 
       res.json({ success: true })
+    },
+  )
+
+  router.post<{ id: string }, ResyncActivityDetailResponse>(
+    '/activities/:id/resync-detail',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const { id } = req.params
+
+      if (!resyncActivityDetail) {
+        res.status(501).json({ points: 0, success: false, error: 'Garmin sync not configured' })
+        return
+      }
+
+      const activity = await getActivityById(user, id)
+      if (!activity) {
+        res.status(404).json({ points: 0, success: false, error: 'Activity not found' })
+        return
+      }
+
+      const garminActivityId = (activity.data as Record<string, unknown> | undefined)?.garmin_activity_id
+      if (!garminActivityId) {
+        res.status(400).json({ points: 0, success: false, error: 'Activity has no Garmin activity ID' })
+        return
+      }
+
+      try {
+        const points = await resyncActivityDetail(user, id)
+        res.json({ points, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ points: 0, success: false, error: message })
+      }
     },
   )
 

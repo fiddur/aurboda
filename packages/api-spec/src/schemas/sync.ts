@@ -389,6 +389,10 @@ export type OuraSyncResponse = z.infer<typeof ouraSyncResponseSchema>
 export const garminSyncResponseSchema = baseResponseSchema
   .extend({
     results: z.array(garminSyncResultSchema).optional().meta({ description: 'Sync results per data type' }),
+    status: z
+      .enum(['syncing', 'already_syncing'])
+      .optional()
+      .meta({ description: 'Async sync status — present when sync runs in the background' }),
   })
   .meta({ id: 'GarminSyncResponse' })
 

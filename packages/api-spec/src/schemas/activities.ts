@@ -425,3 +425,14 @@ export const activityDetailResponseSchema = createDataResponseSchema(activitySch
   })
 
 export type ActivityDetailResponse = z.infer<typeof activityDetailResponseSchema>
+
+/**
+ * Re-sync activity detail response.
+ */
+export const resyncActivityDetailResponseSchema = baseResponseSchema
+  .extend({
+    points: z.number().int().meta({ description: 'Number of detail data points synced' }),
+  })
+  .meta({ id: 'ResyncActivityDetailResponse' })
+
+export type ResyncActivityDetailResponse = z.infer<typeof resyncActivityDetailResponseSchema>

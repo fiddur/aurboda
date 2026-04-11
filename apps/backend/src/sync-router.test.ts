@@ -308,11 +308,12 @@ describe('sync router', () => {
   })
 
   describe('garmin endpoints', () => {
-    test('POST /sync/garmin calls syncGarmin', async () => {
+    test('POST /sync/garmin starts async sync and returns 202', async () => {
       const app = createTestApp()
       const response = await request(app).post('/sync/garmin').send({})
 
-      expect(response.status).toBe(200)
+      expect(response.status).toBe(202)
+      expect(response.body).toMatchObject({ status: 'syncing', success: true })
       expect(mockDeps.syncGarmin).toHaveBeenCalledWith('testuser', {
         disabledTypes: undefined,
         fullResync: undefined,
@@ -326,12 +327,32 @@ describe('sync router', () => {
         .post('/sync/garmin')
         .send({ full_resync: true, start_date: '2024-01-01' })
 
-      expect(response.status).toBe(200)
+      expect(response.status).toBe(202)
+      expect(response.body).toMatchObject({ status: 'syncing', success: true })
       expect(mockDeps.syncGarmin).toHaveBeenCalledWith('testuser', {
         disabledTypes: undefined,
         fullResync: true,
         startDate: new Date('2024-01-01'),
       })
+    })
+
+    test('POST /sync/garmin returns already_syncing when sync is in progress', async () => {
+      vi.mocked(mockDeps.getGarminSyncStates).mockResolvedValueOnce([
+        {
+          error_message: null,
+          last_sync_time: null,
+          provider: 'garmin',
+          retry_after: null,
+          status: 'syncing',
+        },
+      ])
+
+      const app = createTestApp()
+      const response = await request(app).post('/sync/garmin').send({})
+
+      expect(response.status).toBe(202)
+      expect(response.body).toMatchObject({ status: 'already_syncing', success: true })
+      expect(mockDeps.syncGarmin).not.toHaveBeenCalled()
     })
 
     test('GET /sync/garmin/status returns sync states', async () => {

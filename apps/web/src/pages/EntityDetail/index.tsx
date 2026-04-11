@@ -21,6 +21,7 @@ import {
   fetchMetricTimeSeries,
   fetchProductivityById,
   fetchScreentimeCategories,
+  resyncActivityDetail,
   updateActivity,
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
@@ -398,6 +399,45 @@ const makeDraft = (activity: Activity): ActivityDraft => {
 }
 
 /** Activity entity content with edit/save logic. */
+const ResyncDetailButton = ({
+  activity,
+  activityId,
+  onSuccess,
+  isEditing,
+}: {
+  activity: Activity
+  activityId: string
+  onSuccess: () => void
+  isEditing: boolean
+}) => {
+  const mutation = useMutation({
+    mutationFn: () => resyncActivityDetail(activityId),
+    onSuccess,
+  })
+
+  const hasGarminId = Boolean((activity.data as Record<string, unknown> | undefined)?.garmin_activity_id)
+  if (!hasGarminId || isEditing) return null
+
+  return (
+    <div class="entity-actions">
+      <button
+        type="button"
+        class="btn-secondary"
+        disabled={mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        {mutation.isPending ? 'Re-syncing...' : 'Re-sync Garmin Detail'}
+      </button>
+      {mutation.isSuccess && <span class="sync-result done">Synced {mutation.data.points} data points</span>}
+      {mutation.isError && (
+        <span class="sync-result error">
+          {mutation.error instanceof Error ? mutation.error.message : 'Re-sync failed'}
+        </span>
+      )}
+    </div>
+  )
+}
+
 const ActivityContent = ({ entityId }: { entityId: string }) => {
   const queryClient = useQueryClient()
   const isMerged = entityId.startsWith('merged:')
@@ -522,6 +562,12 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         onSave={() => saveMutation.mutate()}
         isSaving={saveMutation.isPending}
         onStartMerging={!activity.deleted_at && !isMergedActivity ? () => setIsMerging(true) : undefined}
+      />
+      <ResyncDetailButton
+        activity={activity}
+        activityId={rawEntityId}
+        onSuccess={invalidate}
+        isEditing={isEditing}
       />
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
       <ActivityDetailContent

@@ -1,7 +1,7 @@
 import type { GarminDataType, ProviderSyncStatus } from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
 import {
   connectGarmin,
@@ -381,20 +381,38 @@ export function GarminSource() {
 
   const isConnected = userSettings?.garmin_connected ?? false
 
+  // Sync state
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
+  const [syncMessage, setSyncMessage] = useState('')
+
+  // Detect if any data type is currently syncing (drives auto-polling)
+  const shouldPoll = syncStatus === 'syncing'
+
   const { data: syncStatusData, isLoading: syncStatusLoading } = useQuery({
     enabled: !!isLoggedIn && isConnected,
     queryFn: fetchGarminSyncStatus,
     queryKey: ['garminSyncStatus'],
+    refetchInterval: shouldPoll ? 3000 : false,
   })
+
+  const isSyncing = syncStatusData?.states?.some((s) => s.status === 'syncing') ?? false
 
   const [loginStatus, setLoginStatus] = useState<LoginStatus>('idle')
 
   // Disconnect state
   const [disconnecting, setDisconnecting] = useState(false)
 
-  // Sync state
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
-  const [syncMessage, setSyncMessage] = useState('')
+  // When polling detects sync finished, update local state
+  const prevSyncingRef = useRef(false)
+  useEffect(() => {
+    if (prevSyncingRef.current && !isSyncing && syncStatus === 'syncing') {
+      const hasError = syncStatusData?.states?.some((s) => s.status === 'error')
+      setSyncStatus(hasError ? 'error' : 'done')
+      setSyncMessage(hasError ? 'Sync completed with errors' : 'Sync complete')
+      queryClient.invalidateQueries()
+    }
+    prevSyncingRef.current = isSyncing
+  }, [isSyncing, syncStatus, syncStatusData, queryClient])
 
   const handleLoginSuccess = useCallback(async () => {
     setLoginStatus('idle')
@@ -414,19 +432,24 @@ export function GarminSource() {
   }, [queryClient])
 
   const handleSyncNow = useCallback(async () => {
-    await syncGarmin(false)
-    await queryClient.invalidateQueries({ queryKey: ['garminSyncStatus'] })
+    setSyncStatus('syncing')
+    setSyncMessage('')
+    try {
+      await syncGarmin(false)
+      await queryClient.invalidateQueries({ queryKey: ['garminSyncStatus'] })
+    } catch (err) {
+      setSyncStatus('error')
+      setSyncMessage(err instanceof Error ? err.message : 'Sync failed')
+    }
   }, [queryClient])
 
   const handleFullResync = useCallback(async () => {
     setSyncStatus('syncing')
     setSyncMessage('')
     try {
-      const response = await syncGarmin(true)
-      const totalRecords = (response.results ?? []).reduce((sum, r) => sum + (r.records_processed ?? 0), 0)
-      setSyncStatus('done')
-      setSyncMessage(`Synced ${totalRecords} records`)
-      await queryClient.invalidateQueries()
+      await syncGarmin(true)
+      // Sync runs in background — polling will detect completion
+      await queryClient.invalidateQueries({ queryKey: ['garminSyncStatus'] })
     } catch (err) {
       setSyncStatus('error')
       setSyncMessage(err instanceof Error ? err.message : 'Sync failed')
