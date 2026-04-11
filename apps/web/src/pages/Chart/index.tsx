@@ -41,6 +41,7 @@ const LOOKBACK_OPTIONS = [
   { label: '180 days', value: 180 },
   { label: '1 year', value: 365 },
   { label: '2 years', value: 730 },
+  { label: 'All time', value: 3650 },
 ]
 
 const HALF_LIFE_OPTIONS = [
@@ -502,6 +503,9 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
         <BarChart
           data={[]}
           height={350}
+          bucketSize={params.bucket_size}
+          rangeStart={params.start}
+          rangeEnd={params.end}
           getBarHref={getBarHref}
           multiSeries={series.map((name, i) => ({
             color: SERIES_COLORS[i % SERIES_COLORS.length],
@@ -520,7 +524,15 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
 
   return (
     <div class="chart-display">
-      <BarChart data={buckets} color="#8b5cf6" height={350} getBarHref={getBarHref} />
+      <BarChart
+        data={buckets}
+        color="#8b5cf6"
+        height={350}
+        bucketSize={params.bucket_size}
+        rangeStart={params.start}
+        rangeEnd={params.end}
+        getBarHref={getBarHref}
+      />
     </div>
   )
 }
