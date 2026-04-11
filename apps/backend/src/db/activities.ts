@@ -486,17 +486,22 @@ export const getSleepSessions = async (user: string, start: Date, end: Date): Pr
 }
 
 /**
- * Get Garmin activities that have a garmin_activity_id but haven't had their
- * per-second detail data synced yet.
+ * Get activities that have a garmin_activity_id but haven't had their
+ * per-second detail data synced yet. Includes merged activities (source may be
+ * 'health_connect' or 'aurboda' after merging).
  */
-export const getActivitiesNeedingDetail = async (user: string, limit = 10): Promise<Activity[]> => {
+export const getActivitiesNeedingDetail = async (
+  user: string,
+  { forceAll = false, limit = 10 }: { forceAll?: boolean; limit?: number } = {},
+): Promise<Activity[]> => {
+  const detailFilter = forceAll ? '' : "AND (data->>'detail_synced') IS NULL"
   const result = await query(
     user,
     `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
-     WHERE source = 'garmin' AND activity_type IN ('exercise', 'meditation')
+     WHERE activity_type IN ('exercise', 'meditation')
        AND data->>'garmin_activity_id' IS NOT NULL
-       AND (data->>'detail_synced') IS NULL
+       ${detailFilter}
        AND deleted_at IS NULL
      ORDER BY start_time DESC
      LIMIT $1`,

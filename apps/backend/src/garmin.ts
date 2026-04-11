@@ -102,6 +102,14 @@ export interface GarminActivityDetailResponse {
   activityDetailMetrics: Array<{
     metrics: unknown[]
   }>
+  geoPolylineDTO?: {
+    polyline: Array<{
+      lat: number
+      lon: number
+      altitude?: number | null
+      timestampGMT?: number | null
+    }>
+  } | null
 }
 
 /** Training readiness from /metrics-service/metrics/trainingreadiness/{date} */
@@ -232,7 +240,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
     async getActivityDetail(user: string, activityId: number): Promise<GarminActivityDetailResponse> {
       const gc = await restoreSession(user)
       const result = await gc.get<GarminActivityDetailResponse>(
-        `${GC_API}/activity-service/activity/${activityId}/details?maxChartSize=10000&maxPolylineSize=0`,
+        `${GC_API}/activity-service/activity/${activityId}/details?maxChartSize=10000&maxPolylineSize=4000`,
       )
       await saveSession(user, gc)
       return result

@@ -649,16 +649,34 @@ const extractGpsPoint = (metrics: unknown[], time: Date, latIdx: number, lonIdx:
 /** GPS downsampling interval in milliseconds (1 point per minute). */
 const GPS_DOWNSAMPLE_MS = 60_000
 
-export const processActivityDetail = async (
-  user: string,
-  data: GarminActivityDetailResponse,
-  deps: GarminProcessDeps = defaultDeps,
-): Promise<number> => {
-  if (!data.activityDetailMetrics?.length) return 0
+/** Extract GPS locations from geoPolylineDTO (fallback when metrics lack lat/lon). */
+const extractPolylineGps = (data: GarminActivityDetailResponse): Location[] => {
+  const polyline = data.geoPolylineDTO?.polyline
+  if (!polyline?.length) return []
 
+  const gpsPoints: Location[] = []
+  let lastTime = 0
+
+  for (const point of polyline) {
+    const ts = point.timestampGMT
+    if (!ts || ts <= 0) continue
+    if (point.lat === 0 && point.lon === 0) continue
+    if (ts - lastTime < GPS_DOWNSAMPLE_MS) continue
+
+    gpsPoints.push({ lat: point.lat, lon: point.lon, source: 'garmin' as const, time: new Date(ts) })
+    lastTime = ts
+  }
+
+  return gpsPoints
+}
+
+/** Extract per-second metrics and GPS from activityDetailMetrics, with polyline fallback. */
+const extractMetricsAndGps = (
+  data: GarminActivityDetailResponse,
+): { gpsPoints: Location[]; points: TimeSeriesPoint[] } => {
   const indexMap = buildMetricIndexMap(data.metricDescriptors)
   const tsIdx = indexMap.get('directTimestamp')
-  if (tsIdx === undefined) return 0
+  if (tsIdx === undefined) return { gpsPoints: [], points: [] }
 
   const latIdx = indexMap.get('directLatitude')
   const lonIdx = indexMap.get('directLongitude')
@@ -684,8 +702,29 @@ export const processActivityDetail = async (
     }
   }
 
+  // Fall back to polyline GPS if per-second metrics didn't include lat/lon
+  if (gpsPoints.length === 0) {
+    gpsPoints.push(...extractPolylineGps(data))
+  }
+
+  return { gpsPoints, points }
+}
+
+export const processActivityDetail = async (
+  user: string,
+  data: GarminActivityDetailResponse,
+  deps: GarminProcessDeps = defaultDeps,
+): Promise<number> => {
+  if (!data.activityDetailMetrics?.length) return 0
+
+  const indexMap = buildMetricIndexMap(data.metricDescriptors)
+  const tsIdx = indexMap.get('directTimestamp')
+  if (tsIdx === undefined) return 0
+
   const firstTs = extractNumericValue(data.activityDetailMetrics[0]!.metrics[tsIdx])
   if (!firstTs) return 0
+
+  const { gpsPoints, points } = extractMetricsAndGps(data)
 
   await deps.insertRawRecord(
     user,
