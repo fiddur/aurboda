@@ -193,15 +193,15 @@ function MealSlotRow({
   const sliderMax = Math.min(23 * 60 + 55, (slot.default_hour + 1.5) * 60)
   const currentMinutes = mealH * 60 + mealM
   const [sliderValue, setSliderValue] = useState(currentMinutes)
-  const [dragging, setDragging] = useState(false)
+  const draggingRef = useRef(false)
 
   // Sync slider position with actual meal time when not dragging
   useEffect(() => {
-    if (!dragging) setSliderValue(mealH * 60 + mealM)
-  }, [mealH, mealM, dragging])
+    if (!draggingRef.current) setSliderValue(mealH * 60 + mealM)
+  }, [mealH, mealM])
 
   const handleSliderRelease = () => {
-    setDragging(false)
+    draggingRef.current = false
     const hour = Math.floor(sliderValue / 60)
     const minute = sliderValue % 60
     if (primaryMeal) {
@@ -219,16 +219,16 @@ function MealSlotRow({
         </a>
 
         <div class="time-slider-wrapper">
-          <span class="time-label">{minutesToTime(dragging ? sliderValue : currentMinutes)}</span>
+          <span class="time-label">{minutesToTime(sliderValue)}</span>
           <input
             type="range"
             class="time-slider"
             min={sliderMin}
             max={sliderMax}
             step={5}
-            value={dragging ? sliderValue : currentMinutes}
+            value={sliderValue}
             onInput={(e) => {
-              setDragging(true)
+              draggingRef.current = true
               setSliderValue(parseInt((e.target as HTMLInputElement).value, 10))
             }}
             onMouseUp={handleSliderRelease}
