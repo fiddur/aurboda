@@ -76,6 +76,7 @@ const ensureDatabase = async (): Promise<boolean> => {
  *
  * Returns null if the database is not available or credentials are missing.
  */
+/* v8 ignore start -- requires real PostgreSQL */
 export const createPgBoss = async (): Promise<PgBoss | null> => {
   const dbReady = await ensureDatabase()
   if (!dbReady) return null
@@ -101,3 +102,4 @@ export const createPgBoss = async (): Promise<PgBoss | null> => {
 
   return boss
 }
+/* v8 ignore stop */

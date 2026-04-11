@@ -124,6 +124,7 @@ const expandWindow = (window: EvaluationWindow): EvaluationWindow => ({
 /**
  * Create a deduction evaluation queue using a shared pg-boss instance.
  */
+/* v8 ignore start -- requires real pg-boss instance */
 export const createDeductionQueue = async (
   boss: PgBoss,
   deps: DeductionQueueDeps,
@@ -233,3 +234,4 @@ export const createDeductionQueue = async (
     },
   }
 }
+/* v8 ignore stop */
