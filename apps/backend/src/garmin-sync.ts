@@ -213,7 +213,7 @@ export const syncAllGarminData = async (
 
     // After syncing activities, fetch per-second detail data for new activities
     if (dataType === 'activities' && result.status === 'success' && !hitRateLimit) {
-      await syncActivityDetails(user, garmin)
+      await syncActivityDetails(user, garmin, { fullResync: options?.fullResync })
     }
   }
 
@@ -227,9 +227,15 @@ export const syncAllGarminData = async (
 /**
  * Fetch granular per-second metrics (stress, HR, respiration, body battery)
  * from Garmin activity details for activities that haven't been processed yet.
+ * When fullResync is true, re-fetches detail for all activities (e.g. to pick up
+ * newly added data extraction like GPS locations).
  */
-const syncActivityDetails = async (user: string, garmin: GarminClient): Promise<void> => {
-  const activities = await getActivitiesNeedingDetail(user)
+export const syncActivityDetails = async (
+  user: string,
+  garmin: GarminClient,
+  { fullResync = false }: { fullResync?: boolean } = {},
+): Promise<void> => {
+  const activities = await getActivitiesNeedingDetail(user, { forceAll: fullResync })
   if (activities.length === 0) return
 
   for (const activity of activities) {
