@@ -207,23 +207,41 @@ const buildItems = (
   return items.sort((a, b) => a.start.getTime() - b.start.getTime())
 }
 
-const parseUrlState = (
-  query: Record<string, string>,
-): { date: string; from: string | undefined; hidden: Set<ItemType>; to: string | undefined } => {
+interface UrlState {
+  dataFilter: string | undefined
+  date: string
+  from: string | undefined
+  hidden: Set<ItemType>
+  to: string | undefined
+  types: string | undefined
+}
+
+const parseUrlState = (query: Record<string, string>): UrlState => {
   const date = query.date ?? formatISO(new Date(), { representation: 'date' })
   const hideStr = query.hide ?? ''
   const hidden = new Set<ItemType>(hideStr ? (hideStr.split(',') as ItemType[]) : [])
   const from = query.from || undefined
   const to = query.to || undefined
-  return { date, from, hidden, to }
+  const types = query.types || undefined
+  const dataFilter = query.data_filter || undefined
+  return { dataFilter, date, from, hidden, to, types }
 }
 
-const syncUrl = (dateStr: string, hidden: Set<ItemType>, from?: string, to?: string) => {
+const syncUrl = (
+  dateStr: string,
+  hidden: Set<ItemType>,
+  from?: string,
+  to?: string,
+  types?: string,
+  dataFilter?: string,
+) => {
   const params = new URLSearchParams()
   params.set('date', dateStr)
   if (hidden.size > 0) params.set('hide', [...hidden].join(','))
   if (from) params.set('from', from)
   if (to) params.set('to', to)
+  if (types) params.set('types', types)
+  if (dataFilter) params.set('data_filter', dataFilter)
   history.replaceState(null, '', `${window.location.pathname}?${params}`)
 }
 
@@ -236,14 +254,17 @@ export const Data = () => {
   const [hiddenTypes, setHiddenTypes] = useState<Set<ItemType>>(initial.hidden)
   const [timeFrom, setTimeFrom] = useState<string | undefined>(initial.from)
   const [timeTo, setTimeTo] = useState<string | undefined>(initial.to)
+  const [typesFilter, setTypesFilter] = useState<string | undefined>(initial.types)
+  const [dataFilter, setDataFilter] = useState<string | undefined>(initial.dataFilter)
 
   const hasTimeFilter = Boolean(timeFrom || timeTo)
+  const hasDataFilter = Boolean(typesFilter || dataFilter)
   const activeTypes = new Set(ALL_TYPES.filter((t) => !hiddenTypes.has(t)))
 
   // Sync URL on state changes
   useEffect(() => {
-    syncUrl(dateStr, hiddenTypes, timeFrom, timeTo)
-  }, [dateStr, hiddenTypes, timeFrom, timeTo])
+    syncUrl(dateStr, hiddenTypes, timeFrom, timeTo, typesFilter, dataFilter)
+  }, [dateStr, hiddenTypes, timeFrom, timeTo, typesFilter, dataFilter])
 
   // Compute query boundaries — use time filter if present, otherwise full day.
   const start = timeFrom ? new Date(timeFrom) : new Date(`${dateStr}T00:00:00`)
@@ -271,10 +292,16 @@ export const Data = () => {
     setTimeTo(undefined)
   }, [])
 
+  const clearDataFilter = useCallback(() => {
+    setTypesFilter(undefined)
+    setDataFilter(undefined)
+  }, [])
+
+  const activityTypes = typesFilter ? typesFilter.split(',') : undefined
   const activitiesQuery = useQuery({
     enabled: activeTypes.has('activity'),
-    queryFn: () => fetchActivities(start, end),
-    queryKey: ['data-activities', dateStr, timeFrom, timeTo],
+    queryFn: () => fetchActivities(start, end, activityTypes, undefined, dataFilter),
+    queryKey: ['data-activities', dateStr, timeFrom, timeTo, typesFilter, dataFilter],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -357,6 +384,16 @@ export const Data = () => {
               {format(start, 'HH:mm')} – {format(end, 'HH:mm')}
             </span>
             <button type="button" onClick={clearTimeFilter} title="Clear time filter">
+              &times;
+            </button>
+          </div>
+        )}
+        {hasDataFilter && (
+          <div class="data-time-filter">
+            <span>
+              {typesFilter ?? ''} {dataFilter ? `(${dataFilter})` : ''}
+            </span>
+            <button type="button" onClick={clearDataFilter} title="Clear data filter">
               &times;
             </button>
           </div>

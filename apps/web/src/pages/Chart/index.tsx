@@ -12,7 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useMemo, useState } from 'preact/hooks'
 
-import { BarChart } from '../../components/charts/BarChart'
+import { BarChart, type BarClickInfo } from '../../components/charts/BarChart'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { MetricPicker } from '../../components/MetricPicker'
 import {
@@ -411,7 +411,64 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
   )
 }
 
+/** Compute the end of a bucket given its start and size. */
+const computeBucketEnd = (start: Date, bucketSize: string): Date => {
+  const end = new Date(start)
+  switch (bucketSize) {
+    case '1m':
+      end.setMinutes(end.getMinutes() + 1)
+      break
+    case '5m':
+      end.setMinutes(end.getMinutes() + 5)
+      break
+    case '15m':
+      end.setMinutes(end.getMinutes() + 15)
+      break
+    case '1h':
+      end.setHours(end.getHours() + 1)
+      break
+    case '1d':
+      end.setDate(end.getDate() + 1)
+      break
+    case '1w':
+      end.setDate(end.getDate() + 7)
+      break
+    case '1M':
+      end.setMonth(end.getMonth() + 1)
+      break
+  }
+  return end
+}
+
 function BarDisplay({ params }: { params: FetchChartDataParams }) {
+  const { route } = useLocation()
+
+  const handleBarClick = useCallback(
+    (info: BarClickInfo) => {
+      if (params.source_type !== 'activity_type' || !params.pattern) return
+
+      const bucketStart = new Date(info.bucket_start)
+      const bucketEnd = computeBucketEnd(bucketStart, params.bucket_size ?? '1d')
+
+      const urlParams = new URLSearchParams()
+      urlParams.set('from', bucketStart.toISOString())
+      urlParams.set('to', bucketEnd.toISOString())
+      urlParams.set('date', bucketStart.toISOString().slice(0, 10))
+      urlParams.set('types', params.pattern)
+
+      if (info.series_name && params.breakdown_fields?.length) {
+        const values = info.series_name.split(' / ')
+        const filters = params.breakdown_fields
+          .map((field, i) => `${field}:${values[i] ?? '(none)'}`)
+          .join(',')
+        urlParams.set('data_filter', filters)
+      }
+
+      route(`/data?${urlParams}`)
+    },
+    [params, route],
+  )
+
   const barQuery = useQuery({
     enabled: Boolean(params.pattern || params.tag_definition_id),
     queryFn: () => fetchChartData(params),
@@ -432,8 +489,8 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
   }
 
   const result = barQuery.data
+  const onBarClick = params.source_type === 'activity_type' ? handleBarClick : undefined
 
-  // Breakdown mode: render grouped bar chart with all series
   if (result?.breakdown_buckets?.length) {
     const series = result.breakdown_series ?? []
     return (
@@ -442,6 +499,7 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
         <BarChart
           data={[]}
           height={350}
+          onBarClick={onBarClick}
           multiSeries={series.map((name, i) => ({
             color: SERIES_COLORS[i % SERIES_COLORS.length],
             data: result.breakdown_buckets!.map((b) => ({
@@ -459,7 +517,7 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
 
   return (
     <div class="chart-display">
-      <BarChart data={buckets} color="#8b5cf6" height={350} />
+      <BarChart data={buckets} color="#8b5cf6" height={350} onBarClick={onBarClick} />
     </div>
   )
 }
