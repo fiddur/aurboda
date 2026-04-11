@@ -102,7 +102,10 @@ function syncUrl(state: ChartState) {
   } else {
     params.set('bucket_size', state.bucket_size)
   }
-  if (state.source_type === 'metric' && state.aggregation !== 'count') {
+  if (
+    (state.source_type === 'metric' || state.source_type === 'activity_type') &&
+    state.aggregation !== 'count'
+  ) {
     params.set('aggregation', state.aggregation)
   }
   if (state.breakdown_fields.length > 0) {
@@ -363,65 +366,37 @@ function BreakdownLegend({ series, colors }: { series: string[]; colors: string[
   )
 }
 
-function BreakdownTrendDisplay({ params }: { params: FetchChartDataParams }) {
-  const breakdownQuery = useQuery({
-    enabled: Boolean(params.breakdown_fields?.length),
-    queryFn: () => fetchChartData(params),
-    queryKey: ['chart-data-trend-breakdown', params],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  if (breakdownQuery.isLoading) return <div class="chart-loading">Loading breakdown data...</div>
-  if (breakdownQuery.isError) return <div class="chart-error">Failed to load breakdown data.</div>
-
-  const result = breakdownQuery.data
-  if (!result?.breakdown_buckets?.length) return <div class="chart-empty">No breakdown data.</div>
-
-  const series = result.breakdown_series ?? []
-  return (
-    <div class="chart-display">
-      <BreakdownLegend series={series} colors={SERIES_COLORS} />
-      <TrendLineChart
-        data={[]}
-        color="#8b5cf6"
-        height={350}
-        multiSeries={series.map((name, i) => ({
-          color: SERIES_COLORS[i % SERIES_COLORS.length],
-          data: result.breakdown_buckets!.map((b) => ({
-            date: b.bucket_start,
-            value: b.series[name] ?? 0,
-          })),
-          name,
-        }))}
-      />
-    </div>
-  )
-}
-
-function TrendDisplay({
-  params,
-  breakdownParams,
-}: {
-  params: FetchTrendParams
-  breakdownParams?: FetchChartDataParams
-}) {
+function TrendDisplay({ params }: { params: FetchTrendParams }) {
   const trendQuery = useQuery({
-    enabled: Boolean(params.pattern) && !breakdownParams?.breakdown_fields?.length,
+    enabled: Boolean(params.pattern),
     queryFn: () => fetchTrend(params),
     queryKey: ['trend', params],
     staleTime: 5 * 60 * 1000,
   })
 
   if (!params.pattern) return <div class="chart-empty">Select a source to view trend data.</div>
-
-  if (breakdownParams?.breakdown_fields?.length) {
-    return <BreakdownTrendDisplay params={breakdownParams} />
-  }
-
   if (trendQuery.isLoading) return <div class="chart-loading">Loading trend data...</div>
   if (trendQuery.isError || !trendQuery.data) return <div class="chart-error">Failed to load trend data.</div>
 
-  const { current_value, display_unit, history } = trendQuery.data
+  const { breakdown_histories, breakdown_series, current_value, display_unit, history } = trendQuery.data
+
+  if (breakdown_series?.length && breakdown_histories) {
+    return (
+      <div class="chart-display">
+        <BreakdownLegend series={breakdown_series} colors={SERIES_COLORS} />
+        <TrendLineChart
+          data={[]}
+          color="#8b5cf6"
+          height={350}
+          multiSeries={breakdown_series.map((name, i) => ({
+            color: SERIES_COLORS[i % SERIES_COLORS.length],
+            data: (breakdown_histories[name] ?? []).map((p) => ({ date: p.date, value: p.value })),
+            name,
+          }))}
+        />
+      </div>
+    )
+  }
 
   return (
     <div class="chart-display">
@@ -711,6 +686,7 @@ export function Chart() {
         <TrendDisplay
           params={{
             aggregation: state.aggregation,
+            breakdown_fields: state.breakdown_fields.length > 0 ? state.breakdown_fields : undefined,
             display_period: state.display_period,
             half_life_days: state.half_life_days,
             lookback_days: state.lookback_days,
@@ -718,19 +694,6 @@ export function Chart() {
             source_type: state.source_type,
             ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
           }}
-          breakdownParams={
-            state.breakdown_fields.length > 0
-              ? {
-                  aggregation: state.aggregation,
-                  breakdown_fields: state.breakdown_fields,
-                  bucket_size: '1d',
-                  end,
-                  pattern: state.pattern || undefined,
-                  source_type: state.source_type,
-                  start,
-                }
-              : undefined
-          }
         />
       ) : (
         <BarDisplay

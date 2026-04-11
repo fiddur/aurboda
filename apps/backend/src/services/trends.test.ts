@@ -178,4 +178,53 @@ describe('getTrend', () => {
     expect(result.aggregation).toBe('sum')
     expect(result.display_unit).toBe('per day')
   })
+
+  test('returns breakdown trend with per-series EMA histories', async () => {
+    // Mock the breakdown query — returns daily values grouped by field
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [
+        { day: new Date('2026-01-30'), field_0: 'alice', value: 1 },
+        { day: new Date('2026-01-30'), field_0: 'bob', value: 2 },
+        { day: new Date('2026-02-01'), field_0: 'alice', value: 1 },
+      ],
+    } as never)
+
+    const result = await getTrend('testuser', {
+      breakdown_fields: ['partner'],
+      pattern: 'sex',
+      source_type: 'activity_type',
+    })
+
+    expect(result.breakdown_series).toEqual(['alice', 'bob'])
+    expect(result.breakdown_histories).toBeDefined()
+    expect(result.breakdown_histories!['alice'].length).toBeGreaterThan(0)
+    expect(result.breakdown_histories!['bob'].length).toBeGreaterThan(0)
+    expect(result.history).toHaveLength(0)
+    expect(result.current_value).toBe(0)
+  })
+
+  test('returns empty breakdown for invalid field names', async () => {
+    const result = await getTrend('testuser', {
+      breakdown_fields: ['INVALID-FIELD'],
+      pattern: 'sex',
+      source_type: 'activity_type',
+    })
+
+    expect(result.breakdown_series).toEqual([])
+    expect(result.breakdown_histories).toEqual({})
+    expect(db.query).not.toHaveBeenCalled()
+  })
+
+  test('returns empty breakdown when no data matches', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
+
+    const result = await getTrend('testuser', {
+      breakdown_fields: ['partner'],
+      pattern: 'nonexistent',
+      source_type: 'activity_type',
+    })
+
+    expect(result.breakdown_series).toEqual([])
+    expect(result.breakdown_histories).toEqual({})
+  })
 })
