@@ -218,6 +218,11 @@ export const activitiesQuerySchema = timeRangeQuerySchema
       description: 'Comma-separated activity types to exclude',
       example: 'sleep,exercise,nap,rest',
     }),
+    data_filter: z.string().optional().meta({
+      description:
+        'Filter by JSONB data field values. Format: "field:value" (comma-separated for multiple). Use "(none)" for null/empty.',
+      example: 'partner:Sara',
+    }),
   })
   .meta({ id: 'ActivitiesQuery' })
 

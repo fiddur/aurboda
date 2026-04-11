@@ -1607,6 +1607,7 @@ export async function queryActivities(
   start: Date,
   end: Date,
   sync?: SyncProvider,
+  dataFilters?: Array<{ field: string; value: string | null }>,
 ): Promise<ActivityResult[]> {
   // Fire-and-forget: trigger background sync so activity data is fresh for the next request
   if (sync) {
@@ -1617,7 +1618,7 @@ export async function queryActivities(
     if (promises.length > 0) void Promise.all(promises)
   }
 
-  const activities = await getActivities(user, types, start, end)
+  const activities = await getActivities(user, types, start, end, dataFilters)
 
   // Get HR zones only if exercise activities are included
   const includesExercise = types.includes('exercise')

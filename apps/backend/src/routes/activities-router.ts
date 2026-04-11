@@ -169,7 +169,13 @@ export const createActivitiesRouter = (
     authMiddleware,
     validateQuery(activitiesQuerySchema),
     async (req, res) => {
-      const { start, end, types: typesParam, exclude_types: excludeTypesParam } = req.query
+      const {
+        start,
+        end,
+        types: typesParam,
+        exclude_types: excludeTypesParam,
+        data_filter: dataFilterStr,
+      } = req.query
       const user = req.user!
 
       // When no types specified, query all activity types (not just those with definitions)
@@ -181,7 +187,28 @@ export const createActivitiesRouter = (
         types = types.filter((t) => !excludeSet.has(t))
       }
 
-      const activities = await queryActivities(user, types, new Date(start), new Date(end), syncProvider)
+      // Parse data field filters (format: "field:value,field2:value2")
+      const dataFilters = dataFilterStr
+        ? dataFilterStr
+            .split(',')
+            .map((segment) => {
+              const colonIdx = segment.indexOf(':')
+              if (colonIdx === -1) return null
+              const field = segment.slice(0, colonIdx).trim()
+              const rawValue = segment.slice(colonIdx + 1).trim()
+              return { field, value: rawValue === '(none)' ? null : rawValue }
+            })
+            .filter((f): f is { field: string; value: string | null } => f !== null)
+        : undefined
+
+      const activities = await queryActivities(
+        user,
+        types,
+        new Date(start),
+        new Date(end),
+        syncProvider,
+        dataFilters,
+      )
       res.json({ data: activities, success: true })
     },
   )

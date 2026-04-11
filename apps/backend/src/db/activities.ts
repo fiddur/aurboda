@@ -444,17 +444,32 @@ export const getActivities = async (
   activityType: ActivityType | ActivityType[],
   start: Date,
   end: Date,
+  dataFilters?: Array<{ field: string; value: string | null }>,
 ): Promise<MergedActivity[]> => {
   const types = Array.isArray(activityType) ? activityType : [activityType]
+  const params: unknown[] = [types, start, end]
+
+  let filterClauses = ''
+  if (dataFilters?.length) {
+    for (const filter of dataFilters) {
+      if (!/^[a-z][a-z0-9_]*$/.test(filter.field)) continue
+      if (filter.value === null) {
+        filterClauses += `\n       AND (data->>'${filter.field}' IS NULL OR data->>'${filter.field}' = '')`
+      } else {
+        params.push(filter.value)
+        filterClauses += `\n       AND data->>'${filter.field}' = $${params.length}`
+      }
+    }
+  }
 
   const result = await query(
     user,
     `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
      FROM activities
      WHERE activity_type = ANY($1) AND start_time >= $2 AND start_time <= $3
-       AND deleted_at IS NULL
+       AND deleted_at IS NULL${filterClauses}
      ORDER BY start_time`,
-    [types, start, end],
+    params,
   )
 
   const activities = result.rows.map(mapActivityRow)
