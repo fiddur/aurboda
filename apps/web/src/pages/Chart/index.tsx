@@ -10,7 +10,7 @@ import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } 
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
-import { useCallback, useState } from 'preact/hooks'
+import { useCallback, useMemo, useState } from 'preact/hooks'
 
 import { BarChart } from '../../components/charts/BarChart'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
@@ -114,11 +114,13 @@ function syncUrl(state: ChartState) {
   history.replaceState(null, '', `${window.location.pathname}?${params}`)
 }
 
-/** Compute start/end ISO strings from lookback_days. */
+/** Compute start/end ISO strings from lookback_days, rounded to day boundaries for stable query keys. */
 function lookbackToRange(lookbackDays: number): { start: string; end: string } {
-  const end = new Date()
-  const start = new Date()
-  start.setDate(start.getDate() - lookbackDays)
+  const now = new Date()
+  const end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59))
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - lookbackDays)
+  start.setUTCHours(0, 0, 0, 0)
   return { end: end.toISOString(), start: start.toISOString() }
 }
 
@@ -670,7 +672,7 @@ export function Chart() {
     )
   }
 
-  const { start, end } = lookbackToRange(state.lookback_days)
+  const { start, end } = useMemo(() => lookbackToRange(state.lookback_days), [state.lookback_days])
 
   return (
     <div class="chart-page">
