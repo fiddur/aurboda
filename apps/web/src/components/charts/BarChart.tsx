@@ -1,9 +1,8 @@
 /**
  * D3 bar chart component for bucketed chart data.
  *
- * Renders vertical bars with responsive width, tooltip on hover,
- * real <a> links for navigation (middle-click, right-click, URL preview),
- * and smart date formatting based on data density.
+ * Uses time-based x-axis positioning so bars are placed at their actual dates
+ * with proportional widths and gaps for missing buckets.
  */
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
@@ -21,16 +20,16 @@ export interface BarClickInfo {
   series_name?: string
 }
 
+export type BucketSize = '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
+
 export interface BarChartProps {
-  /** Bucketed data points (single series). */
   data: { bucket_start: string; value: number }[]
-  /** Bar fill colour (default '#8b5cf6'). */
   color?: string
-  /** Chart height in pixels (default 300). */
   height?: number
-  /** Multiple named series — renders grouped bars. Overrides data/color when present. */
+  bucketSize?: BucketSize
+  rangeStart?: string
+  rangeEnd?: string
   multiSeries?: BarSeriesData[]
-  /** Returns an href for a bar click — enables real <a> links with middle-click support. */
   getBarHref?: (info: BarClickInfo) => string
 }
 
@@ -39,48 +38,28 @@ interface ParsedBar {
   value: number
 }
 
-/** Pick a d3 time format based on total time span. */
+/** Bucket size in milliseconds (approximate for month). */
+const bucketSizeMs = (size: BucketSize): number => {
+  const ms = {
+    '1M': 30 * 86400000,
+    '1d': 86400000,
+    '1h': 3600000,
+    '1m': 60000,
+    '1w': 7 * 86400000,
+    '5m': 300000,
+    '15m': 900000,
+  }
+  return ms[size] ?? 86400000
+}
+
 const buildBarDateFormat = (extent: [Date, Date]) => {
-  const spanMs = extent[1].getTime() - extent[0].getTime()
-  const spanDays = spanMs / (1000 * 60 * 60 * 24)
+  const spanDays = (extent[1].getTime() - extent[0].getTime()) / 86400000
   if (spanDays < 2) return d3.timeFormat('%H:%M')
   if (spanDays < 7) return d3.timeFormat('%b %d %H:%M')
   if (spanDays > 365) return d3.timeFormat("%b '%y")
-  if (spanDays > 60) return d3.timeFormat('%b %d')
   return d3.timeFormat('%b %d')
 }
 
-/** Render axes. */
-function renderAxes(
-  g: d3.Selection<SVGGElement, unknown, null, undefined>,
-  x: d3.ScaleBand<string>,
-  y: d3.ScaleLinear<number, number>,
-  bars: ParsedBar[],
-  innerWidth: number,
-  innerHeight: number,
-  dateFormat: (date: Date) => string,
-) {
-  const maxTicks = Math.min(bars.length, 10)
-  const tickInterval = Math.max(1, Math.ceil(bars.length / maxTicks))
-  const tickValues = bars.filter((_, i) => i % tickInterval === 0).map((d) => d.date.toISOString())
-
-  g.append('g')
-    .attr('transform', `translate(0,${innerHeight})`)
-    .call(
-      d3
-        .axisBottom(x)
-        .tickValues(tickValues)
-        .tickFormat((d) => dateFormat(new Date(d))),
-    )
-    .selectAll('text')
-    .attr('font-size', '11px')
-    .attr('text-anchor', 'end')
-    .attr('transform', 'rotate(-35)')
-
-  g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').attr('font-size', '11px')
-}
-
-/** Render grid lines behind bars. */
 function renderGrid(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   y: d3.ScaleLinear<number, number>,
@@ -99,7 +78,24 @@ function renderGrid(
     .attr('stroke-dasharray', '3,3')
 }
 
-/** Position a tooltip with smart left/right flip. */
+function renderTimeAxes(
+  g: d3.Selection<SVGGElement, unknown, null, undefined>,
+  x: d3.ScaleTime<number, number>,
+  y: d3.ScaleLinear<number, number>,
+  innerWidth: number,
+  innerHeight: number,
+) {
+  g.append('g')
+    .attr('transform', `translate(0,${innerHeight})`)
+    .call(d3.axisBottom(x).ticks(8))
+    .selectAll('text')
+    .attr('font-size', '11px')
+    .attr('text-anchor', 'end')
+    .attr('transform', 'rotate(-35)')
+
+  g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').attr('font-size', '11px')
+}
+
 function positionTooltip(
   event: MouseEvent,
   container: HTMLDivElement,
@@ -114,11 +110,10 @@ function positionTooltip(
   tooltip.style.top = `${margin.top + 8}px`
 }
 
-/** Create an SVG <a> wrapper for a bar, or a <g> if no href. Returns d3 selection. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- D3 selection type unions are unwieldy
 function createBarWrapper(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   href: string | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- D3 selection type unions are unwieldy
 ): d3.Selection<any, unknown, null, undefined> {
   if (href) {
     const a = document.createElementNS('http://www.w3.org/2000/svg', 'a')
@@ -129,13 +124,13 @@ function createBarWrapper(
   return g.append('g')
 }
 
-/** Render single-series bars wrapped in <a> links when getBarHref is provided. */
 function renderBars(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   bars: ParsedBar[],
-  x: d3.ScaleBand<string>,
+  x: d3.ScaleTime<number, number>,
   y: d3.ScaleLinear<number, number>,
   innerHeight: number,
+  barWidth: number,
   color: string,
   tooltip: HTMLDivElement,
   container: HTMLDivElement,
@@ -149,10 +144,10 @@ function renderBars(
     wrapper
       .append('rect')
       .attr('class', 'bar')
-      .attr('x', x(d.date.toISOString()) ?? 0)
+      .attr('x', x(d.date))
       .attr('y', y(d.value))
-      .attr('width', x.bandwidth())
-      .attr('height', innerHeight - y(d.value))
+      .attr('width', Math.max(barWidth, 1))
+      .attr('height', Math.max(innerHeight - y(d.value), 0))
       .attr('fill', color)
       .attr('rx', 2)
       .style('cursor', getBarHref ? 'pointer' : 'default')
@@ -169,22 +164,23 @@ function renderBars(
   }
 }
 
-/** Render multi-series grouped bars wrapped in <a> links. */
 function renderMultiSeriesBars(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   multiSeries: BarSeriesData[],
-  allBuckets: string[],
-  x0: d3.ScaleBand<string>,
-  x1: d3.ScaleBand<string>,
+  allBuckets: Date[],
+  x: d3.ScaleTime<number, number>,
   y: d3.ScaleLinear<number, number>,
   innerHeight: number,
+  barWidth: number,
   tooltip: HTMLDivElement,
   container: HTMLDivElement,
   margin: { left: number; top: number },
   dateFormat: (date: Date) => string,
   getBarHref?: (info: BarClickInfo) => string,
 ) {
-  // Build lookup: bucket -> series -> value
+  const seriesCount = multiSeries.length
+  const subBarWidth = Math.max(barWidth / seriesCount - 1, 1)
+
   const bucketValues = new Map<string, Map<string, number>>()
   for (const series of multiSeries) {
     for (const d of series.data) {
@@ -193,12 +189,12 @@ function renderMultiSeriesBars(
     }
   }
 
-  const showBucketTooltip = (bucket: string) => {
-    g.selectAll<SVGRectElement, string>('[data-bucket]').attr('fill-opacity', (b) =>
-      b === bucket ? 0.8 : 0.3,
-    )
-    const dateLabel = dateFormat(new Date(bucket))
-    const values = bucketValues.get(bucket)
+  const showBucketTooltip = (bucketIso: string) => {
+    g.selectAll<SVGRectElement, unknown>('[data-bucket]').attr('fill-opacity', function () {
+      return this.getAttribute('data-bucket') === bucketIso ? 0.8 : 0.3
+    })
+    const dateLabel = dateFormat(new Date(bucketIso))
+    const values = bucketValues.get(bucketIso)
     const lines = multiSeries
       .map((s) => {
         const v = values?.get(s.name) ?? 0
@@ -218,29 +214,39 @@ function renderMultiSeriesBars(
     const series = multiSeries[si]
     const dataMap = new Map(series.data.map((d) => [d.bucket_start, d.value]))
 
-    for (const bucket of allBuckets) {
-      const href = getBarHref?.({ bucket_start: bucket, series_name: series.name })
+    for (const bucketDate of allBuckets) {
+      const bucketIso = bucketDate.toISOString()
+      const value = dataMap.get(bucketIso) ?? 0
+      const href = getBarHref?.({ bucket_start: bucketIso, series_name: series.name })
       const wrapper = createBarWrapper(g, href)
-      const value = dataMap.get(bucket) ?? 0
       wrapper
         .append('rect')
         .attr('class', `bar-s${si}`)
-        .attr('data-bucket', bucket)
-        .attr('x', (x0(bucket) ?? 0) + (x1(series.name) ?? 0))
+        .attr('data-bucket', bucketIso)
+        .attr('x', x(bucketDate) + si * (subBarWidth + 1))
         .attr('y', y(value))
-        .attr('width', x1.bandwidth())
-        .attr('height', innerHeight - y(value))
+        .attr('width', Math.max(subBarWidth, 1))
+        .attr('height', Math.max(innerHeight - y(value), 0))
         .attr('fill', series.color)
         .attr('rx', 1)
         .style('cursor', getBarHref ? 'pointer' : 'default')
-        .on('mouseenter', () => showBucketTooltip(bucket))
+        .on('mouseenter', () => showBucketTooltip(bucketIso))
         .on('mousemove', (event: MouseEvent) => positionTooltip(event, container, tooltip, margin))
         .on('mouseleave', () => hideBucketTooltip())
     }
   }
 }
 
-export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries, getBarHref }: BarChartProps) {
+export function BarChart({
+  data,
+  color = '#8b5cf6',
+  height = 300,
+  bucketSize = '1d',
+  rangeStart,
+  rangeEnd,
+  multiSeries,
+  getBarHref,
+}: BarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -261,21 +267,20 @@ export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries, g
     const margin = { bottom: 50, left: 50, right: 20, top: 20 }
     const innerWidth = chartWidth - margin.left - margin.right
     const innerHeight = chartHeight - margin.top - margin.bottom
+    const bMs = bucketSizeMs(bucketSize)
 
     if (multiSeries && multiSeries.length > 0) {
-      const allBuckets = [...new Set(multiSeries.flatMap((s) => s.data.map((d) => d.bucket_start)))].sort()
-      if (allBuckets.length === 0) return
+      const allBucketStrs = [...new Set(multiSeries.flatMap((s) => s.data.map((d) => d.bucket_start)))].sort()
+      if (allBucketStrs.length === 0) return
+      const allBuckets = allBucketStrs.map((s) => new Date(s))
 
-      const bars: ParsedBar[] = allBuckets.map((b) => ({ date: new Date(b), value: 0 }))
-      const seriesCount = multiSeries.length
+      const xMin = rangeStart ? new Date(rangeStart) : new Date(allBuckets[0].getTime() - bMs * 0.5)
+      const xMax = rangeEnd
+        ? new Date(rangeEnd)
+        : new Date(allBuckets[allBuckets.length - 1].getTime() + bMs * 1.5)
+      const x = d3.scaleTime().domain([xMin, xMax]).range([0, innerWidth])
 
-      const x0 = d3.scaleBand<string>().domain(allBuckets).range([0, innerWidth]).padding(0.15)
-      const x1 = d3
-        .scaleBand<string>()
-        .domain(multiSeries.map((s) => s.name))
-        .range([0, x0.bandwidth()])
-        .padding(seriesCount > 3 ? 0.02 : 0.08)
-
+      const barWidth = Math.max(x(new Date(xMin.getTime() + bMs)) - x(xMin) - 2, 2)
       const yMax = d3.max(multiSeries, (s) => d3.max(s.data, (d) => d.value)) ?? 1
       const y = d3
         .scaleLinear()
@@ -284,25 +289,22 @@ export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries, g
         .range([innerHeight, 0])
 
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
-      const dateExtent = d3.extent(bars, (d) => d.date) as [Date, Date]
-      const dateFormat = buildBarDateFormat(dateExtent)
-
       renderGrid(g, y, innerWidth)
-      renderAxes(g, x0, y, bars, innerWidth, innerHeight, dateFormat)
+      renderTimeAxes(g, x, y, innerWidth, innerHeight)
 
       if (tooltipRef.current) {
         renderMultiSeriesBars(
           g,
           multiSeries,
           allBuckets,
-          x0,
-          x1,
+          x,
           y,
           innerHeight,
+          barWidth,
           tooltipRef.current,
           container,
           margin,
-          dateFormat,
+          buildBarDateFormat([xMin, xMax]),
           getBarHref,
         )
       }
@@ -310,12 +312,11 @@ export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries, g
       if (data.length === 0) return
 
       const bars: ParsedBar[] = data.map((d) => ({ date: new Date(d.bucket_start), value: d.value }))
-      const x = d3
-        .scaleBand<string>()
-        .domain(bars.map((d) => d.date.toISOString()))
-        .range([0, innerWidth])
-        .padding(0.2)
+      const xMin = rangeStart ? new Date(rangeStart) : new Date(bars[0].date.getTime() - bMs * 0.5)
+      const xMax = rangeEnd ? new Date(rangeEnd) : new Date(bars[bars.length - 1].date.getTime() + bMs * 1.5)
+      const x = d3.scaleTime().domain([xMin, xMax]).range([0, innerWidth])
 
+      const barWidth = Math.max(x(new Date(xMin.getTime() + bMs)) - x(xMin) - 2, 2)
       const yMax = d3.max(bars, (d) => d.value) ?? 1
       const y = d3
         .scaleLinear()
@@ -324,11 +325,8 @@ export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries, g
         .range([innerHeight, 0])
 
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
-      const dateExtent = d3.extent(bars, (d) => d.date) as [Date, Date]
-      const dateFormat = buildBarDateFormat(dateExtent)
-
       renderGrid(g, y, innerWidth)
-      renderAxes(g, x, y, bars, innerWidth, innerHeight, dateFormat)
+      renderTimeAxes(g, x, y, innerWidth, innerHeight)
 
       if (tooltipRef.current) {
         renderBars(
@@ -337,16 +335,17 @@ export function BarChart({ data, color = '#8b5cf6', height = 300, multiSeries, g
           x,
           y,
           innerHeight,
+          barWidth,
           color,
           tooltipRef.current,
           container,
           margin,
-          dateFormat,
+          buildBarDateFormat([xMin, xMax]),
           getBarHref,
         )
       }
     }
-  }, [data, color, height, multiSeries, getBarHref])
+  }, [data, color, height, multiSeries, getBarHref, bucketSize, rangeStart, rangeEnd])
 
   if (effectiveData.length === 0) {
     return <div class="bar-chart-placeholder">No data for the selected range</div>

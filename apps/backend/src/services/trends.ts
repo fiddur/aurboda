@@ -50,13 +50,14 @@ const calculateMetricTrend = async (
   aggregation: 'mean' | 'sum',
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = aggregation === 'sum' ? displayPeriodMultipliers[displayPeriod] : 1
+  const warmupDays = lookbackDays + 3 * halfLifeDays
 
   const result = await query(
     user,
     `
     WITH date_range AS (
       SELECT generate_series(
-        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
+        CURRENT_DATE - INTERVAL '1 day' * $6::integer,
         CURRENT_DATE,
         '1 day'
       )::date AS day
@@ -72,29 +73,29 @@ const calculateMetricTrend = async (
           ${aggregation === 'sum' ? 'SUM(value)' : 'AVG(value)'} as daily_value
         FROM time_series
         WHERE metric = $1
-          AND time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+          AND time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
     ),
     ema_calc AS (
       SELECT
         dv.day,
-        -- Calculate EMA as weighted average, excluding days with no data
         $4::float * SUM(dv2.daily_value * EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)) /
         NULLIF(SUM(CASE WHEN dv2.daily_value IS NOT NULL THEN EXP(-$3::float * (dv.day - dv2.day)::float / $5::float) ELSE 0 END), 0) as ema_value
       FROM daily_values dv
       CROSS JOIN LATERAL (
         SELECT day, daily_value
         FROM daily_values
-        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * LEAST($2::integer, 90)
+        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * 90
       ) dv2
       GROUP BY dv.day
     )
     SELECT day, ema_value
     FROM ema_calc
+    WHERE day >= CURRENT_DATE - INTERVAL '1 day' * $2::integer
     ORDER BY day
     `,
-    [metric, lookbackDays, LN2, multiplier, halfLifeDays],
+    [metric, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays],
   )
 
   const history: TrendHistoryPoint[] = result.rows
@@ -124,15 +125,14 @@ const calculateProductivityCategoryTrend = async (
   displayPeriod: TrendDisplayPeriod,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = displayPeriodMultipliers[displayPeriod]
+  const warmupDays = lookbackDays + 3 * halfLifeDays
 
-  // Convert "Work > Programming" to a PostgreSQL array prefix match.
-  // We use array_to_string to convert resolved_category to a string that starts with the path.
   const result = await query(
     user,
     `
     WITH date_range AS (
       SELECT generate_series(
-        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
+        CURRENT_DATE - INTERVAL '1 day' * $6::integer,
         CURRENT_DATE,
         '1 day'
       )::date AS day
@@ -150,7 +150,7 @@ const calculateProductivityCategoryTrend = async (
         WHERE deleted_at IS NULL
           AND resolved_category IS NOT NULL
           AND array_to_string(resolved_category, ' > ') LIKE $1 || '%'
-          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -163,15 +163,16 @@ const calculateProductivityCategoryTrend = async (
       CROSS JOIN LATERAL (
         SELECT day, daily_hours
         FROM daily_values
-        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * LEAST($2::integer, 90)
+        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * 90
       ) dv2
       GROUP BY dv.day
     )
     SELECT day, COALESCE(ema_value, 0) as ema_value
     FROM ema_calc
+    WHERE day >= CURRENT_DATE - INTERVAL '1 day' * $2::integer
     ORDER BY day
     `,
-    [categoryPath, lookbackDays, LN2, multiplier, halfLifeDays],
+    [categoryPath, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays],
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
@@ -199,13 +200,14 @@ const calculateActivityTypeTrend = async (
   displayPeriod: TrendDisplayPeriod,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = displayPeriodMultipliers[displayPeriod]
+  const warmupDays = lookbackDays + 3 * halfLifeDays
 
   const result = await query(
     user,
     `
     WITH date_range AS (
       SELECT generate_series(
-        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
+        CURRENT_DATE - INTERVAL '1 day' * $6::integer,
         CURRENT_DATE,
         '1 day'
       )::date AS day
@@ -222,7 +224,7 @@ const calculateActivityTypeTrend = async (
         FROM activities
         WHERE activity_type = $1
           AND deleted_at IS NULL
-          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -235,15 +237,16 @@ const calculateActivityTypeTrend = async (
       CROSS JOIN LATERAL (
         SELECT day, daily_hours
         FROM daily_values
-        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * LEAST($2::integer, 90)
+        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * 90
       ) dv2
       GROUP BY dv.day
     )
     SELECT day, COALESCE(ema_value, 0) as ema_value
     FROM ema_calc
+    WHERE day >= CURRENT_DATE - INTERVAL '1 day' * $2::integer
     ORDER BY day
     `,
-    [pattern, lookbackDays, LN2, multiplier, halfLifeDays],
+    [pattern, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays],
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
@@ -269,13 +272,14 @@ const calculateActivityTypeCountTrend = async (
   displayPeriod: TrendDisplayPeriod,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = displayPeriodMultipliers[displayPeriod]
+  const warmupDays = lookbackDays + 3 * halfLifeDays
 
   const result = await query(
     user,
     `
     WITH date_range AS (
       SELECT generate_series(
-        CURRENT_DATE - INTERVAL '1 day' * $2::integer,
+        CURRENT_DATE - INTERVAL '1 day' * $6::integer,
         CURRENT_DATE,
         '1 day'
       )::date AS day
@@ -292,7 +296,7 @@ const calculateActivityTypeCountTrend = async (
         FROM activities
         WHERE activity_type = $1
           AND deleted_at IS NULL
-          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -305,15 +309,16 @@ const calculateActivityTypeCountTrend = async (
       CROSS JOIN LATERAL (
         SELECT day, cnt
         FROM daily_counts
-        WHERE day <= dc.day AND day > dc.day - INTERVAL '1 day' * LEAST($2::integer, 90)
+        WHERE day <= dc.day AND day > dc.day - INTERVAL '1 day' * 90
       ) dc2
       GROUP BY dc.day
     )
     SELECT day, COALESCE(ema_value, 0) as ema_value
     FROM ema_calc
+    WHERE day >= CURRENT_DATE - INTERVAL '1 day' * $2::integer
     ORDER BY day
     `,
-    [pattern, lookbackDays, LN2, multiplier, halfLifeDays],
+    [pattern, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays],
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
@@ -332,14 +337,17 @@ const calculateActivityTypeCountTrend = async (
  * where weight_i = exp(-LN2 * daysAgo / halfLife) and the lookback window is
  * min(lookbackDays, 90).
  */
+/**
+ * @param displayStartIdx Index in `days` where the display range starts. EMA is computed
+ *   from index 0 (warmup period) but only points from displayStartIdx onward are returned.
+ */
 const computeEma = (
   dailyValues: Map<string, number>,
   days: string[],
   halfLifeDays: number,
-  lookbackDays: number,
   multiplier: number,
+  displayStartIdx = 0,
 ): TrendHistoryPoint[] => {
-  const windowDays = Math.min(lookbackDays, 90)
   const history: TrendHistoryPoint[] = []
 
   for (let i = 0; i < days.length; i++) {
@@ -347,7 +355,7 @@ const computeEma = (
     let weightSum = 0
     const currentDay = new Date(days[i]).getTime()
 
-    for (let j = i; j >= 0 && i - j <= windowDays; j--) {
+    for (let j = i; j >= 0 && i - j <= 90; j--) {
       const pastDay = new Date(days[j]).getTime()
       const daysAgo = (currentDay - pastDay) / (1000 * 60 * 60 * 24)
       const weight = Math.exp((-LN2 * daysAgo) / halfLifeDays)
@@ -356,7 +364,7 @@ const computeEma = (
       weightSum += weight
     }
 
-    if (weightSum > 0) {
+    if (weightSum > 0 && i >= displayStartIdx) {
       history.push({ date: days[i], value: (multiplier * weightedSum) / weightSum })
     }
   }
@@ -389,6 +397,7 @@ const calculateActivityTypeBreakdownTrend = async (
       ? 'count(*)'
       : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
 
+  const warmupDays = lookbackDays + 3 * halfLifeDays
   const result = await query(
     user,
     `SELECT date_trunc('day', start_time AT TIME ZONE 'UTC')::date AS day,
@@ -400,7 +409,7 @@ const calculateActivityTypeBreakdownTrend = async (
         AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
       GROUP BY 1, ${fieldGroupBys.join(', ')}
       ORDER BY 1`,
-    [pattern, lookbackDays],
+    [pattern, warmupDays],
   )
 
   // Build per-series daily values
@@ -415,21 +424,23 @@ const calculateActivityTypeBreakdownTrend = async (
     seriesDaily.get(seriesKey)!.set(day, value)
   }
 
-  // Generate full date range
+  // Generate full date range including warmup period
+  const warmupCount = 3 * halfLifeDays
   const days: string[] = []
   const now = new Date()
   now.setUTCHours(0, 0, 0, 0)
-  for (let d = lookbackDays; d >= 0; d--) {
+  for (let d = warmupDays; d >= 0; d--) {
     const date = new Date(now)
     date.setUTCDate(date.getUTCDate() - d)
     days.push(date.toISOString().split('T')[0])
   }
 
-  // Compute EMA per series
+  // Compute EMA per series — warmup period is excluded from output
+  const displayStartIdx = warmupCount
   const series = [...seriesDaily.keys()].sort()
   const histories: Record<string, TrendHistoryPoint[]> = {}
   for (const s of series) {
-    histories[s] = computeEma(seriesDaily.get(s)!, days, halfLifeDays, lookbackDays, multiplier)
+    histories[s] = computeEma(seriesDaily.get(s)!, days, halfLifeDays, multiplier, displayStartIdx)
   }
 
   return { histories, series }
