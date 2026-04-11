@@ -38,6 +38,7 @@ describe('sync router', () => {
     syncRescueTime: vi.fn().mockResolvedValue({ success: true }),
     triggerCalorieComputation: vi.fn().mockResolvedValue(undefined),
     upsertUserSettings: vi.fn().mockResolvedValue(undefined),
+    onActivitySynced: vi.fn(),
   }
 
   // Simple auth middleware that sets req.user for tests
