@@ -619,6 +619,7 @@ describe('MCP Server', () => {
         expect.any(Date),
         expect.any(Date),
         undefined,
+        undefined,
       )
     })
   })

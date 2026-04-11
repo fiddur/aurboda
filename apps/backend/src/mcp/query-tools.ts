@@ -156,11 +156,36 @@ Use cases:
         .describe(
           'Activity types to include. Defaults to all types (sleep, exercise, meditation, nap, rest).',
         ),
+      data_filter: z
+        .string()
+        .optional()
+        .describe(
+          'Filter by JSONB data field values. Format: "field:value" (comma-separated). Use "(none)" for null/empty.',
+        ),
       tz: tzSchema,
     },
-    async ({ end, start, types, tz }) => {
+    async ({ data_filter, end, start, types, tz }) => {
       const requestedTypes = types ?? (await getAllActivityTypeNames(user))
-      const activities = await queryActivities(user, requestedTypes, new Date(start), new Date(end), sync)
+      const dataFilters = data_filter
+        ? data_filter
+            .split(',')
+            .map((segment) => {
+              const colonIdx = segment.indexOf(':')
+              if (colonIdx === -1) return null
+              const field = segment.slice(0, colonIdx).trim()
+              const rawValue = segment.slice(colonIdx + 1).trim()
+              return { field, value: rawValue === '(none)' ? null : rawValue }
+            })
+            .filter((f): f is { field: string; value: string | null } => f !== null)
+        : undefined
+      const activities = await queryActivities(
+        user,
+        requestedTypes,
+        new Date(start),
+        new Date(end),
+        sync,
+        dataFilters,
+      )
       return tzJsonResponse({ data: activities, success: true }, tz)
     },
   )

@@ -341,6 +341,7 @@ export const fetchActivities = async (
   end: Date,
   types?: ActivityType[],
   excludeTypes?: string[],
+  dataFilter?: string,
 ): Promise<Activity[]> => {
   const { token } = auth.value
   const params: ActivitiesQuery = {
@@ -348,6 +349,7 @@ export const fetchActivities = async (
     exclude_types: excludeTypes?.join(','),
     start: start.toISOString(),
     types: types?.join(','),
+    ...(dataFilter ? { data_filter: dataFilter } : {}),
   }
   const response = await axios.get<ActivitiesResponse>(`${API_URL}/activities`, {
     headers: { Authorization: `Bearer ${token}` },
