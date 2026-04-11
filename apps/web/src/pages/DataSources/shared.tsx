@@ -71,6 +71,32 @@ const formatSyncTime = (iso: string): string => {
   })
 }
 
+function SyncStatusText({
+  syncing,
+  lastSyncTime,
+  hasError,
+  warningCount,
+}: {
+  syncing: boolean
+  lastSyncTime?: string | null
+  hasError: boolean
+  warningCount: number
+}) {
+  if (syncing) return <span class="sync-status-time">Syncing...</span>
+
+  const timeText = lastSyncTime ? `Last synced ${formatSyncTime(lastSyncTime)}` : 'Never synced'
+
+  return (
+    <span class="sync-status-time">
+      {timeText}
+      {hasError && <span class="sync-status-error"> (some data types have errors)</span>}
+      {!hasError && warningCount > 0 && (
+        <span class="sync-status-warning"> ({warningCount} data type(s) had partial failures)</span>
+      )}
+    </span>
+  )
+}
+
 /** Shows the most recent sync time across all data types, with a "Sync Now" button. */
 export function SyncStatusBar({
   states,
@@ -81,19 +107,22 @@ export function SyncStatusBar({
   isLoading: boolean
   onSyncNow: () => Promise<void>
 }) {
-  const [syncing, setSyncing] = useState(false)
+  const [localSyncing, setLocalSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ status: 'done' | 'error'; message: string } | null>(null)
 
+  // Detect syncing from backend status (e.g. navigated to page while sync in progress)
+  const backendSyncing = states?.some((s) => s.status === 'syncing') ?? false
+  const syncing = localSyncing || backendSyncing
+
   const handleSync = useCallback(async () => {
-    setSyncing(true)
+    setLocalSyncing(true)
     setSyncResult(null)
     try {
       await onSyncNow()
-      setSyncResult({ status: 'done', message: 'Sync complete' })
     } catch (err) {
       setSyncResult({ status: 'error', message: err instanceof Error ? err.message : 'Sync failed' })
     } finally {
-      setSyncing(false)
+      setLocalSyncing(false)
     }
   }, [onSyncNow])
 
@@ -108,13 +137,12 @@ export function SyncStatusBar({
 
   return (
     <div class="sync-status-bar">
-      <span class="sync-status-time">
-        {lastSync?.last_sync_time ? `Last synced ${formatSyncTime(lastSync.last_sync_time)}` : 'Never synced'}
-        {hasError && <span class="sync-status-error"> (some data types have errors)</span>}
-        {!hasError && warnings.length > 0 && (
-          <span class="sync-status-warning"> ({warnings.length} data type(s) had partial failures)</span>
-        )}
-      </span>
+      <SyncStatusText
+        syncing={syncing}
+        lastSyncTime={lastSync?.last_sync_time}
+        hasError={hasError ?? false}
+        warningCount={warnings.length}
+      />
       <button type="button" class="sync-now-button" disabled={syncing} onClick={handleSync}>
         {syncing && <span class="sync-spinner" />}
         {syncing ? 'Syncing...' : 'Sync Now'}
