@@ -1449,6 +1449,56 @@ describe('processActivityDetail', () => {
     expect(mockDeps.insertLocations).not.toHaveBeenCalled()
     expect(mockDeps.softDeleteLocationRange).not.toHaveBeenCalled()
   })
+
+  test('falls back to geoPolylineDTO when metrics lack lat/lon', async () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [{ metrics: [1700000001000, 120] }, { metrics: [1700000062000, 125] }],
+      activityId: 55555,
+      geoPolylineDTO: {
+        polyline: [
+          { lat: 57.65, lon: 12.62, timestampGMT: 1700000001000 },
+          { lat: 57.66, lon: 12.63, timestampGMT: 1700000062000 },
+        ],
+      },
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directHeartRate', metricsIndex: 1, unit: { key: 'bpm' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    expect(mockDeps.insertLocations).toHaveBeenCalledWith(user, [
+      { lat: 57.65, lon: 12.62, source: 'garmin', time: new Date(1700000001000) },
+      { lat: 57.66, lon: 12.63, source: 'garmin', time: new Date(1700000062000) },
+    ])
+  })
+
+  test('prefers metric GPS over polyline when both present', async () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [
+        { metrics: [1700000001000, 57.65, 12.62] },
+        { metrics: [1700000062000, 57.66, 12.63] },
+      ],
+      activityId: 66666,
+      geoPolylineDTO: {
+        polyline: [{ lat: 99.0, lon: 99.0, timestampGMT: 1700000001000 }],
+      },
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directLatitude', metricsIndex: 1, unit: { key: 'dd' } },
+        { key: 'directLongitude', metricsIndex: 2, unit: { key: 'dd' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, mockDeps)
+
+    // Should use metric GPS (57.65), not polyline (99.0)
+    expect(mockDeps.insertLocations).toHaveBeenCalledWith(user, [
+      { lat: 57.65, lon: 12.62, source: 'garmin', time: new Date(1700000001000) },
+      { lat: 57.66, lon: 12.63, source: 'garmin', time: new Date(1700000062000) },
+    ])
+  })
 })
 
 // ============================================================================
