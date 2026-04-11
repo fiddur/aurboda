@@ -445,6 +445,7 @@ export const getActivities = async (
   start: Date,
   end: Date,
   dataFilters?: Array<{ field: string; value: string | null }>,
+  deductionRuleId?: string,
 ): Promise<MergedActivity[]> => {
   const types = Array.isArray(activityType) ? activityType : [activityType]
   const params: unknown[] = [types, start, end]
@@ -460,6 +461,11 @@ export const getActivities = async (
         filterClauses += `\n       AND data->>'${filter.field}' = $${params.length}`
       }
     }
+  }
+
+  if (deductionRuleId) {
+    params.push(deductionRuleId)
+    filterClauses += `\n       AND (data->>'rule_id' = $${params.length} OR data->>'_enriched_by' = $${params.length})`
   }
 
   const result = await query(
