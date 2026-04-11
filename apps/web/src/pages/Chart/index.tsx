@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useMemo, useState } from 'preact/hooks'
 
+import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { BarChart, type BarClickInfo } from '../../components/charts/BarChart'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { MetricPicker } from '../../components/MetricPicker'
@@ -185,19 +186,11 @@ function SourcePicker({
         ) : state.source_type === 'activity_type' ? (
           <>
             Activity Type
-            <select
+            <ActivityTypePicker
               value={state.pattern}
-              onChange={(e) =>
-                onUpdate({ breakdown_fields: [], pattern: (e.target as HTMLSelectElement).value })
-              }
-            >
-              <option value="">-- select --</option>
-              {activityTypes.map((d) => (
-                <option key={d.name} value={d.name}>
-                  {d.display_name} ({d.name})
-                </option>
-              ))}
-            </select>
+              onChange={(pattern) => onUpdate({ breakdown_fields: [], pattern })}
+              placeholder="Search activity types..."
+            />
           </>
         ) : (
           <>

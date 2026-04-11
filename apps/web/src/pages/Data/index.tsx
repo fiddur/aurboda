@@ -256,7 +256,7 @@ const syncUrl = (
 
 // eslint-disable-next-line complexity -- data page with multiple query sources
 export const Data = () => {
-  const { query } = useLocation()
+  const { query, route } = useLocation()
   const initial = parseUrlState(query)
 
   const [dateStr, setDateStr] = useState(initial.date)
@@ -378,6 +378,15 @@ export const Data = () => {
       return next
     })
   }
+
+  // Auto-redirect to detail page when chart click leads to exactly 1 activity
+  const activitiesLoaded = !activitiesQuery.isLoading && activitiesQuery.data
+  useEffect(() => {
+    if (hasDataFilter && activitiesLoaded && activitiesQuery.data?.length === 1) {
+      const activity = activitiesQuery.data[0]
+      if (activity.id) route(`/detail/activity/${activity.id}`)
+    }
+  }, [hasDataFilter, activitiesLoaded, activitiesQuery.data, route])
 
   const multiDay = end.getTime() - start.getTime() > 24 * 60 * 60 * 1000
   const allItems = buildItems(

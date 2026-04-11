@@ -52,7 +52,9 @@ const bucketSizeMs = (size: BucketSize): number => {
   return ms[size] ?? 86400000
 }
 
-const buildBarDateFormat = (extent: [Date, Date]) => {
+const buildBarDateFormat = (extent: [Date, Date], bucketSize: BucketSize) => {
+  if (bucketSize === '1w') return (d: Date) => `Week of ${d3.timeFormat('%b %d')(d)}`
+  if (bucketSize === '1M') return d3.timeFormat("%b '%y")
   const spanDays = (extent[1].getTime() - extent[0].getTime()) / 86400000
   if (spanDays < 2) return d3.timeFormat('%H:%M')
   if (spanDays < 7) return d3.timeFormat('%b %d %H:%M')
@@ -304,7 +306,7 @@ export function BarChart({
           tooltipRef.current,
           container,
           margin,
-          buildBarDateFormat([xMin, xMax]),
+          buildBarDateFormat([xMin, xMax], bucketSize),
           getBarHref,
         )
       }
@@ -340,7 +342,7 @@ export function BarChart({
           tooltipRef.current,
           container,
           margin,
-          buildBarDateFormat([xMin, xMax]),
+          buildBarDateFormat([xMin, xMax], bucketSize),
           getBarHref,
         )
       }
