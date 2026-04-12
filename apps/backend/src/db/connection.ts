@@ -600,6 +600,22 @@ export const migrateSchema = async (user: string) => {
   // Migrate tags into activities and tag_definitions into activity_type_definitions
   await migrateTagsToActivities(db, existingTableNames)
 
+  // Migrate generic 'exercise' activities to their specific type from data.activity_type_key
+  // (idempotent — only updates activities that still have the generic type)
+  // Must run BEFORE the definition backfill so new exercise types get definitions created.
+  if (existingTableNames.has('activities')) {
+    await query(
+      db,
+      `UPDATE activities
+       SET activity_type = data->>'activity_type_key',
+           data = data - 'activity_type_key' - 'exerciseType' - 'exerciseTypeName'
+       WHERE activity_type = 'exercise'
+         AND data->>'activity_type_key' IS NOT NULL
+         AND data->>'activity_type_key' != 'unknown'
+         AND deleted_at IS NULL`,
+    )
+  }
+
   // Ensure every activity_type in use has a corresponding definition (idempotent)
   if (existingTableNames.has('activity_type_definitions') && existingTableNames.has('activities')) {
     await query(
@@ -634,18 +650,35 @@ export const migrateSchema = async (user: string) => {
   // Migrate goals and custom_metrics from user_settings JSONB to their own tables
   await migrateGoalsAndCustomMetrics(db, existingTableNames)
 
-  // Migrate generic 'exercise' activities to their specific type from data.activity_type_key
-  // (idempotent — only updates activities that still have the generic type)
+  // Soft-delete activities with invalid activity_type values (e.g. UUID-like from tag migration)
+  // These can never have a valid definition and would violate the FK constraint.
   if (existingTableNames.has('activities')) {
     await query(
       db,
-      `UPDATE activities
-       SET activity_type = data->>'activity_type_key',
-           data = data - 'activity_type_key' - 'exerciseType' - 'exerciseTypeName'
-       WHERE activity_type = 'exercise'
-         AND data->>'activity_type_key' IS NOT NULL
-         AND data->>'activity_type_key' != 'unknown'
-         AND deleted_at IS NULL`,
+      `UPDATE activities SET deleted_at = NOW()
+       WHERE activity_type !~ '^[a-z][a-z0-9_]*$' AND deleted_at IS NULL`,
+    )
+  }
+
+  // Add foreign key constraints (idempotent)
+  if (existingTableNames.has('activities') && existingTableNames.has('activity_type_definitions')) {
+    await query(
+      db,
+      `DO $$ BEGIN
+         ALTER TABLE activities ADD CONSTRAINT fk_activities_type
+           FOREIGN KEY (activity_type) REFERENCES activity_type_definitions(name) ON UPDATE CASCADE;
+       EXCEPTION WHEN duplicate_object THEN NULL;
+       END $$`,
+    )
+  }
+  if (existingTableNames.has('deduction_rules') && existingTableNames.has('activity_type_definitions')) {
+    await query(
+      db,
+      `DO $$ BEGIN
+         ALTER TABLE deduction_rules ADD CONSTRAINT fk_deduction_rules_type
+           FOREIGN KEY (output_activity_type) REFERENCES activity_type_definitions(name) ON UPDATE CASCADE;
+       EXCEPTION WHEN duplicate_object THEN NULL;
+       END $$`,
     )
   }
 }

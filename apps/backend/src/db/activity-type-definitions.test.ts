@@ -314,7 +314,11 @@ describe('activity-type-definitions db', () => {
       .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [sourceDef] })
       // 2. Check new name doesn't exist
       .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 0, rows: [] })
-      // 3. Update definition name and aliases
+      // 3. Count activities to update
+      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [{ count: '5' }] })
+      // 4. Count deduction rules to update
+      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [{ count: '2' }] })
+      // 5. Update definition name and aliases (FK ON UPDATE CASCADE handles activities + rules)
       .mockResolvedValueOnce({
         command: 'UPDATE',
         fields: [],
@@ -322,11 +326,7 @@ describe('activity-type-definitions db', () => {
         rowCount: 1,
         rows: [{ ...sourceDef, aliases: ['hot_sauna'], name: 'hot_sauna' }],
       })
-      // 4. Reassign activities
-      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 5, rows: [] })
-      // 5. Update deduction rules output_activity_type
-      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 2, rows: [] })
-      // 6. Update deduction rules conditions
+      // 6. Update deduction rules conditions JSONB (not covered by FK)
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
 
     const result = await renameActivityTypeDefinition(user, 'sauna', 'hot_sauna')

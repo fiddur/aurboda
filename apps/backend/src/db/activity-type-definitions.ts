@@ -363,7 +363,24 @@ export const renameActivityTypeDefinition = async (
   )
   if (existingResult.rows.length > 0) return null
 
-  // Update the definition name and aliases
+  // Count affected rows before rename (for return values)
+  const activitiesCount = await query(
+    user,
+    `SELECT COUNT(*) AS count FROM activities WHERE activity_type = $1 AND deleted_at IS NULL`,
+    [oldName],
+  )
+  const activities_updated = parseInt(activitiesCount.rows[0].count, 10)
+
+  const rulesCount = await query(
+    user,
+    `SELECT COUNT(*) AS count FROM deduction_rules WHERE output_activity_type = $1`,
+    [oldName],
+  )
+  let deduction_rules_updated = parseInt(rulesCount.rows[0].count, 10)
+
+  // Update the definition name and aliases.
+  // FK ON UPDATE CASCADE automatically propagates to activities.activity_type
+  // and deduction_rules.output_activity_type.
   const updatedAliases = normalizeAliases(
     newName,
     (sourceDef.aliases ?? []).filter((a) => a !== oldName),
@@ -376,23 +393,7 @@ export const renameActivityTypeDefinition = async (
   )
   if (defResult.rows.length === 0) return null
 
-  // Reassign all activities
-  const activitiesResult = await query(
-    user,
-    `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 AND deleted_at IS NULL`,
-    [newName, oldName],
-  )
-  const activities_updated = activitiesResult.rowCount ?? 0
-
-  // Update deduction rules: output_activity_type
-  const outputResult = await query(
-    user,
-    `UPDATE deduction_rules SET output_activity_type = $1, updated_at = NOW() WHERE output_activity_type = $2`,
-    [newName, oldName],
-  )
-  let deduction_rules_updated = outputResult.rowCount ?? 0
-
-  // Update deduction rules: conditions JSONB
+  // Update deduction rules: conditions JSONB (not covered by FK — values inside JSONB)
   const conditionsResult = await query(
     user,
     `UPDATE deduction_rules
