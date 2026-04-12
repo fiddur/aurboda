@@ -44,6 +44,11 @@ export const insertLocation = async (user: string, location: Location) => {
 export const insertLocations = async (user: string, locations: Location[]): Promise<void> => {
   if (locations.length === 0) return
 
+  // pg-format %L produces invalid SQL for empty JS arrays (trailing comma before paren),
+  // so convert regions to a PostgreSQL array literal string.
+  const formatRegions = (regions: string[] | undefined): string =>
+    regions?.length ? `{${regions.join(',')}}` : '{}'
+
   const values = locations.map((loc) => [
     loc.source || 'owntracks',
     loc.time,
@@ -52,7 +57,7 @@ export const insertLocations = async (user: string, locations: Location[]): Prom
     loc.accuracy ?? null,
     loc.altitude ?? null,
     loc.velocity ?? null,
-    loc.regions || [],
+    formatRegions(loc.regions),
   ])
 
   await query(
