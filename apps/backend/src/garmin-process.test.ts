@@ -674,9 +674,8 @@ describe('processGarminData', () => {
       const endTime = new Date(startTime.getTime() + 1800 * 1000)
 
       expect(mockDeps.insertActivity).toHaveBeenCalledWith(user, {
-        activity_type: 'exercise',
+        activity_type: 'running',
         data: {
-          activity_type_key: 'running',
           average_hr: 145,
           calories: 350,
           distance: 5000,
@@ -720,11 +719,11 @@ describe('processGarminData', () => {
       expect(activityArg.title).toBe('running')
     })
 
-    test('uses "unknown" when activityType is missing', async () => {
+    test('uses "unknown" as activity_type when activityType is missing', async () => {
       await processGarminData(user, 'activities', [makeActivity({ activityType: null })], mockDeps)
 
       const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
-      expect((activityArg.data as Record<string, unknown>).activity_type_key).toBe('unknown')
+      expect(activityArg.activity_type).toBe('unknown')
     })
 
     test('processes multiple activities and returns count', async () => {
@@ -787,11 +786,11 @@ describe('processGarminData', () => {
       expect(activityArg.activity_type).toBe('meditation')
     })
 
-    test('maps running typeKey to exercise activity_type', async () => {
+    test('maps running typeKey to running activity_type', async () => {
       await processGarminData(user, 'activities', [makeActivity()], mockDeps)
 
       const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
-      expect(activityArg.activity_type).toBe('exercise')
+      expect(activityArg.activity_type).toBe('running')
     })
 
     test('calls deleteGarminActivityWithWrongType before insert', async () => {
