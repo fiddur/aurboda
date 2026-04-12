@@ -633,6 +633,21 @@ export const migrateSchema = async (user: string) => {
 
   // Migrate goals and custom_metrics from user_settings JSONB to their own tables
   await migrateGoalsAndCustomMetrics(db, existingTableNames)
+
+  // Migrate generic 'exercise' activities to their specific type from data.activity_type_key
+  // (idempotent — only updates activities that still have the generic type)
+  if (existingTableNames.has('activities')) {
+    await query(
+      db,
+      `UPDATE activities
+       SET activity_type = data->>'activity_type_key',
+           data = data - 'activity_type_key' - 'exerciseType' - 'exerciseTypeName'
+       WHERE activity_type = 'exercise'
+         AND data->>'activity_type_key' IS NOT NULL
+         AND data->>'activity_type_key' != 'unknown'
+         AND deleted_at IS NULL`,
+    )
+  }
 }
 
 /**

@@ -43,7 +43,6 @@ import {
   getAllActivityTypeNames,
   getDeductionRule,
   getDistinctApps,
-  migrateExerciseTypes,
   getNearbyActivities,
   getOverlappingActivities,
   getProductivityBucketed,
@@ -736,12 +735,6 @@ export const createActivitiesRouter = (
       res.json({ categories: result.categories, data: result.data, success: true })
     },
   )
-
-  router.post('/activities/migrate-exercise-types', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const count = await migrateExerciseTypes(user)
-    res.json({ data: { updated: count }, success: true })
-  })
 
   return router as unknown as Router
 }
