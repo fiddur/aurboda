@@ -685,25 +685,9 @@ const main = async () => {
       syncProvider,
       activityNotifier,
       async (user, activityId, garminActivityId) => {
-        let detail
-        try {
-          detail = await garmin.getActivityDetail(user, garminActivityId)
-        } catch (err) {
-          throw new Error(`Garmin API fetch failed: ${err instanceof Error ? err.message : String(err)}`)
-        }
-        let points
-        try {
-          points = await processActivityDetail(user, detail)
-        } catch (err) {
-          throw new Error(`processActivityDetail failed: ${err instanceof Error ? err.message : String(err)}`)
-        }
-        try {
-          await markActivityDetailSynced(user, activityId)
-        } catch (err) {
-          throw new Error(
-            `markActivityDetailSynced failed: ${err instanceof Error ? err.message : String(err)}`,
-          )
-        }
+        const detail = await garmin.getActivityDetail(user, garminActivityId)
+        const points = await processActivityDetail(user, detail)
+        await markActivityDetailSynced(user, activityId)
         return points
       },
     ),
