@@ -23,7 +23,6 @@ import { createAuth } from './auth.ts'
 import {
   ackOutboundSync,
   deleteHealthConnectRecords,
-  getActivityById,
   getAllSyncStates,
   getDetectedLocationById,
   getOutboundSyncHistory,
@@ -681,18 +680,33 @@ const main = async () => {
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware))
   httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(
-    createActivitiesRouter(authMiddleware, syncProvider, activityNotifier, async (user, activityId) => {
-      const activity = await getActivityById(user, activityId)
-      if (!activity) throw new Error('Activity not found')
-      const garminActivityId = (activity.data as Record<string, unknown> | undefined)?.garmin_activity_id as
-        | number
-        | undefined
-      if (!garminActivityId) throw new Error('Activity has no Garmin activity ID')
-      const detail = await garmin.getActivityDetail(user, garminActivityId)
-      const points = await processActivityDetail(user, detail)
-      await markActivityDetailSynced(user, activityId)
-      return points
-    }),
+    createActivitiesRouter(
+      authMiddleware,
+      syncProvider,
+      activityNotifier,
+      async (user, activityId, garminActivityId) => {
+        let detail
+        try {
+          detail = await garmin.getActivityDetail(user, garminActivityId)
+        } catch (err) {
+          throw new Error(`Garmin API fetch failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        let points
+        try {
+          points = await processActivityDetail(user, detail)
+        } catch (err) {
+          throw new Error(`processActivityDetail failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        try {
+          await markActivityDetailSynced(user, activityId)
+        } catch (err) {
+          throw new Error(
+            `markActivityDetailSynced failed: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+        return points
+      },
+    ),
   )
   httpd.use('/activity-types', createActivityTypesRouter(authMiddleware))
   httpd.use(
