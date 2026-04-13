@@ -45,12 +45,12 @@ async function tableExists(db: Client, tableName: string): Promise<boolean> {
 
 async function migrateHcData(db: Client, user: string) {
   if (!(await tableExists(db, 'hcdata'))) {
-    console.log('  No hcdata table found, skipping.')
+    console.info('  No hcdata table found, skipping.')
     return
   }
 
   const result = await db.query(`SELECT * FROM hcdata ORDER BY COALESCE(time, "startTime")`)
-  console.log(`  Found ${result.rowCount} hcdata records`)
+  console.info(`  Found ${result.rowCount} hcdata records`)
 
   for (const row of result.rows) {
     const recordType = row.recordType
@@ -111,7 +111,7 @@ async function migrateHcData(db: Client, user: string) {
     }
   }
 
-  console.log(`  Migrated ${result.rowCount} hcdata records`)
+  console.info(`  Migrated ${result.rowCount} hcdata records`)
 }
 
 // eslint-disable-next-line complexity -- TODO: refactor
@@ -215,12 +215,12 @@ function extractTimeSeriesPoints(
 
 async function migrateHeartrates(db: Client, user: string) {
   if (!(await tableExists(db, 'heartrates'))) {
-    console.log('  No heartrates table found, skipping.')
+    console.info('  No heartrates table found, skipping.')
     return
   }
 
   const result = await db.query(`SELECT time, bpm, source FROM heartrates ORDER BY time`)
-  console.log(`  Found ${result.rowCount} heartrate records`)
+  console.info(`  Found ${result.rowCount} heartrate records`)
 
   if (result.rowCount === 0) return
 
@@ -238,12 +238,12 @@ async function migrateHeartrates(db: Client, user: string) {
     await insertTimeSeries(user, batch)
   }
 
-  console.log(`  Migrated ${result.rowCount} heartrate records`)
+  console.info(`  Migrated ${result.rowCount} heartrate records`)
 }
 
 async function migrateOwntracks(db: Client, user: string) {
   if (!(await tableExists(db, 'owntracks'))) {
-    console.log('  No owntracks table found, skipping.')
+    console.info('  No owntracks table found, skipping.')
     return
   }
 
@@ -251,7 +251,7 @@ async function migrateOwntracks(db: Client, user: string) {
     SELECT id, tst, ST_X(location::geometry) AS lon, ST_Y(location::geometry) AS lat, inregions
     FROM owntracks ORDER BY tst
   `)
-  console.log(`  Found ${result.rowCount} owntracks location records`)
+  console.info(`  Found ${result.rowCount} owntracks location records`)
 
   for (const row of result.rows) {
     await insertLocation(user, {
@@ -263,12 +263,12 @@ async function migrateOwntracks(db: Client, user: string) {
     })
   }
 
-  console.log(`  Migrated ${result.rowCount} location records`)
+  console.info(`  Migrated ${result.rowCount} location records`)
 }
 
 async function migrateWaypoints(db: Client, user: string) {
   if (!(await tableExists(db, 'waypoints'))) {
-    console.log('  No waypoints table found, skipping.')
+    console.info('  No waypoints table found, skipping.')
     return
   }
 
@@ -276,7 +276,7 @@ async function migrateWaypoints(db: Client, user: string) {
     SELECT id, name, tst, ST_X(location::geometry) AS lon, ST_Y(location::geometry) AS lat, rad, rid
     FROM waypoints
   `)
-  console.log(`  Found ${result.rowCount} waypoint records`)
+  console.info(`  Found ${result.rowCount} waypoint records`)
 
   for (const row of result.rows) {
     await insertPlace(user, {
@@ -289,18 +289,18 @@ async function migrateWaypoints(db: Client, user: string) {
     })
   }
 
-  console.log(`  Migrated ${result.rowCount} waypoint records`)
+  console.info(`  Migrated ${result.rowCount} waypoint records`)
 }
 
 async function migrateOuraAuth(db: Client, user: string) {
   if (!(await tableExists(db, 'ouraauth'))) {
-    console.log('  No ouraauth table found, skipping.')
+    console.info('  No ouraauth table found, skipping.')
     return
   }
 
   const result = await db.query(`SELECT * FROM ouraauth ORDER BY time DESC LIMIT 1`)
   if (result.rowCount === 0) {
-    console.log('  No ouraauth records found, skipping.')
+    console.info('  No ouraauth records found, skipping.')
     return
   }
 
@@ -312,17 +312,17 @@ async function migrateOuraAuth(db: Client, user: string) {
     refresh_token: row.refresh_token,
   })
 
-  console.log(`  Migrated Oura OAuth token`)
+  console.info(`  Migrated Oura OAuth token`)
 }
 
 async function migrateTags(db: Client, user: string) {
   if (!(await tableExists(db, 'tags'))) {
-    console.log('  No tags table found, skipping.')
+    console.info('  No tags table found, skipping.')
     return
   }
 
   const result = await db.query(`SELECT id, tag, start_time, end_time, source FROM tags ORDER BY start_time`)
-  console.log(`  Found ${result.rowCount} tag records`)
+  console.info(`  Found ${result.rowCount} tag records`)
 
   for (const row of result.rows) {
     await insertActivity(user, {
@@ -334,7 +334,7 @@ async function migrateTags(db: Client, user: string) {
     })
   }
 
-  console.log(`  Migrated ${result.rowCount} tag records`)
+  console.info(`  Migrated ${result.rowCount} tag records`)
 }
 
 async function main() {
@@ -345,54 +345,54 @@ async function main() {
     process.exit(1)
   }
 
-  console.log(`Migrating data for user: ${username}`)
+  console.info(`Migrating data for user: ${username}`)
 
   const database = userDbName(username)
   const db = new Client({ database })
 
   try {
     await db.connect()
-    console.log(`Connected to database: ${database}`)
+    console.info(`Connected to database: ${database}`)
 
     // Ensure PostGIS extension exists (requires superuser to create)
-    console.log('\n1. Checking PostGIS extension...')
+    console.info('\n1. Checking PostGIS extension...')
     const extResult = await db.query(`SELECT 1 FROM pg_extension WHERE extname = 'postgis'`)
     if (extResult.rowCount === 0) {
       console.error('   PostGIS extension not installed. Run as superuser:')
       console.error(`   sudo -u postgres psql ${database} -c "CREATE EXTENSION postgis"`)
       process.exit(1)
     }
-    console.log('   PostGIS ready.')
+    console.info('   PostGIS ready.')
 
     // Initialize new schema
-    console.log('\n2. Initializing new schema...')
+    console.info('\n2. Initializing new schema...')
     await initializeSchema(username)
-    console.log('   Schema initialized.')
+    console.info('   Schema initialized.')
 
     // Migrate each table
-    console.log('\n3. Migrating hcdata...')
+    console.info('\n3. Migrating hcdata...')
     await migrateHcData(db, username)
 
-    console.log('\n4. Migrating heartrates...')
+    console.info('\n4. Migrating heartrates...')
     await migrateHeartrates(db, username)
 
-    console.log('\n5. Migrating owntracks locations...')
+    console.info('\n5. Migrating owntracks locations...')
     await migrateOwntracks(db, username)
 
-    console.log('\n6. Migrating waypoints...')
+    console.info('\n6. Migrating waypoints...')
     await migrateWaypoints(db, username)
 
-    console.log('\n7. Migrating Oura OAuth...')
+    console.info('\n7. Migrating Oura OAuth...')
     await migrateOuraAuth(db, username)
 
-    console.log('\n8. Migrating tags...')
+    console.info('\n8. Migrating tags...')
     await migrateTags(db, username)
 
-    console.log('\n✓ Migration complete!')
-    console.log('\nYou can verify by checking the new tables:')
-    console.log(`  psql ${database} -c "SELECT COUNT(*) FROM raw_records"`)
-    console.log(`  psql ${database} -c "SELECT metric, COUNT(*) FROM time_series GROUP BY metric"`)
-    console.log(
+    console.info('\n✓ Migration complete!')
+    console.info('\nYou can verify by checking the new tables:')
+    console.info(`  psql ${database} -c "SELECT COUNT(*) FROM raw_records"`)
+    console.info(`  psql ${database} -c "SELECT metric, COUNT(*) FROM time_series GROUP BY metric"`)
+    console.info(
       `  psql ${database} -c "SELECT activity_type, COUNT(*) FROM activities GROUP BY activity_type"`,
     )
   } catch (err) {

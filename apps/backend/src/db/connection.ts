@@ -66,7 +66,7 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
   } catch (error) {
     // Only retry with migration when called with a username (not a Client directly)
     if (typeof dbOrUser === 'string' && _isSchemaError(error)) {
-      console.log(`Schema error for user ${dbOrUser}, running migration and retrying: ${error}`)
+      console.info(`Schema error for user ${dbOrUser}, running migration and retrying: ${error}`)
       await _runMigrationOnce(dbOrUser, migrate)
       return await db.query<T>(queryStr, params)
     }
@@ -91,7 +91,7 @@ export const loginToUserDb = async (user: string, password: string) => {
 
 export const makeNewUserDb = async (adminClient: Client, user: string, password: string) => {
   const database = userDbName(user)
-  console.log(`New user ${user}`)
+  console.info(`New user ${user}`)
   await query(adminClient, format('CREATE USER %I WITH ENCRYPTED PASSWORD %L', user, password))
   await query(adminClient, format('GRANT %I TO %I', user, process.env.PGUSER))
   await query(adminClient, format('CREATE DATABASE %I OWNER %I', database, user))
@@ -357,7 +357,7 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
   const migratedCheck = await query(db, `SELECT 1 FROM activities WHERE external_id IS NOT NULL LIMIT 1`)
   if (migratedCheck.rows.length > 0) return
 
-  console.log('  🔄 Migrating tags into activities...')
+  console.info('  🔄 Migrating tags into activities...')
 
   // Step 1: Merge tag_definitions into activity_type_definitions
   if (existingTableNames.has('tag_definitions') && existingTableNames.has('activity_type_definitions')) {
@@ -433,7 +433,7 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
     await query(db, `UPDATE notes SET entity_type = 'activity' WHERE entity_type = 'tag'`)
   }
 
-  console.log('  ✅ Tags migrated into activities')
+  console.info('  ✅ Tags migrated into activities')
 }
 
 /**

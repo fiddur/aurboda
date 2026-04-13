@@ -153,7 +153,7 @@ const ensureDatabase = async (): Promise<boolean> => {
   try {
     await postgresClient.connect()
     await postgresClient.query(`CREATE DATABASE "${params.database}"`)
-    console.log(`Created central database: ${params.database}`)
+    console.info(`Created central database: ${params.database}`)
     return true
   } catch (error) {
     console.error(`Failed to create central database '${params.database}':`, error)
@@ -609,10 +609,10 @@ export const initializeCentralDb = async (): Promise<void> => {
     if (currentMode === 'open') {
       const newMode: SignupMode = allowSignupEnv === 'true' ? 'open' : 'closed'
       await db.setSignupMode(newMode)
-      console.log(`Migrated ALLOW_SIGNUP=${allowSignupEnv} to signup_mode=${newMode}`)
-      console.log('DEPRECATION: ALLOW_SIGNUP env is deprecated. Use admin settings to control signup mode.')
+      console.info(`Migrated ALLOW_SIGNUP=${allowSignupEnv} to signup_mode=${newMode}`)
+      console.info('DEPRECATION: ALLOW_SIGNUP env is deprecated. Use admin settings to control signup mode.')
     }
   }
 
-  console.log('Central database initialized')
+  console.info('Central database initialized')
 }

@@ -24,8 +24,8 @@
     "generate:kotlin:fixup": "find ./generated/kotlin -name '*.kt' -exec sed -i 's/@Contextual //g' {} + && find ./generated/kotlin -name '*.kt' -exec sed -i '/^import kotlinx.serialization.Contextual$/d' {} + && find ./generated/kotlin -name '*.kt' -exec sed -i '/^import java\\.net\\.URI$/d' {} + && find ./generated/kotlin -name '*.kt' -exec sed -i 's/) : kotlin.collections.HashMap<String, kotlin.String>()() {/) {/g' {} +",
     "generate:html": "node src/generate-html.ts",
     "generate": "pnpm generate:openapi && pnpm generate:ts && pnpm generate:kotlin",
-    "fix": "oxfmt . && oxlint --fix",
-    "check": "tsgo --noEmit && oxlint"
+    "fix": "oxfmt . && oxlint -c ../../.oxlintrc.json --fix",
+    "check": "tsgo --noEmit && oxlint -c ../../.oxlintrc.json"
   },
   "dependencies": {
     "zod": "^4.3.5"

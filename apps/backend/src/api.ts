@@ -396,7 +396,7 @@ const main = async () => {
       if (adminCount === 0) {
         await centralDb.addAdmin(user)
         isAdmin = true
-        console.log(`First user ${user} automatically made admin`)
+        console.info(`First user ${user} automatically made admin`)
       }
 
       res.json({ is_admin: isAdmin, success: true, token })
@@ -724,12 +724,12 @@ const main = async () => {
 
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {
-    console.log(`> Running on localhost:${port}`)
+    console.info(`> Running on localhost:${port}`)
   })
 
   // Graceful shutdown
   const shutdown = async () => {
-    console.log('Shutting down...')
+    console.info('Shutting down...')
     detectionTrigger.clearPendingDetections()
     if (ouraWebhookManager) {
       ouraWebhookManager.shutdown()
@@ -743,7 +743,7 @@ const main = async () => {
         else resolve()
       })
     })
-    console.log('Server closed')
+    console.info('Server closed')
     process.exit(0)
   }
 

@@ -165,6 +165,51 @@ const parseFoodItemMicros = (
   return micros
 }
 
+const buildFoodItem = (row: Record<string, string>, headers: string[]): FoodItem => {
+  const amount = parseAmount(row.Amount ?? '')
+  const micros = parseFoodItemMicros(row, headers)
+  const item: FoodItem = { name: row['Food Name'], ...amount }
+  const cal = parseFloat(row['Energy (kcal)'])
+  if (!isNaN(cal)) item.calories = cal
+  const prot = parseFloat(row['Protein (g)'])
+  if (!isNaN(prot)) item.protein = prot
+  const carb = parseFloat(row['Carbs (g)'])
+  if (!isNaN(carb)) item.carbs = carb
+  const fat = parseFloat(row['Fat (g)'])
+  if (!isNaN(fat)) item.fat = fat
+  const fib = parseFloat(row['Fiber (g)'])
+  if (!isNaN(fib)) item.fiber = fib
+  if (Object.keys(micros).length > 0) item.micros = micros
+  return item
+}
+
+const aggregateMealNutrients = (
+  meal: MealPayload,
+  foodItems: FoodItem[],
+): void => {
+  const round2 = (n: number) => Math.round(n * 100) / 100
+  const totalCal = foodItems.reduce((s, i) => s + (i.calories ?? 0), 0)
+  const totalProt = foodItems.reduce((s, i) => s + (i.protein ?? 0), 0)
+  const totalCarbs = foodItems.reduce((s, i) => s + (i.carbs ?? 0), 0)
+  const totalFat = foodItems.reduce((s, i) => s + (i.fat ?? 0), 0)
+  const totalFiber = foodItems.reduce((s, i) => s + (i.fiber ?? 0), 0)
+
+  if (totalCal > 0) meal.calories = round2(totalCal)
+  if (totalProt > 0) meal.protein = round2(totalProt)
+  if (totalCarbs > 0) meal.carbs = round2(totalCarbs)
+  if (totalFat > 0) meal.fat = round2(totalFat)
+  if (totalFiber > 0) meal.fiber = round2(totalFiber)
+
+  const mealMicros: Record<string, { value: number; unit: string }> = {}
+  for (const item of foodItems) {
+    for (const [k, v] of Object.entries(item.micros ?? {})) {
+      if (mealMicros[k]) mealMicros[k].value += v.value
+      else mealMicros[k] = { ...v }
+    }
+  }
+  if (Object.keys(mealMicros).length > 0) meal.micros = mealMicros
+}
+
 const buildMeals = (servings: Record<string, string>[]): MealPayload[] => {
   // Group by Day + Group (meal type)
   const grouped = new Map<string, Record<string, string>[]>()
@@ -183,58 +228,16 @@ const buildMeals = (servings: Record<string, string>[]): MealPayload[] => {
     const time = `${day}T${String(hour).padStart(2, '0')}:00:00Z`
     const mealType = group.toLowerCase().replace('snacks', 'snack')
 
-    // Build food items
-    const foodItems: FoodItem[] = rows.map((row) => {
-      const amount = parseAmount(row.Amount ?? '')
-      const micros = parseFoodItemMicros(row, headers)
-      const item: FoodItem = { name: row['Food Name'], ...amount }
-      const cal = parseFloat(row['Energy (kcal)'])
-      if (!isNaN(cal)) item.calories = cal
-      const prot = parseFloat(row['Protein (g)'])
-      if (!isNaN(prot)) item.protein = prot
-      const carb = parseFloat(row['Carbs (g)'])
-      if (!isNaN(carb)) item.carbs = carb
-      const fat = parseFloat(row['Fat (g)'])
-      if (!isNaN(fat)) item.fat = fat
-      const fib = parseFloat(row['Fiber (g)'])
-      if (!isNaN(fib)) item.fiber = fib
-      if (Object.keys(micros).length > 0) item.micros = micros
-      return item
-    })
-
-    // Aggregate meal-level totals
-    const totalCal = foodItems.reduce((s, i) => s + (i.calories ?? 0), 0)
-    const totalProt = foodItems.reduce((s, i) => s + (i.protein ?? 0), 0)
-    const totalCarbs = foodItems.reduce((s, i) => s + (i.carbs ?? 0), 0)
-    const totalFat = foodItems.reduce((s, i) => s + (i.fat ?? 0), 0)
-    const totalFiber = foodItems.reduce((s, i) => s + (i.fiber ?? 0), 0)
-
-    // Aggregate meal-level micros
-    const mealMicros: Record<string, { value: number; unit: string }> = {}
-    for (const item of foodItems) {
-      for (const [k, v] of Object.entries(item.micros ?? {})) {
-        if (mealMicros[k]) mealMicros[k].value += v.value
-        else mealMicros[k] = { ...v }
-      }
-    }
-
-    // Deterministic ID from date + meal type so re-runs are idempotent
-    const id = randomUUID()
+    const foodItems: FoodItem[] = rows.map((row) => buildFoodItem(row, headers))
 
     const meal: MealPayload = {
-      id,
+      id: randomUUID(),
       meal_type: mealType,
       time,
       source: 'cronometer',
       food_items: foodItems,
     }
-    if (totalCal > 0) meal.calories = Math.round(totalCal * 100) / 100
-    if (totalProt > 0) meal.protein = Math.round(totalProt * 100) / 100
-    if (totalCarbs > 0) meal.carbs = Math.round(totalCarbs * 100) / 100
-    if (totalFat > 0) meal.fat = Math.round(totalFat * 100) / 100
-    if (totalFiber > 0) meal.fiber = Math.round(totalFiber * 100) / 100
-    if (Object.keys(mealMicros).length > 0) meal.micros = mealMicros
-
+    aggregateMealNutrients(meal, foodItems)
     meals.push(meal)
   }
 
