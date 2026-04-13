@@ -1585,6 +1585,8 @@ export const Timeline = () => {
           const icon = item.icon
           const tagCx = rx
           const tagCy = laneY + laneH / 2
+          const boxWidth = Math.max(0, currentXScale(item.end) - rx)
+          const iconSize = Math.max(ICON_SIZE, Math.min(laneH, boxWidth))
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const parent: d3.Selection<any, unknown, null, undefined> = detailUrl
@@ -1597,7 +1599,7 @@ export const Timeline = () => {
               .attr('x', tagCx)
               .attr('y', tagCy)
               .attr('dy', '0.35em')
-              .attr('font-size', ICON_SIZE)
+              .attr('font-size', iconSize)
               .attr('text-anchor', 'middle')
               .attr('cursor', detailUrl ? 'pointer' : 'default')
               .text(icon)
@@ -1607,10 +1609,10 @@ export const Timeline = () => {
             parent
               .append('image')
               .attr('href', icon)
-              .attr('x', tagCx - ICON_SIZE / 2)
-              .attr('y', tagCy - ICON_SIZE / 2)
-              .attr('width', ICON_SIZE)
-              .attr('height', ICON_SIZE)
+              .attr('x', tagCx - iconSize / 2)
+              .attr('y', tagCy - iconSize / 2)
+              .attr('width', iconSize)
+              .attr('height', iconSize)
               .attr('cursor', detailUrl ? 'pointer' : 'default')
               .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
               .on('mouseleave', hideTooltip)
@@ -2534,12 +2536,15 @@ const drawPointMarker = (
   cy: number,
   size: number,
   laneWidth: number,
+  boxHeight: number,
   x: number,
   detailUrl: string | undefined,
   showTooltip: (event: MouseEvent, item: ChartItem) => void,
   hideTooltip: () => void,
 ) => {
   const cursor = detailUrl ? 'pointer' : 'default'
+
+  const iconSize = Math.max(18, Math.min(laneWidth, boxHeight))
 
   if (item.icon && isEmoji(item.icon)) {
     parent
@@ -2548,7 +2553,7 @@ const drawPointMarker = (
       .attr('y', cy)
       .attr('dy', '0.35em')
       .attr('text-anchor', 'middle')
-      .attr('font-size', '18px')
+      .attr('font-size', `${iconSize}px`)
       .attr('pointer-events', 'all')
       .attr('cursor', cursor)
       .text(item.icon)
@@ -2558,14 +2563,13 @@ const drawPointMarker = (
   }
 
   if (item.icon && (isUrl(item.icon) || isIconPath(item.icon))) {
-    const imgSize = 18
     parent
       .append('image')
       .attr('href', item.icon)
-      .attr('x', cx - imgSize / 2)
-      .attr('y', cy - imgSize / 2)
-      .attr('width', imgSize)
-      .attr('height', imgSize)
+      .attr('x', cx - iconSize / 2)
+      .attr('y', cy - iconSize / 2)
+      .attr('width', iconSize)
+      .attr('height', iconSize)
       .attr('pointer-events', 'all')
       .attr('cursor', cursor)
       .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
@@ -2679,7 +2683,7 @@ const drawItem = (
 
   if (item.isPoint) {
     const size = Math.min(laneWidth / 2, 6)
-    drawPointMarker(parent, item, x + size + 2, y1, size, laneWidth, x, detailUrl, showTooltip, hideTooltip)
+    drawPointMarker(parent, item, x + size + 2, y1, size, laneWidth, blockHeight, x, detailUrl, showTooltip, hideTooltip)
     return
   }
 
