@@ -183,10 +183,7 @@ const buildFoodItem = (row: Record<string, string>, headers: string[]): FoodItem
   return item
 }
 
-const aggregateMealNutrients = (
-  meal: MealPayload,
-  foodItems: FoodItem[],
-): void => {
+const aggregateMealNutrients = (meal: MealPayload, foodItems: FoodItem[]): void => {
   const round2 = (n: number) => Math.round(n * 100) / 100
   const totalCal = foodItems.reduce((s, i) => s + (i.calories ?? 0), 0)
   const totalProt = foodItems.reduce((s, i) => s + (i.protein ?? 0), 0)

@@ -83,8 +83,7 @@ const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, str
 const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
   const sorted = [...members].sort(
     (a, b) =>
-      getEffectivePriority(b) - getEffectivePriority(a) ||
-      a.start_time.getTime() - b.start_time.getTime(),
+      getEffectivePriority(b) - getEffectivePriority(a) || a.start_time.getTime() - b.start_time.getTime(),
   )
 
   const winner: MergedActivity = { ...sorted[0] }
