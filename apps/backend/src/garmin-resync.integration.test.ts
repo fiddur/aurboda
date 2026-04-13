@@ -36,7 +36,7 @@ describe('Garmin resync integration', () => {
 
   const realDeps = {
     deleteGarminActivityWithWrongType: async () => null as string | null,
-    insertActivity: async () => {},
+    insertActivity: async () => '' as string,
     insertLocations,
     insertRawRecord,
     insertTimeSeries,
