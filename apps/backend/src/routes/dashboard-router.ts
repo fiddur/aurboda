@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Dashboard route group.
@@ -14,10 +14,10 @@ import {
 
 import { upsertUserSettings } from '../db/index.ts'
 import { getSettings } from '../services/settings.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
-export const createDashboardRouter = (authMiddleware: RequestHandler): Router => {
+export const createDashboardRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
   router.get<Record<string, never>, DashboardResponse>('/', authMiddleware, async (req, res) => {
     const settings = await getSettings(req.user!)
@@ -42,5 +42,5 @@ export const createDashboardRouter = (authMiddleware: RequestHandler): Router =>
     res.json({ dashboard: defaultDashboardConfig, success: true })
   })
 
-  return router as unknown as Router
+  return router
 }

@@ -1,6 +1,4 @@
-import type { Router } from 'express'
-
-import { typedRouter } from './typed-router.ts'
+import { type TypedRouter, typedRouter } from './typed-router.ts'
 
 export interface OwnTracksDeps {
   loginToUserDb: (user: string, password: string) => Promise<void>
@@ -59,7 +57,7 @@ export function parseBasicAuth(
 /**
  * Create OwnTracks router with injected dependencies for testability.
  */
-export function createOwnTracksRouter(deps: OwnTracksDeps): Router {
+export function createOwnTracksRouter(deps: OwnTracksDeps): TypedRouter {
   const router = typedRouter()
 
   router.post<Record<string, string>, { error: string }>('/', async (req, res) => {
@@ -120,5 +118,5 @@ export function createOwnTracksRouter(deps: OwnTracksDeps): Router {
     }
   })
 
-  return router as unknown as Router
+  return router
 }

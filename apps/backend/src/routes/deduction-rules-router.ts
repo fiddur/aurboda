@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Deduction rules route group.
@@ -29,14 +29,14 @@ import {
   updateDeductionRule,
 } from '../db/index.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
 export const createDeductionRulesRouter = (
   authMiddleware: RequestHandler,
   engineDeps: DeductionEngineDeps,
   deductionQueue?: DeductionQueue,
-): Router => {
+): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, DeductionRulesResponse>('/', authMiddleware, async (req, res) => {
@@ -196,5 +196,5 @@ export const createDeductionRulesRouter = (
     },
   )
 
-  return router as unknown as Router
+  return router
 }

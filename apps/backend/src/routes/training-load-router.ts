@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Training load route group.
@@ -8,10 +8,10 @@ import type { RequestHandler, Router } from 'express'
 import { type TrainingLoadQuery, trainingLoadQuerySchema, type TrainingLoadResponse } from '@aurboda/api-spec'
 
 import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
-export const createTrainingLoadRouter = (authMiddleware: RequestHandler): Router => {
+export const createTrainingLoadRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
   const deps = createTrainingLoadDeps()
 
@@ -36,5 +36,5 @@ export const createTrainingLoadRouter = (authMiddleware: RequestHandler): Router
     },
   )
 
-  return router as unknown as Router
+  return router
 }

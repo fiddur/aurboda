@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 import type { ParamsDictionary } from 'express-serve-static-core'
 
 import {
@@ -56,7 +56,7 @@ import {
   type SyncResponse,
 } from '@aurboda/api-spec'
 
-import { typedRouter } from './typed-router.ts'
+import { type TypedRouter, typedRouter } from './typed-router.ts'
 import { validateBody } from './validation.ts'
 
 /** Default lookback window for sync-triggered deduction evaluation (30 days). */
@@ -160,7 +160,7 @@ export interface SyncRouterDeps {
  * IMPORTANT: Route order matters! Specific routes must be defined BEFORE
  * the generic /sync/:recordType route to avoid Express matching issues.
  */
-export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHandler): Router => {
+export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   // ===========================================================================
@@ -713,5 +713,5 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     },
   )
 
-  return router as unknown as Router
+  return router
 }

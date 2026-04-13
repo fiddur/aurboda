@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Metrics route group.
@@ -64,10 +64,13 @@ import {
   type SyncProvider,
 } from '../services/queries.ts'
 import { getLatestMetric } from '../services/reports.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider?: SyncProvider): Router => {
+export const createMetricsRouter = (
+  authMiddleware: RequestHandler,
+  syncProvider?: SyncProvider,
+): TypedRouter => {
   const router = typedRouter()
 
   // Must come before /metrics/:metric to avoid parameter capture
@@ -318,5 +321,5 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  return router as unknown as Router
+  return router
 }

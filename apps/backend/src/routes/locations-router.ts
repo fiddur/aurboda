@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Locations route group.
@@ -33,10 +33,10 @@ import {
   updateNamedLocation,
 } from '../services/locations.ts'
 import { queryLocations } from '../services/queries.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createLocationsRouter = (authMiddleware: RequestHandler): Router => {
+export const createLocationsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, LocationsResponse, unknown, LocationsQuery>(
@@ -174,5 +174,5 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  return router as unknown as Router
+  return router
 }

@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Audit log route group.
@@ -8,9 +8,9 @@ import type { RequestHandler, Router } from 'express'
 import { type AuditLogResponse, auditLogQuerySchema } from '@aurboda/api-spec'
 
 import { getAuditLog } from '../services/audit-log.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 
-export const createAuditLogRouter = (authMiddleware: RequestHandler): Router => {
+export const createAuditLogRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, AuditLogResponse>('/user/audit-log', authMiddleware, async (req, res) => {
@@ -43,5 +43,5 @@ export const createAuditLogRouter = (authMiddleware: RequestHandler): Router => 
     })
   })
 
-  return router as unknown as Router
+  return router
 }
