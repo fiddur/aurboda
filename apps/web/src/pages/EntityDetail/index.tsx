@@ -199,7 +199,9 @@ const ActivityDetailContent = ({
   const exerciseDisplayName = exerciseType ? formatExerciseTypeName(exerciseType) : undefined
   const exerciseIconKey = exerciseDisplayName ? `exercise:${exerciseDisplayName}` : undefined
   // For migrated exercise types (e.g., activity_type='yoga'), also try "exercise:Yoga"
-  const formattedType = activity.activity_type.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
+  const formattedType = activity.activity_type
+    .replaceAll('_', ' ')
+    .replaceAll(/\b\w/g, (c) => c.toUpperCase())
   const icon =
     (exerciseIconKey && resolveItemIcon(exerciseIconKey, itemIcons)) ??
     resolveItemIcon(`exercise:${formattedType}`, itemIcons) ??

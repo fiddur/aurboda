@@ -18,6 +18,7 @@ const FOOD_ITEM_COLUMNS = [
   'default_quantity',
   'default_unit',
   ...NUTRIENT_FIELD_NAMES,
+  'icon',
   'created_at',
   'updated_at',
 ].join(', ')
@@ -30,6 +31,7 @@ const mapFoodItemRow = (row: Record<string, unknown>): FoodItemEntity => {
     source: row.source,
     default_quantity: row.default_quantity ?? undefined,
     default_unit: row.default_unit ?? undefined,
+    icon: row.icon ?? undefined,
     created_at: new Date(row.created_at as string),
     updated_at: new Date(row.updated_at as string),
   }
@@ -47,6 +49,7 @@ export interface InsertFoodItemInput {
   source?: string
   default_quantity?: number
   default_unit?: string
+  icon?: string
   [nutrient: string]: string | number | undefined
 }
 
@@ -100,13 +103,14 @@ export const getFoodItemByName = async (user: string, name: string): Promise<Foo
  */
 export const upsertFoodItem = async (user: string, input: InsertFoodItemInput): Promise<FoodItemEntity> => {
   const nameLower = input.name.toLowerCase().trim()
-  const fields = ['name', 'name_lower', 'source', 'default_quantity', 'default_unit']
+  const fields = ['name', 'name_lower', 'source', 'default_quantity', 'default_unit', 'icon']
   const values: unknown[] = [
     input.name,
     nameLower,
     input.source ?? 'manual',
     input.default_quantity ?? null,
     input.default_unit ?? null,
+    input.icon ?? null,
   ]
 
   for (const field of NUTRIENT_FIELD_NAMES) {
@@ -158,6 +162,10 @@ export const updateFoodItem = async (
   if (input.default_unit !== undefined) {
     setClauses.push(`default_unit = $${idx++}`)
     params.push(input.default_unit)
+  }
+  if (input.icon !== undefined) {
+    setClauses.push(`icon = $${idx++}`)
+    params.push(input.icon)
   }
 
   for (const field of NUTRIENT_FIELD_NAMES) {

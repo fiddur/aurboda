@@ -365,6 +365,7 @@ export interface MealFoodItemLink {
   meal_id: string
   food_item_id: string
   food_item_name?: string // populated via JOIN
+  food_item_icon?: string // populated via JOIN
   quantity?: number
   unit?: string
   sort_order: number
