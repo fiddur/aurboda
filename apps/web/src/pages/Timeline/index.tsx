@@ -794,11 +794,13 @@ export const Timeline = () => {
     [activitiesQuery.data, hiddenTypes],
   )
   const activities = useMemo(
-    () => allActivities.filter((a) => ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
+    () =>
+      allActivities.filter((a) => ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
     [allActivities, categoryByType],
   )
   const secondaryActivities = useMemo(
-    () => allActivities.filter((a) => !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
+    () =>
+      allActivities.filter((a) => !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
     [allActivities, categoryByType],
   )
   const places = placesQuery.data ?? []
@@ -1565,9 +1567,10 @@ export const Timeline = () => {
 
       // ── Helper: build detail URL for an item ──
       const getDetailUrl = (item: ChartItem): string | undefined =>
-        item.entity_id && item.entity_type
+        item.href ??
+        (item.entity_id && item.entity_type
           ? `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
-          : (item.href ?? undefined)
+          : undefined)
 
       // ── Activity lane (activities + tags) ──
       for (const { item, lane } of packedActivityItems.items) {
@@ -2032,10 +2035,7 @@ export const Timeline = () => {
 
   // ── UI state ───────────────────────────────────────────────────────────────
 
-  const isInitialLoad =
-    activitiesQuery.isLoading &&
-    placesQuery.isLoading &&
-    productivityQuery.isLoading
+  const isInitialLoad = activitiesQuery.isLoading && placesQuery.isLoading && productivityQuery.isLoading
 
   const errorSources = [
     activitiesQuery.isError && 'activities',
