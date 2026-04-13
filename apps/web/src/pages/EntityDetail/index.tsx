@@ -191,20 +191,18 @@ const ActivityDetailContent = ({
   // Resolve type info
   const exerciseType = resolveExerciseType(activity)
   const typeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
-  const exerciseSubType = (activity.data as Record<string, unknown> | undefined)?.activity_type_key as
-    | string
-    | undefined
-  const subTypeDef = exerciseSubType ? typeDefinitions?.find((d) => d.name === exerciseSubType) : undefined
   const typeDisplayName = exerciseType
     ? formatExerciseTypeName(exerciseType)
     : (typeDef?.display_name ?? toDisplayName(activity.activity_type))
 
-  // Resolve icon: exercise sub-type → exercise icon key → type def → activity icon
+  // Resolve icon: exercise icon key → legacy exercise:{TypeName} → type def → activity icon
   const exerciseDisplayName = exerciseType ? formatExerciseTypeName(exerciseType) : undefined
   const exerciseIconKey = exerciseDisplayName ? `exercise:${exerciseDisplayName}` : undefined
+  // For migrated exercise types (e.g., activity_type='yoga'), also try "exercise:Yoga"
+  const formattedType = activity.activity_type.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
   const icon =
     (exerciseIconKey && resolveItemIcon(exerciseIconKey, itemIcons)) ??
-    subTypeDef?.icon ??
+    resolveItemIcon(`exercise:${formattedType}`, itemIcons) ??
     typeDef?.icon ??
     resolveItemIcon(`activity:${activity.activity_type}`, itemIcons)
 

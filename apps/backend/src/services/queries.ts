@@ -17,6 +17,7 @@ import { Temporal } from '@js-temporal/polyfill'
 import {
   getActivities,
   getActivitiesExcludingCategories,
+  getActivityTypeDefinitions,
   getDailyAggregates,
   getDailyAggregateValue,
   getDistinctMetrics,
@@ -48,6 +49,16 @@ import { classifyHrvByContext, getHrvContextWindows, type HrvContext } from './h
 import { getPlaceVisits, type PlaceVisit } from './locations.ts'
 import { computeHrZoneSecs, getEffectiveHrZones, type HrZoneSecs, type HrZoneThresholds } from './settings.ts'
 import { computeSleepMinutes } from './sleep-duration.ts'
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/** Build a map of activity_type → display_category from type definitions. */
+const buildCategoryMap = async (user: string): Promise<Map<string, string>> => {
+  const defs = await getActivityTypeDefinitions(user)
+  return new Map(defs.map((d) => [d.name, d.display_category]))
+}
 
 // ============================================================================
 // Types
@@ -875,6 +886,9 @@ export async function getDailySummary(
     end.setHours(23, 59, 59, 999)
   }
 
+  // Build category map for cross-source merge (cheap query, run before parallel block)
+  const categoryMap = await buildCategoryMap(user)
+
   // Run queries in parallel
   const [
     heartRateData,
@@ -893,7 +907,7 @@ export async function getDailySummary(
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
     getSleepSessions(user, start, end),
-    getNonSleepActivitiesMerged(user, start, end),
+    getNonSleepActivitiesMerged(user, start, end, categoryMap),
     getProductivity(user, start, end),
     getPlaceVisits(user, start, end),
     getTimeSeriesMultiMetric(
@@ -941,7 +955,7 @@ export async function getDailySummary(
   const productivitySummary: ProductivitySummary | null =
     productivity.length > 0
       ? (() => {
-          const categoryMap = new Map<string, number>()
+          const productivityCategoryMap = new Map<string, number>()
           const totals = {
             distracting_sec: 0,
             productive_sec: 0,
@@ -967,11 +981,11 @@ export async function getDailySummary(
               )
             if (!isExcl) {
               const key = JSON.stringify(cat ?? [])
-              categoryMap.set(key, (categoryMap.get(key) ?? 0) + record.duration_sec)
+              productivityCategoryMap.set(key, (productivityCategoryMap.get(key) ?? 0) + record.duration_sec)
             }
           }
 
-          const categories = [...categoryMap.entries()]
+          const categories = [...productivityCategoryMap.entries()]
             .map(([key, duration_sec]) => ({ duration_sec, path: JSON.parse(key) as string[] }))
             .sort((a, b) => b.duration_sec - a.duration_sec)
 
@@ -1619,7 +1633,8 @@ export async function queryActivities(
     if (promises.length > 0) void Promise.all(promises)
   }
 
-  const activities = await getActivities(user, types, start, end, dataFilters, deductionRuleId)
+  const categoryMap = await buildCategoryMap(user)
+  const activities = await getActivities(user, types, start, end, dataFilters, deductionRuleId, categoryMap)
 
   // Get HR zones only if exercise activities are included
   const includesExercise = types.includes('exercise')

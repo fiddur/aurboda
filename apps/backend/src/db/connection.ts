@@ -600,19 +600,40 @@ export const migrateSchema = async (user: string) => {
   // Migrate tags into activities and tag_definitions into activity_type_definitions
   await migrateTagsToActivities(db, existingTableNames)
 
-  // Migrate generic 'exercise' activities to their specific type from data.activity_type_key
+  // Migrate generic 'exercise' activities to their specific type.
   // (idempotent — only updates activities that still have the generic type)
   // Must run BEFORE the definition backfill so new exercise types get definitions created.
   if (existingTableNames.has('activities')) {
+    // Step 1: Migrate activities that have activity_type_key in data (legacy path)
     await query(
       db,
       `UPDATE activities
        SET activity_type = data->>'activity_type_key',
-           data = data - 'activity_type_key' - 'exerciseType' - 'exerciseTypeName'
+           data = data - 'activity_type_key'
        WHERE activity_type = 'exercise'
          AND data->>'activity_type_key' IS NOT NULL
          AND data->>'activity_type_key' != 'unknown'
          AND deleted_at IS NULL`,
+    )
+
+    // Step 2: Migrate activities that have exerciseTypeName in data (Health Connect path)
+    // Skips generic types (other_workout, unknown) and avoids unique constraint conflicts.
+    await query(
+      db,
+      `UPDATE activities
+       SET activity_type = data->>'exerciseTypeName'
+       WHERE activity_type = 'exercise'
+         AND data->>'exerciseTypeName' IS NOT NULL
+         AND data->>'exerciseTypeName' NOT IN ('other_workout', 'unknown')
+         AND deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM activities a2
+           WHERE a2.source = activities.source
+             AND a2.activity_type = activities.data->>'exerciseTypeName'
+             AND a2.start_time = activities.start_time
+             AND a2.external_id IS NULL
+             AND a2.id != activities.id
+         )`,
     )
   }
 

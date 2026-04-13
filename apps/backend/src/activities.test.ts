@@ -88,7 +88,7 @@ describe('mergeOverlappingActivities', () => {
     expect(result[0].end_time).toEqual(new Date('2024-01-15T12:00:00Z'))
   })
 
-  test('does not merge activities of different types', () => {
+  test('does not merge activities of different types (without categoryMap)', () => {
     const activities = [
       makeActivity({
         activity_type: 'exercise',
@@ -529,7 +529,7 @@ describe('findMergedGroupForActivity', () => {
     expect(eveningGroup.map((a) => a.id).sort()).toEqual(['evening-a', 'evening-b'])
   })
 
-  test('real-world scenario: 4 activities with transitive chaining', () => {
+  test('real-world scenario: 4 activities with transitive chaining (same-type)', () => {
     // Simulates: Health Connect 10:27-11:37, Gravl 10:27-10:40, Polar 10:27-11:32, Manual 11:32-12:37
     // HC overlaps Gravl, HC overlaps Polar, Polar overlaps Manual
     // HC does NOT directly overlap Manual (11:37 >= 11:32 — actually it does in this case)
@@ -570,5 +570,262 @@ describe('findMergedGroupForActivity', () => {
     const group = findMergedGroupForActivity(merged, activities, 'gravl')
     expect(group).toHaveLength(4)
     expect(group.map((a) => a.id).sort()).toEqual(['gravl', 'hc', 'manual', 'polar'])
+  })
+})
+
+// =============================================================================
+// Cross-source merge tests
+// =============================================================================
+
+describe('mergeOverlappingActivities with cross-source merge', () => {
+  const makeActivity = (overrides: Partial<Activity>): Activity => ({
+    activity_type: 'exercise',
+    source: 'health_connect',
+    start_time: new Date('2024-01-15T10:00:00Z'),
+    ...overrides,
+  })
+
+  // Category map for cross-source merge: maps activity_type -> display_category
+  const categoryMap = new Map([
+    ['exercise', 'exercise'],
+    ['yoga', 'exercise'],
+    ['walking', 'exercise'],
+    ['running', 'exercise'],
+    ['strength_training', 'exercise'],
+    ['breathwork', 'wellness'],
+    ['meditation', 'meditation'],
+    ['sleep', 'sleep_rest'],
+    ['nap', 'sleep_rest'],
+  ])
+
+  test('cross-merges different types from different sources, higher priority wins', () => {
+    const activities = [
+      makeActivity({
+        activity_type: 'breathwork',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'garmin-breathwork',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:02Z'),
+        title: 'Breathwork',
+      }),
+      makeActivity({
+        activity_type: 'yoga',
+        data: { exerciseType: 83 },
+        end_time: new Date('2024-01-15T11:00:05Z'),
+        id: 'hc-yoga',
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities, categoryMap)
+    expect(result).toHaveLength(1)
+    // Garmin has higher priority than health_connect
+    expect(result[0].activity_type).toBe('breathwork')
+    expect(result[0].source).toBe('garmin')
+    expect(result[0].id).toBe('garmin-breathwork')
+    // Time range covers both
+    expect(result[0].start_time).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(result[0].end_time).toEqual(new Date('2024-01-15T11:00:05Z'))
+    // Data merged (loser's fields preserved)
+    expect((result[0].data as Record<string, unknown>)?.exerciseType).toBe(83)
+    expect(result[0].source_ids).toEqual(['garmin-breathwork', 'hc-yoga'])
+  })
+
+  test('does NOT cross-merge same-source different-type activities', () => {
+    const activities = [
+      makeActivity({
+        activity_type: 'yoga',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'garmin-yoga',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+      makeActivity({
+        activity_type: 'strength_training',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'garmin-strength',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:30Z'),
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities, categoryMap)
+    expect(result).toHaveLength(2)
+  })
+
+  test('does NOT cross-merge activities more than 120s apart', () => {
+    const activities = [
+      makeActivity({
+        activity_type: 'breathwork',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'garmin-breathwork',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+      makeActivity({
+        activity_type: 'yoga',
+        end_time: new Date('2024-01-15T11:05:00Z'),
+        id: 'hc-yoga',
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:03:00Z'), // 3 minutes = 180s > 120s threshold
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities, categoryMap)
+    expect(result).toHaveLength(2)
+  })
+
+  test('three-way transitive cross-source merge', () => {
+    const activities = [
+      makeActivity({
+        activity_type: 'yoga',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'hc-yoga',
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+      makeActivity({
+        activity_type: 'breathwork',
+        end_time: new Date('2024-01-15T11:00:05Z'),
+        id: 'garmin-breathwork',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:02Z'),
+        title: 'Garmin Breathwork',
+      }),
+      makeActivity({
+        activity_type: 'meditation',
+        end_time: new Date('2024-01-15T11:00:10Z'),
+        id: 'oura-meditation',
+        source: 'oura',
+        start_time: new Date('2024-01-15T10:00:04Z'),
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities, categoryMap)
+    expect(result).toHaveLength(1)
+    // Garmin (priority 3) > Oura (2) > HC (1)
+    expect(result[0].activity_type).toBe('breathwork')
+    expect(result[0].source).toBe('garmin')
+    expect(result[0].source_ids).toEqual(
+      expect.arrayContaining(['hc-yoga', 'garmin-breathwork', 'oura-meditation']),
+    )
+  })
+
+  test('_user_edited activity wins regardless of source priority', () => {
+    const activities = [
+      makeActivity({
+        activity_type: 'yoga',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'garmin-yoga',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+      makeActivity({
+        activity_type: 'breathwork',
+        data: { _user_edited: true },
+        end_time: new Date('2024-01-15T11:00:05Z'),
+        id: 'hc-breathwork',
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:02Z'),
+        title: 'User changed this',
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities, categoryMap)
+    expect(result).toHaveLength(1)
+    // HC normally lower priority than garmin, but _user_edited boosts it
+    expect(result[0].activity_type).toBe('breathwork')
+    expect(result[0].source).toBe('health_connect')
+    expect(result[0].title).toBe('User changed this')
+  })
+
+  test('does NOT cross-merge non-eligible sources (lastfm, calendar)', () => {
+    const activities = [
+      makeActivity({
+        activity_type: 'yoga',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'garmin-yoga',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+      makeActivity({
+        activity_type: 'meditation',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'calendar-meditation',
+        source: 'calendar',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities, categoryMap)
+    expect(result).toHaveLength(2)
+  })
+
+  test('does NOT cross-merge sleep_rest category activities', () => {
+    const activities = [
+      makeActivity({
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        id: 'oura-sleep',
+        source: 'oura',
+        start_time: new Date('2024-01-14T23:00:00Z'),
+      }),
+      makeActivity({
+        activity_type: 'nap',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        id: 'hc-nap',
+        source: 'health_connect',
+        start_time: new Date('2024-01-14T23:00:00Z'),
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities, categoryMap)
+    expect(result).toHaveLength(2)
+  })
+
+  test('without categoryMap, cross-source merge is disabled (backward compatible)', () => {
+    const activities = [
+      makeActivity({
+        activity_type: 'breathwork',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'garmin-breathwork',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:02Z'),
+      }),
+      makeActivity({
+        activity_type: 'yoga',
+        end_time: new Date('2024-01-15T11:00:05Z'),
+        id: 'hc-yoga',
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      }),
+    ]
+    // No categoryMap → no cross-source merge
+    const result = mergeOverlappingActivities(activities)
+    expect(result).toHaveLength(2)
+  })
+
+  test('cross-source merge preserves loser data fields (garmin_activity_id)', () => {
+    const activities = [
+      makeActivity({
+        activity_type: 'breathwork',
+        data: { _user_edited: true },
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'aurboda-breathwork',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+        title: 'Breathwork session',
+      }),
+      makeActivity({
+        activity_type: 'yoga',
+        data: { garmin_activity_id: 12345, exerciseType: 83 },
+        end_time: new Date('2024-01-15T11:00:05Z'),
+        id: 'garmin-yoga',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:02Z'),
+      }),
+    ]
+    const result = mergeOverlappingActivities(activities, categoryMap)
+    expect(result).toHaveLength(1)
+    expect(result[0].activity_type).toBe('breathwork') // aurboda wins
+    const data = result[0].data as Record<string, unknown>
+    // Winner's data takes precedence, but loser's unique fields preserved
+    expect(data._user_edited).toBe(true)
+    expect(data.garmin_activity_id).toBe(12345)
+    expect(data.exerciseType).toBe(83)
   })
 })

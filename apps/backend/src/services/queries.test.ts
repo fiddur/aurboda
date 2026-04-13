@@ -25,6 +25,7 @@ vi.mock('../db', () => ({
   getActivities: vi.fn(),
   getActivitiesByCategory: vi.fn(),
   getActivitiesExcludingCategories: vi.fn(),
+  getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
   getDailyAggregateValue: vi.fn(),
   getDailyAggregates: vi.fn(),
   getDistinctMetrics: vi.fn(),

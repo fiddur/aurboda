@@ -1,7 +1,7 @@
 /**
  * Health Connect data processing and daily aggregates.
  */
-import type { DataSource, MetricType } from '@aurboda/api-spec'
+import { type DataSource, getExerciseTypeName, type MetricType } from '@aurboda/api-spec'
 
 import type { Activity, DailyAggregate, MealFoodItem, RawRecord, TimeSeriesPoint } from './types.ts'
 
@@ -13,6 +13,20 @@ import {
   isValidMetric,
   metricUnits,
 } from '../schema.ts'
+/** Exercise type codes that remain as generic 'exercise' (UNKNOWN=0, OTHER_WORKOUT=2). */
+const GENERIC_EXERCISE_CODES = new Set([0, 2])
+
+/**
+ * Resolve the activity_type for an ExerciseSessionRecord.
+ * Maps the HC exerciseType integer to a specific type name (e.g., 'yoga', 'running').
+ * Falls back to 'exercise' for unknown/other_workout types.
+ */
+const resolveExerciseActivityType = (data: Record<string, unknown>): string => {
+  const exerciseType = data.exerciseType as number | undefined
+  if (exerciseType === undefined || GENERIC_EXERCISE_CODES.has(exerciseType)) return 'exercise'
+  return getExerciseTypeName(exerciseType) ?? 'exercise'
+}
+
 import { insertActivities, insertActivity } from './activities.ts'
 import { query } from './connection.ts'
 import { insertMeal } from './meals.ts'
@@ -72,8 +86,11 @@ export const processHealthConnectData = async (
   }
 
   // Normalize to activities if applicable
-  const activityType = healthConnectActivityMapping[recordType]
-  if (activityType) {
+  const baseActivityType = healthConnectActivityMapping[recordType]
+  if (baseActivityType) {
+    // For exercise sessions, resolve the specific exercise type (yoga, running, etc.)
+    const activityType =
+      baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
     await insertActivity(user, {
       activity_type: activityType,
       data,
@@ -152,10 +169,13 @@ export const processHealthConnectBatch = async (
     }
 
     // Collect activities
-    const activityType = healthConnectActivityMapping[recordType]
-    if (activityType) {
+    const baseActivityType = healthConnectActivityMapping[recordType]
+    if (baseActivityType) {
+      // For exercise sessions, resolve the specific exercise type (yoga, running, etc.)
+      const resolvedType =
+        baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
       activities.push({
-        activity_type: activityType,
+        activity_type: resolvedType,
         data,
         end_time: data.endTime ? new Date(data.endTime as string) : undefined,
         notes: data.notes as string | undefined,
