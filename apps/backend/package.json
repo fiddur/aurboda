@@ -4,13 +4,13 @@
   "type": "module",
   "main": "src/api.ts",
   "scripts": {
-    "fix": "oxfmt . && oxlint --fix",
+    "fix": "oxfmt . && oxlint -c ../../.oxlintrc.json --fix",
     "start": "node src/api.ts",
     "watch": "node --watch src/api.ts",
-    "lint": "oxlint",
+    "lint": "oxlint -c ../../.oxlintrc.json",
     "test": "vitest run",
     "migrate": "node src/migrate.ts",
-    "check": "tsgo --noEmit && oxlint"
+    "check": "tsgo --noEmit && oxlint -c ../../.oxlintrc.json"
   },
   "dependencies": {
     "@aurboda/api-spec": "workspace:*",

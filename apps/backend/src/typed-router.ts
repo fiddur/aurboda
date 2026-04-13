@@ -21,21 +21,19 @@ import { Router } from 'express'
  * Keeps the same overload structure as Express's IRouterMatcher but with stricter defaults.
  */
 interface StrictRouterMatcher<T> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ReqBody stays `any` for Express compat; ResBody is the enforced contract
   <
     P extends ParamsDictionary = ParamsDictionary,
     ResBody = never,
-    ReqBody = any,
+    ReqBody = any, // oxlint-disable-line typescript/no-explicit-any -- ReqBody stays `any` for Express compat
     ReqQuery extends Query = Query,
   >(
     path: string,
     ...handlers: Array<RequestHandler<P, ResBody, ReqBody, ReqQuery>>
   ): T
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   <
     P extends ParamsDictionary = ParamsDictionary,
     ResBody = never,
-    ReqBody = any,
+    ReqBody = any, // oxlint-disable-line typescript/no-explicit-any -- ReqBody stays `any` for Express compat
     ReqQuery extends Query = Query,
   >(
     path: string,

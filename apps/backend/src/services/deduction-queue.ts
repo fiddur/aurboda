@@ -210,7 +210,7 @@ export const createDeductionQueue = async (
     }
   })
 
-  console.log('🧠 Deduction evaluation queue ready')
+  console.info('🧠 Deduction evaluation queue ready')
 
   return {
     enqueueEvaluation: async (data: DeductionEvalJobData): Promise<void> => {
