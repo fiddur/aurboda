@@ -66,14 +66,9 @@ export const createIconsRouter = (authMiddleware: RequestHandler): Router => {
         return
       }
 
-      try {
-        const id = await processAndStoreIcon(user, file.buffer, file.mimetype)
-        const url = `/api/icons/${user}/${id}`
-        res.status(201).json({ id, success: true, url })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to process icon'
-        res.status(400).json({ error: message, success: false })
-      }
+      const id = await processAndStoreIcon(user, file.buffer, file.mimetype)
+      const url = `/api/icons/${user}/${id}`
+      res.status(201).json({ id, success: true, url })
     },
   )
 

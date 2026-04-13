@@ -151,20 +151,15 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
     async (req, res) => {
       const user = req.user!
 
-      try {
-        let awCategories = req.body.categories
+      let awCategories = req.body.categories
 
-        if (!awCategories) {
-          const serverUrl = req.body.url || 'http://localhost:5600'
-          awCategories = await fetchAwCategories(serverUrl)
-        }
-
-        const result = await importFromActivityWatch(user, awCategories, req.body.replace ?? false)
-        res.json({ data: result.map(serializeCategory), success: true })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Import failed'
-        res.status(400).json({ error: message, success: false })
+      if (!awCategories) {
+        const serverUrl = req.body.url || 'http://localhost:5600'
+        awCategories = await fetchAwCategories(serverUrl)
       }
+
+      const result = await importFromActivityWatch(user, awCategories, req.body.replace ?? false)
+      res.json({ data: result.map(serializeCategory), success: true })
     },
   )
 
@@ -174,13 +169,8 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
     async (req, res) => {
       const user = req.user!
 
-      try {
-        const count = await recategorizeAll(user)
-        res.json({ records_updated: count, success: true })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Recategorization failed'
-        res.status(500).json({ error: message, success: false })
-      }
+      const count = await recategorizeAll(user)
+      res.json({ records_updated: count, success: true })
     },
   )
 
