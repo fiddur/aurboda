@@ -38,7 +38,6 @@ export interface RuleEvaluationResult {
 
 export interface DeductionEngineDeps {
   getActivities: (user: string, activityType: string, window: EvaluationWindow) => Promise<TimeRange[]>
-  getTags: (user: string, tagName: string, window: EvaluationWindow) => Promise<TimeRange[]>
   getScreentime: (user: string, category: string[], window: EvaluationWindow) => Promise<TimeRange[]>
   getActivitiesWithData: (
     user: string,
@@ -160,11 +159,6 @@ const resolveActivity: ConditionResolver = async (user, condition, window, deps)
   return deps.getActivities(user, condition.activity_type, window)
 }
 
-const resolveTag: ConditionResolver = async (user, condition, window, deps) => {
-  if (condition.kind !== 'tag') return []
-  return deps.getTags(user, condition.tag_name, window)
-}
-
 const resolveScreentimeCategory: ConditionResolver = async (user, condition, window, deps) => {
   if (condition.kind !== 'screentime_category') return []
   return deps.getScreentime(user, condition.category, window)
@@ -200,7 +194,6 @@ const conditionResolvers: Record<string, ConditionResolver> = {
   after_date: resolveAfterDate,
   location: resolveLocation,
   screentime_category: resolveScreentimeCategory,
-  tag: resolveTag,
 }
 
 // ============================================================================

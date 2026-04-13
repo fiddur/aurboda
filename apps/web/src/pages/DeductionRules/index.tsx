@@ -25,8 +25,6 @@ const formatCondition = (c: DeductionRuleCondition): string => {
   switch (c.kind) {
     case 'activity':
       return `Activity: ${c.activity_type}`
-    case 'tag':
-      return `Tag: ${c.tag_name}`
     case 'screentime_category':
       return `Screen: ${c.category?.join(' > ')}`
     default:

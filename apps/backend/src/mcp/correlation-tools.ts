@@ -42,7 +42,7 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
   // Tool: get_hrv_activities_correlation
   server.tool(
     'get_hrv_activities_correlation',
-    'Get HRV correlations with various activities. Returns Pearson correlation coefficients between HRV and productivity, locations, activities, and tags.',
+    'Get HRV correlations with various activities. Returns Pearson correlation coefficients between HRV and productivity, locations, and activity types.',
     { ...hrvCorrelationInputSchema.shape, tz: tzSchema },
     async ({ period_days, tz }) => {
       const periodDays = period_days ?? 30
@@ -54,7 +54,7 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
   // Tool: get_activity_impact
   server.tool(
     'get_activity_impact',
-    'Get the impact of a specific activity/tag on HRV and heart rate. Compares metric values before, during, and after the activity using time windows.',
+    'Get the impact of a specific activity type on HRV and heart rate. Compares metric values before, during, and after the activity using time windows.',
     { ...activityImpactInputSchema.shape, tz: tzSchema },
     async ({ activity, activity_type, period_days, window_minutes, tz }) => {
       const periodDays = period_days ?? 90
@@ -88,11 +88,11 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
     'get_generic_correlation',
     `Analyze correlations between compound triggers and various outcomes. Supports:
 - Multiple trigger conditions with AND logic (e.g., "exercise 3x AND fatcoffee 5x in a week")
-- Different outcome types: tags, metrics (weight, body_fat, etc.), or productivity time
+- Different outcome types: activity types, metrics (weight, body_fat, etc.), or productivity time
 - Rolling windows for trigger counting
 Examples:
-- "Does meditation correlate with more productive time?" -> trigger: tag "meditation", outcome: productivity
-- "When I exercise 3x and tag FatCoffee 5x in a week, does my weight change?" -> compound triggers, metric outcome`,
+- "Does meditation correlate with more productive time?" -> trigger: activity type "meditation", outcome: productivity
+- "When I exercise 3x and do fatcoffee 5x in a week, does my weight change?" -> compound triggers, metric outcome`,
     { ...genericCorrelationBodySchema.shape, tz: tzSchema },
     async ({ lag_windows, outcome, period_days, triggers, tz }) => {
       const result = await getGenericCorrelation(

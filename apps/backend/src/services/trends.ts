@@ -25,6 +25,7 @@ import { query } from '../db/index.ts'
 const LN2 = 0.693147
 
 export interface GetTrendInput {
+  activity_type_id?: string
   aggregation?: 'count' | 'mean' | 'sum'
   breakdown_fields?: string[]
   custom_metrics?: CustomMetricDefinition[]
@@ -33,6 +34,7 @@ export interface GetTrendInput {
   lookback_days?: number
   pattern: string
   source_type: TrendSourceType
+  /** @deprecated Use activity_type_id instead */
   tag_definition_id?: string
 }
 
@@ -522,7 +524,7 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
   } = input
 
   if (sourceType === 'tag') {
-    // Tags are now activities — delegate to activity_type count trend
+    // 'tag' is a backward-compat alias for activity_type count trend
     const { currentValue, history } = await calculateActivityTypeCountTrend(
       user,
       pattern,

@@ -8,12 +8,12 @@ export function buildChartUrl(params: {
   lookback_days?: number
   pattern?: string
   source_type: string
-  tag_definition_id?: string
+  activity_type_id?: string
 }): string {
   const qs = new URLSearchParams()
   qs.set('source_type', params.source_type)
   if (params.pattern) qs.set('pattern', params.pattern)
-  if (params.tag_definition_id) qs.set('tag_definition_id', params.tag_definition_id)
+  if (params.activity_type_id) qs.set('activity_type_id', params.activity_type_id)
   if (params.lookback_days) qs.set('lookback_days', String(params.lookback_days))
   qs.set('chart_type', params.chart_type)
 

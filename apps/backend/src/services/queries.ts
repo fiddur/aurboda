@@ -284,7 +284,7 @@ export interface CommentSummary {
 
 export interface NoteSummary {
   id: string
-  entity_type: 'activity' | 'tag' | 'productivity' | 'metric' | 'report'
+  entity_type: 'activity' | 'productivity' | 'metric' | 'report'
   entity_id: string
   content: string
   start_time?: string
@@ -295,7 +295,7 @@ export interface NoteSummary {
 
 const getCommentsMap = async (
   user: string,
-  entityType: 'activity' | 'tag' | 'productivity' | 'metric',
+  entityType: 'activity' | 'productivity' | 'metric',
   ids: string[],
 ): Promise<Map<string, CommentSummary[]>> => {
   const notesMap = await getNotesByEntityIds(user, entityType, ids)
@@ -1487,6 +1487,7 @@ const queryTagActivities = (user: string, start: Date, end: Date) =>
 
 /**
  * Query tags for a time range.
+ * Kept for MCP query_tags tool backward compat. Queries activities, not legacy tags table.
  * @param sync Optional sync provider to auto-refresh stale data before querying
  */
 export async function queryTags(
