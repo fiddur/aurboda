@@ -127,6 +127,35 @@
   text-decoration: underline;
 }
 
+.fi-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+.fi-icon-label {
+  color: #6b7280;
+  font-weight: 500;
+  min-width: 2.5rem;
+}
+
+.fi-icon-row input[type='text'] {
+  padding: 0.25rem 0.375rem;
+  font-size: 0.85rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  color: #374151;
+  background: #fff;
+  width: 180px;
+}
+
+.fi-icon-display-img {
+  vertical-align: middle;
+  margin-right: 0.375rem;
+}
+
 .fi-meta {
   display: flex;
   gap: 1.5rem;
@@ -181,10 +210,15 @@
 
   .fi-name-input,
   .fi-default-edit input,
+  .fi-icon-row input[type='text'],
   .nutrient-edit input {
     background: #374151;
     border-color: #4b5563;
     color: #d1d5db;
+  }
+
+  .fi-icon-label {
+    color: #9ca3af;
   }
 
   .btn-secondary {
