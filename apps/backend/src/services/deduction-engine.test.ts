@@ -474,6 +474,26 @@ describe('evaluateRule', () => {
     expect(deps.insertActivity).not.toHaveBeenCalled()
   })
 
+  test('scrobble condition defaults match_mode to exact when omitted', async () => {
+    const rule = makeRule({
+      conditions: [
+        {
+          artist: ['Artist'],
+          duration_seconds: 210,
+          kind: 'scrobble' as const,
+          match_mode: undefined as unknown as 'exact',
+        },
+      ],
+      output_activity_type: 'test',
+    })
+
+    vi.mocked(deps.getScrobbles).mockResolvedValue([{ end: d(10, 30), start: d(10) }])
+
+    await evaluateRule(user, rule, window, deps)
+
+    expect(deps.getScrobbles).toHaveBeenCalledWith(user, ['Artist'], undefined, 'exact', 210, window)
+  })
+
   test('scrobble condition with merge_gap_seconds coalesces nearby ranges', async () => {
     const rule = makeRule({
       conditions: [
