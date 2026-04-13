@@ -43,29 +43,24 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): Router =>
           .json({ error: 'Either pattern or tag_definition_id is required', success: false })
       }
 
-      try {
-        const result = await getChartData(user, {
-          aggregation: aggregation ?? 'count',
-          breakdown_fields,
-          bucket_size: bucket_size ?? '1d',
-          end,
-          pattern,
-          source_type,
-          start,
-          tag_definition_id,
-        })
-        res.json({
-          data: {
-            breakdown_fields: result.breakdown_fields,
-            breakdown_series: result.breakdown_series,
-            buckets: result.buckets,
-          },
-          success: true,
-        })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(400).json({ error: message, success: false })
-      }
+      const result = await getChartData(user, {
+        aggregation: aggregation ?? 'count',
+        breakdown_fields,
+        bucket_size: bucket_size ?? '1d',
+        end,
+        pattern,
+        source_type,
+        start,
+        tag_definition_id,
+      })
+      res.json({
+        data: {
+          breakdown_fields: result.breakdown_fields,
+          breakdown_series: result.breakdown_series,
+          buckets: result.buckets,
+        },
+        success: true,
+      })
     },
   )
 

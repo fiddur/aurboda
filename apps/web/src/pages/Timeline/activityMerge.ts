@@ -255,7 +255,7 @@ const getActivityIconKey = (a: Activity, getExerciseTypeName: (a: Activity) => s
 
 export const buildActivityColumnItems = (
   activities: Activity[],
-  tagActivities: Activity[],
+  secondaryActivities: Activity[],
   itemIcons: Record<string, string>,
   activityColors: Record<string, string>,
   exerciseColor: (a: Activity) => string,
@@ -305,8 +305,8 @@ export const buildActivityColumnItems = (
     })
   }
 
-  // 2. Handle duration activities (non-builtin)
-  const durationActivities = tagActivities.filter(isDurationActivityLike)
+  // 2. Handle secondary activities (non-main categories like custom types)
+  const durationActivities = secondaryActivities.filter(isDurationActivityLike)
 
   for (const act of durationActivities) {
     const merged = tryMergeActivityIntoItem(act, items)

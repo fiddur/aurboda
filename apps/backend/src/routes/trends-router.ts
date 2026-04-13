@@ -48,25 +48,20 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
       const halfLifeDays = half_life_days ? parseInt(half_life_days, 10) : undefined
       const lookbackDays = lookback_days ? parseInt(lookback_days, 10) : undefined
 
-      try {
-        const customMetrics = await getCustomMetrics(user)
+      const customMetrics = await getCustomMetrics(user)
 
-        const result = await getTrend(user, {
-          aggregation,
-          breakdown_fields,
-          custom_metrics: customMetrics,
-          display_period,
-          half_life_days: halfLifeDays,
-          lookback_days: lookbackDays,
-          pattern: pattern ?? '',
-          source_type,
-          tag_definition_id,
-        })
-        res.json({ data: result, success: true })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(400).json({ error: message, success: false })
-      }
+      const result = await getTrend(user, {
+        aggregation,
+        breakdown_fields,
+        custom_metrics: customMetrics,
+        display_period,
+        half_life_days: halfLifeDays,
+        lookback_days: lookbackDays,
+        pattern: pattern ?? '',
+        source_type,
+        tag_definition_id,
+      })
+      res.json({ data: result, success: true })
     },
   )
 

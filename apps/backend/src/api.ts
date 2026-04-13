@@ -13,7 +13,7 @@ import type {
 } from '@aurboda/api-spec'
 
 import cors from 'cors'
-import express, { json, type RequestHandler } from 'express'
+import express, { json, type NextFunction, type Request, type RequestHandler, type Response } from 'express'
 import { Client } from 'pg'
 
 import type { OuraDataType } from './oura-sync.ts'
@@ -51,6 +51,7 @@ import {
 import { processActivityDetail } from './garmin-process.ts'
 import { syncAllGarminData } from './garmin-sync.ts'
 import { garminClient } from './garmin.ts'
+import { httpError, isHttpError } from './http-error.ts'
 import { syncAllCalendars } from './ical-sync.ts'
 import { createLastFmRouter } from './lastfm-router.ts'
 import { syncLastFmData } from './lastfm-sync.ts'
@@ -111,10 +112,8 @@ declare global {
 
 // eslint-disable-next-line complexity -- server setup orchestration
 const main = async () => {
-  const unauthorized = Object.assign(new Error('Unauthorized'), {
-    status: 401,
-  })
-  const forbidden = Object.assign(new Error('Forbidden'), { status: 403 })
+  const unauthorized = httpError(401, 'Unauthorized')
+  const forbidden = httpError(403, 'Forbidden')
 
   const sessionSecret = process.env.SESSION_SECRET ?? ''
   const auth = createAuth(sessionSecret)
@@ -717,6 +716,24 @@ const main = async () => {
       ouraWebhookManager,
     ),
   )
+
+  // ==========================================================================
+  // Centralized error handler
+  // ==========================================================================
+
+  httpd.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+    const status = isHttpError(err) ? err.status : 500
+    if (status >= 500) console.error(err)
+
+    if (req.user) {
+      auditError(req.user, 'system', `${req.method} ${req.path}: ${err.message}`, {
+        status,
+        ...(status >= 500 && { stack: err.stack }),
+      })
+    }
+
+    res.status(status).json({ success: false, error: err.message })
+  })
 
   // ==========================================================================
   // Server startup

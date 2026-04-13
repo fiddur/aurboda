@@ -84,7 +84,7 @@ type LegendCategory =
   | 'sleep_rest' // replaces sleep+nap+rest
   | 'meditation'
   | 'exercise'
-  | 'tags'
+  | 'other'
   | 'calendar'
   | 'meal'
   | 'screentime' // vertical only
@@ -336,8 +336,8 @@ const CATEGORY_MATCHERS: Record<LegendCategory, (item: ChartItem) => boolean> = 
   sleep_rest: (item) =>
     item.column === 'Activity' && ['sleep', 'nap', 'rest'].includes(item.activity_type ?? ''),
   steps: () => false,
-  tags: (item) =>
-    // Tag activities in Activity column (not calendar, not built-in activity types)
+  other: (item) =>
+    // Other activities in Activity column (not calendar, not main activity categories)
     item.column === 'Activity' &&
     item.entity_type === 'activity' &&
     item.color !== tagSourceColors.calendar &&
@@ -364,7 +364,7 @@ const categorizeLocations = (places: Place[], uniquePlaceNames: string[]): Chart
     },
   }))
 
-const categorizeTagActivities = (
+const categorizeOtherActivities = (
   activities: Activity[],
   itemIcons: Record<string, string>,
   typeDefsMap?: Map<string, { icon?: string }>,
@@ -654,17 +654,17 @@ export const Timeline = () => {
 
   // ── Data queries ───────────────────────────────────────────────────────────
 
+  // Load activity type definitions early for display_category-based rendering
+  const { data: activityTypeDefs = [] } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activityTypeDefinitions'],
+    staleTime: 5 * 60_000,
+  })
+
+  // Single query for all activities
   const activitiesQuery = useQuery({
-    enabled: !hiddenCategories.has('activity'),
     placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), [
-        'sleep',
-        'exercise',
-        'meditation',
-        'nap',
-        'rest',
-      ]),
+    queryFn: () => fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['timeline-activities', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
   })
@@ -674,16 +674,6 @@ export const Timeline = () => {
     placeholderData: keepPreviousData,
     queryFn: () => fetchPlaces(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['timeline-places', fromDate.value, toDate.value],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  // Fetch non-builtin activities (tags/events - activities not in sleep_rest/exercise categories)
-  const EXCLUDED_BUILTIN_TYPES = ['sleep', 'nap', 'rest', 'exercise']
-  const tagActivitiesQuery = useQuery({
-    placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), undefined, EXCLUDED_BUILTIN_TYPES),
-    queryKey: ['timeline-tag-activities', fromDate.value, toDate.value],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -781,11 +771,6 @@ export const Timeline = () => {
     [todayKey],
   )
 
-  const { data: activityTypeDefs = [] } = useQuery({
-    queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activityTypeDefinitions'],
-    staleTime: 5 * 60_000,
-  })
   const typeDefsMap = useMemo(
     () =>
       new Map(
@@ -798,15 +783,25 @@ export const Timeline = () => {
     [activityTypeDefs],
   )
 
-  const activities = useMemo(
+  // Split all activities by display_category into main activities vs secondary
+  const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
+  const categoryByType = useMemo(
+    () => new Map(activityTypeDefs.map((t) => [t.name, t.display_category])),
+    [activityTypeDefs],
+  )
+  const allActivities = useMemo(
     () => (activitiesQuery.data ?? []).filter((a) => !hiddenTypes.has(a.activity_type ?? '')),
     [activitiesQuery.data, hiddenTypes],
   )
-  const places = placesQuery.data ?? []
-  const tagActivities = useMemo(
-    () => (tagActivitiesQuery.data ?? []).filter((a) => !hiddenTypes.has(a.activity_type ?? '')),
-    [tagActivitiesQuery.data, hiddenTypes],
+  const activities = useMemo(
+    () => allActivities.filter((a) => ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
+    [allActivities, categoryByType],
   )
+  const secondaryActivities = useMemo(
+    () => allActivities.filter((a) => !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
+    [allActivities, categoryByType],
+  )
+  const places = placesQuery.data ?? []
   const productivity = productivityQuery.data?.records ?? []
   const scrobbles = scrobblesQuery.data ?? []
 
@@ -862,7 +857,7 @@ export const Timeline = () => {
     () =>
       buildActivityColumnItems(
         activities,
-        tagActivities,
+        secondaryActivities,
         itemIcons,
         activityColors,
         getExerciseColor,
@@ -872,13 +867,13 @@ export const Timeline = () => {
         scrobbles,
         typeDefsMap,
       ),
-    [activities, tagActivities, itemIcons, sleepMetricsByDate, scrobbles, typeDefsMap],
+    [activities, secondaryActivities, itemIcons, sleepMetricsByDate, scrobbles, typeDefsMap],
   )
 
-  // Tag activities not already included in activityItems (point activities, excluded sources, etc.)
-  const nonBuiltinTagActivities = useMemo(
+  // Non-main activities not already in activityItems (point activities, excluded sources, etc.)
+  const otherActivities = useMemo(
     () =>
-      tagActivities.filter((a) => {
+      secondaryActivities.filter((a) => {
         if (!a.end_time) return true // point activities are separate items
         if (a.source && EXCLUDED_ACTIVITY_SOURCES.has(a.source)) return true
         for (const prefix of EXCLUDED_ACTIVITY_PREFIXES) {
@@ -887,7 +882,7 @@ export const Timeline = () => {
         // Check if this activity was placed in the Activity column
         return !activityItems.some((i) => i.entity_id === a.id)
       }),
-    [tagActivities, activityItems],
+    [secondaryActivities, activityItems],
   )
 
   // ── Legend / filtering ─────────────────────────────────────────────────────
@@ -978,7 +973,7 @@ export const Timeline = () => {
     () => [
       ...activityItems,
       ...categorizeLocations(places, uniquePlaceNames),
-      ...categorizeTagActivities(nonBuiltinTagActivities, itemIcons, typeDefsMap),
+      ...categorizeOtherActivities(otherActivities, itemIcons, typeDefsMap),
       ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
       ...musicItems,
       ...mealItems,
@@ -987,7 +982,7 @@ export const Timeline = () => {
       activityItems,
       places,
       uniquePlaceNames,
-      nonBuiltinTagActivities,
+      otherActivities,
       itemIcons,
       typeDefsMap,
       productivity,
@@ -1024,7 +1019,6 @@ export const Timeline = () => {
   const isFetching =
     activitiesQuery.isFetching ||
     placesQuery.isFetching ||
-    tagActivitiesQuery.isFetching ||
     mealsQuery.isFetching ||
     productivityQuery.isFetching ||
     scrobblesQuery.isFetching ||
@@ -2041,13 +2035,11 @@ export const Timeline = () => {
   const isInitialLoad =
     activitiesQuery.isLoading &&
     placesQuery.isLoading &&
-    tagActivitiesQuery.isLoading &&
     productivityQuery.isLoading
 
   const errorSources = [
     activitiesQuery.isError && 'activities',
     placesQuery.isError && 'places',
-    tagActivitiesQuery.isError && 'tags',
     productivityQuery.isError && 'screen time',
   ].filter(Boolean) as string[]
 
@@ -2221,7 +2213,7 @@ export const Timeline = () => {
                   label: 'Meditation',
                 },
                 { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
-                { cat: 'tags' as LegendCategory, color: TAG_COLOR, label: 'Tags' },
+                { cat: 'other' as LegendCategory, color: TAG_COLOR, label: 'Other' },
                 { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
                 {
                   cat: 'screentime' as LegendCategory,
@@ -2389,7 +2381,7 @@ const mergeSmallItems = (
         'Sleep / Rest': 'activity',
       }
       const dataType = columnToDataType[first.column]
-      const allDataTypes = ['activity', 'tag', 'location', 'music', 'meal', 'report', 'screentime']
+      const allDataTypes = ['activity', 'location', 'music', 'meal', 'report', 'screentime']
       const hideTypes = dataType ? allDataTypes.filter((t) => t !== dataType) : []
       const dataParams = new URLSearchParams({
         date: formatISO(mergedStart, { representation: 'date' }),

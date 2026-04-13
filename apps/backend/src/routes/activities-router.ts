@@ -51,6 +51,7 @@ import {
   insertTimeSeries,
   type TimeSeriesPoint,
 } from '../db/index.ts'
+import { httpError } from '../http-error.ts'
 import { parseFitBuffer } from '../services/fit-parser.ts'
 import {
   addActivity,
@@ -305,66 +306,67 @@ export const createActivitiesRouter = (
       return
     }
 
+    let fitActivities
     try {
-      const fitActivities = await parseFitBuffer(file.buffer.buffer as ArrayBuffer)
-      const results: AddActivityResponse['data'][] = []
+      fitActivities = await parseFitBuffer(file.buffer.buffer as ArrayBuffer)
+    } catch (error) {
+      throw httpError(400, error instanceof Error ? error.message : 'Failed to parse FIT file')
+    }
 
-      for (const fitAct of fitActivities) {
-        // Map exercise type name to Health Connect value
-        const data = {
-          ...fitAct.data,
-          exerciseType: isValidExerciseType(fitAct.exercise_type)
-            ? getExerciseTypeValue(fitAct.exercise_type)
-            : undefined,
-        }
+    const results: AddActivityResponse['data'][] = []
 
-        const result = await addActivity(
-          user,
-          {
-            activity_type: fitAct.activity_type,
-            data,
-            end_time: fitAct.end_time,
-            notes: fitAct.notes,
-            start_time: fitAct.start_time,
-            title: fitAct.title,
-          },
-          onActivityMutated,
-        )
-
-        if (!result.success) {
-          res.status(400).json({ error: result.error, success: false })
-          return
-        }
-
-        // Insert time series data (heart rate, power, cadence, speed)
-        if (fitAct.timeSeries.length > 0 && result.id) {
-          const points: TimeSeriesPoint[] = fitAct.timeSeries.map((ts) => ({
-            metric: ts.metric,
-            source: 'aurboda' as const,
-            time: ts.time,
-            value: ts.value,
-          }))
-          await insertTimeSeries(user, points)
-        }
-
-        results.push({
-          activity_type: fitAct.activity_type,
-          end_time: fitAct.end_time.toISOString(),
-          id: result.id!,
-          notes: fitAct.notes,
-          start_time: fitAct.start_time.toISOString(),
-          title: fitAct.title,
-        })
+    for (const fitAct of fitActivities) {
+      // Map exercise type name to Health Connect value
+      const data = {
+        ...fitAct.data,
+        exerciseType: isValidExerciseType(fitAct.exercise_type)
+          ? getExerciseTypeValue(fitAct.exercise_type)
+          : undefined,
       }
 
-      res.json({
-        data: results.length === 1 ? results[0] : results,
-        success: true,
+      const result = await addActivity(
+        user,
+        {
+          activity_type: fitAct.activity_type,
+          data,
+          end_time: fitAct.end_time,
+          notes: fitAct.notes,
+          start_time: fitAct.start_time,
+          title: fitAct.title,
+        },
+        onActivityMutated,
+      )
+
+      if (!result.success) {
+        res.status(400).json({ error: result.error, success: false })
+        return
+      }
+
+      // Insert time series data (heart rate, power, cadence, speed)
+      if (fitAct.timeSeries.length > 0 && result.id) {
+        const points: TimeSeriesPoint[] = fitAct.timeSeries.map((ts) => ({
+          metric: ts.metric,
+          source: 'aurboda' as const,
+          time: ts.time,
+          value: ts.value,
+        }))
+        await insertTimeSeries(user, points)
+      }
+
+      results.push({
+        activity_type: fitAct.activity_type,
+        end_time: fitAct.end_time.toISOString(),
+        id: result.id!,
+        notes: fitAct.notes,
+        start_time: fitAct.start_time.toISOString(),
+        title: fitAct.title,
       })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to parse FIT file'
-      res.status(400).json({ error: message, success: false })
     }
+
+    res.json({
+      data: results.length === 1 ? results[0] : results,
+      success: true,
+    })
   })
 
   router.post<Record<string, never>, MergeActivitiesResponse, MergeActivitiesBody>(
@@ -727,13 +729,8 @@ export const createActivitiesRouter = (
         return
       }
 
-      try {
-        const points = await resyncActivityDetail(user, garminSourceId, garminActivityId)
-        res.json({ points, success: true })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(500).json({ points: 0, success: false, error: message })
-      }
+      const points = await resyncActivityDetail(user, garminSourceId, garminActivityId)
+      res.json({ points, success: true })
     },
   )
 
