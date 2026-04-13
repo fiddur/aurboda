@@ -27,6 +27,12 @@ const formatCondition = (c: DeductionRuleCondition): string => {
       return `Activity: ${c.activity_type}`
     case 'screentime_category':
       return `Screen: ${c.category?.join(' > ')}`
+    case 'scrobble': {
+      const parts: string[] = []
+      if (c.artist?.length) parts.push(`artist: ${c.artist.join(', ')}`)
+      if (c.track) parts.push(`track: ${c.track}`)
+      return `Scrobble: ${parts.length ? parts.join(', ') : 'any'}`
+    }
     default:
       return c.kind
   }

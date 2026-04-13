@@ -54,6 +54,14 @@ export interface DeductionEngineDeps {
     window: EvaluationWindow,
   ) => Promise<TimeRange[]>
   getLocationVisits: (user: string, locationName: string, window: EvaluationWindow) => Promise<TimeRange[]>
+  getScrobbles: (
+    user: string,
+    artist: string[] | undefined,
+    track: string | undefined,
+    matchMode: 'exact' | 'contains',
+    durationSeconds: number,
+    window: EvaluationWindow,
+  ) => Promise<TimeRange[]>
   insertActivity: (user: string, activity: Activity) => Promise<string | void>
   enrichActivities: (
     user: string,
@@ -188,11 +196,24 @@ const resolveAfterDate: ConditionResolver = async (_user, condition, window) => 
   return [{ start: since > window.start ? since : window.start, end: window.end }]
 }
 
+const resolveScrobble: ConditionResolver = async (user, condition, window, deps) => {
+  if (condition.kind !== 'scrobble') return []
+  return deps.getScrobbles(
+    user,
+    condition.artist,
+    condition.track,
+    condition.match_mode ?? 'exact',
+    condition.duration_seconds,
+    window,
+  )
+}
+
 const conditionResolvers: Record<string, ConditionResolver> = {
   activity: resolveActivity,
   activity_data: resolveActivityData,
   after_date: resolveAfterDate,
   location: resolveLocation,
+  scrobble: resolveScrobble,
   screentime_category: resolveScreentimeCategory,
 }
 

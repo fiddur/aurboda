@@ -22,6 +22,7 @@ const makeDeps = (): DeductionEngineDeps => ({
   getActivitiesWithDataFilters: vi.fn().mockResolvedValue([]),
   getEarliestActivityTime: vi.fn().mockResolvedValue(null),
   getLocationVisits: vi.fn().mockResolvedValue([]),
+  getScrobbles: vi.fn().mockResolvedValue([]),
   getScreentime: vi.fn().mockResolvedValue([]),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertRuleRun: vi.fn().mockResolvedValue(undefined),
@@ -366,6 +367,143 @@ describe('evaluateRule', () => {
     expect(would_affect).toBe(1)
     expect(affected_ids).toHaveLength(0)
     expect(deps.enrichActivities).not.toHaveBeenCalled()
+  })
+
+  // --- scrobble condition tests ---
+
+  test('resolves scrobble condition and creates activities', async () => {
+    const rule = makeRule({
+      conditions: [
+        {
+          artist: ['Holosync'],
+          duration_seconds: 1800,
+          kind: 'scrobble' as const,
+          match_mode: 'exact' as const,
+        },
+      ],
+      output_activity_type: 'holosync',
+    })
+
+    vi.mocked(deps.getScrobbles).mockResolvedValue([{ end: d(10, 30), start: d(10) }])
+
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
+
+    expect(affected_ids).toHaveLength(1)
+    expect(deps.getScrobbles).toHaveBeenCalledWith(user, ['Holosync'], undefined, 'exact', 1800, window)
+    expect(deps.insertActivity).toHaveBeenCalledWith(
+      user,
+      expect.objectContaining({
+        activity_type: 'holosync',
+        end_time: d(10, 30),
+        start_time: d(10),
+      }),
+    )
+  })
+
+  test('resolves scrobble condition with track and contains mode', async () => {
+    const rule = makeRule({
+      conditions: [
+        {
+          duration_seconds: 240,
+          kind: 'scrobble' as const,
+          match_mode: 'contains' as const,
+          track: 'Warmup',
+        },
+      ],
+      output_activity_type: 'vocal_training',
+    })
+
+    vi.mocked(deps.getScrobbles).mockResolvedValue([
+      { end: d(9, 4), start: d(9) },
+      { end: d(9, 8), start: d(9, 4) },
+    ])
+
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
+
+    expect(affected_ids).toHaveLength(2)
+    expect(deps.getScrobbles).toHaveBeenCalledWith(user, undefined, 'Warmup', 'contains', 240, window)
+  })
+
+  test('scrobble condition combined with activity condition (AND)', async () => {
+    const rule = makeRule({
+      conditions: [
+        { activity_type: 'meditation', kind: 'activity' },
+        {
+          artist: ['Holosync'],
+          duration_seconds: 1800,
+          kind: 'scrobble' as const,
+          match_mode: 'exact' as const,
+        },
+      ],
+      output_activity_type: 'holosync',
+    })
+
+    // Meditation 9-10, holosync scrobble 9:15-9:45
+    vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(10), start: d(9) }])
+    vi.mocked(deps.getScrobbles).mockResolvedValue([{ end: d(9, 45), start: d(9, 15) }])
+
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
+
+    expect(affected_ids).toHaveLength(1)
+    expect(deps.insertActivity).toHaveBeenCalledWith(
+      user,
+      expect.objectContaining({
+        activity_type: 'holosync',
+        end_time: d(9, 45),
+        start_time: d(9, 15),
+      }),
+    )
+  })
+
+  test('scrobble condition returns empty when no scrobbles match', async () => {
+    const rule = makeRule({
+      conditions: [
+        {
+          artist: ['Nonexistent'],
+          duration_seconds: 240,
+          kind: 'scrobble' as const,
+          match_mode: 'exact' as const,
+        },
+      ],
+    })
+
+    vi.mocked(deps.getScrobbles).mockResolvedValue([])
+
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
+    expect(affected_ids).toHaveLength(0)
+    expect(deps.insertActivity).not.toHaveBeenCalled()
+  })
+
+  test('scrobble condition with merge_gap_seconds coalesces nearby ranges', async () => {
+    const rule = makeRule({
+      conditions: [
+        {
+          artist: ['Vocal Coach'],
+          duration_seconds: 240,
+          kind: 'scrobble' as const,
+          match_mode: 'exact' as const,
+        },
+      ],
+      merge_gap_seconds: 600, // 10 min gap
+      output_activity_type: 'vocal_training',
+    })
+
+    // Two scrobbles 5 min apart → should merge into one
+    vi.mocked(deps.getScrobbles).mockResolvedValue([
+      { end: d(9, 4), start: d(9) },
+      { end: d(9, 13), start: d(9, 9) }, // 5 min gap from first end
+    ])
+
+    const { affected_ids } = await evaluateRule(user, rule, window, deps)
+
+    expect(affected_ids).toHaveLength(1) // Merged into one
+    expect(deps.insertActivity).toHaveBeenCalledWith(
+      user,
+      expect.objectContaining({
+        end_time: d(9, 13),
+        start_time: d(9),
+      }),
+    )
   })
 })
 

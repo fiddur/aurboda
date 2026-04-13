@@ -12,8 +12,6 @@ import type {
   AddActivityResponse,
   AddCustomMetricBody,
   AddReportBody,
-  AddLastFmTagRuleBody,
-  AddLastFmTagRuleResponse,
   AddMetricBody,
   AddMetricResponse,
   AddNamedLocationBody,
@@ -45,10 +43,6 @@ import type {
   HrvStats,
   HrvStatsWithDelta,
   HrZoneThresholds,
-  LastFmMatchMode,
-  LastFmMatchType,
-  LastFmTagRule,
-  LastFmTagRulesResponse,
   LocationCorrelation,
   LocationsQuery,
   LocationsResponse,
@@ -82,7 +76,6 @@ import type {
   ScreentimeCategoryListResponse,
   ScreentimeCategoryResponse,
   ScrobblesResponse,
-  SyncResponse,
   TrainingLoadResponse,
   TrainingLoadResult,
   TrendDisplayPeriod,
@@ -92,8 +85,6 @@ import type {
   TrendSourceType,
   UpdateActivityBody,
   UpdateCustomMetricBody,
-  UpdateLastFmTagRuleBody,
-  UpdateLastFmTagRuleResponse,
   UpdateReportBody,
   UpdateScreentimeCategoryBody,
   UpdateSettingsInput,
@@ -128,7 +119,7 @@ export interface DataFilter {
 }
 
 export interface DeductionRuleCondition {
-  kind: 'activity' | 'screentime_category' | 'activity_data' | 'location' | 'after_date'
+  kind: 'activity' | 'screentime_category' | 'activity_data' | 'location' | 'after_date' | 'scrobble'
   activity_type?: string
   data_filters?: DataFilter[]
   category?: string[]
@@ -137,6 +128,11 @@ export interface DeductionRuleCondition {
   value?: string | number | boolean
   location_name?: string
   date?: string
+  // Scrobble condition fields
+  artist?: string[]
+  track?: string
+  match_mode?: 'exact' | 'contains'
+  duration_seconds?: number
 }
 
 export interface DeductionRule {
@@ -218,7 +214,6 @@ export type {
   ActivityCorrelation,
   ActivityImpactData,
   ActivityImpactType,
-  AddLastFmTagRuleBody,
   BaselineData,
   CustomMetricDefinition,
   DashboardConfig,
@@ -229,9 +224,6 @@ export type {
   HrvStats,
   HrvStatsWithDelta,
   HrZoneThresholds,
-  LastFmMatchMode,
-  LastFmMatchType,
-  LastFmTagRule,
   LocationCorrelation,
   NamedLocation,
   PeriodMetricStats,
@@ -239,7 +231,6 @@ export type {
   TrendDisplayPeriod,
   TrendResult,
   TrendSourceType,
-  UpdateLastFmTagRuleBody,
   UpdateSettingsInput,
   UserSettingsResponse,
 }
@@ -1292,52 +1283,6 @@ export const resetDashboard = async (): Promise<DashboardConfig> => {
 }
 
 // ==========================================================================
-// Last.fm Tag Rules API
-// ==========================================================================
-
-// Fetch all Last.fm tag rules
-export const fetchLastFmTagRules = async (): Promise<LastFmTagRule[]> => {
-  const { token } = auth.value
-  const response = await axios.get<LastFmTagRulesResponse>(`${API_URL}/lastfm/tag-rules`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-
-  return response.data.data ?? []
-}
-
-// Create a new Last.fm tag rule
-export const createLastFmTagRule = async (rule: AddLastFmTagRuleBody): Promise<LastFmTagRule> => {
-  const { token } = auth.value
-  const response = await axios.post<AddLastFmTagRuleResponse>(`${API_URL}/lastfm/tag-rules`, rule, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-
-  return response.data.data!
-}
-
-// Update an existing Last.fm tag rule
-export const updateLastFmTagRule = async (
-  ruleId: string,
-  body: UpdateLastFmTagRuleBody,
-): Promise<LastFmTagRule> => {
-  const { token } = auth.value
-  const response = await axios.put<UpdateLastFmTagRuleResponse>(
-    `${API_URL}/lastfm/tag-rules/${ruleId}`,
-    body,
-    { headers: { Authorization: `Bearer ${token}` } },
-  )
-
-  return response.data.data!
-}
-
-// Delete a Last.fm tag rule
-export const deleteLastFmTagRule = async (ruleId: string): Promise<void> => {
-  const { token } = auth.value
-  await axios.delete<SyncResponse>(`${API_URL}/lastfm/tag-rules/${ruleId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-}
-
 // ============================================================================
 // Soft Delete & Restore
 // ============================================================================

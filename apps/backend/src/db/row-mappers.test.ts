@@ -3,7 +3,6 @@ import { describe, expect, test } from 'vitest'
 import {
   mapActivityRow,
   mapDetectedLocationRow,
-  mapLastFmTagRuleRow,
   mapMcpSessionRow,
   mapNamedLocationRow,
   mapSyncStateRow,
@@ -291,35 +290,6 @@ describe('mapMcpSessionRow', () => {
       last_activity: new Date('2024-01-15T12:00:00Z'),
       session_id: 'sess-1',
       username: 'testuser',
-    })
-  })
-})
-
-describe('mapLastFmTagRuleRow', () => {
-  test('maps a database row to LastFmTagRule', () => {
-    const row = {
-      artist_name: 'Pink Floyd',
-      created_at: '2024-01-15T10:00:00Z',
-      id: 'rule-1',
-      match_mode: 'exact',
-      match_type: 'artist',
-      rule_name: 'Pink Floyd tag',
-      tag_name: 'psychedelic',
-      track_name: null,
-    }
-
-    const result = mapLastFmTagRuleRow(row)
-
-    expect(result).toEqual({
-      artist_name: 'Pink Floyd',
-      created_at: new Date('2024-01-15T10:00:00Z'),
-      id: 'rule-1',
-      match_mode: 'exact',
-      match_type: 'artist',
-      merge_gap_seconds: undefined,
-      rule_name: 'Pink Floyd tag',
-      tag_name: 'psychedelic',
-      track_name: undefined,
     })
   })
 })

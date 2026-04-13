@@ -153,6 +153,60 @@ const getActivitiesWithDataFilters = async (
   }))
 }
 
+const getScrobbles = async (
+  user: string,
+  artist: string[] | undefined,
+  track: string | undefined,
+  matchMode: 'exact' | 'contains',
+  durationSeconds: number,
+  window: EvaluationWindow,
+): Promise<TimeRange[]> => {
+  const params: unknown[] = [window.start, window.end]
+  const whereClauses: string[] = [
+    `source = 'lastfm'`,
+    `record_type = 'scrobble'`,
+    `recorded_at >= $1`,
+    `recorded_at < $2`,
+  ]
+
+  if (artist && artist.length > 0) {
+    if (matchMode === 'exact') {
+      params.push(artist.map((a) => a.toLowerCase().trim()))
+      whereClauses.push(`LOWER(data->>'artist') = ANY($${params.length})`)
+    } else {
+      const artistClauses = artist.map((a) => {
+        params.push(`%${a.toLowerCase().trim()}%`)
+        return `LOWER(data->>'artist') LIKE $${params.length}`
+      })
+      whereClauses.push(`(${artistClauses.join(' OR ')})`)
+    }
+  }
+
+  if (track) {
+    if (matchMode === 'exact') {
+      params.push(track.toLowerCase().trim())
+      whereClauses.push(`LOWER(data->>'track') = $${params.length}`)
+    } else {
+      params.push(`%${track.toLowerCase().trim()}%`)
+      whereClauses.push(`LOWER(data->>'track') LIKE $${params.length}`)
+    }
+  }
+
+  const result = await query(
+    user,
+    `SELECT recorded_at FROM raw_records
+     WHERE ${whereClauses.join(' AND ')}
+     ORDER BY recorded_at ASC`,
+    params,
+  )
+
+  const durationMs = durationSeconds * 1000
+  return result.rows.map((r) => ({
+    end: new Date((r.recorded_at as Date).getTime() + durationMs),
+    start: r.recorded_at as Date,
+  }))
+}
+
 const getLocationVisits = async (
   user: string,
   locationName: string,
@@ -231,6 +285,7 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
   getActivitiesWithDataFilters,
   getEarliestActivityTime,
   getLocationVisits,
+  getScrobbles,
   getScreentime,
   insertActivity: async (user, activity) => {
     const id = await dbInsertActivity(user, activity)

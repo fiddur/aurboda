@@ -14,6 +14,7 @@ const KIND_LABELS: Record<string, string> = {
   activity_data: 'Activity Data Field',
   after_date: 'Since Date',
   location: 'Location',
+  scrobble: 'Scrobble (Last.fm)',
   screentime_category: 'Screentime Category',
 }
 
@@ -23,6 +24,7 @@ const KINDS: Array<DeductionRuleCondition['kind']> = [
   'activity_data',
   'location',
   'after_date',
+  'scrobble',
 ]
 
 const OPERATOR_LABELS: Record<string, string> = {
@@ -171,6 +173,74 @@ function DataFiltersInline({
   )
 }
 
+function ScrobbleBody({
+  condition,
+  onChange,
+}: {
+  condition: DeductionRuleCondition
+  onChange: (c: DeductionRuleCondition) => void
+}) {
+  return (
+    <div class="condition-data-fields">
+      <div class="condition-data-row">
+        <input
+          type="text"
+          value={(condition.artist ?? []).join(', ')}
+          onInput={(e) =>
+            onChange({
+              ...condition,
+              artist: (e.target as HTMLInputElement).value
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean),
+            })
+          }
+          placeholder="Artist name(s), comma-separated"
+          class="condition-field-input"
+        />
+      </div>
+      <div class="condition-data-row">
+        <input
+          type="text"
+          value={condition.track ?? ''}
+          onInput={(e) =>
+            onChange({ ...condition, track: (e.target as HTMLInputElement).value || undefined })
+          }
+          placeholder="Track name (optional)"
+          class="condition-field-input"
+        />
+      </div>
+      <div class="condition-data-row">
+        <select
+          value={condition.match_mode ?? 'exact'}
+          onChange={(e) =>
+            onChange({
+              ...condition,
+              match_mode: (e.target as HTMLSelectElement).value as 'exact' | 'contains',
+            })
+          }
+          class="condition-field-select condition-field-narrow"
+        >
+          <option value="exact">Exact match</option>
+          <option value="contains">Contains</option>
+        </select>
+        <label class="condition-field-narrow" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ fontSize: '0.85em', opacity: 0.8 }}>Duration (s)</span>
+          <input
+            type="number"
+            value={condition.duration_seconds ?? 210}
+            onInput={(e) =>
+              onChange({ ...condition, duration_seconds: Number((e.target as HTMLInputElement).value) })
+            }
+            class="condition-field-input"
+            style={{ width: '80px' }}
+          />
+        </label>
+      </div>
+    </div>
+  )
+}
+
 // ============================================================================
 // Single condition card
 // ============================================================================
@@ -180,6 +250,7 @@ const KIND_DEFAULTS: Record<string, Partial<DeductionRuleCondition>> = {
   activity_data: { activity_type: '', field: '', operator: 'eq', value: '' },
   after_date: { date: new Date().toISOString().slice(0, 10) },
   location: { location_name: '' },
+  scrobble: { artist: [], track: '', match_mode: 'exact', duration_seconds: 210 },
   screentime_category: { category: [] },
 }
 
@@ -309,6 +380,8 @@ function ConditionCard({
             class="condition-field-input"
           />
         )}
+
+        {condition.kind === 'scrobble' && <ScrobbleBody condition={condition} onChange={update} />}
       </div>
     </div>
   )

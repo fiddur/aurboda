@@ -70,12 +70,30 @@ export const afterDateConditionSchema = z
   })
   .meta({ description: 'Restricts matches to after a given date' })
 
+export const scrobbleConditionSchema = z
+  .object({
+    artist: z.array(z.string()).optional().meta({ description: 'Artist name(s) to match (any of)' }),
+    duration_seconds: z
+      .number()
+      .int()
+      .positive()
+      .meta({ description: 'Duration each matching scrobble covers (seconds)' }),
+    kind: z.literal('scrobble'),
+    match_mode: z
+      .enum(['exact', 'contains'])
+      .default('exact')
+      .meta({ description: 'Case-insensitive match mode' }),
+    track: z.string().optional().meta({ description: 'Track name to match' }),
+  })
+  .meta({ description: 'Matches time ranges from Last.fm scrobbles by artist/track name' })
+
 export const conditionSchema = z.discriminatedUnion('kind', [
   activityConditionSchema,
   screentimeCategoryConditionSchema,
   activityDataConditionSchema,
   locationConditionSchema,
   afterDateConditionSchema,
+  scrobbleConditionSchema,
 ])
 
 export type Condition = z.infer<typeof conditionSchema>
