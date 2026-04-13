@@ -461,6 +461,9 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS merge_gap_seconds INTEGER`)
     await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS artist_names JSONB`)
 
+    // Clean up old lastfm-auto activities first (before table drop)
+    await query(db, `DELETE FROM activities WHERE source = 'lastfm-auto'`)
+
     const rules = await query(db, `SELECT * FROM lastfm_tag_rules`)
     for (const rule of rules.rows) {
       const matchType = rule.match_type as string
@@ -480,6 +483,26 @@ export const migrateSchema = async (user: string) => {
       const trackName =
         matchType === 'track' || matchType === 'track_artist' ? (rule.track_name as string) : undefined
 
+      // Normalize tag_name to snake_case activity type (same as resolveOrCreateActivityType)
+      const tagName = rule.tag_name as string
+      const activityType =
+        tagName
+          .replaceAll(/[[\]()]/g, '')
+          .trim()
+          .toLowerCase()
+          .replaceAll(/[^a-z0-9]+/g, '_')
+          .replaceAll(/^_|_$/g, '')
+          .replaceAll(/_+/g, '_') || 'unknown'
+
+      // Ensure the activity type definition exists
+      await query(
+        db,
+        `INSERT INTO activity_type_definitions (name, display_name, display_category)
+         VALUES ($1, $2, 'other')
+         ON CONFLICT (name) DO NOTHING`,
+        [activityType, tagName],
+      )
+
       const condition: Record<string, unknown> = {
         duration_seconds: 210,
         kind: 'scrobble',
@@ -492,12 +515,10 @@ export const migrateSchema = async (user: string) => {
         db,
         `INSERT INTO deduction_rules (name, enabled, priority, mode, conditions, output_activity_type, merge_gap_seconds)
          VALUES ($1, true, 0, 'create', $2::jsonb, $3, $4)`,
-        [rule.rule_name, JSON.stringify([condition]), rule.tag_name, rule.merge_gap_seconds ?? null],
+        [rule.rule_name, JSON.stringify([condition]), activityType, rule.merge_gap_seconds ?? null],
       )
     }
 
-    // Clean up old lastfm-auto activities (will be recreated by deduction evaluation)
-    await query(db, `DELETE FROM activities WHERE source = 'lastfm-auto'`)
     await query(db, `DROP TABLE lastfm_tag_rules`)
   }
 
