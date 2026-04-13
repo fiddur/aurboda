@@ -41,13 +41,18 @@ interface StrictRouterMatcher<T> {
   ): T
 }
 
-export interface TypedRouter extends Omit<Router, 'get' | 'post' | 'put' | 'patch' | 'delete'> {
-  get: StrictRouterMatcher<this>
-  post: StrictRouterMatcher<this>
-  put: StrictRouterMatcher<this>
-  patch: StrictRouterMatcher<this>
-  delete: StrictRouterMatcher<this>
+/**
+ * Router with strict response typing. Uses intersection with Router so that
+ * TypedRouter IS-A Router (no `as unknown as Router` cast needed at boundaries).
+ * The StrictRouterMatcher overloads take priority in call-site resolution.
+ */
+export type TypedRouter = Router & {
+  get: StrictRouterMatcher<TypedRouter>
+  post: StrictRouterMatcher<TypedRouter>
+  put: StrictRouterMatcher<TypedRouter>
+  patch: StrictRouterMatcher<TypedRouter>
+  delete: StrictRouterMatcher<TypedRouter>
 }
 
 /** Create an Express Router with strict response typing (ResBody defaults to `never`). */
-export const typedRouter = (): TypedRouter => Router() as unknown as TypedRouter
+export const typedRouter = (): TypedRouter => Router() as TypedRouter
