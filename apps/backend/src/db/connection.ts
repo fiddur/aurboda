@@ -637,6 +637,25 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
+  // Step 3: Align Garmin typeKey names with HC exercise type names.
+  // Garmin uses modifier_noun (e.g., treadmill_running), HC uses noun_modifier (running_treadmill).
+  if (existingTableNames.has('activities')) {
+    const garminNameAliases: [string, string][] = [
+      ['indoor_rowing', 'rowing_machine'],
+      ['open_water_swimming', 'swimming_open_water'],
+      ['pool_swimming', 'swimming_pool'],
+      ['stair_stepper', 'stair_climbing_machine'],
+      ['stationary_biking', 'biking_stationary'],
+      ['treadmill_running', 'running_treadmill'],
+    ]
+    for (const [oldName, newName] of garminNameAliases) {
+      await query(db, `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 AND deleted_at IS NULL`, [
+        newName,
+        oldName,
+      ])
+    }
+  }
+
   // Ensure every activity_type in use has a corresponding definition (idempotent)
   if (existingTableNames.has('activity_type_definitions') && existingTableNames.has('activities')) {
     await query(

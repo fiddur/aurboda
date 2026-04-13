@@ -83,9 +83,20 @@ const defaultDeps: GarminProcessDeps = {
   softDeleteLocationRange,
 }
 
-/** Garmin activity typeKeys that should be mapped to a different activity type name. */
+/**
+ * Garmin activity typeKeys that should be mapped to a different activity type name.
+ * Aligns Garmin naming with Health Connect exercise type names from api-spec
+ * so cross-source merge and same-type merge work correctly.
+ */
 const garminTypeKeyOverrides: Record<string, string> = {
   breathwork: 'meditation',
+  // Garmin uses modifier_noun, HC uses noun_modifier
+  indoor_rowing: 'rowing_machine',
+  pool_swimming: 'swimming_pool',
+  open_water_swimming: 'swimming_open_water',
+  stair_stepper: 'stair_climbing_machine',
+  stationary_biking: 'biking_stationary',
+  treadmill_running: 'running_treadmill',
 }
 
 // ============================================================================
