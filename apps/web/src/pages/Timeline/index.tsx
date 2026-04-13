@@ -632,18 +632,26 @@ export const Timeline = () => {
 
   // ── Data queries ───────────────────────────────────────────────────────────
 
+  // Load activity type definitions early so we can derive type lists for queries
+  const { data: activityTypeDefs = [] } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activityTypeDefinitions'],
+    staleTime: 5 * 60_000,
+  })
+
+  // Activity column: types in sleep_rest, exercise, meditation, wellness categories
+  const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
+  const activityTypeNames = useMemo(
+    () => activityTypeDefs.filter((t) => ACTIVITY_CATEGORIES.has(t.display_category)).map((t) => t.name),
+    [activityTypeDefs],
+  )
+
   const activitiesQuery = useQuery({
-    enabled: !hiddenCategories.has('activity'),
+    enabled: !hiddenCategories.has('activity') && activityTypeNames.length > 0,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), [
-        'sleep',
-        'exercise',
-        'meditation',
-        'nap',
-        'rest',
-      ]),
-    queryKey: ['timeline-activities', fromDate.value, toDate.value],
+      fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), activityTypeNames),
+    queryKey: ['timeline-activities', fromDate.value, toDate.value, activityTypeNames],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -655,13 +663,13 @@ export const Timeline = () => {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Fetch non-builtin activities (tags/events - activities not in sleep_rest/exercise categories)
-  const EXCLUDED_BUILTIN_TYPES = ['sleep', 'nap', 'rest', 'exercise']
+  // Tag activities: everything NOT in the activity column categories
   const tagActivitiesQuery = useQuery({
+    enabled: activityTypeNames.length > 0,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), undefined, EXCLUDED_BUILTIN_TYPES),
-    queryKey: ['timeline-tag-activities', fromDate.value, toDate.value],
+      fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), undefined, activityTypeNames),
+    queryKey: ['timeline-tag-activities', fromDate.value, toDate.value, activityTypeNames],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -759,11 +767,6 @@ export const Timeline = () => {
     [todayKey],
   )
 
-  const { data: activityTypeDefs = [] } = useQuery({
-    queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activityTypeDefinitions'],
-    staleTime: 5 * 60_000,
-  })
   const typeDefsMap = useMemo(
     () =>
       new Map(
