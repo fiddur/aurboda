@@ -650,13 +650,28 @@ export const migrateSchema = async (user: string) => {
   // Migrate goals and custom_metrics from user_settings JSONB to their own tables
   await migrateGoalsAndCustomMetrics(db, existingTableNames)
 
-  // Soft-delete activities with invalid activity_type values (e.g. UUID-like from tag migration)
-  // These can never have a valid definition and would violate the FK constraint.
-  if (existingTableNames.has('activities')) {
+  // Fix activities with invalid activity_type names (e.g. UUID-like values starting with a digit).
+  // Prefix with 't_' to make them valid, then create definitions for them.
+  if (existingTableNames.has('activities') && existingTableNames.has('activity_type_definitions')) {
     await query(
       db,
-      `UPDATE activities SET deleted_at = NOW()
-       WHERE activity_type !~ '^[a-z][a-z0-9_]*$' AND deleted_at IS NULL`,
+      `UPDATE activities SET activity_type = 't_' || activity_type
+       WHERE activity_type !~ '^[a-z][a-z0-9_]*$'
+         AND ('t_' || activity_type) ~ '^[a-z][a-z0-9_]*$'`,
+    )
+    // Create definitions for the newly prefixed types
+    await query(
+      db,
+      `INSERT INTO activity_type_definitions (name, display_name, display_category)
+       SELECT DISTINCT a.activity_type,
+         initcap(replace(a.activity_type, '_', ' ')),
+         'other'
+       FROM activities a
+       WHERE NOT EXISTS (
+         SELECT 1 FROM activity_type_definitions atd WHERE atd.name = a.activity_type
+       )
+         AND a.activity_type ~ '^[a-z][a-z0-9_]*$'
+       ON CONFLICT (name) DO NOTHING`,
     )
   }
 
