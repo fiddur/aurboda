@@ -1409,8 +1409,7 @@ describe('processActivityDetail', () => {
     ])
   })
 
-  test('downsamples GPS to ~1 point per minute', async () => {
-    // 3 points within 60 seconds — only first should be inserted
+  test('keeps all GPS points (no downsampling)', async () => {
     const detail: GarminActivityDetailResponse = {
       activityDetailMetrics: [
         { metrics: [1700000001000, 57.65, 12.62] },
@@ -1429,6 +1428,8 @@ describe('processActivityDetail', () => {
 
     expect(mockDeps.insertLocations).toHaveBeenCalledWith(user, [
       { lat: 57.65, lon: 12.62, source: 'garmin', time: new Date(1700000001000) },
+      { lat: 57.66, lon: 12.63, source: 'garmin', time: new Date(1700000030000) },
+      { lat: 57.67, lon: 12.64, source: 'garmin', time: new Date(1700000059000) },
     ])
   })
 
