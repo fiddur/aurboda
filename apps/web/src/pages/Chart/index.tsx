@@ -30,7 +30,7 @@ import {
 import { auth } from '../../state/auth'
 import './style.css'
 
-type SourceType = 'tag' | 'metric' | 'productivity_category' | 'activity_type'
+type SourceType = 'metric' | 'productivity_category' | 'activity_type'
 type ChartType = 'trend' | 'bar'
 type BucketSize = '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
 
@@ -71,7 +71,7 @@ interface ChartState {
   lookback_days: number
   pattern: string
   source_type: SourceType
-  tag_definition_id: string
+  activity_type_id: string
 }
 
 /** Parse URL query params into chart config state. */
@@ -86,7 +86,7 @@ function parseQuery(query: Record<string, string>): ChartState {
     lookback_days: Number(query.lookback_days) || 90,
     pattern: query.pattern ?? '',
     source_type: (query.source_type ?? 'activity_type') as SourceType,
-    tag_definition_id: query.tag_definition_id ?? '',
+    activity_type_id: query.activity_type_id ?? '',
   }
 }
 
@@ -95,7 +95,7 @@ function syncUrl(state: ChartState) {
   const params = new URLSearchParams()
   params.set('source_type', state.source_type)
   if (state.pattern) params.set('pattern', state.pattern)
-  if (state.tag_definition_id) params.set('tag_definition_id', state.tag_definition_id)
+  if (state.activity_type_id) params.set('activity_type_id', state.activity_type_id)
   params.set('lookback_days', String(state.lookback_days))
   params.set('chart_type', state.chart_type)
   if (state.chart_type === 'trend') {
@@ -168,7 +168,7 @@ function SourcePicker({
           value={state.source_type}
           onChange={(e) => {
             const source_type = (e.target as HTMLSelectElement).value as SourceType
-            onUpdate({ source_type, pattern: '', tag_definition_id: '' })
+            onUpdate({ source_type, pattern: '', activity_type_id: '' })
           }}
         >
           <option value="activity_type">Activity Type</option>
@@ -468,13 +468,13 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
       : undefined
 
   const barQuery = useQuery({
-    enabled: Boolean(params.pattern || params.tag_definition_id),
+    enabled: Boolean(params.pattern || params.activity_type_id),
     queryFn: () => fetchChartData(params),
     queryKey: ['chart-data', params],
     staleTime: 5 * 60 * 1000,
   })
 
-  if (!params.pattern && !params.tag_definition_id) {
+  if (!params.pattern && !params.activity_type_id) {
     return <div class="chart-empty">Select a source to view chart data.</div>
   }
 
@@ -543,7 +543,7 @@ function buildWidgetFromState(state: ChartState, title: string): DashboardWidget
         lookback_days: state.lookback_days,
         ...(state.pattern ? { pattern: state.pattern } : {}),
         source_type: state.source_type,
-        ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
+        ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
         ...(title ? { title } : {}),
       },
       id: generateId('widget'),
@@ -562,7 +562,7 @@ function buildWidgetFromState(state: ChartState, title: string): DashboardWidget
         state.source_type === 'activity_type' || state.source_type === 'metric'
           ? state.source_type
           : 'activity_type',
-      ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
+      ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
       ...(title ? { title } : {}),
     },
     id: generateId('widget'),
@@ -744,8 +744,8 @@ export function Chart() {
     <div class="chart-page">
       <h1>Chart Explorer</h1>
       <p class="chart-page-description">
-        Explore time-weighted averages (EMA) or raw bucketed data for tags, metrics, screentime categories,
-        and activity types. Toggle between Trend and Bar chart modes.
+        Explore time-weighted averages (EMA) or raw bucketed data for activity types, metrics, and screentime
+        categories. Toggle between Trend and Bar chart modes.
       </p>
 
       <ChartControls state={state} onUpdate={handleUpdate} />
@@ -760,7 +760,7 @@ export function Chart() {
             lookback_days: state.lookback_days,
             pattern: state.pattern,
             source_type: state.source_type,
-            ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
+            ...(state.activity_type_id ? { activity_type_id: state.activity_type_id } : {}),
           }}
         />
       ) : (
@@ -773,12 +773,12 @@ export function Chart() {
             pattern: state.pattern || undefined,
             source_type: state.source_type,
             start,
-            ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
+            ...(state.activity_type_id ? { activity_type_id: state.activity_type_id } : {}),
           }}
         />
       )}
 
-      {(state.pattern || state.tag_definition_id) && (
+      {(state.pattern || state.activity_type_id) && (
         <div class="add-to-dashboard-row">
           <button class="btn-add-to-dashboard" onClick={() => setShowAddToDashboard(true)}>
             <svg

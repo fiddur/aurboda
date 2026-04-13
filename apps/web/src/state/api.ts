@@ -128,10 +128,9 @@ export interface DataFilter {
 }
 
 export interface DeductionRuleCondition {
-  kind: 'activity' | 'tag' | 'screentime_category' | 'activity_data' | 'location' | 'after_date'
+  kind: 'activity' | 'screentime_category' | 'activity_data' | 'location' | 'after_date'
   activity_type?: string
   data_filters?: DataFilter[]
-  tag_name?: string
   category?: string[]
   field?: string
   operator?: 'eq' | 'neq' | 'exists' | 'not_exists'
@@ -1231,7 +1230,7 @@ export interface FetchTrendParams {
   lookback_days?: number
   display_period?: TrendDisplayPeriod
   aggregation?: 'count' | 'sum' | 'mean'
-  tag_definition_id?: string
+  activity_type_id?: string
   breakdown_fields?: string[]
 }
 
@@ -1247,7 +1246,7 @@ export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult>
   if (params.display_period) query.display_period = params.display_period
   if (params.half_life_days) query.half_life_days = params.half_life_days.toString()
   if (params.lookback_days) query.lookback_days = params.lookback_days.toString()
-  if (params.tag_definition_id) query.tag_definition_id = params.tag_definition_id
+  if (params.activity_type_id) query.tag_definition_id = params.activity_type_id
   if (params.breakdown_fields?.length) query.breakdown_fields = params.breakdown_fields.join(',')
 
   const response = await axios.get<TrendResponse>(`${API_URL}/trends`, {
@@ -1886,7 +1885,7 @@ export interface FetchChartDataParams {
   start: string
   end: string
   pattern?: string
-  tag_definition_id?: string
+  activity_type_id?: string
   bucket_size?: '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
   aggregation?: 'count' | 'sum' | 'mean'
   breakdown_fields?: string[]
@@ -1907,7 +1906,7 @@ export const fetchChartData = async (params: FetchChartDataParams): Promise<Char
     end: params.end,
   }
   if (params.pattern) query.pattern = params.pattern
-  if (params.tag_definition_id) query.tag_definition_id = params.tag_definition_id
+  if (params.activity_type_id) query.tag_definition_id = params.activity_type_id
   if (params.bucket_size) query.bucket_size = params.bucket_size
   if (params.aggregation) query.aggregation = params.aggregation
   if (params.breakdown_fields?.length) query.breakdown_fields = params.breakdown_fields.join(',')

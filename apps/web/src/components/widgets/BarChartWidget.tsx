@@ -26,7 +26,7 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
   const {
     source_type,
     pattern,
-    tag_definition_id,
+    tag_definition_id: activity_type_id,
     title,
     bucket_size,
     lookback_days,
@@ -36,7 +36,7 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
   const { start, end } = lookbackToRange(lookback_days)
 
   const chartQuery = useQuery({
-    enabled: Boolean(pattern ?? tag_definition_id),
+    enabled: Boolean(pattern ?? activity_type_id),
     queryFn: () =>
       fetchChartData({
         aggregation,
@@ -45,13 +45,13 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
         pattern: pattern ?? undefined,
         source_type,
         start,
-        ...(tag_definition_id ? { tag_definition_id } : {}),
+        ...(activity_type_id ? { activity_type_id } : {}),
       }),
     queryKey: [
       'chart-data',
       source_type,
       pattern,
-      tag_definition_id,
+      activity_type_id,
       bucket_size,
       lookback_days,
       aggregation,
@@ -67,7 +67,7 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
     lookback_days,
     pattern: pattern ?? undefined,
     source_type,
-    tag_definition_id,
+    activity_type_id,
   })
 
   if (chartQuery.isLoading) {
