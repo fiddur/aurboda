@@ -1661,6 +1661,7 @@ export const Timeline = () => {
             hideTooltip()
           })
 
+        const blockIconSize = Math.max(ICON_SIZE, Math.min(laneH, rw))
         if (item.icon && isEmoji(item.icon)) {
           parent
             .append('text')
@@ -1668,17 +1669,17 @@ export const Timeline = () => {
             .attr('y', laneY + laneH / 2)
             .attr('dy', '0.35em')
             .attr('text-anchor', 'middle')
-            .attr('font-size', `${ICON_SIZE}px`)
+            .attr('font-size', `${blockIconSize}px`)
             .attr('pointer-events', 'none')
             .text(item.icon)
         } else if (item.icon && (isUrl(item.icon) || isIconPath(item.icon))) {
           parent
             .append('image')
             .attr('href', item.icon)
-            .attr('x', rx + rw / 2 - ICON_SIZE / 2)
-            .attr('y', laneY + laneH / 2 - ICON_SIZE / 2)
-            .attr('width', ICON_SIZE)
-            .attr('height', ICON_SIZE)
+            .attr('x', rx + rw / 2 - blockIconSize / 2)
+            .attr('y', laneY + laneH / 2 - blockIconSize / 2)
+            .attr('width', blockIconSize)
+            .attr('height', blockIconSize)
             .attr('pointer-events', 'none')
         } else if (rw > 40) {
           const maxChars = Math.floor(rw / 6)
@@ -2611,6 +2612,7 @@ const drawBlockOverlay = (
   laneWidth: number,
   blockHeight: number,
 ) => {
+  const iconSize = Math.max(18, Math.min(laneWidth, blockHeight))
   if (item.icon && isEmoji(item.icon)) {
     parent
       .append('text')
@@ -2618,21 +2620,20 @@ const drawBlockOverlay = (
       .attr('y', y1 + blockHeight / 2)
       .attr('dy', '0.35em')
       .attr('text-anchor', 'middle')
-      .attr('font-size', '18px')
+      .attr('font-size', `${iconSize}px`)
       .attr('pointer-events', 'none')
       .text(item.icon)
     return
   }
 
   if (item.icon && (isUrl(item.icon) || isIconPath(item.icon))) {
-    const imgSize = 18
     parent
       .append('image')
       .attr('href', item.icon)
-      .attr('x', x + laneWidth / 2 - imgSize / 2)
-      .attr('y', y1 + blockHeight / 2 - imgSize / 2)
-      .attr('width', imgSize)
-      .attr('height', imgSize)
+      .attr('x', x + laneWidth / 2 - iconSize / 2)
+      .attr('y', y1 + blockHeight / 2 - iconSize / 2)
+      .attr('width', iconSize)
+      .attr('height', iconSize)
       .attr('pointer-events', 'none')
     return
   }
