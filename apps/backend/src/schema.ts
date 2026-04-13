@@ -272,6 +272,7 @@ export const createTableStatements: Record<string, string> = {
       phytate         DOUBLE PRECISION,
       ash             DOUBLE PRECISION,
       salt            DOUBLE PRECISION,
+      icon            TEXT,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT unique_food_item_name UNIQUE (name_lower)

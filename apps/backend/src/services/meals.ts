@@ -132,6 +132,7 @@ const linksToFoodItems = (links: MealFoodItemLink[]): MealFoodItem[] =>
   links.map((link) => ({
     food_item_id: link.food_item_id,
     name: link.food_item_name ?? '',
+    icon: link.food_item_icon as string | undefined,
     quantity: link.quantity as number | undefined,
     unit: link.unit as string | undefined,
     calories: link.calories as number | undefined,

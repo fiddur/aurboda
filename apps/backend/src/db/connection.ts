@@ -524,6 +524,10 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE meals ADD COLUMN IF NOT EXISTS sensitivities TEXT[]`)
   }
 
+  if (existingTableNames.has('food_items')) {
+    await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS icon TEXT`)
+  }
+
   if (existingTableNames.has('screentime_categories')) {
     await query(
       db,
@@ -649,10 +653,11 @@ export const migrateSchema = async (user: string) => {
       ['treadmill_running', 'running_treadmill'],
     ]
     for (const [oldName, newName] of garminNameAliases) {
-      await query(db, `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 AND deleted_at IS NULL`, [
-        newName,
-        oldName,
-      ])
+      await query(
+        db,
+        `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 AND deleted_at IS NULL`,
+        [newName, oldName],
+      )
     }
   }
 

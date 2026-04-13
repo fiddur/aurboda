@@ -402,14 +402,36 @@ const categorizeTagActivities = (
     })
 
 const categorizeMeals = (meals: Meal[], itemIcons: Record<string, string>): ChartItem[] =>
-  meals.map((m) => {
-    const icon =
+  meals.flatMap((m) => {
+    const mealIcon =
       resolveItemIcon(`meal:${m.meal_type ?? 'default'}`, itemIcons) ??
       resolveItemIcon('meal:default', itemIcons) ??
       '🍽️'
     const end = new Date(m.time.getTime() + 15 * 60000)
     const typeLabel = m.meal_type ? m.meal_type.charAt(0).toUpperCase() + m.meal_type.slice(1) : 'Meal'
     const details = [m.name, m.calories ? `${m.calories} kcal` : undefined].filter(Boolean) as string[]
+
+    const foodItemIcons = (m.food_items ?? []).filter((fi) => fi.icon).map((fi) => fi.icon!)
+    if (foodItemIcons.length > 0) {
+      return foodItemIcons.map((fiIcon) => ({
+        color: '#f59e0b',
+        column: 'Activity' as Column,
+        end,
+        entity_id: m.id,
+        entity_type: 'meal' as const,
+        href: `/meals/${m.id}`,
+        icon: fiIcon,
+        isPoint: true,
+        label: m.name ?? typeLabel,
+        start: m.time,
+        tooltip: {
+          details: details.length > 0 ? details : [typeLabel],
+          time: formatTime(m.time),
+          title: `${fiIcon} ${typeLabel}`,
+        },
+      }))
+    }
+
     return {
       color: '#f59e0b',
       column: 'Activity' as Column,
@@ -417,14 +439,14 @@ const categorizeMeals = (meals: Meal[], itemIcons: Record<string, string>): Char
       entity_id: m.id,
       entity_type: 'meal' as const,
       href: `/meals/${m.id}`,
-      icon,
+      icon: mealIcon,
       isPoint: true,
       label: m.name ?? typeLabel,
       start: m.time,
       tooltip: {
         details: details.length > 0 ? details : [typeLabel],
         time: formatTime(m.time),
-        title: `${icon} ${typeLabel}`,
+        title: `${mealIcon} ${typeLabel}`,
       },
     }
   })

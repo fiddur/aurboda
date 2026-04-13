@@ -1859,6 +1859,7 @@ export interface FoodItemEntity {
   source?: string
   default_quantity?: number
   default_unit?: string
+  icon?: string
   calories?: number
   protein?: number
   carbs?: number

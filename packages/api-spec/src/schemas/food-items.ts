@@ -26,6 +26,7 @@ export const foodItemEntitySchema = nutrientFieldsSchema
       .max(100)
       .optional()
       .meta({ description: 'Default unit (e.g., "g", "ml", "serving", "large slice")' }),
+    icon: z.string().optional().meta({ description: 'Icon for this food item (emoji or image URL)' }),
     id: z.string().uuid().meta({ description: 'Food item ID' }),
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     source: z
@@ -50,6 +51,7 @@ export const addFoodItemBodySchema = nutrientFieldsSchema
   .extend({
     default_quantity: z.number().optional().meta({ description: 'Default quantity' }),
     default_unit: z.string().max(100).optional().meta({ description: 'Default unit' }),
+    icon: z.string().optional().meta({ description: 'Icon (emoji or image URL)' }),
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     source: z.string().max(50).optional().meta({ description: 'Data source' }),
   })
@@ -64,6 +66,7 @@ export const updateFoodItemBodySchema = nutrientFieldsSchema
   .extend({
     default_quantity: z.number().nullable().optional(),
     default_unit: z.string().max(100).nullable().optional(),
+    icon: z.string().nullable().optional(),
     name: z.string().min(1).max(255).optional(),
   })
   .meta({ description: 'Update a food item — only provided fields are changed', id: 'UpdateFoodItemBody' })
