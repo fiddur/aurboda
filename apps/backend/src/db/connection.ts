@@ -656,6 +656,19 @@ export const migrateSchema = async (user: string) => {
     }
   }
 
+  // Fix display_category for activity types that were auto-created as 'other' but should be wellness
+  if (existingTableNames.has('activity_type_definitions')) {
+    const wellnessTypes = ['breathwork', 'cold_exposure', 'hot_bath', 'sauna']
+    for (const name of wellnessTypes) {
+      await query(
+        db,
+        `UPDATE activity_type_definitions SET display_category = 'wellness'
+         WHERE name = $1 AND display_category = 'other'`,
+        [name],
+      )
+    }
+  }
+
   // Ensure every activity_type in use has a corresponding definition (idempotent)
   if (existingTableNames.has('activity_type_definitions') && existingTableNames.has('activities')) {
     await query(
