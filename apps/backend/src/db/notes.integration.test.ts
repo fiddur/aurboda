@@ -374,7 +374,7 @@ describe('Notes Integration Tests', () => {
       const entityId = randomUUID()
 
       await insertNote(user, 'activity', entityId, 'Activity note')
-      await insertNote(user, 'activity', entityId, 'Tag note')
+      await insertNote(user, 'metric', entityId, 'Metric note')
 
       const result = await getNotesByEntityIds(user, 'activity', [entityId])
 
