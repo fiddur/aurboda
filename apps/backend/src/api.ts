@@ -55,6 +55,7 @@ import { httpError, isHttpError } from './http-error.ts'
 import { syncAllCalendars } from './ical-sync.ts'
 import { syncLastFmData } from './lastfm-sync.ts'
 import { createMcpRouter } from './mcp.ts'
+import { createScrobblesRouter } from './routes/scrobbles-router.ts'
 import { syncAllOuraData, syncOuraDataType } from './oura-sync.ts'
 import { ouraClient } from './oura.ts'
 import { createOwnTracksRouter } from './owntracks.ts'
@@ -702,6 +703,7 @@ const main = async () => {
   httpd.use('/trends', createTrendsRouter(authMiddleware))
   httpd.use('/chart-data', createChartDataRouter(authMiddleware))
   httpd.use('/screentime-categories', createScreentimeCategoriesRouter(authMiddleware))
+  httpd.use('/lastfm', createScrobblesRouter(authMiddleware))
   httpd.use(
     '/admin',
     createAdminRouter(
