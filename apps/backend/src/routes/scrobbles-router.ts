@@ -3,8 +3,7 @@
  */
 import type { ScrobblesResponse } from '@aurboda/api-spec'
 
-import type { RequestHandler } from 'express'
-import type { Router } from 'express'
+import type { RequestHandler, Router } from 'express'
 
 import { getScrobbles } from '../db/index.ts'
 import { typedRouter } from '../typed-router.ts'
