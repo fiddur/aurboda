@@ -169,7 +169,7 @@ const getScrobbles = async (
     `recorded_at < $2`,
   ]
 
-  const escapeLike = (s: string) => s.replace(/%/g, '\\%').replace(/_/g, '\\_')
+  const escapeLike = (s: string) => s.replaceAll('%', '\\%').replaceAll('_', '\\_')
 
   if (artist && artist.length > 0) {
     if (matchMode === 'exact') {
