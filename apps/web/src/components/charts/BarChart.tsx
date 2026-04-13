@@ -112,10 +112,10 @@ function positionTooltip(
   tooltip.style.top = `${margin.top + 8}px`
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- D3 selection type unions are unwieldy
 function createBarWrapper(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   href: string | undefined,
+  // oxlint-disable-next-line typescript/no-explicit-any -- D3 selection type unions are unwieldy
 ): d3.Selection<any, unknown, null, undefined> {
   if (href) {
     const a = document.createElementNS('http://www.w3.org/2000/svg', 'a')

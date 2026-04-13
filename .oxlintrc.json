@@ -39,7 +39,11 @@
     "unicorn/prefer-string-replace-all": 2,
     "unicorn/prefer-includes": 2,
     "unicorn/no-instanceof-builtins": 2,
-    "unicorn/error-message": 2
+    "unicorn/error-message": 2,
+    "no-console": [2, { "allow": ["warn", "error", "info"] }],
+    "typescript/no-explicit-any": 2,
+    "typescript/no-floating-promises": 2,
+    "typescript/no-non-null-assertion": 1
   },
-  "ignorePatterns": ["**/generated/**", "**/dist/**", "**/node_modules/**", "**/coverage/**"]
+  "ignorePatterns": ["**/generated/**", "**/dist/**", "**/node_modules/**", "**/coverage/**", "scripts/**"]
 }
