@@ -146,5 +146,57 @@ describe('createDefaultEngineDeps', () => {
       const result = await deps.getScrobbles('user', ['Nobody'], undefined, 'exact', 210, window)
       expect(result).toEqual([])
     })
+
+    test('builds contains track match query with LIKE escaping', async () => {
+      const deps = createDefaultEngineDeps()
+      mockedQuery.mockClear()
+      mockedQuery.mockResolvedValueOnce({ rows: [] } as never)
+
+      await deps.getScrobbles('user', undefined, 'Track_1', 'contains', 210, window)
+
+      const lastCall = mockedQuery.mock.calls[mockedQuery.mock.calls.length - 1]
+      const params = lastCall[2] as unknown[]
+      expect(params[2]).toBe('%track\\_1%')
+    })
+
+    test('builds combined artist and track query', async () => {
+      const deps = createDefaultEngineDeps()
+      mockedQuery.mockClear()
+      mockedQuery.mockResolvedValueOnce({ rows: [] } as never)
+
+      await deps.getScrobbles('user', ['Artist'], 'Track', 'exact', 210, window)
+
+      const lastCall = mockedQuery.mock.calls[mockedQuery.mock.calls.length - 1]
+      const sql = lastCall[1] as string
+      expect(sql).toContain(`LOWER(data->>'artist') = ANY($3)`)
+      expect(sql).toContain(`LOWER(data->>'track') = $4`)
+    })
+
+    test('skips artist filter when artist array is empty', async () => {
+      const deps = createDefaultEngineDeps()
+      mockedQuery.mockClear()
+      mockedQuery.mockResolvedValueOnce({ rows: [] } as never)
+
+      await deps.getScrobbles('user', [], 'Track', 'exact', 210, window)
+
+      const lastCall = mockedQuery.mock.calls[mockedQuery.mock.calls.length - 1]
+      const sql = lastCall[1] as string
+      expect(sql).not.toContain('artist')
+      expect(sql).toContain(`LOWER(data->>'track') = $3`)
+    })
+
+    test('contains mode with multiple artists uses OR', async () => {
+      const deps = createDefaultEngineDeps()
+      mockedQuery.mockClear()
+      mockedQuery.mockResolvedValueOnce({ rows: [] } as never)
+
+      await deps.getScrobbles('user', ['A', 'B'], undefined, 'contains', 210, window)
+
+      const lastCall = mockedQuery.mock.calls[mockedQuery.mock.calls.length - 1]
+      const sql = lastCall[1] as string
+      expect(sql).toContain('LIKE $3')
+      expect(sql).toContain('LIKE $4')
+      expect(sql).toContain(' OR ')
+    })
   })
 })
