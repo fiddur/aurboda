@@ -549,6 +549,22 @@ export const migrateSchema = async (user: string) => {
       `ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS mode VARCHAR(10) NOT NULL DEFAULT 'create'`,
     )
     await query(db, `ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS output_data JSONB`)
+
+    // Migrate kind='tag' conditions to kind='activity' (tags absorbed into activities)
+    await query(
+      db,
+      `UPDATE deduction_rules
+       SET conditions = (
+         SELECT jsonb_agg(
+           CASE WHEN c->>'kind' = 'tag'
+           THEN jsonb_build_object('kind', 'activity', 'activity_type', c->>'tag_name')
+           ELSE c END
+         )
+         FROM jsonb_array_elements(conditions) c
+       )
+       WHERE conditions::text LIKE '%"kind":"tag"%'
+          OR conditions::text LIKE '%"kind": "tag"%'`,
+    )
   }
 
   // Migrate notes entity_id from UUID to TEXT (supports composite keys for metrics)

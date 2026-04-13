@@ -48,7 +48,7 @@ export function TrendChartWidget({ config }: TrendChartWidgetProps) {
     lookback_days,
     pattern,
     source_type,
-    tag_definition_id: config.tag_definition_id,
+    activity_type_id: config.tag_definition_id,
   })
 
   if (trendQuery.isLoading) {

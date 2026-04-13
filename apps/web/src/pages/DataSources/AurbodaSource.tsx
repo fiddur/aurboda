@@ -5,7 +5,7 @@ import { fetchMetricTimeSeries, fetchUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
 
-const DATA_TYPES = ['Tags', 'Custom metrics', 'Manual data entry', 'Notes', 'Calories (computed)']
+const DATA_TYPES = ['Custom metrics', 'Manual data entry', 'Notes', 'Calories (computed)']
 
 function CalorieEstimationStatus({
   hasBirthDate,
@@ -91,9 +91,8 @@ export function AurbodaSource() {
       <div class="data-source-detail">
         <p class="source-description">
           The Aurboda web app, REST API, and MCP tools are always available as a data source. You can manually
-          add tags, record custom metrics, set goals, and annotate your data with notes. This is the native
-          data entry layer — everything you add through the web UI, API calls, or AI assistant interactions
-          lives here.
+          record custom metrics, set goals, and annotate your data with notes. This is the native data entry
+          layer — everything you add through the web UI, API calls, or AI assistant interactions lives here.
         </p>
 
         <div class="data-types-section">

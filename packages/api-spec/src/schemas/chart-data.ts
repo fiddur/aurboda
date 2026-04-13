@@ -1,6 +1,6 @@
 /**
- * Chart data schemas for bucketed aggregation of tags, metrics,
- * productivity categories, and activity types.
+ * Chart data schemas for bucketed aggregation of activity types, metrics,
+ * productivity categories, and more.
  *
  * Supports daily, weekly, and monthly bucketing with count/sum/mean aggregation.
  */
@@ -15,8 +15,8 @@ import { baseResponseSchema } from './common.ts'
 export const chartDataSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
   .meta({
-    description: 'Type of data source for chart data query',
-    example: 'tag',
+    description: "Type of data source for chart data query. 'tag' is a deprecated alias for 'activity_type'.",
+    example: 'activity_type',
     id: 'ChartDataSourceType',
   })
 
@@ -56,14 +56,20 @@ export const chartDataQuerySchema = z
     pattern: z
       .string()
       .optional()
-      .meta({ description: 'Pattern to match (regex for tags, metric name for metrics, category path)' }),
+      .meta({ description: 'Pattern to match (regex for activity types, metric name for metrics, category path)' }),
     source_type: chartDataSourceTypeSchema.meta({ description: 'Type of data source' }),
     start: z.iso.datetime().meta({ description: 'Start of time range (ISO 8601)' }),
+    activity_type_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Activity type definition ID (alternative to pattern)' }),
+    /** @deprecated Use activity_type_id instead */
     tag_definition_id: z
       .string()
       .uuid()
       .optional()
-      .meta({ description: 'Tag definition ID (alternative to pattern for tags)' }),
+      .meta({ description: 'Deprecated: use activity_type_id instead' }),
     breakdown_fields: z.array(z.string()).optional().meta({
       description:
         'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys.',
@@ -88,11 +94,17 @@ export const chartDataHttpQuerySchema = z
     pattern: z.string().optional().meta({ description: 'Pattern to match' }),
     source_type: chartDataSourceTypeSchema,
     start: z.string().meta({ description: 'Start of time range (ISO 8601 string)' }),
+    activity_type_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Activity type definition ID (alternative to pattern)' }),
+    /** @deprecated Use activity_type_id instead */
     tag_definition_id: z
       .string()
       .uuid()
       .optional()
-      .meta({ description: 'Tag definition ID (alternative to pattern for tags)' }),
+      .meta({ description: 'Deprecated: use activity_type_id instead' }),
   })
   .meta({ id: 'ChartDataHttpQuery', description: 'HTTP query parameters for chart data endpoint' })
 

@@ -34,13 +34,6 @@ export const activityConditionSchema = z
       'Matches time ranges where an activity of the given type exists, optionally filtered by data fields',
   })
 
-export const tagConditionSchema = z
-  .object({
-    kind: z.literal('tag'),
-    tag_name: z.string(),
-  })
-  .meta({ description: 'Matches time ranges where a tag with the given name exists' })
-
 export const screentimeCategoryConditionSchema = z
   .object({
     category: z.array(z.string()).min(1),
@@ -79,7 +72,6 @@ export const afterDateConditionSchema = z
 
 export const conditionSchema = z.discriminatedUnion('kind', [
   activityConditionSchema,
-  tagConditionSchema,
   screentimeCategoryConditionSchema,
   activityDataConditionSchema,
   locationConditionSchema,

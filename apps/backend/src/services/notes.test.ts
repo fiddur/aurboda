@@ -30,7 +30,7 @@ const makeNote = (overrides = {}) => ({
   created_at: new Date('2024-01-15T10:00:00Z'),
   end_time: undefined,
   entity_id: randomUUID(),
-  entity_type: 'tag' as const,
+  entity_type: 'activity' as const,
   id: randomUUID(),
   start_time: undefined,
   updated_at: new Date('2024-01-15T10:00:00Z'),
@@ -55,13 +55,13 @@ describe('addNote', () => {
       start_time: tagStart,
     })
 
-    const note = makeNote({ end_time: tagEnd, entity_id: tagId, entity_type: 'tag', start_time: tagStart })
+    const note = makeNote({ end_time: tagEnd, entity_id: tagId, entity_type: 'activity', start_time: tagStart })
     vi.mocked(db.insertNote).mockResolvedValue(note)
 
-    const result = await addNote('user', { content: 'Great session', entity_id: tagId, entity_type: 'tag' })
+    const result = await addNote('user', { content: 'Great session', entity_id: tagId, entity_type: 'activity' })
 
     expect(db.getActivityById).toHaveBeenCalledWith('user', tagId)
-    expect(db.insertNote).toHaveBeenCalledWith('user', 'tag', tagId, 'Great session', tagStart, tagEnd)
+    expect(db.insertNote).toHaveBeenCalledWith('user', 'activity', tagId, 'Great session', tagStart, tagEnd)
     expect(result.success).toBe(true)
     expect(result.data?.start_time).toBe(tagStart.toISOString())
     expect(result.data?.end_time).toBe(tagEnd.toISOString())
@@ -79,24 +79,24 @@ describe('addNote', () => {
       start_time: tagStart,
     })
 
-    const note = makeNote({ entity_id: tagId, entity_type: 'tag', start_time: tagStart })
+    const note = makeNote({ entity_id: tagId, entity_type: 'activity', start_time: tagStart })
     vi.mocked(db.insertNote).mockResolvedValue(note)
 
-    await addNote('user', { content: 'Note', entity_id: tagId, entity_type: 'tag' })
+    await addNote('user', { content: 'Note', entity_id: tagId, entity_type: 'activity' })
 
-    expect(db.insertNote).toHaveBeenCalledWith('user', 'tag', tagId, 'Note', tagStart, undefined)
+    expect(db.insertNote).toHaveBeenCalledWith('user', 'activity', tagId, 'Note', tagStart, undefined)
   })
 
   test('returns undefined times when tag entity not found', async () => {
     const tagId = randomUUID()
     vi.mocked(db.getActivityById).mockResolvedValue(null)
 
-    const note = makeNote({ entity_id: tagId, entity_type: 'tag' })
+    const note = makeNote({ entity_id: tagId, entity_type: 'activity' })
     vi.mocked(db.insertNote).mockResolvedValue(note)
 
-    await addNote('user', { content: 'Orphan note', entity_id: tagId, entity_type: 'tag' })
+    await addNote('user', { content: 'Orphan note', entity_id: tagId, entity_type: 'activity' })
 
-    expect(db.insertNote).toHaveBeenCalledWith('user', 'tag', tagId, 'Orphan note', undefined, undefined)
+    expect(db.insertNote).toHaveBeenCalledWith('user', 'activity', tagId, 'Orphan note', undefined, undefined)
   })
 
   test('inherits times from an activity entity', async () => {
@@ -193,21 +193,21 @@ describe('addNote', () => {
         created_at: new Date('2024-01-15T10:00:00Z'),
         end_time: end,
         entity_id: tagId,
-        entity_type: 'tag',
+        entity_type: 'activity',
         id: noteId,
         start_time: start,
         updated_at: new Date('2024-01-15T10:00:00Z'),
       }),
     )
 
-    const result = await addNote('user', { content: 'A note', entity_id: tagId, entity_type: 'tag' })
+    const result = await addNote('user', { content: 'A note', entity_id: tagId, entity_type: 'activity' })
 
     expect(result.success).toBe(true)
     expect(result.data).toMatchObject({
       content: 'A note',
       end_time: end.toISOString(),
       entity_id: tagId,
-      entity_type: 'tag',
+      entity_type: 'activity',
       id: noteId,
       start_time: start.toISOString(),
     })
@@ -225,7 +225,7 @@ describe('updateNoteContent', () => {
     const end = new Date('2024-01-15T09:00:00Z')
 
     vi.mocked(db.updateNote).mockResolvedValue(
-      makeNote({ end_time: end, entity_type: 'tag', id: noteId, start_time: start }),
+      makeNote({ end_time: end, entity_type: 'activity', id: noteId, start_time: start }),
     )
 
     const result = await updateNoteContent('user', noteId, 'Updated content')
@@ -278,7 +278,7 @@ describe('getNotesForEntity', () => {
       makeNote({ content: 'Note 2', entity_id: entityId }),
     ])
 
-    const result = await getNotesForEntity('user', 'tag', entityId)
+    const result = await getNotesForEntity('user', 'activity', entityId)
 
     expect(result).toHaveLength(2)
     expect(result[0].content).toBe('Note 1')
@@ -308,9 +308,9 @@ describe('syncNoteTimesForEntity', () => {
     const start = new Date('2024-01-15T08:00:00Z')
     const end = new Date('2024-01-15T09:00:00Z')
 
-    await syncNoteTimesForEntity('user', 'tag', entityId, start, end)
+    await syncNoteTimesForEntity('user', 'activity', entityId, start, end)
 
-    expect(db.updateNoteTimesForEntity).toHaveBeenCalledWith('user', 'tag', entityId, start, end)
+    expect(db.updateNoteTimesForEntity).toHaveBeenCalledWith('user', 'activity', entityId, start, end)
   })
 
   test('passes undefined end_time when not provided', async () => {

@@ -49,7 +49,7 @@ describe('Notes Integration Tests', () => {
       const startTime = new Date('2024-01-15T08:15:00Z')
       const endTime = new Date('2024-01-15T08:45:00Z')
 
-      const note = await insertNote(user, 'tag', entityId, 'Morning run', startTime, endTime)
+      const note = await insertNote(user, 'activity', entityId, 'Morning run', startTime, endTime)
 
       expect(note.start_time).toEqual(startTime)
       expect(note.end_time).toEqual(endTime)
@@ -60,7 +60,7 @@ describe('Notes Integration Tests', () => {
       const entityId = randomUUID()
       const startTime = new Date('2024-01-15T09:00:00Z')
 
-      const note = await insertNote(user, 'tag', entityId, 'Point in time note', startTime)
+      const note = await insertNote(user, 'activity', entityId, 'Point in time note', startTime)
 
       expect(note.start_time).toEqual(startTime)
       expect(note.end_time).toBeUndefined()
@@ -82,7 +82,7 @@ describe('Notes Integration Tests', () => {
       const user = getTestUser()
       const entityId = randomUUID()
 
-      const created = await insertNote(user, 'tag', entityId, 'A note on a tag')
+      const created = await insertNote(user, 'activity', entityId, 'A note on a tag')
       const found = await getNoteById(user, created.id)
 
       expect(found).not.toBeNull()
@@ -160,12 +160,12 @@ describe('Notes Integration Tests', () => {
       const initialStart = new Date('2024-01-15T08:00:00Z')
       const initialEnd = new Date('2024-01-15T08:30:00Z')
 
-      const note1 = await insertNote(user, 'tag', entityId, 'First note', initialStart, initialEnd)
-      const note2 = await insertNote(user, 'tag', entityId, 'Second note', initialStart, initialEnd)
+      const note1 = await insertNote(user, 'activity', entityId, 'First note', initialStart, initialEnd)
+      const note2 = await insertNote(user, 'activity', entityId, 'Second note', initialStart, initialEnd)
 
       const newStart = new Date('2024-01-15T08:15:00Z')
       const newEnd = new Date('2024-01-15T09:00:00Z')
-      await updateNoteTimesForEntity(user, 'tag', entityId, newStart, newEnd)
+      await updateNoteTimesForEntity(user, 'activity', entityId, newStart, newEnd)
 
       const updatedNote1 = await getNoteById(user, note1.id)
       const updatedNote2 = await getNoteById(user, note2.id)
@@ -182,10 +182,10 @@ describe('Notes Integration Tests', () => {
       const start = new Date('2024-01-15T08:00:00Z')
       const end = new Date('2024-01-15T09:00:00Z')
 
-      const note = await insertNote(user, 'tag', entityId, 'Has end time', start, end)
+      const note = await insertNote(user, 'activity', entityId, 'Has end time', start, end)
       expect(note.end_time).toBeDefined()
 
-      await updateNoteTimesForEntity(user, 'tag', entityId, start, undefined)
+      await updateNoteTimesForEntity(user, 'activity', entityId, start, undefined)
 
       const updated = await getNoteById(user, note.id)
       expect(updated!.start_time).toEqual(start)
@@ -198,11 +198,11 @@ describe('Notes Integration Tests', () => {
       const entityId2 = randomUUID()
       const start = new Date('2024-01-15T08:00:00Z')
 
-      const note1 = await insertNote(user, 'tag', entityId1, 'Entity 1 note', start)
-      const note2 = await insertNote(user, 'tag', entityId2, 'Entity 2 note', start)
+      const note1 = await insertNote(user, 'activity', entityId1, 'Entity 1 note', start)
+      const note2 = await insertNote(user, 'activity', entityId2, 'Entity 2 note', start)
 
       const newStart = new Date('2024-01-15T10:00:00Z')
-      await updateNoteTimesForEntity(user, 'tag', entityId1, newStart)
+      await updateNoteTimesForEntity(user, 'activity', entityId1, newStart)
 
       const reloaded1 = await getNoteById(user, note1.id)
       const reloaded2 = await getNoteById(user, note2.id)
@@ -220,7 +220,7 @@ describe('Notes Integration Tests', () => {
       const start = new Date('2024-01-15T08:15:00Z')
       const end = new Date('2024-01-15T08:45:00Z')
 
-      await insertNote(user, 'tag', entityId, 'In range', start, end)
+      await insertNote(user, 'activity', entityId, 'In range', start, end)
 
       const results = await getNotesForTimeRange(
         user,
@@ -239,7 +239,7 @@ describe('Notes Integration Tests', () => {
       const monthStart = new Date('2024-01-01T00:00:00Z')
       const monthEnd = new Date('2024-01-31T23:59:59Z')
 
-      await insertNote(user, 'tag', entityId, 'Long tag note', monthStart, monthEnd)
+      await insertNote(user, 'activity', entityId, 'Long tag note', monthStart, monthEnd)
 
       // Query a day in the middle of the month
       const results = await getNotesForTimeRange(
@@ -258,7 +258,7 @@ describe('Notes Integration Tests', () => {
       // Note is the day before
       await insertNote(
         user,
-        'tag',
+        'activity',
         entityId,
         'Yesterday',
         new Date('2024-01-14T10:00:00Z'),
@@ -279,7 +279,7 @@ describe('Notes Integration Tests', () => {
       const entityId = randomUUID()
       const pointInTime = new Date('2024-01-15T12:00:00Z')
 
-      await insertNote(user, 'tag', entityId, 'Point-in-time note', pointInTime)
+      await insertNote(user, 'activity', entityId, 'Point-in-time note', pointInTime)
 
       const results = await getNotesForTimeRange(
         user,
@@ -296,7 +296,7 @@ describe('Notes Integration Tests', () => {
       const entityId = randomUUID()
       const outsideTime = new Date('2024-01-16T12:00:00Z')
 
-      await insertNote(user, 'tag', entityId, 'Outside', outsideTime)
+      await insertNote(user, 'activity', entityId, 'Outside', outsideTime)
 
       const results = await getNotesForTimeRange(
         user,
@@ -328,8 +328,8 @@ describe('Notes Integration Tests', () => {
       const laterStart = new Date('2024-01-15T14:00:00Z')
       const earlierStart = new Date('2024-01-15T08:00:00Z')
 
-      await insertNote(user, 'tag', randomUUID(), 'Later note', laterStart)
-      await insertNote(user, 'tag', randomUUID(), 'Earlier note', earlierStart)
+      await insertNote(user, 'activity', randomUUID(), 'Later note', laterStart)
+      await insertNote(user, 'activity', randomUUID(), 'Earlier note', earlierStart)
 
       const results = await getNotesForTimeRange(
         user,
@@ -374,7 +374,7 @@ describe('Notes Integration Tests', () => {
       const entityId = randomUUID()
 
       await insertNote(user, 'activity', entityId, 'Activity note')
-      await insertNote(user, 'tag', entityId, 'Tag note')
+      await insertNote(user, 'activity', entityId, 'Tag note')
 
       const result = await getNotesByEntityIds(user, 'activity', [entityId])
 

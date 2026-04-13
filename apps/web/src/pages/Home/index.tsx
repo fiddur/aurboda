@@ -221,14 +221,14 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
                   <strong>Last.fm</strong>
                 </a>
               </td>
-              <td>Music scrobbles with auto-generated tags from configurable rules</td>
+              <td>Music scrobbles with auto-generated activities from configurable rules</td>
               <td>Pull (API)</td>
             </tr>
             <tr>
               <td>
                 <strong>Calendars (ICS)</strong>
               </td>
-              <td>Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)</td>
+              <td>Calendar events imported as activities (Google Calendar, Outlook, iCloud, Nextcloud, etc.)</td>
               <td>Pull (ICS fetch)</td>
             </tr>
             <tr>
@@ -244,7 +244,7 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
               <td>
                 <strong>Manual Entry</strong>
               </td>
-              <td>Any metric, tag, activity, meal, or note</td>
+              <td>Any metric, activity, meal, or note</td>
               <td>Web UI, REST API, or MCP</td>
             </tr>
           </tbody>
@@ -255,8 +255,8 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
         <h2>Features</h2>
         <ul>
           <li>
-            <strong>Timeline</strong> — Multi-track interactive day view: activities, tags, metrics, screen
-            time, music, and location
+            <strong>Timeline</strong> — Multi-track interactive day view: activities, metrics, screen time,
+            music, and location
           </li>
           <li>
             <strong>Dashboard</strong> — Customizable widget-based home page with metric cards, sparklines,
@@ -270,8 +270,8 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
             activity impact timelines
           </li>
           <li>
-            <strong>Trends (EMA)</strong> — Exponential Moving Average smoothing for tags, metrics, and screen
-            time
+            <strong>Trends (EMA)</strong> — Exponential Moving Average smoothing for activity types, metrics,
+            and screen time
           </li>
           <li>
             <strong>Goals</strong> — Rolling-window health targets

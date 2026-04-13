@@ -56,6 +56,7 @@ export const buildBucketExpr = (
 }
 
 export interface ChartDataInput {
+  activity_type_id?: string
   aggregation: 'count' | 'mean' | 'sum'
   breakdown_fields?: string[]
   bucket_size: '1m' | '5m' | '15m' | '1M' | '1d' | '1h' | '1w'
@@ -63,6 +64,7 @@ export interface ChartDataInput {
   pattern?: string
   source_type: ChartDataSourceType
   start: string
+  /** @deprecated Use activity_type_id instead */
   tag_definition_id?: string
 }
 
@@ -284,7 +286,7 @@ export const getChartData = async (
   breakdown_fields?: string[]
   breakdown_series?: string[]
 }> => {
-  const { aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } = input
+  const { activity_type_id, aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } = input
 
   // Breakdown mode for activity types
   if (
@@ -312,15 +314,18 @@ export const getChartData = async (
   let buckets: ChartDataBucket[]
 
   switch (source_type) {
-    case 'tag':
-      if (tag_definition_id) {
-        buckets = await queryActivitiesByType(user, tag_definition_id, start, end, bucket_size)
+    case 'tag': {
+      // 'tag' is a backward-compat alias for activity_type count
+      const typeId = activity_type_id ?? tag_definition_id
+      if (typeId) {
+        buckets = await queryActivitiesByType(user, typeId, start, end, bucket_size)
       } else if (pattern) {
         buckets = await queryActivitiesByTypePattern(user, pattern, start, end, bucket_size)
       } else {
         buckets = []
       }
       break
+    }
 
     case 'metric':
       buckets = pattern ? await queryMetricBuckets(user, pattern, start, end, bucket_size, aggregation) : []

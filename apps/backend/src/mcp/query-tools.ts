@@ -136,7 +136,7 @@ Use cases:
   // Tool: query_tags
   server.tool(
     'query_tags',
-    'Query tags/labels for a time range. Returns all tags with start times, optional end times, and tag text.',
+    'Query non-exercise/sleep activities (formerly called tags) for a time range. Returns all tags with start times, optional end times, and tag text.',
     { ...timeRangeQuerySchema.shape, tz: tzSchema },
     async ({ end, start, tz }) => {
       const tags = await queryTags(user, new Date(start), new Date(end), sync)

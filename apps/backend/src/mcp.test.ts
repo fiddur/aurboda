@@ -85,7 +85,6 @@ vi.mock('./services/deduction-deps', () => ({
     getEarliestActivityTime: vi.fn().mockResolvedValue(null),
     getLocationVisits: vi.fn().mockResolvedValue([]),
     getScreentime: vi.fn().mockResolvedValue([]),
-    getTags: vi.fn().mockResolvedValue([]),
     insertActivity: vi.fn().mockResolvedValue(undefined),
     insertRuleRun: vi.fn().mockResolvedValue(undefined),
   }),

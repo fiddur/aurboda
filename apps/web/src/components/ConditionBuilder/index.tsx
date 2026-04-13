@@ -15,12 +15,10 @@ const KIND_LABELS: Record<string, string> = {
   after_date: 'Since Date',
   location: 'Location',
   screentime_category: 'Screentime Category',
-  tag: 'Tag Name',
 }
 
 const KINDS: Array<DeductionRuleCondition['kind']> = [
   'activity',
-  'tag',
   'screentime_category',
   'activity_data',
   'location',
@@ -183,7 +181,6 @@ const KIND_DEFAULTS: Record<string, Partial<DeductionRuleCondition>> = {
   after_date: { date: new Date().toISOString().slice(0, 10) },
   location: { location_name: '' },
   screentime_category: { category: [] },
-  tag: { tag_name: '' },
 }
 
 function ConditionCard({
@@ -264,16 +261,6 @@ function ConditionCard({
               )
             })()}
           </>
-        )}
-
-        {condition.kind === 'tag' && (
-          <input
-            type="text"
-            value={condition.tag_name ?? ''}
-            onInput={(e) => update({ ...condition, tag_name: (e.target as HTMLInputElement).value })}
-            placeholder="Tag name"
-            class="condition-field-input"
-          />
         )}
 
         {condition.kind === 'screentime_category' && (

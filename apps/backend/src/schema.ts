@@ -762,7 +762,7 @@ export const createTableStatements: Record<string, string> = {
     )
   `,
 
-  // Tag definitions — canonical tag identities with aliases for matching
+  // Legacy table — kept for migration only, no new data written
   tag_definitions: `
     CREATE TABLE IF NOT EXISTS tag_definitions (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -779,7 +779,7 @@ export const createTableStatements: Record<string, string> = {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tag_definitions_name ON tag_definitions (lower(name))
   `,
 
-  // Activity labels/tags
+  // Legacy table — kept for migration only, no new data written
   tags: `
     CREATE TABLE IF NOT EXISTS tags (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
