@@ -6,7 +6,9 @@ import { useEffect, useState } from 'preact/hooks'
 import type { FoodItemEntity } from '../../state/api'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
+import { IconInput } from '../../components/IconInput'
 import { auth } from '../../state/auth'
+import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import './FoodItemDetail.css'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
@@ -158,6 +160,7 @@ export function FoodItemDetail() {
 
   const isEditing = editing !== null
   const editName = (editing?.name as string) ?? item.name
+  const editIcon = (editing?.icon as string) ?? item.icon ?? ''
   const editQty = (editing?.default_quantity as number) ?? item.default_quantity
   const editUnit = (editing?.default_unit as string) ?? item.default_unit
 
@@ -209,7 +212,20 @@ export function FoodItemDetail() {
           onInput={(e) => setEditing({ ...editing, name: (e.target as HTMLInputElement).value })}
         />
       ) : (
-        <h1>{item.name}</h1>
+        <h1>
+          {item.icon && isEmoji(item.icon) && <span class="fi-icon-display">{item.icon} </span>}
+          {item.icon && (isUrl(item.icon) || isIconPath(item.icon)) && (
+            <img src={item.icon} alt="icon" width={24} height={24} class="fi-icon-display-img" />
+          )}
+          {item.name}
+        </h1>
+      )}
+
+      {isEditing && (
+        <div class="fi-icon-row">
+          <label class="fi-icon-label">Icon</label>
+          <IconInput value={editIcon} onChange={(v) => setEditing({ ...editing, icon: v || null })} />
+        </div>
       )}
 
       <div class="fi-meta">
