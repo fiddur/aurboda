@@ -23,21 +23,16 @@ export const createTrainingLoadRouter = (authMiddleware: RequestHandler): Router
       const { start, end, bucket_size, tz } = req.query
       const user = req.user!
 
-      try {
-        const startDate = new Date(start)
-        const endDate = new Date(end)
+      const startDate = new Date(start)
+      const endDate = new Date(end)
 
-        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-          res.status(400).json({ error: 'Invalid date format', success: false })
-          return
-        }
-
-        const result = await computeTrainingLoad(deps, user, startDate, endDate, bucket_size, tz)
-        res.json({ data: result, success: true })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(400).json({ error: message, success: false })
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        res.status(400).json({ error: 'Invalid date format', success: false })
+        return
       }
+
+      const result = await computeTrainingLoad(deps, user, startDate, endDate, bucket_size, tz)
+      res.json({ data: result, success: true })
     },
   )
 
