@@ -83,13 +83,10 @@ export const getTrendQuerySchema = z
       .uuid()
       .optional()
       .meta({ description: 'Tag definition ID (alternative to pattern for tag trends)' }),
-    breakdown_fields: z
-      .array(z.string())
-      .optional()
-      .meta({
-        description:
-          'Data fields to break down by (for activity_type source). Produces per-series EMA histories.',
-      }),
+    breakdown_fields: z.array(z.string()).optional().meta({
+      description:
+        'Data fields to break down by (for activity_type source). Produces per-series EMA histories.',
+    }),
   })
   .meta({ id: 'GetTrendQuery' })
 

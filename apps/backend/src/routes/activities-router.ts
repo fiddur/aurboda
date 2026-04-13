@@ -719,13 +719,11 @@ export const createActivitiesRouter = (
       }
 
       if (!garminActivityId) {
-        res
-          .status(400)
-          .json({
-            points: 0,
-            success: false,
-            error: 'No Garmin activity ID found in activity or its merged sources',
-          })
+        res.status(400).json({
+          points: 0,
+          success: false,
+          error: 'No Garmin activity ID found in activity or its merged sources',
+        })
         return
       }
 
