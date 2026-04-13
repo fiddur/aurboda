@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Trends route group.
@@ -9,10 +9,10 @@ import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/
 
 import { getCustomMetrics } from '../services/mutations.ts'
 import { getTrend } from '../services/trends.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
-export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
+export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, TrendResponse, unknown, TrendQuery>(
@@ -65,5 +65,5 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  return router as unknown as Router
+  return router
 }

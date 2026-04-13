@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Correlations route group.
@@ -32,13 +32,13 @@ import {
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
 } from '../services/correlations.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createCorrelationsRouter = (
   authMiddleware: RequestHandler,
   syncProvider?: SyncProvider,
-): Router => {
+): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, BaselineResponse, unknown, BaselineQuery>(
@@ -133,5 +133,5 @@ export const createCorrelationsRouter = (
     },
   )
 
-  return router as unknown as Router
+  return router
 }

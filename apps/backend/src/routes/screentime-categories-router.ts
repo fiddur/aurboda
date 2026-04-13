@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Screentime categories route group.
@@ -36,7 +36,7 @@ import {
   removeCategory,
   upsertCategory,
 } from '../services/screentime-categories.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
 /** Serialize DB screentime category (Date timestamps) to API format (ISO strings). */
@@ -46,7 +46,7 @@ const serializeCategory = (cat: DbScreentimeCategory) => ({
   updated_at: cat.updated_at.toISOString(),
 })
 
-export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler): Router => {
+export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, ScreentimeCategoryListResponse>('/', authMiddleware, async (req, res) => {
@@ -183,5 +183,5 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
     },
   )
 
-  return router as unknown as Router
+  return router
 }

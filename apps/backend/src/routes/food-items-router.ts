@@ -4,7 +4,7 @@
  * CRUD + search for canonical food item library.
  */
 
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 import {
   type AddFoodItemBody,
@@ -28,7 +28,7 @@ import {
   updateFoodItem,
   upsertFoodItem,
 } from '../db/index.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 /** Serialize a DB food item entity (Date timestamps) to API format (ISO strings). */
@@ -41,7 +41,7 @@ const serializeFoodItem = (item: DbFoodItemEntity): FoodItemEntity => {
   return result as FoodItemEntity
 }
 
-export const createFoodItemsRouter = (authMiddleware: RequestHandler): Router => {
+export const createFoodItemsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, FoodItemsResponse, unknown, FoodItemsQuery>(
@@ -91,5 +91,5 @@ export const createFoodItemsRouter = (authMiddleware: RequestHandler): Router =>
     res.json({ success: true })
   })
 
-  return router as unknown as Router
+  return router
 }

@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Reports route group.
@@ -19,10 +19,10 @@ import {
 } from '@aurboda/api-spec'
 
 import { addReport, deleteReportById, getReport, queryReports, updateReport } from '../services/reports.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
+export const createReportsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, ReportsResponse, unknown, ReportsQuery>(
@@ -111,5 +111,5 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
     res.json({ success: true })
   })
 
-  return router as unknown as Router
+  return router
 }

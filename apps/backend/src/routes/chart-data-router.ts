@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Chart data route group.
@@ -8,10 +8,10 @@ import type { RequestHandler, Router } from 'express'
 import { type ChartDataHttpQuery, chartDataHttpQuerySchema, type ChartDataResponse } from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
-export const createChartDataRouter = (authMiddleware: RequestHandler): Router => {
+export const createChartDataRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, ChartDataResponse, unknown, ChartDataHttpQuery>(
@@ -64,5 +64,5 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  return router as unknown as Router
+  return router
 }

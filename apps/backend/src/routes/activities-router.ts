@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Activities and productivity route group.
@@ -70,7 +70,7 @@ import {
   type SyncProvider,
 } from '../services/queries.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../services/settings.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 /** Compute HR zone seconds and avg HRV for any activity time range. */
@@ -167,7 +167,7 @@ export const createActivitiesRouter = (
   syncProvider?: SyncProvider,
   onActivityMutated?: ActivityNotifier,
   resyncActivityDetail?: (user: string, activityId: string, garminActivityId: number) => Promise<number>,
-): Router => {
+): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, ActivitiesResponse, unknown, ActivitiesQuery>(
@@ -755,5 +755,5 @@ export const createActivitiesRouter = (
     },
   )
 
-  return router as unknown as Router
+  return router
 }

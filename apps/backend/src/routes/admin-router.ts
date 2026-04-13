@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Admin route group.
@@ -18,7 +18,7 @@ import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
 export const createAdminRouter = (
@@ -28,7 +28,7 @@ export const createAdminRouter = (
   invitationAuth: InvitationAuth,
   webHost: string,
   ouraWebhookManager?: OuraWebhookManager | null,
-): Router => {
+): TypedRouter => {
   const router = typedRouter()
   router.get<Record<string, never>, AdminSettingsResponse>(
     '/settings',
@@ -114,5 +114,5 @@ export const createAdminRouter = (
     },
   )
 
-  return router as unknown as Router
+  return router
 }

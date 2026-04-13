@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Settings and goals route group.
@@ -14,10 +14,10 @@ import {
 
 import { getGoalsProgress } from '../services/goals.ts'
 import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
-export const createSettingsRouter = (authMiddleware: RequestHandler): Router => {
+export const createSettingsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
   router.get<Record<string, never>, UserSettingsResponse>(
     '/user/settings',
@@ -50,5 +50,5 @@ export const createSettingsRouter = (authMiddleware: RequestHandler): Router => 
     },
   )
 
-  return router as unknown as Router
+  return router
 }

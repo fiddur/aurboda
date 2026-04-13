@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Meals route group.
@@ -19,7 +19,7 @@ import {
 
 import { getMealLogCompleted, setMealLogCompleted, unsetMealLogCompleted } from '../db/index.ts'
 import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from '../services/meals.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 /** Check if a date is marked as logging-complete. Returns undefined if no date provided. */
@@ -30,7 +30,7 @@ const checkLogCompleted = async (user: string, start?: string): Promise<boolean 
   return completed.includes(dateStr)
 }
 
-export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
+export const createMealsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, MealsResponse, unknown, MealsQuery>(
@@ -109,5 +109,5 @@ export const createMealsRouter = (authMiddleware: RequestHandler): Router => {
     res.json({ success: true })
   })
 
-  return router as unknown as Router
+  return router
 }

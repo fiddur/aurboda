@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Notes route group.
@@ -18,10 +18,10 @@ import {
 } from '@aurboda/api-spec'
 
 import { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from '../services/mutations.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
+export const createNotesRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, NotesResponse, unknown, NotesQuery>(
@@ -87,5 +87,5 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
     res.json({ success: true })
   })
 
-  return router as unknown as Router
+  return router
 }

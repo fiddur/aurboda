@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Activity type definitions route group.
@@ -28,10 +28,10 @@ import {
   renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
-export const createActivityTypesRouter = (authMiddleware: RequestHandler): Router => {
+export const createActivityTypesRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, ActivityTypeDefinitionsResponse>(
@@ -143,5 +143,5 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  return router as unknown as Router
+  return router
 }
