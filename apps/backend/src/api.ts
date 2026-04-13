@@ -53,7 +53,6 @@ import { syncAllGarminData } from './garmin-sync.ts'
 import { garminClient } from './garmin.ts'
 import { httpError, isHttpError } from './http-error.ts'
 import { syncAllCalendars } from './ical-sync.ts'
-import { createLastFmRouter } from './lastfm-router.ts'
 import { syncLastFmData } from './lastfm-sync.ts'
 import { createMcpRouter } from './mcp.ts'
 import { syncAllOuraData, syncOuraDataType } from './oura-sync.ts'
@@ -541,8 +540,6 @@ const main = async () => {
       authMiddleware,
     ),
   )
-
-  httpd.use('/lastfm', createLastFmRouter(authMiddleware))
 
   httpd.get('/auth/connectOura', oura.redirectToAuthorize)
   httpd.get('/auth/ouracb', oura.authCb)

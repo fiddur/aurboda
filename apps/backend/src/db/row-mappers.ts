@@ -10,8 +10,6 @@ import {
   dataSourceSchema,
   entityTypes,
   geocodeStatusSchema,
-  lastFmMatchModeSchema,
-  lastFmMatchTypeSchema,
   reportFlagSchema,
   syncStatusSchema,
   type ActivityType,
@@ -24,7 +22,6 @@ import type {
   DetectedLocation,
   EntityType,
   GeocodeStatus,
-  LastFmTagRule,
   McpSessionRecord,
   Meal,
   MealFoodItem,
@@ -47,9 +44,6 @@ const VALID_DATA_SOURCES = dataSourceSchema.options
 const VALID_GEOCODE_STATUSES = geocodeStatusSchema.options
 const VALID_SYNC_STATUSES = syncStatusSchema.options
 const VALID_ENTITY_TYPES = entityTypes
-const VALID_LASTFM_MATCH_TYPES = lastFmMatchTypeSchema.options
-const VALID_LASTFM_MATCH_MODES = lastFmMatchModeSchema.options
-
 export const parseActivityType = (value: unknown): ActivityType => {
   if (typeof value === 'string' && /^[a-z][a-z0-9_]*$/.test(value)) {
     return value
@@ -91,20 +85,6 @@ export const parseMetricType = (value: unknown): MetricType => {
     throw new Error(`Invalid MetricType: ${JSON.stringify(value)}`)
   }
   return value as MetricType
-}
-
-const parseLastFmMatchType = (value: unknown) => {
-  if (typeof value === 'string' && (VALID_LASTFM_MATCH_TYPES as readonly string[]).includes(value)) {
-    return value as (typeof VALID_LASTFM_MATCH_TYPES)[number]
-  }
-  throw new Error(`Invalid LastFmMatchType: ${JSON.stringify(value)}`)
-}
-
-const parseLastFmMatchMode = (value: unknown) => {
-  if (typeof value === 'string' && (VALID_LASTFM_MATCH_MODES as readonly string[]).includes(value)) {
-    return value as (typeof VALID_LASTFM_MATCH_MODES)[number]
-  }
-  throw new Error(`Invalid LastFmMatchMode: ${JSON.stringify(value)}`)
 }
 
 // ============================================================================
@@ -166,19 +146,6 @@ export const mapMcpSessionRow = (row: QueryResultRow): McpSessionRecord => ({
   last_activity: new Date(row.last_activity),
   session_id: row.session_id,
   username: row.username,
-})
-
-export const mapLastFmTagRuleRow = (row: QueryResultRow): LastFmTagRule => ({
-  artist_name: row.artist_name ?? undefined,
-  artist_names: row.artist_names ?? undefined,
-  created_at: new Date(row.created_at),
-  id: row.id,
-  match_mode: parseLastFmMatchMode(row.match_mode),
-  match_type: parseLastFmMatchType(row.match_type),
-  merge_gap_seconds: row.merge_gap_seconds ?? undefined,
-  rule_name: row.rule_name,
-  tag_name: row.tag_name,
-  track_name: row.track_name ?? undefined,
 })
 
 export const mapNoteRow = (row: QueryResultRow): Note => ({

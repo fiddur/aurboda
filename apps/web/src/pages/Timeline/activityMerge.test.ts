@@ -56,10 +56,6 @@ describe('isDurationActivityLike', () => {
     expect(isDurationActivityLike(makeActivity({ source: 'lastfm' }))).toBe(false)
   })
 
-  it('returns false for lastfm-auto source', () => {
-    expect(isDurationActivityLike(makeActivity({ source: 'lastfm-auto' }))).toBe(false)
-  })
-
   it('returns false for computer: prefix activity types', () => {
     expect(isDurationActivityLike(makeActivity({ activity_type: 'computer:idle' }))).toBe(false)
   })
@@ -68,9 +64,8 @@ describe('isDurationActivityLike', () => {
     expect(isDurationActivityLike(makeActivity({ source: 'manual' }))).toBe(true)
   })
 
-  it('EXCLUDED_ACTIVITY_SOURCES covers lastfm and lastfm-auto', () => {
+  it('EXCLUDED_ACTIVITY_SOURCES covers lastfm', () => {
     expect(EXCLUDED_ACTIVITY_SOURCES.has('lastfm')).toBe(true)
-    expect(EXCLUDED_ACTIVITY_SOURCES.has('lastfm-auto')).toBe(true)
   })
 
   it('EXCLUDED_ACTIVITY_PREFIXES covers computer:', () => {

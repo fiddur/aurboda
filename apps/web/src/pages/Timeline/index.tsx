@@ -206,7 +206,6 @@ const tagSourceColors: Record<string, string> = {
   calendar: '#f59e0b',
   default: TAG_COLOR,
   lastfm: '#ec4899',
-  'lastfm-auto': '#ec4899',
   manual: TAG_COLOR,
   oura: TAG_COLOR,
 }

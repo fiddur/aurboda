@@ -882,7 +882,7 @@ export const getAllActivitiesInRange = async (user: string, start: Date, end: Da
   return result.rows.map(mapActivityRow)
 }
 
-/** Hard-delete all activities from a given source. Used for lastfm-auto retag cleanup. */
+/** Hard-delete all activities from a given source. */
 export const hardDeleteActivitiesBySource = async (user: string, source: string): Promise<number> => {
   const result = await query(user, `DELETE FROM activities WHERE source = $1`, [source])
   return result.rowCount ?? 0

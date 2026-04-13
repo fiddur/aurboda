@@ -25,7 +25,7 @@ export const ACTIVITY_TYPE_MERGE_MAP: Record<string, string[]> = {
  * Activity sources that should NOT be merged into built-in activity items.
  * They still appear in the Activity lane but as separate items.
  */
-export const EXCLUDED_ACTIVITY_SOURCES = new Set(['lastfm', 'lastfm-auto'])
+export const EXCLUDED_ACTIVITY_SOURCES = new Set(['lastfm'])
 
 /** Activity types that start with these prefixes are excluded from duration merging. */
 export const EXCLUDED_ACTIVITY_PREFIXES = ['computer:']

@@ -37,6 +37,16 @@ const LOOKBACK_OPTIONS = [
   { label: 'All time', value: 3650 },
 ]
 
+const CATEGORY_OPTIONS: Array<{ label: string; value: string }> = [
+  { label: 'Sleep & Rest', value: 'sleep_rest' },
+  { label: 'Exercise', value: 'exercise' },
+  { label: 'Meditation', value: 'meditation' },
+  { label: 'Wellness', value: 'wellness' },
+  { label: 'Productivity', value: 'productivity' },
+  { label: 'Travel', value: 'travel' },
+  { label: 'Other', value: 'other' },
+]
+
 const DURATION_CATEGORIES = new Set(['exercise', 'sleep_rest'])
 
 function ActivityTypeTrendSection({
@@ -86,16 +96,19 @@ function SettingsSection({
   name,
   currentIcon,
   currentDisplayName,
+  currentCategory,
   showOnTimeline,
 }: {
   name: string
   currentIcon: string
   currentDisplayName: string
+  currentCategory: string
   showOnTimeline: boolean
 }) {
   const queryClient = useQueryClient()
   const [iconValue, setIconValue] = useState<string | undefined>(undefined)
   const [displayNameValue, setDisplayNameValue] = useState<string | undefined>(undefined)
+  const [categoryValue, setCategoryValue] = useState<string | undefined>(undefined)
   const [saveStatus, setSaveStatus] = useSaveStatus(3000)
 
   const saveMutation = useMutation({
@@ -104,6 +117,9 @@ function SettingsSection({
       if (iconValue !== undefined && iconValue !== currentIcon) updates.icon = iconValue
       if (displayNameValue !== undefined && displayNameValue !== currentDisplayName) {
         updates.display_name = displayNameValue
+      }
+      if (categoryValue !== undefined && categoryValue !== currentCategory) {
+        updates.display_category = categoryValue
       }
       await updateActivityTypeDefinition(name, updates)
     },
@@ -115,6 +131,7 @@ function SettingsSection({
       queryClient.invalidateQueries({ queryKey: ['item-icons'] })
       setIconValue(undefined)
       setDisplayNameValue(undefined)
+      setCategoryValue(undefined)
     },
   })
 
@@ -145,7 +162,8 @@ function SettingsSection({
 
   const hasChanges =
     (iconValue !== undefined && iconValue !== currentIcon) ||
-    (displayNameValue !== undefined && displayNameValue !== currentDisplayName)
+    (displayNameValue !== undefined && displayNameValue !== currentDisplayName) ||
+    (categoryValue !== undefined && categoryValue !== currentCategory)
 
   return (
     <section class="activity-type-meta-section">
@@ -171,6 +189,20 @@ function SettingsSection({
             />
           </div>
         </label>
+        <label>
+          <span class="activity-type-meta-field-label">Category</span>
+          <select
+            class="activity-type-meta-text-input"
+            value={categoryValue ?? currentCategory}
+            onChange={(e) => setCategoryValue((e.target as HTMLSelectElement).value)}
+          >
+            {CATEGORY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <label class="activity-type-meta-timeline-toggle">
         <input
@@ -190,6 +222,7 @@ function SettingsSection({
           onCancel={() => {
             setIconValue(undefined)
             setDisplayNameValue(undefined)
+            setCategoryValue(undefined)
           }}
           isPending={saveMutation.isPending}
           saveStatus={saveStatus}
@@ -639,6 +672,7 @@ export function ActivityTypeMeta() {
         name={name}
         currentIcon={icon}
         currentDisplayName={displayName}
+        currentCategory={category}
         showOnTimeline={showOnTimeline}
       />
 

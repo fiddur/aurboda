@@ -33,7 +33,7 @@ describe('sync router', () => {
     resetRescueTimeSyncState: vi.fn().mockResolvedValue(undefined),
     syncCalendars: vi.fn().mockResolvedValue([]),
     syncGarmin: vi.fn().mockResolvedValue([]),
-    syncLastFm: vi.fn().mockResolvedValue({ scrobbles_processed: 0, status: 'success', tags_created: 0 }),
+    syncLastFm: vi.fn().mockResolvedValue({ scrobbles_processed: 0, status: 'success' }),
     syncOura: vi.fn().mockResolvedValue({ success: true }),
     syncRescueTime: vi.fn().mockResolvedValue({ success: true }),
     triggerCalorieComputation: vi.fn().mockResolvedValue(undefined),

@@ -18,10 +18,6 @@ export type {
   EntityType,
   GeocodeStatus,
   LabResult,
-  LastFmMatchMode,
-  LastFmMatchType,
-  LastFmTagRule,
-  LastFmTagRuleInput,
   Location,
   McpSessionRecord,
   FoodItemEntity,
@@ -297,14 +293,6 @@ export {
   updateCustomMetricDefinition,
 } from './custom-metrics.ts'
 
-// Last.fm tag rules
-export {
-  deleteLastFmTagRule,
-  getLastFmTagRules,
-  insertLastFmTagRule,
-  updateLastFmTagRule,
-} from './lastfm-rules.ts'
-
 // MCP sessions
 export {
   deleteExpiredMcpSessions,
@@ -328,7 +316,6 @@ export {
 export {
   mapActivityRow,
   mapDetectedLocationRow,
-  mapLastFmTagRuleRow,
   mapMcpSessionRow,
   mapMealRow,
   mapNamedLocationRow,

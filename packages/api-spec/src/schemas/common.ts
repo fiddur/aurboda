@@ -181,7 +181,6 @@ export const dataSourceSchema = z
     'calendar',
     'manual',
     'lastfm',
-    'lastfm-auto',
   ])
   .meta({
     description: 'Source of the data',

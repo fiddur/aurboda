@@ -198,7 +198,6 @@ export const registerSyncTools = (
           scrobbles_processed: result.scrobbles_processed,
           status: result.status,
           success: result.status === 'success',
-          tags_created: result.tags_created,
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'

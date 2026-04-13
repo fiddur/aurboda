@@ -1,13 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 
-import { LastFmTagRulesSettings } from '../../components/LastFmTagRulesSettings'
 import { fetchUserSettings, type UpdateSettingsInput, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { DataTypesList, LoginRequired, type SaveStatus, SaveStatusIndicator, StatusBanner } from './shared'
 import './style.css'
 
-const DATA_TYPES = ['Music scrobbles', 'Auto-generated tags from listening rules']
+const DATA_TYPES = ['Music scrobbles']
 
 export function LastFmSource() {
   const isLoggedIn = auth.value.token
@@ -67,8 +66,8 @@ export function LastFmSource() {
             Last.fm
           </a>{' '}
           (Audioscrobbler) tracks your music listening across Spotify, Apple Music, and other players. Aurboda
-          syncs your scrobbles and can automatically create tags based on what you listen to — for example,
-          tagging when you do vocal exercises or meditate with specific music.
+          syncs your scrobbles. Use deduction rules with scrobble conditions to automatically create
+          activities from what you listen to.
         </p>
 
         <DataTypesList types={DATA_TYPES} />
@@ -121,8 +120,6 @@ export function LastFmSource() {
           </section>
         )}
       </div>
-
-      <LastFmTagRulesSettings />
     </div>
   )
 }

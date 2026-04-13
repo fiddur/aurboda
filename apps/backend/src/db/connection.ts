@@ -454,10 +454,53 @@ export const migrateSchema = async (user: string) => {
   const existingTableNames = new Set(existingTables.rows.map((r) => r.table_name))
 
   // Column migrations BEFORE index creation (indexes may reference new columns)
+
+  // Migrate lastfm_tag_rules → deduction rules with scrobble conditions, then drop table
   if (existingTableNames.has('lastfm_tag_rules')) {
+    // Ensure columns exist before reading
     await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS merge_gap_seconds INTEGER`)
     await query(db, `ALTER TABLE lastfm_tag_rules ADD COLUMN IF NOT EXISTS artist_names JSONB`)
+
+    const rules = await query(db, `SELECT * FROM lastfm_tag_rules`)
+    for (const rule of rules.rows) {
+      const matchType = rule.match_type as string
+      const artistNamesCol = rule.artist_names as string[] | null
+      const hasArtistNames = artistNamesCol && artistNamesCol.length > 0
+
+      // Only include fields that the original match_type actually used
+      const artistNames =
+        matchType === 'artist' || matchType === 'track_artist'
+          ? hasArtistNames
+            ? artistNamesCol
+            : rule.artist_name
+              ? [rule.artist_name]
+              : undefined
+          : undefined
+
+      const trackName =
+        matchType === 'track' || matchType === 'track_artist' ? (rule.track_name as string) : undefined
+
+      const condition: Record<string, unknown> = {
+        duration_seconds: 210,
+        kind: 'scrobble',
+        match_mode: rule.match_mode ?? 'exact',
+      }
+      if (artistNames) condition.artist = artistNames
+      if (trackName) condition.track = trackName
+
+      await query(
+        db,
+        `INSERT INTO deduction_rules (name, enabled, priority, mode, conditions, output_activity_type, merge_gap_seconds)
+         VALUES ($1, true, 0, 'create', $2::jsonb, $3, $4)`,
+        [rule.rule_name, JSON.stringify([condition]), rule.tag_name, rule.merge_gap_seconds ?? null],
+      )
+    }
+
+    // Clean up old lastfm-auto activities (will be recreated by deduction evaluation)
+    await query(db, `DELETE FROM activities WHERE source = 'lastfm-auto'`)
+    await query(db, `DROP TABLE lastfm_tag_rules`)
   }
+
   if (existingTableNames.has('tags')) {
     await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_key VARCHAR(255)`)
     await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)

@@ -185,7 +185,7 @@ export function DataSources() {
             : 'Not configured',
     },
     {
-      dataTypes: 'Music scrobbles, auto-generated tags from listening',
+      dataTypes: 'Music scrobbles',
       isConnected: hasLastfm,
       name: 'Last.fm',
       path: '/data-sources/lastfm',
