@@ -44,6 +44,11 @@ export const insertLocation = async (user: string, location: Location) => {
 export const insertLocations = async (user: string, locations: Location[]): Promise<void> => {
   if (locations.length === 0) return
 
+  // pg-format %L produces invalid SQL for empty JS arrays (trailing comma before paren),
+  // so convert regions to a PostgreSQL array literal string.
+  const formatRegions = (regions: string[] | undefined): string =>
+    regions?.length ? `{${regions.join(',')}}` : '{}'
+
   const values = locations.map((loc) => [
     loc.source || 'owntracks',
     loc.time,
@@ -52,14 +57,18 @@ export const insertLocations = async (user: string, locations: Location[]): Prom
     loc.accuracy ?? null,
     loc.altitude ?? null,
     loc.velocity ?? null,
-    loc.regions || [],
+    formatRegions(loc.regions),
   ])
 
+  // pg-format %L quotes all values as text; cast to correct types for PostGIS and numeric columns
   await query(
     user,
     format(
       `INSERT INTO locations (source, time, location, accuracy, altitude, velocity, regions)
-       SELECT v.source, v.time, ST_MakePoint(v.lon, v.lat)::geography, v.accuracy, v.altitude, v.velocity, v.regions
+       SELECT v.source, v.time::timestamptz,
+              ST_MakePoint(v.lon::double precision, v.lat::double precision)::geography,
+              v.accuracy::double precision, v.altitude::double precision,
+              v.velocity::double precision, v.regions::text[]
        FROM (VALUES %L) AS v(source, time, lon, lat, accuracy, altitude, velocity, regions)
        ON CONFLICT (source, time) DO NOTHING`,
       values,

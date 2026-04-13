@@ -647,8 +647,8 @@ const extractGpsPoint = (metrics: unknown[], time: Date, latIdx: number, lonIdx:
   return { lat, lon, source: 'garmin' as const, time }
 }
 
-/** GPS downsampling interval in milliseconds (1 point per minute). */
-const GPS_DOWNSAMPLE_MS = 60_000
+/** GPS downsampling interval in milliseconds (0 = no downsampling, keep all points). */
+const GPS_DOWNSAMPLE_MS = 0
 
 /** Extract GPS locations from geoPolylineDTO (fallback when metrics lack lat/lon). */
 const extractPolylineGps = (data: GarminActivityDetailResponse): Location[] => {
