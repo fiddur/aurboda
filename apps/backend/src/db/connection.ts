@@ -463,16 +463,30 @@ export const migrateSchema = async (user: string) => {
 
     const rules = await query(db, `SELECT * FROM lastfm_tag_rules`)
     for (const rule of rules.rows) {
+      const matchType = rule.match_type as string
+      const artistNamesCol = rule.artist_names as string[] | null
+      const hasArtistNames = artistNamesCol && artistNamesCol.length > 0
+
+      // Only include fields that the original match_type actually used
       const artistNames =
-        (rule.artist_names as string[]) ?? (rule.artist_name ? [rule.artist_name] : undefined)
-      const durationSeconds = (rule.merge_gap_seconds as number) ?? 240
+        matchType === 'artist' || matchType === 'track_artist'
+          ? hasArtistNames
+            ? artistNamesCol
+            : rule.artist_name
+              ? [rule.artist_name]
+              : undefined
+          : undefined
+
+      const trackName =
+        matchType === 'track' || matchType === 'track_artist' ? (rule.track_name as string) : undefined
+
       const condition: Record<string, unknown> = {
-        duration_seconds: durationSeconds,
+        duration_seconds: 210,
         kind: 'scrobble',
         match_mode: rule.match_mode ?? 'exact',
       }
       if (artistNames) condition.artist = artistNames
-      if (rule.track_name) condition.track = rule.track_name
+      if (trackName) condition.track = trackName
 
       await query(
         db,

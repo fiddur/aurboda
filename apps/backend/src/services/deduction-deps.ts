@@ -169,13 +169,15 @@ const getScrobbles = async (
     `recorded_at < $2`,
   ]
 
+  const escapeLike = (s: string) => s.replace(/%/g, '\\%').replace(/_/g, '\\_')
+
   if (artist && artist.length > 0) {
     if (matchMode === 'exact') {
       params.push(artist.map((a) => a.toLowerCase().trim()))
       whereClauses.push(`LOWER(data->>'artist') = ANY($${params.length})`)
     } else {
       const artistClauses = artist.map((a) => {
-        params.push(`%${a.toLowerCase().trim()}%`)
+        params.push(`%${escapeLike(a.toLowerCase().trim())}%`)
         return `LOWER(data->>'artist') LIKE $${params.length}`
       })
       whereClauses.push(`(${artistClauses.join(' OR ')})`)
@@ -187,7 +189,7 @@ const getScrobbles = async (
       params.push(track.toLowerCase().trim())
       whereClauses.push(`LOWER(data->>'track') = $${params.length}`)
     } else {
-      params.push(`%${track.toLowerCase().trim()}%`)
+      params.push(`%${escapeLike(track.toLowerCase().trim())}%`)
       whereClauses.push(`LOWER(data->>'track') LIKE $${params.length}`)
     }
   }
