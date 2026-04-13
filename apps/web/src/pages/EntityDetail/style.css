@@ -794,6 +794,12 @@ a.entity-type-badge:hover {
   margin-top: 1rem;
 }
 
+@media (min-width: 1024px) {
+  .activity-map-container {
+    height: 600px;
+  }
+}
+
 .activity-map-container .leaflet-container {
   height: 100%;
   width: 100%;

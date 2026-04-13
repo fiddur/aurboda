@@ -565,7 +565,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       <ResyncDetailButton
         activity={activity}
         activityId={rawEntityId}
-        onSuccess={invalidate}
+        onSuccess={() => queryClient.invalidateQueries()}
         isEditing={isEditing}
       />
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
