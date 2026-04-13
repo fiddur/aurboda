@@ -73,7 +73,7 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
     if (!verificationToken) {
       verificationToken = randomBytes(32).toString('hex')
       await deps.centralDb.setServerSetting('oura_webhook_verification_token', verificationToken)
-      console.log('Oura webhook: generated new verification token')
+      console.info('Oura webhook: generated new verification token')
     }
 
     // Create webhook API client
@@ -111,7 +111,7 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
 
     webhookService.startRenewalTimer()
 
-    console.log(`Oura webhook: enabled at ${callbackUrl}`)
+    console.info(`Oura webhook: enabled at ${callbackUrl}`)
   }
 
   const disable = async (): Promise<void> => {
@@ -135,7 +135,7 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
     webhookService = null
     enabled = false
 
-    console.log('Oura webhook: disabled')
+    console.info('Oura webhook: disabled')
   }
 
   const handleWebhookRequest = (req: Request, res: Response, next: NextFunction): void => {

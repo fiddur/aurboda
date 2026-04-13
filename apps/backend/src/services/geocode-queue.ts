@@ -116,7 +116,7 @@ export const createGeocodeQueue = async (boss: PgBoss, deps: GeocodeQueueDeps): 
 
   // batchSize: 1 ensures only one job processes at a time across all instances
   await boss.work(QUEUE_NAME, { batchSize: 1, pollingIntervalSeconds: 2 }, createJobHandler(deps))
-  console.log('📍 Geocode queue ready')
+  console.info('📍 Geocode queue ready')
 
   const queue: GeocodeQueue = {
     enqueueJob: async (data: GeocodeJobData): Promise<string | null> => {

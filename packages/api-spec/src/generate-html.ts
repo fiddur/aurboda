@@ -34,4 +34,4 @@ ${openapiJson}
 `
 
 writeFileSync(join(generatedDir, 'api-docs.html'), html)
-console.log('Generated API documentation: generated/api-docs.html')
+console.info('Generated API documentation: generated/api-docs.html')

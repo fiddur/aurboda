@@ -57,7 +57,7 @@ const ensureDatabase = async (): Promise<boolean> => {
   try {
     await postgresClient.connect()
     await postgresClient.query(`CREATE DATABASE "${params.database}"`)
-    console.log(`🗄️ Created shared database: ${params.database}`)
+    console.info(`🗄️ Created shared database: ${params.database}`)
     return true
   } catch (error) {
     console.error(`Failed to create shared database '${params.database}':`, error)
@@ -98,7 +98,7 @@ export const createPgBoss = async (): Promise<PgBoss | null> => {
   })
 
   await boss.start()
-  console.log(`📋 pg-boss started (database: ${getDbParams().database})`)
+  console.info(`📋 pg-boss started (database: ${getDbParams().database})`)
 
   return boss
 }
