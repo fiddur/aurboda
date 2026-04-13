@@ -1000,7 +1000,7 @@ describe('updateActivity', () => {
     expect(result.activity_type).toBe('meditation')
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
       activity_type: 'meditation',
-      data: undefined,
+      data: { _user_edited: true },
       end_time: undefined,
       notes: undefined,
       start_time: undefined,

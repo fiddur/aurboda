@@ -10,14 +10,173 @@ import { query } from './connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update.ts'
 import { mapActivityRow } from './row-mappers.ts'
 
+// =============================================================================
+// Cross-source merge: collapse near-simultaneous activities from different
+// sync sources into a single activity using priority-based winner selection.
+// =============================================================================
+
+/** Max start_time difference (ms) for cross-source merge eligibility. */
+const CROSS_MERGE_THRESHOLD_MS = 120_000
+
+/** Sources that track physical activities and are eligible for cross-source merge. */
+const CROSS_MERGE_SOURCES = new Set([
+  'aurboda',
+  'deduction-rule',
+  'garmin',
+  'health_connect',
+  'manual',
+  'oura',
+])
+
+/** Display categories whose activities can cross-merge with each other. */
+const CROSS_MERGEABLE_CATEGORIES = new Set(['exercise', 'meditation', 'wellness'])
+
+/** Higher number = higher priority when picking the cross-merge winner. */
+const SOURCE_PRIORITY: Record<string, number> = {
+  health_connect: 1,
+  oura: 2,
+  garmin: 3,
+  'deduction-rule': 4,
+  manual: 5,
+  aurboda: 6,
+}
+
+const getEffectivePriority = (a: Activity): number => {
+  const base = SOURCE_PRIORITY[a.source] ?? 0
+  const edited = (a.data as Record<string, unknown> | undefined)?._user_edited
+  return edited ? base + 100 : base
+}
+
+// Simple union-find for grouping cross-merge candidates.
+const ufFind = (parent: number[], i: number): number => {
+  while (parent[i] !== i) {
+    parent[i] = parent[parent[i]] // path compression
+    i = parent[i]
+  }
+  return i
+}
+
+const ufUnion = (parent: number[], rank: number[], a: number, b: number) => {
+  const ra = ufFind(parent, a)
+  const rb = ufFind(parent, b)
+  if (ra === rb) return
+  if (rank[ra] < rank[rb]) {
+    parent[ra] = rb
+  } else if (rank[ra] > rank[rb]) {
+    parent[rb] = ra
+  } else {
+    parent[rb] = ra
+    rank[ra]++
+  }
+}
+
+/** Check if two activities are eligible for cross-source merge. */
+const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, string>): boolean => {
+  if (!CROSS_MERGE_SOURCES.has(b.source)) return false
+  if (a.source === b.source) return false
+  if (a.activity_type === b.activity_type) return false
+  const catB = categoryMap.get(b.activity_type)
+  return !!catB && CROSS_MERGEABLE_CATEGORIES.has(catB)
+}
+
+/** Merge a group of activities into one, using priority-based winner selection. */
+const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
+  const sorted = [...members].sort(
+    (a, b) =>
+      getEffectivePriority(b) - getEffectivePriority(a) ||
+      a.start_time.getTime() - b.start_time.getTime(),
+  )
+
+  const winner: MergedActivity = { ...sorted[0] }
+  const sourceIds: string[] = []
+
+  for (const member of sorted) {
+    if (member.id) sourceIds.push(member.id)
+    if (member.start_time < winner.start_time) winner.start_time = member.start_time
+    if (member.end_time && (!winner.end_time || member.end_time > winner.end_time)) {
+      winner.end_time = member.end_time
+    }
+    if (member !== sorted[0] && member.data) {
+      winner.data = { ...member.data, ...winner.data }
+    }
+    if (!winner.title && member.title) winner.title = member.title
+    if (member !== sorted[0] && member.notes) {
+      winner.notes = winner.notes ? `${winner.notes}\n${member.notes}` : member.notes
+    }
+  }
+
+  if (sourceIds.length > 1) winner.source_ids = sourceIds
+  return winner
+}
+
 /**
- * Merge overlapping activities of the same type.
+ * Cross-source merge pass: merge near-simultaneous activities from different
+ * sync sources that represent the same physical session.
+ *
+ * Winner is selected by source priority (aurboda > garmin > health_connect, etc.)
+ * with a boost for _user_edited activities.
+ */
+const mergeCrossSources = (activities: Activity[], categoryMap: Map<string, string>): MergedActivity[] => {
+  if (activities.length <= 1) return activities.map((a) => ({ ...a }))
+
+  const sorted = [...activities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+
+  // Union-find: group cross-merge candidates
+  const parent = sorted.map((_, i) => i)
+  const rank = sorted.map(() => 0)
+
+  for (let i = 0; i < sorted.length; i++) {
+    const a = sorted[i]
+    if (!CROSS_MERGE_SOURCES.has(a.source)) continue
+    const catA = categoryMap.get(a.activity_type)
+    if (!catA || !CROSS_MERGEABLE_CATEGORIES.has(catA)) continue
+
+    for (let j = i + 1; j < sorted.length; j++) {
+      if (sorted[j].start_time.getTime() - a.start_time.getTime() > CROSS_MERGE_THRESHOLD_MS) break
+      if (isCrossMergePair(a, sorted[j], categoryMap)) ufUnion(parent, rank, i, j)
+    }
+  }
+
+  // Build groups from union-find
+  const groups = new Map<number, number[]>()
+  for (let i = 0; i < sorted.length; i++) {
+    const root = ufFind(parent, i)
+    const group = groups.get(root)
+    if (group) group.push(i)
+    else groups.set(root, [i])
+  }
+
+  // Merge each group
+  const result: MergedActivity[] = []
+  for (const indices of groups.values()) {
+    if (indices.length === 1) {
+      result.push({ ...sorted[indices[0]] })
+    } else {
+      result.push(mergeGroupByPriority(indices.map((i) => sorted[i])))
+    }
+  }
+
+  return result
+}
+
+// =============================================================================
+// Same-type merge + generic exercise absorption
+// =============================================================================
+
+/**
+ * Merge overlapping activities of the same type, with optional cross-source deduplication.
  *
  * When the same activity is logged in multiple apps (e.g., Polar for HR data
  * and Gravl for workout details), this function merges them into a single
  * activity using the earliest start time and latest end time.
  *
- * Merge rules:
+ * Pipeline:
+ * 1. Cross-source merge (when categoryMap provided): collapse near-simultaneous
+ *    activities from different sync sources into one (priority-based winner).
+ * 2. Same-type merge: group by activityType, merge overlapping within each group.
+ * 3. Absorb generic exercises into overlapping specific activities.
+ *
+ * Merge rules (same-type pass):
  * - Activities are grouped by activityType
  * - Activities overlap if: a1.endTime >= a2.startTime (or a1 has no endTime and a2 starts during a1's day)
  * - Merged activity uses: earliest startTime, latest endTime
@@ -25,14 +184,23 @@ import { mapActivityRow } from './row-mappers.ts'
  * - First non-empty title is used
  * - Notes are concatenated with newline
  * - Data objects are merged (later values override earlier for same keys)
+ *
+ * @param categoryMap Optional map of activity_type -> display_category. When provided,
+ *   enables cross-source merge for near-simultaneous activities from different sources.
  */
 // eslint-disable-next-line complexity -- TODO: refactor
-export const mergeOverlappingActivities = (activities: Activity[]): MergedActivity[] => {
+export const mergeOverlappingActivities = (
+  activities: Activity[],
+  categoryMap?: Map<string, string>,
+): MergedActivity[] => {
   if (activities.length === 0) return []
 
-  // Group by activity type
+  // Pass 0: Cross-source merge (when category info is available)
+  const input = categoryMap ? mergeCrossSources(activities, categoryMap) : activities
+
+  // Pass 1: Same-type merge — group by activity type
   const byType = new Map<string, Activity[]>()
-  for (const a of activities) {
+  for (const a of input) {
     const group = byType.get(a.activity_type) ?? []
     group.push(a)
     byType.set(a.activity_type, group)
@@ -446,6 +614,7 @@ export const getActivities = async (
   end: Date,
   dataFilters?: Array<{ field: string; value: string | null }>,
   deductionRuleId?: string,
+  categoryMap?: Map<string, string>,
 ): Promise<MergedActivity[]> => {
   const types = Array.isArray(activityType) ? activityType : [activityType]
   const params: unknown[] = [types, start, end]
@@ -480,7 +649,7 @@ export const getActivities = async (
 
   const activities = result.rows.map(mapActivityRow)
 
-  return mergeOverlappingActivities(activities)
+  return mergeOverlappingActivities(activities, categoryMap)
 }
 
 /**
@@ -515,16 +684,17 @@ export const getActivitiesNeedingDetail = async (
   user: string,
   { forceAll = false, limit = 10 }: { forceAll?: boolean; limit?: number } = {},
 ): Promise<Activity[]> => {
-  const detailFilter = forceAll ? '' : "AND (data->>'detail_synced') IS NULL"
+  const detailFilter = forceAll ? '' : "AND (a.data->>'detail_synced') IS NULL"
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at
-     FROM activities
-     WHERE activity_type IN ('exercise', 'meditation')
-       AND data->>'garmin_activity_id' IS NOT NULL
+    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at
+     FROM activities a
+     JOIN activity_type_definitions atd ON a.activity_type = atd.name
+     WHERE atd.display_category IN ('exercise', 'meditation')
+       AND a.data->>'garmin_activity_id' IS NOT NULL
        ${detailFilter}
-       AND deleted_at IS NULL
-     ORDER BY start_time DESC
+       AND a.deleted_at IS NULL
+     ORDER BY a.start_time DESC
      LIMIT $1`,
     [limit],
   )
@@ -624,6 +794,7 @@ export const getActivitiesByCategory = async (
   displayCategory: string,
   start: Date,
   end: Date,
+  categoryMap?: Map<string, string>,
 ): Promise<MergedActivity[]> => {
   const result = await query(
     user,
@@ -636,7 +807,7 @@ export const getActivitiesByCategory = async (
     [displayCategory, start, end],
   )
   const activities = result.rows.map(mapActivityRow)
-  return mergeOverlappingActivities(activities)
+  return mergeOverlappingActivities(activities, categoryMap)
 }
 
 /**
@@ -683,6 +854,7 @@ export const getNonSleepActivitiesMerged = async (
   user: string,
   start: Date,
   end: Date,
+  categoryMap?: Map<string, string>,
 ): Promise<MergedActivity[]> => {
   const result = await query(
     user,
@@ -696,7 +868,7 @@ export const getNonSleepActivitiesMerged = async (
     [start, end],
   )
   const activities = result.rows.map(mapActivityRow)
-  return mergeOverlappingActivities(activities)
+  return mergeOverlappingActivities(activities, categoryMap)
 }
 
 /** Get all activities in a date range (all types, unmerged individual records). */
@@ -802,20 +974,41 @@ export const updateActivityTypeByTagKey = async (
 }
 
 /**
- * Migrate activities with generic 'exercise' type to their specific type from data.activity_type_key.
- * Also cleans up redundant exercise type fields from the data JSONB.
+ * Migrate activities with generic 'exercise' type to their specific type.
+ * Handles both legacy activity_type_key and HC exerciseTypeName fields.
  * Returns the number of activities updated.
  */
 export const migrateExerciseTypes = async (user: string): Promise<number> => {
-  const result = await query(
+  // Step 1: activity_type_key path (legacy)
+  const r1 = await query(
     user,
     `UPDATE activities
      SET activity_type = data->>'activity_type_key',
-         data = data - 'activity_type_key' - 'exerciseType' - 'exerciseTypeName'
+         data = data - 'activity_type_key'
      WHERE activity_type = 'exercise'
        AND data->>'activity_type_key' IS NOT NULL
        AND data->>'activity_type_key' != 'unknown'
        AND deleted_at IS NULL`,
   )
-  return result.rowCount ?? 0
+
+  // Step 2: exerciseTypeName path (Health Connect)
+  const r2 = await query(
+    user,
+    `UPDATE activities
+     SET activity_type = data->>'exerciseTypeName'
+     WHERE activity_type = 'exercise'
+       AND data->>'exerciseTypeName' IS NOT NULL
+       AND data->>'exerciseTypeName' NOT IN ('other_workout', 'unknown')
+       AND deleted_at IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM activities a2
+         WHERE a2.source = activities.source
+           AND a2.activity_type = activities.data->>'exerciseTypeName'
+           AND a2.start_time = activities.start_time
+           AND a2.external_id IS NULL
+           AND a2.id != activities.id
+       )`,
+  )
+
+  return (r1.rowCount ?? 0) + (r2.rowCount ?? 0)
 }

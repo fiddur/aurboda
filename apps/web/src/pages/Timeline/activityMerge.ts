@@ -277,15 +277,13 @@ export const buildActivityColumnItems = (
     const details = buildActivityDetails(a, end, buildSleepDetails, scrobbles)
 
     // Resolve icon from user overrides, defaults, or type definition.
-    // For exercises, also check the sub-type key (e.g. "strength_training") in type definitions.
+    // For migrated exercise types (e.g., activity_type='yoga' was previously 'exercise'
+    // with exerciseType=yoga), also check the legacy "exercise:{TypeName}" icon key.
     const iconKey = getActivityIconKey(a, getExerciseTypeName)
-    const exerciseSubType =
-      a.activity_type === 'exercise'
-        ? ((a.data as Record<string, unknown> | undefined)?.activity_type_key as string | undefined)
-        : undefined
+    const formattedType = a.activity_type.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
     const icon =
       resolveItemIcon(iconKey, itemIcons) ??
-      (exerciseSubType && typeDefinitions?.get(exerciseSubType)?.icon) ??
+      resolveItemIcon(`exercise:${formattedType}`, itemIcons) ??
       typeDefinitions?.get(a.activity_type)?.icon
 
     items.push({

@@ -529,7 +529,13 @@ export async function updateActivity(
   }
 
   // Merge new data fields into existing data (preserving fields not being updated)
-  const mergedData = input.data ? { ...(existing.data as Record<string, unknown>), ...input.data } : undefined
+  // When the activity type is changing, mark as user-edited so cross-source merge gives it priority
+  const baseData = input.data
+    ? { ...(existing.data as Record<string, unknown>), ...input.data }
+    : isTypeChanging
+      ? { ...(existing.data as Record<string, unknown>) }
+      : undefined
+  const mergedData = isTypeChanging && baseData ? { ...baseData, _user_edited: true } : baseData
 
   // Validate merged data against activity type schema (if defined)
   if (mergedData) {
