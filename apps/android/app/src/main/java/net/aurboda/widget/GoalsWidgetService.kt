@@ -200,7 +200,15 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
             "sec", "seconds" -> formatZoneTime(value)
             "count" -> value.toLong().toString()
             "m" -> "${(value / 1000).toInt()} km"
-            else -> "${value.toInt()} $unit"
+            else -> {
+                // Show decimals for small values (trend goals like "0.7 per month")
+                val formatted = if (value < 100 && value != value.toLong().toDouble()) {
+                    "%.1f".format(value)
+                } else {
+                    value.toLong().toString()
+                }
+                "$formatted $unit"
+            }
         }
     }
 
