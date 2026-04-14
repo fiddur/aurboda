@@ -190,9 +190,11 @@ export const suggestEmoji = (tagName: string): string | undefined => {
  * Check if a string is a single emoji character (or emoji sequence).
  */
 export const isEmoji = (str: string): boolean => {
-  // Match emoji sequences including ZWJ sequences, skin tone modifiers, etc.
-  const emojiRegex =
-    /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(\u200D(\p{Emoji_Presentation}|\p{Emoji}\uFE0F))*$/u
+  // Match emoji sequences including ZWJ sequences and skin tone modifiers.
+  // An "emoji atom" is an emoji character optionally followed by a skin tone modifier.
+  // ZWJ (\u200D) joins atoms into compound glyphs like 👨🏻‍💻 (man technologist: light skin tone).
+  const emojiAtom = String.raw`(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\p{Emoji_Modifier}?`
+  const emojiRegex = new RegExp(`^${emojiAtom}(?:\\u200D${emojiAtom})*$`, 'u')
   return emojiRegex.test(str.trim())
 }
 
