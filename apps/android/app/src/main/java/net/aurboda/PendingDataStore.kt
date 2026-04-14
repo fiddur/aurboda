@@ -17,6 +17,7 @@ data class PendingActivityPayload(
     val end_time: String? = null,
     val title: String? = null,
     val notes: String? = null,
+    val data: Map<String, String>? = null,
 )
 
 @Serializable
