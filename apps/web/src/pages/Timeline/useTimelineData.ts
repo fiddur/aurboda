@@ -100,6 +100,7 @@ export const useTimelineData = ({
   })
 
   const activitiesQuery = useQuery({
+    enabled: !hiddenCategories.has('activity'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
     queryKey: ['timeline-activities', fromDateKey, toDateKey],
@@ -115,7 +116,7 @@ export const useTimelineData = ({
   })
 
   const mealsQuery = useQuery({
-    enabled: !hiddenCategories.has('meal'),
+    enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('meal'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchMeals({ start: fetchStart.toISOString(), end: fetchEnd.toISOString() }),
     queryKey: ['timeline-meals', fromDateKey, toDateKey],
