@@ -26,10 +26,14 @@ export const drawItemIcon = (
   const cursor = opts?.cursor ?? 'default'
 
   if (icon && isEmoji(icon)) {
+    // Emoji glyphs render visually lower than their em-box center (extra descender
+    // space for legs/feet). Nudge up by 10% of icon size to align the visual center
+    // with the geometric center of the container.
+    const emojiY = cy - iconSize * 0.1
     return parent
       .append('text')
       .attr('x', cx)
-      .attr('y', cy)
+      .attr('y', emojiY)
       .attr('dominant-baseline', 'central')
       .attr('text-anchor', 'middle')
       .attr('font-size', `${iconSize * 0.75}px`)
