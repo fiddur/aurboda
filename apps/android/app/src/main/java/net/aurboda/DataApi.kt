@@ -4,51 +4,24 @@ import android.util.Log
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+import net.aurboda.api.models.AddMetricBody
+import net.aurboda.api.models.AddMetricResponse
 import net.aurboda.api.models.GoalsProgressResponse
 import net.aurboda.api.models.GoalProgress
-import net.aurboda.api.models.HrZoneThresholdsOutput
-import net.aurboda.api.models.PeriodMetricStats
-import net.aurboda.api.models.PeriodSummaryResponse
 import net.aurboda.api.models.UserSettingsResponse
 
 sealed class DataResult<out T> {
     data class Success<T>(val data: T) : DataResult<T>()
     data class Error(val message: String) : DataResult<Nothing>()
-}
-
-suspend fun fetchPeriodSummary(
-    httpClient: HttpClient,
-    serverUrl: String,
-    authToken: String,
-    start: String,
-    end: String,
-    metrics: List<String>
-): DataResult<PeriodSummaryResponse> {
-    return try {
-        val metricsParam = metrics.joinToString(",")
-        val url = "$serverUrl/period-summary?start=$start&end=$end&metrics=$metricsParam"
-        Log.d("DataApi", "Fetching period summary from: $url")
-
-        val response = httpClient.get(url) {
-            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
-        }
-
-        if (response.status == HttpStatusCode.OK) {
-            val body = response.bodyAsText()
-            Log.d("DataApi", "Period summary response: $body")
-            val parsed = appJson.decodeFromString<PeriodSummaryResponse>(body)
-            DataResult.Success(parsed)
-        } else {
-            Log.e("DataApi", "Period summary error: ${response.status}")
-            DataResult.Error("Server returned ${response.status}")
-        }
-    } catch (e: Exception) {
-        Log.e("DataApi", "Error fetching period summary", e)
-        DataResult.Error(e.message ?: "Unknown error")
-    }
 }
 
 suspend fun fetchUserSettings(
@@ -107,16 +80,6 @@ suspend fun fetchGoalsProgress(
     }
 }
 
-val defaultHrZoneThresholds = HrZoneThresholdsOutput(
-    _1 = 86,
-    _2 = 102,
-    _3 = 118,
-    _4 = 135,
-    _5 = 151
-)
-
-val hrZoneWeeklyTargetMinutes = listOf(0, 60, 200, 60, 30, 10)
-
 fun formatZoneTime(seconds: Double): String {
     val totalMinutes = (seconds / 60).toInt()
     return if (totalMinutes >= 60) {
@@ -128,16 +91,195 @@ fun formatZoneTime(seconds: Double): String {
     }
 }
 
-fun formatBpmRange(zoneIndex: Int, thresholds: HrZoneThresholdsOutput): String {
-    val zoneStarts = listOf(0, thresholds._1, thresholds._2, thresholds._3, thresholds._4, thresholds._5)
-    return when (zoneIndex) {
-        0 -> "< ${thresholds._1} bpm"
-        5 -> "${thresholds._5}+ bpm"
-        else -> "${zoneStarts[zoneIndex]} - ${zoneStarts[zoneIndex + 1] - 1} bpm"
+// --- Add Activity ---
+
+@Serializable
+data class AddActivityBody(
+    @SerialName("activity_type") val activityType: String,
+    @SerialName("start_time") val startTime: String,
+    @SerialName("end_time") val endTime: String? = null,
+    val title: String? = null,
+    val notes: String? = null,
+    val data: Map<String, String>? = null,
+)
+
+@Serializable
+data class AddedActivity(
+    val id: String,
+    @SerialName("activity_type") val activityType: String,
+    @SerialName("start_time") val startTime: String,
+    @SerialName("end_time") val endTime: String? = null,
+    val title: String? = null,
+    val notes: String? = null,
+)
+
+@Serializable
+data class AddActivityResponse(
+    val success: Boolean,
+    val data: AddedActivity? = null,
+    val error: String? = null,
+)
+
+suspend fun postActivity(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String,
+    body: AddActivityBody,
+): DataResult<AddActivityResponse> {
+    return try {
+        val url = "$serverUrl/activities"
+        Log.d("DataApi", "Posting activity to: $url")
+
+        val response = httpClient.post(url) {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+            contentType(ContentType.Application.Json)
+            setBody(appJson.encodeToString(AddActivityBody.serializer(), body))
+        }
+
+        if (response.status == HttpStatusCode.Created || response.status == HttpStatusCode.OK) {
+            val parsed = appJson.decodeFromString<AddActivityResponse>(response.bodyAsText())
+            DataResult.Success(parsed)
+        } else {
+            val errorBody = response.bodyAsText()
+            Log.e("DataApi", "Add activity error: ${response.status} - $errorBody")
+            DataResult.Error("Server returned ${response.status}")
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error posting activity", e)
+        DataResult.Error(e.message ?: "Unknown error")
     }
 }
 
-fun getMetricTimeSeconds(metric: PeriodMetricStats): Double = metric.avg
+// --- Add Metric ---
 
-fun findMetricTimeSeconds(metrics: List<PeriodMetricStats>, metricName: String): Double =
-    metrics.find { it.metric == metricName }?.let { getMetricTimeSeconds(it) } ?: 0.0
+suspend fun postMetric(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String,
+    body: AddMetricBody,
+): DataResult<AddMetricResponse> {
+    return try {
+        val url = "$serverUrl/metrics"
+        Log.d("DataApi", "Posting metric to: $url")
+
+        val response = httpClient.post(url) {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+            contentType(ContentType.Application.Json)
+            setBody(appJson.encodeToString(AddMetricBody.serializer(), body))
+        }
+
+        if (response.status == HttpStatusCode.Created || response.status == HttpStatusCode.OK) {
+            val parsed = appJson.decodeFromString<AddMetricResponse>(response.bodyAsText())
+            DataResult.Success(parsed)
+        } else {
+            val errorBody = response.bodyAsText()
+            Log.e("DataApi", "Add metric error: ${response.status} - $errorBody")
+            DataResult.Error("Server returned ${response.status}")
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error posting metric", e)
+        DataResult.Error(e.message ?: "Unknown error")
+    }
+}
+
+// --- Activity Types ---
+
+@Serializable
+data class DataFieldDefinition(
+    val name: String,
+    val type: String,
+    val label: String? = null,
+    val required: Boolean? = null,
+    val unit: String? = null,
+    @SerialName("enum_values") val enumValues: List<String>? = null,
+    @SerialName("show_in_summary") val showInSummary: Boolean? = null,
+)
+
+@Serializable
+data class DataSchemaDefinition(
+    val fields: List<DataFieldDefinition>,
+)
+
+@Serializable
+data class ActivityTypeDefinition(
+    val name: String,
+    @SerialName("display_name") val displayName: String,
+    @SerialName("display_category") val displayCategory: String? = null,
+    val color: String? = null,
+    val icon: String? = null,
+    @SerialName("is_builtin") val isBuiltin: Boolean = false,
+    @SerialName("data_schema") val dataSchema: DataSchemaDefinition? = null,
+)
+
+@Serializable
+data class ActivityTypeDefinitionsResponse(
+    val success: Boolean,
+    val data: List<ActivityTypeDefinition>,
+)
+
+suspend fun fetchActivityTypes(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String,
+): DataResult<List<ActivityTypeDefinition>> {
+    return try {
+        val url = "$serverUrl/activity-types"
+        Log.d("DataApi", "Fetching activity types from: $url")
+
+        val response = httpClient.get(url) {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+        }
+
+        if (response.status == HttpStatusCode.OK) {
+            val parsed = appJson.decodeFromString<ActivityTypeDefinitionsResponse>(response.bodyAsText())
+            DataResult.Success(parsed.data)
+        } else {
+            Log.e("DataApi", "Activity types error: ${response.status}")
+            DataResult.Error("Server returned ${response.status}")
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error fetching activity types", e)
+        DataResult.Error(e.message ?: "Unknown error")
+    }
+}
+
+// --- Custom Metrics ---
+
+@Serializable
+data class CustomMetricDefinition(
+    val name: String,
+    val unit: String? = null,
+    val description: String? = null,
+)
+
+@Serializable
+data class CustomMetricsListResponse(
+    val success: Boolean,
+    val data: List<CustomMetricDefinition>? = null,
+)
+
+suspend fun fetchCustomMetrics(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String,
+): DataResult<List<CustomMetricDefinition>> {
+    return try {
+        val url = "$serverUrl/metrics/custom"
+        Log.d("DataApi", "Fetching custom metrics from: $url")
+
+        val response = httpClient.get(url) {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+        }
+
+        if (response.status == HttpStatusCode.OK) {
+            val parsed = appJson.decodeFromString<CustomMetricsListResponse>(response.bodyAsText())
+            DataResult.Success(parsed.data ?: emptyList())
+        } else {
+            Log.e("DataApi", "Custom metrics error: ${response.status}")
+            DataResult.Error("Server returned ${response.status}")
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error fetching custom metrics", e)
+        DataResult.Error(e.message ?: "Unknown error")
+    }
+}

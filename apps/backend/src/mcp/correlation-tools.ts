@@ -18,7 +18,7 @@ import {
   getHrvActivitiesCorrelation,
   type OutcomeConfig,
   type TriggerCondition,
-} from '../services/correlations.ts'
+} from '../services/correlations/index.ts'
 import { type McpServer, type SyncProvider, tzJsonResponse } from './helpers.ts'
 
 export const registerCorrelationTools = (server: McpServer, user: string, sync?: SyncProvider) => {

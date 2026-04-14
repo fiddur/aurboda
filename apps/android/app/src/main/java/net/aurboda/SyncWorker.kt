@@ -60,6 +60,9 @@ class SyncWorker(
     invalidateTokenIfGrantedTypesChanged(grantedTypes)
 
     return try {
+      // Step 0: Process pending local data entries (Add Data offline queue)
+      processPendingData(credentials.apiUrl, credentials.authToken)
+
       // Step 1: Fetch and send daily aggregates for cumulative metrics (deduplicated)
       val aggregates = fetchDailyAggregates(healthConnectClient, grantedTypes.toSet(), days = 7)
       if (aggregates.isNotEmpty()) {
@@ -112,6 +115,52 @@ class SyncWorker(
     } catch (e: Exception) {
       Log.e(TAG, "Background sync failed", e)
       Result.retry()
+    }
+  }
+
+  /**
+   * Process pending local data entries (activities and metrics queued offline).
+   * Successfully sent entries are removed; failures are left for the next sync cycle.
+   */
+  private suspend fun processPendingData(serverUrl: String, authToken: String) {
+    val entries = getPendingEntries(applicationContext)
+    if (entries.isEmpty()) return
+    Log.d(TAG, "Processing ${entries.size} pending data entries")
+
+    for (entry in entries) {
+      val success = when (val data = entry.data) {
+        is PendingPayload.Activity -> {
+          val body = AddActivityBody(
+            activityType = data.payload.activity_type,
+            startTime = data.payload.start_time,
+            endTime = data.payload.end_time,
+            title = data.payload.title,
+            notes = data.payload.notes,
+            data = data.payload.data,
+          )
+          when (postActivity(httpClient, serverUrl, authToken, body)) {
+            is DataResult.Success -> true
+            is DataResult.Error -> false
+          }
+        }
+        is PendingPayload.Metric -> {
+          val body = net.aurboda.api.models.AddMetricBody(
+            metric = data.payload.metric,
+            value = data.payload.value,
+            time = data.payload.time,
+          )
+          when (postMetric(httpClient, serverUrl, authToken, body)) {
+            is DataResult.Success -> true
+            is DataResult.Error -> false
+          }
+        }
+      }
+      if (success) {
+        removePendingEntry(applicationContext, entry.id)
+        Log.d(TAG, "Pending entry ${entry.id} synced successfully")
+      } else {
+        Log.w(TAG, "Pending entry ${entry.id} failed, will retry next sync")
+      }
     }
   }
 
