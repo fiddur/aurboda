@@ -6,7 +6,13 @@
  *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=mean
  *   /chart?source_type=activity_type&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
  */
-import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } from '@aurboda/api-spec'
+import type {
+  DashboardConfig,
+  DashboardSection,
+  DashboardWidget,
+  SectionType,
+  TrendGoal,
+} from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
@@ -24,8 +30,10 @@ import {
   fetchScreentimeCategories,
   fetchTrend,
   type FetchTrendParams,
+  fetchUserSettings,
   saveDashboard,
   type TrendDisplayPeriod,
+  updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -712,11 +720,17 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
   )
 }
 
+// eslint-disable-next-line complexity -- chart page with multiple feature sections
 export function Chart() {
   const isLoggedIn = auth.value.token
+  const queryClient = useQueryClient()
   const { query } = useLocation()
   const [state, setState] = useState(() => parseQuery(query))
   const [showAddToDashboard, setShowAddToDashboard] = useState(false)
+  const [showSetGoal, setShowSetGoal] = useState(false)
+  const [goalMax, setGoalMax] = useState('')
+  const [goalMin, setGoalMin] = useState('')
+  const [goalSaving, setGoalSaving] = useState(false)
 
   const handleUpdate = useCallback(
     (patch: Partial<ChartState>) => {
@@ -793,6 +807,90 @@ export function Chart() {
             </svg>
             Add to Dashboard
           </button>
+          {state.chart_type === 'trend' && (
+            <button class="btn-add-to-dashboard" onClick={() => setShowSetGoal((v) => !v)}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="6" />
+                <circle cx="12" cy="12" r="2" />
+              </svg>
+              Set Goal
+            </button>
+          )}
+        </div>
+      )}
+
+      {showSetGoal && (
+        <div class="chart-goal-form">
+          <h3>Set Trend Goal</h3>
+          <p class="goal-form-description">
+            Set a target for the <strong>{state.pattern}</strong> trend ({state.display_period},{' '}
+            {state.half_life_days}d half-life).
+          </p>
+          <div class="goal-form-fields">
+            <label>
+              Min
+              <input
+                type="number"
+                step="0.1"
+                value={goalMin}
+                onInput={(e) => setGoalMin((e.target as HTMLInputElement).value)}
+                placeholder="e.g. 0.5"
+              />
+            </label>
+            <label>
+              Max
+              <input
+                type="number"
+                step="0.1"
+                value={goalMax}
+                onInput={(e) => setGoalMax((e.target as HTMLInputElement).value)}
+                placeholder="e.g. 0.7"
+              />
+            </label>
+          </div>
+          {!goalMin && !goalMax && <p class="goal-form-error">Set at least min or max.</p>}
+          <div class="goal-form-actions">
+            <button class="btn-cancel" onClick={() => setShowSetGoal(false)}>
+              Cancel
+            </button>
+            <button
+              class="btn-save"
+              disabled={goalSaving || (!goalMin && !goalMax)}
+              onClick={async () => {
+                setGoalSaving(true)
+                const settings = await fetchUserSettings()
+                const existingGoals = settings.goals ?? []
+                const newGoal: TrendGoal = {
+                  aggregation: state.aggregation,
+                  display_period: state.display_period,
+                  goal_type: 'trend',
+                  half_life_days: state.half_life_days,
+                  id: crypto.randomUUID(),
+                  ...(goalMax ? { max: parseFloat(goalMax) } : {}),
+                  ...(goalMin ? { min: parseFloat(goalMin) } : {}),
+                  pattern: state.pattern,
+                  source_type: state.source_type,
+                }
+                await updateUserSettings({ goals: [...existingGoals, newGoal] })
+                queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+                queryClient.invalidateQueries({ queryKey: ['goalsProgress'] })
+                setGoalSaving(false)
+                setShowSetGoal(false)
+                setGoalMin('')
+                setGoalMax('')
+              }}
+            >
+              {goalSaving ? 'Saving...' : 'Save Goal'}
+            </button>
+          </div>
         </div>
       )}
 
