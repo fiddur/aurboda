@@ -13,11 +13,11 @@ import type { NextFunction, Request, Response } from 'express'
 
 import { randomBytes } from 'node:crypto'
 
-import type { OuraDataType } from '../oura-sync.ts'
+import type { OuraDataType } from '../integrations/oura/sync.ts'
 import type { CentralDb } from './central-db.ts'
 
-import { createOuraWebhookApi } from '../oura-webhook-api.ts'
-import { createOuraWebhookRouter, type OuraWebhookRouter } from '../oura-webhook-router.ts'
+import { createOuraWebhookApi } from '../integrations/oura/webhook-api.ts'
+import { createOuraWebhookRouter, type OuraWebhookRouter } from '../integrations/oura/webhook-router.ts'
 import { createOuraWebhookService, type OuraWebhookService } from './oura-webhook-service.ts'
 
 export interface OuraWebhookManagerDeps {

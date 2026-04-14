@@ -55,10 +55,19 @@ describe('addNote', () => {
       start_time: tagStart,
     })
 
-    const note = makeNote({ end_time: tagEnd, entity_id: tagId, entity_type: 'activity', start_time: tagStart })
+    const note = makeNote({
+      end_time: tagEnd,
+      entity_id: tagId,
+      entity_type: 'activity',
+      start_time: tagStart,
+    })
     vi.mocked(db.insertNote).mockResolvedValue(note)
 
-    const result = await addNote('user', { content: 'Great session', entity_id: tagId, entity_type: 'activity' })
+    const result = await addNote('user', {
+      content: 'Great session',
+      entity_id: tagId,
+      entity_type: 'activity',
+    })
 
     expect(db.getActivityById).toHaveBeenCalledWith('user', tagId)
     expect(db.insertNote).toHaveBeenCalledWith('user', 'activity', tagId, 'Great session', tagStart, tagEnd)

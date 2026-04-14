@@ -7,22 +7,17 @@
 
 import { addDays, addMinutes, isFuture, subDays } from 'date-fns'
 
-import type { SyncState } from './db/types.ts'
-import type { GarminClient } from './garmin.ts'
+import type { SyncState } from '../../db/types.ts'
+import type { GarminClient } from './client.ts'
 
 import {
   getActivitiesNeedingDetail,
   getSyncState,
   markActivityDetailSynced,
   upsertSyncState,
-} from './db/index.ts'
-import {
-  type GarminDataType,
-  garminDataTypes,
-  processActivityDetail,
-  processGarminData,
-} from './garmin-process.ts'
-import { auditError, auditInfo } from './services/audit-log.ts'
+} from '../../db/index.ts'
+import { auditError, auditInfo } from '../../services/audit-log.ts'
+import { type GarminDataType, garminDataTypes, processActivityDetail, processGarminData } from './process.ts'
 
 // ============================================================================
 // Constants
@@ -329,4 +324,4 @@ const fetchDataType = async (
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 // Re-export for convenience
-export { garminDataTypes, type GarminDataType } from './garmin-process.ts'
+export { garminDataTypes, type GarminDataType } from './process.ts'

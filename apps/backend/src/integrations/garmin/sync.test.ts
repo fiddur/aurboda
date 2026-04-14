@@ -1,7 +1,7 @@
 import { subDays } from 'date-fns'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import * as db from './db/index.ts'
+import * as db from '../../db/index.ts'
 import {
   calculateRetryAfter,
   garminDataTypes,
@@ -9,7 +9,7 @@ import {
   syncActivityDetails,
   syncAllGarminData,
   syncGarminDataType,
-} from './garmin-sync.ts'
+} from './sync.ts'
 
 // Mock the db module (include all exports used by garmin-process.ts too)
 vi.mock('./db', () => ({

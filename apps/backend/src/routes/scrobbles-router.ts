@@ -2,7 +2,6 @@
  * Scrobbles route group — Last.fm scrobble queries.
  */
 import type { ScrobblesResponse } from '@aurboda/api-spec'
-
 import type { RequestHandler, Router } from 'express'
 
 import { getScrobbles } from '../db/index.ts'

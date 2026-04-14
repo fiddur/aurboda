@@ -12,9 +12,9 @@ vi.mock('./lastfm', () => ({
   }),
 }))
 
-import { getSyncState, insertRawRecord, upsertSyncState } from './db/index.ts'
-import { lastfmClient } from './lastfm.ts'
-import { syncLastFmData } from './lastfm-sync.ts'
+import { getSyncState, insertRawRecord, upsertSyncState } from '../../db/index.ts'
+import { lastfmClient } from './client.ts'
+import { syncLastFmData } from './sync.ts'
 
 describe('syncLastFmData', () => {
   test('syncs scrobbles and stores raw records', async () => {

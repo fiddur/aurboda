@@ -7,8 +7,8 @@
 
 import { subDays } from 'date-fns'
 
-import { getSyncState, insertRawRecord, upsertSyncState } from './db/index.ts'
-import { lastfmClient } from './lastfm.ts'
+import { getSyncState, insertRawRecord, upsertSyncState } from '../../db/index.ts'
+import { lastfmClient } from './client.ts'
 
 /** Default start date for historical sync (30 days back) */
 const DEFAULT_SYNC_HISTORY_DAYS = 30

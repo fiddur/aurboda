@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { calculateRetryAfter, isRateLimited, needsSync } from './rescuetime-sync.ts'
+import { calculateRetryAfter, isRateLimited, needsSync } from './sync.ts'
 
 describe('calculateRetryAfter', () => {
   beforeEach(() => {

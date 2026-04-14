@@ -1,4 +1,4 @@
-import { type TypedRouter, typedRouter } from './typed-router.ts'
+import { type TypedRouter, typedRouter } from '../../typed-router.ts'
 
 export interface OwnTracksDeps {
   loginToUserDb: (user: string, password: string) => Promise<void>

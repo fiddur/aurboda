@@ -2,7 +2,7 @@ import express, { json } from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { createOuraWebhookRouter, type OuraWebhookRouterDeps } from './oura-webhook-router.ts'
+import { createOuraWebhookRouter, type OuraWebhookRouterDeps } from './webhook-router.ts'
 
 describe('oura-webhook-router', () => {
   const createDeps = (): OuraWebhookRouterDeps => ({
