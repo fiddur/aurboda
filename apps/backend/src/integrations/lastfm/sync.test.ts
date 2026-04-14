@@ -1,20 +1,20 @@
 import { describe, expect, test, vi } from 'vitest'
 
-vi.mock('./db/index', () => ({
+vi.mock('../../db/index.ts', () => ({
   getSyncState: vi.fn().mockResolvedValue(null),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('./lastfm', () => ({
+vi.mock('./client', () => ({
   lastfmClient: vi.fn().mockReturnValue({
     getRecentTracks: vi.fn().mockResolvedValue([]),
   }),
 }))
 
-import { getSyncState, insertRawRecord, upsertSyncState } from './db/index.ts'
-import { lastfmClient } from './lastfm.ts'
-import { syncLastFmData } from './lastfm-sync.ts'
+import { getSyncState, insertRawRecord, upsertSyncState } from '../../db/index.ts'
+import { lastfmClient } from './client.ts'
+import { syncLastFmData } from './sync.ts'
 
 describe('syncLastFmData', () => {
   test('syncs scrobbles and stores raw records', async () => {

@@ -8,10 +8,10 @@
  */
 import type { ActivityWatchEvent, ActivityWatchSyncResult } from '@aurboda/api-spec'
 
-import type { ProductivityRecord } from './db/types.ts'
+import type { ProductivityRecord } from '../../db/types.ts'
 
-import { getScreentimeCategories, insertProductivity, upsertSyncState } from './db/index.ts'
-import { categorizeRecords, compileRules } from './services/screentime-categories.ts'
+import { getScreentimeCategories, insertProductivity, upsertSyncState } from '../../db/index.ts'
+import { categorizeRecords, compileRules } from '../../services/screentime-categories.ts'
 
 /**
  * Process a batch of ActivityWatch events from a push agent.

@@ -12,8 +12,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { type Request, type Response, Router } from 'express'
 
 import type { Auth } from './auth.ts'
-import type { GarminClient } from './garmin.ts'
-import type { ouraClient } from './oura.ts'
+import type { GarminClient } from './integrations/garmin/client.ts'
+import type { ouraClient } from './integrations/oura/client.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'

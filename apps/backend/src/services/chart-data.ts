@@ -286,7 +286,8 @@ export const getChartData = async (
   breakdown_fields?: string[]
   breakdown_series?: string[]
 }> => {
-  const { activity_type_id, aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } = input
+  const { activity_type_id, aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } =
+    input
 
   // Breakdown mode for activity types
   if (

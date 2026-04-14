@@ -6,7 +6,7 @@ import {
   OURA_DATA_TYPES,
   OURA_EVENT_TYPES,
   type OuraWebhookApiDeps,
-} from './oura-webhook-api.ts'
+} from './webhook-api.ts'
 
 vi.mock('axios')
 const mockedAxios = vi.mocked(axios)

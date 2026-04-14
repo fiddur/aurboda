@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import * as db from './db/index.ts'
-import { parseICalEvents, syncAllCalendars, syncCalendar } from './ical-sync.ts'
+import * as db from '../../db/index.ts'
+import { parseICalEvents, syncAllCalendars, syncCalendar } from './sync.ts'
 
-vi.mock('./db', () => ({
+vi.mock('../../db/index.ts', () => ({
   getAllSyncStates: vi.fn().mockResolvedValue([]),
   getSyncState: vi.fn().mockResolvedValue(null),
   getUserSettings: vi.fn().mockResolvedValue(null),

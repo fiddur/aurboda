@@ -13,8 +13,8 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import type { GarminClient } from '../garmin.ts'
-import type { ouraClient } from '../oura.ts'
+import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { ouraClient } from '../integrations/oura/client.ts'
 
 import {
   ackOutboundSync,
@@ -24,11 +24,11 @@ import {
   getPendingOutboundSync,
   requeueOutboundSync,
 } from '../db/index.ts'
-import { type GarminDataType, syncAllGarminData } from '../garmin-sync.ts'
-import { syncAllCalendars } from '../ical-sync.ts'
-import { syncLastFmData } from '../lastfm-sync.ts'
-import { syncAllOuraData } from '../oura-sync.ts'
-import { syncRescueTimeData } from '../rescuetime-sync.ts'
+import { type GarminDataType, syncAllGarminData } from '../integrations/garmin/sync.ts'
+import { syncAllCalendars } from '../integrations/ical/sync.ts'
+import { syncLastFmData } from '../integrations/lastfm/sync.ts'
+import { syncAllOuraData } from '../integrations/oura/sync.ts'
+import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
 import { getCentralDb } from '../services/central-db.ts'
 import { getSettings } from '../services/settings.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'

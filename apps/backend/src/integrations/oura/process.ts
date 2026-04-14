@@ -5,8 +5,8 @@
  * Separated from oura-sync.ts to keep file sizes manageable.
  */
 
-import type { OuraSleepPeriodRaw, OuraTagWithComment } from './oura.ts'
-import type { MetricType } from './schema.ts'
+import type { MetricType } from '../../schema.ts'
+import type { OuraSleepPeriodRaw, OuraTagWithComment } from './client.ts'
 
 import {
   insertActivity,
@@ -15,7 +15,7 @@ import {
   resolveOrCreateActivityType,
   type TimeSeriesPoint,
   upsertSyncedNote,
-} from './db/index.ts'
+} from '../../db/index.ts'
 
 /** Oura data types that can be synced */
 export type OuraDataType =

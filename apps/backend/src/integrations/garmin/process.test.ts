@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import type { GarminProcessDeps } from './garmin-process.ts'
-import type { GarminActivityDetailResponse } from './garmin.ts'
+import type { GarminActivityDetailResponse } from './client.ts'
+import type { GarminProcessDeps } from './process.ts'
 
-import { extractNumericValue, processActivityDetail, processGarminData } from './garmin-process.ts'
+import { extractNumericValue, processActivityDetail, processGarminData } from './process.ts'
 
 const mockDeps: GarminProcessDeps = {
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
