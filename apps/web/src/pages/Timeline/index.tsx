@@ -117,18 +117,16 @@ export const Timeline = () => {
   hiddenCategoriesRef.current = hiddenCategories
 
   // ── Data hook ─────────────────────────────────────────────────────────────
-  const data = useTimelineData(
-    fetchStart,
-    fetchEnd,
-    fromDate,
-    toDate,
-    hiddenCategories,
-    effectiveViewStart,
-    effectiveViewEnd,
-    bucketSize,
+  const data = useTimelineData({
     barBucketSize,
+    bucketSize,
+    fetchEnd,
+    fetchStart,
+    fromDateKey: fromDate.value,
+    hiddenCategories,
     screentimeMergeGapMs,
-  )
+    toDateKey: toDate.value,
+  })
   const {
     activities,
     activityItems,

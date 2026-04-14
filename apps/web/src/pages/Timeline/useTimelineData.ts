@@ -1,9 +1,8 @@
 import type { ScreentimeCategory } from '@aurboda/api-spec'
-import type { Signal } from '@preact/signals'
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { addDays, format, subDays } from 'date-fns'
-import { useMemo } from 'preact/hooks'
+import { useCallback, useMemo } from 'preact/hooks'
 
 import type { Activity } from '../../state/api'
 import type { ChartItem, Column } from './types'
@@ -50,7 +49,7 @@ const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'we
 export interface TimelineData {
   // Raw query results needed by rendering
   activities: Activity[]
-  scrobbles: ReturnType<typeof fetchScrobbles> extends Promise<infer T> ? T : never[]
+  scrobbles: ReturnType<typeof fetchScrobbles> extends Promise<infer T> ? T : never
   // Derived chart data
   chartItems: ChartItem[]
   activityItems: ChartItem[]
@@ -68,22 +67,30 @@ export interface TimelineData {
   errorSources: string[]
   // Misc
   hasLastFm: boolean
+}
+
+export interface UseTimelineDataOptions {
+  fetchStart: Date
+  fetchEnd: Date
+  fromDateKey: string
+  toDateKey: string
+  hiddenCategories: Set<LegendCategory>
+  bucketSize: string
   barBucketSize: '1h' | '1d' | '1w'
+  screentimeMergeGapMs: number
 }
 
 // eslint-disable-next-line complexity -- data hook aggregating multiple queries
-export const useTimelineData = (
-  fetchStart: Date,
-  fetchEnd: Date,
-  fromDateSignal: Signal<string>,
-  toDateSignal: Signal<string>,
-  hiddenCategories: Set<LegendCategory>,
-  effectiveViewStart: Date,
-  effectiveViewEnd: Date,
-  bucketSize: string,
-  barBucketSize: '1h' | '1d' | '1w',
-  screentimeMergeGapMs: number,
-): TimelineData => {
+export const useTimelineData = ({
+  fetchStart,
+  fetchEnd,
+  fromDateKey,
+  toDateKey,
+  hiddenCategories,
+  bucketSize,
+  barBucketSize,
+  screentimeMergeGapMs,
+}: UseTimelineDataOptions): TimelineData => {
   // ── Data queries ───────────────────────────────────────────────────────────
 
   const { data: activityTypeDefs = [] } = useQuery({
@@ -95,7 +102,7 @@ export const useTimelineData = (
   const activitiesQuery = useQuery({
     placeholderData: keepPreviousData,
     queryFn: () => fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-activities', fromDateSignal.value, toDateSignal.value],
+    queryKey: ['timeline-activities', fromDateKey, toDateKey],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -103,7 +110,7 @@ export const useTimelineData = (
     enabled: !hiddenCategories.has('location'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchPlaces(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-places', fromDateSignal.value, toDateSignal.value],
+    queryKey: ['timeline-places', fromDateKey, toDateKey],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -111,7 +118,7 @@ export const useTimelineData = (
     enabled: !hiddenCategories.has('meal'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchMeals({ start: fetchStart.toISOString(), end: fetchEnd.toISOString() }),
-    queryKey: ['timeline-meals', fromDateSignal.value, toDateSignal.value],
+    queryKey: ['timeline-meals', fromDateKey, toDateKey],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -119,7 +126,7 @@ export const useTimelineData = (
     enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchProductivity(fetchStart, fetchEnd, 'category', screentimeMergeGapMs),
-    queryKey: ['timeline-productivity', fromDateSignal.value, toDateSignal.value, screentimeMergeGapMs],
+    queryKey: ['timeline-productivity', fromDateKey, toDateKey, screentimeMergeGapMs],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -142,7 +149,7 @@ export const useTimelineData = (
     enabled: hasLastFm && !hiddenCategories.has('music'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchScrobbles(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-scrobbles', fromDateSignal.value, toDateSignal.value],
+    queryKey: ['timeline-scrobbles', fromDateKey, toDateKey],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -157,7 +164,7 @@ export const useTimelineData = (
         bucketSize,
         TIMELINE_EXCLUDED_METRICS,
       ),
-    queryKey: ['timeline-bucketed-metrics', fromDateSignal.value, toDateSignal.value, bucketSize],
+    queryKey: ['timeline-bucketed-metrics', fromDateKey, toDateKey, bucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -171,7 +178,7 @@ export const useTimelineData = (
     enabled: !hiddenCategories.has('training_load'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
-    queryKey: ['timeline-training-load', fromDateSignal.value, toDateSignal.value, barBucketSize],
+    queryKey: ['timeline-training-load', fromDateKey, toDateKey, barBucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -179,7 +186,7 @@ export const useTimelineData = (
     enabled: !hiddenCategories.has('screen_time_h') && !hiddenCategories.has('metrics'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchScreentimeBucketed(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
-    queryKey: ['timeline-screentime-bucketed', fromDateSignal.value, toDateSignal.value, barBucketSize],
+    queryKey: ['timeline-screentime-bucketed', fromDateKey, toDateKey, barBucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -304,16 +311,19 @@ export const useTimelineData = (
     [mealsQuery.data, itemIcons],
   )
 
-  const isItemHidden = (item: ChartItem): boolean => {
-    if (hiddenCategories.has('activity') && CATEGORY_MATCHERS.activity(item)) return true
-    if (hiddenCategories.has('location') && CATEGORY_MATCHERS.location(item)) return true
-    if (hiddenCategories.has('music') && CATEGORY_MATCHERS.music(item)) return true
-    for (const cat of hiddenCategories) {
-      if (cat === 'activity' || cat === 'location' || cat === 'music' || cat === 'metrics') continue
-      if (CATEGORY_MATCHERS[cat](item)) return true
-    }
-    return false
-  }
+  const isItemHidden = useCallback(
+    (item: ChartItem): boolean => {
+      if (hiddenCategories.has('activity') && CATEGORY_MATCHERS.activity(item)) return true
+      if (hiddenCategories.has('location') && CATEGORY_MATCHERS.location(item)) return true
+      if (hiddenCategories.has('music') && CATEGORY_MATCHERS.music(item)) return true
+      for (const cat of hiddenCategories) {
+        if (cat === 'activity' || cat === 'location' || cat === 'music' || cat === 'metrics') continue
+        if (CATEGORY_MATCHERS[cat](item)) return true
+      }
+      return false
+    },
+    [hiddenCategories],
+  )
 
   const allChartItems = useMemo(
     () => [
@@ -340,7 +350,7 @@ export const useTimelineData = (
 
   const chartItems = useMemo(
     () => allChartItems.filter((item) => !isItemHidden(item)),
-    [allChartItems, hiddenCategories],
+    [allChartItems, isItemHidden],
   )
 
   const columns = useMemo(
@@ -381,7 +391,6 @@ export const useTimelineData = (
   return {
     activities,
     activityItems,
-    barBucketSize,
     chartItems,
     columnData,
     columns,
