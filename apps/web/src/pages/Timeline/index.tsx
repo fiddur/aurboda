@@ -1,46 +1,18 @@
 /* eslint-disable max-lines -- large visualization component, being decomposed */
-import type { ScreentimeCategory } from '@aurboda/api-spec'
-
-import { signal, useSignalEffect } from '@preact/signals'
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSignalEffect } from '@preact/signals'
+import { useQueryClient } from '@tanstack/react-query'
 import * as d3 from 'd3'
-import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
+import { endOfDay, format, startOfDay } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
-import type { ChartItem, Column, Orientation } from './types'
+import type { LegendCategory } from './legendCategories'
+import type { ChartItem, Orientation } from './types'
 
-import {
-  fetchActivities,
-  fetchActivityTypeDefinitions,
-  fetchBucketedMetrics,
-  fetchMeals,
-  fetchPlaces,
-  fetchProductivity,
-  fetchScreentimeCategories,
-  fetchScreentimeBucketed,
-  fetchScrobbles,
-  fetchItemIcons,
-  fetchTrainingLoad,
-  fetchUserSettings,
-} from '../../state/api'
-import { aggregateBucketsAligned, parseBucketedResponse } from '../../utils/chart'
+import { aggregateBucketsAligned } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
-import {
-  buildActivityColumnItems,
-  EXCLUDED_ACTIVITY_PREFIXES,
-  EXCLUDED_ACTIVITY_SOURCES,
-} from './activityMerge'
 import { computeBarLayout, type BarSlot } from './barLayout'
 import {
-  categorizeLocations,
-  categorizeMeals,
-  categorizeOtherActivities,
-  categorizeProductivity,
-} from './categorize'
-import { categorizeMusic } from './categorizeMusic'
-import {
   activityColors,
-  getExerciseColor,
   hrZoneColors,
   MUSIC_COLOR,
   placeColorPalette,
@@ -48,7 +20,7 @@ import {
   TAG_COLOR,
   tagSourceColors,
 } from './colors'
-import { drawActivitySparklines, parseBucketedData } from './drawActivitySparklines'
+import { drawActivitySparklines } from './drawActivitySparklines'
 import { attachHoverHandlers, drawItemIcon, truncateLabel } from './drawItems'
 import {
   CALORIES_COLOR,
@@ -70,54 +42,38 @@ import { drawScreentimeBars, SCREENTIME_COLOR } from './drawScreentimeTrack'
 import { CTL_COLOR, drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { drawColumnItems, drawHorizontalNowLine, drawNowLine } from './drawVerticalHelpers'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
-import { getExerciseTypeName } from './formatting'
-import { BASE_COLUMNS, CATEGORY_MATCHERS, type LegendCategory } from './legendCategories'
-import { buildSleepDetails, buildTooltipHtml, type SleepMetricsByDate } from './tooltipBuilder'
+import { buildTooltipHtml } from './tooltipBuilder'
+import { useTimelineData } from './useTimelineData'
+import { _initialHash, useTimelineNavigation } from './useTimelineNavigation'
 import { HORIZONTAL_MARGIN, useTimelineZoom, VERTICAL_MARGIN } from './useTimelineZoom'
-import {
-  buildViewHash,
-  getDefaultOrientation,
-  getDefaultViewEnd,
-  getDefaultViewStart,
-  parseViewHash,
-} from './viewHash'
+import { buildViewHash, getDefaultOrientation } from './viewHash'
 import './style.css'
-
-// ── Signals (module-level, persist across SPA navigations) ────────────────────
-
-const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
-const toDate = signal(formatISO(new Date(), { representation: 'date' }))
-const viewStart = signal<Date | null>(null)
-const viewEnd = signal<Date | null>(null)
-
-// Initialise signals from hash on page load
-const _initialHash = parseViewHash()
-if (_initialHash.from) {
-  viewStart.value = _initialHash.from
-  viewEnd.value = _initialHash.to
-  const fetchFrom = _initialHash.from
-  const fetchTo = _initialHash.to ?? _initialHash.from
-  fromDate.value = formatISO(subDays(fetchFrom, 1), { representation: 'date' })
-  const todayStr = formatISO(new Date(), { representation: 'date' })
-  const expandedTo = formatISO(addDays(fetchTo, 1), { representation: 'date' })
-  toDate.value = expandedTo > todayStr ? todayStr : expandedTo
-}
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-/** Metrics to exclude from the unified bucketed query (fetched via separate endpoints). */
-const TIMELINE_EXCLUDED_METRICS = ['training_impulse', 'activity_impulse']
 
 // ── Main Timeline component ───────────────────────────────────────────────────
 
 // eslint-disable-next-line complexity -- D3 visualization component
 export const Timeline = () => {
   const queryClient = useQueryClient()
-  const effectiveViewStart = viewStart.value ?? getDefaultViewStart()
-  const effectiveViewEnd = viewEnd.value ?? getDefaultViewEnd()
 
-  const fetchStart = startOfDay(new Date(fromDate.value))
-  const fetchEnd = endOfDay(new Date(toDate.value))
+  // ── Navigation hook ──────────────────────────────────────────────────────
+  const nav = useTimelineNavigation()
+  const {
+    effectiveViewStart,
+    effectiveViewEnd,
+    fetchStart,
+    fetchEnd,
+    fromDate,
+    toDate,
+    viewStart,
+    viewEnd,
+    handleZoom,
+    handleJumpDays,
+    handleResetToToday,
+    viewLabel,
+    bucketSize,
+    barBucketSize,
+    screentimeMergeGapMs,
+  } = nav
 
   // ── Orientation state ──────────────────────────────────────────────────────
   const [orientation, setOrientation] = useState<Orientation>(
@@ -135,14 +91,13 @@ export const Timeline = () => {
   useEffect(() => {
     const el = legendRef.current
     if (!el) return
-    // First render: measure if content height exceeds one-row height
     const firstChild = el.firstElementChild as HTMLElement | null
     if (!firstChild) return
     const oneRowHeight = firstChild.getBoundingClientRect().height || 36
     if (el.scrollHeight > oneRowHeight + 8) {
       setLegendCollapsed(true)
     }
-  }, []) // run once after mount
+  }, [])
 
   // Escape key exits fullscreen
   useEffect(() => {
@@ -154,291 +109,43 @@ export const Timeline = () => {
     return () => document.removeEventListener('keydown', handleKey)
   }, [isFullscreen])
 
-  // ── Toggle state (before queries so they can gate fetching) ─────────────
+  // ── Toggle state ──────────────────────────────────────────────────────────
   const [hiddenCategories, setHiddenCategories] = useState<Set<LegendCategory>>(
     () => new Set(_initialHash.hide),
   )
   const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
   hiddenCategoriesRef.current = hiddenCategories
 
-  // Zoom-adaptive merge gap for backend category merging — larger gap when zoomed out.
-  // Computed early (before queries) so it can be included in the query key.
-  const screentimeMergeGapMs = useMemo(() => {
-    const days = differenceInCalendarDays(new Date(toDate.value), new Date(fromDate.value))
-    if (days > 50) return 4 * 60 * 60 * 1000 // 4h gap at week+ view
-    if (days > 2) return 60 * 60 * 1000 // 1h gap at multi-day view
-    return 10 * 60 * 1000 // 10min gap at day view
-  }, [fromDate.value, toDate.value])
-
-  // ── Data queries ───────────────────────────────────────────────────────────
-
-  // Load activity type definitions early for display_category-based rendering
-  const { data: activityTypeDefs = [] } = useQuery({
-    queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activityTypeDefinitions'],
-    staleTime: 5 * 60_000,
-  })
-
-  // Single query for all activities
-  const activitiesQuery = useQuery({
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-activities', fromDate.value, toDate.value],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const placesQuery = useQuery({
-    enabled: !hiddenCategories.has('location'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchPlaces(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-places', fromDate.value, toDate.value],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const mealsQuery = useQuery({
-    enabled: !hiddenCategories.has('meal'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchMeals({ start: fetchStart.toISOString(), end: fetchEnd.toISOString() }),
-    queryKey: ['timeline-meals', fromDate.value, toDate.value],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const productivityQuery = useQuery({
-    enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchProductivity(fetchStart, fetchEnd, 'category', screentimeMergeGapMs),
-    queryKey: ['timeline-productivity', fromDate.value, toDate.value, screentimeMergeGapMs],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const screentimeCategoriesQuery = useQuery<ScreentimeCategory[]>({
-    enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
-    queryFn: fetchScreentimeCategories,
-    queryKey: ['screentime-categories'],
-    staleTime: 30 * 60 * 1000,
-  })
-
-  const settingsQuery = useQuery({
-    queryFn: fetchUserSettings,
-    queryKey: ['user-settings'],
-    staleTime: 30 * 60 * 1000,
-  })
-
-  const hasLastFm = Boolean(settingsQuery.data?.lastfm_username)
-
-  const scrobblesQuery = useQuery({
-    enabled: hasLastFm && !hiddenCategories.has('music'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchScrobbles(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-scrobbles', fromDate.value, toDate.value],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  // Unified bucket size for line-chart metrics, derived from the visible view range
-  // (not the fetch range). Thresholds chosen to keep under ~500 data points.
-  const bucketSize = useMemo(() => {
-    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
-    if (days > 500) return '1w'
-    if (days > 21) return '1d'
-    if (days > 5) return '1h'
-    if (days > 1) return '15m'
-    return '5m'
-  }, [effectiveViewStart, effectiveViewEnd])
-
-  const bucketedMetricsQuery = useQuery({
-    enabled: !hiddenCategories.has('metrics'),
-    placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchBucketedMetrics(
-        subDays(fetchStart, 0.5),
-        addDays(fetchEnd, 0.5),
-        undefined,
-        bucketSize,
-        TIMELINE_EXCLUDED_METRICS,
-      ),
-    queryKey: ['timeline-bucketed-metrics', fromDate.value, toDate.value, bucketSize],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const itemIconsQuery = useQuery({
-    queryFn: fetchItemIcons,
-    queryKey: ['item-icons'],
-    staleTime: 30 * 60 * 1000,
-  })
-
-  // ── Refs ───────────────────────────────────────────────────────────────────
-
-  const containerRef = useRef<HTMLDivElement>(null)
-  const svgRef = useRef<SVGSVGElement>(null)
-  const tooltipRef = useRef<HTMLDivElement>(null)
-
-  const drawRef = useRef<((scale: d3.ScaleTime<number, number>) => void) | null>(null)
-  // Horizontal chart: stable reference for x-axis (updated in place, never rebuilt)
-  const hAxisGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
-
-  /** Tracks the current scaffold orientation so we can skip rebuild when only data changes. */
-  const scaffoldOrientationRef = useRef<Orientation | null>(null)
-  /** Tracks the container dimensions the scaffold was built for. */
-  const scaffoldDimsRef = useRef<{ w: number; h: number } | null>(null)
-  /** Tracks horizontal scaffold layout state (legend toggles affect lane positions). */
-  const scaffoldLayoutKeyRef = useRef<string>('')
-
-  // ── Derived data ───────────────────────────────────────────────────────────
-
-  const todayKey = format(new Date(), 'yyyy-MM-dd')
-  const baseScaleDomain = useMemo(
-    () => [startOfDay(new Date(todayKey)), endOfDay(new Date(todayKey))] as [Date, Date],
-    [todayKey],
+  // ── Data hook ─────────────────────────────────────────────────────────────
+  const data = useTimelineData(
+    fetchStart,
+    fetchEnd,
+    fromDate,
+    toDate,
+    hiddenCategories,
+    effectiveViewStart,
+    effectiveViewEnd,
+    bucketSize,
+    barBucketSize,
+    screentimeMergeGapMs,
   )
-
-  const typeDefsMap = useMemo(
-    () =>
-      new Map(
-        activityTypeDefs.map((t) => [t.name, { color: t.color, display_name: t.display_name, icon: t.icon }]),
-      ),
-    [activityTypeDefs],
-  )
-  const hiddenTypes = useMemo(
-    () => new Set(activityTypeDefs.filter((t) => !t.show_on_timeline).map((t) => t.name)),
-    [activityTypeDefs],
-  )
-
-  // Split all activities by display_category into main activities vs secondary
-  const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
-  const categoryByType = useMemo(
-    () => new Map(activityTypeDefs.map((t) => [t.name, t.display_category])),
-    [activityTypeDefs],
-  )
-  const allActivities = useMemo(
-    () => (activitiesQuery.data ?? []).filter((a) => !hiddenTypes.has(a.activity_type ?? '')),
-    [activitiesQuery.data, hiddenTypes],
-  )
-  const activities = useMemo(
-    () =>
-      allActivities.filter((a) => ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
-    [allActivities, categoryByType],
-  )
-  const secondaryActivities = useMemo(
-    () =>
-      allActivities.filter((a) => !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
-    [allActivities, categoryByType],
-  )
-  const places = placesQuery.data ?? []
-  const productivity = productivityQuery.data?.records ?? []
-  const scrobbles = scrobblesQuery.data ?? []
-
-  // Extract sleep score metrics from unified bucketed data, keyed by date
-  const sleepMetricsByDate = useMemo<SleepMetricsByDate>(() => {
-    const map: SleepMetricsByDate = new Map()
-    const sleepMetricNames = [
-      'sleep_score',
-      'sleep_efficiency',
-      'sleep_restfulness',
-      'sleep_deep_score',
-      'sleep_rem_score',
-    ]
-    for (const bucket of bucketedMetricsQuery.data?.buckets ?? []) {
-      for (const name of sleepMetricNames) {
-        const stats = bucket.metrics[name]
-        if (!stats) continue
-        const key = format(new Date(bucket.start), 'yyyy-MM-dd')
-        const existing = map.get(key) ?? {}
-        existing[name] = stats.avg
-        map.set(key, existing)
-      }
-    }
-    return map
-  }, [bucketedMetricsQuery.data])
-
-  const itemIcons = useMemo<Record<string, string>>(() => {
-    return itemIconsQuery.data ?? {}
-  }, [itemIconsQuery.data])
-
-  const musicItems = useMemo(() => (hasLastFm ? categorizeMusic(scrobbles) : []), [hasLastFm, scrobbles])
-  const showMusicColumn = musicItems.length > 0
-
-  const sparklineBuckets = useMemo(
-    () => parseBucketedData(bucketedMetricsQuery.data),
-    [bucketedMetricsQuery.data],
-  )
-
-  // Parsed bucketed metrics for horizontal mode band/bar charts
-  const horizontalMetricBuckets = useMemo(
-    () => parseBucketedResponse(bucketedMetricsQuery.data),
-    [bucketedMetricsQuery.data],
-  )
-
-  const uniquePlaceNames = useMemo(
-    () => [...new Set(places.map((p) => p.region))].filter(Boolean).sort(),
-    [places],
-  )
-
-  // Unified Activity column items (activities + merged duration tags)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- UI temporarily commented out, will be redesigned
-  const { items: activityItems, overlaps: overlapWarnings } = useMemo(
-    () =>
-      buildActivityColumnItems(
-        activities,
-        secondaryActivities,
-        itemIcons,
-        activityColors,
-        getExerciseColor,
-        getExerciseTypeName,
-        sleepMetricsByDate,
-        (a, end) => buildSleepDetails(a, end, sleepMetricsByDate),
-        scrobbles,
-        typeDefsMap,
-      ),
-    [activities, secondaryActivities, itemIcons, sleepMetricsByDate, scrobbles, typeDefsMap],
-  )
-
-  // Non-main activities not already in activityItems (point activities, excluded sources, etc.)
-  const otherActivities = useMemo(
-    () =>
-      secondaryActivities.filter((a) => {
-        if (!a.end_time) return true // point activities are separate items
-        if (a.source && EXCLUDED_ACTIVITY_SOURCES.has(a.source)) return true
-        for (const prefix of EXCLUDED_ACTIVITY_PREFIXES) {
-          if (a.activity_type.startsWith(prefix)) return true
-        }
-        // Check if this activity was placed in the Activity column
-        return !activityItems.some((i) => i.entity_id === a.id)
-      }),
-    [secondaryActivities, activityItems],
-  )
-
-  // ── Legend / filtering ─────────────────────────────────────────────────────
-
-  // Unified bar bucket size — all bar-shaped data (training load, steps, calories, screentime)
-  // uses the same bucket size so they align visually side by side.
-  // Training load backend only supports '1h', '1d', '1w', which constrains the minimum.
-  // Line charts (HR/HRV) still use the finer `bucketSize` for smooth rendering.
-  // Target max ~50 bars visible: '1h' up to 2 days, '1d' up to 50 days, '1w' beyond.
-  const barBucketSize = useMemo((): '1h' | '1d' | '1w' => {
-    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
-    if (days > 50) return '1w'
-    if (days > 2) return '1d'
-    return '1h'
-  }, [effectiveViewStart, effectiveViewEnd])
-
-  // Training load data (fetched when toggle is on)
-  const trainingLoadQuery = useQuery({
-    enabled: !hiddenCategories.has('training_load'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
-    queryKey: ['timeline-training-load', fromDate.value, toDate.value, barBucketSize],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  // Screentime bucketed data (for horizontal stacked bar chart)
-  // Uses the same barBucketSize so it aligns with steps/calories/training load
-  const screentimeBucketedQuery = useQuery({
-    enabled: !hiddenCategories.has('screen_time_h') && !hiddenCategories.has('metrics'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchScreentimeBucketed(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
-    queryKey: ['timeline-screentime-bucketed', fromDate.value, toDate.value, barBucketSize],
-    staleTime: 5 * 60 * 1000,
-  })
+  const {
+    activities,
+    activityItems,
+    chartItems,
+    columnData,
+    columns,
+    sparklineBuckets,
+    horizontalMetricBuckets,
+    scrobbles,
+    trainingLoadQuery,
+    screentimeBucketedQuery,
+    screentimeCategoriesQuery,
+    isFetching,
+    isInitialLoad,
+    errorSources,
+    hasLastFm,
+  } = data
 
   // Sync view state + orientation → URL hash
   useSignalEffect(() => {
@@ -465,136 +172,26 @@ export const Timeline = () => {
     })
   }, [])
 
-  const isItemHidden = useCallback(
-    (item: ChartItem): boolean => {
-      // If a parent track is hidden, all children are implicitly hidden
-      if (hiddenCategories.has('activity') && CATEGORY_MATCHERS.activity(item)) return true
-      if (hiddenCategories.has('location') && CATEGORY_MATCHERS.location(item)) return true
-      if (hiddenCategories.has('music') && CATEGORY_MATCHERS.music(item)) return true
-      // Check sub-toggles
-      for (const cat of hiddenCategories) {
-        if (cat === 'activity' || cat === 'location' || cat === 'music' || cat === 'metrics') continue
-        if (CATEGORY_MATCHERS[cat](item)) return true
-      }
-      return false
-    },
-    [hiddenCategories],
+  // ── Refs ───────────────────────────────────────────────────────────────────
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+
+  const drawRef = useRef<((scale: d3.ScaleTime<number, number>) => void) | null>(null)
+  const hAxisGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
+
+  const scaffoldOrientationRef = useRef<Orientation | null>(null)
+  const scaffoldDimsRef = useRef<{ w: number; h: number } | null>(null)
+  const scaffoldLayoutKeyRef = useRef<string>('')
+
+  // ── Derived layout data ───────────────────────────────────────────────────
+
+  const todayKey = format(new Date(), 'yyyy-MM-dd')
+  const baseScaleDomain = useMemo(
+    () => [startOfDay(new Date(todayKey)), endOfDay(new Date(todayKey))] as [Date, Date],
+    [todayKey],
   )
-
-  const allColumns: Column[] = useMemo(
-    () => (showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS),
-    [showMusicColumn],
-  )
-
-  const mealItems = useMemo(
-    () => categorizeMeals(mealsQuery.data?.meals ?? [], itemIcons),
-    [mealsQuery.data, itemIcons],
-  )
-
-  const allChartItems = useMemo(
-    () => [
-      ...activityItems,
-      ...categorizeLocations(places, uniquePlaceNames),
-      ...categorizeOtherActivities(otherActivities, itemIcons, typeDefsMap),
-      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
-      ...musicItems,
-      ...mealItems,
-    ],
-    [
-      activityItems,
-      places,
-      uniquePlaceNames,
-      otherActivities,
-      itemIcons,
-      typeDefsMap,
-      productivity,
-      screentimeCategoriesQuery.data,
-      musicItems,
-      mealItems,
-    ],
-  )
-
-  const chartItems = useMemo(
-    () => allChartItems.filter((item) => !isItemHidden(item)),
-    [allChartItems, isItemHidden],
-  )
-
-  const columns = useMemo(
-    () => allColumns.filter((col) => chartItems.some((item) => item.column === col)),
-    [allColumns, chartItems],
-  )
-
-  const columnData = useMemo(
-    () =>
-      columns.map((col) => {
-        const colItems = chartItems.filter((i) => i.column === col)
-        const packed = packLanes(
-          colItems,
-          (i) => i.start,
-          (i) => (i.isPoint ? undefined : i.end),
-        )
-        return { column: col, ...packed }
-      }),
-    [columns, chartItems],
-  )
-
-  const isFetching =
-    activitiesQuery.isFetching ||
-    placesQuery.isFetching ||
-    mealsQuery.isFetching ||
-    productivityQuery.isFetching ||
-    scrobblesQuery.isFetching ||
-    bucketedMetricsQuery.isFetching
-
-  // ── Navigation ─────────────────────────────────────────────────────────────
-
-  const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
-    viewStart.value = zoomStart
-    viewEnd.value = zoomEnd
-
-    const currentFetchStart = startOfDay(new Date(fromDate.value))
-    const currentFetchEnd = endOfDay(new Date(toDate.value))
-    const todayStr = formatISO(new Date(), { representation: 'date' })
-
-    let needsExpand = false
-    let newFrom = fromDate.value
-    let newTo = toDate.value
-
-    if (zoomStart < currentFetchStart) {
-      newFrom = formatISO(subDays(zoomStart, 3), { representation: 'date' })
-      needsExpand = true
-    }
-    if (zoomEnd > currentFetchEnd) {
-      const expanded = formatISO(addDays(zoomEnd, 3), { representation: 'date' })
-      newTo = expanded > todayStr ? todayStr : expanded
-      needsExpand = true
-    }
-
-    if (needsExpand) {
-      fromDate.value = newFrom
-      toDate.value = newTo
-    }
-  }, [])
-
-  const handleJumpDays = useCallback(
-    (days: number) => {
-      const currentStart = viewStart.value ?? getDefaultViewStart()
-      const currentEnd = viewEnd.value ?? getDefaultViewEnd()
-      const newStart = addDays(currentStart, days)
-      const newEnd = addDays(currentEnd, days)
-      const todayEnd = endOfDay(new Date())
-      if (newEnd > todayEnd) return
-      handleZoom(newStart, newEnd)
-    },
-    [handleZoom],
-  )
-
-  const handleResetToToday = useCallback(() => {
-    viewStart.value = null
-    viewEnd.value = null
-    fromDate.value = formatISO(subDays(new Date(), 1), { representation: 'date' })
-    toDate.value = formatISO(new Date(), { representation: 'date' })
-  }, [])
 
   // ── Zoom hook ──────────────────────────────────────────────────────────────
 
@@ -1431,21 +1028,6 @@ export const Timeline = () => {
     barBucketSize,
     attachZoom,
   ])
-
-  // ── UI state ───────────────────────────────────────────────────────────────
-
-  const isInitialLoad = activitiesQuery.isLoading && placesQuery.isLoading && productivityQuery.isLoading
-
-  const errorSources = [
-    activitiesQuery.isError && 'activities',
-    placesQuery.isError && 'places',
-    productivityQuery.isError && 'screen time',
-  ].filter(Boolean) as string[]
-
-  const viewLabel =
-    format(effectiveViewStart, 'MMM d') === format(effectiveViewEnd, 'MMM d')
-      ? format(effectiveViewStart, 'MMM d, yyyy')
-      : `${format(effectiveViewStart, 'MMM d')} – ${format(effectiveViewEnd, 'MMM d, yyyy')}`
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
