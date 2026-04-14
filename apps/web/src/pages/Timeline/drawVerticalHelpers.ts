@@ -1,10 +1,10 @@
-import * as d3 from 'd3'
+import type * as d3 from 'd3'
 import { formatISO } from 'date-fns'
 
 import type { ChartItem, Column } from './types'
 
-import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import { NOW_COLOR } from './colors'
+import { attachHoverHandlers, drawItemIcon, truncateLabel } from './drawItems'
 import { formatTime } from './formatting'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -168,37 +168,11 @@ export const drawPointMarker = (
   hideTooltip: () => void,
 ): void => {
   const cursor = detailUrl ? 'pointer' : 'default'
-
   const iconSize = Math.max(18, Math.min(laneWidth, boxHeight))
 
-  if (item.icon && isEmoji(item.icon)) {
-    parent
-      .append('text')
-      .attr('x', cx)
-      .attr('y', cy)
-      .attr('dominant-baseline', 'central')
-      .attr('text-anchor', 'middle')
-      .attr('font-size', `${iconSize * 0.75}px`)
-      .attr('pointer-events', 'all')
-      .attr('cursor', cursor)
-      .text(item.icon)
-      .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
-      .on('mouseleave', hideTooltip)
-    return
-  }
-
-  if (item.icon && (isUrl(item.icon) || isIconPath(item.icon))) {
-    parent
-      .append('image')
-      .attr('href', item.icon)
-      .attr('x', cx - iconSize / 2)
-      .attr('y', cy - iconSize / 2)
-      .attr('width', iconSize)
-      .attr('height', iconSize)
-      .attr('pointer-events', 'all')
-      .attr('cursor', cursor)
-      .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
-      .on('mouseleave', hideTooltip)
+  const iconEl = drawItemIcon(parent, item.icon, cx, cy, iconSize, { cursor, pointerEvents: 'all' })
+  if (iconEl) {
+    iconEl.on('mouseenter', (event: MouseEvent) => showTooltip(event, item)).on('mouseleave', hideTooltip)
     return
   }
 
@@ -213,9 +187,6 @@ export const drawPointMarker = (
   const labelX = x + 2 * size + 6
   const availableWidth = laneWidth - 2 * size - 8
   if (availableWidth > 20) {
-    const charWidth = 5.5
-    const maxChars = Math.floor(availableWidth / charWidth)
-    const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
     parent
       .append('text')
       .attr('x', labelX)
@@ -225,7 +196,7 @@ export const drawPointMarker = (
       .attr('font-size', '0.6rem')
       .attr('opacity', 0.8)
       .attr('pointer-events', 'none')
-      .text(text)
+      .text(truncateLabel(item.label, availableWidth, 5.5))
   }
 }
 
@@ -238,36 +209,12 @@ export const drawBlockOverlay = (
   blockHeight: number,
 ): void => {
   const iconSize = Math.max(18, Math.min(laneWidth, blockHeight))
-  if (item.icon && isEmoji(item.icon)) {
-    parent
-      .append('text')
-      .attr('x', x + laneWidth / 2)
-      .attr('y', y1 + blockHeight / 2)
-      .attr('dominant-baseline', 'central')
-      .attr('text-anchor', 'middle')
-      .attr('font-size', `${iconSize * 0.75}px`)
-      .attr('pointer-events', 'none')
-      .text(item.icon)
-    return
-  }
-
-  if (item.icon && (isUrl(item.icon) || isIconPath(item.icon))) {
-    parent
-      .append('image')
-      .attr('href', item.icon)
-      .attr('x', x + laneWidth / 2 - iconSize / 2)
-      .attr('y', y1 + blockHeight / 2 - iconSize / 2)
-      .attr('width', iconSize)
-      .attr('height', iconSize)
-      .attr('pointer-events', 'none')
-    return
-  }
+  if (drawItemIcon(parent, item.icon, x + laneWidth / 2, y1 + blockHeight / 2, iconSize)) return
 
   if (blockHeight > 30) {
-    const fontSize = laneWidth > 100 ? '0.8rem' : '0.65rem'
     const charWidth = laneWidth > 100 ? 7.5 : 6
-    const maxChars = Math.floor(laneWidth / charWidth)
-    const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+    const fontSize = laneWidth > 100 ? '0.8rem' : '0.65rem'
+    const text = truncateLabel(item.label, laneWidth, charWidth)
     parent
       .append('text')
       .attr('x', x + 4)
@@ -324,7 +271,7 @@ export const drawItem = (
     return
   }
 
-  parent
+  const rect = parent
     .append('rect')
     .attr('x', x)
     .attr('y', y1)
@@ -334,14 +281,7 @@ export const drawItem = (
     .attr('ry', 3)
     .attr('fill', item.color)
     .attr('opacity', 0.75)
-    .on('mouseenter', function (event: MouseEvent) {
-      d3.select(this).attr('opacity', 0.95)
-      showTooltip(event, item)
-    })
-    .on('mouseleave', function () {
-      d3.select(this).attr('opacity', 0.75)
-      hideTooltip()
-    })
+  attachHoverHandlers(rect, item, showTooltip, hideTooltip, 0.75, 0.95)
 
   drawBlockOverlay(parent, item, x, y1, laneWidth, blockHeight)
 }
