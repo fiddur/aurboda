@@ -93,7 +93,7 @@ describe('stackIconPoints', () => {
     expect(offsets[2]).toBeGreaterThan(offsets[1]!)
   })
 
-  it('sorts overlapping points alphabetically', () => {
+  it('assigns offsets in alphabetical order for same-time points', () => {
     const items = [
       pointItem('C', '2026-01-01T08:00:00Z'),
       pointItem('A', '2026-01-01T08:00:00Z'),
