@@ -35,7 +35,7 @@ export type {
   TagBaseline,
   TagLagResult,
   TagOutcome,
+  EventProbabilityResult,
   TimeWindowStats,
   TriggerCondition,
-  EventProbabilityResult,
 } from './types.ts'
