@@ -1,17 +1,14 @@
+@file:Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false positives
+
 package net.aurboda.ui.screens
 
-import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -21,6 +18,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
@@ -47,6 +45,8 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.launch
 import net.aurboda.ActivityTypeDefinition
 import net.aurboda.AddActivityBody
+import net.aurboda.CustomMetricDefinition
+import net.aurboda.DataFieldDefinition
 import net.aurboda.DataResult
 import net.aurboda.PendingActivityPayload
 import net.aurboda.PendingEntry
@@ -56,8 +56,11 @@ import net.aurboda.addPendingEntry
 import net.aurboda.api.models.AddMetricBody
 import net.aurboda.appJson
 import net.aurboda.cacheActivityTypes
+import net.aurboda.cacheCustomMetrics
 import net.aurboda.fetchActivityTypes
+import net.aurboda.fetchCustomMetrics
 import net.aurboda.getCachedActivityTypes
+import net.aurboda.getCachedCustomMetrics
 import net.aurboda.pendingEntryCount
 import net.aurboda.postActivity
 import net.aurboda.postMetric
@@ -66,21 +69,35 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+// Built-in metrics matching web's builtinDashboardMetrics
 private val builtinMetrics = listOf(
     "weight" to "Weight",
     "body_fat" to "Body Fat",
     "steps" to "Steps",
+    "heart_rate" to "Heart Rate",
     "resting_heart_rate" to "Resting HR",
     "hrv_rmssd" to "HRV (RMSSD)",
-    "spo2" to "SpO2",
+    "hrv_7day" to "HRV (7-day)",
+    "hrv_30day" to "HRV (30-day)",
     "sleep_score" to "Sleep Score",
     "readiness_score" to "Readiness Score",
+    "resilience_score" to "Resilience Score",
+    "spo2" to "SpO2",
     "vo2_max" to "VO2 Max",
     "calories_active" to "Active Calories",
+    "calories_total" to "Total Calories",
     "distance" to "Distance",
+    "floors_climbed" to "Floors Climbed",
+    "cardiovascular_age" to "Cardiovascular Age",
     "stress_level" to "Stress Level",
     "body_battery" to "Body Battery",
+    "training_readiness" to "Training Readiness",
+    "intensity_minutes" to "Intensity Minutes",
+    "respiratory_rate" to "Respiratory Rate",
 )
+
+private fun toSnakeCase(s: String): String =
+    s.trim().lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
 
 @Composable
 fun AddDataScreen(
@@ -109,7 +126,335 @@ fun AddDataScreen(
     }
 }
 
+// --- Autocomplete picker for activity types ---
+
 @OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ActivityTypePicker(
+    activityTypes: List<ActivityTypeDefinition>,
+    selectedType: String,
+    onTypeSelected: (String) -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    var isEditing by remember { mutableStateOf(false) }
+
+    val displayValue = if (isEditing) {
+        query
+    } else {
+        activityTypes.find { it.name == selectedType }?.displayName ?: selectedType
+    }
+
+    val filtered = if (query.isBlank()) {
+        activityTypes
+    } else {
+        val q = query.lowercase()
+        activityTypes.filter { it.displayName.lowercase().contains(q) || it.name.contains(q) }
+    }
+
+    val snakeInput = toSnakeCase(query)
+    val isNewType = query.isNotBlank()
+            && snakeInput.isNotEmpty()
+            && activityTypes.none { it.name == snakeInput }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+    ) {
+        OutlinedTextField(
+            value = displayValue,
+            onValueChange = { newValue ->
+                query = newValue
+                isEditing = true
+                expanded = true
+            },
+            label = { Text("Activity Type") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryEditable)
+                .fillMaxWidth(),
+            singleLine = true,
+        )
+        ExposedDropdownMenu(
+            expanded = expanded && (filtered.isNotEmpty() || isNewType),
+            onDismissRequest = {
+                expanded = false
+                isEditing = false
+            },
+        ) {
+            filtered.forEach { type ->
+                DropdownMenuItem(
+                    text = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = "${type.icon ?: ""} ${type.displayName}".trim(),
+                            )
+                            val cat = type.displayCategory
+                            if (cat != null && cat != "other") {
+                                Text(
+                                    text = cat,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline,
+                                )
+                            }
+                        }
+                    },
+                    onClick = {
+                        onTypeSelected(type.name)
+                        query = ""
+                        isEditing = false
+                        expanded = false
+                    },
+                )
+            }
+            if (isNewType) {
+                if (filtered.isNotEmpty()) {
+                    HorizontalDivider()
+                }
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text("Create '${query.trim()}'")
+                            Text(
+                                text = snakeInput,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        }
+                    },
+                    onClick = {
+                        onTypeSelected(snakeInput)
+                        query = ""
+                        isEditing = false
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+// --- Autocomplete picker for metrics ---
+
+private data class MetricEntry(
+    val value: String,
+    val label: String,
+    val group: String,
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MetricPicker(
+    customMetrics: List<CustomMetricDefinition>,
+    selectedMetric: String,
+    onMetricSelected: (String) -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    var isEditing by remember { mutableStateOf(false) }
+
+    val allEntries = remember(customMetrics) {
+        val builtin = builtinMetrics.map { (value, label) ->
+            MetricEntry(value, label, "Built-in")
+        }
+        val custom = customMetrics.map {
+            MetricEntry(it.name, it.description ?: it.name, "Custom")
+        }
+        builtin + custom
+    }
+
+    val displayValue = if (isEditing) {
+        query
+    } else {
+        allEntries.find { it.value == selectedMetric }?.label ?: selectedMetric
+    }
+
+    val filtered = if (query.isBlank()) {
+        allEntries
+    } else {
+        val q = query.lowercase()
+        allEntries.filter { it.label.lowercase().contains(q) || it.value.contains(q) }
+    }
+
+    val builtinFiltered = filtered.filter { it.group == "Built-in" }
+    val customFiltered = filtered.filter { it.group == "Custom" }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+    ) {
+        OutlinedTextField(
+            value = displayValue,
+            onValueChange = { newValue ->
+                query = newValue
+                isEditing = true
+                expanded = true
+            },
+            label = { Text("Metric") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryEditable)
+                .fillMaxWidth(),
+            singleLine = true,
+        )
+        ExposedDropdownMenu(
+            expanded = expanded && filtered.isNotEmpty(),
+            onDismissRequest = {
+                expanded = false
+                isEditing = false
+            },
+        ) {
+            if (builtinFiltered.isNotEmpty()) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            "Built-in",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    },
+                    onClick = {},
+                    enabled = false,
+                )
+                builtinFiltered.forEach { entry ->
+                    DropdownMenuItem(
+                        text = { Text(entry.label) },
+                        onClick = {
+                            onMetricSelected(entry.value)
+                            query = ""
+                            isEditing = false
+                            expanded = false
+                        },
+                    )
+                }
+            }
+            if (customFiltered.isNotEmpty()) {
+                if (builtinFiltered.isNotEmpty()) {
+                    HorizontalDivider()
+                }
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            "Custom",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    },
+                    onClick = {},
+                    enabled = false,
+                )
+                customFiltered.forEach { entry ->
+                    DropdownMenuItem(
+                        text = { Text(entry.label) },
+                        onClick = {
+                            onMetricSelected(entry.value)
+                            query = ""
+                            isEditing = false
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+// --- Structured data fields for activity types ---
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SchemaDataFields(
+    fields: List<DataFieldDefinition>,
+    data: Map<String, String>,
+    onDataChange: (Map<String, String>) -> Unit,
+) {
+    fields.forEach { field ->
+        val fieldLabel = field.label ?: field.name.replaceFirstChar { it.uppercase() }
+        val unitSuffix = if (field.unit != null) " (${field.unit})" else ""
+
+        when {
+            field.type == "boolean" -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = data[field.name] == "true",
+                        onCheckedChange = { checked ->
+                            onDataChange(data + (field.name to checked.toString()))
+                        },
+                    )
+                    Text(
+                        fieldLabel,
+                        modifier = Modifier.clickable {
+                            val current = data[field.name] == "true"
+                            onDataChange(data + (field.name to (!current).toString()))
+                        },
+                    )
+                }
+            }
+
+            field.type == "string" && !field.enumValues.isNullOrEmpty() -> {
+                // Dropdown for enum values
+                var enumExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = enumExpanded,
+                    onExpandedChange = { enumExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = data[field.name] ?: "",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(fieldLabel) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = enumExpanded) },
+                        modifier = Modifier
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth(),
+                    )
+                    ExposedDropdownMenu(
+                        expanded = enumExpanded,
+                        onDismissRequest = { enumExpanded = false },
+                    ) {
+                        field.enumValues.forEach { value ->
+                            DropdownMenuItem(
+                                text = { Text(value) },
+                                onClick = {
+                                    onDataChange(data + (field.name to value))
+                                    enumExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            field.type == "number" -> {
+                OutlinedTextField(
+                    value = data[field.name] ?: "",
+                    onValueChange = { onDataChange(data + (field.name to it)) },
+                    label = { Text("$fieldLabel$unitSuffix") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+            }
+
+            else -> {
+                // Default: string text input
+                OutlinedTextField(
+                    value = data[field.name] ?: "",
+                    onValueChange = { onDataChange(data + (field.name to it)) },
+                    label = { Text("$fieldLabel$unitSuffix") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+            }
+        }
+    }
+}
+
+// --- Activity tab ---
+
 @Composable
 private fun AddActivityTab(
     apiUrl: String,
@@ -126,11 +471,11 @@ private fun AddActivityTab(
     var endTime by remember { mutableStateOf(nowLocalString()) }
     var hasEndTime by remember { mutableStateOf(true) }
     var notes by remember { mutableStateOf("") }
+    var structuredData by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     var submitting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
-    var typeDropdownExpanded by remember { mutableStateOf(false) }
 
     val httpClient = remember {
         HttpClient(Android) {
@@ -149,6 +494,10 @@ private fun AddActivityTab(
         }
     }
 
+    // Get data schema for selected type
+    val selectedTypeDef = activityTypes.find { it.name == selectedType }
+    val dataFields = selectedTypeDef?.dataSchema?.fields ?: emptyList()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -166,35 +515,23 @@ private fun AddActivityTab(
             )
         }
 
-        // Activity Type dropdown
-        ExposedDropdownMenuBox(
-            expanded = typeDropdownExpanded,
-            onExpandedChange = { typeDropdownExpanded = it },
-        ) {
-            OutlinedTextField(
-                value = activityTypes.find { it.name == selectedType }?.displayName ?: selectedType,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Activity Type") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeDropdownExpanded) },
-                modifier = Modifier
-                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                    .fillMaxWidth(),
+        // Activity type autocomplete picker
+        ActivityTypePicker(
+            activityTypes = activityTypes,
+            selectedType = selectedType,
+            onTypeSelected = { newType ->
+                selectedType = newType
+                structuredData = emptyMap()
+            },
+        )
+
+        // Structured data fields (e.g. Partner for sex)
+        if (dataFields.isNotEmpty()) {
+            SchemaDataFields(
+                fields = dataFields,
+                data = structuredData,
+                onDataChange = { structuredData = it },
             )
-            ExposedDropdownMenu(
-                expanded = typeDropdownExpanded,
-                onDismissRequest = { typeDropdownExpanded = false },
-            ) {
-                activityTypes.forEach { type ->
-                    DropdownMenuItem(
-                        text = { Text(type.displayName) },
-                        onClick = {
-                            selectedType = type.name
-                            typeDropdownExpanded = false
-                        },
-                    )
-                }
-            }
         }
 
         // Title
@@ -274,6 +611,7 @@ private fun AddActivityTab(
 
                 val startIso = parseLocalToIso(startTime)
                 val endIso = if (hasEndTime) parseLocalToIso(endTime) else null
+                val dataMap = structuredData.filterValues { it.isNotBlank() }.ifEmpty { null }
 
                 val body = AddActivityBody(
                     activityType = selectedType,
@@ -281,6 +619,7 @@ private fun AddActivityTab(
                     endTime = endIso,
                     title = title.ifBlank { null },
                     notes = notes.ifBlank { null },
+                    data = dataMap,
                 )
 
                 val pendingEntry = PendingEntry(
@@ -291,6 +630,7 @@ private fun AddActivityTab(
                             end_time = body.endTime,
                             title = body.title,
                             notes = body.notes,
+                            data = body.data,
                         )
                     ),
                     created_at = nowIso(),
@@ -305,16 +645,13 @@ private fun AddActivityTab(
                             removePendingEntry(context, pendingEntry.id)
                             message = "Activity added!"
                             isError = false
-                            resetActivityForm(
-                                onReset = {
-                                    selectedType = ""
-                                    title = ""
-                                    startTime = nowLocalString()
-                                    endTime = nowLocalString()
-                                    hasEndTime = true
-                                    notes = ""
-                                }
-                            )
+                            selectedType = ""
+                            title = ""
+                            startTime = nowLocalString()
+                            endTime = nowLocalString()
+                            hasEndTime = true
+                            notes = ""
+                            structuredData = emptyMap()
                         }
                         is DataResult.Error -> {
                             message = "Saved offline - will sync later"
@@ -331,11 +668,8 @@ private fun AddActivityTab(
     }
 }
 
-private fun resetActivityForm(onReset: () -> Unit) {
-    onReset()
-}
+// --- Metric tab ---
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddMetricTab(
     apiUrl: String,
@@ -345,6 +679,7 @@ private fun AddMetricTab(
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
+    var customMetrics by remember { mutableStateOf(getCachedCustomMetrics(context)) }
     var selectedMetric by remember { mutableStateOf("") }
     var value by remember { mutableStateOf("") }
     var time by remember { mutableStateOf(nowLocalString()) }
@@ -352,11 +687,21 @@ private fun AddMetricTab(
     var submitting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
-    var metricDropdownExpanded by remember { mutableStateOf(false) }
 
     val httpClient = remember {
         HttpClient(Android) {
             install(ContentNegotiation) { json(appJson) }
+        }
+    }
+
+    // Fetch custom metrics from API and cache
+    LaunchedEffect(Unit) {
+        when (val result = fetchCustomMetrics(httpClient, apiUrl, authToken)) {
+            is DataResult.Success -> {
+                customMetrics = result.data
+                cacheCustomMetrics(context, result.data)
+            }
+            is DataResult.Error -> { /* use cached */ }
         }
     }
 
@@ -377,36 +722,12 @@ private fun AddMetricTab(
             )
         }
 
-        // Metric dropdown
-        ExposedDropdownMenuBox(
-            expanded = metricDropdownExpanded,
-            onExpandedChange = { metricDropdownExpanded = it },
-        ) {
-            OutlinedTextField(
-                value = builtinMetrics.find { it.first == selectedMetric }?.second ?: selectedMetric,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Metric") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = metricDropdownExpanded) },
-                modifier = Modifier
-                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                    .fillMaxWidth(),
-            )
-            ExposedDropdownMenu(
-                expanded = metricDropdownExpanded,
-                onDismissRequest = { metricDropdownExpanded = false },
-            ) {
-                builtinMetrics.forEach { (metricKey, label) ->
-                    DropdownMenuItem(
-                        text = { Text(label) },
-                        onClick = {
-                            selectedMetric = metricKey
-                            metricDropdownExpanded = false
-                        },
-                    )
-                }
-            }
-        }
+        // Metric autocomplete picker
+        MetricPicker(
+            customMetrics = customMetrics,
+            selectedMetric = selectedMetric,
+            onMetricSelected = { selectedMetric = it },
+        )
 
         // Value and Time in a row
         Row(
@@ -503,6 +824,8 @@ private fun AddMetricTab(
         }
     }
 }
+
+// --- Utility functions ---
 
 private val localFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
 

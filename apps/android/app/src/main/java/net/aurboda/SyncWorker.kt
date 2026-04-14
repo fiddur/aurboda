@@ -136,6 +136,7 @@ class SyncWorker(
             endTime = data.payload.end_time,
             title = data.payload.title,
             notes = data.payload.notes,
+            data = data.payload.data,
           )
           when (postActivity(httpClient, serverUrl, authToken, body)) {
             is DataResult.Success -> true

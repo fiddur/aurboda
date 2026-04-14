@@ -7,6 +7,7 @@ import kotlinx.serialization.encodeToString
 private const val TAG = "ActivityTypeCache"
 private const val PREFS_NAME = "ActivityTypeCache"
 private const val TYPES_KEY = "activity_types"
+private const val CUSTOM_METRICS_KEY = "custom_metrics"
 
 val defaultActivityTypes = listOf(
     ActivityTypeDefinition(name = "sleep", displayName = "Sleep", isBuiltin = true),
@@ -31,4 +32,21 @@ fun cacheActivityTypes(context: Context, types: List<ActivityTypeDefinition>) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     prefs.edit().putString(TYPES_KEY, appJson.encodeToString(types)).apply()
     Log.d(TAG, "Cached ${types.size} activity types")
+}
+
+fun getCachedCustomMetrics(context: Context): List<CustomMetricDefinition> {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val json = prefs.getString(CUSTOM_METRICS_KEY, null) ?: return emptyList()
+    return try {
+        appJson.decodeFromString<List<CustomMetricDefinition>>(json)
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to decode cached custom metrics", e)
+        emptyList()
+    }
+}
+
+fun cacheCustomMetrics(context: Context, metrics: List<CustomMetricDefinition>) {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    prefs.edit().putString(CUSTOM_METRICS_KEY, appJson.encodeToString(metrics)).apply()
+    Log.d(TAG, "Cached ${metrics.size} custom metrics")
 }
