@@ -228,3 +228,29 @@ export const goalsProgressResponseSchema = baseResponseSchema
   .meta({ id: 'GoalsProgressResponse' })
 
 export type GoalsProgressResponse = z.infer<typeof goalsProgressResponseSchema>
+
+// ── Widget-friendly flat progress ────────────────────────────────────────────
+
+/**
+ * Simplified goal progress for widgets (Android, etc.).
+ * Flat structure — no discriminated union, works with simple Kotlin data classes.
+ */
+export const widgetGoalProgressSchema = z
+  .object({
+    current: z.number().meta({ description: 'Current progress value' }),
+    id: z.string().uuid().meta({ description: 'Goal ID' }),
+    losing_tomorrow: z.number().meta({ description: 'Value dropping off tomorrow (0 for trend goals)' }),
+    max: z.number().optional(),
+    min: z.number().optional(),
+    title: z.string().meta({ description: 'Display title for the goal' }),
+    unit: z.string().meta({ description: 'Display unit (e.g., "min", "count", "per month")' }),
+  })
+  .meta({ description: 'Flat goal progress for widgets', id: 'WidgetGoalProgress' })
+
+export type WidgetGoalProgress = z.infer<typeof widgetGoalProgressSchema>
+
+export const widgetGoalsProgressResponseSchema = baseResponseSchema
+  .extend({
+    goals: z.array(widgetGoalProgressSchema).meta({ description: 'Flat progress for all goals' }),
+  })
+  .meta({ id: 'WidgetGoalsProgressResponse' })

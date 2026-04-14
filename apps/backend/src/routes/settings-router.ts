@@ -10,9 +10,10 @@ import {
   type UpdateSettingsInput,
   updateSettingsInputSchema,
   type UserSettingsResponse,
+  type WidgetGoalProgress,
 } from '@aurboda/api-spec'
 
-import { getGoalsProgress } from '../services/goals.ts'
+import { getGoalsProgress, getWidgetGoalsProgress } from '../services/goals.ts'
 import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
@@ -46,6 +47,15 @@ export const createSettingsRouter = (authMiddleware: RequestHandler): TypedRoute
     authMiddleware,
     async (req, res) => {
       const goals = await getGoalsProgress(req.user!)
+      res.json({ goals, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, { goals: WidgetGoalProgress[]; success: true }>(
+    '/goals/progress/widget',
+    authMiddleware,
+    async (req, res) => {
+      const goals = await getWidgetGoalsProgress(req.user!)
       res.json({ goals, success: true })
     },
   )

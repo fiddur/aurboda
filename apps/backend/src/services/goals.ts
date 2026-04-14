@@ -12,6 +12,7 @@ import {
   type MetricType,
   type TrendGoal,
   type TrendGoalProgress,
+  type WidgetGoalProgress,
 } from '@aurboda/api-spec'
 
 import { getDailyAggregates, getDailyAggregateValue, getRawDailySum, getTimeSeries } from '../db/index.ts'
@@ -172,4 +173,39 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
   }
 
   return results
+}
+
+/**
+ * Map full goal progress to flat widget format.
+ * Merges both metric and trend goals into a simple { title, current, min, max, losing_tomorrow, unit }.
+ */
+const toWidgetProgress = (p: GoalProgress): WidgetGoalProgress => {
+  if (p.goal_type === 'trend') {
+    return {
+      current: p.current,
+      id: p.id,
+      losing_tomorrow: 0,
+      max: p.max,
+      min: p.min,
+      title: p.pattern,
+      unit: p.display_unit,
+    }
+  }
+  return {
+    current: p.current,
+    id: p.id,
+    losing_tomorrow: p.losing_tomorrow,
+    max: p.max,
+    min: p.min,
+    title: p.metric.replaceAll('_', ' '),
+    unit: p.unit,
+  }
+}
+
+/**
+ * Get simplified goal progress for widgets (flat structure, no discriminated union).
+ */
+export const getWidgetGoalsProgress = async (user: string): Promise<WidgetGoalProgress[]> => {
+  const progress = await getGoalsProgress(user)
+  return progress.map(toWidgetProgress)
 }
