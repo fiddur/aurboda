@@ -24,7 +24,6 @@ import {
   fetchUserSettings,
 } from '../../state/api'
 import { aggregateBucketsAligned, parseBucketedResponse } from '../../utils/chart'
-import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import { packLanes } from '../../utils/lanePacking'
 import {
   buildActivityColumnItems,
@@ -50,6 +49,7 @@ import {
   tagSourceColors,
 } from './colors'
 import { drawActivitySparklines, parseBucketedData } from './drawActivitySparklines'
+import { attachHoverHandlers, drawItemIcon, truncateLabel } from './drawItems'
 import {
   CALORIES_COLOR,
   computeYScales,
@@ -1197,27 +1197,13 @@ export const Timeline = () => {
               ? chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true')
               : chartGroup
 
-            if (icon && isEmoji(icon)) {
-              parent
-                .append('text')
-                .attr('x', tagCx)
-                .attr('y', tagCy)
-                .attr('dominant-baseline', 'central')
-                .attr('font-size', `${iconSize * 0.75}px`)
-                .attr('text-anchor', 'middle')
-                .attr('cursor', detailUrl ? 'pointer' : 'default')
-                .text(icon)
-                .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
-                .on('mouseleave', hideTooltip)
-            } else if (icon && (isUrl(icon) || isIconPath(icon))) {
-              parent
-                .append('image')
-                .attr('href', icon)
-                .attr('x', tagCx - iconSize / 2)
-                .attr('y', tagCy - iconSize / 2)
-                .attr('width', iconSize)
-                .attr('height', iconSize)
-                .attr('cursor', detailUrl ? 'pointer' : 'default')
+            const cursor = detailUrl ? 'pointer' : 'default'
+            const iconEl = drawItemIcon(parent, icon, tagCx, tagCy, iconSize, {
+              cursor,
+              pointerEvents: 'all',
+            })
+            if (iconEl) {
+              iconEl
                 .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
                 .on('mouseleave', hideTooltip)
             } else {
@@ -1244,7 +1230,7 @@ export const Timeline = () => {
             ? chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true')
             : chartGroup
 
-          parent
+          const rect = parent
             .append('rect')
             .attr('x', rx)
             .attr('y', laneY)
@@ -1254,38 +1240,10 @@ export const Timeline = () => {
             .attr('opacity', 0.7)
             .attr('rx', 2)
             .attr('cursor', detailUrl ? 'pointer' : 'default')
-            .on('mouseenter', function (event: MouseEvent) {
-              d3.select(this).attr('opacity', 0.9)
-              showTooltip(event, item)
-            })
-            .on('mouseleave', function () {
-              d3.select(this).attr('opacity', 0.7)
-              hideTooltip()
-            })
+          attachHoverHandlers(rect, item, showTooltip, hideTooltip)
 
           const blockIconSize = Math.max(ICON_SIZE, Math.min(laneH, rw))
-          if (item.icon && isEmoji(item.icon)) {
-            parent
-              .append('text')
-              .attr('x', rx + rw / 2)
-              .attr('y', laneY + laneH / 2)
-              .attr('dominant-baseline', 'central')
-              .attr('text-anchor', 'middle')
-              .attr('font-size', `${blockIconSize * 0.75}px`)
-              .attr('pointer-events', 'none')
-              .text(item.icon)
-          } else if (item.icon && (isUrl(item.icon) || isIconPath(item.icon))) {
-            parent
-              .append('image')
-              .attr('href', item.icon)
-              .attr('x', rx + rw / 2 - blockIconSize / 2)
-              .attr('y', laneY + laneH / 2 - blockIconSize / 2)
-              .attr('width', blockIconSize)
-              .attr('height', blockIconSize)
-              .attr('pointer-events', 'none')
-          } else if (rw > 40) {
-            const maxChars = Math.floor(rw / 6)
-            const text = item.label.length > maxChars ? item.label.slice(0, maxChars) + '…' : item.label
+          if (!drawItemIcon(parent, item.icon, rx + rw / 2, laneY + laneH / 2, blockIconSize) && rw > 40) {
             parent
               .append('text')
               .attr('x', rx + 4)
@@ -1293,7 +1251,7 @@ export const Timeline = () => {
               .attr('fill', 'white')
               .attr('font-size', '0.65rem')
               .attr('pointer-events', 'none')
-              .text(text)
+              .text(truncateLabel(item.label, rw))
           }
         }
 
@@ -1309,7 +1267,7 @@ export const Timeline = () => {
             ? chartGroup.append('a').attr('href', placeUrl).attr('data-clickable', 'true')
             : chartGroup
 
-          parent
+          const placeRect = parent
             .append('rect')
             .attr('x', px)
             .attr('y', trackPlaces)
@@ -1319,19 +1277,9 @@ export const Timeline = () => {
             .attr('opacity', 0.7)
             .attr('rx', 2)
             .attr('cursor', placeUrl ? 'pointer' : 'default')
-            .on('mouseenter', function (event: MouseEvent) {
-              d3.select(this).attr('opacity', 0.9)
-              showTooltip(event, place)
-            })
-            .on('mouseleave', function () {
-              d3.select(this).attr('opacity', 0.7)
-              hideTooltip()
-            })
+          attachHoverHandlers(placeRect, place, showTooltip, hideTooltip)
 
           if (pw > 30) {
-            const maxChars = Math.floor(pw / 6)
-            const text =
-              place.label.length > maxChars ? place.label.slice(0, maxChars - 1) + '…' : place.label
             parent
               .append('text')
               .attr('x', px + 4)
@@ -1340,7 +1288,7 @@ export const Timeline = () => {
               .attr('fill', 'white')
               .attr('font-size', '0.6rem')
               .attr('pointer-events', 'none')
-              .text(text)
+              .text(truncateLabel(place.label, pw))
           }
         }
 
