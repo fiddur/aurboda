@@ -41,10 +41,10 @@ import { SchemaDataFields } from './SchemaDataFields'
 import {
   computeSleepMinutesFromStages,
   formatMinutesAsHM,
-  OURA_METRIC_LABELS,
-  OURA_METRIC_UNITS,
-  OURA_SLEEP_METRICS,
-  type OuraSleepMetricKey,
+  SLEEP_METRIC_LABELS,
+  SLEEP_METRIC_UNITS,
+  SLEEP_METRICS,
+  type SleepMetricKey,
   parseSleepStages,
 } from './sleep-utils'
 import './style.css'
@@ -123,35 +123,35 @@ const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
   )
 }
 
-// ── Oura Sleep Metrics ────────────────────────────────────────────────────────
+// ── Sleep Metrics ────────────────────────────────────────────────────────────
 
-const extractOuraMetrics = (
+const extractSleepMetrics = (
   buckets: Array<{ metrics: Record<string, { avg: number }> }>,
-): Partial<Record<OuraSleepMetricKey, number>> => {
-  const result: Partial<Record<OuraSleepMetricKey, number>> = {}
+): Partial<Record<SleepMetricKey, number>> => {
+  const result: Partial<Record<SleepMetricKey, number>> = {}
   for (const bucket of buckets) {
     for (const [metric, stats] of Object.entries(bucket.metrics)) {
-      if (OURA_SLEEP_METRICS.includes(metric as OuraSleepMetricKey)) {
-        result[metric as OuraSleepMetricKey] = stats.avg
+      if (SLEEP_METRICS.includes(metric as SleepMetricKey)) {
+        result[metric as SleepMetricKey] = stats.avg
       }
     }
   }
   return result
 }
 
-const OuraMetricsCards = ({ metrics }: { metrics: Partial<Record<OuraSleepMetricKey, number>> }) => (
+const SleepMetricsCards = ({ metrics }: { metrics: Partial<Record<SleepMetricKey, number>> }) => (
   <div class="detail-section">
-    <h3>Oura Sleep Metrics</h3>
+    <h3>Sleep Metrics</h3>
     <div class="metric-cards">
-      {OURA_SLEEP_METRICS.map((key) => {
+      {SLEEP_METRICS.map((key) => {
         const value = metrics[key]
         if (value === undefined) return null
         return (
           <div class="metric-card" key={key}>
-            <div class="metric-card-label">{OURA_METRIC_LABELS[key]}</div>
+            <div class="metric-card-label">{SLEEP_METRIC_LABELS[key]}</div>
             <div class="metric-card-value">
               {Math.round(value)}
-              {OURA_METRIC_UNITS[key] && <span class="metric-card-unit">{OURA_METRIC_UNITS[key]}</span>}
+              {SLEEP_METRIC_UNITS[key] && <span class="metric-card-unit">{SLEEP_METRIC_UNITS[key]}</span>}
             </div>
           </div>
         )
@@ -219,20 +219,20 @@ const ActivityDetailContent = ({
   const hasExerciseType = Boolean(exerciseType)
   const [hoverTime, setHoverTime] = useState<Date | null>(null)
 
-  // Oura sleep metrics (only fetch when sleep stages exist)
+  // Sleep metrics (only fetch when sleep stages exist)
   const endDateStr = hasSleepStages ? format(displayEnd, 'yyyy-MM-dd') : ''
-  const ouraQuery = useQuery({
+  const sleepMetricsQuery = useQuery({
     enabled: hasSleepStages,
     queryFn: () => {
       const dayStart = new Date(`${endDateStr}T00:00:00`)
       const dayEnd = new Date(`${endDateStr}T23:59:59`)
-      return fetchBucketedMetrics(dayStart, dayEnd, [...OURA_SLEEP_METRICS], '1d')
+      return fetchBucketedMetrics(dayStart, dayEnd, [...SLEEP_METRICS], '1d')
     },
-    queryKey: ['detail-oura-sleep', endDateStr],
+    queryKey: ['detail-sleep-metrics', endDateStr],
     staleTime: 5 * 60 * 1000,
   })
-  const ouraMetrics = hasSleepStages ? extractOuraMetrics(ouraQuery.data?.buckets ?? []) : {}
-  const hasOuraMetrics = Object.keys(ouraMetrics).length > 0
+  const sleepMetrics = hasSleepStages ? extractSleepMetrics(sleepMetricsQuery.data?.buckets ?? []) : {}
+  const hasSleepMetrics = Object.keys(sleepMetrics).length > 0
 
   // Active calories (only fetch when exercise type exists)
   const caloriesQuery = useQuery({
@@ -357,7 +357,7 @@ const ActivityDetailContent = ({
 
       {hasEndTime && !isEditing && <LocationInfo start={displayStart} end={displayEnd} />}
 
-      {hasOuraMetrics && <OuraMetricsCards metrics={ouraMetrics} />}
+      {hasSleepMetrics && <SleepMetricsCards metrics={sleepMetrics} />}
 
       {hasEndTime && (
         <div class="detail-grid-full">

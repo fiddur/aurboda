@@ -325,7 +325,7 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.oura_scores).toEqual({
+    expect(result.scores).toEqual({
       cardiovascular_age: 35,
       readiness_score: 85,
       resilience_score: 75,
@@ -333,7 +333,7 @@ describe('getDailySummary', () => {
     })
   })
 
-  test('returns null ouraScores when no Oura data', async () => {
+  test('returns null scores when no score data', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getNonSleepActivitiesMerged).mockResolvedValue([])
@@ -344,10 +344,10 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.oura_scores).toBeNull()
+    expect(result.scores).toBeNull()
   })
 
-  test('returns partial ouraScores when some metrics are missing', async () => {
+  test('returns partial scores when some metrics are missing', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getNonSleepActivitiesMerged).mockResolvedValue([])
@@ -355,7 +355,7 @@ describe('getDailySummary', () => {
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
 
-    // Only some Oura metrics available
+    // Only some score metrics available
     vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({
       readiness_score: [[new Date('2024-01-15T00:00:00Z'), 85]],
       sleep_score: [[new Date('2024-01-15T00:00:00Z'), 92]],
@@ -363,7 +363,7 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.oura_scores).toEqual({
+    expect(result.scores).toEqual({
       cardiovascular_age: null,
       readiness_score: 85,
       resilience_score: null,
