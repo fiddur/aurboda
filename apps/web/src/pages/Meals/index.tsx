@@ -234,9 +234,8 @@ function MealSlotRow({
             onMouseUp={handleSliderRelease}
             onTouchEnd={handleSliderRelease}
           />
+          {isSaving && <span class="saving-indicator" />}
         </div>
-
-        {isSaving && <span class="saving-indicator" />}
 
         <div class="slot-actions">
           {primaryMeal ? (
