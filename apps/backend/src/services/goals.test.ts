@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
-import { getGoalsProgress } from './goals.ts'
+import { getGoalsProgress, getWidgetGoalsProgress } from './goals.ts'
 import * as settings from './settings.ts'
 import * as trends from './trends.ts'
 
@@ -225,5 +225,67 @@ describe('getGoalsProgress', () => {
     // Non-cumulative metrics still use getDailyAggregates
     expect(db.getDailyAggregates).toHaveBeenCalled()
     expect(db.getDailyAggregateValue).not.toHaveBeenCalled()
+  })
+})
+
+describe('getWidgetGoalsProgress', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-02T12:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  test('returns flat widget format for metric goals', async () => {
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+      { goal_type: 'metric', id: 'goal-1', metric: 'steps', min: 70000, window: '7d' },
+    ])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(10000)
+
+    const result = await getWidgetGoalsProgress('testuser')
+
+    expect(result).toHaveLength(1)
+    expect(result[0].title).toBe('steps')
+    expect(result[0].unit).toBe('count')
+    expect(result[0].min).toBe(70000)
+    expect(result[0].losing_tomorrow).toBeGreaterThanOrEqual(0)
+  })
+
+  test('returns flat widget format for trend goals', async () => {
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+      {
+        aggregation: 'count' as const,
+        display_period: 'monthly' as const,
+        goal_type: 'trend' as const,
+        half_life_days: 30,
+        id: 'goal-trend-1',
+        max: 0.7,
+        pattern: 'ejaculation',
+        source_type: 'activity_type' as const,
+      },
+    ])
+    vi.mocked(trends.getTrend).mockResolvedValue({
+      aggregation: 'count',
+      current_value: 0.5,
+      display_period: 'monthly',
+      display_unit: 'per month',
+      half_life_days: 30,
+      history: [],
+      lookback_days: 90,
+      pattern: 'ejaculation',
+      source_type: 'activity_type',
+    })
+
+    const result = await getWidgetGoalsProgress('testuser')
+
+    expect(result).toHaveLength(1)
+    expect(result[0].title).toBe('ejaculation')
+    expect(result[0].current).toBe(0.5)
+    expect(result[0].max).toBe(0.7)
+    expect(result[0].unit).toBe('per month')
+    expect(result[0].losing_tomorrow).toBe(0)
   })
 })
