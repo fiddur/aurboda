@@ -143,14 +143,14 @@ private fun invalidateTokenIfGrantedTypesChanged(
 class MainActivity : ComponentActivity() {
   companion object {
     const val EXTRA_OPEN_TAB = "open_tab"
-    const val TAB_DATA = "data"
+    const val TAB_ADD = "add"
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     val initialTab =
       when (intent?.getStringExtra(EXTRA_OPEN_TAB)) {
-        TAB_DATA -> MainTab.Data
+        TAB_ADD -> MainTab.Add
         else -> null
       }
     setContent {
@@ -296,8 +296,8 @@ fun AurbodaApp(initialTab: MainTab? = null) {
               modifier = modifier,
             )
           },
-          dataContent = { modifier ->
-            net.aurboda.ui.screens.DataScreen(
+          addContent = { modifier ->
+            net.aurboda.ui.screens.AddDataScreen(
               apiUrl = credentials.apiUrl,
               authToken = credentials.authToken,
               modifier = modifier,
