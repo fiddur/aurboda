@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db/index.ts'
 import { getGoalsProgress } from './goals.ts'
 import * as settings from './settings.ts'
+import * as trends from './trends.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
@@ -18,6 +19,11 @@ vi.mock('./settings', () => ({
   computeHrZoneSecs: vi.fn(),
   getEffectiveGoals: vi.fn(),
   getEffectiveHrZones: vi.fn(),
+}))
+
+// Mock the trends module
+vi.mock('./trends', () => ({
+  getTrend: vi.fn(),
 }))
 
 describe('getGoalsProgress', () => {
@@ -154,6 +160,55 @@ describe('getGoalsProgress', () => {
       expect.any(Date),
       expect.any(Date),
     )
+  })
+
+  test('computes trend goal progress using getTrend', async () => {
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+      {
+        aggregation: 'count',
+        display_period: 'monthly',
+        goal_type: 'trend',
+        half_life_days: 30,
+        id: 'goal-trend-1',
+        max: 0.7,
+        pattern: 'ejaculation',
+        source_type: 'activity_type',
+      },
+    ])
+
+    vi.mocked(trends.getTrend).mockResolvedValue({
+      aggregation: 'count',
+      current_value: 0.85,
+      display_period: 'monthly',
+      display_unit: 'per month',
+      half_life_days: 30,
+      history: [],
+      lookback_days: 90,
+      pattern: 'ejaculation',
+      source_type: 'activity_type',
+    })
+
+    const result = await getGoalsProgress('testuser')
+
+    expect(result).toHaveLength(1)
+    expect(result[0].goal_type).toBe('trend')
+    expect(result[0].current).toBe(0.85)
+    expect(result[0].max).toBe(0.7)
+    expect((result[0] as { pattern: string }).pattern).toBe('ejaculation')
+    expect((result[0] as { display_unit: string }).display_unit).toBe('per month')
+
+    expect(trends.getTrend).toHaveBeenCalledWith('testuser', {
+      aggregation: 'count',
+      display_period: 'monthly',
+      half_life_days: 30,
+      lookback_days: 90,
+      pattern: 'ejaculation',
+      source_type: 'activity_type',
+    })
+
+    // Should not touch the db directly for trend goals
+    expect(db.getDailyAggregateValue).not.toHaveBeenCalled()
+    expect(db.getDailyAggregates).not.toHaveBeenCalled()
   })
 
   test('uses getDailyAggregates for non-cumulative metrics', async () => {
