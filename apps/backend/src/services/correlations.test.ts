@@ -7,7 +7,7 @@ import {
   getEventProbability,
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
-} from './correlations.ts'
+} from './correlations/index.ts'
 import * as locations from './locations.ts'
 import * as queries from './queries/index.ts'
 
