@@ -23,7 +23,7 @@ import {
   type HrvActivitiesResponse,
 } from '@aurboda/api-spec'
 
-import type { SyncProvider } from '../services/queries.ts'
+import type { SyncProvider } from '../services/queries/index.ts'
 
 import {
   getActivityImpact,
@@ -31,7 +31,7 @@ import {
   getEventProbability,
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
-} from '../services/correlations.ts'
+} from '../services/correlations/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
