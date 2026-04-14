@@ -540,12 +540,12 @@ a.meal-name:hover {
   }
 
   .time-slider-wrapper {
-    flex: 1 1 0;
-    max-width: 50%;
+    order: 1;
+    flex-basis: 100%;
   }
 
-  .meal-edit-link {
-    padding: 0.25rem 0.5rem;
+  .slot-actions {
+    margin-left: auto;
   }
 }
 
