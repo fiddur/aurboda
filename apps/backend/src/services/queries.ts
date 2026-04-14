@@ -219,7 +219,7 @@ export interface ProductivitySummary {
   categories?: Array<{ path: string[]; duration_sec: number }>
 }
 
-export interface OuraScores {
+export interface Scores {
   sleep_score: number | null
   readiness_score: number | null
   resilience_score: number | null
@@ -248,7 +248,7 @@ export interface DailySummaryResult {
   sleep_sessions: SleepSessionSummary[]
   productivity: ProductivitySummary | null
   places: PlaceSummary[]
-  oura_scores: OuraScores | null
+  scores: Scores | null
   stress_zones: StressZoneSecs | null
 }
 
@@ -897,7 +897,7 @@ export async function getDailySummary(
     allActivities,
     productivity,
     placeVisits,
-    ouraMetrics,
+    scoreMetrics,
     dayNotes,
     dayMeals,
     stepsAggregate,
@@ -993,19 +993,19 @@ export async function getDailySummary(
         })()
       : null
 
-  // Build Oura scores object (get first value for each metric if available)
-  const sleepScoreData = ouraMetrics['sleep_score']
-  const readinessScoreData = ouraMetrics['readiness_score']
-  const resilienceScoreData = ouraMetrics['resilience_score']
-  const cardiovascularAgeData = ouraMetrics['cardiovascular_age']
+  // Build scores object (get first value for each metric if available)
+  const sleepScoreData = scoreMetrics['sleep_score']
+  const readinessScoreData = scoreMetrics['readiness_score']
+  const resilienceScoreData = scoreMetrics['resilience_score']
+  const cardiovascularAgeData = scoreMetrics['cardiovascular_age']
 
-  const hasAnyOuraData =
+  const hasAnyScoreData =
     sleepScoreData?.length ||
     readinessScoreData?.length ||
     resilienceScoreData?.length ||
     cardiovascularAgeData?.length
 
-  const ouraScores: OuraScores | null = hasAnyOuraData
+  const scores: Scores | null = hasAnyScoreData
     ? {
         cardiovascular_age: cardiovascularAgeData?.[0]?.[1] ?? null,
         readiness_score: readinessScoreData?.[0]?.[1] ?? null,
@@ -1144,7 +1144,7 @@ export async function getDailySummary(
       start_time: n.start_time?.toISOString(),
       updated_at: n.updated_at.toISOString(),
     })),
-    oura_scores: ouraScores,
+    scores,
     places: placeVisits
       .filter((p) => p.duration_minutes > 0)
       .map((p) => ({

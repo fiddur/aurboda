@@ -26,7 +26,11 @@ export const foodItemEntitySchema = nutrientFieldsSchema
       .max(100)
       .optional()
       .meta({ description: 'Default unit (e.g., "g", "ml", "serving", "large slice")' }),
-    icon: z.string().max(2048).optional().meta({ description: 'Icon for this food item (emoji or image URL)' }),
+    icon: z
+      .string()
+      .max(2048)
+      .optional()
+      .meta({ description: 'Icon for this food item (emoji or image URL)' }),
     id: z.string().uuid().meta({ description: 'Food item ID' }),
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     source: z

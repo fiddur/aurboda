@@ -15,7 +15,8 @@ import { baseResponseSchema } from './common.ts'
 export const trendSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
   .meta({
-    description: "Type of data source for trend calculation. 'tag' is a deprecated alias for 'activity_type'.",
+    description:
+      "Type of data source for trend calculation. 'tag' is a deprecated alias for 'activity_type'.",
     example: 'activity_type',
     id: 'TrendSourceType',
   })
@@ -76,7 +77,9 @@ export const getTrendQuerySchema = z
       .positive()
       .default(90)
       .meta({ description: 'How many days of historical data to include' }),
-    pattern: z.string().meta({ description: 'For activity types: regex pattern to match. For metrics: metric name.' }),
+    pattern: z
+      .string()
+      .meta({ description: 'For activity types: regex pattern to match. For metrics: metric name.' }),
     source_type: trendSourceTypeSchema,
     activity_type_id: z
       .string()
