@@ -150,7 +150,7 @@ describe('buildActivityColumnItems', () => {
     sleep: '#3b82f6',
   }
   const itemIcons: Record<string, string> = {}
-  const ouraByDate = new Map<string, Record<string, number>>()
+  const sleepMetricsByDate = new Map<string, Record<string, number>>()
   const buildSleepDetails = () => ['8h sleep']
   const getExerciseTypeName = () => 'Running'
   const exerciseColor = () => '#10b981'
@@ -164,7 +164,7 @@ describe('buildActivityColumnItems', () => {
       activityColors,
       exerciseColor,
       getExerciseTypeName,
-      ouraByDate,
+      sleepMetricsByDate,
       buildSleepDetails,
       scrobbles,
     )
@@ -182,7 +182,7 @@ describe('buildActivityColumnItems', () => {
       activityColors,
       exerciseColor,
       getExerciseTypeName,
-      ouraByDate,
+      sleepMetricsByDate,
       buildSleepDetails,
       scrobbles,
     )
@@ -201,7 +201,7 @@ describe('buildActivityColumnItems', () => {
       activityColors,
       exerciseColor,
       getExerciseTypeName,
-      ouraByDate,
+      sleepMetricsByDate,
       buildSleepDetails,
       scrobbles,
     )
@@ -218,7 +218,7 @@ describe('buildActivityColumnItems', () => {
       activityColors,
       exerciseColor,
       getExerciseTypeName,
-      ouraByDate,
+      sleepMetricsByDate,
       buildSleepDetails,
       scrobbles,
     )
@@ -237,7 +237,7 @@ describe('buildActivityColumnItems', () => {
       activityColors,
       exerciseColor,
       getExerciseTypeName,
-      ouraByDate,
+      sleepMetricsByDate,
       buildSleepDetails,
       scrobbles,
     )
@@ -253,7 +253,7 @@ describe('buildActivityColumnItems', () => {
       activityColors,
       exerciseColor,
       getExerciseTypeName,
-      ouraByDate,
+      sleepMetricsByDate,
       buildSleepDetails,
       scrobbles,
     )

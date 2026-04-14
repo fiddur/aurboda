@@ -56,7 +56,9 @@ export const chartDataQuerySchema = z
     pattern: z
       .string()
       .optional()
-      .meta({ description: 'Pattern to match (regex for activity types, metric name for metrics, category path)' }),
+      .meta({
+        description: 'Pattern to match (regex for activity types, metric name for metrics, category path)',
+      }),
     source_type: chartDataSourceTypeSchema.meta({ description: 'Type of data source' }),
     start: z.iso.datetime().meta({ description: 'Start of time range (ISO 8601)' }),
     activity_type_id: z

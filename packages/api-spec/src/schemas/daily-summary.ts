@@ -186,20 +186,20 @@ export const productivitySummarySchema = z
 export type ProductivitySummary = z.infer<typeof productivitySummarySchema>
 
 /**
- * Oura scores schema.
+ * Scores schema — source-agnostic daily scores (sleep, readiness, etc.).
  */
-export const ouraScoresSchema = z
+export const scoresSchema = z
   .object({
-    cardiovascular_age: z.number().nullable().meta({ description: 'Oura cardiovascular age' }),
-    readiness_score: z.number().nullable().meta({ description: 'Oura readiness score (0-100)' }),
-    resilience_score: z.number().nullable().meta({ description: 'Oura resilience score (0-100)' }),
+    cardiovascular_age: z.number().nullable().meta({ description: 'Cardiovascular age estimate' }),
+    readiness_score: z.number().nullable().meta({ description: 'Readiness score (0-100)' }),
+    resilience_score: z.number().nullable().meta({ description: 'Resilience score (0-100)' }),
     sleep_score: z.number().nullable().meta({
-      description: 'Oura sleep score (0-100). Evaluates the primary sleep session for this date.',
+      description: 'Sleep score (0-100). Evaluates the primary sleep session for this date.',
     }),
   })
-  .meta({ id: 'OuraScores' })
+  .meta({ id: 'Scores' })
 
-export type OuraScores = z.infer<typeof ouraScoresSchema>
+export type Scores = z.infer<typeof scoresSchema>
 
 /**
  * Meal summary schema — lightweight meal info for daily summary.
@@ -241,8 +241,8 @@ export const dailySummaryResultSchema = z
       description:
         'Notes not attached to any activity in the activities list (orphaned or non-activity notes)',
     }),
-    oura_scores: ouraScoresSchema.nullable().meta({
-      description: 'Oura scores for this date.',
+    scores: scoresSchema.nullable().meta({
+      description: 'Daily scores (sleep, readiness, resilience, cardiovascular age).',
     }),
     places: z.array(placeSummarySchema),
     productivity: productivitySummarySchema.nullable(),
