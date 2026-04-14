@@ -342,6 +342,7 @@ a.meal-name:hover {
   text-decoration: none;
   padding: 0.125rem 0.375rem;
   border-radius: 4px;
+  flex-shrink: 0;
 }
 
 .meal-edit-link:hover {
@@ -485,6 +486,7 @@ a.meal-name:hover {
   color: #dc2626;
   border-radius: 4px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .btn-danger-small:hover {
@@ -530,6 +532,10 @@ a.meal-name:hover {
 
   .slot-name {
     min-width: unset;
+  }
+
+  .meal-edit-link {
+    padding: 0.25rem 0.5rem;
   }
 }
 
