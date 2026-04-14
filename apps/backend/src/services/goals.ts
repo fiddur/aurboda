@@ -8,11 +8,15 @@ import {
   metricUnits,
   parseDuration,
   type GoalProgress,
+  type MetricGoalProgress,
   type MetricType,
+  type TrendGoal,
+  type TrendGoalProgress,
 } from '@aurboda/api-spec'
 
 import { getDailyAggregates, getDailyAggregateValue, getRawDailySum, getTimeSeries } from '../db/index.ts'
 import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
+import { getTrend } from './trends.ts'
 
 /**
  * Get all dates in a range (inclusive).
@@ -78,8 +82,80 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
 }
 
 /**
+ * Compute progress for a metric goal (windowed sum).
+ */
+const computeMetricGoalProgress = async (
+  user: string,
+  goal: { id: string; max?: number; metric: MetricType; min?: number; window: string },
+): Promise<MetricGoalProgress> => {
+  const now = new Date()
+  const { ms: windowMs, unit, value } = parseDuration(goal.window)
+  let windowStart: Date
+
+  if (isCalendarBasedUnit(unit)) {
+    const daysInWindow = unit === 'd' ? value : unit === 'w' ? value * 7 : value * 30
+    windowStart = new Date(now)
+    windowStart.setUTCHours(0, 0, 0, 0)
+    windowStart.setUTCDate(windowStart.getUTCDate() - (daysInWindow - 1))
+  } else {
+    windowStart = new Date(now.getTime() - windowMs)
+  }
+
+  const oldestDayStart = new Date(windowStart)
+  oldestDayStart.setUTCHours(0, 0, 0, 0)
+  const oldestDayEnd = new Date(oldestDayStart)
+  oldestDayEnd.setUTCHours(23, 59, 59, 999)
+
+  const [current, losingTomorrow] = await Promise.all([
+    getMetricSum(user, goal.metric, windowStart, now),
+    getMetricSum(user, goal.metric, oldestDayStart, oldestDayEnd),
+  ])
+
+  return {
+    current,
+    goal_type: 'metric',
+    id: goal.id,
+    losing_tomorrow: losingTomorrow,
+    max: goal.max,
+    metric: goal.metric,
+    min: goal.min,
+    unit: metricUnits[goal.metric],
+    window: goal.window,
+  }
+}
+
+/**
+ * Compute progress for a trend goal (EMA value).
+ */
+const computeTrendGoalProgress = async (
+  user: string,
+  goal: TrendGoal,
+): Promise<TrendGoalProgress> => {
+  const trend = await getTrend(user, {
+    aggregation: goal.aggregation,
+    display_period: goal.display_period,
+    half_life_days: goal.half_life_days,
+    lookback_days: 90,
+    pattern: goal.pattern,
+    source_type: goal.source_type,
+  })
+
+  return {
+    current: trend.current_value,
+    display_period: goal.display_period,
+    display_unit: trend.display_unit,
+    goal_type: 'trend',
+    id: goal.id,
+    max: goal.max,
+    min: goal.min,
+    pattern: goal.pattern,
+    source_type: goal.source_type,
+  }
+}
+
+/**
  * Get progress for all user goals.
- * Returns current value and "losing tomorrow" value for each goal.
+ * Returns current value and targets for each goal.
  */
 export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> => {
   const goals = await getEffectiveGoals(user)
@@ -88,48 +164,14 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
     return []
   }
 
-  const now = new Date()
   const results: GoalProgress[] = []
 
   for (const goal of goals) {
-    const { ms: windowMs, unit, value } = parseDuration(goal.window)
-    let windowStart: Date
-
-    if (isCalendarBasedUnit(unit)) {
-      // Calendar-based: "1d" = today only, "7d" = today + 6 previous days
-      // Calculate days based on unit: d=days, w=weeks (7 days each), M=months (30 days each)
-      const daysInWindow = unit === 'd' ? value : unit === 'w' ? value * 7 : value * 30
-      windowStart = new Date(now)
-      windowStart.setUTCHours(0, 0, 0, 0)
-      windowStart.setUTCDate(windowStart.getUTCDate() - (daysInWindow - 1))
+    if (goal.goal_type === 'trend') {
+      results.push(await computeTrendGoalProgress(user, goal))
     } else {
-      // Rolling time-based: "24h" = exactly 24 hours ago from now
-      windowStart = new Date(now.getTime() - windowMs)
+      results.push(await computeMetricGoalProgress(user, goal))
     }
-
-    // Calculate "losing tomorrow" - the oldest day's contribution
-    // For a 7-day window, this is the first day that will drop off tomorrow
-    const oldestDayStart = new Date(windowStart)
-    oldestDayStart.setUTCHours(0, 0, 0, 0)
-    const oldestDayEnd = new Date(oldestDayStart)
-    oldestDayEnd.setUTCHours(23, 59, 59, 999)
-
-    // Get current total and oldest day value in parallel
-    const [current, losingTomorrow] = await Promise.all([
-      getMetricSum(user, goal.metric, windowStart, now),
-      getMetricSum(user, goal.metric, oldestDayStart, oldestDayEnd),
-    ])
-
-    results.push({
-      current,
-      id: goal.id,
-      losing_tomorrow: losingTomorrow,
-      max: goal.max,
-      metric: goal.metric,
-      min: goal.min,
-      unit: metricUnits[goal.metric],
-      window: goal.window,
-    })
   }
 
   return results

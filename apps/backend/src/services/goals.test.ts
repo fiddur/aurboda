@@ -41,7 +41,7 @@ describe('getGoalsProgress', () => {
 
   test('uses getDailyAggregateValue for cumulative metrics like steps', async () => {
     vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
-      { id: 'goal-1', metric: 'steps', min: 10000, window: '1d' },
+      { goal_type: 'metric', id: 'goal-1', metric: 'steps', min: 10000, window: '1d' },
     ])
 
     // For a 1d window with day-based duration, we only include today (1 calendar day)
@@ -55,8 +55,8 @@ describe('getGoalsProgress', () => {
 
     expect(result).toHaveLength(1)
     expect(result[0].current).toBe(4672) // only today
-    expect(result[0].losing_tomorrow).toBe(4672) // tomorrow we lose today's steps
-    expect(result[0].metric).toBe('steps')
+    expect((result[0] as { losing_tomorrow: number }).losing_tomorrow).toBe(4672)
+    expect((result[0] as { metric: string }).metric).toBe('steps')
 
     // Should use getDailyAggregateValue, not getDailyAggregates
     expect(db.getDailyAggregateValue).toHaveBeenCalled()
@@ -65,7 +65,7 @@ describe('getGoalsProgress', () => {
 
   test('falls back to getRawDailySum when no aggregate value exists for cumulative metric', async () => {
     vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
-      { id: 'goal-1', metric: 'steps', min: 10000, window: '1d' },
+      { goal_type: 'metric', id: 'goal-1', metric: 'steps', min: 10000, window: '1d' },
     ])
 
     // No aggregate value exists
@@ -86,7 +86,7 @@ describe('getGoalsProgress', () => {
 
   test('sums aggregate values across multiple days for 7d window', async () => {
     vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
-      { id: 'goal-1', metric: 'steps', min: 70000, window: '7d' },
+      { goal_type: 'metric', id: 'goal-1', metric: 'steps', min: 70000, window: '7d' },
     ])
 
     // For a 7d window with day-based duration, we include exactly 7 calendar days
@@ -108,12 +108,12 @@ describe('getGoalsProgress', () => {
     expect(result).toHaveLength(1)
     // Total should be sum of all 7 days = 68000
     expect(result[0].current).toBe(68000)
-    expect(result[0].losing_tomorrow).toBe(10000)
+    expect((result[0] as { losing_tomorrow: number }).losing_tomorrow).toBe(10000)
   })
 
   test('uses rolling time for hour-based windows (24h spans 2 calendar days at noon)', async () => {
     vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
-      { id: 'goal-1', metric: 'steps', min: 10000, window: '24h' },
+      { goal_type: 'metric', id: 'goal-1', metric: 'steps', min: 10000, window: '24h' },
     ])
 
     // For a 24h window at noon, we use rolling hours (not calendar days)
@@ -130,12 +130,12 @@ describe('getGoalsProgress', () => {
     expect(result).toHaveLength(1)
     // 24h rolling window spans 2 days
     expect(result[0].current).toBe(9672) // 5000 + 4672
-    expect(result[0].losing_tomorrow).toBe(5000)
+    expect((result[0] as { losing_tomorrow: number }).losing_tomorrow).toBe(5000)
   })
 
   test('uses getTimeSeries for HR zone metrics', async () => {
     vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
-      { id: 'goal-1', metric: 'hr_zone_2_sec', min: 9000, window: '7d' },
+      { goal_type: 'metric', id: 'goal-1', metric: 'hr_zone_2_sec', min: 9000, window: '7d' },
     ])
     vi.mocked(settings.getEffectiveHrZones).mockResolvedValue({
       source: 'default',
@@ -158,7 +158,7 @@ describe('getGoalsProgress', () => {
 
   test('uses getDailyAggregates for non-cumulative metrics', async () => {
     vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
-      { id: 'goal-1', metric: 'weight', min: 70, window: '1d' },
+      { goal_type: 'metric', id: 'goal-1', metric: 'weight', min: 70, window: '1d' },
     ])
     vi.mocked(db.getDailyAggregates).mockResolvedValue([
       { avg: 72.5, date: '2026-02-02', metric: 'weight', sum: 72.5 },

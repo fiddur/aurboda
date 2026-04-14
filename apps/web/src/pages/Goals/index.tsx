@@ -51,8 +51,19 @@ interface GoalProgressBarProps {
   showWindow?: boolean
 }
 
+// eslint-disable-next-line complexity -- handles both metric and trend goal types
 function GoalProgressBar({ goal, showWindow }: GoalProgressBarProps) {
-  const { current, losing_tomorrow: losingTomorrow, max, metric, min, window } = goal
+  const { current, max, min } = goal
+
+  // Label and value formatting depends on goal type
+  const label = goal.goal_type === 'trend' ? goal.pattern : (metricLabels[goal.metric] ?? goal.metric)
+  const windowLabel = goal.goal_type === 'trend' ? goal.display_period : goal.window
+  const valueText =
+    goal.goal_type === 'trend'
+      ? `${current.toFixed(2)} ${goal.display_unit}`
+      : formatValue(goal.metric, current)
+  const losingText =
+    goal.goal_type === 'metric' ? formatLosingTomorrow(goal.metric, goal.losing_tomorrow) : ''
 
   // Calculate progress percentages
   const target = max ?? min ?? 1
@@ -64,34 +75,29 @@ function GoalProgressBar({ goal, showWindow }: GoalProgressBarProps) {
   // Determine bar color based on progress
   const getBarColor = () => {
     if (min && max) {
-      // Min-max goal
       if (current >= max) return 'over-max'
       if (current >= min) return 'in-range'
       return 'below-min'
     }
-    if (min) {
-      // Min-only goal
-      return current >= min ? 'met' : 'below-min'
-    }
-    if (max) {
-      // Max-only goal
-      return current > max ? 'over-max' : 'in-range'
-    }
+    if (min) return current >= min ? 'met' : 'below-min'
+    if (max) return current > max ? 'over-max' : 'in-range'
     return 'neutral'
   }
 
   const barColor = getBarColor()
-  const losingText = formatLosingTomorrow(metric, losingTomorrow)
+
+  const formatTarget = (value: number) =>
+    goal.goal_type === 'trend' ? `${value.toFixed(2)} ${goal.display_unit}` : formatValue(goal.metric, value)
 
   return (
     <div class="goal-progress">
       <div class="goal-header">
         <span class="goal-label">
-          {metricLabels[metric] ?? metric}
-          {showWindow && <span class="goal-window"> ({window})</span>}
+          {label}
+          {showWindow && <span class="goal-window"> ({windowLabel})</span>}
         </span>
         {losingText && <span class="losing-tomorrow">({losingText} tomorrow)</span>}
-        <span class="goal-value">{formatValue(metric, current)}</span>
+        <span class="goal-value">{valueText}</span>
       </div>
 
       <div class="progress-container">
@@ -106,13 +112,14 @@ function GoalProgressBar({ goal, showWindow }: GoalProgressBarProps) {
       )}
 
       <div class="goal-targets">
-        {min && <span class="target-label">Min: {formatValue(metric, min)}</span>}
-        {max && <span class="target-label">Max: {formatValue(metric, max)}</span>}
+        {min != null && <span class="target-label">Min: {formatTarget(min)}</span>}
+        {max != null && <span class="target-label">Max: {formatTarget(max)}</span>}
       </div>
     </div>
   )
 }
 
+// eslint-disable-next-line complexity -- handles both metric and trend goal types
 export function Goals() {
   const isLoggedIn = auth.value.token
 
@@ -161,8 +168,13 @@ export function Goals() {
   // Match progress data with goals
   const progressMap = new Map(goalsProgress?.map((p) => [p.id, p]) ?? [])
 
-  // Check if all goals have the same window
-  const allSameWindow = goals.every((g) => g.window === goals[0]?.window)
+  // Check if all metric goals have the same window
+  const metricGoals = goals.filter((g) => g.goal_type !== 'trend')
+  const allSameWindow =
+    metricGoals.length > 0 &&
+    metricGoals.every(
+      (g) => g.goal_type === 'metric' && g.window === (metricGoals[0] as { window: string }).window,
+    )
 
   return (
     <div class="goals-page">
@@ -176,7 +188,9 @@ export function Goals() {
             return (
               <div key={goal.id} class="goal-progress loading">
                 <div class="goal-header">
-                  <span class="goal-label">{metricLabels[goal.metric] ?? goal.metric}</span>
+                  <span class="goal-label">
+                    {goal.goal_type === 'trend' ? goal.pattern : (metricLabels[goal.metric] ?? goal.metric)}
+                  </span>
                 </div>
                 <div class="progress-container">
                   <div class="progress-bar loading" style={{ width: '0%' }} />
@@ -189,11 +203,11 @@ export function Goals() {
       </div>
 
       <p class="goals-footer">
-        {allSameWindow ? (
-          <>Rolling {goals[0]?.window ?? '7d'} window from today.</>
-        ) : (
+        {allSameWindow && metricGoals.length > 0 ? (
+          <>Rolling {(metricGoals[0] as { window: string }).window} window from today.</>
+        ) : metricGoals.length > 0 ? (
           <>Rolling windows from today.</>
-        )}
+        ) : null}
       </p>
 
       <GoalsSettings goals={goals} />
