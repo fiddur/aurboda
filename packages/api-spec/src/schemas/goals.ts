@@ -1,10 +1,15 @@
 /**
  * Goal schemas for tracking health metrics against targets.
+ *
+ * Two goal types via discriminated union on `goal_type`:
+ * - `metric`: windowed sum of a predefined metric (e.g., "70k steps per week")
+ * - `trend`: EMA trend value against a target (e.g., "keep trend below 0.7/month")
  */
 
 import { z } from 'zod'
 
 import { baseResponseSchema, metricTypeSchema } from './common.ts'
+import { trendDisplayPeriodSchema, trendSourceTypeSchema } from './trends.ts'
 
 /**
  * Duration string for goal window (e.g., '7d', '2w', '1M').
@@ -57,11 +62,14 @@ export const parseDuration = (duration: string): ParsedDuration => {
 export const isCalendarBasedUnit = (unit: DurationUnit): boolean =>
   unit === 'd' || unit === 'w' || unit === 'M'
 
+// ── Metric goal (windowed sum) ───────────────────────────────────────────────
+
 /**
- * Goal schema for a single metric target.
+ * Metric goal: track a predefined metric's sum within a rolling window.
  */
-export const goalSchema = z
+export const metricGoalSchema = z
   .object({
+    goal_type: z.literal('metric').default('metric').meta({ description: 'Goal type discriminant' }),
     id: z.string().uuid().meta({ description: 'Unique identifier for the goal' }),
     max: z.number().positive().optional().meta({ description: 'Maximum target value' }),
     metric: metricTypeSchema.meta({ description: 'Metric to track' }),
@@ -74,7 +82,45 @@ export const goalSchema = z
   .refine((data) => data.min === undefined || data.max === undefined || data.min <= data.max, {
     message: 'Min must be less than or equal to max',
   })
-  .meta({ id: 'Goal' })
+  .meta({ description: 'Metric goal: windowed sum of a predefined metric', id: 'MetricGoal' })
+
+export type MetricGoal = z.infer<typeof metricGoalSchema>
+
+// ── Trend goal (EMA target) ─────────────────────────────────────────────────
+
+/**
+ * Trend goal: track an EMA trend value against a min/max target.
+ */
+export const trendGoalSchema = z
+  .object({
+    aggregation: z.enum(['count', 'sum', 'mean']).default('count').meta({ description: 'How to aggregate source data' }),
+    display_period: trendDisplayPeriodSchema.default('monthly').meta({ description: 'Display period for the trend value' }),
+    goal_type: z.literal('trend').meta({ description: 'Goal type discriminant' }),
+    half_life_days: z.number().positive().default(15).meta({ description: 'EMA half-life in days' }),
+    id: z.string().uuid().meta({ description: 'Unique identifier for the goal' }),
+    max: z.number().optional().meta({ description: 'Maximum target value' }),
+    min: z.number().optional().meta({ description: 'Minimum target value' }),
+    pattern: z.string().meta({ description: 'Activity type name, metric name, or category path' }),
+    source_type: trendSourceTypeSchema.meta({ description: 'Type of data source for the trend' }),
+  })
+  .refine((data) => data.min !== undefined || data.max !== undefined, {
+    message: 'At least one of min or max must be specified',
+  })
+  .refine((data) => data.min === undefined || data.max === undefined || data.min <= data.max, {
+    message: 'Min must be less than or equal to max',
+  })
+  .meta({ description: 'Trend goal: EMA trend value against a target', id: 'TrendGoal' })
+
+export type TrendGoal = z.infer<typeof trendGoalSchema>
+
+// ── Union ────────────────────────────────────────────────────────────────────
+
+/**
+ * Goal schema - discriminated union of metric and trend goals.
+ */
+export const goalSchema = z.discriminatedUnion('goal_type', [metricGoalSchema, trendGoalSchema]).meta({
+  id: 'Goal',
+})
 
 export type Goal = z.infer<typeof goalSchema>
 
@@ -93,12 +139,14 @@ export type Goals = z.infer<typeof goalsSchema>
  */
 export const defaultGoals: Goal[] = [
   {
+    goal_type: 'metric',
     id: 'a0000001-0000-4000-8000-000000000001',
     metric: 'hr_zone_2_sec',
     min: 9000, // 150 minutes in seconds
     window: '7d',
   },
   {
+    goal_type: 'metric',
     id: 'a0000002-0000-4000-8000-000000000002',
     max: 600, // 10 minutes in seconds
     metric: 'hr_zone_5_sec',
@@ -106,6 +154,7 @@ export const defaultGoals: Goal[] = [
     window: '7d',
   },
   {
+    goal_type: 'metric',
     id: 'a0000003-0000-4000-8000-000000000003',
     metric: 'steps',
     min: 70000,
@@ -113,12 +162,15 @@ export const defaultGoals: Goal[] = [
   },
 ]
 
+// ── Progress schemas ─────────────────────────────────────────────────────────
+
 /**
- * Goal progress schema - includes current value and losing-tomorrow calculation.
+ * Metric goal progress - includes current windowed sum and losing-tomorrow.
  */
-export const goalProgressSchema = z
+export const metricGoalProgressSchema = z
   .object({
     current: z.number().meta({ description: 'Current value within the window' }),
+    goal_type: z.literal('metric').default('metric').meta({ description: 'Goal type discriminant' }),
     id: z.string().uuid().meta({ description: 'Goal ID' }),
     losing_tomorrow: z
       .number()
@@ -129,6 +181,34 @@ export const goalProgressSchema = z
     unit: z.string().meta({ description: 'Storage unit for the metric' }),
     window: durationStringSchema,
   })
+  .meta({ description: 'Progress for a metric goal', id: 'MetricGoalProgress' })
+
+export type MetricGoalProgress = z.infer<typeof metricGoalProgressSchema>
+
+/**
+ * Trend goal progress - current EMA value compared to target.
+ */
+export const trendGoalProgressSchema = z
+  .object({
+    current: z.number().meta({ description: 'Current EMA trend value' }),
+    display_period: trendDisplayPeriodSchema.meta({ description: 'Display period for the value' }),
+    display_unit: z.string().meta({ description: 'Human-readable unit (e.g., "per month")' }),
+    goal_type: z.literal('trend').meta({ description: 'Goal type discriminant' }),
+    id: z.string().uuid().meta({ description: 'Goal ID' }),
+    max: z.number().optional(),
+    min: z.number().optional(),
+    pattern: z.string().meta({ description: 'Source pattern name' }),
+    source_type: trendSourceTypeSchema,
+  })
+  .meta({ description: 'Progress for a trend goal', id: 'TrendGoalProgress' })
+
+export type TrendGoalProgress = z.infer<typeof trendGoalProgressSchema>
+
+/**
+ * Goal progress - discriminated union of metric and trend progress.
+ */
+export const goalProgressSchema = z
+  .discriminatedUnion('goal_type', [metricGoalProgressSchema, trendGoalProgressSchema])
   .meta({ id: 'GoalProgress' })
 
 export type GoalProgress = z.infer<typeof goalProgressSchema>
