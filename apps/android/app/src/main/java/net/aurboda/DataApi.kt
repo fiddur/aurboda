@@ -100,6 +100,7 @@ data class AddActivityBody(
     @SerialName("end_time") val endTime: String? = null,
     val title: String? = null,
     val notes: String? = null,
+    val data: Map<String, String>? = null,
 )
 
 @Serializable
@@ -184,6 +185,22 @@ suspend fun postMetric(
 // --- Activity Types ---
 
 @Serializable
+data class DataFieldDefinition(
+    val name: String,
+    val type: String,
+    val label: String? = null,
+    val required: Boolean? = null,
+    val unit: String? = null,
+    @SerialName("enum_values") val enumValues: List<String>? = null,
+    @SerialName("show_in_summary") val showInSummary: Boolean? = null,
+)
+
+@Serializable
+data class DataSchemaDefinition(
+    val fields: List<DataFieldDefinition>,
+)
+
+@Serializable
 data class ActivityTypeDefinition(
     val name: String,
     @SerialName("display_name") val displayName: String,
@@ -191,6 +208,7 @@ data class ActivityTypeDefinition(
     val color: String? = null,
     val icon: String? = null,
     @SerialName("is_builtin") val isBuiltin: Boolean = false,
+    @SerialName("data_schema") val dataSchema: DataSchemaDefinition? = null,
 )
 
 @Serializable
@@ -221,6 +239,47 @@ suspend fun fetchActivityTypes(
         }
     } catch (e: Exception) {
         Log.e("DataApi", "Error fetching activity types", e)
+        DataResult.Error(e.message ?: "Unknown error")
+    }
+}
+
+// --- Custom Metrics ---
+
+@Serializable
+data class CustomMetricDefinition(
+    val name: String,
+    val unit: String? = null,
+    val description: String? = null,
+)
+
+@Serializable
+data class CustomMetricsListResponse(
+    val success: Boolean,
+    val data: List<CustomMetricDefinition>? = null,
+)
+
+suspend fun fetchCustomMetrics(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String,
+): DataResult<List<CustomMetricDefinition>> {
+    return try {
+        val url = "$serverUrl/metrics/custom"
+        Log.d("DataApi", "Fetching custom metrics from: $url")
+
+        val response = httpClient.get(url) {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+        }
+
+        if (response.status == HttpStatusCode.OK) {
+            val parsed = appJson.decodeFromString<CustomMetricsListResponse>(response.bodyAsText())
+            DataResult.Success(parsed.data ?: emptyList())
+        } else {
+            Log.e("DataApi", "Custom metrics error: ${response.status}")
+            DataResult.Error("Server returned ${response.status}")
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error fetching custom metrics", e)
         DataResult.Error(e.message ?: "Unknown error")
     }
 }
