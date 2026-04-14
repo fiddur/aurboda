@@ -9,7 +9,7 @@ import {
   getHrvActivitiesCorrelation,
 } from './correlations.ts'
 import * as locations from './locations.ts'
-import * as queries from './queries.ts'
+import * as queries from './queries/index.ts'
 
 // Mock db module
 vi.mock('../db', () => ({
@@ -25,7 +25,7 @@ vi.mock('./locations', () => ({
 }))
 
 // Mock queries module (for queryMetrics used by getBaseline)
-vi.mock('./queries', async (importOriginal) => {
+vi.mock('./queries/index', async (importOriginal) => {
   const actual = await importOriginal<typeof queries>()
   return {
     ...actual,

@@ -6,10 +6,10 @@ import { createAuth } from './auth.ts'
 import * as db from './db/index.ts'
 import { createMcpRouter } from './mcp.ts'
 import * as mutations from './services/mutations.ts'
-import * as queries from './services/queries.ts'
+import * as queries from './services/queries/index.ts'
 
 // Mock the services
-vi.mock('./services/queries', () => ({
+vi.mock('./services/queries/index', () => ({
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
   queryActivities: vi.fn(),

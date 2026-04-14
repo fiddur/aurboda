@@ -23,7 +23,7 @@ import {
   type HrvActivitiesResponse,
 } from '@aurboda/api-spec'
 
-import type { SyncProvider } from '../services/queries.ts'
+import type { SyncProvider } from '../services/queries/index.ts'
 
 import {
   getActivityImpact,

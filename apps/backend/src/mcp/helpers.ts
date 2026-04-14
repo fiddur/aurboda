@@ -41,7 +41,7 @@ export const parseOptionalDate = (dateStr: string): Date | null => {
 }
 
 /** Optional sync provider dependency for tools that trigger auto-sync. */
-export type { SyncProvider } from '../services/queries.ts'
+export type { SyncProvider } from '../services/queries/index.ts'
 
 /** Type alias for McpServer to avoid repetitive imports. */
 export type { McpServer }
