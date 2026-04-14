@@ -127,10 +127,7 @@ const computeMetricGoalProgress = async (
 /**
  * Compute progress for a trend goal (EMA value).
  */
-const computeTrendGoalProgress = async (
-  user: string,
-  goal: TrendGoal,
-): Promise<TrendGoalProgress> => {
+const computeTrendGoalProgress = async (user: string, goal: TrendGoal): Promise<TrendGoalProgress> => {
   const trend = await getTrend(user, {
     aggregation: goal.aggregation,
     display_period: goal.display_period,

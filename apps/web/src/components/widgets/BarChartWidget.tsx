@@ -47,15 +47,7 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
         start,
         ...(activity_type_id ? { activity_type_id } : {}),
       }),
-    queryKey: [
-      'chart-data',
-      source_type,
-      pattern,
-      activity_type_id,
-      bucket_size,
-      lookback_days,
-      aggregation,
-    ],
+    queryKey: ['chart-data', source_type, pattern, activity_type_id, bucket_size, lookback_days, aggregation],
     staleTime: 5 * 60 * 1000,
   })
 

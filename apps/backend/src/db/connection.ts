@@ -790,7 +790,10 @@ export const migrateSchema = async (user: string) => {
 
   // Add trend goal columns to goals table
   if (existingTableNames.has('goals')) {
-    await query(db, `ALTER TABLE goals ADD COLUMN IF NOT EXISTS goal_type VARCHAR(10) NOT NULL DEFAULT 'metric'`)
+    await query(
+      db,
+      `ALTER TABLE goals ADD COLUMN IF NOT EXISTS goal_type VARCHAR(10) NOT NULL DEFAULT 'metric'`,
+    )
     await query(db, `ALTER TABLE goals ADD COLUMN IF NOT EXISTS source_type VARCHAR(30)`)
     await query(db, `ALTER TABLE goals ADD COLUMN IF NOT EXISTS pattern TEXT`)
     await query(db, `ALTER TABLE goals ADD COLUMN IF NOT EXISTS half_life_days INTEGER`)

@@ -93,8 +93,13 @@ export type MetricGoal = z.infer<typeof metricGoalSchema>
  */
 export const trendGoalSchema = z
   .object({
-    aggregation: z.enum(['count', 'sum', 'mean']).default('count').meta({ description: 'How to aggregate source data' }),
-    display_period: trendDisplayPeriodSchema.default('monthly').meta({ description: 'Display period for the trend value' }),
+    aggregation: z
+      .enum(['count', 'sum', 'mean'])
+      .default('count')
+      .meta({ description: 'How to aggregate source data' }),
+    display_period: trendDisplayPeriodSchema
+      .default('monthly')
+      .meta({ description: 'Display period for the trend value' }),
     goal_type: z.literal('trend').meta({ description: 'Goal type discriminant' }),
     half_life_days: z.number().positive().default(15).meta({ description: 'EMA half-life in days' }),
     id: z.string().uuid().meta({ description: 'Unique identifier for the goal' }),
