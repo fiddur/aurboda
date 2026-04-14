@@ -105,9 +105,6 @@ export const useTimelineZoom = ({
       svg.call(zoom)
       zoomBehaviorRef.current = zoom
     } else {
-      const containerWidth = containerRef.current?.clientWidth ?? 800
-      const chartWidth = containerWidth - HORIZONTAL_MARGIN.left - HORIZONTAL_MARGIN.right
-
       const zoom = d3
         .zoom<SVGSVGElement, unknown>()
         .scaleExtent([0.1, 50])
@@ -119,7 +116,11 @@ export const useTimelineZoom = ({
           if (!baseScale) return
           const newX = event.transform.rescaleX(baseScale)
           const newDomain = newX.domain() as [Date, Date]
-          const scale = d3.scaleTime().domain(newDomain).range([0, chartWidth])
+          // Read current width inside handler to stay correct after resize
+          const w = containerRef.current
+            ? containerRef.current.clientWidth - HORIZONTAL_MARGIN.left - HORIZONTAL_MARGIN.right
+            : 800
+          const scale = d3.scaleTime().domain(newDomain).range([0, w])
           currentScaleRef.current = scale
           cancelAnimationFrame(zoomRafRef.current)
           zoomRafRef.current = requestAnimationFrame(() => {

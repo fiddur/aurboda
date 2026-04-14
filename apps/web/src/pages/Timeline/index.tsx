@@ -280,6 +280,8 @@ export const Timeline = () => {
   const scaffoldOrientationRef = useRef<Orientation | null>(null)
   /** Tracks the container dimensions the scaffold was built for. */
   const scaffoldDimsRef = useRef<{ w: number; h: number } | null>(null)
+  /** Tracks horizontal scaffold layout state (legend toggles affect lane positions). */
+  const scaffoldLayoutKeyRef = useRef<string>('')
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
@@ -699,12 +701,20 @@ export const Timeline = () => {
     const containerHeight = containerRef.current.clientHeight
     const dims = scaffoldDimsRef.current
 
-    // Check if scaffold needs rebuild (orientation change, first render, or resize)
+    // In horizontal mode, scaffold layout depends on which tracks are visible (legend toggles
+    // affect lane positions, labels, and Y-axes). Track this so we rebuild when they change.
+    const layoutKey =
+      orientation === 'horizontal'
+        ? `${scrobbles.length > 0 && !hiddenCategories.has('music')}_${!hiddenCategories.has('activity')}_${!hiddenCategories.has('metrics')}_${!hiddenCategories.has('location')}`
+        : ''
+
+    // Check if scaffold needs rebuild (orientation change, first render, resize, or layout change)
     const needsSetup =
       scaffoldOrientationRef.current !== orientation ||
       !dims ||
       dims.w !== containerWidth ||
-      dims.h !== containerHeight
+      dims.h !== containerHeight ||
+      scaffoldLayoutKeyRef.current !== layoutKey
 
     // ── SCAFFOLD SETUP (only when needed) ──────────────────────────────────
     if (needsSetup) {
@@ -870,6 +880,7 @@ export const Timeline = () => {
 
       scaffoldOrientationRef.current = orientation
       scaffoldDimsRef.current = { w: containerWidth, h: containerHeight }
+      scaffoldLayoutKeyRef.current = layoutKey
     }
 
     // ── CREATE DRAW FUNCTION (always — captures latest data) ────────────────
