@@ -12,7 +12,7 @@ import {
 } from './sync.ts'
 
 // Mock the db module (include all exports used by garmin-process.ts too)
-vi.mock('./db', () => ({
+vi.mock('../../db/index.ts', () => ({
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   getActivitiesNeedingDetail: vi.fn().mockResolvedValue([]),
   getSyncState: vi.fn(),
@@ -26,7 +26,7 @@ vi.mock('./db', () => ({
 }))
 
 // Mock garmin-process to avoid importing real db deps
-vi.mock('./garmin-process', async (importOriginal) => {
+vi.mock('./process', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
@@ -35,7 +35,7 @@ vi.mock('./garmin-process', async (importOriginal) => {
   }
 })
 
-vi.mock('./services/audit-log', () => ({
+vi.mock('../../services/audit-log', () => ({
   auditError: vi.fn(),
   auditInfo: vi.fn(),
 }))

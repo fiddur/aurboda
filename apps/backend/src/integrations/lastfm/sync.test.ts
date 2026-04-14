@@ -1,12 +1,12 @@
 import { describe, expect, test, vi } from 'vitest'
 
-vi.mock('./db/index', () => ({
+vi.mock('../../db/index.ts', () => ({
   getSyncState: vi.fn().mockResolvedValue(null),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('./lastfm', () => ({
+vi.mock('./client', () => ({
   lastfmClient: vi.fn().mockReturnValue({
     getRecentTracks: vi.fn().mockResolvedValue([]),
   }),

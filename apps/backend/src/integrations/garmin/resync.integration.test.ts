@@ -16,7 +16,7 @@ import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db
 import { processActivityDetail } from './process.ts'
 
 const garminDetailFixture = JSON.parse(
-  readFileSync(resolve(__dirname, 'test/fixtures/garmin-activity-detail.json'), 'utf-8'),
+  readFileSync(resolve(__dirname, '../../test/fixtures/garmin-activity-detail.json'), 'utf-8'),
 ) as GarminActivityDetailResponse
 
 const CONTAINER_TIMEOUT = 60_000
