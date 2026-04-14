@@ -3,7 +3,7 @@ import type { Request, Response } from 'express'
 import axios from 'axios'
 import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture } from 'date-fns'
 
-import { getOAuthToken, initializeSchema, schemaInitialized, upsertOAuthToken } from './db/index.ts'
+import { getOAuthToken, initializeSchema, schemaInitialized, upsertOAuthToken } from '../../db/index.ts'
 
 /** Oura tag record used during sync processing (mapped to activities). */
 export interface OuraTagWithComment {

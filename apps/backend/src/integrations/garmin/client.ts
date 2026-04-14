@@ -13,8 +13,8 @@ import type { IGarminTokens } from '@flow-js/garmin-connect'
 import garminConnectPkg from '@flow-js/garmin-connect'
 const { GarminConnect } = garminConnectPkg
 
-import { getOAuthToken, upsertOAuthToken } from './db/index.ts'
-import { auditError, auditInfo } from './services/audit-log.ts'
+import { getOAuthToken, upsertOAuthToken } from '../../db/index.ts'
+import { auditError, auditInfo } from '../../services/audit-log.ts'
 
 // ============================================================================
 // Types for Garmin API responses (from custom GET endpoints)

@@ -15,7 +15,7 @@ import {
   type OuraRenewResponse,
   type OuraSubscriptionResponse,
   type OuraWebhookDataType,
-} from '../oura-webhook-api.ts'
+} from '../integrations/oura/webhook-api.ts'
 
 const RENEWAL_INTERVAL_MS = 12 * 60 * 60 * 1000 // 12 hours
 const RENEWAL_THRESHOLD_HOURS = 24

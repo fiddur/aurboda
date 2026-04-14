@@ -8,7 +8,7 @@
 import type { IActivity } from '@flow-js/garmin-connect/dist/garmin/types/activity'
 import type { SleepData } from '@flow-js/garmin-connect/dist/garmin/types/sleep'
 
-import type { Activity, Location, RawRecord, TimeSeriesPoint } from './db/types.ts'
+import type { Activity, Location, RawRecord, TimeSeriesPoint } from '../../db/types.ts'
 import type {
   GarminActivityDetailResponse,
   GarminBodyBatteryData,
@@ -19,7 +19,7 @@ import type {
   GarminSpo2Data,
   GarminStressData,
   GarminTrainingReadiness,
-} from './garmin.ts'
+} from './client.ts'
 
 import {
   deleteGarminActivityWithWrongType,
@@ -28,7 +28,7 @@ import {
   insertRawRecord,
   insertTimeSeries,
   softDeleteLocationRange,
-} from './db/index.ts'
+} from '../../db/index.ts'
 
 // ============================================================================
 // Types

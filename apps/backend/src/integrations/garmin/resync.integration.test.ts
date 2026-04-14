@@ -8,15 +8,15 @@ import { resolve } from 'node:path'
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import type { GarminActivityDetailResponse } from './garmin.ts'
+import type { GarminActivityDetailResponse } from './client.ts'
 
-import { getTimeSeries, insertLocations, insertRawRecord, insertTimeSeries } from './db/index.ts'
-import { softDeleteLocationRange } from './db/locations.ts'
-import { processActivityDetail } from './garmin-process.ts'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from './test/db-test-helper.ts'
+import { getTimeSeries, insertLocations, insertRawRecord, insertTimeSeries } from '../../db/index.ts'
+import { softDeleteLocationRange } from '../../db/locations.ts'
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
+import { processActivityDetail } from './process.ts'
 
 const garminDetailFixture = JSON.parse(
-  readFileSync(resolve(__dirname, 'test/fixtures/garmin-activity-detail.json'), 'utf-8'),
+  readFileSync(resolve(__dirname, '../../test/fixtures/garmin-activity-detail.json'), 'utf-8'),
 ) as GarminActivityDetailResponse
 
 const CONTAINER_TIMEOUT = 60_000
@@ -97,7 +97,7 @@ describe('Garmin resync integration', () => {
     expect(latIdx).toBeGreaterThanOrEqual(0)
 
     // Query locations from DB to verify GPS was inserted
-    const { query } = await import('./db/connection.ts')
+    const { query } = await import('../../db/connection.ts')
     const result = await query(
       user,
       `SELECT source, time, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon
@@ -131,7 +131,7 @@ describe('Garmin resync integration', () => {
       { lat: 57.66, lon: 12.63, source: 'garmin', time: new Date('2024-04-10T11:12:33Z') },
     ])
 
-    const { query } = await import('./db/connection.ts')
+    const { query } = await import('../../db/connection.ts')
     const result = await query(
       user,
       `SELECT source, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon FROM locations ORDER BY time`,

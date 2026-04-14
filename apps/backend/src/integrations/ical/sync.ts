@@ -9,7 +9,7 @@ import type { CalendarSyncResult } from '@aurboda/api-spec'
 
 import ical from 'node-ical'
 
-import { insertActivity, insertRawRecord, upsertSyncState } from './db/index.ts'
+import { insertActivity, insertRawRecord, upsertSyncState } from '../../db/index.ts'
 
 export interface CalendarEvent {
   uid: string

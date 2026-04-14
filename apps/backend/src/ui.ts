@@ -2,10 +2,10 @@ import * as d3 from 'd3'
 import { addDays, isBefore, subDays } from 'date-fns'
 import { JSDOM } from 'jsdom'
 
-import type { ouraClient } from './oura.ts'
+import type { ouraClient } from './integrations/oura/client.ts'
 
 import { getActivities, getLocations, getTimeSeries } from './db/index.ts'
-import { rescuetimeClient } from './rescuetime.ts'
+import { rescuetimeClient } from './integrations/rescuetime/client.ts'
 import { getSettings } from './services/settings.ts'
 
 export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
