@@ -11,7 +11,7 @@ import type { MetricType } from '@aurboda/api-spec'
 
 import { getAllActivitiesInRange, getProductivity, getTimeSeries, getTimeSeriesStats } from '../db/index.ts'
 import { getPlaceVisits } from './locations.ts'
-import { queryMetrics, type SyncProvider } from './queries.ts'
+import { queryMetrics, type SyncProvider } from './queries/index.ts'
 
 // ============================================================================
 // Types

@@ -9,7 +9,7 @@ import { isBefore, subMinutes } from 'date-fns'
 
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
-import type { SyncProvider } from './queries.ts'
+import type { SyncProvider } from './queries/index.ts'
 
 import { getSyncState } from '../db/index.ts'
 import {

@@ -23,7 +23,7 @@ import {
   queryMetricsBucketed,
   queryProductivity,
   queryTags,
-} from '../services/queries.ts'
+} from '../services/queries/index.ts'
 import {
   errorResponse,
   type McpServer,
@@ -212,8 +212,10 @@ Use cases:
       tz: tzSchema,
     },
     async ({ bucket, end, start, tz }) => {
-      const { interval, ms: bucketMs } = (await import('../services/queries.ts')).parseBucketSize(bucket)
-      const { assembleScreentimeBuckets } = await import('../services/queries.ts')
+      const { interval, ms: bucketMs } = (await import('../services/queries/index.ts')).parseBucketSize(
+        bucket,
+      )
+      const { assembleScreentimeBuckets } = await import('../services/queries/index.ts')
       const rows = await (
         await import('../db/index.ts')
       ).getProductivityBucketed(user, new Date(start), new Date(end), interval, tz)

@@ -32,7 +32,7 @@ import {
   insertNamedLocation,
   updateNamedLocation,
 } from '../services/locations.ts'
-import { queryLocations } from '../services/queries.ts'
+import { queryLocations } from '../services/queries/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 

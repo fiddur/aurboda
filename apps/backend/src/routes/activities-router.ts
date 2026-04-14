@@ -68,7 +68,7 @@ import {
   queryActivities,
   queryProductivity,
   type SyncProvider,
-} from '../services/queries.ts'
+} from '../services/queries/index.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'

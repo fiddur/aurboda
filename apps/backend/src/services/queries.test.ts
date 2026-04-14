@@ -18,7 +18,7 @@ import {
   queryMetricsBucketed,
   queryProductivity,
   queryTags,
-} from './queries.ts'
+} from './queries/index.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({

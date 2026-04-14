@@ -17,7 +17,7 @@ import type { ouraClient } from './integrations/oura/client.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'
-import type { SyncProvider } from './services/queries.ts'
+import type { SyncProvider } from './services/queries/index.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
