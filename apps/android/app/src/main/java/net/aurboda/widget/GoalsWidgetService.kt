@@ -13,9 +13,9 @@ import kotlinx.coroutines.runBlocking
 import net.aurboda.CredentialsManager
 import net.aurboda.DataResult
 import net.aurboda.R
+import net.aurboda.WidgetGoalProgress
 import net.aurboda.fetchGoalsProgress
 import net.aurboda.formatZoneTime
-import net.aurboda.api.models.GoalProgress
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -51,7 +51,7 @@ class GoalsWidgetService : RemoteViewsService() {
 
 class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService.RemoteViewsFactory {
 
-    private var goals: List<GoalProgress> = emptyList()
+    private var goals: List<WidgetGoalProgress> = emptyList()
 
     override fun onCreate() {
         Log.d(TAG, "RemoteViewsFactory created")
@@ -64,7 +64,7 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
         Log.d(TAG, "Fetched ${goals.size} goals")
     }
 
-    private suspend fun fetchGoals(): List<GoalProgress> {
+    private suspend fun fetchGoals(): List<WidgetGoalProgress> {
         val credentials = CredentialsManager.getCredentials(context) ?: return emptyList()
 
         val httpClient = HttpClient(Android) {
@@ -104,16 +104,16 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
         views.setOnClickFillInIntent(R.id.goal_item_container, fillInIntent)
 
         // Set label
-        val label = metricLabels[goal.metric.value] ?: goal.metric.value
+        val label = metricLabels[goal.title] ?: goal.title
         views.setTextViewText(R.id.goal_label, label)
 
         // Set current value
-        val valueText = formatGoalValue(goal.metric.value, goal.current, goal.unit)
+        val valueText = formatGoalValue(goal.title, goal.current, goal.unit)
         views.setTextViewText(R.id.goal_value, valueText)
 
         // Set "losing tomorrow" text
         if (goal.losingTomorrow > 0) {
-            val losingText = "(-${formatGoalValue(goal.metric.value, goal.losingTomorrow, goal.unit)} tomorrow)"
+            val losingText = "(-${formatGoalValue(goal.title, goal.losingTomorrow, goal.unit)} tomorrow)"
             views.setTextViewText(R.id.goal_losing, losingText)
         } else {
             views.setTextViewText(R.id.goal_losing, "")
@@ -174,7 +174,7 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
      * Determine progress bar color based on goal status.
      * Matches the web UI color scheme.
      */
-    private fun getProgressColor(goal: GoalProgress): Int {
+    private fun getProgressColor(goal: WidgetGoalProgress): Int {
         val min = goal.min
         val max = goal.max
         val current = goal.current

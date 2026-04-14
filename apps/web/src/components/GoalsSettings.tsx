@@ -62,7 +62,7 @@ const validateGoal = (goal: Goal): string | null => {
   if (goal.min !== undefined && goal.max !== undefined && goal.min > goal.max) {
     return 'Min cannot be greater than Max'
   }
-  if (!/^\d+[smhdwM]$/.test(goal.window)) {
+  if (goal.goal_type !== 'trend' && !/^\d+[smhdwM]$/.test(goal.window)) {
     return 'Invalid window format'
   }
   return null
@@ -74,12 +74,11 @@ const allGoalsValid = (goals: Goal[]): boolean => {
 }
 
 // Local goal state for editing (allows invalid intermediate states)
-interface LocalGoal extends Omit<Goal, 'min' | 'max' | 'window'> {
-  min?: number
-  max?: number
-  window: string
+type LocalGoal = Goal & {
   isNew?: boolean // Track if this is a newly added goal not yet saved
 }
+
+const stripIsNew = ({ isNew: _, ...goal }: LocalGoal): Goal => goal
 
 export function GoalsSettings({ goals }: GoalsSettingsProps) {
   const queryClient = useQueryClient()
@@ -139,7 +138,12 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
           return { ...g, window: value }
         }
 
-        const numValue = fromDisplayValue(g.metric, value)
+        const numValue =
+          g.goal_type === 'trend'
+            ? value === ''
+              ? undefined
+              : parseFloat(value)
+            : fromDisplayValue(g.metric, value)
         return { ...g, [field]: numValue }
       }),
     )
@@ -149,30 +153,14 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
     const localGoal = localGoals.find((g) => g.id === goalId)
     if (!localGoal) return
 
-    // Convert to Goal type for validation and saving
-    const goalToValidate: Goal = {
-      id: localGoal.id,
-      max: localGoal.max,
-      metric: localGoal.metric,
-      min: localGoal.min,
-      window: localGoal.window || '7d',
-    }
-
     // Only save if valid
+    const goalToValidate = stripIsNew(localGoal)
     if (validateGoal(goalToValidate) !== null) {
       return
     }
 
     // Build the full goals array to save
-    const goalsToSave: Goal[] = localGoals
-      .filter((g) => validateGoal({ ...g, window: g.window || '7d' } as Goal) === null)
-      .map((g) => ({
-        id: g.id,
-        max: g.max,
-        metric: g.metric,
-        min: g.min,
-        window: g.window || '7d',
-      }))
+    const goalsToSave: Goal[] = localGoals.filter((g) => validateGoal(g) === null).map(stripIsNew)
 
     // Check if anything changed from the saved state
     const savedGoal = goals.find((g) => g.id === goalId)
@@ -187,7 +175,8 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
     setLocalGoals((local) =>
       local.map((g) => {
         if (g.id !== goalId) return g
-        return { ...g, metric: newMetric as Goal['metric'] }
+        if (g.goal_type === 'trend') return g
+        return { ...g, metric: newMetric as typeof g.metric }
       }),
     )
 
@@ -197,6 +186,7 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
 
   const handleAddGoal = () => {
     const newGoal: LocalGoal = {
+      goal_type: 'metric',
       id: crypto.randomUUID(),
       isNew: true,
       metric: 'steps',
@@ -230,15 +220,7 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       newGoals.splice(toIndex, 0, removed)
 
       // Save the new order (only valid saved goals)
-      const goalsToSave: Goal[] = newGoals
-        .filter((g) => !g.isNew && validateGoal({ ...g, window: g.window || '7d' } as Goal) === null)
-        .map((g) => ({
-          id: g.id,
-          max: g.max,
-          metric: g.metric,
-          min: g.min,
-          window: g.window || '7d',
-        }))
+      const goalsToSave: Goal[] = newGoals.filter((g) => !g.isNew && validateGoal(g) === null).map(stripIsNew)
 
       if (goalsToSave.length > 0) {
         // Use setTimeout to avoid calling mutation during render
@@ -316,11 +298,9 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       )}
 
       <div class="goals-list">
+        {/* eslint-disable-next-line complexity -- handles both metric and trend goal form */}
         {localGoals.map((goal) => {
-          const validationError = validateGoal({
-            ...goal,
-            window: goal.window || '7d',
-          } as Goal)
+          const validationError = validateGoal(goal)
           const isInvalid = validationError !== null
 
           return (
@@ -338,72 +318,119 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
                 ⋮⋮
               </div>
 
-              <div class="goal-field metric-field">
-                <label>Metric</label>
-                <select
-                  value={goal.metric}
-                  onChange={(e) => handleMetricChange(goal.id, (e.target as HTMLSelectElement).value)}
-                >
-                  {validMetrics.map((metric) => (
-                    <option key={metric} value={metric}>
-                      {metricLabels[metric] ?? metric}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {goal.goal_type === 'trend' ? (
+                <>
+                  <div class="goal-field metric-field">
+                    <label>Trend</label>
+                    <span class="trend-label">
+                      {goal.pattern} ({goal.display_period})
+                    </span>
+                  </div>
 
-              <div
-                class={`goal-field min-field ${goal.min === undefined && goal.max === undefined ? 'field-error' : ''}`}
-              >
-                <label>Min</label>
-                <div class="input-with-unit">
-                  <input
-                    type="number"
-                    value={toDisplayValue(goal.metric, goal.min)}
-                    onInput={(e) => handleFieldChange(goal.id, 'min', (e.target as HTMLInputElement).value)}
-                    onBlur={() => handleFieldBlur(goal.id)}
-                    placeholder="-"
-                  />
-                  <span class="unit">{getDisplayUnit(goal.metric)}</span>
-                </div>
-              </div>
-
-              <div
-                class={`goal-field max-field ${goal.min === undefined && goal.max === undefined ? 'field-error' : ''}`}
-              >
-                <label>Max</label>
-                <div class="input-with-unit">
-                  <input
-                    type="number"
-                    value={toDisplayValue(goal.metric, goal.max)}
-                    onInput={(e) => handleFieldChange(goal.id, 'max', (e.target as HTMLInputElement).value)}
-                    onBlur={() => handleFieldBlur(goal.id)}
-                    placeholder="-"
-                  />
-                  <span class="unit">{getDisplayUnit(goal.metric)}</span>
-                </div>
-              </div>
-
-              <div class="goal-field window-field">
-                <label>
-                  Window{' '}
-                  <button
-                    type="button"
-                    class="info-button"
-                    onClick={() => setShowDurationHelp(!showDurationHelp)}
-                    aria-label="Duration format help"
+                  <div
+                    class={`goal-field min-field ${goal.min === undefined && goal.max === undefined ? 'field-error' : ''}`}
                   >
-                    i
-                  </button>
-                </label>
-                <input
-                  type="text"
-                  value={goal.window}
-                  onInput={(e) => handleFieldChange(goal.id, 'window', (e.target as HTMLInputElement).value)}
-                  onBlur={() => handleFieldBlur(goal.id)}
-                  placeholder="7d"
-                />
-              </div>
+                    <label>Min</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={goal.min ?? ''}
+                      onInput={(e) => handleFieldChange(goal.id, 'min', (e.target as HTMLInputElement).value)}
+                      onBlur={() => handleFieldBlur(goal.id)}
+                      placeholder="-"
+                    />
+                  </div>
+
+                  <div
+                    class={`goal-field max-field ${goal.min === undefined && goal.max === undefined ? 'field-error' : ''}`}
+                  >
+                    <label>Max</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={goal.max ?? ''}
+                      onInput={(e) => handleFieldChange(goal.id, 'max', (e.target as HTMLInputElement).value)}
+                      onBlur={() => handleFieldBlur(goal.id)}
+                      placeholder="-"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div class="goal-field metric-field">
+                    <label>Metric</label>
+                    <select
+                      value={goal.metric}
+                      onChange={(e) => handleMetricChange(goal.id, (e.target as HTMLSelectElement).value)}
+                    >
+                      {validMetrics.map((metric) => (
+                        <option key={metric} value={metric}>
+                          {metricLabels[metric] ?? metric}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div
+                    class={`goal-field min-field ${goal.min === undefined && goal.max === undefined ? 'field-error' : ''}`}
+                  >
+                    <label>Min</label>
+                    <div class="input-with-unit">
+                      <input
+                        type="number"
+                        value={toDisplayValue(goal.metric, goal.min)}
+                        onInput={(e) =>
+                          handleFieldChange(goal.id, 'min', (e.target as HTMLInputElement).value)
+                        }
+                        onBlur={() => handleFieldBlur(goal.id)}
+                        placeholder="-"
+                      />
+                      <span class="unit">{getDisplayUnit(goal.metric)}</span>
+                    </div>
+                  </div>
+
+                  <div
+                    class={`goal-field max-field ${goal.min === undefined && goal.max === undefined ? 'field-error' : ''}`}
+                  >
+                    <label>Max</label>
+                    <div class="input-with-unit">
+                      <input
+                        type="number"
+                        value={toDisplayValue(goal.metric, goal.max)}
+                        onInput={(e) =>
+                          handleFieldChange(goal.id, 'max', (e.target as HTMLInputElement).value)
+                        }
+                        onBlur={() => handleFieldBlur(goal.id)}
+                        placeholder="-"
+                      />
+                      <span class="unit">{getDisplayUnit(goal.metric)}</span>
+                    </div>
+                  </div>
+
+                  <div class="goal-field window-field">
+                    <label>
+                      Window{' '}
+                      <button
+                        type="button"
+                        class="info-button"
+                        onClick={() => setShowDurationHelp(!showDurationHelp)}
+                        aria-label="Duration format help"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <input
+                      type="text"
+                      value={goal.window}
+                      onInput={(e) =>
+                        handleFieldChange(goal.id, 'window', (e.target as HTMLInputElement).value)
+                      }
+                      onBlur={() => handleFieldBlur(goal.id)}
+                      placeholder="7d"
+                    />
+                  </div>
+                </>
+              )}
 
               <button
                 type="button"

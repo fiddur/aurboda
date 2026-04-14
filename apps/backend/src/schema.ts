@@ -687,10 +687,16 @@ export const createTableStatements: Record<string, string> = {
   goals: `
     CREATE TABLE IF NOT EXISTS goals (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      metric          VARCHAR(50) NOT NULL,
+      goal_type       VARCHAR(10) NOT NULL DEFAULT 'metric',
+      metric          VARCHAR(50),
       min_value       DOUBLE PRECISION,
       max_value       DOUBLE PRECISION,
-      time_window     VARCHAR(10) NOT NULL DEFAULT '7d',
+      time_window     VARCHAR(10) DEFAULT '7d',
+      source_type     VARCHAR(30),
+      pattern         TEXT,
+      half_life_days  INTEGER,
+      display_period  VARCHAR(10),
+      aggregation     VARCHAR(10),
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

@@ -15,14 +15,30 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import net.aurboda.api.models.AddMetricBody
 import net.aurboda.api.models.AddMetricResponse
-import net.aurboda.api.models.GoalsProgressResponse
-import net.aurboda.api.models.GoalProgress
 import net.aurboda.api.models.UserSettingsResponse
 
 sealed class DataResult<out T> {
     data class Success<T>(val data: T) : DataResult<T>()
     data class Error(val message: String) : DataResult<Nothing>()
 }
+
+/** Flat goal progress for the widget — works for both metric and trend goals. */
+@Serializable
+data class WidgetGoalProgress(
+    @SerialName(value = "id") val id: String,
+    @SerialName(value = "title") val title: String,
+    @SerialName(value = "current") val current: Double,
+    @SerialName(value = "min") val min: Double? = null,
+    @SerialName(value = "max") val max: Double? = null,
+    @SerialName(value = "losing_tomorrow") val losingTomorrow: Double = 0.0,
+    @SerialName(value = "unit") val unit: String = "",
+)
+
+@Serializable
+data class WidgetGoalsProgressResponse(
+    @SerialName(value = "success") val success: Boolean,
+    @SerialName(value = "goals") val goals: List<WidgetGoalProgress>,
+)
 
 suspend fun fetchUserSettings(
     httpClient: HttpClient,
@@ -56,10 +72,10 @@ suspend fun fetchGoalsProgress(
     httpClient: HttpClient,
     serverUrl: String,
     authToken: String
-): DataResult<GoalsProgressResponse> {
+): DataResult<WidgetGoalsProgressResponse> {
     return try {
-        val url = "$serverUrl/goals/progress"
-        Log.d("DataApi", "Fetching goals progress from: $url")
+        val url = "$serverUrl/goals/progress/widget"
+        Log.d("DataApi", "Fetching widget goals progress from: $url")
 
         val response = httpClient.get(url) {
             headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
@@ -68,7 +84,7 @@ suspend fun fetchGoalsProgress(
         if (response.status == HttpStatusCode.OK) {
             val body = response.bodyAsText()
             Log.d("DataApi", "Goals progress response: $body")
-            val parsed = appJson.decodeFromString<GoalsProgressResponse>(body)
+            val parsed = appJson.decodeFromString<WidgetGoalsProgressResponse>(body)
             DataResult.Success(parsed)
         } else {
             Log.e("DataApi", "Goals progress error: ${response.status}")

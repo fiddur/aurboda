@@ -228,7 +228,9 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
               <td>
                 <strong>Calendars (ICS)</strong>
               </td>
-              <td>Calendar events imported as activities (Google Calendar, Outlook, iCloud, Nextcloud, etc.)</td>
+              <td>
+                Calendar events imported as activities (Google Calendar, Outlook, iCloud, Nextcloud, etc.)
+              </td>
               <td>Pull (ICS fetch)</td>
             </tr>
             <tr>

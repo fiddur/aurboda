@@ -788,6 +788,22 @@ export const migrateSchema = async (user: string) => {
   // Migrate goals and custom_metrics from user_settings JSONB to their own tables
   await migrateGoalsAndCustomMetrics(db, existingTableNames)
 
+  // Add trend goal columns to goals table
+  if (existingTableNames.has('goals')) {
+    await query(
+      db,
+      `ALTER TABLE goals ADD COLUMN IF NOT EXISTS goal_type VARCHAR(10) NOT NULL DEFAULT 'metric'`,
+    )
+    await query(db, `ALTER TABLE goals ADD COLUMN IF NOT EXISTS source_type VARCHAR(30)`)
+    await query(db, `ALTER TABLE goals ADD COLUMN IF NOT EXISTS pattern TEXT`)
+    await query(db, `ALTER TABLE goals ADD COLUMN IF NOT EXISTS half_life_days INTEGER`)
+    await query(db, `ALTER TABLE goals ADD COLUMN IF NOT EXISTS display_period VARCHAR(10)`)
+    await query(db, `ALTER TABLE goals ADD COLUMN IF NOT EXISTS aggregation VARCHAR(10)`)
+    // Make metric and time_window nullable (trend goals don't use them)
+    await query(db, `ALTER TABLE goals ALTER COLUMN metric DROP NOT NULL`)
+    await query(db, `ALTER TABLE goals ALTER COLUMN time_window DROP NOT NULL`)
+  }
+
   // Fix activities with invalid activity_type names (e.g. UUID-like values starting with a digit).
   // Prefix with 't_' to make them valid, then create definitions for them.
   if (existingTableNames.has('activities') && existingTableNames.has('activity_type_definitions')) {
