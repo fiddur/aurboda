@@ -74,7 +74,7 @@ export const useTimelineZoom = ({
     if (orientationRef.current === 'vertical') {
       const zoom = d3
         .zoom<SVGSVGElement, unknown>()
-        .scaleExtent([0.1, 20])
+        .scaleExtent([0.1, 200])
         .clickDistance(5)
         .filter((event: Event) => event.type !== 'dblclick')
         .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
@@ -105,9 +105,11 @@ export const useTimelineZoom = ({
       svg.call(zoom)
       zoomBehaviorRef.current = zoom
     } else {
+      // Scale extent max must be high enough to zoom into a single hour even when
+      // the base scale spans a wide fetch range (e.g. 600 days → need k ≈ 14400).
       const zoom = d3
         .zoom<SVGSVGElement, unknown>()
-        .scaleExtent([0.1, 50])
+        .scaleExtent([0.1, 20000])
         .clickDistance(5)
         .filter((event: Event) => event.type !== 'dblclick')
         .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {

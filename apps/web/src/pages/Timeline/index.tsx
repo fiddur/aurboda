@@ -163,6 +163,8 @@ export const Timeline = () => {
   const scaffoldOrientationRef = useRef<Orientation | null>(null)
   const scaffoldDimsRef = useRef<{ w: number; h: number } | null>(null)
   const scaffoldLayoutKeyRef = useRef<string>('')
+  /** Tracks the fetch range the base scale was built for. */
+  const scaffoldFetchKeyRef = useRef<string>('')
 
   // ── Derived layout data ───────────────────────────────────────────────────
 
@@ -284,13 +286,19 @@ export const Timeline = () => {
         ? `${scrobbles.length > 0 && !hiddenCategories.has('music')}_${!hiddenCategories.has('activity')}_${!hiddenCategories.has('metrics')}_${!hiddenCategories.has('location')}`
         : ''
 
-    // Check if scaffold needs rebuild (orientation change, first render, resize, or layout change)
+    // The base scale domain must match the fetch range (horizontal) or today (vertical).
+    // When the fetch range expands (user zooms past boundary) or contracts (reset to today),
+    // the scaffold must rebuild so the D3 zoom transform stays in sync with the base scale.
+    const fetchKey = `${fromDate.value}_${toDate.value}`
+
+    // Check if scaffold needs rebuild
     const needsSetup =
       scaffoldOrientationRef.current !== orientation ||
       !dims ||
       dims.w !== containerWidth ||
       dims.h !== containerHeight ||
-      scaffoldLayoutKeyRef.current !== layoutKey
+      scaffoldLayoutKeyRef.current !== layoutKey ||
+      scaffoldFetchKeyRef.current !== fetchKey
 
     // ── SCAFFOLD SETUP (only when needed) ──────────────────────────────────
     if (needsSetup) {
@@ -457,6 +465,7 @@ export const Timeline = () => {
       scaffoldOrientationRef.current = orientation
       scaffoldDimsRef.current = { w: containerWidth, h: containerHeight }
       scaffoldLayoutKeyRef.current = layoutKey
+      scaffoldFetchKeyRef.current = fetchKey
     }
 
     // ── CREATE DRAW FUNCTION (always — captures latest data) ────────────────
