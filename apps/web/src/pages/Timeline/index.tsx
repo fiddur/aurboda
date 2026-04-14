@@ -1,6 +1,4 @@
-/* eslint-disable max-lines -- large visualization component, being decomposed */
 import { useSignalEffect } from '@preact/signals'
-import { useQueryClient } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, format, startOfDay } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
@@ -11,26 +9,9 @@ import type { ChartItem, Orientation } from './types'
 import { aggregateBucketsAligned } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import { computeBarLayout, type BarSlot } from './barLayout'
-import {
-  activityColors,
-  hrZoneColors,
-  MUSIC_COLOR,
-  placeColorPalette,
-  productivityColors,
-  TAG_COLOR,
-  tagSourceColors,
-} from './colors'
 import { drawActivitySparklines } from './drawActivitySparklines'
 import { attachHoverHandlers, drawItemIcon, truncateLabel } from './drawItems'
-import {
-  CALORIES_COLOR,
-  computeYScales,
-  drawMetricsTrack,
-  HR_COLOR,
-  HRV_COLOR,
-  STEPS_COLOR,
-  STRESS_COLOR,
-} from './drawMetricsTrack'
+import { computeYScales, drawMetricsTrack, HR_COLOR, HRV_COLOR } from './drawMetricsTrack'
 import {
   buildMusicTooltipHtml,
   drawMusicSessions,
@@ -38,10 +19,12 @@ import {
   mergeScrobblesIntoSessions,
   MUSIC_STAFF_HEIGHT,
 } from './drawMusicStaff'
-import { drawScreentimeBars, SCREENTIME_COLOR } from './drawScreentimeTrack'
-import { CTL_COLOR, drawTrainingLoadTrack } from './drawTrainingLoadTrack'
+import { drawScreentimeBars } from './drawScreentimeTrack'
+import { drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { drawColumnItems, drawHorizontalNowLine, drawNowLine } from './drawVerticalHelpers'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
+import { TimelineControls } from './TimelineControls'
+import { TimelineLegend } from './TimelineLegend'
 import { buildTooltipHtml } from './tooltipBuilder'
 import { useTimelineData } from './useTimelineData'
 import { _initialHash, useTimelineNavigation } from './useTimelineNavigation'
@@ -53,8 +36,6 @@ import './style.css'
 
 // eslint-disable-next-line complexity -- D3 visualization component
 export const Timeline = () => {
-  const queryClient = useQueryClient()
-
   // ── Navigation hook ──────────────────────────────────────────────────────
   const nav = useTimelineNavigation()
   const {
@@ -1029,246 +1010,28 @@ export const Timeline = () => {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const hiddenCount = hiddenCategories.size
-
   return (
     <div class={`timeline-view${isFullscreen ? ' timeline-fullscreen' : ''}`}>
-      <div class="timeline-controls">
-        <div class="timeline-nav">
-          <button class="nav-btn" onClick={() => handleJumpDays(-30)} title="Back 1 month">
-            {'<<'}
-          </button>
-          <button class="nav-btn" onClick={() => handleJumpDays(-1)} title="Back 1 day">
-            {'<'}
-          </button>
-          <button class="nav-btn nav-today" onClick={handleResetToToday}>
-            Today
-          </button>
-          <button class="nav-btn" onClick={() => handleJumpDays(1)} title="Forward 1 day">
-            {'>'}
-          </button>
-          <button class="nav-btn" onClick={() => handleJumpDays(30)} title="Forward 1 month">
-            {'>>'}
-          </button>
-        </div>
-        <span class="timeline-date-label">{viewLabel}</span>
-        <button
-          class={`nav-btn timeline-refresh-btn${isFetching ? ' timeline-refresh-spinning' : ''}`}
-          disabled={isFetching}
-          onClick={() =>
-            queryClient.invalidateQueries({
-              predicate: (query) =>
-                typeof query.queryKey[0] === 'string' &&
-                (query.queryKey[0] as string).startsWith('timeline-'),
-            })
-          }
-          title={isFetching ? 'Loading…' : 'Refresh data'}
-          type="button"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
-            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-            <path d="M21 21v-5h-5" />
-          </svg>
-        </button>
+      <TimelineControls
+        orientation={orientation}
+        setOrientation={setOrientation}
+        isFullscreen={isFullscreen}
+        setIsFullscreen={setIsFullscreen}
+        handleJumpDays={handleJumpDays}
+        handleResetToToday={handleResetToToday}
+        viewLabel={viewLabel}
+        isFetching={isFetching}
+      />
 
-        <div class="timeline-orientation-toggle">
-          <button
-            class="nav-btn"
-            onClick={() => setOrientation(orientation === 'vertical' ? 'horizontal' : 'vertical')}
-            title={orientation === 'vertical' ? 'Switch to horizontal layout' : 'Switch to vertical layout'}
-            type="button"
-          >
-            {orientation === 'vertical' ? (
-              // Portrait screen → rotate to landscape
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                {/* Portrait screen */}
-                <rect x="7" y="2" width="10" height="14" rx="2" />
-                {/* Rotation arrow (clockwise, bottom-right) */}
-                <path d="M19 17a7 7 0 0 1-7 5" />
-                <polyline points="16 21 19 17 23 19" />
-              </svg>
-            ) : (
-              // Landscape screen → rotate to portrait
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                {/* Landscape screen */}
-                <rect x="2" y="7" width="14" height="10" rx="2" />
-                {/* Rotation arrow (counter-clockwise, bottom-right) */}
-                <path d="M17 19a7 7 0 0 1-5 -7" />
-                <polyline points="21 16 17 19 19 23" />
-              </svg>
-            )}
-          </button>
-          <button
-            class="nav-btn timeline-fullscreen-btn"
-            onClick={() => setIsFullscreen((v) => !v)}
-            title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
-            type="button"
-          >
-            {isFullscreen ? '⤡' : '⛶'}
-          </button>
-        </div>
-      </div>
-
-      <div class={`timeline-legend-wrapper${legendCollapsed ? ' collapsed' : ''}`}>
-        <button
-          class="timeline-legend-toggle"
-          onClick={() => setLegendCollapsed((v) => !v)}
-          type="button"
-          title={legendCollapsed ? 'Show legend' : 'Hide legend'}
-        >
-          Legend{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ''}{' '}
-          <span class="dropdown-arrow">{legendCollapsed ? '▾' : '▴'}</span>
-        </button>
-        {!legendCollapsed && (
-          <div class="timeline-legend" ref={legendRef}>
-            {/* ── Music (top-level) ── */}
-            {hasLastFm && (
-              <>
-                <button
-                  key="music"
-                  class={`legend-item${hiddenCategories.has('music') ? ' legend-item-hidden' : ''}`}
-                  onClick={() => toggleCategory('music')}
-                  type="button"
-                >
-                  <span class="legend-dot" style={{ background: MUSIC_COLOR }} />
-                  Music
-                </button>
-                <span class="legend-separator" />
-              </>
-            )}
-
-            {/* ── Activity group ── */}
-            <div class="legend-group">
-              <button
-                key="activity"
-                class={`legend-item legend-group-header${hiddenCategories.has('activity') ? ' legend-item-hidden' : ''}`}
-                onClick={() => toggleCategory('activity')}
-                type="button"
-              >
-                <span class="legend-dot" style={{ background: activityColors.sleep! }} />
-                Activity
-              </button>
-              {[
-                {
-                  cat: 'sleep_rest' as LegendCategory,
-                  color: activityColors.sleep!,
-                  label: 'Sleep/Nap/Rest',
-                },
-                {
-                  cat: 'meditation' as LegendCategory,
-                  color: activityColors.meditation!,
-                  label: 'Meditation',
-                },
-                { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
-                { cat: 'other' as LegendCategory, color: TAG_COLOR, label: 'Other' },
-                { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
-                {
-                  cat: 'screentime' as LegendCategory,
-                  color: productivityColors[1]!,
-                  label: 'Screen Time',
-                },
-              ].map(({ cat, color, label }) => (
-                <button
-                  key={cat}
-                  class={`legend-item legend-sub-item${hiddenCategories.has('activity') ? ' legend-sub-item--disabled' : ''}${hiddenCategories.has(cat) ? ' legend-item-hidden' : ''}`}
-                  onClick={() => toggleCategory(cat)}
-                  type="button"
-                >
-                  <span class="legend-dot legend-dot-small" style={{ background: color }} />
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <span class="legend-separator" />
-
-            {/* ── Metrics group ── */}
-            <div class="legend-group">
-              <button
-                key="metrics"
-                class={`legend-item legend-group-header${hiddenCategories.has('metrics') ? ' legend-item-hidden' : ''}`}
-                onClick={() => toggleCategory('metrics')}
-                type="button"
-              >
-                <span class="legend-dot" style={{ background: HR_COLOR }} />
-                Metrics
-              </button>
-              {[
-                { cat: 'hr' as LegendCategory, color: HR_COLOR, label: 'HR' },
-                { cat: 'hrv' as LegendCategory, color: HRV_COLOR, label: 'HRV' },
-                { cat: 'stress' as LegendCategory, color: STRESS_COLOR, label: 'Stress' },
-                ...(orientation === 'horizontal'
-                  ? [
-                      { cat: 'steps' as LegendCategory, color: STEPS_COLOR, label: 'Steps' },
-                      { cat: 'calories' as LegendCategory, color: CALORIES_COLOR, label: 'Calories' },
-                      { cat: 'training_load' as LegendCategory, color: CTL_COLOR, label: 'Training Load' },
-                      {
-                        cat: 'screen_time_h' as LegendCategory,
-                        color: SCREENTIME_COLOR,
-                        label: 'Screen Time',
-                      },
-                    ]
-                  : []),
-              ].map(({ cat, color, label }) => (
-                <button
-                  key={cat}
-                  class={`legend-item legend-sub-item${hiddenCategories.has('metrics') ? ' legend-sub-item--disabled' : ''}${hiddenCategories.has(cat) ? ' legend-item-hidden' : ''}`}
-                  onClick={() => toggleCategory(cat)}
-                  type="button"
-                >
-                  <span class="legend-dot legend-dot-small" style={{ background: color }} />
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <span class="legend-separator" />
-
-            {/* ── Location (top-level) ── */}
-            <button
-              key="location"
-              class={`legend-item${hiddenCategories.has('location') ? ' legend-item-hidden' : ''}`}
-              onClick={() => toggleCategory('location')}
-              type="button"
-            >
-              <span class="legend-dot" style={{ background: placeColorPalette[0]! }} />
-              Location
-            </button>
-          </div>
-        )}
-      </div>
+      <TimelineLegend
+        orientation={orientation}
+        hiddenCategories={hiddenCategories}
+        toggleCategory={toggleCategory}
+        hasLastFm={hasLastFm}
+        legendCollapsed={legendCollapsed}
+        setLegendCollapsed={setLegendCollapsed}
+        legendRef={legendRef}
+      />
 
       {/* Overlap warnings UI temporarily disabled — will be redesigned
       {overlapWarnings.length > 0 && (
