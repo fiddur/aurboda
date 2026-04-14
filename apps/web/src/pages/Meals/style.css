@@ -336,6 +336,13 @@ a.meal-name:hover {
   color: #673ab8;
 }
 
+.slot-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
 .meal-edit-link {
   font-size: 0.8rem;
   color: #6b7280;
@@ -478,7 +485,6 @@ a.meal-name:hover {
 }
 
 .btn-danger-small {
-  margin-left: auto;
   padding: 0.2rem 0.5rem;
   font-size: 0.75rem;
   border: 1px solid #fca5a5;
@@ -486,7 +492,6 @@ a.meal-name:hover {
   color: #dc2626;
   border-radius: 4px;
   cursor: pointer;
-  flex-shrink: 0;
 }
 
 .btn-danger-small:hover {

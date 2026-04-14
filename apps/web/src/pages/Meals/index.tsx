@@ -238,31 +238,33 @@ function MealSlotRow({
 
         {isSaving && <span class="saving-indicator" />}
 
-        {primaryMeal ? (
-          <a href={`/meals/${primaryMeal.id}`} class="meal-edit-link" title="Edit meal details">
-            ...
-          </a>
-        ) : (
-          <button
-            type="button"
-            class="meal-edit-link"
-            title="Create meal and edit details"
-            onClick={() => onCreateAndOpen(slot)}
-          >
-            +
-          </button>
-        )}
+        <div class="slot-actions">
+          {primaryMeal ? (
+            <a href={`/meals/${primaryMeal.id}`} class="meal-edit-link" title="Edit meal details">
+              ...
+            </a>
+          ) : (
+            <button
+              type="button"
+              class="meal-edit-link"
+              title="Create meal and edit details"
+              onClick={() => onCreateAndOpen(slot)}
+            >
+              +
+            </button>
+          )}
 
-        {primaryMeal && (
-          <ConfirmButton
-            label="Delete"
-            confirmMessage="Delete this meal?"
-            onConfirm={() => onDelete(primaryMeal.id!)}
-            isPending={isDeletePending}
-            pendingLabel="Deleting..."
-            buttonClass="btn-danger-small"
-          />
-        )}
+          {primaryMeal && (
+            <ConfirmButton
+              label="Delete"
+              confirmMessage="Delete this meal?"
+              onConfirm={() => onDelete(primaryMeal.id!)}
+              isPending={isDeletePending}
+              pendingLabel="Deleting..."
+              buttonClass="btn-danger-small"
+            />
+          )}
+        </div>
       </div>
 
       {sensitivityAreas.length > 0 && (
