@@ -319,10 +319,10 @@ export async function addActivity(
   const dataError = await validateDataForType(user, input.activity_type, input.data)
   if (dataError) return { error: dataError, success: false }
 
-  // Validate that endTime is after startTime (if provided)
-  if (input.end_time && input.end_time <= input.start_time) {
+  // Validate that endTime is not before startTime (equal is valid for point-in-time activities)
+  if (input.end_time && input.end_time < input.start_time) {
     return {
-      error: 'end_time must be after start_time',
+      error: 'end_time must not be before start_time',
       success: false,
     }
   }
@@ -493,10 +493,10 @@ export async function updateActivity(
   const finalStartTime = input.start_time ?? existing.start_time
   const finalEndTime = input.end_time ?? existing.end_time
 
-  // Validate that endTime is after startTime
-  if (finalEndTime && finalEndTime <= finalStartTime) {
+  // Validate that endTime is not before startTime (equal is valid for point-in-time activities)
+  if (finalEndTime && finalEndTime < finalStartTime) {
     return {
-      error: 'end_time must be after start_time',
+      error: 'end_time must not be before start_time',
       id,
       success: false,
     }

@@ -128,7 +128,7 @@ class SyncWorker(
     Log.d(TAG, "Processing ${entries.size} pending data entries")
 
     for (entry in entries) {
-      val success = when (val data = entry.data) {
+      val result = when (val data = entry.data) {
         is PendingPayload.Activity -> {
           val body = AddActivityBody(
             activityType = data.payload.activity_type,
@@ -138,10 +138,7 @@ class SyncWorker(
             notes = data.payload.notes,
             data = data.payload.data,
           )
-          when (postActivity(httpClient, serverUrl, authToken, body)) {
-            is DataResult.Success -> true
-            is DataResult.Error -> false
-          }
+          postActivity(httpClient, serverUrl, authToken, body)
         }
         is PendingPayload.Metric -> {
           val body = net.aurboda.api.models.AddMetricBody(
@@ -149,17 +146,18 @@ class SyncWorker(
             value = data.payload.value,
             time = data.payload.time,
           )
-          when (postMetric(httpClient, serverUrl, authToken, body)) {
-            is DataResult.Success -> true
-            is DataResult.Error -> false
-          }
+          postMetric(httpClient, serverUrl, authToken, body)
         }
       }
-      if (success) {
-        removePendingEntry(applicationContext, entry.id)
-        Log.d(TAG, "Pending entry ${entry.id} synced successfully")
-      } else {
-        Log.w(TAG, "Pending entry ${entry.id} failed, will retry next sync")
+      when (result) {
+        is DataResult.Success<*> -> {
+          removePendingEntry(applicationContext, entry.id)
+          Log.d(TAG, "Pending entry ${entry.id} synced successfully")
+        }
+        is DataResult.Error -> {
+          markPendingEntryFailed(applicationContext, entry.id, result.message)
+          Log.w(TAG, "Pending entry ${entry.id} failed: ${result.message}")
+        }
       }
     }
   }

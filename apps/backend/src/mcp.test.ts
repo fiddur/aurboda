@@ -996,7 +996,7 @@ describe('MCP Server', () => {
       const token = auth.createToken('testuser')
 
       vi.mocked(mutations.addActivity).mockResolvedValue({
-        error: 'end_time must be after start_time',
+        error: 'end_time must not be before start_time',
         success: false,
       })
 
@@ -1019,7 +1019,7 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
-      expect(parsed.result.content[0].text).toContain('end_time must be after start_time')
+      expect(parsed.result.content[0].text).toContain('end_time must not be before start_time')
     })
   })
 

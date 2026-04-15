@@ -12,8 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -21,14 +24,20 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -61,12 +70,18 @@ import net.aurboda.fetchActivityTypes
 import net.aurboda.fetchCustomMetrics
 import net.aurboda.getCachedActivityTypes
 import net.aurboda.getCachedCustomMetrics
+import net.aurboda.getPendingEntries
+import net.aurboda.markPendingEntryFailed
 import net.aurboda.pendingEntryCount
 import net.aurboda.postActivity
 import net.aurboda.postMetric
 import net.aurboda.removePendingEntry
-import java.time.LocalDateTime
+import net.aurboda.updatePendingEntry
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 // Built-in metrics matching web's builtinDashboardMetrics
@@ -125,6 +140,104 @@ fun AddDataScreen(
         }
     }
 }
+
+// --- DateTimePicker composable ---
+
+private val displayDateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+private val displayTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateTimePickerField(
+    label: String,
+    epochMillis: Long,
+    onChanged: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val zone = ZoneId.systemDefault()
+    val zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), zone)
+    val displayText = "${zdt.format(displayDateFormatter)}  ${zdt.format(displayTimeFormatter)}"
+
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+
+    OutlinedTextField(
+        value = displayText,
+        onValueChange = {},
+        readOnly = true,
+        label = { Text(label) },
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { showDatePicker = true },
+        singleLine = true,
+        enabled = false, // Prevents keyboard, click handled by modifier
+    )
+
+    if (showDatePicker) {
+        val dateState = rememberDatePickerState(
+            initialSelectedDateMillis = epochMillis,
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDatePicker = false
+                    val selectedDate = dateState.selectedDateMillis
+                    if (selectedDate != null) {
+                        // Keep existing time, change date
+                        val pickedDate = Instant.ofEpochMilli(selectedDate)
+                            .atZone(ZoneId.of("UTC"))
+                            .toLocalDate()
+                        val newZdt = ZonedDateTime.of(pickedDate, zdt.toLocalTime(), zone)
+                        onChanged(newZdt.toInstant().toEpochMilli())
+                    }
+                    showTimePicker = true
+                }) { Text("Next") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = dateState)
+        }
+    }
+
+    if (showTimePicker) {
+        val timeState = rememberTimePickerState(
+            initialHour = zdt.hour,
+            initialMinute = zdt.minute,
+            is24Hour = true,
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    showTimePicker = false
+                    // Re-read current epochMillis (may have been updated by date picker)
+                    val currentZdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), zone)
+                    val newZdt = currentZdt
+                        .withHour(timeState.hour)
+                        .withMinute(timeState.minute)
+                        .withSecond(0)
+                        .withNano(0)
+                    onChanged(newZdt.toInstant().toEpochMilli())
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("Cancel") }
+            },
+            title = { Text(label) },
+            text = { TimePicker(state = timeState) },
+        )
+    }
+}
+
+private fun epochMillisToIso(epochMillis: Long): String {
+    val zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault())
+    return zdt.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+}
+
+private fun nowEpochMillis(): Long = System.currentTimeMillis()
 
 // --- Autocomplete picker for activity types ---
 
@@ -453,6 +566,174 @@ private fun SchemaDataFields(
     }
 }
 
+// --- Pending entries section ---
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PendingEntriesSection(
+    apiUrl: String,
+    authToken: String,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var entries by remember { mutableStateOf(getPendingEntries(context)) }
+    var editingEntry by remember { mutableStateOf<PendingEntry?>(null) }
+    var editingTimeMillis by remember { mutableLongStateOf(nowEpochMillis()) }
+
+    // Refresh pending entries periodically
+    LaunchedEffect(Unit) {
+        entries = getPendingEntries(context)
+    }
+
+    if (entries.isEmpty()) return
+
+    val httpClient = remember {
+        HttpClient(Android) {
+            install(ContentNegotiation) { json(appJson) }
+        }
+    }
+
+    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+    Text(
+        "Pending entries (${entries.size})",
+        style = MaterialTheme.typography.titleSmall,
+    )
+
+    entries.forEach { entry ->
+        val description = when (val data = entry.data) {
+            is PendingPayload.Activity -> "Activity: ${data.payload.activity_type}"
+            is PendingPayload.Metric -> "Metric: ${data.payload.metric} = ${data.payload.value}"
+        }
+        val timeStr = when (val data = entry.data) {
+            is PendingPayload.Activity -> data.payload.start_time
+            is PendingPayload.Metric -> data.payload.time
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+        ) {
+            Text(description, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Time: $timeStr",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            if (entry.fail_count > 0) {
+                Text(
+                    "Failed ${entry.fail_count}x: ${entry.last_error ?: "unknown error"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 4.dp),
+            ) {
+                OutlinedButton(onClick = {
+                    // Parse existing time to epoch millis for the picker
+                    val millis = try {
+                        ZonedDateTime.parse(timeStr, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                            .toInstant().toEpochMilli()
+                    } catch (_: Exception) {
+                        nowEpochMillis()
+                    }
+                    editingTimeMillis = millis
+                    editingEntry = entry
+                }) { Text("Edit time") }
+                OutlinedButton(onClick = {
+                    scope.launch {
+                        val result = when (val data = entry.data) {
+                            is PendingPayload.Activity -> {
+                                val body = AddActivityBody(
+                                    activityType = data.payload.activity_type,
+                                    startTime = data.payload.start_time,
+                                    endTime = data.payload.end_time,
+                                    title = data.payload.title,
+                                    notes = data.payload.notes,
+                                    data = data.payload.data,
+                                )
+                                postActivity(httpClient, apiUrl, authToken, body)
+                            }
+                            is PendingPayload.Metric -> {
+                                val body = AddMetricBody(
+                                    metric = data.payload.metric,
+                                    value = data.payload.value,
+                                    time = data.payload.time,
+                                )
+                                postMetric(httpClient, apiUrl, authToken, body)
+                            }
+                        }
+                        when (result) {
+                            is DataResult.Success<*> -> {
+                                removePendingEntry(context, entry.id)
+                            }
+                            is DataResult.Error -> {
+                                markPendingEntryFailed(context, entry.id, result.message)
+                            }
+                        }
+                        entries = getPendingEntries(context)
+                    }
+                }) { Text("Retry") }
+                OutlinedButton(onClick = {
+                    removePendingEntry(context, entry.id)
+                    entries = getPendingEntries(context)
+                }) { Text("Delete") }
+            }
+        }
+    }
+
+    // Edit time dialog
+    val currentEditing = editingEntry
+    if (currentEditing != null) {
+        DateTimePickerField(
+            label = "New time",
+            epochMillis = editingTimeMillis,
+            onChanged = { editingTimeMillis = it },
+        )
+
+        AlertDialog(
+            onDismissRequest = { editingEntry = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    val newIso = epochMillisToIso(editingTimeMillis)
+                    val updated = when (val data = currentEditing.data) {
+                        is PendingPayload.Activity -> currentEditing.copy(
+                            data = PendingPayload.Activity(
+                                data.payload.copy(start_time = newIso)
+                            ),
+                            fail_count = 0,
+                            last_error = null,
+                        )
+                        is PendingPayload.Metric -> currentEditing.copy(
+                            data = PendingPayload.Metric(
+                                data.payload.copy(time = newIso)
+                            ),
+                            fail_count = 0,
+                            last_error = null,
+                        )
+                    }
+                    updatePendingEntry(context, updated)
+                    entries = getPendingEntries(context)
+                    editingEntry = null
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingEntry = null }) { Text("Cancel") }
+            },
+            title = { Text("Edit time") },
+            text = {
+                DateTimePickerField(
+                    label = "Time",
+                    epochMillis = editingTimeMillis,
+                    onChanged = { editingTimeMillis = it },
+                )
+            },
+        )
+    }
+}
+
 // --- Activity tab ---
 
 @Composable
@@ -467,8 +748,8 @@ private fun AddActivityTab(
     var activityTypes by remember { mutableStateOf(getCachedActivityTypes(context)) }
     var selectedType by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
-    var startTime by remember { mutableStateOf(nowLocalString()) }
-    var endTime by remember { mutableStateOf(nowLocalString()) }
+    var startTimeMillis by remember { mutableLongStateOf(nowEpochMillis()) }
+    var endTimeMillis by remember { mutableLongStateOf(nowEpochMillis()) }
     var hasEndTime by remember { mutableStateOf(true) }
     var notes by remember { mutableStateOf("") }
     var structuredData by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -547,12 +828,10 @@ private fun AddActivityTab(
         )
 
         // Start time
-        OutlinedTextField(
-            value = startTime,
-            onValueChange = { startTime = it },
-            label = { Text("Start Time") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
+        DateTimePickerField(
+            label = "Start Time",
+            epochMillis = startTimeMillis,
+            onChanged = { startTimeMillis = it },
         )
 
         // Has end time checkbox
@@ -563,12 +842,10 @@ private fun AddActivityTab(
 
         // End time
         if (hasEndTime) {
-            OutlinedTextField(
-                value = endTime,
-                onValueChange = { endTime = it },
-                label = { Text("End Time") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
+            DateTimePickerField(
+                label = "End Time",
+                epochMillis = endTimeMillis,
+                onChanged = { endTimeMillis = it },
             )
         }
 
@@ -609,8 +886,8 @@ private fun AddActivityTab(
                 submitting = true
                 message = ""
 
-                val startIso = parseLocalToIso(startTime)
-                val endIso = if (hasEndTime) parseLocalToIso(endTime) else null
+                val startIso = epochMillisToIso(startTimeMillis)
+                val endIso = if (hasEndTime) epochMillisToIso(endTimeMillis) else null
                 val dataMap = structuredData.filterValues { it.isNotBlank() }.ifEmpty { null }
 
                 val body = AddActivityBody(
@@ -633,7 +910,7 @@ private fun AddActivityTab(
                             data = body.data,
                         )
                     ),
-                    created_at = nowIso(),
+                    created_at = epochMillisToIso(nowEpochMillis()),
                 )
                 addPendingEntry(context, pendingEntry)
 
@@ -647,15 +924,16 @@ private fun AddActivityTab(
                             isError = false
                             selectedType = ""
                             title = ""
-                            startTime = nowLocalString()
-                            endTime = nowLocalString()
+                            startTimeMillis = nowEpochMillis()
+                            endTimeMillis = nowEpochMillis()
                             hasEndTime = true
                             notes = ""
                             structuredData = emptyMap()
                         }
                         is DataResult.Error -> {
-                            message = "Saved offline - will sync later"
-                            isError = false
+                            markPendingEntryFailed(context, pendingEntry.id, result.message)
+                            message = "Error: ${result.message}"
+                            isError = true
                         }
                     }
                 }
@@ -665,6 +943,9 @@ private fun AddActivityTab(
         ) {
             Text(if (submitting) "Adding..." else "Add Activity")
         }
+
+        // Pending entries management
+        PendingEntriesSection(apiUrl = apiUrl, authToken = authToken)
     }
 }
 
@@ -682,7 +963,7 @@ private fun AddMetricTab(
     var customMetrics by remember { mutableStateOf(getCachedCustomMetrics(context)) }
     var selectedMetric by remember { mutableStateOf("") }
     var value by remember { mutableStateOf("") }
-    var time by remember { mutableStateOf(nowLocalString()) }
+    var timeMillis by remember { mutableLongStateOf(nowEpochMillis()) }
 
     var submitting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
@@ -743,12 +1024,11 @@ private fun AddMetricTab(
                 modifier = Modifier.weight(1f),
                 singleLine = true,
             )
-            OutlinedTextField(
-                value = time,
-                onValueChange = { time = it },
-                label = { Text("Time") },
+            DateTimePickerField(
+                label = "Time",
+                epochMillis = timeMillis,
+                onChanged = { timeMillis = it },
                 modifier = Modifier.weight(1f),
-                singleLine = true,
             )
         }
 
@@ -779,7 +1059,7 @@ private fun AddMetricTab(
                 submitting = true
                 message = ""
 
-                val timeIso = parseLocalToIso(time)
+                val timeIso = epochMillisToIso(timeMillis)
 
                 val body = AddMetricBody(
                     metric = selectedMetric,
@@ -795,7 +1075,7 @@ private fun AddMetricTab(
                             time = timeIso,
                         )
                     ),
-                    created_at = nowIso(),
+                    created_at = epochMillisToIso(nowEpochMillis()),
                 )
                 addPendingEntry(context, pendingEntry)
 
@@ -808,11 +1088,12 @@ private fun AddMetricTab(
                             message = "Metric recorded!"
                             isError = false
                             value = ""
-                            time = nowLocalString()
+                            timeMillis = nowEpochMillis()
                         }
                         is DataResult.Error -> {
-                            message = "Saved offline - will sync later"
-                            isError = false
+                            markPendingEntryFailed(context, pendingEntry.id, result.message)
+                            message = "Error: ${result.message}"
+                            isError = true
                         }
                     }
                 }
@@ -822,24 +1103,8 @@ private fun AddMetricTab(
         ) {
             Text(if (submitting) "Adding..." else "Add Metric")
         }
-    }
-}
 
-// --- Utility functions ---
-
-private val localFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
-
-private fun nowLocalString(): String = LocalDateTime.now().format(localFormatter)
-
-private fun nowIso(): String =
-    java.time.ZonedDateTime.now(ZoneId.systemDefault())
-        .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-
-private fun parseLocalToIso(localTimeString: String): String {
-    return try {
-        val ldt = LocalDateTime.parse(localTimeString, localFormatter)
-        ldt.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-    } catch (_: Exception) {
-        localTimeString
+        // Pending entries management
+        PendingEntriesSection(apiUrl = apiUrl, authToken = authToken)
     }
 }
