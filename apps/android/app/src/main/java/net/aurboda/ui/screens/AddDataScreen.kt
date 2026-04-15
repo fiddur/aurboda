@@ -232,10 +232,8 @@ private fun DateTimePickerField(
     }
 }
 
-private fun epochMillisToIso(epochMillis: Long): String {
-    val zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault())
-    return zdt.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-}
+private fun epochMillisToIso(epochMillis: Long): String =
+    Instant.ofEpochMilli(epochMillis).toString()
 
 private fun nowEpochMillis(): Long = System.currentTimeMillis()
 
