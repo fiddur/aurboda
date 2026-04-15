@@ -33,7 +33,7 @@ describe('validateBody', () => {
   test('calls next on valid body', () => {
     const req = createMockReq({ body: { name: 'test' } })
     const res = createMockRes()
-    const next = vi.fn<NextFunction>()
+    const next = vi.fn() as unknown as NextFunction
 
     validateBody(schema)(req, res, next)
 
@@ -44,7 +44,7 @@ describe('validateBody', () => {
   test('returns 400 on invalid body', () => {
     const req = createMockReq({ body: { name: 123 } })
     const res = createMockRes()
-    const next = vi.fn<NextFunction>()
+    const next = vi.fn() as unknown as NextFunction
 
     validateBody(schema)(req, res, next)
 
@@ -59,7 +59,7 @@ describe('validateBody', () => {
     vi.mocked(auditWarn).mockClear()
     const req = createMockReq({ body: { name: 123 }, user: 'testuser' })
     const res = createMockRes()
-    const next = vi.fn<NextFunction>()
+    const next = vi.fn() as unknown as NextFunction
 
     validateBody(schema)(req, res, next)
 
@@ -75,7 +75,7 @@ describe('validateBody', () => {
     vi.mocked(auditWarn).mockClear()
     const req = createMockReq({ body: { name: 123 } })
     const res = createMockRes()
-    const next = vi.fn<NextFunction>()
+    const next = vi.fn() as unknown as NextFunction
 
     validateBody(schema)(req, res, next)
 
@@ -89,7 +89,7 @@ describe('validateQuery', () => {
   test('calls next on valid query', () => {
     const req = createMockReq({ query: { page: '1' } as unknown as Request['query'] })
     const res = createMockRes()
-    const next = vi.fn<NextFunction>()
+    const next = vi.fn() as unknown as NextFunction
 
     validateQuery(schema)(req, res, next)
 
@@ -99,7 +99,7 @@ describe('validateQuery', () => {
   test('returns 400 on invalid query', () => {
     const req = createMockReq({ query: { page: 'abc' } as unknown as Request['query'] })
     const res = createMockRes()
-    const next = vi.fn<NextFunction>()
+    const next = vi.fn() as unknown as NextFunction
 
     validateQuery(schema)(req, res, next)
 
@@ -116,7 +116,7 @@ describe('validateQuery', () => {
       user: 'testuser',
     })
     const res = createMockRes()
-    const next = vi.fn<NextFunction>()
+    const next = vi.fn() as unknown as NextFunction
 
     validateQuery(schema)(req, res, next)
 
@@ -132,7 +132,7 @@ describe('validateQuery', () => {
     vi.mocked(auditWarn).mockClear()
     const req = createMockReq({ query: { page: 'abc' } as unknown as Request['query'] })
     const res = createMockRes()
-    const next = vi.fn<NextFunction>()
+    const next = vi.fn() as unknown as NextFunction
 
     validateQuery(schema)(req, res, next)
 
