@@ -43,6 +43,8 @@ data class PendingEntry(
     val id: String = UUID.randomUUID().toString(),
     val data: PendingPayload,
     val created_at: String,
+    val fail_count: Int = 0,
+    val last_error: String? = null,
 )
 
 fun addPendingEntry(context: Context, entry: PendingEntry) {
@@ -67,6 +69,20 @@ fun removePendingEntry(context: Context, id: String) {
     val entries = getPendingEntries(context).filter { it.id != id }
     savePendingEntries(context, entries)
     Log.d(TAG, "Removed pending entry $id, remaining: ${entries.size}")
+}
+
+fun updatePendingEntry(context: Context, updated: PendingEntry) {
+    val entries = getPendingEntries(context).map { if (it.id == updated.id) updated else it }
+    savePendingEntries(context, entries)
+    Log.d(TAG, "Updated pending entry ${updated.id}")
+}
+
+fun markPendingEntryFailed(context: Context, id: String, error: String) {
+    val entries = getPendingEntries(context).map {
+        if (it.id == id) it.copy(fail_count = it.fail_count + 1, last_error = error) else it
+    }
+    savePendingEntries(context, entries)
+    Log.d(TAG, "Marked pending entry $id as failed (error: $error)")
 }
 
 fun pendingEntryCount(context: Context): Int = getPendingEntries(context).size

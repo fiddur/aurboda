@@ -177,20 +177,21 @@ describe('addActivity', () => {
     })
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
+    expect(result.error).toBe('end_time must not be before start_time')
     expect(db.insertActivity).not.toHaveBeenCalled()
   })
 
-  test('returns error when endTime equals startTime', async () => {
+  test('allows endTime equal to startTime', async () => {
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
+
     const result = await addActivity('testuser', {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T10:30:00Z'),
       start_time: new Date('2024-03-15T10:30:00Z'),
     })
 
-    expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
-    expect(db.insertActivity).not.toHaveBeenCalled()
+    expect(result.success).toBe(true)
+    expect(db.insertActivity).toHaveBeenCalled()
   })
 
   test('creates meditation activity', async () => {
@@ -769,7 +770,7 @@ describe('updateActivity', () => {
     })
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
+    expect(result.error).toBe('end_time must not be before start_time')
     expect(db.updateActivity).not.toHaveBeenCalled()
   })
 
@@ -787,7 +788,7 @@ describe('updateActivity', () => {
     })
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
+    expect(result.error).toBe('end_time must not be before start_time')
     expect(db.updateActivity).not.toHaveBeenCalled()
   })
 
@@ -806,7 +807,7 @@ describe('updateActivity', () => {
     })
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
+    expect(result.error).toBe('end_time must not be before start_time')
     expect(db.updateActivity).not.toHaveBeenCalled()
   })
 
