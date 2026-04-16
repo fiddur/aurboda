@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express'
+
 import { describe, expect, test, vi } from 'vitest'
 import { z } from 'zod'
 
@@ -49,9 +50,7 @@ describe('validateBody', () => {
     validateBody(schema)(req, res, next)
 
     expect(res.status).toHaveBeenCalledWith(400)
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ success: false }),
-    )
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }))
     expect(next).not.toHaveBeenCalled()
   })
 

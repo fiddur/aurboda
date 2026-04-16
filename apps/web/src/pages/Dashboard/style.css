@@ -608,6 +608,39 @@
   color: #6b7280;
 }
 
+/* Goal progress widget */
+.dashboard .goal-progress-widget {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+}
+
+.dashboard .goal-progress-widget h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1rem;
+  color: #374151;
+}
+
+.dashboard .goal-progress-widget-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dashboard .goal-progress-widget-loading,
+.dashboard .goal-progress-widget-empty {
+  text-align: center;
+  padding: 1rem;
+  color: #9ca3af;
+  font-size: 0.875rem;
+}
+
+.dashboard .goal-progress-widget-link {
+  color: #673ab8;
+  text-decoration: underline;
+}
+
 /* Charts grid for trend/correlation widgets */
 .dashboard .charts-grid {
   display: grid;
@@ -642,10 +675,22 @@
   color: #374151;
 }
 
+.dashboard .chart-widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.75rem;
+}
+
+.dashboard .chart-widget-header h4 {
+  margin: 0;
+}
+
 .dashboard .chart-widget-value {
   font-size: 0.875rem;
   color: #6b7280;
-  margin-bottom: 0.5rem;
+  margin: 0;
+  white-space: nowrap;
 }
 
 .dashboard .chart-loading,
@@ -791,6 +836,19 @@
     color: #9ca3af;
   }
 
+  .dashboard .goal-progress-widget {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .dashboard .goal-progress-widget h4 {
+    color: #d1d5db;
+  }
+
+  .dashboard .goal-progress-widget-link {
+    color: #a855f7;
+  }
+
   .dashboard .chart-widget,
   .dashboard .correlation-widget {
     background: #1f2937;
@@ -804,6 +862,10 @@
 
   .dashboard .chart-widget-value {
     color: #9ca3af;
+  }
+
+  .dashboard .chart-widget-header h4 {
+    color: #d1d5db;
   }
 
   .dashboard .add-section-placeholder {

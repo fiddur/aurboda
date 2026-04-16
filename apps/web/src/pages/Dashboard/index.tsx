@@ -365,42 +365,44 @@ export function Dashboard() {
 
       {isLoading && <div class="loading">Loading your dashboard...</div>}
 
-      {/* All sections in responsive grid */}
-      <div class="sections-grid">
-        {dashboard.sections.map((section) => (
-          <DashboardSectionComponent
-            key={section.id}
-            section={section}
-            isEditing={isEditing}
-            onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
-            onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
-            onAddWidgetClick={() => setShowWidgetPicker(section.id)}
-            onDeleteSection={() => handleDeleteSection(section.id)}
-          />
-        ))}
-
-        {/* Add Section button/form in edit mode */}
-        {isEditing &&
-          (showAddSection ? (
-            <AddSectionForm onAdd={handleAddSection} onCancel={() => setShowAddSection(false)} />
-          ) : (
-            <div class="add-section-placeholder">
-              <button class="add-section-btn" onClick={() => setShowAddSection(true)}>
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                Add Section
-              </button>
-            </div>
+      {/* All sections in responsive grid — hidden until config is loaded */}
+      {!isLoading && (
+        <div class="sections-grid">
+          {dashboard.sections.map((section) => (
+            <DashboardSectionComponent
+              key={section.id}
+              section={section}
+              isEditing={isEditing}
+              onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
+              onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
+              onAddWidgetClick={() => setShowWidgetPicker(section.id)}
+              onDeleteSection={() => handleDeleteSection(section.id)}
+            />
           ))}
-      </div>
+
+          {/* Add Section button/form in edit mode */}
+          {isEditing &&
+            (showAddSection ? (
+              <AddSectionForm onAdd={handleAddSection} onCancel={() => setShowAddSection(false)} />
+            ) : (
+              <div class="add-section-placeholder">
+                <button class="add-section-btn" onClick={() => setShowAddSection(true)}>
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Add Section
+                </button>
+              </div>
+            ))}
+        </div>
+      )}
 
       {/* Widget picker modal */}
       {showWidgetPicker && (
