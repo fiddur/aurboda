@@ -108,6 +108,15 @@ const widgetTemplates: WidgetTemplate[] = [
     type: 'hr_zones',
   },
   {
+    allowedSections: ['metrics', 'charts'],
+    defaultConfig: () => ({
+      compact: false,
+    }),
+    description: 'Progress bars showing goal achievement',
+    label: 'Goal Progress',
+    type: 'goal_progress',
+  },
+  {
     allowedSections: ['links'],
     defaultConfig: () => ({
       href: '/timeline',
@@ -341,6 +350,22 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                   onChange={(e) => updateConfig('show_targets', (e.target as HTMLInputElement).checked)}
                 />{' '}
                 Show target percentages
+              </label>
+            </div>
+          </div>
+        )
+
+      case 'goal_progress':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={(configValues.compact as boolean) ?? false}
+                  onChange={(e) => updateConfig('compact', (e.target as HTMLInputElement).checked)}
+                />{' '}
+                Compact mode (hide losing-tomorrow info)
               </label>
             </div>
           </div>

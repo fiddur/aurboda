@@ -71,9 +71,11 @@ export function TrendChartWidget({ config }: TrendChartWidgetProps) {
 
   return (
     <a href={chartUrl} class="chart-widget chart-widget-link">
-      <h4>{displayTitle}</h4>
-      <div class="chart-widget-value">
-        {trendQuery.data.current_value.toFixed(1)} / {display_period}
+      <div class="chart-widget-header">
+        <h4>{displayTitle}</h4>
+        <span class="chart-widget-value">
+          {trendQuery.data.current_value.toFixed(1)} / {display_period}
+        </span>
       </div>
       <TrendLineChart data={trendQuery.data.history} color="#673ab8" height={150} compact />
     </a>
