@@ -35,11 +35,23 @@ export const createAdminRouter = (
     authMiddleware,
     adminMiddleware,
     async (_req, res) => {
-      const signupMode = await centralDb.getSignupMode()
-      const adminCount = await centralDb.getAdminCount()
-      const lastFmApiKey = await centralDb.getLastFmApiKey()
-      const ouraWebhookEnabled = await centralDb.getOuraWebhookEnabled()
-      const auditLogRetentionDays = await centralDb.getAuditLogRetentionDays()
+      const [
+        signupMode,
+        adminCount,
+        lastFmApiKey,
+        ouraWebhookEnabled,
+        auditLogRetentionDays,
+        stravaClientId,
+        stravaClientSecret,
+      ] = await Promise.all([
+        centralDb.getSignupMode(),
+        centralDb.getAdminCount(),
+        centralDb.getLastFmApiKey(),
+        centralDb.getOuraWebhookEnabled(),
+        centralDb.getAuditLogRetentionDays(),
+        centralDb.getServerSetting('strava_client_id'),
+        centralDb.getServerSetting('strava_client_secret'),
+      ])
       res.json({
         admin_count: adminCount,
         audit_log_retention_days: auditLogRetentionDays,
@@ -47,6 +59,8 @@ export const createAdminRouter = (
         oura_webhook_available: ouraWebhookManager?.canEnable() ?? false,
         oura_webhook_enabled: ouraWebhookEnabled,
         signup_mode: signupMode,
+        strava_client_id_set: !!stravaClientId,
+        strava_client_secret_set: !!stravaClientSecret,
         success: true,
       })
     },
@@ -58,7 +72,14 @@ export const createAdminRouter = (
     adminMiddleware,
     validateBody(updateAdminSettingsBodySchema),
     async (req, res) => {
-      const { audit_log_retention_days, lastfm_api_key, oura_webhook_enabled, signup_mode } = req.body
+      const {
+        audit_log_retention_days,
+        lastfm_api_key,
+        oura_webhook_enabled,
+        signup_mode,
+        strava_client_id,
+        strava_client_secret,
+      } = req.body
       if (signup_mode) {
         await centralDb.setSignupMode(signup_mode)
       }
@@ -78,11 +99,29 @@ export const createAdminRouter = (
           }
         }
       }
-      const currentMode = await centralDb.getSignupMode()
-      const adminCount = await centralDb.getAdminCount()
-      const lastFmApiKey = await centralDb.getLastFmApiKey()
-      const ouraWebhookEnabledValue = await centralDb.getOuraWebhookEnabled()
-      const currentRetentionDays = await centralDb.getAuditLogRetentionDays()
+      if (strava_client_id !== undefined) {
+        await centralDb.setServerSetting('strava_client_id', strava_client_id ?? '')
+      }
+      if (strava_client_secret !== undefined) {
+        await centralDb.setServerSetting('strava_client_secret', strava_client_secret ?? '')
+      }
+      const [
+        currentMode,
+        adminCount,
+        lastFmApiKey,
+        ouraWebhookEnabledValue,
+        currentRetentionDays,
+        currentStravaClientId,
+        currentStravaClientSecret,
+      ] = await Promise.all([
+        centralDb.getSignupMode(),
+        centralDb.getAdminCount(),
+        centralDb.getLastFmApiKey(),
+        centralDb.getOuraWebhookEnabled(),
+        centralDb.getAuditLogRetentionDays(),
+        centralDb.getServerSetting('strava_client_id'),
+        centralDb.getServerSetting('strava_client_secret'),
+      ])
       res.json({
         admin_count: adminCount,
         audit_log_retention_days: currentRetentionDays,
@@ -90,6 +129,8 @@ export const createAdminRouter = (
         oura_webhook_available: ouraWebhookManager?.canEnable() ?? false,
         oura_webhook_enabled: ouraWebhookEnabledValue,
         signup_mode: currentMode,
+        strava_client_id_set: !!currentStravaClientId,
+        strava_client_secret_set: !!currentStravaClientSecret,
         success: true,
       })
     },

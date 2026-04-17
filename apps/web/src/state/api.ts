@@ -966,6 +966,8 @@ export interface AdminSettings {
   lastfm_api_key_set: boolean
   oura_webhook_available: boolean
   oura_webhook_enabled: boolean
+  strava_client_id_set: boolean
+  strava_client_secret_set: boolean
 }
 
 export interface InvitationResult {
@@ -987,6 +989,8 @@ export const fetchAdminSettings = async (): Promise<AdminSettings> => {
     oura_webhook_available: response.data.oura_webhook_available,
     oura_webhook_enabled: response.data.oura_webhook_enabled,
     signup_mode: response.data.signup_mode,
+    strava_client_id_set: response.data.strava_client_id_set,
+    strava_client_secret_set: response.data.strava_client_secret_set,
   }
 }
 
@@ -995,6 +999,8 @@ export const updateAdminSettings = async (params: {
   signup_mode?: SignupMode
   lastfm_api_key?: string | null
   oura_webhook_enabled?: boolean
+  strava_client_id?: string | null
+  strava_client_secret?: string | null
 }): Promise<AdminSettings> => {
   const { token } = auth.value
   const response = await axios.patch<{ success: boolean } & AdminSettings>(
@@ -1011,6 +1017,8 @@ export const updateAdminSettings = async (params: {
     oura_webhook_available: response.data.oura_webhook_available,
     oura_webhook_enabled: response.data.oura_webhook_enabled,
     signup_mode: response.data.signup_mode,
+    strava_client_id_set: response.data.strava_client_id_set,
+    strava_client_secret_set: response.data.strava_client_secret_set,
   }
 }
 
