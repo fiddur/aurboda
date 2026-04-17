@@ -26,6 +26,10 @@ import {
   getDetectedLocationById,
   getOutboundSyncHistory,
   getPendingOutboundSync,
+  insertActivity,
+  insertLocations,
+  insertRawRecord,
+  insertTimeSeries,
   reportSyncFailure,
   requeueOutboundSync,
   initializeSchema,
@@ -41,10 +45,14 @@ import {
   query,
   resetSyncState,
   schemaInitialized,
+  softDeleteActivityByExternalId,
+  softDeleteLocationRange,
   deleteRuleActivities,
   getDeductionRulesByIds,
   getEnabledDeductionRules,
   updateDetectedLocation,
+  upsertOAuthToken,
+  upsertSyncState,
   upsertUserSettings,
 } from './db/index.ts'
 import { httpError, isHttpError } from './http-error.ts'
@@ -58,6 +66,9 @@ import { ouraClient } from './integrations/oura/client.ts'
 import { syncAllOuraData, syncOuraDataType } from './integrations/oura/sync.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { syncRescueTimeData } from './integrations/rescuetime/sync.ts'
+import { stravaClient } from './integrations/strava/client.ts'
+import { getStravaSyncStates, resetStravaSyncState, syncStrava } from './integrations/strava/sync.ts'
+import { createStravaWebhookRouter } from './integrations/strava/webhook-router.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createActivitiesRouter } from './routes/activities-router.ts'
 import { createActivityTypesRouter } from './routes/activity-types-router.ts'
@@ -98,6 +109,8 @@ import { createInvitationAuth } from './services/invitation.ts'
 import { createOuraWebhookManager, type OuraWebhookManager } from './services/oura-webhook-manager.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { getSettings } from './services/settings.ts'
+import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
+import { createStravaWebhookManager } from './services/strava-webhook-manager.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createSyncRouter } from './sync-router.ts'
 
@@ -130,6 +143,24 @@ const main = async () => {
 
   // Create Garmin client (no server-side credentials needed - uses per-user session tokens)
   const garmin = garminClient()
+
+  // Create Strava client (from server settings — may not be configured yet)
+  const stravaClientId = await centralDb.getServerSetting('strava_client_id')
+  const stravaClientSecret = await centralDb.getServerSetting('strava_client_secret')
+
+  const strava =
+    stravaClientId && stravaClientSecret
+      ? stravaClient(stravaClientId, stravaClientSecret, webHost, {
+          onUserAuthenticated: (stravaAthleteId, username) =>
+            centralDb.upsertStravaAthleteMapping(stravaAthleteId, username),
+        })
+      : null
+
+  if (!strava) {
+    console.warn(
+      '⚠️ Strava integration disabled — set strava_client_id and strava_client_secret in server settings',
+    )
+  }
 
   // Create sync provider for auto-syncing data before queries
   const syncProvider = createSyncProvider({
@@ -171,6 +202,37 @@ const main = async () => {
     console.warn('⚠️ Deduction auto-evaluation disabled - rules will only run on manual trigger')
   }
 
+  // Initialize Strava queue (uses shared boss + strava client)
+  let stravaQueue: StravaQueue | null = null
+  if (boss && strava) {
+    try {
+      stravaQueue = await createStravaQueue(boss, {
+        getAccessToken: (user) => strava.getAccessToken(user),
+        getActivity: (token, id) => strava.getActivity(token, id),
+        getActivityStreams: (token, id) => strava.getActivityStreams(token, id),
+        listActivities: (token, params) => strava.listActivities(token, params),
+        processDeps: {
+          insertActivity,
+          insertLocations,
+          insertRawRecord,
+          insertTimeSeries,
+          softDeleteLocationRange,
+        },
+        updateSyncState: async (user, dataType, updates) => {
+          await upsertSyncState(user, {
+            data_type: dataType,
+            provider: 'strava',
+            status: (updates.status as 'idle' | 'syncing' | 'error' | 'rate_limited') ?? 'idle',
+            error_message: updates.error_message as string | undefined,
+            last_sync_time: updates.last_sync_time as Date | undefined,
+          })
+        },
+      })
+    } catch (error) {
+      console.error('Failed to initialize Strava queue:', error)
+    }
+  }
+
   const httpd = express()
 
   const userDb = new Client({ database: 'postgres' })
@@ -193,6 +255,7 @@ const main = async () => {
       garmin,
       onActivityMutated: activityNotifier,
       oura,
+      stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
     }),
   )
@@ -521,6 +584,12 @@ const main = async () => {
         resetLastFmSyncState: (user) => resetSyncState(user, 'lastfm'),
         resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
+        resetStravaSyncState,
+        getStravaSyncStates,
+        syncStrava: async (user, options) => {
+          if (!stravaQueue) throw new Error('Strava integration not configured')
+          return syncStrava(user, stravaQueue, options)
+        },
         syncCalendars: (user, calendars) => syncAllCalendars(user, calendars),
         syncGarmin: async (user, options) => {
           const results = await syncAllGarminData(user, garmin, options)
@@ -598,6 +667,70 @@ const main = async () => {
       res.status(500).json({ error: message, success: false })
     }
   })
+
+  // Strava OAuth endpoints
+  if (strava) {
+    httpd.get('/auth/connectStrava', authMiddleware, strava.redirectToAuthorize)
+    httpd.get('/auth/stravacb', strava.authCb)
+
+    httpd.post('/auth/strava/disconnect', authMiddleware, async (req, res) => {
+      const user = req.user!
+      try {
+        // Clear tokens and athlete mapping
+        await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
+        await centralDb.deleteStravaAthleteMappingByUsername(user)
+        res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Disconnect failed'
+        res.status(500).json({ error: message, success: false })
+      }
+    })
+  }
+
+  // ==========================================================================
+  // Strava webhook push integration
+  // ==========================================================================
+
+  if (strava && stravaQueue) {
+    const stravaVerifyToken = `aurboda-strava-${sessionSecret.slice(0, 8)}`
+
+    httpd.use(
+      '/webhooks/strava',
+      createStravaWebhookRouter({
+        enqueueActivityFetch: (user, activityId, priority) =>
+          stravaQueue.enqueueActivityFetch(user, activityId, priority),
+        getUsernameByStravaAthleteId: (stravaAthleteId) =>
+          centralDb.getUsernameByStravaAthleteId(stravaAthleteId),
+        handleDeauthorization: async (stravaAthleteId) => {
+          const username = await centralDb.getUsernameByStravaAthleteId(stravaAthleteId)
+          if (username) {
+            await upsertOAuthToken(username, { access_token: '', provider: 'strava' })
+            await centralDb.deleteStravaAthleteMapping(stravaAthleteId)
+            auditInfo(username, 'auth', '🏃 Strava: deauthorized via webhook')
+          }
+        },
+        softDeleteStravaActivity: async (user, stravaActivityId) => {
+          await softDeleteActivityByExternalId(user, 'strava', `strava-activity-${stravaActivityId}`)
+        },
+        verifyToken: stravaVerifyToken,
+      }),
+    )
+
+    // Ensure webhook subscription exists (stravaClientId/Secret guaranteed non-null since strava is truthy)
+    const stravaWebhookCallbackUrl = `${webHost}/webhooks/strava`
+    const stravaWebhookMgr = createStravaWebhookManager({
+      callbackUrl: stravaWebhookCallbackUrl,
+      clientId: stravaClientId ?? '',
+      clientSecret: stravaClientSecret ?? '',
+      verifyToken: stravaVerifyToken,
+    })
+    stravaWebhookMgr.ensureSubscription().catch((error) => {
+      console.warn(
+        '⚠️ Strava webhook subscription setup failed:',
+        error instanceof Error ? error.message : error,
+      )
+    })
+  }
 
   // ==========================================================================
   // Oura webhook push integration (admin-configurable via Web UI)

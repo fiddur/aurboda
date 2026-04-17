@@ -20,6 +20,8 @@ export interface ServerSettings {
   oura_webhook_enabled: boolean
   oura_webhook_verification_token: string
   signup_mode: SignupMode
+  strava_client_id: string
+  strava_client_secret: string
 }
 
 export interface OuraUserMapping {
@@ -35,6 +37,13 @@ export interface OuraWebhookSubscription {
   event_type: string
   callback_url: string
   expiration_time: Date | null
+  created_at: Date
+  updated_at: Date
+}
+
+export interface StravaAthleteMapping {
+  strava_athlete_id: number
+  username: string
   created_at: Date
   updated_at: Date
 }
@@ -99,6 +108,10 @@ export interface CentralDb {
   getOuraWebhookSubscriptions: () => Promise<OuraWebhookSubscription[]>
   deleteOuraWebhookSubscription: (ouraSubscriptionId: string) => Promise<boolean>
   deleteAllOuraWebhookSubscriptions: () => Promise<number>
+  upsertStravaAthleteMapping: (stravaAthleteId: number, username: string) => Promise<void>
+  getUsernameByStravaAthleteId: (stravaAthleteId: number) => Promise<string | null>
+  deleteStravaAthleteMapping: (stravaAthleteId: number) => Promise<boolean>
+  deleteStravaAthleteMappingByUsername: (username: string) => Promise<boolean>
   createOAuthClient: (client: Omit<OAuthClient, 'created_at'>) => Promise<void>
   getOAuthClient: (clientId: string) => Promise<OAuthClient | null>
   saveAuthorizationCode: (code: Omit<OAuthAuthorizationCode, 'used'>) => Promise<void>
@@ -198,6 +211,15 @@ const CREATE_OURA_WEBHOOK_SUBSCRIPTIONS_TABLE = `
     event_type VARCHAR(20) NOT NULL,
     callback_url TEXT NOT NULL,
     expiration_time TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`
+
+const CREATE_STRAVA_ATHLETE_MAPPINGS_TABLE = `
+  CREATE TABLE IF NOT EXISTS strava_athlete_mappings (
+    strava_athlete_id BIGINT PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
   )
@@ -356,6 +378,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_ADMINS_TABLE)
       await client.query(CREATE_OURA_USER_MAPPINGS_TABLE)
       await client.query(CREATE_OURA_WEBHOOK_SUBSCRIPTIONS_TABLE)
+      await client.query(CREATE_STRAVA_ATHLETE_MAPPINGS_TABLE)
       await client.query(CREATE_OAUTH_CLIENTS_TABLE)
       await client.query(CREATE_OAUTH_AUTHORIZATION_CODES_TABLE)
       await client.query(CREATE_OAUTH_TOKENS_TABLE)
@@ -445,6 +468,40 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
          ON CONFLICT (oura_user_id) DO UPDATE SET username = $2, updated_at = NOW()`,
         [ouraUserId, username],
       )
+    },
+
+    upsertStravaAthleteMapping: async (stravaAthleteId: number, username: string): Promise<void> => {
+      const client = await getClient()
+      await client.query(
+        `INSERT INTO strava_athlete_mappings (strava_athlete_id, username, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (strava_athlete_id) DO UPDATE SET username = $2, updated_at = NOW()`,
+        [stravaAthleteId, username],
+      )
+    },
+
+    getUsernameByStravaAthleteId: async (stravaAthleteId: number): Promise<string | null> => {
+      const client = await getClient()
+      const result = await client.query(
+        'SELECT username FROM strava_athlete_mappings WHERE strava_athlete_id = $1',
+        [stravaAthleteId],
+      )
+      if (result.rows.length === 0) return null
+      return result.rows[0].username
+    },
+
+    deleteStravaAthleteMapping: async (stravaAthleteId: number): Promise<boolean> => {
+      const client = await getClient()
+      const result = await client.query('DELETE FROM strava_athlete_mappings WHERE strava_athlete_id = $1', [
+        stravaAthleteId,
+      ])
+      return (result.rowCount ?? 0) > 0
+    },
+
+    deleteStravaAthleteMappingByUsername: async (username: string): Promise<boolean> => {
+      const client = await getClient()
+      const result = await client.query('DELETE FROM strava_athlete_mappings WHERE username = $1', [username])
+      return (result.rowCount ?? 0) > 0
     },
 
     upsertOuraWebhookSubscription: async (

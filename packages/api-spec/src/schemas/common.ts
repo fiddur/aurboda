@@ -178,6 +178,7 @@ export const dataSourceSchema = z
     'garmin',
     'rescuetime',
     'owntracks',
+    'strava',
     'calendar',
     'manual',
     'lastfm',

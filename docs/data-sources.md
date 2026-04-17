@@ -8,6 +8,7 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 | ------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------- | ---------------------------- | -------------------------------------------------------- |
 | [Oura Ring](./oura.md)                | Sleep, readiness, resilience, cardiovascular age, meditation, HRV, tags     | Pull (API) + Push (webhook)             | OAuth credentials (env vars) | OAuth connect                                            |
 | [Garmin Connect](./garmin.md)         | Sleep, stress, body battery, HR, HRV, activities, SpO2, training readiness  | Pull (scrape)                           | None                         | Garmin credentials                                       |
+| [Strava](./strava.md)                 | Activities with HR, GPS, cadence, power                                     | Pull (API queue) + Push (webhook)       | OAuth credentials (admin)    | OAuth connect                                            |
 | [Health Connect](./health-connect.md) | HR, HRV, weight, body composition, steps, sleep, exercise, 40+ record types | Push (Android app)                      | None                         | Install Android app                                      |
 | [ActivityWatch](./activitywatch.md)   | App/window usage, per-device tracking                                       | Push (agent script / Android companion) | None                         | Install AW + push agent or enable in Aurboda Android app |
 | [RescueTime](./rescuetime.md)         | App/website usage, productivity scores                                      | Pull (API)                              | None                         | API key                                                  |
@@ -18,7 +19,7 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 
 ## Sync Behavior
 
-**Pull-based sources** (Oura, RescueTime, Last.fm, Calendars) support:
+**Pull-based sources** (Oura, Strava, RescueTime, Last.fm, Calendars) support:
 
 - **Manual sync** via REST API (`POST /api/sync/{provider}`) or MCP tool (`sync_{provider}`)
 - **Auto-sync** triggered before queries if data is older than 30 minutes

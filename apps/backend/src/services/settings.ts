@@ -234,7 +234,12 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const { zones, source } = await getEffectiveHrZones(user)
   const ouraToken = await getOAuthToken(user, 'oura')
   const garminToken = await getOAuthToken(user, 'garmin')
+  const stravaToken = await getOAuthToken(user, 'strava')
   const lastFmConfigured = !!(await getCentralDb().getLastFmApiKey())
+  const centralDb = getCentralDb()
+  const stravaConfigured =
+    !!(await centralDb.getServerSetting('strava_client_id')) &&
+    !!(await centralDb.getServerSetting('strava_client_secret'))
 
   const goals = await getEffectiveGoals(user)
 
@@ -247,6 +252,8 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     lastfm_configured: lastFmConfigured,
     oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
     oura_connected: ouraToken !== null,
+    strava_configured: stravaConfigured,
+    strava_connected: stravaToken !== null && stravaToken.access_token !== '',
     success: true,
   }
 }
@@ -261,6 +268,8 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
   oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
   garmin_connected: false,
   oura_connected: false,
+  strava_configured: false,
+  strava_connected: false,
   success: false,
 })
 

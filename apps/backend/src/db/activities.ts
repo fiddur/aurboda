@@ -569,6 +569,20 @@ export const deleteActivity = async (user: string, id: string): Promise<boolean>
   return (result.rowCount ?? 0) > 0
 }
 
+export const softDeleteActivityByExternalId = async (
+  user: string,
+  source: string,
+  externalId: string,
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE activities SET deleted_at = NOW() WHERE source = $1 AND external_id = $2 AND deleted_at IS NULL`,
+    [source, externalId],
+  )
+
+  return (result.rowCount ?? 0) > 0
+}
+
 export const restoreActivity = async (user: string, id: string): Promise<boolean> => {
   const result = await query(
     user,

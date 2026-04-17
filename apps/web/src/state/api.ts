@@ -51,6 +51,8 @@ import type {
   RawLocationsResponse,
   OuraSyncResponse,
   OuraSyncStatusResponse,
+  StravaSyncResponse,
+  StravaSyncStatusResponse,
   PeriodMetricStats,
   PeriodSummaryQuery,
   PeriodSummaryResponse,
@@ -725,6 +727,35 @@ export const syncGarmin = async (fullResync?: boolean): Promise<GarminSyncRespon
 export const fetchGarminSyncStatus = async (): Promise<GarminSyncStatusResponse> => {
   const { token } = auth.value
   const response = await axios.get<GarminSyncStatusResponse>(`${API_URL}/sync/garmin/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
+// Strava OAuth + sync
+export const disconnectStrava = async (): Promise<{ success: boolean }> => {
+  const { token } = auth.value
+  const response = await axios.post(
+    `${API_URL}/auth/strava/disconnect`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+export const syncStrava = async (fullResync?: boolean): Promise<StravaSyncResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<StravaSyncResponse>(
+    `${API_URL}/sync/strava`,
+    { full_resync: fullResync },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+export const fetchStravaSyncStatus = async (): Promise<StravaSyncStatusResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<StravaSyncStatusResponse>(`${API_URL}/sync/strava/status`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data

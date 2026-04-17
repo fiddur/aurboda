@@ -1,6 +1,7 @@
 import { metricUnits } from '@aurboda/api-spec'
 
 import type { GoalProgress } from '../state/api'
+
 import { metricLabels } from '../utils/metricLabels'
 
 // Format value for display (e.g., seconds to hours:minutes)

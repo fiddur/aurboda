@@ -26,6 +26,7 @@ import { LastFmSource } from './pages/DataSources/LastFmSource.jsx'
 import { OuraSource } from './pages/DataSources/OuraSource.jsx'
 import { OwnTracksSource } from './pages/DataSources/OwnTracksSource.jsx'
 import { RescueTimeSource } from './pages/DataSources/RescueTimeSource.jsx'
+import { StravaSource } from './pages/DataSources/StravaSource.jsx'
 import { DeductionRules } from './pages/DeductionRules/index.jsx'
 import { DeductionRuleDetail } from './pages/DeductionRules/RuleDetail.jsx'
 import { EntityDetail } from './pages/EntityDetail/index.jsx'
@@ -91,6 +92,7 @@ export function App() {
               <Route path="/data-sources/android-app" component={AndroidAppSource} />
               <Route path="/data-sources/oura" component={OuraSource} />
               <Route path="/data-sources/garmin" component={GarminSource} />
+              <Route path="/data-sources/strava" component={StravaSource} />
               <Route path="/data-sources/activitywatch-desktop" component={ActivityWatchDesktopSource} />
               <Route path="/data-sources/activitywatch-android" component={ActivityWatchAndroidSource} />
               <Route path="/data-sources/rescue-time" component={RescueTimeSource} />
