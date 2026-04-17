@@ -107,6 +107,7 @@ export function DataSources() {
   const hasLocations = (locationsQuery.data?.length ?? 0) > 0
   const isOuraConnected = settingsQuery.data?.oura_connected ?? false
   const isGarminConnected = settingsQuery.data?.garmin_connected ?? false
+  const isStravaConnected = settingsQuery.data?.strava_connected ?? false
   const isRescueTimeConfigured = !!settingsQuery.data?.rescue_time_key
   const hasLastfm = !!settingsQuery.data?.lastfm_username
   const hasCalendars = (settingsQuery.data?.calendars ?? []).length > 0
@@ -157,6 +158,13 @@ export function DataSources() {
       name: 'Garmin Connect',
       path: '/data-sources/garmin',
       statusText: isGarminConnected ? 'Connected' : 'Not connected',
+    },
+    {
+      dataTypes: 'Activities with HR, GPS routes, cadence, power',
+      isConnected: isStravaConnected,
+      name: 'Strava',
+      path: '/data-sources/strava',
+      statusText: isStravaConnected ? 'Connected' : 'Not connected',
     },
     {
       dataTypes: 'App and window usage on desktop',

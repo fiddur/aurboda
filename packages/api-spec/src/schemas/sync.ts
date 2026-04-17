@@ -56,7 +56,7 @@ export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
 export const syncStatusQuerySchema = z
   .object({
     provider: z
-      .enum(['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+      .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
       .optional()
       .meta({
         description: 'Provider to check (defaults to all)',
@@ -70,7 +70,7 @@ export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
  * Sync provider schema (for MCP).
  */
 export const syncProviderSchema = z
-  .enum(['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+  .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
   .meta({
     description: 'Which provider to check',
   })
@@ -357,6 +357,53 @@ export const garminSyncResultSchema = z
   .meta({ id: 'GarminSyncResult' })
 
 export type GarminSyncResult = z.infer<typeof garminSyncResultSchema>
+
+/**
+ * Sync Strava body schema.
+ */
+export const syncStravaBodySchema = z
+  .object({
+    full_resync: fullResyncSchema,
+  })
+  .meta({ id: 'SyncStravaBody' })
+
+export type SyncStravaBody = z.infer<typeof syncStravaBodySchema>
+
+/**
+ * Strava sync result.
+ */
+export const stravaSyncResultSchema = z
+  .object({
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    status: z
+      .enum(['syncing', 'already_syncing', 'queued', 'not_connected'])
+      .meta({ description: 'Async sync status' }),
+  })
+  .meta({ id: 'StravaSyncResult' })
+
+export type StravaSyncResult = z.infer<typeof stravaSyncResultSchema>
+
+/**
+ * Strava sync response.
+ */
+export const stravaSyncResponseSchema = baseResponseSchema
+  .extend({
+    result: stravaSyncResultSchema.optional().meta({ description: 'Sync result' }),
+  })
+  .meta({ id: 'StravaSyncResponse' })
+
+export type StravaSyncResponse = z.infer<typeof stravaSyncResponseSchema>
+
+/**
+ * Strava sync status response.
+ */
+export const stravaSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Strava sync states' }),
+  })
+  .meta({ id: 'StravaSyncStatusResponse' })
+
+export type StravaSyncStatusResponse = z.infer<typeof stravaSyncStatusResponseSchema>
 
 /**
  * RescueTime sync result.

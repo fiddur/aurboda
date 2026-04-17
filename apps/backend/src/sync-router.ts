@@ -19,6 +19,7 @@ import {
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
+  syncStravaBodySchema,
   type ActivityWatchSyncResponse,
   type ActivityWatchSyncResult,
   type ActivityWatchSyncStatusResponse,
@@ -47,12 +48,16 @@ import {
   type RescueTimeSyncResponse,
   type RescueTimeSyncResult,
   type RescueTimeSyncStatusResponse,
+  type StravaSyncResponse,
+  type StravaSyncResult,
+  type StravaSyncStatusResponse,
   type SyncActivityWatchBody,
   type SyncCalendarsBody,
   type SyncGarminBody,
   type SyncLastFmBody,
   type SyncOuraBody,
   type SyncRescueTimeBody,
+  type SyncStravaBody,
   type SyncResponse,
 } from '@aurboda/api-spec'
 
@@ -140,6 +145,9 @@ export interface SyncRouterDeps {
     deviceName: string,
     isMobile?: boolean,
   ) => Promise<ActivityWatchSyncResult>
+  syncStrava: (user: string, options: { fullResync?: boolean }) => Promise<StravaSyncResult>
+  getStravaSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
+  resetStravaSyncState: (user: string, dataType?: string) => Promise<void>
   getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   // Outbound sync (Health Connect write-back)
   getPendingOutboundSync: (user: string, limit?: number) => Promise<PendingOutboundSyncResult>
@@ -543,6 +551,58 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       try {
         const states = await deps.getActivityWatchSyncStates(user)
         res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  // Strava sync endpoints (fire-and-forget 202 pattern)
+  router.post<ParamsDictionary, StravaSyncResponse, SyncStravaBody>(
+    '/strava',
+    authMiddleware,
+    validateBody(syncStravaBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { full_resync } = req.body
+
+      try {
+        const result = await deps.syncStrava(user, { fullResync: full_resync })
+        res.status(202).json({ result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.get<ParamsDictionary, StravaSyncStatusResponse>(
+    '/strava/status',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+
+      try {
+        const states = await deps.getStravaSyncStates(user)
+        res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.delete<ParamsDictionary, SyncResponse, unknown, { dataType?: string }>(
+    '/strava/state',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const { dataType } = req.query
+
+      try {
+        await deps.resetStravaSyncState(user, dataType)
+        res.json({ success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message, success: false })

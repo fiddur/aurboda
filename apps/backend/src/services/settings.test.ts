@@ -28,6 +28,7 @@ vi.mock('../db', () => ({
 vi.mock('./central-db', () => ({
   getCentralDb: () => ({
     getLastFmApiKey: vi.fn().mockResolvedValue(null),
+    getServerSetting: vi.fn().mockResolvedValue(null),
   }),
 }))
 

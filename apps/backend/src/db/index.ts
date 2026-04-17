@@ -113,6 +113,7 @@ export {
   checkActivityConflict,
   deleteActivity,
   deleteGarminActivityWithWrongType,
+  softDeleteActivityByExternalId,
   findMergeableActivity,
   findMergedGroupForActivity,
   getActivities,

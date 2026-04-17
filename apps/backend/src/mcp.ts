@@ -18,6 +18,7 @@ import type { CentralDb } from './services/central-db.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'
 import type { SyncProvider } from './services/queries/index.ts'
+import type { StravaQueue } from './services/strava-queue.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
@@ -49,6 +50,7 @@ interface McpDeps {
   garmin?: GarminClient
   onActivityMutated?: ActivityNotifier
   oura?: OuraClientType
+  stravaQueue?: StravaQueue
   sync?: SyncProvider
 }
 
@@ -65,7 +67,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerActivityTools(server, user, deps.onActivityMutated)
   registerActivityTypeTools(server, user)
   registerDeductionRuleTools(server, user, engineDeps, deps.deductionQueue)
-  registerSyncTools(server, user, deps.oura, deps.garmin)
+  registerSyncTools(server, user, deps.oura, deps.garmin, deps.stravaQueue)
   registerSettingsTools(server, user)
   registerLocationTools(server, user)
   registerCorrelationTools(server, user, deps.sync)
