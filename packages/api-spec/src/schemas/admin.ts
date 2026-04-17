@@ -147,6 +147,10 @@ export const adminSettingsResponseSchema = baseResponseSchema
     }),
     oura_webhook_enabled: z.boolean().meta({ description: 'Whether Oura webhook push sync is enabled' }),
     signup_mode: signupModeSchema.meta({ description: 'Current signup mode' }),
+    strava_client_id_set: z.boolean().meta({ description: 'Whether a Strava client ID is configured' }),
+    strava_client_secret_set: z
+      .boolean()
+      .meta({ description: 'Whether a Strava client secret is configured' }),
   })
   .meta({ id: 'AdminSettingsResponse' })
 
@@ -174,6 +178,16 @@ export const updateAdminSettingsBodySchema = z
       .optional()
       .meta({ description: 'Enable or disable Oura webhook push sync' }),
     signup_mode: signupModeSchema.optional().meta({ description: 'New signup mode' }),
+    strava_client_id: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Strava API client ID (set to null to clear)' }),
+    strava_client_secret: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Strava API client secret (set to null to clear)' }),
   })
   .meta({ id: 'UpdateAdminSettingsBody' })
 
