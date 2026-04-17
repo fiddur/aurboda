@@ -278,7 +278,7 @@ export type AddActivityBody = z.infer<typeof addActivityBodySchema>
  */
 const addedActivitySchema = z.object({
   activity_type: activityTypeSchema,
-  end_time: iso8601DateTimeSchema,
+  end_time: iso8601DateTimeSchema.optional(),
   id: z.string().uuid(),
   notes: z.string().optional(),
   start_time: iso8601DateTimeSchema,
@@ -324,7 +324,7 @@ export const updateActivityBodySchema = z
     data: z.record(z.string(), z.unknown()).optional().meta({
       description: 'Updated structured data fields (merged with existing data)',
     }),
-    end_time: iso8601DateTimeSchema.optional().meta({ description: 'New end time of the activity' }),
+    end_time: iso8601DateTimeSchema.nullable().optional().meta({ description: 'New end time of the activity (null to clear)' }),
     exercise_type: exerciseTypeSchema.optional().meta({
       description: 'New exercise type name (only for exercise activities)',
     }),
