@@ -484,7 +484,7 @@ export const createActivitiesRouter = (
         {
           activity_type,
           data,
-          end_time: end_time ? new Date(end_time) : undefined,
+          end_time: end_time === null ? null : end_time ? new Date(end_time) : undefined,
           notes,
           start_time: start_time ? new Date(start_time) : undefined,
           title,
@@ -500,7 +500,7 @@ export const createActivitiesRouter = (
       res.json({
         data: {
           activity_type: result.activity_type!,
-          end_time: result.end_time!,
+          end_time: result.end_time ?? undefined,
           id: result.id!,
           notes: result.notes,
           start_time: result.start_time!,

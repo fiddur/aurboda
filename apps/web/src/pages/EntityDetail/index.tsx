@@ -383,13 +383,12 @@ const ActivityDetailContent = ({
 
 const makeDraft = (activity: Activity): ActivityDraft => {
   const displayStart = activity.merged_start_time ?? activity.start_time
-  const displayEnd =
-    activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
+  const displayEnd = activity.merged_end_time ?? activity.end_time
   const exerciseType = resolveExerciseType(activity)
   return {
     activity_type: activity.activity_type,
     data: (activity.data as Record<string, unknown>) ?? {},
-    end_time: formatDateTimeLocal(displayEnd),
+    end_time: displayEnd ? formatDateTimeLocal(displayEnd) : '',
     exercise_type: exerciseType,
     notes: activity.notes ?? '',
     start_time: formatDateTimeLocal(displayStart),
@@ -507,7 +506,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       const body: {
         activity_type?: string
         start_time?: string
-        end_time?: string
+        end_time?: string | null
         title?: string
         notes?: string
         exercise_type?: ExerciseTypeName
@@ -520,7 +519,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         body.start_time = new Date(draft.start_time).toISOString()
       }
       if (draft.end_time !== orig.end_time) {
-        body.end_time = new Date(draft.end_time).toISOString()
+        body.end_time = draft.end_time ? new Date(draft.end_time).toISOString() : null
       }
       if (draft.notes !== orig.notes) body.notes = draft.notes
       if (draft.exercise_type !== orig.exercise_type && draft.exercise_type) {

@@ -1,11 +1,20 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { DataFieldDefinition } from '@aurboda/api-spec'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { MetricPicker } from '../../components/MetricPicker'
-import { addActivity, addMetric, addNote, uploadFitFile, type ActivityType } from '../../state/api'
+import {
+  addActivity,
+  addMetric,
+  addNote,
+  fetchActivityTypeDefinitions,
+  uploadFitFile,
+  type ActivityType,
+} from '../../state/api'
 import './style.css'
 
 type Tab = 'activity' | 'metric'
@@ -75,6 +84,62 @@ const FitUpload = ({ onCreated }: FormProps) => {
   )
 }
 
+const SchemaFieldInput = ({
+  field,
+  value,
+  onChange,
+}: {
+  field: DataFieldDefinition
+  value: string
+  onChange: (value: string) => void
+}) => {
+  const label = field.label ?? field.name.replaceAll('_', ' ').replace(/^\w/, (c) => c.toUpperCase())
+  const unitSuffix = field.unit ? ` (${field.unit})` : ''
+
+  if (field.type === 'boolean') {
+    return (
+      <div class="form-check">
+        <input
+          type="checkbox"
+          id={`data-${field.name}`}
+          checked={value === 'true'}
+          onChange={(e) => onChange((e.target as HTMLInputElement).checked ? 'true' : '')}
+        />
+        <label for={`data-${field.name}`}>{label}</label>
+      </div>
+    )
+  }
+
+  if (field.type === 'string' && field.enum_values) {
+    return (
+      <div class="form-field">
+        <label>{label}</label>
+        <select value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
+          <option value="">-- Select --</option>
+          {field.enum_values.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </select>
+      </div>
+    )
+  }
+
+  return (
+    <div class="form-field">
+      <label>{`${label}${unitSuffix}`}</label>
+      <input
+        type={field.type === 'number' ? 'number' : 'text'}
+        step={field.type === 'number' ? 'any' : undefined}
+        value={value}
+        onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+        placeholder={`Optional ${label.toLowerCase()}`}
+      />
+    </div>
+  )
+}
+
 const AddActivityForm = ({ onCreated }: FormProps) => {
   const queryClient = useQueryClient()
   const [activityType, setActivityType] = useState<ActivityType>('')
@@ -84,14 +149,26 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
   const [hasEndTime, setHasEndTime] = useState(true)
   const [notes, setNotes] = useState('')
   const [comment, setComment] = useState('')
+  const [structuredData, setStructuredData] = useState<Record<string, string>>({})
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
+
+  const { data: typeDefs } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activity-type-definitions'],
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const selectedTypeDef = typeDefs?.find((t) => t.name === activityType)
+  const dataFields = selectedTypeDef?.data_schema?.fields ?? []
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!activityType) throw new Error('Please select an activity type')
+      const dataMap = Object.fromEntries(Object.entries(structuredData).filter(([, v]) => v !== ''))
       const result = await addActivity({
         activity_type: activityType,
+        ...(Object.keys(dataMap).length > 0 ? { data: dataMap } : {}),
         ...(hasEndTime ? { end_time: new Date(endTime).toISOString() } : {}),
         ...(notes ? { notes } : {}),
         start_time: new Date(startTime).toISOString(),
@@ -118,6 +195,7 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
       setTitle('')
       setNotes('')
       setComment('')
+      setStructuredData({})
       setStartTime(nowLocal())
       setEndTime(nowLocal())
       setHasEndTime(true)
@@ -131,7 +209,13 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
 
       <div class="form-field">
         <label>Activity Type</label>
-        <ActivityTypePicker value={activityType} onChange={setActivityType} />
+        <ActivityTypePicker
+          value={activityType}
+          onChange={(type) => {
+            setActivityType(type)
+            setStructuredData({})
+          }}
+        />
       </div>
 
       <div class="form-field">
@@ -173,6 +257,16 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
           />
         </div>
       )}
+
+      {dataFields.length > 0 &&
+        dataFields.map((field) => (
+          <SchemaFieldInput
+            key={field.name}
+            field={field}
+            value={structuredData[field.name] ?? ''}
+            onChange={(v) => setStructuredData((prev) => ({ ...prev, [field.name]: v }))}
+          />
+        ))}
 
       <div class="form-field">
         <label>Notes</label>

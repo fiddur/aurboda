@@ -110,7 +110,7 @@ export interface DeleteActivityResult {
 export interface UpdateActivityInput {
   activity_type?: ActivityType
   start_time?: Date
-  end_time?: Date
+  end_time?: Date | null
   title?: string
   notes?: string
   data?: Record<string, unknown>
@@ -491,7 +491,7 @@ export async function updateActivity(
 
   // Determine final start and end times
   const finalStartTime = input.start_time ?? existing.start_time
-  const finalEndTime = input.end_time ?? existing.end_time
+  const finalEndTime = input.end_time === null ? null : input.end_time ?? existing.end_time
 
   // Validate that endTime is not before startTime (equal is valid for point-in-time activities)
   if (finalEndTime && finalEndTime < finalStartTime) {

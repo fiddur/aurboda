@@ -95,7 +95,7 @@ export interface MergedActivity extends Activity {
 export interface ActivityUpdate {
   activity_type?: ActivityType
   start_time?: Date
-  end_time?: Date
+  end_time?: Date | null
   title?: string
   notes?: string
   data?: Record<string, unknown>
