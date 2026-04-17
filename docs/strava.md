@@ -4,14 +4,14 @@
 
 ## Data Synced
 
-| Strava Data      | Stored As              | Details                                                                       |
-| ---------------- | ---------------------- | ----------------------------------------------------------------------------- |
-| Activities       | activity               | Type, distance, duration, calories, elevation, average/max HR                 |
-| Heart Rate       | time_series            | Per-second `heart_rate` from activity streams                                 |
-| Cadence          | time_series            | Per-second `cadence` from activity streams                                    |
-| Power            | time_series            | Per-second `power` (watts) from activity streams                              |
-| Altitude         | time_series            | Per-second `altitude` from activity streams                                   |
-| GPS Routes       | locations              | Latitude/longitude from activity streams (downsampled to 60-second intervals) |
+| Strava Data | Stored As   | Details                                                                       |
+| ----------- | ----------- | ----------------------------------------------------------------------------- |
+| Activities  | activity    | Type, distance, duration, calories, elevation, average/max HR                 |
+| Heart Rate  | time_series | Per-second `heart_rate` from activity streams                                 |
+| Cadence     | time_series | Per-second `cadence` from activity streams                                    |
+| Power       | time_series | Per-second `power` (watts) from activity streams                              |
+| Altitude    | time_series | Per-second `altitude` from activity streams                                   |
+| GPS Routes  | locations   | Latitude/longitude from activity streams (downsampled to 60-second intervals) |
 
 All data is also preserved as raw JSON in the `raw_records` table.
 
@@ -29,10 +29,10 @@ The server administrator must register a Strava API application:
 
 Then configure the server settings via the Admin API:
 
-| Server Setting          | Description                         |
-| ----------------------- | ----------------------------------- |
-| `strava_client_id`      | OAuth client ID from Strava         |
-| `strava_client_secret`  | OAuth client secret from Strava     |
+| Server Setting         | Description                     |
+| ---------------------- | ------------------------------- |
+| `strava_client_id`     | OAuth client ID from Strava     |
+| `strava_client_secret` | OAuth client secret from Strava |
 
 These are stored as server settings in the central database (set via admin settings page).
 
@@ -71,6 +71,7 @@ Sync uses a **fire-and-forget** pattern (like Garmin):
 3. Jobs are processed in the background, one at a time
 
 For each sync:
+
 1. A `list_activities` job fetches the activity list from Strava
 2. For each activity, a `fetch_activity` job is enqueued to get detailed data + streams
 3. Each `fetch_activity` makes 2 API calls: activity detail and activity streams

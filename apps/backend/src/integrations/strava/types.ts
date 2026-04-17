@@ -142,6 +142,19 @@ export interface StravaRateLimitInfo {
   reads_daily_limit: number
 }
 
+/** Parse Strava rate limit headers (X-ReadRateLimit-Usage / X-ReadRateLimit-Limit). */
+export const parseRateLimitHeaders = (headers: Record<string, unknown>): StravaRateLimitInfo => {
+  const readUsage = String(headers['x-readratelimit-usage'] ?? '0,0').split(',')
+  const readLimit = String(headers['x-readratelimit-limit'] ?? '100,1000').split(',')
+
+  return {
+    reads_15min: parseInt(readUsage[0], 10) || 0,
+    reads_15min_limit: parseInt(readLimit[0], 10) || 100,
+    reads_daily: parseInt(readUsage[1], 10) || 0,
+    reads_daily_limit: parseInt(readLimit[1], 10) || 1000,
+  }
+}
+
 /** Strava sync queue job data */
 export interface StravaSyncJobData {
   user: string

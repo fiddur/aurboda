@@ -158,9 +158,16 @@ describe('processStravaActivity', () => {
     expect(locations[0]).toMatchObject({ lat: 59.32, source: 'strava' })
   })
 
-  test('skips zero values in streams', async () => {
+  test('skips zero heartrate/cadence but keeps zero altitude/watts/temp', async () => {
     const deps = createMockDeps()
     const streams: StravaStreamsResponse = {
+      altitude: {
+        data: [0, 50, 100],
+        original_size: 3,
+        resolution: 'high',
+        series_type: 'time',
+        type: 'altitude',
+      },
       heartrate: {
         data: [0, 145, 0],
         original_size: 3,
@@ -175,10 +182,18 @@ describe('processStravaActivity', () => {
         series_type: 'time',
         type: 'time',
       },
+      watts: {
+        data: [0, 200, 0],
+        original_size: 3,
+        resolution: 'high',
+        series_type: 'time',
+        type: 'watts',
+      },
     }
 
     const count = await processStravaActivity('testuser', baseActivity, streams, deps)
-    expect(count).toBe(1) // only the non-zero value
+    // heartrate: 1 (skips two zeros), altitude: 3 (keeps zeros), watts: 3 (keeps zeros)
+    expect(count).toBe(7)
   })
 
   test('maps sport types correctly', async () => {

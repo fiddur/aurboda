@@ -670,7 +670,7 @@ const main = async () => {
 
   // Strava OAuth endpoints
   if (strava) {
-    httpd.get('/auth/connectStrava', authMiddleware, strava.redirectToAuthorize)
+    httpd.get('/auth/connectStrava', strava.redirectToAuthorize)
     httpd.get('/auth/stravacb', strava.authCb)
 
     httpd.post('/auth/strava/disconnect', authMiddleware, async (req, res) => {

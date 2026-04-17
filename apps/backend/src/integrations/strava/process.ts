@@ -96,9 +96,13 @@ const streamMetricMap: Record<string, { metric: string; unit: string }> = {
   altitude: { metric: 'elevation', unit: 'm' },
   cadence: { metric: 'cadence', unit: 'rpm' },
   heartrate: { metric: 'heart_rate', unit: 'bpm' },
-  temp: { metric: 'body_temperature', unit: 'C' },
+  temp: { metric: 'ambient_temperature', unit: 'C' },
   watts: { metric: 'power', unit: 'W' },
 }
+
+// Zero means "no data" for heartrate and cadence, but is valid for
+// altitude (sea level), watts (coasting), and temp (freezing).
+const zeroMeansNoData = new Set(['heartrate', 'cadence'])
 
 const processTimeSeriesStreams = async (
   user: string,
@@ -116,7 +120,8 @@ const processTimeSeriesStreams = async (
     const data = stream.data as number[]
     for (let i = 0; i < data.length && i < timeOffsets.length; i++) {
       const value = data[i]
-      if (value == null || value === 0) continue
+      if (value == null) continue
+      if (value === 0 && zeroMeansNoData.has(streamKey)) continue
 
       points.push({
         metric: mapping.metric,
@@ -169,6 +174,8 @@ const processGpsStream = async (
   if (gpsPoints.length > 0) {
     const start = gpsPoints[0].time
     const end = gpsPoints[gpsPoints.length - 1].time
+    // Strava GPS is higher-resolution than phone (OwnTracks) during activities —
+    // replace the coarser phone data for this time range
     await deps.softDeleteLocationRange(user, 'owntracks', start, end)
     await deps.insertLocations(user, gpsPoints)
   }

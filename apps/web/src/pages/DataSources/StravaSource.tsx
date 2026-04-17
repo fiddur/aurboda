@@ -52,29 +52,23 @@ function StravaConnection({
     window.location.href = `${API_URL}/auth/connectStrava?username=${username}`
   }
 
-  const handleSyncNow = useCallback(async () => {
-    setSyncStatus('syncing')
-    setSyncMessage('')
-    try {
-      await syncStrava(false)
-      await queryClient.invalidateQueries({ queryKey: ['stravaSyncStatus'] })
-    } catch (err) {
-      setSyncStatus('error')
-      setSyncMessage(err instanceof Error ? err.message : 'Sync failed')
-    }
-  }, [queryClient])
+  const handleSync = useCallback(
+    async (fullResync: boolean) => {
+      setSyncStatus('syncing')
+      setSyncMessage('')
+      try {
+        await syncStrava(fullResync)
+        await queryClient.invalidateQueries({ queryKey: ['stravaSyncStatus'] })
+      } catch (err) {
+        setSyncStatus('error')
+        setSyncMessage(err instanceof Error ? err.message : 'Sync failed')
+      }
+    },
+    [queryClient],
+  )
 
-  const handleFullResync = useCallback(async () => {
-    setSyncStatus('syncing')
-    setSyncMessage('')
-    try {
-      await syncStrava(true)
-      await queryClient.invalidateQueries({ queryKey: ['stravaSyncStatus'] })
-    } catch (err) {
-      setSyncStatus('error')
-      setSyncMessage(err instanceof Error ? err.message : 'Sync failed')
-    }
-  }, [queryClient])
+  const handleSyncNow = useCallback(() => handleSync(false), [handleSync])
+  const handleFullResync = useCallback(() => handleSync(true), [handleSync])
 
   const handleDisconnect = useCallback(async () => {
     setDisconnecting(true)
