@@ -829,7 +829,10 @@ private fun AddActivityTab(
         DateTimePickerField(
             label = "Start Time",
             epochMillis = startTimeMillis,
-            onChanged = { startTimeMillis = it },
+            onChanged = {
+                startTimeMillis = it
+                endTimeMillis = it + 5 * 60 * 1000
+            },
         )
 
         // Has end time checkbox

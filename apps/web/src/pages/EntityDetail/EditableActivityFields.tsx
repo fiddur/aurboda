@@ -46,9 +46,11 @@ export const EditableActivityFields = ({
 }: EditableActivityFieldsProps) => {
   if (isEditing) {
     const draftStart = new Date(draft.start_time)
-    const draftEnd = new Date(draft.end_time)
+    const draftEnd = draft.end_time ? new Date(draft.end_time) : null
     const draftDuration =
-      isNaN(draftStart.getTime()) || isNaN(draftEnd.getTime()) ? '—' : formatDuration(draftStart, draftEnd)
+      !draftEnd || isNaN(draftStart.getTime()) || isNaN(draftEnd.getTime())
+        ? '—'
+        : formatDuration(draftStart, draftEnd)
 
     return (
       <>
@@ -86,13 +88,42 @@ export const EditableActivityFields = ({
           </div>
           <div class="field-row">
             <span class="field-label">End</span>
-            <span class="field-value">
-              <input
-                type="datetime-local"
-                class="edit-datetime-input"
-                value={draft.end_time}
-                onInput={(e) => onDraftChange({ ...draft, end_time: (e.target as HTMLInputElement).value })}
-              />
+            <span class="field-value" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {draft.end_time ? (
+                <>
+                  <input
+                    type="datetime-local"
+                    class="edit-datetime-input"
+                    value={draft.end_time}
+                    onInput={(e) =>
+                      onDraftChange({ ...draft, end_time: (e.target as HTMLInputElement).value })
+                    }
+                  />
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    title="Remove end time"
+                    onClick={() => onDraftChange({ ...draft, end_time: '' })}
+                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
+                  >
+                    &times;
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  class="btn-secondary"
+                  onClick={() => {
+                    const start = new Date(draft.start_time)
+                    const end = new Date(start.getTime() + 60 * 60000)
+                    const pad = (n: number) => String(n).padStart(2, '0')
+                    const formatted = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}`
+                    onDraftChange({ ...draft, end_time: formatted })
+                  }}
+                >
+                  Set end time
+                </button>
+              )}
             </span>
           </div>
           <div class="field-row">
