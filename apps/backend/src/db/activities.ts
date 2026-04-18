@@ -410,11 +410,15 @@ const computeDesiredSupersession = (
   merged: MergedActivity[],
 ): Map<string, string | null> => {
   const desired = new Map<string, string | null>()
+  // Index every source_id → its owning merged activity so the fallback loop
+  // below stays O(n) instead of O(n*m) on large backfill windows.
+  const ownerBySourceId = new Map<string, MergedActivity>()
   for (const m of merged) {
     if (!m.id) continue
     desired.set(m.id, null)
     if (!m.source_ids) continue
     for (const sid of m.source_ids) {
+      ownerBySourceId.set(sid, m)
       if (sid !== m.id) desired.set(sid, m.id)
     }
   }
@@ -422,7 +426,7 @@ const computeDesiredSupersession = (
   // exercises absorbed into a different-type activity) get their winner too.
   for (const a of raw) {
     if (!a.id || desired.has(a.id)) continue
-    const owner = merged.find((m) => m.source_ids?.includes(a.id!))
+    const owner = ownerBySourceId.get(a.id)
     desired.set(a.id, owner?.id && owner.id !== a.id ? owner.id : null)
   }
   return desired
@@ -462,6 +466,9 @@ const diffSupersessionChanges = (
  * Chart and trend queries exclude rows with `superseded_by IS NOT NULL`.
  */
 export const materializeSuperseded = async (user: string, aroundTime: Date): Promise<void> => {
+  // Biased forward (12h back, 24h ahead) so syncs arriving after the physical
+  // activity still find their earlier counterparts from other sources, and a
+  // session crossing midnight UTC is covered from either boundary.
   const windowStart = new Date(aroundTime.getTime() - MATERIALIZE_WINDOW_MS)
   const windowEnd = new Date(aroundTime.getTime() + 2 * MATERIALIZE_WINDOW_MS)
 
