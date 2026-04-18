@@ -11,8 +11,8 @@
 import type { Request, Response } from 'express'
 
 import axios, { type AxiosResponse } from 'axios'
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { addSeconds, isFuture } from 'date-fns'
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 
 import type {
   StravaAthleteProfile,
@@ -34,6 +34,8 @@ const STRAVA_SCOPES = 'activity:read_all,profile:read_all,read'
 export interface StravaClientOptions {
   onUserAuthenticated?: (stravaAthleteId: number, username: string) => Promise<void>
 }
+
+export type StravaCredentialGetter = () => Promise<{ clientId: string; clientSecret: string }>
 
 // HMAC-signed OAuth state parameter to prevent CSRF.
 // Format: base64url(nonce.username.hmac) — the HMAC covers nonce+username
@@ -73,13 +75,11 @@ export interface StravaApiResponse<T> {
 }
 
 export const stravaClient = (
-  clientId: string,
-  clientSecret: string,
-  webHost: string,
+  getCredentials: StravaCredentialGetter,
+  apiBaseUrl: string,
   options?: StravaClientOptions,
 ) => {
-  if (!clientId || !clientSecret) throw new Error('Strava missing client_id or client_secret')
-  const redirectUri = `${webHost}/auth/stravacb`
+  const redirectUri = `${apiBaseUrl}/auth/stravacb`
 
   const apiGet = async <T>(path: string, token: string): Promise<StravaApiResponse<T>> => {
     const response: AxiosResponse<T> = await axios.get(`${STRAVA_API_BASE}${path}`, {
@@ -97,6 +97,14 @@ export const stravaClient = (
 
       if (error || !state) {
         return res.redirect('/data-sources/strava?error=auth_failed')
+      }
+
+      let clientId: string
+      let clientSecret: string
+      try {
+        ;({ clientId, clientSecret } = await getCredentials())
+      } catch {
+        return res.redirect('/data-sources/strava?error=not_configured')
       }
 
       const user = verifySignedState(state, clientSecret)
@@ -146,6 +154,7 @@ export const stravaClient = (
       }
 
       // Refresh the token
+      const { clientId, clientSecret } = await getCredentials()
       const response = await axios.post<StravaTokenResponse>(STRAVA_TOKEN_URL, {
         client_id: clientId,
         client_secret: clientSecret,
@@ -183,6 +192,38 @@ export const stravaClient = (
       return apiGet('/athlete', token)
     },
 
+    // Returns the OAuth authorize URL as JSON (called with authMiddleware, uses req.user)
+    async getAuthorizeUrl(req: Request, res: Response) {
+      const user = req.user
+      if (!user) {
+        res.status(401).json({ error: 'Not authenticated', success: false })
+        return
+      }
+
+      let clientId: string
+      let clientSecret: string
+      try {
+        ;({ clientId, clientSecret } = await getCredentials())
+      } catch {
+        res
+          .status(400)
+          .json({ error: 'Strava not configured — set credentials in Admin Settings', success: false })
+        return
+      }
+
+      const state = createSignedState(user, clientSecret)
+
+      const location = new URL(STRAVA_AUTH_URL)
+      location.searchParams.append('client_id', clientId)
+      location.searchParams.append('redirect_uri', redirectUri)
+      location.searchParams.append('response_type', 'code')
+      location.searchParams.append('scope', STRAVA_SCOPES)
+      location.searchParams.append('state', state)
+      location.searchParams.append('approval_prompt', 'auto')
+
+      res.json({ success: true, url: location.toString() })
+    },
+
     async listActivities(
       token: string,
       params: { before?: number; after?: number; page?: number; per_page?: number },
@@ -195,32 +236,6 @@ export const stravaClient = (
 
       const qs = searchParams.toString()
       return apiGet(`/athlete/activities${qs ? `?${qs}` : ''}`, token)
-    },
-
-    redirectToAuthorize(req: Request, res: Response) {
-      const { username } = req.query as Record<string, string | undefined>
-      if (!username) {
-        res.statusCode = 400
-        res.end('No username')
-        return
-      }
-
-      const state = createSignedState(username, clientSecret)
-
-      const location = new URL(STRAVA_AUTH_URL)
-      location.searchParams.append('client_id', clientId)
-      location.searchParams.append('redirect_uri', redirectUri)
-      location.searchParams.append('response_type', 'code')
-      location.searchParams.append('scope', STRAVA_SCOPES)
-      location.searchParams.append('state', state)
-      location.searchParams.append('approval_prompt', 'auto')
-
-      res.writeHead(302, {
-        'Content-Length': 0,
-        'Content-Type': 'text/plain',
-        Location: location.toString(),
-      })
-      res.end()
     },
   }
 }

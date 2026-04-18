@@ -661,6 +661,15 @@ export const uploadIcon = async (file: File): Promise<{ id: string; url: string 
   return { id: response.data.id, url: response.data.url }
 }
 
+// Oura OAuth
+export const getOuraConnectUrl = async (): Promise<string> => {
+  const { token } = auth.value
+  const response = await axios.get<{ success: boolean; url: string }>(`${API_URL}/auth/oura/connect`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data.url
+}
+
 // Trigger Oura sync
 export const syncOura = async (fullResync?: boolean): Promise<OuraSyncResponse> => {
   const { token } = auth.value
@@ -733,6 +742,14 @@ export const fetchGarminSyncStatus = async (): Promise<GarminSyncStatusResponse>
 }
 
 // Strava OAuth + sync
+export const getStravaConnectUrl = async (): Promise<string> => {
+  const { token } = auth.value
+  const response = await axios.get<{ success: boolean; url: string }>(`${API_URL}/auth/strava/connect`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data.url
+}
+
 export const disconnectStrava = async (): Promise<{ success: boolean }> => {
   const { token } = auth.value
   const response = await axios.post(

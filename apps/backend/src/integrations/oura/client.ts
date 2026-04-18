@@ -56,9 +56,14 @@ export interface OuraClientOptions {
   onUserAuthenticated?: (ouraUserId: string, username: string) => Promise<void>
 }
 
-export const ouraClient = (client: string, secret: string, webHost: string, options?: OuraClientOptions) => {
+export const ouraClient = (
+  client: string,
+  secret: string,
+  apiBaseUrl: string,
+  options?: OuraClientOptions,
+) => {
   if (!client || !secret) throw new Error('Oura missing client or secret')
-  const redirectUri = `${webHost}/auth/ouracb`
+  const redirectUri = `${apiBaseUrl}/auth/ouracb`
 
   const getGeneric = async (type: string, start: Date, end: Date, token: string) => {
     const response = await axios.get(
@@ -238,11 +243,10 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
         )
       return tags
     },
-    redirectToAuthorize(req: Request, res: Response) {
-      const { username } = req.query as Record<string, string | undefined>
-      if (!username) {
-        res.statusCode = 400
-        res.end('No username')
+    getAuthorizeUrl(req: Request, res: Response) {
+      const user = req.user
+      if (!user) {
+        res.status(401).json({ error: 'Not authenticated', success: false })
         return
       }
 
@@ -250,13 +254,8 @@ export const ouraClient = (client: string, secret: string, webHost: string, opti
       location.searchParams.append('response_type', 'code')
       location.searchParams.append('client_id', client)
       location.searchParams.append('redirect_uri', redirectUri)
-      location.searchParams.append('state', username)
-      res.writeHead(302, {
-        'Content-Length': 0,
-        'Content-Type': 'text/plain',
-        Location: location.toString(),
-      })
-      res.end()
+      location.searchParams.append('state', user)
+      res.json({ success: true, url: location.toString() })
     },
   }
 }

@@ -43,6 +43,7 @@ import {
   processHealthConnectBatch,
   processHealthConnectData,
   query,
+  resolveOrCreateActivityType,
   resetSyncState,
   schemaInitialized,
   softDeleteActivityByExternalId,
@@ -137,30 +138,27 @@ const main = async () => {
   const centralDb = getCentralDb()
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
-  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost, {
+  const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
+  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', apiBaseUrl, {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
 
   // Create Garmin client (no server-side credentials needed - uses per-user session tokens)
   const garmin = garminClient()
 
-  // Create Strava client (from server settings — may not be configured yet)
-  const stravaClientId = await centralDb.getServerSetting('strava_client_id')
-  const stravaClientSecret = await centralDb.getServerSetting('strava_client_secret')
-
-  const strava =
-    stravaClientId && stravaClientSecret
-      ? stravaClient(stravaClientId, stravaClientSecret, webHost, {
-          onUserAuthenticated: (stravaAthleteId, username) =>
-            centralDb.upsertStravaAthleteMapping(stravaAthleteId, username),
-        })
-      : null
-
-  if (!strava) {
-    console.warn(
-      '⚠️ Strava integration disabled — set strava_client_id and strava_client_secret in server settings',
-    )
+  // Create Strava client with dynamic credentials (reads from DB on each request)
+  const getStravaCredentials = async () => {
+    const clientId = await centralDb.getServerSetting('strava_client_id')
+    const clientSecret = await centralDb.getServerSetting('strava_client_secret')
+    if (!clientId || !clientSecret)
+      {throw new Error('Strava not configured — set credentials in Admin Settings')}
+    return { clientId, clientSecret }
   }
+
+  const strava = stravaClient(getStravaCredentials, apiBaseUrl, {
+    onUserAuthenticated: (stravaAthleteId, username) =>
+      centralDb.upsertStravaAthleteMapping(stravaAthleteId, username),
+  })
 
   // Create sync provider for auto-syncing data before queries
   const syncProvider = createSyncProvider({
@@ -204,7 +202,7 @@ const main = async () => {
 
   // Initialize Strava queue (uses shared boss + strava client)
   let stravaQueue: StravaQueue | null = null
-  if (boss && strava) {
+  if (boss) {
     try {
       stravaQueue = await createStravaQueue(boss, {
         getAccessToken: (user) => strava.getAccessToken(user),
@@ -216,6 +214,7 @@ const main = async () => {
           insertLocations,
           insertRawRecord,
           insertTimeSeries,
+          resolveOrCreateActivityType,
           softDeleteLocationRange,
         },
         updateSyncState: async (user, dataType, updates) => {
@@ -611,7 +610,7 @@ const main = async () => {
     ),
   )
 
-  httpd.get('/auth/connectOura', oura.redirectToAuthorize)
+  httpd.get('/auth/oura/connect', authMiddleware, oura.getAuthorizeUrl)
   httpd.get('/auth/ouracb', oura.authCb)
 
   // Garmin Connect auth endpoints (login with credentials, tokens-only stored)
@@ -668,30 +667,28 @@ const main = async () => {
     }
   })
 
-  // Strava OAuth endpoints
-  if (strava) {
-    httpd.get('/auth/connectStrava', strava.redirectToAuthorize)
-    httpd.get('/auth/stravacb', strava.authCb)
+  // Strava OAuth endpoints (always registered — credentials checked dynamically)
+  httpd.get('/auth/strava/connect', authMiddleware, strava.getAuthorizeUrl)
+  httpd.get('/auth/stravacb', strava.authCb)
 
-    httpd.post('/auth/strava/disconnect', authMiddleware, async (req, res) => {
-      const user = req.user!
-      try {
-        // Clear tokens and athlete mapping
-        await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
-        await centralDb.deleteStravaAthleteMappingByUsername(user)
-        res.json({ success: true })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Disconnect failed'
-        res.status(500).json({ error: message, success: false })
-      }
-    })
-  }
+  httpd.post('/auth/strava/disconnect', authMiddleware, async (req, res) => {
+    const user = req.user!
+    try {
+      // Clear tokens and athlete mapping
+      await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
+      await centralDb.deleteStravaAthleteMappingByUsername(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Disconnect failed'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
 
   // ==========================================================================
   // Strava webhook push integration
   // ==========================================================================
 
-  if (strava && stravaQueue) {
+  if (stravaQueue) {
     const stravaVerifyToken = `aurboda-strava-${sessionSecret.slice(0, 8)}`
 
     httpd.use(
@@ -716,20 +713,26 @@ const main = async () => {
       }),
     )
 
-    // Ensure webhook subscription exists (stravaClientId/Secret guaranteed non-null since strava is truthy)
-    const stravaWebhookCallbackUrl = `${webHost}/webhooks/strava`
-    const stravaWebhookMgr = createStravaWebhookManager({
-      callbackUrl: stravaWebhookCallbackUrl,
-      clientId: stravaClientId ?? '',
-      clientSecret: stravaClientSecret ?? '',
-      verifyToken: stravaVerifyToken,
-    })
-    stravaWebhookMgr.ensureSubscription().catch((error) => {
-      console.warn(
-        '⚠️ Strava webhook subscription setup failed:',
-        error instanceof Error ? error.message : error,
-      )
-    })
+    // Ensure webhook subscription exists (credentials read dynamically)
+    const stravaWebhookCallbackUrl = `${apiBaseUrl}/webhooks/strava`
+    getStravaCredentials()
+      .then(({ clientId, clientSecret }) => {
+        const stravaWebhookMgr = createStravaWebhookManager({
+          callbackUrl: stravaWebhookCallbackUrl,
+          clientId,
+          clientSecret,
+          verifyToken: stravaVerifyToken,
+        })
+        stravaWebhookMgr.ensureSubscription().catch((error) => {
+          console.warn(
+            '⚠️ Strava webhook subscription setup failed:',
+            error instanceof Error ? error.message : error,
+          )
+        })
+      })
+      .catch(() => {
+        console.warn('⚠️ Strava webhook disabled — credentials not configured yet')
+      })
   }
 
   // ==========================================================================
@@ -747,11 +750,11 @@ const main = async () => {
     }
 
     ouraWebhookManager = createOuraWebhookManager({
+      apiBaseUrl,
       centralDb,
       ouraClientId,
       ouraClientSecret,
       syncOuraDataTypeForUser,
-      webHost,
     })
 
     // Mount proxy handler (delegates to inner router when enabled, 404 when disabled)

@@ -34,7 +34,7 @@ export interface OuraWebhookManagerDeps {
   ouraClientId: string
   ouraClientSecret: string
   syncOuraDataTypeForUser: (username: string, dataType: OuraDataType) => Promise<void>
-  webHost: string
+  apiBaseUrl: string
 }
 
 export interface OuraWebhookManager {
@@ -51,11 +51,11 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
   let webhookService: OuraWebhookService | null = null
   let enabled = false
 
-  const callbackUrl = `${deps.webHost}/api/webhooks/oura`
+  const callbackUrl = `${deps.apiBaseUrl}/webhooks/oura`
 
   const canEnable = (): boolean => {
     try {
-      const url = new URL(deps.webHost)
+      const url = new URL(deps.apiBaseUrl)
       return url.protocol === 'https:'
     } catch {
       return false

@@ -3,8 +3,13 @@ import type { ProviderSyncStatus } from '@aurboda/api-spec'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
-import { API_URL } from '../../config'
-import { disconnectStrava, fetchStravaSyncStatus, fetchUserSettings, syncStrava } from '../../state/api'
+import {
+  disconnectStrava,
+  fetchStravaSyncStatus,
+  fetchUserSettings,
+  getStravaConnectUrl,
+  syncStrava,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import { type DataTypeItem, DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
 import './style.css'
@@ -29,7 +34,6 @@ function StravaConnection({
   syncStatusLoading: boolean
 }) {
   const queryClient = useQueryClient()
-  const username = auth.value.user
 
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [syncMessage, setSyncMessage] = useState('')
@@ -48,9 +52,15 @@ function StravaConnection({
     prevSyncingRef.current = isSyncing
   }, [isSyncing, syncStatus, syncStates, queryClient])
 
-  const handleConnectStrava = () => {
-    window.location.href = `${API_URL}/auth/connectStrava?username=${username}`
-  }
+  const handleConnectStrava = useCallback(async () => {
+    try {
+      const url = await getStravaConnectUrl()
+      window.location.href = url
+    } catch (err) {
+      setSyncStatus('error')
+      setSyncMessage(err instanceof Error ? err.message : 'Failed to start Strava connection')
+    }
+  }, [])
 
   const handleSync = useCallback(
     async (fullResync: boolean) => {
