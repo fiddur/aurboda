@@ -530,6 +530,10 @@ export const migrateSchema = async (user: string) => {
   if (existingTableNames.has('activities')) {
     await query(db, `ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
     await query(db, `ALTER TABLE activities ADD COLUMN IF NOT EXISTS external_id VARCHAR(255)`)
+    await query(
+      db,
+      `ALTER TABLE activities ADD COLUMN IF NOT EXISTS superseded_by UUID REFERENCES activities(id) ON DELETE SET NULL`,
+    )
     // Widen activity_type from VARCHAR(50) to VARCHAR(100) for longer type names
     await query(db, `ALTER TABLE activities ALTER COLUMN activity_type TYPE VARCHAR(100)`)
     // Replace old unique constraint and non-unique index with partial unique indexes
@@ -543,6 +547,10 @@ export const migrateSchema = async (user: string) => {
     await query(
       db,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_type_time ON activities (source, activity_type, start_time) WHERE external_id IS NULL`,
+    )
+    await query(
+      db,
+      `CREATE INDEX IF NOT EXISTS idx_activities_not_superseded ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL AND superseded_by IS NULL`,
     )
   }
   if (existingTableNames.has('activity_type_definitions')) {

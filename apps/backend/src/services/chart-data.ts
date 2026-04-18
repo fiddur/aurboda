@@ -84,6 +84,7 @@ const queryActivitiesByType = async (
        FROM activities
       WHERE activity_type = $${bucket.params.length + 1}
         AND deleted_at IS NULL
+        AND superseded_by IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
@@ -111,6 +112,7 @@ const queryActivitiesByTypePattern = async (
        FROM activities
       WHERE activity_type ~* $${bucket.params.length + 1}
         AND deleted_at IS NULL
+        AND superseded_by IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
@@ -199,6 +201,7 @@ const queryActivityTypeBuckets = async (
        FROM activities
       WHERE activity_type = $${bucket.params.length + 1}
         AND deleted_at IS NULL
+        AND superseded_by IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
@@ -246,6 +249,7 @@ const queryActivityTypeBreakdown = async (
        FROM activities
       WHERE activity_type = $${bucket.params.length + 1}
         AND deleted_at IS NULL
+        AND superseded_by IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1, ${fieldGroupBys.join(', ')}
       ORDER BY 1`,

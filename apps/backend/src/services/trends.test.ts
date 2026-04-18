@@ -227,4 +227,43 @@ describe('getTrend', () => {
     expect(result.breakdown_series).toEqual([])
     expect(result.breakdown_histories).toEqual({})
   })
+
+  // Regression: activity-based trend queries must skip cross-source duplicates
+  // (rows with superseded_by set) so a single physical activity synced from
+  // multiple sources doesn't inflate the trend.
+  describe('superseded_by filtering', () => {
+    test('activity_type sum trend filters superseded rows', async () => {
+      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
+      await getTrend('testuser', {
+        aggregation: 'sum',
+        pattern: 'running',
+        source_type: 'activity_type',
+      })
+      const sql = vi.mocked(db.query).mock.calls[0][1] as string
+      expect(sql).toContain('superseded_by IS NULL')
+    })
+
+    test('activity_type count trend filters superseded rows', async () => {
+      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
+      await getTrend('testuser', {
+        aggregation: 'count',
+        pattern: 'coffee',
+        source_type: 'tag',
+      })
+      const sql = vi.mocked(db.query).mock.calls[0][1] as string
+      expect(sql).toContain('superseded_by IS NULL')
+    })
+
+    test('activity_type breakdown trend filters superseded rows', async () => {
+      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
+      await getTrend('testuser', {
+        aggregation: 'sum',
+        breakdown_fields: ['partner'],
+        pattern: 'running',
+        source_type: 'activity_type',
+      })
+      const sql = vi.mocked(db.query).mock.calls[0][1] as string
+      expect(sql).toContain('superseded_by IS NULL')
+    })
+  })
 })

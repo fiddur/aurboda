@@ -226,6 +226,7 @@ const calculateActivityTypeTrend = async (
         FROM activities
         WHERE activity_type = $1
           AND deleted_at IS NULL
+          AND superseded_by IS NULL
           AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
@@ -298,6 +299,7 @@ const calculateActivityTypeCountTrend = async (
         FROM activities
         WHERE activity_type = $1
           AND deleted_at IS NULL
+          AND superseded_by IS NULL
           AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
@@ -408,6 +410,7 @@ const calculateActivityTypeBreakdownTrend = async (
        FROM activities
       WHERE activity_type = $1
         AND deleted_at IS NULL
+        AND superseded_by IS NULL
         AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
       GROUP BY 1, ${fieldGroupBys.join(', ')}
       ORDER BY 1`,

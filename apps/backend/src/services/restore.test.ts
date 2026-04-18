@@ -5,6 +5,8 @@ import { deleteProductivity, restoreActivity, restoreProductivity } from './rest
 
 vi.mock('../db', () => ({
   deleteProductivityRecord: vi.fn(),
+  getActivityById: vi.fn().mockResolvedValue(null),
+  materializeSuperseded: vi.fn().mockResolvedValue(undefined),
   restoreActivity: vi.fn(),
   restoreProductivityRecord: vi.fn(),
 }))
@@ -16,11 +18,18 @@ describe('restoreActivity', () => {
 
   test('returns success when activity is restored', async () => {
     vi.mocked(db.restoreActivity).mockResolvedValue(true)
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
 
     const result = await restoreActivity('testuser', 'activity-123')
 
     expect(result).toEqual({ id: 'activity-123', restored: true, success: true })
     expect(db.restoreActivity).toHaveBeenCalledWith('testuser', 'activity-123')
+    expect(db.materializeSuperseded).toHaveBeenCalledWith('testuser', new Date('2024-03-15T10:00:00Z'))
   })
 
   test('returns failure when activity not found', async () => {

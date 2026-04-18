@@ -145,6 +145,40 @@ describe('mapActivityRow', () => {
 
     expect(() => mapActivityRow(row)).toThrow('Invalid ActivityType')
   })
+
+  test('maps superseded_by when present', () => {
+    const row = {
+      activity_type: 'running',
+      data: null,
+      end_time: null,
+      id: 'loser-id',
+      notes: null,
+      source: 'oura',
+      start_time: '2024-01-15T10:00:00Z',
+      superseded_by: 'winner-id',
+      title: null,
+    }
+
+    const result = mapActivityRow(row)
+    expect(result.superseded_by).toBe('winner-id')
+  })
+
+  test('leaves superseded_by undefined when null', () => {
+    const row = {
+      activity_type: 'running',
+      data: null,
+      end_time: null,
+      id: 'winner-id',
+      notes: null,
+      source: 'garmin',
+      start_time: '2024-01-15T10:00:00Z',
+      superseded_by: null,
+      title: null,
+    }
+
+    const result = mapActivityRow(row)
+    expect(result.superseded_by).toBeUndefined()
+  })
 })
 
 describe('mapNamedLocationRow', () => {

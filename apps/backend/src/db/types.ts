@@ -86,6 +86,8 @@ export interface Activity {
   notes?: string
   data?: Record<string, unknown>
   deleted_at?: Date
+  /** If set, this activity is a cross-source duplicate of the referenced activity. */
+  superseded_by?: string
 }
 
 export interface MergedActivity extends Activity {
