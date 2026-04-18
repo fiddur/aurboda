@@ -25,9 +25,10 @@ describe('mapStravaSportType', () => {
   })
 
   test('maps gym activities', () => {
-    expect(mapStravaSportType('WeightTraining')).toBe('weight_training')
+    expect(mapStravaSportType('WeightTraining')).toBe('strength_training')
     expect(mapStravaSportType('Yoga')).toBe('yoga')
     expect(mapStravaSportType('Elliptical')).toBe('elliptical')
+    expect(mapStravaSportType('HIIT')).toBe('high_intensity_interval_training')
   })
 
   test('maps winter sports', () => {

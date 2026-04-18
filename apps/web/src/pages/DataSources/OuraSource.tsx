@@ -3,8 +3,7 @@ import type { ProviderSyncStatus, UserSettingsResponse } from '@aurboda/api-spec
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 
-import { API_URL } from '../../config'
-import { fetchOuraSyncStatus, fetchUserSettings, syncOura } from '../../state/api'
+import { fetchOuraSyncStatus, fetchUserSettings, getOuraConnectUrl, syncOura } from '../../state/api'
 import { auth } from '../../state/auth'
 import { type DataTypeItem, DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
 import './style.css'
@@ -35,9 +34,15 @@ function OuraConnection({
   const [ouraSyncStatus, setOuraSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [ouraSyncMessage, setOuraSyncMessage] = useState<string>('')
 
-  const handleConnectOura = () => {
-    window.location.href = `${API_URL}/auth/connectOura`
-  }
+  const handleConnectOura = useCallback(async () => {
+    try {
+      const url = await getOuraConnectUrl()
+      window.location.href = url
+    } catch (err) {
+      setOuraSyncStatus('error')
+      setOuraSyncMessage(err instanceof Error ? err.message : 'Failed to start Oura connection')
+    }
+  }, [])
 
   const handleSyncNow = useCallback(async () => {
     await syncOura(false)

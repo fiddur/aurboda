@@ -10,6 +10,7 @@ const createMockDeps = (): StravaProcessDeps => ({
   insertLocations: vi.fn(),
   insertRawRecord: vi.fn(),
   insertTimeSeries: vi.fn(),
+  resolveOrCreateActivityType: vi.fn(async (_user: string, name: string) => name),
   softDeleteLocationRange: vi.fn(),
 })
 

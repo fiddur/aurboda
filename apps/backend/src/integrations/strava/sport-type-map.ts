@@ -29,7 +29,7 @@ export const stravaSportTypeMap: Record<string, string> = {
   Walk: 'walking',
   Hike: 'hiking',
 
-  // Winter sports
+  // Winter sports (more granular than Health Connect's generic 'skiing')
   AlpineSki: 'skiing_downhill',
   BackcountrySki: 'skiing_cross_country',
   NordicSki: 'skiing_cross_country',
@@ -48,7 +48,7 @@ export const stravaSportTypeMap: Record<string, string> = {
   Sail: 'sailing',
 
   // Gym / Indoor
-  WeightTraining: 'weight_training',
+  WeightTraining: 'strength_training',
   Yoga: 'yoga',
   Pilates: 'pilates',
   Crossfit: 'high_intensity_interval_training',
@@ -60,7 +60,12 @@ export const stravaSportTypeMap: Record<string, string> = {
   Skateboard: 'skateboarding',
   InlineSkate: 'roller_skating',
   Golf: 'golf',
-  Soccer: 'football',
+  Soccer: 'soccer',
+  HIIT: 'high_intensity_interval_training',
+  MMA: 'martial_arts',
+  Wrestling: 'martial_arts',
+  Workout: 'other_workout',
+  Lacrosse: 'other_workout',
   Tennis: 'tennis',
   TableTennis: 'table_tennis',
   Badminton: 'badminton',

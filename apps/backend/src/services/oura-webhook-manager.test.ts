@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createOuraWebhookManager, type OuraWebhookManagerDeps } from './oura-webhook-manager.ts'
 
 describe('oura-webhook-manager', () => {
-  const createDeps = (webHost = 'https://example.com'): OuraWebhookManagerDeps => ({
+  const createDeps = (apiBaseUrl = 'https://example.com'): OuraWebhookManagerDeps => ({
     centralDb: {
       deleteAllOuraWebhookSubscriptions: vi.fn().mockResolvedValue(0),
       deleteOuraWebhookSubscription: vi.fn().mockResolvedValue(true),
@@ -16,7 +16,7 @@ describe('oura-webhook-manager', () => {
     ouraClientId: 'test-client-id',
     ouraClientSecret: 'test-client-secret',
     syncOuraDataTypeForUser: vi.fn().mockResolvedValue(undefined),
-    webHost,
+    apiBaseUrl,
   })
 
   beforeEach(() => {

@@ -8,6 +8,7 @@ import type {
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
+  resolveOrCreateActivityType,
   softDeleteLocationRange,
 } from '../../db/index.ts'
 import type { Activity, Location, RawRecord, TimeSeriesPoint } from '../../db/types.ts'
@@ -23,6 +24,7 @@ export interface StravaProcessDeps {
   insertLocations: typeof insertLocations
   insertRawRecord: typeof insertRawRecord
   insertTimeSeries: typeof insertTimeSeries
+  resolveOrCreateActivityType: typeof resolveOrCreateActivityType
   softDeleteLocationRange: typeof softDeleteLocationRange
 }
 
@@ -46,7 +48,8 @@ export const processStravaActivity = async (
   const externalId = `strava-activity-${activity.id}`
   const startTime = new Date(activity.start_date)
   const endTime = new Date(startTime.getTime() + activity.elapsed_time * 1000)
-  const activityType = mapStravaSportType(activity.sport_type)
+  const mappedType = mapStravaSportType(activity.sport_type)
+  const activityType = await deps.resolveOrCreateActivityType(user, mappedType, 'exercise')
 
   // Raw record
   await deps.insertRawRecord(user, makeRaw('strava_activity', externalId, startTime, activity))
