@@ -45,9 +45,15 @@ export interface StravaQueueDeps {
   updateSyncState: (user: string, dataType: string, updates: Record<string, unknown>) => Promise<void>
 }
 
+export interface StravaQueueStatus {
+  active_count: number
+  queued_count: number
+}
+
 export interface StravaQueue {
   enqueueSync: (user: string, options: { fullResync?: boolean; after?: number }) => Promise<void>
   enqueueActivityFetch: (user: string, activityId: number, priority: number) => Promise<void>
+  getStatus: () => Promise<StravaQueueStatus>
 }
 
 // ============================================================================
@@ -242,6 +248,14 @@ export const createStravaQueue = async (boss: PgBoss, deps: StravaQueueDeps): Pr
       )
 
       auditInfo(user, 'sync', `🏃 Strava: enqueued ${options.fullResync ? 'full' : 'incremental'} sync`)
+    },
+
+    getStatus: async (): Promise<StravaQueueStatus> => {
+      const info = await boss.getQueue(QUEUE_NAME)
+      return {
+        active_count: info?.activeCount ?? 0,
+        queued_count: info?.queuedCount ?? 0,
+      }
     },
   }
 }

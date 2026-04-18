@@ -14,6 +14,7 @@ import { createStravaQueue } from './strava-queue.ts'
 
 const createMockBoss = () => ({
   createQueue: vi.fn().mockResolvedValue(undefined),
+  getQueue: vi.fn(),
   send: vi.fn().mockResolvedValue('job-123'),
   work: vi.fn().mockResolvedValue(undefined),
 })
@@ -107,5 +108,29 @@ describe('createStravaQueue', () => {
       },
       expect.objectContaining({ priority: 1 }),
     )
+  })
+
+  test('getStatus returns queue counts from pg-boss', async () => {
+    const boss = createMockBoss()
+    boss.getQueue.mockResolvedValue({
+      activeCount: 1,
+      queuedCount: 42,
+    })
+    const queue = await createStravaQueue(boss as never, mockDeps)
+
+    const status = await queue.getStatus()
+
+    expect(boss.getQueue).toHaveBeenCalledWith('strava-sync')
+    expect(status).toEqual({ active_count: 1, queued_count: 42 })
+  })
+
+  test('getStatus returns zero counts when queue not found', async () => {
+    const boss = createMockBoss()
+    boss.getQueue.mockResolvedValue(null)
+    const queue = await createStravaQueue(boss as never, mockDeps)
+
+    const status = await queue.getStatus()
+
+    expect(status).toEqual({ active_count: 0, queued_count: 0 })
   })
 })

@@ -25,6 +25,7 @@ import {
   getOutboundSyncHistory,
   getPendingOutboundSync,
   requeueOutboundSync,
+  resetSyncState,
 } from '../db/index.ts'
 import { type GarminDataType, syncAllGarminData } from '../integrations/garmin/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
@@ -248,7 +249,7 @@ export const registerSyncTools = (
 
   server.tool(
     'get_sync_status',
-    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors.',
+    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors. For Strava, also includes queue counts (pending and active jobs).',
     {
       provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
       tz: tzSchema,
@@ -262,7 +263,38 @@ export const registerSyncTools = (
           states[p] = await getAllSyncStates(user, p)
         }
 
-        return tzJsonResponse({ states, success: true }, tz)
+        const response: Record<string, unknown> = { states, success: true }
+        if (stravaQueue && (provider === 'all' || provider === 'strava')) {
+          response.strava_queue = await stravaQueue.getStatus()
+        }
+
+        return tzJsonResponse(response, tz)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  // Tool: reset_sync_state
+  const resettableProviders = ['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm'] as const
+
+  server.tool(
+    'reset_sync_state',
+    'Reset sync state for a provider. Clears status, error messages, and last sync time. Use this to recover from stuck "syncing" states or to force a full re-sync.',
+    {
+      data_type: z
+        .string()
+        .optional()
+        .describe(
+          'Specific data type to reset (e.g. "activities"). If omitted, resets all data types for the provider.',
+        ),
+      provider: z.enum(resettableProviders).describe('Which provider to reset sync state for'),
+    },
+    async ({ data_type, provider }) => {
+      try {
+        await resetSyncState(user, provider, data_type)
+        return jsonResponse({ data_type: data_type ?? 'all', provider, reset: true, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })

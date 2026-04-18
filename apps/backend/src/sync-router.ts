@@ -147,6 +147,7 @@ export interface SyncRouterDeps {
   ) => Promise<ActivityWatchSyncResult>
   syncStrava: (user: string, options: { fullResync?: boolean }) => Promise<StravaSyncResult>
   getStravaSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
+  getStravaQueueStatus?: () => Promise<{ queued_count: number; active_count: number }>
   resetStravaSyncState: (user: string, dataType?: string) => Promise<void>
   getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   // Outbound sync (Health Connect write-back)
@@ -585,7 +586,8 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
 
       try {
         const states = await deps.getStravaSyncStates(user)
-        res.json({ states, success: true })
+        const queue = deps.getStravaQueueStatus ? await deps.getStravaQueueStatus() : undefined
+        res.json({ queue, states, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message, success: false })
