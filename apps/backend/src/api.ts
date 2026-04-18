@@ -133,6 +133,9 @@ const main = async () => {
   const auth = createAuth(sessionSecret)
   const invitationAuth = createInvitationAuth(sessionSecret)
 
+  // Callbacks to run after httpd.listen() — for tasks that need the server to be reachable
+  const postListenCallbacks: Array<() => Promise<void>> = []
+
   // Initialize central database (server settings, admins)
   await initializeCentralDb()
   const centralDb = getCentralDb()
@@ -150,8 +153,9 @@ const main = async () => {
   const getStravaCredentials = async () => {
     const clientId = await centralDb.getServerSetting('strava_client_id')
     const clientSecret = await centralDb.getServerSetting('strava_client_secret')
-    if (!clientId || !clientSecret)
-      {throw new Error('Strava not configured — set credentials in Admin Settings')}
+    if (!clientId || !clientSecret) {
+      throw new Error('Strava not configured — set credentials in Admin Settings')
+    }
     return { clientId, clientSecret }
   }
 
@@ -713,26 +717,27 @@ const main = async () => {
       }),
     )
 
-    // Ensure webhook subscription exists (credentials read dynamically)
+    // Strava webhook subscription is created after httpd.listen() so the
+    // server is ready to respond to Strava's verification GET request.
     const stravaWebhookCallbackUrl = `${apiBaseUrl}/webhooks/strava`
-    getStravaCredentials()
-      .then(({ clientId, clientSecret }) => {
-        const stravaWebhookMgr = createStravaWebhookManager({
-          callbackUrl: stravaWebhookCallbackUrl,
-          clientId,
-          clientSecret,
-          verifyToken: stravaVerifyToken,
+    const ensureStravaWebhook = () =>
+      getStravaCredentials()
+        .then(({ clientId, clientSecret }) => {
+          const stravaWebhookMgr = createStravaWebhookManager({
+            callbackUrl: stravaWebhookCallbackUrl,
+            clientId,
+            clientSecret,
+            verifyToken: stravaVerifyToken,
+          })
+          return stravaWebhookMgr.ensureSubscription()
         })
-        stravaWebhookMgr.ensureSubscription().catch((error) => {
+        .catch((error) => {
           console.warn(
             '⚠️ Strava webhook subscription setup failed:',
             error instanceof Error ? error.message : error,
           )
         })
-      })
-      .catch(() => {
-        console.warn('⚠️ Strava webhook disabled — credentials not configured yet')
-      })
+    postListenCallbacks.push(ensureStravaWebhook)
   }
 
   // ==========================================================================
@@ -877,6 +882,9 @@ const main = async () => {
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {
     console.info(`> Running on localhost:${port}`)
+    for (const cb of postListenCallbacks) {
+      cb().catch(() => {})
+    }
   })
 
   // Graceful shutdown
