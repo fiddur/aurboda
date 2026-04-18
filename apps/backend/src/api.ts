@@ -142,6 +142,7 @@ const main = async () => {
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
+  console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', apiBaseUrl, {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
@@ -589,6 +590,7 @@ const main = async () => {
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
         resetStravaSyncState,
         getStravaSyncStates,
+        getStravaQueueStatus: stravaQueue ? () => stravaQueue.getStatus() : undefined,
         syncStrava: async (user, options) => {
           if (!stravaQueue) throw new Error('Strava integration not configured')
           return syncStrava(user, stravaQueue, options)

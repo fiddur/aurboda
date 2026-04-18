@@ -395,10 +395,23 @@ export const stravaSyncResponseSchema = baseResponseSchema
 export type StravaSyncResponse = z.infer<typeof stravaSyncResponseSchema>
 
 /**
+ * Strava queue status (pg-boss counts).
+ */
+export const stravaQueueStatusSchema = z
+  .object({
+    active_count: z.number().int().meta({ description: 'Jobs currently being processed' }),
+    queued_count: z.number().int().meta({ description: 'Jobs waiting in the queue' }),
+  })
+  .meta({ id: 'StravaQueueStatus' })
+
+export type StravaQueueStatusType = z.infer<typeof stravaQueueStatusSchema>
+
+/**
  * Strava sync status response.
  */
 export const stravaSyncStatusResponseSchema = baseResponseSchema
   .extend({
+    queue: stravaQueueStatusSchema.optional().meta({ description: 'Strava job queue status' }),
     states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Strava sync states' }),
   })
   .meta({ id: 'StravaSyncStatusResponse' })
