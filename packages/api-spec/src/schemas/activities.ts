@@ -324,7 +324,10 @@ export const updateActivityBodySchema = z
     data: z.record(z.string(), z.unknown()).optional().meta({
       description: 'Updated structured data fields (merged with existing data)',
     }),
-    end_time: iso8601DateTimeSchema.nullable().optional().meta({ description: 'New end time of the activity (null to clear)' }),
+    end_time: iso8601DateTimeSchema
+      .nullable()
+      .optional()
+      .meta({ description: 'New end time of the activity (null to clear)' }),
     exercise_type: exerciseTypeSchema.optional().meta({
       description: 'New exercise type name (only for exercise activities)',
     }),
