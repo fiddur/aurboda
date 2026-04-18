@@ -6,6 +6,8 @@ import type { DeleteActivityResult } from './mutations.ts'
 
 import {
   deleteProductivityRecord as dbDeleteProductivityRecord,
+  getActivityById as dbGetActivityById,
+  materializeSuperseded,
   restoreActivity as dbRestoreActivity,
   restoreProductivityRecord as dbRestoreProductivityRecord,
 } from '../db/index.ts'
@@ -18,6 +20,10 @@ export interface RestoreResult {
 
 export async function restoreActivity(user: string, id: string): Promise<RestoreResult> {
   const restored = await dbRestoreActivity(user, id)
+  if (restored) {
+    const activity = await dbGetActivityById(user, id)
+    if (activity) await materializeSuperseded(user, activity.start_time)
+  }
   return { id, restored, success: restored }
 }
 

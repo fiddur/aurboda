@@ -341,6 +341,71 @@ describe('getChartData', () => {
     expect(result.buckets).toEqual([])
     expect(db.query).not.toHaveBeenCalled()
   })
+
+  // Regression: activity-based chart queries must skip rows that the merge
+  // pipeline marked as cross-source duplicates (`superseded_by IS NOT NULL`),
+  // otherwise a 21-minute run synced by Garmin + Oura + Health Connect ends
+  // up charted as ~60 minutes.
+  describe('superseded_by filtering', () => {
+    const emptyResult = { rows: [] } as never
+
+    test('tag source with activity_type_id filters superseded rows', async () => {
+      vi.mocked(db.query).mockResolvedValue(emptyResult)
+      await getChartData('testuser', {
+        aggregation: 'count',
+        bucket_size: '1d',
+        end: '2026-01-31T23:59:59Z',
+        source_type: 'tag',
+        start: '2026-01-01T00:00:00Z',
+        tag_definition_id: '550e8400-e29b-41d4-a716-446655440000',
+      })
+      const sql = vi.mocked(db.query).mock.calls[0][1] as string
+      expect(sql).toContain('superseded_by IS NULL')
+    })
+
+    test('tag source with pattern filters superseded rows', async () => {
+      vi.mocked(db.query).mockResolvedValue(emptyResult)
+      await getChartData('testuser', {
+        aggregation: 'count',
+        bucket_size: '1w',
+        end: '2026-01-31T23:59:59Z',
+        pattern: 'coffee',
+        source_type: 'tag',
+        start: '2026-01-01T00:00:00Z',
+      })
+      const sql = vi.mocked(db.query).mock.calls[0][1] as string
+      expect(sql).toContain('superseded_by IS NULL')
+    })
+
+    test('activity_type source (sum hours) filters superseded rows', async () => {
+      vi.mocked(db.query).mockResolvedValue(emptyResult)
+      await getChartData('testuser', {
+        aggregation: 'sum',
+        bucket_size: '1d',
+        end: '2026-01-31T23:59:59Z',
+        pattern: 'running',
+        source_type: 'activity_type',
+        start: '2026-01-01T00:00:00Z',
+      })
+      const sql = vi.mocked(db.query).mock.calls[0][1] as string
+      expect(sql).toContain('superseded_by IS NULL')
+    })
+
+    test('activity_type breakdown queries filter superseded rows', async () => {
+      vi.mocked(db.query).mockResolvedValue(emptyResult)
+      await getChartData('testuser', {
+        aggregation: 'sum',
+        breakdown_fields: ['partner'],
+        bucket_size: '1w',
+        end: '2026-01-31T23:59:59Z',
+        pattern: 'running',
+        source_type: 'activity_type',
+        start: '2026-01-01T00:00:00Z',
+      })
+      const sql = vi.mocked(db.query).mock.calls[0][1] as string
+      expect(sql).toContain('superseded_by IS NULL')
+    })
+  })
 })
 
 describe('buildBucketExpr', () => {

@@ -101,6 +101,7 @@ export const mapActivityRow = (row: QueryResultRow): Activity => ({
   notes: row.notes,
   source: parseDataSource(row.source),
   start_time: new Date(row.start_time),
+  superseded_by: row.superseded_by ?? undefined,
   title: row.title,
 })
 

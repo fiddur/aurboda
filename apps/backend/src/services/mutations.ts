@@ -21,6 +21,7 @@ import {
   getActivityTypeDefinition,
   insertActivity as dbInsertActivity,
   insertNewActivity as dbInsertNewActivity,
+  materializeSuperseded,
   updateActivity as dbUpdateActivity,
   enqueueOutboundSync,
   findHcRecordId,
@@ -432,6 +433,12 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
   const activity = await dbGetActivityById(user, id)
   const deleted = await dbDeleteActivity(user, id)
 
+  // Recompute supersession — when a loser is deleted its winner row doesn't change,
+  // but when a winner is deleted a previously-superseded sibling becomes the new winner.
+  if (deleted && activity) {
+    await materializeSuperseded(user, activity.start_time)
+  }
+
   // Enqueue outbound delete if this was an aurboda-owned HC-syncable activity (best-effort)
   try {
     if (
@@ -491,7 +498,7 @@ export async function updateActivity(
 
   // Determine final start and end times
   const finalStartTime = input.start_time ?? existing.start_time
-  const finalEndTime = input.end_time === null ? null : input.end_time ?? existing.end_time
+  const finalEndTime = input.end_time === null ? null : (input.end_time ?? existing.end_time)
 
   // Validate that endTime is not before startTime (equal is valid for point-in-time activities)
   if (finalEndTime && finalEndTime < finalStartTime) {
@@ -565,6 +572,13 @@ export async function updateActivity(
   syncNoteTimesForEntity(user, 'activity', id, updated.start_time, updated.end_time ?? undefined).catch(
     (err) => auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }),
   )
+
+  // Recompute supersession around the new time, and also the old time if it moved
+  // or the type changed (so the old merge group gets re-evaluated).
+  await materializeSuperseded(user, updated.start_time)
+  if (isTypeChanging || existing.start_time.getTime() !== updated.start_time.getTime()) {
+    await materializeSuperseded(user, existing.start_time)
+  }
 
   onMutated?.(user, updated.activity_type, updated.start_time, updated.end_time ?? updated.start_time)
   // If type changed, also notify for the old type so rules depending on it can re-evaluate
@@ -722,10 +736,12 @@ export async function mergeActivities(
     getActivityById: (user: string, id: string) => Promise<Activity | null>
     insertNewActivity: (user: string, activity: Activity) => Promise<string>
     deleteActivity: (user: string, id: string) => Promise<boolean>
+    materializeSuperseded: (user: string, aroundTime: Date) => Promise<void>
   } = {
     deleteActivity: dbDeleteActivity,
     getActivityById: dbGetActivityById,
     insertNewActivity: dbInsertNewActivity,
+    materializeSuperseded,
   },
   onMutated?: ActivityNotifier,
 ): Promise<MergeActivitiesResult> {
@@ -774,6 +790,9 @@ export async function mergeActivities(
       await deps.deleteActivity(user, activity.id)
     }
   }
+
+  // After the soft-delete + new aurboda insert, recompute supersession once.
+  await deps.materializeSuperseded(user, merged.start_time)
 
   onMutated?.(user, sorted[0].activity_type, merged.start_time, merged.end_time ?? merged.start_time)
 

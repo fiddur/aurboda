@@ -133,6 +133,7 @@ describe('mergeActivities', () => {
       .mockImplementation((_user: string, activity: Activity) =>
         Promise.resolve(activity.id ?? 'generated-id'),
       ),
+    materializeSuperseded: vi.fn().mockResolvedValue(undefined),
   })
 
   test('merges two same-type activities', async () => {

@@ -35,7 +35,9 @@ vi.mock('../db', () => ({
   getUserSettings: vi.fn(),
   insertCustomMetricDefinition: vi.fn(),
   insertActivity: vi.fn(),
+  insertNewActivity: vi.fn().mockResolvedValue('new-id'),
   insertTimeSeries: vi.fn(),
+  materializeSuperseded: vi.fn().mockResolvedValue(undefined),
   resolveOrCreateActivityType: vi
     .fn()
     .mockImplementation((_user: string, tagName: string) =>
@@ -1404,6 +1406,7 @@ describe('mergeActivities', () => {
         }),
       ),
       insertNewActivity: vi.fn().mockResolvedValue('merged-id'),
+      materializeSuperseded: vi.fn().mockResolvedValue(undefined),
     }
 
     const result = await mergeActivities('testuser', { activity_ids: ['a1', 'a2'] }, deps, onMutated)

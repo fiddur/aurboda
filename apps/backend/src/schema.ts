@@ -48,7 +48,8 @@ export const createTableStatements: Record<string, string> = {
       title           VARCHAR(255),
       notes           TEXT,
       data            JSONB,
-      deleted_at      TIMESTAMPTZ
+      deleted_at      TIMESTAMPTZ,
+      superseded_by   UUID REFERENCES activities(id) ON DELETE SET NULL
     )
   `,
 
@@ -56,7 +57,8 @@ export const createTableStatements: Record<string, string> = {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_ext_id ON activities (source, external_id) WHERE external_id IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_type_time ON activities (source, activity_type, start_time) WHERE external_id IS NULL;
     CREATE INDEX IF NOT EXISTS idx_activities_time_range ON activities (start_time, end_time);
-    CREATE INDEX IF NOT EXISTS idx_activities_not_deleted ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL
+    CREATE INDEX IF NOT EXISTS idx_activities_not_deleted ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_activities_not_superseded ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL AND superseded_by IS NULL
   `,
 
   // Detected locations (clusters detected from GPS data with geocoded addresses)
