@@ -5,7 +5,7 @@
  * This manager handles creating and verifying the subscription.
  */
 
-import axios from 'axios'
+import axios, { isAxiosError } from 'axios'
 
 const STRAVA_SUBSCRIPTIONS_URL = 'https://www.strava.com/api/v3/push_subscriptions'
 
@@ -75,11 +75,12 @@ export const createStravaWebhookManager = (deps: StravaWebhookManagerDeps) => {
       const existing = await this.getSubscription()
       if (existing) {
         if (existing.callback_url === deps.callbackUrl) {
-          console.info('🏃 Strava webhook subscription already exists')
+          console.info(`🏃 Strava webhook subscription already exists (${existing.callback_url})`)
           return
         }
-        // URL changed — recreate
-        console.info('🏃 Strava webhook URL changed, recreating subscription')
+        console.info(
+          `🏃 Strava webhook URL changed: ${existing.callback_url} → ${deps.callbackUrl}, recreating`,
+        )
         await this.deleteSubscription(existing.id)
       }
 
@@ -87,10 +88,13 @@ export const createStravaWebhookManager = (deps: StravaWebhookManagerDeps) => {
         await this.createSubscription()
         console.info('🏃 Strava webhook subscription created')
       } catch (error) {
-        console.warn(
-          '⚠️ Failed to create Strava webhook subscription:',
-          error instanceof Error ? error.message : error,
-        )
+        const detail =
+          isAxiosError(error) && error.response?.data
+            ? JSON.stringify(error.response.data)
+            : error instanceof Error
+              ? error.message
+              : String(error)
+        console.warn('⚠️ Failed to create Strava webhook subscription:', detail)
       }
     },
   }
