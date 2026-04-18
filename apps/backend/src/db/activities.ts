@@ -26,19 +26,30 @@ const CROSS_MERGE_SOURCES = new Set([
   'health_connect',
   'manual',
   'oura',
+  'strava',
 ])
 
 /** Display categories whose activities can cross-merge with each other. */
 const CROSS_MERGEABLE_CATEGORIES = new Set(['exercise', 'meditation', 'wellness'])
 
-/** Higher number = higher priority when picking the cross-merge winner. */
+/**
+ * Higher number = higher priority when picking the cross-merge winner.
+ * Ranking rationale (low → high):
+ *   health_connect — generic aggregator; often duplicated by a specific source
+ *   oura — activity detection is inferred from sensors, not explicit
+ *   strava — explicit exercise entry, but usually downstream of Garmin
+ *   garmin — raw device data, richest metrics
+ *   deduction-rule / manual — explicit user intent
+ *   aurboda — edited inside the app, most authoritative
+ */
 const SOURCE_PRIORITY: Record<string, number> = {
   health_connect: 1,
   oura: 2,
-  garmin: 3,
-  'deduction-rule': 4,
-  manual: 5,
-  aurboda: 6,
+  strava: 3,
+  garmin: 4,
+  'deduction-rule': 5,
+  manual: 6,
+  aurboda: 7,
 }
 
 const getEffectivePriority = (a: Activity): number => {

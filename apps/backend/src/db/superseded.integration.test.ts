@@ -98,6 +98,35 @@ describe('superseded_by materialization', () => {
     expect(oura?.superseded_by).toBe(garminId)
   })
 
+  test('strava and garmin duplicates of the same run collapse to one', async () => {
+    const user = getTestUser()
+
+    // Strava activities always have an external_id. Both sources will be
+    // caught by the cross-source / same-type merge pipeline.
+    const garminId = await insertActivity(user, {
+      activity_type: 'running',
+      source: 'garmin',
+      external_id: 'garmin-activity-12345',
+      start_time: new Date('2024-01-15T10:00:00Z'),
+      end_time: new Date('2024-01-15T10:21:00Z'),
+    })
+    const stravaId = await insertActivity(user, {
+      activity_type: 'running',
+      source: 'strava',
+      external_id: 'strava-activity-98765',
+      start_time: new Date('2024-01-15T10:00:15Z'),
+      end_time: new Date('2024-01-15T10:20:45Z'),
+    })
+
+    expect(await countActive(user, 'running')).toBe(1)
+
+    // Garmin outranks Strava in the priority table, so Garmin keeps the winner slot.
+    const garmin = await getActivityById(user, garminId)
+    const strava = await getActivityById(user, stravaId)
+    expect(garmin?.superseded_by).toBeUndefined()
+    expect(strava?.superseded_by).toBe(garminId)
+  })
+
   test('same-type merge uses earliest start_time as winner', async () => {
     const user = getTestUser()
 
