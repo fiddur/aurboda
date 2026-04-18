@@ -485,6 +485,53 @@ describe('sync router', () => {
     })
   })
 
+  describe('strava endpoints', () => {
+    test('POST /sync/strava calls syncStrava and returns 202', async () => {
+      const app = createTestApp()
+      const response = await request(app).post('/sync/strava').send({ full_resync: true })
+
+      expect(response.status).toBe(202)
+      expect(mockDeps.syncStrava).toHaveBeenCalledWith('testuser', { fullResync: true })
+    })
+
+    test('GET /sync/strava/status returns states without queue when getStravaQueueStatus unset', async () => {
+      vi.mocked(mockDeps.getStravaSyncStates).mockResolvedValueOnce([])
+
+      const app = createTestApp()
+      const response = await request(app).get('/sync/strava/status')
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ states: [], success: true })
+    })
+
+    test('GET /sync/strava/status includes queue counts when getStravaQueueStatus provided', async () => {
+      const depsWithQueue: SyncRouterDeps = {
+        ...mockDeps,
+        getStravaQueueStatus: vi.fn().mockResolvedValue({ active_count: 1, queued_count: 42 }),
+      }
+      const app = express()
+      app.use(express.json())
+      app.use('/sync', createSyncRouter(depsWithQueue, testAuthMiddleware))
+
+      const response = await request(app).get('/sync/strava/status')
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({
+        queue: { active_count: 1, queued_count: 42 },
+        states: [],
+        success: true,
+      })
+    })
+
+    test('DELETE /sync/strava/state resets sync state with optional dataType', async () => {
+      const app = createTestApp()
+      const response = await request(app).delete('/sync/strava/state?dataType=activities')
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.resetStravaSyncState).toHaveBeenCalledWith('testuser', 'activities')
+    })
+  })
+
   describe('outbound sync endpoints', () => {
     test('GET /sync/outbound returns pending entries', async () => {
       const now = new Date('2024-01-15T10:00:00Z')

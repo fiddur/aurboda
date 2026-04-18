@@ -25,15 +25,10 @@ export const syncStrava = async (
     return { status: 'not_connected' }
   }
 
-  // Check if already syncing (allow override if stale for >2 hours)
+  // Check if already syncing
   const syncState = await getSyncState(user, 'strava', 'activities')
   if (syncState?.status === 'syncing') {
-    const staleThresholdMs = 2 * 60 * 60 * 1000
-    const isStale = syncState.updated_at && Date.now() - syncState.updated_at.getTime() > staleThresholdMs
-    if (!isStale) {
-      return { status: 'already_syncing' }
-    }
-    console.info('🏃 Strava sync state was stale (>2h), resetting')
+    return { status: 'already_syncing' }
   }
 
   // Mark as syncing

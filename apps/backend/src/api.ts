@@ -590,6 +590,7 @@ const main = async () => {
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
         resetStravaSyncState,
         getStravaSyncStates,
+        getStravaQueueStatus: stravaQueue ? () => stravaQueue.getStatus() : undefined,
         syncStrava: async (user, options) => {
           if (!stravaQueue) throw new Error('Strava integration not configured')
           return syncStrava(user, stravaQueue, options)

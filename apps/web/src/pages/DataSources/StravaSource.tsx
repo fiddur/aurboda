@@ -1,4 +1,4 @@
-import type { ProviderSyncStatus } from '@aurboda/api-spec'
+import type { ProviderSyncStatus, StravaQueueStatusType } from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
@@ -25,11 +25,13 @@ const DATA_TYPES: DataTypeItem[] = [
 function StravaConnection({
   isConnected,
   isConfigured,
+  queue,
   syncStates,
   syncStatusLoading,
 }: {
   isConnected: boolean
   isConfigured: boolean
+  queue: StravaQueueStatusType | undefined
   syncStates: ProviderSyncStatus[] | undefined
   syncStatusLoading: boolean
 }) {
@@ -101,6 +103,12 @@ function StravaConnection({
 
       {isConnected && (
         <SyncStatusBar states={syncStates} isLoading={syncStatusLoading} onSyncNow={handleSyncNow} />
+      )}
+
+      {isConnected && queue && (queue.queued_count > 0 || queue.active_count > 0) && (
+        <p class="garmin-sync-message">
+          Queue: {queue.queued_count} pending, {queue.active_count} active
+        </p>
       )}
 
       <section class="settings-section">
@@ -202,6 +210,7 @@ export function StravaSource() {
           <StravaConnection
             isConnected={isConnected}
             isConfigured={isConfigured}
+            queue={syncStatusData?.queue}
             syncStates={syncStatusData?.states}
             syncStatusLoading={syncStatusLoading}
           />

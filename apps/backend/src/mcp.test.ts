@@ -51,6 +51,7 @@ vi.mock('./db', () => ({
   getOAuthToken: vi.fn().mockResolvedValue(null),
   getProgrammaticTags: vi.fn().mockResolvedValue([]),
   getSyncState: vi.fn().mockResolvedValue(null),
+  resetSyncState: vi.fn().mockResolvedValue(undefined),
   getUniqueTags: vi.fn().mockResolvedValue([]),
   getUserSettings: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
@@ -1211,6 +1212,76 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
       expect(parsed.result.content[0].text).toContain('Activity not found')
+    })
+  })
+
+  describe('Tool: reset_sync_state', () => {
+    async function callResetSyncState(
+      app: express.Express,
+      token: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: args, name: 'reset_sync_state' },
+        })
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      const toolResult = JSON.parse(parsed.result.content[0].text) as Record<string, unknown>
+      return { response, toolResult }
+    }
+
+    test('resets all data types when data_type is omitted', async () => {
+      const resetSpy = vi.mocked(db.resetSyncState).mockResolvedValue(undefined)
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const { response, toolResult } = await callResetSyncState(app, token, { provider: 'strava' })
+
+      expect(response.status).toBe(200)
+      expect(toolResult).toEqual({
+        data_type: 'all',
+        provider: 'strava',
+        reset: true,
+        success: true,
+      })
+      expect(resetSpy).toHaveBeenCalledWith('testuser', 'strava', undefined)
+    })
+
+    test('resets specific data_type when provided', async () => {
+      const resetSpy = vi.mocked(db.resetSyncState).mockResolvedValue(undefined)
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const { response, toolResult } = await callResetSyncState(app, token, {
+        data_type: 'activities',
+        provider: 'strava',
+      })
+
+      expect(response.status).toBe(200)
+      expect(toolResult.data_type).toBe('activities')
+      expect(resetSpy).toHaveBeenCalledWith('testuser', 'strava', 'activities')
+    })
+
+    test('rejects invalid provider', async () => {
+      const resetSpy = vi.mocked(db.resetSyncState)
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: { provider: 'nonexistent' }, name: 'reset_sync_state' },
+        })
+
+      expect(response.status).toBe(200)
+      expect(resetSpy).not.toHaveBeenCalled()
     })
   })
 })

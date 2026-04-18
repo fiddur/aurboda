@@ -249,7 +249,7 @@ export const registerSyncTools = (
 
   server.tool(
     'get_sync_status',
-    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors.',
+    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors. For Strava, also includes queue counts (pending and active jobs).',
     {
       provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
       tz: tzSchema,
@@ -263,7 +263,12 @@ export const registerSyncTools = (
           states[p] = await getAllSyncStates(user, p)
         }
 
-        return tzJsonResponse({ states, success: true }, tz)
+        const response: Record<string, unknown> = { states, success: true }
+        if (stravaQueue && (provider === 'all' || provider === 'strava')) {
+          response.strava_queue = await stravaQueue.getStatus()
+        }
+
+        return tzJsonResponse(response, tz)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })
