@@ -7,7 +7,7 @@
 
 import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
 
-import { query } from '../db/index.ts'
+import { expandActivityTypes, query } from '../db/index.ts'
 
 /** Map bucket_size parameter to PostgreSQL date_trunc interval name (day and above). */
 const bucketToTrunc: Record<string, string> = {
@@ -76,19 +76,21 @@ const queryActivitiesByType = async (
   end: string,
   bucketSize: string,
 ): Promise<ChartDataBucket[]> => {
+  const expanded = await expandActivityTypes(user, [activityType])
+  const types = expanded.length > 0 ? expanded : [activityType]
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
             count(*) AS value
        FROM activities
-      WHERE activity_type = $${bucket.params.length + 1}
+      WHERE activity_type = ANY($${bucket.params.length + 1})
         AND deleted_at IS NULL
         AND superseded_by IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
-    [...bucket.params, activityType, start, end],
+    [...bucket.params, types, start, end],
   )
   return result.rows.map((row) => ({
     bucket_start: row.bucket_start.toISOString(),
@@ -189,6 +191,8 @@ const queryActivityTypeBuckets = async (
   bucketSize: string,
   aggregation = 'sum',
 ): Promise<ChartDataBucket[]> => {
+  const expanded = await expandActivityTypes(user, [pattern])
+  const types = expanded.length > 0 ? expanded : [pattern]
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
   const valueExpr =
     aggregation === 'count'
@@ -199,13 +203,13 @@ const queryActivityTypeBuckets = async (
     `SELECT ${bucket.expr} AS bucket_start,
             ${valueExpr} AS value
        FROM activities
-      WHERE activity_type = $${bucket.params.length + 1}
+      WHERE activity_type = ANY($${bucket.params.length + 1})
         AND deleted_at IS NULL
         AND superseded_by IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
-    [...bucket.params, pattern, start, end],
+    [...bucket.params, types, start, end],
   )
   return result.rows.map((row) => ({
     bucket_start: row.bucket_start.toISOString(),
@@ -231,6 +235,8 @@ const queryActivityTypeBreakdown = async (
     if (!/^[a-z][a-z0-9_]*$/.test(field)) return { buckets: [], series: [] }
   }
 
+  const expanded = await expandActivityTypes(user, [activityType])
+  const types = expanded.length > 0 ? expanded : [activityType]
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
   const valueExpr =
     aggregation === 'count'
@@ -247,13 +253,13 @@ const queryActivityTypeBreakdown = async (
             ${fieldSelects.join(', ')},
             ${valueExpr} AS value
        FROM activities
-      WHERE activity_type = $${bucket.params.length + 1}
+      WHERE activity_type = ANY($${bucket.params.length + 1})
         AND deleted_at IS NULL
         AND superseded_by IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1, ${fieldGroupBys.join(', ')}
       ORDER BY 1`,
-    [...bucket.params, activityType, start, end],
+    [...bucket.params, types, start, end],
   )
 
   // Pivot rows into breakdown buckets with compound series keys

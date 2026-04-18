@@ -95,9 +95,11 @@ export {
 export {
   activityTypeExists,
   deleteActivityTypeDefinition,
+  expandActivityTypes,
   getActivityTypeDefinition,
   getActivityTypeDefinitions,
   getActivityTypeNames,
+  getDescendantTypes,
   getHealthConnectExerciseType,
   insertActivityTypeDefinition,
   mergeActivityTypeDefinition,

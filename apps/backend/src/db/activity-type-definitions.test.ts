@@ -202,13 +202,24 @@ describe('activity-type-definitions db', () => {
   })
 
   test('deleteActivityTypeDefinition returns true on success', async () => {
-    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
+    // 1. SELECT parent_type, 2. UPDATE reparent children, 3. DELETE the type
+    mockQuery
+      .mockResolvedValueOnce({
+        command: 'SELECT',
+        fields: [],
+        oid: 0,
+        rowCount: 1,
+        rows: [{ parent_type: null }],
+      })
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
+      .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
 
     expect(await deleteActivityTypeDefinition(user, 'sauna')).toBe(true)
   })
 
   test('deleteActivityTypeDefinition returns false when not found', async () => {
-    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 0, rows: [] })
+    // First SELECT returns no rows → type does not exist
+    mockQuery.mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 0, rows: [] })
 
     expect(await deleteActivityTypeDefinition(user, 'nonexistent')).toBe(false)
   })
@@ -405,13 +416,15 @@ describe('activity-type-definitions db', () => {
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
       // 4. Reassign activities
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 3, rows: [] })
-      // 5. Update deduction rules output_activity_type
-      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
-      // 6. Update deduction rules conditions
+      // 5. Reparent children of source to target
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
-      // 7. Delete source
+      // 6. Update deduction rules output_activity_type
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
+      // 7. Update deduction rules conditions
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
+      // 8. Delete source
       .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
-      // 8. Get updated target (getActivityTypeDefinition)
+      // 9. Get updated target (getActivityTypeDefinition)
       .mockResolvedValueOnce({
         command: 'SELECT',
         fields: [],

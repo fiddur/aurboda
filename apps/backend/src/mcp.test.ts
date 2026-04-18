@@ -1216,11 +1216,7 @@ describe('MCP Server', () => {
   })
 
   describe('Tool: reset_sync_state', () => {
-    async function callResetSyncState(
-      app: express.Express,
-      token: string,
-      args: Record<string, unknown>,
-    ) {
+    async function callResetSyncState(app: express.Express, token: string, args: Record<string, unknown>) {
       const response = await mcpPost(app)
         .set('Authorization', `Bearer ${token}`)
         .send({

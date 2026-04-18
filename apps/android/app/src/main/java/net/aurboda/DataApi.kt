@@ -225,6 +225,7 @@ data class ActivityTypeDefinition(
     val icon: String? = null,
     @SerialName("is_builtin") val isBuiltin: Boolean = false,
     @SerialName("data_schema") val dataSchema: DataSchemaDefinition? = null,
+    @SerialName("parent_type") val parentType: String? = null,
 )
 
 @Serializable

@@ -7,25 +7,32 @@ import { query } from '../db/connection.ts'
  */
 import {
   deleteStaleRuleActivities,
+  expandActivityTypes,
   insertActivity as dbInsertActivity,
   insertDeductionRuleRun,
 } from '../db/index.ts'
 import { getPlaceVisits } from './locations.ts'
+
+const expandForQuery = async (user: string, activityType: string): Promise<string[]> => {
+  const expanded = await expandActivityTypes(user, [activityType])
+  return expanded.length > 0 ? expanded : [activityType]
+}
 
 const getActivities = async (
   user: string,
   activityType: string,
   window: EvaluationWindow,
 ): Promise<TimeRange[]> => {
+  const types = await expandForQuery(user, activityType)
   const result = await query(
     user,
     `SELECT start_time, end_time FROM activities
-     WHERE activity_type = $1
+     WHERE activity_type = ANY($1)
        AND deleted_at IS NULL
        AND start_time < $3
        AND (end_time > $2 OR end_time IS NULL)
      ORDER BY start_time`,
-    [activityType, window.start, window.end],
+    [types, window.start, window.end],
   )
   return result.rows.map((r) => ({
     end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + 60 * 60 * 1000),
@@ -65,8 +72,9 @@ const getActivitiesWithData = async (
   // Sanitize field name to prevent injection (only allow snake_case identifiers)
   if (!/^[a-z][a-z0-9_]*$/.test(field)) return []
 
+  const types = await expandForQuery(user, activityType)
   let whereClause: string
-  const params: unknown[] = [activityType, window.start, window.end]
+  const params: unknown[] = [types, window.start, window.end]
 
   switch (operator) {
     case 'eq':
@@ -90,7 +98,7 @@ const getActivitiesWithData = async (
   const result = await query(
     user,
     `SELECT start_time, end_time FROM activities
-     WHERE activity_type = $1
+     WHERE activity_type = ANY($1)
        AND deleted_at IS NULL
        AND start_time < $3
        AND (end_time > $2 OR end_time IS NULL)
@@ -110,7 +118,8 @@ const getActivitiesWithDataFilters = async (
   filters: Array<{ field: string; operator: string; value?: string | number | boolean }>,
   window: EvaluationWindow,
 ): Promise<TimeRange[]> => {
-  const params: unknown[] = [activityType, window.start, window.end]
+  const types = await expandForQuery(user, activityType)
+  const params: unknown[] = [types, window.start, window.end]
   const whereClauses: string[] = []
 
   for (const filter of filters) {
@@ -139,7 +148,7 @@ const getActivitiesWithDataFilters = async (
   const result = await query(
     user,
     `SELECT start_time, end_time FROM activities
-     WHERE activity_type = $1
+     WHERE activity_type = ANY($1)
        AND deleted_at IS NULL
        AND start_time < $3
        AND (end_time > $2 OR end_time IS NULL)

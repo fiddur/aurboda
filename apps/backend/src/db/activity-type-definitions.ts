@@ -14,11 +14,12 @@ const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
   ...(row.icon != null ? { icon: row.icon as string } : {}),
   is_builtin: row.is_builtin as boolean,
   name: row.name as string,
+  ...(row.parent_type != null ? { parent_type: row.parent_type as string } : {}),
   show_on_timeline: (row.show_on_timeline as boolean) ?? true,
 })
 
 const SELECT_COLS =
-  'name, display_name, display_category, color, icon, aliases, health_connect_record_type, health_connect_exercise_type, is_builtin, show_on_timeline, data_schema'
+  'name, display_name, display_category, color, icon, aliases, health_connect_record_type, health_connect_exercise_type, is_builtin, show_on_timeline, data_schema, parent_type'
 
 export const getActivityTypeDefinitions = async (user: string): Promise<ActivityTypeDefinition[]> => {
   const result = await query(
@@ -54,6 +55,91 @@ const normalizeAliases = (name: string, aliases: string[] = []): string[] => {
   return [...uniqueAliases]
 }
 
+/**
+ * Check if setting parent_type=candidateParent on the type named typeName would
+ * introduce a cycle. Walks up the candidate parent's chain; if we encounter
+ * typeName before hitting a null parent, a cycle would form.
+ */
+const lookupParentType = async (user: string, name: string): Promise<string | null> => {
+  const result = await query<{ parent_type: string | null }>(
+    user,
+    `SELECT parent_type FROM activity_type_definitions WHERE name = $1`,
+    [name],
+  )
+  if (result.rows.length === 0) return null
+  return result.rows[0].parent_type ?? null
+}
+
+const validateParentTypeUpdate = async (
+  user: string,
+  name: string,
+  candidateParent: string | null,
+): Promise<void> => {
+  if (candidateParent === null) return
+  if (candidateParent === name) {
+    throw new Error('parent_type cannot reference the type itself')
+  }
+  const parentExists = await activityTypeExists(user, candidateParent)
+  if (!parentExists) throw new Error(`parent_type "${candidateParent}" does not exist`)
+  if (await wouldCreateCycle(user, name, candidateParent)) {
+    throw new Error(`setting parent_type to "${candidateParent}" would create a cycle`)
+  }
+}
+
+async function wouldCreateCycle(user: string, typeName: string, candidateParent: string): Promise<boolean> {
+  const visited = new Set<string>()
+  let currentName: string | null = candidateParent
+  while (currentName !== null) {
+    if (currentName === typeName) return true
+    if (visited.has(currentName)) return false
+    visited.add(currentName)
+    currentName = await lookupParentType(user, currentName)
+  }
+  return false
+}
+
+/**
+ * Return all descendant type names for a given parent (recursive).
+ * Does NOT include the parent itself.
+ */
+export const getDescendantTypes = async (user: string, parentName: string): Promise<string[]> => {
+  const result = await query(
+    user,
+    `WITH RECURSIVE descendants AS (
+       SELECT name FROM activity_type_definitions WHERE parent_type = $1
+       UNION ALL
+       SELECT atd.name
+         FROM activity_type_definitions atd
+         JOIN descendants d ON atd.parent_type = d.name
+     )
+     SELECT name FROM descendants`,
+    [parentName],
+  )
+  return result.rows.map((r) => r.name as string)
+}
+
+/**
+ * Expand a list of activity type names to include all descendants.
+ * Each input type is returned along with its recursive children.
+ * Returns deduplicated names.
+ */
+export const expandActivityTypes = async (user: string, types: string[]): Promise<string[]> => {
+  if (types.length === 0) return []
+  const result = await query(
+    user,
+    `WITH RECURSIVE tree AS (
+       SELECT name FROM activity_type_definitions WHERE name = ANY($1)
+       UNION ALL
+       SELECT atd.name
+         FROM activity_type_definitions atd
+         JOIN tree t ON atd.parent_type = t.name
+     )
+     SELECT DISTINCT name FROM tree`,
+    [types],
+  )
+  return result.rows.map((r) => r.name as string)
+}
+
 export const insertActivityTypeDefinition = async (
   user: string,
   def: {
@@ -65,13 +151,21 @@ export const insertActivityTypeDefinition = async (
     aliases?: string[]
     show_on_timeline?: boolean
     data_schema?: DataSchemaDefinition
+    parent_type?: string
   },
 ): Promise<ActivityTypeDefinition> => {
   const aliases = normalizeAliases(def.name, def.aliases)
+  if (def.parent_type) {
+    if (def.parent_type === def.name) {
+      throw new Error('parent_type cannot reference the type itself')
+    }
+    const parentExists = await activityTypeExists(user, def.parent_type)
+    if (!parentExists) throw new Error(`parent_type "${def.parent_type}" does not exist`)
+  }
   const result = await query(
     user,
-    `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, aliases, show_on_timeline, data_schema)
-     VALUES ($1, $2, $3, COALESCE($4, '#6b7280'), $5, $6, COALESCE($7, true), $8)
+    `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, aliases, show_on_timeline, data_schema, parent_type)
+     VALUES ($1, $2, $3, COALESCE($4, '#6b7280'), $5, $6, COALESCE($7, true), $8, $9)
      RETURNING ${SELECT_COLS}`,
     [
       def.name,
@@ -82,6 +176,7 @@ export const insertActivityTypeDefinition = async (
       aliases,
       def.show_on_timeline ?? null,
       def.data_schema ? JSON.stringify(def.data_schema) : null,
+      def.parent_type ?? null,
     ],
   )
   return mapRow(result.rows[0])
@@ -98,6 +193,7 @@ export const updateActivityTypeDefinition = async (
     aliases?: string[]
     show_on_timeline?: boolean
     data_schema?: DataSchemaDefinition | null
+    parent_type?: string | null
   },
 ): Promise<ActivityTypeDefinition | null> => {
   const setClauses: string[] = []
@@ -131,6 +227,11 @@ export const updateActivityTypeDefinition = async (
   if (updates.data_schema !== undefined) {
     setClauses.push(`data_schema = $${paramIndex++}`)
     values.push(updates.data_schema ? JSON.stringify(updates.data_schema) : null)
+  }
+  if (updates.parent_type !== undefined) {
+    await validateParentTypeUpdate(user, name, updates.parent_type)
+    setClauses.push(`parent_type = $${paramIndex++}`)
+    values.push(updates.parent_type)
   }
 
   if (setClauses.length === 0) return getActivityTypeDefinition(user, name)
@@ -286,6 +387,13 @@ export const mergeActivityTypeDefinition = async (
   )
   const activities_reassigned = activitiesResult.rowCount ?? 0
 
+  // Reparent any children of the source to the target
+  await query(
+    user,
+    `UPDATE activity_type_definitions SET parent_type = $1, updated_at = NOW() WHERE parent_type = $2`,
+    [targetName, sourceName],
+  )
+
   // Update deduction rules: output_activity_type
   const outputResult = await query(
     user,
@@ -420,6 +528,20 @@ export const renameActivityTypeDefinition = async (
 }
 
 export const deleteActivityTypeDefinition = async (user: string, name: string): Promise<boolean> => {
+  // Reparent children to the deleted type's parent (may be null, which makes them top-level).
+  const parentResult = await query(
+    user,
+    `SELECT parent_type FROM activity_type_definitions WHERE name = $1`,
+    [name],
+  )
+  if (parentResult.rows.length === 0) return false
+  const grandparent = (parentResult.rows[0].parent_type as string | null) ?? null
+  await query(
+    user,
+    `UPDATE activity_type_definitions SET parent_type = $1, updated_at = NOW() WHERE parent_type = $2`,
+    [grandparent, name],
+  )
+
   const result = await query(
     user,
     `DELETE FROM activity_type_definitions WHERE name = $1 AND is_builtin = false`,
