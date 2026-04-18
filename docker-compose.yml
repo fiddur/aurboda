@@ -16,7 +16,6 @@ services:
       - SESSION_SECRET=REPLACE_SESSION_SECRET
       - ALLOW_SIGNUP=${ALLOW_SIGNUP:-true}
       - WEB_HOST=http://localhost:8080
-      - API_BASE_URL=http://localhost:8080/api
       - NODE_ENV=production
     depends_on:
       postgres:

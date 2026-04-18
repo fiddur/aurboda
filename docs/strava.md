@@ -38,7 +38,7 @@ These are stored as server settings in the central database (set via admin setti
 
 **Note:** Strava also shows an access_token and refresh_token when you register the app -- these are your personal tokens as the app owner and are **not needed** for server configuration. Each user gets their own tokens through the OAuth flow.
 
-The OAuth callback URL is: `{API_BASE_URL}/auth/stravacb` (e.g., `https://aurboda.net/api/auth/stravacb`)
+The OAuth callback URL is: `{WEB_HOST}/api/auth/stravacb` (e.g., `https://aurboda.net/api/auth/stravacb`)
 
 If these are not set, the "Connect Strava" button will be disabled with a message asking the admin to configure them.
 

@@ -141,7 +141,7 @@ const main = async () => {
   const centralDb = getCentralDb()
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
-  const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
+  const apiBaseUrl = process.env.API_BASE_URL ?? `${webHost}/api`
   const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', apiBaseUrl, {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
