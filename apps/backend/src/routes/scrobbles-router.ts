@@ -1,10 +1,15 @@
 /**
  * Scrobbles route group — Last.fm scrobble queries.
+ *
+ * Reads from the activities table (activity_type='music_scrobble'), which is
+ * populated during Last.fm sync alongside raw_records. The response shape
+ * matches the legacy raw_records-based endpoint so the frontend music staff
+ * renderer needs no changes.
  */
 import type { ScrobblesResponse } from '@aurboda/api-spec'
 import type { RequestHandler, Router } from 'express'
 
-import { getScrobbles } from '../db/index.ts'
+import { getActivities } from '../db/index.ts'
 import { typedRouter } from '../typed-router.ts'
 
 export const createScrobblesRouter = (authMiddleware: RequestHandler): Router => {
@@ -22,13 +27,16 @@ export const createScrobblesRouter = (authMiddleware: RequestHandler): Router =>
       }
 
       try {
-        const scrobbles = await getScrobbles(user, new Date(start), new Date(end))
-        const serialized = scrobbles.map((s) => ({
-          album: s.album,
-          artist: s.artist,
-          recorded_at: s.recorded_at.toISOString(),
-          track: s.track,
-        }))
+        const activities = await getActivities(user, ['music_scrobble'], new Date(start), new Date(end))
+        const serialized = activities.map((a) => {
+          const data = a.data as Record<string, unknown> | undefined
+          return {
+            album: typeof data?.album === 'string' ? data.album : '',
+            artist: typeof data?.artist === 'string' ? data.artist : '',
+            recorded_at: a.start_time.toISOString(),
+            track: typeof data?.track === 'string' ? data.track : '',
+          }
+        })
         res.json({ data: serialized, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
