@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 vi.mock('../../db/index.ts', () => ({
   getSyncState: vi.fn().mockResolvedValue(null),
+  insertActivities: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
 }))
@@ -12,7 +13,7 @@ vi.mock('./client', () => ({
   }),
 }))
 
-import { getSyncState, insertRawRecord, upsertSyncState } from '../../db/index.ts'
+import { getSyncState, insertActivities, insertRawRecord, upsertSyncState } from '../../db/index.ts'
 import { lastfmClient } from './client.ts'
 import { syncLastFmData } from './sync.ts'
 
@@ -37,6 +38,51 @@ describe('syncLastFmData', () => {
       expect.objectContaining({ source: 'lastfm', record_type: 'scrobble' }),
     )
     expect(upsertSyncState).toHaveBeenCalledWith('user', expect.objectContaining({ status: 'idle' }))
+  })
+
+  test('creates music_scrobble activities alongside raw records', async () => {
+    const scrobble = {
+      album: 'Album',
+      artist: 'Artist',
+      timestamp: new Date('2024-01-15T10:00:00Z'),
+      track: 'Track',
+    }
+    vi.mocked(lastfmClient).mockReturnValue({
+      getRecentTracks: vi.fn().mockResolvedValue([scrobble]),
+    } as never)
+
+    await syncLastFmData('user', 'key', 'username')
+
+    expect(insertActivities).toHaveBeenCalledWith('user', [
+      {
+        activity_type: 'music_scrobble',
+        data: { album: 'Album', artist: 'Artist', track: 'Track' },
+        external_id: `${scrobble.timestamp.getTime()}-Track-Artist`,
+        source: 'lastfm',
+        start_time: scrobble.timestamp,
+      },
+    ])
+  })
+
+  test('omits album from activity data when not present', async () => {
+    const scrobble = {
+      artist: 'Artist',
+      timestamp: new Date('2024-01-15T10:00:00Z'),
+      track: 'Track',
+    }
+    vi.mocked(lastfmClient).mockReturnValue({
+      getRecentTracks: vi.fn().mockResolvedValue([scrobble]),
+    } as never)
+
+    await syncLastFmData('user', 'key', 'username')
+
+    expect(insertActivities).toHaveBeenCalledWith('user', [
+      expect.objectContaining({
+        activity_type: 'music_scrobble',
+        data: { artist: 'Artist', track: 'Track' },
+        source: 'lastfm',
+      }),
+    ])
   })
 
   test('uses last sync time when available', async () => {

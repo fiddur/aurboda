@@ -593,6 +593,46 @@ export const migrateSchema = async (user: string) => {
          AND name IN ('nap', 'rest')
          AND parent_type IS NULL`,
     )
+    // Seed music_scrobble activity type (for Last.fm scrobbles as activities).
+    await query(
+      db,
+      `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, is_builtin, show_on_timeline, data_schema)
+       VALUES ('music_scrobble', 'Music Scrobble', 'other', '#ec4899', '🎵', true, false, $1::jsonb)
+       ON CONFLICT (name) DO NOTHING`,
+      [
+        JSON.stringify({
+          fields: [
+            { is_categorical: true, name: 'artist', required: true, show_in_summary: true, type: 'string' },
+            { name: 'track', required: true, show_in_summary: true, type: 'string' },
+            { name: 'album', required: false, type: 'string' },
+          ],
+        }),
+      ],
+    )
+  }
+  // Backfill music_scrobble activities from existing Last.fm raw records.
+  // Idempotent — (source, external_id) unique index makes re-running a no-op.
+  if (existingTableNames.has('raw_records') && existingTableNames.has('activities')) {
+    await query(
+      db,
+      `INSERT INTO activities (source, external_id, activity_type, start_time, data)
+       SELECT 'lastfm',
+              rr.external_id,
+              'music_scrobble',
+              rr.recorded_at,
+              jsonb_strip_nulls(
+                jsonb_build_object(
+                  'artist', rr.data->>'artist',
+                  'track',  rr.data->>'track',
+                  'album',  rr.data->>'album'
+                )
+              )
+         FROM raw_records rr
+        WHERE rr.source = 'lastfm'
+          AND rr.record_type = 'scrobble'
+          AND rr.external_id IS NOT NULL
+       ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO NOTHING`,
+    )
   }
   if (existingTableNames.has('locations')) {
     await query(db, `ALTER TABLE locations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)

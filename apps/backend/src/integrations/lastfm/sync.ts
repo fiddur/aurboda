@@ -1,13 +1,21 @@
 /**
  * Last.fm data sync module.
  *
- * Handles fetching scrobbles from Last.fm API and storing them in the database.
- * Activity creation from scrobbles is handled by deduction rules with scrobble conditions.
+ * Fetches scrobbles from Last.fm and stores them in two places:
+ *   - raw_records (kept for sync dedup and as the data source for the
+ *     `scrobble` condition in deduction rules)
+ *   - activities with activity_type='music_scrobble', so scrobbles can be
+ *     queried, charted, and broken down by artist via the unified activity
+ *     pipeline. These are excluded from the main activity-column timeline
+ *     rendering (see EXCLUDED_ACTIVITY_SOURCES on the frontend) and rendered
+ *     separately on the music staff track.
  */
 
 import { subDays } from 'date-fns'
 
-import { getSyncState, insertRawRecord, upsertSyncState } from '../../db/index.ts'
+import type { Activity } from '../../db/types.ts'
+
+import { getSyncState, insertActivities, insertRawRecord, upsertSyncState } from '../../db/index.ts'
 import { lastfmClient } from './client.ts'
 
 /** Default start date for historical sync (30 days back) */
@@ -56,7 +64,8 @@ export const syncLastFmData = async (
     const client = lastfmClient(apiKey)
     const scrobbles = await client.getRecentTracks(username, start, end)
 
-    // Store raw scrobbles
+    // Store raw scrobbles and build parallel activity records.
+    const activities: Activity[] = []
     for (const scrobble of scrobbles) {
       const externalId = `${scrobble.timestamp.getTime()}-${scrobble.track}-${scrobble.artist}`
       await insertRawRecord(user, {
@@ -73,7 +82,19 @@ export const syncLastFmData = async (
         recorded_at: scrobble.timestamp,
         source: 'lastfm',
       })
+      activities.push({
+        activity_type: 'music_scrobble',
+        data: {
+          artist: scrobble.artist,
+          ...(scrobble.album ? { album: scrobble.album } : {}),
+          track: scrobble.track,
+        },
+        external_id: externalId,
+        source: 'lastfm',
+        start_time: scrobble.timestamp,
+      })
     }
+    await insertActivities(user, activities)
 
     // Update sync state on success
     await upsertSyncState(user, {

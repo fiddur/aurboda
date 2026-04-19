@@ -662,7 +662,19 @@ export const createTableStatements: Record<string, string> = {
        SET parent_type = 'sleep'
      WHERE is_builtin = true
        AND name IN ('nap', 'rest')
-       AND parent_type IS NULL
+       AND parent_type IS NULL;
+    -- music_scrobble type: point-in-time activity for a Last.fm scrobble.
+    -- show_on_timeline=false because scrobbles are rendered on the dedicated
+    -- music staff track, not the main activity lane.
+    INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, is_builtin, show_on_timeline, data_schema) VALUES
+      ('music_scrobble', 'Music Scrobble', 'other', '#ec4899', '🎵', true, false, $json$
+        {"fields":[
+          {"name":"artist","type":"string","required":true,"show_in_summary":true,"is_categorical":true},
+          {"name":"track","type":"string","required":true,"show_in_summary":true},
+          {"name":"album","type":"string","required":false}
+        ]}
+      $json$::jsonb)
+    ON CONFLICT (name) DO NOTHING
   `,
 
   // Deduction rules — automatically create activities from data conditions
