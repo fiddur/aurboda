@@ -600,18 +600,22 @@ export const migrateSchema = async (user: string) => {
        VALUES ('music_scrobble', 'Music Scrobble', 'other', '#ec4899', '🎵', true, false, $1::jsonb)
        ON CONFLICT (name) DO NOTHING`,
       [
+        // Field order mirrors the seed in schema.ts for easier eyeball-diffing.
         JSON.stringify({
           fields: [
-            { is_categorical: true, name: 'artist', required: true, show_in_summary: true, type: 'string' },
-            { name: 'track', required: true, show_in_summary: true, type: 'string' },
-            { name: 'album', required: false, type: 'string' },
+            { name: 'artist', type: 'string', required: true, show_in_summary: true, is_categorical: true },
+            { name: 'track', type: 'string', required: true, show_in_summary: true },
+            { name: 'album', type: 'string', required: false },
           ],
         }),
       ],
     )
   }
   // Backfill music_scrobble activities from existing Last.fm raw records.
-  // Idempotent — (source, external_id) unique index makes re-running a no-op.
+  // The NOT EXISTS gate makes this a pure no-op once every raw record has a
+  // matching activity — avoiding a full scan of raw_records on every server
+  // start. The ON CONFLICT clause is a belt-and-suspenders guard against
+  // concurrent inserts.
   if (existingTableNames.has('raw_records') && existingTableNames.has('activities')) {
     await query(
       db,
@@ -631,6 +635,10 @@ export const migrateSchema = async (user: string) => {
         WHERE rr.source = 'lastfm'
           AND rr.record_type = 'scrobble'
           AND rr.external_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM activities a
+             WHERE a.source = 'lastfm' AND a.external_id = rr.external_id
+          )
        ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO NOTHING`,
     )
   }

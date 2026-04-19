@@ -64,8 +64,26 @@ export const syncLastFmData = async (
     const client = lastfmClient(apiKey)
     const scrobbles = await client.getRecentTracks(username, start, end)
 
-    // Store raw scrobbles and build parallel activity records.
-    const activities: Activity[] = []
+    // Build activity records first, then persist in two phases:
+    //   1) bulk insert activities — single SQL, all-or-nothing
+    //   2) loop over raw_records — individual upserts
+    // Activities go first so a mid-sync crash can't leave raw records persisted
+    // without matching activities. The raw_records dedup would then skip
+    // re-fetching on the next sync, which is why the backfill migration must
+    // otherwise fix things up later. Doing activities first avoids that gap.
+    const activities: Activity[] = scrobbles.map((scrobble) => ({
+      activity_type: 'music_scrobble',
+      data: {
+        artist: scrobble.artist,
+        ...(scrobble.album ? { album: scrobble.album } : {}),
+        track: scrobble.track,
+      },
+      external_id: `${scrobble.timestamp.getTime()}-${scrobble.track}-${scrobble.artist}`,
+      source: 'lastfm',
+      start_time: scrobble.timestamp,
+    }))
+    await insertActivities(user, activities)
+
     for (const scrobble of scrobbles) {
       const externalId = `${scrobble.timestamp.getTime()}-${scrobble.track}-${scrobble.artist}`
       await insertRawRecord(user, {
@@ -82,19 +100,7 @@ export const syncLastFmData = async (
         recorded_at: scrobble.timestamp,
         source: 'lastfm',
       })
-      activities.push({
-        activity_type: 'music_scrobble',
-        data: {
-          artist: scrobble.artist,
-          ...(scrobble.album ? { album: scrobble.album } : {}),
-          track: scrobble.track,
-        },
-        external_id: externalId,
-        source: 'lastfm',
-        start_time: scrobble.timestamp,
-      })
     }
-    await insertActivities(user, activities)
 
     // Update sync state on success
     await upsertSyncState(user, {
