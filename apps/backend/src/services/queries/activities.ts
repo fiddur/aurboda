@@ -117,8 +117,10 @@ export async function queryActivities(
     categoryMap,
   )
 
-  // Get HR zones if any exercise subtype is included (parent 'exercise' or any descendant)
-  const includesExercise = expandedTypes.includes('exercise') || types.includes('exercise')
+  // Get HR zones if any exercise subtype is included (parent 'exercise' or any descendant).
+  // expandActivityTypes always includes the input types in its output, so checking the
+  // expanded set alone is sufficient.
+  const includesExercise = expandedTypes.includes('exercise')
   const hrZones = includesExercise ? (await getEffectiveHrZones(user)).zones : null
 
   // Fetch comments for all activities

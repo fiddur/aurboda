@@ -13,17 +13,12 @@ import {
 } from '../db/index.ts'
 import { getPlaceVisits } from './locations.ts'
 
-const expandForQuery = async (user: string, activityType: string): Promise<string[]> => {
-  const expanded = await expandActivityTypes(user, [activityType])
-  return expanded.length > 0 ? expanded : [activityType]
-}
-
 const getActivities = async (
   user: string,
   activityType: string,
   window: EvaluationWindow,
 ): Promise<TimeRange[]> => {
-  const types = await expandForQuery(user, activityType)
+  const types = await expandActivityTypes(user, [activityType])
   const result = await query(
     user,
     `SELECT start_time, end_time FROM activities
@@ -72,7 +67,7 @@ const getActivitiesWithData = async (
   // Sanitize field name to prevent injection (only allow snake_case identifiers)
   if (!/^[a-z][a-z0-9_]*$/.test(field)) return []
 
-  const types = await expandForQuery(user, activityType)
+  const types = await expandActivityTypes(user, [activityType])
   let whereClause: string
   const params: unknown[] = [types, window.start, window.end]
 
@@ -118,7 +113,7 @@ const getActivitiesWithDataFilters = async (
   filters: Array<{ field: string; operator: string; value?: string | number | boolean }>,
   window: EvaluationWindow,
 ): Promise<TimeRange[]> => {
-  const types = await expandForQuery(user, activityType)
+  const types = await expandActivityTypes(user, [activityType])
   const params: unknown[] = [types, window.start, window.end]
   const whereClauses: string[] = []
 

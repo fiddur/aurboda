@@ -202,14 +202,14 @@ describe('activity-type-definitions db', () => {
   })
 
   test('deleteActivityTypeDefinition returns true on success', async () => {
-    // 1. SELECT parent_type, 2. UPDATE reparent children, 3. DELETE the type
+    // 1. SELECT parent_type+is_builtin, 2. UPDATE reparent children, 3. DELETE the type
     mockQuery
       .mockResolvedValueOnce({
         command: 'SELECT',
         fields: [],
         oid: 0,
         rowCount: 1,
-        rows: [{ parent_type: null }],
+        rows: [{ is_builtin: false, parent_type: null }],
       })
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
       .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
@@ -222,6 +222,20 @@ describe('activity-type-definitions db', () => {
     mockQuery.mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 0, rows: [] })
 
     expect(await deleteActivityTypeDefinition(user, 'nonexistent')).toBe(false)
+  })
+
+  test('deleteActivityTypeDefinition returns false for builtin without reparenting', async () => {
+    // Only one query: SELECT returns is_builtin=true; no UPDATE / DELETE should run.
+    mockQuery.mockResolvedValueOnce({
+      command: 'SELECT',
+      fields: [],
+      oid: 0,
+      rowCount: 1,
+      rows: [{ is_builtin: true, parent_type: null }],
+    })
+
+    expect(await deleteActivityTypeDefinition(user, 'exercise')).toBe(false)
+    expect(mockQuery).toHaveBeenCalledTimes(1)
   })
 
   test('getActivityTypeNames returns name array', async () => {

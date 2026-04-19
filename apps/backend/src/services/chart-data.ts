@@ -76,8 +76,7 @@ const queryActivitiesByType = async (
   end: string,
   bucketSize: string,
 ): Promise<ChartDataBucket[]> => {
-  const expanded = await expandActivityTypes(user, [activityType])
-  const types = expanded.length > 0 ? expanded : [activityType]
+  const types = await expandActivityTypes(user, [activityType])
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
   const result = await query(
     user,
@@ -191,8 +190,7 @@ const queryActivityTypeBuckets = async (
   bucketSize: string,
   aggregation = 'sum',
 ): Promise<ChartDataBucket[]> => {
-  const expanded = await expandActivityTypes(user, [pattern])
-  const types = expanded.length > 0 ? expanded : [pattern]
+  const types = await expandActivityTypes(user, [pattern])
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
   const valueExpr =
     aggregation === 'count'
@@ -235,8 +233,7 @@ const queryActivityTypeBreakdown = async (
     if (!/^[a-z][a-z0-9_]*$/.test(field)) return { buckets: [], series: [] }
   }
 
-  const expanded = await expandActivityTypes(user, [activityType])
-  const types = expanded.length > 0 ? expanded : [activityType]
+  const types = await expandActivityTypes(user, [activityType])
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
   const valueExpr =
     aggregation === 'count'

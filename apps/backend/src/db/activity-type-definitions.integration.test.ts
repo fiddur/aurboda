@@ -207,10 +207,10 @@ describe('Hierarchical activity types', () => {
       expect(new Set(expanded).size).toBe(expanded.length)
     })
 
-    test('unknown type returns empty', async () => {
+    test('unknown type is returned as-is (no descendants to add)', async () => {
       const user = getTestUser()
       const expanded = await expandActivityTypes(user, ['nonexistent'])
-      expect(expanded).toEqual([])
+      expect(expanded).toEqual(['nonexistent'])
     })
   })
 
@@ -250,6 +250,16 @@ describe('Hierarchical activity types', () => {
       await deleteActivityTypeDefinition(user, 'top')
       const child = await getActivityTypeDefinition(user, 'child')
       expect(child?.parent_type).toBeUndefined()
+    })
+
+    test('refusing to delete a builtin does not reparent its children', async () => {
+      // Regression test: the delete guard must refuse builtin types *before*
+      // reparenting, or the hierarchy gets silently flattened on a failed delete.
+      const user = getTestUser()
+      const deleted = await deleteActivityTypeDefinition(user, 'exercise')
+      expect(deleted).toBe(false)
+      const running = await getActivityTypeDefinition(user, 'running')
+      expect(running?.parent_type).toBe('exercise')
     })
   })
 

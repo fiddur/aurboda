@@ -56,20 +56,9 @@ const normalizeAliases = (name: string, aliases: string[] = []): string[] => {
 }
 
 /**
- * Check if setting parent_type=candidateParent on the type named typeName would
- * introduce a cycle. Walks up the candidate parent's chain; if we encounter
- * typeName before hitting a null parent, a cycle would form.
+ * Validate a parent_type value for an insert or update. Throws on self-reference,
+ * missing parent, or a change that would create a cycle.
  */
-const lookupParentType = async (user: string, name: string): Promise<string | null> => {
-  const result = await query<{ parent_type: string | null }>(
-    user,
-    `SELECT parent_type FROM activity_type_definitions WHERE name = $1`,
-    [name],
-  )
-  if (result.rows.length === 0) return null
-  return result.rows[0].parent_type ?? null
-}
-
 const validateParentTypeUpdate = async (
   user: string,
   name: string,
@@ -86,16 +75,29 @@ const validateParentTypeUpdate = async (
   }
 }
 
-async function wouldCreateCycle(user: string, typeName: string, candidateParent: string): Promise<boolean> {
-  const visited = new Set<string>()
-  let currentName: string | null = candidateParent
-  while (currentName !== null) {
-    if (currentName === typeName) return true
-    if (visited.has(currentName)) return false
-    visited.add(currentName)
-    currentName = await lookupParentType(user, currentName)
-  }
-  return false
+/**
+ * Check whether setting typeName's parent to candidateParent would introduce
+ * a cycle. Walks candidateParent's ancestor chain via recursive CTE; if
+ * typeName appears in that chain, the edge would close a loop.
+ */
+async function wouldCreateCycle(
+  user: string,
+  typeName: string,
+  candidateParent: string,
+): Promise<boolean> {
+  const result = await query<{ name: string }>(
+    user,
+    `WITH RECURSIVE ancestors AS (
+       SELECT name, parent_type FROM activity_type_definitions WHERE name = $1
+       UNION ALL
+       SELECT atd.name, atd.parent_type
+         FROM activity_type_definitions atd
+         JOIN ancestors a ON atd.name = a.parent_type
+     )
+     SELECT name FROM ancestors WHERE name = $2 LIMIT 1`,
+    [candidateParent, typeName],
+  )
+  return result.rows.length > 0
 }
 
 /**
@@ -120,15 +122,15 @@ export const getDescendantTypes = async (user: string, parentName: string): Prom
 
 /**
  * Expand a list of activity type names to include all descendants.
- * Each input type is returned along with its recursive children.
- * Returns deduplicated names.
+ * Each input type is returned (whether it exists in the definitions table
+ * or not) along with its recursive children. Returns deduplicated names.
  */
 export const expandActivityTypes = async (user: string, types: string[]): Promise<string[]> => {
   if (types.length === 0) return []
   const result = await query(
     user,
     `WITH RECURSIVE tree AS (
-       SELECT name FROM activity_type_definitions WHERE name = ANY($1)
+       SELECT unnest($1::text[]) AS name
        UNION ALL
        SELECT atd.name
          FROM activity_type_definitions atd
@@ -528,13 +530,17 @@ export const renameActivityTypeDefinition = async (
 }
 
 export const deleteActivityTypeDefinition = async (user: string, name: string): Promise<boolean> => {
-  // Reparent children to the deleted type's parent (may be null, which makes them top-level).
+  // Refuse to delete built-in types (and skip reparenting in that case — otherwise
+  // a failed delete would leave children orphaned from their deleted parent).
   const parentResult = await query(
     user,
-    `SELECT parent_type FROM activity_type_definitions WHERE name = $1`,
+    `SELECT parent_type, is_builtin FROM activity_type_definitions WHERE name = $1`,
     [name],
   )
   if (parentResult.rows.length === 0) return false
+  if (parentResult.rows[0].is_builtin === true) return false
+
+  // Reparent children to the deleted type's parent (may be null, which makes them top-level).
   const grandparent = (parentResult.rows[0].parent_type as string | null) ?? null
   await query(
     user,
