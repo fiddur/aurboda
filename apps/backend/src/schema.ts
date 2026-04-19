@@ -549,12 +549,15 @@ export const createTableStatements: Record<string, string> = {
       health_connect_exercise_type INTEGER,
       is_builtin        BOOLEAN NOT NULL DEFAULT false,
       show_on_timeline  BOOLEAN NOT NULL DEFAULT true,
+      data_schema       JSONB,
+      parent_type       VARCHAR(100) REFERENCES activity_type_definitions(name) ON UPDATE CASCADE,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
   activity_type_definitions_indexes: `
-    CREATE INDEX IF NOT EXISTS idx_atd_aliases ON activity_type_definitions USING GIN (aliases)
+    CREATE INDEX IF NOT EXISTS idx_atd_aliases ON activity_type_definitions USING GIN (aliases);
+    CREATE INDEX IF NOT EXISTS idx_atd_parent ON activity_type_definitions (parent_type)
   `,
   activity_type_definitions_seed: `
     INSERT INTO activity_type_definitions (name, display_name, display_category, color, is_builtin, health_connect_record_type, health_connect_exercise_type) VALUES
@@ -647,7 +650,19 @@ export const createTableStatements: Record<string, string> = {
       ('weightlifting', 'Weightlifting', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 81),
       ('wheelchair', 'Wheelchair', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 82),
       ('yoga', 'Yoga', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 83)
-    ON CONFLICT (name) DO NOTHING
+    ON CONFLICT (name) DO NOTHING;
+    -- Seed the built-in hierarchy: exercise subtypes → 'exercise', nap/rest → 'sleep'.
+    UPDATE activity_type_definitions
+       SET parent_type = 'exercise'
+     WHERE is_builtin = true
+       AND display_category = 'exercise'
+       AND name != 'exercise'
+       AND parent_type IS NULL;
+    UPDATE activity_type_definitions
+       SET parent_type = 'sleep'
+     WHERE is_builtin = true
+       AND name IN ('nap', 'rest')
+       AND parent_type IS NULL
   `,
 
   // Deduction rules — automatically create activities from data conditions

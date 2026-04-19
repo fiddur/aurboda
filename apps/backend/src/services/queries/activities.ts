@@ -5,7 +5,7 @@
 import type { ActivityType } from '../../schema.ts'
 import type { ActivityResult, CommentSummary, SyncProvider } from './types.ts'
 
-import { getActivities, getTimeSeries } from '../../db/index.ts'
+import { expandActivityTypes, getActivities, getTimeSeries } from '../../db/index.ts'
 import { computeHrZoneSecs, getEffectiveHrZones, type HrZoneThresholds } from '../settings.ts'
 import { computeSleepMinutes } from '../sleep-duration.ts'
 import { buildCategoryMap, getCommentsMap } from './types.ts'
@@ -106,10 +106,21 @@ export async function queryActivities(
   }
 
   const categoryMap = await buildCategoryMap(user)
-  const activities = await getActivities(user, types, start, end, dataFilters, deductionRuleId, categoryMap)
+  const expandedTypes = (await expandActivityTypes(user, types)) as ActivityType[]
+  const activities = await getActivities(
+    user,
+    expandedTypes,
+    start,
+    end,
+    dataFilters,
+    deductionRuleId,
+    categoryMap,
+  )
 
-  // Get HR zones only if exercise activities are included
-  const includesExercise = types.includes('exercise')
+  // Get HR zones if any exercise subtype is included (parent 'exercise' or any descendant).
+  // expandActivityTypes always includes the input types in its output, so checking the
+  // expanded set alone is sufficient.
+  const includesExercise = expandedTypes.includes('exercise')
   const hrZones = includesExercise ? (await getEffectiveHrZones(user)).zones : null
 
   // Fetch comments for all activities

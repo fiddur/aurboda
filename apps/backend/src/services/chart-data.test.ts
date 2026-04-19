@@ -5,6 +5,7 @@ import { buildBucketExpr, getChartData } from './chart-data.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
+  expandActivityTypes: vi.fn().mockImplementation((_user: string, types: string[]) => Promise.resolve(types)),
   query: vi.fn(),
 }))
 

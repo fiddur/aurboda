@@ -569,6 +569,30 @@ export const migrateSchema = async (user: string) => {
     // Widen icon from VARCHAR(50) to TEXT to support URLs
     await query(db, `ALTER TABLE activity_type_definitions ALTER COLUMN icon TYPE TEXT`)
     await query(db, `ALTER TABLE activity_type_definitions ADD COLUMN IF NOT EXISTS data_schema JSONB`)
+    await query(
+      db,
+      `ALTER TABLE activity_type_definitions ADD COLUMN IF NOT EXISTS parent_type VARCHAR(100) REFERENCES activity_type_definitions(name) ON UPDATE CASCADE`,
+    )
+    await query(db, `CREATE INDEX IF NOT EXISTS idx_atd_parent ON activity_type_definitions (parent_type)`)
+    // Seed hierarchy: exercise subtypes → 'exercise', nap/rest → 'sleep'.
+    // Only applies when parent_type is NULL so user overrides are preserved.
+    await query(
+      db,
+      `UPDATE activity_type_definitions
+         SET parent_type = 'exercise'
+       WHERE is_builtin = true
+         AND display_category = 'exercise'
+         AND name != 'exercise'
+         AND parent_type IS NULL`,
+    )
+    await query(
+      db,
+      `UPDATE activity_type_definitions
+         SET parent_type = 'sleep'
+       WHERE is_builtin = true
+         AND name IN ('nap', 'rest')
+         AND parent_type IS NULL`,
+    )
   }
   if (existingTableNames.has('locations')) {
     await query(db, `ALTER TABLE locations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
