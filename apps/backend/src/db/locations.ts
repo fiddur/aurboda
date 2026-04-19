@@ -143,16 +143,25 @@ export const insertPlace = async (user: string, place: Place) => {
 // Named Locations (user-defined via Aurboda)
 // ============================================================================
 
+const NAMED_LOCATION_COLS =
+  'id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, auto_create_activity, created_at, updated_at'
+
 export const insertNamedLocation = async (
   user: string,
   location: NamedLocationInput,
 ): Promise<NamedLocation> => {
   const result = await query(
     user,
-    `INSERT INTO named_locations (name, location, radius)
-     VALUES ($1, ST_MakePoint($2, $3)::geography, $4)
-     RETURNING id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at`,
-    [location.name, location.lon, location.lat, location.radius ?? 200],
+    `INSERT INTO named_locations (name, location, radius, auto_create_activity)
+     VALUES ($1, ST_MakePoint($2, $3)::geography, $4, COALESCE($5, false))
+     RETURNING ${NAMED_LOCATION_COLS}`,
+    [
+      location.name,
+      location.lon,
+      location.lat,
+      location.radius ?? 200,
+      location.auto_create_activity ?? null,
+    ],
   )
   return mapNamedLocationRow(result.rows[0])
 }
@@ -160,9 +169,7 @@ export const insertNamedLocation = async (
 export const getNamedLocations = async (user: string): Promise<NamedLocation[]> => {
   const result = await query(
     user,
-    `SELECT id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at
-     FROM named_locations
-     ORDER BY name`,
+    `SELECT ${NAMED_LOCATION_COLS} FROM named_locations ORDER BY name`,
     [],
   )
   return result.rows.map(mapNamedLocationRow)
@@ -171,9 +178,7 @@ export const getNamedLocations = async (user: string): Promise<NamedLocation[]> 
 export const getNamedLocationById = async (user: string, id: string): Promise<NamedLocation | null> => {
   const result = await query(
     user,
-    `SELECT id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at
-     FROM named_locations
-     WHERE id = $1`,
+    `SELECT ${NAMED_LOCATION_COLS} FROM named_locations WHERE id = $1`,
     [id],
   )
   if (result.rows.length === 0) return null
@@ -194,11 +199,13 @@ export const updateNamedLocation = async (
     })
   }
   if (updates.radius !== undefined) fields.push({ column: 'radius', value: updates.radius })
+  if (updates.auto_create_activity !== undefined) {
+    fields.push({ column: 'auto_create_activity', value: updates.auto_create_activity })
+  }
 
   const update = buildDynamicUpdate('named_locations', id, fields, {
     defaultClauses: ['updated_at = NOW()'],
-    returning:
-      'id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at',
+    returning: NAMED_LOCATION_COLS,
   })
   if (!update) return null
 

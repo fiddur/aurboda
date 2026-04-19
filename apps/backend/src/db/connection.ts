@@ -631,6 +631,28 @@ export const migrateSchema = async (user: string) => {
         }),
       ],
     )
+    // Seed location_visit activity type (visits to opted-in named locations).
+    await query(
+      db,
+      `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, is_builtin, show_on_timeline, data_schema)
+       VALUES ('location_visit', 'Location Visit', 'travel', '#0ea5e9', '📍', true, false, $1::jsonb)
+       ON CONFLICT (name) DO NOTHING`,
+      [
+        JSON.stringify({
+          fields: [
+            {
+              name: 'location_name',
+              type: 'string',
+              required: true,
+              show_in_summary: true,
+              is_categorical: true,
+            },
+            { name: 'lat', type: 'number', required: false },
+            { name: 'lon', type: 'number', required: false },
+          ],
+        }),
+      ],
+    )
   }
   // Backfill music_scrobble activities from existing Last.fm raw records.
   // The NOT EXISTS gate makes this a pure no-op once every raw record has a
@@ -665,6 +687,12 @@ export const migrateSchema = async (user: string) => {
   }
   if (existingTableNames.has('locations')) {
     await query(db, `ALTER TABLE locations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
+  }
+  if (existingTableNames.has('named_locations')) {
+    await query(
+      db,
+      `ALTER TABLE named_locations ADD COLUMN IF NOT EXISTS auto_create_activity BOOLEAN NOT NULL DEFAULT false`,
+    )
   }
   if (existingTableNames.has('time_series')) {
     await query(db, `ALTER TABLE time_series ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)

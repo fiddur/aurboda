@@ -30,6 +30,9 @@ const locationNameSchema = z.string().meta({ description: 'Location name', examp
  */
 export const namedLocationSchema = z
   .object({
+    auto_create_activity: z.boolean().optional().meta({
+      description: 'If true, visits here create a location_visit activity',
+    }),
     id: z.string().uuid().meta({ description: 'Location ID' }),
     lat: latSchema,
     lon: lonSchema,
@@ -156,6 +159,9 @@ export type DetectedLocationsQuery = z.infer<typeof detectedLocationsQuerySchema
  */
 export const addNamedLocationBodySchema = z
   .object({
+    auto_create_activity: z.boolean().optional().meta({
+      description: 'If true, visits create a location_visit activity (defaults to false)',
+    }),
     lat: latWithValidationSchema,
     lon: lonWithValidationSchema,
     name: z.string().min(1).meta({ description: 'Location name', example: 'Office' }),
@@ -181,6 +187,9 @@ export type AddNamedLocationResponse = z.infer<typeof addNamedLocationResponseSc
  */
 export const updateNamedLocationBodySchema = z
   .object({
+    auto_create_activity: z.boolean().optional().meta({
+      description: 'Toggle auto-creation of location_visit activities on visits here',
+    }),
     lat: latWithValidationSchema.optional().meta({ description: 'New latitude' }),
     lon: lonWithValidationSchema.optional().meta({ description: 'New longitude' }),
     name: z.string().min(1).optional().meta({ description: 'New location name' }),

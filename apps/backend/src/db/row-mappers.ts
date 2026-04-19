@@ -106,6 +106,7 @@ export const mapActivityRow = (row: QueryResultRow): Activity => ({
 })
 
 export const mapNamedLocationRow = (row: QueryResultRow): NamedLocation => ({
+  auto_create_activity: row.auto_create_activity === true,
   created_at: new Date(row.created_at),
   id: row.id,
   lat: row.lat,
