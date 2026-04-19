@@ -27,6 +27,7 @@ import {
   buildActivityColumnItems,
   EXCLUDED_ACTIVITY_PREFIXES,
   EXCLUDED_ACTIVITY_SOURCES,
+  EXCLUDED_ACTIVITY_TYPES,
 } from './activityMerge'
 import {
   categorizeLocations,
@@ -294,6 +295,7 @@ export const useTimelineData = ({
       secondaryActivities.filter((a) => {
         if (!a.end_time) return true
         if (a.source && EXCLUDED_ACTIVITY_SOURCES.has(a.source)) return true
+        if (EXCLUDED_ACTIVITY_TYPES.has(a.activity_type)) return true
         for (const prefix of EXCLUDED_ACTIVITY_PREFIXES) {
           if (a.activity_type.startsWith(prefix)) return true
         }

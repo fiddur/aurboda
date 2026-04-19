@@ -12,10 +12,15 @@ import type { ProductivityRecord } from '../../db/types.ts'
 import {
   getScreentimeCategories,
   getSyncState,
+  insertActivities,
   insertProductivity,
   type SyncState,
   upsertSyncState,
 } from '../../db/index.ts'
+import {
+  buildScreentimeActivitySpans,
+  spansToActivities,
+} from '../../services/screentime-activities.ts'
 import { categorizeRecords, compileRules } from '../../services/screentime-categories.ts'
 import { rescuetimeClient } from './client.ts'
 
@@ -113,6 +118,13 @@ export const syncRescueTimeData = async (
         categorizeRecords(productivityRecords, compiledRules)
       }
       await insertProductivity(user, productivityRecords)
+
+      // Also create merged-span activities so screentime participates in the
+      // unified activity pipeline (charts, queries, deduction rules).
+      if (categories.length > 0) {
+        const spans = buildScreentimeActivitySpans(productivityRecords, categories)
+        if (spans.length > 0) await insertActivities(user, spansToActivities(spans))
+      }
     }
 
     // Update sync state on success

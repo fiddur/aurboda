@@ -610,6 +610,27 @@ export const migrateSchema = async (user: string) => {
         }),
       ],
     )
+    // Seed screentime activity type (for merged categorized screen time as activities).
+    await query(
+      db,
+      `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, is_builtin, show_on_timeline, data_schema)
+       VALUES ('screentime', 'Screen Time', 'productivity', '#64748b', '💻', true, false, $1::jsonb)
+       ON CONFLICT (name) DO NOTHING`,
+      [
+        JSON.stringify({
+          fields: [
+            {
+              name: 'category_path',
+              type: 'string',
+              required: true,
+              show_in_summary: true,
+              is_categorical: true,
+            },
+            { name: 'score', type: 'number', required: false, show_in_summary: true, unit: '' },
+          ],
+        }),
+      ],
+    )
   }
   // Backfill music_scrobble activities from existing Last.fm raw records.
   // The NOT EXISTS gate makes this a pure no-op once every raw record has a
