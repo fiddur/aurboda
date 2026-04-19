@@ -674,6 +674,18 @@ export const createTableStatements: Record<string, string> = {
           {"name":"album","type":"string","required":false}
         ]}
       $json$::jsonb)
+    ON CONFLICT (name) DO NOTHING;
+    -- screentime type: time-span activity for merged categorized screen time.
+    -- show_on_timeline=false because screentime is rendered on its own
+    -- dedicated track, not the main activity lane. category_path is stored
+    -- as joined string so chart breakdowns by the field just work.
+    INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, is_builtin, show_on_timeline, data_schema) VALUES
+      ('screentime', 'Screen Time', 'productivity', '#64748b', '💻', true, false, $json$
+        {"fields":[
+          {"name":"category_path","type":"string","required":true,"show_in_summary":true,"is_categorical":true},
+          {"name":"score","type":"number","required":false,"show_in_summary":true,"unit":""}
+        ]}
+      $json$::jsonb)
     ON CONFLICT (name) DO NOTHING
   `,
 

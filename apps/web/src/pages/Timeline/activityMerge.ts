@@ -27,6 +27,12 @@ export const ACTIVITY_TYPE_MERGE_MAP: Record<string, string[]> = {
  */
 export const EXCLUDED_ACTIVITY_SOURCES = new Set(['lastfm'])
 
+/**
+ * Activity types that are rendered on dedicated timeline tracks and should
+ * not appear in the main Activity lane.
+ */
+export const EXCLUDED_ACTIVITY_TYPES = new Set(['screentime'])
+
 /** Activity types that start with these prefixes are excluded from duration merging. */
 export const EXCLUDED_ACTIVITY_PREFIXES = ['computer:']
 
@@ -34,6 +40,7 @@ export const EXCLUDED_ACTIVITY_PREFIXES = ['computer:']
 export const isDurationActivityLike = (activity: Activity): boolean => {
   if (!activity.end_time) return false
   if (activity.source && EXCLUDED_ACTIVITY_SOURCES.has(activity.source)) return false
+  if (EXCLUDED_ACTIVITY_TYPES.has(activity.activity_type)) return false
   for (const prefix of EXCLUDED_ACTIVITY_PREFIXES) {
     if (activity.activity_type.startsWith(prefix)) return false
   }

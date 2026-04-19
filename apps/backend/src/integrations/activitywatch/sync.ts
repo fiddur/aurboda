@@ -10,7 +10,16 @@ import type { ActivityWatchEvent, ActivityWatchSyncResult } from '@aurboda/api-s
 
 import type { ProductivityRecord } from '../../db/types.ts'
 
-import { getScreentimeCategories, insertProductivity, upsertSyncState } from '../../db/index.ts'
+import {
+  getScreentimeCategories,
+  insertActivities,
+  insertProductivity,
+  upsertSyncState,
+} from '../../db/index.ts'
+import {
+  buildScreentimeActivitySpans,
+  spansToActivities,
+} from '../../services/screentime-activities.ts'
 import { categorizeRecords, compileRules } from '../../services/screentime-categories.ts'
 
 /**
@@ -55,6 +64,13 @@ export const processActivityWatchEvents = async (
     }
 
     await insertProductivity(user, records)
+
+    // Also create merged-span activities so screentime participates in the
+    // unified activity pipeline (charts, queries, deduction rules).
+    if (categories.length > 0) {
+      const spans = buildScreentimeActivitySpans(records, categories)
+      if (spans.length > 0) await insertActivities(user, spansToActivities(spans))
+    }
 
     // Track last push time per device in sync_state
     const dataType = deviceName ? `productivity:${deviceName}` : 'productivity'
