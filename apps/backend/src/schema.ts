@@ -549,6 +549,7 @@ export const createTableStatements: Record<string, string> = {
       health_connect_exercise_type INTEGER,
       is_builtin        BOOLEAN NOT NULL DEFAULT false,
       show_on_timeline  BOOLEAN NOT NULL DEFAULT true,
+      data_schema       JSONB,
       parent_type       VARCHAR(100) REFERENCES activity_type_definitions(name) ON UPDATE CASCADE,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
