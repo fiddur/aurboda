@@ -5,10 +5,12 @@ import type { ChartItem } from './types'
 
 import {
   buildActivityColumnItems,
+  collapseToParentType,
   EXCLUDED_ACTIVITY_PREFIXES,
   EXCLUDED_ACTIVITY_SOURCES,
   isDurationActivityLike,
   overlapMinutes,
+  resolveCollapseTarget,
   tryMergeActivityIntoItem,
 } from './activityMerge'
 
@@ -259,5 +261,109 @@ describe('buildActivityColumnItems', () => {
     )
     expect(items).toHaveLength(0)
     expect(overlaps).toHaveLength(0)
+  })
+})
+
+// -- resolveCollapseTarget ----------------------------------------------------
+
+describe('resolveCollapseTarget', () => {
+  const typeDefs = new Map([
+    ['running', { parent_type: 'exercise' }],
+    ['exercise', {}],
+    ['meditation', {}],
+  ])
+
+  it('returns immediate parent for hierarchical type', () => {
+    expect(resolveCollapseTarget('running', typeDefs)).toBe('exercise')
+  })
+
+  it('returns null for top-level type with no parent', () => {
+    expect(resolveCollapseTarget('exercise', typeDefs)).toBeNull()
+    expect(resolveCollapseTarget('meditation', typeDefs)).toBeNull()
+  })
+
+  it('returns null for unknown type', () => {
+    expect(resolveCollapseTarget('nonexistent', typeDefs)).toBeNull()
+  })
+})
+
+// -- collapseToParentType -----------------------------------------------------
+
+describe('collapseToParentType', () => {
+  const typeDefs = new Map([
+    ['running', { parent_type: 'exercise' }],
+    ['strength_training', { parent_type: 'exercise' }],
+    ['yoga', { parent_type: 'exercise' }],
+    ['exercise', {}],
+    ['meditation', {}],
+  ])
+
+  const d = (h: number, m = 0) =>
+    new Date(Date.UTC(2026, 0, 1, h, m, 0))
+
+  it('collapses adjacent exercise subtypes into one exercise bar', () => {
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      { activity_type: 'strength_training', end_time: d(11, 15), id: 'b', start_time: d(10, 35) },
+      { activity_type: 'yoga', end_time: d(11, 40), id: 'c', start_time: d(11, 20) },
+    ]
+    const collapsed = collapseToParentType(activities, typeDefs)
+    expect(collapsed).toHaveLength(1)
+    expect(collapsed[0].activity_type).toBe('exercise')
+    expect(collapsed[0].start_time).toEqual(d(10))
+    expect(collapsed[0].end_time).toEqual(d(11, 40))
+  })
+
+  it('does not merge across long gaps', () => {
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      // 2-hour gap — exceeds default 30-minute merge gap
+      { activity_type: 'yoga', end_time: d(13, 30), id: 'b', start_time: d(13) },
+    ]
+    const collapsed = collapseToParentType(activities, typeDefs)
+    expect(collapsed).toHaveLength(2)
+    expect(collapsed.every((a) => a.activity_type === 'exercise')).toBe(true)
+  })
+
+  it('leaves activities without parent_type unchanged', () => {
+    const activities: Activity[] = [
+      { activity_type: 'meditation', end_time: d(9, 30), id: 'a', start_time: d(9) },
+    ]
+    const collapsed = collapseToParentType(activities, typeDefs)
+    expect(collapsed).toEqual(activities)
+  })
+
+  it('does not merge siblings with different parents', () => {
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      { activity_type: 'meditation', end_time: d(11), id: 'b', start_time: d(10, 35) },
+    ]
+    const collapsed = collapseToParentType(activities, typeDefs)
+    expect(collapsed).toHaveLength(2)
+    expect(collapsed.map((a) => a.activity_type)).toEqual(['exercise', 'meditation'])
+  })
+
+  it('does not mutate input array', () => {
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+    ]
+    const original = [...activities]
+    collapseToParentType(activities, typeDefs)
+    expect(activities).toEqual(original)
+  })
+
+  it('returns empty array for empty input', () => {
+    expect(collapseToParentType([], typeDefs)).toEqual([])
+  })
+
+  it('respects a custom merge gap', () => {
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      { activity_type: 'yoga', end_time: d(11, 30), id: 'b', start_time: d(11) },
+    ]
+    // Default 30-min gap: these are 30 min apart, should merge.
+    expect(collapseToParentType(activities, typeDefs)).toHaveLength(1)
+    // 10-min gap: should not merge.
+    expect(collapseToParentType(activities, typeDefs, 10 * 60 * 1000)).toHaveLength(2)
   })
 })

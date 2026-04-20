@@ -25,6 +25,7 @@ import { parseBucketedResponse } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import {
   buildActivityColumnItems,
+  collapseToParentType,
   EXCLUDED_ACTIVITY_PREFIXES,
   EXCLUDED_ACTIVITY_SOURCES,
   EXCLUDED_ACTIVITY_TYPES,
@@ -197,10 +198,26 @@ export const useTimelineData = ({
   const typeDefsMap = useMemo(
     () =>
       new Map(
-        activityTypeDefs.map((t) => [t.name, { color: t.color, display_name: t.display_name, icon: t.icon }]),
+        activityTypeDefs.map((t) => [
+          t.name,
+          { color: t.color, display_name: t.display_name, icon: t.icon, parent_type: t.parent_type },
+        ]),
       ),
     [activityTypeDefs],
   )
+
+  /**
+   * Hierarchy collapse threshold: when the fetched range spans more than 3
+   * days the timeline is zoomed out enough that child-subtype detail is
+   * noise — adjacent siblings of the same parent_type collapse into a
+   * single bar labelled as the parent (e.g. running+strength_training →
+   * exercise for a gym session view).
+   */
+  const shouldCollapseHierarchy = useMemo(() => {
+    const COLLAPSE_THRESHOLD_DAYS = 3
+    const spanDays = (fetchEnd.getTime() - fetchStart.getTime()) / (24 * 60 * 60 * 1000)
+    return spanDays > COLLAPSE_THRESHOLD_DAYS
+  }, [fetchStart, fetchEnd])
   const hiddenTypes = useMemo(
     () => new Set(activityTypeDefs.filter((t) => !t.show_on_timeline).map((t) => t.name)),
     [activityTypeDefs],
@@ -214,11 +231,12 @@ export const useTimelineData = ({
     () => (activitiesQuery.data ?? []).filter((a) => !hiddenTypes.has(a.activity_type ?? '')),
     [activitiesQuery.data, hiddenTypes],
   )
-  const activities = useMemo(
-    () =>
-      allActivities.filter((a) => ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
-    [allActivities, categoryByType],
-  )
+  const activities = useMemo(() => {
+    const filtered = allActivities.filter((a) =>
+      ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other'),
+    )
+    return shouldCollapseHierarchy ? collapseToParentType(filtered, typeDefsMap) : filtered
+  }, [allActivities, categoryByType, shouldCollapseHierarchy, typeDefsMap])
   const secondaryActivities = useMemo(
     () =>
       allActivities.filter((a) => !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
