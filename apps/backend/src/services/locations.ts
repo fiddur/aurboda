@@ -466,7 +466,10 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
       }
     }
 
-    // Check if this is a continuation of the same visit
+    // Check if this is a continuation of the same visit.
+    // named_location_id is part of the key so two named locations with the
+    // same name (e.g. different "Home" entries) correctly split into
+    // separate visits rather than being merged by display name alone.
     const samePlace =
       currentVisit &&
       currentVisit.named_location_id === namedLocationId &&

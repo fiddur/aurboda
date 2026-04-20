@@ -153,14 +153,14 @@ export const insertNamedLocation = async (
   const result = await query(
     user,
     `INSERT INTO named_locations (name, location, radius, auto_create_activity)
-     VALUES ($1, ST_MakePoint($2, $3)::geography, $4, COALESCE($5, false))
+     VALUES ($1, ST_MakePoint($2, $3)::geography, $4, $5)
      RETURNING ${NAMED_LOCATION_COLS}`,
     [
       location.name,
       location.lon,
       location.lat,
       location.radius ?? 200,
-      location.auto_create_activity ?? null,
+      location.auto_create_activity ?? false,
     ],
   )
   return mapNamedLocationRow(result.rows[0])

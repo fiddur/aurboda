@@ -19,17 +19,26 @@ export async function queryLocations(user: string, start: Date, end: Date): Prom
   const visits = await getPlaceVisits(user, start, end)
 
   // Fire-and-forget: upsert activities for opted-in named-location visits.
-  void (async () => {
-    try {
-      const namedLocations = await getNamedLocations(user)
-      const activities = visitsToActivities(visits, namedLocations)
-      if (activities.length > 0) await insertActivities(user, activities)
-    } catch (err) {
-      // Don't let activity materialization failures surface to the user —
-      // the /locations endpoint still returned valid data.
-      console.error('location_visit activity materialization failed:', err)
-    }
-  })()
+  // Skip the whole thing if the user has no visits matched to a named
+  // location — avoids the getNamedLocations round-trip on the common case
+  // where a query lands on GPS data that didn't resolve to anything named.
+  const hasNamedVisit = visits.some((v) => v.source === 'named')
+  if (hasNamedVisit) {
+    void (async () => {
+      try {
+        const namedLocations = await getNamedLocations(user)
+        const optedIn = namedLocations.filter((nl) => nl.auto_create_activity)
+        if (optedIn.length === 0) return
+        const activities = visitsToActivities(visits, optedIn)
+        if (activities.length === 0) return
+        await insertActivities(user, activities)
+      } catch (err) {
+        // Don't let activity materialization failures surface to the user —
+        // the /locations endpoint still returned valid data.
+        console.error('location_visit activity materialization failed:', err)
+      }
+    })()
+  }
 
   return visits.map((p) => ({
     address: p.address,

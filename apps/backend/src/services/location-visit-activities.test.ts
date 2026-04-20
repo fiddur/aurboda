@@ -68,6 +68,12 @@ describe('visitsToActivities', () => {
     expect(visitsToActivities(visits, named)).toEqual([])
   })
 
+  test('includes visits of exactly 10 minutes (boundary)', () => {
+    const named = [nl({ id: 'office-id', auto_create_activity: true })]
+    const visits = [visit({ named_location_id: 'office-id', duration_minutes: 10 })]
+    expect(visitsToActivities(visits, named)).toHaveLength(1)
+  })
+
   test('skips detected / owntracks / unknown visits even if "near" an opted-in location', () => {
     const named = [nl({ id: 'office-id', auto_create_activity: true })]
     const visits = [
