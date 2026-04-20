@@ -183,6 +183,7 @@ export const dataSourceSchema = z
     'manual',
     'lastfm',
     'lastfm-auto',
+    'location-detection',
   ])
   .meta({
     description: 'Source of the data',

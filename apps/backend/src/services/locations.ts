@@ -324,6 +324,8 @@ export interface PlaceVisit {
   source: 'named' | 'detected' | 'owntracks' | 'unknown'
   address?: string
   detected_location_id?: string
+  /** Set when source='named' — the id of the matched named_location. */
+  named_location_id?: string
 }
 
 /**
@@ -430,6 +432,7 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     source: 'named' | 'detected' | 'owntracks' | 'unknown'
     address?: string
     detected_location_id?: string
+    named_location_id?: string
   } | null = null
 
   for (const loc of locations) {
@@ -440,10 +443,12 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     let source: 'named' | 'detected' | 'owntracks' | 'unknown'
     let address: string | undefined
     let detectedLocationId: string | undefined
+    let namedLocationId: string | undefined
 
     if (namedMatch) {
       placeName = namedMatch.name
       source = 'named'
+      namedLocationId = namedMatch.id
     } else {
       // Try to match against detected locations
       const detectedMatch = matchLocationToDetected(loc.lat, loc.lon, detectedLocations)
@@ -461,9 +466,13 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
       }
     }
 
-    // Check if this is a continuation of the same visit
+    // Check if this is a continuation of the same visit.
+    // named_location_id is part of the key so two named locations with the
+    // same name (e.g. different "Home" entries) correctly split into
+    // separate visits rather than being merged by display name alone.
     const samePlace =
       currentVisit &&
+      currentVisit.named_location_id === namedLocationId &&
       currentVisit.name === placeName &&
       currentVisit.detected_location_id === detectedLocationId
 
@@ -488,6 +497,7 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
         lat: loc.lat,
         lon: loc.lon,
         name: placeName,
+        named_location_id: namedLocationId,
         source,
         start_time: loc.time,
       }

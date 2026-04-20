@@ -184,6 +184,7 @@ describe('mapActivityRow', () => {
 describe('mapNamedLocationRow', () => {
   test('maps a database row to NamedLocation', () => {
     const row = {
+      auto_create_activity: false,
       created_at: '2024-01-15T10:00:00Z',
       id: 'loc-1',
       lat: 59.3293,
@@ -196,6 +197,7 @@ describe('mapNamedLocationRow', () => {
     const result = mapNamedLocationRow(row)
 
     expect(result).toEqual({
+      auto_create_activity: false,
       created_at: new Date('2024-01-15T10:00:00Z'),
       id: 'loc-1',
       lat: 59.3293,
@@ -204,6 +206,19 @@ describe('mapNamedLocationRow', () => {
       radius: 200,
       updated_at: new Date('2024-01-15T10:00:00Z'),
     })
+  })
+
+  test('defaults auto_create_activity to false when missing/null', () => {
+    const row = {
+      created_at: '2024-01-15T10:00:00Z',
+      id: 'loc-2',
+      lat: 0,
+      lon: 0,
+      name: 'X',
+      radius: 200,
+      updated_at: '2024-01-15T10:00:00Z',
+    }
+    expect(mapNamedLocationRow(row).auto_create_activity).toBe(false)
   })
 })
 

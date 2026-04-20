@@ -350,12 +350,13 @@ export const createTableStatements: Record<string, string> = {
   // User-defined named locations (detected and named via Aurboda)
   named_locations: `
     CREATE TABLE IF NOT EXISTS named_locations (
-      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      name            VARCHAR(255) NOT NULL,
-      location        GEOGRAPHY(POINT, 4326) NOT NULL,
-      radius          INTEGER NOT NULL DEFAULT 200,
-      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name                  VARCHAR(255) NOT NULL,
+      location              GEOGRAPHY(POINT, 4326) NOT NULL,
+      radius                INTEGER NOT NULL DEFAULT 200,
+      auto_create_activity  BOOLEAN NOT NULL DEFAULT false,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
   named_locations_indexes: `
@@ -684,6 +685,17 @@ export const createTableStatements: Record<string, string> = {
         {"fields":[
           {"name":"category_path","type":"string","required":true,"show_in_summary":true,"is_categorical":true},
           {"name":"score","type":"number","required":false,"show_in_summary":true,"unit":""}
+        ]}
+      $json$::jsonb)
+    ON CONFLICT (name) DO NOTHING;
+    -- location_visit type: time-span activity for a visit to an opted-in
+    -- named location. Rendered on the dedicated location track (show_on_timeline=false).
+    INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, is_builtin, show_on_timeline, data_schema) VALUES
+      ('location_visit', 'Location Visit', 'travel', '#0ea5e9', '📍', true, false, $json$
+        {"fields":[
+          {"name":"location_name","type":"string","required":true,"show_in_summary":true,"is_categorical":true},
+          {"name":"lat","type":"number","required":false},
+          {"name":"lon","type":"number","required":false}
         ]}
       $json$::jsonb)
     ON CONFLICT (name) DO NOTHING

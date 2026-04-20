@@ -76,10 +76,16 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): TypedRout
     authMiddleware,
     validateBody(addNamedLocationBodySchema),
     async (req, res) => {
-      const { name, lat, lon, radius } = req.body
+      const { auto_create_activity, lat, lon, name, radius } = req.body
       const user = req.user!
 
-      const location = await insertNamedLocation(user, { lat, lon, name, radius })
+      const location = await insertNamedLocation(user, {
+        auto_create_activity,
+        lat,
+        lon,
+        name,
+        radius,
+      })
       res.json({ data: location, success: true })
     },
   )
@@ -90,7 +96,7 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): TypedRout
     validateBody(updateNamedLocationBodySchema),
     async (req, res) => {
       const { id } = req.params
-      const { name, lat, lon, radius } = req.body
+      const { auto_create_activity, lat, lon, name, radius } = req.body
       const user = req.user!
 
       // lat and lon must be updated together
@@ -98,7 +104,13 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): TypedRout
         return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
       }
 
-      const location = await updateNamedLocation(user, id, { lat, lon, name, radius })
+      const location = await updateNamedLocation(user, id, {
+        auto_create_activity,
+        lat,
+        lon,
+        name,
+        radius,
+      })
       if (!location) {
         return res.status(404).json({ error: 'Named location not found', success: false })
       }

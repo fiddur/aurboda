@@ -31,7 +31,7 @@ export const EXCLUDED_ACTIVITY_SOURCES = new Set(['lastfm'])
  * Activity types that are rendered on dedicated timeline tracks and should
  * not appear in the main Activity lane.
  */
-export const EXCLUDED_ACTIVITY_TYPES = new Set(['screentime'])
+export const EXCLUDED_ACTIVITY_TYPES = new Set(['screentime', 'location_visit'])
 
 /** Activity types that start with these prefixes are excluded from duration merging. */
 export const EXCLUDED_ACTIVITY_PREFIXES = ['computer:']

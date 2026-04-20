@@ -135,6 +135,7 @@ export interface NamedLocation {
   lat: number
   lon: number
   radius: number
+  auto_create_activity: boolean
   created_at: Date
   updated_at: Date
 }
@@ -144,6 +145,7 @@ export interface NamedLocationInput {
   lat: number
   lon: number
   radius?: number
+  auto_create_activity?: boolean
 }
 
 export type { GeocodeStatus }
