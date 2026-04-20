@@ -268,16 +268,20 @@ const getActivityIconKey = (a: Activity, getExerciseTypeName: (a: Activity) => s
 export const COLLAPSE_MERGE_GAP_MS = 30 * 60 * 1000 // 30 minutes
 
 /**
- * Walk the parent_type chain of a type and return the "collapse target" —
- * the ancestor we fold child activities into. For v1 this is the immediate
- * parent (one hop). Returns null if the type has no parent.
+ * Look up the immediate parent_type of a type — the "collapse target" we
+ * fold child activities into. Returns null when the type has no parent,
+ * or when the referenced parent isn't itself a known type definition
+ * (stale/orphaned parent_type values shouldn't retype activities to
+ * something downstream rendering can't resolve).
  */
 export const resolveCollapseTarget = (
   typeName: string,
   typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
 ): string | null => {
   const def = typeDefsByName.get(typeName)
-  return def?.parent_type ?? null
+  const parent = def?.parent_type
+  if (!parent || !typeDefsByName.has(parent)) return null
+  return parent
 }
 
 /**

@@ -285,6 +285,13 @@ describe('resolveCollapseTarget', () => {
   it('returns null for unknown type', () => {
     expect(resolveCollapseTarget('nonexistent', typeDefs)).toBeNull()
   })
+
+  it('returns null when parent_type references a missing type', () => {
+    // Orphaned parent — guards against stale data retyping activities to
+    // a name that downstream rendering can't resolve.
+    const orphaned = new Map([['some_type', { parent_type: 'deleted_parent' }]])
+    expect(resolveCollapseTarget('some_type', orphaned)).toBeNull()
+  })
 })
 
 // -- collapseToParentType -----------------------------------------------------
