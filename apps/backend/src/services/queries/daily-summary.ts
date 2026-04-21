@@ -285,6 +285,7 @@ export async function getDailySummary(
       sync.syncGarminIfNeeded(user, 'dailySummary'),
       sync.syncGarminIfNeeded(user, 'heartRate'),
       sync.syncGarminIfNeeded(user, 'hrv'),
+      sync.syncGarminIfNeeded(user, 'sleep'),
       sync.syncGarminIfNeeded(user, 'stress'),
       sync.syncGarminIfNeeded(user, 'bodyBattery'),
       sync.syncGarminIfNeeded(user, 'spo2'),

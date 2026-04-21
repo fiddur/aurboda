@@ -235,15 +235,17 @@ describe('garminClient', () => {
   })
 
   describe('getSleep', () => {
-    it('restores session, calls getSleepData, and saves session', async () => {
-      const sleepData = { dailySleepDTO: { calendarDate: '2024-06-15' } }
-      mockGarminConnect.getSleepData.mockResolvedValueOnce(sleepData)
+    it('fetches dailySleepData with nonSleepBufferMinutes so naps are included', async () => {
+      const sleepData = { dailyNapDTOS: [], dailySleepDTO: { calendarDate: '2024-06-15' } }
+      mockGarminConnect.get.mockResolvedValueOnce(sleepData)
 
       const client = garminClient(deps)
       const date = new Date('2024-06-15')
       const result = await client.getSleep(testUser, date)
 
-      expect(mockGarminConnect.getSleepData).toHaveBeenCalledWith(date)
+      expect(mockGarminConnect.get).toHaveBeenCalledWith(
+        'https://connectapi.garmin.com/sleep-service/sleep/dailySleepData?date=2024-06-15&nonSleepBufferMinutes=60',
+      )
       expect(result).toEqual(sleepData)
       expect(deps.upsertOAuthToken).toHaveBeenCalled()
     })
