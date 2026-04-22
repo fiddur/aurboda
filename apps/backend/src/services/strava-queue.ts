@@ -76,20 +76,12 @@ export const PRIORITY_BACKFILL = 10
 const LIST_RETRY_LIMIT = 10
 const FETCH_RETRY_LIMIT = 3
 
-const listSendOptions = (priority: number) => ({
+const sendOptions = (priority: number, retryLimit: number) => ({
   deadLetter: DEAD_LETTER_QUEUE,
   priority,
   retryBackoff: true,
   retryDelay: 60,
-  retryLimit: LIST_RETRY_LIMIT,
-})
-
-const fetchSendOptions = (priority: number) => ({
-  deadLetter: DEAD_LETTER_QUEUE,
-  priority,
-  retryBackoff: true,
-  retryDelay: 60,
-  retryLimit: FETCH_RETRY_LIMIT,
+  retryLimit,
 })
 
 /** Safety margins — leave headroom for webhook requests */
@@ -136,9 +128,8 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
   }
 
   const enqueueJob = async (data: StravaSyncJobData, priority: number): Promise<void> => {
-    const options =
-      data.request_type === 'list_activities' ? listSendOptions(priority) : fetchSendOptions(priority)
-    await boss.send(QUEUE_NAME, data, options)
+    const retryLimit = data.request_type === 'list_activities' ? LIST_RETRY_LIMIT : FETCH_RETRY_LIMIT
+    await boss.send(QUEUE_NAME, data, sendOptions(priority, retryLimit))
   }
 
   const handleListActivities = async (
@@ -246,20 +237,30 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
  * failure, and for list_activities jobs also marks sync_state as 'error' —
  * otherwise a broken pagination chain leaves the status stuck on 'syncing'
  * and subsequent sync_strava calls return 'already_syncing'.
+ *
+ * Errors from updateSyncState are caught and audit-logged rather than
+ * re-thrown: this queue has no onward deadLetter, so propagating would just
+ * leave the user stuck on 'syncing' — the exact failure mode this handler
+ * exists to prevent.
  */
 const createDeadLetterHandler =
   (deps: StravaQueueDeps) =>
   async (jobs: Job<StravaSyncJobData>[]): Promise<void> => {
     for (const job of jobs) {
-      const { user, request_type } = job.data
+      const { user, request_type, list_params } = job.data
       auditError(user, 'sync', `☠️ Strava job permanently failed: ${request_type} (exhausted retries)`)
 
       if (request_type === 'list_activities') {
-        await deps.updateSyncState(user, 'activities', {
-          error_message:
-            'Pagination stopped — list_activities job exhausted retries. Trigger a new sync to resume.',
-          status: 'error',
-        })
+        const paramsDetail = list_params ? ` Params: ${JSON.stringify(list_params)}.` : ''
+        try {
+          await deps.updateSyncState(user, 'activities', {
+            error_message: `Pagination stopped — list_activities job exhausted retries.${paramsDetail} Trigger a new sync to resume.`,
+            status: 'error',
+          })
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          auditError(user, 'sync', `☠️ Failed to mark sync_state as error after DLQ: ${msg}`)
+        }
       }
     }
   }
@@ -285,7 +286,7 @@ export const createStravaQueue = async (boss: PgBoss, deps: StravaQueueDeps): Pr
       await boss.send(
         QUEUE_NAME,
         { request_type: 'fetch_activity', strava_activity_id: activityId, user } satisfies StravaSyncJobData,
-        fetchSendOptions(priority),
+        sendOptions(priority, FETCH_RETRY_LIMIT),
       )
     },
 
@@ -299,7 +300,7 @@ export const createStravaQueue = async (boss: PgBoss, deps: StravaQueueDeps): Pr
           request_type: 'list_activities',
           user,
         } satisfies StravaSyncJobData,
-        listSendOptions(priority),
+        sendOptions(priority, LIST_RETRY_LIMIT),
       )
 
       auditInfo(user, 'sync', `🏃 Strava: enqueued ${options.fullResync ? 'full' : 'incremental'} sync`)

@@ -186,6 +186,42 @@ describe('createStravaQueue', () => {
       )
     })
 
+    test('error message includes list_params for debugging', async () => {
+      const boss = createMockBoss()
+      const updateSyncState = vi.fn().mockResolvedValue(undefined)
+      await createStravaQueue(boss as never, { ...mockDeps, updateSyncState })
+
+      const handler = getDeadLetterHandler(boss)
+      await handler([
+        {
+          data: {
+            list_params: { before: 1700000000 },
+            request_type: 'list_activities',
+            user: 'testuser',
+          },
+        },
+      ])
+
+      const updates = updateSyncState.mock.calls[0][2] as { error_message: string }
+      expect(updates.error_message).toContain('before')
+      expect(updates.error_message).toContain('1700000000')
+    })
+
+    test('swallows updateSyncState failures to avoid DLQ retry loop', async () => {
+      const boss = createMockBoss()
+      const updateSyncState = vi.fn().mockRejectedValue(new Error('DB down'))
+      await createStravaQueue(boss as never, { ...mockDeps, updateSyncState })
+
+      const handler = getDeadLetterHandler(boss)
+      await expect(
+        handler([
+          {
+            data: { list_params: undefined, request_type: 'list_activities', user: 'testuser' },
+          },
+        ]),
+      ).resolves.toBeUndefined()
+    })
+
     test('does not touch sync_state when a fetch_activity job dies', async () => {
       const boss = createMockBoss()
       const updateSyncState = vi.fn().mockResolvedValue(undefined)
