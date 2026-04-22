@@ -69,13 +69,9 @@ Results are ordered by timestamp DESC.`,
       ...auditLogQuerySchema.shape,
       tz: tzSchema,
     },
-    async ({ category, level, limit, message_pattern, offset, since, tz, until }) => {
+    async ({ since, tz, until, ...rest }) => {
       const result = await getAuditLog(user, {
-        category,
-        level,
-        limit,
-        messagePattern: message_pattern,
-        offset,
+        ...rest,
         since: since ? new Date(since) : undefined,
         until: until ? new Date(until) : undefined,
       })

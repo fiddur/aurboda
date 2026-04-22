@@ -20,13 +20,9 @@ export const createAuditLogRouter = (authMiddleware: RequestHandler): TypedRoute
       return
     }
 
-    const { category, level, limit, message_pattern, offset, since, until } = parsed.data
+    const { since, until, ...rest } = parsed.data
     const result = await getAuditLog(req.user!, {
-      category,
-      level,
-      limit,
-      messagePattern: message_pattern,
-      offset,
+      ...rest,
       since: since ? new Date(since) : undefined,
       until: until ? new Date(until) : undefined,
     })
