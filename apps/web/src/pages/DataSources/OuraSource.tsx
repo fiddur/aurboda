@@ -97,8 +97,8 @@ function OuraConnection({
               Connect Oura
             </button>
             <p class="field-description warning">
-              Oura OAuth is not configured on the server. Ask your administrator to set up OURA_CLIENT and
-              OURA_SECRET environment variables.
+              Oura OAuth is not configured on the server. Ask your administrator to set the Oura Client ID and
+              Client Secret in Admin Settings.
             </p>
           </>
         ) : (

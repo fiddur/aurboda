@@ -142,6 +142,8 @@ export const adminSettingsResponseSchema = baseResponseSchema
       .int()
       .meta({ description: 'Number of days to keep audit log entries (default: 3)' }),
     lastfm_api_key_set: z.boolean().meta({ description: 'Whether a Last.fm API key is configured' }),
+    oura_client_id_set: z.boolean().meta({ description: 'Whether an Oura client ID is configured' }),
+    oura_client_secret_set: z.boolean().meta({ description: 'Whether an Oura client secret is configured' }),
     oura_webhook_available: z.boolean().meta({
       description: 'Whether Oura webhook push can be enabled (requires HTTPS and Oura credentials)',
     }),
@@ -173,6 +175,16 @@ export const updateAdminSettingsBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'Last.fm API key (set to null to clear)' }),
+    oura_client_id: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Oura API client ID (set to null to clear)' }),
+    oura_client_secret: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Oura API client secret (set to null to clear)' }),
     oura_webhook_enabled: z
       .boolean()
       .optional()

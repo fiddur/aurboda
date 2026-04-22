@@ -17,6 +17,8 @@ export type SignupMode = 'open' | 'invite_only' | 'closed'
 export interface ServerSettings {
   audit_log_retention_days: number
   lastfm_api_key: string
+  oura_client_id: string
+  oura_client_secret: string
   oura_webhook_enabled: boolean
   oura_webhook_verification_token: string
   signup_mode: SignupMode

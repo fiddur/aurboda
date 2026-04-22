@@ -144,7 +144,38 @@ const main = async () => {
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
   console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
-  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', apiBaseUrl, {
+
+  // Migrate legacy OURA_CLIENT/OURA_SECRET env vars into server_settings if DB empty
+  const envOuraClientId = process.env.OURA_CLIENT
+  const envOuraClientSecret = process.env.OURA_SECRET
+  if (envOuraClientId || envOuraClientSecret) {
+    const [existingId, existingSecret] = await Promise.all([
+      centralDb.getServerSetting('oura_client_id'),
+      centralDb.getServerSetting('oura_client_secret'),
+    ])
+    if (!existingId && envOuraClientId) {
+      await centralDb.setServerSetting('oura_client_id', envOuraClientId)
+      console.info('Migrated OURA_CLIENT env → server_settings.oura_client_id')
+    }
+    if (!existingSecret && envOuraClientSecret) {
+      await centralDb.setServerSetting('oura_client_secret', envOuraClientSecret)
+      console.info('Migrated OURA_SECRET env → server_settings.oura_client_secret')
+    }
+    console.info('DEPRECATION: OURA_CLIENT/OURA_SECRET envs are deprecated. Use Admin Settings.')
+  }
+
+  const getOuraCredentials = async () => {
+    const [clientId, clientSecret] = await Promise.all([
+      centralDb.getServerSetting('oura_client_id'),
+      centralDb.getServerSetting('oura_client_secret'),
+    ])
+    if (!clientId || !clientSecret) {
+      throw new Error('Oura not configured — set credentials in Admin Settings')
+    }
+    return { clientId, clientSecret }
+  }
+
+  const oura = ouraClient(getOuraCredentials, apiBaseUrl, {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
 
@@ -754,35 +785,28 @@ const main = async () => {
   // Oura webhook push integration (admin-configurable via Web UI)
   // ==========================================================================
 
-  const ouraClientId = process.env.OURA_CLIENT ?? ''
-  const ouraClientSecret = process.env.OURA_SECRET ?? ''
+  const syncOuraDataTypeForUser = async (username: string, dataType: OuraDataType) => {
+    const accessToken = await oura.getAccessToken(username)
+    await syncOuraDataType(username, oura, dataType, accessToken)
+  }
 
-  let ouraWebhookManager: OuraWebhookManager | null = null
-  if (ouraClientId && ouraClientSecret) {
-    const syncOuraDataTypeForUser = async (username: string, dataType: OuraDataType) => {
-      const accessToken = await oura.getAccessToken(username)
-      await syncOuraDataType(username, oura, dataType, accessToken)
-    }
+  const ouraWebhookManager: OuraWebhookManager = createOuraWebhookManager({
+    apiBaseUrl,
+    centralDb,
+    getCredentials: getOuraCredentials,
+    syncOuraDataTypeForUser,
+  })
 
-    ouraWebhookManager = createOuraWebhookManager({
-      apiBaseUrl,
-      centralDb,
-      ouraClientId,
-      ouraClientSecret,
-      syncOuraDataTypeForUser,
-    })
+  // Mount proxy handler (delegates to inner router when enabled, 404 when disabled)
+  httpd.use('/webhooks/oura', (req, res, next) => ouraWebhookManager.handleWebhookRequest(req, res, next))
 
-    // Mount proxy handler (delegates to inner router when enabled, 404 when disabled)
-    httpd.use('/webhooks/oura', (req, res, next) => ouraWebhookManager!.handleWebhookRequest(req, res, next))
-
-    // Enable if previously configured and host supports it
-    const webhookEnabled = await centralDb.getOuraWebhookEnabled()
-    if (webhookEnabled && ouraWebhookManager.canEnable()) {
-      try {
-        await ouraWebhookManager.enable()
-      } catch (error) {
-        console.error('Oura webhook: failed to enable on startup:', error)
-      }
+  // Enable if previously configured and host supports it
+  const ouraWebhookEnabled = await centralDb.getOuraWebhookEnabled()
+  if (ouraWebhookEnabled && (await ouraWebhookManager.canEnable())) {
+    try {
+      await ouraWebhookManager.enable()
+    } catch (error) {
+      console.error('Oura webhook: failed to enable on startup:', error)
     }
   }
 
