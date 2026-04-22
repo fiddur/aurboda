@@ -5,41 +5,44 @@ import type { RequestHandler } from 'express'
  *
  * Handles: /user/audit-log
  */
-import { type AuditLogResponse, auditLogQuerySchema } from '@aurboda/api-spec'
+import { type AuditLogQuery, auditLogQuerySchema, type AuditLogResponse } from '@aurboda/api-spec'
 
 import { getAuditLog } from '../services/audit-log.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { validateQuery } from '../validation.ts'
 
 export const createAuditLogRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
-  router.get<Record<string, never>, AuditLogResponse>('/user/audit-log', authMiddleware, async (req, res) => {
-    const parsed = auditLogQuerySchema.safeParse(req.query)
-    if (!parsed.success) {
-      res.status(400).json({ data: [], error: 'Invalid query parameters', success: false, total: 0 })
-      return
-    }
+  router.get<Record<string, never>, AuditLogResponse>(
+    '/user/audit-log',
+    authMiddleware,
+    validateQuery(auditLogQuerySchema),
+    async (req, res) => {
+      // validateQuery middleware has replaced req.query with the parsed output
+      // (numbers). The 4th ReqQuery generic can't express non-string values,
+      // so we narrow here.
+      const { since, until, ...rest } = req.query as unknown as AuditLogQuery
+      const result = await getAuditLog(req.user!, {
+        ...rest,
+        since: since ? new Date(since) : undefined,
+        until: until ? new Date(until) : undefined,
+      })
 
-    const { since, until, ...rest } = parsed.data
-    const result = await getAuditLog(req.user!, {
-      ...rest,
-      since: since ? new Date(since) : undefined,
-      until: until ? new Date(until) : undefined,
-    })
-
-    res.json({
-      data: result.rows.map((row) => ({
-        category: row.category,
-        details: row.details ?? undefined,
-        id: row.id,
-        level: row.level,
-        message: row.message,
-        timestamp: row.timestamp.toISOString(),
-      })),
-      success: true,
-      total: result.total,
-    })
-  })
+      res.json({
+        data: result.rows.map((row) => ({
+          category: row.category,
+          details: row.details ?? undefined,
+          id: row.id,
+          level: row.level,
+          message: row.message,
+          timestamp: row.timestamp.toISOString(),
+        })),
+        success: true,
+        total: result.total,
+      })
+    },
+  )
 
   return router
 }
