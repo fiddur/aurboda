@@ -181,7 +181,7 @@ const queryProductivityCategoryBuckets = async (
         AND end_time IS NOT NULL
         AND (
           data->>'category_path' = $${bucket.params.length + 1}
-          OR data->>'category_path' LIKE $${bucket.params.length + 1} || ' > %'
+          OR starts_with(data->>'category_path', $${bucket.params.length + 1} || ' > ')
         )
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1

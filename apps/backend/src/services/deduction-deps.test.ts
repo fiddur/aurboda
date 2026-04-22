@@ -230,7 +230,9 @@ describe('createDefaultEngineDeps', () => {
       expect(params[0]).toBe('Work > Programming')
       const sql = lastCall[1] as string
       expect(sql).toContain("data->>'category_path' = $1")
-      expect(sql).toContain("data->>'category_path' LIKE $1 || ' > %'")
+      // starts_with is used over LIKE to avoid accidental matching on SQL
+      // wildcard chars (%, _) that might appear in user-defined category names.
+      expect(sql).toContain("starts_with(data->>'category_path', $1 || ' > ')")
     })
 
     test('returns TimeRange[] shaped results', async () => {

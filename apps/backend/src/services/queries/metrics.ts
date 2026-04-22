@@ -35,7 +35,7 @@ import { classifyHrvByContext, getHrvContextWindows, type HrvContext } from '../
  * - ms: bucket duration in milliseconds (for in-memory bucketing)
  */
 export const parseBucketSize = (bucket: string): { interval: string; ms: number } => {
-  const match = bucket.match(/^(\d+)([smhdM])$/)
+  const match = bucket.match(/^(\d+)([smhdwM])$/)
   if (!match) throw new Error(`Invalid bucket size: ${bucket}`)
   const n = parseInt(match[1], 10)
   const unit = match[2]
@@ -48,6 +48,8 @@ export const parseBucketSize = (bucket: string): { interval: string; ms: number 
       return { interval: `${n} hours`, ms: n * 60 * 60 * 1000 }
     case 'd':
       return { interval: `${n} days`, ms: n * 24 * 60 * 60 * 1000 }
+    case 'w':
+      return { interval: `${n} weeks`, ms: n * 7 * 24 * 60 * 60 * 1000 }
     case 'M':
       // Approximate months as 30 days for in-memory bucketing; PostgreSQL handles months properly
       return { interval: `${n} months`, ms: n * 30 * 24 * 60 * 60 * 1000 }

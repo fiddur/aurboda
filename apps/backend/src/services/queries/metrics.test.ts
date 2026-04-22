@@ -625,6 +625,10 @@ describe('parseBucketSize', () => {
     expect(parseBucketSize('1d')).toEqual({ interval: '1 days', ms: 86400000 })
   })
 
+  test('parses weeks', () => {
+    expect(parseBucketSize('1w')).toEqual({ interval: '1 weeks', ms: 7 * 86400000 })
+  })
+
   test('parses months', () => {
     expect(parseBucketSize('1M')).toEqual({ interval: '1 months', ms: 30 * 86400000 })
   })

@@ -261,15 +261,15 @@ export type CustomMetricsListResponse = z.infer<typeof customMetricsListResponse
 
 /**
  * Bucket size for time-based aggregation.
- * Format: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), M (months).
- * Examples: '10s', '5m', '1h', '1d', '1M'
+ * Format: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), w (weeks), M (months).
+ * Examples: '10s', '5m', '1h', '1d', '1w', '1M'
  */
 export const bucketSizeSchema = z
   .string()
-  .regex(/^\d+[smhdM]$/, 'Must be {number}{unit} where unit is s, m, h, d, or M')
+  .regex(/^\d+[smhdwM]$/, 'Must be {number}{unit} where unit is s, m, h, d, w, or M')
   .meta({
     description:
-      'Bucket size: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), M (months)',
+      'Bucket size: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), w (weeks), M (months)',
     example: '15m',
     id: 'BucketSize',
   })

@@ -48,19 +48,23 @@ export const backfillScreentimeActivities = async (user: string): Promise<Backfi
     return { created: 0, reason: 'no_categories', skipped: true }
   }
 
+  // ORDER BY start_time is load-bearing: buildScreentimeActivitySpans walks
+  // records sequentially and merges adjacent same-category ones within a gap,
+  // so unordered input would produce fragmented / incorrectly-merged spans.
   const result = await query(
     user,
     `SELECT source, start_time, end_time, activity, title, duration_sec, resolved_category
        FROM productivity
       WHERE resolved_category IS NOT NULL
-        AND deleted_at IS NULL`,
+        AND deleted_at IS NULL
+      ORDER BY start_time`,
   )
   const records: ProductivityRecord[] = result.rows.map((row) => ({
     activity: row.activity as string,
     duration_sec: row.duration_sec as number,
     end_time: new Date(row.end_time as string),
     resolved_category: row.resolved_category as string[],
-    source: row.source,
+    source: row.source as ProductivityRecord['source'],
     start_time: new Date(row.start_time as string),
     ...(row.title ? { title: row.title as string } : {}),
   }))

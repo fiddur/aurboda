@@ -58,7 +58,7 @@ const getScreentime = async (
        AND end_time > $2
        AND (
          data->>'category_path' = $1
-         OR data->>'category_path' LIKE $1 || ' > %'
+         OR starts_with(data->>'category_path', $1 || ' > ')
        )
      ORDER BY start_time`,
     [categoryPath, window.start, window.end],
