@@ -260,6 +260,80 @@ const getActivityIconKey = (a: Activity, getExerciseTypeName: (a: Activity) => s
   return `activity:${a.activity_type}`
 }
 
+// ============================================================================
+// Hierarchy collapse: merge sibling subtypes into parent when zoomed out.
+// ============================================================================
+
+/** Default gap below which two adjacent same-parent activities merge. */
+export const COLLAPSE_MERGE_GAP_MS = 30 * 60 * 1000 // 30 minutes
+
+/**
+ * Look up the immediate parent_type of a type — the "collapse target" we
+ * fold child activities into. Returns null when the type has no parent,
+ * or when the referenced parent isn't itself a known type definition
+ * (stale/orphaned parent_type values shouldn't retype activities to
+ * something downstream rendering can't resolve).
+ */
+export const resolveCollapseTarget = (
+  typeName: string,
+  typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
+): string | null => {
+  const def = typeDefsByName.get(typeName)
+  const parent = def?.parent_type
+  if (!parent || !typeDefsByName.has(parent)) return null
+  return parent
+}
+
+/**
+ * Collapse adjacent activities that share a common parent_type into a single
+ * activity retyped as that parent. Non-hierarchical activities (no parent)
+ * pass through unchanged.
+ *
+ * The collapse happens in two steps:
+ *   1. Re-type each activity to its parent_type (if one exists).
+ *   2. Merge adjacent activities of the same effective type whose start-to-
+ *      previous-end gap is within mergeGapMs.
+ *
+ * Pure function — does not mutate the input array. The returned activities
+ * keep the first member's id and title; end_time is the max across merged
+ * siblings.
+ */
+export const collapseToParentType = (
+  activities: Activity[],
+  typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
+  mergeGapMs: number = COLLAPSE_MERGE_GAP_MS,
+): Activity[] => {
+  if (activities.length === 0) return activities
+
+  // Step 1: decide each activity's "collapsed" type.
+  const retyped = activities.map((a) => {
+    const parent = resolveCollapseTarget(a.activity_type, typeDefsByName)
+    if (!parent) return a
+    return { ...a, activity_type: parent }
+  })
+
+  // Step 2: merge adjacents with the same collapsed type.
+  const sorted = [...retyped].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+  const merged: Activity[] = []
+  for (const current of sorted) {
+    const prev = merged[merged.length - 1]
+    if (
+      prev &&
+      prev.activity_type === current.activity_type &&
+      prev.end_time &&
+      current.end_time &&
+      current.start_time.getTime() - prev.end_time.getTime() <= mergeGapMs
+    ) {
+      // Extend prev's end if current reaches further. The first member's id
+      // and title win; downstream rendering treats this as a single bar.
+      if (current.end_time > prev.end_time) prev.end_time = current.end_time
+      continue
+    }
+    merged.push({ ...current })
+  }
+  return merged
+}
+
 export const buildActivityColumnItems = (
   activities: Activity[],
   secondaryActivities: Activity[],

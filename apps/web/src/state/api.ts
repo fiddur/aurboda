@@ -112,6 +112,8 @@ export interface ActivityTypeDefinition {
   is_builtin: boolean
   show_on_timeline: boolean
   data_schema?: DataSchemaDefinition
+  /** Snake-case name of the parent activity type, if this type is a child. */
+  parent_type?: string
 }
 
 export interface DataFilter {
