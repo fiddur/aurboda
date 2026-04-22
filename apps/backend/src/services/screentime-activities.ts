@@ -24,8 +24,7 @@ export const categoryPathToString = (path: string[]): string => path.join(' > ')
 const isExcluded = (categoryPath: string[], excludedPaths: string[][]): boolean =>
   excludedPaths.some(
     (excluded) =>
-      categoryPath.length >= excluded.length &&
-      excluded.every((seg, idx) => seg === categoryPath[idx]),
+      categoryPath.length >= excluded.length && excluded.every((seg, idx) => seg === categoryPath[idx]),
   )
 
 interface Span {

@@ -311,7 +311,13 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
 
     async getSleep(user: string, date: Date): Promise<unknown> {
       const gc = await restoreSession(user)
-      const result = await gc.getSleepData(date)
+      // Call the endpoint directly (instead of gc.getSleepData) so we can pass
+      // nonSleepBufferMinutes=60, which ensures daytime naps are included in
+      // dailyNapDTOS, and so network/HTTP errors surface with their actual
+      // message instead of being wrapped as "Invalid or empty sleep data".
+      const result = await gc.get<unknown>(
+        `${GC_API}/sleep-service/sleep/dailySleepData?date=${fmt(date)}&nonSleepBufferMinutes=60`,
+      )
       await saveSession(user, gc)
       return result
     },

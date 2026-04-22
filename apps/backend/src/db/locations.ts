@@ -167,20 +167,12 @@ export const insertNamedLocation = async (
 }
 
 export const getNamedLocations = async (user: string): Promise<NamedLocation[]> => {
-  const result = await query(
-    user,
-    `SELECT ${NAMED_LOCATION_COLS} FROM named_locations ORDER BY name`,
-    [],
-  )
+  const result = await query(user, `SELECT ${NAMED_LOCATION_COLS} FROM named_locations ORDER BY name`, [])
   return result.rows.map(mapNamedLocationRow)
 }
 
 export const getNamedLocationById = async (user: string, id: string): Promise<NamedLocation | null> => {
-  const result = await query(
-    user,
-    `SELECT ${NAMED_LOCATION_COLS} FROM named_locations WHERE id = $1`,
-    [id],
-  )
+  const result = await query(user, `SELECT ${NAMED_LOCATION_COLS} FROM named_locations WHERE id = $1`, [id])
   if (result.rows.length === 0) return null
   return mapNamedLocationRow(result.rows[0])
 }

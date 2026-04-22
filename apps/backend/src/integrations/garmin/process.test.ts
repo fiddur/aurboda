@@ -428,6 +428,91 @@ describe('processGarminData', () => {
     test('returns 1 on success', async () => {
       expect(await processGarminData(user, 'sleep', makeSleepData(), mockDeps)).toBe(1)
     })
+
+    test('creates a nap activity for each entry in dailyNapDTOS', async () => {
+      const data = makeSleepData({
+        dailyNapDTOS: [
+          {
+            calendarDate: '2025-01-15',
+            napEndTimestampGMT: '2025-01-15T12:39:46',
+            napFeedback: 'IDEAL_DURATION_LOW_NEED',
+            napSource: 0,
+            napStartTimestampGMT: '2025-01-15T12:17:46',
+            napTimeSec: 1320,
+          },
+        ],
+      })
+
+      await processGarminData(user, 'sleep', data, mockDeps)
+
+      expect(mockDeps.insertActivity).toHaveBeenCalledWith(user, {
+        activity_type: 'nap',
+        data: { nap_feedback: 'IDEAL_DURATION_LOW_NEED', nap_time_seconds: 1320 },
+        end_time: new Date('2025-01-15T12:39:46Z'),
+        external_id: 'garmin-nap-2025-01-15T12:17:46',
+        source: 'garmin',
+        start_time: new Date('2025-01-15T12:17:46Z'),
+        title: 'Nap',
+      })
+    })
+
+    test('inserts both the sleep activity and multiple naps', async () => {
+      const data = makeSleepData({
+        dailyNapDTOS: [
+          {
+            calendarDate: '2025-01-15',
+            napEndTimestampGMT: '2025-01-15T13:00:00',
+            napStartTimestampGMT: '2025-01-15T12:30:00',
+            napTimeSec: 1800,
+          },
+          {
+            calendarDate: '2025-01-15',
+            napEndTimestampGMT: '2025-01-15T16:30:00',
+            napStartTimestampGMT: '2025-01-15T16:00:00',
+            napTimeSec: 1800,
+          },
+        ],
+      })
+
+      await processGarminData(user, 'sleep', data, mockDeps)
+
+      // 1 sleep + 2 naps
+      expect(mockDeps.insertActivity).toHaveBeenCalledTimes(3)
+      const activityTypes = vi
+        .mocked(mockDeps.insertActivity)
+        .mock.calls.map((call) => (call[1] as { activity_type: string }).activity_type)
+      expect(activityTypes).toEqual(['sleep', 'nap', 'nap'])
+    })
+
+    test('skips nap entries with missing timestamps', async () => {
+      const data = makeSleepData({
+        dailyNapDTOS: [
+          {
+            calendarDate: '2025-01-15',
+            napEndTimestampGMT: null as unknown as string,
+            napStartTimestampGMT: null as unknown as string,
+            napTimeSec: 0,
+          },
+        ],
+      })
+
+      await processGarminData(user, 'sleep', data, mockDeps)
+
+      // Only the main sleep activity should be inserted.
+      expect(mockDeps.insertActivity).toHaveBeenCalledTimes(1)
+      const activity = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+      expect(activity.activity_type).toBe('sleep')
+    })
+
+    test('handles null/missing dailyNapDTOS without error', async () => {
+      const withNullNaps = makeSleepData({ dailyNapDTOS: null })
+      await expect(processGarminData(user, 'sleep', withNullNaps, mockDeps)).resolves.toBe(1)
+
+      vi.clearAllMocks()
+
+      const withoutField = makeSleepData()
+      await expect(processGarminData(user, 'sleep', withoutField, mockDeps)).resolves.toBe(1)
+    })
   })
 
   // ==========================================================================

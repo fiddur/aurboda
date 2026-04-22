@@ -18,10 +18,7 @@ import type { PlaceVisit } from './locations.ts'
 /** Minimum visit duration before we materialize an activity. */
 const MIN_VISIT_MINUTES = 10
 
-export const visitsToActivities = (
-  visits: PlaceVisit[],
-  namedLocations: NamedLocation[],
-): Activity[] => {
+export const visitsToActivities = (visits: PlaceVisit[], namedLocations: NamedLocation[]): Activity[] => {
   const optedInById = new Map<string, NamedLocation>()
   for (const nl of namedLocations) {
     if (nl.auto_create_activity) optedInById.set(nl.id, nl)

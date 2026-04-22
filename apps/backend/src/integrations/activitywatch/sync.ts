@@ -16,10 +16,7 @@ import {
   insertProductivity,
   upsertSyncState,
 } from '../../db/index.ts'
-import {
-  buildScreentimeActivitySpans,
-  spansToActivities,
-} from '../../services/screentime-activities.ts'
+import { buildScreentimeActivitySpans, spansToActivities } from '../../services/screentime-activities.ts'
 import { categorizeRecords, compileRules } from '../../services/screentime-categories.ts'
 
 /**
