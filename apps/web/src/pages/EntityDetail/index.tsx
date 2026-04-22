@@ -182,8 +182,8 @@ const ActivityDetailContent = ({
   referencedRules?: Record<string, string>
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
-  const displayEnd =
-    activity.merged_end_time ?? activity.end_time ?? new Date(activity.start_time.getTime() + 60 * 60000)
+  const realEnd = activity.merged_end_time ?? activity.end_time
+  const displayEnd = realEnd ?? new Date(activity.start_time.getTime() + 60 * 60000)
   const musicStart = displayStart
   const musicEnd = displayEnd
   const hasSourceRecords = activity.source_records && activity.source_records.length > 1
@@ -215,7 +215,7 @@ const ActivityDetailContent = ({
   const hasHrZones = hrZoneSecs && Object.values(hrZoneSecs).some((v) => v > 0)
   const sleepMinutes =
     activity.total_sleep ?? (hasSleepStages ? computeSleepMinutesFromStages(stages) : undefined)
-  const hasEndTime = Boolean(activity.end_time || activity.merged_end_time)
+  const hasEndTime = Boolean(realEnd)
   const hasExerciseType = Boolean(exerciseType)
   const [hoverTime, setHoverTime] = useState<Date | null>(null)
 
@@ -266,7 +266,7 @@ const ActivityDetailContent = ({
         <EditableActivityFields
           title={activity.title || exerciseDisplayName || typeDisplayName}
           displayStart={displayStart}
-          displayEnd={displayEnd}
+          displayEnd={realEnd}
           notes={activity.notes}
           isEditing={isEditing}
           draft={draft}

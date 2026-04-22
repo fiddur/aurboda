@@ -81,14 +81,16 @@ const findPrimaryPlace = (start: Date, end: Date, places: Place[]): string | und
 }
 
 const activityToItem = (a: Activity, places: Place[], multiDay: boolean): DataItem => {
-  const end = a.end_time ?? new Date(a.start_time.getTime() + 60 * 60000)
   const label = a.title ?? toDisplayName(a.activity_type)
-  const location = findPrimaryPlace(a.start_time, end, places)
-  const timeStr = `${formatTime(a.start_time, multiDay)} – ${formatTime(end, multiDay)} · ${formatDuration(a.start_time, end)}`
+  const locationWindowEnd = a.end_time ?? new Date(a.start_time.getTime() + MEAL_LOCATION_WINDOW_MS)
+  const location = findPrimaryPlace(a.start_time, locationWindowEnd, places)
+  const timeStr = a.end_time
+    ? `${formatTime(a.start_time, multiDay)} – ${formatTime(a.end_time, multiDay)} · ${formatDuration(a.start_time, a.end_time)}`
+    : formatTime(a.start_time, multiDay)
   return {
     color: ACTIVITY_COLORS[a.activity_type] ?? '#6b7280',
     detail: location ? `${timeStr} · @ ${location}` : timeStr,
-    end,
+    end: a.end_time,
     href: a.id ? `/detail/activity/${encodeURIComponent(a.id)}` : undefined,
     label,
     start: a.start_time,
