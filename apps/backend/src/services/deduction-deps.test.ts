@@ -199,4 +199,60 @@ describe('createDefaultEngineDeps', () => {
       expect(sql).toContain(' OR ')
     })
   })
+
+  describe('getScreentime', () => {
+    const window = {
+      end: new Date('2024-03-15T23:59:59Z'),
+      start: new Date('2024-03-15T00:00:00Z'),
+    }
+
+    test('queries the activities table for screentime activities', async () => {
+      const deps = createDefaultEngineDeps()
+      mockedQuery.mockResolvedValueOnce({ rows: [] } as never)
+
+      await deps.getScreentime('user', ['Work', 'Programming'], window)
+
+      const lastCall = mockedQuery.mock.calls[mockedQuery.mock.calls.length - 1]
+      const sql = lastCall[1] as string
+      expect(sql).toContain('FROM activities')
+      expect(sql).toContain("activity_type = 'screentime'")
+      expect(sql).not.toContain('FROM productivity')
+    })
+
+    test('joins the category path with " > " and matches exact-or-prefix', async () => {
+      const deps = createDefaultEngineDeps()
+      mockedQuery.mockResolvedValueOnce({ rows: [] } as never)
+
+      await deps.getScreentime('user', ['Work', 'Programming'], window)
+
+      const lastCall = mockedQuery.mock.calls[mockedQuery.mock.calls.length - 1]
+      const params = lastCall[2] as unknown[]
+      expect(params[0]).toBe('Work > Programming')
+      const sql = lastCall[1] as string
+      expect(sql).toContain("data->>'category_path' = $1")
+      // starts_with is used over LIKE to avoid accidental matching on SQL
+      // wildcard chars (%, _) that might appear in user-defined category names.
+      expect(sql).toContain("starts_with(data->>'category_path', $1 || ' > ')")
+    })
+
+    test('returns TimeRange[] shaped results', async () => {
+      const deps = createDefaultEngineDeps()
+      mockedQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            end_time: new Date('2024-03-15T10:30:00Z'),
+            start_time: new Date('2024-03-15T10:00:00Z'),
+          },
+        ],
+      } as never)
+
+      const result = await deps.getScreentime('user', ['Work'], window)
+      expect(result).toEqual([
+        {
+          end: new Date('2024-03-15T10:30:00Z'),
+          start: new Date('2024-03-15T10:00:00Z'),
+        },
+      ])
+    })
+  })
 })

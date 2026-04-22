@@ -94,6 +94,7 @@ import { createSettingsRouter } from './routes/settings-router.ts'
 import { createTrainingLoadRouter } from './routes/training-load-router.ts'
 import { createTrendsRouter } from './routes/trends-router.ts'
 import { auditError, auditInfo, auditWarn, pruneAuditLog } from './services/audit-log.ts'
+import { backfillScreentimeActivities } from './services/backfill-screentime-activities.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
@@ -332,9 +333,16 @@ const main = async () => {
 
         // Run schema migration once per user per server lifetime (blocking on first request)
         if (!migratedUsers.has(user)) {
-          const migrationPromise = migrateSchema(user).catch((err) =>
-            console.error(`⚠️ Migration failed for ${user}:`, err),
-          )
+          const migrationPromise = migrateSchema(user)
+            .then(() => {
+              // Fire-and-forget: one-shot backfill of historical screentime activities.
+              // Gated via sync_state so it runs at most once per user, in the background
+              // so the first request isn't blocked on thousands of productivity records.
+              void backfillScreentimeActivities(user).catch((err) =>
+                console.error(`⚠️ Screentime backfill failed for ${user}:`, err),
+              )
+            })
+            .catch((err) => console.error(`⚠️ Migration failed for ${user}:`, err))
           migratedUsers.set(user, migrationPromise)
           await migrationPromise
         } else {
