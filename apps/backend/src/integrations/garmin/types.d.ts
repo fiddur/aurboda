@@ -39,6 +39,18 @@ declare module '@flow-js/garmin-connect/dist/garmin/types/activity' {
 }
 
 declare module '@flow-js/garmin-connect/dist/garmin/types/sleep' {
+  export interface GarminNapDTO {
+    userProfilePK?: number
+    deviceId?: number
+    calendarDate: string
+    napTimeSec: number
+    napStartTimestampGMT: string
+    napEndTimestampGMT: string
+    napFeedback?: string | null
+    napSource?: number | null
+    napStartTimeOffset?: number | null
+    napEndTimeOffset?: number | null
+  }
   export interface SleepData {
     dailySleepDTO: {
       id: number
@@ -85,6 +97,7 @@ declare module '@flow-js/garmin-connect/dist/garmin/types/sleep' {
       startTimeGMT: number
       respirationValue: number
     }>
+    dailyNapDTOS?: GarminNapDTO[] | null
     [key: string]: unknown
   }
 }

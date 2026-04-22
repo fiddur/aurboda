@@ -6,7 +6,7 @@
  */
 
 import type { IActivity } from '@flow-js/garmin-connect/dist/garmin/types/activity'
-import type { SleepData } from '@flow-js/garmin-connect/dist/garmin/types/sleep'
+import type { GarminNapDTO, SleepData } from '@flow-js/garmin-connect/dist/garmin/types/sleep'
 
 import type { Activity, Location, RawRecord, TimeSeriesPoint } from '../../db/types.ts'
 import type {
@@ -267,6 +267,34 @@ const buildSleepActivity = (dto: SleepData['dailySleepDTO']): Activity | null =>
   }
 }
 
+// Garmin's nap timestamps come as "YYYY-MM-DDTHH:mm:ss" without a timezone
+// suffix. The field name says GMT, so treat them as UTC by appending "Z".
+const parseNapGmt = (ts: string | null | undefined): Date | null => {
+  if (!ts) return null
+  const d = new Date(`${ts}Z`)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** Build a nap activity from a Garmin dailyNapDTOS entry. */
+const buildNapActivity = (nap: GarminNapDTO): Activity | null => {
+  const startTime = parseNapGmt(nap.napStartTimestampGMT)
+  const endTime = parseNapGmt(nap.napEndTimestampGMT)
+  if (!startTime || !endTime) return null
+
+  return {
+    activity_type: 'nap',
+    data: {
+      nap_feedback: nap.napFeedback ?? undefined,
+      nap_time_seconds: nap.napTimeSec,
+    },
+    end_time: endTime,
+    external_id: `garmin-nap-${nap.napStartTimestampGMT}`,
+    source: 'garmin',
+    start_time: startTime,
+    title: 'Nap',
+  }
+}
+
 /** Extract time series points from sleep data (score, HR, HRV, sleep HR samples). */
 const buildSleepTimeSeries = (data: SleepData, time: Date): TimeSeriesPoint[] => {
   const dto = data.dailySleepDTO
@@ -319,6 +347,11 @@ const processSleep = async (user: string, data: SleepData, deps: GarminProcessDe
 
   const activity = buildSleepActivity(dto)
   if (activity) await deps.insertActivity(user, activity)
+
+  for (const nap of data.dailyNapDTOS ?? []) {
+    const napActivity = buildNapActivity(nap)
+    if (napActivity) await deps.insertActivity(user, napActivity)
+  }
 
   const points = buildSleepTimeSeries(data, time)
   if (points.length > 0) await deps.insertTimeSeries(user, points)

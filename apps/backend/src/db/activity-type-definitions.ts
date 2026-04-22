@@ -80,11 +80,7 @@ const validateParentTypeUpdate = async (
  * a cycle. Walks candidateParent's ancestor chain via recursive CTE; if
  * typeName appears in that chain, the edge would close a loop.
  */
-async function wouldCreateCycle(
-  user: string,
-  typeName: string,
-  candidateParent: string,
-): Promise<boolean> {
+async function wouldCreateCycle(user: string, typeName: string, candidateParent: string): Promise<boolean> {
   const result = await query<{ name: string }>(
     user,
     `WITH RECURSIVE ancestors AS (
