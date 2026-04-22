@@ -13,6 +13,7 @@ import type { NextFunction, Request, Response } from 'express'
 
 import { randomBytes } from 'node:crypto'
 
+import type { OuraCredentialGetter } from '../integrations/oura/client.ts'
 import type { OuraDataType } from '../integrations/oura/sync.ts'
 import type { CentralDb } from './central-db.ts'
 
@@ -31,14 +32,13 @@ export interface OuraWebhookManagerDeps {
     | 'deleteOuraWebhookSubscription'
     | 'deleteAllOuraWebhookSubscriptions'
   >
-  ouraClientId: string
-  ouraClientSecret: string
+  getCredentials: OuraCredentialGetter
   syncOuraDataTypeForUser: (username: string, dataType: OuraDataType) => Promise<void>
   apiBaseUrl: string
 }
 
 export interface OuraWebhookManager {
-  canEnable: () => boolean
+  canEnable: () => Promise<boolean>
   enable: () => Promise<void>
   disable: () => Promise<void>
   isEnabled: () => boolean
@@ -53,10 +53,16 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
 
   const callbackUrl = `${deps.apiBaseUrl}/webhooks/oura`
 
-  const canEnable = (): boolean => {
+  const canEnable = async (): Promise<boolean> => {
     try {
       const url = new URL(deps.apiBaseUrl)
-      return url.protocol === 'https:'
+      if (url.protocol !== 'https:') return false
+    } catch {
+      return false
+    }
+    try {
+      await deps.getCredentials()
+      return true
     } catch {
       return false
     }
@@ -76,11 +82,12 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
       console.info('Oura webhook: generated new verification token')
     }
 
-    // Create webhook API client
+    // Create webhook API client (reads current credentials from DB)
+    const { clientId, clientSecret } = await deps.getCredentials()
     const webhookApi = createOuraWebhookApi({
       callbackUrl,
-      clientId: deps.ouraClientId,
-      clientSecret: deps.ouraClientSecret,
+      clientId,
+      clientSecret,
       verificationToken,
     })
 

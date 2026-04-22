@@ -41,22 +41,30 @@ export const createAdminRouter = (
         lastFmApiKey,
         ouraWebhookEnabled,
         auditLogRetentionDays,
+        ouraClientId,
+        ouraClientSecret,
         stravaClientId,
         stravaClientSecret,
+        ouraWebhookAvailable,
       ] = await Promise.all([
         centralDb.getSignupMode(),
         centralDb.getAdminCount(),
         centralDb.getLastFmApiKey(),
         centralDb.getOuraWebhookEnabled(),
         centralDb.getAuditLogRetentionDays(),
+        centralDb.getServerSetting('oura_client_id'),
+        centralDb.getServerSetting('oura_client_secret'),
         centralDb.getServerSetting('strava_client_id'),
         centralDb.getServerSetting('strava_client_secret'),
+        ouraWebhookManager ? ouraWebhookManager.canEnable() : Promise.resolve(false),
       ])
       res.json({
         admin_count: adminCount,
         audit_log_retention_days: auditLogRetentionDays,
         lastfm_api_key_set: !!lastFmApiKey,
-        oura_webhook_available: ouraWebhookManager?.canEnable() ?? false,
+        oura_client_id_set: !!ouraClientId,
+        oura_client_secret_set: !!ouraClientSecret,
+        oura_webhook_available: ouraWebhookAvailable,
         oura_webhook_enabled: ouraWebhookEnabled,
         signup_mode: signupMode,
         strava_client_id_set: !!stravaClientId,
@@ -71,10 +79,13 @@ export const createAdminRouter = (
     authMiddleware,
     adminMiddleware,
     validateBody(updateAdminSettingsBodySchema),
+    // eslint-disable-next-line complexity -- sequential independent setting updates
     async (req, res) => {
       const {
         audit_log_retention_days,
         lastfm_api_key,
+        oura_client_id,
+        oura_client_secret,
         oura_webhook_enabled,
         signup_mode,
         strava_client_id,
@@ -88,6 +99,12 @@ export const createAdminRouter = (
       }
       if (lastfm_api_key !== undefined) {
         await centralDb.setLastFmApiKey(lastfm_api_key)
+      }
+      if (oura_client_id !== undefined) {
+        await centralDb.setServerSetting('oura_client_id', oura_client_id ?? '')
+      }
+      if (oura_client_secret !== undefined) {
+        await centralDb.setServerSetting('oura_client_secret', oura_client_secret ?? '')
       }
       if (oura_webhook_enabled !== undefined) {
         await centralDb.setOuraWebhookEnabled(oura_webhook_enabled)
@@ -111,22 +128,30 @@ export const createAdminRouter = (
         lastFmApiKey,
         ouraWebhookEnabledValue,
         currentRetentionDays,
+        currentOuraClientId,
+        currentOuraClientSecret,
         currentStravaClientId,
         currentStravaClientSecret,
+        ouraWebhookAvailable,
       ] = await Promise.all([
         centralDb.getSignupMode(),
         centralDb.getAdminCount(),
         centralDb.getLastFmApiKey(),
         centralDb.getOuraWebhookEnabled(),
         centralDb.getAuditLogRetentionDays(),
+        centralDb.getServerSetting('oura_client_id'),
+        centralDb.getServerSetting('oura_client_secret'),
         centralDb.getServerSetting('strava_client_id'),
         centralDb.getServerSetting('strava_client_secret'),
+        ouraWebhookManager ? ouraWebhookManager.canEnable() : Promise.resolve(false),
       ])
       res.json({
         admin_count: adminCount,
         audit_log_retention_days: currentRetentionDays,
         lastfm_api_key_set: !!lastFmApiKey,
-        oura_webhook_available: ouraWebhookManager?.canEnable() ?? false,
+        oura_client_id_set: !!currentOuraClientId,
+        oura_client_secret_set: !!currentOuraClientSecret,
+        oura_webhook_available: ouraWebhookAvailable,
         oura_webhook_enabled: ouraWebhookEnabledValue,
         signup_mode: currentMode,
         strava_client_id_set: !!currentStravaClientId,

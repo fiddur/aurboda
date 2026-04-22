@@ -56,13 +56,13 @@ export interface OuraClientOptions {
   onUserAuthenticated?: (ouraUserId: string, username: string) => Promise<void>
 }
 
+export type OuraCredentialGetter = () => Promise<{ clientId: string; clientSecret: string }>
+
 export const ouraClient = (
-  client: string,
-  secret: string,
+  getCredentials: OuraCredentialGetter,
   apiBaseUrl: string,
   options?: OuraClientOptions,
 ) => {
-  if (!client || !secret) throw new Error('Oura missing client or secret')
   const redirectUri = `${apiBaseUrl}/auth/ouracb`
 
   const getGeneric = async (type: string, start: Date, end: Date, token: string) => {
@@ -94,6 +94,15 @@ export const ouraClient = (
         return res.end('{"success":false}')
       }
 
+      let clientId: string
+      let clientSecret: string
+      try {
+        ;({ clientId, clientSecret } = await getCredentials())
+      } catch {
+        res.statusCode = 500
+        return res.end('{"success":false,"error":"Oura not configured"}')
+      }
+
       const user = state as string
 
       // Ensure schema is initialized for this user
@@ -103,8 +112,8 @@ export const ouraClient = (
 
       const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
       tokenUrl.searchParams.append('grant_type', 'authorization_code')
-      tokenUrl.searchParams.append('client_id', client)
-      tokenUrl.searchParams.append('client_secret', secret)
+      tokenUrl.searchParams.append('client_id', clientId)
+      tokenUrl.searchParams.append('client_secret', clientSecret)
       tokenUrl.searchParams.append('code', code as string)
       tokenUrl.searchParams.append('redirect_uri', redirectUri)
 
@@ -141,11 +150,12 @@ export const ouraClient = (
       }
 
       // Refresh the token
+      const { clientId, clientSecret } = await getCredentials()
       const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
       tokenUrl.searchParams.append('grant_type', 'refresh_token')
       tokenUrl.searchParams.append('refresh_token', token.refresh_token!)
-      tokenUrl.searchParams.append('client_id', client)
-      tokenUrl.searchParams.append('client_secret', secret)
+      tokenUrl.searchParams.append('client_id', clientId)
+      tokenUrl.searchParams.append('client_secret', clientSecret)
 
       const response = await axios.post(tokenUrl.toString())
       const { access_token, refresh_token, expires_in } = response.data
@@ -243,16 +253,26 @@ export const ouraClient = (
         )
       return tags
     },
-    getAuthorizeUrl(req: Request, res: Response) {
+    async getAuthorizeUrl(req: Request, res: Response) {
       const user = req.user
       if (!user) {
         res.status(401).json({ error: 'Not authenticated', success: false })
         return
       }
 
+      let clientId: string
+      try {
+        ;({ clientId } = await getCredentials())
+      } catch {
+        res
+          .status(400)
+          .json({ error: 'Oura not configured — set credentials in Admin Settings', success: false })
+        return
+      }
+
       const location = new URL('https://cloud.ouraring.com/oauth/authorize')
       location.searchParams.append('response_type', 'code')
-      location.searchParams.append('client_id', client)
+      location.searchParams.append('client_id', clientId)
       location.searchParams.append('redirect_uri', redirectUri)
       location.searchParams.append('state', user)
       res.json({ success: true, url: location.toString() })

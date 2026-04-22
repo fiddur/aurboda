@@ -18,17 +18,24 @@ All data is also preserved as raw JSON in the `raw_records` table.
 
 ## Admin Setup
 
-The server administrator must register an Oura developer application and configure:
+The server administrator must register an Oura developer application at the
+[Oura Developer Portal](https://cloud.ouraring.com/oauth/applications) and then
+configure the credentials in **Admin Settings > Integrations > Oura API**:
 
-| Environment Variable | Description                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| `OURA_CLIENT`        | OAuth client ID from [Oura Developer Portal](https://cloud.ouraring.com/oauth/applications) |
-| `OURA_SECRET`        | OAuth client secret                                                                         |
-| `WEB_HOST`           | Public URL of the server (e.g., `https://aurboda.net`). Must be HTTPS for webhooks.         |
+- **Client ID** — OAuth client ID from the Oura application
+- **Client Secret** — OAuth client secret
 
-The OAuth callback URL to register with Oura is: `{WEB_HOST}/auth/ouracb`
+The OAuth callback URL to register with Oura is: `{WEB_HOST}/auth/ouracb`, where
+`WEB_HOST` (env var) is the public URL of the server (e.g., `https://aurboda.net`).
+`WEB_HOST` must be HTTPS for webhooks.
 
-If these are not set, the "Connect Oura" button in user settings will be disabled with a message asking the admin to configure them.
+If credentials are not configured, the "Connect Oura" button in user settings
+will be disabled with a message asking the admin to configure them. Oura-related
+sync jobs simply skip when credentials are missing — the backend will not crash.
+
+> **Deprecated:** The `OURA_CLIENT` and `OURA_SECRET` environment variables are
+> deprecated. On startup, if these env vars are set and the DB has no Oura
+> credentials, they are migrated into the database once and then ignored.
 
 ## User Setup
 
@@ -85,7 +92,7 @@ Webhooks are a **system-level** feature, not per-user. Once the admin enables we
 ### Requirements
 
 - `WEB_HOST` must use HTTPS (the toggle is hidden if HTTP)
-- `OURA_CLIENT` and `OURA_SECRET` must be configured
+- Oura Client ID and Client Secret must be configured in Admin Settings
 - The webhook endpoint must be publicly accessible
 
 ### Disabling
