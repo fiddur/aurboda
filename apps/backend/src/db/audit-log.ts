@@ -22,6 +22,8 @@ export interface AuditLogQueryParams {
   level?: AuditLogLevel
   category?: AuditLogCategory
   since?: Date
+  until?: Date
+  messagePattern?: string
   limit?: number
   offset?: number
 }
@@ -66,6 +68,14 @@ export const queryAuditLog = async (
   if (params.since) {
     conditions.push(`timestamp >= $${paramIndex++}`)
     values.push(params.since)
+  }
+  if (params.until) {
+    conditions.push(`timestamp < $${paramIndex++}`)
+    values.push(params.until)
+  }
+  if (params.messagePattern) {
+    conditions.push(`message ILIKE $${paramIndex++}`)
+    values.push(`%${params.messagePattern}%`)
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''

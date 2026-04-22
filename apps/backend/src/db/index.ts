@@ -59,7 +59,15 @@ export {
 } from './connection.ts'
 
 // Raw records
-export { getAllScrobbles, getScrobbles, insertRawRecord, type ScrobbleRecord } from './raw-records.ts'
+export {
+  getAllScrobbles,
+  getScrobbles,
+  insertRawRecord,
+  queryRawRecords,
+  type QueryRawRecordsParams,
+  type RawRecordRow,
+  type ScrobbleRecord,
+} from './raw-records.ts'
 
 // Time series
 export {
