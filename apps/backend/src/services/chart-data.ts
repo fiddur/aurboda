@@ -153,7 +153,15 @@ const queryMetricBuckets = async (
   }))
 }
 
-/** Query bucketed productivity category hours. */
+/**
+ * Query bucketed productivity category hours.
+ *
+ * Reads from the `activities` table (activity_type='screentime') so a
+ * prefix match on data->>'category_path' walks the category hierarchy
+ * (e.g. categoryPath='Work' matches 'Work', 'Work > Programming', etc.).
+ * Activities are derived from productivity records during sync (#648) and
+ * historical data is filled in by a one-shot backfill.
+ */
 const queryProductivityCategoryBuckets = async (
   user: string,
   categoryPath: string,
@@ -165,11 +173,16 @@ const queryProductivityCategoryBuckets = async (
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
-            SUM(duration_sec) / 3600.0 AS value
-       FROM productivity
-      WHERE deleted_at IS NULL
-        AND resolved_category IS NOT NULL
-        AND array_to_string(resolved_category, ' > ') LIKE $${bucket.params.length + 1} || '%'
+            SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 AS value
+       FROM activities
+      WHERE activity_type = 'screentime'
+        AND deleted_at IS NULL
+        AND superseded_by IS NULL
+        AND end_time IS NOT NULL
+        AND (
+          data->>'category_path' = $${bucket.params.length + 1}
+          OR data->>'category_path' LIKE $${bucket.params.length + 1} || ' > %'
+        )
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,

@@ -165,6 +165,13 @@ describe('getChartData', () => {
     expect(result.buckets).toHaveLength(2)
     expect((result.buckets[0] as { value: number }).value).toBe(3.5)
     expect((result.buckets[1] as { value: number }).value).toBe(4.2)
+
+    // Verify we query from activities (not productivity) after the migration
+    // to screentime activities as the source of truth.
+    const call = vi.mocked(db.query).mock.calls[0]
+    expect(call[1]).toContain('FROM activities')
+    expect(call[1]).toContain("activity_type = 'screentime'")
+    expect(call[1]).not.toContain('FROM productivity')
   })
 
   test('returns bucketed activity type hours', async () => {

@@ -40,15 +40,28 @@ const getScreentime = async (
   category: string[],
   window: EvaluationWindow,
 ): Promise<TimeRange[]> => {
+  // Read from the screentime activities populated by the sync/backfill
+  // pipeline. Category hierarchy is matched via path-prefix on the joined
+  // string: `category=['Work']` matches activities whose category_path is
+  // 'Work' or begins with 'Work > '. This is safer than the old
+  // productivity.resolved_category @> array-containment check, which could
+  // accidentally match records where the category appeared mid-path.
+  const categoryPath = category.join(' > ')
   const result = await query(
     user,
-    `SELECT start_time, end_time FROM productivity
-     WHERE resolved_category @> $1
+    `SELECT start_time, end_time FROM activities
+     WHERE activity_type = 'screentime'
        AND deleted_at IS NULL
+       AND superseded_by IS NULL
+       AND end_time IS NOT NULL
        AND start_time < $3
        AND end_time > $2
+       AND (
+         data->>'category_path' = $1
+         OR data->>'category_path' LIKE $1 || ' > %'
+       )
      ORDER BY start_time`,
-    [category, window.start, window.end],
+    [categoryPath, window.start, window.end],
   )
   return result.rows.map((r) => ({
     end: r.end_time as Date,
