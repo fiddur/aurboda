@@ -15,7 +15,13 @@ import {
   type LocationsQuery,
   locationsQuerySchema,
   type LocationsResponse,
+  type LocationSummaryQuery,
+  locationSummaryQuerySchema,
+  type LocationSummaryResponse,
   type NamedLocationsResponse,
+  type OvernightStaysQuery,
+  overnightStaysQuerySchema,
+  type OvernightStaysResponse,
   type RawLocationsResponse,
   type PromoteDetectedLocationBody,
   promoteDetectedLocationBodySchema,
@@ -32,7 +38,7 @@ import {
   insertNamedLocation,
   updateNamedLocation,
 } from '../services/locations.ts'
-import { queryLocations } from '../services/queries/index.ts'
+import { getLocationSummary, queryLocations, queryOvernightStays } from '../services/queries/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -49,6 +55,41 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): TypedRout
 
       const places = await queryLocations(user, new Date(start), new Date(end))
       res.json({ data: places, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, OvernightStaysResponse, unknown, OvernightStaysQuery>(
+    '/overnight-stays',
+    authMiddleware,
+    validateQuery(overnightStaysQuerySchema),
+    async (req, res) => {
+      const { arrival_before, departure_after, end, location_name, start, tz } = req.query
+      const result = await queryOvernightStays(req.user!, {
+        arrivalBefore: arrival_before,
+        departureAfter: departure_after,
+        end: new Date(end),
+        locationName: location_name,
+        start: new Date(start),
+        tz,
+      })
+      res.json({ data: result.data, success: true, total_nights: result.total_nights })
+    },
+  )
+
+  router.get<Record<string, never>, LocationSummaryResponse, unknown, LocationSummaryQuery>(
+    '/summary',
+    authMiddleware,
+    validateQuery(locationSummaryQuerySchema),
+    async (req, res) => {
+      const { end, group_by, location_name, start, tz } = req.query
+      const summary = await getLocationSummary(req.user!, {
+        end: new Date(end),
+        groupBy: group_by,
+        locationName: location_name,
+        start: new Date(start),
+        tz,
+      })
+      res.json({ data: summary, success: true })
     },
   )
 
