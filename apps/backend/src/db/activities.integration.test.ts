@@ -12,7 +12,7 @@ import {
   insertActivity,
   markActivityDetailSynced,
   updateActivity,
-} from './activities.ts'
+} from './activities/index.ts'
 
 // Increase timeout for container startup
 const CONTAINER_TIMEOUT = 60_000
