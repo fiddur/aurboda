@@ -11,7 +11,6 @@ import {
   dateOnlySchema,
   iso8601DateTimeSchema,
   syncStatusSchema,
-  timeRangeQuerySchema,
 } from './common.ts'
 
 // Shared sync options fields
