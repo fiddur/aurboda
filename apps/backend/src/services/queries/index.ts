@@ -67,3 +67,10 @@ export {
 } from './productivity.ts'
 
 export { queryLocations } from './locations.ts'
+
+export {
+  detectOvernightStays,
+  getLocationSummary,
+  queryOvernightStays,
+  summarizeVisits,
+} from './location-stays.ts'
