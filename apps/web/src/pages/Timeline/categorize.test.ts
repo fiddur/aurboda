@@ -1,8 +1,8 @@
+import type { ScreentimeCategory } from '@aurboda/api-spec'
+
 import { describe, expect, it } from 'vitest'
 
 import type { Activity, Meal, Place } from '../../state/api'
-
-import type { ScreentimeCategory } from '@aurboda/api-spec'
 
 import {
   categorizeLocations,
@@ -78,6 +78,25 @@ describe('categorizeOtherActivities', () => {
     const typeDefsMap = new Map([['custom', { icon: '🎯' }]])
     const items = categorizeOtherActivities([makeActivity()], {}, typeDefsMap)
     expect(items[0]!.icon).toBe('🎯')
+  })
+
+  it('prefers type definition icon over title-based itemIcons match', () => {
+    // Activity originally synced as "meditation" then re-typed to "Pipeceremony".
+    // The user's tag-based itemIcons still has "meditation" → 🧘, but the type
+    // definition for "Pipeceremony" has its own icon — the type icon must win.
+    const typeDefsMap = new Map([['Pipeceremony', { icon: '🪶' }]])
+    const items = categorizeOtherActivities(
+      [makeActivity({ activity_type: 'Pipeceremony', title: 'meditation' })],
+      { meditation: '🧘' },
+      typeDefsMap,
+    )
+    expect(items[0]!.icon).toBe('🪶')
+  })
+
+  it('falls back to title-based icon when type definition has no icon', () => {
+    const typeDefsMap = new Map([['custom', {}]])
+    const items = categorizeOtherActivities([makeActivity({ title: 'Yoga' })], { Yoga: '🧘' }, typeDefsMap)
+    expect(items[0]!.icon).toBe('🧘')
   })
 })
 
@@ -162,20 +181,12 @@ describe('categorizeScreentimeActivities', () => {
   })
 
   it('skips activities of other types', () => {
-    const items = categorizeScreentimeActivities(
-      [makeActivity({ activity_type: 'exercise' })],
-      [],
-      {},
-    )
+    const items = categorizeScreentimeActivities([makeActivity({ activity_type: 'exercise' })], [], {})
     expect(items).toEqual([])
   })
 
   it('matches category by exact path for href and clears entity_id', () => {
-    const items = categorizeScreentimeActivities(
-      [makeActivity()],
-      [makeCategory({ id: 'cat-prog' })],
-      {},
-    )
+    const items = categorizeScreentimeActivities([makeActivity()], [makeCategory({ id: 'cat-prog' })], {})
     expect(items[0]!.href).toBe('/screentime-categories/cat-prog')
     expect(items[0]!.entity_id).toBeUndefined()
   })
