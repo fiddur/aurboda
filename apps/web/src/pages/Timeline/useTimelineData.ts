@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { addDays, format, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
-import type { Activity, Scrobble } from '../../state/api'
+import type { Activity, Place, Scrobble } from '../../state/api'
 import type { ChartItem, Column } from './types'
 
 import {
@@ -12,7 +12,6 @@ import {
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
   fetchMeals,
-  fetchPlaces,
   fetchProductivity,
   fetchScreentimeCategories,
   fetchScreentimeBucketed,
@@ -48,13 +47,13 @@ const TIMELINE_EXCLUDED_METRICS = ['training_impulse', 'activity_impulse']
 const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
 
 /**
- * Activity types fetched via dedicated endpoints (productivity, locations) and
- * therefore excluded from the unified `/activities` payload to avoid sending
- * the same rows twice. `music_scrobble` is intentionally NOT excluded — the
- * timeline derives its scrobble list directly from this fetch (one round-trip
- * instead of two).
+ * Activity types fetched via dedicated endpoints (productivity) and therefore
+ * excluded from the unified `/activities` payload to avoid sending the same
+ * rows twice. `music_scrobble` and `location_visit` are intentionally NOT
+ * excluded — the timeline derives the music staff and location lane directly
+ * from this fetch.
  */
-const TIMELINE_EXCLUDED_ACTIVITY_TYPES = ['screentime', 'location_visit']
+const TIMELINE_EXCLUDED_ACTIVITY_TYPES = ['screentime']
 
 export interface TimelineData {
   // Raw query results needed by rendering
@@ -120,14 +119,6 @@ export const useTimelineData = ({
         TIMELINE_EXCLUDED_ACTIVITY_TYPES,
       ),
     queryKey: ['timeline-activities', fromDateKey, toDateKey],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const placesQuery = useQuery({
-    enabled: !hiddenCategories.has('location'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchPlaces(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-places', fromDateKey, toDateKey],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -248,7 +239,27 @@ export const useTimelineData = ({
       allActivities.filter((a) => !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
     [allActivities, categoryByType],
   )
-  const places = placesQuery.data ?? []
+  // Locations come from `location_visit` activities materialized by the
+  // backend (proactive on GPS sync; backstop on /locations browse). Only
+  // opted-in named locations get materialized — detected/unnamed places are
+  // not shown on the Timeline (they appeared as "Somewhere" before, so
+  // visually nothing is lost).
+  const places = useMemo<Place[]>(
+    () =>
+      (activitiesQuery.data ?? [])
+        .filter((a): a is Activity & { end_time: Date } =>
+          Boolean(a.activity_type === 'location_visit' && a.end_time),
+        )
+        .map((a) => {
+          const name = a.data?.location_name
+          return {
+            end_time: a.end_time,
+            region: typeof name === 'string' ? name : '',
+            start_time: a.start_time,
+          }
+        }),
+    [activitiesQuery.data],
+  )
   const productivity = productivityQuery.data?.records ?? []
   // Music scrobbles are derived from `music_scrobble` activities — they live
   // in the activities table and are already returned by the activities fetch,
@@ -417,16 +428,14 @@ export const useTimelineData = ({
 
   const isFetching =
     activitiesQuery.isFetching ||
-    placesQuery.isFetching ||
     mealsQuery.isFetching ||
     productivityQuery.isFetching ||
     bucketedMetricsQuery.isFetching
 
-  const isInitialLoad = activitiesQuery.isLoading && placesQuery.isLoading && productivityQuery.isLoading
+  const isInitialLoad = activitiesQuery.isLoading && productivityQuery.isLoading
 
   const errorSources = [
     activitiesQuery.isError && 'activities',
-    placesQuery.isError && 'places',
     productivityQuery.isError && 'screen time',
   ].filter(Boolean) as string[]
 
