@@ -9,6 +9,8 @@
 import type { ScrobblesResponse } from '@aurboda/api-spec'
 import type { RequestHandler, Router } from 'express'
 
+import { isMusicScrobbleActivity } from '@aurboda/api-spec'
+
 import { getActivities } from '../db/index.ts'
 import { typedRouter } from '../typed-router.ts'
 
@@ -28,14 +30,16 @@ export const createScrobblesRouter = (authMiddleware: RequestHandler): Router =>
 
       try {
         const activities = await getActivities(user, ['music_scrobble'], new Date(start), new Date(end))
-        const serialized = activities.map((a) => {
-          const data = a.data as Record<string, unknown> | undefined
-          return {
-            album: typeof data?.album === 'string' ? data.album : '',
-            artist: typeof data?.artist === 'string' ? data.artist : '',
-            recorded_at: a.start_time.toISOString(),
-            track: typeof data?.track === 'string' ? data.track : '',
-          }
+        const serialized = activities.flatMap((a) => {
+          if (!isMusicScrobbleActivity(a)) return []
+          return [
+            {
+              album: a.data.album ?? '',
+              artist: a.data.artist,
+              recorded_at: a.start_time.toISOString(),
+              track: a.data.track,
+            },
+          ]
         })
         res.json({ data: serialized, success: true })
       } catch (error) {

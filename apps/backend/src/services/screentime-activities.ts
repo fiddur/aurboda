@@ -11,6 +11,8 @@
  * but do not produce activities.
  */
 
+import { isScreentimeActivity } from '@aurboda/api-spec'
+
 import type { ProductivityRecord, ScreentimeCategory } from '../db/index.ts'
 import type { Activity } from '../db/types.ts'
 
@@ -23,11 +25,14 @@ export const categoryPathToString = (path: string[]): string => path.join(' > ')
 
 export const categoryPathFromString = (s: string): string[] => s.split(' > ')
 
-/** Extract the parsed category_path from a screentime activity, if present. */
-export const getScreentimeCategoryPath = (activity: Activity): string[] | undefined => {
-  const path = activity.data?.category_path
-  return typeof path === 'string' ? categoryPathFromString(path) : undefined
-}
+/**
+ * Extract the parsed `category_path` array from a screentime activity, if it
+ * carries one. Layered on the shared `isScreentimeActivity` type guard from
+ * api-spec — the parsing (string → array) is the only piece this helper adds
+ * on top of the guard.
+ */
+export const getScreentimeCategoryPath = (activity: Activity): string[] | undefined =>
+  isScreentimeActivity(activity) ? categoryPathFromString(activity.data.category_path) : undefined
 
 /** True if `categoryPath` is at or under one of the excluded paths (prefix match). */
 export const isCategoryExcluded = (categoryPath: string[], excludedPaths: string[][]): boolean =>
