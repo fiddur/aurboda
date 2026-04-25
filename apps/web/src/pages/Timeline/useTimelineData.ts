@@ -1,12 +1,14 @@
-import type { ScreentimeCategory } from '@aurboda/api-spec'
-
+import {
+  isLocationVisitActivity,
+  isMusicScrobbleActivity,
+  type ScreentimeCategory,
+} from '@aurboda/api-spec'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { addDays, format, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
 import type { Activity, Place, Scrobble } from '../../state/api'
 import type { ChartItem, Column } from './types'
-
 import {
   fetchActivities,
   fetchActivityTypeDefinitions,
@@ -234,18 +236,10 @@ export const useTimelineData = ({
   // visually nothing is lost).
   const places = useMemo<Place[]>(
     () =>
-      (activitiesQuery.data ?? [])
-        .filter((a): a is Activity & { end_time: Date } =>
-          Boolean(a.activity_type === 'location_visit' && a.end_time),
-        )
-        .map((a) => {
-          const name = a.data?.location_name
-          return {
-            end_time: a.end_time,
-            region: typeof name === 'string' ? name : '',
-            start_time: a.start_time,
-          }
-        }),
+      (activitiesQuery.data ?? []).flatMap((a) => {
+        if (!isLocationVisitActivity(a) || !a.end_time) return []
+        return [{ end_time: a.end_time, region: a.data.location_name, start_time: a.start_time }]
+      }),
     [activitiesQuery.data],
   )
   // Screentime spans are derived from `screentime` activities. The backend
@@ -262,17 +256,17 @@ export const useTimelineData = ({
   // so no separate /lastfm/scrobbles network call is needed.
   const scrobbles = useMemo<Scrobble[]>(() => {
     if (!hasLastFm) return []
-    return (activitiesQuery.data ?? [])
-      .filter((a) => a.activity_type === 'music_scrobble')
-      .map((a) => {
-        const data = a.data
-        return {
-          album: typeof data?.album === 'string' ? data.album : '',
-          artist: typeof data?.artist === 'string' ? data.artist : '',
+    return (activitiesQuery.data ?? []).flatMap((a) => {
+      if (!isMusicScrobbleActivity(a)) return []
+      return [
+        {
+          album: a.data.album ?? '',
+          artist: a.data.artist,
           recorded_at: a.start_time,
-          track: typeof data?.track === 'string' ? data.track : '',
-        }
-      })
+          track: a.data.track,
+        },
+      ]
+    })
   }, [hasLastFm, activitiesQuery.data])
 
   const sleepMetricsByDate = useMemo<SleepMetricsByDate>(() => {
