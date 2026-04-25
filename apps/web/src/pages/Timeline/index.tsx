@@ -53,7 +53,6 @@ export const Timeline = () => {
     viewLabel,
     bucketSize,
     barBucketSize,
-    screentimeMergeGapMs,
   } = nav
 
   // ── Orientation state ──────────────────────────────────────────────────────
@@ -105,7 +104,6 @@ export const Timeline = () => {
     fetchStart,
     fromDateKey: fromDate.value,
     hiddenCategories,
-    screentimeMergeGapMs,
     toDateKey: toDate.value,
   })
   const {
