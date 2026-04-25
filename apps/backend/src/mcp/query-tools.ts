@@ -5,7 +5,9 @@ import {
   activityTypeSchema,
   bucketSizeSchema,
   dateOnlySchema,
+  locationSummaryQuerySchema,
   type MetricType,
+  overnightStaysQuerySchema,
   timeRangeQuerySchema,
   tzSchema,
   validMetrics,
@@ -18,6 +20,7 @@ import {
   computeActivityDetailMetrics,
   getActivityFullDetail,
   getDailySummary,
+  getLocationSummary,
   getPeriodSummary,
   parseActivityId,
   parseMetricsParam,
@@ -25,6 +28,7 @@ import {
   queryLocations,
   queryMetrics,
   queryMetricsBucketed,
+  queryOvernightStays,
   queryProductivity,
   queryTags,
   resolveActivityWindow,
@@ -301,6 +305,52 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
     async ({ end, start, tz }) => {
       const places = await queryLocations(user, new Date(start), new Date(end))
       return tzJsonResponse({ data: places, success: true }, tz)
+    },
+  )
+
+  // Tool: query_overnight_stays
+  server.tool(
+    'query_overnight_stays',
+    `Detect overnight stays at a named location.
+
+A night between day D and day D+1 counts when a visit overlaps both the evening window
+(>=17:00 of D, configurable via departure_after) and the morning window (<=10:00 of D+1,
+configurable via arrival_before), with both moments interpreted in the requested timezone.
+
+Multi-night visits yield one entry per crossed night, all sharing the same arrival/departure
+timestamps but with distinct overnight_date values.`,
+    { ...overnightStaysQuerySchema.shape },
+    async ({ arrival_before, departure_after, end, location_name, start, tz }) => {
+      const result = await queryOvernightStays(user, {
+        arrivalBefore: arrival_before,
+        departureAfter: departure_after,
+        end: new Date(end),
+        locationName: location_name,
+        start: new Date(start),
+        tz,
+      })
+      return tzJsonResponse({ data: result.data, success: true, total_nights: result.total_nights }, tz)
+    },
+  )
+
+  // Tool: get_location_summary
+  server.tool(
+    'get_location_summary',
+    `Aggregated statistics for time spent at a named location: total visits, total nights,
+total hours, and an optional per-period breakdown (day/week/month/year).
+
+Pairs naturally with query_overnight_stays — use this for the rolled-up numbers and
+query_overnight_stays for the per-night detail.`,
+    { ...locationSummaryQuerySchema.shape },
+    async ({ end, group_by, location_name, start, tz }) => {
+      const summary = await getLocationSummary(user, {
+        end: new Date(end),
+        groupBy: group_by,
+        locationName: location_name,
+        start: new Date(start),
+        tz,
+      })
+      return tzJsonResponse({ data: summary, success: true }, tz)
     },
   )
 }
