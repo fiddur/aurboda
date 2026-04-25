@@ -3,7 +3,7 @@
  */
 import { getTrainingLoadInputSchema, tzSchema } from '@aurboda/api-spec'
 
-import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load.ts'
+import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load/index.ts'
 import { jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerTrainingLoadTools = (server: McpServer, user: string) => {

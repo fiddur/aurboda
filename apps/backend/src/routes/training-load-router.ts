@@ -7,7 +7,7 @@ import type { RequestHandler } from 'express'
  */
 import { type TrainingLoadQuery, trainingLoadQuerySchema, type TrainingLoadResponse } from '@aurboda/api-spec'
 
-import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load.ts'
+import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
