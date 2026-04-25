@@ -152,7 +152,7 @@ export {
   updateActivity,
   updateActivityEndTimeByExternalId,
   updateActivityTypeByTagKey,
-} from './activities.ts'
+} from './activities/index.ts'
 
 // Locations
 export {

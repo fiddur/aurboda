@@ -18,7 +18,7 @@ import {
   insertActivities,
   insertActivity,
   materializeSuperseded,
-} from './activities.ts'
+} from './activities/index.ts'
 import { query } from './connection.ts'
 
 const CONTAINER_TIMEOUT = 60_000

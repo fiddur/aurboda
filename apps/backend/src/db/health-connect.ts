@@ -27,7 +27,7 @@ const resolveExerciseActivityType = (data: Record<string, unknown>): string => {
   return getExerciseTypeName(exerciseType) ?? 'exercise'
 }
 
-import { insertActivities, insertActivity } from './activities.ts'
+import { insertActivities, insertActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import { insertMeal } from './meals.ts'
 import { insertRawRecord, insertRawRecords } from './raw-records.ts'
