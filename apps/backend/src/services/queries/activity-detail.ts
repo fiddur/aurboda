@@ -1,30 +1,35 @@
 /**
- * Activity detail enrichment — for the single-activity detail endpoint.
- *
- * Computes HR zone seconds, average HRV, and the generic summary metrics
- * (distance, avg pace/cadence/power, body battery before/after, etc.) by
- * fetching the relevant time-series for the activity's time window.
+ * Activity detail enrichment — computes the per-activity fields that aren't
+ * stored on the activities row (HR-zone seconds, average HRV, generic summary
+ * metrics) and assembles the deep-dive payload (GPS trace + per-metric
+ * time-series) for the full-detail endpoint and MCP tool.
  */
 
-import type { ActivitySummaryMetrics, HrZoneSecs } from '@aurboda/api-spec'
-
-import { getDistinctMetrics, getLocations, getTimeSeries, getTimeSeriesMultiMetric } from '../../db/index.ts'
-import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
 import {
-  computeActivitySummaryMetrics,
-  SUMMARY_METRICS,
-  type SummaryMetricSeries,
-} from './activity-summary-metrics.ts'
+  type ActivityComputedMetrics,
+  type ActivityFullDetail,
+  ALL_METRICS_SENTINEL,
+  getMetricUnit,
+} from '@aurboda/api-spec'
 
-/** Sentinel used to opt into "every metric with data in the activity range". */
-export const ALL_METRICS_SENTINEL = 'all'
+import type { Activity as ActivityRow } from '../../db/types.ts'
+
+import {
+  getDistinctMetrics,
+  getLocations,
+  getOverlappingActivities,
+  getTimeSeries,
+  getTimeSeriesMultiMetric,
+} from '../../db/index.ts'
+import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
+import { computeActivitySummaryMetrics, SUMMARY_METRICS } from './activity-summary-metrics.ts'
 
 /**
- * Parse the `metrics` query/MCP parameter to a list of metric names.
+ * Parse the `metrics` query/MCP parameter into a list of metric names.
  *
- * - `undefined` / empty → return undefined (caller should skip time-series)
- * - `'all'` → return undefined here; resolveMetrics() will discover them
- * - comma-separated → split and trim
+ * - `undefined` / empty → `undefined` (caller skips time-series fetch)
+ * - the `'all'` sentinel → `[ALL_METRICS_SENTINEL]` (resolved later by db lookup)
+ * - comma-separated → trimmed list
  */
 export const parseMetricsParam = (raw: string | undefined): string[] | undefined => {
   if (!raw) return undefined
@@ -36,11 +41,6 @@ export const parseMetricsParam = (raw: string | undefined): string[] | undefined
   return list.length > 0 ? list : undefined
 }
 
-export interface ActivityDetailMetrics extends ActivitySummaryMetrics {
-  hr_zone_secs?: HrZoneSecs
-  avg_hrv?: number
-}
-
 /**
  * Compute hr_zone_secs, avg_hrv, and the generic summary metrics for an
  * activity's time range. Pulls all required time-series in parallel.
@@ -48,17 +48,16 @@ export interface ActivityDetailMetrics extends ActivitySummaryMetrics {
 export const computeActivityDetailMetrics = async (
   user: string,
   activity: { start_time: Date; end_time?: Date; data?: Record<string, unknown> },
-): Promise<ActivityDetailMetrics> => {
+): Promise<ActivityComputedMetrics> => {
   const end = activity.end_time
   if (!end) return {}
 
-  const [{ zones: hrZones }, summarySeriesByMetric, hrvData] = await Promise.all([
+  const [{ zones: hrZones }, summarySeries, hrvData] = await Promise.all([
     getEffectiveHrZones(user),
     getTimeSeriesMultiMetric(user, [...SUMMARY_METRICS], activity.start_time, end),
     getTimeSeries(user, 'hrv_rmssd', activity.start_time, end),
   ])
 
-  const summarySeries = summarySeriesByMetric as SummaryMetricSeries
   const summary = computeActivitySummaryMetrics(activity, summarySeries)
 
   const hrData = summarySeries.heart_rate ?? []
@@ -70,15 +69,10 @@ export const computeActivityDetailMetrics = async (
 }
 
 export interface ActivityFullDetailOptions {
-  /** Optional list of metric names to include time-series for. Empty array = none. */
+  /** Metric names to include time-series for. The single-element [ALL_METRICS_SENTINEL] expands to all available. */
   metrics?: string[]
   /** Include GPS trace if locations are available in the activity range. */
   includeGps?: boolean
-}
-
-export interface ActivityFullDetail {
-  gps?: Array<{ time: string; lat: number; lon: number }>
-  metric_series?: Array<{ metric: string; unit: string; count: number; data: Array<[string, number]> }>
 }
 
 /**
@@ -92,14 +86,13 @@ export const getActivityFullDetail = async (
   user: string,
   activity: { start_time: Date; end_time?: Date },
   options: ActivityFullDetailOptions,
-): Promise<ActivityFullDetail> => {
+): Promise<Pick<ActivityFullDetail, 'gps' | 'metric_series'>> => {
   const end = activity.end_time
   if (!end) return {}
   const { includeGps = true, metrics } = options
 
-  const result: ActivityFullDetail = {}
+  const result: Pick<ActivityFullDetail, 'gps' | 'metric_series'> = {}
 
-  // GPS trace from any source covering this activity time range.
   if (includeGps) {
     const { locations } = await getLocations(user, activity.start_time, end)
     if (locations.length > 0) {
@@ -111,24 +104,69 @@ export const getActivityFullDetail = async (
     }
   }
 
-  // Time-series — when no metrics requested, omit the series array entirely.
   if (metrics && metrics.length > 0) {
     const resolvedMetrics =
       metrics.length === 1 && metrics[0] === ALL_METRICS_SENTINEL
         ? await getDistinctMetrics(user, activity.start_time, end)
         : metrics
-    const { metricUnits } = await import('@aurboda/api-spec')
-    const series = await Promise.all(
-      resolvedMetrics.map(async (metric) => ({
-        data: (await getTimeSeries(user, metric, activity.start_time, end)).map(
-          ([time, value]) => [time.toISOString(), value] as [string, number],
-        ),
-        metric,
-        unit: (metricUnits as Record<string, string>)[metric] ?? '',
-      })),
+    result.metric_series = await Promise.all(
+      resolvedMetrics.map(async (metric) => {
+        const data = await getTimeSeries(user, metric, activity.start_time, end)
+        return {
+          count: data.length,
+          data: data.map(([time, value]): [string, number] => [time.toISOString(), value]),
+          metric,
+          unit: getMetricUnit(metric) ?? '',
+        }
+      }),
     )
-    result.metric_series = series.map((s) => ({ ...s, count: s.data.length }))
   }
 
   return result
+}
+
+/**
+ * Resolved time range and merged data JSONB for an activity, expanded across
+ * its overlapping cross-source records when the caller passed a `merged:` id.
+ */
+export interface ResolvedActivityWindow {
+  start_time: Date
+  end_time?: Date
+  data?: Record<string, unknown>
+}
+
+/**
+ * For activities fetched via a `merged:` id prefix, expand the time window to
+ * cover all overlapping cross-source records and merge their `data` JSONB.
+ * Plain (non-merged) activities pass through unchanged.
+ */
+export const resolveActivityWindow = async (
+  user: string,
+  activity: ActivityRow,
+  isMerged: boolean,
+): Promise<ResolvedActivityWindow> => {
+  if (!isMerged || activity.deleted_at) {
+    return { data: activity.data, end_time: activity.end_time, start_time: activity.start_time }
+  }
+
+  const overlapping = await getOverlappingActivities(user, activity)
+  if (overlapping.length <= 1) {
+    return { data: activity.data, end_time: activity.end_time, start_time: activity.start_time }
+  }
+
+  const start_time = new Date(Math.min(...overlapping.map((a) => a.start_time.getTime())))
+  const end_time = new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime())))
+  const data = overlapping
+    .toSorted((a, b) => a.start_time.getTime() - b.start_time.getTime())
+    .reduce<Record<string, unknown>>((acc, a) => (a.data ? { ...acc, ...a.data } : acc), {})
+
+  return { data: Object.keys(data).length > 0 ? data : activity.data, end_time, start_time }
+}
+
+/**
+ * Strip the optional `merged:` id prefix and report whether it was present.
+ */
+export const parseActivityId = (rawId: string): { id: string; isMerged: boolean } => {
+  const isMerged = rawId.startsWith('merged:')
+  return { id: isMerged ? rawId.slice('merged:'.length) : rawId, isMerged }
 }

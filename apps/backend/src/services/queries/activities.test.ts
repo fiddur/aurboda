@@ -117,9 +117,7 @@ describe('queryActivities with comments', () => {
     ])
     vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
-    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue(
-      {} as Awaited<ReturnType<typeof db.getTimeSeriesMultiMetric>>,
-    )
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({})
 
     await queryActivities(
       'testuser',
@@ -162,7 +160,7 @@ describe('queryActivities with comments', () => {
         [new Date('2024-01-15T10:05:00Z'), 4],
         [new Date('2024-01-15T10:15:00Z'), 5],
       ],
-    } as Awaited<ReturnType<typeof db.getTimeSeriesMultiMetric>>)
+    })
 
     const result = await queryActivities(
       'testuser',

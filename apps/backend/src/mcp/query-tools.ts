@@ -12,20 +12,22 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { getActivityById, getAllActivityTypeNames, getOverlappingActivities } from '../db/index.ts'
+import { getActivityById, getAllActivityTypeNames } from '../db/index.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
-  ALL_METRICS_SENTINEL,
   computeActivityDetailMetrics,
   getActivityFullDetail,
   getDailySummary,
   getPeriodSummary,
+  parseActivityId,
+  parseMetricsParam,
   queryActivities,
   queryLocations,
   queryMetrics,
   queryMetricsBucketed,
   queryProductivity,
   queryTags,
+  resolveActivityWindow,
 } from '../services/queries/index.ts'
 import {
   errorResponse,
@@ -221,44 +223,17 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
         ),
       tz: tzSchema,
     },
-    async ({ id, include_gps, metrics, tz }) => {
-      const isMerged = id.startsWith('merged:')
-      const realId = isMerged ? id.slice('merged:'.length) : id
-
-      const activity = await getActivityById(user, realId, true)
+    async ({ id: rawId, include_gps, metrics, tz }) => {
+      const { id, isMerged } = parseActivityId(rawId)
+      const activity = await getActivityById(user, id, true)
       if (!activity) return errorResponse('Activity not found')
 
-      // Expand window for merged view across overlapping sources.
-      let detailRange = { end_time: activity.end_time, start_time: activity.start_time }
-      let effectiveData = activity.data
-      if (isMerged && !activity.deleted_at) {
-        const overlapping = await getOverlappingActivities(user, activity)
-        if (overlapping.length > 1) {
-          detailRange = {
-            end_time: new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))),
-            start_time: new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))),
-          }
-          effectiveData = overlapping
-            .toSorted((a, b) => a.start_time.getTime() - b.start_time.getTime())
-            .reduce<Record<string, unknown>>((acc, a) => (a.data ? { ...acc, ...a.data } : acc), {})
-        }
-      }
-
-      const requestedMetrics =
-        metrics === ALL_METRICS_SENTINEL
-          ? [ALL_METRICS_SENTINEL]
-          : metrics
-            ? metrics
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : undefined
-
+      const window = await resolveActivityWindow(user, activity, isMerged)
       const [summary, fullDetail] = await Promise.all([
-        computeActivityDetailMetrics(user, { ...detailRange, data: effectiveData }),
-        getActivityFullDetail(user, detailRange, {
+        computeActivityDetailMetrics(user, window),
+        getActivityFullDetail(user, window, {
           includeGps: include_gps,
-          metrics: requestedMetrics,
+          metrics: parseMetricsParam(metrics),
         }),
       ])
 
@@ -268,7 +243,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
             ...summary,
             ...fullDetail,
             activity_type: activity.activity_type,
-            data: effectiveData,
+            data: window.data,
             end_time: activity.end_time?.toISOString(),
             id: activity.id,
             notes: activity.notes,

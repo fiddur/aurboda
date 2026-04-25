@@ -177,21 +177,36 @@ export const activitySummaryMetricsSchema = z
 export type ActivitySummaryMetrics = z.infer<typeof activitySummaryMetricsSchema>
 
 /**
+ * All metrics computed for an activity at query time: HR-zone seconds,
+ * average HRV, and the generic summary metrics. Returned by both the
+ * single-activity detail endpoint and embedded into list-query results.
+ *
+ * "Computed" = derived from time-series and/or activity.data, not stored
+ * directly on the activities row.
+ */
+export const activityComputedMetricsSchema = activitySummaryMetricsSchema
+  .extend({
+    avg_hrv: z.number().optional().meta({ description: 'Average HRV (ms) during the activity' }),
+    hr_zone_secs: hrZoneSecsSchema.optional().meta({
+      description: 'Time spent in each HR zone (for exercise)',
+    }),
+  })
+  .meta({ id: 'ActivityComputedMetrics' })
+
+export type ActivityComputedMetrics = z.infer<typeof activityComputedMetricsSchema>
+
+/**
  * Activity schema.
  */
-export const activitySchema = activitySummaryMetricsSchema
+export const activitySchema = activityComputedMetricsSchema
   .extend({
     activity_type: z.string().meta({ description: 'Activity type' }),
-    avg_hrv: z.number().optional().meta({ description: 'Average HRV (ms) during the activity' }),
     comments: z.array(commentSchema).optional().meta({ description: 'Attached comments' }),
     data: z.record(z.string(), z.unknown()).optional(),
     deleted_at: iso8601DateTimeSchema.optional().meta({ description: 'Soft-delete timestamp' }),
     duration: durationMinutesSchema.optional(),
     end_time: iso8601DateTimeSchema.optional(),
     external_id: z.string().optional().meta({ description: 'External ID from source system' }),
-    hr_zone_secs: hrZoneSecsSchema.optional().meta({
-      description: 'Time spent in each HR zone (for exercise)',
-    }),
     id: z.string().uuid().optional().meta({ description: 'Activity ID' }),
     notes: z.string().optional().meta({ description: 'Activity notes' }),
     source: z.string().optional().meta({ description: 'Data source' }),
@@ -485,6 +500,13 @@ export const resyncActivityDetailResponseSchema = baseResponseSchema
 export type ResyncActivityDetailResponse = z.infer<typeof resyncActivityDetailResponseSchema>
 
 /**
+ * Sentinel value for the activity full-detail `metrics` parameter that means
+ * "every metric with data in the activity range". Defined as a constant so the
+ * schema description, parser, and clients all agree.
+ */
+export const ALL_METRICS_SENTINEL = 'all'
+
+/**
  * Query parameters for the activity full-detail endpoint.
  *
  * Lets callers opt in/out of expensive payload pieces (GPS, time-series) and
@@ -492,19 +514,16 @@ export type ResyncActivityDetailResponse = z.infer<typeof resyncActivityDetailRe
  */
 export const activityFullDetailQuerySchema = z
   .object({
-    bucket: z.string().optional().meta({
-      description:
-        'Bucket size for time-series aggregation (e.g. "10s", "1m"). Omit to get raw per-sample points.',
-      example: '10s',
-    }),
     include_gps: z.coerce.boolean().optional().default(true).meta({
       description: 'Include GPS trace if any locations exist for the activity time range. Default: true.',
     }),
-    metrics: z.string().optional().meta({
-      description:
-        'Comma-separated metric names to include time-series for. Omit to include all metrics with data in the activity time range.',
-      example: 'heart_rate,speed,run_cadence',
-    }),
+    metrics: z
+      .string()
+      .optional()
+      .meta({
+        description: `Comma-separated metric names to include time-series for, or '${ALL_METRICS_SENTINEL}' for every metric with data. Omit for summary + GPS only.`,
+        example: 'heart_rate,speed,run_cadence',
+      }),
   })
   .meta({ id: 'ActivityFullDetailQuery' })
 

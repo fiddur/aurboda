@@ -2,7 +2,7 @@
  * Shared types and helpers for query services.
  */
 
-import type { ActivitySummaryMetrics, DataSource, ExerciseTypeName } from '@aurboda/api-spec'
+import type { ActivityComputedMetrics, DataSource, ExerciseTypeName } from '@aurboda/api-spec'
 
 import type { MetricType } from '../../schema.ts'
 import type { HrZoneSecs } from '../settings.ts'
@@ -276,9 +276,11 @@ export interface PeriodSummaryResult {
 }
 
 /**
- * Activity query result with formatted timestamps.
+ * Activity query result with formatted timestamps. Inherits all computed
+ * metric fields (avg pace, body battery before/after, hr_zone_secs, avg_hrv,
+ * etc.) from the api-spec ActivityComputedMetrics contract.
  */
-export interface ActivityResult extends ActivitySummaryMetrics {
+export interface ActivityResult extends ActivityComputedMetrics {
   id?: string
   start_time: string
   end_time?: string
@@ -290,8 +292,6 @@ export interface ActivityResult extends ActivitySummaryMetrics {
   notes?: string
   source: string
   data?: Record<string, unknown>
-  hr_zone_secs?: HrZoneSecs
-  avg_hrv?: number
   comments: CommentSummary[]
 }
 

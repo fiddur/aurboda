@@ -51,13 +51,12 @@ export { queryTags } from './tags.ts'
 export { queryActivities } from './activities.ts'
 
 export {
-  ALL_METRICS_SENTINEL,
-  computeActivityDetailMetrics,
-  type ActivityDetailMetrics,
-  type ActivityFullDetail,
   type ActivityFullDetailOptions,
+  computeActivityDetailMetrics,
   getActivityFullDetail,
+  parseActivityId,
   parseMetricsParam,
+  resolveActivityWindow,
 } from './activity-detail.ts'
 
 export {

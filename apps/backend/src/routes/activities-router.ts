@@ -7,6 +7,7 @@ import {
   type ActivitiesQuery,
   activitiesQuerySchema,
   type ActivitiesResponse,
+  type ActivityComputedMetrics,
   type ActivityDetailResponse,
   type ActivityFullDetailQuery,
   activityFullDetailQuerySchema,
@@ -62,14 +63,15 @@ import {
   updateActivity,
 } from '../services/mutations.ts'
 import {
-  type ActivityDetailMetrics,
   assembleScreentimeBuckets,
   computeActivityDetailMetrics,
   getActivityFullDetail,
+  parseActivityId,
   parseBucketSize,
   parseMetricsParam,
   queryActivities,
   queryProductivity,
+  resolveActivityWindow,
   type SyncProvider,
 } from '../services/queries/index.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -81,7 +83,7 @@ type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 const buildMergedResponse = async (
   user: string,
   activity: NonNullable<ActivityRow>,
-  activityMetrics: ActivityDetailMetrics,
+  activityMetrics: ActivityComputedMetrics,
 ) => {
   const overlapping = await getOverlappingActivities(user, activity)
   const hasMultipleSources = overlapping.length > 1
@@ -557,47 +559,22 @@ export const createActivitiesRouter = (
     authMiddleware,
     validateQuery(activityFullDetailQuerySchema),
     async (req, res) => {
-      const rawId = req.params.id
       const user = req.user!
-      const { metrics: metricsParam, include_gps } = req.query
+      const { id, isMerged } = parseActivityId(req.params.id)
+      const { metrics, include_gps } = req.query
 
-      const isMerged = rawId.startsWith('merged:')
-      const realId = isMerged ? rawId.slice('merged:'.length) : rawId
-
-      const activity = await getActivityById(user, realId, true)
+      const activity = await getActivityById(user, id, true)
       if (!activity) {
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
 
-      // For merged activities, expand the time window to cover all overlapping sources.
-      let detailRange = { end_time: activity.end_time, start_time: activity.start_time }
-      let mergedData: Record<string, unknown> = {}
-      if (isMerged && !activity.deleted_at) {
-        const overlapping = await getOverlappingActivities(user, activity)
-        if (overlapping.length > 1) {
-          detailRange = {
-            end_time: new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))),
-            start_time: new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))),
-          }
-        }
-        mergedData = overlapping
-          .toSorted((a, b) => a.start_time.getTime() - b.start_time.getTime())
-          .reduce<Record<string, unknown>>((acc, a) => (a.data ? { ...acc, ...a.data } : acc), {})
-      }
-
-      const effectiveData = Object.keys(mergedData).length > 0 ? mergedData : activity.data
-
-      // 'all' is shorthand for "every metric with data in the activity range".
-      // omitting metrics returns just summary + GPS (callers must opt-in).
-      const requestedMetrics = parseMetricsParam(metricsParam)
-
+      const window = await resolveActivityWindow(user, activity, isMerged)
       const [activityMetrics, fullDetail] = await Promise.all([
-        computeActivityDetailMetrics(user, { ...detailRange, data: effectiveData }),
-        getActivityFullDetail(
-          user,
-          { end_time: detailRange.end_time, start_time: detailRange.start_time },
-          { includeGps: include_gps !== false, metrics: requestedMetrics },
-        ),
+        computeActivityDetailMetrics(user, window),
+        getActivityFullDetail(user, window, {
+          includeGps: include_gps,
+          metrics: parseMetricsParam(metrics),
+        }),
       ])
 
       res.json({
@@ -605,7 +582,7 @@ export const createActivitiesRouter = (
           ...activityMetrics,
           ...fullDetail,
           activity_type: activity.activity_type,
-          data: effectiveData,
+          data: window.data,
           deleted_at: activity.deleted_at?.toISOString(),
           end_time: activity.end_time?.toISOString(),
           id: activity.id,

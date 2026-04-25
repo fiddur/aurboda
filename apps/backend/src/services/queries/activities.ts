@@ -169,11 +169,12 @@ export async function queryActivities(
 
   const activityIds = activities.map((a) => a.id).filter((id): id is string => id !== undefined)
 
-  const [hrZonesResult, summarySeriesByMetric, hrvSeries, commentsMap] = await Promise.all([
+  const emptySeries: SummaryMetricSeries = {}
+  const [hrZonesResult, summarySeries, hrvSeries, commentsMap] = await Promise.all([
     expandedTypes.includes('exercise') ? getEffectiveHrZones(user) : Promise.resolve(null),
     hasExerciseLike
       ? getTimeSeriesMultiMetric(user, [...SUMMARY_METRICS], span.from, span.to)
-      : Promise.resolve({} as Record<string, [Date, number][]>),
+      : Promise.resolve(emptySeries),
     needsHrv ? getTimeSeries(user, 'hrv_rmssd', span.from, span.to) : Promise.resolve([]),
     getCommentsMap(user, 'activity', activityIds),
   ])
@@ -182,7 +183,7 @@ export async function queryActivities(
     commentsMap,
     hrvSeries,
     hrZones: hrZonesResult?.zones ?? null,
-    summarySeries: summarySeriesByMetric as SummaryMetricSeries,
+    summarySeries,
   }
 
   return activities.map((a) => enrichActivity(a, ctx))

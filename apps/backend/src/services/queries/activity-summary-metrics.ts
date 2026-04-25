@@ -8,7 +8,7 @@
  * gain/loss are derived from per-second time-series.
  */
 
-import type { ActivitySummaryMetrics } from '@aurboda/api-spec'
+import type { ActivitySummaryMetrics, MetricType } from '@aurboda/api-spec'
 
 type TimeSeriesPoint = [Date, number]
 
@@ -22,11 +22,16 @@ export const SUMMARY_METRICS = [
   'ground_contact_time',
   'elevation',
   'body_battery',
-] as const
+] as const satisfies readonly MetricType[]
 
 export type SummaryMetric = (typeof SUMMARY_METRICS)[number]
 
-export type SummaryMetricSeries = Partial<Record<SummaryMetric, TimeSeriesPoint[]>>
+/**
+ * Per-metric time-series fetched in bulk for an activity time range. Matches
+ * the shape returned by `getTimeSeriesMultiMetric` — only metrics with data
+ * are present.
+ */
+export type SummaryMetricSeries = Partial<Record<MetricType, TimeSeriesPoint[]>>
 
 const round = (value: number, decimals: number): number => {
   const f = 10 ** decimals
