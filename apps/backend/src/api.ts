@@ -92,7 +92,6 @@ import { createOAuthRouter } from './routes/oauth-router.ts'
 import { createRawRecordsRouter } from './routes/raw-records-router.ts'
 import { createReportsRouter } from './routes/reports-router.ts'
 import { createScreentimeCategoriesRouter } from './routes/screentime-categories-router.ts'
-import { createScrobblesRouter } from './routes/scrobbles-router.ts'
 import { createSettingsRouter } from './routes/settings-router.ts'
 // tags-router removed: tags are now activities
 import { createTrainingLoadRouter } from './routes/training-load-router.ts'
@@ -889,7 +888,6 @@ const main = async () => {
   httpd.use('/trends', createTrendsRouter(authMiddleware))
   httpd.use('/chart-data', createChartDataRouter(authMiddleware))
   httpd.use('/screentime-categories', createScreentimeCategoriesRouter(authMiddleware))
-  httpd.use('/lastfm', createScrobblesRouter(authMiddleware))
   httpd.use(
     '/admin',
     createAdminRouter(

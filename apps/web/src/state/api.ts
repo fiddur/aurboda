@@ -20,7 +20,6 @@ import type {
   DetectedLocation as ApiDetectedLocation,
   PlaceVisit as ApiPlaceVisit,
   ProductivityRecord as ApiProductivityRecord,
-  Scrobble as ApiScrobble,
   BaselineData,
   BaselineResponse,
   ChartDataBucket,
@@ -77,7 +76,6 @@ import type {
   ScreentimeCategory,
   ScreentimeCategoryListResponse,
   ScreentimeCategoryResponse,
-  ScrobblesResponse,
   TrainingLoadResponse,
   TrainingLoadResult,
   TrendDisplayPeriod,
@@ -93,6 +91,7 @@ import type {
   UserSettingsResponse,
 } from '@aurboda/api-spec'
 
+import { isMusicScrobbleActivity } from '@aurboda/api-spec'
 import axios from 'axios'
 
 import { API_URL } from '../config'
@@ -193,7 +192,16 @@ export interface StoredDetectedLocation extends Omit<ApiDetectedLocation, 'first
   last_visit: Date
 }
 
-export interface Scrobble extends Omit<ApiScrobble, 'recorded_at'> {
+/**
+ * Scrobble shape used by the music staff renderer + Data/MusicPlaylist pages.
+ * `fetchScrobbles` derives these from `music_scrobble` activities — there is
+ * no longer a wire schema (the old `/lastfm/scrobbles` endpoint was a
+ * redundant wrapper over the activities table).
+ */
+export interface Scrobble {
+  artist: string
+  track: string
+  album: string
   recorded_at: Date
 }
 
@@ -498,22 +506,24 @@ export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
   }))
 }
 
-// Fetch Last.fm scrobbles for the specified date range
+/**
+ * Fetch Last.fm scrobbles for the specified date range. Reads from the
+ * activities table via `/activities?types=music_scrobble` — there is no
+ * longer a dedicated `/lastfm/scrobbles` endpoint.
+ */
 export const fetchScrobbles = async (start: Date, end: Date): Promise<Scrobble[]> => {
-  const { token } = auth.value
-  const params = {
-    end: end.toISOString(),
-    start: start.toISOString(),
-  }
-  const response = await axios.get<ScrobblesResponse>(`${API_URL}/lastfm/scrobbles`, {
-    headers: { Authorization: `Bearer ${token}` },
-    params,
+  const activities = await fetchActivities(start, end, ['music_scrobble'])
+  return activities.flatMap((a) => {
+    if (!isMusicScrobbleActivity(a)) return []
+    return [
+      {
+        album: a.data.album ?? '',
+        artist: a.data.artist,
+        recorded_at: a.start_time,
+        track: a.data.track,
+      },
+    ]
   })
-
-  return (response.data.data ?? []).map((scrobble) => ({
-    ...scrobble,
-    recorded_at: new Date(scrobble.recorded_at),
-  }))
 }
 
 // Fetch place visits for the specified date range
