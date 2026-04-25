@@ -90,11 +90,13 @@ const buildMergedResponse = async (
 
   const sourceRecords = hasMultipleSources
     ? overlapping.map((a) => {
-        const data = a.data as Record<string, unknown> | undefined
+        const data = a.data
+        const dataOrigin = data?.dataOrigin
+        const exerciseTypeName = data?.exerciseTypeName
         return {
-          data_origin: data?.dataOrigin as string | undefined,
+          data_origin: typeof dataOrigin === 'string' ? dataOrigin : undefined,
           end_time: a.end_time?.toISOString(),
-          exercise_type_name: data?.exerciseTypeName as string | undefined,
+          exercise_type_name: typeof exerciseTypeName === 'string' ? exerciseTypeName : undefined,
           id: a.id!,
           source: a.source,
           start_time: a.start_time.toISOString(),
@@ -522,7 +524,7 @@ export const createActivitiesRouter = (
 
     // Resolve referenced deduction rules from activity data
     const referencedRules: Record<string, string> = {}
-    const activityData = activity.data as Record<string, unknown> | undefined
+    const activityData = activity.data
     if (activityData) {
       const ruleIds = [
         typeof activityData._enriched_by === 'string' ? activityData._enriched_by : undefined,
@@ -727,8 +729,10 @@ export const createActivitiesRouter = (
       }
 
       // Look for garmin_activity_id in this activity and its overlapping (merged) sources
-      const getData = (a: { data?: unknown }) =>
-        (a.data as Record<string, unknown> | undefined)?.garmin_activity_id as number | undefined
+      const getData = (a: { data?: Record<string, unknown> }): number | undefined => {
+        const garminId = a.data?.garmin_activity_id
+        return typeof garminId === 'number' ? garminId : undefined
+      }
 
       let garminActivityId = getData(activity)
       let garminSourceId = activity.id!

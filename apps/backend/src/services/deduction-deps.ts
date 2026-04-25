@@ -309,7 +309,8 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
   insertActivity: async (user, activity) => {
     const id = await dbInsertActivity(user, activity)
     if (notifier) {
-      const ruleId = (activity.data as Record<string, unknown> | undefined)?.rule_id as string | undefined
+      const ruleIdValue = activity.data?.rule_id
+      const ruleId = typeof ruleIdValue === 'string' ? ruleIdValue : undefined
       notifier(
         user,
         activity.activity_type,
