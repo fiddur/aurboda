@@ -24,6 +24,7 @@ import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
+import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
 import { registerFoodItemTools } from './mcp/food-item-tools.ts'
 import { registerLocationTools } from './mcp/location-tools.ts'
@@ -79,6 +80,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerFoodItemTools(server, user)
   registerReportTools(server, user)
   registerScreentimeCategoryTools(server, user)
+  registerDebugTools(server, user)
 
   return server
 }

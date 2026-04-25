@@ -11,14 +11,16 @@ vi.mock('./services/audit-log.ts', () => ({
 
 import { auditWarn } from './services/audit-log.ts'
 
-const createMockReq = (overrides: Partial<Request> = {}) =>
+// oxlint-disable-next-line typescript/no-explicit-any -- mock used across schemas
+const createMockReq = (overrides: Partial<Request> = {}): Request<any, any, any, any> =>
   ({
     body: {},
     method: 'POST',
     path: '/test',
     query: {},
     ...overrides,
-  }) as unknown as Request
+    // oxlint-disable-next-line typescript/no-explicit-any -- mock used across schemas
+  }) as unknown as Request<any, any, any, any>
 
 const createMockRes = () => {
   const res = {

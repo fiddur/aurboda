@@ -17,6 +17,7 @@ import express, { json, type NextFunction, type Request, type RequestHandler, ty
 import { Client } from 'pg'
 
 import type { OuraDataType } from './integrations/oura/sync.ts'
+import type { AnyMiddleware } from './typed-router.ts'
 
 import { createAuth } from './auth.ts'
 import {
@@ -86,6 +87,7 @@ import { createMealsRouter } from './routes/meals-router.ts'
 import { createMetricsRouter } from './routes/metrics-router.ts'
 import { createNotesRouter } from './routes/notes-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
+import { createRawRecordsRouter } from './routes/raw-records-router.ts'
 import { createReportsRouter } from './routes/reports-router.ts'
 import { createScreentimeCategoriesRouter } from './routes/screentime-categories-router.ts'
 import { createScrobblesRouter } from './routes/scrobbles-router.ts'
@@ -355,7 +357,7 @@ const main = async () => {
   // Track which users have been migrated this server lifetime
   const migratedUsers = new Map<string, Promise<void>>()
 
-  const authMiddleware: RequestHandler = async (req, res, next) => {
+  const authMiddleware: AnyMiddleware = async (req, res, next) => {
     try {
       if (typeof req.headers.authorization === 'string') {
         const token = req.headers.authorization.slice('bearer '.length)
@@ -872,6 +874,7 @@ const main = async () => {
   httpd.use('/locations', createLocationsRouter(authMiddleware))
   httpd.use(createSettingsRouter(authMiddleware))
   httpd.use(createAuditLogRouter(authMiddleware))
+  httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))

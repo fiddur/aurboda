@@ -66,6 +66,81 @@ export const getAllScrobbles = async (user: string): Promise<ScrobbleRecord[]> =
   }))
 }
 
+export interface RawRecordRow {
+  id: string
+  source: string
+  record_type: string
+  external_id: string | null
+  recorded_at: Date
+  received_at: Date
+  data: Record<string, unknown>
+}
+
+export interface QueryRawRecordsParams {
+  source?: string
+  record_type?: string
+  external_id?: string
+  start?: Date
+  end?: Date
+  limit?: number
+  offset?: number
+}
+
+/**
+ * Query raw records with optional filters. Ordered by recorded_at DESC.
+ */
+export const queryRawRecords = async (
+  user: string,
+  params: QueryRawRecordsParams = {},
+): Promise<{ rows: RawRecordRow[]; total: number }> => {
+  const conditions: string[] = []
+  const values: unknown[] = []
+  let paramIndex = 1
+
+  if (params.source) {
+    conditions.push(`source = $${paramIndex++}`)
+    values.push(params.source)
+  }
+  if (params.record_type) {
+    conditions.push(`record_type = $${paramIndex++}`)
+    values.push(params.record_type)
+  }
+  if (params.external_id) {
+    conditions.push(`external_id = $${paramIndex++}`)
+    values.push(params.external_id)
+  }
+  if (params.start) {
+    conditions.push(`recorded_at >= $${paramIndex++}`)
+    values.push(params.start)
+  }
+  if (params.end) {
+    conditions.push(`recorded_at < $${paramIndex++}`)
+    values.push(params.end)
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  const limit = params.limit ?? 50
+  const offset = params.offset ?? 0
+
+  const countResult = await query<{ total: number }>(
+    user,
+    `SELECT COUNT(*)::int AS total FROM raw_records ${where}`,
+    values,
+  )
+  const total = countResult.rows[0]?.total ?? 0
+
+  const dataResult = await query<RawRecordRow>(
+    user,
+    `SELECT id, source, record_type, external_id, recorded_at, received_at, data
+       FROM raw_records ${where}
+       ORDER BY recorded_at DESC
+       LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
+    [...values, limit, offset],
+  )
+
+  return { rows: dataResult.rows, total }
+}
+
 /**
  * Query Last.fm scrobbles from raw_records within a time range.
  */
