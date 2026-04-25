@@ -51,7 +51,12 @@ export const auditLogQuerySchema = z
   .object({
     level: auditLogLevelSchema.optional().meta({ description: 'Filter by log level' }),
     category: auditLogCategorySchema.optional().meta({ description: 'Filter by category' }),
-    since: iso8601DateTimeSchema.optional().meta({ description: 'Only entries after this time' }),
+    since: iso8601DateTimeSchema.optional().meta({ description: 'Only entries at or after this time' }),
+    until: iso8601DateTimeSchema.optional().meta({ description: 'Only entries before this time' }),
+    message_pattern: z
+      .string()
+      .optional()
+      .meta({ description: 'Case-insensitive substring match against the message field' }),
     limit: z.coerce
       .number()
       .int()

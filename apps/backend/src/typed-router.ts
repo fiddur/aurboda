@@ -17,6 +17,20 @@ import type { ParamsDictionary, Query, RequestHandler, RequestHandlerParams } fr
 import { Router } from 'express'
 
 /**
+ * Middleware that doesn't constrain the route's query/body/param types.
+ *
+ * Use for cross-cutting middleware (auth, logging) that doesn't need typed
+ * access to req.query/body/params. Lets a single middleware value compose with
+ * routes that specify coerced (non-string) query types via the 4th generic.
+ */
+export type AnyMiddleware = RequestHandler<
+  ParamsDictionary,
+  any, // oxlint-disable-line typescript/no-explicit-any -- intentional any for query/body compat
+  any, // oxlint-disable-line typescript/no-explicit-any -- intentional any for query/body compat
+  any // oxlint-disable-line typescript/no-explicit-any -- intentional any for query/body compat
+>
+
+/**
  * Router method with ResBody defaulting to `never` instead of `any`.
  * Keeps the same overload structure as Express's IRouterMatcher but with stricter defaults.
  */
@@ -25,7 +39,7 @@ interface StrictRouterMatcher<T> {
     P extends ParamsDictionary = ParamsDictionary,
     ResBody = never,
     ReqBody = any, // oxlint-disable-line typescript/no-explicit-any -- ReqBody stays `any` for Express compat
-    ReqQuery extends Query = Query,
+    ReqQuery = Query,
   >(
     path: string,
     ...handlers: Array<RequestHandler<P, ResBody, ReqBody, ReqQuery>>
@@ -34,7 +48,7 @@ interface StrictRouterMatcher<T> {
     P extends ParamsDictionary = ParamsDictionary,
     ResBody = never,
     ReqBody = any, // oxlint-disable-line typescript/no-explicit-any -- ReqBody stays `any` for Express compat
-    ReqQuery extends Query = Query,
+    ReqQuery = Query,
   >(
     path: string,
     ...handlers: Array<RequestHandlerParams<P, ResBody, ReqBody, ReqQuery>>

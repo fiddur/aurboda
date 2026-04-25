@@ -5,7 +5,7 @@
  * with automatic cleanup based on configurable retention period.
  */
 
-import type { AuditLogCategory, AuditLogLevel } from '@aurboda/api-spec'
+import type { AuditLogCategory, AuditLogLevel, AuditLogQuery } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
 
@@ -18,12 +18,13 @@ export interface AuditLogRow {
   details: Record<string, unknown> | null
 }
 
-export interface AuditLogQueryParams {
-  level?: AuditLogLevel
-  category?: AuditLogCategory
+/**
+ * DB-layer audit log query params. Mirrors the api-spec AuditLogQuery with
+ * `since`/`until` parsed into `Date` at the route/MCP boundary.
+ */
+export type AuditLogQueryParams = Omit<AuditLogQuery, 'since' | 'until'> & {
   since?: Date
-  limit?: number
-  offset?: number
+  until?: Date
 }
 
 /**
@@ -66,6 +67,14 @@ export const queryAuditLog = async (
   if (params.since) {
     conditions.push(`timestamp >= $${paramIndex++}`)
     values.push(params.since)
+  }
+  if (params.until) {
+    conditions.push(`timestamp < $${paramIndex++}`)
+    values.push(params.until)
+  }
+  if (params.message_pattern) {
+    conditions.push(`message ILIKE $${paramIndex++}`)
+    values.push(`%${params.message_pattern}%`)
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
