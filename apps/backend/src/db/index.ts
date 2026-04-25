@@ -131,6 +131,7 @@ export {
   getActivitiesExcludingCategories,
   getActivitiesNeedingDetail,
   getAllActivitiesInRange,
+  getScreentimeActivities,
   migrateExerciseTypes,
   getNonSleepActivitiesMerged,
   getAllActivityTypeNames,

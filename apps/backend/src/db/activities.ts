@@ -1058,6 +1058,21 @@ export const getNonSleepActivitiesMerged = async (
   return mergeOverlappingActivities(activities, categoryMap)
 }
 
+/** Get screentime activities for a date range, unmerged (each span is a separate record). */
+export const getScreentimeActivities = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
+  const result = await query(
+    user,
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+     FROM activities
+     WHERE activity_type = 'screentime'
+       AND deleted_at IS NULL
+       AND start_time >= $1 AND start_time <= $2
+     ORDER BY start_time`,
+    [start, end],
+  )
+  return result.rows.map(mapActivityRow)
+}
+
 /** Get all activities in a date range (all types, unmerged individual records). */
 export const getAllActivitiesInRange = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
   const result = await query(
