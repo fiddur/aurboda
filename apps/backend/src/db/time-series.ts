@@ -147,8 +147,8 @@ export const getTimeSeriesMultiMetric = async (
   metrics: MetricType[],
   start: Date,
   end: Date,
-): Promise<Record<MetricType, [Date, number][]>> => {
-  if (metrics.length === 0) return {} as Record<MetricType, [Date, number][]>
+): Promise<Partial<Record<MetricType, [Date, number][]>>> => {
+  if (metrics.length === 0) return {}
 
   const rows = await querySplitByCumulative<{ metric: string; time: Date; value: number }>({
     cumulativeExtraParams: [cumulativeSources],
@@ -165,13 +165,14 @@ export const getTimeSeriesMultiMetric = async (
        ORDER BY metric, time`,
   })
 
-  const data: Record<string, [Date, number][]> = {}
+  const data: Partial<Record<MetricType, [Date, number][]>> = {}
   for (const row of rows) {
-    if (!data[row.metric]) data[row.metric] = []
-    data[row.metric].push([row.time, row.value])
+    const metric = row.metric as MetricType
+    const list = data[metric] ?? []
+    list.push([row.time, row.value])
+    data[metric] = list
   }
-
-  return data as Record<MetricType, [Date, number][]>
+  return data
 }
 
 // ============================================================================

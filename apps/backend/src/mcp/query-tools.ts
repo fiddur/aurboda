@@ -12,17 +12,22 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { getAllActivityTypeNames } from '../db/index.ts'
+import { getActivityById, getAllActivityTypeNames } from '../db/index.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
+  computeActivityDetailMetrics,
+  getActivityFullDetail,
   getDailySummary,
   getPeriodSummary,
+  parseActivityId,
+  parseMetricsParam,
   queryActivities,
   queryLocations,
   queryMetrics,
   queryMetricsBucketed,
   queryProductivity,
   queryTags,
+  resolveActivityWindow,
 } from '../services/queries/index.ts'
 import {
   errorResponse,
@@ -187,6 +192,69 @@ Use cases:
         dataFilters,
       )
       return tzJsonResponse({ data: activities, success: true }, tz)
+    },
+  )
+
+  // Tool: get_activity_detail
+  server.tool(
+    'get_activity_detail',
+    `Deep-dive detail for a single activity: summary metrics (distance, avg pace, avg cadence, avg power, avg ground contact time, body battery before/after, elevation gain/loss, HR zones), GPS trace, and per-metric time-series.
+
+Pass id with the "merged:" prefix to include all overlapping cross-source data in the time window.
+
+The 'metrics' parameter controls time-series payload size:
+- omit it for summary + GPS only (compact)
+- pass 'all' for every metric with data in the activity range
+- pass a comma-separated list (e.g. 'heart_rate,speed,elevation') for specific metrics
+
+Source-agnostic: works for any activity that has time-series and/or GPS populated within its time range.`,
+    {
+      id: z.string().describe('Activity ID. Prefix with "merged:" to get the merged cross-source view.'),
+      include_gps: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe('Include GPS trace if locations exist for the activity time range.'),
+      metrics: z
+        .string()
+        .optional()
+        .describe(
+          `Comma-separated metric names, or 'all' for every available metric. Omit for summary + GPS only.`,
+        ),
+      tz: tzSchema,
+    },
+    async ({ id: rawId, include_gps, metrics, tz }) => {
+      const { id, isMerged } = parseActivityId(rawId)
+      const activity = await getActivityById(user, id, true)
+      if (!activity) return errorResponse('Activity not found')
+
+      const window = await resolveActivityWindow(user, activity, isMerged)
+      const [summary, fullDetail] = await Promise.all([
+        computeActivityDetailMetrics(user, window),
+        getActivityFullDetail(user, window, {
+          includeGps: include_gps,
+          metrics: parseMetricsParam(metrics),
+        }),
+      ])
+
+      return tzJsonResponse(
+        {
+          data: {
+            ...summary,
+            ...fullDetail,
+            activity_type: activity.activity_type,
+            data: window.data,
+            end_time: activity.end_time?.toISOString(),
+            id: activity.id,
+            notes: activity.notes,
+            source: activity.source,
+            start_time: activity.start_time.toISOString(),
+            title: activity.title,
+          },
+          success: true,
+        },
+        tz,
+      )
     },
   )
 

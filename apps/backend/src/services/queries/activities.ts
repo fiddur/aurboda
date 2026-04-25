@@ -5,9 +5,19 @@
 import type { ActivityType } from '../../schema.ts'
 import type { ActivityResult, CommentSummary, SyncProvider } from './types.ts'
 
-import { expandActivityTypes, getActivities, getTimeSeries } from '../../db/index.ts'
+import {
+  expandActivityTypes,
+  getActivities,
+  getTimeSeries,
+  getTimeSeriesMultiMetric,
+} from '../../db/index.ts'
 import { computeHrZoneSecs, getEffectiveHrZones, type HrZoneThresholds } from '../settings.ts'
 import { computeSleepMinutes } from '../sleep-duration.ts'
+import {
+  computeActivitySummaryMetrics,
+  SUMMARY_METRICS,
+  type SummaryMetricSeries,
+} from './activity-summary-metrics.ts'
 import { buildCategoryMap, getCommentsMap } from './types.ts'
 
 type TimeSeriesPoint = [Date, number]
@@ -50,9 +60,20 @@ export function enrichSleepFields(result: ActivityResult, data: Record<string, u
 
 interface EnrichmentContext {
   hrZones: HrZoneThresholds | null
-  hrSeries: TimeSeriesPoint[]
   hrvSeries: TimeSeriesPoint[]
+  summarySeries: SummaryMetricSeries
   commentsMap: Map<string, CommentSummary[]>
+}
+
+/** Compute HR zone seconds from the HR samples within an activity window. */
+function hrZonesForActivity(
+  a: Awaited<ReturnType<typeof getActivities>>[number],
+  ctx: EnrichmentContext,
+): ActivityResult['hr_zone_secs'] {
+  if (!ctx.hrZones || a.activity_type !== 'exercise' || !a.end_time) return undefined
+  const hrSeries = ctx.summarySeries.heart_rate ?? []
+  const hrWindow = pointsInRange(hrSeries, a.start_time, a.end_time)
+  return hrWindow.length > 0 ? computeHrZoneSecs(hrWindow, ctx.hrZones) : undefined
 }
 
 /** Enrich a raw activity record into an ActivityResult with computed fields. */
@@ -60,6 +81,7 @@ function enrichActivity(
   a: Awaited<ReturnType<typeof getActivities>>[number],
   ctx: EnrichmentContext,
 ): ActivityResult {
+  const isMerged = 'source_ids' in a && Boolean(a.source_ids)
   const result: ActivityResult = {
     activity_type: a.activity_type,
     comments: a.id ? (ctx.commentsMap.get(a.id) ?? []) : [],
@@ -68,23 +90,17 @@ function enrichActivity(
       ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60)
       : undefined,
     end_time: a.end_time?.toISOString(),
-    id: 'source_ids' in a && a.source_ids ? `merged:${a.id}` : a.id,
+    hr_zone_secs: hrZonesForActivity(a, ctx),
+    id: isMerged ? `merged:${a.id}` : a.id,
     notes: a.notes,
     source: a.source,
     start_time: a.start_time.toISOString(),
     title: a.title,
+    ...computeActivitySummaryMetrics(a, ctx.summarySeries),
   }
 
   if (a.activity_type === 'sleep') {
     enrichSleepFields(result, a.data)
-  }
-
-  // Compute HR zones for exercise activities with end time
-  if (ctx.hrZones && a.activity_type === 'exercise' && a.end_time) {
-    const hrWindow = pointsInRange(ctx.hrSeries, a.start_time, a.end_time)
-    if (hrWindow.length > 0) {
-      result.hr_zone_secs = computeHrZoneSecs(hrWindow, ctx.hrZones)
-    }
   }
 
   // Compute average HRV for sleep and meditation
@@ -130,9 +146,9 @@ export async function queryActivities(
   )
 
   // Determine which time-series we'll need based on the activity types present.
-  // Batching the heart_rate / hrv_rmssd fetches across the full activity span
-  // avoids one DB round-trip per activity (was N+1 before).
-  const needsHr = activities.some((a) => a.activity_type === 'exercise' && a.end_time)
+  // Batching fetches across the full activity span avoids one DB round-trip per
+  // activity (was N+1 before).
+  const hasExerciseLike = activities.some((a) => a.activity_type === 'exercise' && a.end_time)
   const needsHrv = activities.some(
     (a) => (a.activity_type === 'sleep' || a.activity_type === 'meditation') && a.end_time,
   )
@@ -149,22 +165,25 @@ export async function queryActivities(
     }
     return { from: new Date(minStart), to: new Date(maxEnd) }
   }
-  const span = needsHr || needsHrv ? activitySpan() : { from: start, to: end }
+  const span = hasExerciseLike || needsHrv ? activitySpan() : { from: start, to: end }
 
   const activityIds = activities.map((a) => a.id).filter((id): id is string => id !== undefined)
 
-  const [hrZonesResult, hrSeries, hrvSeries, commentsMap] = await Promise.all([
+  const emptySeries: SummaryMetricSeries = {}
+  const [hrZonesResult, summarySeries, hrvSeries, commentsMap] = await Promise.all([
     expandedTypes.includes('exercise') ? getEffectiveHrZones(user) : Promise.resolve(null),
-    needsHr ? getTimeSeries(user, 'heart_rate', span.from, span.to) : Promise.resolve([]),
+    hasExerciseLike
+      ? getTimeSeriesMultiMetric(user, [...SUMMARY_METRICS], span.from, span.to)
+      : Promise.resolve(emptySeries),
     needsHrv ? getTimeSeries(user, 'hrv_rmssd', span.from, span.to) : Promise.resolve([]),
     getCommentsMap(user, 'activity', activityIds),
   ])
 
   const ctx: EnrichmentContext = {
     commentsMap,
-    hrSeries,
     hrvSeries,
     hrZones: hrZonesResult?.zones ?? null,
+    summarySeries,
   }
 
   return activities.map((a) => enrichActivity(a, ctx))

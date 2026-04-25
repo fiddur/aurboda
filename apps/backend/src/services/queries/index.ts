@@ -51,6 +51,15 @@ export { queryTags } from './tags.ts'
 export { queryActivities } from './activities.ts'
 
 export {
+  type ActivityFullDetailOptions,
+  computeActivityDetailMetrics,
+  getActivityFullDetail,
+  parseActivityId,
+  parseMetricsParam,
+  resolveActivityWindow,
+} from './activity-detail.ts'
+
+export {
   assembleScreentimeBuckets,
   mergeByCategorySpans,
   mergeProductivitySpans,
