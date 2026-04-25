@@ -30,6 +30,11 @@ import {
 } from '../../db/index.ts'
 import { getScreentimeCategories } from '../../db/screentime-categories.ts'
 import { getPlaceVisits, type PlaceVisit } from '../locations.ts'
+import {
+  categoryPathToString,
+  getScreentimeCategoryPath,
+  isCategoryExcluded,
+} from '../screentime-activities.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
 import { computeSleepMinutes } from '../sleep-duration.ts'
 import { buildCategoryMap, getCommentsMap } from './types.ts'
@@ -321,11 +326,7 @@ export async function getDailySummary(
               if (score <= -1) totals.distracting_sec += record.duration_sec
             }
             const cat = record.resolved_category
-            const isExcl =
-              cat !== undefined &&
-              excludedCategoryPaths.some(
-                (excluded) => cat.length >= excluded.length && excluded.every((seg, i) => seg === cat[i]),
-              )
+            const isExcl = cat !== undefined && isCategoryExcluded(cat, excludedCategoryPaths)
             if (!isExcl) {
               const key = JSON.stringify(cat ?? [])
               productivityCategoryMap.set(key, (productivityCategoryMap.get(key) ?? 0) + record.duration_sec)
@@ -410,24 +411,16 @@ export async function getDailySummary(
 
   // Add screentime activities from the activities table, filtering excluded categories
   for (const s of screentimeActivities) {
-    const categoryPathStr = (s.data as Record<string, unknown> | undefined)?.category_path as
-      | string
-      | undefined
-    if (!categoryPathStr) continue
-
-    const categoryPath = categoryPathStr.split(' > ')
-    const isExcluded = excludedCategoryPaths.some(
-      (excluded) =>
-        categoryPath.length >= excluded.length && excluded.every((seg, i) => seg === categoryPath[i]),
-    )
-    if (isExcluded) continue
+    const categoryPath = getScreentimeCategoryPath(s)
+    if (!categoryPath) continue
+    if (isCategoryExcluded(categoryPath, excludedCategoryPaths)) continue
 
     const activity: ActivitySummary = {
       activity_type: 'screentime',
       category_path: categoryPath,
       end_time: s.end_time?.toISOString(),
       start_time: s.start_time.toISOString(),
-      title: categoryPathStr,
+      title: categoryPathToString(categoryPath),
     }
 
     // Stress zones for screentime spans

@@ -21,7 +21,16 @@ const MIN_SPAN_MS = 60_000 // Skip spans shorter than 1 minute
 
 export const categoryPathToString = (path: string[]): string => path.join(' > ')
 
-const isExcluded = (categoryPath: string[], excludedPaths: string[][]): boolean =>
+export const categoryPathFromString = (s: string): string[] => s.split(' > ')
+
+/** Extract the parsed category_path from a screentime activity, if present. */
+export const getScreentimeCategoryPath = (activity: Activity): string[] | undefined => {
+  const path = activity.data?.category_path
+  return typeof path === 'string' ? categoryPathFromString(path) : undefined
+}
+
+/** True if `categoryPath` is at or under one of the excluded paths (prefix match). */
+export const isCategoryExcluded = (categoryPath: string[], excludedPaths: string[][]): boolean =>
   excludedPaths.some(
     (excluded) =>
       categoryPath.length >= excluded.length && excluded.every((seg, idx) => seg === categoryPath[idx]),
@@ -52,7 +61,7 @@ export const buildScreentimeActivitySpans = (
     const cat = record.resolved_category
     if (!cat || cat.length === 0) continue
     if (!record.source) continue
-    if (isExcluded(cat, excludedPaths)) continue
+    if (isCategoryExcluded(cat, excludedPaths)) continue
     const key = `${record.source}:${categoryPathToString(cat)}`
     const bucket = groups.get(key) ?? []
     bucket.push(record)
