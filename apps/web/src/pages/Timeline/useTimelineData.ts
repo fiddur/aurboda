@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { addDays, format, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
-import type { Activity } from '../../state/api'
+import type { Activity, Scrobble } from '../../state/api'
 import type { ChartItem, Column } from './types'
 
 import {
@@ -16,7 +16,6 @@ import {
   fetchProductivity,
   fetchScreentimeCategories,
   fetchScreentimeBucketed,
-  fetchScrobbles,
   fetchItemIcons,
   fetchTrainingLoad,
   fetchUserSettings,
@@ -48,10 +47,19 @@ const TIMELINE_EXCLUDED_METRICS = ['training_impulse', 'activity_impulse']
 
 const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
 
+/**
+ * Activity types fetched via dedicated endpoints (productivity, locations) and
+ * therefore excluded from the unified `/activities` payload to avoid sending
+ * the same rows twice. `music_scrobble` is intentionally NOT excluded — the
+ * timeline derives its scrobble list directly from this fetch (one round-trip
+ * instead of two).
+ */
+const TIMELINE_EXCLUDED_ACTIVITY_TYPES = ['screentime', 'location_visit']
+
 export interface TimelineData {
   // Raw query results needed by rendering
   activities: Activity[]
-  scrobbles: ReturnType<typeof fetchScrobbles> extends Promise<infer T> ? T : never
+  scrobbles: Scrobble[]
   // Derived chart data
   chartItems: ChartItem[]
   activityItems: ChartItem[]
@@ -104,7 +112,13 @@ export const useTimelineData = ({
   const activitiesQuery = useQuery({
     enabled: !hiddenCategories.has('activity'),
     placeholderData: keepPreviousData,
-    queryFn: () => fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryFn: () =>
+      fetchActivities(
+        subDays(fetchStart, 0.5),
+        addDays(fetchEnd, 0.5),
+        undefined,
+        TIMELINE_EXCLUDED_ACTIVITY_TYPES,
+      ),
     queryKey: ['timeline-activities', fromDateKey, toDateKey],
     staleTime: 5 * 60 * 1000,
   })
@@ -147,14 +161,6 @@ export const useTimelineData = ({
   })
 
   const hasLastFm = Boolean(settingsQuery.data?.lastfm_username)
-
-  const scrobblesQuery = useQuery({
-    enabled: hasLastFm && !hiddenCategories.has('music'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchScrobbles(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-scrobbles', fromDateKey, toDateKey],
-    staleTime: 5 * 60 * 1000,
-  })
 
   const bucketedMetricsQuery = useQuery({
     enabled: !hiddenCategories.has('metrics'),
@@ -244,7 +250,23 @@ export const useTimelineData = ({
   )
   const places = placesQuery.data ?? []
   const productivity = productivityQuery.data?.records ?? []
-  const scrobbles = scrobblesQuery.data ?? []
+  // Music scrobbles are derived from `music_scrobble` activities — they live
+  // in the activities table and are already returned by the activities fetch,
+  // so no separate /lastfm/scrobbles network call is needed.
+  const scrobbles = useMemo<Scrobble[]>(() => {
+    if (!hasLastFm) return []
+    return (activitiesQuery.data ?? [])
+      .filter((a) => a.activity_type === 'music_scrobble')
+      .map((a) => {
+        const data = a.data
+        return {
+          album: typeof data?.album === 'string' ? data.album : '',
+          artist: typeof data?.artist === 'string' ? data.artist : '',
+          recorded_at: a.start_time,
+          track: typeof data?.track === 'string' ? data.track : '',
+        }
+      })
+  }, [hasLastFm, activitiesQuery.data])
 
   const sleepMetricsByDate = useMemo<SleepMetricsByDate>(() => {
     const map: SleepMetricsByDate = new Map()
@@ -398,7 +420,6 @@ export const useTimelineData = ({
     placesQuery.isFetching ||
     mealsQuery.isFetching ||
     productivityQuery.isFetching ||
-    scrobblesQuery.isFetching ||
     bucketedMetricsQuery.isFetching
 
   const isInitialLoad = activitiesQuery.isLoading && placesQuery.isLoading && productivityQuery.isLoading
