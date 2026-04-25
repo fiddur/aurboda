@@ -372,8 +372,7 @@ export async function getDailySummary(
   const activities: ActivitySummary[] = allActivities
     .filter((s) => s.activity_type !== 'screentime')
     .map((s) => {
-      const dataObj = s.data as Record<string, unknown> | undefined
-      const exerciseTypeCode = dataObj?.exerciseType
+      const exerciseTypeCode = s.data?.exerciseType
       const exerciseType =
         typeof exerciseTypeCode === 'number' ? getExerciseTypeName(exerciseTypeCode) : undefined
 
@@ -443,7 +442,7 @@ export async function getDailySummary(
     const timeInBed = s.end_time
       ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)
       : undefined
-    const totalSleep = computeSleepMinutes(s.data as Record<string, unknown> | undefined)
+    const totalSleep = computeSleepMinutes(s.data)
 
     const sleepDate = s.end_time
       ? s.end_time.toISOString().split('T')[0]
@@ -456,7 +455,7 @@ export async function getDailySummary(
       end_time: s.end_time?.toISOString(),
       sleep_date: sleepDate,
       sleep_location: sleepLocation,
-      sleep_stages: computeSleepStageSummary(s.data as Record<string, unknown> | undefined),
+      sleep_stages: computeSleepStageSummary(s.data),
       start_time: s.start_time.toISOString(),
       time_in_bed: timeInBed,
       total_sleep: totalSleep,
