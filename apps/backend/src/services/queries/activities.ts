@@ -64,7 +64,7 @@ async function enrichActivity(
   }
 
   if (a.activity_type === 'sleep') {
-    enrichSleepFields(result, a.data as Record<string, unknown> | undefined)
+    enrichSleepFields(result, a.data)
   }
 
   // Compute HR zones for exercise activities with end time

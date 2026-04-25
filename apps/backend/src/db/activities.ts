@@ -54,7 +54,7 @@ const SOURCE_PRIORITY: Record<string, number> = {
 
 const getEffectivePriority = (a: Activity): number => {
   const base = SOURCE_PRIORITY[a.source] ?? 0
-  const edited = (a.data as Record<string, unknown> | undefined)?._user_edited
+  const edited = a.data?._user_edited
   return edited ? base + 100 : base
 }
 
@@ -290,8 +290,8 @@ const GENERIC_EXERCISE_CODES = new Set([0, 2]) // UNKNOWN=0, OTHER_WORKOUT=2
 
 const isGenericExercise = (a: MergedActivity): boolean => {
   if (a.activity_type !== 'exercise') return false
-  const code = (a.data as Record<string, unknown> | undefined)?.exerciseType
-  return !code || GENERIC_EXERCISE_CODES.has(code as number)
+  const code = a.data?.exerciseType
+  return typeof code !== 'number' || GENERIC_EXERCISE_CODES.has(code)
 }
 
 /** Check if generic's duration overlaps >50% with another activity. */

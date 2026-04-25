@@ -29,7 +29,7 @@ export const createScrobblesRouter = (authMiddleware: RequestHandler): Router =>
       try {
         const activities = await getActivities(user, ['music_scrobble'], new Date(start), new Date(end))
         const serialized = activities.map((a) => {
-          const data = a.data as Record<string, unknown> | undefined
+          const data = a.data
           return {
             album: typeof data?.album === 'string' ? data.album : '',
             artist: typeof data?.artist === 'string' ? data.artist : '',
