@@ -1,5 +1,3 @@
-import type { RequestHandler } from 'express'
-
 /**
  * Audit log route group.
  *
@@ -8,21 +6,18 @@ import type { RequestHandler } from 'express'
 import { type AuditLogQuery, auditLogQuerySchema, type AuditLogResponse } from '@aurboda/api-spec'
 
 import { getAuditLog } from '../services/audit-log.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
-export const createAuditLogRouter = (authMiddleware: RequestHandler): TypedRouter => {
+export const createAuditLogRouter = (authMiddleware: AnyMiddleware): TypedRouter => {
   const router = typedRouter()
 
-  router.get<Record<string, never>, AuditLogResponse>(
+  router.get<Record<string, never>, AuditLogResponse, unknown, AuditLogQuery>(
     '/user/audit-log',
     authMiddleware,
     validateQuery(auditLogQuerySchema),
     async (req, res) => {
-      // validateQuery middleware has replaced req.query with the parsed output
-      // (numbers). The 4th ReqQuery generic can't express non-string values,
-      // so we narrow here.
-      const { since, until, ...rest } = req.query as unknown as AuditLogQuery
+      const { since, until, ...rest } = req.query
       const result = await getAuditLog(req.user!, {
         ...rest,
         since: since ? new Date(since) : undefined,

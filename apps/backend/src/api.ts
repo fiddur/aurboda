@@ -17,6 +17,7 @@ import express, { json, type NextFunction, type Request, type RequestHandler, ty
 import { Client } from 'pg'
 
 import type { OuraDataType } from './integrations/oura/sync.ts'
+import type { AnyMiddleware } from './typed-router.ts'
 
 import { createAuth } from './auth.ts'
 import {
@@ -356,7 +357,7 @@ const main = async () => {
   // Track which users have been migrated this server lifetime
   const migratedUsers = new Map<string, Promise<void>>()
 
-  const authMiddleware: RequestHandler = async (req, res, next) => {
+  const authMiddleware: AnyMiddleware = async (req, res, next) => {
     try {
       if (typeof req.headers.authorization === 'string') {
         const token = req.headers.authorization.slice('bearer '.length)

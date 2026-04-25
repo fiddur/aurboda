@@ -3,8 +3,6 @@
  *
  * Handles: /raw-records
  */
-import type { RequestHandler } from 'express'
-
 import {
   type QueryRawRecordsQuery,
   queryRawRecordsQuerySchema,
@@ -12,22 +10,18 @@ import {
 } from '@aurboda/api-spec'
 
 import { queryRawRecords } from '../db/index.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
-export const createRawRecordsRouter = (authMiddleware: RequestHandler): TypedRouter => {
+export const createRawRecordsRouter = (authMiddleware: AnyMiddleware): TypedRouter => {
   const router = typedRouter()
 
-  router.get<Record<string, never>, QueryRawRecordsResponse>(
+  router.get<Record<string, never>, QueryRawRecordsResponse, unknown, QueryRawRecordsQuery>(
     '/raw-records',
     authMiddleware,
     validateQuery(queryRawRecordsQuerySchema),
     async (req, res) => {
-      // validateQuery middleware has replaced req.query with the parsed output
-      // (numbers, booleans). The 4th ReqQuery generic can't express non-string
-      // values when authMiddleware (typed as ParsedQs) is in the chain.
-      const { end, external_id, include_data, limit, offset, record_type, source, start } =
-        req.query as unknown as QueryRawRecordsQuery
+      const { end, external_id, include_data, limit, offset, record_type, source, start } = req.query
 
       const result = await queryRawRecords(req.user!, {
         end: end ? new Date(end) : undefined,
