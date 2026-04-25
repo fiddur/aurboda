@@ -7,7 +7,13 @@ import type { ChartItem, Column } from './types'
 
 import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
-import { getActivityColor, getPlaceColor, getResolvedColor, resolveCategoryIcon } from './colors'
+import {
+  getActivityColor,
+  getPlaceColor,
+  getProductivityColor,
+  getResolvedColor,
+  resolveCategoryIcon,
+} from './colors'
 import { formatDuration, formatTime } from './formatting'
 
 export const categorizeLocations = (places: Place[], uniquePlaceNames: string[]): ChartItem[] =>
@@ -148,3 +154,66 @@ export const categorizeProductivity = (
       },
     }
   })
+
+/**
+ * Match a category-path array against the user's screentime categories,
+ * walking from deepest match upward. Returns the most specific match (or
+ * undefined if nothing in the path matches a defined category).
+ */
+const matchCategoryByPath = (
+  path: string[],
+  categories: ScreentimeCategory[],
+): ScreentimeCategory | undefined => {
+  for (let depth = path.length; depth > 0; depth--) {
+    const sub = path.slice(0, depth)
+    const match = categories.find(
+      (c) => c.name.length === sub.length && c.name.every((n, i) => n === sub[i]),
+    )
+    if (match) return match
+  }
+  return undefined
+}
+
+/**
+ * Categorize `screentime` activities into Screen Time lane items. The
+ * underlying activity rows are pre-merged spans (one per category-source
+ * window), so per-app names are not available in the tooltip — the lane
+ * still shows category, time range, and duration.
+ */
+export const categorizeScreentimeActivities = (
+  activities: Activity[],
+  categories: ScreentimeCategory[],
+  itemIcons: Record<string, string>,
+): ChartItem[] =>
+  activities
+    .filter((a): a is Activity & { end_time: Date } =>
+      Boolean(a.activity_type === 'screentime' && a.end_time),
+    )
+    .map((a) => {
+      const categoryPathStr = typeof a.data?.category_path === 'string' ? a.data.category_path : ''
+      const path = categoryPathStr ? categoryPathStr.split(' > ') : []
+      const label = path.at(-1) ?? 'Screen time'
+      const score = typeof a.data?.score === 'number' ? a.data.score : undefined
+
+      const matched = matchCategoryByPath(path, categories)
+      const color = matched?.color ?? getProductivityColor(score)
+      const href = matched ? `/screentime-categories/${matched.id}` : undefined
+
+      return {
+        color,
+        column: 'Screen Time' as Column,
+        end: a.end_time,
+        entity_id: matched ? undefined : a.id,
+        entity_type: 'activity' as const,
+        href,
+        icon: resolveCategoryIcon(path, itemIcons),
+        isPoint: false,
+        label,
+        start: a.start_time,
+        tooltip: {
+          details: [categoryPathStr, formatDuration(a.start_time, a.end_time)].filter(Boolean),
+          time: `${formatTime(a.start_time)} – ${formatTime(a.end_time)}`,
+          title: label,
+        },
+      }
+    })

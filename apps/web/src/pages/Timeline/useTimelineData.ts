@@ -12,7 +12,6 @@ import {
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
   fetchMeals,
-  fetchProductivity,
   fetchScreentimeCategories,
   fetchScreentimeBucketed,
   fetchItemIcons,
@@ -32,7 +31,7 @@ import {
   categorizeLocations,
   categorizeMeals,
   categorizeOtherActivities,
-  categorizeProductivity,
+  categorizeScreentimeActivities,
 } from './categorize'
 import { categorizeMusic } from './categorizeMusic'
 import { activityColors, getExerciseColor } from './colors'
@@ -47,13 +46,12 @@ const TIMELINE_EXCLUDED_METRICS = ['training_impulse', 'activity_impulse']
 const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
 
 /**
- * Activity types fetched via dedicated endpoints (productivity) and therefore
- * excluded from the unified `/activities` payload to avoid sending the same
- * rows twice. `music_scrobble` and `location_visit` are intentionally NOT
- * excluded — the timeline derives the music staff and location lane directly
- * from this fetch.
+ * The Timeline now fetches every activity-sourced track in a single
+ * `/activities` call. `music_scrobble`, `location_visit`, and `screentime`
+ * are all in the unified payload and dispatched to their respective lanes
+ * by `activity_type`.
  */
-const TIMELINE_EXCLUDED_ACTIVITY_TYPES = ['screentime']
+const TIMELINE_EXCLUDED_ACTIVITY_TYPES: string[] = []
 
 export interface TimelineData {
   // Raw query results needed by rendering
@@ -86,7 +84,6 @@ export interface UseTimelineDataOptions {
   hiddenCategories: Set<LegendCategory>
   bucketSize: string
   barBucketSize: '1h' | '1d' | '1w'
-  screentimeMergeGapMs: number
 }
 
 // eslint-disable-next-line complexity -- data hook aggregating multiple queries
@@ -98,7 +95,6 @@ export const useTimelineData = ({
   hiddenCategories,
   bucketSize,
   barBucketSize,
-  screentimeMergeGapMs,
 }: UseTimelineDataOptions): TimelineData => {
   // ── Data queries ───────────────────────────────────────────────────────────
 
@@ -127,14 +123,6 @@ export const useTimelineData = ({
     placeholderData: keepPreviousData,
     queryFn: () => fetchMeals({ start: fetchStart.toISOString(), end: fetchEnd.toISOString() }),
     queryKey: ['timeline-meals', fromDateKey, toDateKey],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const productivityQuery = useQuery({
-    enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchProductivity(fetchStart, fetchEnd, 'category', screentimeMergeGapMs),
-    queryKey: ['timeline-productivity', fromDateKey, toDateKey, screentimeMergeGapMs],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -252,7 +240,15 @@ export const useTimelineData = ({
       }),
     [activitiesQuery.data],
   )
-  const productivity = productivityQuery.data?.records ?? []
+  // Screentime spans are derived from `screentime` activities. The backend
+  // pre-merges adjacent records into spans at sync/backfill time (2-min gap),
+  // so the per-app names that the old /productivity endpoint enriched the
+  // tooltip with are not available — the lane still shows category, range,
+  // and duration.
+  const screentimeActivities = useMemo<Activity[]>(
+    () => (activitiesQuery.data ?? []).filter((a) => a.activity_type === 'screentime'),
+    [activitiesQuery.data],
+  )
   // Music scrobbles are derived from `music_scrobble` activities — they live
   // in the activities table and are already returned by the activities fetch,
   // so no separate /lastfm/scrobbles network call is needed.
@@ -376,7 +372,11 @@ export const useTimelineData = ({
       ...activityItems,
       ...categorizeLocations(places, uniquePlaceNames),
       ...categorizeOtherActivities(otherActivities, itemIcons, typeDefsMap),
-      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
+      ...categorizeScreentimeActivities(
+        screentimeActivities,
+        screentimeCategoriesQuery.data ?? [],
+        itemIcons,
+      ),
       ...musicItems,
       ...mealItems,
     ],
@@ -387,7 +387,7 @@ export const useTimelineData = ({
       otherActivities,
       itemIcons,
       typeDefsMap,
-      productivity,
+      screentimeActivities,
       screentimeCategoriesQuery.data,
       musicItems,
       mealItems,
@@ -419,17 +419,11 @@ export const useTimelineData = ({
   )
 
   const isFetching =
-    activitiesQuery.isFetching ||
-    mealsQuery.isFetching ||
-    productivityQuery.isFetching ||
-    bucketedMetricsQuery.isFetching
+    activitiesQuery.isFetching || mealsQuery.isFetching || bucketedMetricsQuery.isFetching
 
-  const isInitialLoad = activitiesQuery.isLoading && productivityQuery.isLoading
+  const isInitialLoad = activitiesQuery.isLoading
 
-  const errorSources = [
-    activitiesQuery.isError && 'activities',
-    productivityQuery.isError && 'screen time',
-  ].filter(Boolean) as string[]
+  const errorSources = [activitiesQuery.isError && 'activities'].filter(Boolean) as string[]
 
   return {
     activities,
