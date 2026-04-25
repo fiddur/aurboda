@@ -1,7 +1,7 @@
 /**
- * Activities and productivity route group.
+ * Activities route group.
  *
- * Handles: /activities/*, /productivity
+ * Handles: /activities/*. Productivity routes live in productivity-router.ts.
  */
 import {
   type ActivitiesQuery,
@@ -16,21 +16,13 @@ import {
   addActivityBodySchema,
   type AddActivityResponse,
   type DeleteActivityResponse,
-  type DistinctAppsResponse,
   getExerciseTypeValue,
   isValidExerciseType,
   type MergeActivitiesBody,
   mergeActivitiesBodySchema,
   type MergeActivitiesResponse,
   type NearbyActivitiesResponse,
-  type ProductivityQuery,
   type ResyncActivityDetailResponse,
-  productivityQuerySchema,
-  type ProductivityRecordResponse,
-  type ProductivityResponse,
-  type ScreentimeBucketedQuery,
-  screentimeBucketedQuerySchema,
-  type ScreentimeBucketedResponse,
   type UpdateActivityBody,
   updateActivityBodySchema,
   type UpdateActivityResponse,
@@ -43,11 +35,8 @@ import {
   getActivityById,
   getAllActivityTypeNames,
   getDeductionRule,
-  getDistinctApps,
   getNearbyActivities,
   getOverlappingActivities,
-  getProductivityBucketed,
-  getProductivityById,
   insertTimeSeries,
   type TimeSeriesPoint,
 } from '../db/index.ts'
@@ -56,21 +45,16 @@ import { parseFitBuffer } from '../services/fit-parser.ts'
 import {
   addActivity,
   deleteActivity,
-  deleteProductivity,
   mergeActivities,
   restoreActivity,
-  restoreProductivity,
   updateActivity,
 } from '../services/mutations.ts'
 import {
-  assembleScreentimeBuckets,
   computeActivityDetailMetrics,
   getActivityFullDetail,
   parseActivityId,
-  parseBucketSize,
   parseMetricsParam,
   queryActivities,
-  queryProductivity,
   resolveActivityWindow,
   type SyncProvider,
 } from '../services/queries/index.ts'
@@ -614,102 +598,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  router.get<Record<string, never>, ScreentimeBucketedResponse, unknown, ScreentimeBucketedQuery>(
-    '/productivity/bucketed',
-    authMiddleware,
-    validateQuery(screentimeBucketedQuerySchema),
-    async (req, res) => {
-      const user = req.user!
-      const { start, end, bucket, tz } = req.query
-      const { interval, ms: bucketMs } = parseBucketSize(bucket)
-
-      const rows = await getProductivityBucketed(user, new Date(start), new Date(end), interval, tz ?? 'UTC')
-      const buckets = assembleScreentimeBuckets(rows, bucketMs)
-
-      res.json({
-        bucket: req.query.bucket,
-        buckets,
-        end,
-        start,
-        success: true,
-      })
-    },
-  )
-
-  router.get<Record<string, never>, DistinctAppsResponse>(
-    '/productivity/apps',
-    authMiddleware,
-    async (req, res) => {
-      const user = req.user!
-      const apps = await getDistinctApps(user)
-      res.json({
-        data: apps.map((a) => ({ ...a, last_seen: a.last_seen.toISOString() })),
-        success: true,
-      })
-    },
-  )
-
-  router.get<{ id: string }, ProductivityRecordResponse>(
-    '/productivity/:id',
-    authMiddleware,
-    async (req, res) => {
-      const user = req.user!
-      const record = await getProductivityById(user, req.params.id)
-      if (!record) {
-        return res.status(404).json({ error: 'Productivity record not found', success: false })
-      }
-      res.json({
-        data: {
-          activity: record.activity,
-          category: record.category,
-          device_name: record.device_name,
-          duration_sec: record.duration_sec,
-          end_time: record.end_time.toISOString(),
-          id: record.id,
-          is_mobile: record.is_mobile,
-          productivity: record.productivity,
-          resolved_category: record.resolved_category,
-          source: record.source,
-          start_time: record.start_time.toISOString(),
-          title: record.title,
-        },
-        success: true,
-      })
-    },
-  )
-
-  router.delete<{ id: string }, { success: boolean; error?: string }>(
-    '/productivity/:id',
-    authMiddleware,
-    async (req, res) => {
-      const { id } = req.params
-      const user = req.user!
-
-      const result = await deleteProductivity(user, id)
-      if (!result.success) {
-        return res.status(404).json({ error: 'Productivity record not found', success: false })
-      }
-
-      res.json({ success: true })
-    },
-  )
-
-  router.post<{ id: string }, { success: boolean; error?: string }>(
-    '/productivity/:id/restore',
-    authMiddleware,
-    async (req, res) => {
-      const { id } = req.params
-      const user = req.user!
-
-      const result = await restoreProductivity(user, id)
-      if (!result.success) {
-        return res.status(404).json({ error: 'Record not found or not deleted', success: false })
-      }
-
-      res.json({ success: true })
-    },
-  )
-
   router.post<{ id: string }, ResyncActivityDetailResponse>(
     '/activities/:id/resync-detail',
     authMiddleware,
@@ -760,27 +648,6 @@ export const createActivitiesRouter = (
 
       const points = await resyncActivityDetail(user, garminSourceId, garminActivityId)
       res.json({ points, success: true })
-    },
-  )
-
-  router.get<Record<string, never>, ProductivityResponse, unknown, ProductivityQuery>(
-    '/productivity',
-    authMiddleware,
-    validateQuery(productivityQuerySchema),
-    async (req, res) => {
-      const { start, end, merge_by, merge_gap_ms } = req.query
-      const user = req.user!
-
-      const gapMs = merge_gap_ms ? parseInt(merge_gap_ms, 10) : undefined
-      const result = await queryProductivity(
-        user,
-        new Date(start),
-        new Date(end),
-        syncProvider,
-        merge_by,
-        gapMs,
-      )
-      res.json({ categories: result.categories, data: result.data, success: true })
     },
   )
 

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import type { Activity, TimeSeriesPoint } from '../db/types.ts'
+import type { Activity, TimeSeriesPoint } from '../../db/types.ts'
 
 import {
   aggregateTrainingLoadPoints,
@@ -17,7 +17,7 @@ import {
   resolveHrMax,
   resolveHrRest,
   type TrainingLoadDeps,
-} from './training-load.ts'
+} from './index.ts'
 
 // ============================================================================
 // TRIMP Calculation
