@@ -18,9 +18,7 @@ import { baseResponseSchema, iso8601DateTimeSchema } from './common.ts'
 
 export const webauthnRegistrationOptionsResponseSchema = baseResponseSchema
   .extend({
-    options_json: z
-      .string()
-      .meta({ description: 'JSON-stringified PublicKeyCredentialCreationOptionsJSON' }),
+    options_json: z.string().meta({ description: 'JSON-stringified PublicKeyCredentialCreationOptionsJSON' }),
   })
   .meta({ id: 'WebAuthnRegistrationOptionsResponse' })
 
@@ -66,9 +64,7 @@ export type WebAuthnAuthOptionsBody = z.infer<typeof webauthnAuthOptionsBodySche
 
 export const webauthnAuthOptionsResponseSchema = baseResponseSchema
   .extend({
-    options_json: z
-      .string()
-      .meta({ description: 'JSON-stringified PublicKeyCredentialRequestOptionsJSON' }),
+    options_json: z.string().meta({ description: 'JSON-stringified PublicKeyCredentialRequestOptionsJSON' }),
   })
   .meta({ id: 'WebAuthnAuthOptionsResponse' })
 

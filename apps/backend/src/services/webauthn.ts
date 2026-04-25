@@ -1,3 +1,11 @@
+import type {
+  AuthenticationResponseJSON,
+  AuthenticatorTransportFuture,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/server'
+
 /**
  * WebAuthn / passkey service.
  *
@@ -10,13 +18,6 @@ import {
   generateRegistrationOptions,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
-} from '@simplewebauthn/server'
-import type {
-  AuthenticationResponseJSON,
-  AuthenticatorTransportFuture,
-  PublicKeyCredentialCreationOptionsJSON,
-  PublicKeyCredentialRequestOptionsJSON,
-  RegistrationResponseJSON,
 } from '@simplewebauthn/server'
 
 import {
@@ -92,9 +93,7 @@ export interface WebAuthnService {
     response: RegistrationResponseJSON,
     nickname?: string,
   ) => Promise<{ verified: boolean; credentialId?: string }>
-  getAuthenticationOptions: (
-    username?: string,
-  ) => Promise<PublicKeyCredentialRequestOptionsJSON>
+  getAuthenticationOptions: (username?: string) => Promise<PublicKeyCredentialRequestOptionsJSON>
   verifyAuthentication: (
     response: AuthenticationResponseJSON,
   ) => Promise<{ verified: boolean; user?: string }>

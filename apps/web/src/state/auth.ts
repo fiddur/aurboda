@@ -88,3 +88,43 @@ export const signup = async (
 }
 
 export const logout = () => (auth.value = {})
+
+export const loginWithPasskey = async (username?: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    // Lazy-import to keep the WebAuthn dep out of the bundle for users who never use passkeys.
+    const { startAuthentication } = await import('@simplewebauthn/browser')
+
+    const optionsResp = await axios.post<{ options_json: string; success: boolean; error?: string }>(
+      `${API_URL}/webauthn/auth/options`,
+      username ? { username } : {},
+    )
+    const optionsJSON = JSON.parse(optionsResp.data.options_json) as Parameters<
+      typeof startAuthentication
+    >[0]['optionsJSON']
+    const assertion = await startAuthentication({ optionsJSON })
+
+    const verifyResp = await axios.post<{
+      token?: string
+      refresh?: string
+      is_admin?: boolean
+      username?: string
+      verified: boolean
+      error?: string
+    }>(`${API_URL}/webauthn/auth/verify`, { response_json: JSON.stringify(assertion) })
+
+    if (verifyResp.data.verified && verifyResp.data.token && verifyResp.data.username) {
+      auth.value = {
+        is_admin: verifyResp.data.is_admin,
+        token: verifyResp.data.token,
+        user: verifyResp.data.username,
+      }
+      return { success: true }
+    }
+    return { error: verifyResp.data.error ?? 'Verification failed', success: false }
+  } catch (error) {
+    const axiosError = error as AxiosError<{ error?: string }>
+    const message = axiosError.response?.data?.error ?? (error as Error).message ?? 'Passkey login failed'
+    console.error('Passkey login error:', error)
+    return { error: message, success: false }
+  }
+}

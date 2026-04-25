@@ -1,3 +1,5 @@
+import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server'
+
 /**
  * WebAuthn / passkey routes.
  *
@@ -21,10 +23,6 @@ import {
   type WebAuthnUpdateCredentialBody,
   webauthnUpdateCredentialBodySchema,
 } from '@aurboda/api-spec'
-import type {
-  AuthenticationResponseJSON,
-  RegistrationResponseJSON,
-} from '@simplewebauthn/server'
 
 import type { Auth } from '../auth.ts'
 import type { CentralDb } from '../services/central-db.ts'
@@ -58,11 +56,7 @@ export const createWebAuthnRouter = ({
     },
   )
 
-  router.post<
-    Record<string, never>,
-    WebAuthnRegistrationVerifyResponse,
-    WebAuthnRegistrationVerifyBody
-  >(
+  router.post<Record<string, never>, WebAuthnRegistrationVerifyResponse, WebAuthnRegistrationVerifyBody>(
     '/register/verify',
     authMiddleware,
     validateBody(webauthnRegistrationVerifyBodySchema),

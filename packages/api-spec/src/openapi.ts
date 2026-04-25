@@ -698,7 +698,8 @@ const openApiDocument = createDocument({
     // --- WebAuthn / Passkey ---
     '/webauthn/auth/options': {
       post: {
-        description: 'Begin a WebAuthn authentication ceremony. Username is optional (discoverable credentials).',
+        description:
+          'Begin a WebAuthn authentication ceremony. Username is optional (discoverable credentials).',
         requestBody: {
           content: { 'application/json': { schema: webauthnAuthOptionsBodySchema } },
         },
@@ -734,7 +735,7 @@ const openApiDocument = createDocument({
     },
     '/webauthn/credentials': {
       get: {
-        description: 'List the authenticated user\'s registered passkeys.',
+        description: "List the authenticated user's registered passkeys.",
         responses: {
           200: {
             content: { 'application/json': { schema: webauthnCredentialsResponseSchema } },

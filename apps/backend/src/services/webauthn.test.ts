@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest'
-
 import * as simplewebauthn from '@simplewebauthn/server'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as webauthnDb from '../db/webauthn.ts'
 import { createWebAuthnService } from './webauthn.ts'
@@ -170,7 +169,10 @@ describe('authentication', () => {
     vi.mocked(webauthnDb.getWebAuthnCredentialById).mockResolvedValue(null)
     const result = await service.verifyAuthentication({
       id: 'missing',
-      response: { clientDataJSON: makeClientDataJSON('c2'), userHandle: Buffer.from('alice').toString('base64url') },
+      response: {
+        clientDataJSON: makeClientDataJSON('c2'),
+        userHandle: Buffer.from('alice').toString('base64url'),
+      },
     } as never)
     expect(result).toEqual({ verified: false })
     expect(simplewebauthn.verifyAuthenticationResponse).not.toHaveBeenCalled()

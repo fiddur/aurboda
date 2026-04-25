@@ -52,21 +52,14 @@ export const getWebAuthnCredentialById = async (
   user: string,
   credentialId: string,
 ): Promise<WebAuthnCredentialRow | null> => {
-  const result = await query(
-    user,
-    `SELECT ${COLUMNS} FROM webauthn_credentials WHERE credential_id = $1`,
-    [credentialId],
-  )
+  const result = await query(user, `SELECT ${COLUMNS} FROM webauthn_credentials WHERE credential_id = $1`, [
+    credentialId,
+  ])
   return (result.rows[0] as WebAuthnCredentialRow | undefined) ?? null
 }
 
-export const getWebAuthnCredentialsForUser = async (
-  user: string,
-): Promise<WebAuthnCredentialRow[]> => {
-  const result = await query(
-    user,
-    `SELECT ${COLUMNS} FROM webauthn_credentials ORDER BY created_at DESC`,
-  )
+export const getWebAuthnCredentialsForUser = async (user: string): Promise<WebAuthnCredentialRow[]> => {
+  const result = await query(user, `SELECT ${COLUMNS} FROM webauthn_credentials ORDER BY created_at DESC`)
   return result.rows as WebAuthnCredentialRow[]
 }
 
@@ -87,18 +80,14 @@ export const updateWebAuthnCredentialNickname = async (
   credentialId: string,
   nickname: string,
 ): Promise<boolean> => {
-  const result = await query(
-    user,
-    `UPDATE webauthn_credentials SET nickname = $1 WHERE credential_id = $2`,
-    [nickname, credentialId],
-  )
+  const result = await query(user, `UPDATE webauthn_credentials SET nickname = $1 WHERE credential_id = $2`, [
+    nickname,
+    credentialId,
+  ])
   return (result.rowCount ?? 0) > 0
 }
 
-export const deleteWebAuthnCredential = async (
-  user: string,
-  credentialId: string,
-): Promise<boolean> => {
+export const deleteWebAuthnCredential = async (user: string, credentialId: string): Promise<boolean> => {
   const result = await query(user, `DELETE FROM webauthn_credentials WHERE credential_id = $1`, [
     credentialId,
   ])
