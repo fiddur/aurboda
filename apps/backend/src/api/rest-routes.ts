@@ -6,6 +6,7 @@
  */
 import type { Express } from 'express'
 
+import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
@@ -13,6 +14,7 @@ import type { ActivityNotifier, DeductionQueue } from '../services/deduction-que
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
+import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
 import { markActivityDetailSynced } from '../db/index.ts'
@@ -38,6 +40,8 @@ import { createScreentimeCategoriesRouter } from '../routes/screentime-categorie
 import { createSettingsRouter } from '../routes/settings-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
+import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
+import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
 
 interface RestRoutesDeps {
   httpd: Express
@@ -52,6 +56,9 @@ interface RestRoutesDeps {
   engineDeps: DeductionEngineDeps
   deductionQueue: DeductionQueue | null
   ouraWebhookManager: OuraWebhookManager
+  auth: Auth
+  webAuthn: WebAuthnService
+  wellKnown: WellKnownConfig
 }
 
 export const mountRestRouters = ({
@@ -67,6 +74,9 @@ export const mountRestRouters = ({
   engineDeps,
   deductionQueue,
   ouraWebhookManager,
+  auth,
+  webAuthn,
+  wellKnown,
 }: RestRoutesDeps): void => {
   httpd.use(createMetricsRouter(authMiddleware, syncProvider))
   httpd.use('/icons', createIconsRouter(authMiddleware))
@@ -114,4 +124,6 @@ export const mountRestRouters = ({
       ouraWebhookManager,
     ),
   )
+  httpd.use('/webauthn', createWebAuthnRouter({ auth, authMiddleware, centralDb, webAuthn }))
+  httpd.use(createWellKnownRouter(wellKnown))
 }
