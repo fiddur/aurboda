@@ -7,6 +7,7 @@ import type { ActivityTypeDefinition } from '../state/api'
 
 import { fetchActivityTypeDefinitions } from '../state/api'
 import { toDisplayName } from '../utils/displayName'
+import { IconPreview } from './IconPreview'
 import './MetricPicker.css'
 
 interface ActivityTypePickerProps {
@@ -64,7 +65,7 @@ function DropdownItems({
           onMouseEnter={() => onHighlight(idx)}
         >
           <span class="metric-option-label">
-            {def.icon ? `${def.icon} ` : ''}
+            {def.icon && <IconPreview icon={def.icon} size={20} />}
             {def.display_name || toDisplayName(def.name)}
           </span>
           {def.display_category !== 'other' && <span class="metric-option-key">{def.display_category}</span>}
