@@ -1,22 +1,21 @@
-import type { ScreentimeCategory } from '@aurboda/api-spec'
-
+import {
+  isLocationVisitActivity,
+  isMusicScrobbleActivity,
+  type ScreentimeCategory,
+} from '@aurboda/api-spec'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { addDays, format, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
-import type { Activity } from '../../state/api'
+import type { Activity, Place, Scrobble } from '../../state/api'
 import type { ChartItem, Column } from './types'
-
 import {
   fetchActivities,
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
   fetchMeals,
-  fetchPlaces,
-  fetchProductivity,
   fetchScreentimeCategories,
   fetchScreentimeBucketed,
-  fetchScrobbles,
   fetchItemIcons,
   fetchTrainingLoad,
   fetchUserSettings,
@@ -34,7 +33,7 @@ import {
   categorizeLocations,
   categorizeMeals,
   categorizeOtherActivities,
-  categorizeProductivity,
+  categorizeScreentimeActivities,
 } from './categorize'
 import { categorizeMusic } from './categorizeMusic'
 import { activityColors, getExerciseColor } from './colors'
@@ -48,10 +47,18 @@ const TIMELINE_EXCLUDED_METRICS = ['training_impulse', 'activity_impulse']
 
 const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
 
+/**
+ * The Timeline now fetches every activity-sourced track in a single
+ * `/activities` call. `music_scrobble`, `location_visit`, and `screentime`
+ * are all in the unified payload and dispatched to their respective lanes
+ * by `activity_type`.
+ */
+const TIMELINE_EXCLUDED_ACTIVITY_TYPES: string[] = []
+
 export interface TimelineData {
   // Raw query results needed by rendering
   activities: Activity[]
-  scrobbles: ReturnType<typeof fetchScrobbles> extends Promise<infer T> ? T : never
+  scrobbles: Scrobble[]
   // Derived chart data
   chartItems: ChartItem[]
   activityItems: ChartItem[]
@@ -79,7 +86,6 @@ export interface UseTimelineDataOptions {
   hiddenCategories: Set<LegendCategory>
   bucketSize: string
   barBucketSize: '1h' | '1d' | '1w'
-  screentimeMergeGapMs: number
 }
 
 // eslint-disable-next-line complexity -- data hook aggregating multiple queries
@@ -91,7 +97,6 @@ export const useTimelineData = ({
   hiddenCategories,
   bucketSize,
   barBucketSize,
-  screentimeMergeGapMs,
 }: UseTimelineDataOptions): TimelineData => {
   // ── Data queries ───────────────────────────────────────────────────────────
 
@@ -104,16 +109,14 @@ export const useTimelineData = ({
   const activitiesQuery = useQuery({
     enabled: !hiddenCategories.has('activity'),
     placeholderData: keepPreviousData,
-    queryFn: () => fetchActivities(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
+    queryFn: () =>
+      fetchActivities(
+        subDays(fetchStart, 0.5),
+        addDays(fetchEnd, 0.5),
+        undefined,
+        TIMELINE_EXCLUDED_ACTIVITY_TYPES,
+      ),
     queryKey: ['timeline-activities', fromDateKey, toDateKey],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const placesQuery = useQuery({
-    enabled: !hiddenCategories.has('location'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchPlaces(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-places', fromDateKey, toDateKey],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -122,14 +125,6 @@ export const useTimelineData = ({
     placeholderData: keepPreviousData,
     queryFn: () => fetchMeals({ start: fetchStart.toISOString(), end: fetchEnd.toISOString() }),
     queryKey: ['timeline-meals', fromDateKey, toDateKey],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const productivityQuery = useQuery({
-    enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchProductivity(fetchStart, fetchEnd, 'category', screentimeMergeGapMs),
-    queryKey: ['timeline-productivity', fromDateKey, toDateKey, screentimeMergeGapMs],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -147,14 +142,6 @@ export const useTimelineData = ({
   })
 
   const hasLastFm = Boolean(settingsQuery.data?.lastfm_username)
-
-  const scrobblesQuery = useQuery({
-    enabled: hasLastFm && !hiddenCategories.has('music'),
-    placeholderData: keepPreviousData,
-    queryFn: () => fetchScrobbles(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5)),
-    queryKey: ['timeline-scrobbles', fromDateKey, toDateKey],
-    staleTime: 5 * 60 * 1000,
-  })
 
   const bucketedMetricsQuery = useQuery({
     enabled: !hiddenCategories.has('metrics'),
@@ -242,9 +229,45 @@ export const useTimelineData = ({
       allActivities.filter((a) => !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
     [allActivities, categoryByType],
   )
-  const places = placesQuery.data ?? []
-  const productivity = productivityQuery.data?.records ?? []
-  const scrobbles = scrobblesQuery.data ?? []
+  // Locations come from `location_visit` activities materialized by the
+  // backend (proactive on GPS sync; backstop on /locations browse). Only
+  // opted-in named locations get materialized — detected/unnamed places are
+  // not shown on the Timeline (they appeared as "Somewhere" before, so
+  // visually nothing is lost).
+  const places = useMemo<Place[]>(
+    () =>
+      (activitiesQuery.data ?? []).flatMap((a) => {
+        if (!isLocationVisitActivity(a) || !a.end_time) return []
+        return [{ end_time: a.end_time, region: a.data.location_name, start_time: a.start_time }]
+      }),
+    [activitiesQuery.data],
+  )
+  // Screentime spans are derived from `screentime` activities. The backend
+  // pre-merges adjacent records into spans at sync/backfill time (2-min gap),
+  // so the per-app names that the old /productivity endpoint enriched the
+  // tooltip with are not available — the lane still shows category, range,
+  // and duration.
+  const screentimeActivities = useMemo<Activity[]>(
+    () => (activitiesQuery.data ?? []).filter((a) => a.activity_type === 'screentime'),
+    [activitiesQuery.data],
+  )
+  // Music scrobbles are derived from `music_scrobble` activities — they live
+  // in the activities table and are already returned by the activities fetch,
+  // so no separate /lastfm/scrobbles network call is needed.
+  const scrobbles = useMemo<Scrobble[]>(() => {
+    if (!hasLastFm) return []
+    return (activitiesQuery.data ?? []).flatMap((a) => {
+      if (!isMusicScrobbleActivity(a)) return []
+      return [
+        {
+          album: a.data.album ?? '',
+          artist: a.data.artist,
+          recorded_at: a.start_time,
+          track: a.data.track,
+        },
+      ]
+    })
+  }, [hasLastFm, activitiesQuery.data])
 
   const sleepMetricsByDate = useMemo<SleepMetricsByDate>(() => {
     const map: SleepMetricsByDate = new Map()
@@ -351,7 +374,11 @@ export const useTimelineData = ({
       ...activityItems,
       ...categorizeLocations(places, uniquePlaceNames),
       ...categorizeOtherActivities(otherActivities, itemIcons, typeDefsMap),
-      ...categorizeProductivity(productivity, screentimeCategoriesQuery.data ?? [], itemIcons),
+      ...categorizeScreentimeActivities(
+        screentimeActivities,
+        screentimeCategoriesQuery.data ?? [],
+        itemIcons,
+      ),
       ...musicItems,
       ...mealItems,
     ],
@@ -362,7 +389,7 @@ export const useTimelineData = ({
       otherActivities,
       itemIcons,
       typeDefsMap,
-      productivity,
+      screentimeActivities,
       screentimeCategoriesQuery.data,
       musicItems,
       mealItems,
@@ -394,20 +421,11 @@ export const useTimelineData = ({
   )
 
   const isFetching =
-    activitiesQuery.isFetching ||
-    placesQuery.isFetching ||
-    mealsQuery.isFetching ||
-    productivityQuery.isFetching ||
-    scrobblesQuery.isFetching ||
-    bucketedMetricsQuery.isFetching
+    activitiesQuery.isFetching || mealsQuery.isFetching || bucketedMetricsQuery.isFetching
 
-  const isInitialLoad = activitiesQuery.isLoading && placesQuery.isLoading && productivityQuery.isLoading
+  const isInitialLoad = activitiesQuery.isLoading
 
-  const errorSources = [
-    activitiesQuery.isError && 'activities',
-    placesQuery.isError && 'places',
-    productivityQuery.isError && 'screen time',
-  ].filter(Boolean) as string[]
+  const errorSources = [activitiesQuery.isError && 'activities'].filter(Boolean) as string[]
 
   return {
     activities,

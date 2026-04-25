@@ -25,8 +25,10 @@ import {
   deleteHealthConnectRecords,
   getAllSyncStates,
   getDetectedLocationById,
+  getNamedLocations,
   getOutboundSyncHistory,
   getPendingOutboundSync,
+  insertActivities,
   insertActivity,
   insertLocations,
   insertRawRecord,
@@ -110,6 +112,7 @@ import { createDetectionTrigger, type DetectionTrigger } from './services/detect
 import { runDetectionForUser } from './services/detection-worker.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
+import { getPlaceVisits } from './services/locations.ts'
 import { createOuraWebhookManager, type OuraWebhookManager } from './services/oura-webhook-manager.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { getSettings } from './services/settings.ts'
@@ -825,10 +828,15 @@ const main = async () => {
     console.warn('⚠️ Geocoding disabled - detected locations will not be reverse geocoded')
   }
 
-  // Create detection trigger with geocode queue
+  // Create detection trigger with geocode queue. The proactive
+  // location_visit materialization piggy-backs on this same debounced
+  // post-GPS-ingestion path (see #654).
   const detectionTrigger: DetectionTrigger = createDetectionTrigger({
     geocodeQueue,
     getDetectedLocationById,
+    getNamedLocations,
+    getPlaceVisits,
+    insertActivities,
     runDetectionForUser,
   })
 

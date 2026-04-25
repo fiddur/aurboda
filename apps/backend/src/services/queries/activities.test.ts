@@ -82,4 +82,48 @@ describe('queryActivities with comments', () => {
 
     expect(result[0].comments).toEqual([])
   })
+
+  test('batches heart_rate and hrv_rmssd fetches across activities (no N+1)', async () => {
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        id: 'ex-1',
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T15:00:00Z'),
+        id: 'ex-2',
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T14:00:00Z'),
+      },
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        id: 'sl-1',
+        source: 'oura',
+        start_time: new Date('2024-01-14T23:00:00Z'),
+      },
+      {
+        activity_type: 'meditation',
+        end_time: new Date('2024-01-15T09:30:00Z'),
+        id: 'med-1',
+        source: 'oura',
+        start_time: new Date('2024-01-15T09:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+
+    await queryActivities('testuser', ['exercise', 'sleep', 'meditation'], new Date('2024-01-14'), new Date('2024-01-16'))
+
+    // Should fire heart_rate ONCE and hrv_rmssd ONCE — not once per activity.
+    const calls = vi.mocked(db.getTimeSeries).mock.calls
+    const hrCalls = calls.filter(([, metric]) => metric === 'heart_rate')
+    const hrvCalls = calls.filter(([, metric]) => metric === 'hrv_rmssd')
+    expect(hrCalls).toHaveLength(1)
+    expect(hrvCalls).toHaveLength(1)
+  })
 })
