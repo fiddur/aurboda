@@ -16,6 +16,7 @@ vi.mock('../../db', () => ({
   getNotesByEntityIds: vi.fn(),
   getNotesForTimeRange: vi.fn(),
   getProductivity: vi.fn(),
+  getScreentimeActivities: vi.fn().mockResolvedValue([]),
   getSleepSessions: vi.fn(),
   getTimeSeries: vi.fn(),
   getTimeSeriesMultiMetric: vi.fn(),
@@ -889,26 +890,86 @@ describe('getDailySummary', () => {
     expect(result.productivity!.categories).toEqual([{ duration_sec: 3600, path: ['Work', 'Programming'] }])
   })
 
-  test('adds screen time categories as screentime activities', async () => {
+  test('adds screentime activities from the activities table to the result', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getNonSleepActivitiesMerged).mockResolvedValue([])
-    vi.mocked(db.getProductivity).mockResolvedValue([
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getScreentimeActivities).mockResolvedValue([
       {
-        activity: 'VS Code',
-        duration_sec: 3600,
+        activity_type: 'screentime',
+        data: { category_path: 'Work > Programming' },
         end_time: new Date('2024-01-15T11:00:00Z'),
-        productivity: 2,
-        resolved_category: ['Work', 'Programming'],
+        source: 'rescuetime',
         start_time: new Date('2024-01-15T10:00:00Z'),
       },
       {
-        activity: 'YouTube',
-        duration_sec: 600,
+        activity_type: 'screentime',
+        data: { category_path: 'Entertainment' },
         end_time: new Date('2024-01-15T13:10:00Z'),
-        productivity: -1,
-        resolved_category: ['Entertainment'],
+        source: 'rescuetime',
         start_time: new Date('2024-01-15T13:00:00Z'),
+      },
+    ] as never)
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    const screentimeActivities = result.activities.filter((a) => a.activity_type === 'screentime')
+    expect(screentimeActivities).toHaveLength(2)
+    expect(screentimeActivities[0]).toMatchObject({
+      activity_type: 'screentime',
+      category_path: ['Work', 'Programming'],
+      end_time: '2024-01-15T11:00:00.000Z',
+      start_time: '2024-01-15T10:00:00.000Z',
+      title: 'Work > Programming',
+    })
+    expect(screentimeActivities[1]).toMatchObject({
+      category_path: ['Entertainment'],
+      title: 'Entertainment',
+    })
+  })
+
+  test('excludes screentime activities with excluded categories from activities list', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getNonSleepActivitiesMerged).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getScreentimeActivities).mockResolvedValue([
+      {
+        activity_type: 'screentime',
+        data: { category_path: 'Work > Programming' },
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        source: 'rescuetime',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity_type: 'screentime',
+        data: { category_path: 'System' },
+        end_time: new Date('2024-01-15T12:20:00Z'),
+        source: 'rescuetime',
+        start_time: new Date('2024-01-15T12:00:00Z'),
+      },
+      {
+        activity_type: 'screentime',
+        data: { category_path: 'System > Updates' },
+        end_time: new Date('2024-01-15T13:05:00Z'),
+        source: 'rescuetime',
+        start_time: new Date('2024-01-15T13:00:00Z'),
+      },
+    ] as never)
+    vi.mocked(screentimeCategoriesDb.getScreentimeCategories).mockResolvedValue([
+      {
+        created_at: new Date(),
+        exclude_from_screentime: true,
+        id: 'cat-system',
+        ignore_case: true,
+        name: ['System'],
+        rule_type: 'regex' as const,
+        sort_order: 0,
+        updated_at: new Date(),
       },
     ])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
@@ -918,13 +979,43 @@ describe('getDailySummary', () => {
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
     const screentimeActivities = result.activities.filter((a) => a.activity_type === 'screentime')
-    expect(screentimeActivities.length).toBeGreaterThan(0)
-    // Each screentime activity should have category_path and title
-    for (const act of screentimeActivities) {
-      expect(act.category_path).toBeDefined()
-      expect(act.title).toBeDefined()
-      expect(act.end_time).toBeDefined()
-    }
+    // System and System > Updates are excluded, only Work > Programming remains
+    expect(screentimeActivities).toHaveLength(1)
+    expect(screentimeActivities[0].category_path).toEqual(['Work', 'Programming'])
+  })
+
+  test('skips screentime from getNonSleepActivitiesMerged to avoid duplicates', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    // getNonSleepActivitiesMerged returns a screentime activity (e.g. if query is broad)
+    vi.mocked(db.getNonSleepActivitiesMerged).mockResolvedValue([
+      {
+        activity_type: 'screentime',
+        data: { category_path: 'Work' },
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        source: 'rescuetime',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+    ] as never)
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(db.getScreentimeActivities).mockResolvedValue([
+      {
+        activity_type: 'screentime',
+        data: { category_path: 'Work' },
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        source: 'rescuetime',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+    ] as never)
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    // Should appear only once from getScreentimeActivities, not twice
+    const screentimeActivities = result.activities.filter((a) => a.activity_type === 'screentime')
+    expect(screentimeActivities).toHaveLength(1)
   })
 
   test('computes stress_zone_secs on activities with time range', async () => {

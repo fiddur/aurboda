@@ -23,6 +23,7 @@ import {
   getNotesForTimeRange,
   getProductivity,
   type ProductivityRecord,
+  getScreentimeActivities,
   getSleepSessions,
   getTimeSeries,
   getTimeSeriesMultiMetric,
@@ -148,86 +149,6 @@ export const computeStressZoneSecs = (
   return result
 }
 
-// ============================================================================
-// Screen time -> activity spans
-// ============================================================================
-
-const SCREENTIME_MERGE_GAP_MS = 10 * 60 * 1000 // 10 minutes
-
-interface ScreentimeSpan {
-  category_path: string[]
-  start_time: Date
-  end_time: Date
-  duration_sec: number
-}
-
-/**
- * Convert productivity records into merged screen time activity spans by category.
- * Skips uncategorized records and excluded categories.
- */
-export const buildScreentimeSpans = (
-  records: ProductivityRecord[],
-  excludedPaths: string[][],
-): ScreentimeSpan[] => {
-  const isExcluded = (cat: string[] | undefined): boolean =>
-    cat === undefined ||
-    cat.length === 0 ||
-    excludedPaths.some(
-      (excluded) => cat.length >= excluded.length && excluded.every((seg, i) => seg === cat[i]),
-    )
-
-  // Group by category
-  const byCategory = new Map<string, ProductivityRecord[]>()
-  for (const record of records) {
-    if (isExcluded(record.resolved_category)) continue
-    const key = JSON.stringify(record.resolved_category)
-    const group = byCategory.get(key) ?? []
-    group.push(record)
-    byCategory.set(key, group)
-  }
-
-  const spans: ScreentimeSpan[] = []
-
-  for (const [key, group] of byCategory) {
-    const categoryPath = JSON.parse(key) as string[]
-    const sorted = [...group].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
-
-    let current = {
-      category_path: categoryPath,
-      duration_sec: sorted[0].duration_sec,
-      end_time: sorted[0].end_time,
-      start_time: sorted[0].start_time,
-    }
-
-    for (let i = 1; i < sorted.length; i++) {
-      const next = sorted[i]
-      const gap = next.start_time.getTime() - current.end_time.getTime()
-
-      if (gap <= SCREENTIME_MERGE_GAP_MS) {
-        // Merge: extend end time, accumulate duration
-        if (next.end_time > current.end_time) {
-          current.end_time = next.end_time
-        }
-        current.duration_sec += next.duration_sec
-      } else {
-        spans.push(current)
-        current = {
-          category_path: categoryPath,
-          duration_sec: next.duration_sec,
-          end_time: next.end_time,
-          start_time: next.start_time,
-        }
-      }
-    }
-    spans.push(current)
-  }
-
-  // Filter out spans shorter than 60 seconds
-  return spans
-    .filter((s) => s.end_time.getTime() - s.start_time.getTime() >= 60_000)
-    .sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
-}
-
 /**
  * Find the best-guess sleep location from place visits overlapping a sleep window.
  * Returns the place with the longest overlap during the sleep window.
@@ -319,6 +240,7 @@ export async function getDailySummary(
     stepsData,
     sleepSessions,
     allActivities,
+    screentimeActivities,
     productivity,
     placeVisits,
     scoreMetrics,
@@ -332,6 +254,7 @@ export async function getDailySummary(
     getTimeSeries(user, 'steps', start, end),
     getSleepSessions(user, start, end),
     getNonSleepActivitiesMerged(user, start, end, categoryMap),
+    getScreentimeActivities(user, start, end),
     getProductivity(user, start, end),
     getPlaceVisits(user, start, end),
     getTimeSeriesMultiMetric(
@@ -445,58 +368,71 @@ export async function getDailySummary(
   const activityIds = allActivities.map((a) => a.id).filter((id): id is string => id !== undefined)
   const commentsMap = await getCommentsMap(user, 'activity', activityIds)
 
-  // Build unified activities array from DB activities
-  const activities: ActivitySummary[] = allActivities.map((s) => {
-    const dataObj = s.data as Record<string, unknown> | undefined
-    const exerciseTypeCode = dataObj?.exerciseType
-    const exerciseType =
-      typeof exerciseTypeCode === 'number' ? getExerciseTypeName(exerciseTypeCode) : undefined
+  // Build unified activities array from DB activities (excludes screentime — handled separately)
+  const activities: ActivitySummary[] = allActivities
+    .filter((s) => s.activity_type !== 'screentime')
+    .map((s) => {
+      const dataObj = s.data as Record<string, unknown> | undefined
+      const exerciseTypeCode = dataObj?.exerciseType
+      const exerciseType =
+        typeof exerciseTypeCode === 'number' ? getExerciseTypeName(exerciseTypeCode) : undefined
 
-    const activity: ActivitySummary = {
-      activity_type: s.activity_type,
-      end_time: s.end_time?.toISOString(),
-      start_time: s.start_time.toISOString(),
-      title: s.title,
-    }
-
-    if (exerciseType) activity.exercise_type = exerciseType
-
-    // Comments
-    const comments = s.id ? commentsMap.get(s.id) : undefined
-    if (comments && comments.length > 0) activity.comments = comments
-
-    // HR zones for activities with time range
-    if (s.end_time) {
-      const sessionHrData = heartRateData.filter(([time]) => time >= s.start_time && time <= s.end_time!)
-      if (sessionHrData.length > 0) {
-        activity.hr_zone_secs = computeHrZoneSecs(sessionHrData, hrZones)
+      const activity: ActivitySummary = {
+        activity_type: s.activity_type,
+        end_time: s.end_time?.toISOString(),
+        start_time: s.start_time.toISOString(),
+        title: s.title,
       }
-    }
 
-    // Stress zones for activities with time range
-    if (s.end_time && stressData.length > 0) {
-      const zones = computeStressZoneSecs(stressData, s.start_time, s.end_time)
-      const hasStressData = zones.rest + zones.low + zones.medium + zones.high > 0
-      if (hasStressData) activity.stress_zone_secs = zones
-    }
+      if (exerciseType) activity.exercise_type = exerciseType
 
-    return activity
-  })
+      // Comments
+      const comments = s.id ? commentsMap.get(s.id) : undefined
+      if (comments && comments.length > 0) activity.comments = comments
 
-  // Build screen time activity spans and add to activities
-  const screentimeSpans = buildScreentimeSpans(productivity, excludedCategoryPaths)
-  for (const span of screentimeSpans) {
+      // HR zones for activities with time range
+      if (s.end_time) {
+        const sessionHrData = heartRateData.filter(([time]) => time >= s.start_time && time <= s.end_time!)
+        if (sessionHrData.length > 0) {
+          activity.hr_zone_secs = computeHrZoneSecs(sessionHrData, hrZones)
+        }
+      }
+
+      // Stress zones for activities with time range
+      if (s.end_time && stressData.length > 0) {
+        const zones = computeStressZoneSecs(stressData, s.start_time, s.end_time)
+        const hasStressData = zones.rest + zones.low + zones.medium + zones.high > 0
+        if (hasStressData) activity.stress_zone_secs = zones
+      }
+
+      return activity
+    })
+
+  // Add screentime activities from the activities table, filtering excluded categories
+  for (const s of screentimeActivities) {
+    const categoryPathStr = (s.data as Record<string, unknown> | undefined)?.category_path as
+      | string
+      | undefined
+    if (!categoryPathStr) continue
+
+    const categoryPath = categoryPathStr.split(' > ')
+    const isExcluded = excludedCategoryPaths.some(
+      (excluded) =>
+        categoryPath.length >= excluded.length && excluded.every((seg, i) => seg === categoryPath[i]),
+    )
+    if (isExcluded) continue
+
     const activity: ActivitySummary = {
       activity_type: 'screentime',
-      category_path: span.category_path,
-      end_time: span.end_time.toISOString(),
-      start_time: span.start_time.toISOString(),
-      title: span.category_path.join(' > '),
+      category_path: categoryPath,
+      end_time: s.end_time?.toISOString(),
+      start_time: s.start_time.toISOString(),
+      title: categoryPathStr,
     }
 
-    // Stress zones for screen time spans
-    if (stressData.length > 0) {
-      const zones = computeStressZoneSecs(stressData, span.start_time, span.end_time)
+    // Stress zones for screentime spans
+    if (s.end_time && stressData.length > 0) {
+      const zones = computeStressZoneSecs(stressData, s.start_time, s.end_time)
       const hasStressData = zones.rest + zones.low + zones.medium + zones.high > 0
       if (hasStressData) activity.stress_zone_secs = zones
     }

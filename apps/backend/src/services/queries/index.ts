@@ -38,7 +38,6 @@ export {
 export { parseBucketSize, queryMetrics, queryMetricsBucketed } from './metrics.ts'
 
 export {
-  buildScreentimeSpans,
   computeSleepStageSummary,
   computeStressZoneSecs,
   findSleepLocation,

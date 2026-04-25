@@ -17,8 +17,8 @@
 
 import type { ProductivityRecord } from '../db/types.ts'
 
-import { getScreentimeCategories, getSyncState, insertActivities, upsertSyncState } from '../db/index.ts'
 import { query } from '../db/connection.ts'
+import { getScreentimeCategories, getSyncState, insertActivities, upsertSyncState } from '../db/index.ts'
 import { buildScreentimeActivitySpans, spansToActivities } from './screentime-activities.ts'
 
 export interface BackfillResult {
