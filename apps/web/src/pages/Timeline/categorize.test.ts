@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest'
 
 import type { Activity, Meal, Place, ProductivityRecord } from '../../state/api'
 
+import type { ScreentimeCategory } from '@aurboda/api-spec'
+
 import {
   categorizeLocations,
   categorizeMeals,
   categorizeOtherActivities,
   categorizeProductivity,
+  categorizeScreentimeActivities,
 } from './categorize'
 
 describe('categorizeLocations', () => {
@@ -160,5 +163,89 @@ describe('categorizeProductivity', () => {
   it('generates href for records with category_id', () => {
     const items = categorizeProductivity([makeRecord({ category_id: 'cat-1' })], [], {})
     expect(items[0]!.href).toBe('/screentime-categories/cat-1')
+  })
+})
+
+describe('categorizeScreentimeActivities', () => {
+  const makeActivity = (overrides: Partial<Activity> = {}): Activity =>
+    ({
+      activity_type: 'screentime',
+      data: { category_path: 'Work > Programming' },
+      end_time: new Date('2026-01-01T09:00:00Z'),
+      id: 'act-1',
+      source: 'rescuetime',
+      start_time: new Date('2026-01-01T08:00:00Z'),
+      ...overrides,
+    }) as Activity
+
+  const makeCategory = (overrides: Partial<ScreentimeCategory>): ScreentimeCategory =>
+    ({
+      id: 'cat-1',
+      name: ['Work', 'Programming'],
+      ...overrides,
+    }) as ScreentimeCategory
+
+  it('returns Screen Time column items routed to the activity entity', () => {
+    const items = categorizeScreentimeActivities([makeActivity()], [], {})
+    expect(items).toHaveLength(1)
+    expect(items[0]!.column).toBe('Screen Time')
+    expect(items[0]!.entity_type).toBe('activity')
+  })
+
+  it('uses last category-path segment as label', () => {
+    const items = categorizeScreentimeActivities([makeActivity()], [], {})
+    expect(items[0]!.label).toBe('Programming')
+  })
+
+  it('skips activities without an end_time', () => {
+    const items = categorizeScreentimeActivities([makeActivity({ end_time: undefined })], [], {})
+    expect(items).toEqual([])
+  })
+
+  it('skips activities of other types', () => {
+    const items = categorizeScreentimeActivities(
+      [makeActivity({ activity_type: 'exercise' })],
+      [],
+      {},
+    )
+    expect(items).toEqual([])
+  })
+
+  it('matches category by exact path for href and clears entity_id', () => {
+    const items = categorizeScreentimeActivities(
+      [makeActivity()],
+      [makeCategory({ id: 'cat-prog' })],
+      {},
+    )
+    expect(items[0]!.href).toBe('/screentime-categories/cat-prog')
+    expect(items[0]!.entity_id).toBeUndefined()
+  })
+
+  it('walks up the path to find a parent-category match', () => {
+    const items = categorizeScreentimeActivities(
+      [makeActivity()],
+      [makeCategory({ id: 'cat-work', name: ['Work'], color: '#abc' })],
+      {},
+    )
+    expect(items[0]!.color).toBe('#abc')
+    expect(items[0]!.href).toBe('/screentime-categories/cat-work')
+  })
+
+  it('keeps the activity id as entity_id when no category matches', () => {
+    const items = categorizeScreentimeActivities([makeActivity()], [], {})
+    expect(items[0]!.entity_id).toBe('act-1')
+    expect(items[0]!.href).toBeUndefined()
+  })
+
+  it('uses category icon from itemIcons', () => {
+    const items = categorizeScreentimeActivities([makeActivity()], [], {
+      'category:Work > Programming': '💻',
+    })
+    expect(items[0]!.icon).toBe('💻')
+  })
+
+  it('handles missing category_path gracefully', () => {
+    const items = categorizeScreentimeActivities([makeActivity({ data: {} })], [], {})
+    expect(items[0]!.label).toBe('Screen time')
   })
 })
