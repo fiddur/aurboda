@@ -1,9 +1,13 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import type { NamedLocation } from '../db/types.ts'
 import type { PlaceVisit } from './locations.ts'
 
-import { visitsToActivities } from './location-visit-activities.ts'
+import {
+  materializeForRange,
+  materializeFromVisits,
+  visitsToActivities,
+} from './location-visit-activities.ts'
 
 const nl = (overrides: Partial<NamedLocation>): NamedLocation => ({
   auto_create_activity: false,
@@ -88,5 +92,70 @@ describe('visitsToActivities', () => {
     const named = [nl({ auto_create_activity: false })]
     const visits = [visit({ named_location_id: 'nl-1' })]
     expect(visitsToActivities(visits, named)).toEqual([])
+  })
+})
+
+describe('materializeFromVisits', () => {
+  test('upserts activities for opted-in named visits', async () => {
+    const named = [nl({ id: 'nl-1', auto_create_activity: true })]
+    const visits = [visit({ named_location_id: 'nl-1' })]
+    const insertActivities = vi.fn().mockResolvedValue(undefined)
+    const getNamedLocations = vi.fn().mockResolvedValue(named)
+
+    const result = await materializeFromVisits('user', visits, { getNamedLocations, insertActivities })
+
+    expect(result).toEqual({ upserted: 1 })
+    expect(insertActivities).toHaveBeenCalledWith(
+      'user',
+      expect.arrayContaining([expect.objectContaining({ activity_type: 'location_visit' })]),
+    )
+  })
+
+  test('short-circuits without fetching named locations when no named visits present', async () => {
+    const visits = [visit({ source: 'detected', named_location_id: undefined })]
+    const getNamedLocations = vi.fn()
+    const insertActivities = vi.fn()
+
+    const result = await materializeFromVisits('user', visits, { getNamedLocations, insertActivities })
+
+    expect(result).toEqual({ upserted: 0 })
+    expect(getNamedLocations).not.toHaveBeenCalled()
+    expect(insertActivities).not.toHaveBeenCalled()
+  })
+
+  test('returns 0 when named locations exist but none are opted in', async () => {
+    const named = [nl({ id: 'nl-1', auto_create_activity: false })]
+    const visits = [visit({ named_location_id: 'nl-1' })]
+    const insertActivities = vi.fn()
+
+    const result = await materializeFromVisits('user', visits, {
+      getNamedLocations: vi.fn().mockResolvedValue(named),
+      insertActivities,
+    })
+
+    expect(result).toEqual({ upserted: 0 })
+    expect(insertActivities).not.toHaveBeenCalled()
+  })
+})
+
+describe('materializeForRange', () => {
+  test('fetches visits then delegates to materializeFromVisits', async () => {
+    const named = [nl({ id: 'nl-1', auto_create_activity: true })]
+    const visits = [visit({ named_location_id: 'nl-1' })]
+    const start = new Date('2026-04-19T00:00:00Z')
+    const end = new Date('2026-04-20T00:00:00Z')
+
+    const getPlaceVisits = vi.fn().mockResolvedValue(visits)
+    const getNamedLocations = vi.fn().mockResolvedValue(named)
+    const insertActivities = vi.fn().mockResolvedValue(undefined)
+
+    const result = await materializeForRange('user', start, end, {
+      getNamedLocations,
+      getPlaceVisits,
+      insertActivities,
+    })
+
+    expect(getPlaceVisits).toHaveBeenCalledWith('user', start, end)
+    expect(result).toEqual({ upserted: 1 })
   })
 })

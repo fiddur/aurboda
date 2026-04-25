@@ -46,3 +46,55 @@ export const visitsToActivities = (visits: PlaceVisit[], namedLocations: NamedLo
   }
   return activities
 }
+
+/**
+ * Dependencies for the materialize helpers, kept narrow so callers can
+ * inject mocks in tests.
+ */
+export interface MaterializeDeps {
+  getNamedLocations: (user: string) => Promise<NamedLocation[]>
+  insertActivities: (user: string, activities: Activity[]) => Promise<unknown>
+}
+
+/**
+ * Upsert `location_visit` activities for any visits to opted-in named
+ * locations. Caller supplies the already-computed visits (typically from a
+ * preceding `getPlaceVisits` call).
+ *
+ * Idempotent: external_id is `locvisit_${named_location_id}_${startEpochMs}`,
+ * so the (source, external_id) unique index makes re-runs safe.
+ */
+export const materializeFromVisits = async (
+  user: string,
+  visits: PlaceVisit[],
+  deps: MaterializeDeps,
+): Promise<{ upserted: number }> => {
+  if (!visits.some((v) => v.source === 'named')) return { upserted: 0 }
+
+  const namedLocations = await deps.getNamedLocations(user)
+  const optedIn = namedLocations.filter((nl) => nl.auto_create_activity)
+  if (optedIn.length === 0) return { upserted: 0 }
+
+  const activities = visitsToActivities(visits, optedIn)
+  if (activities.length === 0) return { upserted: 0 }
+
+  await deps.insertActivities(user, activities)
+  return { upserted: activities.length }
+}
+
+/**
+ * Convenience wrapper for the proactive-materialization path: fetch visits
+ * for [start, end] then materialize. Use `materializeFromVisits` directly
+ * when the caller already has the visits in hand.
+ */
+export const materializeForRange = async (
+  user: string,
+  start: Date,
+  end: Date,
+  deps: MaterializeDeps & {
+    getPlaceVisits: (user: string, start: Date, end: Date) => Promise<PlaceVisit[]>
+  },
+): Promise<{ upserted: number }> => {
+  const visits = await deps.getPlaceVisits(user, start, end)
+  return materializeFromVisits(user, visits, deps)
+}
