@@ -705,8 +705,8 @@ export const createActivitiesRouter = (
 
       // Look for garmin_activity_id in this activity and its overlapping (merged) sources
       const getData = (a: { data?: Record<string, unknown> }): number | undefined => {
-        const id = a.data?.garmin_activity_id
-        return typeof id === 'number' ? id : undefined
+        const garminId = a.data?.garmin_activity_id
+        return typeof garminId === 'number' ? garminId : undefined
       }
 
       let garminActivityId = getData(activity)
