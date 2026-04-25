@@ -1,5 +1,3 @@
-import type { RequestHandler } from 'express'
-
 /**
  * Activities and productivity route group.
  *
@@ -10,8 +8,10 @@ import {
   activitiesQuerySchema,
   type ActivitiesResponse,
   type ActivityDetailResponse,
+  type ActivityFullDetailQuery,
+  activityFullDetailQuerySchema,
+  type ActivityFullDetailResponse,
   type AddActivityBody,
-  type HrZoneSecs,
   addActivityBodySchema,
   type AddActivityResponse,
   type DeleteActivityResponse,
@@ -47,7 +47,6 @@ import {
   getOverlappingActivities,
   getProductivityBucketed,
   getProductivityById,
-  getTimeSeries,
   insertTimeSeries,
   type TimeSeriesPoint,
 } from '../db/index.ts'
@@ -63,36 +62,18 @@ import {
   updateActivity,
 } from '../services/mutations.ts'
 import {
+  type ActivityDetailMetrics,
   assembleScreentimeBuckets,
+  computeActivityDetailMetrics,
+  getActivityFullDetail,
   parseBucketSize,
+  parseMetricsParam,
   queryActivities,
   queryProductivity,
   type SyncProvider,
 } from '../services/queries/index.ts'
-import { computeHrZoneSecs, getEffectiveHrZones } from '../services/settings.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
-
-/** Compute HR zone seconds and avg HRV for any activity time range. */
-const computeActivityMetrics = async (
-  user: string,
-  start: Date,
-  end: Date,
-): Promise<{ hr_zone_secs?: HrZoneSecs; avg_hrv?: number }> => {
-  const [hrData, { zones: hrZones }, hrvData] = await Promise.all([
-    getTimeSeries(user, 'heart_rate', start, end),
-    getEffectiveHrZones(user),
-    getTimeSeries(user, 'hrv_rmssd', start, end),
-  ])
-
-  return {
-    avg_hrv:
-      hrvData.length > 0
-        ? Math.round(hrvData.reduce((sum, [, v]) => sum + v, 0) / hrvData.length)
-        : undefined,
-    hr_zone_secs: hrData.length > 0 ? computeHrZoneSecs(hrData, hrZones) : undefined,
-  }
-}
 
 type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 
@@ -100,7 +81,7 @@ type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 const buildMergedResponse = async (
   user: string,
   activity: NonNullable<ActivityRow>,
-  activityMetrics: { hr_zone_secs?: HrZoneSecs; avg_hrv?: number },
+  activityMetrics: ActivityDetailMetrics,
 ) => {
   const overlapping = await getOverlappingActivities(user, activity)
   const hasMultipleSources = overlapping.length > 1
@@ -139,18 +120,22 @@ const buildMergedResponse = async (
     {},
   )
 
-  // For merged activities, recompute HR zones using full merged time range
+  // For merged activities, recompute over the full merged time range — HR
+  // zones, HRV, and summary metrics all need the wider window.
   let metrics = activityMetrics
   if (mergedStartTime && mergedEndTime) {
-    metrics = await computeActivityMetrics(user, new Date(mergedStartTime), new Date(mergedEndTime))
+    metrics = await computeActivityDetailMetrics(user, {
+      data: Object.keys(mergedData).length > 0 ? mergedData : activity.data,
+      end_time: new Date(mergedEndTime),
+      start_time: new Date(mergedStartTime),
+    })
   }
 
   return {
+    ...metrics,
     activity_type: activity.activity_type,
-    avg_hrv: metrics.avg_hrv,
     data: Object.keys(mergedData).length > 0 ? mergedData : activity.data,
     end_time: activity.end_time?.toISOString(),
-    hr_zone_secs: metrics.hr_zone_secs,
     id: activity.id,
     merged_end_time: mergedEndTime,
     merged_start_time: mergedStartTime,
@@ -163,7 +148,7 @@ const buildMergedResponse = async (
 }
 
 export const createActivitiesRouter = (
-  authMiddleware: RequestHandler,
+  authMiddleware: AnyMiddleware,
   syncProvider?: SyncProvider,
   onActivityMutated?: ActivityNotifier,
   resyncActivityDetail?: (user: string, activityId: string, garminActivityId: number) => Promise<number>,
@@ -524,11 +509,8 @@ export const createActivitiesRouter = (
       return res.status(404).json({ error: 'Activity not found', success: false })
     }
 
-    // Compute HR zones and avg HRV for any activity with a time range
-    let activityMetrics: { hr_zone_secs?: HrZoneSecs; avg_hrv?: number } = {}
-    if (activity.end_time) {
-      activityMetrics = await computeActivityMetrics(user, activity.start_time, activity.end_time)
-    }
+    // Compute HR zones, avg HRV, and summary metrics for any activity with a time range
+    const activityMetrics = await computeActivityDetailMetrics(user, activity)
 
     // For merged: prefix, fetch overlapping activities and return merged view
     if (isMerged && !activity.deleted_at) {
@@ -554,12 +536,11 @@ export const createActivitiesRouter = (
     // Plain UUID: return raw single activity (no overlap lookup)
     res.json({
       data: {
+        ...activityMetrics,
         activity_type: activity.activity_type,
-        avg_hrv: activityMetrics.avg_hrv,
         data: activity.data,
         deleted_at: activity.deleted_at?.toISOString(),
         end_time: activity.end_time?.toISOString(),
-        hr_zone_secs: activityMetrics.hr_zone_secs,
         id: activity.id,
         notes: activity.notes,
         source: activity.source,
@@ -570,6 +551,73 @@ export const createActivitiesRouter = (
       success: true,
     })
   })
+
+  router.get<{ id: string }, ActivityFullDetailResponse, unknown, ActivityFullDetailQuery>(
+    '/activities/:id/full',
+    authMiddleware,
+    validateQuery(activityFullDetailQuerySchema),
+    async (req, res) => {
+      const rawId = req.params.id
+      const user = req.user!
+      const { metrics: metricsParam, include_gps } = req.query
+
+      const isMerged = rawId.startsWith('merged:')
+      const realId = isMerged ? rawId.slice('merged:'.length) : rawId
+
+      const activity = await getActivityById(user, realId, true)
+      if (!activity) {
+        return res.status(404).json({ error: 'Activity not found', success: false })
+      }
+
+      // For merged activities, expand the time window to cover all overlapping sources.
+      let detailRange = { end_time: activity.end_time, start_time: activity.start_time }
+      let mergedData: Record<string, unknown> = {}
+      if (isMerged && !activity.deleted_at) {
+        const overlapping = await getOverlappingActivities(user, activity)
+        if (overlapping.length > 1) {
+          detailRange = {
+            end_time: new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))),
+            start_time: new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))),
+          }
+        }
+        mergedData = overlapping
+          .toSorted((a, b) => a.start_time.getTime() - b.start_time.getTime())
+          .reduce<Record<string, unknown>>((acc, a) => (a.data ? { ...acc, ...a.data } : acc), {})
+      }
+
+      const effectiveData = Object.keys(mergedData).length > 0 ? mergedData : activity.data
+
+      // 'all' is shorthand for "every metric with data in the activity range".
+      // omitting metrics returns just summary + GPS (callers must opt-in).
+      const requestedMetrics = parseMetricsParam(metricsParam)
+
+      const [activityMetrics, fullDetail] = await Promise.all([
+        computeActivityDetailMetrics(user, { ...detailRange, data: effectiveData }),
+        getActivityFullDetail(
+          user,
+          { end_time: detailRange.end_time, start_time: detailRange.start_time },
+          { includeGps: include_gps !== false, metrics: requestedMetrics },
+        ),
+      ])
+
+      res.json({
+        data: {
+          ...activityMetrics,
+          ...fullDetail,
+          activity_type: activity.activity_type,
+          data: effectiveData,
+          deleted_at: activity.deleted_at?.toISOString(),
+          end_time: activity.end_time?.toISOString(),
+          id: activity.id,
+          notes: activity.notes,
+          source: activity.source,
+          start_time: activity.start_time.toISOString(),
+          title: activity.title,
+        },
+        success: true,
+      })
+    },
+  )
 
   router.post<{ id: string }, { success: boolean; error?: string }>(
     '/activities/:id/restore',

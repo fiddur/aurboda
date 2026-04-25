@@ -51,6 +51,16 @@ export { queryTags } from './tags.ts'
 export { queryActivities } from './activities.ts'
 
 export {
+  ALL_METRICS_SENTINEL,
+  computeActivityDetailMetrics,
+  type ActivityDetailMetrics,
+  type ActivityFullDetail,
+  type ActivityFullDetailOptions,
+  getActivityFullDetail,
+  parseMetricsParam,
+} from './activity-detail.ts'
+
+export {
   assembleScreentimeBuckets,
   mergeByCategorySpans,
   mergeProductivitySpans,

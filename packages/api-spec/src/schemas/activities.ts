@@ -11,6 +11,9 @@ import {
   createDataResponseSchema,
   durationMinutesSchema,
   iso8601DateTimeSchema,
+  latSchema,
+  lonSchema,
+  metricTypeSchema,
   timeRangeQuerySchema,
 } from './common.ts'
 import { commentSchema } from './notes.ts'
@@ -133,10 +136,51 @@ export const getExerciseTypeName = (value: number): ExerciseTypeName | undefined
 export const getExerciseTypeValue = (name: ExerciseTypeName): number => exerciseTypes[name]
 
 /**
+ * Computed/extracted summary metrics for an activity.
+ *
+ * These are surface-level aggregates derived from per-second time-series data
+ * and/or summary fields stored in `data` JSONB. They are data-source-agnostic:
+ * any source that populates the underlying time-series (Garmin, Strava,
+ * Health Connect, FIT upload, etc.) will produce these values.
+ */
+export const activitySummaryMetricsSchema = z
+  .object({
+    avg_cadence: z.number().optional().meta({ description: 'Average run cadence (spm)' }),
+    avg_ground_contact_time: z.number().optional().meta({ description: 'Average ground contact time (ms)' }),
+    avg_hr: z.number().optional().meta({ description: 'Average heart rate (bpm)' }),
+    avg_pace: z.number().optional().meta({ description: 'Average pace (seconds per kilometer)' }),
+    avg_power: z.number().optional().meta({ description: 'Average power (W)' }),
+    avg_speed: z.number().optional().meta({ description: 'Average speed (m/s)' }),
+    avg_stride_length: z.number().optional().meta({ description: 'Average stride length (m)' }),
+    body_battery_after: z
+      .number()
+      .optional()
+      .meta({ description: 'Body battery score at activity end (0-100)' }),
+    body_battery_before: z
+      .number()
+      .optional()
+      .meta({ description: 'Body battery score at activity start (0-100)' }),
+    calories: z.number().optional().meta({ description: 'Total calories burned (kcal)' }),
+    distance: z.number().optional().meta({ description: 'Total distance (m)' }),
+    elevation_gain: z.number().optional().meta({ description: 'Total elevation gain (m)' }),
+    elevation_loss: z.number().optional().meta({ description: 'Total elevation loss (m)' }),
+    max_hr: z.number().optional().meta({ description: 'Maximum heart rate (bpm)' }),
+    steps: z.number().optional().meta({ description: 'Total step count' }),
+    vo2_max: z.number().optional().meta({ description: 'VO2 max (mL/kg/min)' }),
+  })
+  .meta({
+    description:
+      'Summary metrics derived from per-second time-series and stored summary fields. Fields are populated only when underlying data is available.',
+    id: 'ActivitySummaryMetrics',
+  })
+
+export type ActivitySummaryMetrics = z.infer<typeof activitySummaryMetricsSchema>
+
+/**
  * Activity schema.
  */
-export const activitySchema = z
-  .object({
+export const activitySchema = activitySummaryMetricsSchema
+  .extend({
     activity_type: z.string().meta({ description: 'Activity type' }),
     avg_hrv: z.number().optional().meta({ description: 'Average HRV (ms) during the activity' }),
     comments: z.array(commentSchema).optional().meta({ description: 'Attached comments' }),
@@ -439,3 +483,96 @@ export const resyncActivityDetailResponseSchema = baseResponseSchema
   .meta({ id: 'ResyncActivityDetailResponse' })
 
 export type ResyncActivityDetailResponse = z.infer<typeof resyncActivityDetailResponseSchema>
+
+/**
+ * Query parameters for the activity full-detail endpoint.
+ *
+ * Lets callers opt in/out of expensive payload pieces (GPS, time-series) and
+ * restrict to specific metrics to keep responses manageable.
+ */
+export const activityFullDetailQuerySchema = z
+  .object({
+    bucket: z.string().optional().meta({
+      description:
+        'Bucket size for time-series aggregation (e.g. "10s", "1m"). Omit to get raw per-sample points.',
+      example: '10s',
+    }),
+    include_gps: z.coerce.boolean().optional().default(true).meta({
+      description: 'Include GPS trace if any locations exist for the activity time range. Default: true.',
+    }),
+    metrics: z.string().optional().meta({
+      description:
+        'Comma-separated metric names to include time-series for. Omit to include all metrics with data in the activity time range.',
+      example: 'heart_rate,speed,run_cadence',
+    }),
+  })
+  .meta({ id: 'ActivityFullDetailQuery' })
+
+export type ActivityFullDetailQuery = z.infer<typeof activityFullDetailQuerySchema>
+
+/**
+ * GPS trace point for an activity.
+ */
+export const activityGpsPointSchema = z
+  .object({
+    lat: latSchema,
+    lon: lonSchema,
+    time: iso8601DateTimeSchema,
+  })
+  .meta({ id: 'ActivityGpsPoint' })
+
+export type ActivityGpsPoint = z.infer<typeof activityGpsPointSchema>
+
+/**
+ * Per-metric time-series for an activity.
+ *
+ * `data` is a packed array of [time, value] tuples sorted by time.
+ * If `bucket` was specified in the query the values are bucketed averages.
+ */
+export const activityMetricSeriesSchema = z
+  .object({
+    bucket: z.string().optional().meta({ description: 'Bucket size used (omitted for raw samples).' }),
+    count: z.number().int().meta({ description: 'Number of points in the series' }),
+    data: z
+      .array(z.tuple([iso8601DateTimeSchema, z.number()]))
+      .meta({ description: 'Array of [time, value] tuples sorted by time' }),
+    metric: metricTypeSchema.or(z.string()).meta({ description: 'Metric name' }),
+    unit: z.string().meta({ description: 'Unit of measurement' }),
+  })
+  .meta({ id: 'ActivityMetricSeries' })
+
+export type ActivityMetricSeries = z.infer<typeof activityMetricSeriesSchema>
+
+/**
+ * Full activity detail with optional GPS trace and per-metric time-series.
+ *
+ * Designed for deep-dive analysis (route comparison, form analysis,
+ * pace-by-grade studies). Lean fields (summary metrics, HR zones, comments)
+ * are inherited from the regular activity-detail schema.
+ */
+export const activityFullDetailSchema = activityDetailSchema
+  .extend({
+    gps: z.array(activityGpsPointSchema).optional().meta({
+      description: 'GPS trace covering the activity time range, if any locations are available.',
+    }),
+    metric_series: z.array(activityMetricSeriesSchema).optional().meta({
+      description: 'Per-metric time-series during the activity time range.',
+    }),
+  })
+  .meta({ id: 'ActivityFullDetail' })
+
+export type ActivityFullDetail = z.infer<typeof activityFullDetailSchema>
+
+/**
+ * Response for the activity full-detail endpoint.
+ */
+export const activityFullDetailResponseSchema = createDataResponseSchema(activityFullDetailSchema)
+  .extend({
+    referenced_rules: z
+      .record(z.string(), z.string())
+      .optional()
+      .meta({ description: 'Map of rule ID to rule name for deduction rules referenced in activity data' }),
+  })
+  .meta({ id: 'ActivityFullDetailResponse' })
+
+export type ActivityFullDetailResponse = z.infer<typeof activityFullDetailResponseSchema>

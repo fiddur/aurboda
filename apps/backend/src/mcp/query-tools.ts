@@ -12,9 +12,12 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { getAllActivityTypeNames } from '../db/index.ts'
+import { getActivityById, getAllActivityTypeNames, getOverlappingActivities } from '../db/index.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
+  ALL_METRICS_SENTINEL,
+  computeActivityDetailMetrics,
+  getActivityFullDetail,
   getDailySummary,
   getPeriodSummary,
   queryActivities,
@@ -187,6 +190,96 @@ Use cases:
         dataFilters,
       )
       return tzJsonResponse({ data: activities, success: true }, tz)
+    },
+  )
+
+  // Tool: get_activity_detail
+  server.tool(
+    'get_activity_detail',
+    `Deep-dive detail for a single activity: summary metrics (distance, avg pace, avg cadence, avg power, avg ground contact time, body battery before/after, elevation gain/loss, HR zones), GPS trace, and per-metric time-series.
+
+Pass id with the "merged:" prefix to include all overlapping cross-source data in the time window.
+
+The 'metrics' parameter controls time-series payload size:
+- omit it for summary + GPS only (compact)
+- pass 'all' for every metric with data in the activity range
+- pass a comma-separated list (e.g. 'heart_rate,speed,elevation') for specific metrics
+
+Source-agnostic: works for any activity that has time-series and/or GPS populated within its time range.`,
+    {
+      id: z.string().describe('Activity ID. Prefix with "merged:" to get the merged cross-source view.'),
+      include_gps: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe('Include GPS trace if locations exist for the activity time range.'),
+      metrics: z
+        .string()
+        .optional()
+        .describe(
+          `Comma-separated metric names, or 'all' for every available metric. Omit for summary + GPS only.`,
+        ),
+      tz: tzSchema,
+    },
+    async ({ id, include_gps, metrics, tz }) => {
+      const isMerged = id.startsWith('merged:')
+      const realId = isMerged ? id.slice('merged:'.length) : id
+
+      const activity = await getActivityById(user, realId, true)
+      if (!activity) return errorResponse('Activity not found')
+
+      // Expand window for merged view across overlapping sources.
+      let detailRange = { end_time: activity.end_time, start_time: activity.start_time }
+      let effectiveData = activity.data
+      if (isMerged && !activity.deleted_at) {
+        const overlapping = await getOverlappingActivities(user, activity)
+        if (overlapping.length > 1) {
+          detailRange = {
+            end_time: new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))),
+            start_time: new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))),
+          }
+          effectiveData = overlapping
+            .toSorted((a, b) => a.start_time.getTime() - b.start_time.getTime())
+            .reduce<Record<string, unknown>>((acc, a) => (a.data ? { ...acc, ...a.data } : acc), {})
+        }
+      }
+
+      const requestedMetrics =
+        metrics === ALL_METRICS_SENTINEL
+          ? [ALL_METRICS_SENTINEL]
+          : metrics
+            ? metrics
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : undefined
+
+      const [summary, fullDetail] = await Promise.all([
+        computeActivityDetailMetrics(user, { ...detailRange, data: effectiveData }),
+        getActivityFullDetail(user, detailRange, {
+          includeGps: include_gps,
+          metrics: requestedMetrics,
+        }),
+      ])
+
+      return tzJsonResponse(
+        {
+          data: {
+            ...summary,
+            ...fullDetail,
+            activity_type: activity.activity_type,
+            data: effectiveData,
+            end_time: activity.end_time?.toISOString(),
+            id: activity.id,
+            notes: activity.notes,
+            source: activity.source,
+            start_time: activity.start_time.toISOString(),
+            title: activity.title,
+          },
+          success: true,
+        },
+        tz,
+      )
     },
   )
 

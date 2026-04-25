@@ -2,7 +2,7 @@
  * Shared types and helpers for query services.
  */
 
-import type { DataSource, ExerciseTypeName } from '@aurboda/api-spec'
+import type { ActivitySummaryMetrics, DataSource, ExerciseTypeName } from '@aurboda/api-spec'
 
 import type { MetricType } from '../../schema.ts'
 import type { HrZoneSecs } from '../settings.ts'
@@ -278,7 +278,7 @@ export interface PeriodSummaryResult {
 /**
  * Activity query result with formatted timestamps.
  */
-export interface ActivityResult {
+export interface ActivityResult extends ActivitySummaryMetrics {
   id?: string
   start_time: string
   end_time?: string
