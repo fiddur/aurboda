@@ -22,7 +22,6 @@ import {
   getNonSleepActivitiesMerged,
   getNotesForTimeRange,
   getProductivity,
-  type ProductivityRecord,
   getScreentimeActivities,
   getSleepSessions,
   getTimeSeries,
