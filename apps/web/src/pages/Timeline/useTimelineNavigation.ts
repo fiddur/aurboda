@@ -41,7 +41,6 @@ export interface TimelineNavigation {
   viewLabel: string
   bucketSize: string
   barBucketSize: '1h' | '1d' | '1w'
-  screentimeMergeGapMs: number
 }
 
 export const useTimelineNavigation = (): TimelineNavigation => {
@@ -50,13 +49,6 @@ export const useTimelineNavigation = (): TimelineNavigation => {
 
   const fetchStart = startOfDay(new Date(fromDate.value))
   const fetchEnd = endOfDay(new Date(toDate.value))
-
-  const screentimeMergeGapMs = useMemo(() => {
-    const days = differenceInCalendarDays(new Date(toDate.value), new Date(fromDate.value))
-    if (days > 50) return 4 * 60 * 60 * 1000
-    if (days > 2) return 60 * 60 * 1000
-    return 10 * 60 * 1000
-  }, [fromDate.value, toDate.value])
 
   const bucketSize = useMemo(() => {
     const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
@@ -138,7 +130,6 @@ export const useTimelineNavigation = (): TimelineNavigation => {
     handleJumpDays,
     handleResetToToday,
     handleZoom,
-    screentimeMergeGapMs,
     toDate,
     viewEnd,
     viewLabel,
