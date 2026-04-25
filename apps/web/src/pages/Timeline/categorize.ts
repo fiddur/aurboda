@@ -2,18 +2,12 @@ import type { ScreentimeCategory } from '@aurboda/api-spec'
 
 import { format } from 'date-fns'
 
-import type { Activity, Meal, Place, ProductivityRecord } from '../../state/api'
+import type { Activity, Meal, Place } from '../../state/api'
 import type { ChartItem, Column } from './types'
 
 import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
-import {
-  getActivityColor,
-  getPlaceColor,
-  getProductivityColor,
-  getResolvedColor,
-  resolveCategoryIcon,
-} from './colors'
+import { getActivityColor, getPlaceColor, getProductivityColor, resolveCategoryIcon } from './colors'
 import { formatDuration, formatTime } from './formatting'
 
 export const categorizeLocations = (places: Place[], uniquePlaceNames: string[]): ChartItem[] =>
@@ -115,42 +109,6 @@ export const categorizeMeals = (meals: Meal[], itemIcons: Record<string, string>
         details: details.length > 0 ? details : [typeLabel],
         time: formatTime(m.time),
         title: `${mealIcon} ${typeLabel}`,
-      },
-    }
-  })
-
-export const categorizeProductivity = (
-  productivity: ProductivityRecord[],
-  categories: ScreentimeCategory[],
-  itemIcons: Record<string, string>,
-): ChartItem[] =>
-  productivity.map((record) => {
-    const categoryPath = record.resolved_category?.join(' > ') ?? ''
-    const label = record.resolved_category?.at(-1) ?? record.activity
-    const apps = record.activity.split(', ')
-
-    const href = record.category_id ? `/screentime-categories/${record.category_id}` : undefined
-
-    return {
-      color: getResolvedColor(record, categories),
-      column: 'Screen Time' as Column,
-      end: record.end_time,
-      entity_id: record.category_id ? undefined : record.id,
-      entity_type: 'productivity' as const,
-      href,
-      icon: resolveCategoryIcon(record.resolved_category, itemIcons),
-      isPoint: false,
-      label,
-      start: record.start_time,
-      tooltip: {
-        details: [
-          categoryPath,
-          apps.length > 1 ? `Apps: ${record.activity}` : record.activity,
-          record.title ? `Title: ${record.title}` : '',
-          formatDuration(record.start_time, record.end_time),
-        ].filter(Boolean),
-        time: `${formatTime(record.start_time)} – ${formatTime(record.end_time)}`,
-        title: label,
       },
     }
   })

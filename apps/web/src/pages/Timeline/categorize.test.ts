@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Activity, Meal, Place, ProductivityRecord } from '../../state/api'
+import type { Activity, Meal, Place } from '../../state/api'
 
 import type { ScreentimeCategory } from '@aurboda/api-spec'
 
@@ -8,7 +8,6 @@ import {
   categorizeLocations,
   categorizeMeals,
   categorizeOtherActivities,
-  categorizeProductivity,
   categorizeScreentimeActivities,
 } from './categorize'
 
@@ -123,46 +122,6 @@ describe('categorizeMeals', () => {
     expect(items).toHaveLength(2)
     expect(items[0]!.icon).toBe('🥚')
     expect(items[1]!.icon).toBe('🥓')
-  })
-})
-
-describe('categorizeProductivity', () => {
-  const makeRecord = (overrides: Partial<ProductivityRecord> = {}): ProductivityRecord =>
-    ({
-      activity: 'vscode',
-      end_time: new Date('2026-01-01T09:00:00Z'),
-      productivity: 2,
-      resolved_category: ['Work', 'Programming'],
-      start_time: new Date('2026-01-01T08:00:00Z'),
-      ...overrides,
-    }) as ProductivityRecord
-
-  it('creates Screen Time column items', () => {
-    const items = categorizeProductivity([makeRecord()], [], {})
-    expect(items[0]!.column).toBe('Screen Time')
-    expect(items[0]!.entity_type).toBe('productivity')
-  })
-
-  it('uses last category segment as label', () => {
-    const items = categorizeProductivity([makeRecord()], [], {})
-    expect(items[0]!.label).toBe('Programming')
-  })
-
-  it('falls back to activity name when no resolved_category', () => {
-    const items = categorizeProductivity([makeRecord({ resolved_category: undefined })], [], {})
-    expect(items[0]!.label).toBe('vscode')
-  })
-
-  it('resolves category icon from itemIcons', () => {
-    const items = categorizeProductivity([makeRecord()], [], {
-      'category:Work > Programming': '💻',
-    })
-    expect(items[0]!.icon).toBe('💻')
-  })
-
-  it('generates href for records with category_id', () => {
-    const items = categorizeProductivity([makeRecord({ category_id: 'cat-1' })], [], {})
-    expect(items[0]!.href).toBe('/screentime-categories/cat-1')
   })
 })
 
