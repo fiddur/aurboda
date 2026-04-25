@@ -7,6 +7,7 @@ import { z } from 'zod'
 import {
   addressNullableSchema,
   addressSchema,
+  baseResponseSchema,
   createDataArrayResponseSchema,
   createDataResponseSchema,
   detectedLocationIdSchema,
@@ -20,6 +21,7 @@ import {
   placeSourceSchema,
   radiusSchema,
   timeRangeQuerySchema,
+  tzSchema,
 } from './common.ts'
 
 // Shared location name field
@@ -198,6 +200,133 @@ export const updateNamedLocationBodySchema = z
   .meta({ id: 'UpdateNamedLocationBody' })
 
 export type UpdateNamedLocationBody = z.infer<typeof updateNamedLocationBodySchema>
+
+/**
+ * Overnight stay schema — a single detected night at a location.
+ */
+export const overnightStaySchema = z
+  .object({
+    arrival: iso8601DateTimeSchema.meta({
+      description: 'Arrival time of the visit covering this night',
+    }),
+    departure: iso8601DateTimeSchema.meta({
+      description: 'Departure time of the visit covering this night',
+    }),
+    duration_hours: z.number().meta({
+      description: 'Total duration of the underlying visit, in hours',
+    }),
+    overnight_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .meta({
+        description: 'Date the overnight stay belongs to (the evening day, YYYY-MM-DD in tz)',
+      }),
+  })
+  .meta({ id: 'OvernightStay' })
+
+export type OvernightStay = z.infer<typeof overnightStaySchema>
+
+/**
+ * Overnight stays query schema.
+ */
+export const overnightStaysQuerySchema = timeRangeQuerySchema
+  .extend({
+    arrival_before: z
+      .string()
+      .regex(/^([01]?\d|2[0-3]):[0-5]\d$/, 'Must be HH:MM')
+      .optional()
+      .meta({
+        description:
+          'Latest arrival time on the morning side (default 10:00). Visit must include this time on day N+1.',
+        example: '10:00',
+      }),
+    departure_after: z
+      .string()
+      .regex(/^([01]?\d|2[0-3]):[0-5]\d$/, 'Must be HH:MM')
+      .optional()
+      .meta({
+        description:
+          'Earliest presence time on the evening side (default 17:00). Visit must include this time on day N.',
+        example: '17:00',
+      }),
+    location_name: z.string().min(1).meta({
+      description: 'Name of a named location to detect overnight stays at',
+      example: 'Home',
+    }),
+    tz: tzSchema,
+  })
+  .meta({ id: 'OvernightStaysQuery' })
+
+export type OvernightStaysQuery = z.infer<typeof overnightStaysQuerySchema>
+
+/**
+ * Overnight stays response schema.
+ */
+export const overnightStaysResponseSchema = baseResponseSchema
+  .extend({
+    data: z.array(overnightStaySchema).optional(),
+    total_nights: z.number().int().optional().meta({
+      description: 'Total number of overnight stays detected',
+    }),
+  })
+  .meta({ id: 'OvernightStaysResponse' })
+
+export type OvernightStaysResponse = z.infer<typeof overnightStaysResponseSchema>
+
+/**
+ * Location summary schema.
+ */
+export const locationSummaryGroupBySchema = z.enum(['day', 'week', 'month', 'year']).meta({
+  description: 'Group breakdown by period',
+  id: 'LocationSummaryGroupBy',
+})
+
+export type LocationSummaryGroupBy = z.infer<typeof locationSummaryGroupBySchema>
+
+export const locationSummaryBucketSchema = z
+  .object({
+    hours: z.number().meta({ description: 'Total hours spent at the location in this period' }),
+    nights: z.number().int().meta({ description: 'Overnight stays in this period' }),
+    period: z.string().meta({
+      description: 'Period label (YYYY-MM-DD for day, YYYY-Www for week, YYYY-MM for month, YYYY for year)',
+    }),
+    visits: z.number().int().meta({ description: 'Number of visits in this period' }),
+  })
+  .meta({ id: 'LocationSummaryBucket' })
+
+export type LocationSummaryBucket = z.infer<typeof locationSummaryBucketSchema>
+
+export const locationSummarySchema = z
+  .object({
+    breakdown: z.array(locationSummaryBucketSchema).optional().meta({
+      description: 'Per-period breakdown when group_by is provided',
+    }),
+    total_hours: z.number().meta({ description: 'Total hours across all visits' }),
+    total_nights: z.number().int().meta({ description: 'Total overnight stays' }),
+    total_visits: z.number().int().meta({ description: 'Total number of visits' }),
+  })
+  .meta({ id: 'LocationSummary' })
+
+export type LocationSummary = z.infer<typeof locationSummarySchema>
+
+export const locationSummaryQuerySchema = timeRangeQuerySchema
+  .extend({
+    group_by: locationSummaryGroupBySchema.optional(),
+    location_name: z.string().min(1).meta({
+      description: 'Name of a named location to summarize',
+      example: 'Home',
+    }),
+    tz: tzSchema,
+  })
+  .meta({ id: 'LocationSummaryQuery' })
+
+export type LocationSummaryQuery = z.infer<typeof locationSummaryQuerySchema>
+
+export const locationSummaryResponseSchema = createDataResponseSchema(locationSummarySchema).meta({
+  id: 'LocationSummaryResponse',
+})
+
+export type LocationSummaryResponse = z.infer<typeof locationSummaryResponseSchema>
 
 /**
  * Promote detected location body.
