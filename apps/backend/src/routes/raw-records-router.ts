@@ -25,7 +25,7 @@ export const createRawRecordsRouter = (authMiddleware: RequestHandler): TypedRou
     async (req, res) => {
       // validateQuery middleware has replaced req.query with the parsed output
       // (numbers, booleans). The 4th ReqQuery generic can't express non-string
-      // values, so we narrow here.
+      // values when authMiddleware (typed as ParsedQs) is in the chain.
       const { end, external_id, include_data, limit, offset, record_type, source, start } =
         req.query as unknown as QueryRawRecordsQuery
 

@@ -11,8 +11,8 @@ vi.mock('../db/connection', () => ({
   query: vi.fn(),
 }))
 
-import { getScreentimeCategories, getSyncState, insertActivities, upsertSyncState } from '../db/index.ts'
 import { query } from '../db/connection.ts'
+import { getScreentimeCategories, getSyncState, insertActivities, upsertSyncState } from '../db/index.ts'
 import { backfillScreentimeActivities } from './backfill-screentime-activities.ts'
 
 const mockedGetSyncState = vi.mocked(getSyncState)

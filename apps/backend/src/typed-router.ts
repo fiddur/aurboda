@@ -25,7 +25,7 @@ interface StrictRouterMatcher<T> {
     P extends ParamsDictionary = ParamsDictionary,
     ResBody = never,
     ReqBody = any, // oxlint-disable-line typescript/no-explicit-any -- ReqBody stays `any` for Express compat
-    ReqQuery extends Query = Query,
+    ReqQuery = Query,
   >(
     path: string,
     ...handlers: Array<RequestHandler<P, ResBody, ReqBody, ReqQuery>>
@@ -34,7 +34,7 @@ interface StrictRouterMatcher<T> {
     P extends ParamsDictionary = ParamsDictionary,
     ResBody = never,
     ReqBody = any, // oxlint-disable-line typescript/no-explicit-any -- ReqBody stays `any` for Express compat
-    ReqQuery extends Query = Query,
+    ReqQuery = Query,
   >(
     path: string,
     ...handlers: Array<RequestHandlerParams<P, ResBody, ReqBody, ReqQuery>>
