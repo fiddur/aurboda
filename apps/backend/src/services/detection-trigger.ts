@@ -5,10 +5,12 @@
  * This prevents running detection on every single location update.
  */
 
-import type { DetectedLocation } from '../db/index.ts'
+import type { Activity, DetectedLocation, NamedLocation } from '../db/index.ts'
 import type { GeocodeQueue } from './geocode-queue.ts'
+import type { PlaceVisit } from './locations.ts'
 
 import { auditError, auditInfo } from './audit-log.ts'
+import { materializeForRange } from './location-visit-activities.ts'
 
 // ============================================================================
 // Types
@@ -18,6 +20,11 @@ export interface DetectionTriggerDeps {
   runDetectionForUser: (user: string) => Promise<{ created: number; updated: number; needsGeocode: string[] }>
   getDetectedLocationById: (user: string, id: string) => Promise<DetectedLocation | null>
   geocodeQueue: GeocodeQueue | null
+  /** Lookback window for location_visit activity materialization. Default 7 days. */
+  materializeLookbackDays?: number
+  getPlaceVisits: (user: string, start: Date, end: Date) => Promise<PlaceVisit[]>
+  getNamedLocations: (user: string) => Promise<NamedLocation[]>
+  insertActivities: (user: string, activities: Activity[]) => Promise<unknown>
 }
 
 export interface DetectionTrigger {
@@ -32,6 +39,7 @@ export interface DetectionTrigger {
 // ============================================================================
 
 const DEBOUNCE_MS = 5000 // 5 seconds
+const DEFAULT_MATERIALIZE_LOOKBACK_DAYS = 7
 
 // ============================================================================
 // Factory
@@ -53,6 +61,28 @@ export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTri
    * - The geocode queue (pg-boss) persists jobs, so no geocoding work is lost
    */
   const pendingDetections: Map<string, NodeJS.Timeout> = new Map()
+
+  const lookbackDays = deps.materializeLookbackDays ?? DEFAULT_MATERIALIZE_LOOKBACK_DAYS
+
+  /**
+   * Materialize location_visit activities for the recent window. Runs after
+   * detection so opted-in named-location visits become activities without
+   * waiting for someone to browse /locations for the range.
+   */
+  const materializeRecentVisits = async (user: string): Promise<void> => {
+    const end = new Date()
+    const start = new Date(end.getTime() - lookbackDays * 24 * 60 * 60 * 1000)
+    const result = await materializeForRange(user, start, end, {
+      getNamedLocations: deps.getNamedLocations,
+      getPlaceVisits: deps.getPlaceVisits,
+      insertActivities: deps.insertActivities,
+    })
+    if (result.upserted > 0) {
+      auditInfo(user, 'data', 'location_visit activities materialized', {
+        upserted: result.upserted,
+      })
+    }
+  }
 
   /**
    * Execute detection and queue geocoding for a user.
@@ -83,6 +113,15 @@ export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTri
             })
           }
         }
+      }
+
+      // Proactive location_visit materialization. Don't let failures here
+      // affect detection bookkeeping — the /locations on-read backstop will
+      // catch up next time someone browses the range.
+      try {
+        await materializeRecentVisits(user)
+      } catch (error) {
+        auditError(user, 'data', 'location_visit materialization failed', { error: String(error) })
       }
     } catch (error) {
       auditError(user, 'data', 'Location detection failed', { error: String(error) })
