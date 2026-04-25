@@ -39,10 +39,10 @@ export const categorizeOtherActivities = (
       const sourceLabel = a.source ? ` (${a.source})` : ''
       const displayName = a.title ?? toDisplayName(a.activity_type)
       const icon =
+        typeDefsMap?.get(a.activity_type)?.icon ??
         itemIcons[displayName] ??
         itemIcons[displayName.toLowerCase()] ??
-        itemIcons[a.activity_type] ??
-        typeDefsMap?.get(a.activity_type)?.icon
+        itemIcons[a.activity_type]
       return {
         color: getActivityColor(a),
         column: 'Activity' as Column,
@@ -124,9 +124,7 @@ const matchCategoryByPath = (
 ): ScreentimeCategory | undefined => {
   for (let depth = path.length; depth > 0; depth--) {
     const sub = path.slice(0, depth)
-    const match = categories.find(
-      (c) => c.name.length === sub.length && c.name.every((n, i) => n === sub[i]),
-    )
+    const match = categories.find((c) => c.name.length === sub.length && c.name.every((n, i) => n === sub[i]))
     if (match) return match
   }
   return undefined
