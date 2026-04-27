@@ -66,6 +66,7 @@ import { getPlaceVisits } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
+import { createWebAuthnService } from './services/webauthn.ts'
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -95,6 +96,36 @@ const main = async () => {
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
   console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
+
+  // WebAuthn / passkey configuration. The Relying Party ID must match the
+  // origin the user's browser sees (i.e. the web host) — not the API host,
+  // which can be on a different subdomain.
+  const deriveHost = (url: string, label: string): string => {
+    try {
+      return new URL(url).hostname
+    } catch {
+      console.warn(
+        `⚠️ Could not parse ${label}=${url} for WebAuthn RP ID; falling back to "localhost". ` +
+          `Set WEBAUTHN_RP_ID explicitly to silence this.`,
+      )
+      return 'localhost'
+    }
+  }
+  const rpID = process.env.WEBAUTHN_RP_ID ?? deriveHost(webHost, 'WEB_HOST')
+  const rpName = process.env.WEBAUTHN_RP_NAME ?? 'Aurboda'
+  const expectedOrigins = (process.env.WEBAUTHN_ORIGINS ?? webHost)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const webAuthn = createWebAuthnService({ expectedOrigins, rpID, rpName }, centralDb)
+  console.info(`🔐 WebAuthn rpID=${rpID} origins=${expectedOrigins.join(',')}`)
+
+  const androidPackageName = process.env.ANDROID_APP_PACKAGE ?? 'net.aurboda.app'
+  const androidFingerprints = (process.env.ANDROID_APP_FINGERPRINTS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const wellKnown = { androidFingerprints, androidPackageName }
 
   // Migrate legacy OURA_CLIENT/OURA_SECRET env vars into server_settings if DB empty
   const envOuraClientId = process.env.OURA_CLIENT
@@ -346,18 +377,21 @@ const main = async () => {
 
   // Per-domain REST routers
   mountRestRouters({
-    httpd,
-    authMiddleware,
-    adminMiddleware,
-    centralDb,
-    invitationAuth,
-    webHost,
-    garmin,
-    syncProvider,
     activityNotifier,
-    engineDeps,
+    adminMiddleware,
+    auth,
+    authMiddleware,
+    centralDb,
     deductionQueue,
+    engineDeps,
+    garmin,
+    httpd,
+    invitationAuth,
     ouraWebhookManager,
+    syncProvider,
+    webAuthn,
+    webHost,
+    wellKnown,
   })
 
   // Centralized error handler

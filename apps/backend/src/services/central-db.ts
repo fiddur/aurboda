@@ -122,6 +122,13 @@ export interface CentralDb {
   getOAuthToken: (token: string) => Promise<OAuthToken | null>
   revokeOAuthToken: (token: string) => Promise<boolean>
   cleanupExpiredOAuth: () => Promise<void>
+  /**
+   * Get or create a stable random WebAuthn user handle for the given username.
+   * The handle is what authenticators store as `userHandle` and is what the
+   * server receives back on a discoverable-credential assertion.
+   */
+  getOrCreateWebAuthnUserHandle: (username: string) => Promise<string>
+  getUsernameByWebAuthnUserHandle: (userHandle: string) => Promise<string | null>
 }
 
 // ============================================================================
@@ -263,6 +270,14 @@ const CREATE_OAUTH_TOKENS_TABLE = `
   )
 `
 
+const CREATE_WEBAUTHN_USER_HANDLES_TABLE = `
+  CREATE TABLE IF NOT EXISTS webauthn_user_handles (
+    user_handle UUID PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`
+
 // ============================================================================
 // Factory
 // ============================================================================
@@ -384,6 +399,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_OAUTH_CLIENTS_TABLE)
       await client.query(CREATE_OAUTH_AUTHORIZATION_CODES_TABLE)
       await client.query(CREATE_OAUTH_TOKENS_TABLE)
+      await client.query(CREATE_WEBAUTHN_USER_HANDLES_TABLE)
 
       // Set default signup_mode if not exists
       await client.query(
@@ -612,6 +628,32 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       const client = await getClient()
       await client.query('DELETE FROM oauth_authorization_codes WHERE expires_at < NOW()')
       await client.query('DELETE FROM oauth_tokens WHERE expires_at < NOW()')
+    },
+
+    getOrCreateWebAuthnUserHandle: async (username: string): Promise<string> => {
+      const client = await getClient()
+      const existing = await client.query<{ user_handle: string }>(
+        'SELECT user_handle FROM webauthn_user_handles WHERE username = $1',
+        [username],
+      )
+      if (existing.rows.length > 0) return existing.rows[0].user_handle
+      const inserted = await client.query<{ user_handle: string }>(
+        `INSERT INTO webauthn_user_handles (user_handle, username)
+         VALUES (gen_random_uuid(), $1)
+         ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username
+         RETURNING user_handle`,
+        [username],
+      )
+      return inserted.rows[0].user_handle
+    },
+
+    getUsernameByWebAuthnUserHandle: async (userHandle: string): Promise<string | null> => {
+      const client = await getClient()
+      const result = await client.query<{ username: string }>(
+        'SELECT username FROM webauthn_user_handles WHERE user_handle = $1',
+        [userHandle],
+      )
+      return result.rows[0]?.username ?? null
     },
   }
 }

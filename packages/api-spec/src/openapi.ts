@@ -47,6 +47,17 @@ import {
   syncResponseSchema,
   syncStatusResponseSchema,
 } from './schemas/sync.ts'
+import {
+  webauthnAuthOptionsBodySchema,
+  webauthnAuthOptionsResponseSchema,
+  webauthnAuthVerifyBodySchema,
+  webauthnAuthVerifyResponseSchema,
+  webauthnCredentialsResponseSchema,
+  webauthnRegistrationOptionsResponseSchema,
+  webauthnRegistrationVerifyBodySchema,
+  webauthnRegistrationVerifyResponseSchema,
+  webauthnUpdateCredentialBodySchema,
+} from './schemas/webauthn.ts'
 
 // Error response
 const errorResponseSchema = z
@@ -681,6 +692,133 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Get sync status',
         tags: ['Sync'],
+      },
+    },
+
+    // --- WebAuthn / Passkey ---
+    '/webauthn/auth/options': {
+      post: {
+        description:
+          'Begin a WebAuthn authentication ceremony. Username is optional (discoverable credentials).',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnAuthOptionsBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnAuthOptionsResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        summary: 'Get authentication options',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/auth/verify': {
+      post: {
+        description: 'Complete a WebAuthn authentication ceremony and receive an auth token.',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnAuthVerifyBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnAuthVerifyResponseSchema } },
+            description: 'Successful response',
+          },
+          401: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Verification failed',
+          },
+        },
+        summary: 'Verify authentication assertion',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/credentials': {
+      get: {
+        description: "List the authenticated user's registered passkeys.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnCredentialsResponseSchema } },
+            description: 'Registered passkeys',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List passkeys',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/credentials/{id}': {
+      delete: {
+        description: 'Delete a registered passkey by its credential ID.',
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Credential ID (base64url)' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete passkey',
+        tags: ['Auth'],
+      },
+      patch: {
+        description: 'Rename a registered passkey.',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnUpdateCredentialBodySchema } },
+        },
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Credential ID (base64url)' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Updated',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Rename passkey',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/register/options': {
+      post: {
+        description: 'Begin a WebAuthn registration ceremony for the authenticated user.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnRegistrationOptionsResponseSchema } },
+            description: 'Registration options',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get registration options',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/register/verify': {
+      post: {
+        description: 'Verify and persist a new passkey for the authenticated user.',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnRegistrationVerifyBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnRegistrationVerifyResponseSchema } },
+            description: 'Verification result',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Verify registration',
+        tags: ['Auth'],
       },
     },
 

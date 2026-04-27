@@ -125,6 +125,8 @@ export const tableCreationOrder = [
   'deduction_rules_indexes',
   'deduction_rule_runs',
   'deduction_rule_runs_indexes',
+  'webauthn_credentials',
+  'webauthn_credentials_indexes',
 ]
 
 // Health Connect mappings are in schema-health-connect.ts — re-export for convenience

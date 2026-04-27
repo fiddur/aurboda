@@ -16,7 +16,7 @@ import net.aurboda.api.models.LoginResponse
 private const val TAG = "AuthApi"
 
 sealed class LoginResult {
-    data class Success(val token: String, val refreshToken: String) : LoginResult()
+    data class Success(val token: String) : LoginResult()
     data class Error(val message: String) : LoginResult()
 }
 
@@ -32,7 +32,7 @@ class AuthApi(private val httpClient: HttpClient) {
             }
             val loginResponse = response.body<LoginResponse>()
             Log.d(TAG, "Login successful for user: $username")
-            LoginResult.Success(loginResponse.token, loginResponse.refresh)
+            LoginResult.Success(loginResponse.token)
         } catch (e: Exception) {
             Log.e(TAG, "Login failed: ${e.message}", e)
             LoginResult.Error(e.message ?: "Login failed")

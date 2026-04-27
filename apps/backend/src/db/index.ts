@@ -326,6 +326,17 @@ export {
   type AuditLogRow,
 } from './audit-log.ts'
 
+// WebAuthn / passkey credentials
+export {
+  deleteWebAuthnCredential,
+  getWebAuthnCredentialById,
+  getWebAuthnCredentialsForUser,
+  insertWebAuthnCredential,
+  updateWebAuthnCredentialNickname,
+  updateWebAuthnCredentialUsage,
+  type WebAuthnCredentialRow,
+} from './webauthn.ts'
+
 // Row mappers (re-export for consumers that need them directly)
 export {
   mapActivityRow,

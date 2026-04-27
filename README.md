@@ -26,6 +26,7 @@ No public signup, but self-hosting is straightforward via Docker. It was initiat
 - [**Custom Activity Types**](docs/features/activity-types.md) -- User-defined activity types with display categories, colors, and timeline visibility
 - [**Deduction Rules**](docs/features/deduction-rules.md) -- Automatic activity creation from data conditions (tag + activity + screentime), with rule chaining
 - [**Active Calorie Computation**](docs/features/calories.md) -- HR-based calculation with gap-fill from Health Connect
+- [**Passkey Login**](docs/passkeys.md) -- WebAuthn-based sign-in for web and Android, with Digital Asset Links to share passkeys between the website and the Android app
 - **MCP Integration** -- Full AI assistant access via [Model Context Protocol](docs/mcp-server.md) (60+ tools)
 
 ### Data Sources

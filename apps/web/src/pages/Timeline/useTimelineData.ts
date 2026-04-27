@@ -1,14 +1,11 @@
-import {
-  isLocationVisitActivity,
-  isMusicScrobbleActivity,
-  type ScreentimeCategory,
-} from '@aurboda/api-spec'
+import { isLocationVisitActivity, isMusicScrobbleActivity, type ScreentimeCategory } from '@aurboda/api-spec'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { addDays, format, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
 import type { Activity, Place, Scrobble } from '../../state/api'
 import type { ChartItem, Column } from './types'
+
 import {
   fetchActivities,
   fetchActivityTypeDefinitions,
@@ -420,8 +417,7 @@ export const useTimelineData = ({
     [columns, chartItems],
   )
 
-  const isFetching =
-    activitiesQuery.isFetching || mealsQuery.isFetching || bucketedMetricsQuery.isFetching
+  const isFetching = activitiesQuery.isFetching || mealsQuery.isFetching || bucketedMetricsQuery.isFetching
 
   const isInitialLoad = activitiesQuery.isLoading
 
