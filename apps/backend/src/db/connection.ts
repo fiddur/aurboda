@@ -109,6 +109,34 @@ export const makeNewUserDb = async (adminClient: Client, user: string, password:
   await initializeSchema(user)
 }
 
+/**
+ * Tear down a user that was just created by `makeNewUserDb`. Used by
+ * passkey-only signup to roll back when something fails after the role
+ * + database exist (e.g. credential persistence). Best-effort: each step
+ * is wrapped so the next still runs even if one throws.
+ */
+export const dropUserDb = async (adminClient: Client, user: string) => {
+  const database = userDbName(user)
+  // Close the per-user client so DROP DATABASE isn't blocked by an open conn.
+  const existing = dbByUser[user]
+  if (existing) {
+    try {
+      await existing.end()
+    } catch {}
+    delete dbByUser[user]
+  }
+  // Also drop any other open connections to the per-user DB.
+  await query(
+    adminClient,
+    format(
+      `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %L AND pid <> pg_backend_pid()`,
+      database,
+    ),
+  ).catch(() => {})
+  await query(adminClient, format('DROP DATABASE IF EXISTS %I', database)).catch(() => {})
+  await query(adminClient, format('DROP USER IF EXISTS %I', user)).catch(() => {})
+}
+
 export const getDbForUser = async (user: string) => {
   if (dbByUser[user]) return dbByUser[user]
   const client = new Client({ database: userDbName(user) })

@@ -49,6 +49,7 @@ export type {
 // Connection & schema management
 export {
   _setClientForUser,
+  dropUserDb,
   getDbForUser,
   initializeSchema,
   loginToUserDb,

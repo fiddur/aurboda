@@ -49,6 +49,62 @@ export const webauthnRegistrationVerifyResponseSchema = baseResponseSchema
 export type WebAuthnRegistrationVerifyResponse = z.infer<typeof webauthnRegistrationVerifyResponseSchema>
 
 // ============================================================================
+// Signup ceremony (unauthenticated — creates the user + first passkey)
+// ============================================================================
+
+/**
+ * Body for `POST /webauthn/signup/options`. The username is checked here
+ * (format, reserved list, not-already-taken) so the user gets early
+ * feedback before the authenticator prompt.
+ */
+export const webauthnSignupOptionsBodySchema = z
+  .object({
+    invitation: z
+      .string()
+      .optional()
+      .meta({ description: 'Invitation token (required in invite_only mode)' }),
+    username: z.string().min(1).meta({ description: 'Desired username' }),
+  })
+  .meta({ id: 'WebAuthnSignupOptionsBody' })
+
+export type WebAuthnSignupOptionsBody = z.infer<typeof webauthnSignupOptionsBodySchema>
+
+export const webauthnSignupOptionsResponseSchema = baseResponseSchema
+  .extend({
+    options_json: z.string().meta({ description: 'JSON-stringified PublicKeyCredentialCreationOptionsJSON' }),
+  })
+  .meta({ id: 'WebAuthnSignupOptionsResponse' })
+
+export type WebAuthnSignupOptionsResponse = z.infer<typeof webauthnSignupOptionsResponseSchema>
+
+export const webauthnSignupVerifyBodySchema = z
+  .object({
+    nickname: z
+      .string()
+      .max(64)
+      .optional()
+      .meta({ description: 'Optional user-chosen label for the new credential' }),
+    response_json: z.string().meta({
+      description: 'JSON-stringified RegistrationResponseJSON returned by the authenticator',
+    }),
+    username: z.string().min(1).meta({ description: 'Username chosen at /signup/options' }),
+  })
+  .meta({ id: 'WebAuthnSignupVerifyBody' })
+
+export type WebAuthnSignupVerifyBody = z.infer<typeof webauthnSignupVerifyBodySchema>
+
+export const webauthnSignupVerifyResponseSchema = baseResponseSchema
+  .extend({
+    is_admin: z.boolean().optional().meta({ description: 'Whether the new user is an admin' }),
+    token: z.string().optional().meta({ description: 'Authentication token' }),
+    username: z.string().optional().meta({ description: 'Created username' }),
+    verified: z.boolean().meta({ description: 'Whether registration was verified' }),
+  })
+  .meta({ id: 'WebAuthnSignupVerifyResponse' })
+
+export type WebAuthnSignupVerifyResponse = z.infer<typeof webauthnSignupVerifyResponseSchema>
+
+// ============================================================================
 // Authentication ceremony (unauthenticated — login)
 // ============================================================================
 
