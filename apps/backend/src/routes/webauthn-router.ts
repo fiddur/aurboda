@@ -1,5 +1,3 @@
-import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server'
-
 /**
  * WebAuthn / passkey routes.
  *
@@ -7,6 +5,8 @@ import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simp
  * — they replace the password check. All other endpoints require an existing
  * session (you must be logged in to manage your own passkeys).
  */
+import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server'
+
 import {
   type WebAuthnAuthOptionsBody,
   webauthnAuthOptionsBodySchema,
@@ -77,8 +77,10 @@ export const createWebAuthnRouter = ({
         }
         res.json({ credential_id: result.credentialId, success: true, verified: true })
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Verification failed'
-        res.status(400).json({ error: msg, success: false, verified: false })
+        // Don't leak the underlying error string to authenticated callers either —
+        // it can include implementation details from `@simplewebauthn/server`.
+        console.error('WebAuthn registration verification failed:', err)
+        res.status(400).json({ error: 'Verification failed', success: false, verified: false })
       }
     },
   )
@@ -86,8 +88,8 @@ export const createWebAuthnRouter = ({
   router.post<Record<string, never>, WebAuthnAuthOptionsResponse, WebAuthnAuthOptionsBody>(
     '/auth/options',
     validateBody(webauthnAuthOptionsBodySchema),
-    async (req, res) => {
-      const options = await webAuthn.getAuthenticationOptions(req.body.username)
+    async (_req, res) => {
+      const options = await webAuthn.getAuthenticationOptions()
       res.json({ options_json: JSON.stringify(options), success: true })
     },
   )
@@ -114,15 +116,15 @@ export const createWebAuthnRouter = ({
         const isAdmin = await centralDb.isAdmin(result.user)
         res.json({
           is_admin: isAdmin,
-          refresh: token,
           success: true,
           token,
           username: result.user,
           verified: true,
         })
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Verification failed'
-        res.status(401).json({ error: msg, success: false, verified: false })
+        // Generic error to the caller; full detail in server logs.
+        console.error('WebAuthn authentication verification failed:', err)
+        res.status(401).json({ error: 'Verification failed', success: false, verified: false })
       }
     },
   )

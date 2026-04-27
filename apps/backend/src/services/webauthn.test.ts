@@ -2,7 +2,7 @@ import * as simplewebauthn from '@simplewebauthn/server'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as webauthnDb from '../db/webauthn.ts'
-import { createWebAuthnService } from './webauthn.ts'
+import { createWebAuthnService, type UserHandleStore } from './webauthn.ts'
 
 vi.mock('@simplewebauthn/server', () => ({
   generateAuthenticationOptions: vi.fn(),
@@ -26,6 +26,27 @@ const config = {
   rpName: 'Aurboda Test',
 }
 
+const ALICE_HANDLE = '11111111-2222-3333-4444-555555555555'
+
+const makeUserHandleStore = (): UserHandleStore => ({
+  getOrCreateWebAuthnUserHandle: vi.fn(async (username: string) => {
+    if (username === 'alice') return ALICE_HANDLE
+    if (username === 'bob') return '99999999-8888-7777-6666-555555555555'
+    throw new Error('unknown user')
+  }),
+  getUsernameByWebAuthnUserHandle: vi.fn(async (handle: string) => {
+    if (handle === ALICE_HANDLE) return 'alice'
+    return null
+  }),
+})
+
+const handleAsBase64Url = (uuid: string): string => {
+  const hex = uuid.replaceAll('-', '')
+  const bytes = new Uint8Array(16)
+  for (let i = 0; i < 16; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  return Buffer.from(bytes).toString('base64url')
+}
+
 const makeClientDataJSON = (challenge: string): string =>
   Buffer.from(JSON.stringify({ challenge, origin: 'https://example.test', type: 'webauthn.get' })).toString(
     'base64url',
@@ -36,26 +57,22 @@ beforeEach(() => {
 })
 
 describe('registration', () => {
-  test('generates options, stores challenge, persists credential on verify', async () => {
-    const service = createWebAuthnService(config)
+  test('generates options with the user handle, persists credential on verify', async () => {
+    const handleStore = makeUserHandleStore()
+    const service = createWebAuthnService(config, handleStore)
 
     vi.mocked(webauthnDb.getWebAuthnCredentialsForUser).mockResolvedValue([])
     vi.mocked(simplewebauthn.generateRegistrationOptions).mockResolvedValue({
       challenge: 'reg-challenge-1',
-      rp: { id: 'example.test', name: 'Aurboda Test' },
-      user: { displayName: 'alice', id: 'YWxpY2U', name: 'alice' },
-      pubKeyCredParams: [],
     } as never)
 
     const options = await service.getRegistrationOptions('alice')
     expect(options.challenge).toBe('reg-challenge-1')
-    expect(simplewebauthn.generateRegistrationOptions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rpID: 'example.test',
-        rpName: 'Aurboda Test',
-        userName: 'alice',
-      }),
-    )
+    expect(handleStore.getOrCreateWebAuthnUserHandle).toHaveBeenCalledWith('alice')
+    const call = vi.mocked(simplewebauthn.generateRegistrationOptions).mock.calls[0]![0]
+    expect(call.userName).toBe('alice')
+    expect(call.userID).toBeInstanceOf(Uint8Array)
+    expect((call.userID as Uint8Array).length).toBe(16)
 
     vi.mocked(simplewebauthn.verifyRegistrationResponse).mockResolvedValue({
       registrationInfo: {
@@ -86,14 +103,14 @@ describe('registration', () => {
   })
 
   test('rejects verify when no pending registration', async () => {
-    const service = createWebAuthnService(config)
+    const service = createWebAuthnService(config, makeUserHandleStore())
     const result = await service.verifyRegistration('alice', {} as never)
     expect(result).toEqual({ verified: false })
     expect(webauthnDb.insertWebAuthnCredential).not.toHaveBeenCalled()
   })
 
   test('rejects verify when verification fails', async () => {
-    const service = createWebAuthnService(config)
+    const service = createWebAuthnService(config, makeUserHandleStore())
     vi.mocked(webauthnDb.getWebAuthnCredentialsForUser).mockResolvedValue([])
     vi.mocked(simplewebauthn.generateRegistrationOptions).mockResolvedValue({
       challenge: 'c',
@@ -108,21 +125,30 @@ describe('registration', () => {
 })
 
 describe('authentication', () => {
-  test('discoverable flow: identifies user from userHandle', async () => {
-    const service = createWebAuthnService(config)
+  test('always returns options with no allowCredentials (discoverable)', async () => {
+    const service = createWebAuthnService(config, makeUserHandleStore())
 
     vi.mocked(simplewebauthn.generateAuthenticationOptions).mockResolvedValue({
       challenge: 'auth-challenge-1',
     } as never)
     const opts = await service.getAuthenticationOptions()
     expect(opts.challenge).toBe('auth-challenge-1')
-    expect(simplewebauthn.generateAuthenticationOptions).toHaveBeenCalledWith(
-      expect.objectContaining({ allowCredentials: undefined, rpID: 'example.test' }),
-    )
+    const call = vi.mocked(simplewebauthn.generateAuthenticationOptions).mock.calls[0]![0]
+    expect(call.allowCredentials).toBeUndefined()
+    expect(call.rpID).toBe('example.test')
+  })
+
+  test('verify resolves user from userHandle, updates counter', async () => {
+    const handleStore = makeUserHandleStore()
+    const service = createWebAuthnService(config, handleStore)
+    vi.mocked(simplewebauthn.generateAuthenticationOptions).mockResolvedValue({
+      challenge: 'auth-challenge-2',
+    } as never)
+    await service.getAuthenticationOptions()
 
     vi.mocked(webauthnDb.getWebAuthnCredentialById).mockResolvedValue({
       backed_up: true,
-      counter: 0,
+      counter: 5,
       created_at: new Date(),
       credential_id: 'cred-id-1',
       device_type: 'multiDevice',
@@ -132,26 +158,27 @@ describe('authentication', () => {
       transports: ['internal'],
     })
     vi.mocked(simplewebauthn.verifyAuthenticationResponse).mockResolvedValue({
-      authenticationInfo: { newCounter: 1 },
+      authenticationInfo: { newCounter: 6 },
       verified: true,
     } as never)
+    vi.mocked(webauthnDb.updateWebAuthnCredentialUsage).mockResolvedValue(true)
 
-    const userHandleB64 = Buffer.from('alice').toString('base64url')
     const result = await service.verifyAuthentication({
       id: 'cred-id-1',
       response: {
-        clientDataJSON: makeClientDataJSON('auth-challenge-1'),
-        userHandle: userHandleB64,
+        clientDataJSON: makeClientDataJSON('auth-challenge-2'),
+        userHandle: handleAsBase64Url(ALICE_HANDLE),
       },
     } as never)
 
     expect(result).toEqual({ user: 'alice', verified: true })
+    expect(handleStore.getUsernameByWebAuthnUserHandle).toHaveBeenCalledWith(ALICE_HANDLE)
     expect(webauthnDb.getWebAuthnCredentialById).toHaveBeenCalledWith('alice', 'cred-id-1')
-    expect(webauthnDb.updateWebAuthnCredentialUsage).toHaveBeenCalledWith('alice', 'cred-id-1', 1)
+    expect(webauthnDb.updateWebAuthnCredentialUsage).toHaveBeenCalledWith('alice', 'cred-id-1', 5, 6)
   })
 
   test('rejects when challenge does not match a pending one', async () => {
-    const service = createWebAuthnService(config)
+    const service = createWebAuthnService(config, makeUserHandleStore())
     const result = await service.verifyAuthentication({
       id: 'cred-id-1',
       response: { clientDataJSON: makeClientDataJSON('unknown') },
@@ -159,54 +186,61 @@ describe('authentication', () => {
     expect(result).toEqual({ verified: false })
   })
 
+  test('rejects when userHandle is missing', async () => {
+    const service = createWebAuthnService(config, makeUserHandleStore())
+    vi.mocked(simplewebauthn.generateAuthenticationOptions).mockResolvedValue({
+      challenge: 'c-no-handle',
+    } as never)
+    await service.getAuthenticationOptions()
+
+    const result = await service.verifyAuthentication({
+      id: 'cred-id-1',
+      response: { clientDataJSON: makeClientDataJSON('c-no-handle') },
+    } as never)
+    expect(result).toEqual({ verified: false })
+  })
+
+  test('rejects when handle does not map to a user', async () => {
+    const service = createWebAuthnService(config, makeUserHandleStore())
+    vi.mocked(simplewebauthn.generateAuthenticationOptions).mockResolvedValue({
+      challenge: 'c-unknown-handle',
+    } as never)
+    await service.getAuthenticationOptions()
+
+    const result = await service.verifyAuthentication({
+      id: 'cred-id-1',
+      response: {
+        clientDataJSON: makeClientDataJSON('c-unknown-handle'),
+        userHandle: handleAsBase64Url('00000000-0000-0000-0000-000000000000'),
+      },
+    } as never)
+    expect(result).toEqual({ verified: false })
+    expect(webauthnDb.getWebAuthnCredentialById).not.toHaveBeenCalled()
+  })
+
   test('rejects when credential not found in user db', async () => {
-    const service = createWebAuthnService(config)
+    const service = createWebAuthnService(config, makeUserHandleStore())
     vi.mocked(simplewebauthn.generateAuthenticationOptions).mockResolvedValue({
       challenge: 'c2',
     } as never)
-    await service.getAuthenticationOptions('alice')
+    await service.getAuthenticationOptions()
 
     vi.mocked(webauthnDb.getWebAuthnCredentialById).mockResolvedValue(null)
     const result = await service.verifyAuthentication({
       id: 'missing',
       response: {
         clientDataJSON: makeClientDataJSON('c2'),
-        userHandle: Buffer.from('alice').toString('base64url'),
+        userHandle: handleAsBase64Url(ALICE_HANDLE),
       },
     } as never)
     expect(result).toEqual({ verified: false })
     expect(simplewebauthn.verifyAuthenticationResponse).not.toHaveBeenCalled()
   })
-
-  test('typed-username flow includes allowCredentials', async () => {
-    const service = createWebAuthnService(config)
-    vi.mocked(webauthnDb.getWebAuthnCredentialsForUser).mockResolvedValue([
-      {
-        backed_up: false,
-        counter: 0,
-        created_at: new Date(),
-        credential_id: 'a',
-        device_type: null,
-        last_used_at: null,
-        nickname: null,
-        public_key: Buffer.from([]),
-        transports: ['usb'],
-      },
-    ])
-    vi.mocked(simplewebauthn.generateAuthenticationOptions).mockResolvedValue({ challenge: 'x' } as never)
-
-    await service.getAuthenticationOptions('bob')
-    expect(simplewebauthn.generateAuthenticationOptions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        allowCredentials: [{ id: 'a', transports: ['usb'] }],
-      }),
-    )
-  })
 })
 
 describe('credential management', () => {
   test('listCredentials maps rows', async () => {
-    const service = createWebAuthnService(config)
+    const service = createWebAuthnService(config, makeUserHandleStore())
     const created = new Date('2025-01-01T00:00:00Z')
     vi.mocked(webauthnDb.getWebAuthnCredentialsForUser).mockResolvedValue([
       {
@@ -236,7 +270,7 @@ describe('credential management', () => {
   })
 
   test('rename + delete delegate to db', async () => {
-    const service = createWebAuthnService(config)
+    const service = createWebAuthnService(config, makeUserHandleStore())
     vi.mocked(webauthnDb.updateWebAuthnCredentialNickname).mockResolvedValue(true)
     vi.mocked(webauthnDb.deleteWebAuthnCredential).mockResolvedValue(true)
 

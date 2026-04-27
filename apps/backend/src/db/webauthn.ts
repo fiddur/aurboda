@@ -63,16 +63,26 @@ export const getWebAuthnCredentialsForUser = async (user: string): Promise<WebAu
   return result.rows as WebAuthnCredentialRow[]
 }
 
+/**
+ * Bump the counter and last_used_at for a credential. The `previousCounter`
+ * argument provides cheap defense-in-depth against replay: only updates when
+ * the new value is greater (or both are zero, which is what some
+ * authenticators always report). Returns true on update.
+ */
 export const updateWebAuthnCredentialUsage = async (
   user: string,
   credentialId: string,
+  previousCounter: number | bigint,
   newCounter: number | bigint,
-): Promise<void> => {
-  await query(
+): Promise<boolean> => {
+  const result = await query(
     user,
-    `UPDATE webauthn_credentials SET counter = $1, last_used_at = NOW() WHERE credential_id = $2`,
-    [newCounter, credentialId],
+    `UPDATE webauthn_credentials
+       SET counter = $1, last_used_at = NOW()
+     WHERE credential_id = $2 AND ($1 > $3 OR ($1 = 0 AND $3 = 0))`,
+    [newCounter, credentialId, previousCounter],
   )
+  return (result.rowCount ?? 0) > 0
 }
 
 export const updateWebAuthnCredentialNickname = async (

@@ -89,14 +89,14 @@ export const signup = async (
 
 export const logout = () => (auth.value = {})
 
-export const loginWithPasskey = async (username?: string): Promise<{ success: boolean; error?: string }> => {
+export const loginWithPasskey = async (): Promise<{ success: boolean; error?: string }> => {
   try {
     // Lazy-import to keep the WebAuthn dep out of the bundle for users who never use passkeys.
     const { startAuthentication } = await import('@simplewebauthn/browser')
 
     const optionsResp = await axios.post<{ options_json: string; success: boolean; error?: string }>(
       `${API_URL}/webauthn/auth/options`,
-      username ? { username } : {},
+      {},
     )
     const optionsJSON = JSON.parse(optionsResp.data.options_json) as Parameters<
       typeof startAuthentication
@@ -105,7 +105,6 @@ export const loginWithPasskey = async (username?: string): Promise<{ success: bo
 
     const verifyResp = await axios.post<{
       token?: string
-      refresh?: string
       is_admin?: boolean
       username?: string
       verified: boolean

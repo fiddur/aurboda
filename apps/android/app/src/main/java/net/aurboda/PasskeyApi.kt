@@ -16,7 +16,7 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
-import net.aurboda.api.models.WebAuthnAuthOptionsBody
+import kotlinx.serialization.json.JsonObject
 import net.aurboda.api.models.WebAuthnAuthOptionsResponse
 import net.aurboda.api.models.WebAuthnAuthVerifyBody
 import net.aurboda.api.models.WebAuthnAuthVerifyResponse
@@ -24,7 +24,7 @@ import net.aurboda.api.models.WebAuthnAuthVerifyResponse
 private const val TAG = "PasskeyApi"
 
 sealed class PasskeyLoginResult {
-  data class Success(val username: String, val token: String, val refreshToken: String) : PasskeyLoginResult()
+  data class Success(val username: String, val token: String) : PasskeyLoginResult()
   data class Error(val message: String) : PasskeyLoginResult()
 }
 
@@ -43,13 +43,14 @@ class PasskeyApi(
   private val credentialManagerFactory: (Context) -> CredentialManager = { CredentialManager.create(it) },
 ) {
 
-  suspend fun login(context: Context, serverUrl: String, username: String? = null): PasskeyLoginResult {
+  suspend fun login(context: Context, serverUrl: String): PasskeyLoginResult {
     val base = serverUrl.trimEnd('/')
     Log.d(TAG, "Passkey login to: $base")
     return try {
+      // /auth/options expects an empty body — see schema (always discoverable).
       val optionsResp = httpClient.post("$base/api/webauthn/auth/options") {
         contentType(ContentType.Application.Json)
-        setBody(WebAuthnAuthOptionsBody(username = username))
+        setBody(JsonObject(emptyMap()))
       }.body<WebAuthnAuthOptionsResponse>()
 
       val requestJson = optionsResp.optionsJson
@@ -69,12 +70,10 @@ class PasskeyApi(
         setBody(WebAuthnAuthVerifyBody(responseJson = credential.authenticationResponseJson))
       }.body<WebAuthnAuthVerifyResponse>()
 
-      if (verifyResp.verified && verifyResp.token != null && verifyResp.username != null) {
-        PasskeyLoginResult.Success(
-          username = verifyResp.username,
-          token = verifyResp.token,
-          refreshToken = verifyResp.refresh ?: verifyResp.token,
-        )
+      val token = verifyResp.token
+      val username = verifyResp.username
+      if (verifyResp.verified && token != null && username != null) {
+        PasskeyLoginResult.Success(username = username, token = token)
       } else {
         PasskeyLoginResult.Error(verifyResp.error ?: "Verification failed")
       }

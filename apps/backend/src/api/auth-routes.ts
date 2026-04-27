@@ -184,7 +184,7 @@ export const registerAuthRoutes = ({
       .catch(() => {})
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ is_admin: isAdmin, refresh: token, token }))
+    res.end(JSON.stringify({ is_admin: isAdmin, token }))
   })
 
   // Generate a fresh API token for the authenticated user (e.g. for push agents like ActivityWatch)

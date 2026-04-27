@@ -102,7 +102,7 @@ release key + your custom key).
 Google's Digital Asset Links checker:
 
 ```
-https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://aurboda.example.com&relation=delegate_permission/get_login_creds
+https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://aurboda.example.com&relation=delegate_permission/common.get_login_creds
 ```
 
 ### Reverse proxy notes

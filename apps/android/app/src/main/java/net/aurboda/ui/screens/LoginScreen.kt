@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -85,6 +87,7 @@ fun LoginScreen(
     modifier =
       Modifier
         .fillMaxSize()
+        .verticalScroll(rememberScrollState())
         .padding(24.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.Center,
@@ -115,7 +118,7 @@ fun LoginScreen(
           isPasskeyLoading = true
           errorMessage = null
           val normalizedUrl = serverUrl.trimEnd('/')
-          when (val result = passkeyApi.login(context, normalizedUrl, username.takeIf { it.isNotBlank() })) {
+          when (val result = passkeyApi.login(context, normalizedUrl)) {
             is PasskeyLoginResult.Success -> {
               onSaveCredentials(normalizedUrl, result.username, result.token)
               onLoginSuccess()

@@ -97,21 +97,27 @@ const main = async () => {
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
   console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
 
-  // WebAuthn / passkey configuration
-  const deriveHost = (url: string): string => {
+  // WebAuthn / passkey configuration. The Relying Party ID must match the
+  // origin the user's browser sees (i.e. the web host) — not the API host,
+  // which can be on a different subdomain.
+  const deriveHost = (url: string, label: string): string => {
     try {
       return new URL(url).hostname
     } catch {
+      console.warn(
+        `⚠️ Could not parse ${label}=${url} for WebAuthn RP ID; falling back to "localhost". ` +
+          `Set WEBAUTHN_RP_ID explicitly to silence this.`,
+      )
       return 'localhost'
     }
   }
-  const rpID = process.env.WEBAUTHN_RP_ID ?? deriveHost(apiBaseUrl)
+  const rpID = process.env.WEBAUTHN_RP_ID ?? deriveHost(webHost, 'WEB_HOST')
   const rpName = process.env.WEBAUTHN_RP_NAME ?? 'Aurboda'
   const expectedOrigins = (process.env.WEBAUTHN_ORIGINS ?? webHost)
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  const webAuthn = createWebAuthnService({ expectedOrigins, rpID, rpName })
+  const webAuthn = createWebAuthnService({ expectedOrigins, rpID, rpName }, centralDb)
   console.info(`🔐 WebAuthn rpID=${rpID} origins=${expectedOrigins.join(',')}`)
 
   const androidPackageName = process.env.ANDROID_APP_PACKAGE ?? 'net.aurboda.app'

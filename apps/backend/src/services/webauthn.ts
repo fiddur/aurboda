@@ -1,3 +1,10 @@
+/**
+ * WebAuthn / passkey service.
+ *
+ * Wraps `@simplewebauthn/server` and our per-user DB layer so the route
+ * handlers stay thin. Challenges are kept in process memory with a TTL
+ * and a hard size cap — appropriate for single-instance deploys.
+ */
 import type {
   AuthenticationResponseJSON,
   AuthenticatorTransportFuture,
@@ -6,13 +13,6 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/server'
 
-/**
- * WebAuthn / passkey service.
- *
- * Wraps `@simplewebauthn/server` and our per-user DB layer so the route
- * handlers stay thin. Challenges are kept in process memory with a TTL —
- * fine for single-instance deploys.
- */
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -31,41 +31,34 @@ import {
 } from '../db/webauthn.ts'
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000
+const MAX_PENDING_CHALLENGES = 10_000
 
 interface RegistrationChallenge {
-  kind: 'registration'
   challenge: string
   expiresAt: number
 }
 
 interface AuthenticationChallenge {
-  kind: 'authentication'
   challenge: string
-  user?: string
   expiresAt: number
 }
 
-/**
- * Encode a username as the `userID` Uint8Array used by WebAuthn. The
- * authenticator returns this verbatim as `userHandle` on assertion, which
- * lets us identify the user in the discoverable-credentials flow without
- * a typed username.
- */
-const encodeUserHandle = (username: string): Uint8Array<ArrayBuffer> => {
-  const encoded = new TextEncoder().encode(username)
-  // SimpleWebAuthn's typing requires Uint8Array<ArrayBuffer>, while TextEncoder
-  // yields the broader ArrayBufferLike. Copy into a fresh ArrayBuffer.
-  const buf = new ArrayBuffer(encoded.length)
+const uuidStringToBytes = (uuid: string): Uint8Array<ArrayBuffer> => {
+  const hex = uuid.replaceAll('-', '')
+  const buf = new ArrayBuffer(16)
   const out = new Uint8Array(buf)
-  out.set(encoded)
+  for (let i = 0; i < 16; i++) {
+    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  }
   return out
 }
 
-const decodeUserHandle = (handle: string): string => {
-  // SimpleWebAuthn delivers userHandle as base64url
-  const normalized = handle.replaceAll('-', '+').replaceAll('_', '/')
-  return Buffer.from(normalized, 'base64').toString('utf8')
+const bytesToUuidString = (bytes: Uint8Array): string => {
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
 }
+
+const decodeBase64UrlBytes = (s: string): Uint8Array => Buffer.from(s, 'base64url')
 
 const toAuthenticatorTransports = (transports: string[]): AuthenticatorTransportFuture[] =>
   transports as AuthenticatorTransportFuture[]
@@ -86,6 +79,16 @@ export interface WebAuthnConfig {
   expectedOrigins: string[]
 }
 
+/**
+ * Adapter for the central-DB userHandle ↔ username mapping. Modelled as a
+ * narrow interface so this service can be unit-tested without spinning up
+ * the central database.
+ */
+export interface UserHandleStore {
+  getOrCreateWebAuthnUserHandle: (username: string) => Promise<string>
+  getUsernameByWebAuthnUserHandle: (userHandle: string) => Promise<string | null>
+}
+
 export interface WebAuthnService {
   getRegistrationOptions: (user: string) => Promise<PublicKeyCredentialCreationOptionsJSON>
   verifyRegistration: (
@@ -93,7 +96,7 @@ export interface WebAuthnService {
     response: RegistrationResponseJSON,
     nickname?: string,
   ) => Promise<{ verified: boolean; credentialId?: string }>
-  getAuthenticationOptions: (username?: string) => Promise<PublicKeyCredentialRequestOptionsJSON>
+  getAuthenticationOptions: () => Promise<PublicKeyCredentialRequestOptionsJSON>
   verifyAuthentication: (
     response: AuthenticationResponseJSON,
   ) => Promise<{ verified: boolean; user?: string }>
@@ -102,7 +105,10 @@ export interface WebAuthnService {
   deleteCredential: (user: string, credentialId: string) => Promise<boolean>
 }
 
-export const createWebAuthnService = (config: WebAuthnConfig): WebAuthnService => {
+export const createWebAuthnService = (
+  config: WebAuthnConfig,
+  userHandleStore: UserHandleStore,
+): WebAuthnService => {
   // Pending registrations are keyed by username (one in-flight per user).
   // Pending authentications are keyed by challenge string because for
   // discoverable credentials we don't yet know the user.
@@ -116,6 +122,15 @@ export const createWebAuthnService = (config: WebAuthnConfig): WebAuthnService =
     }
     for (const [k, v] of pendingAuthentications) {
       if (v.expiresAt < now) pendingAuthentications.delete(k)
+    }
+  }
+
+  // Map.set/delete keep insertion order, so the first key is also the oldest.
+  const enforceCap = <T>(map: Map<string, T>): void => {
+    while (map.size > MAX_PENDING_CHALLENGES) {
+      const oldest = map.keys().next().value
+      if (oldest === undefined) break
+      map.delete(oldest)
     }
   }
 
@@ -133,7 +148,10 @@ export const createWebAuthnService = (config: WebAuthnConfig): WebAuthnService =
   return {
     getRegistrationOptions: async (user) => {
       sweep()
-      const existing = await getWebAuthnCredentialsForUser(user)
+      const [existing, userHandleUuid] = await Promise.all([
+        getWebAuthnCredentialsForUser(user),
+        userHandleStore.getOrCreateWebAuthnUserHandle(user),
+      ])
       const options = await generateRegistrationOptions({
         attestationType: 'none',
         authenticatorSelection: {
@@ -146,15 +164,15 @@ export const createWebAuthnService = (config: WebAuthnConfig): WebAuthnService =
         })),
         rpID: config.rpID,
         rpName: config.rpName,
-        userID: encodeUserHandle(user),
+        userID: uuidStringToBytes(userHandleUuid),
         userName: user,
       })
 
       pendingRegistrations.set(user, {
         challenge: options.challenge,
         expiresAt: Date.now() + CHALLENGE_TTL_MS,
-        kind: 'registration',
       })
+      enforceCap(pendingRegistrations)
 
       return options
     },
@@ -190,24 +208,11 @@ export const createWebAuthnService = (config: WebAuthnConfig): WebAuthnService =
       return { verified: true, credentialId: info.credential.id }
     },
 
-    getAuthenticationOptions: async (username) => {
+    getAuthenticationOptions: async () => {
       sweep()
-      let allowCredentials: { id: string; transports?: AuthenticatorTransportFuture[] }[] | undefined
-      if (username) {
-        try {
-          const creds = await getWebAuthnCredentialsForUser(username)
-          allowCredentials = creds.map((c) => ({
-            id: c.credential_id,
-            transports: toAuthenticatorTransports(c.transports),
-          }))
-        } catch {
-          // Unknown user — emit empty allowCredentials so the flow appears uniform
-          allowCredentials = []
-        }
-      }
-
+      // No allowCredentials — always discoverable. Avoids leaking
+      // credential IDs / user-existence info to unauthenticated callers.
       const options = await generateAuthenticationOptions({
-        allowCredentials,
         rpID: config.rpID,
         userVerification: 'preferred',
       })
@@ -215,9 +220,8 @@ export const createWebAuthnService = (config: WebAuthnConfig): WebAuthnService =
       pendingAuthentications.set(options.challenge, {
         challenge: options.challenge,
         expiresAt: Date.now() + CHALLENGE_TTL_MS,
-        kind: 'authentication',
-        user: username,
       })
+      enforceCap(pendingAuthentications)
 
       return options
     },
@@ -231,8 +235,19 @@ export const createWebAuthnService = (config: WebAuthnConfig): WebAuthnService =
       if (!pending) return { verified: false }
       pendingAuthentications.delete(challenge)
 
-      const userHandle = response.response.userHandle
-      const username = pending.user ?? (userHandle ? decodeUserHandle(userHandle) : undefined)
+      // Identify the user via the discoverable-credential userHandle, which
+      // we registered as the random per-user UUID.
+      const userHandleStr = response.response.userHandle
+      if (!userHandleStr) return { verified: false }
+
+      let userHandleUuid: string
+      try {
+        userHandleUuid = bytesToUuidString(decodeBase64UrlBytes(userHandleStr))
+      } catch {
+        return { verified: false }
+      }
+
+      const username = await userHandleStore.getUsernameByWebAuthnUserHandle(userHandleUuid)
       if (!username) return { verified: false }
 
       let credRow: WebAuthnCredentialRow | null
@@ -261,6 +276,7 @@ export const createWebAuthnService = (config: WebAuthnConfig): WebAuthnService =
       await updateWebAuthnCredentialUsage(
         username,
         credRow.credential_id,
+        Number(credRow.counter),
         verification.authenticationInfo.newCounter,
       )
 

@@ -52,13 +52,12 @@ export type WebAuthnRegistrationVerifyResponse = z.infer<typeof webauthnRegistra
 // Authentication ceremony (unauthenticated — login)
 // ============================================================================
 
-export const webauthnAuthOptionsBodySchema = z
-  .object({
-    username: z.string().optional().meta({
-      description: 'Username — omit for discoverable-credentials (resident key) flow',
-    }),
-  })
-  .meta({ id: 'WebAuthnAuthOptionsBody' })
+/**
+ * `/webauthn/auth/options` takes no body — authentication is always
+ * discoverable to avoid leaking credential IDs and user-existence info to
+ * unauthenticated callers. The schema is kept for OpenAPI completeness.
+ */
+export const webauthnAuthOptionsBodySchema = z.object({}).meta({ id: 'WebAuthnAuthOptionsBody' })
 
 export type WebAuthnAuthOptionsBody = z.infer<typeof webauthnAuthOptionsBodySchema>
 
@@ -83,7 +82,6 @@ export type WebAuthnAuthVerifyBody = z.infer<typeof webauthnAuthVerifyBodySchema
 export const webauthnAuthVerifyResponseSchema = baseResponseSchema
   .extend({
     is_admin: z.boolean().optional().meta({ description: 'Whether the user is an admin' }),
-    refresh: z.string().optional().meta({ description: 'Refresh token (currently same as token)' }),
     token: z.string().optional().meta({ description: 'Authentication token' }),
     username: z.string().optional().meta({ description: 'Authenticated username' }),
     verified: z.boolean().meta({ description: 'Whether the assertion was verified' }),
@@ -107,10 +105,9 @@ export const webauthnCredentialSchema = z
       .string()
       .nullable()
       .meta({ description: 'singleDevice or multiDevice (from authenticator metadata)' }),
-    last_used_at: z
-      .string()
+    last_used_at: iso8601DateTimeSchema
       .nullable()
-      .meta({ description: 'When the credential was last used to authenticate (ISO 8601)' }),
+      .meta({ description: 'When the credential was last used to authenticate' }),
     nickname: z.string().nullable().meta({ description: 'User-chosen label' }),
     transports: z
       .array(z.string())
