@@ -360,49 +360,43 @@ function DayNutrientSummary({ meals }: { meals: Meal[] }) {
   )
 }
 
-function OtherMeals({
-  meals,
+function OtherMealRow({
+  meal,
   onDelete,
   isDeletePending,
   foodSensitivityMap,
   sensitivityAreas,
   onToggleFoodMapping,
 }: {
-  meals: Meal[]
+  meal: Meal
   onDelete: (id: string) => void
   isDeletePending: boolean
   foodSensitivityMap: Record<string, string[]>
   sensitivityAreas: string[]
   onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
 }) {
-  if (meals.length === 0) return null
   return (
-    <div class="other-meals">
-      <h2>Other</h2>
-      {meals.map((meal) => (
-        <div key={meal.id} class="meal-slot-row has-meal">
-          <div class="slot-top">
-            <a href={`/meal-type/${encodeURIComponent(meal.meal_type ?? 'default')}`} class="slot-name">
-              {formatMealType(meal.meal_type)}
-            </a>
-            <span class="meal-time">{format(meal.time, 'HH:mm')}</span>
-            <ConfirmButton
-              label="Delete"
-              confirmMessage="Delete this meal?"
-              onConfirm={() => onDelete(meal.id!)}
-              isPending={isDeletePending}
-              pendingLabel="Deleting..."
-              buttonClass="btn-danger-small"
-            />
-          </div>
-          <MealDetails
-            meal={meal}
-            foodSensitivityMap={foodSensitivityMap}
-            sensitivityAreas={sensitivityAreas}
-            onToggleFoodMapping={onToggleFoodMapping}
-          />
-        </div>
-      ))}
+    <div class="meal-slot-row has-meal">
+      <div class="slot-top">
+        <a href={`/meal-type/${encodeURIComponent(meal.meal_type ?? 'default')}`} class="slot-name">
+          {formatMealType(meal.meal_type)}
+        </a>
+        <span class="meal-time">{format(meal.time, 'HH:mm')}</span>
+        <ConfirmButton
+          label="Delete"
+          confirmMessage="Delete this meal?"
+          onConfirm={() => onDelete(meal.id!)}
+          isPending={isDeletePending}
+          pendingLabel="Deleting..."
+          buttonClass="btn-danger-small"
+        />
+      </div>
+      <MealDetails
+        meal={meal}
+        foodSensitivityMap={foodSensitivityMap}
+        sensitivityAreas={sensitivityAreas}
+        onToggleFoodMapping={onToggleFoodMapping}
+      />
     </div>
   )
 }
@@ -418,11 +412,22 @@ const derivedSensitivities = (meal: Meal | undefined, foodMap: Record<string, st
   return derived
 }
 
-const getOtherMeals = (meals: Meal[], slots: MealSlot[]): Meal[] => {
+type TimelineEntry =
+  | { kind: 'slot'; slot: MealSlot; minutes: number }
+  | { kind: 'other'; meal: Meal; minutes: number }
+
+const minutesOfDay = (d: Date): number => d.getHours() * 60 + d.getMinutes()
+
+const buildTimeline = (slots: MealSlot[], meals: Meal[]): TimelineEntry[] => {
   const slotTypes = new Set(slots.map((s) => s.name.toLowerCase()))
-  return meals
+  const slotEntries: TimelineEntry[] = slots.map((slot) => {
+    const m = meals.find((meal) => meal.meal_type === slot.name.toLowerCase())
+    return { kind: 'slot', minutes: m ? minutesOfDay(m.time) : slot.default_hour * 60, slot }
+  })
+  const otherEntries: TimelineEntry[] = meals
     .filter((m) => !slotTypes.has(m.meal_type ?? ''))
-    .sort((a, b) => a.time.getTime() - b.time.getTime())
+    .map((meal) => ({ kind: 'other', meal, minutes: minutesOfDay(meal.time) }))
+  return [...slotEntries, ...otherEntries].sort((a, b) => a.minutes - b.minutes)
 }
 
 /** Hook to manage meal mutations with optimistic updates. */
@@ -617,7 +622,6 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     route(`/meals/${id}?edit=1`)
   }
 
-  const otherMeals = getOtherMeals(meals ?? [], mealSlots)
   const foodSensitivityMap: Record<string, string[]> = settings?.food_sensitivity_map ?? {}
   const queryClient = useQueryClient()
 
@@ -655,37 +659,40 @@ function MealsContent({ dayKey }: { dayKey: string }) {
         )}
 
         <div class="meal-slots">
-          {mealSlots.map((slot) => (
-            <MealSlotRow
-              key={slot.name}
-              slot={slot}
-              meals={findMealsForSlot(meals ?? [], slot.name)}
-              sensitivityAreas={sensitivityAreas}
-              foodSensitivityMap={foodSensitivityMap}
-              onToggleSensitivity={handleToggleSensitivity}
-              onToggleFoodMapping={handleToggleFoodMapping}
-              onChangeTime={handleChangeTime}
-              onCreateAtTime={handleCreateAtTime}
-              onCreateAndOpen={handleCreateAndOpen}
-              onDelete={(id) => deleteMutation.mutate(id)}
-              isDeletePending={deleteMutation.isPending}
-              isSaving={savingSlots.has(slot.name.toLowerCase())}
-            />
-          ))}
+          {buildTimeline(mealSlots, meals ?? []).map((entry) =>
+            entry.kind === 'slot' ? (
+              <MealSlotRow
+                key={`slot:${entry.slot.name}`}
+                slot={entry.slot}
+                meals={findMealsForSlot(meals ?? [], entry.slot.name)}
+                sensitivityAreas={sensitivityAreas}
+                foodSensitivityMap={foodSensitivityMap}
+                onToggleSensitivity={handleToggleSensitivity}
+                onToggleFoodMapping={handleToggleFoodMapping}
+                onChangeTime={handleChangeTime}
+                onCreateAtTime={handleCreateAtTime}
+                onCreateAndOpen={handleCreateAndOpen}
+                onDelete={(id) => deleteMutation.mutate(id)}
+                isDeletePending={deleteMutation.isPending}
+                isSaving={savingSlots.has(entry.slot.name.toLowerCase())}
+              />
+            ) : (
+              <OtherMealRow
+                key={`meal:${entry.meal.id}`}
+                meal={entry.meal}
+                onDelete={(id) => deleteMutation.mutate(id)}
+                isDeletePending={deleteMutation.isPending}
+                foodSensitivityMap={foodSensitivityMap}
+                sensitivityAreas={sensitivityAreas}
+                onToggleFoodMapping={handleToggleFoodMapping}
+              />
+            ),
+          )}
         </div>
 
         <button type="button" class="btn-add-meal" onClick={handleCreateAdHocMeal}>
           + Add meal
         </button>
-
-        <OtherMeals
-          meals={otherMeals}
-          onDelete={(id) => deleteMutation.mutate(id)}
-          isDeletePending={deleteMutation.isPending}
-          foodSensitivityMap={foodSensitivityMap}
-          sensitivityAreas={sensitivityAreas}
-          onToggleFoodMapping={handleToggleFoodMapping}
-        />
 
         <div class="log-completion">
           <label class="completion-label">

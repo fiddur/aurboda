@@ -139,27 +139,29 @@ export function MealPreferencesSettings() {
         <p class="subsection-desc">Define your typical meal times for the quick-log UI.</p>
 
         <div class="slots-list">
-          {currentSlots.map((slot) => (
-            <div key={slot.name} class="slot-row">
-              <span class="slot-label">{slot.name}</span>
-              <label class="slot-hour-label">
-                Default hour:
-                <input
-                  type="number"
-                  min="0"
-                  max="23"
-                  value={slot.default_hour}
-                  onChange={(e) =>
-                    updateSlotHour(slot.name, parseInt((e.target as HTMLInputElement).value, 10))
-                  }
-                  class="slot-hour-input"
-                />
-              </label>
-              <button type="button" class="btn-danger-small" onClick={() => removeSlot(slot.name)}>
-                Remove
-              </button>
-            </div>
-          ))}
+          {[...currentSlots]
+            .sort((a, b) => a.default_hour - b.default_hour)
+            .map((slot) => (
+              <div key={slot.name} class="slot-row">
+                <span class="slot-label">{slot.name}</span>
+                <label class="slot-hour-label">
+                  Default hour:
+                  <input
+                    type="number"
+                    min="0"
+                    max="23"
+                    value={slot.default_hour}
+                    onChange={(e) =>
+                      updateSlotHour(slot.name, parseInt((e.target as HTMLInputElement).value, 10))
+                    }
+                    class="slot-hour-input"
+                  />
+                </label>
+                <button type="button" class="btn-danger-small" onClick={() => removeSlot(slot.name)}>
+                  Remove
+                </button>
+              </div>
+            ))}
         </div>
 
         <div class="add-row">
