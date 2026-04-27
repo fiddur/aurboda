@@ -18,15 +18,42 @@ import './MealDetail.css'
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-interface FoodItemEdit {
-  name: string
+interface FoodItemRef {
   quantity?: number
-  unit?: string
   calories?: number
   protein?: number
   carbs?: number
   fat?: number
   fiber?: number
+}
+
+interface FoodItemEdit {
+  food_item_id?: string
+  name: string
+  quantity?: number
+  unit?: string
+  /**
+   * Reference values for live display scaling. Captured at row creation
+   * (autocomplete pick: canonical default_quantity + canonical nutrients;
+   * existing item edit: server snapshot quantity + snapshot nutrients).
+   * Stripped before save — the backend re-derives the snapshot from the
+   * canonical food item × quantity.
+   */
+  ref?: FoodItemRef
+}
+
+/** Linearly scale a reference nutrient value to the current quantity. */
+const scaleNutrient = (
+  ref: FoodItemRef | undefined,
+  field: keyof Omit<FoodItemRef, 'quantity'>,
+  currentQuantity: number | undefined,
+): number | undefined => {
+  if (!ref) return undefined
+  const baseValue = ref[field]
+  if (typeof baseValue !== 'number') return undefined
+  if (ref.quantity === undefined || ref.quantity === 0) return baseValue
+  if (currentQuantity === undefined) return baseValue
+  return Math.round(((baseValue * currentQuantity) / ref.quantity) * 10) / 10
 }
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack', 'drink']
@@ -137,8 +164,16 @@ function FoodItemRow({
   onChange: (index: number, item: FoodItemEdit) => void
   onRemove: (index: number) => void
 }) {
-  const update = (field: string, value: unknown) => onChange(index, { ...item, [field]: value })
+  const update = (field: keyof FoodItemEdit, value: unknown) => onChange(index, { ...item, [field]: value })
   const parseNum = (v: string) => (v === '' ? undefined : parseFloat(v))
+
+  const kcal = scaleNutrient(item.ref, 'calories', item.quantity)
+  const prot = scaleNutrient(item.ref, 'protein', item.quantity)
+  const carbs = scaleNutrient(item.ref, 'carbs', item.quantity)
+  const fat = scaleNutrient(item.ref, 'fat', item.quantity)
+  const fiber = scaleNutrient(item.ref, 'fiber', item.quantity)
+  const hasMacros = [kcal, prot, carbs, fat, fiber].some((v) => typeof v === 'number')
+
   return (
     <div class="food-item-edit-row">
       <div class="food-row-top">
@@ -148,14 +183,18 @@ function FoodItemRow({
           onSelect={(fi: FoodItemEntity) => {
             onChange(index, {
               ...item,
+              food_item_id: fi.id,
               name: fi.name,
               quantity: fi.default_quantity ?? 1,
               unit: fi.default_unit ?? item.unit,
-              calories: fi.calories ?? item.calories,
-              protein: fi.protein ?? item.protein,
-              carbs: fi.carbs ?? item.carbs,
-              fat: fi.fat ?? item.fat,
-              fiber: fi.fiber ?? item.fiber,
+              ref: {
+                calories: fi.calories,
+                carbs: fi.carbs,
+                fat: fi.fat,
+                fiber: fi.fiber,
+                protein: fi.protein,
+                quantity: fi.default_quantity,
+              },
             })
           }}
         />
@@ -178,53 +217,15 @@ function FoodItemRow({
           &times;
         </button>
       </div>
-      <div class="food-row-macros">
-        <label>
-          <span>kcal</span>
-          <input
-            type="number"
-            step="0.1"
-            value={item.calories ?? ''}
-            onInput={(e) => update('calories', parseNum((e.target as HTMLInputElement).value))}
-          />
-        </label>
-        <label>
-          <span>prot</span>
-          <input
-            type="number"
-            step="0.1"
-            value={item.protein ?? ''}
-            onInput={(e) => update('protein', parseNum((e.target as HTMLInputElement).value))}
-          />
-        </label>
-        <label>
-          <span>carbs</span>
-          <input
-            type="number"
-            step="0.1"
-            value={item.carbs ?? ''}
-            onInput={(e) => update('carbs', parseNum((e.target as HTMLInputElement).value))}
-          />
-        </label>
-        <label>
-          <span>fat</span>
-          <input
-            type="number"
-            step="0.1"
-            value={item.fat ?? ''}
-            onInput={(e) => update('fat', parseNum((e.target as HTMLInputElement).value))}
-          />
-        </label>
-        <label>
-          <span>fiber</span>
-          <input
-            type="number"
-            step="0.1"
-            value={item.fiber ?? ''}
-            onInput={(e) => update('fiber', parseNum((e.target as HTMLInputElement).value))}
-          />
-        </label>
-      </div>
+      {hasMacros && (
+        <div class="food-row-macros-display">
+          {typeof kcal === 'number' && <span>{kcal} kcal</span>}
+          {typeof prot === 'number' && <span>P {prot}g</span>}
+          {typeof carbs === 'number' && <span>C {carbs}g</span>}
+          {typeof fat === 'number' && <span>F {fat}g</span>}
+          {typeof fiber === 'number' && <span>Fib {fiber}g</span>}
+        </div>
+      )}
     </div>
   )
 }
@@ -318,7 +319,14 @@ interface EditState {
   sensitivities?: string[]
 }
 
-/** Build the PATCH body from edit state, auto-summing macros from food items. */
+/**
+ * Build the PATCH body from edit state.
+ *
+ * Per-item nutrient values are not sent — the backend re-derives them from
+ * the canonical food item × quantity. Meal-level macros are sent only if the
+ * user typed an explicit value; otherwise the backend auto-fills from the
+ * (newly scaled) item snapshots.
+ */
 const buildSaveBody = (editing: EditState): Record<string, unknown> => {
   const body: Record<string, unknown> = {}
   if (editing.name !== undefined) body.name = editing.name || null
@@ -329,24 +337,19 @@ const buildSaveBody = (editing: EditState): Record<string, unknown> => {
 
   const items = editing.food_items?.filter((fi) => fi.name.trim())
   if (items !== undefined) {
-    body.food_items = items
-    // Auto-sum macros from food items
-    const sumField = (field: keyof FoodItemEdit) => {
-      const total = items.reduce((s, fi) => s + ((fi[field] as number) ?? 0), 0)
-      return total > 0 ? Math.round(total * 100) / 100 : null
-    }
-    body.calories = sumField('calories')
-    body.protein = sumField('protein')
-    body.carbs = sumField('carbs')
-    body.fat = sumField('fat')
-    body.fiber = sumField('fiber')
-  } else {
-    if (editing.calories !== undefined) body.calories = editing.calories
-    if (editing.protein !== undefined) body.protein = editing.protein
-    if (editing.carbs !== undefined) body.carbs = editing.carbs
-    if (editing.fat !== undefined) body.fat = editing.fat
-    if (editing.fiber !== undefined) body.fiber = editing.fiber
+    body.food_items = items.map((fi) => ({
+      food_item_id: fi.food_item_id,
+      name: fi.name,
+      quantity: fi.quantity,
+      unit: fi.unit,
+    }))
   }
+
+  if (editing.calories !== undefined) body.calories = editing.calories
+  if (editing.protein !== undefined) body.protein = editing.protein
+  if (editing.carbs !== undefined) body.carbs = editing.carbs
+  if (editing.fat !== undefined) body.fat = editing.fat
+  if (editing.fiber !== undefined) body.fiber = editing.fiber
 
   return body
 }
@@ -421,17 +424,21 @@ export function MealDetail() {
   const editCarbs = editing?.carbs !== undefined ? editing.carbs : meal.carbs
   const editFat = editing?.fat !== undefined ? editing.fat : meal.fat
   const editFiber = editing?.fiber !== undefined ? editing.fiber : meal.fiber
-  const editItems =
+  const editItems: FoodItemEdit[] =
     editing?.food_items ??
     (meal.food_items ?? []).map((fi) => ({
+      food_item_id: fi.food_item_id,
       name: fi.name,
       quantity: fi.quantity,
+      ref: {
+        calories: fi.calories,
+        carbs: fi.carbs,
+        fat: fi.fat,
+        fiber: fi.fiber,
+        protein: fi.protein,
+        quantity: fi.quantity,
+      },
       unit: fi.unit,
-      calories: fi.calories,
-      protein: fi.protein,
-      carbs: fi.carbs,
-      fat: fi.fat,
-      fiber: fi.fiber,
     }))
   const editFlags = editing?.sensitivities ?? meal.sensitivities ?? []
 

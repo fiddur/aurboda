@@ -276,6 +276,19 @@
   flex-wrap: wrap;
 }
 
+.food-row-macros-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  padding-left: 0.25rem;
+}
+
+.food-row-macros-display span {
+  white-space: nowrap;
+}
+
 .food-row-macros label {
   display: flex;
   flex-direction: column;

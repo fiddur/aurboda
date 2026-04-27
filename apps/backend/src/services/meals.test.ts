@@ -5,6 +5,7 @@ import type { MealFoodItemLink } from '../db/types.ts'
 import * as db from '../db/index.ts'
 import {
   addMeal,
+  buildScaledJunctionItem,
   deleteMealById,
   getMeal,
   hasIncompleteNutrients,
@@ -16,6 +17,7 @@ import {
 vi.mock('../db', () => ({
   deleteMeal: vi.fn(),
   findOrCreateFoodItem: vi.fn().mockResolvedValue({ id: 'fi-1', name: 'test' }),
+  getFoodItemById: vi.fn().mockResolvedValue(null),
   getMealById: vi.fn(),
   getMealFoodItems: vi.fn().mockResolvedValue([]),
   getMealFoodItemsBatch: vi.fn().mockResolvedValue(new Map()),
@@ -65,8 +67,8 @@ describe('addMeal', () => {
       fat: 25,
       fiber: 8,
       food_items: [
-        { calories: 200, carbs: 40, name: 'Rye bread', protein: 6 },
-        { calories: 180, fat: 16, name: 'Peanut butter', protein: 7 },
+        { name: 'Rye bread', quantity: 100, unit: 'g' },
+        { name: 'Peanut butter', quantity: 30, unit: 'g' },
       ],
       meal_type: 'breakfast',
       micros: { iron: 3.2 },
@@ -242,6 +244,84 @@ describe('updateMealById', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Meal not found')
+  })
+})
+
+// ── buildScaledJunctionItem ───────────────────────────────────────────────
+
+const canonicalFoodItem = (overrides: Record<string, unknown> = {}) =>
+  ({
+    calories: 200,
+    carbs: 40,
+    created_at: new Date('2025-01-01T00:00:00Z'),
+    default_quantity: 100,
+    default_unit: 'g',
+    fat: 2,
+    fiber: 5,
+    id: 'canonical-1',
+    name: 'Rye bread',
+    name_lower: 'rye bread',
+    protein: 8,
+    source: 'manual',
+    updated_at: new Date('2025-01-01T00:00:00Z'),
+    ...overrides,
+  }) as unknown as Parameters<typeof buildScaledJunctionItem>[1]
+
+describe('buildScaledJunctionItem', () => {
+  test('scales nutrients linearly when quantity differs from default', () => {
+    const canonical = canonicalFoodItem()
+    const item = buildScaledJunctionItem({ name: 'Rye bread', quantity: 500, unit: 'g' }, canonical, 0)
+    expect(item.calories).toBe(1000)
+    expect(item.protein).toBe(40)
+    expect(item.carbs).toBe(200)
+    expect(item.fat).toBe(10)
+    expect(item.fiber).toBe(25)
+    expect(item.food_item_id).toBe('canonical-1')
+    expect(item.quantity).toBe(500)
+    expect(item.sort_order).toBe(0)
+  })
+
+  test('scales down for smaller quantities', () => {
+    const item = buildScaledJunctionItem(
+      { name: 'Rye bread', quantity: 50, unit: 'g' },
+      canonicalFoodItem(),
+      1,
+    )
+    expect(item.calories).toBe(100)
+    expect(item.protein).toBe(4)
+  })
+
+  test('uses raw canonical values when quantity is missing', () => {
+    const item = buildScaledJunctionItem({ name: 'Rye bread' }, canonicalFoodItem(), 0)
+    expect(item.calories).toBe(200)
+  })
+
+  test('uses raw canonical values when default_quantity is missing', () => {
+    const item = buildScaledJunctionItem(
+      { name: 'Rye bread', quantity: 500 },
+      canonicalFoodItem({ default_quantity: undefined }),
+      0,
+    )
+    expect(item.calories).toBe(200)
+  })
+
+  test('falls back to scale=1 when units differ', () => {
+    const item = buildScaledJunctionItem(
+      { name: 'Rye bread', quantity: 2, unit: 'slice' },
+      canonicalFoodItem(),
+      0,
+    )
+    expect(item.calories).toBe(200)
+  })
+
+  test('rounds to two decimal places', () => {
+    const item = buildScaledJunctionItem(
+      { name: 'Rye bread', quantity: 33, unit: 'g' },
+      canonicalFoodItem(),
+      0,
+    )
+    expect(item.calories).toBe(66)
+    expect(item.protein).toBe(2.64)
   })
 })
 

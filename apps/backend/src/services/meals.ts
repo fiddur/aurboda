@@ -10,12 +10,14 @@ import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 import {
   deleteMeal as dbDeleteMeal,
   findOrCreateFoodItem,
+  getFoodItemById,
   getMealById as dbGetMealById,
   getMealFoodItemsBatch,
   getMeals as dbGetMeals,
   setMealFoodItems,
   updateMeal as dbUpdateMeal,
   upsertMeal as dbUpsertMeal,
+  type FoodItemEntity,
   type Meal,
   type MealFoodItem,
   type MealFoodItemLink,
@@ -27,14 +29,11 @@ import {
 // ============================================================================
 
 interface FoodItemInput {
+  food_item_id?: string
   name: string
   quantity?: number
   unit?: string
-  calories?: number
-  protein?: number
-  carbs?: number
-  fat?: number
-  fiber?: number
+  icon?: string
 }
 
 export interface AddMealInput {
@@ -160,6 +159,20 @@ const aggregateNutrients = (links: MealFoodItemLink[]): Record<string, number> =
   return totals
 }
 
+/**
+ * Extract the macro fields the caller explicitly provided so the recompute
+ * step can leave them alone (manual override wins).
+ */
+const pickExplicitMacros = (
+  input: Partial<Record<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber', number | null | undefined>>,
+): Partial<Record<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber', number | null>> => {
+  const out: Partial<Record<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber', number | null>> = {}
+  for (const key of ['calories', 'protein', 'carbs', 'fat', 'fiber'] as const) {
+    if (input[key] !== undefined) out[key] = input[key] as number | null
+  }
+  return out
+}
+
 /** Check if any food item in the junction links lacks calorie data. */
 export const hasIncompleteNutrients = (links: MealFoodItemLink[]): boolean =>
   links.some((link) => link.calories === undefined || link.calories === null)
@@ -186,6 +199,73 @@ const attachFoodItems = async (user: string, meals: Meal[]): Promise<EnrichedMea
   })
 }
 
+/**
+ * Compute the scale factor between a request's quantity and the canonical
+ * food item's default quantity. Same-unit assumption — if the request unit
+ * differs from the canonical default, fall back to scale = 1 (use raw values).
+ */
+const computeScale = (fi: FoodItemInput, canonical: FoodItemEntity): number => {
+  const reqQty = fi.quantity
+  const defaultQty = canonical.default_quantity
+  if (reqQty === undefined || reqQty === null) return 1
+  if (defaultQty === undefined || defaultQty === null || defaultQty === 0) return 1
+  if (fi.unit && canonical.default_unit && fi.unit !== canonical.default_unit) return 1
+  return reqQty / defaultQty
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100
+
+/**
+ * Build a junction row by snapshotting the canonical food item's nutrient
+ * values scaled by quantity. The snapshot is what gets stored on
+ * meal_food_items so that reads remain stable even if the canonical food
+ * is later edited.
+ */
+export const buildScaledJunctionItem = (
+  fi: FoodItemInput,
+  canonical: FoodItemEntity,
+  sortOrder: number,
+): Record<string, unknown> => {
+  const scale = computeScale(fi, canonical)
+  const junctionItem: Record<string, unknown> = {
+    food_item_id: canonical.id,
+    quantity: fi.quantity,
+    sort_order: sortOrder,
+    unit: fi.unit,
+  }
+  for (const field of NUTRIENT_FIELD_NAMES) {
+    const canonicalVal = canonical[field]
+    if (typeof canonicalVal === 'number') {
+      junctionItem[field] = round2(canonicalVal * scale)
+    }
+  }
+  return junctionItem
+}
+
+/**
+ * Resolve a food item input to the canonical food_items row.
+ *
+ * Prefer food_item_id when present; otherwise look up by name (creating a
+ * new canonical entry on first use, with the request's quantity/unit as the
+ * defaults so subsequent uses can scale from the same base).
+ */
+const resolveCanonical = async (
+  user: string,
+  fi: FoodItemInput,
+  source: string,
+): Promise<FoodItemEntity | null> => {
+  if (fi.food_item_id) {
+    const byId = await getFoodItemById(user, fi.food_item_id)
+    if (byId) return byId
+  }
+  return findOrCreateFoodItem(user, fi.name, {
+    default_quantity: fi.quantity,
+    default_unit: fi.unit,
+    icon: fi.icon,
+    source,
+  })
+}
+
 /** Write food items to the junction table for a meal. */
 const syncFoodItemsToJunction = async (
   user: string,
@@ -196,41 +276,37 @@ const syncFoodItemsToJunction = async (
   const junctionItems = []
   for (let i = 0; i < foodItems.length; i++) {
     const fi = foodItems[i]
-    // Find or create canonical food item with the macro defaults
-    const canonical = await findOrCreateFoodItem(user, fi.name, {
-      source,
-      default_quantity: fi.quantity,
-      default_unit: fi.unit,
-      calories: fi.calories,
-      protein: fi.protein,
-      carbs: fi.carbs,
-      fat: fi.fat,
-      fiber: fi.fiber,
-    })
-
-    // Copy ALL nutrients from canonical food item as snapshot, then override with any
-    // explicit values from the input (the input may have manually adjusted macros)
-    const junctionItem: Record<string, unknown> = {
-      food_item_id: canonical.id,
-      quantity: fi.quantity,
-      unit: fi.unit,
-      sort_order: i,
-    }
-    // First: copy all nutrients from canonical item
-    for (const field of NUTRIENT_FIELD_NAMES) {
-      const canonicalVal = canonical[field]
-      if (typeof canonicalVal === 'number') junctionItem[field] = canonicalVal
-    }
-    // Then: override with any explicit input values (manual edits)
-    if (fi.calories !== undefined) junctionItem.calories = fi.calories
-    if (fi.protein !== undefined) junctionItem.protein = fi.protein
-    if (fi.carbs !== undefined) junctionItem.carbs = fi.carbs
-    if (fi.fat !== undefined) junctionItem.fat = fi.fat
-    if (fi.fiber !== undefined) junctionItem.fiber = fi.fiber
-    junctionItems.push(junctionItem)
+    const canonical = await resolveCanonical(user, fi, source)
+    if (!canonical) continue
+    junctionItems.push(buildScaledJunctionItem(fi, canonical, i))
   }
 
   await setMealFoodItems(user, mealId, junctionItems as Parameters<typeof setMealFoodItems>[2])
+}
+
+/**
+ * Recompute meal-level macros (calories/protein/carbs/fat/fiber) from the
+ * current junction rows and persist them on the meal row.
+ *
+ * Macro keys present in `explicit` are skipped — the caller's request body
+ * wins (manual override).
+ */
+const recomputeMealMacros = async (
+  user: string,
+  mealId: string,
+  explicit: Partial<Record<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber', number | null>> = {},
+): Promise<Meal | null> => {
+  const map = await getMealFoodItemsBatch(user, [mealId])
+  const links = map.get(mealId) ?? []
+  const totals = aggregateNutrients(links)
+  const macroKeys = ['calories', 'protein', 'carbs', 'fat', 'fiber'] as const
+  const update: Record<string, number | null> = {}
+  for (const key of macroKeys) {
+    if (key in explicit) continue
+    update[key] = links.length === 0 ? null : (totals[key] ?? 0)
+  }
+  if (Object.keys(update).length === 0) return null
+  return dbUpdateMeal(user, mealId, update)
 }
 
 // ============================================================================
@@ -243,7 +319,7 @@ const syncFoodItemsToJunction = async (
 export async function addMeal(user: string, input: AddMealInput): Promise<MealResult> {
   const mealTime = new Date(input.time)
 
-  const meal = await dbUpsertMeal(user, {
+  const initialMeal = await dbUpsertMeal(user, {
     id: input.id,
     calories: input.calories,
     carbs: input.carbs,
@@ -260,9 +336,11 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
     time: mealTime,
   })
 
-  // Write junction table rows for food items
+  let meal = initialMeal
   if (input.food_items && input.food_items.length > 0) {
     await syncFoodItemsToJunction(user, meal.id, input.food_items, input.source)
+    const recomputed = await recomputeMealMacros(user, meal.id, pickExplicitMacros(input))
+    if (recomputed) meal = recomputed
   }
 
   return { data: formatMeal(meal), success: true }
@@ -272,24 +350,26 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
  * Update an existing meal record.
  */
 export async function updateMealById(user: string, id: string, input: UpdateMealInput): Promise<MealResult> {
-  const meal = await dbUpdateMeal(user, id, {
+  const initialMeal = await dbUpdateMeal(user, id, {
     ...input,
     food_items: input.food_items === null ? null : input.food_items,
     micros: input.micros === null ? null : input.micros,
     time: input.time ? new Date(input.time) : undefined,
   })
 
-  if (!meal) {
+  if (!initialMeal) {
     return { error: 'Meal not found', success: false }
   }
 
-  // Update junction table if food items changed
+  let meal = initialMeal
   if (input.food_items !== undefined) {
     if (input.food_items === null || input.food_items.length === 0) {
       await setMealFoodItems(user, id, [])
     } else {
       await syncFoodItemsToJunction(user, id, input.food_items, meal.source)
     }
+    const recomputed = await recomputeMealMacros(user, id, pickExplicitMacros(input))
+    if (recomputed) meal = recomputed
   }
 
   return { data: formatMeal(meal), success: true }
