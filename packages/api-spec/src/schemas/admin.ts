@@ -94,7 +94,6 @@ export type LoginBody = z.infer<typeof loginBodySchema>
 export const loginResponseSchema = z
   .object({
     is_admin: z.boolean().optional().meta({ description: 'Whether the user is an admin' }),
-    refresh: z.string().meta({ description: 'Refresh token' }),
     token: z.string().meta({ description: 'Authentication token' }),
   })
   .meta({ id: 'LoginResponse' })

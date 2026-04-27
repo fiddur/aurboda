@@ -305,8 +305,7 @@ describe('collapseToParentType', () => {
     ['meditation', {}],
   ])
 
-  const d = (h: number, m = 0) =>
-    new Date(Date.UTC(2026, 0, 1, h, m, 0))
+  const d = (h: number, m = 0) => new Date(Date.UTC(2026, 0, 1, h, m, 0))
 
   it('collapses adjacent exercise subtypes into one exercise bar', () => {
     const activities: Activity[] = [

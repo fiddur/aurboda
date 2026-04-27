@@ -17,6 +17,7 @@
     "@flow-js/garmin-connect": "github:fiddur/garmin-connect#feat/mfa-support",
     "@js-temporal/polyfill": "^0.5.1",
     "@modelcontextprotocol/sdk": "^1.25.2",
+    "@simplewebauthn/server": "^13.3.0",
     "@types/multer": "^2.1.0",
     "axios": "^1.11.0",
     "cors": "^2.8.5",

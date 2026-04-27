@@ -151,4 +151,23 @@ export const systemTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_audit_log_category ON audit_log (category);
     CREATE INDEX IF NOT EXISTS idx_audit_log_level ON audit_log (level)
   `,
+
+  // WebAuthn / passkey credentials registered by this user
+  webauthn_credentials: `
+    CREATE TABLE IF NOT EXISTS webauthn_credentials (
+      credential_id   TEXT PRIMARY KEY,
+      public_key      BYTEA NOT NULL,
+      counter         BIGINT NOT NULL DEFAULT 0,
+      transports      TEXT[] NOT NULL DEFAULT '{}',
+      device_type     VARCHAR(20),
+      backed_up       BOOLEAN NOT NULL DEFAULT false,
+      nickname        VARCHAR(64),
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_used_at    TIMESTAMPTZ
+    )
+  `,
+
+  webauthn_credentials_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_created ON webauthn_credentials (created_at DESC)
+  `,
 }
