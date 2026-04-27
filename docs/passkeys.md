@@ -51,8 +51,10 @@ WEBAUTHN_RP_ID=aurboda.example.com
 WEBAUTHN_ORIGINS=https://aurboda.example.com
 ```
 
-Both default to values derived from `API_BASE_URL` and `WEB_HOST`, so
-in many cases you don't need to set them explicitly.
+Both default to values derived from `WEB_HOST`, so in many cases you
+don't need to set them explicitly. The Relying Party ID *must* match the
+hostname the user's browser sees — if your API and web frontend live on
+different subdomains, set `WEBAUTHN_RP_ID` to the web one.
 
 ### Linking the Android app to your domain
 

@@ -49,7 +49,7 @@ This mounts your source code and watches for changes.
 | `SESSION_SECRET`           | 32-byte secret for session encryption                                                          | (required)                             |
 | `WEB_HOST`                 | Public URL of the web UI (for OAuth redirects)                                                 | `http://localhost:8080`                |
 | `ALLOW_SIGNUP`             | Enable user registration                                                                       | `true`                                 |
-| `WEBAUTHN_RP_ID`           | Passkey Relying Party ID (must be the public hostname)                                         | derived from `API_BASE_URL`            |
+| `WEBAUTHN_RP_ID`           | Passkey Relying Party ID (must be the public hostname the browser sees)                        | derived from `WEB_HOST`                |
 | `WEBAUTHN_RP_NAME`         | Display name shown by the user's authenticator                                                 | `Aurboda`                              |
 | `WEBAUTHN_ORIGINS`         | Comma-separated list of allowed origins for assertions                                         | `WEB_HOST`                             |
 | `ANDROID_APP_PACKAGE`      | Android app package name in `assetlinks.json`                                                  | `net.aurboda.app`                      |
