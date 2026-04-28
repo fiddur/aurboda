@@ -5,7 +5,7 @@ import { formatISO } from 'date-fns'
 import type { ChartItem, Column } from './types'
 
 import { NOW_COLOR } from './colors'
-import { attachHoverHandlers, drawItemIcon, truncateLabel } from './drawItems'
+import { attachHoverHandlers, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
 import { formatTime } from './formatting'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -245,10 +245,7 @@ export const drawItem = (
   const x = colX + lane * (laneWidth + colPadding) + xOffset
   const blockHeight = Math.max(y2 - y1, 2)
 
-  const detailUrl =
-    item.entity_id && item.entity_type
-      ? `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
-      : (item.href ?? undefined)
+  const detailUrl = getDetailUrl(item)
 
   const parent: SvgParent = detailUrl
     ? chartGroup.append('a').attr('href', detailUrl).attr('data-clickable', 'true')

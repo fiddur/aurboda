@@ -8,6 +8,17 @@ import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 type SvgParent = d3.Selection<any, unknown, null, undefined>
 
 /**
+ * Resolve the detail URL for a chart item. An explicit `href` wins over the
+ * generic `/detail/{type}/{id}` route — some entity types (e.g. meals) live
+ * outside the EntityDetail page and set `href` to their own route.
+ */
+export const getDetailUrl = (item: ChartItem): string | undefined =>
+  item.href ??
+  (item.entity_id && item.entity_type
+    ? `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
+    : undefined)
+
+/**
  * Render an emoji or image icon centered at (cx, cy).
  * Returns the created SVG element selection, or null if no icon was available.
  */
