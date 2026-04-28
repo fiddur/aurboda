@@ -9,6 +9,8 @@ private const val PREFS_NAME = "AurbodaAppPrefs"
 private const val BACKGROUND_SYNC_ENABLED_KEY = "backgroundSyncEnabled"
 
 class AurbodaApplication : Application() {
+  val syncProgress: SyncProgressReporter = DefaultSyncProgressReporter()
+
   override fun onCreate() {
     super.onCreate()
 
