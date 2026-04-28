@@ -389,6 +389,7 @@ const main = async () => {
     invitationAuth,
     ouraWebhookManager,
     syncProvider,
+    userDb,
     webAuthn,
     webHost,
     wellKnown,

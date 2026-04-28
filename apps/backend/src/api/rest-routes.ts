@@ -5,6 +5,7 @@
  * activity-detail fetcher that's plumbed in here.
  */
 import type { Express } from 'express'
+import type { Client } from 'pg'
 
 import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
@@ -59,6 +60,7 @@ interface RestRoutesDeps {
   auth: Auth
   webAuthn: WebAuthnService
   wellKnown: WellKnownConfig
+  userDb: Client
 }
 
 export const mountRestRouters = ({
@@ -77,6 +79,7 @@ export const mountRestRouters = ({
   auth,
   webAuthn,
   wellKnown,
+  userDb,
 }: RestRoutesDeps): void => {
   httpd.use(createMetricsRouter(authMiddleware, syncProvider))
   httpd.use('/icons', createIconsRouter(authMiddleware))
@@ -124,6 +127,9 @@ export const mountRestRouters = ({
       ouraWebhookManager,
     ),
   )
-  httpd.use('/webauthn', createWebAuthnRouter({ auth, authMiddleware, centralDb, webAuthn }))
+  httpd.use(
+    '/webauthn',
+    createWebAuthnRouter({ auth, authMiddleware, centralDb, invitationAuth, userDb, webAuthn }),
+  )
   httpd.use(createWellKnownRouter(wellKnown))
 }

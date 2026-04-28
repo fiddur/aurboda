@@ -56,6 +56,10 @@ import {
   webauthnRegistrationOptionsResponseSchema,
   webauthnRegistrationVerifyBodySchema,
   webauthnRegistrationVerifyResponseSchema,
+  webauthnSignupOptionsBodySchema,
+  webauthnSignupOptionsResponseSchema,
+  webauthnSignupVerifyBodySchema,
+  webauthnSignupVerifyResponseSchema,
   webauthnUpdateCredentialBodySchema,
 } from './schemas/webauthn.ts'
 
@@ -787,6 +791,52 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Rename passkey',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/signup/options': {
+      post: {
+        description:
+          'Begin a passkey-only signup. Validates the desired username and signup mode (and invitation if required), then returns WebAuthn registration options. The user is not yet created.',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnSignupOptionsBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnSignupOptionsResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request (invalid username, taken username, etc.)',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Signup closed or invitation invalid',
+          },
+        },
+        summary: 'Begin passkey-only signup',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/signup/verify': {
+      post: {
+        description:
+          'Complete a passkey-only signup. On success the Postgres user is created with an internally-generated random password, the credential is bound, and an auth token is returned.',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnSignupVerifyBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnSignupVerifyResponseSchema } },
+            description: 'Successful signup',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Verification failed',
+          },
+        },
+        summary: 'Complete passkey-only signup',
         tags: ['Auth'],
       },
     },

@@ -6,6 +6,7 @@
  * session (you must be logged in to manage your own passkeys).
  */
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server'
+import type { Client } from 'pg'
 
 import {
   type WebAuthnAuthOptionsBody,
@@ -20,23 +21,38 @@ import {
   type WebAuthnRegistrationVerifyBody,
   webauthnRegistrationVerifyBodySchema,
   type WebAuthnRegistrationVerifyResponse,
+  type WebAuthnSignupOptionsBody,
+  webauthnSignupOptionsBodySchema,
+  type WebAuthnSignupOptionsResponse,
+  type WebAuthnSignupVerifyBody,
+  webauthnSignupVerifyBodySchema,
+  type WebAuthnSignupVerifyResponse,
   type WebAuthnUpdateCredentialBody,
   webauthnUpdateCredentialBodySchema,
 } from '@aurboda/api-spec'
+import { randomBytes, randomUUID } from 'node:crypto'
 
 import type { Auth } from '../auth.ts'
 import type { CentralDb } from '../services/central-db.ts'
+import type { InvitationAuth } from '../services/invitation.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware, TypedRouter } from '../typed-router.ts'
 
+import { RESERVED_USERNAMES } from '../api/auth-routes.ts'
+import { dropUserDb, makeNewUserDb, query } from '../db/index.ts'
+import { insertWebAuthnCredential } from '../db/webauthn.ts'
 import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
+
+const USERNAME_REGEX = /^[a-z][a-z0-9_]{2,30}$/
 
 interface WebAuthnRouterDeps {
   authMiddleware: AnyMiddleware
   webAuthn: WebAuthnService
   auth: Auth
   centralDb: CentralDb
+  invitationAuth: InvitationAuth
+  userDb: Client
 }
 
 export const createWebAuthnRouter = ({
@@ -44,8 +60,179 @@ export const createWebAuthnRouter = ({
   webAuthn,
   auth,
   centralDb,
+  invitationAuth,
+  userDb,
 }: WebAuthnRouterDeps): TypedRouter => {
   const router = typedRouter()
+
+  router.post<Record<string, never>, WebAuthnSignupOptionsResponse, WebAuthnSignupOptionsBody>(
+    '/signup/options',
+    validateBody(webauthnSignupOptionsBodySchema),
+    async (req, res) => {
+      const { username, invitation } = req.body
+
+      const signupMode = await centralDb.getSignupMode()
+      if (signupMode === 'closed') {
+        res.status(403).json({ error: 'Signup is currently closed', success: false, options_json: '' })
+        return
+      }
+      if (signupMode === 'invite_only') {
+        if (!invitation) {
+          res
+            .status(403)
+            .json({ error: 'An invitation is required to sign up', success: false, options_json: '' })
+          return
+        }
+        const validation = invitationAuth.validateInvitationToken(invitation)
+        if (!validation.valid) {
+          const errorMsg = validation.expired ? 'Invitation has expired' : 'Invalid invitation'
+          res.status(403).json({ error: errorMsg, success: false, options_json: '' })
+          return
+        }
+      }
+
+      if (!USERNAME_REGEX.test(username)) {
+        res.status(400).json({
+          error:
+            'Username must be 3-31 characters, start with a letter, and contain only lowercase letters, numbers, and underscores',
+          options_json: '',
+          success: false,
+        })
+        return
+      }
+      if (RESERVED_USERNAMES.includes(username)) {
+        res.status(400).json({ error: 'This username is reserved', success: false, options_json: '' })
+        return
+      }
+
+      const existing = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [username])
+      if ((existing.rowCount ?? 0) > 0) {
+        res.status(409).json({ error: 'Username already exists', success: false, options_json: '' })
+        return
+      }
+
+      const userHandleUuid = randomUUID()
+      const options = await webAuthn.getSignupOptions(username, userHandleUuid)
+      res.json({ options_json: JSON.stringify(options), success: true })
+    },
+  )
+
+  router.post<Record<string, never>, WebAuthnSignupVerifyResponse, WebAuthnSignupVerifyBody>(
+    '/signup/verify',
+    validateBody(webauthnSignupVerifyBodySchema),
+    async (req, res) => {
+      const { username, nickname } = req.body
+
+      let response: RegistrationResponseJSON
+      try {
+        response = JSON.parse(req.body.response_json) as RegistrationResponseJSON
+      } catch {
+        res.status(400).json({ error: 'Invalid response_json', success: false, verified: false })
+        return
+      }
+
+      let verifyResult: Awaited<ReturnType<WebAuthnService['verifySignup']>>
+      try {
+        verifyResult = await webAuthn.verifySignup(username, response)
+      } catch (err) {
+        console.error('WebAuthn signup verification failed:', err)
+        res.status(400).json({ error: 'Verification failed', success: false, verified: false })
+        return
+      }
+      if (!verifyResult.verified || !verifyResult.credential || !verifyResult.userHandleUuid) {
+        res.status(400).json({ error: 'Verification failed', success: false, verified: false })
+        return
+      }
+
+      const { credential, userHandleUuid } = verifyResult
+
+      const logRollbackFailure = (step: string, err: unknown) =>
+        console.error(
+          `Signup rollback ${step} failed; manual cleanup may be needed for username "${username}":`,
+          err,
+        )
+
+      // Step 1: bind the user-handle UUID in central DB.
+      // A unique-violation (23505) means the username got taken between
+      // /options and /verify; report that as 409. Anything else is a
+      // transient/server failure and should be 500 so the client knows
+      // retry-with-the-same-username is valid.
+      try {
+        await centralDb.insertWebAuthnUserHandle(username, userHandleUuid)
+      } catch (err) {
+        const code = (err as { code?: string }).code
+        if (code === '23505') {
+          console.warn('WebAuthn signup: username already taken at insert time:', username)
+          // Verification succeeded — only persistence collided. `verified: true`
+          // matches the API contract (the assertion *was* valid).
+          res.status(409).json({ error: 'Username already exists', success: false, verified: true })
+          return
+        }
+        console.error('Failed to insert WebAuthn user handle for signup:', err)
+        res.status(500).json({ error: 'Signup failed', success: false, verified: true })
+        return
+      }
+
+      // Step 2: create the Postgres role + per-user database. Random password
+      // — only Postgres ever sees it; we discard it after the connect call.
+      // makeNewUserDb is multi-step (CREATE USER + CREATE DATABASE +
+      // initializeSchema). A failure mid-way can leave a partial role/DB
+      // that blocks future signup attempts, so always run dropUserDb in
+      // the rollback path as defense-in-depth.
+      const randomPassword = randomBytes(32).toString('base64url')
+      try {
+        await makeNewUserDb(userDb, username, randomPassword)
+      } catch (err) {
+        console.error('Failed to create user DB during signup; rolling back:', err)
+        await dropUserDb(userDb, username).catch((e) => logRollbackFailure('dropUserDb', e))
+        await centralDb
+          .deleteWebAuthnUserHandle(username)
+          .catch((e) => logRollbackFailure('deleteWebAuthnUserHandle', e))
+        res.status(500).json({ error: 'Signup failed', success: false, verified: true })
+        return
+      }
+
+      // Step 3: persist the credential in the user's DB. If this fails we
+      // would orphan an account that has no way to log in — roll back.
+      try {
+        await insertWebAuthnCredential(username, {
+          backedUp: credential.backedUp,
+          counter: credential.counter,
+          credentialId: credential.credentialId,
+          deviceType: credential.deviceType,
+          nickname: nickname ?? null,
+          publicKey: credential.publicKey,
+          transports: credential.transports,
+        })
+      } catch (err) {
+        console.error('Failed to persist credential during signup; rolling back:', err)
+        await dropUserDb(userDb, username).catch((e) => logRollbackFailure('dropUserDb', e))
+        await centralDb
+          .deleteWebAuthnUserHandle(username)
+          .catch((e) => logRollbackFailure('deleteWebAuthnUserHandle', e))
+        res.status(500).json({ error: 'Signup failed', success: false, verified: true })
+        return
+      }
+
+      // Step 4: first-user-becomes-admin (mirrors auth-routes.ts /signup).
+      const adminCount = await centralDb.getAdminCount()
+      let isAdmin = false
+      if (adminCount === 0) {
+        await centralDb.addAdmin(username)
+        isAdmin = true
+        console.info(`First user ${username} automatically made admin`)
+      }
+
+      const token = auth.createToken(username)
+      res.json({
+        is_admin: isAdmin,
+        success: true,
+        token,
+        username,
+        verified: true,
+      })
+    },
+  )
 
   router.post<Record<string, never>, WebAuthnRegistrationOptionsResponse>(
     '/register/options',

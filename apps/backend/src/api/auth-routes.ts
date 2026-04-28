@@ -38,7 +38,7 @@ interface AuthRoutesDeps {
   unauthorized: Error
 }
 
-const RESERVED_USERNAMES = [
+export const RESERVED_USERNAMES = [
   'postgres',
   'admin',
   'root',

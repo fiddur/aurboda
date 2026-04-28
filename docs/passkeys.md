@@ -15,18 +15,36 @@ never leave that device — the server only stores the public key.
 - **Cross-platform**: A passkey registered from the web on the same
   domain is also offered to the Android app via Digital Asset Links.
 
-## How users register a passkey
+## How users sign up
 
-1. Sign in with username + password (passkey-only signup is not yet
-   supported — password remains the recovery factor).
-2. Go to **Settings → Passkeys**, optionally type a nickname (e.g. "Work
-   laptop"), and click **Add a passkey**.
-3. Confirm the prompt from your authenticator (Touch ID, Windows Hello,
-   1Password, security key, etc.). The passkey is stored against the
-   server's domain (its **Relying Party ID**).
+There are two paths:
+
+### Passkey-only signup (recommended)
+
+From the **Sign Up** page, enter a username and click **Sign up with
+passkey**. The authenticator (Touch ID, Windows Hello, 1Password, etc.)
+prompts you to create a credential, and on success you're logged in.
+No password is involved at any point.
+
+Behind the scenes, the backend creates the Postgres role with a random
+internal password the user never sees. Login is always passkey-only for
+these users.
+
+### Password signup (fallback)
+
+If a user prefers a password, the **Use a password instead** link on
+the signup page reveals the existing password+confirm fields. They can
+later add a passkey from **Settings → Passkeys**.
+
+## Adding more passkeys to an existing account
+
+Sign in, go to **Settings → Passkeys**, optionally type a nickname (e.g.
+"Work laptop"), and click **Add a passkey**. The passkey is stored
+against the server's domain (its **Relying Party ID**).
 
 A user can register multiple passkeys (e.g. one in 1Password and one
-device-bound on Android).
+device-bound on Android), and we recommend doing so for resilience —
+see Recovery below.
 
 ## How users sign in
 
@@ -52,7 +70,7 @@ WEBAUTHN_ORIGINS=https://aurboda.example.com
 ```
 
 Both default to values derived from `WEB_HOST`, so in many cases you
-don't need to set them explicitly. The Relying Party ID *must* match the
+don't need to set them explicitly. The Relying Party ID _must_ match the
 hostname the user's browser sees — if your API and web frontend live on
 different subdomains, set `WEBAUTHN_RP_ID` to the web one.
 
@@ -118,9 +136,21 @@ this.
 
 A passkey is bound to the device or password manager that holds it.
 Losing access (broken phone, deleted credential) means losing that
-passkey — but **password login is always available** as a fallback. If
-you lose all passkeys, sign in with the password and register a new
-one.
+passkey.
+
+- **If you signed up with a password**, password login is always
+  available as a fallback. Sign in with the password, register a new
+  passkey, optionally delete the old one.
+- **If you signed up passkey-only**, there's no password to fall back
+  to. If you lose every registered passkey, the account is
+  unrecoverable without admin intervention. **Register at least two
+  passkeys** (e.g. one in your password manager that syncs across
+  devices, and one device-bound on Android) to mitigate this.
+
+Self-hosters: there's no built-in admin tool to reset a user's
+passkeys yet — if it happens, the practical workaround is dropping
+the user's Postgres role + database and inviting them to re-sign-up
+(loses their data).
 
 ## Privacy & security notes
 

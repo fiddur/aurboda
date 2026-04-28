@@ -43,6 +43,27 @@ interface AuthenticationChallenge {
   expiresAt: number
 }
 
+interface PendingSignup {
+  username: string
+  userHandleUuid: string
+  challenge: string
+  expiresAt: number
+}
+
+/**
+ * Subset of `VerifiedRegistrationResponse.registrationInfo` that the route
+ * needs to persist after a successful signup. Re-typed here so the route
+ * doesn't need to depend on `@simplewebauthn/server` types.
+ */
+export interface VerifiedSignupCredential {
+  credentialId: string
+  publicKey: Buffer
+  counter: number | bigint
+  transports: string[]
+  deviceType: string
+  backedUp: boolean
+}
+
 const uuidStringToBytes = (uuid: string): Uint8Array<ArrayBuffer> => {
   const hex = uuid.replaceAll('-', '')
   const buf = new ArrayBuffer(16)
@@ -96,6 +117,25 @@ export interface WebAuthnService {
     response: RegistrationResponseJSON,
     nickname?: string,
   ) => Promise<{ verified: boolean; credentialId?: string }>
+  /**
+   * Generate registration options for a *new* user. The user is not created
+   * yet; the route inserts the Postgres role only after `verifySignup`
+   * succeeds. The given `userHandleUuid` is what becomes the WebAuthn
+   * userID (and later the userHandle on assertion).
+   */
+  getSignupOptions: (
+    username: string,
+    userHandleUuid: string,
+  ) => Promise<PublicKeyCredentialCreationOptionsJSON>
+  /**
+   * Verify the registration response for a pending signup. Returns the
+   * unwrapped credential data so the route can create the user + persist
+   * the credential. Does *not* persist anything by itself.
+   */
+  verifySignup: (
+    username: string,
+    response: RegistrationResponseJSON,
+  ) => Promise<{ verified: boolean; credential?: VerifiedSignupCredential; userHandleUuid?: string }>
   getAuthenticationOptions: () => Promise<PublicKeyCredentialRequestOptionsJSON>
   verifyAuthentication: (
     response: AuthenticationResponseJSON,
@@ -114,6 +154,7 @@ export const createWebAuthnService = (
   // discoverable credentials we don't yet know the user.
   const pendingRegistrations = new Map<string, RegistrationChallenge>()
   const pendingAuthentications = new Map<string, AuthenticationChallenge>()
+  const pendingSignups = new Map<string, PendingSignup>()
 
   const sweep = () => {
     const now = Date.now()
@@ -122,6 +163,9 @@ export const createWebAuthnService = (
     }
     for (const [k, v] of pendingAuthentications) {
       if (v.expiresAt < now) pendingAuthentications.delete(k)
+    }
+    for (const [k, v] of pendingSignups) {
+      if (v.expiresAt < now) pendingSignups.delete(k)
     }
   }
 
@@ -206,6 +250,63 @@ export const createWebAuthnService = (
       })
 
       return { verified: true, credentialId: info.credential.id }
+    },
+
+    getSignupOptions: async (username, userHandleUuid) => {
+      sweep()
+      const options = await generateRegistrationOptions({
+        attestationType: 'none',
+        authenticatorSelection: {
+          residentKey: 'preferred',
+          userVerification: 'preferred',
+        },
+        rpID: config.rpID,
+        rpName: config.rpName,
+        userID: uuidStringToBytes(userHandleUuid),
+        userName: username,
+      })
+
+      pendingSignups.set(username, {
+        challenge: options.challenge,
+        expiresAt: Date.now() + CHALLENGE_TTL_MS,
+        userHandleUuid,
+        username,
+      })
+      enforceCap(pendingSignups)
+
+      return options
+    },
+
+    verifySignup: async (username, response) => {
+      sweep()
+      const pending = pendingSignups.get(username)
+      if (!pending) return { verified: false }
+      pendingSignups.delete(username)
+
+      const verification = await verifyRegistrationResponse({
+        expectedChallenge: pending.challenge,
+        expectedOrigin: config.expectedOrigins,
+        expectedRPID: config.rpID,
+        response,
+      })
+
+      if (!verification.verified || !verification.registrationInfo) {
+        return { verified: false }
+      }
+
+      const info = verification.registrationInfo
+      return {
+        credential: {
+          backedUp: info.credentialBackedUp,
+          counter: info.credential.counter,
+          credentialId: info.credential.id,
+          deviceType: info.credentialDeviceType,
+          publicKey: Buffer.from(info.credential.publicKey),
+          transports: info.credential.transports ?? [],
+        },
+        userHandleUuid: pending.userHandleUuid,
+        verified: true,
+      }
     },
 
     getAuthenticationOptions: async () => {
