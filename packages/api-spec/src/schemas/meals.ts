@@ -294,3 +294,65 @@ export type MealsResponse = z.infer<typeof mealsResponseSchema>
 export const deleteMealResponseSchema = baseResponseSchema.meta({ id: 'DeleteMealResponse' })
 
 export type DeleteMealResponse = z.infer<typeof deleteMealResponseSchema>
+
+// ============================================================================
+// Frequent Meals
+// ============================================================================
+
+/**
+ * Query parameters for the frequent-meals endpoint.
+ *
+ * Always scoped to a single meal_type — frequent breakfasts shouldn't be
+ * suggested as lunches.
+ */
+export const frequentMealsQuerySchema = z
+  .object({
+    meal_type: mealTypeSchema.meta({ description: 'Meal type to scope the lookup to (required)' }),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(20)
+      .default(6)
+      .meta({ description: 'Maximum number of distinct meal names to return' }),
+    since_days: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(90)
+      .meta({ description: 'How many days back to consider when computing frequency' }),
+  })
+  .meta({ description: 'Query parameters for the frequent-meals endpoint', id: 'FrequentMealsQuery' })
+
+export type FrequentMealsQuery = z.infer<typeof frequentMealsQuerySchema>
+
+/**
+ * A meal name the user logs repeatedly, with the most recent occurrence's
+ * food items so it can be re-logged with one tap.
+ */
+export const frequentMealSchema = z
+  .object({
+    name: z.string().min(1).max(255).meta({ description: 'Meal name' }),
+    meal_type: mealTypeSchema.meta({ description: 'Meal type this template was logged under' }),
+    count: z.number().int().meta({ description: 'How many times this name was logged in the window' }),
+    last_time: iso8601DateTimeSchema.meta({ description: 'Time of the most recent occurrence' }),
+    icon: z
+      .string()
+      .max(2048)
+      .nullable()
+      .meta({ description: 'Icon for the chip — first food item icon, or null' }),
+    food_items: z
+      .array(foodItemInputSchema)
+      .optional()
+      .meta({ description: 'Food items from the most recent occurrence, suitable as input to add_meal' }),
+  })
+  .meta({ description: 'A frequently-logged meal template', id: 'FrequentMeal' })
+
+export type FrequentMeal = z.infer<typeof frequentMealSchema>
+
+export const frequentMealsResponseSchema = createDataArrayResponseSchema(frequentMealSchema).meta({
+  id: 'FrequentMealsResponse',
+})
+
+export type FrequentMealsResponse = z.infer<typeof frequentMealsResponseSchema>

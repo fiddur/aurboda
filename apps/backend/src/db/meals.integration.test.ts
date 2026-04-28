@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { deleteMeal, getMealById, getMeals, insertMeal, updateMeal } from './meals.ts'
+import { deleteMeal, getFrequentMeals, getMealById, getMeals, insertMeal, updateMeal } from './meals.ts'
 
 const CONTAINER_TIMEOUT = 60_000
 
@@ -278,6 +278,88 @@ describe('Meals Integration Tests', () => {
         sensitivities: ['gluten'],
       })
       expect(result).toBeNull()
+    })
+  })
+
+  describe('getFrequentMeals', () => {
+    test('groups by name and orders by count then most recent', async () => {
+      const user = getTestUser()
+      const now = Date.now()
+      const days = (n: number) => new Date(now - n * 86_400_000)
+
+      // Bananmacka logged 3 times — most frequent
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Bananmacka', time: days(10) })
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Bananmacka', time: days(5) })
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Bananmacka', time: days(1) })
+      // Oats twice — second most frequent
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Oats', time: days(7) })
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Oats', time: days(3) })
+      // Yogurt once — least frequent
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Yogurt', time: days(2) })
+
+      const rows = await getFrequentMeals(user, { meal_type: 'breakfast', limit: 6, since_days: 90 })
+
+      expect(rows.map((r) => r.name)).toEqual(['Bananmacka', 'Oats', 'Yogurt'])
+      expect(rows[0].count).toBe(3)
+      expect(rows[1].count).toBe(2)
+      expect(rows[2].count).toBe(1)
+      // last_time is the most recent occurrence per name
+      expect(rows[0].last_time.getTime()).toBeCloseTo(days(1).getTime(), -3)
+    })
+
+    test('scopes to meal_type — frequent breakfasts do not appear under lunch', async () => {
+      const user = getTestUser()
+      const now = Date.now()
+      const days = (n: number) => new Date(now - n * 86_400_000)
+
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Bananmacka', time: days(2) })
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Bananmacka', time: days(1) })
+      await insertMeal(user, { meal_type: 'lunch', name: 'Soup', time: days(1) })
+
+      const breakfast = await getFrequentMeals(user, { meal_type: 'breakfast', limit: 6, since_days: 30 })
+      const lunch = await getFrequentMeals(user, { meal_type: 'lunch', limit: 6, since_days: 30 })
+
+      expect(breakfast.map((r) => r.name)).toEqual(['Bananmacka'])
+      expect(lunch.map((r) => r.name)).toEqual(['Soup'])
+    })
+
+    test('respects since_days window', async () => {
+      const user = getTestUser()
+      const now = Date.now()
+      const days = (n: number) => new Date(now - n * 86_400_000)
+
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Old', time: days(120) })
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Recent', time: days(2) })
+
+      const rows = await getFrequentMeals(user, { meal_type: 'breakfast', limit: 6, since_days: 90 })
+
+      expect(rows.map((r) => r.name)).toEqual(['Recent'])
+    })
+
+    test('excludes meals with empty or null name', async () => {
+      const user = getTestUser()
+      const now = Date.now()
+      const days = (n: number) => new Date(now - n * 86_400_000)
+
+      await insertMeal(user, { meal_type: 'breakfast', time: days(2) })
+      await insertMeal(user, { meal_type: 'breakfast', name: '', time: days(1) })
+      await insertMeal(user, { meal_type: 'breakfast', name: 'Real', time: days(1) })
+
+      const rows = await getFrequentMeals(user, { meal_type: 'breakfast', limit: 6, since_days: 30 })
+      expect(rows.map((r) => r.name)).toEqual(['Real'])
+    })
+
+    test('honors limit', async () => {
+      const user = getTestUser()
+      const now = Date.now()
+      const days = (n: number) => new Date(now - n * 86_400_000)
+
+      for (let i = 0; i < 5; i++) {
+        await insertMeal(user, { meal_type: 'breakfast', name: `Meal ${i}`, time: days(i + 1) })
+      }
+
+      const rows = await getFrequentMeals(user, { meal_type: 'breakfast', limit: 2, since_days: 30 })
+      expect(rows).toHaveLength(2)
     })
   })
 

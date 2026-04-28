@@ -1,6 +1,8 @@
 import type {
   AddMealBody,
   Meal as ApiMeal,
+  FrequentMeal,
+  FrequentMealsResponse,
   MealResponse,
   MealsQuery,
   MealsResponse,
@@ -98,6 +100,19 @@ export interface FoodItemEntity {
   fat?: number
   fiber?: number
   [nutrient: string]: string | number | undefined
+}
+
+export const fetchFrequentMealsApi = async (
+  meal_type: string,
+  limit = 6,
+  since_days = 90,
+): Promise<FrequentMeal[]> => {
+  const { token } = auth.value
+  const response = await axios.get<FrequentMealsResponse>(`${API_URL}/meals/frequent`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { meal_type, limit, since_days },
+  })
+  return response.data.data ?? []
 }
 
 export const searchFoodItemsApi = async (q: string, limit = 10): Promise<FoodItemEntity[]> => {

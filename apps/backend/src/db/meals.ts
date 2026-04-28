@@ -192,6 +192,55 @@ export const updateMeal = async (user: string, id: string, input: UpdateMealInpu
   return mapMealRow(result.rows[0])
 }
 
+export interface FrequentMealRow {
+  name: string
+  meal_type: string
+  count: number
+  last_time: Date
+  last_meal_id: string
+}
+
+interface FrequentMealsFilter {
+  meal_type: string
+  limit: number
+  since_days: number
+}
+
+/**
+ * Group meals by `name` within a meal_type and return the most-frequently-logged
+ * names alongside the most recent occurrence's id (for follow-up enrichment of
+ * food items / icon).
+ */
+export const getFrequentMeals = async (
+  user: string,
+  filter: FrequentMealsFilter,
+): Promise<FrequentMealRow[]> => {
+  const sql = `
+    WITH recent AS (
+      SELECT name, meal_type, time, id,
+             COUNT(*) OVER (PARTITION BY name) AS name_count,
+             ROW_NUMBER() OVER (PARTITION BY name ORDER BY time DESC) AS rn
+      FROM meals
+      WHERE meal_type = $1
+        AND name IS NOT NULL AND name <> ''
+        AND time > NOW() - ($2::int || ' days')::interval
+    )
+    SELECT name, meal_type, time AS last_time, id AS last_meal_id, name_count AS count
+    FROM recent
+    WHERE rn = 1
+    ORDER BY name_count DESC, time DESC
+    LIMIT $3
+  `
+  const result = await query(user, sql, [filter.meal_type, filter.since_days, filter.limit])
+  return result.rows.map((row) => ({
+    name: row.name as string,
+    meal_type: row.meal_type as string,
+    count: Number(row.count),
+    last_time: row.last_time as Date,
+    last_meal_id: row.last_meal_id as string,
+  }))
+}
+
 /**
  * Delete a meal by ID.
  * Returns true if the meal was found and deleted.

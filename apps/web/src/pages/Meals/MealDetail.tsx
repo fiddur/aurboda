@@ -1,8 +1,10 @@
+import type { UpdateMealBody } from '@aurboda/api-spec'
+
 import { NUTRIENT_FIELDS } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { FoodItemAutocomplete } from '../../components/FoodItemAutocomplete'
@@ -303,63 +305,69 @@ function NutrientBreakdown({ nutrients }: { nutrients: Record<string, number> })
   )
 }
 
-// ── Edit state ───────────────────────────────────────────────────────────────
+// ── Save indicator ───────────────────────────────────────────────────────────
 
-interface EditState {
-  name?: string
-  time?: string
-  notes?: string
-  meal_type?: string
-  calories?: number | null
-  protein?: number | null
-  carbs?: number | null
-  fat?: number | null
-  fiber?: number | null
-  food_items?: FoodItemEdit[]
-  sensitivities?: string[]
+function SaveIndicator({
+  isPending,
+  showSaved,
+  error,
+}: {
+  isPending: boolean
+  showSaved: boolean
+  error: string | null
+}) {
+  if (error) return <span class="save-status save-error">⚠ {error}</span>
+  if (isPending) return <span class="save-status save-pending">Saving…</span>
+  if (showSaved) return <span class="save-status save-ok">Saved ✓</span>
+  return null
 }
 
-/**
- * Build the PATCH body from edit state.
- *
- * Per-item nutrient values are not sent — the backend re-derives them from
- * the canonical food item × quantity. Meal-level macros are sent only if the
- * user typed an explicit value; otherwise the backend auto-fills from the
- * (newly scaled) item snapshots.
- */
-const buildSaveBody = (editing: EditState): Record<string, unknown> => {
-  const body: Record<string, unknown> = {}
-  if (editing.name !== undefined) body.name = editing.name || null
-  if (editing.time !== undefined) body.time = new Date(editing.time).toISOString()
-  if (editing.notes !== undefined) body.notes = editing.notes || null
-  if (editing.meal_type !== undefined) body.meal_type = editing.meal_type
-  if (editing.sensitivities !== undefined) body.sensitivities = editing.sensitivities
+// ── Main component ───────────────────────────────────────────────────────────
 
-  const items = editing.food_items?.filter((fi) => fi.name.trim())
-  if (items !== undefined) {
-    body.food_items = items.map((fi) => ({
+const FOOD_ITEM_DEBOUNCE_MS = 600
+
+const mealItemsToEdit = (
+  items?: {
+    name: string
+    food_item_id?: string
+    quantity?: number
+    unit?: string
+    calories?: number
+    protein?: number
+    carbs?: number
+    fat?: number
+    fiber?: number
+  }[],
+): FoodItemEdit[] =>
+  (items ?? []).map((fi) => ({
+    food_item_id: fi.food_item_id,
+    name: fi.name,
+    quantity: fi.quantity,
+    ref: {
+      calories: fi.calories,
+      carbs: fi.carbs,
+      fat: fi.fat,
+      fiber: fi.fiber,
+      protein: fi.protein,
+      quantity: fi.quantity,
+    },
+    unit: fi.unit,
+  }))
+
+const editItemsToBody = (items: FoodItemEdit[]): UpdateMealBody['food_items'] =>
+  items
+    .filter((fi) => fi.name.trim())
+    .map((fi) => ({
       food_item_id: fi.food_item_id,
       name: fi.name,
       quantity: fi.quantity,
       unit: fi.unit,
     }))
-  }
 
-  if (editing.calories !== undefined) body.calories = editing.calories
-  if (editing.protein !== undefined) body.protein = editing.protein
-  if (editing.carbs !== undefined) body.carbs = editing.carbs
-  if (editing.fat !== undefined) body.fat = editing.fat
-  if (editing.fiber !== undefined) body.fiber = editing.fiber
-
-  return body
-}
-
-// ── Main component ───────────────────────────────────────────────────────────
-
-// eslint-disable-next-line complexity -- detail page with edit mode and multiple data sections
+// eslint-disable-next-line complexity -- detail page with many independently auto-saved fields
 export function MealDetail() {
   const { params } = useRoute()
-  const { route, query } = useLocation()
+  const { route } = useLocation()
   const queryClient = useQueryClient()
   const id = params.id
 
@@ -373,18 +381,43 @@ export function MealDetail() {
     queryKey: ['userSettings'],
   })
 
-  const startInEditMode = new URLSearchParams(query).has('edit')
-  const [editing, setEditing] = useState<EditState | null>(startInEditMode ? {} : null)
+  // Local input state — synced from `meal` on load and after each save.
+  const [name, setName] = useState('')
+  const [timeStr, setTimeStr] = useState('')
+  const [notes, setNotes] = useState('')
+  const [mealType, setMealType] = useState('lunch')
+  const [items, setItems] = useState<FoodItemEdit[]>([])
+  const [flags, setFlags] = useState<string[]>([])
+
+  const [savedFlash, setSavedFlash] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const itemsDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Invalidate the meals list when leaving this page so the day overview refreshes
   useEffect(() => () => void queryClient.invalidateQueries({ queryKey: ['meals'] }), [queryClient])
 
+  // Sync local fields whenever a fresh meal arrives.
+  useEffect(() => {
+    if (!meal) return
+    setName(meal.name ?? '')
+    setTimeStr(format(meal.time, "yyyy-MM-dd'T'HH:mm"))
+    setNotes(meal.notes ?? '')
+    setMealType(meal.meal_type ?? 'lunch')
+    setItems(mealItemsToEdit(meal.food_items))
+    setFlags(meal.sensitivities ?? [])
+  }, [meal])
+
   const updateMutation = useMutation({
-    mutationFn: (body: Parameters<typeof updateMealApi>[1]) => updateMealApi(id, body),
+    mutationFn: (body: UpdateMealBody) => updateMealApi(id, body),
+    onError: (err: Error) => setSaveError(err.message ?? 'Save failed'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['meal', id] })
       queryClient.invalidateQueries({ queryKey: ['meals'] })
-      setEditing(null)
+      setSaveError(null)
+      setSavedFlash(true)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setSavedFlash(false), 1200)
     },
   })
 
@@ -395,6 +428,12 @@ export function MealDetail() {
       route('/meals')
     },
   })
+
+  // Apply a partial update if the new value differs from the current server value.
+  const save = (body: UpdateMealBody) => {
+    setSaveError(null)
+    updateMutation.mutate(body)
+  }
 
   if (isLoading) {
     return (
@@ -411,54 +450,26 @@ export function MealDetail() {
     )
   }
 
-  const isEditing = editing !== null
   const flagAreas: string[] = settings?.sensitivity_areas ?? []
 
-  // Edit values with fallback to meal
-  const editName = editing?.name ?? meal.name ?? ''
-  const editTime = editing?.time ?? format(meal.time, "yyyy-MM-dd'T'HH:mm")
-  const editNotes = editing?.notes ?? meal.notes ?? ''
-  const editType = editing?.meal_type ?? meal.meal_type ?? 'lunch'
-  const editCal = editing?.calories !== undefined ? editing.calories : meal.calories
-  const editProt = editing?.protein !== undefined ? editing.protein : meal.protein
-  const editCarbs = editing?.carbs !== undefined ? editing.carbs : meal.carbs
-  const editFat = editing?.fat !== undefined ? editing.fat : meal.fat
-  const editFiber = editing?.fiber !== undefined ? editing.fiber : meal.fiber
-  const editItems: FoodItemEdit[] =
-    editing?.food_items ??
-    (meal.food_items ?? []).map((fi) => ({
-      food_item_id: fi.food_item_id,
-      name: fi.name,
-      quantity: fi.quantity,
-      ref: {
-        calories: fi.calories,
-        carbs: fi.carbs,
-        fat: fi.fat,
-        fiber: fi.fiber,
-        protein: fi.protein,
-        quantity: fi.quantity,
-      },
-      unit: fi.unit,
-    }))
-  const editFlags = editing?.sensitivities ?? meal.sensitivities ?? []
-
-  const startEditing = () => setEditing({})
-
-  const handleSave = () => {
-    if (!editing) return
-    const body = buildSaveBody(editing)
-    updateMutation.mutate(body)
+  const commitItems = (next: FoodItemEdit[]) => {
+    setItems(next)
+    if (itemsDebounce.current) clearTimeout(itemsDebounce.current)
+    itemsDebounce.current = setTimeout(() => {
+      save({ food_items: editItemsToBody(next) })
+    }, FOOD_ITEM_DEBOUNCE_MS)
   }
 
-  const macroDisplay = [
-    meal.calories !== undefined && `${meal.calories} kcal`,
-    meal.protein !== undefined && `${meal.protein}g protein`,
-    meal.carbs !== undefined && `${meal.carbs}g carbs`,
-    meal.fat !== undefined && `${meal.fat}g fat`,
-    meal.fiber !== undefined && `${meal.fiber}g fiber`,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const commitName = () => {
+    if ((name || null) !== (meal.name ?? null)) save({ name: name || null })
+  }
+  const commitTime = () => {
+    const iso = new Date(timeStr).toISOString()
+    if (iso !== meal.time.toISOString()) save({ time: iso })
+  }
+  const commitNotes = () => {
+    if ((notes || null) !== (meal.notes ?? null)) save({ notes: notes || null })
+  }
 
   return (
     <div class="meal-detail-page">
@@ -467,25 +478,7 @@ export function MealDetail() {
           &larr; Back
         </a>
         <div class="detail-actions">
-          {isEditing ? (
-            <>
-              <button
-                type="button"
-                class="btn-primary"
-                onClick={handleSave}
-                disabled={updateMutation.isPending}
-              >
-                {updateMutation.isPending ? 'Saving...' : 'Save'}
-              </button>
-              <button type="button" class="btn-secondary" onClick={() => setEditing(null)}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button type="button" class="btn-secondary" onClick={startEditing}>
-              Edit
-            </button>
-          )}
+          <SaveIndicator isPending={updateMutation.isPending} showSaved={savedFlash} error={saveError} />
           <ConfirmButton
             label="Delete"
             confirmMessage="Delete this meal?"
@@ -495,167 +488,95 @@ export function MealDetail() {
         </div>
       </div>
 
+      {meal.source && meal.source !== 'manual' && <p class="detail-source-caption">Source: {meal.source}</p>}
+
       <div class="detail-layout">
         <div class="detail-card">
-          {/* Type */}
           <div class="detail-row">
             <label>Type</label>
-            {isEditing ? (
-              <MealTypeEditor value={editType} onChange={(v) => setEditing({ ...editing, meal_type: v })} />
-            ) : (
-              <span class="detail-value">
-                {meal.meal_type ? (
-                  <a href={`/meal-type/${encodeURIComponent(meal.meal_type)}`}>{meal.meal_type}</a>
-                ) : (
-                  '—'
-                )}
-              </span>
-            )}
+            <MealTypeEditor
+              value={mealType}
+              onChange={(v) => {
+                setMealType(v)
+                if (v !== (meal.meal_type ?? '')) save({ meal_type: v })
+              }}
+            />
           </div>
 
-          {/* Time */}
           <div class="detail-row">
             <label>Time</label>
-            {isEditing ? (
-              <input
-                type="datetime-local"
-                value={editTime}
-                onInput={(e) => setEditing({ ...editing, time: (e.target as HTMLInputElement).value })}
-              />
-            ) : (
-              <span class="detail-value">{format(meal.time, 'yyyy-MM-dd HH:mm')}</span>
-            )}
+            <input
+              type="datetime-local"
+              value={timeStr}
+              onInput={(e) => setTimeStr((e.target as HTMLInputElement).value)}
+              onBlur={commitTime}
+            />
           </div>
 
-          {/* Name */}
           <div class="detail-row">
             <label>Name</label>
-            {isEditing ? (
-              <input
-                type="text"
-                value={editName}
-                placeholder="Meal name"
-                onInput={(e) => setEditing({ ...editing, name: (e.target as HTMLInputElement).value })}
-              />
-            ) : (
-              <span class="detail-value">{meal.name || '—'}</span>
-            )}
+            <input
+              type="text"
+              value={name}
+              placeholder="Meal name"
+              onInput={(e) => setName((e.target as HTMLInputElement).value)}
+              onBlur={commitName}
+            />
           </div>
 
-          {/* Flags */}
           <div class="detail-row">
             <label>Flags</label>
-            {isEditing ? (
-              <MealFlagsEditor
-                selected={editFlags}
-                areas={flagAreas}
-                onChange={(flags) => setEditing({ ...editing, sensitivities: flags })}
-              />
-            ) : meal.sensitivities && meal.sensitivities.length > 0 ? (
-              <div class="detail-sensitivities">
-                {meal.sensitivities.map((s) => (
-                  <span key={s} class="detail-sensitivity-chip">
-                    {s}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <span class="detail-value">—</span>
-            )}
+            <MealFlagsEditor
+              selected={flags}
+              areas={flagAreas}
+              onChange={(next) => {
+                setFlags(next)
+                save({ sensitivities: next })
+              }}
+            />
           </div>
 
-          {/* Location */}
-          {!isEditing && (
-            <LocationInfo start={meal.time} end={new Date(meal.time.getTime() + MEAL_LOCATION_WINDOW_MS)} />
-          )}
+          <LocationInfo start={meal.time} end={new Date(meal.time.getTime() + MEAL_LOCATION_WINDOW_MS)} />
 
-          {/* Food Items */}
           <div class="detail-row detail-row-block">
             <label>Food Items</label>
-            {isEditing ? (
-              <FoodItemsEditor
-                items={editItems}
-                onChange={(items) => setEditing({ ...editing, food_items: items })}
-              />
-            ) : meal.food_items && meal.food_items.length > 0 ? (
-              <div class="detail-food-items">
-                {meal.food_items.map((item, i) =>
-                  item.food_item_id ? (
-                    <a
-                      key={i}
-                      href={`/food-items/${item.food_item_id}`}
-                      class="detail-food-chip detail-food-link"
-                    >
-                      {item.name}
-                      {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
-                    </a>
-                  ) : (
-                    <span key={i} class="detail-food-chip">
-                      {item.name}
-                      {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
-                    </span>
-                  ),
-                )}
-              </div>
-            ) : (
-              <span class="detail-value">—</span>
-            )}
+            <FoodItemsEditor items={items} onChange={commitItems} />
           </div>
 
-          {/* Macros */}
           <div class="detail-row">
             <label>Macros</label>
-            {isEditing ? (
-              <MacrosEditor
-                calories={editCal}
-                protein={editProt}
-                carbs={editCarbs}
-                fat={editFat}
-                fiber={editFiber}
-                onChange={(field, val) => setEditing({ ...editing, [field]: val })}
-              />
-            ) : (
-              <span class="detail-value">{macroDisplay || '—'}</span>
-            )}
+            <MacrosEditor
+              calories={meal.calories}
+              protein={meal.protein}
+              carbs={meal.carbs}
+              fat={meal.fat}
+              fiber={meal.fiber}
+              onChange={(field, val) => save({ [field]: val } as UpdateMealBody)}
+            />
           </div>
 
-          {/* Notes */}
           <div class="detail-row">
             <label>Notes</label>
-            {isEditing ? (
-              <textarea
-                value={editNotes}
-                placeholder="Notes..."
-                rows={3}
-                onInput={(e) => setEditing({ ...editing, notes: (e.target as HTMLTextAreaElement).value })}
-              />
-            ) : (
-              <span class="detail-value">{meal.notes || '—'}</span>
-            )}
+            <textarea
+              value={notes}
+              placeholder="Notes..."
+              rows={3}
+              onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
+              onBlur={commitNotes}
+            />
           </div>
-
-          {!isEditing && (
-            <div class="detail-row">
-              <label>Source</label>
-              <span class="detail-value">{meal.source ?? '—'}</span>
-            </div>
-          )}
         </div>
 
-        {/* Nutrient sidebar — shown beside the card on wide screens */}
-        {!isEditing &&
-          (meal.nutrients && Object.keys(meal.nutrients).length > 0 ? (
-            <div>
-              <NutrientBreakdown nutrients={meal.nutrients} />
-              {meal.nutrient_data_incomplete && (
-                <p class="incomplete-notice">
-                  Some food items lack nutrient data — totals may be understated.
-                </p>
-              )}
-            </div>
-          ) : (
-            <div class="nutrient-breakdown nutrient-placeholder" />
-          ))}
+        {meal.nutrients && Object.keys(meal.nutrients).length > 0 ? (
+          <div>
+            <NutrientBreakdown nutrients={meal.nutrients} />
+            {meal.nutrient_data_incomplete && (
+              <p class="incomplete-notice">Some food items lack nutrient data — totals may be understated.</p>
+            )}
+          </div>
+        ) : (
+          <div class="nutrient-breakdown nutrient-placeholder" />
+        )}
       </div>
     </div>
   )

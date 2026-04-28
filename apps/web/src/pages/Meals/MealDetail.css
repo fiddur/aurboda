@@ -67,6 +67,32 @@
   align-items: center;
 }
 
+.save-status {
+  font-size: 0.85rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+}
+
+.save-pending {
+  color: #6b7280;
+}
+
+.save-ok {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.save-error {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.detail-source-caption {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
 .detail-card {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
