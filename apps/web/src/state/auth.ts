@@ -89,6 +89,31 @@ export const signup = async (
 
 export const logout = () => (auth.value = {})
 
+/**
+ * Map browser WebAuthn errors to user-friendly strings. The raw DOMException
+ * messages ("The operation either timed out or was not allowed.") confuse
+ * users — the underlying causes are usually cancellation or no matching
+ * credential.
+ */
+const friendlyWebAuthnError = (error: unknown, fallback: string): string => {
+  const e = error as { name?: string; message?: string } | undefined
+  if (!e) return fallback
+  switch (e.name) {
+    case 'NotAllowedError':
+      return 'Passkey prompt was cancelled or timed out.'
+    case 'InvalidStateError':
+      return 'A passkey for this account is already registered on this device.'
+    case 'NotSupportedError':
+      return 'This browser or device does not support passkeys.'
+    case 'SecurityError':
+      return 'Passkeys are not available on this origin (server may be misconfigured).'
+    case 'AbortError':
+      return 'Passkey prompt was cancelled.'
+    default:
+      return e.message ?? fallback
+  }
+}
+
 export const signupWithPasskey = async (
   user: string,
   invitation?: string,
@@ -127,7 +152,8 @@ export const signupWithPasskey = async (
     return { error: verifyResp.data.error ?? 'Signup failed', success: false }
   } catch (error) {
     const axiosError = error as AxiosError<{ error?: string }>
-    const message = axiosError.response?.data?.error ?? (error as Error).message ?? 'Passkey signup failed'
+    const apiError = axiosError.response?.data?.error
+    const message = apiError ?? friendlyWebAuthnError(error, 'Passkey signup failed')
     console.error('Passkey signup error:', error)
     return { error: message, success: false }
   }
@@ -166,7 +192,8 @@ export const loginWithPasskey = async (): Promise<{ success: boolean; error?: st
     return { error: verifyResp.data.error ?? 'Verification failed', success: false }
   } catch (error) {
     const axiosError = error as AxiosError<{ error?: string }>
-    const message = axiosError.response?.data?.error ?? (error as Error).message ?? 'Passkey login failed'
+    const apiError = axiosError.response?.data?.error
+    const message = apiError ?? friendlyWebAuthnError(error, 'Passkey login failed')
     console.error('Passkey login error:', error)
     return { error: message, success: false }
   }

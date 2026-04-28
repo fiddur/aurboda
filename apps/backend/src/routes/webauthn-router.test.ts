@@ -216,7 +216,10 @@ describe('POST /webauthn/signup/options', () => {
   })
 
   test('403 when invite_only and no invitation provided', async () => {
-    const app = buildApp({}, { centralDb: { getSignupMode: vi.fn(async (): Promise<'invite_only'> => 'invite_only') } })
+    const app = buildApp(
+      {},
+      { centralDb: { getSignupMode: vi.fn(async (): Promise<'invite_only'> => 'invite_only') } },
+    )
     const res = await supertest(app).post('/webauthn/signup/options').send({ username: 'alice' })
     expect(res.status).toBe(403)
   })
@@ -225,7 +228,9 @@ describe('POST /webauthn/signup/options', () => {
     const webAuthn: Partial<WebAuthnService> = {
       getSignupOptions: vi.fn(async () => ({ challenge: 'c' }) as never),
     }
-    const app = buildApp(webAuthn, { centralDb: { getSignupMode: vi.fn(async (): Promise<'open'> => 'open') } })
+    const app = buildApp(webAuthn, {
+      centralDb: { getSignupMode: vi.fn(async (): Promise<'open'> => 'open') },
+    })
     const res = await supertest(app).post('/webauthn/signup/options').send({ username: 'A!' })
     expect(res.status).toBe(400)
     expect(webAuthn.getSignupOptions).not.toHaveBeenCalled()
@@ -235,7 +240,9 @@ describe('POST /webauthn/signup/options', () => {
     const webAuthn: Partial<WebAuthnService> = {
       getSignupOptions: vi.fn(async () => ({ challenge: 'c' }) as never),
     }
-    const app = buildApp(webAuthn, { centralDb: { getSignupMode: vi.fn(async (): Promise<'open'> => 'open') } })
+    const app = buildApp(webAuthn, {
+      centralDb: { getSignupMode: vi.fn(async (): Promise<'open'> => 'open') },
+    })
     const res = await supertest(app).post('/webauthn/signup/options').send({ username: 'admin' })
     expect(res.status).toBe(400)
     expect(webAuthn.getSignupOptions).not.toHaveBeenCalled()
@@ -246,7 +253,9 @@ describe('POST /webauthn/signup/options', () => {
     const webAuthn: Partial<WebAuthnService> = {
       getSignupOptions: vi.fn(async () => ({ challenge: 'c' }) as never),
     }
-    const app = buildApp(webAuthn, { centralDb: { getSignupMode: vi.fn(async (): Promise<'open'> => 'open') } })
+    const app = buildApp(webAuthn, {
+      centralDb: { getSignupMode: vi.fn(async (): Promise<'open'> => 'open') },
+    })
     const res = await supertest(app).post('/webauthn/signup/options').send({ username: 'alice' })
     expect(res.status).toBe(409)
     expect(webAuthn.getSignupOptions).not.toHaveBeenCalled()
@@ -257,7 +266,9 @@ describe('POST /webauthn/signup/options', () => {
     const webAuthn: Partial<WebAuthnService> = {
       getSignupOptions: vi.fn(async () => ({ challenge: 'sign-c' }) as never),
     }
-    const app = buildApp(webAuthn, { centralDb: { getSignupMode: vi.fn(async (): Promise<'open'> => 'open') } })
+    const app = buildApp(webAuthn, {
+      centralDb: { getSignupMode: vi.fn(async (): Promise<'open'> => 'open') },
+    })
     const res = await supertest(app).post('/webauthn/signup/options').send({ username: 'alice' })
     expect(res.status).toBe(200)
     expect(JSON.parse(res.body.options_json)).toEqual({ challenge: 'sign-c' })
@@ -370,6 +381,91 @@ describe('POST /webauthn/signup/verify', () => {
     expect(res.status).toBe(500)
     expect(dbIndex.dropUserDb).toHaveBeenCalledWith(expect.anything(), 'bob')
     expect(deleteHandle).toHaveBeenCalledWith('bob')
+  })
+
+  test('rolls back when makeNewUserDb fails (drops potentially partial role + DB)', async () => {
+    const webAuthn: Partial<WebAuthnService> = {
+      verifySignup: vi.fn(async () => ({
+        credential: {
+          backedUp: false,
+          counter: 0,
+          credentialId: 'cred-3',
+          deviceType: 'singleDevice',
+          publicKey: Buffer.from([1]),
+          transports: [],
+        },
+        userHandleUuid: '33333333-3333-3333-3333-333333333333',
+        verified: true,
+      })),
+    }
+    vi.mocked(dbIndex.makeNewUserDb).mockRejectedValueOnce(new Error('disk full'))
+
+    const insertHandle = vi.fn(async () => {})
+    const deleteHandle = vi.fn(async () => {})
+    const app = buildApp(webAuthn, {
+      centralDb: {
+        getAdminCount: vi.fn(async () => 1),
+        insertWebAuthnUserHandle: insertHandle,
+        deleteWebAuthnUserHandle: deleteHandle,
+        isAdmin: vi.fn(async () => false),
+      },
+    })
+    const res = await supertest(app)
+      .post('/webauthn/signup/verify')
+      .send({ username: 'carol', response_json: '{}' })
+
+    expect(res.status).toBe(500)
+    // Both rollback steps must run, in case makeNewUserDb partially succeeded.
+    expect(dbIndex.dropUserDb).toHaveBeenCalledWith(expect.anything(), 'carol')
+    expect(deleteHandle).toHaveBeenCalledWith('carol')
+    expect(webauthnDb.insertWebAuthnCredential).not.toHaveBeenCalled()
+  })
+
+  test('insert-handle 23505 → 409, other errors → 500', async () => {
+    const webAuthn: Partial<WebAuthnService> = {
+      verifySignup: vi.fn(async () => ({
+        credential: {
+          backedUp: false,
+          counter: 0,
+          credentialId: 'cred-4',
+          deviceType: 'singleDevice',
+          publicKey: Buffer.from([1]),
+          transports: [],
+        },
+        userHandleUuid: '44444444-4444-4444-4444-444444444444',
+        verified: true,
+      })),
+    }
+    const conflictErr: Error & { code?: string } = new Error('duplicate key')
+    conflictErr.code = '23505'
+
+    const app1 = buildApp(webAuthn, {
+      centralDb: {
+        insertWebAuthnUserHandle: vi.fn(async () => {
+          throw conflictErr
+        }),
+        isAdmin: vi.fn(async () => false),
+      },
+    })
+    const res1 = await supertest(app1)
+      .post('/webauthn/signup/verify')
+      .send({ username: 'dave', response_json: '{}' })
+    expect(res1.status).toBe(409)
+    expect(res1.body.verified).toBe(true) // verification did succeed; only persist collided
+    expect(dbIndex.makeNewUserDb).not.toHaveBeenCalled()
+
+    const app2 = buildApp(webAuthn, {
+      centralDb: {
+        insertWebAuthnUserHandle: vi.fn(async () => {
+          throw new Error('connection lost')
+        }),
+        isAdmin: vi.fn(async () => false),
+      },
+    })
+    const res2 = await supertest(app2)
+      .post('/webauthn/signup/verify')
+      .send({ username: 'dave', response_json: '{}' })
+    expect(res2.status).toBe(500)
   })
 })
 

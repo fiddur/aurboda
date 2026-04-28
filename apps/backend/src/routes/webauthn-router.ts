@@ -146,25 +146,49 @@ export const createWebAuthnRouter = ({
 
       const { credential, userHandleUuid } = verifyResult
 
-      // Step 1: bind the user-handle UUID in central DB. If this fails the
-      // username likely got taken between /options and /verify — surface 409.
+      const logRollbackFailure = (step: string, err: unknown) =>
+        console.error(
+          `Signup rollback ${step} failed; manual cleanup may be needed for username "${username}":`,
+          err,
+        )
+
+      // Step 1: bind the user-handle UUID in central DB.
+      // A unique-violation (23505) means the username got taken between
+      // /options and /verify; report that as 409. Anything else is a
+      // transient/server failure and should be 500 so the client knows
+      // retry-with-the-same-username is valid.
       try {
         await centralDb.insertWebAuthnUserHandle(username, userHandleUuid)
       } catch (err) {
+        const code = (err as { code?: string }).code
+        if (code === '23505') {
+          console.warn('WebAuthn signup: username already taken at insert time:', username)
+          // Verification succeeded — only persistence collided. `verified: true`
+          // matches the API contract (the assertion *was* valid).
+          res.status(409).json({ error: 'Username already exists', success: false, verified: true })
+          return
+        }
         console.error('Failed to insert WebAuthn user handle for signup:', err)
-        res.status(409).json({ error: 'Username already exists', success: false, verified: false })
+        res.status(500).json({ error: 'Signup failed', success: false, verified: true })
         return
       }
 
       // Step 2: create the Postgres role + per-user database. Random password
       // — only Postgres ever sees it; we discard it after the connect call.
+      // makeNewUserDb is multi-step (CREATE USER + CREATE DATABASE +
+      // initializeSchema). A failure mid-way can leave a partial role/DB
+      // that blocks future signup attempts, so always run dropUserDb in
+      // the rollback path as defense-in-depth.
       const randomPassword = randomBytes(32).toString('base64url')
       try {
         await makeNewUserDb(userDb, username, randomPassword)
       } catch (err) {
-        console.error('Failed to create user DB during signup:', err)
-        await centralDb.deleteWebAuthnUserHandle(username).catch(() => {})
-        res.status(500).json({ error: 'Signup failed', success: false, verified: false })
+        console.error('Failed to create user DB during signup; rolling back:', err)
+        await dropUserDb(userDb, username).catch((e) => logRollbackFailure('dropUserDb', e))
+        await centralDb
+          .deleteWebAuthnUserHandle(username)
+          .catch((e) => logRollbackFailure('deleteWebAuthnUserHandle', e))
+        res.status(500).json({ error: 'Signup failed', success: false, verified: true })
         return
       }
 
@@ -182,9 +206,11 @@ export const createWebAuthnRouter = ({
         })
       } catch (err) {
         console.error('Failed to persist credential during signup; rolling back:', err)
-        await dropUserDb(userDb, username).catch(() => {})
-        await centralDb.deleteWebAuthnUserHandle(username).catch(() => {})
-        res.status(500).json({ error: 'Signup failed', success: false, verified: false })
+        await dropUserDb(userDb, username).catch((e) => logRollbackFailure('dropUserDb', e))
+        await centralDb
+          .deleteWebAuthnUserHandle(username)
+          .catch((e) => logRollbackFailure('deleteWebAuthnUserHandle', e))
+        res.status(500).json({ error: 'Signup failed', success: false, verified: true })
         return
       }
 
