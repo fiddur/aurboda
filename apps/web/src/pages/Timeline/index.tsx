@@ -10,7 +10,7 @@ import { aggregateBucketsAligned } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import { computeBarLayout, type BarSlot } from './barLayout'
 import { drawActivitySparklines } from './drawActivitySparklines'
-import { attachHoverHandlers, drawItemIcon, truncateLabel } from './drawItems'
+import { attachHoverHandlers, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
 import { computeYScales, drawMetricsTrack, HR_COLOR, HRV_COLOR } from './drawMetricsTrack'
 import {
   buildMusicTooltipHtml,
@@ -754,12 +754,6 @@ export const Timeline = () => {
             pixelsPerHour,
           )
         }
-
-        const getDetailUrl = (item: ChartItem): string | undefined =>
-          item.href ??
-          (item.entity_id && item.entity_type
-            ? `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
-            : undefined)
 
         for (const { item, lane } of packedActivityItems.items) {
           if (!isInViewport(item)) continue
