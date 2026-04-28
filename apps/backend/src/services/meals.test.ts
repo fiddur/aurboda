@@ -16,8 +16,6 @@ import {
 // Mock the db module
 vi.mock('../db', () => ({
   deleteMeal: vi.fn(),
-  findOrCreateFoodItem: vi.fn().mockResolvedValue({ id: 'fi-1', name: 'test' }),
-  getFoodItemById: vi.fn().mockResolvedValue(null),
   getMealById: vi.fn(),
   getMealFoodItems: vi.fn().mockResolvedValue([]),
   getMealFoodItemsBatch: vi.fn().mockResolvedValue(new Map()),
@@ -25,6 +23,32 @@ vi.mock('../db', () => ({
   setMealFoodItems: vi.fn().mockResolvedValue(undefined),
   updateMeal: vi.fn(),
   upsertMeal: vi.fn(),
+}))
+
+// meals.ts now resolves canonical food items via the merged user+central
+// service, which calls into the central DB. Stub it out so the unit tests
+// don't try to spin up a real Postgres central database.
+vi.mock('./central-db.ts', () => ({
+  getCentralDb: () => ({
+    getSharedFoodItemById: vi.fn().mockResolvedValue(null),
+    getSharedFoodItemByName: vi.fn().mockResolvedValue(null),
+    searchSharedFoodItems: vi.fn().mockResolvedValue([]),
+  }),
+}))
+
+vi.mock('./food-items.ts', () => ({
+  createFoodItemsService: () => ({
+    findOrCreate: vi.fn().mockResolvedValue({
+      default_quantity: 100,
+      default_unit: 'g',
+      icon: undefined,
+      id: 'fi-1',
+      name: 'test',
+    }),
+    getById: vi.fn().mockResolvedValue(null),
+    getByName: vi.fn().mockResolvedValue(null),
+    search: vi.fn().mockResolvedValue([]),
+  }),
 }))
 
 const mockUpsertMeal = vi.mocked(db.upsertMeal)
