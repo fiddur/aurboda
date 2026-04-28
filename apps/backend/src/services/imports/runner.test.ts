@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import type { CentralDb } from '../central-db.ts'
 import type { CentralImportJobEntity } from '../central-import-jobs.ts'
@@ -32,14 +32,8 @@ const fakeCentral = (): CentralDb =>
 const flushMicrotasks = () => new Promise<void>((resolve) => setImmediate(resolve))
 
 describe('startImport', () => {
-  let originalRunner: ((centralDb: CentralDb, jobId: string) => Promise<void>) | undefined
-
-  beforeEach(() => {
-    originalRunner = undefined
-  })
-
   afterEach(() => {
-    // Restore — leaves a trivial passthrough so other suites don't see a stale stub.
+    // Reset to a no-op so other suites don't see the last suite's stub.
     _setRunnerForTests('livsmedelsverket', async () => {})
   })
 
