@@ -1,19 +1,23 @@
-import { NUTRIENT_FIELDS, type NutrientFieldDef } from '@aurboda/api-spec'
+import {
+  type FoodItemDetail as ApiFoodItemDetail,
+  type FoodItemIngredient,
+  NUTRIENT_FIELDS,
+  type NutrientFieldDef,
+} from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useRoute } from 'preact-iso'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
-import type { FoodItemEntity } from '../../state/api'
-
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { IconInput } from '../../components/IconInput'
+import { type IngredientRow, IngredientList } from '../../components/IngredientList'
 import { auth } from '../../state/auth'
 import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import './FoodItemDetail.css'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
-const fetchFoodItem = async (id: string): Promise<FoodItemEntity> => {
+const fetchFoodItem = async (id: string): Promise<ApiFoodItemDetail> => {
   const { token } = auth.value
   const res = await fetch(`${API_URL}/food-items/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -23,7 +27,7 @@ const fetchFoodItem = async (id: string): Promise<FoodItemEntity> => {
   return json.data
 }
 
-const updateFoodItemApi = async (id: string, body: Record<string, unknown>): Promise<FoodItemEntity> => {
+const updateFoodItemApi = async (id: string, body: Record<string, unknown>): Promise<ApiFoodItemDetail> => {
   const { token } = auth.value
   const res = await fetch(`${API_URL}/food-items/${id}`, {
     body: JSON.stringify(body),
@@ -42,6 +46,35 @@ const deleteFoodItemApi = async (id: string): Promise<void> => {
     method: 'DELETE',
   })
   if (!res.ok) throw new Error('Delete failed')
+}
+
+const setIngredientsApi = async (
+  id: string,
+  ingredients: FoodItemIngredient[],
+): Promise<ApiFoodItemDetail> => {
+  const { token } = auth.value
+  const res = await fetch(`${API_URL}/food-items/${id}/ingredients`, {
+    body: JSON.stringify({ ingredients }),
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    method: 'PUT',
+  })
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(json.error ?? 'Failed to update ingredients')
+  }
+  const json = await res.json()
+  return json.data
+}
+
+const clearIngredientsApi = async (id: string): Promise<ApiFoodItemDetail> => {
+  const { token } = auth.value
+  const res = await fetch(`${API_URL}/food-items/${id}/ingredients`, {
+    headers: { Authorization: `Bearer ${token}` },
+    method: 'DELETE',
+  })
+  if (!res.ok) throw new Error('Failed to clear ingredients')
+  const json = await res.json()
+  return json.data
 }
 
 const CATEGORIES: Array<{ key: NutrientFieldDef['category']; label: string }> = [
@@ -175,6 +208,27 @@ export function FoodItemDetail() {
     },
   })
 
+  const ingredientsMutation = useMutation({
+    mutationFn: (ingredients: FoodItemIngredient[]) => setIngredientsApi(id, ingredients),
+    onError: (err: Error) => setSaveError(err.message ?? 'Save failed'),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['foodItem', id], updated)
+      setSaveError(null)
+      setSavedFlash(true)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setSavedFlash(false), 1200)
+    },
+  })
+
+  const clearMutation = useMutation({
+    mutationFn: () => clearIngredientsApi(id),
+    onError: (err: Error) => setSaveError(err.message ?? 'Save failed'),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['foodItem', id], updated)
+      setSaveError(null)
+    },
+  })
+
   const save = (body: Record<string, unknown>) => {
     setSaveError(null)
     updateMutation.mutate(body)
@@ -290,6 +344,122 @@ export function FoodItemDetail() {
         </span>
       </div>
 
+      <CompositeOrAtomicSection
+        item={item}
+        ingredientsMutation={ingredientsMutation}
+        clearMutation={clearMutation}
+        save={save}
+      />
+    </div>
+  )
+}
+
+interface CompositeProps {
+  item: ApiFoodItemDetail
+  ingredientsMutation: { mutate: (ingredients: FoodItemIngredient[]) => void; isPending: boolean }
+  clearMutation: { mutate: () => void; isPending: boolean }
+  save: (body: Record<string, unknown>) => void
+}
+
+function CompositeOrAtomicSection({ item, ingredientsMutation, clearMutation, save }: CompositeProps) {
+  // Local state for atomic→composite intent: clicking "Convert to recipe"
+  // surfaces the IngredientList immediately even before any ingredient is
+  // saved. The is_composite flag flips server-side only when a non-empty
+  // list is persisted.
+  const [showAsComposite, setShowAsComposite] = useState(false)
+  const isComposite = !!item.is_composite || (item.ingredients?.length ?? 0) > 0 || showAsComposite
+
+  if (isComposite) {
+    const initial: IngredientRow[] = (item.ingredients ?? []).map((ing) => ({
+      icon: ing.icon,
+      ingredient_food_item_id: ing.ingredient_food_item_id,
+      name: ing.name,
+      quantity: ing.quantity,
+      sort_order: ing.sort_order ?? 0,
+      unit: ing.unit,
+    }))
+
+    const persist = (rows: IngredientRow[]) => {
+      ingredientsMutation.mutate(
+        rows.map((r) => ({
+          ingredient_food_item_id: r.ingredient_food_item_id,
+          quantity: r.quantity,
+          sort_order: r.sort_order,
+          unit: r.unit,
+        })),
+      )
+    }
+
+    return (
+      <>
+        <div class="nutrient-section">
+          <div class="composite-header">
+            <h3>Ingredients</h3>
+            <ConfirmButton
+              label="Revert to atomic"
+              confirmMessage="This will remove all ingredients and the item will use whatever nutrient values are stored on it directly. Continue?"
+              onConfirm={() => {
+                setShowAsComposite(false)
+                clearMutation.mutate()
+              }}
+              isPending={clearMutation.isPending}
+              buttonClass="btn-secondary"
+            />
+          </div>
+          <IngredientList ingredients={initial} onChange={persist} />
+        </div>
+
+        <div class="nutrient-sections">
+          <p class="composite-derived-note">
+            Nutrient values below are derived from the ingredients × quantity. Edit the ingredients to change
+            them.
+          </p>
+          {item.derived_nutrients?.nutrient_data_incomplete && (
+            <p class="composite-incomplete">
+              ⚠ One or more ingredients lack calorie data — totals may be understated.
+            </p>
+          )}
+          {CATEGORIES.map(({ key, label }) => {
+            const fields = NUTRIENT_FIELDS.filter((f) => f.category === key)
+            const populated = fields.filter((f) => typeof item.derived_nutrients?.values[f.name] === 'number')
+            if (populated.length === 0) return null
+            return (
+              <div key={key} class="nutrient-section">
+                <h3>{label}</h3>
+                <div class="nutrient-grid">
+                  {populated.map((f) => (
+                    <div key={f.name} class="nutrient-row">
+                      <span class="nutrient-label">{f.label}</span>
+                      <span class="nutrient-value">
+                        {(item.derived_nutrients?.values[f.name] as number).toFixed(2)} {f.unit}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div class="composite-toggle-row">
+        <button
+          type="button"
+          class="btn-secondary"
+          onClick={() => setShowAsComposite(true)}
+          disabled={ingredientsMutation.isPending}
+        >
+          Convert to recipe
+        </button>
+        <span class="composite-toggle-hint">
+          Build this item from other foods — its nutrients will be summed from the ingredients.
+        </span>
+      </div>
+
       <div class="nutrient-sections">
         {CATEGORIES.map(({ key, label }) => {
           const fields = NUTRIENT_FIELDS.filter((f) => f.category === key)
@@ -299,7 +469,7 @@ export function FoodItemDetail() {
               <h3>{label}</h3>
               <div class="nutrient-grid">
                 {fields.map((f) => {
-                  const value = item[f.name]
+                  const value = item[f.name as keyof ApiFoodItemDetail]
                   return (
                     <div key={f.name} class="nutrient-row">
                       <span class="nutrient-label">{f.label}</span>
@@ -316,6 +486,6 @@ export function FoodItemDetail() {
           )
         })}
       </div>
-    </div>
+    </>
   )
 }

@@ -352,12 +352,14 @@ export interface FoodItemEntity {
   name: string
   name_lower: string
   source: string
+  source_id?: string
+  is_composite?: boolean
   default_quantity?: number
   default_unit?: string
   // All ~65 nutrient fields are optional numbers.
   // Using Record for the nutrient fields to avoid 65 lines of boilerplate.
   // At runtime these are individual columns, but in TypeScript we use an index signature.
-  [nutrient: string]: string | number | Date | undefined
+  [nutrient: string]: string | number | boolean | Date | undefined
   created_at: Date
   updated_at: Date
 }
@@ -372,7 +374,7 @@ export interface MealFoodItemLink {
   unit?: string
   sort_order: number
   // Nutrient snapshot — same fields as FoodItemEntity
-  [nutrient: string]: string | number | Date | undefined
+  [nutrient: string]: string | number | boolean | Date | undefined
 }
 
 // ============================================================================

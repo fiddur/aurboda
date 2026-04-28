@@ -811,9 +811,15 @@ export const migrateSchema = async (user: string) => {
   }
 
   // food_items: add source_id so re-imports key off the upstream identifier
-  // (e.g. Livsmedelsverket nummer) instead of the mutable name.
+  // (e.g. Livsmedelsverket nummer) instead of the mutable name. Also
+  // is_composite for recipe-style food items whose nutrient values are
+  // derived from food_item_ingredients at read time.
   if (existingTableNames.has('food_items')) {
     await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS source_id VARCHAR(100)`)
+    await query(
+      db,
+      `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS is_composite BOOLEAN NOT NULL DEFAULT FALSE`,
+    )
   }
 
   // meal_food_items: snapshot food_item_name + food_item_icon at insertion

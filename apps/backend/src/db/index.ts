@@ -229,6 +229,16 @@ export {
 } from './food-items.ts'
 export { getMealFoodItems, getMealFoodItemsBatch, setMealFoodItems } from './meal-food-items.ts'
 
+// Food item ingredients (composite/recipe support)
+export {
+  clearIngredients,
+  type FoodItemIngredientInput,
+  type FoodItemIngredientRow,
+  getIngredients,
+  getIngredientsBatch,
+  setIngredients,
+} from './food-item-ingredients.ts'
+
 // Meals
 export {
   deleteMeal,

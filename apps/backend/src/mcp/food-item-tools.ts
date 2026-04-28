@@ -7,15 +7,22 @@
  * central rows are managed via the admin import flow, not from MCP.
  */
 
-import { addFoodItemBodySchema, foodItemsQuerySchema, updateFoodItemBodySchema } from '@aurboda/api-spec'
+import {
+  addFoodItemBodySchema,
+  foodItemsQuerySchema,
+  setFoodItemIngredientsBodySchema,
+  updateFoodItemBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
 
 import type { CentralDb } from '../services/central-db.ts'
 
 import {
+  clearIngredients,
   deleteFoodItem,
   getFoodItemById as getUserFoodItemById,
   listFoodItems,
+  setIngredients,
   updateFoodItem,
   upsertFoodItem,
 } from '../db/index.ts'
@@ -86,12 +93,61 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
 
   server.tool(
     'get_food_item',
-    'Get a food item by ID — checks the user library first, then the central shared library.',
+    'Get a food item by ID — checks the user library first, then the central shared library. For composite (recipe) items, the response includes the resolved ingredients and derived nutrient totals.',
     { id: z.string().uuid().describe('Food item ID') },
     async ({ id }) => {
-      const item = await foodItems.getById(user, id)
-      if (!item) return errorResponse('Food item not found')
-      return jsonResponse({ data: item, success: true })
+      const detail = await foodItems.getDetail(user, id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
+    },
+  )
+
+  server.tool(
+    'set_food_item_ingredients',
+    [
+      "Mark a per-user food item as composite (a recipe) and replace its full ingredient list. The item's nutrient values become derived: at read time we sum each ingredient's value × quantity / default_quantity (when units match).",
+      'Each ingredient points at another food item by `ingredient_food_item_id` — may be a per-user food OR a central library item. Cycles (A → B → A) are rejected.',
+      'Only per-user items can be made composite; central shared-library rows return an error.',
+    ].join(' '),
+    {
+      id: z.string().uuid().describe('Composite food item ID (the parent)'),
+      ...setFoodItemIngredientsBodySchema.shape,
+    },
+    async ({ id, ingredients }) => {
+      const userItem = await getUserFoodItemById(user, id)
+      if (!userItem) {
+        const fromCentral = await centralDb.getSharedFoodItemById(id)
+        return errorResponse(
+          fromCentral ? 'Cannot set ingredients on shared library item' : 'Food item not found',
+        )
+      }
+      const ingredientIds = ingredients.map((i) => i.ingredient_food_item_id)
+      if (await foodItems.wouldCreateCycle(user, id, ingredientIds)) {
+        return errorResponse('Setting these ingredients would create a cycle in the recipe graph')
+      }
+      await setIngredients(user, id, ingredients)
+      const detail = await foodItems.getDetail(user, id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
+    },
+  )
+
+  server.tool(
+    'clear_food_item_ingredients',
+    "Wipe all ingredients on a composite food item and revert it to atomic mode. The item's own nutrient values become authoritative again (whatever was last stored — typically zeros).",
+    { id: z.string().uuid().describe('Composite food item ID') },
+    async ({ id }) => {
+      const userItem = await getUserFoodItemById(user, id)
+      if (!userItem) {
+        const fromCentral = await centralDb.getSharedFoodItemById(id)
+        return errorResponse(
+          fromCentral ? 'Cannot clear ingredients on shared library item' : 'Food item not found',
+        )
+      }
+      await clearIngredients(user, id)
+      const detail = await foodItems.getDetail(user, id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
     },
   )
 }

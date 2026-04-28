@@ -404,12 +404,9 @@ export const frequentFoodItemSchema = z
     icon: z.string().nullable().meta({ description: 'Snapshotted icon, or null' }),
     count: z.number().int().meta({ description: 'How many times the user logged this food in the window' }),
     last_used: iso8601DateTimeSchema.meta({ description: 'Time of the most recent meal that used it' }),
-    last_quantity: z
-      .number()
-      .nullable()
-      .meta({
-        description: 'Quantity used in the most recent occurrence (a sensible default for re-logging)',
-      }),
+    last_quantity: z.number().nullable().meta({
+      description: 'Quantity used in the most recent occurrence (a sensible default for re-logging)',
+    }),
     last_unit: z.string().nullable().meta({ description: 'Unit used in the most recent occurrence' }),
   })
   .meta({ description: 'A food item the user logs repeatedly', id: 'FrequentFoodItem' })
