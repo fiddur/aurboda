@@ -1,23 +1,30 @@
 /**
  * MCP food item tools.
  *
- * Search, create, update, delete canonical food items.
+ * Search and read go through the merged food-items service so MCP callers
+ * see central shared-library items (e.g. Livsmedelsverket) alongside the
+ * user's own. Writes (add/update/delete) target the per-user table only —
+ * central rows are managed via the admin import flow, not from MCP.
  */
 
 import { addFoodItemBodySchema, foodItemsQuerySchema, updateFoodItemBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
+import type { CentralDb } from '../services/central-db.ts'
+
 import {
   deleteFoodItem,
-  getFoodItemById,
+  getFoodItemById as getUserFoodItemById,
   listFoodItems,
-  searchFoodItems,
   updateFoodItem,
   upsertFoodItem,
 } from '../db/index.ts'
+import { createFoodItemsService } from '../services/food-items.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
-export const registerFoodItemTools = (server: McpServer, user: string) => {
+export const registerFoodItemTools = (server: McpServer, user: string, centralDb: CentralDb) => {
+  const foodItems = createFoodItemsService(centralDb)
+
   server.tool(
     'search_food_items',
     [
@@ -31,7 +38,7 @@ export const registerFoodItemTools = (server: McpServer, user: string) => {
     async (params) => {
       const maxResults = params.limit ? parseInt(params.limit, 10) : 20
       const items = params.q
-        ? await searchFoodItems(user, params.q, maxResults)
+        ? await foodItems.search(user, params.q, maxResults)
         : await listFoodItems(user, maxResults)
       return jsonResponse({ data: items, success: true })
     },
@@ -39,7 +46,7 @@ export const registerFoodItemTools = (server: McpServer, user: string) => {
 
   server.tool(
     'add_food_item',
-    'Create or update a canonical food item with default nutritional data.',
+    'Create or update a per-user canonical food item with default nutritional data. Items in the central shared library cannot be edited from MCP — re-import from their upstream source instead.',
     { ...addFoodItemBodySchema.shape },
     async (params) => {
       const item = await upsertFoodItem(user, { ...params })
@@ -49,9 +56,14 @@ export const registerFoodItemTools = (server: McpServer, user: string) => {
 
   server.tool(
     'update_food_item',
-    'Update a food item by ID.',
+    'Update a per-user food item by ID. Returns "Cannot edit shared library item" if the ID resolves to a central (shared) row.',
     { id: z.string().uuid().describe('Food item ID'), ...updateFoodItemBodySchema.shape },
     async ({ id, ...params }) => {
+      const userItem = await getUserFoodItemById(user, id)
+      if (!userItem) {
+        const fromCentral = await centralDb.getSharedFoodItemById(id)
+        return errorResponse(fromCentral ? 'Cannot edit shared library item' : 'Food item not found')
+      }
       const item = await updateFoodItem(user, id, params)
       if (!item) return errorResponse('Food item not found')
       return jsonResponse({ data: item, success: true })
@@ -60,21 +72,24 @@ export const registerFoodItemTools = (server: McpServer, user: string) => {
 
   server.tool(
     'delete_food_item',
-    'Delete a food item by ID.',
+    'Delete a per-user food item by ID. Returns "Cannot delete shared library item" for central rows.',
     { id: z.string().uuid().describe('Food item ID') },
     async ({ id }) => {
       const deleted = await deleteFoodItem(user, id)
-      if (!deleted) return errorResponse('Food item not found')
+      if (!deleted) {
+        const fromCentral = await centralDb.getSharedFoodItemById(id)
+        return errorResponse(fromCentral ? 'Cannot delete shared library item' : 'Food item not found')
+      }
       return jsonResponse({ success: true })
     },
   )
 
   server.tool(
     'get_food_item',
-    'Get a food item by ID.',
+    'Get a food item by ID — checks the user library first, then the central shared library.',
     { id: z.string().uuid().describe('Food item ID') },
     async ({ id }) => {
-      const item = await getFoodItemById(user, id)
+      const item = await foodItems.getById(user, id)
       if (!item) return errorResponse('Food item not found')
       return jsonResponse({ data: item, success: true })
     },

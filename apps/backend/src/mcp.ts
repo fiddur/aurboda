@@ -78,8 +78,10 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerChartTools(server, user)
   registerNoteTools(server, user)
   registerMealTools(server, user)
-  registerFoodItemTools(server, user)
-  if (deps.centralDb) registerImportTools(server, user, deps.centralDb)
+  if (deps.centralDb) {
+    registerFoodItemTools(server, user, deps.centralDb)
+    registerImportTools(server, user, deps.centralDb)
+  }
   registerReportTools(server, user)
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)
