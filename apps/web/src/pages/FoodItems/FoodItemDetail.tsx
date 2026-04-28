@@ -8,6 +8,7 @@ import type { FoodItemEntity } from '../../state/api'
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { IconInput } from '../../components/IconInput'
 import { auth } from '../../state/auth'
+import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import './FoodItemDetail.css'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
@@ -126,6 +127,7 @@ export function FoodItemDetail() {
   const [name, setName] = useState('')
   const [defaultQuantity, setDefaultQuantity] = useState<string>('')
   const [defaultUnit, setDefaultUnit] = useState<string>('')
+  const [icon, setIcon] = useState<string>('')
 
   const [savedFlash, setSavedFlash] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -139,18 +141,24 @@ export function FoodItemDetail() {
     [],
   )
 
+  // Re-seed local state only when we navigate to a different food item.
+  // On post-save refetches, item.id is stable so this skips — keeping any
+  // field the user is mid-edit from being clobbered by the new server data.
   useEffect(() => {
     if (!item) return
     setName(item.name)
     setDefaultQuantity(item.default_quantity !== undefined ? String(item.default_quantity) : '')
     setDefaultUnit(item.default_unit ?? '')
-  }, [item])
+    setIcon(item.icon ?? '')
+  }, [item?.id])
 
   const updateMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => updateFoodItemApi(id, body),
     onError: (err: Error) => setSaveError(err.message ?? 'Save failed'),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['foodItem', id] })
+    onSuccess: (updated) => {
+      // Seed the cache directly instead of invalidating, so we don't trigger
+      // a refetch that could race with another in-flight blur/edit.
+      queryClient.setQueryData(['foodItem', id], updated)
       queryClient.invalidateQueries({ queryKey: ['foodItems'] })
       setSaveError(null)
       setSavedFlash(true)
@@ -217,6 +225,13 @@ export function FoodItemDetail() {
     save({ default_unit: trimmed || null })
   }
 
+  const commitIcon = () => {
+    const next = icon.trim() || null
+    const current = item.icon ?? null
+    if (next === current) return
+    save({ icon: next })
+  }
+
   return (
     <div class="food-item-detail-page">
       <div class="fi-detail-header">
@@ -234,17 +249,23 @@ export function FoodItemDetail() {
         </div>
       </div>
 
-      <input
-        type="text"
-        class="fi-name-input"
-        value={name}
-        onInput={(e) => setName((e.target as HTMLInputElement).value)}
-        onBlur={commitName}
-      />
+      <h1 class="fi-name-heading">
+        {item.icon && isEmoji(item.icon) && <span class="fi-icon-display">{item.icon}</span>}
+        {item.icon && (isUrl(item.icon) || isIconPath(item.icon)) && (
+          <img src={item.icon} alt="" width={24} height={24} class="fi-icon-display-img" />
+        )}
+        <input
+          type="text"
+          class="fi-name-input"
+          value={name}
+          onInput={(e) => setName((e.target as HTMLInputElement).value)}
+          onBlur={commitName}
+        />
+      </h1>
 
       <div class="fi-icon-row">
         <label class="fi-icon-label">Icon</label>
-        <IconInput value={item.icon ?? ''} onChange={(v) => save({ icon: v || null })} />
+        <IconInput value={icon} onChange={setIcon} onBlur={commitIcon} />
       </div>
 
       <div class="fi-meta">

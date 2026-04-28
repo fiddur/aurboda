@@ -102,8 +102,9 @@ export const makeNewUserDb = async (adminClient: Client, user: string, password:
   await newDbClient.connect()
   await query(newDbClient, 'CREATE EXTENSION IF NOT EXISTS postgis')
   // Search extensions used for fuzzy/accent-insensitive food-item lookup.
-  // Trusted in PG13+, but we create them here while we still have the
-  // superuser connection so existing-user migrateSchema doesn't depend on it.
+  // Belt-and-braces: also created idempotently from food_items_search_setup
+  // (trusted in PG13+, db owner can install). Doing it here too keeps new
+  // users working even if the trusted-extension policy changes.
   await query(newDbClient, 'CREATE EXTENSION IF NOT EXISTS pg_trgm')
   await query(newDbClient, 'CREATE EXTENSION IF NOT EXISTS unaccent')
   await newDbClient.end()

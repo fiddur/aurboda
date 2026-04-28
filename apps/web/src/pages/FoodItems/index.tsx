@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { searchFoodItemsApi } from '../../state/api'
@@ -24,10 +24,17 @@ export function FoodItems() {
   const trimmed = search.trim()
   const hasQuery = trimmed.length > 0
 
+  // Debounce so a fast typist doesn't fire one request per keystroke.
+  const [debouncedQuery, setDebouncedQuery] = useState(trimmed)
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(trimmed), 200)
+    return () => clearTimeout(id)
+  }, [trimmed])
+
   const { data: items, isLoading } = useQuery({
-    enabled: !!isLoggedIn && hasQuery,
-    queryFn: () => searchFoodItemsApi(trimmed, 100),
-    queryKey: ['foodItems', trimmed],
+    enabled: !!isLoggedIn && debouncedQuery.length > 0,
+    queryFn: () => searchFoodItemsApi(debouncedQuery, 100),
+    queryKey: ['foodItems', debouncedQuery],
     staleTime: 30_000,
   })
 

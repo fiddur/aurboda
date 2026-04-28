@@ -138,6 +138,39 @@ describe('Food Items Integration Tests', () => {
       expect(await searchFoodItems(user, '', 10)).toEqual([])
       expect(await searchFoodItems(user, '   ', 10)).toEqual([])
     })
+
+    test('treats LIKE wildcards in user input as literals', async () => {
+      const user = getTestUser()
+
+      await upsertFoodItem(user, { name: '500g pasta' })
+      await upsertFoodItem(user, { name: '50% off-cut bacon' })
+
+      // Plain "50%" must only match the literal "50%" string, not "500g..."
+      const percentHits = await searchFoodItems(user, '50%', 10)
+      expect(percentHits.map((r) => r.name)).toEqual(['50% off-cut bacon'])
+
+      // Plain "_" must be a literal (it shouldn't match the underscore wildcard).
+      await upsertFoodItem(user, { name: 'a_b widget' })
+      const underscoreHits = await searchFoodItems(user, 'a_b', 10)
+      expect(underscoreHits.map((r) => r.name)).toEqual(['a_b widget'])
+    })
+
+    test('does not run trigram fuzzy matching for queries shorter than 3 chars', async () => {
+      const user = getTestUser()
+
+      // "hu" is a fuzzy-similar substring of "Hushållsost" — the trigram path
+      // would surface it, but we want short queries restricted to substring.
+      await upsertFoodItem(user, { name: 'Hushållsost' })
+      await upsertFoodItem(user, { name: 'Cucumber' })
+
+      // 'cu' is a literal substring of 'Cucumber' (substring path)
+      const subHits = await searchFoodItems(user, 'cu', 10)
+      expect(subHits.map((r) => r.name)).toEqual(['Cucumber'])
+
+      // 'xz' has no substring match anywhere; without trigram it returns nothing.
+      const noHits = await searchFoodItems(user, 'xz', 10)
+      expect(noHits).toEqual([])
+    })
   })
 
   describe('getFoodItemByName', () => {
