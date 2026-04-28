@@ -238,6 +238,89 @@ describe('authentication', () => {
   })
 })
 
+describe('signup', () => {
+  test('options stores pending signup keyed by username and uses given handle', async () => {
+    const handleStore = makeUserHandleStore()
+    const service = createWebAuthnService(config, handleStore)
+    vi.mocked(simplewebauthn.generateRegistrationOptions).mockResolvedValue({
+      challenge: 'signup-c-1',
+    } as never)
+
+    const opts = await service.getSignupOptions('charlie', '12345678-1234-1234-1234-123456789abc')
+    expect(opts.challenge).toBe('signup-c-1')
+    const call = vi.mocked(simplewebauthn.generateRegistrationOptions).mock.calls[0]![0]
+    expect(call.userName).toBe('charlie')
+    expect((call.userID as Uint8Array).length).toBe(16)
+    // The handle store is NOT touched at this stage — central insertion
+    // happens only after verify succeeds.
+    expect(handleStore.getOrCreateWebAuthnUserHandle).not.toHaveBeenCalled()
+  })
+
+  test('verify returns credential + handle on success, does not persist', async () => {
+    const service = createWebAuthnService(config, makeUserHandleStore())
+    vi.mocked(simplewebauthn.generateRegistrationOptions).mockResolvedValue({
+      challenge: 'signup-c-2',
+    } as never)
+    await service.getSignupOptions('charlie', '12345678-1234-1234-1234-123456789abc')
+
+    vi.mocked(simplewebauthn.verifyRegistrationResponse).mockResolvedValue({
+      registrationInfo: {
+        credential: {
+          counter: 0,
+          id: 'new-cred',
+          publicKey: new Uint8Array([7, 8, 9]),
+          transports: ['internal', 'hybrid'],
+        },
+        credentialBackedUp: false,
+        credentialDeviceType: 'singleDevice',
+      },
+      verified: true,
+    } as never)
+
+    const result = await service.verifySignup('charlie', { id: 'new-cred' } as never)
+    expect(result.verified).toBe(true)
+    expect(result.userHandleUuid).toBe('12345678-1234-1234-1234-123456789abc')
+    expect(result.credential).toMatchObject({
+      backedUp: false,
+      counter: 0,
+      credentialId: 'new-cred',
+      deviceType: 'singleDevice',
+      transports: ['internal', 'hybrid'],
+    })
+    // The service must not write through to the credential DB on signup —
+    // the route does that after creating the Postgres user.
+    expect(webauthnDb.insertWebAuthnCredential).not.toHaveBeenCalled()
+  })
+
+  test('verify rejects if no pending signup', async () => {
+    const service = createWebAuthnService(config, makeUserHandleStore())
+    const result = await service.verifySignup('nobody', {} as never)
+    expect(result).toEqual({ verified: false })
+  })
+
+  test('verify consumes the pending signup (cannot replay)', async () => {
+    const service = createWebAuthnService(config, makeUserHandleStore())
+    vi.mocked(simplewebauthn.generateRegistrationOptions).mockResolvedValue({
+      challenge: 'replay-c',
+    } as never)
+    await service.getSignupOptions('charlie', '12345678-1234-1234-1234-123456789abc')
+
+    vi.mocked(simplewebauthn.verifyRegistrationResponse).mockResolvedValue({
+      registrationInfo: {
+        credential: { counter: 0, id: 'x', publicKey: new Uint8Array(), transports: [] },
+        credentialBackedUp: false,
+        credentialDeviceType: 'singleDevice',
+      },
+      verified: true,
+    } as never)
+
+    const first = await service.verifySignup('charlie', {} as never)
+    expect(first.verified).toBe(true)
+    const second = await service.verifySignup('charlie', {} as never)
+    expect(second.verified).toBe(false)
+  })
+})
+
 describe('credential management', () => {
   test('listCredentials maps rows', async () => {
     const service = createWebAuthnService(config, makeUserHandleStore())

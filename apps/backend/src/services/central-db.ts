@@ -128,6 +128,17 @@ export interface CentralDb {
    * server receives back on a discoverable-credential assertion.
    */
   getOrCreateWebAuthnUserHandle: (username: string) => Promise<string>
+  /**
+   * Insert a user-handle mapping with a *given* UUID. Used by passkey-only
+   * signup so the same handle is bound through the entire ceremony.
+   * Throws on conflict (i.e. username already mapped).
+   */
+  insertWebAuthnUserHandle: (username: string, userHandle: string) => Promise<void>
+  /**
+   * Remove a user-handle mapping. Used by signup rollback when something
+   * fails after the row is inserted.
+   */
+  deleteWebAuthnUserHandle: (username: string) => Promise<void>
   getUsernameByWebAuthnUserHandle: (userHandle: string) => Promise<string | null>
 }
 
@@ -645,6 +656,19 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
         [username],
       )
       return inserted.rows[0].user_handle
+    },
+
+    insertWebAuthnUserHandle: async (username: string, userHandle: string): Promise<void> => {
+      const client = await getClient()
+      await client.query(`INSERT INTO webauthn_user_handles (user_handle, username) VALUES ($1, $2)`, [
+        userHandle,
+        username,
+      ])
+    },
+
+    deleteWebAuthnUserHandle: async (username: string): Promise<void> => {
+      const client = await getClient()
+      await client.query('DELETE FROM webauthn_user_handles WHERE username = $1', [username])
     },
 
     getUsernameByWebAuthnUserHandle: async (userHandle: string): Promise<string | null> => {

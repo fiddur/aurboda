@@ -1,15 +1,17 @@
 import { useLocation } from 'preact-iso'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 
-import { auth, ensureStatusLoaded, signup, signupMode } from '../../state/auth'
+import { auth, ensureStatusLoaded, signup, signupMode, signupWithPasskey } from '../../state/auth'
 import './style.css'
 
 export function Signup() {
   const { route, query } = useLocation()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
+  const [usePassword, setUsePassword] = useState(false)
+  const [username, setUsername] = useState('')
 
-  // Get invitation token from URL query param
   const invitation = useMemo(() => {
     const params = new URLSearchParams(query)
     return params.get('invite') ?? undefined
@@ -24,7 +26,6 @@ export function Signup() {
     return null
   }
 
-  // Show different messages based on signup mode
   if (signupMode.value === 'closed') {
     return (
       <div class="signup-page">
@@ -51,7 +52,23 @@ export function Signup() {
     )
   }
 
-  const onSubmit = async (e: Event) => {
+  const onPasskeySignup = async () => {
+    setError(null)
+    if (!username) {
+      setError('Please enter a username')
+      return
+    }
+    setPasskeyLoading(true)
+    const result = await signupWithPasskey(username, invitation)
+    setPasskeyLoading(false)
+    if (result.success) {
+      route('/')
+    } else {
+      setError(result.error ?? 'Signup failed')
+    }
+  }
+
+  const onPasswordSubmit = async (e: Event) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
@@ -67,8 +84,7 @@ export function Signup() {
         return
       }
 
-      const result = await signup(formData.get('user') as string, password, invitation)
-
+      const result = await signup(username, password, invitation)
       if (result.success) {
         route('/')
       } else {
@@ -84,38 +100,81 @@ export function Signup() {
 
       {invitation && <p class="invitation-notice">You have been invited to create an account.</p>}
 
-      <form onSubmit={onSubmit} class="signup-form">
-        <div class="form-field">
-          <label for="user">Username</label>
-          <input
-            id="user"
-            name="user"
-            type="text"
-            required
-            autoComplete="username"
-            pattern="^[a-z][a-z0-9_]{2,30}$"
-          />
-          <p class="field-hint">
-            3-31 characters, start with a letter, lowercase letters, numbers, and underscores only
+      <div class="form-field">
+        <label for="user">Username</label>
+        <input
+          id="user"
+          name="user"
+          type="text"
+          required
+          autoComplete="username webauthn"
+          pattern="^[a-z][a-z0-9_]{2,30}$"
+          value={username}
+          onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
+        />
+        <p class="field-hint">
+          3-31 characters, start with a letter, lowercase letters, numbers, and underscores only
+        </p>
+      </div>
+
+      {!usePassword ? (
+        <>
+          <button
+            type="button"
+            class="primary"
+            disabled={passkeyLoading || !username}
+            onClick={onPasskeySignup}
+          >
+            {passkeyLoading ? 'Waiting for passkey…' : 'Sign up with passkey'}
+          </button>
+
+          {error && <p class="error">{error}</p>}
+
+          <p class="alt-mode-link">
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault()
+                setUsePassword(true)
+                setError(null)
+              }}
+            >
+              Use a password instead
+            </a>
           </p>
-        </div>
+        </>
+      ) : (
+        <form onSubmit={onPasswordSubmit} class="signup-form">
+          <div class="form-field">
+            <label for="pass">Password</label>
+            <input id="pass" name="pass" type="password" required autoComplete="new-password" />
+          </div>
 
-        <div class="form-field">
-          <label for="pass">Password</label>
-          <input id="pass" name="pass" type="password" required autoComplete="new-password" />
-        </div>
+          <div class="form-field">
+            <label for="confirmPass">Confirm Password</label>
+            <input id="confirmPass" name="confirmPass" type="password" required autoComplete="new-password" />
+          </div>
 
-        <div class="form-field">
-          <label for="confirmPass">Confirm Password</label>
-          <input id="confirmPass" name="confirmPass" type="password" required autoComplete="new-password" />
-        </div>
+          {error && <p class="error">{error}</p>}
 
-        {error && <p class="error">{error}</p>}
+          <button type="submit" class="primary" disabled={loading || !username}>
+            {loading ? 'Creating account...' : 'Sign Up'}
+          </button>
 
-        <button type="submit" class="primary" disabled={loading}>
-          {loading ? 'Creating account...' : 'Sign Up'}
-        </button>
-      </form>
+          <p class="alt-mode-link">
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault()
+                setUsePassword(false)
+                setError(null)
+              }}
+            >
+              Sign up with a passkey instead
+            </a>
+          </p>
+        </form>
+      )}
 
       <p class="login-link">
         Already have an account? <a href="/login">Login</a>
