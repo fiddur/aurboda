@@ -20,7 +20,13 @@ import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 export const registerFoodItemTools = (server: McpServer, user: string) => {
   server.tool(
     'search_food_items',
-    'Search canonical food items by name. Returns matching items with their default nutritional data.',
+    [
+      "Search the merged food library: the user's private items plus any canonical reference data the admin has imported into the central shared library (national food databases, barcode-scanned products, etc. — what's available depends on which sources the admin has imported on this installation).",
+      'Search is accent-insensitive and tolerates typos (trigram fuzzy matching). Returns up to `limit` items, user-private items first.',
+      'Each result has an `id`, `name`, `source` (a string identifying where the row came from — `"manual"` means user-created; any other value indicates canonical reference data), `default_quantity`/`default_unit` (the "1 serving" basis the nutrient values are reported against), and per-serving nutrient values.',
+      "To log a meal, pass the result's `id` to add_meal as `food_item_id` — never re-pass the name, that would create a per-user duplicate of a shared item. The backend scales nutrient values linearly by `quantity / default_quantity` when the meal's `unit` matches the canonical `default_unit`.",
+      'Reference items may have non-English names. If a search misses, try synonyms in plausible source languages.',
+    ].join(' '),
     { ...foodItemsQuerySchema.shape },
     async (params) => {
       const maxResults = params.limit ? parseInt(params.limit, 10) : 20

@@ -109,19 +109,27 @@ export type FoodItem = z.infer<typeof foodItemSchema>
  */
 export const foodItemInputSchema = z
   .object({
-    food_item_id: z.string().uuid().optional().meta({ description: 'Link to canonical food item entity' }),
+    food_item_id: z.string().uuid().optional().meta({
+      description:
+        'ID of a canonical food item (use the `id` returned by search_food_items). Preferred over `name` — binding by ID avoids creating per-user duplicates of items already in the shared library.',
+    }),
     icon: z
       .string()
       .max(2048)
       .optional()
       .meta({ description: 'Icon for this food item (emoji or image URL)' }),
-    name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
-    quantity: z.number().optional().meta({ description: 'Quantity consumed' }),
-    unit: z
-      .string()
-      .max(100)
-      .optional()
-      .meta({ description: 'Unit for quantity (e.g., "g", "ml", "large slice", "full recipe")' }),
+    name: z.string().min(1).max(255).meta({
+      description:
+        'Food item name. Used as a label and, when food_item_id is omitted, as the lookup key (matches an existing item by name first, otherwise creates a new per-user item).',
+    }),
+    quantity: z.number().optional().meta({
+      description:
+        "Amount consumed, in `unit`. If unit matches the canonical food item's default_unit, the backend scales nutrients by quantity / default_quantity. If units differ, no scaling is applied (canonical values are used as-is).",
+    }),
+    unit: z.string().max(100).optional().meta({
+      description:
+        'Unit for quantity (e.g., "g", "ml", "large slice", "full recipe"). For best scaling, use the canonical food item\'s default_unit (returned by search_food_items).',
+    }),
   })
   .meta({ description: 'Input shape for a food item in a meal request body', id: 'FoodItemInput' })
 
@@ -356,3 +364,60 @@ export const frequentMealsResponseSchema = createDataArrayResponseSchema(frequen
 })
 
 export type FrequentMealsResponse = z.infer<typeof frequentMealsResponseSchema>
+
+// ============================================================================
+// Frequent food items
+// ============================================================================
+
+/**
+ * Query parameters for surfacing the food items a user logs most often. Helps
+ * an MCP agent suggest "your usual" without re-searching every time.
+ */
+export const frequentFoodItemsQuerySchema = z
+  .object({
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(50)
+      .default(10)
+      .meta({ description: 'Maximum number of food items to return' }),
+    since_days: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(90)
+      .meta({ description: 'How many days back to consider when computing frequency' }),
+  })
+  .meta({ description: 'Query parameters for frequent-food-items', id: 'FrequentFoodItemsQuery' })
+
+export type FrequentFoodItemsQuery = z.infer<typeof frequentFoodItemsQuerySchema>
+
+export const frequentFoodItemSchema = z
+  .object({
+    food_item_id: z.string().uuid().meta({
+      description:
+        'ID of the canonical food item — pass to add_meal as `food_item_id`. May resolve to a per-user item or a central shared-library item.',
+    }),
+    name: z.string().meta({ description: 'Snapshotted name from the most recent meal use' }),
+    icon: z.string().nullable().meta({ description: 'Snapshotted icon, or null' }),
+    count: z.number().int().meta({ description: 'How many times the user logged this food in the window' }),
+    last_used: iso8601DateTimeSchema.meta({ description: 'Time of the most recent meal that used it' }),
+    last_quantity: z
+      .number()
+      .nullable()
+      .meta({
+        description: 'Quantity used in the most recent occurrence (a sensible default for re-logging)',
+      }),
+    last_unit: z.string().nullable().meta({ description: 'Unit used in the most recent occurrence' }),
+  })
+  .meta({ description: 'A food item the user logs repeatedly', id: 'FrequentFoodItem' })
+
+export type FrequentFoodItem = z.infer<typeof frequentFoodItemSchema>
+
+export const frequentFoodItemsResponseSchema = createDataArrayResponseSchema(frequentFoodItemSchema).meta({
+  id: 'FrequentFoodItemsResponse',
+})
+
+export type FrequentFoodItemsResponse = z.infer<typeof frequentFoodItemsResponseSchema>

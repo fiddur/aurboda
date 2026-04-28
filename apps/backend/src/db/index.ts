@@ -232,7 +232,9 @@ export { getMealFoodItems, getMealFoodItemsBatch, setMealFoodItems } from './mea
 // Meals
 export {
   deleteMeal,
+  type FrequentFoodItemRow,
   type FrequentMealRow,
+  getFrequentFoodItems,
   getFrequentMeals,
   getMealById,
   getMealLogCompleted,

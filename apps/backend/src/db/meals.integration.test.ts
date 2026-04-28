@@ -1,7 +1,16 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { deleteMeal, getFrequentMeals, getMealById, getMeals, insertMeal, updateMeal } from './meals.ts'
+import { setMealFoodItems } from './meal-food-items.ts'
+import {
+  deleteMeal,
+  getFrequentFoodItems,
+  getFrequentMeals,
+  getMealById,
+  getMeals,
+  insertMeal,
+  updateMeal,
+} from './meals.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -360,6 +369,96 @@ describe('Meals Integration Tests', () => {
 
       const rows = await getFrequentMeals(user, { meal_type: 'breakfast', limit: 2, since_days: 30 })
       expect(rows).toHaveLength(2)
+    })
+  })
+
+  describe('getFrequentFoodItems', () => {
+    test('aggregates by food_item_id, ranks by usage, exposes the most recent quantity/unit', async () => {
+      const user = getTestUser()
+      const now = Date.now()
+      const days = (n: number) => new Date(now - n * 86_400_000)
+
+      const breadId = '11111111-1111-1111-1111-111111111111'
+      const oatsId = '22222222-2222-2222-2222-222222222222'
+      const teaId = '33333333-3333-3333-3333-333333333333'
+
+      // Bread: used 3 times, most recent quantity = 80g
+      const breadMeals = [
+        await insertMeal(user, { meal_type: 'breakfast', time: days(10) }),
+        await insertMeal(user, { meal_type: 'breakfast', time: days(5) }),
+        await insertMeal(user, { meal_type: 'breakfast', time: days(1) }),
+      ]
+      for (let i = 0; i < breadMeals.length; i++) {
+        await setMealFoodItems(user, breadMeals[i].id, [
+          {
+            food_item_icon: '🍞',
+            food_item_id: breadId,
+            food_item_name: 'Rye bread',
+            quantity: i === breadMeals.length - 1 ? 80 : 100,
+            sort_order: 0,
+            unit: 'g',
+          },
+        ])
+      }
+
+      // Oats: used twice
+      for (const day of [7, 3]) {
+        const meal = await insertMeal(user, { meal_type: 'breakfast', time: days(day) })
+        await setMealFoodItems(user, meal.id, [
+          {
+            food_item_icon: '🥣',
+            food_item_id: oatsId,
+            food_item_name: 'Oats',
+            quantity: 50,
+            sort_order: 0,
+            unit: 'g',
+          },
+        ])
+      }
+
+      // Tea: once but outside the 30-day window — should be excluded.
+      const oldTeaMeal = await insertMeal(user, { meal_type: 'breakfast', time: days(120) })
+      await setMealFoodItems(user, oldTeaMeal.id, [
+        {
+          food_item_icon: undefined,
+          food_item_id: teaId,
+          food_item_name: 'Tea',
+          quantity: 1,
+          sort_order: 0,
+          unit: 'cup',
+        },
+      ])
+
+      const rows = await getFrequentFoodItems(user, { limit: 10, since_days: 30 })
+
+      expect(rows.map((r) => r.food_item_id)).toEqual([breadId, oatsId])
+      expect(rows[0]).toMatchObject({
+        count: 3,
+        food_item_id: breadId,
+        icon: '🍞',
+        last_quantity: 80,
+        last_unit: 'g',
+        name: 'Rye bread',
+      })
+      expect(rows[1]).toMatchObject({ count: 2, food_item_id: oatsId, name: 'Oats' })
+    })
+
+    test('respects limit', async () => {
+      const user = getTestUser()
+      for (let i = 0; i < 5; i++) {
+        const meal = await insertMeal(user, { meal_type: 'breakfast', time: new Date() })
+        await setMealFoodItems(user, meal.id, [
+          {
+            food_item_id: `00000000-0000-0000-0000-00000000000${i}`,
+            food_item_name: `Food ${i}`,
+            quantity: 1,
+            sort_order: 0,
+            unit: 'g',
+          },
+        ])
+      }
+      const rows = await getFrequentFoodItems(user, { limit: 3, since_days: 30 })
+      expect(rows).toHaveLength(3)
     })
   })
 
