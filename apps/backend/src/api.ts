@@ -120,7 +120,7 @@ const main = async () => {
   const webAuthn = createWebAuthnService({ expectedOrigins, rpID, rpName }, centralDb)
   console.info(`🔐 WebAuthn rpID=${rpID} origins=${expectedOrigins.join(',')}`)
 
-  const androidPackageName = process.env.ANDROID_APP_PACKAGE ?? 'net.aurboda.app'
+  const androidPackageName = process.env.ANDROID_APP_PACKAGE ?? 'net.aurboda'
   const androidFingerprints = (process.env.ANDROID_APP_FINGERPRINTS ?? '')
     .split(',')
     .map((s) => s.trim())

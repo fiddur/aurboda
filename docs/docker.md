@@ -52,7 +52,7 @@ This mounts your source code and watches for changes.
 | `WEBAUTHN_RP_ID`           | Passkey Relying Party ID (must be the public hostname the browser sees)                        | derived from `WEB_HOST`                |
 | `WEBAUTHN_RP_NAME`         | Display name shown by the user's authenticator                                                 | `Aurboda`                              |
 | `WEBAUTHN_ORIGINS`         | Comma-separated list of allowed origins for assertions                                         | `WEB_HOST`                             |
-| `ANDROID_APP_PACKAGE`      | Android app package name in `assetlinks.json`                                                  | `net.aurboda.app`                      |
+| `ANDROID_APP_PACKAGE`      | Android app package name in `assetlinks.json`                                                  | `net.aurboda`                          |
 | `ANDROID_APP_FINGERPRINTS` | Comma-separated SHA-256 cert fingerprints (colon-separated hex) for the Android APKs you trust | (empty — `assetlinks.json` returns []) |
 
 ### Generating a Session Secret
