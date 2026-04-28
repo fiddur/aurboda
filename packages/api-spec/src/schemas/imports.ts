@@ -28,7 +28,13 @@ export const importJobSchema = z
     completed_at: iso8601DateTimeSchema.optional().meta({ description: 'When the job finished' }),
     error: z.string().optional().meta({ description: 'Failure reason if status is "failed"' }),
     id: z.string().uuid().meta({ description: 'Job ID' }),
+    last_progress_at: iso8601DateTimeSchema.meta({
+      description: 'When processed_items was last updated; the reaper uses this for liveness',
+    }),
     processed_items: z.number().int().meta({ description: 'How many items have been imported so far' }),
+    skipped_items: z.number().int().meta({
+      description: 'How many items the runner could not import (logged + skipped, not retried)',
+    }),
     source: importSourceSchema,
     started_at: iso8601DateTimeSchema.meta({ description: 'When the job was started' }),
     started_by: z.string().optional().meta({ description: 'User who initiated the job' }),
@@ -43,7 +49,13 @@ export type ImportJob = z.infer<typeof importJobSchema>
 
 export const importJobsQuerySchema = z
   .object({
-    limit: z.string().optional().meta({ description: 'Max number of jobs to return (default 10)' }),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .meta({ description: 'Max number of jobs to return (default 10, max 100)' }),
     source: importSourceSchema.optional(),
   })
   .meta({ id: 'ImportJobsQuery' })

@@ -36,15 +36,18 @@ describe('import_jobs integration', () => {
     const job = await insertImportJob(user, 'livsmedelsverket', 'fredrik')
     expect(job.status).toBe('pending')
     expect(job.processed_items).toBe(0)
+    expect(job.skipped_items).toBe(0)
     expect(job.started_by).toBe('fredrik')
 
     const started = await startImportJob(user, job.id, 2575)
     expect(started?.status).toBe('running')
     expect(started?.total_items).toBe(2575)
 
-    await updateImportJobProgress(user, job.id, 100)
+    await updateImportJobProgress(user, job.id, 100, 3)
     const mid = await getImportJobById(user, job.id)
     expect(mid?.processed_items).toBe(100)
+    expect(mid?.skipped_items).toBe(3)
+    expect(mid?.last_progress_at.getTime()).toBeGreaterThanOrEqual(job.last_progress_at.getTime())
 
     const done = await completeImportJob(user, job.id)
     expect(done?.status).toBe('completed')
@@ -63,6 +66,26 @@ describe('import_jobs integration', () => {
     expect(failed?.completed_at).toBeDefined()
   })
 
+  test('getActiveImportJob ignores completed/failed jobs', async () => {
+    const { getActiveImportJob } = await import('./import-jobs.ts')
+    const user = getTestUser()
+
+    expect(await getActiveImportJob(user, 'livsmedelsverket')).toBeNull()
+
+    const a = await insertImportJob(user, 'livsmedelsverket')
+    const active1 = await getActiveImportJob(user, 'livsmedelsverket')
+    expect(active1?.id).toBe(a.id)
+
+    await completeImportJob(user, a.id)
+    expect(await getActiveImportJob(user, 'livsmedelsverket')).toBeNull()
+
+    const b = await insertImportJob(user, 'livsmedelsverket')
+    await startImportJob(user, b.id, 5)
+    const active2 = await getActiveImportJob(user, 'livsmedelsverket')
+    expect(active2?.id).toBe(b.id)
+    expect(active2?.status).toBe('running')
+  })
+
   test('listImportJobs returns newest first; getLatestImportJob picks the right one', async () => {
     const user = getTestUser()
 
@@ -77,26 +100,35 @@ describe('import_jobs integration', () => {
     expect(latest?.id).toBe(b.id)
   })
 
-  test('reapStaleImportJobs only fails jobs older than cutoff', async () => {
+  test('reapStaleImportJobs uses heartbeat (last_progress_at), not start time', async () => {
     const user = getTestUser()
 
-    const oldJob = await insertImportJob(user, 'livsmedelsverket')
-    await startImportJob(user, oldJob.id, 100)
-    // Pretend the old job started 2 hours ago.
+    // Stalled: started long ago AND no recent heartbeat.
+    const stalled = await insertImportJob(user, 'livsmedelsverket')
+    await startImportJob(user, stalled.id, 100)
+    await query(
+      user,
+      `UPDATE import_jobs
+         SET last_progress_at = NOW() - INTERVAL '30 minutes',
+             started_at = NOW() - INTERVAL '2 hours'
+       WHERE id = $1`,
+      [stalled.id],
+    )
+
+    // Slow but live: started long ago, heartbeat is fresh.
+    const slowAlive = await insertImportJob(user, 'livsmedelsverket')
+    await startImportJob(user, slowAlive.id, 100)
     await query(user, `UPDATE import_jobs SET started_at = NOW() - INTERVAL '2 hours' WHERE id = $1`, [
-      oldJob.id,
+      slowAlive.id,
     ])
 
-    const recentJob = await insertImportJob(user, 'livsmedelsverket')
-    await startImportJob(user, recentJob.id, 100)
-
-    const reaped = await reapStaleImportJobs(user, 60)
+    const reaped = await reapStaleImportJobs(user, 10)
     expect(reaped).toBe(1)
 
-    const oldAfter = await getImportJobById(user, oldJob.id)
-    const recentAfter = await getImportJobById(user, recentJob.id)
-    expect(oldAfter?.status).toBe('failed')
-    expect(oldAfter?.error).toMatch(/restarted/i)
-    expect(recentAfter?.status).toBe('running')
+    const stalledAfter = await getImportJobById(user, stalled.id)
+    const slowAfter = await getImportJobById(user, slowAlive.id)
+    expect(stalledAfter?.status).toBe('failed')
+    expect(stalledAfter?.error).toMatch(/stalled|restarted/i)
+    expect(slowAfter?.status).toBe('running')
   })
 })

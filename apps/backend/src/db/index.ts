@@ -233,6 +233,7 @@ export { getMealFoodItems, getMealFoodItemsBatch, setMealFoodItems } from './mea
 export {
   completeImportJob,
   failImportJob,
+  getActiveImportJob,
   getImportJobById,
   getLatestImportJob,
   insertImportJob,

@@ -16,12 +16,16 @@ const nutrient = (euroFIRkod: string, varde: number, enhet: string): LsvNutrient
 
 describe('mapLsvNutrientsToColumns', () => {
   test('takes the kcal duplicate of ENERC, drops kJ', () => {
-    const columns = mapLsvNutrientsToColumns([nutrient('ENERC', 2745, 'kJ'), nutrient('ENERC', 656, 'kcal')])
+    const { columns, unitMismatches } = mapLsvNutrientsToColumns([
+      nutrient('ENERC', 2745, 'kJ'),
+      nutrient('ENERC', 656, 'kcal'),
+    ])
     expect(columns.calories).toBe(656)
+    expect(unitMismatches).toHaveLength(0)
   })
 
   test('maps macro/fat/vitamin/mineral codes to our columns', () => {
-    const columns = mapLsvNutrientsToColumns([
+    const { columns, unitMismatches } = mapLsvNutrientsToColumns([
       nutrient('PROT', 7.0, 'g'),
       nutrient('CHO', 0.5, 'g'),
       nutrient('FAT', 70.5, 'g'),
@@ -41,31 +45,33 @@ describe('mapLsvNutrientsToColumns', () => {
     expect(columns.vitamin_a).toBe(25)
     expect(columns.calcium).toBe(12)
     expect(columns.selenium).toBe(7)
+    expect(unitMismatches).toHaveLength(0)
   })
 
-  test('converts mg→µg when the column expects µg', () => {
-    const columns = mapLsvNutrientsToColumns([nutrient('VITD', 1, 'mg')])
-    // 1 mg vitamin_d = 1000 µg (the LSV API in practice reports µg, but
-    // be defensive — bad-unit data shouldn't silently become wrong-magnitude).
+  test('converts mg→µg when the column expects µg, but flags it as a mismatch', () => {
+    const { columns, unitMismatches } = mapLsvNutrientsToColumns([nutrient('VITD', 1, 'mg')])
     expect(columns.vitamin_d).toBe(1000)
+    // The runner uses unitMismatches to log loudly — silently producing
+    // 1000-µg-of-vitamin-D values would look plausible and go unnoticed.
+    expect(unitMismatches).toEqual([{ column: 'vitamin_d', fromUnit: 'mg', toUnit: 'µg' }])
   })
 
   test('skips unknown codes', () => {
-    const columns = mapLsvNutrientsToColumns([nutrient('UNKNOWN_XYZ', 99, 'g'), nutrient('PROT', 7, 'g')])
+    const { columns } = mapLsvNutrientsToColumns([nutrient('UNKNOWN_XYZ', 99, 'g'), nutrient('PROT', 7, 'g')])
     expect(columns.protein).toBe(7)
     expect(Object.keys(columns)).toEqual(['protein'])
   })
 
   test('skips rows with non-mass units we cannot convert (e.g. RE, NE, %)', () => {
-    const columns = mapLsvNutrientsToColumns([nutrient('VITA', 25, 'RE')])
-    // RE is a retinol-equivalents unit, not directly mass. Skip rather than
-    // emit a wrong-magnitude value.
+    const { columns } = mapLsvNutrientsToColumns([nutrient('VITA', 25, 'RE')])
     expect(columns.vitamin_a).toBeUndefined()
   })
 
   test('handles the alternate "μ" (Greek mu) glyph', () => {
-    const columns = mapLsvNutrientsToColumns([nutrient('VITA', 25, 'μg')])
+    const { columns, unitMismatches } = mapLsvNutrientsToColumns([nutrient('VITA', 25, 'μg')])
     expect(columns.vitamin_a).toBe(25)
+    // U+03BC and U+00B5 are equivalent — same unit, not a mismatch.
+    expect(unitMismatches).toHaveLength(0)
   })
 })
 

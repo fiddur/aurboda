@@ -25,13 +25,7 @@ export const registerImportTools = (server: McpServer, user: string) => {
     'List recent bulk-import jobs, newest first.',
     { ...importJobsQuerySchema.shape },
     async (params) => {
-      const limit =
-        typeof params.limit === 'string'
-          ? parseInt(params.limit, 10)
-          : typeof params.limit === 'number'
-            ? params.limit
-            : 10
-      const jobs = await listImportJobs(user, params.source, limit)
+      const jobs = await listImportJobs(user, params.source, params.limit ?? 10)
       return jsonResponse({ data: jobs, success: true })
     },
   )

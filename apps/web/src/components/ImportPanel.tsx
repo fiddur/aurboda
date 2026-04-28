@@ -21,6 +21,7 @@ const formatTime = (iso?: string): string => {
 function JobStatus({ job }: { job: ImportJob }) {
   const total = job.total_items ?? 0
   const processed = job.processed_items
+  const skipped = job.skipped_items
   const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
 
   if (job.status === 'pending' || job.status === 'running') {
@@ -30,6 +31,7 @@ function JobStatus({ job }: { job: ImportJob }) {
           <span>
             Importing… {processed}
             {total > 0 && ` / ${total}`}
+            {skipped > 0 && ` (${skipped} skipped)`}
           </span>
           <span class="import-progress-pct">{total > 0 ? `${pct}%` : ''}</span>
         </div>
@@ -43,6 +45,7 @@ function JobStatus({ job }: { job: ImportJob }) {
     return (
       <div class="import-job import-job-completed">
         Last import completed {formatTime(job.completed_at)} — {processed} items
+        {skipped > 0 && `, ${skipped} skipped`}
       </div>
     )
   }
@@ -78,6 +81,12 @@ export function ImportPanel() {
 
   const isActive = latest?.status === 'pending' || latest?.status === 'running'
 
+  const buttonLabel = startMutation.isPending
+    ? 'Starting…'
+    : isActive
+      ? 'Import running…'
+      : 'Import from Livsmedelsverket'
+
   return (
     <div class="import-panel">
       <div class="import-panel-header">
@@ -88,7 +97,7 @@ export function ImportPanel() {
           onClick={() => startMutation.mutate()}
           disabled={isActive || startMutation.isPending}
         >
-          {isActive ? 'Import running…' : 'Import from Livsmedelsverket'}
+          {buttonLabel}
         </button>
       </div>
       <p class="import-panel-attribution">

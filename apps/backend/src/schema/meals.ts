@@ -109,6 +109,7 @@ export const mealsTables: Record<string, string> = {
       ash             DOUBLE PRECISION,
       salt            DOUBLE PRECISION,
       icon            TEXT,
+      source_id       VARCHAR(100),
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT unique_food_item_name UNIQUE (name_lower)
@@ -116,7 +117,9 @@ export const mealsTables: Record<string, string> = {
   `,
 
   food_items_indexes: `
-    CREATE INDEX IF NOT EXISTS idx_food_items_name_lower ON food_items (name_lower)
+    CREATE INDEX IF NOT EXISTS idx_food_items_name_lower ON food_items (name_lower);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_food_items_source_id
+      ON food_items (source, source_id) WHERE source_id IS NOT NULL
   `,
 
   // Fuzzy/accent-insensitive search support: pg_trgm + unaccent extensions,

@@ -3,8 +3,6 @@
  * databases (Livsmedelsverket, etc.).
  */
 
-import type { RequestHandler } from 'express'
-
 import {
   type ImportJob,
   type ImportJobResponse,
@@ -17,14 +15,16 @@ import type { ImportJobEntity } from '../db/types.ts'
 
 import { getImportJobById, listImportJobs, reapStaleImportJobs } from '../db/index.ts'
 import { startImport } from '../services/imports/runner.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
 const serialize = (job: ImportJobEntity): ImportJob => ({
   completed_at: job.completed_at?.toISOString(),
   error: job.error,
   id: job.id,
+  last_progress_at: job.last_progress_at.toISOString(),
   processed_items: job.processed_items,
+  skipped_items: job.skipped_items,
   source: job.source as ImportJob['source'],
   started_at: job.started_at.toISOString(),
   started_by: job.started_by,
@@ -32,7 +32,26 @@ const serialize = (job: ImportJobEntity): ImportJob => ({
   total_items: job.total_items,
 })
 
-export const createImportsRouter = (authMiddleware: RequestHandler): TypedRouter => {
+// Rate-limit the heartbeat reaper to at most once per minute per user. The
+// list endpoint is polled every 2 s while an import runs, and we don't want
+// an UPDATE per poll. Cleared per-user so unrelated users don't share state.
+const REAP_INTERVAL_MS = 60_000
+const lastReapAt: Map<string, number> = new Map()
+
+const maybeReap = async (user: string): Promise<void> => {
+  const now = Date.now()
+  const last = lastReapAt.get(user) ?? 0
+  if (now - last < REAP_INTERVAL_MS) return
+  lastReapAt.set(user, now)
+  try {
+    const reaped = await reapStaleImportJobs(user)
+    if (reaped > 0) console.info(`[imports] reaped ${reaped} stale jobs for ${user}`)
+  } catch (err) {
+    console.warn('[imports] reaper failed:', err instanceof Error ? err.message : err)
+  }
+}
+
+export const createImportsRouter = (authMiddleware: AnyMiddleware): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, ImportJobsResponse, unknown, ImportJobsQuery>(
@@ -40,12 +59,8 @@ export const createImportsRouter = (authMiddleware: RequestHandler): TypedRouter
     authMiddleware,
     validateQuery(importJobsQuerySchema),
     async (req, res) => {
-      const limit = req.query.limit ? parseInt(req.query.limit, 10) : 10
-      // Reap "running" jobs left behind by a backend crash so the UI doesn't
-      // show a stuck progress bar. Cheap (single UPDATE), worth doing on the
-      // poll path so the user sees fresh state without a server-startup hook.
-      await reapStaleImportJobs(req.user!).catch(() => {})
-      const jobs = await listImportJobs(req.user!, req.query.source, limit)
+      await maybeReap(req.user!)
+      const jobs = await listImportJobs(req.user!, req.query.source, req.query.limit ?? 10)
       res.json({ data: jobs.map(serialize), success: true })
     },
   )

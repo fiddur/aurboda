@@ -154,6 +154,12 @@ const MASS_FACTORS: Record<string, Record<string, number>> = {
   µg: { g: 0.000_001, mg: 0.001, µg: 1 },
 }
 
+interface UnitMismatch {
+  column: string
+  fromUnit: string
+  toUnit: string
+}
+
 const convertValue = (
   value: number,
   fromUnit: string,
@@ -167,21 +173,33 @@ const convertValue = (
   return factor === undefined ? undefined : value * factor
 }
 
+export interface MapResult {
+  columns: Record<string, number>
+  /**
+   * Rows whose unit didn't match what our column expects but were converted.
+   * In normal operation this should be empty (LSV is consistent per-nutrient);
+   * non-empty means LSV's unit convention drifted and we should be told.
+   */
+  unitMismatches: UnitMismatch[]
+}
+
 /**
  * Translate an LSV nutrient array into our flat column dict. Skips rows
- * we don't have a column for, the kJ duplicate of ENERC, and rows whose
- * unit doesn't match what our column expects (after a small set of known
- * conversions like mg→µg).
+ * we don't have a column for and the kJ duplicate of ENERC. When a row's
+ * unit doesn't match the column's expected unit, mass-to-mass values are
+ * converted but recorded in `unitMismatches` so the runner can log loudly —
+ * silently producing wrong-magnitude data is the worst failure mode.
  */
-export const mapLsvNutrientsToColumns = (nutrients: LsvNutrient[]): Record<string, number> => {
-  const out: Record<string, number> = {}
+export const mapLsvNutrientsToColumns = (nutrients: LsvNutrient[]): MapResult => {
+  const columns: Record<string, number> = {}
+  const unitMismatches: UnitMismatch[] = []
   for (const row of nutrients) {
     const code = row.euroFIRkod
     const enhet = normaliseUnit(row.enhet)
 
     if (code === 'ENERC') {
       // Take the kcal duplicate, drop kJ.
-      if (enhet === 'kcal') out.calories = row.varde
+      if (enhet === 'kcal') columns.calories = row.varde
       continue
     }
 
@@ -191,10 +209,17 @@ export const mapLsvNutrientsToColumns = (nutrients: LsvNutrient[]): Record<strin
     const expectedUnit = COLUMN_UNITS[column]
     if (!expectedUnit) continue
 
-    const converted = convertValue(row.varde, enhet, expectedUnit)
-    if (converted !== undefined) out[column] = converted
+    if (normaliseUnit(row.enhet) !== expectedUnit) {
+      const converted = convertValue(row.varde, row.enhet, expectedUnit)
+      if (converted !== undefined) {
+        columns[column] = converted
+        unitMismatches.push({ column, fromUnit: enhet, toUnit: expectedUnit })
+      }
+      continue
+    }
+    columns[column] = row.varde
   }
-  return out
+  return { columns, unitMismatches }
 }
 
 const buildHeaders = (): Record<string, string> => ({
@@ -243,7 +268,8 @@ export const fetchLivsmedelsverketFoodNutrients = async (
 }
 
 export interface LsvImportRunOptions extends LsvClientOptions {
-  onProgress?: (processed: number, total: number) => void | Promise<void>
+  /** processed = imported + skipped (matches what's persisted). */
+  onProgress?: (processed: number, skipped: number, total: number) => void | Promise<void>
   /** Polite delay between per-food fetches (ms). Defaults to 50. */
   perItemDelayMs?: number
 }
@@ -252,32 +278,41 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /**
  * Run the full import: fetch catalog, fetch nutrients per food, upsert.
- * Errors on individual foods are logged and skipped — we don't abort the
- * whole job for one bad row. Returns the count of successfully imported
- * items.
+ * Errors on individual foods are logged and counted as skipped — we don't
+ * abort the whole job for one bad row.
  */
 export const runLivsmedelsverketImport = async (
   user: string,
   opts: LsvImportRunOptions = {},
 ): Promise<{ totalCatalog: number; imported: number; skipped: number }> => {
   const catalog = await fetchLivsmedelsverketCatalog(opts)
-  await opts.onProgress?.(0, catalog.length)
+  await opts.onProgress?.(0, 0, catalog.length)
 
   let imported = 0
   let skipped = 0
+  let mismatchCount = 0
   const delay = opts.perItemDelayMs ?? 50
 
   for (let i = 0; i < catalog.length; i++) {
     const food = catalog[i]
     try {
       const nutrients = await fetchLivsmedelsverketFoodNutrients(food.nummer, opts)
-      const columns = mapLsvNutrientsToColumns(nutrients)
+      const { columns, unitMismatches } = mapLsvNutrientsToColumns(nutrients)
+      if (unitMismatches.length > 0) {
+        mismatchCount += unitMismatches.length
+        for (const m of unitMismatches) {
+          console.warn(
+            `[lsv-import] unit mismatch nummer=${food.nummer} column=${m.column} from=${m.fromUnit} to=${m.toUnit} (LSV unit convention may have changed — verify before trusting these values)`,
+          )
+        }
+      }
       const input: InsertFoodItemInput = {
         ...columns,
         default_quantity: 100,
         default_unit: 'g',
         name: food.namn,
         source: 'livsmedelsverket',
+        source_id: String(food.nummer),
       }
       await upsertFoodItem(user, input)
       imported++
@@ -290,9 +325,16 @@ export const runLivsmedelsverketImport = async (
     }
     if (delay > 0) await sleep(delay)
     if ((i + 1) % 20 === 0 || i === catalog.length - 1) {
-      await opts.onProgress?.(i + 1, catalog.length)
+      await opts.onProgress?.(imported, skipped, catalog.length)
     }
   }
+
+  if (mismatchCount > 0) {
+    console.warn(
+      `[lsv-import] completed with ${mismatchCount} unit mismatches across the catalog — see prior warnings`,
+    )
+  }
+  console.info(`[lsv-import] done: ${imported} imported, ${skipped} skipped of ${catalog.length} total`)
 
   return { imported, skipped, totalCatalog: catalog.length }
 }

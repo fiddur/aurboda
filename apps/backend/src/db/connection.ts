@@ -810,6 +810,26 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE report_entries ALTER COLUMN unit DROP NOT NULL`)
   }
 
+  // food_items: add source_id so re-imports key off the upstream identifier
+  // (e.g. Livsmedelsverket nummer) instead of the mutable name.
+  if (existingTableNames.has('food_items')) {
+    await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS source_id VARCHAR(100)`)
+  }
+
+  // import_jobs: heartbeat column + skipped_items so the reaper can use
+  // liveness rather than start time.
+  if (existingTableNames.has('import_jobs')) {
+    await query(
+      db,
+      `ALTER TABLE import_jobs
+         ADD COLUMN IF NOT EXISTS last_progress_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+    )
+    await query(
+      db,
+      `ALTER TABLE import_jobs ADD COLUMN IF NOT EXISTS skipped_items INTEGER NOT NULL DEFAULT 0`,
+    )
+  }
+
   // Migrate source columns to support 'aurboda' (rename 'manual' -> 'aurboda' for new data)
   // Note: existing 'manual' data is preserved; new entries use 'aurboda'
 
