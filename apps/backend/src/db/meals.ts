@@ -241,6 +241,65 @@ export const getFrequentMeals = async (
   }))
 }
 
+// ============================================================================
+// Frequent food items
+// ============================================================================
+
+export interface FrequentFoodItemRow {
+  food_item_id: string
+  name: string
+  icon: string | null
+  count: number
+  last_used: Date
+  last_quantity: number | null
+  last_unit: string | null
+}
+
+interface FrequentFoodItemsFilter {
+  limit: number
+  since_days: number
+}
+
+/**
+ * Aggregate `meal_food_items` to surface the food items the user logs most
+ * often. Useful for an MCP agent to suggest "your usual" without re-running
+ * fuzzy search every time. Snapshotted name/icon are read directly off the
+ * junction — no JOIN to food_items, so central-library items work too.
+ */
+export const getFrequentFoodItems = async (
+  user: string,
+  filter: FrequentFoodItemsFilter,
+): Promise<FrequentFoodItemRow[]> => {
+  const sql = `
+    WITH ranked AS (
+      SELECT mfi.food_item_id, mfi.food_item_name, mfi.food_item_icon,
+             mfi.quantity, mfi.unit, m.time,
+             COUNT(*) OVER (PARTITION BY mfi.food_item_id) AS use_count,
+             ROW_NUMBER() OVER (PARTITION BY mfi.food_item_id ORDER BY m.time DESC) AS rn
+      FROM meal_food_items mfi
+      JOIN meals m ON m.id = mfi.meal_id
+      WHERE m.time > NOW() - ($1::int || ' days')::interval
+        AND mfi.food_item_id IS NOT NULL
+    )
+    SELECT food_item_id, food_item_name, food_item_icon, quantity, unit,
+           time AS last_used, use_count AS count
+    FROM ranked
+    WHERE rn = 1
+    ORDER BY use_count DESC, time DESC
+    LIMIT $2
+  `
+  const result = await query(user, sql, [filter.since_days, filter.limit])
+  return result.rows.map((row) => ({
+    count: Number(row.count),
+    food_item_id: row.food_item_id as string,
+    icon: (row.food_item_icon as string | null) ?? null,
+    last_quantity: row.quantity === null ? null : Number(row.quantity),
+    last_unit: (row.unit as string | null) ?? null,
+    last_used: row.last_used as Date,
+    name: (row.food_item_name as string | null) ?? '',
+  }))
+}
+
 /**
  * Delete a meal by ID.
  * Returns true if the meal was found and deleted.

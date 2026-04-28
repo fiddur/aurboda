@@ -64,3 +64,17 @@ MCP:
 ## Attribution and license
 
 Data is published by [Livsmedelsverket / Swedish Food Agency](https://www.livsmedelsverket.se/) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The Admin Settings page renders the attribution alongside the import button.
+
+## Other sources (future)
+
+The shared library is source-agnostic — `shared_food_items` rows carry a `source` (free-form string) and a `source_id` (the upstream identifier). Adding another reference DB only needs:
+
+- A service module that fetches the catalog + per-item data and calls `centralDb.upsertSharedFoodItem({ source: <source>, source_id, ... })`.
+- A new `runners[<source>]` entry in `services/imports/runner.ts`.
+- A new `POST /admin/imports/<source>` route.
+
+Concrete candidates a Swedish/Nordic install might want next:
+
+- **[OpenFoodFacts](https://world.openfoodfacts.org/)** — community-edited global database of branded products with EAN/UPC barcodes, ingredients, NutriScore, allergens. ODbL-licensed (attribution required). The natural fit for barcode-scanning, since the canonical key is the barcode itself (use it as `source_id`). On-demand fetch by barcode is cheaper than bulk-importing 3M+ products.
+- **[USDA FoodData Central](https://fdc.nal.usda.gov/)** — US equivalent of LSV, public-domain, well-structured nutrient data.
+- Other national agencies (e.g. UK CoFID, Finnish Fineli) for installs in those countries.

@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
+import { getTestDbClient, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   createCentralImportJobsApi,
   CREATE_IMPORT_JOBS_INDEXES,
   CREATE_IMPORT_JOBS_TABLE,
 } from './central-import-jobs.ts'
-import { getTestDbClient, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 

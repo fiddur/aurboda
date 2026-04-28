@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
+import { getTestDbClient, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   createSharedFoodItemsApi,
   CREATE_SHARED_FOOD_ITEMS_INDEXES,
   CREATE_SHARED_FOOD_ITEMS_TABLE,
 } from './central-food-items.ts'
-import { getTestDbClient, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 

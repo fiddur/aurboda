@@ -5,6 +5,7 @@
  */
 import {
   addMealBodySchema,
+  frequentFoodItemsQuerySchema,
   frequentMealsQuerySchema,
   mealsQuerySchema,
   tzSchema,
@@ -16,6 +17,7 @@ import {
   addMeal,
   deleteMealById,
   getMeal,
+  queryFrequentFoodItems,
   queryFrequentMeals,
   queryMeals,
   updateMealById,
@@ -26,7 +28,11 @@ export const registerMealTools = (server: McpServer, user: string) => {
   // Tool: add_meal
   server.tool(
     'add_meal',
-    'Add a meal record with optional nutrition details. Supports food items, macros (calories, protein, carbs, fat, fiber), and micronutrients.',
+    [
+      'Add a meal record. Each item in `food_items` should reference a canonical food via `food_item_id` (preferred — found via search_food_items) so the backend can scale nutrient values from the canonical record. Pass `quantity` in the canonical `default_unit` for accurate scaling; mismatched units skip scaling and use raw values.',
+      "If `food_item_id` is omitted, the backend matches by exact `name` first (in both the user's items and the central library) and falls back to creating a new per-user item — so always prefer `food_item_id` when you have one.",
+      'Top-level macros (calories/protein/carbs/fat/fiber) and `micros` are optional overrides for the meal as a whole. If omitted, the backend computes meal totals from the food_items snapshots.',
+    ].join(' '),
     { ...addMealBodySchema.shape, tz: tzSchema },
     async ({ tz, ...params }) => {
       const result = await addMeal(user, { ...params })
@@ -84,6 +90,20 @@ export const registerMealTools = (server: McpServer, user: string) => {
     { ...frequentMealsQuerySchema.shape, tz: tzSchema },
     async ({ tz, ...params }) => {
       const result = await queryFrequentMeals(user, params)
+      return tzJsonResponse(result, tz)
+    },
+  )
+
+  // Tool: query_frequent_food_items
+  server.tool(
+    'query_frequent_food_items',
+    [
+      'List the individual food items a user logs most often, regardless of meal type. Useful as a "your usual" shortcut so you can suggest add_meal entries without running fuzzy search every time.',
+      'Each result has the canonical `food_item_id` (pass to add_meal as-is), the snapshotted `name` and `icon`, total `count` in the window, plus `last_quantity` and `last_unit` from the most recent occurrence — sensible defaults for re-logging.',
+    ].join(' '),
+    { ...frequentFoodItemsQuerySchema.shape, tz: tzSchema },
+    async ({ tz, ...params }) => {
+      const result = await queryFrequentFoodItems(user, params)
       return tzJsonResponse(result, tz)
     },
   )

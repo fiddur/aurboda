@@ -4,8 +4,11 @@ import {
   type AddMealBody,
   addMealBodySchema,
   type DeleteMealResponse,
+  type FrequentFoodItemsQuery,
+  type FrequentFoodItemsResponse,
   type FrequentMealsQuery,
   type FrequentMealsResponse,
+  frequentFoodItemsQuerySchema,
   frequentMealsQuerySchema,
   type MealResponse,
   type MealsQuery,
@@ -25,6 +28,7 @@ import {
   addMeal,
   deleteMealById,
   getMeal,
+  queryFrequentFoodItems,
   queryFrequentMeals,
   queryMeals,
   updateMealById,
@@ -64,6 +68,16 @@ export const createMealsRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     validateQuery(frequentMealsQuerySchema),
     async (req, res) => {
       const result = await queryFrequentMeals(req.user!, req.query)
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, FrequentFoodItemsResponse, unknown, FrequentFoodItemsQuery>(
+    '/frequent-food-items',
+    authMiddleware,
+    validateQuery(frequentFoodItemsQuerySchema),
+    async (req, res) => {
+      const result = await queryFrequentFoodItems(req.user!, req.query)
       res.json({ data: result.data, success: true })
     },
   )

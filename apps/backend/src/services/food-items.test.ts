@@ -48,7 +48,7 @@ const fakeCentral = (): CentralDb =>
 describe('createFoodItemsService.search', () => {
   test('user items rank first, then central, capped at limit', async () => {
     vi.mocked(dbModule.searchFoodItems).mockResolvedValue([
-      userItem('u1', 'Mom\'s Hushållsost'),
+      userItem('u1', "Mom's Hushållsost"),
       userItem('u2', 'Hushållsost (homemade)'),
     ])
     const central = fakeCentral()
@@ -118,10 +118,10 @@ describe('createFoodItemsService.findOrCreate', () => {
   test('falls back to existing user item when central has no match', async () => {
     const central = fakeCentral()
     vi.mocked(central.getSharedFoodItemByName).mockResolvedValue(null)
-    vi.mocked(dbModule.getFoodItemByName).mockResolvedValue(userItem('u1', 'Mom\'s pancakes'))
+    vi.mocked(dbModule.getFoodItemByName).mockResolvedValue(userItem('u1', "Mom's pancakes"))
     const service = createFoodItemsService(central)
 
-    const result = await service.findOrCreate('user', 'Mom\'s pancakes')
+    const result = await service.findOrCreate('user', "Mom's pancakes")
     expect(result.id).toBe('u1')
     expect(dbModule.findOrCreateFoodItem).not.toHaveBeenCalled()
   })

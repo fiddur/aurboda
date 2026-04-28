@@ -5,10 +5,11 @@
  * Food items are stored relationally via the food_items + meal_food_items junction table.
  */
 
-import { type FrequentMeal, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import { type FrequentFoodItem, type FrequentMeal, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import {
   deleteMeal as dbDeleteMeal,
+  getFrequentFoodItems as dbGetFrequentFoodItems,
   getFrequentMeals as dbGetFrequentMeals,
   getMealById as dbGetMealById,
   getMealFoodItemsBatch,
@@ -460,6 +461,34 @@ export async function queryFrequentMeals(
   })
 
   return { data, success: true }
+}
+
+/**
+ * Top-N food items by usage in the user's meal log over the last
+ * `since_days`. Returns the snapshotted name/icon and the most recent
+ * quantity/unit, so an MCP agent can suggest "your usual" without re-running
+ * fuzzy search every time.
+ */
+export async function queryFrequentFoodItems(
+  user: string,
+  filters: { limit?: number; since_days?: number },
+): Promise<{ success: true; data: FrequentFoodItem[] }> {
+  const rows = await dbGetFrequentFoodItems(user, {
+    limit: filters.limit ?? 10,
+    since_days: filters.since_days ?? 90,
+  })
+  return {
+    data: rows.map((row) => ({
+      count: row.count,
+      food_item_id: row.food_item_id,
+      icon: row.icon,
+      last_quantity: row.last_quantity,
+      last_unit: row.last_unit,
+      last_used: row.last_used.toISOString(),
+      name: row.name,
+    })),
+    success: true,
+  }
 }
 
 /**
