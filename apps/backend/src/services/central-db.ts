@@ -8,6 +8,19 @@
 
 import pg from 'pg'
 
+import {
+  createSharedFoodItemsApi,
+  CREATE_SHARED_FOOD_ITEMS_INDEXES,
+  CREATE_SHARED_FOOD_ITEMS_TABLE,
+  type SharedFoodItemsApi,
+} from './central-food-items.ts'
+import {
+  createCentralImportJobsApi,
+  CREATE_IMPORT_JOBS_INDEXES,
+  CREATE_IMPORT_JOBS_TABLE,
+  type CentralImportJobsApi,
+} from './central-import-jobs.ts'
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -84,7 +97,7 @@ export interface CentralDbDeps {
   getClient: () => Promise<pg.Client>
 }
 
-export interface CentralDb {
+export interface CentralDb extends SharedFoodItemsApi, CentralImportJobsApi {
   initializeCentralDb: () => Promise<void>
   getServerSetting: <K extends keyof ServerSettings>(key: K) => Promise<ServerSettings[K] | null>
   setServerSetting: <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => Promise<void>
@@ -411,6 +424,10 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_OAUTH_AUTHORIZATION_CODES_TABLE)
       await client.query(CREATE_OAUTH_TOKENS_TABLE)
       await client.query(CREATE_WEBAUTHN_USER_HANDLES_TABLE)
+      await client.query(CREATE_SHARED_FOOD_ITEMS_TABLE)
+      for (const stmt of CREATE_SHARED_FOOD_ITEMS_INDEXES) await client.query(stmt)
+      await client.query(CREATE_IMPORT_JOBS_TABLE)
+      for (const stmt of CREATE_IMPORT_JOBS_INDEXES) await client.query(stmt)
 
       // Set default signup_mode if not exists
       await client.query(
@@ -419,6 +436,9 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
          ON CONFLICT (key) DO NOTHING`,
       )
     },
+
+    ...createSharedFoodItemsApi(getClient),
+    ...createCentralImportJobsApi(getClient),
 
     isAdmin: async (username: string): Promise<boolean> => {
       const client = await getClient()

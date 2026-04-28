@@ -9,8 +9,6 @@ import { type FrequentMeal, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import {
   deleteMeal as dbDeleteMeal,
-  findOrCreateFoodItem,
-  getFoodItemById,
   getFrequentMeals as dbGetFrequentMeals,
   getMealById as dbGetMealById,
   getMealFoodItemsBatch,
@@ -18,12 +16,13 @@ import {
   setMealFoodItems,
   updateMeal as dbUpdateMeal,
   upsertMeal as dbUpsertMeal,
-  type FoodItemEntity,
   type Meal,
   type MealFoodItem,
   type MealFoodItemLink,
   type Micros,
 } from '../db/index.ts'
+import { getCentralDb } from './central-db.ts'
+import { createFoodItemsService, type MergedFoodItem } from './food-items.ts'
 
 // ============================================================================
 // Types
@@ -205,12 +204,13 @@ const attachFoodItems = async (user: string, meals: Meal[]): Promise<EnrichedMea
  * food item's default quantity. Same-unit assumption — if the request unit
  * differs from the canonical default, fall back to scale = 1 (use raw values).
  */
-const computeScale = (fi: FoodItemInput, canonical: FoodItemEntity): number => {
+const computeScale = (fi: FoodItemInput, canonical: MergedFoodItem): number => {
   const reqQty = fi.quantity
-  const defaultQty = canonical.default_quantity
+  const defaultQty = canonical.default_quantity as number | undefined
   if (reqQty === undefined || reqQty === null) return 1
   if (defaultQty === undefined || defaultQty === null || defaultQty === 0) return 1
-  if (fi.unit && canonical.default_unit && fi.unit !== canonical.default_unit) return 1
+  const canonicalUnit = canonical.default_unit as string | undefined
+  if (fi.unit && canonicalUnit && fi.unit !== canonicalUnit) return 1
   return reqQty / defaultQty
 }
 
@@ -218,18 +218,20 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
 
 /**
  * Build a junction row by snapshotting the canonical food item's nutrient
- * values scaled by quantity. The snapshot is what gets stored on
- * meal_food_items so that reads remain stable even if the canonical food
- * is later edited.
+ * values scaled by quantity, plus the food item's name and icon. With the
+ * name/icon snapshotted, meal reads no longer JOIN food_items — important
+ * because the canonical row may live in the central DB.
  */
 export const buildScaledJunctionItem = (
   fi: FoodItemInput,
-  canonical: FoodItemEntity,
+  canonical: MergedFoodItem,
   sortOrder: number,
 ): Record<string, unknown> => {
   const scale = computeScale(fi, canonical)
   const junctionItem: Record<string, unknown> = {
     food_item_id: canonical.id,
+    food_item_icon: (canonical.icon as string | undefined) ?? null,
+    food_item_name: canonical.name,
     quantity: fi.quantity,
     sort_order: sortOrder,
     unit: fi.unit,
@@ -244,22 +246,24 @@ export const buildScaledJunctionItem = (
 }
 
 /**
- * Resolve a food item input to the canonical food_items row.
+ * Resolve a food item input to its canonical row, looking in both the user
+ * DB and the central shared library.
  *
- * Prefer food_item_id when present; otherwise look up by name (creating a
- * new canonical entry on first use, with the request's quantity/unit as the
- * defaults so subsequent uses can scale from the same base).
+ * Prefer food_item_id when present; otherwise look up by name. When the
+ * name matches a central library item (e.g. an LSV food) we bind to that
+ * canonical row instead of creating a per-user duplicate.
  */
 const resolveCanonical = async (
   user: string,
   fi: FoodItemInput,
   source: string,
-): Promise<FoodItemEntity | null> => {
+): Promise<MergedFoodItem | null> => {
+  const foodItems = createFoodItemsService(getCentralDb())
   if (fi.food_item_id) {
-    const byId = await getFoodItemById(user, fi.food_item_id)
+    const byId = await foodItems.getById(user, fi.food_item_id)
     if (byId) return byId
   }
-  return findOrCreateFoodItem(user, fi.name, {
+  return foodItems.findOrCreate(user, fi.name, {
     default_quantity: fi.quantity,
     default_unit: fi.unit,
     icon: fi.icon,

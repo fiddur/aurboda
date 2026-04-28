@@ -170,29 +170,6 @@ export const systemTables: Record<string, string> = {
   webauthn_credentials_indexes: `
     CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_created ON webauthn_credentials (created_at DESC)
   `,
-
-  // Long-running bulk imports (Livsmedelsverket food DB, etc.). The runner is
-  // fire-and-forget — a heartbeat-based reaper marks jobs whose
-  // last_progress_at hasn't advanced in 10 min as failed.
-  import_jobs: `
-    CREATE TABLE IF NOT EXISTS import_jobs (
-      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      source            VARCHAR(50) NOT NULL,
-      status            VARCHAR(20) NOT NULL DEFAULT 'pending',
-      started_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_progress_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      completed_at      TIMESTAMPTZ,
-      total_items       INTEGER,
-      processed_items   INTEGER NOT NULL DEFAULT 0,
-      skipped_items     INTEGER NOT NULL DEFAULT 0,
-      error             TEXT,
-      started_by        VARCHAR(255)
-    )
-  `,
-  import_jobs_indexes: `
-    CREATE INDEX IF NOT EXISTS idx_import_jobs_source_started
-      ON import_jobs (source, started_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_import_jobs_active_source
-      ON import_jobs (source) WHERE status IN ('pending', 'running')
-  `,
+  // import_jobs and shared_food_items live in the central database, not
+  // per-user — see services/central-{food-items,import-jobs}.ts.
 }

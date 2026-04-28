@@ -10,7 +10,7 @@
  * `viktGram: 100`), so we set default_quantity=100, default_unit='g'.
  */
 
-import { type InsertFoodItemInput, upsertFoodItem } from '../../db/food-items.ts'
+import type { InsertSharedFoodItemInput, SharedFoodItemsApi } from '../central-food-items.ts'
 
 const DEFAULT_BASE_URL = 'https://dataportal.livsmedelsverket.se/livsmedel'
 const PAGE_SIZE = 200
@@ -277,12 +277,13 @@ export interface LsvImportRunOptions extends LsvClientOptions {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /**
- * Run the full import: fetch catalog, fetch nutrients per food, upsert.
- * Errors on individual foods are logged and counted as skipped — we don't
- * abort the whole job for one bad row.
+ * Run the full import: fetch catalog, fetch nutrients per food, upsert into
+ * the central shared_food_items library. Errors on individual foods are
+ * logged and counted as skipped — we don't abort the whole job for one
+ * bad row.
  */
 export const runLivsmedelsverketImport = async (
-  user: string,
+  sharedFoodItems: SharedFoodItemsApi,
   opts: LsvImportRunOptions = {},
 ): Promise<{ totalCatalog: number; imported: number; skipped: number }> => {
   const catalog = await fetchLivsmedelsverketCatalog(opts)
@@ -306,7 +307,7 @@ export const runLivsmedelsverketImport = async (
           )
         }
       }
-      const input: InsertFoodItemInput = {
+      const input: InsertSharedFoodItemInput = {
         ...columns,
         default_quantity: 100,
         default_unit: 'g',
@@ -314,7 +315,7 @@ export const runLivsmedelsverketImport = async (
         source: 'livsmedelsverket',
         source_id: String(food.nummer),
       }
-      await upsertFoodItem(user, input)
+      await sharedFoodItems.upsertSharedFoodItem(input)
       imported++
     } catch (err) {
       skipped++

@@ -86,8 +86,8 @@ export const mountRestRouters = ({
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/notes', createNotesRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
-  httpd.use('/food-items', createFoodItemsRouter(authMiddleware))
-  httpd.use('/imports', createImportsRouter(authMiddleware))
+  httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))
+  httpd.use('/admin/imports', createImportsRouter(authMiddleware, adminMiddleware, centralDb))
   httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(
     createActivitiesRouter(

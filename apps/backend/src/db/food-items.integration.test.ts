@@ -245,8 +245,25 @@ describe('Food Items Integration Tests', () => {
       const meal = await insertMeal(user, { time: new Date('2025-06-15T08:00:00Z') })
 
       await setMealFoodItems(user, meal.id, [
-        { food_item_id: food1.id, quantity: 2, unit: 'slice', sort_order: 0, calories: 400 },
-        { food_item_id: food2.id, quantity: 1, unit: 'tbsp', sort_order: 1, calories: 100, fat: 11 },
+        {
+          calories: 400,
+          food_item_icon: undefined,
+          food_item_id: food1.id,
+          food_item_name: 'Bread',
+          quantity: 2,
+          sort_order: 0,
+          unit: 'slice',
+        },
+        {
+          calories: 100,
+          fat: 11,
+          food_item_icon: undefined,
+          food_item_id: food2.id,
+          food_item_name: 'Butter',
+          quantity: 1,
+          sort_order: 1,
+          unit: 'tbsp',
+        },
       ])
 
       const links = await getMealFoodItems(user, meal.id)
@@ -264,12 +281,12 @@ describe('Food Items Integration Tests', () => {
       const meal = await insertMeal(user, { time: new Date('2025-06-15T12:00:00Z') })
 
       await setMealFoodItems(user, meal.id, [
-        { food_item_id: food.id, quantity: 1, unit: 'cup', sort_order: 0 },
+        { food_item_id: food.id, food_item_name: 'Rice', quantity: 1, sort_order: 0, unit: 'cup' },
       ])
 
       const food2 = await upsertFoodItem(user, { name: 'Chicken' })
       await setMealFoodItems(user, meal.id, [
-        { food_item_id: food2.id, quantity: 150, unit: 'g', sort_order: 0 },
+        { food_item_id: food2.id, food_item_name: 'Chicken', quantity: 150, sort_order: 0, unit: 'g' },
       ])
 
       const links = await getMealFoodItems(user, meal.id)
@@ -283,7 +300,9 @@ describe('Food Items Integration Tests', () => {
       const food = await upsertFoodItem(user, { name: 'Egg' })
       const meal = await insertMeal(user, { time: new Date('2025-06-15T07:00:00Z') })
 
-      await setMealFoodItems(user, meal.id, [{ food_item_id: food.id, quantity: 2, sort_order: 0 }])
+      await setMealFoodItems(user, meal.id, [
+        { food_item_id: food.id, food_item_name: 'Egg', quantity: 2, sort_order: 0 },
+      ])
 
       const { deleteMeal } = await import('./meals.ts')
       await deleteMeal(user, meal.id)

@@ -8,9 +8,11 @@ const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 export type { ImportJob }
 
+// All import endpoints are admin-only; the central shared library is a
+// server-wide resource.
 export const listImportJobsApi = async (source?: string, limit = 10): Promise<ImportJob[]> => {
   const { token } = auth.value
-  const response = await axios.get<{ data: ImportJob[]; success: boolean }>(`${API_URL}/imports`, {
+  const response = await axios.get<{ data: ImportJob[]; success: boolean }>(`${API_URL}/admin/imports`, {
     headers: { Authorization: `Bearer ${token}` },
     params: { limit, source },
   })
@@ -19,7 +21,7 @@ export const listImportJobsApi = async (source?: string, limit = 10): Promise<Im
 
 export const getImportJobApi = async (id: string): Promise<ImportJob | null> => {
   const { token } = auth.value
-  const response = await axios.get<{ data?: ImportJob; success: boolean }>(`${API_URL}/imports/${id}`, {
+  const response = await axios.get<{ data?: ImportJob; success: boolean }>(`${API_URL}/admin/imports/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data.data ?? null
@@ -28,7 +30,7 @@ export const getImportJobApi = async (id: string): Promise<ImportJob | null> => 
 export const startLivsmedelsverketImportApi = async (): Promise<ImportJob> => {
   const { token } = auth.value
   const response = await axios.post<{ data: ImportJob; success: boolean }>(
-    `${API_URL}/imports/livsmedelsverket`,
+    `${API_URL}/admin/imports/livsmedelsverket`,
     null,
     { headers: { Authorization: `Bearer ${token}` } },
   )

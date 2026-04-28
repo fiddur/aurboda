@@ -376,24 +376,6 @@ export interface MealFoodItemLink {
 }
 
 // ============================================================================
-// Import Jobs (bulk imports from external food DBs)
-// ============================================================================
-
-export interface ImportJobEntity {
-  id: string
-  source: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
-  started_at: Date
-  last_progress_at: Date
-  completed_at?: Date
-  total_items?: number
-  processed_items: number
-  skipped_items: number
-  error?: string
-  started_by?: string
-}
-
-// ============================================================================
 // OAuth
 // ============================================================================
 

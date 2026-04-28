@@ -229,20 +229,6 @@ export {
 } from './food-items.ts'
 export { getMealFoodItems, getMealFoodItemsBatch, setMealFoodItems } from './meal-food-items.ts'
 
-// Import jobs (bulk imports from external food DBs)
-export {
-  completeImportJob,
-  failImportJob,
-  getActiveImportJob,
-  getImportJobById,
-  getLatestImportJob,
-  insertImportJob,
-  listImportJobs,
-  reapStaleImportJobs,
-  startImportJob,
-  updateImportJobProgress,
-} from './import-jobs.ts'
-
 // Meals
 export {
   deleteMeal,

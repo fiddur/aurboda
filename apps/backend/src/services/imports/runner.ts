@@ -1,38 +1,32 @@
 /**
- * Fire-and-forget runner for bulk imports.
+ * Fire-and-forget runner for bulk imports into the central shared library.
  *
  * `startImport()` is single-flight: if a pending or running job already
  * exists for the same source it returns that job rather than launching a
- * second background promise. UI polls `import_jobs` for progress.
+ * second background promise. The runner persists progress to the central
+ * `import_jobs` table; the UI polls those rows.
  *
  * If the backend crashes or stalls mid-run, the heartbeat-based reaper
  * (see `reapStaleImportJobs`) marks the job as failed.
  */
 
-import type { ImportJobEntity } from '../../db/types.ts'
+import type { CentralDb } from '../central-db.ts'
+import type { CentralImportJobEntity } from '../central-import-jobs.ts'
 
-import {
-  completeImportJob,
-  failImportJob,
-  getActiveImportJob,
-  insertImportJob,
-  startImportJob,
-  updateImportJobProgress,
-} from '../../db/import-jobs.ts'
 import { runLivsmedelsverketImport } from './livsmedelsverket.ts'
 
 export type ImportSource = 'livsmedelsverket'
 
-const runners: Record<ImportSource, (user: string, jobId: string) => Promise<void>> = {
-  livsmedelsverket: async (user, jobId) => {
+const runners: Record<ImportSource, (centralDb: CentralDb, jobId: string) => Promise<void>> = {
+  livsmedelsverket: async (centralDb, jobId) => {
     let totalSet = false
-    await runLivsmedelsverketImport(user, {
+    await runLivsmedelsverketImport(centralDb, {
       onProgress: async (processed, skipped, total) => {
         if (!totalSet) {
-          await startImportJob(user, jobId, total)
+          await centralDb.startImportJob(jobId, total)
           totalSet = true
         }
-        await updateImportJobProgress(user, jobId, processed, skipped)
+        await centralDb.updateImportJobProgress(jobId, processed, skipped)
       },
     })
   },
@@ -47,27 +41,27 @@ export const _setRunnerForTests = (source: ImportSource, fn: (typeof runners)[Im
 }
 
 export const startImport = async (
-  user: string,
+  centralDb: CentralDb,
   source: ImportSource,
   startedBy?: string,
-): Promise<ImportJobEntity> => {
+): Promise<CentralImportJobEntity> => {
   // Single-flight: if a job is already pending/running for this source,
   // return it instead of starting a parallel one. Two browser tabs or two
   // simultaneous MCP clients otherwise spawn duplicate runs and double the
   // upstream traffic.
-  const active = await getActiveImportJob(user, source)
+  const active = await centralDb.getActiveImportJob(source)
   if (active) return active
 
-  const job = await insertImportJob(user, source, startedBy)
+  const job = await centralDb.insertImportJob(source, startedBy)
   // Run in background — caller does not await. Errors are persisted to the job.
   void (async () => {
     try {
-      await runners[source](user, job.id)
-      await completeImportJob(user, job.id)
+      await runners[source](centralDb, job.id)
+      await centralDb.completeImportJob(job.id)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       console.error(`[import] ${source} job ${job.id} failed:`, err)
-      await failImportJob(user, job.id, message).catch((failErr) => {
+      await centralDb.failImportJob(job.id, message).catch((failErr) => {
         console.error(`[import] could not record failure for ${job.id}:`, failErr)
       })
     }
