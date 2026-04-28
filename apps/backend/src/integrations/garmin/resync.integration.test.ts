@@ -19,7 +19,7 @@ const garminDetailFixture = JSON.parse(
   readFileSync(resolve(__dirname, '../../test/fixtures/garmin-activity-detail.json'), 'utf-8'),
 ) as GarminActivityDetailResponse
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Garmin resync integration', () => {
   beforeAll(async () => {

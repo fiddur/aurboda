@@ -20,7 +20,7 @@ import {
 } from './time-series.ts'
 
 // Increase timeout for container startup
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Time Series Integration Tests', () => {
   beforeAll(async () => {

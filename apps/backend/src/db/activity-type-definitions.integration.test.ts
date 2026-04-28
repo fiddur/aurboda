@@ -19,7 +19,7 @@ import {
 } from './activity-type-definitions.ts'
 import { query } from './connection.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Hierarchical activity types', () => {
   beforeAll(async () => {

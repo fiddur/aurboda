@@ -13,7 +13,7 @@ import {
 import { getMealFoodItems, setMealFoodItems } from './meal-food-items.ts'
 import { insertMeal } from './meals.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Food Items Integration Tests', () => {
   beforeAll(async () => {

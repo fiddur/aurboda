@@ -13,7 +13,7 @@ import {
   requeueOutboundSync,
 } from './outbound-sync.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Outbound Sync Queue Integration Tests', () => {
   beforeAll(async () => {
