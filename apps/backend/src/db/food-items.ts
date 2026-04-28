@@ -56,13 +56,29 @@ export interface InsertFoodItemInput {
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 /**
- * Search food items by name prefix (case-insensitive).
+ * Search food items by name. Substring + accent-folded match wins; a trigram
+ * similarity pass on top picks up typos like "hushalsost" → "Hushållsost"
+ * once the query is at least 3 chars. Substring hits always rank above
+ * fuzzy-only hits, then earliest match position, then similarity score.
  */
 export const searchFoodItems = async (user: string, q: string, limit = 20): Promise<FoodItemEntity[]> => {
+  const trimmed = q.trim()
+  if (!trimmed) return []
+  const lower = trimmed.toLowerCase()
+  const enableTrigram = lower.length >= 3
   const result = await query(
     user,
-    `SELECT ${FOOD_ITEM_COLUMNS} FROM food_items WHERE name_lower LIKE $1 ORDER BY name_lower LIMIT $2`,
-    [`${q.toLowerCase().trim()}%`, limit],
+    `SELECT ${FOOD_ITEM_COLUMNS}
+     FROM food_items
+     WHERE immutable_unaccent(name_lower) ILIKE '%' || immutable_unaccent($1) || '%'
+        OR ($3 AND similarity(immutable_unaccent(name_lower), immutable_unaccent($1)) > 0.2)
+     ORDER BY
+       CASE WHEN immutable_unaccent(name_lower) ILIKE '%' || immutable_unaccent($1) || '%' THEN 0 ELSE 1 END,
+       POSITION(immutable_unaccent($1) IN immutable_unaccent(name_lower)),
+       similarity(immutable_unaccent(name_lower), immutable_unaccent($1)) DESC,
+       name_lower
+     LIMIT $2`,
+    [lower, limit, enableTrigram],
   )
   return result.rows.map(mapFoodItemRow)
 }

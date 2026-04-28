@@ -85,6 +85,59 @@ describe('Food Items Integration Tests', () => {
       expect(results).toHaveLength(1)
       expect(results[0].name).toBe('Fat Coffee')
     })
+
+    test('matches mid-word substrings (brand-prefixed names)', async () => {
+      const user = getTestUser()
+
+      await upsertFoodItem(user, { name: 'Arla, Hushallsost' })
+      await upsertFoodItem(user, { name: 'Banana' })
+
+      const results = await searchFoodItems(user, 'hushallsost', 10)
+      expect(results.map((r) => r.name)).toContain('Arla, Hushallsost')
+    })
+
+    test('folds diacritics (å/ä/ö → a/a/o)', async () => {
+      const user = getTestUser()
+
+      await upsertFoodItem(user, { name: 'Arla, Hushållsost' })
+      await upsertFoodItem(user, { name: 'Mjölk' })
+
+      const cheeseHits = await searchFoodItems(user, 'hushallsost', 10)
+      expect(cheeseHits.map((r) => r.name)).toContain('Arla, Hushållsost')
+
+      const milkHits = await searchFoodItems(user, 'mjolk', 10)
+      expect(milkHits.map((r) => r.name)).toContain('Mjölk')
+    })
+
+    test('tolerates typos via trigram similarity', async () => {
+      const user = getTestUser()
+
+      await upsertFoodItem(user, { name: 'Arla, Hushållsost' })
+      await upsertFoodItem(user, { name: 'Banana' })
+
+      // "hushalsost" — missing one 'l' compared to "hushållsost"
+      const results = await searchFoodItems(user, 'hushalsost', 10)
+      expect(results.map((r) => r.name)).toContain('Arla, Hushållsost')
+    })
+
+    test('ranks substring hits above fuzzy-only hits', async () => {
+      const user = getTestUser()
+
+      // "hushallsost" is a substring of the first; only fuzzy-similar to the second.
+      await upsertFoodItem(user, { name: 'Arla, Hushållsost' })
+      await upsertFoodItem(user, { name: 'Hushållsosk' })
+
+      const results = await searchFoodItems(user, 'hushallsost', 10)
+      expect(results[0].name).toBe('Arla, Hushållsost')
+    })
+
+    test('returns empty array for empty query', async () => {
+      const user = getTestUser()
+      await upsertFoodItem(user, { name: 'Banana' })
+
+      expect(await searchFoodItems(user, '', 10)).toEqual([])
+      expect(await searchFoodItems(user, '   ', 10)).toEqual([])
+    })
   })
 
   describe('getFoodItemByName', () => {

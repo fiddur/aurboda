@@ -71,10 +71,21 @@
   font-size: 0.75rem;
 }
 
-.no-data {
+.no-data,
+.fi-help {
   text-align: center;
   padding: 2rem;
   color: #9ca3af;
+}
+
+.fi-name a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.fi-name a:hover {
+  color: #673ab8;
+  text-decoration: underline;
 }
 
 @media (prefers-color-scheme: dark) {

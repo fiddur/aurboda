@@ -21,11 +21,13 @@ export function FoodItems() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const trimmed = search.trim()
+  const hasQuery = trimmed.length > 0
 
   const { data: items, isLoading } = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: () => searchFoodItemsApi(search || '', 100),
-    queryKey: ['foodItems', search],
+    enabled: !!isLoggedIn && hasQuery,
+    queryFn: () => searchFoodItemsApi(trimmed, 100),
+    queryKey: ['foodItems', trimmed],
     staleTime: 30_000,
   })
 
@@ -53,13 +55,15 @@ export function FoodItems() {
           value={search}
           onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
         />
-        <span class="fi-count">{items?.length ?? 0} items</span>
+        {hasQuery && <span class="fi-count">{items?.length ?? 0} items</span>}
       </div>
 
-      {isLoading ? (
+      {!hasQuery ? (
+        <p class="fi-help">Type to search the food library.</p>
+      ) : isLoading ? (
         <p class="loading">Loading...</p>
       ) : !items || items.length === 0 ? (
-        <p class="no-data">No food items found.</p>
+        <p class="no-data">No food items match &ldquo;{trimmed}&rdquo;.</p>
       ) : (
         <table class="fi-table">
           <thead>
@@ -76,8 +80,10 @@ export function FoodItems() {
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id}>
-                <td class="fi-name">{item.name}</td>
+              <tr key={item.id} class="fi-row">
+                <td class="fi-name">
+                  <a href={`/food-items/${item.id}`}>{item.name}</a>
+                </td>
                 <td class="fi-num">{item.calories ?? '—'}</td>
                 <td class="fi-num">{item.protein ?? '—'}</td>
                 <td class="fi-num">{item.carbs ?? '—'}</td>

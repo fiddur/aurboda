@@ -81,6 +81,7 @@ export const tableCreationOrder = [
   'meal_log_completed',
   'food_items',
   'food_items_indexes',
+  'food_items_search_setup',
   'meal_food_items',
   'meal_food_items_indexes',
   'locations',

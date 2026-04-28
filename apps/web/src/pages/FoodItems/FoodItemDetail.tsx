@@ -1,14 +1,13 @@
 import { NUTRIENT_FIELDS, type NutrientFieldDef } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useRoute } from 'preact-iso'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
 import type { FoodItemEntity } from '../../state/api'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { IconInput } from '../../components/IconInput'
 import { auth } from '../../state/auth'
-import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import './FoodItemDetail.css'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
@@ -54,62 +53,65 @@ const CATEGORIES: Array<{ key: NutrientFieldDef['category']; label: string }> = 
   { key: 'other', label: 'Other' },
 ]
 
-function NutrientSection({
-  item,
-  category,
-  label,
-  editing,
-  onEdit,
+function SaveIndicator({
+  isPending,
+  showSaved,
+  error,
 }: {
-  item: FoodItemEntity
-  category: string
-  label: string
-  editing: Record<string, unknown> | null
-  onEdit?: (field: string, value: number | undefined) => void
+  isPending: boolean
+  showSaved: boolean
+  error: string | null
 }) {
-  const fields = NUTRIENT_FIELDS.filter((f) => f.category === category)
-  const isEditing = editing !== null
-  const populated = isEditing
-    ? fields
-    : fields.filter((f) => item[f.name] !== undefined && item[f.name] !== null)
-  if (populated.length === 0) return null
+  if (error) return <span class="save-status save-error">⚠ {error}</span>
+  if (isPending) return <span class="save-status save-pending">Saving…</span>
+  if (showSaved) return <span class="save-status save-ok">Saved ✓</span>
+  return null
+}
+
+function NutrientInput({
+  field,
+  initial,
+  onCommit,
+}: {
+  field: NutrientFieldDef
+  initial: number | undefined
+  onCommit: (value: number | null) => void
+}) {
+  const [local, setLocal] = useState<string>(initial !== undefined ? String(initial) : '')
+
+  useEffect(() => {
+    setLocal(initial !== undefined ? String(initial) : '')
+  }, [initial])
+
+  const handleBlur = () => {
+    const trimmed = local.trim()
+    if (trimmed === '') {
+      if (initial !== undefined) onCommit(null)
+      return
+    }
+    const parsed = parseFloat(trimmed)
+    if (Number.isNaN(parsed)) {
+      // Revert to last good value rather than blanking the saved nutrient.
+      setLocal(initial !== undefined ? String(initial) : '')
+      return
+    }
+    if (parsed !== initial) onCommit(parsed)
+  }
 
   return (
-    <div class="nutrient-section">
-      <h3>{label}</h3>
-      <div class="nutrient-grid">
-        {populated.map((f) => {
-          const val = editing?.[f.name] !== undefined ? editing[f.name] : item[f.name]
-          return (
-            <div key={f.name} class="nutrient-row">
-              <span class="nutrient-label">{f.label}</span>
-              {isEditing ? (
-                <span class="nutrient-edit">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={typeof val === 'number' ? val : ''}
-                    onInput={(e) => {
-                      const v = (e.target as HTMLInputElement).value
-                      onEdit?.(f.name, v === '' ? undefined : parseFloat(v))
-                    }}
-                  />
-                  <span class="nutrient-unit">{f.unit}</span>
-                </span>
-              ) : (
-                <span class="nutrient-value">
-                  {typeof val === 'number' ? val.toFixed(2) : val} {f.unit}
-                </span>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <span class="nutrient-edit">
+      <input
+        type="number"
+        step="0.01"
+        value={local}
+        onInput={(e) => setLocal((e.target as HTMLInputElement).value)}
+        onBlur={handleBlur}
+      />
+      <span class="nutrient-unit">{field.unit}</span>
+    </span>
   )
 }
 
-// eslint-disable-next-line complexity -- detail page with edit mode
 export function FoodItemDetail() {
   const { params } = useRoute()
   const { route } = useLocation()
@@ -121,17 +123,39 @@ export function FoodItemDetail() {
     queryKey: ['foodItem', id],
   })
 
-  const [editing, setEditing] = useState<Record<string, unknown> | null>(null)
+  const [name, setName] = useState('')
+  const [defaultQuantity, setDefaultQuantity] = useState<string>('')
+  const [defaultUnit, setDefaultUnit] = useState<string>('')
 
-  // Invalidate parent list when leaving so it shows fresh data
+  const [savedFlash, setSavedFlash] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => () => void queryClient.invalidateQueries({ queryKey: ['foodItems'] }), [queryClient])
+  useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!item) return
+    setName(item.name)
+    setDefaultQuantity(item.default_quantity !== undefined ? String(item.default_quantity) : '')
+    setDefaultUnit(item.default_unit ?? '')
+  }, [item])
 
   const updateMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => updateFoodItemApi(id, body),
+    onError: (err: Error) => setSaveError(err.message ?? 'Save failed'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['foodItem', id] })
       queryClient.invalidateQueries({ queryKey: ['foodItems'] })
-      setEditing(null)
+      setSaveError(null)
+      setSavedFlash(true)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setSavedFlash(false), 1200)
     },
   })
 
@@ -142,6 +166,11 @@ export function FoodItemDetail() {
       route('/food-items')
     },
   })
+
+  const save = (body: Record<string, unknown>) => {
+    setSaveError(null)
+    updateMutation.mutate(body)
+  }
 
   if (isLoading) {
     return (
@@ -158,15 +187,34 @@ export function FoodItemDetail() {
     )
   }
 
-  const isEditing = editing !== null
-  const editName = (editing?.name as string) ?? item.name
-  const editIcon = (editing?.icon as string) ?? item.icon ?? ''
-  const editQty = (editing?.default_quantity as number) ?? item.default_quantity
-  const editUnit = (editing?.default_unit as string) ?? item.default_unit
+  const commitName = () => {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setName(item.name)
+      return
+    }
+    if (trimmed !== item.name) save({ name: trimmed })
+  }
 
-  const handleSave = () => {
-    if (!editing) return
-    updateMutation.mutate(editing)
+  const commitDefaultQuantity = () => {
+    const trimmed = defaultQuantity.trim()
+    if (trimmed === '') {
+      if (item.default_quantity !== undefined) save({ default_quantity: null })
+      return
+    }
+    const parsed = parseFloat(trimmed)
+    if (Number.isNaN(parsed)) {
+      setDefaultQuantity(item.default_quantity !== undefined ? String(item.default_quantity) : '')
+      return
+    }
+    if (parsed !== item.default_quantity) save({ default_quantity: parsed })
+  }
+
+  const commitDefaultUnit = () => {
+    const trimmed = defaultUnit.trim()
+    const current = item.default_unit ?? ''
+    if (trimmed === current) return
+    save({ default_unit: trimmed || null })
   }
 
   return (
@@ -176,25 +224,7 @@ export function FoodItemDetail() {
           &larr; Food Items
         </a>
         <div class="fi-detail-actions">
-          {isEditing ? (
-            <>
-              <button
-                type="button"
-                class="btn-primary"
-                onClick={handleSave}
-                disabled={updateMutation.isPending}
-              >
-                {updateMutation.isPending ? 'Saving...' : 'Save'}
-              </button>
-              <button type="button" class="btn-secondary" onClick={() => setEditing(null)}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button type="button" class="btn-secondary" onClick={() => setEditing({})}>
-              Edit
-            </button>
-          )}
+          <SaveIndicator isPending={updateMutation.isPending} showSaved={savedFlash} error={saveError} />
           <ConfirmButton
             label="Delete"
             confirmMessage={`Delete ${item.name}?`}
@@ -204,72 +234,66 @@ export function FoodItemDetail() {
         </div>
       </div>
 
-      {isEditing ? (
-        <input
-          type="text"
-          class="fi-name-input"
-          value={editName}
-          onInput={(e) => setEditing({ ...editing, name: (e.target as HTMLInputElement).value })}
-        />
-      ) : (
-        <h1>
-          {item.icon && isEmoji(item.icon) && <span class="fi-icon-display">{item.icon} </span>}
-          {item.icon && (isUrl(item.icon) || isIconPath(item.icon)) && (
-            <img src={item.icon} alt="icon" width={24} height={24} class="fi-icon-display-img" />
-          )}
-          {item.name}
-        </h1>
-      )}
+      <input
+        type="text"
+        class="fi-name-input"
+        value={name}
+        onInput={(e) => setName((e.target as HTMLInputElement).value)}
+        onBlur={commitName}
+      />
 
-      {isEditing && (
-        <div class="fi-icon-row">
-          <label class="fi-icon-label">Icon</label>
-          <IconInput value={editIcon} onChange={(v) => setEditing({ ...editing, icon: v || null })} />
-        </div>
-      )}
+      <div class="fi-icon-row">
+        <label class="fi-icon-label">Icon</label>
+        <IconInput value={item.icon ?? ''} onChange={(v) => save({ icon: v || null })} />
+      </div>
 
       <div class="fi-meta">
         {item.source && <span class="fi-source">Source: {item.source}</span>}
-        {isEditing ? (
-          <span class="fi-default-edit">
-            Default:
-            <input
-              type="number"
-              step="0.1"
-              value={editQty ?? ''}
-              placeholder="Qty"
-              onInput={(e) =>
-                setEditing({
-                  ...editing,
-                  default_quantity: parseFloat((e.target as HTMLInputElement).value) || undefined,
-                })
-              }
-            />
-            <input
-              type="text"
-              value={editUnit ?? ''}
-              placeholder="Unit"
-              onInput={(e) => setEditing({ ...editing, default_unit: (e.target as HTMLInputElement).value })}
-            />
-          </span>
-        ) : item.default_quantity ? (
-          <span class="fi-default">
-            Default: {item.default_quantity} {item.default_unit ?? 'serving'}
-          </span>
-        ) : null}
+        <span class="fi-default-edit">
+          Default:
+          <input
+            type="number"
+            step="0.1"
+            value={defaultQuantity}
+            placeholder="Qty"
+            onInput={(e) => setDefaultQuantity((e.target as HTMLInputElement).value)}
+            onBlur={commitDefaultQuantity}
+          />
+          <input
+            type="text"
+            value={defaultUnit}
+            placeholder="Unit"
+            onInput={(e) => setDefaultUnit((e.target as HTMLInputElement).value)}
+            onBlur={commitDefaultUnit}
+          />
+        </span>
       </div>
 
       <div class="nutrient-sections">
-        {CATEGORIES.map(({ key, label }) => (
-          <NutrientSection
-            key={key}
-            item={item}
-            category={key}
-            label={label}
-            editing={editing}
-            onEdit={(field, value) => setEditing({ ...editing, [field]: value })}
-          />
-        ))}
+        {CATEGORIES.map(({ key, label }) => {
+          const fields = NUTRIENT_FIELDS.filter((f) => f.category === key)
+          if (fields.length === 0) return null
+          return (
+            <div key={key} class="nutrient-section">
+              <h3>{label}</h3>
+              <div class="nutrient-grid">
+                {fields.map((f) => {
+                  const value = item[f.name]
+                  return (
+                    <div key={f.name} class="nutrient-row">
+                      <span class="nutrient-label">{f.label}</span>
+                      <NutrientInput
+                        field={f}
+                        initial={typeof value === 'number' ? value : undefined}
+                        onCommit={(v) => save({ [f.name]: v })}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
