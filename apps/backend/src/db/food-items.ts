@@ -15,6 +15,7 @@ const FOOD_ITEM_COLUMNS = [
   'name',
   'name_lower',
   'source',
+  'source_id',
   'default_quantity',
   'default_unit',
   ...NUTRIENT_FIELD_NAMES,
@@ -29,6 +30,7 @@ const mapFoodItemRow = (row: Record<string, unknown>): FoodItemEntity => {
     name: row.name,
     name_lower: row.name_lower,
     source: row.source,
+    source_id: row.source_id ?? undefined,
     default_quantity: row.default_quantity ?? undefined,
     default_unit: row.default_unit ?? undefined,
     icon: row.icon ?? undefined,
@@ -47,6 +49,13 @@ const mapFoodItemRow = (row: Record<string, unknown>): FoodItemEntity => {
 export interface InsertFoodItemInput {
   name: string
   source?: string
+  /**
+   * Stable identifier from the upstream source (e.g. Livsmedelsverket
+   * `nummer`). When provided alongside `source`, upsertFoodItem uses
+   * (source, source_id) as the conflict key — re-imports refresh the same
+   * row even if the upstream name changes.
+   */
+  source_id?: string
   default_quantity?: number
   default_unit?: string
   icon?: string
@@ -122,16 +131,23 @@ export const getFoodItemByName = async (user: string, name: string): Promise<Foo
 }
 
 /**
- * Upsert a food item (insert or update on name conflict).
- * On conflict, updates all provided nutrient values.
+ * Upsert a food item.
+ *
+ * Conflict resolution depends on what's provided:
+ * - `source` + `source_id` → conflict on the partial unique index
+ *   `(source, source_id)`. Re-imports update the same row even if the
+ *   upstream name changes.
+ * - Otherwise → conflict on `name_lower`. Manual entries stay deduped by
+ *   name as before.
  */
 export const upsertFoodItem = async (user: string, input: InsertFoodItemInput): Promise<FoodItemEntity> => {
   const nameLower = input.name.toLowerCase().trim()
-  const fields = ['name', 'name_lower', 'source', 'default_quantity', 'default_unit', 'icon']
+  const fields = ['name', 'name_lower', 'source', 'source_id', 'default_quantity', 'default_unit', 'icon']
   const values: unknown[] = [
     input.name,
     nameLower,
     input.source ?? 'manual',
+    input.source_id ?? null,
     input.default_quantity ?? null,
     input.default_unit ?? null,
     input.icon ?? null,
@@ -148,11 +164,14 @@ export const upsertFoodItem = async (user: string, input: InsertFoodItemInput): 
     .map((f) => `${f} = EXCLUDED.${f}`)
     .join(', ')
 
+  const conflictTarget =
+    input.source_id && input.source ? '(source, source_id) WHERE source_id IS NOT NULL' : '(name_lower)'
+
   const result = await query(
     user,
     `INSERT INTO food_items (${fields.join(', ')})
      VALUES (${placeholders})
-     ON CONFLICT (name_lower) DO UPDATE SET ${updateSet}, updated_at = NOW()
+     ON CONFLICT ${conflictTarget} DO UPDATE SET ${updateSet}, updated_at = NOW()
      RETURNING ${FOOD_ITEM_COLUMNS}`,
     values,
   )

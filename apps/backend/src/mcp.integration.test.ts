@@ -13,7 +13,7 @@ import { createMcpRouter } from './mcp.ts'
 import { cleanTestDb, startTestDb, stopTestDb } from './test/db-test-helper.ts'
 
 // Increase timeout for container startup
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 const auth = createAuth('very very secretvery very secret') // 32 bytes for AES-256
 

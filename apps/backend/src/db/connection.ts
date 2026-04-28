@@ -810,6 +810,40 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE report_entries ALTER COLUMN unit DROP NOT NULL`)
   }
 
+  // food_items: add source_id so re-imports key off the upstream identifier
+  // (e.g. Livsmedelsverket nummer) instead of the mutable name.
+  if (existingTableNames.has('food_items')) {
+    await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS source_id VARCHAR(100)`)
+  }
+
+  // meal_food_items: snapshot food_item_name + food_item_icon at insertion
+  // time and drop the FK on food_item_id, since the canonical row may now
+  // live in the central shared_food_items table (different database).
+  if (existingTableNames.has('meal_food_items')) {
+    await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS food_item_name VARCHAR(255)`)
+    await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS food_item_icon TEXT`)
+    // Backfill name/icon from the per-user food_items table for rows where
+    // it wasn't snapshotted yet. Rows that already pointed at central items
+    // (impossible before this PR) just stay null.
+    await query(
+      db,
+      `UPDATE meal_food_items mfi
+         SET food_item_name = fi.name,
+             food_item_icon = fi.icon
+       FROM food_items fi
+       WHERE fi.id = mfi.food_item_id
+         AND mfi.food_item_name IS NULL`,
+    )
+    // Drop the FK if it still exists.
+    await query(db, `ALTER TABLE meal_food_items DROP CONSTRAINT IF EXISTS meal_food_items_food_item_id_fkey`)
+  }
+
+  // import_jobs and shared_food_items moved to the central database. If a
+  // previous deploy created the per-user import_jobs table, drop it.
+  if (existingTableNames.has('import_jobs')) {
+    await query(db, `DROP TABLE IF EXISTS import_jobs`)
+  }
+
   // Migrate source columns to support 'aurboda' (rename 'manual' -> 'aurboda' for new data)
   // Note: existing 'manual' data is preserved; new entries use 'aurboda'
 

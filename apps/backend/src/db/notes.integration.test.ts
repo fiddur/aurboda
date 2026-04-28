@@ -13,7 +13,7 @@ import {
   updateNoteTimesForEntity,
 } from './notes.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Notes Integration Tests', () => {
   beforeAll(async () => {

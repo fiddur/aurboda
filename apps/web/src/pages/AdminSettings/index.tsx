@@ -4,6 +4,7 @@ import { useCallback, useState } from 'preact/hooks'
 
 import type { InvitationResult, SignupMode } from '../../state/api'
 
+import { ImportPanel } from '../../components/ImportPanel'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { fetchAdminSettings, generateInvitation, updateAdminSettings } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -470,6 +471,11 @@ export function AdminSettings() {
       </section>
 
       <IntegrationsSection />
+
+      <section class="settings-section">
+        <h2>Shared Food Library</h2>
+        <ImportPanel />
+      </section>
 
       {settings?.signup_mode === 'invite_only' && <InvitationsSection />}
     </div>

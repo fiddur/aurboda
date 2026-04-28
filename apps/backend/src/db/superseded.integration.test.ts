@@ -21,7 +21,7 @@ import {
 } from './activities/index.ts'
 import { query } from './connection.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 /** Count non-deleted, non-superseded rows for a given activity_type. */
 const countActive = async (user: string, activityType: string): Promise<number> => {

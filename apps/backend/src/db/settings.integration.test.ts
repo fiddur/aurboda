@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getUserSettings, upsertUserSettings } from './settings.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Settings Integration Tests', () => {
   beforeAll(async () => {

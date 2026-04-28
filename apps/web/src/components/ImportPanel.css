@@ -1,0 +1,114 @@
+.import-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  background: #fafafa;
+}
+
+.import-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.import-panel-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.import-panel-attribution {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.import-panel-attribution a {
+  color: #673ab8;
+}
+
+.import-job {
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+}
+
+.import-job-running {
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.import-job-completed {
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.import-job-failed {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.import-progress-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.import-progress-bar {
+  height: 6px;
+  background: #dbeafe;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.import-progress-fill {
+  height: 100%;
+  background: #2563eb;
+  transition: width 200ms ease-out;
+}
+
+.import-error {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: #991b1b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .import-panel {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .import-panel-header h3 {
+    color: #e5e7eb;
+  }
+
+  .import-panel-attribution {
+    color: #9ca3af;
+  }
+
+  .import-job-running {
+    background: #1e3a8a;
+    color: #dbeafe;
+  }
+
+  .import-job-completed {
+    background: #064e3b;
+    color: #d1fae5;
+  }
+
+  .import-job-failed {
+    background: #7f1d1d;
+    color: #fee2e2;
+  }
+
+  .import-progress-bar {
+    background: #1e3a8a;
+  }
+}

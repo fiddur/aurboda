@@ -109,6 +109,7 @@ export const mealsTables: Record<string, string> = {
       ash             DOUBLE PRECISION,
       salt            DOUBLE PRECISION,
       icon            TEXT,
+      source_id       VARCHAR(100),
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT unique_food_item_name UNIQUE (name_lower)
@@ -116,7 +117,9 @@ export const mealsTables: Record<string, string> = {
   `,
 
   food_items_indexes: `
-    CREATE INDEX IF NOT EXISTS idx_food_items_name_lower ON food_items (name_lower)
+    CREATE INDEX IF NOT EXISTS idx_food_items_name_lower ON food_items (name_lower);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_food_items_source_id
+      ON food_items (source, source_id) WHERE source_id IS NOT NULL
   `,
 
   // Fuzzy/accent-insensitive search support: pg_trgm + unaccent extensions,
@@ -133,12 +136,17 @@ export const mealsTables: Record<string, string> = {
       ON food_items USING gin (immutable_unaccent(name_lower) gin_trgm_ops)
   `,
 
-  // Junction: meals <-> food items (snapshot of nutrients at insertion time)
+  // Junction: meals <-> food items (snapshot of name/icon/nutrients at
+  // insertion time). food_item_id is a soft pointer — the row may be in the
+  // per-user food_items table or in the central shared_food_items table, so
+  // there's no FK; everything needed for display is snapshotted here.
   meal_food_items: `
     CREATE TABLE IF NOT EXISTS meal_food_items (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       meal_id         UUID NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
-      food_item_id    UUID NOT NULL REFERENCES food_items(id),
+      food_item_id    UUID NOT NULL,
+      food_item_name  VARCHAR(255),
+      food_item_icon  TEXT,
       quantity        DOUBLE PRECISION,
       unit            VARCHAR(100),
       sort_order      INTEGER NOT NULL DEFAULT 0,

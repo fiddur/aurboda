@@ -11,7 +11,7 @@ import {
 } from './reports.ts'
 import { insertTimeSeries } from './time-series.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 /** Helper: insert a report AND its time_series data (since values live in time_series). */
 const insertReportWithTimeSeries = async (

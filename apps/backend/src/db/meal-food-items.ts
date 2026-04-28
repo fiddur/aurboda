@@ -1,7 +1,10 @@
 /**
  * Meal ↔ Food Item junction table operations.
  *
- * Links meals to canonical food items with per-serving nutrient snapshots.
+ * Each junction row snapshots the canonical food item's name, icon, and
+ * nutrient values at insertion time. food_item_id is a soft pointer — it
+ * may resolve to a row in this user's `food_items` or to a row in the
+ * central `shared_food_items` table — so we never JOIN food_items here.
  */
 
 import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
@@ -11,15 +14,15 @@ import type { MealFoodItemLink } from './types.ts'
 import { query } from './connection.ts'
 
 const JUNCTION_COLUMNS = [
-  'mfi.id',
-  'mfi.meal_id',
-  'mfi.food_item_id',
-  'fi.name AS food_item_name',
-  'fi.icon AS food_item_icon',
-  'mfi.quantity',
-  'mfi.unit',
-  'mfi.sort_order',
-  ...NUTRIENT_FIELD_NAMES.map((f) => `mfi.${f}`),
+  'id',
+  'meal_id',
+  'food_item_id',
+  'food_item_name',
+  'food_item_icon',
+  'quantity',
+  'unit',
+  'sort_order',
+  ...NUTRIENT_FIELD_NAMES,
 ].join(', ')
 
 const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
@@ -44,6 +47,8 @@ const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
 
 export interface MealFoodItemInput {
   food_item_id: string
+  food_item_name?: string
+  food_item_icon?: string
   quantity?: number
   unit?: string
   sort_order?: number
@@ -59,10 +64,9 @@ export const getMealFoodItems = async (user: string, mealId: string): Promise<Me
   const result = await query(
     user,
     `SELECT ${JUNCTION_COLUMNS}
-     FROM meal_food_items mfi
-     JOIN food_items fi ON fi.id = mfi.food_item_id
-     WHERE mfi.meal_id = $1
-     ORDER BY mfi.sort_order`,
+     FROM meal_food_items
+     WHERE meal_id = $1
+     ORDER BY sort_order`,
     [mealId],
   )
   return result.rows.map(mapJunctionRow)
@@ -80,10 +84,20 @@ export const setMealFoodItems = async (
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
-    const fields = ['meal_id', 'food_item_id', 'quantity', 'unit', 'sort_order']
+    const fields = [
+      'meal_id',
+      'food_item_id',
+      'food_item_name',
+      'food_item_icon',
+      'quantity',
+      'unit',
+      'sort_order',
+    ]
     const values: unknown[] = [
       mealId,
       item.food_item_id,
+      item.food_item_name ?? null,
+      item.food_item_icon ?? null,
       item.quantity ?? null,
       item.unit ?? null,
       item.sort_order ?? i,
@@ -113,10 +127,9 @@ export const getMealFoodItemsBatch = async (
   const result = await query(
     user,
     `SELECT ${JUNCTION_COLUMNS}
-     FROM meal_food_items mfi
-     JOIN food_items fi ON fi.id = mfi.food_item_id
-     WHERE mfi.meal_id IN (${placeholders})
-     ORDER BY mfi.meal_id, mfi.sort_order`,
+     FROM meal_food_items
+     WHERE meal_id IN (${placeholders})
+     ORDER BY meal_id, sort_order`,
     mealIds,
   )
 

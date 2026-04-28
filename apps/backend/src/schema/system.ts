@@ -170,4 +170,6 @@ export const systemTables: Record<string, string> = {
   webauthn_credentials_indexes: `
     CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_created ON webauthn_credentials (created_at DESC)
   `,
+  // import_jobs and shared_food_items live in the central database, not
+  // per-user — see services/central-{food-items,import-jobs}.ts.
 }

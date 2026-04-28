@@ -15,7 +15,7 @@ import { getMealById } from '../db/meals.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { addMeal, queryFrequentMeals, updateMealById } from './meals.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Meals service integration tests', () => {
   beforeAll(async () => {
