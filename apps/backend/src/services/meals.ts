@@ -5,7 +5,7 @@
  * Food items are stored relationally via the food_items + meal_food_items junction table.
  */
 
-import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import { type FrequentMeal, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import {
   deleteMeal as dbDeleteMeal,
@@ -408,21 +408,6 @@ export async function queryMeals(
   return { data: enriched.map(formatMeal), success: true }
 }
 
-interface FrequentMealResponse {
-  name: string
-  meal_type: string
-  count: number
-  last_time: string
-  icon: string | null
-  food_items?: Array<{
-    food_item_id?: string
-    name: string
-    quantity?: number
-    unit?: string
-    icon?: string
-  }>
-}
-
 /**
  * Frequently-logged meal templates, grouped by name within a meal_type.
  *
@@ -433,7 +418,7 @@ interface FrequentMealResponse {
 export async function queryFrequentMeals(
   user: string,
   filters: { meal_type: string; limit?: number; since_days?: number },
-): Promise<{ success: true; data: FrequentMealResponse[] }> {
+): Promise<{ success: true; data: FrequentMeal[] }> {
   const rows = await dbGetFrequentMeals(user, {
     limit: filters.limit ?? 6,
     meal_type: filters.meal_type,
@@ -447,16 +432,19 @@ export async function queryFrequentMeals(
     rows.map((r) => r.last_meal_id),
   )
 
-  const data: FrequentMealResponse[] = rows.map((row) => {
+  const data: FrequentMeal[] = rows.map((row) => {
     const links = junctionMap.get(row.last_meal_id) ?? []
-    const food_items = links.map((link) => ({
-      food_item_id: link.food_item_id,
-      name: link.food_item_name ?? '',
-      quantity: link.quantity as number | undefined,
-      unit: link.unit as string | undefined,
-      icon: link.food_item_icon,
-    }))
-    const icon = links[0]?.food_item_icon ?? null
+    // Schema requires non-empty name on each food item — drop links missing one.
+    const food_items = links
+      .filter((link): link is typeof link & { food_item_name: string } => !!link.food_item_name)
+      .map((link) => ({
+        food_item_id: link.food_item_id,
+        name: link.food_item_name,
+        quantity: typeof link.quantity === 'number' ? link.quantity : undefined,
+        unit: typeof link.unit === 'string' ? link.unit : undefined,
+        icon: link.food_item_icon,
+      }))
+    const icon = food_items[0]?.icon ?? null
     return {
       name: row.name,
       meal_type: row.meal_type,

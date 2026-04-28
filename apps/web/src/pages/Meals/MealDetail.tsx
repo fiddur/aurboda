@@ -90,38 +90,33 @@ function MealTypeEditor({ value, onChange }: { value: string; onChange: (v: stri
   )
 }
 
+type MacroField = 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber'
+type MacroValues = Partial<Record<MacroField, number | null | undefined>>
+
 function MacrosEditor({
-  calories,
-  protein,
-  carbs,
-  fat,
-  fiber,
+  values,
   onChange,
+  onCommit,
 }: {
-  calories?: number | null
-  protein?: number | null
-  carbs?: number | null
-  fat?: number | null
-  fiber?: number | null
-  onChange: (field: string, value: number | null) => void
+  values: MacroValues
+  onChange: (field: MacroField, value: number | null) => void
+  onCommit: (field: MacroField, value: number | null) => void
 }) {
   const parseNum = (v: string) => (v === '' ? null : parseFloat(v))
   return (
     <div class="macros-grid">
-      {(['calories', 'protein', 'carbs', 'fat', 'fiber'] as const).map((field) => {
-        const val = { calories, protein, carbs, fat, fiber }[field]
-        return (
-          <label key={field} class="macro-input">
-            <span>{field === 'calories' ? 'kcal' : `${field} (g)`}</span>
-            <input
-              type="number"
-              step="0.1"
-              value={val ?? ''}
-              onInput={(e) => onChange(field, parseNum((e.target as HTMLInputElement).value))}
-            />
-          </label>
-        )
-      })}
+      {(['calories', 'protein', 'carbs', 'fat', 'fiber'] as const).map((field) => (
+        <label key={field} class="macro-input">
+          <span>{field === 'calories' ? 'kcal' : `${field} (g)`}</span>
+          <input
+            type="number"
+            step="0.1"
+            value={values[field] ?? ''}
+            onInput={(e) => onChange(field, parseNum((e.target as HTMLInputElement).value))}
+            onBlur={(e) => onCommit(field, parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+      ))}
     </div>
   )
 }
@@ -388,6 +383,7 @@ export function MealDetail() {
   const [mealType, setMealType] = useState('lunch')
   const [items, setItems] = useState<FoodItemEdit[]>([])
   const [flags, setFlags] = useState<string[]>([])
+  const [macros, setMacros] = useState<MacroValues>({})
 
   const [savedFlash, setSavedFlash] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -396,6 +392,15 @@ export function MealDetail() {
 
   // Invalidate the meals list when leaving this page so the day overview refreshes
   useEffect(() => () => void queryClient.invalidateQueries({ queryKey: ['meals'] }), [queryClient])
+
+  // Clear pending timers on unmount so callbacks don't fire against an unmounted component.
+  useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      if (itemsDebounce.current) clearTimeout(itemsDebounce.current)
+    },
+    [],
+  )
 
   // Sync local fields whenever a fresh meal arrives.
   useEffect(() => {
@@ -406,6 +411,13 @@ export function MealDetail() {
     setMealType(meal.meal_type ?? 'lunch')
     setItems(mealItemsToEdit(meal.food_items))
     setFlags(meal.sensitivities ?? [])
+    setMacros({
+      calories: meal.calories,
+      protein: meal.protein,
+      carbs: meal.carbs,
+      fat: meal.fat,
+      fiber: meal.fiber,
+    })
   }, [meal])
 
   const updateMutation = useMutation({
@@ -464,11 +476,17 @@ export function MealDetail() {
     if ((name || null) !== (meal.name ?? null)) save({ name: name || null })
   }
   const commitTime = () => {
-    const iso = new Date(timeStr).toISOString()
+    const d = new Date(timeStr)
+    if (Number.isNaN(d.getTime())) return // ignore invalid/empty datetime input
+    const iso = d.toISOString()
     if (iso !== meal.time.toISOString()) save({ time: iso })
   }
   const commitNotes = () => {
     if ((notes || null) !== (meal.notes ?? null)) save({ notes: notes || null })
+  }
+  const commitMacro = (field: MacroField, value: number | null) => {
+    const current = meal[field] ?? null
+    if (value !== current) save({ [field]: value } as UpdateMealBody)
   }
 
   return (
@@ -546,12 +564,9 @@ export function MealDetail() {
           <div class="detail-row">
             <label>Macros</label>
             <MacrosEditor
-              calories={meal.calories}
-              protein={meal.protein}
-              carbs={meal.carbs}
-              fat={meal.fat}
-              fiber={meal.fiber}
-              onChange={(field, val) => save({ [field]: val } as UpdateMealBody)}
+              values={macros}
+              onChange={(field, val) => setMacros((s) => ({ ...s, [field]: val }))}
+              onCommit={commitMacro}
             />
           </div>
 

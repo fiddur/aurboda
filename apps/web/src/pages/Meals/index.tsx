@@ -229,14 +229,17 @@ function FrequentMealsStrip({
         }
 
         const isOpen = openIcon === group.icon
+        const names = group.meals.map((m) => m.name).join(', ')
         return (
           <div key={key} class="frequent-chip-group">
             <button
               type="button"
               class="frequent-chip frequent-chip-multi"
-              title={`Choose: ${group.meals.map((m) => m.name).join(', ')}`}
-              onClick={() => setOpenIcon(isOpen ? null : group.icon)}
+              title={`Choose: ${names}`}
+              aria-label={`Choose ${slotName.toLowerCase()}: ${names}`}
+              aria-haspopup="menu"
               aria-expanded={isOpen}
+              onClick={() => setOpenIcon(isOpen ? null : group.icon)}
             >
               <span class="frequent-icon">{group.icon}</span>
               <span class="frequent-multi-caret">▾</span>
@@ -356,7 +359,7 @@ function MealSlotRow({
         <div class="slot-actions">
           {primaryMeal ? (
             <a
-              href={`/meals/${primaryMeal.id}?edit=1`}
+              href={`/meals/${primaryMeal.id}`}
               class="meal-edit-link"
               title="Edit meal details"
               aria-label="Edit meal"
@@ -724,7 +727,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
       time: mealTime.toISOString(),
     })
     queryClient.invalidateQueries({ queryKey: ['meals'] })
-    route(`/meals/${id}?edit=1`)
+    route(`/meals/${id}`)
   }
 
   const handleCreateAtTime = (slot: MealSlot, hour: number, minute: number) => {
@@ -749,7 +752,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
       id,
       meal_type: slotName,
       name: template.name,
-      food_items: template.food_items,
+      food_items: template.food_items ?? [],
       source: 'manual',
       time: mealTime.toISOString(),
     })
@@ -766,7 +769,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
       time: mealTime.toISOString(),
     })
     queryClient.invalidateQueries({ queryKey: ['meals'] })
-    route(`/meals/${id}?edit=1`)
+    route(`/meals/${id}`)
   }
 
   const foodSensitivityMap: Record<string, string[]> = settings?.food_sensitivity_map ?? {}
