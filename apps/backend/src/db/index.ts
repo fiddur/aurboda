@@ -232,6 +232,8 @@ export { getMealFoodItems, getMealFoodItemsBatch, setMealFoodItems } from './mea
 // Meals
 export {
   deleteMeal,
+  type FrequentMealRow,
+  getFrequentMeals,
   getMealById,
   getMealLogCompleted,
   getMeals,

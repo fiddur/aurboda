@@ -1,14 +1,12 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Meals route group.
- *
- * Handles: /meals/*
- */
 import {
   type AddMealBody,
   addMealBodySchema,
   type DeleteMealResponse,
+  type FrequentMealsQuery,
+  type FrequentMealsResponse,
+  frequentMealsQuerySchema,
   type MealResponse,
   type MealsQuery,
   type MealsResponse,
@@ -17,9 +15,21 @@ import {
   updateMealBodySchema,
 } from '@aurboda/api-spec'
 
+/**
+ * Meals route group.
+ *
+ * Handles: /meals/*
+ */
 import { getMealLogCompleted, setMealLogCompleted, unsetMealLogCompleted } from '../db/index.ts'
-import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from '../services/meals.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import {
+  addMeal,
+  deleteMealById,
+  getMeal,
+  queryFrequentMeals,
+  queryMeals,
+  updateMealById,
+} from '../services/meals.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 /** Check if a date is marked as logging-complete. Returns undefined if no date provided. */
@@ -30,7 +40,7 @@ const checkLogCompleted = async (user: string, start?: string): Promise<boolean 
   return completed.includes(dateStr)
 }
 
-export const createMealsRouter = (authMiddleware: RequestHandler): TypedRouter => {
+export const createMealsRouter = (authMiddleware: AnyMiddleware): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, MealsResponse, unknown, MealsQuery>(
@@ -45,6 +55,16 @@ export const createMealsRouter = (authMiddleware: RequestHandler): TypedRouter =
       // not `start` which is UTC and may be a different calendar date due to timezone offset
       const log_completed = await checkLogCompleted(user, date)
       res.json({ data: result.data, log_completed, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, FrequentMealsResponse, unknown, FrequentMealsQuery>(
+    '/frequent',
+    authMiddleware,
+    validateQuery(frequentMealsQuerySchema),
+    async (req, res) => {
+      const result = await queryFrequentMeals(req.user!, req.query)
+      res.json({ data: result.data, success: true })
     },
   )
 

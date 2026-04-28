@@ -5,12 +5,13 @@
  * Food items are stored relationally via the food_items + meal_food_items junction table.
  */
 
-import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import { type FrequentMeal, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import {
   deleteMeal as dbDeleteMeal,
   findOrCreateFoodItem,
   getFoodItemById,
+  getFrequentMeals as dbGetFrequentMeals,
   getMealById as dbGetMealById,
   getMealFoodItemsBatch,
   getMeals as dbGetMeals,
@@ -405,6 +406,56 @@ export async function queryMeals(
   // Populate food items from junction table
   const enriched = await attachFoodItems(user, meals)
   return { data: enriched.map(formatMeal), success: true }
+}
+
+/**
+ * Frequently-logged meal templates, grouped by name within a meal_type.
+ *
+ * Enriches each entry with the food items from the most recent occurrence so
+ * the UI can re-log them with one tap. Icon is taken from the first food
+ * item's `food_items.icon` (joined via the junction table).
+ */
+export async function queryFrequentMeals(
+  user: string,
+  filters: { meal_type: string; limit?: number; since_days?: number },
+): Promise<{ success: true; data: FrequentMeal[] }> {
+  const rows = await dbGetFrequentMeals(user, {
+    limit: filters.limit ?? 6,
+    meal_type: filters.meal_type,
+    since_days: filters.since_days ?? 90,
+  })
+
+  if (rows.length === 0) return { data: [], success: true }
+
+  const junctionMap = await getMealFoodItemsBatch(
+    user,
+    rows.map((r) => r.last_meal_id),
+  )
+
+  const data: FrequentMeal[] = rows.map((row) => {
+    const links = junctionMap.get(row.last_meal_id) ?? []
+    // Schema requires non-empty name on each food item — drop links missing one.
+    const food_items = links
+      .filter((link): link is typeof link & { food_item_name: string } => !!link.food_item_name)
+      .map((link) => ({
+        food_item_id: link.food_item_id,
+        name: link.food_item_name,
+        quantity: typeof link.quantity === 'number' ? link.quantity : undefined,
+        unit: typeof link.unit === 'string' ? link.unit : undefined,
+        icon: link.food_item_icon,
+      }))
+    const icon = food_items[0]?.icon ?? null
+    return {
+      name: row.name,
+      meal_type: row.meal_type,
+      count: row.count,
+      last_time: row.last_time.toISOString(),
+      icon,
+      ...(food_items.length > 0 ? { food_items } : {}),
+    }
+  })
+
+  return { data, success: true }
 }
 
 /**

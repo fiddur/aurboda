@@ -3,10 +3,23 @@
  *
  * Provides tools for adding, querying, and deleting meal/nutrition records.
  */
-import { addMealBodySchema, mealsQuerySchema, tzSchema, updateMealBodySchema } from '@aurboda/api-spec'
+import {
+  addMealBodySchema,
+  frequentMealsQuerySchema,
+  mealsQuerySchema,
+  tzSchema,
+  updateMealBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from '../services/meals.ts'
+import {
+  addMeal,
+  deleteMealById,
+  getMeal,
+  queryFrequentMeals,
+  queryMeals,
+  updateMealById,
+} from '../services/meals.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerMealTools = (server: McpServer, user: string) => {
@@ -60,6 +73,17 @@ export const registerMealTools = (server: McpServer, user: string) => {
       if (!result.success) {
         return errorResponse(result.error ?? 'Meal not found')
       }
+      return tzJsonResponse(result, tz)
+    },
+  )
+
+  // Tool: query_frequent_meals
+  server.tool(
+    'query_frequent_meals',
+    'List the meal names a user logs most often within a meal_type (e.g. recurring breakfasts), with the food items from the most recent occurrence so they can be re-logged with one tap.',
+    { ...frequentMealsQuerySchema.shape, tz: tzSchema },
+    async ({ tz, ...params }) => {
+      const result = await queryFrequentMeals(user, params)
       return tzJsonResponse(result, tz)
     },
   )
